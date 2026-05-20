@@ -9,7 +9,9 @@
     "proxy:on": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 on",
     "proxy:off": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 off",
     "proxy:pac": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 pac",
-    "proxy:status": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 status"
+    "proxy:status": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 status",
+    "test": "npm run test:server",
+    "test:server": "node --test server/tests/*.test.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
