@@ -1,0 +1,10 @@
+{
+  "server": "47.251.178.125",
+  "server_port": 18388,
+  "password": "${SS_PASSWORD}",
+  "method": "aes-256-gcm",
+  "local_address": "127.0.0.1",
+  "local_port": 1080,
+  "mode": "tcp_and_udp",
+  "timeout": 300
+}

@@ -1,0 +1,21 @@
+{
+  "name": "proxy-gateway-minimal",
+  "version": "0.1.0",
+  "description": "Minimal Proxy Gateway Console - Network Layer Only",
+  "type": "module",
+  "scripts": {
+    "server": "node server/index.mjs",
+    "ss": "bin/sslocal.exe -c config/ss-local.json -U",
+    "proxy:on": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 on",
+    "proxy:off": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 off",
+    "proxy:pac": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 pac",
+    "proxy:status": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 status"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "node-fetch": "^3.3.2",
+    "socks": "^2.8.9",
+    "socks-proxy-agent": "^10.0.0"
+  }
+}

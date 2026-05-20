@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Proxy Gateway Console</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', monospace; background: #0d1117; color: #c9d1d9; padding: 20px; max-width: 1100px; margin: 0 auto; }
+  h1 { color: #58a6ff; margin-bottom: 4px; font-size: 22px; }
+  .subtitle { color: #484f58; font-size: 12px; margin-bottom: 20px; }
+  h2 { color: #8b949e; font-size: 13px; margin: 20px 0 10px; border-bottom: 1px solid #21262d; padding-bottom: 4px; text-transform: uppercase; letter-spacing: 1px; }
+  .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px; margin-bottom: 10px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: bold; }
+  .ok { background: #23863622; color: #3fb950; border: 1px solid #3fb95044; }
+  .fail { background: #da363322; color: #f85149; border: 1px solid #f8514944; }
+  .warn { background: #9e6a0322; color: #d29922; border: 1px solid #d2992244; }
+  .idle { background: #21262d; color: #484f58; border: 1px solid #30363d; }
+
+  /* Control Panel */
+  .ctrl-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+  .ctrl-row .label { color: #8b949e; font-size: 13px; min-width: 120px; }
+  button { background: #238636; color: #fff; border: none; padding: 6px 16px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; }
+  button:hover { background: #2ea043; }
+  button.stop { background: #da3633; }
+  button.stop:hover { background: #f85149; }
+  button.secondary { background: #30363d; }
+  button.secondary:hover { background: #484f58; }
+  button.danger { background: #da363322; color: #f85149; border: 1px solid #f8514944; }
+  button.danger:hover { background: #da3633; color: #fff; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Port status strip */
+  .port-strip { display: flex; gap: 8px; margin: 10px 0; flex-wrap: wrap; }
+  .port-item { display: flex; align-items: center; gap: 6px; background: #0d1117; border: 1px solid #21262d; border-radius: 6px; padding: 8px 14px; min-width: 140px; }
+  .port-item .port-num { font-weight: bold; font-size: 14px; color: #58a6ff; }
+  .port-item .port-desc { font-size: 11px; color: #8b949e; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th { text-align: left; color: #8b949e; padding: 6px 8px; border-bottom: 1px solid #21262d; font-weight: 600; }
+  td { padding: 6px 8px; border-bottom: 1px solid #21262d11; }
+  .mono { font-family: monospace; font-size: 12px; color: #8b949e; }
+
+  /* Log */
+  #log { background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 10px; font-size: 11px; max-height: 160px; overflow-y: auto; margin-top: 10px; white-space: pre-wrap; font-family: monospace; }
+
+  /* System proxy indicator */
+  .sys-proxy { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: #161b22; border: 1px solid #30363d; border-radius: 8px; margin: 8px 0; }
+  .sys-proxy .dot { width: 10px; height: 10px; border-radius: 50%; background: #f85149; }
+  .sys-proxy .dot.on { background: #3fb950; }
+  .sys-proxy .dot.pac { background: #d29922; }
+</style>
+</head>
+<body>
+
+<h1>Proxy Gateway Console</h1>
+<div class="subtitle">Network Layer &bull; Shadowsocks Client &bull; Traffic Routing</div>
+
+<!-- Control Panel -->
+<h2>代理控制</h2>
+<div class="card">
+  <div class="ctrl-row">
+    <span class="label">SOCKS5 代理 (ss-local)</span>
+    <button id="btn-ss-start" onclick="startSS()">启动</button>
+    <button id="btn-ss-stop" class="stop" onclick="stopSS()" disabled>停止</button>
+    <span class="mono" id="ss-status">端口 1080 · 未启动</span>
+  </div>
+  <div class="ctrl-row">
+    <span class="label">HTTP 代理 (转换层)</span>
+    <button id="btn-http-start" onclick="startHTTP()">启动</button>
+    <button id="btn-http-stop" class="stop" onclick="stopHTTP()" disabled>停止</button>
+    <span class="mono" id="http-status">端口 18180 · 未启动</span>
+  </div>
+  <hr style="border:none;border-top:1px solid #21262d;margin:10px 0">
+  <div class="ctrl-row">
+    <span class="label">一键启动全部</span>
+    <button onclick="startAll()" style="padding:8px 24px;font-size:13px;">全部启动</button>
+    <button class="stop" onclick="stopAll()" style="padding:8px 24px;font-size:13px;">全部停止</button>
+    <button class="secondary" onclick="testProxy()">测试代理出口</button>
+    <span class="mono" id="test-result"></span>
+  </div>
+</div>
+
+<!-- Port Status -->
+<div class="port-strip" id="port-strip">
+  <div class="port-item"><span class="port-num">4077</span><span class="port-desc">Console</span><span class="badge idle" id="port-4077">—</span></div>
+  <div class="port-item"><span class="port-num">1080</span><span class="port-desc">SOCKS5</span><span class="badge idle" id="port-1080">—</span></div>
+  <div class="port-item"><span class="port-num">18180</span><span class="port-desc">HTTP Proxy</span><span class="badge idle" id="port-18180">—</span></div>
+</div>
+
+<!-- System Proxy -->
+<h2>系统代理</h2>
+<div class="sys-proxy" id="sys-proxy-bar">
+  <div class="dot" id="sys-dot"></div>
+  <span id="sys-text">检测中...</span>
+  <div style="margin-left:auto">
+    <button class="secondary" onclick="sysProxy('on')">全局代理</button>
+    <button class="secondary" onclick="sysProxy('pac')">PAC 分流</button>
+    <button class="secondary" onclick="sysProxy('off')">关闭</button>
+    <button class="secondary" onclick="sysProxy('status')">刷新</button>
+  </div>
+</div>
+
+<h2>环境变量代理</h2>
+<div class="sys-proxy">
+  <div class="dot" id="env-dot"></div>
+  <span id="env-text">检测中...</span>
+  <div style="margin-left:auto">
+    <button class="secondary" onclick="envProxy('on')">设置代理变量</button>
+    <button class="secondary" onclick="envProxy('off')">清除变量</button>
+    <button class="secondary" onclick="envProxy('status')">刷新</button>
+  </div>
+</div>
+
+<h2>开机自启</h2>
+<div class="sys-proxy">
+  <div class="dot" id="autostart-dot"></div>
+  <span id="autostart-text">检测中...</span>
+  <div style="margin-left:auto">
+    <button class="secondary" onclick="autostart('on')">启用</button>
+    <button class="secondary" onclick="autostart('off')">禁用</button>
+  </div>
+</div>
+
+<!-- Remote Server Status -->
+<h2>远程服务器 (47.251.178.125)</h2>
+<div class="ctrl-row">
+  <button class="secondary" onclick="refreshAll()">刷新全部</button>
+  <button class="secondary" onclick="toggleAuto()">自动刷新: <span id="auto-status">关</span></button>
+  <span class="mono" style="color:#484f58;font-size:11px" id="last-update">—</span>
+</div>
+<div class="grid" id="proxy-grid"><div class="card idle">加载中...</div></div>
+
+<h2>Nginx 端口</h2>
+<div class="grid" id="nginx-grid"><div class="card idle">加载中...</div></div>
+
+<h2>Ping 延迟</h2>
+<div class="card" id="ping-card">加载中...</div>
+
+<h2>日志</h2>
+<div id="log"></div>
+
+<script>
+let autoTimer = null;
+
+// ===== Auth Token (Fix 1) =====
+function getToken() { return localStorage.getItem('console_token') || ''; }
+function setToken(t) { localStorage.setItem('console_token', t); }
+
+async function ensureAuth() {
+  if (getToken()) return true;
+  // Check if server requires auth
+  try {
+    const health = await fetch('/api/health').then(r => r.json());
+    if (!health.authRequired) return true;
+  } catch {}
+  const token = prompt('请输入 Console Token（首次访问需认证）：');
+  if (token) { setToken(token); return true; }
+  return false;
+}
+
+async function authFetch(url, opts = {}) {
+  const token = getToken();
+  const headers = { ...(opts.headers || {}) };
+  if (token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(url, { ...opts, headers });
+  if (res.status === 401) {
+    localStorage.removeItem('console_token');
+    const token = prompt('认证失败，请重新输入 Console Token：');
+    if (token) {
+      setToken(token);
+      headers['Authorization'] = 'Bearer ' + token;
+      return fetch(url, { ...opts, headers });
+    }
+  }
+  return res;
+}
+
+function ts() { return new Date().toLocaleTimeString('zh-CN'); }
+function log(msg) {
+  const el = document.getElementById('log');
+  el.textContent += `[${ts()}] ${msg}\n`;
+  el.scrollTop = el.scrollHeight;
+}
+function badgeClass(ok, warn) { return ok ? 'ok' : warn ? 'warn' : 'fail'; }
+function badgeLabel(ok, warn) { return ok ? '● 运行中' : warn ? '◌ 待检测' : '✕ 停止'; }
+
+// ===== Port Status =====
+async function refreshPorts() {
+  try {
+    const res = await authFetch('/api/proxy/overview');
+    const data = await res.json();
+    updatePortBadge('4077', data.consolePort?.ok, 'Console');
+    updatePortBadge('1080', data.socks5?.ok, 'SOCKS5');
+    updatePortBadge('18180', data.httpProxy?.ok, 'HTTP Proxy');
+
+    document.getElementById('ss-status').textContent = `端口 1080 · ${data.socks5?.ok ? '运行中' : '已停止'}`;
+    document.getElementById('http-status').textContent = `端口 18180 · ${data.httpProxy?.ok ? '运行中' : '已停止'}`;
+
+    document.getElementById('btn-ss-start').disabled = data.socks5?.ok;
+    document.getElementById('btn-ss-stop').disabled = !data.socks5?.ok;
+    document.getElementById('btn-http-start').disabled = data.httpProxy?.ok;
+    document.getElementById('btn-http-stop').disabled = !data.httpProxy?.ok;
+  } catch(e) { log('Port status error: ' + e.message); }
+}
+
+function updatePortBadge(port, ok, label) {
+  const el = document.getElementById('port-' + port);
+  if (!el) return;
+  el.className = 'badge ' + (ok ? 'ok' : 'fail');
+  el.textContent = ok ? '● ON' : '✕ OFF';
+}
+
+// ===== Proxy Control =====
+async function apiPost(url) {
+  const res = await authFetch(url, { method: 'POST' });
+  return res.json();
+}
+
+async function startSS() { log('启动 ss-local...'); await apiPost('/api/ss/start'); await refreshPorts(); }
+async function stopSS() { log('停止 ss-local...'); await apiPost('/api/ss/stop'); await refreshPorts(); }
+async function startHTTP() { log('启动 HTTP 代理...'); await apiPost('/api/http-proxy/start'); await refreshPorts(); }
+async function stopHTTP() { log('停止 HTTP 代理...'); await apiPost('/api/http-proxy/stop'); await refreshPorts(); }
+async function startAll() { log('一键启动全部...'); await apiPost('/api/proxy/start'); await refreshPorts(); log('启动完成'); }
+async function stopAll() { log('全部停止...'); await apiPost('/api/proxy/stop'); await refreshPorts(); log('已全部停止'); }
+
+async function testProxy() {
+  const el = document.getElementById('test-result');
+  el.textContent = '测试中...';
+  el.style.color = '#d29922';
+  try {
+    const res = await authFetch('/api/proxy/test');
+    const data = await res.json();
+    if (data.ok) {
+      el.innerHTML = `出口: <strong>${data.origin}</strong>`;
+      el.style.color = '#3fb950';
+      log(`代理测试通过，出口 IP: ${data.origin}`);
+    } else {
+      el.textContent = '失败: ' + (data.error || '未知');
+      el.style.color = '#f85149';
+      log(`代理测试失败: ${data.error}`);
+    }
+  } catch(e) { el.textContent = '请求失败'; el.style.color = '#f85149'; }
+}
+
+// ===== System Proxy =====
+async function sysProxy(action) {
+  log(`系统代理: ${action}`);
+  try {
+    const res = await authFetch('/api/system-proxy/' + action, { method: 'POST' });
+    const data = await res.json();
+    log(data.output || data.error || 'done');
+    await refreshSystemProxy();
+  } catch(e) { log('系统代理错误: ' + e.message); }
+}
+
+async function refreshSystemProxy() {
+  try {
+    const res = await authFetch('/api/system-proxy/status', { method: 'POST' });
+    const data = await res.json();
+    const dot = document.getElementById('sys-dot');
+    const text = document.getElementById('sys-text');
+    if (data.output && data.output.includes('ON')) {
+      dot.className = 'dot on'; text.textContent = '系统代理: 全局模式';
+    } else if (data.output && data.output.includes('PAC')) {
+      dot.className = 'dot pac'; text.textContent = '系统代理: PAC 分流模式';
+    } else {
+      dot.className = 'dot'; text.textContent = '系统代理: 已关闭';
+    }
+  } catch(e) { document.getElementById('sys-text').textContent = '检测失败'; }
+}
+
+// ===== Environment Proxy =====
+async function envProxy(action) {
+  log(`环境变量代理: ${action}`);
+  try {
+    const url = action === 'status' ? '/api/env-proxy/status' : `/api/env-proxy/${action}`;
+    const method = action === 'status' ? 'GET' : 'POST';
+    const res = await authFetch(url, { method });
+    const data = await res.json();
+    const dot = document.getElementById('env-dot');
+    const text = document.getElementById('env-text');
+    if (data.enabled) {
+      dot.className = 'dot on';
+      text.textContent = '环境变量代理: 已设置';
+    } else {
+      dot.className = 'dot';
+      text.textContent = '环境变量代理: 未设置';
+    }
+    log(data.msg || data.error || JSON.stringify(data.vars || {}));
+  } catch(e) { log('环境变量代理错误: ' + e.message); }
+}
+
+// ===== Auto Start =====
+async function autostart(action) {
+  log(`开机自启: ${action}`);
+  try {
+    const url = action === 'on' ? '/api/autostart/on' : action === 'off' ? '/api/autostart/off' : '/api/autostart/status';
+    const method = action === 'on' || action === 'off' ? 'POST' : 'GET';
+    const res = await authFetch(url, { method });
+    const data = await res.json();
+    const dot = document.getElementById('autostart-dot');
+    const text = document.getElementById('autostart-text');
+    if (data.enabled) {
+      dot.className = 'dot on';
+      text.textContent = '开机自启: 已启用';
+    } else {
+      dot.className = 'dot';
+      text.textContent = '开机自启: 未启用';
+    }
+    log(data.msg || data.error || 'done');
+  } catch(e) { log('开机自启错误: ' + e.message); }
+}
+
+// ===== Remote Server Checks =====
+async function checkProxy() {
+  const card = document.getElementById('proxy-grid');
+  try {
+    const res = await authFetch('/api/proxy/status');
+    const data = await res.json();
+    card.innerHTML = data.results.map(s => `
+      <div class="card">
+        <strong>${s.name || s.host + ':' + s.port}</strong><br>
+        <span class="mono">${s.host}:${s.port}</span>
+        <span class="badge ${badgeClass(s.ok)}">${badgeLabel(s.ok)}</span>
+        <span class="mono">${s.info || ''}</span>
+      </div>
+    `).join('');
+    log(`Shadowsocks: ${data.results.filter(s=>s.ok).length}/${data.results.length} 可达`);
+  } catch(e) { card.innerHTML = '<div class="card fail">错误</div>'; }
+}
+
+async function checkNginx() {
+  const card = document.getElementById('nginx-grid');
+  try {
+    const res = await authFetch('/api/nginx/status');
+    const data = await res.json();
+    card.innerHTML = data.results.map(s => `
+      <div class="card" style="padding:10px 14px;">
+        <span class="mono" style="font-size:14px;font-weight:bold;color:#58a6ff;">:${s.port}</span>
+        <span class="badge ${badgeClass(s.ok)}">${badgeLabel(s.ok)}</span>
+      </div>
+    `).join('');
+    log(`Nginx: ${data.results.filter(s=>s.ok).length}/${data.results.length} 端口可达`);
+  } catch(e) { card.innerHTML = '<div class="card fail">错误</div>'; }
+}
+
+async function checkPing() {
+  const card = document.getElementById('ping-card');
+  try {
+    let hosts = ['47.251.178.125']; // fallback
+    try {
+      const info = await authFetch('/api/proxy/servers').then(r => r.json());
+      if (info.pingHosts && info.pingHosts.length) hosts = info.pingHosts;
+    } catch {}
+    const results = await Promise.all(
+      hosts.map(h => authFetch('/api/ping/' + h).then(r=>r.json()).catch(()=>({host:h,reachable:false})))
+    );
+    card.innerHTML = `<table>${results.map(r => `
+      <tr>
+        <td><strong>${r.host}</strong></td>
+        <td><span class="badge ${badgeClass(r.reachable)}">${badgeLabel(r.reachable)}</span></td>
+        <td class="mono">${r.avgMs != null ? r.avgMs + 'ms' : (r.loss != null ? '丢包 ' + r.loss + '%' : '—')}</td>
+      </tr>
+    `).join('')}</table>`;
+  } catch(e) { card.innerHTML = '<span class="fail">错误</span>'; }
+}
+
+async function refreshAll() {
+  log('刷新全部...');
+  await Promise.all([refreshPorts(), refreshSystemProxy(), envProxy('status'), autostart('status'), checkProxy(), checkNginx(), checkPing()]);
+  document.getElementById('last-update').textContent = '最后更新: ' + ts();
+}
+
+function toggleAuto() {
+  if (autoTimer) {
+    clearInterval(autoTimer); autoTimer = null;
+    document.getElementById('auto-status').textContent = '关';
+    log('自动刷新已关闭');
+  } else {
+    refreshAll();
+    autoTimer = setInterval(refreshAll, 30000);
+    document.getElementById('auto-status').textContent = '30s';
+    log('自动刷新已开启 (30s)');
+  }
+}
+
+// Initial load
+ensureAuth().then(ok => { if (ok) refreshAll(); else log('认证未通过，功能不可用'); });
+</script>
+</body>
+</html>

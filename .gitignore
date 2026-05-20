@@ -1,0 +1,8 @@
+node_modules/
+bin/*.exe
+*.log
+.env
+coverage/
+.nyc_output/
+.superpowers/
+docs/superpowers/plans/*.tmp

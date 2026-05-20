@@ -1,0 +1,28 @@
+{
+  "servers": [
+    {
+      "name": "miyao (Aliyun Shadowsocks)",
+      "host": "47.251.178.125",
+      "port": 18388,
+      "method": "aes-256-gcm",
+      "password": "${SS_PASSWORD}",
+      "type": "shadowsocks-rust",
+      "note": "Primary proxy server"
+    },
+    {
+      "name": "miyao-legacy",
+      "host": "47.251.178.125",
+      "port": 8388,
+      "method": "aes-256-gcm",
+      "password": "${SS_PASSWORD}",
+      "type": "shadowsocks-rust",
+      "note": "Legacy port"
+    }
+  ],
+  "pingHosts": ["47.251.178.125", "159.75.150.184"],
+  "nginx": {
+    "host": "47.251.178.125",
+    "ports": [80, 443, 8888, 5202, 8099],
+    "domains": ["globalcirclecat.com", "www.globalcirclecat.com"]
+  }
+}
