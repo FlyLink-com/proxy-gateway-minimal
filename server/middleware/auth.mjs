@@ -1,6 +1,6 @@
 export function createAuthMiddleware({ token, publicPaths = [] }) {
   return function authMiddleware(req, res, next) {
-    if (publicPaths.some((path) => req.path === path || req.path.startsWith(`${path}/`))) {
+    if (publicPaths.some((path) => req.path === path)) {
       next();
       return;
     }

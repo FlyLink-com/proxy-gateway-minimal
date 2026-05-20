@@ -29,6 +29,21 @@ test("auth middleware allows public paths", async () => {
   }
 });
 
+test("auth middleware requires token for paths under public paths", async () => {
+  const app = express();
+  app.use(createAuthMiddleware({ token: "secret", publicPaths: ["/api/health"] }));
+  app.get("/api/health/extra", (_req, res) => res.json({ ok: true }));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/health/extra`);
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { error: "Unauthorized" });
+  } finally {
+    server.close();
+  }
+});
+
 test("auth middleware blocks control paths without token", async () => {
   const app = express();
   app.use(createAuthMiddleware({ token: "secret", publicPaths: ["/api/health"] }));
