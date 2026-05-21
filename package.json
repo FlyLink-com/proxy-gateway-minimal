@@ -11,7 +11,8 @@
     "proxy:pac": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 pac",
     "proxy:status": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 status",
     "test": "npm run test:server",
-    "test:server": "node --test server/tests/*.test.mjs"
+    "test:server": "node --test server/tests/*.test.mjs",
+    "daemon": "node daemon.mjs"
   },
   "dependencies": {
     "dotenv": "^16.4.7",
