@@ -10,6 +10,19 @@ export function diagnosticsRoutes(state) {
     res.json(publicProxyConfig(state.proxyConfig));
   });
 
+  router.get("/api/proxy/status", async (_req, res) => {
+    const servers = state.proxyConfig.servers || [];
+    const results = await Promise.all(servers.map(async (s) => ({
+      name: s.name,
+      host: s.host,
+      port: s.port,
+      ok: await state.isPortListening(s.port, s.host),
+      info: s.method || "",
+      ts: Date.now()
+    })));
+    res.json({ results, ts: Date.now() });
+  });
+
   router.get("/api/nginx/status", async (_req, res) => {
     const host = state.proxyConfig.nginx?.host || "127.0.0.1";
     const ports = state.proxyConfig.nginx?.ports || [];

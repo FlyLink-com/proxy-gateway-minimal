@@ -3,20 +3,19 @@ import { createConnection } from "node:net";
 export function isPortListening(port, host = "127.0.0.1", timeoutMs = 1000) {
   return new Promise((resolve) => {
     const socket = createConnection({ host, port, timeout: timeoutMs });
+    let settled = false;
 
-    socket.on("connect", () => {
-      socket.destroy();
-      resolve(true);
-    });
+    const done = (result) => {
+      if (settled) return;
+      settled = true;
+      try { socket.destroy(); } catch {}
+      resolve(result);
+    };
 
-    socket.on("timeout", () => {
-      socket.destroy();
-      resolve(false);
-    });
-
-    socket.on("error", () => {
-      resolve(false);
-    });
+    socket.on("connect", () => done(true));
+    socket.on("timeout", () => done(false));
+    socket.on("error", () => done(false));
+    socket.on("close", () => done(false));
   });
 }
 

@@ -10,6 +10,7 @@ import { createHttpProxyService } from "./services/http-proxy.mjs";
 import { isPortListening } from "./services/ports.mjs";
 import { loadProxyConfig } from "./services/config.mjs";
 import { createCommandRunner } from "./services/command.mjs";
+import { spawn } from "node:child_process";
 
 function rootPathFrom(rootDir) {
   if (rootDir instanceof URL) {
@@ -90,6 +91,7 @@ export function createRuntimeState(options = {}) {
     templatePath: join(rootDir, "config", "ss-local.json"),
     env,
     socksPort: ports.socks,
+    spawnFn: spawn,
     isPortListeningFn: isPortListening
   });
   const httpProxy = createHttpProxyService({
