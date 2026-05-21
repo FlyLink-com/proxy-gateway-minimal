@@ -31,5 +31,7 @@ New:
 - `GET /api/network/status`
 - `POST /api/network/repair`
 - `POST /api/network/reset`
+- `GET /sub/clash.yaml`
+- `GET /api/subscription/status`
 
 Control routes require the console token. `GET /api/health` and `GET /proxy.pac` remain public.

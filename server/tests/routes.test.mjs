@@ -1,19 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createServer } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "../app.mjs";
-
-function listen(app) {
-  return new Promise((resolve) => {
-    const server = createServer(app);
-    server.listen(0, "127.0.0.1", () => {
-      const address = server.address();
-      resolve({ server, baseUrl: `http://127.0.0.1:${address.port}` });
-    });
-  });
-}
+import { listen } from "./helpers/listen.mjs";
 
 function fakeState() {
   return {
