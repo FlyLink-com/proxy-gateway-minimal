@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
   allowedDiagnosticHosts,
@@ -7,12 +8,24 @@ import {
 } from "../services/config.mjs";
 
 test("loadProxyConfig substitutes SS_PASSWORD only in memory", () => {
+  const configPath = new URL("../../config/proxy-servers.json", import.meta.url);
   const config = loadProxyConfig({
-    configPath: new URL("../../config/proxy-servers.json", import.meta.url),
+    configPath,
     env: { SS_PASSWORD: "secret-password" }
   });
 
   assert.equal(config.servers[0].password, "secret-password");
+  assert.match(readFileSync(configPath, "utf8"), /\$\{SS_PASSWORD\}/);
+});
+
+test("loadProxyConfig preserves JSON-significant password characters", () => {
+  const complexPassword = 'p@ss"with\\\\slashes';
+  const config = loadProxyConfig({
+    configPath: new URL("../../config/proxy-servers.json", import.meta.url),
+    env: { SS_PASSWORD: complexPassword }
+  });
+
+  assert.equal(config.servers[0].password, complexPassword);
 });
 
 test("publicProxyConfig redacts server passwords", () => {
@@ -45,6 +58,53 @@ test("publicProxyConfig redacts server passwords", () => {
     ],
     pingHosts: ["203.0.113.10"],
     nginx: { host: "203.0.113.10", ports: [443] }
+  });
+});
+
+test("publicProxyConfig redacts nested password keys", () => {
+  const config = {
+    servers: [
+      {
+        name: "primary",
+        host: "203.0.113.10",
+        password: "secret"
+      }
+    ],
+    nginx: {
+      host: "203.0.113.10",
+      password: "nginx-secret",
+      upstream: {
+        host: "127.0.0.1",
+        password: "upstream-secret"
+      },
+      locations: [
+        {
+          path: "/health",
+          password: "location-secret"
+        }
+      ]
+    }
+  };
+
+  assert.deepEqual(publicProxyConfig(config), {
+    servers: [
+      {
+        name: "primary",
+        host: "203.0.113.10"
+      }
+    ],
+    pingHosts: [],
+    nginx: {
+      host: "203.0.113.10",
+      upstream: {
+        host: "127.0.0.1"
+      },
+      locations: [
+        {
+          path: "/health"
+        }
+      ]
+    }
   });
 });
 
