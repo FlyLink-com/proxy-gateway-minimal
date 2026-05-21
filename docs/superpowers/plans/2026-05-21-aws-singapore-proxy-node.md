@@ -133,16 +133,23 @@ $deployDir = Join-Path $repo '.proxy-gateway\aws-singapore'
 $vars = Get-Content -Raw -LiteralPath (Join-Path $deployDir 'deploy-vars.json') | ConvertFrom-Json
 $sg = Get-Content -Raw -LiteralPath (Join-Path $deployDir 'security-group.json') | ConvertFrom-Json
 $rules = @(
-  @{IpProtocol='tcp';FromPort=22;ToPort=22;CidrIp="$($vars.operatorIp)/32";Description='SSH from operator IP'},
-  @{IpProtocol='tcp';FromPort=80;ToPort=80;CidrIp='0.0.0.0/0';Description='ACME HTTP'},
-  @{IpProtocol='tcp';FromPort=443;ToPort=443;CidrIp='0.0.0.0/0';Description='HTTPS subscription'},
-  @{IpProtocol='tcp';FromPort=[int]$vars.ssPort;ToPort=[int]$vars.ssPort;CidrIp='0.0.0.0/0';Description='Shadowsocks TCP'},
-  @{IpProtocol='udp';FromPort=[int]$vars.ssPort;ToPort=[int]$vars.ssPort;CidrIp='0.0.0.0/0';Description='Shadowsocks UDP'}
+  @{IpProtocol='tcp';FromPort=22;ToPort=22;IpRanges=@(@{CidrIp="$($vars.operatorIp)/32";Description='SSH from operator IP'})},
+  @{IpProtocol='tcp';FromPort=80;ToPort=80;IpRanges=@(@{CidrIp='0.0.0.0/0';Description='ACME HTTP'})},
+  @{IpProtocol='tcp';FromPort=443;ToPort=443;IpRanges=@(@{CidrIp='0.0.0.0/0';Description='HTTPS subscription'})},
+  @{IpProtocol='tcp';FromPort=[int]$vars.ssPort;ToPort=[int]$vars.ssPort;IpRanges=@(@{CidrIp='0.0.0.0/0';Description='Shadowsocks TCP'})},
+  @{IpProtocol='udp';FromPort=[int]$vars.ssPort;ToPort=[int]$vars.ssPort;IpRanges=@(@{CidrIp='0.0.0.0/0';Description='Shadowsocks UDP'})}
 )
+$ruleDir = Join-Path $deployDir 'sg-rules'
+New-Item -ItemType Directory -Force -Path $ruleDir | Out-Null
+$n = 0
 foreach ($rule in $rules) {
-  aws ec2 authorize-security-group-ingress --region $vars.region --group-id $sg.securityGroupId --ip-permissions "IpProtocol=$($rule.IpProtocol),FromPort=$($rule.FromPort),ToPort=$($rule.ToPort),IpRanges=[{CidrIp=$($rule.CidrIp),Description='$($rule.Description)'}]" 2>$null | Out-Null
+  $n++
+  $path = Join-Path $ruleDir "rule-$n.json"
+  @($rule) | ConvertTo-Json -Depth 8 -AsArray | Set-Content -LiteralPath $path -Encoding utf8NoBOM
+  $result = aws ec2 authorize-security-group-ingress --region $vars.region --group-id $sg.securityGroupId --ip-permissions "file://$path" 2>&1
+  if ($LASTEXITCODE -ne 0 -and (($result | Out-String) -notmatch 'InvalidPermission\.Duplicate')) { throw ($result | Out-String) }
 }
-aws ec2 describe-security-groups --region $vars.region --group-ids $sg.securityGroupId --query 'SecurityGroups[0].IpPermissions' --output table
+aws ec2 describe-security-groups --region $vars.region --group-ids $sg.securityGroupId --query 'SecurityGroups[0].IpPermissions[].{Proto:IpProtocol,From:FromPort,To:ToPort,CIDR:IpRanges[0].CidrIp,Desc:IpRanges[0].Description}' --output table
 ```
 
 Expected: table includes ports `22`, `80`, `443`, and `18388` for TCP/UDP.
