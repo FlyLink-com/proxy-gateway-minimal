@@ -51,6 +51,9 @@
   .sys-proxy .dot { width: 10px; height: 10px; border-radius: 50%; background: #f85149; }
   .sys-proxy .dot.on { background: #3fb950; }
   .sys-proxy .dot.pac { background: #d29922; }
+  .issue-list { margin-top: 8px; font-size: 12px; color: #8b949e; line-height: 1.6; }
+  .issue-list .error { color: #f85149; }
+  .issue-list .warning { color: #d29922; }
 </style>
 </head>
 <body>
@@ -123,6 +126,18 @@
     <button class="secondary" onclick="autostart('off')">禁用</button>
   </div>
 </div>
+
+<h2>Windows 网络修复</h2>
+<div class="sys-proxy">
+  <div class="dot" id="network-dot"></div>
+  <span id="network-text">检测中...</span>
+  <div style="margin-left:auto">
+    <button class="secondary" onclick="networkDoctor('status')">诊断</button>
+    <button onclick="networkDoctor('repair')">修复接管</button>
+    <button class="danger" onclick="networkDoctor('reset')">清空代理</button>
+  </div>
+</div>
+<div class="card issue-list" id="network-issues">—</div>
 
 <!-- Remote Server Status -->
 <h2>远程服务器 (47.251.178.125)</h2>
@@ -314,6 +329,40 @@ async function autostart(action) {
   } catch(e) { log('开机自启错误: ' + e.message); }
 }
 
+// ===== Windows Network Doctor =====
+async function networkDoctor(action = 'status', verbose = true) {
+  const dot = document.getElementById('network-dot');
+  const text = document.getElementById('network-text');
+  const issueBox = document.getElementById('network-issues');
+  if (verbose) log(`Windows 网络: ${action}`);
+  try {
+    const method = action === 'status' ? 'GET' : 'POST';
+    const res = await authFetch('/api/network/' + action, { method });
+    const data = await res.json();
+    const errors = (data.issues || []).filter(i => i.severity === 'error').length;
+    const warnings = (data.issues || []).filter(i => i.severity === 'warning').length;
+    if (errors > 0) {
+      dot.className = 'dot';
+      text.textContent = `网络层: ${errors} 个错误，${warnings} 个警告`;
+    } else if (warnings > 0) {
+      dot.className = 'dot pac';
+      text.textContent = `网络层: 可用，${warnings} 个警告`;
+    } else {
+      dot.className = 'dot on';
+      text.textContent = '网络层: 已接管';
+    }
+    issueBox.innerHTML = (data.issues || []).length
+      ? (data.issues || []).map(i => `<div class="${i.severity}">[${i.severity}] ${i.code}: ${i.message}</div>`).join('')
+      : '<span class="ok">Windows 代理栈状态正常</span>';
+    if (data.actions && data.actions.length) log('执行: ' + data.actions.join(', '));
+  } catch(e) {
+    dot.className = 'dot';
+    text.textContent = '网络层: 检测失败';
+    issueBox.textContent = e.message;
+    log('Windows 网络错误: ' + e.message);
+  }
+}
+
 // ===== Remote Server Checks =====
 async function checkProxy() {
   const card = document.getElementById('proxy-grid');
@@ -370,7 +419,7 @@ async function checkPing() {
 
 async function refreshAll() {
   log('刷新全部...');
-  await Promise.all([refreshPorts(), refreshSystemProxy(), envProxy('status'), autostart('status'), checkProxy(), checkNginx(), checkPing()]);
+  await Promise.all([refreshPorts(), refreshSystemProxy(), envProxy('status'), autostart('status'), networkDoctor('status', false), checkProxy(), checkNginx(), checkPing()]);
   document.getElementById('last-update').textContent = '最后更新: ' + ts();
 }
 

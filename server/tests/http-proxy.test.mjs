@@ -39,7 +39,7 @@ test("http proxy start listens once", async () => {
   assert.equal(service.status().running, true);
 });
 
-test("http proxy start reports already running when port listens", async () => {
+test("http proxy start rejects port already owned by another process", async () => {
   const server = new FakeServer();
   const service = createHttpProxyService({
     server,
@@ -49,8 +49,9 @@ test("http proxy start reports already running when port listens", async () => {
     logger: { log() {} }
   });
 
-  assert.deepEqual(await service.start(), { ok: false, msg: "already running" });
+  assert.deepEqual(await service.start(), { ok: false, msg: "Port 18180 already in use by another process" });
   assert.equal(server.listenCalls, 0);
+  assert.equal(service.status().running, false);
 });
 
 test("http proxy stop is idempotent", async () => {

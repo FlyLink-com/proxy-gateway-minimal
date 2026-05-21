@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createServer } from "node:http";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createApp } from "../app.mjs";
 
 function listen(app) {
@@ -15,7 +17,7 @@ function listen(app) {
 
 function fakeState() {
   return {
-    rootDir: new URL("../../", import.meta.url).pathname,
+    rootDir: resolve(fileURLToPath(new URL("../../", import.meta.url))),
     host: "127.0.0.1",
     ports: { console: 4077, socks: 1080, httpProxy: 18180 },
     consoleToken: "secret",
@@ -35,6 +37,21 @@ function fakeState() {
     isPortListening: async (port) => port === 1080 || port === 18180
   };
 }
+
+test("static console loads without token while control routes stay protected", async () => {
+  const { server, baseUrl } = await listen(createApp(fakeState()));
+  try {
+    const page = await fetch(`${baseUrl}/`);
+    assert.equal(page.status, 200);
+    assert.match(await page.text(), /Proxy Gateway/);
+
+    const control = await fetch(`${baseUrl}/api/status`);
+    assert.equal(control.status, 401);
+    assert.deepEqual(await control.json(), { error: "Unauthorized" });
+  } finally {
+    server.close();
+  }
+});
 
 test("legacy proxy routes keep existing paths", async () => {
   const { server, baseUrl } = await listen(createApp(fakeState()));

@@ -10,6 +10,9 @@
     "proxy:off": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 off",
     "proxy:pac": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 pac",
     "proxy:status": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 status",
+    "network:status": "powershell -ExecutionPolicy Bypass -File scripts/network-doctor.ps1 status",
+    "network:repair": "powershell -ExecutionPolicy Bypass -File scripts/network-doctor.ps1 repair",
+    "network:reset": "powershell -ExecutionPolicy Bypass -File scripts/network-doctor.ps1 reset",
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",
     "daemon": "node daemon.mjs"

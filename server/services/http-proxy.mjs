@@ -12,9 +12,11 @@ export function createHttpProxyService({
     if (starting) {
       return { ok: false, msg: "already starting" };
     }
-    if (running || await isPortListeningFn(port, host)) {
-      running = true;
+    if (running) {
       return { ok: false, msg: "already running" };
+    }
+    if (await isPortListeningFn(port, host)) {
+      return { ok: false, msg: `Port ${port} already in use by another process` };
     }
 
     starting = true;

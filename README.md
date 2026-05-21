@@ -49,6 +49,8 @@ cp .env.example .env
 
 ```
 SS_PASSWORD=your_shadowsocks_password_here
+# 可选：固定控制台 token；不配置时会首次启动自动生成
+# CONSOLE_TOKEN=your_console_token_here
 ```
 
 ### 3. 启动服务
@@ -59,6 +61,8 @@ npm run server
 
 访问 http://127.0.0.1:4077/ 进入管理控制台。
 
+首次启动时如果没有配置 `CONSOLE_TOKEN`，服务会生成本地控制台 token，并保存到 `.proxy-gateway/console-token`。后续重启会复用同一个 token，避免控制台因重启失效；`.proxy-gateway/` 已加入 gitignore。
+
 ## 代理模式
 
 | 模式   | 命令              | 说明                                      |
@@ -67,6 +71,29 @@ npm run server
 | PAC    | `npm run proxy:pac` | 根据 PAC 规则自动分流（CN 直连，其余代理）|
 | 关闭   | `npm run proxy:off` | 关闭系统代理，恢复直连                    |
 | 状态   | `npm run proxy:status` | 查看当前系统代理设置                   |
+
+## Windows 网络修复
+
+当 Windows 侧网络代理异常时，先跑只读诊断，再执行修复：
+
+```powershell
+npm run network:status
+npm run network:repair
+```
+
+`network:status` 会检查 Console `4077`、SOCKS5 `1080`、HTTP `18180`、WinINet 系统代理、用户环境变量、WinHTTP、Task Scheduler 和 Clash/Mihomo 常见端口。`network:repair` 会启动本项目守护进程和代理链，并把 WinINet 与用户环境变量指向 `127.0.0.1:18180` / `127.0.0.1:1080`。它只提示 Clash/Mihomo 冲突，不会卸载或强杀其他代理。
+
+需要清空本项目写入的系统代理和用户环境变量时：
+
+```powershell
+npm run network:reset
+```
+
+WinHTTP 默认只诊断不改写；确实需要服务级代理时，可直接运行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\network-doctor.ps1 repair -IncludeWinHttp
+```
 
 ## API 端点
 
@@ -101,6 +128,14 @@ npm run server
 |--------|-------------------------------|-----------------------------------|
 | POST   | `/api/system-proxy/:action`   | 设置系统代理 (`on`/`off`/`pac`)  |
 
+### Windows 网络修复
+
+| 方法   | 路径                  | 说明                       |
+|--------|-----------------------|----------------------------|
+| GET    | `/api/network/status` | Windows 代理栈完整诊断     |
+| POST   | `/api/network/repair` | 启动代理链并接管 WinINet/环境变量 |
+| POST   | `/api/network/reset`  | 清空本项目写入的代理设置   |
+
 ### 诊断
 
 | 方法   | 路径               | 说明                    |
@@ -114,10 +149,12 @@ npm run server
 | 文件                        | 说明                                      |
 |-----------------------------|-------------------------------------------|
 | `.env`                      | 环境变量（SS 密码等敏感信息，已 gitignore）|
+| `.proxy-gateway/console-token` | 自动生成的本地控制台 token（已 gitignore）|
 | `config/ss-local.json`      | ss-local 配置模板（密码为占位符，运行时替换）|
 | `config/proxy-servers.json` | 代理服务器列表（密码为占位符，运行时替换）  |
 | `public/proxy.pac`          | PAC 自动分流规则文件                      |
 | `scripts/proxy.ps1`         | Windows 系统代理设置脚本                  |
+| `scripts/network-doctor.ps1`| Windows 代理诊断、修复和冲突检测脚本      |
 | `bin/sslocal.exe`           | Shadowsocks 客户端可执行文件              |
 
 ## 技术栈

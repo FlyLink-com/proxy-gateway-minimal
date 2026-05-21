@@ -2,6 +2,29 @@ import { readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+const SS_PASSWORD_PLACEHOLDER = "${SS_PASSWORD}";
+
+function replacePasswordPlaceholders(value, env, key) {
+  if (key === "password" && value === SS_PASSWORD_PLACEHOLDER) {
+    return env.SS_PASSWORD ?? "";
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => replacePasswordPlaceholders(item, env));
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [
+        key,
+        replacePasswordPlaceholders(item, env, key)
+      ])
+    );
+  }
+
+  return value;
+}
+
 export function createSsLocalService({
   ssPath,
   templatePath,
@@ -29,7 +52,7 @@ export function createSsLocalService({
 
   function generateConfig() {
     const raw = readFileSync(templatePath, "utf8");
-    const config = JSON.parse(raw.replace(/\$\{SS_PASSWORD\}/g, env.SS_PASSWORD || ""));
+    const config = replacePasswordPlaceholders(JSON.parse(raw), env);
     const path = join(tempDir, `ss-local-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
     writeFileSync(path, JSON.stringify(config));
     tempFiles.add(path);

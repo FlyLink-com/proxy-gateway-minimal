@@ -1,18 +1,7 @@
-import { spawn } from "node:child_process";
-import { resolve, dirname } from "node:path";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createDaemonLauncher } from "./server/services/daemon-launcher.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const serverEntry = resolve(__dirname, "server", "index.mjs");
-
-const child = spawn("node", [serverEntry], {
-  cwd: __dirname,
-  detached: true,
-  stdio: "ignore",
-  windowsHide: true
-});
-
-child.unref();
-
-console.log("Proxy Gateway daemon started (PID:", child.pid, ")");
+createDaemonLauncher({ rootDir: __dirname }).start();
 process.exit(0);

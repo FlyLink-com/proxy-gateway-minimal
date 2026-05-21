@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -27,15 +27,16 @@ function makeService(overrides = {}) {
   writeFileSync(templatePath, JSON.stringify({ password: "${SS_PASSWORD}", local_port: 1080 }));
 
   const child = new FakeChild();
-  const calls = { spawn: 0 };
+  const calls = { spawn: 0, args: null };
   const service = createSsLocalService({
     ssPath: join(dir, "sslocal.exe"),
     templatePath,
     tempDir: dir,
     env: { SS_PASSWORD: "secret" },
     startupDelayMs: 1,
-    spawnFn: () => {
+    spawnFn: (...args) => {
       calls.spawn += 1;
+      calls.args = args;
       return child;
     },
     isPortListeningFn: async () => false,
@@ -91,6 +92,20 @@ test("ss-local start rejects occupied SOCKS port", async () => {
     assert.equal(result.ok, false);
     assert.equal(result.msg, "Port 1080 already in use by another process");
     assert.equal(calls.spawn, 0);
+  } finally {
+    cleanup();
+  }
+});
+
+test("ss-local generated config preserves JSON-significant password characters", async () => {
+  const password = "p@ss\"with\\\\slashes";
+  const { service, calls, cleanup } = makeService({ env: { SS_PASSWORD: password } });
+  try {
+    const result = await service.start();
+    assert.equal(result.ok, true);
+    const configPath = calls.args[1][1];
+    const generated = JSON.parse(readFileSync(configPath, "utf8"));
+    assert.equal(generated.password, password);
   } finally {
     cleanup();
   }

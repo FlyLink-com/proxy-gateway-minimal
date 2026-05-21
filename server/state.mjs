@@ -1,7 +1,6 @@
 import http from "node:http";
 import { fileURLToPath } from "node:url";
 import { resolve, join } from "node:path";
-import crypto from "node:crypto";
 import { SocksClient } from "socks";
 import { SocksProxyAgent } from "socks-proxy-agent";
 import nodeFetch from "node-fetch";
@@ -10,6 +9,7 @@ import { createHttpProxyService } from "./services/http-proxy.mjs";
 import { isPortListening } from "./services/ports.mjs";
 import { loadProxyConfig } from "./services/config.mjs";
 import { createCommandRunner } from "./services/command.mjs";
+import { resolveConsoleToken } from "./services/console-token.mjs";
 import { spawn } from "node:child_process";
 
 function rootPathFrom(rootDir) {
@@ -80,6 +80,12 @@ export function createRuntimeState(options = {}) {
   const env = options.env || process.env;
   const host = "127.0.0.1";
   const ports = { console: 4077, socks: 1080, httpProxy: 18180 };
+  const consoleToken = resolveConsoleToken({
+    rootDir,
+    env,
+    tokenStorePath: options.consoleTokenStorePath,
+    tokenFactory: options.tokenFactory
+  });
   const proxyConfig = loadProxyConfig({
     configPath: join(rootDir, "config", "proxy-servers.json"),
     env
@@ -137,6 +143,24 @@ export function createRuntimeState(options = {}) {
       args: ["/Query", "/TN", "ProxyGatewayConsole"],
       timeoutMs: 5000
     },
+    "network-status": {
+      command: "powershell",
+      args: ["-ExecutionPolicy", "Bypass", "-File", join(rootDir, "scripts", "network-doctor.ps1"), "status", "-Json"],
+      timeoutMs: 15000,
+      maxOutput: 64_000
+    },
+    "network-repair": {
+      command: "powershell",
+      args: ["-ExecutionPolicy", "Bypass", "-File", join(rootDir, "scripts", "network-doctor.ps1"), "repair", "-Json"],
+      timeoutMs: 30000,
+      maxOutput: 64_000
+    },
+    "network-reset": {
+      command: "powershell",
+      args: ["-ExecutionPolicy", "Bypass", "-File", join(rootDir, "scripts", "network-doctor.ps1"), "reset", "-Json"],
+      timeoutMs: 20000,
+      maxOutput: 64_000
+    },
     "ping": {
       command: "ping",
       args: ["-n", "3", "127.0.0.1"],
@@ -172,7 +196,9 @@ export function createRuntimeState(options = {}) {
     host,
     ports,
     proxyConfig,
-    consoleToken: env.CONSOLE_TOKEN || crypto.randomUUID(),
+    consoleToken: consoleToken.token,
+    consoleTokenSource: consoleToken.source,
+    consoleTokenStorePath: consoleToken.tokenStorePath,
     services: { ssLocal, httpProxy },
     runCommand,
     isPortListening,

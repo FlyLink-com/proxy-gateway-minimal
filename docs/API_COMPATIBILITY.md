@@ -28,5 +28,8 @@ Still supported:
 New:
 
 - `GET /api/status`
+- `GET /api/network/status`
+- `POST /api/network/repair`
+- `POST /api/network/reset`
 
 Control routes require the console token. `GET /api/health` and `GET /proxy.pac` remain public.

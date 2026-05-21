@@ -1,4 +1,7 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { createRuntimeState } from "../state.mjs";
 
@@ -17,4 +20,30 @@ test("createRuntimeState exposes expected ports and services", () => {
   assert.equal(typeof state.services.httpProxy.start, "function");
   assert.equal(typeof state.proxyConfig, "object");
   assert.equal(state.consoleToken, "secret");
+});
+
+test("createRuntimeState reuses a generated console token across restarts", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-token-"));
+  const tokenStorePath = join(dir, "console-token");
+
+  try {
+    let generated = 0;
+    const options = {
+      rootDir: new URL("../../", import.meta.url),
+      env: { SS_PASSWORD: "pw" },
+      autoStartHttpProxy: false,
+      consoleTokenStorePath: tokenStorePath,
+      tokenFactory: () => `generated-token-${++generated}`
+    };
+
+    const first = createRuntimeState(options);
+    const second = createRuntimeState(options);
+
+    assert.equal(first.consoleToken, "generated-token-1");
+    assert.equal(second.consoleToken, "generated-token-1");
+    assert.equal(generated, 1);
+    assert.equal(readFileSync(tokenStorePath, "utf8"), "generated-token-1\n");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

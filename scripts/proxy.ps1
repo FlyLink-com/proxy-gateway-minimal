@@ -12,13 +12,45 @@ function Get-RegPath {
     return "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"
 }
 
+function Ensure-WinInetType {
+    if (-not ([System.Management.Automation.PSTypeName]"ProxyGateway.WinInet").Type) {
+        Add-Type -Namespace ProxyGateway -Name WinInet -MemberDefinition @"
+[DllImport("wininet.dll", SetLastError = true)]
+public static extern bool InternetSetOption(System.IntPtr hInternet, int dwOption, System.IntPtr lpBuffer, int dwBufferLength);
+"@
+    }
+}
+
+function Ensure-BroadcastType {
+    if (-not ([System.Management.Automation.PSTypeName]"ProxyGateway.Broadcast").Type) {
+        Add-Type -Namespace ProxyGateway -Name Broadcast -MemberDefinition @"
+[DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+public static extern System.IntPtr SendMessageTimeout(System.IntPtr hWnd, uint Msg, System.IntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out System.IntPtr lpdwResult);
+"@
+    }
+}
+
+function Send-SettingChange {
+    param([string]$Area)
+
+    Ensure-BroadcastType
+    $HWND_BROADCAST = [IntPtr]0xffff
+    $WM_SETTINGCHANGE = 0x1a
+    $SMTO_ABORTIFHUNG = 0x2
+    $result = [IntPtr]::Zero
+    [ProxyGateway.Broadcast]::SendMessageTimeout($HWND_BROADCAST, $WM_SETTINGCHANGE, [IntPtr]::Zero, $Area, $SMTO_ABORTIFHUNG, 5000, [ref]$result) | Out-Null
+}
+
 function Refresh-Proxy {
-    # Use registry flags to notify running applications
     Set-ItemProperty -Path (Get-RegPath) -Name "ProxySettingsPerUser" -Value 1 -ErrorAction SilentlyContinue
-    # Force WinINet to re-read settings
-    try {
-        reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Internet Settings\Connections" /v DefaultConnectionSettings /f | Out-Null
-    } catch {}
+    Ensure-WinInetType
+    [ProxyGateway.WinInet]::InternetSetOption([IntPtr]::Zero, 39, [IntPtr]::Zero, 0) | Out-Null
+    [ProxyGateway.WinInet]::InternetSetOption([IntPtr]::Zero, 37, [IntPtr]::Zero, 0) | Out-Null
+    Send-SettingChange "Software\Microsoft\Windows\CurrentVersion\Internet Settings"
+}
+
+function Refresh-Environment {
+    Send-SettingChange "Environment"
 }
 
 function Proxy-On {
@@ -55,6 +87,7 @@ function Proxy-EnvOn {
     [Environment]::SetEnvironmentVariable("HTTPS_PROXY", "http://${ProxyAddr}:${HttpPort}", "User")
     [Environment]::SetEnvironmentVariable("ALL_PROXY", "socks5://${ProxyAddr}:${SocksPort}", "User")
     [Environment]::SetEnvironmentVariable("NO_PROXY", "localhost,127.0.0.1,10.*,172.16.*,172.17.*,172.18.*,172.19.*,172.2*,172.3*,192.168.*,*.local", "User")
+    Refresh-Environment
     Write-Host "[ENV] Proxy environment variables set for current user"
 }
 
@@ -63,6 +96,7 @@ function Proxy-EnvOff {
     [Environment]::SetEnvironmentVariable("HTTPS_PROXY", $null, "User")
     [Environment]::SetEnvironmentVariable("ALL_PROXY", $null, "User")
     [Environment]::SetEnvironmentVariable("NO_PROXY", $null, "User")
+    Refresh-Environment
     Write-Host "[ENV] Proxy environment variables cleared"
 }
 
