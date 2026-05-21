@@ -30,7 +30,7 @@
     "docs/API_COMPATIBILITY.md"
   ],
   "engines": {
-    "node": ">=20"
+    "node": "20.x || 22.x || 23.x || 24.x || 25.x || 26.x"
   },
   "scripts": {
     "start": "node server/index.mjs",
@@ -50,6 +50,7 @@
     "daemon": "node daemon.mjs"
   },
   "dependencies": {
+    "better-sqlite3": "^12.10.0",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
     "node-fetch": "^3.3.2",
