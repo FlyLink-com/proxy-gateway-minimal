@@ -48,6 +48,10 @@ npm install
 
 编辑 `.env` 文件：
 
+```bash
+cp .env.example .env
+```
+
 ```
 SS_PASSWORD=your_shadowsocks_password_here
 # 可选：
@@ -63,11 +67,42 @@ npm run daemon
 
 # 或直接启动
 npm run server
+
+# 或使用包内 CLI
+npm run cli
 ```
 
 访问 http://127.0.0.1:3456/ 进入管理控制台。
 
 首次启动时会在 `.proxy-gateway/console-token` 持久化 Token，后续重启复用。
+
+## 作为模块使用
+
+项目现在提供 npm 模块入口和 CLI：
+
+```bash
+npm install
+npm run cli
+```
+
+在其他 Node.js 项目中可以导入稳定入口：
+
+```js
+import {
+  createApp,
+  createRuntimeState,
+  generateClashSubscription,
+  startProxyGateway
+} from "proxy-gateway-minimal";
+
+const handle = await startProxyGateway({
+  runtimeOptions: { autoStartHttpProxy: false }
+});
+
+// handle.app, handle.state, handle.server, handle.stop()
+```
+
+可执行命令名为 `proxy-gateway`。通过 GitHub 私有仓库安装时，需要本机 GitHub 凭据有仓库访问权限。
 
 ## Clash 订阅
 
@@ -104,7 +139,7 @@ npm run network:reset      # 清空本项目写入的代理设置
 
 ## API 端点
 
-当前文档列出 26 个 HTTP API 入口；42 是 `server/tests/` 中的测试用例数量。
+当前文档列出 26 个 HTTP API 入口；44 是 `server/tests/` 中的测试用例数量。
 
 ### Shadowsocks 管理
 
@@ -170,29 +205,34 @@ npm run network:reset      # 清空本项目写入的代理设置
 ## 模块架构
 
 ```
-server/
-├── index.mjs              # 入口（30行）
-├── app.mjs                # Express 应用工厂
-├── state.mjs              # 运行时状态组装
-├── middleware/
-│   └── auth.mjs           # Bearer Token 认证
-├── services/
-│   ├── ports.mjs          # TCP 端口探测
-│   ├── config.mjs         # 配置加载 + 密码脱敏
-│   ├── command.mjs        # 白名单命令执行器
-│   ├── ss-local.mjs       # ss-local 进程管理（互斥锁）
-│   ├── http-proxy.mjs     # HTTP-to-SOCKS5 桥接
-│   ├── console-token.mjs  # Token 持久化
-│   ├── daemon-launcher.mjs # 守护进程启动器
-│   └── clash-subscription.mjs # Clash YAML 生成
-├── routes/
-│   ├── legacy-proxy.mjs   # /api/ss/*, /api/proxy/*
-│   ├── status.mjs         # /api/status
-│   ├── diagnostics.mjs    # /api/proxy/servers, /api/nginx/status, /api/ping/:host
-│   ├── system-proxy.mjs   # /api/system-proxy/*, /api/env-proxy/*, /api/autostart/*
-│   ├── network.mjs        # /api/network/*
-│   └── subscription.mjs   # /sub/clash.yaml, /api/subscription/status
-└── tests/                 # 42 个测试用例，100% 通过
+.
+├── index.mjs              # npm 模块导出入口
+├── bin/
+│   └── proxy-gateway.mjs  # CLI 入口
+├── server/
+│   ├── index.mjs          # 服务启动入口
+│   ├── start.mjs          # 可复用启动/停止生命周期
+│   ├── app.mjs            # Express 应用工厂
+│   ├── state.mjs          # 运行时状态组装
+│   ├── middleware/
+│   │   └── auth.mjs       # Bearer Token 认证
+│   ├── services/
+│   │   ├── ports.mjs      # TCP 端口探测
+│   │   ├── config.mjs     # 配置加载 + 密码脱敏
+│   │   ├── command.mjs    # 白名单命令执行器
+│   │   ├── ss-local.mjs   # ss-local 进程管理（互斥锁）
+│   │   ├── http-proxy.mjs # HTTP-to-SOCKS5 桥接
+│   │   ├── console-token.mjs # Token 持久化
+│   │   ├── daemon-launcher.mjs # 守护进程启动器
+│   │   └── clash-subscription.mjs # Clash YAML 生成
+│   ├── routes/
+│   │   ├── legacy-proxy.mjs # /api/ss/*, /api/proxy/*
+│   │   ├── status.mjs     # /api/status
+│   │   ├── diagnostics.mjs # /api/proxy/servers, /api/nginx/status, /api/ping/:host
+│   │   ├── system-proxy.mjs # /api/system-proxy/*, /api/env-proxy/*, /api/autostart/*
+│   │   ├── network.mjs    # /api/network/*
+│   │   └── subscription.mjs # /sub/clash.yaml, /api/subscription/status
+│   └── tests/             # 44 个测试用例，100% 通过
 ```
 
 ## 配置文件
@@ -200,6 +240,7 @@ server/
 | 文件                           | 说明                                        |
 |--------------------------------|---------------------------------------------|
 | `.env`                         | SS 密码（已 gitignore）                     |
+| `.env.example`                 | 环境变量模板                                |
 | `.proxy-gateway/console-token` | 自动生成的本地 Token（已 gitignore）        |
 | `config/ss-local.json`         | ss-local 配置模板（密码占位符）             |
 | `config/proxy-servers.json`    | 代理服务器列表（密码占位符）                |
@@ -219,6 +260,5 @@ server/
 
 ## 已知限制
 
-- Express 5.2.1 `app.listen()` 回调在端口实际绑定前触发，`server.address()` 可能返回 null
 - WorkBuddy 沙箱内无法绑定端口，需使用 `dangerouslyDisableSandbox` 或 `daemon.mjs` 启动
 - Windows Hyper-V/Docker 保留端口范围 4002-4101，不可用于 Console

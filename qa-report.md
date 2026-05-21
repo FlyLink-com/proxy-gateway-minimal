@@ -11,8 +11,8 @@
 
 | Metric | Value |
 |--------|-------|
-| Total Test Items | 42 |
-| PASS | 42 |
+| Total Test Items | 44 |
+| PASS | 44 |
 | FAIL | 0 |
 | **Pass Rate** | **100%** |
 | Health Score | **100/100** |
@@ -21,7 +21,7 @@
 
 ---
 
-## A. Unit Tests (42/42)
+## A. Unit Tests (44/44)
 
 ### Auth Middleware (4 tests)
 - ✅ public paths bypass auth (`/api/health`, `/proxy.pac`)
@@ -35,12 +35,13 @@
 - ✅ blocks unknown commands
 - ✅ runs known command specs
 
-### Config Service (5 tests)
+### Config Service (6 tests)
 - ✅ SS_PASSWORD substitution in memory only
 - ✅ preserves JSON-significant password characters
 - ✅ leaves placeholders outside password fields
 - ✅ publicProxyConfig redacts server passwords
 - ✅ publicProxyConfig redacts nested password keys
+- ✅ allowedDiagnosticHosts deduplicates configured hosts
 
 ### Daemon Launcher (2 tests)
 - ✅ provides visible token when env has none
@@ -55,10 +56,11 @@
 - ✅ returns true for listening TCP port
 - ✅ returns false for closed TCP port
 
-### SS-Local Service (4 tests)
+### SS-Local Service (5 tests)
 - ✅ spawns one child and reports running
 - ✅ concurrent start protected by mutex
 - ✅ rejects occupied SOCKS port
+- ✅ generated config preserves JSON-significant password characters
 - ✅ stop is idempotent
 
 ### State Factory (2 tests)
@@ -70,7 +72,11 @@
 - ✅ subscriptionSummary returns metadata without passwords
 - ✅ routes are authenticated
 
-### Routes & Integration (7 tests)
+### Package Entry (2 tests)
+- ✅ root package exports stable module APIs
+- ✅ startProxyGateway starts and stops an embedded app
+
+### Routes & Integration (6 tests)
 - ✅ static console loads without token (200)
 - ✅ legacy proxy routes keep existing paths
 - ✅ /api/status returns aggregate state
@@ -78,14 +84,11 @@
 - ✅ system proxy preserves legacy output field
 - ✅ env proxy status returns enabled flag and vars
 
-### Network Doctor (4 tests)
+### Network Doctor & Scripts (5 tests)
 - ✅ parses Windows doctor JSON
 - ✅ repair route returns repair actions
 - ✅ script covers expected proxy layers
 - ✅ does not recreate Internet Settings key during repair
-
-### Script Validation (2 tests)
-- ✅ network-doctor.ps1 covers proxy layers
 - ✅ proxy.ps1 notifies Windows proxy subscribers
 
 ---
@@ -104,6 +107,8 @@
 | Proxy exit via HTTP | ✅ | 47.251.178.125 (Singapore) |
 | Clash subscription | ✅ | YAML generated with 2 nodes |
 | Token persistence | ✅ | `.proxy-gateway/console-token` |
+| npm module entry | ✅ | `index.mjs` exports app/runtime/subscription APIs |
+| npm package dry run | ✅ | 33 files, excludes tests/secrets/generated state |
 
 ---
 
@@ -112,7 +117,7 @@
 | ID | Severity | Issue | Fix |
 |----|----------|-------|-----|
 | BUG-001 | 🔴 Critical | Port 4077 in Windows excluded range (4002-4101) → EACCES | Changed to 3456 + CONSOLE_PORT env |
-| BUG-002 | 🔴 Critical | Express 5.2.1 silent bind failure (callback fires before port bound) | Added `server.address()` null check in index.mjs |
+| BUG-002 | 🔴 Critical | Express 5.2.1 silent bind failure (callback fires before port bound) | Added reusable start lifecycle with `listening` event bind check |
 | BUG-003 | 🟠 High | /api/proxy/status 404 (route not implemented) | Added route in diagnostics.mjs |
 | BUG-004 | 🟠 High | isPortListening ECONNRESET crash on remote probing | Added settled guard + close event |
 | BUG-005 | 🟠 High | spawnFn not passed to ss-local service | Added child_process.spawn import |
@@ -124,6 +129,6 @@
 
 ## D. Recommendations
 
-1. **Clash subscription URL**: Update in Clash Verge from `4077` to `3456`
-2. **PAC rules**: Current PAC is global proxy; consider adding domain-based rules in Clash config
+1. **Private Git install**: Use GitHub credentials when installing this package from the private repo
+2. **sslocal.exe distribution**: Keep the Windows binary outside the npm package and install/provide it per target machine
 3. **Port monitoring**: Consider adding health check retry for remote SS servers

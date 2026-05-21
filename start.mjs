@@ -3,12 +3,12 @@ import { spawn } from "node:child_process";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { appendFileSync, mkdirSync } from "node:fs";
-import { createRequire } from "node:module";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)));
 const logDir = resolve(rootDir, ".proxy-gateway");
 const outLog = resolve(logDir, "server-stdout.log");
 const errLog = resolve(logDir, "server-stderr.log");
+const consolePort = Number.parseInt(process.env.CONSOLE_PORT, 10) || 3456;
 
 mkdirSync(logDir, { recursive: true });
 
@@ -28,4 +28,4 @@ child.unref();
 console.log(`Proxy Gateway daemon started`);
 console.log(`  PID: ${child.pid}`);
 console.log(`  Token stored in: ${rootDir}/.proxy-gateway/console-token`);
-console.log(`  Console: http://127.0.0.1:4077/`);
+console.log(`  Console: http://127.0.0.1:${consolePort}/`);

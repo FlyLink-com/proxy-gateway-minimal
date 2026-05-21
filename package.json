@@ -1,10 +1,41 @@
 {
   "name": "proxy-gateway-minimal",
   "version": "0.1.0",
-  "description": "Minimal Proxy Gateway Console - Network Layer Only",
+  "description": "Local proxy gateway module and Clash subscription console",
   "type": "module",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "proxy-gateway": "./bin/proxy-gateway.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "daemon.mjs",
+    "start-server.ps1",
+    ".env.example",
+    "server/app.mjs",
+    "server/index.mjs",
+    "server/start.mjs",
+    "server/state.mjs",
+    "server/middleware",
+    "server/routes",
+    "server/services",
+    "public",
+    "config",
+    "scripts",
+    "bin/proxy-gateway.mjs",
+    "docs/API_COMPATIBILITY.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "start": "node server/index.mjs",
     "server": "node server/index.mjs",
+    "cli": "node bin/proxy-gateway.mjs",
     "ss": "bin/sslocal.exe -c config/ss-local.json -U",
     "proxy:on": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 on",
     "proxy:off": "powershell -ExecutionPolicy Bypass -File scripts/proxy.ps1 off",
@@ -15,6 +46,7 @@
     "network:reset": "powershell -ExecutionPolicy Bypass -File scripts/network-doctor.ps1 reset",
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",
+    "pack:dry-run": "npm pack --dry-run",
     "daemon": "node daemon.mjs"
   },
   "dependencies": {
