@@ -3,6 +3,8 @@ import { join } from "node:path";
 import { createAuthMiddleware } from "./middleware/auth.mjs";
 import { legacyProxyRoutes } from "./routes/legacy-proxy.mjs";
 import { statusRoutes } from "./routes/status.mjs";
+import { diagnosticsRoutes } from "./routes/diagnostics.mjs";
+import { systemProxyRoutes } from "./routes/system-proxy.mjs";
 
 const PUBLIC_PATHS = ["/api/health", "/proxy.pac"];
 
@@ -17,6 +19,8 @@ export function createApp(state) {
   });
   app.get("/api/status", statusRoutes(state));
   app.use(legacyProxyRoutes(state));
+  app.use(systemProxyRoutes(state));
+  app.use(diagnosticsRoutes(state));
 
   return app;
 }
