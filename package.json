@@ -47,7 +47,10 @@
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",
     "pack:dry-run": "npm pack --dry-run",
-    "daemon": "node daemon.mjs"
+    "daemon": "node daemon.mjs",
+    "admin:dev": "npm run dev --prefix admin",
+    "admin:build": "npm run build --prefix admin",
+    "admin:test": "npm run test --prefix admin"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

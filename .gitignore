@@ -10,3 +10,4 @@ coverage/
 .superpowers/
 docs/superpowers/plans/*.tmp
 .gstack/
+admin/dist/
