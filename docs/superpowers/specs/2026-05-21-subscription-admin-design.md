@@ -310,3 +310,7 @@ Deployment branch:
 - Valid tenant subscription fetch from AWS.
 - Invalid/expired/disabled token checks from AWS.
 - Karing/Clash import check using a generated tenant URL.
+
+## Implementation Note
+
+The first implementation branch creates a separate `admin/` Vite React app. The existing `public/index.html` remains the legacy operations/API console until the admin app is ready to replace or sit beside it in deployment.

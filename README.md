@@ -104,6 +104,19 @@ const handle = await startProxyGateway({
 
 可执行命令名为 `proxy-gateway`。通过 GitHub 私有仓库安装时，需要本机 GitHub 凭据有仓库访问权限。
 
+## Admin Console Shell
+
+The subscription admin shell lives in `admin/`. It is a Vite React app used to prototype the operator workflow before the backend subscription database is added.
+
+```bash
+npm install --prefix admin
+npm run admin:dev
+npm run admin:build
+npm run admin:test
+```
+
+The first admin shell uses mock data and does not change the existing local console in `public/index.html`.
+
 ## Clash 订阅
 
 proxy-gateway 为 Clash Verge / Mihomo 提供本地 Shadowsocks 订阅：
