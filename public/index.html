@@ -139,6 +139,17 @@
 </div>
 <div class="card issue-list" id="network-issues">—</div>
 
+<h2>Clash 本地订阅</h2>
+<div class="sys-proxy">
+  <div class="dot" id="subscription-dot"></div>
+  <span id="subscription-text">检测中...</span>
+  <div style="margin-left:auto">
+    <button class="secondary" onclick="refreshSubscription()">刷新</button>
+    <button onclick="copySubscription()">复制 URL</button>
+  </div>
+</div>
+<div class="card mono" id="subscription-url">—</div>
+
 <!-- Remote Server Status -->
 <h2>远程服务器 (47.251.178.125)</h2>
 <div class="ctrl-row">
@@ -363,6 +374,44 @@ async function networkDoctor(action = 'status', verbose = true) {
   }
 }
 
+// ===== Clash Local Subscription =====
+let subscriptionUrl = '';
+
+async function refreshSubscription() {
+  const dot = document.getElementById('subscription-dot');
+  const text = document.getElementById('subscription-text');
+  const urlBox = document.getElementById('subscription-url');
+  try {
+    const res = await authFetch('/api/subscription/status');
+    const data = await res.json();
+    subscriptionUrl = data.subscriptionUrl || '';
+    if (data.ok && data.serverCount > 0) {
+      dot.className = 'dot on';
+      text.textContent = `Clash 订阅: ${data.serverCount} 个节点`;
+      urlBox.textContent = subscriptionUrl;
+    } else {
+      dot.className = 'dot pac';
+      text.textContent = 'Clash 订阅: 无可用节点';
+      urlBox.textContent = subscriptionUrl || '—';
+    }
+  } catch(e) {
+    dot.className = 'dot';
+    text.textContent = 'Clash 订阅: 检测失败';
+    urlBox.textContent = e.message;
+  }
+}
+
+async function copySubscription() {
+  if (!subscriptionUrl) await refreshSubscription();
+  if (!subscriptionUrl) return;
+  try {
+    await navigator.clipboard.writeText(subscriptionUrl);
+    log('Clash 本地订阅 URL 已复制');
+  } catch {
+    prompt('复制 Clash 本地订阅 URL：', subscriptionUrl);
+  }
+}
+
 // ===== Remote Server Checks =====
 async function checkProxy() {
   const card = document.getElementById('proxy-grid');
@@ -419,7 +468,7 @@ async function checkPing() {
 
 async function refreshAll() {
   log('刷新全部...');
-  await Promise.all([refreshPorts(), refreshSystemProxy(), envProxy('status'), autostart('status'), networkDoctor('status', false), checkProxy(), checkNginx(), checkPing()]);
+  await Promise.all([refreshPorts(), refreshSystemProxy(), envProxy('status'), autostart('status'), networkDoctor('status', false), refreshSubscription(), checkProxy(), checkNginx(), checkPing()]);
   document.getElementById('last-update').textContent = '最后更新: ' + ts();
 }
 

@@ -136,6 +136,19 @@ powershell -ExecutionPolicy Bypass -File scripts\network-doctor.ps1 repair -Incl
 | POST   | `/api/network/repair` | 启动代理链并接管 WinINet/环境变量 |
 | POST   | `/api/network/reset`  | 清空本项目写入的代理设置   |
 
+### Clash 本地订阅
+
+| 方法   | 路径                       | 说明                         |
+|--------|----------------------------|------------------------------|
+| GET    | `/sub/clash.yaml`          | Clash/Mihomo 本地订阅 YAML   |
+| GET    | `/api/subscription/status` | 本地订阅 URL 和节点数量      |
+
+订阅内容包含 Shadowsocks 凭据，必须带 Console Token 访问：
+
+```
+http://127.0.0.1:4077/sub/clash.yaml?token=your_console_token
+```
+
 ### 诊断
 
 | 方法   | 路径               | 说明                    |
