@@ -3,6 +3,7 @@ bin/*.exe
 *.log
 .env
 .proxy-gateway/
+.worktrees
 .worktrees/
 coverage/
 .nyc_output/
