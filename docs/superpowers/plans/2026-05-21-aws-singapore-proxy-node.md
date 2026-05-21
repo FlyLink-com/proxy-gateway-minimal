@@ -161,12 +161,12 @@ Run:
 $repo = 'C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal'
 $deployDir = Join-Path $repo '.proxy-gateway\aws-singapore'
 $vars = Get-Content -Raw -LiteralPath (Join-Path $deployDir 'deploy-vars.json') | ConvertFrom-Json
-$userData = @"
+$userDataTemplate = @'
 #!/usr/bin/env bash
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 
-SS_PORT=$($vars.ssPort)
+SS_PORT=__SS_PORT__
 METHOD="chacha20-ietf-poly1305"
 SS_PASSWORD="$(openssl rand -base64 32 | tr -d '\n')"
 SUB_TOKEN="$(python3 - <<'PY'
@@ -325,7 +325,8 @@ systemctl enable --now proxy-ss-server.service
 systemctl enable --now proxy-subscription.service
 systemctl enable --now caddy.service
 systemctl restart caddy.service
-"@
+'@
+$userData = $userDataTemplate.Replace('__SS_PORT__', [string]$vars.ssPort)
 $userData | Set-Content -LiteralPath (Join-Path $deployDir 'user-data.sh') -Encoding UTF8
 ```
 
