@@ -1,0 +1,64 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import {
+  allowedDiagnosticHosts,
+  loadProxyConfig,
+  publicProxyConfig
+} from "../services/config.mjs";
+
+test("loadProxyConfig substitutes SS_PASSWORD only in memory", () => {
+  const config = loadProxyConfig({
+    configPath: new URL("../../config/proxy-servers.json", import.meta.url),
+    env: { SS_PASSWORD: "secret-password" }
+  });
+
+  assert.equal(config.servers[0].password, "secret-password");
+});
+
+test("publicProxyConfig redacts server passwords", () => {
+  const config = {
+    servers: [
+      {
+        name: "primary",
+        host: "203.0.113.10",
+        port: 18388,
+        method: "aes-256-gcm",
+        password: "secret",
+        type: "shadowsocks-rust",
+        note: "primary"
+      }
+    ],
+    pingHosts: ["203.0.113.10"],
+    nginx: { host: "203.0.113.10", ports: [443] }
+  };
+
+  assert.deepEqual(publicProxyConfig(config), {
+    servers: [
+      {
+        name: "primary",
+        host: "203.0.113.10",
+        port: 18388,
+        method: "aes-256-gcm",
+        type: "shadowsocks-rust",
+        note: "primary"
+      }
+    ],
+    pingHosts: ["203.0.113.10"],
+    nginx: { host: "203.0.113.10", ports: [443] }
+  });
+});
+
+test("allowedDiagnosticHosts includes server, nginx, and ping hosts once", () => {
+  const config = {
+    servers: [{ host: "203.0.113.10" }, { host: "203.0.113.11" }],
+    pingHosts: ["203.0.113.10", "198.51.100.8"],
+    nginx: { host: "203.0.113.12" }
+  };
+
+  assert.deepEqual(allowedDiagnosticHosts(config), [
+    "203.0.113.10",
+    "203.0.113.11",
+    "203.0.113.12",
+    "198.51.100.8"
+  ]);
+});
