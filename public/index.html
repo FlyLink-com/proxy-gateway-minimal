@@ -88,9 +88,9 @@
 
 <!-- Port Status -->
 <div class="port-strip" id="port-strip">
-  <div class="port-item"><span class="port-num">4077</span><span class="port-desc">Console</span><span class="badge idle" id="port-4077">—</span></div>
-  <div class="port-item"><span class="port-num">1080</span><span class="port-desc">SOCKS5</span><span class="badge idle" id="port-1080">—</span></div>
-  <div class="port-item"><span class="port-num">18180</span><span class="port-desc">HTTP Proxy</span><span class="badge idle" id="port-18180">—</span></div>
+  <div class="port-item"><span class="port-num" id="port-label-console">—</span><span class="port-desc">Console</span><span class="badge idle" id="port-console">—</span></div>
+  <div class="port-item"><span class="port-num" id="port-label-socks5">1080</span><span class="port-desc">SOCKS5</span><span class="badge idle" id="port-socks5">—</span></div>
+  <div class="port-item"><span class="port-num" id="port-label-http">18180</span><span class="port-desc">HTTP Proxy</span><span class="badge idle" id="port-http">—</span></div>
 </div>
 
 <!-- System Proxy -->
@@ -218,9 +218,10 @@ async function refreshPorts() {
   try {
     const res = await authFetch('/api/proxy/overview');
     const data = await res.json();
-    updatePortBadge('4077', data.consolePort?.ok, 'Console');
-    updatePortBadge('1080', data.socks5?.ok, 'SOCKS5');
-    updatePortBadge('18180', data.httpProxy?.ok, 'HTTP Proxy');
+    document.getElementById('port-label-console').textContent = data.consolePort?.port || '—';
+    updatePortBadge('console', data.consolePort?.ok, 'Console');
+    updatePortBadge('socks5', data.socks5?.ok, 'SOCKS5');
+    updatePortBadge('http', data.httpProxy?.ok, 'HTTP Proxy');
 
     document.getElementById('ss-status').textContent = `端口 1080 · ${data.socks5?.ok ? '运行中' : '已停止'}`;
     document.getElementById('http-status').textContent = `端口 18180 · ${data.httpProxy?.ok ? '运行中' : '已停止'}`;
