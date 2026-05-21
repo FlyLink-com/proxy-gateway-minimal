@@ -16,6 +16,14 @@ const server = app.listen(state.ports.console, state.host, async () => {
   console.log(`  Console Token: ${state.consoleToken}`);
 });
 
+process.on("uncaughtException", (err) => {
+  console.error("[uncaughtException]", err.message);
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("[unhandledRejection]", err);
+});
+
 process.on("SIGINT", async () => {
   await state.services.ssLocal.stop();
   await state.services.httpProxy.stop();
