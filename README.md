@@ -104,6 +104,8 @@ npm run network:reset      # 清空本项目写入的代理设置
 
 ## API 端点
 
+当前文档列出 26 个 HTTP API 入口；42 是 `server/tests/` 中的测试用例数量。
+
 ### Shadowsocks 管理
 
 | 方法  | 路径              | 说明               |

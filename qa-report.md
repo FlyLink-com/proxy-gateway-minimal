@@ -94,7 +94,7 @@
 
 | Check | Result | Details |
 |-------|--------|---------|
-| Console (3456) | ✅ | Health: `{"ok":true}` |
+| Console (3456) | ✅ | `/api/health`: `{"ok":true}` |
 | SOCKS5 (1080) | ✅ | ss-local running, PID active |
 | HTTP Proxy (18180) | ✅ | Listening, accepting connections |
 | Remote SS (18388) | ✅ | TCP reachable |
