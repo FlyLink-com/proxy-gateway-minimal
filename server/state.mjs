@@ -9,6 +9,7 @@ import { createSsLocalService } from "./services/ss-local.mjs";
 import { createHttpProxyService } from "./services/http-proxy.mjs";
 import { isPortListening } from "./services/ports.mjs";
 import { loadProxyConfig } from "./services/config.mjs";
+import { createCommandRunner } from "./services/command.mjs";
 
 function rootPathFrom(rootDir) {
   if (rootDir instanceof URL) {
@@ -98,6 +99,72 @@ export function createRuntimeState(options = {}) {
     isPortListeningFn: isPortListening
   });
 
+  const runKnownCommand = createCommandRunner({
+    "system-proxy": {
+      command: "powershell",
+      args: ["-ExecutionPolicy", "Bypass", "-File", join(rootDir, "scripts", "proxy.ps1"), "status"],
+      timeoutMs: 10000
+    },
+    "env-proxy-on": {
+      command: "powershell",
+      args: ["-ExecutionPolicy", "Bypass", "-File", join(rootDir, "scripts", "proxy.ps1"), "env"],
+      timeoutMs: 10000
+    },
+    "env-proxy-off": {
+      command: "powershell",
+      args: ["-ExecutionPolicy", "Bypass", "-File", join(rootDir, "scripts", "proxy.ps1"), "env-off"],
+      timeoutMs: 10000
+    },
+    "env-proxy-status": {
+      command: "powershell",
+      args: ["-ExecutionPolicy", "Bypass", "-Command", "$h=[Environment]::GetEnvironmentVariable('HTTP_PROXY','User');$s=[Environment]::GetEnvironmentVariable('HTTPS_PROXY','User');$a=[Environment]::GetEnvironmentVariable('ALL_PROXY','User');Write-Output \"HTTP_PROXY=$h\";Write-Output \"HTTPS_PROXY=$s\";Write-Output \"ALL_PROXY=$a\""],
+      timeoutMs: 10000
+    },
+    "autostart-on": {
+      command: "schtasks",
+      args: ["/Create", "/SC", "ONLOGON", "/TN", "ProxyGatewayConsole", "/TR", `"${process.execPath}" "${join(rootDir, "server", "index.mjs")}"`, "/RL", "LIMITED", "/F"],
+      timeoutMs: 10000
+    },
+    "autostart-off": {
+      command: "schtasks",
+      args: ["/Delete", "/TN", "ProxyGatewayConsole", "/F"],
+      timeoutMs: 10000
+    },
+    "autostart-status": {
+      command: "schtasks",
+      args: ["/Query", "/TN", "ProxyGatewayConsole"],
+      timeoutMs: 5000
+    },
+    "ping": {
+      command: "ping",
+      args: ["-n", "3", "127.0.0.1"],
+      timeoutMs: 15000
+    }
+  });
+
+  function runCommand(name, data = {}) {
+    if (name === "system-proxy") {
+      const action = ["on", "off", "pac", "status"].includes(data.action) ? data.action : "status";
+      return createCommandRunner({
+        "system-proxy": {
+          command: "powershell",
+          args: ["-ExecutionPolicy", "Bypass", "-File", join(rootDir, "scripts", "proxy.ps1"), action],
+          timeoutMs: 10000
+        }
+      })("system-proxy");
+    }
+    if (name === "ping") {
+      return createCommandRunner({
+        ping: {
+          command: "ping",
+          args: ["-n", "3", data.host],
+          timeoutMs: 15000
+        }
+      })("ping");
+    }
+    return runKnownCommand(name);
+  }
+
   return {
     rootDir,
     host,
@@ -105,6 +172,8 @@ export function createRuntimeState(options = {}) {
     proxyConfig,
     consoleToken: env.CONSOLE_TOKEN || crypto.randomUUID(),
     services: { ssLocal, httpProxy },
+    runCommand,
+    isPortListening,
     autoStartHttpProxy: options.autoStartHttpProxy ?? true
   };
 }
