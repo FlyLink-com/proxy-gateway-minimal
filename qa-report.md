@@ -11,8 +11,8 @@
 
 | Metric | Value |
 |--------|-------|
-| Total Test Items | 44 |
-| PASS | 44 |
+| Total Test Items | 76 |
+| PASS | 76 |
 | FAIL | 0 |
 | **Pass Rate** | **100%** |
 | Health Score | **100/100** |
@@ -21,7 +21,7 @@
 
 ---
 
-## A. Unit Tests (44/44)
+## A. Unit Tests (76/76)
 
 ### Auth Middleware (4 tests)
 - ✅ public paths bypass auth (`/api/health`, `/proxy.pac`)
@@ -63,18 +63,24 @@
 - ✅ generated config preserves JSON-significant password characters
 - ✅ stop is idempotent
 
-### State Factory (2 tests)
+### State Factory (6 tests)
 - ✅ exposes expected ports and services
 - ✅ reuses generated console token across restarts
+- ✅ wires subscription runtime services and default public URL
+- ✅ respects public subscription URL override
+- ✅ closes only owned subscription repositories
+- ✅ supports injected subscription services
 
-### Clash Subscription (3 tests)
+### Clash Subscription (4 tests)
 - ✅ emits Clash Shadowsocks YAML
 - ✅ subscriptionSummary returns metadata without passwords
 - ✅ routes are authenticated
+- ✅ route hides subscription service failures
 
-### Package Entry (2 tests)
+### Package Entry (3 tests)
 - ✅ root package exports stable module APIs
 - ✅ startProxyGateway starts and stops an embedded app
+- ✅ startProxyGateway closes runtime state on startup failure
 
 ### Routes & Integration (6 tests)
 - ✅ static console loads without token (200)
@@ -90,6 +96,14 @@
 - ✅ script covers expected proxy layers
 - ✅ does not recreate Internet Settings key during repair
 - ✅ proxy.ps1 notifies Windows proxy subscribers
+
+### Subscription Admin Core (26 tests)
+- ✅ SQLite repository tests passing
+- ✅ token hash, token prefix, and status validation tests passing
+- ✅ subscription service create/renew/disable/enable/reset and overview tests passing
+- ✅ admin subscription route tests passing
+- ✅ tenant-token subscription fetch tests passing
+- ✅ console-token subscription compatibility preserved
 
 ---
 
@@ -107,8 +121,8 @@
 | Proxy exit via HTTP | ✅ | 47.251.178.125 (Singapore) |
 | Clash subscription | ✅ | YAML generated with 2 nodes |
 | Token persistence | ✅ | `.proxy-gateway/console-token` |
-| npm module entry | ✅ | `index.mjs` exports app/runtime/subscription APIs |
-| npm package dry run | ✅ | 33 files, excludes tests/secrets/generated state |
+| npm module entry | ✅ | `index.mjs` exports app/runtime APIs and Clash subscription helpers |
+| npm package dry run | ✅ | 38 files, excludes tests/secrets/generated state |
 
 ---
 

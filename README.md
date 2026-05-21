@@ -120,6 +120,24 @@ http://127.0.0.1:3456/sub/clash.yaml?token=你的Token
 应用 → Clash (7897) → SOCKS5 (1080) → ss-local → SS Server (47.251.178.125)
 ```
 
+## Subscription Admin Core
+
+Subscription Admin Core 提供 SQLite 持久化的运营侧订阅用户管理，用于给不同租户生成独立的 Clash/Mihomo 订阅 URL。默认数据库路径是：
+
+```
+.proxy-gateway/subscriptions.sqlite
+```
+
+可用环境变量：
+
+| 变量 | 说明 |
+|------|------|
+| `SUBSCRIPTION_DB_PATH` | 自定义 SQLite 数据库路径 |
+| `PUBLIC_SUBSCRIPTION_BASE_URL` | 对外展示的订阅 URL 基础地址，默认 `http://127.0.0.1:3456` |
+| `SUBSCRIPTION_EXPIRING_DAYS` | 即将过期统计窗口，默认 7 天 |
+
+管理端接口复用现有 Console Token 认证。租户订阅 URL 使用 `create` 或 `reset-token` 生成的租户 Token；Token 只在生成/重置时明文返回，数据库中保存哈希和可识别前缀。`/sub/clash.yaml` 保留 Console Token 兼容，同时支持租户 Token 拉取限定节点的订阅。
+
 ## 代理模式
 
 | 模式  | 命令                    | 说明                                        |
@@ -139,7 +157,7 @@ npm run network:reset      # 清空本项目写入的代理设置
 
 ## API 端点
 
-当前文档列出 26 个 HTTP API 入口；44 是 `server/tests/` 中的测试用例数量。
+当前文档列出 36 个 HTTP API 入口；76 是 `server/tests/` 中的测试用例数量。
 
 ### Shadowsocks 管理
 
@@ -193,6 +211,21 @@ npm run network:reset      # 清空本项目写入的代理设置
 | GET   | `/sub/clash.yaml`          | Clash/Mihomo 本地订阅 YAML   |
 | GET   | `/api/subscription/status` | 订阅 URL 和节点数量          |
 
+### Admin Subscription API
+
+| 方法  | 路径                                      | 说明                         |
+|-------|-------------------------------------------|------------------------------|
+| GET   | `/api/admin/subscriptions`                | 列出租户订阅用户             |
+| POST  | `/api/admin/subscriptions`                | 创建租户并返回一次性订阅 URL |
+| GET   | `/api/admin/subscriptions/:id`            | 查看单个租户                 |
+| PATCH | `/api/admin/subscriptions/:id`            | 更新租户到期时间             |
+| POST  | `/api/admin/subscriptions/:id/renew`      | 续期租户                     |
+| POST  | `/api/admin/subscriptions/:id/disable`    | 禁用租户订阅                 |
+| POST  | `/api/admin/subscriptions/:id/enable`     | 启用租户订阅                 |
+| POST  | `/api/admin/subscriptions/:id/reset-token`| 重置租户 Token 并返回新 URL  |
+| GET   | `/api/admin/nodes`                        | 查看可分配订阅节点           |
+| GET   | `/api/admin/overview`                     | 订阅用户统计和节点总览       |
+
 ### 诊断
 
 | 方法  | 路径               | 说明                    |
@@ -224,15 +257,17 @@ npm run network:reset      # 清空本项目写入的代理设置
 │   │   ├── http-proxy.mjs # HTTP-to-SOCKS5 桥接
 │   │   ├── console-token.mjs # Token 持久化
 │   │   ├── daemon-launcher.mjs # 守护进程启动器
-│   │   └── clash-subscription.mjs # Clash YAML 生成
+│   │   ├── clash-subscription.mjs # Clash YAML 生成
+│   │   └── subscriptions/ # SQLite 订阅用户仓储、状态、Token、服务逻辑
 │   ├── routes/
 │   │   ├── legacy-proxy.mjs # /api/ss/*, /api/proxy/*
 │   │   ├── status.mjs     # /api/status
 │   │   ├── diagnostics.mjs # /api/proxy/servers, /api/nginx/status, /api/ping/:host
 │   │   ├── system-proxy.mjs # /api/system-proxy/*, /api/env-proxy/*, /api/autostart/*
 │   │   ├── network.mjs    # /api/network/*
+│   │   ├── admin-subscriptions.mjs # /api/admin/subscriptions/*, /api/admin/nodes, /api/admin/overview
 │   │   └── subscription.mjs # /sub/clash.yaml, /api/subscription/status
-│   └── tests/             # 44 个测试用例，100% 通过
+│   └── tests/             # 76 个测试用例，100% 通过
 ```
 
 ## 配置文件
