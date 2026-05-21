@@ -1,16 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createServer } from "node:http";
 import { createApp } from "../app.mjs";
-
-function listen(app) {
-  return new Promise((resolve) => {
-    const server = createServer(app);
-    server.listen(0, "127.0.0.1", () => {
-      resolve({ server, baseUrl: `http://127.0.0.1:${server.address().port}` });
-    });
-  });
-}
+import { listen } from "./helpers/listen.mjs";
 
 test("ping route blocks hosts outside configured allowlist", async () => {
   const state = {
