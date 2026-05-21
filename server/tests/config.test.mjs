@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import {
   allowedDiagnosticHosts,
@@ -26,6 +28,43 @@ test("loadProxyConfig preserves JSON-significant password characters", () => {
   });
 
   assert.equal(config.servers[0].password, complexPassword);
+});
+
+test("loadProxyConfig leaves SS_PASSWORD markers literal outside password fields", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "proxy-config-"));
+
+  try {
+    const configPath = join(tempDir, "proxy-servers.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          servers: [
+            {
+              name: "primary",
+              host: "203.0.113.10",
+              port: 18388,
+              method: "aes-256-gcm",
+              password: "${SS_PASSWORD}",
+              note: "literal ${SS_PASSWORD} marker"
+            }
+          ]
+        },
+        null,
+        2
+      )
+    );
+
+    const config = loadProxyConfig({
+      configPath,
+      env: { SS_PASSWORD: "secret-password" }
+    });
+
+    assert.equal(config.servers[0].password, "secret-password");
+    assert.equal(config.servers[0].note, "literal ${SS_PASSWORD} marker");
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 });
 
 test("publicProxyConfig redacts server passwords", () => {

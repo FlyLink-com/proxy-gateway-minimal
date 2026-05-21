@@ -5,12 +5,11 @@ function pathFrom(input) {
   return input instanceof URL ? fileURLToPath(input) : input;
 }
 
-const SS_PASSWORD_PLACEHOLDER = /\$\{SS_PASSWORD\}/g;
+const SS_PASSWORD_PLACEHOLDER = "${SS_PASSWORD}";
 
-function replaceSecretPlaceholders(value, env) {
-  if (typeof value === "string") {
-    const password = env.SS_PASSWORD ?? "";
-    return value.replace(SS_PASSWORD_PLACEHOLDER, () => password);
+function replaceSecretPlaceholders(value, env, key) {
+  if (key === "password" && value === SS_PASSWORD_PLACEHOLDER) {
+    return env.SS_PASSWORD ?? "";
   }
 
   if (Array.isArray(value)) {
@@ -21,7 +20,7 @@ function replaceSecretPlaceholders(value, env) {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
         key,
-        replaceSecretPlaceholders(item, env)
+        replaceSecretPlaceholders(item, env, key)
       ])
     );
   }
