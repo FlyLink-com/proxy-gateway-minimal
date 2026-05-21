@@ -6,6 +6,11 @@ const state = createRuntimeState();
 const app = createApp(state);
 
 const server = app.listen(state.ports.console, state.host, async () => {
+  const addr = server.address();
+  if (!addr) {
+    console.error("FATAL: Console port bind failed (port may be in excluded range)");
+    process.exit(1);
+  }
   if (state.autoStartHttpProxy) {
     await state.services.httpProxy.start();
   }

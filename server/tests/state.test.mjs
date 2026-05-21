@@ -13,7 +13,7 @@ test("createRuntimeState exposes expected ports and services", () => {
   });
 
   assert.equal(state.host, "127.0.0.1");
-  assert.equal(state.ports.console, 4077);
+  assert.equal(state.ports.console, 3456);
   assert.equal(state.ports.socks, 1080);
   assert.equal(state.ports.httpProxy, 18180);
   assert.equal(typeof state.services.ssLocal.start, "function");

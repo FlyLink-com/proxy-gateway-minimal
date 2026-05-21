@@ -79,7 +79,8 @@ export function createRuntimeState(options = {}) {
   const rootDir = rootPathFrom(options.rootDir || new URL("..", import.meta.url));
   const env = options.env || process.env;
   const host = "127.0.0.1";
-  const ports = { console: 4077, socks: 1080, httpProxy: 18180 };
+  const consolePort = Number.parseInt(env.CONSOLE_PORT, 10) || 3456;
+  const ports = { console: consolePort, socks: 1080, httpProxy: 18180 };
   const consoleToken = resolveConsoleToken({
     rootDir,
     env,

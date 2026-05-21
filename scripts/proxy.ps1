@@ -6,7 +6,7 @@ param([string]$Action = "status")
 $ProxyAddr = "127.0.0.1"
 $SocksPort = 1080
 $HttpPort  = 18180
-$PacUrl    = "http://127.0.0.1:4077/proxy.pac"
+$PacUrl    = "http://127.0.0.1:3456/proxy.pac"
 
 function Get-RegPath {
     return "HKCU:\Software\Microsoft\Windows\CurrentVersion\Internet Settings"

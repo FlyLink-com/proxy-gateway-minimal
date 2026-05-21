@@ -9,7 +9,7 @@ function fakeState() {
   return {
     rootDir: resolve(fileURLToPath(new URL("../../", import.meta.url))),
     host: "127.0.0.1",
-    ports: { console: 4077, socks: 1080, httpProxy: 18180 },
+    ports: { console: 3456, socks: 1080, httpProxy: 18180 },
     consoleToken: "secret",
     proxyConfig: { servers: [], pingHosts: [], nginx: { host: "127.0.0.1", ports: [] } },
     services: {

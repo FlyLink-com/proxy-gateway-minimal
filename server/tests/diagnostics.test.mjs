@@ -7,7 +7,7 @@ test("ping route blocks hosts outside configured allowlist", async () => {
   const state = {
     rootDir: new URL("../../", import.meta.url).pathname,
     host: "127.0.0.1",
-    ports: { console: 4077, socks: 1080, httpProxy: 18180 },
+    ports: { console: 3456, socks: 1080, httpProxy: 18180 },
     consoleToken: "secret",
     proxyConfig: { servers: [{ host: "203.0.113.10" }], pingHosts: [], nginx: { host: "203.0.113.11", ports: [443] } },
     services: {

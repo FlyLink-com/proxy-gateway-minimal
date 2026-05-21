@@ -31,7 +31,7 @@ function fakeState() {
   return {
     rootDir: new URL("../../", import.meta.url).pathname,
     host: "127.0.0.1",
-    ports: { console: 4077, socks: 1080, httpProxy: 18180 },
+    ports: { console: 3456, socks: 1080, httpProxy: 18180 },
     consoleToken: "secret",
     proxyConfig: sampleConfig(),
     services: {
@@ -63,13 +63,13 @@ test("subscriptionSummary returns metadata without passwords", () => {
   const summary = subscriptionSummary({
     proxyConfig: sampleConfig(),
     host: "127.0.0.1",
-    consolePort: 4077,
+    consolePort: 3456,
     consoleToken: "secret"
   });
 
   assert.equal(summary.ok, true);
   assert.equal(summary.serverCount, 2);
-  assert.equal(summary.subscriptionUrl, "http://127.0.0.1:4077/sub/clash.yaml?token=secret");
+  assert.equal(summary.subscriptionUrl, "http://127.0.0.1:3456/sub/clash.yaml?token=secret");
   assert.deepEqual(summary.servers, [
     { name: "miyao (Aliyun Shadowsocks)", host: "47.251.178.125", port: 18388, type: "ss" },
     { name: "miyao-legacy", host: "47.251.178.125", port: 8388, type: "ss" }
@@ -93,7 +93,7 @@ test("Clash subscription routes are authenticated", async () => {
     assert.equal(status.status, 200);
     const body = await status.json();
     assert.equal(body.serverCount, 2);
-    assert.equal(body.subscriptionUrl, "http://127.0.0.1:4077/sub/clash.yaml?token=secret");
+    assert.equal(body.subscriptionUrl, "http://127.0.0.1:3456/sub/clash.yaml?token=secret");
     assert.doesNotMatch(JSON.stringify(body), /pw:with#chars|secondary-secret/);
   } finally {
     server.close();

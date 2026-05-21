@@ -10,7 +10,7 @@ function fakeState(runCommand) {
   return {
     rootDir: fileURLToPath(new URL("../../", import.meta.url)),
     host: "127.0.0.1",
-    ports: { console: 4077, socks: 1080, httpProxy: 18180 },
+    ports: { console: 3456, socks: 1080, httpProxy: 18180 },
     consoleToken: "secret",
     proxyConfig: { servers: [], pingHosts: [], nginx: { host: "127.0.0.1", ports: [] } },
     services: {
@@ -87,7 +87,7 @@ test("Windows network doctor script covers expected proxy layers", () => {
   assert.match(script, /WM_SETTINGCHANGE/);
   assert.match(script, /netsh winhttp show proxy/);
   assert.match(script, /Clash|mihomo/i);
-  assert.match(script, /4077/);
+  assert.match(script, /3456/);
   assert.match(script, /1080/);
   assert.match(script, /18180/);
 });
