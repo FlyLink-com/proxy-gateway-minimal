@@ -93,8 +93,9 @@ $vars = Get-Content -Raw -LiteralPath (Join-Path $repo '.proxy-gateway\aws-singa
 $pemPath = Join-Path $env:USERPROFILE ".ssh\$($vars.keyName).pem"
 $existingKey = aws ec2 describe-key-pairs --region $vars.region --key-names $vars.keyName --query 'KeyPairs[0].KeyName' --output text 2>$null
 if ($LASTEXITCODE -ne 0 -or $existingKey -ne $vars.keyName) {
-  aws ec2 create-key-pair --region $vars.region --key-name $vars.keyName --query 'KeyMaterial' --output text | Set-Content -LiteralPath $pemPath -Encoding ascii -NoNewline
-  icacls $pemPath /inheritance:r /grant:r "$env:USERNAME:R" | Out-Null
+  $keyMaterial = aws ec2 create-key-pair --region $vars.region --key-name $vars.keyName --query 'KeyMaterial' --output json | ConvertFrom-Json
+  $keyMaterial | Set-Content -LiteralPath $pemPath -Encoding ascii
+  icacls $pemPath /inheritance:r /grant:r "$env:USERNAME:F" | Out-Null
 }
 if (-not (Test-Path $pemPath)) { throw "Missing PEM: $pemPath" }
 $pemPath
@@ -398,7 +399,7 @@ $deployDir = Join-Path $repo '.proxy-gateway\aws-singapore'
 $vars = Get-Content -Raw -LiteralPath (Join-Path $deployDir 'deploy-vars.json') | ConvertFrom-Json
 $desc = Get-Content -Raw -LiteralPath (Join-Path $deployDir 'instance-describe.json') | ConvertFrom-Json
 $pemPath = Join-Path $env:USERPROFILE ".ssh\$($vars.keyName).pem"
-ssh -o StrictHostKeyChecking=accept-new -i $pemPath "ubuntu@$($desc.PublicIp)" "sudo cat /root/proxy-node-summary.txt" | Set-Content -LiteralPath (Join-Path $deployDir 'proxy-node-summary.txt') -Encoding UTF8
+ssh -o StrictHostKeyChecking=accept-new -i $pemPath "ubuntu@$($desc.PublicIp)" "cloud-init status --wait >/dev/null; sudo cat /root/proxy-node-summary.txt" | Set-Content -LiteralPath (Join-Path $deployDir 'proxy-node-summary.txt') -Encoding UTF8
 Select-String -LiteralPath (Join-Path $deployDir 'proxy-node-summary.txt') -Pattern '^PUBLIC_IPV4=|^PUBLIC_HOST=|^SS_PORT=|^METHOD=|^SUBSCRIPTION_URL='
 ```
 
@@ -493,7 +494,6 @@ $budget = @{
   BudgetLimit = @{ Amount = '5'; Unit = 'USD' }
   TimeUnit = 'MONTHLY'
   BudgetType = 'COST'
-  CostFilters = @{ TagKeyValue = @('Project$proxy-gateway-minimal') }
 } | ConvertTo-Json -Depth 6
 $notify = @(
   @{
@@ -507,7 +507,7 @@ $notify = @(
       @{ SubscriptionType = 'EMAIL'; Address = 'gaoyi1020@gmail.com' }
     )
   }
-) | ConvertTo-Json -Depth 6
+) | ConvertTo-Json -Depth 6 -AsArray
 $budgetPath = Join-Path $deployDir 'budget.json'
 $notifyPath = Join-Path $deployDir 'budget-notification.json'
 $budget | Set-Content -LiteralPath $budgetPath -Encoding UTF8
