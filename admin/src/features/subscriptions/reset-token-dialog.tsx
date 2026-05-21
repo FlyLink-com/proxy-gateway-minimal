@@ -1,0 +1,51 @@
+import { useState } from "react";
+import type { ResetTokenResult, SubscriptionTenant } from "./types";
+
+type ResetTokenDialogProps = {
+  tenant: SubscriptionTenant | null;
+  onClose: () => void;
+  onReset: (id: string) => ResetTokenResult | null;
+};
+
+export function ResetTokenDialog({ tenant, onClose, onReset }: ResetTokenDialogProps) {
+  const [result, setResult] = useState<ResetTokenResult | null>(null);
+
+  if (!tenant) return null;
+
+  function close() {
+    setResult(null);
+    onClose();
+  }
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="reset-token-title">
+        <div className="modal-header">
+          <div>
+            <h3 id="reset-token-title">Reset token</h3>
+            <p className="muted">{tenant.displayName}</p>
+          </div>
+          <button className="ghost-button" type="button" onClick={close}>Close</button>
+        </div>
+
+        <p className="modal-copy">
+          Resetting the token creates a new visible-once subscription URL. The previous token will stop refreshing once the backend is connected.
+        </p>
+
+        <div className="modal-actions">
+          <button className="ghost-button" type="button" onClick={close}>Cancel</button>
+          <button className="danger-button" type="button" onClick={() => setResult(onReset(tenant.id))}>
+            Reset token
+          </button>
+        </div>
+
+        {result ? (
+          <div className="visible-once">
+            <strong>Visible once URL</strong>
+            <code>{result.subscriptionUrl}</code>
+          </div>
+        ) : null}
+      </section>
+    </div>
+  );
+}
