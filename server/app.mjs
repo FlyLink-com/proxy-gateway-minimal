@@ -9,7 +9,7 @@ import { networkRoutes } from "./routes/network.mjs";
 import { adminSubscriptionRoutes } from "./routes/admin-subscriptions.mjs";
 import { subscriptionRoutes } from "./routes/subscription.mjs";
 
-const PUBLIC_PATHS = ["/api/health", "/proxy.pac"];
+const PUBLIC_PATHS = ["/api/health", "/proxy.pac", "/sub/clash.yaml"];
 
 export function createApp(state) {
   const app = express();

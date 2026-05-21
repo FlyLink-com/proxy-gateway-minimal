@@ -1,7 +1,39 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import Database from "better-sqlite3";
 import { createApp } from "../app.mjs";
+import { createSubscriptionRepository } from "../services/subscriptions/repository.mjs";
+import { createSubscriptionService } from "../services/subscriptions/service.mjs";
+import { hashSubscriptionToken } from "../services/subscriptions/tokens.mjs";
 import { listen } from "./helpers/listen.mjs";
+
+const RAW_TOKEN = "pgsub_route_visible_token";
+
+function sampleProxyConfig() {
+  return {
+    servers: [
+      {
+        id: "node_sg",
+        name: "aws-singapore",
+        region: "Singapore",
+        host: "203.0.113.10",
+        port: 18388,
+        method: "aes-256-gcm",
+        password: "shared-secret"
+      },
+      {
+        id: "node_tokyo",
+        name: "aws-tokyo",
+        host: "203.0.113.11",
+        port: 18389,
+        method: "aes-256-gcm",
+        password: "other-secret"
+      }
+    ],
+    pingHosts: [],
+    nginx: {}
+  };
+}
 
 function serviceError(code, message) {
   const error = new Error(message);
@@ -52,6 +84,33 @@ function fakeState(service = fakeService()) {
     subscriptions: { service },
     isPortListening: async () => false,
     runCommand: async () => ({ ok: true, stdout: "", stderr: "", code: 0, timedOut: false })
+  };
+}
+
+function realSubscriptionContext() {
+  const database = new Database(":memory:");
+  const repository = createSubscriptionRepository({ database });
+  const proxyConfig = sampleProxyConfig();
+  const service = createSubscriptionService({
+    repository,
+    proxyConfig,
+    publicSubscriptionBaseUrl: "https://gateway.example.com",
+    nowFn: () => new Date("2026-05-21T00:00:00.000Z"),
+    tokenFactory: () => ({
+      rawToken: RAW_TOKEN,
+      tokenHash: hashSubscriptionToken(RAW_TOKEN),
+      tokenPrefix: RAW_TOKEN.slice(0, 14)
+    }),
+    idFactory: () => "tenant_real_1"
+  });
+
+  return {
+    service,
+    proxyConfig,
+    close: () => {
+      repository.close();
+      database.close();
+    }
   };
 }
 
@@ -171,5 +230,37 @@ test("admin subscription nodes and overview return service outputs", async () =>
     });
   } finally {
     server.close();
+  }
+});
+
+test("tenant subscription token fetches scoped Clash YAML and disabled tenants are rejected", async () => {
+  const context = realSubscriptionContext();
+  const { server, baseUrl } = await listen(createApp(fakeState(context.service)));
+  try {
+    const created = await requestJson(baseUrl, "/api/admin/subscriptions", {
+      method: "POST",
+      body: { displayName: "Customer A", expiresAt: "2026-06-21T00:00:00.000Z" }
+    });
+    assert.equal(created.response.status, 201);
+    assert.equal(created.body.subscriptionUrl, `https://gateway.example.com/sub/clash.yaml?token=${RAW_TOKEN}`);
+
+    const subscription = await fetch(`${baseUrl}/sub/clash.yaml?token=${RAW_TOKEN}`);
+    assert.equal(subscription.status, 200);
+    assert.match(subscription.headers.get("content-type"), /application\/x-yaml/);
+    const yaml = await subscription.text();
+    assert.match(yaml, /name: "aws-singapore"/);
+    assert.match(yaml, /password: "shared-secret"/);
+    assert.doesNotMatch(yaml, /aws-tokyo|other-secret/);
+
+    const disabled = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/disable", { method: "POST" });
+    assert.equal(disabled.response.status, 200);
+    assert.equal(disabled.body.tenant.status, "disabled");
+
+    const blocked = await fetch(`${baseUrl}/sub/clash.yaml?token=${RAW_TOKEN}`);
+    assert.equal(blocked.status, 403);
+    assert.deepEqual(await blocked.json(), { error: "Subscription disabled" });
+  } finally {
+    server.close();
+    context.close();
   }
 });
