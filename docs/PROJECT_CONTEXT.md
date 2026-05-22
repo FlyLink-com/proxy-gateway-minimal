@@ -18,6 +18,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - Current production AWS node is `aws-singapore-blue` on `47.129.247.102`; future pre-release testing should use an explicitly assigned staging target before production changes.
 - Branch flow: `master` is the stable integrated baseline; use `codex/<task>`, `feat/<feature>`, or `ops/<topic>` for work; use a staging candidate only when an AWS pre-release test is needed.
 - Detailed topology and branch/AWS role definitions live in `docs/ENVIRONMENT_TOPOLOGY.md`.
+- Deployment, staging, production promotion, and rollback rules live in `docs/DEPLOYMENT_FLOW.md`.
 
 ## Current Stage
 
@@ -89,6 +90,10 @@ git -C C:\Users\g\Projects\订阅管理\proxy-gateway-minimal log --oneline --de
 - PR #12 runtime files were synced to production and `proxy-gateway-console.service` was restarted on 2026-05-23 Asia/Shanghai. Post-restart journal check showed `raw_console_token_lines=0`; the service now logs `Console Token Source: env` and `Console Token Store: ...` instead of the raw admin token.
 - Post-restart production endpoint verification on 2026-05-23 Asia/Shanghai: `proxy-gateway-console.service`, `proxy-gateway-ss.service`, and `nginx` were active; public `/api/health` returned `200`, public `/api/admin/subscriptions` returned `404`, and public `/sub/clash.yaml` without token returned `401`.
 - Previous AWS instance with project tag `proxy-gateway-minimal`: `i-0589aac321172dd74`, verified live as `stopped`
+- Read-only AWS refresh on 2026-05-23 confirmed no staging/pre-release instance is currently assigned. The stopped `i-0589aac321172dd74` node must not be used as staging unless it is explicitly reassigned, retagged, and verified first.
+- The production public IP `47.129.247.102` was not returned by `describe-addresses` on 2026-05-23, so it is not currently documented as an Elastic IP allocation. Do not stop the production instance without an IP retention plan.
+- Production runtime listeners verified on 2026-05-23: public Nginx `80/tcp`, public Shadowsocks `18388/tcp+udp`, loopback console/API `127.0.0.1:3456`, and loopback HTTP proxy `127.0.0.1:18180`.
+- HTTPS to `https://47.129.247.102/api/health` did not establish on 2026-05-23 even though the security group allows `443/tcp`; the domain HTTPS plan remains paused.
 - Local ignored files under `.proxy-gateway/aws-singapore/` may be stale. In particular, old cached files referenced `52.221.198.76`; prefer live AWS queries over those cached status files.
 
 To connect the local admin UI to the production backend, open an SSH tunnel:
@@ -155,6 +160,8 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 
 - `README.md`: user-facing project and API documentation.
 - `qa-report.md`: v0.1.0 test and QA summary. It is useful for test coverage, but the server references are historical.
+- `docs/ENVIRONMENT_TOPOLOGY.md`: source-of-truth map for local repo, GitHub, branch roles, and AWS runtime roles.
+- `docs/DEPLOYMENT_FLOW.md`: promotion flow from development to candidate, staging, production, and rollback.
 - `docs/DOMAIN_HTTPS.md`: domain HTTPS runbook. Currently paused.
 - `docs/superpowers/specs/2026-05-22-admin-console-real-api-design.md`: real admin API integration design.
 - `docs/superpowers/plans/2026-05-22-admin-console-real-api.md`: implementation plan for wiring `admin/` to `/api/admin/*`.

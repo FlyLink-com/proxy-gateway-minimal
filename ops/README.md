@@ -98,6 +98,19 @@ The admin API and admin UI are not public. Use an SSH tunnel for operator access
 ssh -i "$env:USERPROFILE\.ssh\proxy-gateway-aws-sg-20260521.pem" -L 3456:127.0.0.1:3456 ubuntu@47.129.247.102
 ```
 
+## Environment Roles
+
+The current production node is AWS Singapore `47.129.247.102` (`i-004ab1c6c71d06bca`). It is not a staging target.
+
+Use `docs/DEPLOYMENT_FLOW.md` before promoting a candidate:
+
+- Development happens on local `codex/<task>` or `feat/<feature>` branches.
+- Candidate / 待上线 means a reviewed commit selected for AWS validation.
+- Staging requires an explicitly assigned non-production AWS instance.
+- Production changes require a fresh SQLite backup, service checks, and public endpoint checks.
+
+The stopped `i-0589aac321172dd74` instance is historical until a separate ops change explicitly reassigns and verifies it as staging.
+
 ## Backup And Restore
 
 Create a SQLite backup:
