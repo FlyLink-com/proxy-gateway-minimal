@@ -56,7 +56,7 @@ function fakeState(service) {
       ssLocal: { status: () => ({ running: false }), start: async () => ({ ok: true }), stop: async () => ({ ok: true }) },
       httpProxy: { status: () => ({ running: false }), start: async () => ({ ok: true }), stop: async () => ({ ok: true }) }
     },
-    subscriptions: { service },
+    subscriptions: { core: service },
     platformIntegration: {
       renewSubscription: () => {
         throw new Error("platform unavailable");
@@ -94,6 +94,30 @@ test("store contract lists and validates the persistence methods required by the
 
 test("sqlite store adapter keeps the existing repository factory as a compatibility alias", () => {
   assert.equal(createSubscriptionRepository, createSqliteSubscriptionStore);
+});
+
+test("subscription core exposes listNodes as the stable node-list contract", () => {
+  const store = Object.fromEntries(SUBSCRIPTION_STORE_METHODS.map((method) => [method, () => {
+    if (method === "listTenants") return [];
+    return null;
+  }]));
+  const core = createSubscriptionCore({
+    store,
+    proxyConfig: sampleProxyConfig(),
+    publicSubscriptionBaseUrl: "https://gateway.example.com"
+  });
+
+  assert.equal(typeof core.listNodes, "function");
+  assert.deepEqual(core.listNodes(), [{
+    id: "node_sg",
+    name: "aws-singapore",
+    region: "Singapore",
+    host: "203.0.113.10",
+    port: 18388,
+    method: "aes-256-gcm",
+    credentialMode: "shared-node",
+    status: "online"
+  }]);
 });
 
 test("platform integration delegates business operations to the subscription core", () => {

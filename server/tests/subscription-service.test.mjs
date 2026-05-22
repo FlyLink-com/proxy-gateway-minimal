@@ -435,6 +435,11 @@ test("overview returns ok, counts, and node summaries", async () => {
     const overview = context.service.overview();
 
     assert.equal(overview.ok, true);
+    assert.equal(overview.total, 4);
+    assert.equal(overview.active, 1);
+    assert.equal(overview.expiring, 1);
+    assert.equal(overview.disabled, 1);
+    assert.equal(overview.expired, 1);
     assert.deepEqual(overview.counts, {
       total: 4,
       active: 1,

@@ -16,11 +16,11 @@ function sendError(res, error) {
 
 export function adminSubscriptionRoutes(state) {
   const router = Router();
-  const service = state.subscriptions.service;
+  const core = state.subscriptions.core || state.subscriptions.service;
 
   router.get("/api/admin/subscriptions", (_req, res) => {
     try {
-      res.json({ items: service.listTenants() });
+      res.json({ items: core.listTenants() });
     } catch (error) {
       sendError(res, error);
     }
@@ -28,7 +28,7 @@ export function adminSubscriptionRoutes(state) {
 
   router.post("/api/admin/subscriptions", (req, res) => {
     try {
-      res.status(201).json(service.createTenant(req.body ?? {}));
+      res.status(201).json(core.createTenant(req.body ?? {}));
     } catch (error) {
       sendError(res, error);
     }
@@ -36,7 +36,7 @@ export function adminSubscriptionRoutes(state) {
 
   router.get("/api/admin/subscriptions/:id", (req, res) => {
     try {
-      res.json({ tenant: service.getTenant(req.params.id) });
+      res.json({ tenant: core.getTenant(req.params.id) });
     } catch (error) {
       sendError(res, error);
     }
@@ -44,7 +44,7 @@ export function adminSubscriptionRoutes(state) {
 
   router.patch("/api/admin/subscriptions/:id", (req, res) => {
     try {
-      res.json({ tenant: service.renewTenant(req.params.id, req.body ?? {}) });
+      res.json({ tenant: core.renewTenant(req.params.id, req.body ?? {}) });
     } catch (error) {
       sendError(res, error);
     }
@@ -52,7 +52,7 @@ export function adminSubscriptionRoutes(state) {
 
   router.post("/api/admin/subscriptions/:id/renew", (req, res) => {
     try {
-      res.json({ tenant: service.renewTenant(req.params.id, req.body ?? {}) });
+      res.json({ tenant: core.renewTenant(req.params.id, req.body ?? {}) });
     } catch (error) {
       sendError(res, error);
     }
@@ -60,7 +60,7 @@ export function adminSubscriptionRoutes(state) {
 
   router.post("/api/admin/subscriptions/:id/disable", (req, res) => {
     try {
-      res.json({ tenant: service.disableTenant(req.params.id) });
+      res.json({ tenant: core.disableTenant(req.params.id) });
     } catch (error) {
       sendError(res, error);
     }
@@ -68,7 +68,7 @@ export function adminSubscriptionRoutes(state) {
 
   router.post("/api/admin/subscriptions/:id/enable", (req, res) => {
     try {
-      res.json({ tenant: service.enableTenant(req.params.id) });
+      res.json({ tenant: core.enableTenant(req.params.id) });
     } catch (error) {
       sendError(res, error);
     }
@@ -76,7 +76,7 @@ export function adminSubscriptionRoutes(state) {
 
   router.post("/api/admin/subscriptions/:id/reset-token", (req, res) => {
     try {
-      res.json(service.resetToken(req.params.id));
+      res.json(core.resetToken(req.params.id));
     } catch (error) {
       sendError(res, error);
     }
@@ -84,7 +84,7 @@ export function adminSubscriptionRoutes(state) {
 
   router.post("/api/admin/subscriptions/:id/temp-link", (req, res) => {
     try {
-      res.status(201).json(service.createTempLink(req.params.id));
+      res.status(201).json(core.createTempLink(req.params.id));
     } catch (error) {
       sendError(res, error);
     }
@@ -92,7 +92,7 @@ export function adminSubscriptionRoutes(state) {
 
   router.get("/api/admin/nodes", (_req, res) => {
     try {
-      res.json({ items: service.nodes() });
+      res.json({ items: (core.listNodes || core.nodes).call(core) });
     } catch (error) {
       sendError(res, error);
     }
@@ -100,7 +100,7 @@ export function adminSubscriptionRoutes(state) {
 
   router.get("/api/admin/overview", (_req, res) => {
     try {
-      res.json(service.overview());
+      res.json(core.overview());
     } catch (error) {
       sendError(res, error);
     }

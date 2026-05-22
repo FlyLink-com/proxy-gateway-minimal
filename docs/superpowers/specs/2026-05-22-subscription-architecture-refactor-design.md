@@ -23,7 +23,7 @@ The subscription core owns business behavior:
 - Create, renew, disable, enable, and read subscription tenants.
 - Reset primary tokens and create temporary links.
 - Resolve primary and temporary subscription tokens.
-- Return node summaries and overview metrics.
+- Return node summaries through `listNodes()` and overview metrics through `overview()`.
 - Serialize tenant-facing and admin-facing DTOs.
 
 HTTP routes and future integrations call the core. They do not implement subscription rules.

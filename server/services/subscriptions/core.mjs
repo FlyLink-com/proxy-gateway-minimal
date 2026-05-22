@@ -207,8 +207,12 @@ export function createSubscriptionCore({
     return resolveTenantAccess(tempLink.tenant, { markTempLinkId: tempLink.id });
   }
 
-  function nodes() {
+  function listNodes() {
     return namedServers(proxyConfig).map(serializeNode);
+  }
+
+  function nodes() {
+    return listNodes();
   }
 
   function overview() {
@@ -217,19 +221,33 @@ export function createSubscriptionCore({
       total: tenants.length,
       active: 0,
       expiring: 0,
+      disabled: 0,
+      expired: 0,
       disabledOrExpired: 0
     };
 
     for (const tenant of tenants) {
       if (tenant.status === "active") counts.active += 1;
       if (tenant.status === "expiring") counts.expiring += 1;
+      if (tenant.status === "disabled") counts.disabled += 1;
+      if (tenant.status === "expired") counts.expired += 1;
       if (tenant.status === "disabled" || tenant.status === "expired") counts.disabledOrExpired += 1;
     }
 
     return {
       ok: true,
-      counts,
-      nodes: nodes()
+      total: counts.total,
+      active: counts.active,
+      expiring: counts.expiring,
+      disabled: counts.disabled,
+      expired: counts.expired,
+      counts: {
+        total: counts.total,
+        active: counts.active,
+        expiring: counts.expiring,
+        disabledOrExpired: counts.disabledOrExpired
+      },
+      nodes: listNodes()
     };
   }
 
@@ -243,6 +261,7 @@ export function createSubscriptionCore({
     resetToken,
     createTempLink,
     resolveSubscriptionToken,
+    listNodes,
     nodes,
     overview
   };

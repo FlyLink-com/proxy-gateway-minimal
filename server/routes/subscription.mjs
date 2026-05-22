@@ -26,15 +26,15 @@ export function subscriptionRoutes(state) {
       return;
     }
 
-    const service = state.subscriptions?.service;
-    if (!service) {
+    const core = state.subscriptions?.core || state.subscriptions?.service;
+    if (!core) {
       res.status(401).json({ error: "Unauthorized" });
       return;
     }
 
     let result;
     try {
-      result = await service.resolveSubscriptionToken(token);
+      result = await core.resolveSubscriptionToken(token);
     } catch {
       res.status(500).json({ error: "internal_error" });
       return;

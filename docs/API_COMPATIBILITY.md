@@ -61,6 +61,7 @@ Public subscription route:
 Compatibility rules:
 
 - Admin route paths and response shapes remain compatible with the React admin shell.
+- `GET /api/admin/overview` returns flat UI fields (`total`, `active`, `expiring`, `disabled`, `expired`) and keeps the legacy `counts` object for compatibility.
 - Primary `pgsub_` tokens and temporary `pgtmp_` tokens are still stored as hashes.
 - Full subscription URLs are still visible only on create, reset, or temporary-link creation.
 - `/sub/clash.yaml` depends on `SubscriptionCore`, `SubscriptionStore`, node config, and secrets. It must not depend on future platform or payment availability.

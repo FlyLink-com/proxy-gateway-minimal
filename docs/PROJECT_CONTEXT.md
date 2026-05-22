@@ -27,11 +27,12 @@ C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
 ## Verified Local State
 
 - Current branch: `feat/subscription-architecture-refactor`
-- Remote tracking branch: not pushed yet at the start of this branch.
+- Remote tracking branch: `origin/feat/subscription-architecture-refactor`
 - Base: latest `master` after merging PR #3 at `9637c69`.
 - Current architecture checkpoints:
   - `55d2496 docs: design subscription architecture refactor`
   - `04d5eed refactor: introduce subscription core and store contracts`
+- GitHub PR #7: open Draft PR for the subscription architecture refactor.
 - GitHub PR #3: merged.
 - Local Vite admin UI: `http://127.0.0.1:5173/`
 - Local backend `127.0.0.1:3456` is not expected to be running unless a local server or SSH tunnel is started.
@@ -195,6 +196,9 @@ Implemented scope:
 - `createPlatformSubscriptionIntegration()` defines the future platform/payment caller boundary without adding public platform APIs.
 - Runtime state now exposes both `subscriptions.core/store` and compatibility aliases `subscriptions.service/repository`.
 - Contract tests verify core/store/platform boundaries and confirm public subscription refresh does not depend on platform integration availability.
+- HTTP routes prefer `subscriptions.core` and keep `subscriptions.service` as a compatibility fallback.
+- `SubscriptionCore` exposes `listNodes()` as the stable node-list contract and keeps `nodes()` as a compatibility alias.
+- `/api/admin/overview` returns flat UI fields and retains the legacy `counts` object.
 
 Before continuing from a new session, refresh the repo and current AWS state:
 
