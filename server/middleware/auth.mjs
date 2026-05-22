@@ -7,9 +7,8 @@ export function createAuthMiddleware({ token, publicPaths = [] }) {
 
     const authorization = req.headers.authorization || "";
     const bearer = authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : "";
-    const queryToken = typeof req.query.token === "string" ? req.query.token : "";
 
-    if (token && (bearer === token || queryToken === token)) {
+    if (token && bearer === token) {
       next();
       return;
     }

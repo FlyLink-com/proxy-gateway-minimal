@@ -41,6 +41,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - The admin UI is intended for local use or SSH tunnel access only. Do not expose it through the public gateway.
 - The hardening branch was deployed to AWS Singapore `47.129.247.102` on 2026-05-22.
 - Default tracked node config now points at the active AWS Singapore node `aws-singapore-blue`.
+- Phase 2 auth boundary work tightens protected `/api/*` routes to `Authorization: Bearer <console-token>` only; `/sub/clash.yaml` keeps query-token support for Clash/Mihomo subscription clients.
 
 ## Verified Local State
 

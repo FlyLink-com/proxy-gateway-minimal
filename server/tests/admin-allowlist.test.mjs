@@ -32,7 +32,9 @@ test("admin allowlist blocks public source IP before service handlers run", asyn
   const app = createApp(state(), { clientIpResolver: () => "203.0.113.10" });
   const { server, baseUrl } = await listen(app);
   try {
-    const response = await fetch(`${baseUrl}/api/admin/subscriptions?token=secret`);
+    const response = await fetch(`${baseUrl}/api/admin/subscriptions`, {
+      headers: { authorization: "Bearer secret" }
+    });
     assert.equal(response.status, 403);
     assert.deepEqual(await response.json(), { error: "Forbidden" });
   } finally {
@@ -47,7 +49,12 @@ test("admin allowlist permits configured private source IP and console auth stil
     const unauthorized = await fetch(`${baseUrl}/api/admin/subscriptions`);
     assert.equal(unauthorized.status, 401);
 
-    const response = await fetch(`${baseUrl}/api/admin/subscriptions?token=secret`);
+    const query = await fetch(`${baseUrl}/api/admin/subscriptions?token=secret`);
+    assert.equal(query.status, 401);
+
+    const response = await fetch(`${baseUrl}/api/admin/subscriptions`, {
+      headers: { authorization: "Bearer secret" }
+    });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { items: [{ id: "tenant_1" }] });
   } finally {

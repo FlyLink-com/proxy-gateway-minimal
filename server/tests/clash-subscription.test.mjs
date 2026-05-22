@@ -100,9 +100,15 @@ test("Clash subscription routes are authenticated", async () => {
     assert.match(bearerYaml, /password: "pw:with#chars"/);
     assert.match(bearerYaml, /password: "secondary-secret"/);
 
-    const status = await fetch(`${baseUrl}/api/subscription/status?token=secret`);
-    assert.equal(status.status, 200);
-    const body = await status.json();
+    const queryStatus = await fetch(`${baseUrl}/api/subscription/status?token=secret`);
+    assert.equal(queryStatus.status, 401);
+    assert.deepEqual(await queryStatus.json(), { error: "Unauthorized" });
+
+    const bearerStatus = await fetch(`${baseUrl}/api/subscription/status`, {
+      headers: { authorization: "Bearer secret" }
+    });
+    assert.equal(bearerStatus.status, 200);
+    const body = await bearerStatus.json();
     assert.equal(body.serverCount, 2);
     assert.equal(body.subscriptionUrl, "http://127.0.0.1:3456/sub/clash.yaml?token=secret");
     assert.doesNotMatch(JSON.stringify(body), /pw:with#chars|secondary-secret/);

@@ -23,7 +23,10 @@ test("system proxy route preserves legacy output field", async () => {
   const state = fakeState(async () => ({ ok: true, stdout: "[ON] Proxy: 127.0.0.1:18180", stderr: "", code: 0, timedOut: false }));
   const { server, baseUrl } = await listen(createApp(state));
   try {
-    const response = await fetch(`${baseUrl}/api/system-proxy/status?token=secret`, { method: "POST" });
+    const response = await fetch(`${baseUrl}/api/system-proxy/status`, {
+      method: "POST",
+      headers: { authorization: "Bearer secret" }
+    });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), { ok: true, output: "[ON] Proxy: 127.0.0.1:18180" });
   } finally {
@@ -41,7 +44,9 @@ test("environment proxy status returns enabled flag and vars for legacy UI", asy
   }));
   const { server, baseUrl } = await listen(createApp(state));
   try {
-    const response = await fetch(`${baseUrl}/api/env-proxy/status?token=secret`);
+    const response = await fetch(`${baseUrl}/api/env-proxy/status`, {
+      headers: { authorization: "Bearer secret" }
+    });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), {
       ok: true,

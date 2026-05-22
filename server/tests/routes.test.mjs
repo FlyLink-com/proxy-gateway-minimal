@@ -46,11 +46,16 @@ test("static console loads without token while control routes stay protected", a
 test("legacy proxy routes keep existing paths", async () => {
   const { server, baseUrl } = await listen(createApp(fakeState()));
   try {
-    const start = await fetch(`${baseUrl}/api/proxy/start?token=secret`, { method: "POST" });
+    const start = await fetch(`${baseUrl}/api/proxy/start`, {
+      method: "POST",
+      headers: { authorization: "Bearer secret" }
+    });
     assert.equal(start.status, 200);
     assert.deepEqual(await start.json(), { socks5: true, http: true, ok: true });
 
-    const overview = await fetch(`${baseUrl}/api/proxy/overview?token=secret`);
+    const overview = await fetch(`${baseUrl}/api/proxy/overview`, {
+      headers: { authorization: "Bearer secret" }
+    });
     assert.equal(overview.status, 200);
     const body = await overview.json();
     assert.equal(body.socks5.port, 1080);
@@ -64,7 +69,13 @@ test("legacy proxy routes keep existing paths", async () => {
 test("/api/status returns aggregate state for new UI", async () => {
   const { server, baseUrl } = await listen(createApp(fakeState()));
   try {
-    const response = await fetch(`${baseUrl}/api/status?token=secret`);
+    const query = await fetch(`${baseUrl}/api/status?token=secret`);
+    assert.equal(query.status, 401);
+    assert.deepEqual(await query.json(), { error: "Unauthorized" });
+
+    const response = await fetch(`${baseUrl}/api/status`, {
+      headers: { authorization: "Bearer secret" }
+    });
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.ok, true);
