@@ -103,3 +103,77 @@ test("repository rejects invalid tenant enum fields", async () => {
     });
   });
 });
+
+test("repository creates and finds temporary subscription links by token hash", async () => {
+  await withRepository((repository) => {
+    repository.createTenant({
+      id: "tenant_1",
+      displayName: "customer-a",
+      status: "active",
+      expiresAt: "2026-06-21T00:00:00.000Z",
+      note: "",
+      nodeId: "aws-singapore",
+      credentialMode: "shared-node",
+      tokenHash: "primary_hash",
+      tokenPrefix: "pgsub_primary",
+      now: "2026-05-22T00:00:00.000Z"
+    });
+
+    const link = repository.createTempLink({
+      id: "temp_1",
+      tenantId: "tenant_1",
+      tokenHash: "temp_hash",
+      tokenPrefix: "pgtmp_temp_1",
+      expiresAt: "2026-05-23T00:00:00.000Z",
+      now: "2026-05-22T00:00:00.000Z"
+    });
+
+    assert.equal(link.id, "temp_1");
+    assert.equal(link.tenantId, "tenant_1");
+    assert.equal(link.tokenPrefix, "pgtmp_temp_1");
+    assert.equal(link.expiresAt, "2026-05-23T00:00:00.000Z");
+    assert.equal(link.usedAt, null);
+    assert.equal(link.createdAt, "2026-05-22T00:00:00.000Z");
+
+    const found = repository.findTempLinkByTokenHash("temp_hash");
+    assert.equal(found.id, "temp_1");
+    assert.equal(found.tokenHash, "temp_hash");
+    assert.equal(found.tokenPrefix, "pgtmp_temp_1");
+    assert.equal(found.expiresAt, "2026-05-23T00:00:00.000Z");
+    assert.equal(found.createdAt, "2026-05-22T00:00:00.000Z");
+    assert.equal(found.tenant.id, "tenant_1");
+    assert.equal(found.tenant.tokenHash, "primary_hash");
+  });
+});
+
+test("repository marks temporary links as used", async () => {
+  await withRepository((repository) => {
+    repository.createTenant({
+      id: "tenant_1",
+      displayName: "customer-a",
+      status: "active",
+      expiresAt: "2026-06-21T00:00:00.000Z",
+      note: "",
+      nodeId: "aws-singapore",
+      credentialMode: "shared-node",
+      tokenHash: "primary_hash",
+      tokenPrefix: "pgsub_primary",
+      now: "2026-05-22T00:00:00.000Z"
+    });
+    repository.createTempLink({
+      id: "temp_1",
+      tenantId: "tenant_1",
+      tokenHash: "temp_hash",
+      tokenPrefix: "pgtmp_temp_1",
+      expiresAt: "2026-05-23T00:00:00.000Z",
+      now: "2026-05-22T00:00:00.000Z"
+    });
+
+    const marked = repository.markTempLinkUsed("temp_1", {
+      now: "2026-05-22T01:00:00.000Z"
+    });
+
+    assert.equal(marked.usedAt, "2026-05-22T01:00:00.000Z");
+    assert.equal(repository.findTempLinkByTokenHash("missing"), null);
+  });
+});
