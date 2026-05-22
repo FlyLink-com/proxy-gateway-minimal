@@ -90,6 +90,162 @@ Required inbound rules:
 Never expose `3456/tcp` publicly. The console/API must remain bound to
 `127.0.0.1` and be tested through SSH tunnel or on-host curl.
 
+## Dry-Run Checklist
+
+Complete this checklist before running any mutating AWS command. The dry-run
+stage is limited to local Git/GitHub checks, read-only AWS inventory, operator
+approval capture, and notes. It must not create, start, stop, terminate, tag, or
+modify AWS resources.
+
+### Candidate And Validation
+
+- Confirm the local checkout is clean and on the intended branch:
+
+  ```powershell
+  git status --short --branch
+  git fetch origin
+  git rev-parse HEAD
+  ```
+
+- Record the exact candidate SHA. If the candidate is a PR, record the PR
+  number and the PR head SHA:
+
+  ```powershell
+  gh pr view <pr-number> --json number,title,headRefName,headRefOid,isDraft,mergeable
+  ```
+
+- Confirm local or PR validation has completed. At minimum, record the result
+  of the repository checks that gate this candidate, such as:
+
+  ```powershell
+  npm test
+  npm run admin:test
+  npm run admin:build
+  ```
+
+  If GitHub-hosted CI is unavailable because of account billing or spending
+  limits, record the run ID and the manual CI-equivalent validation used as the
+  temporary waiver.
+
+### Read-Only AWS Inventory
+
+Clear stale proxy variables for this PowerShell process before inventory
+commands:
+
+```powershell
+$env:HTTP_PROXY=$null; $env:HTTPS_PROXY=$null; $env:ALL_PROXY=$null
+$env:http_proxy=$null; $env:https_proxy=$null; $env:all_proxy=$null
+```
+
+Run read-only inventory only:
+
+```powershell
+aws ec2 describe-instances `
+  --region ap-southeast-1 `
+  --filters Name=tag:Project,Values=proxy-gateway-minimal `
+  --query "Reservations[].Instances[].{InstanceId:InstanceId,State:State.Name,PublicIp:PublicIpAddress,Name:Tags[?Key=='Name']|[0].Value,Environment:Tags[?Key=='Environment']|[0].Value,Role:Tags[?Key=='Role']|[0].Value}" `
+  --output table
+
+aws ec2 describe-security-groups `
+  --region ap-southeast-1 `
+  --filters Name=tag:Project,Values=proxy-gateway-minimal `
+  --query "SecurityGroups[].{GroupId:GroupId,GroupName:GroupName,VpcId:VpcId,Description:Description,Tags:Tags}" `
+  --output table
+```
+
+Confirm:
+
+- No current staging instance is already assigned unless this run is explicitly
+  an update/reuse path.
+- The active production instance is not the staging target.
+- The stopped historical instance is not being reused as staging.
+- No production security group, volume, `.env`, SQLite database, node config, or
+  public IP retention plan is being changed by this run.
+
+### Operator Approval Gate
+
+Without explicit operator approval, stop after this dry-run checklist and PR
+preparation. Do not run commands such as:
+
+```text
+aws ec2 create-security-group
+aws ec2 authorize-security-group-ingress
+aws ec2 run-instances
+aws ec2 create-tags
+aws ec2 stop-instances
+aws ec2 terminate-instances
+aws ec2 delete-security-group
+```
+
+The approval phrase for this clean-instance path is:
+
+```text
+Create a new clean staging instance
+```
+
+The historical stopped node is not covered by this approval phrase. Any reuse or
+rebuild of that node requires the separate approval described in
+`docs/STAGING_TARGET_DECISION.md`.
+
+### Secret And Data Boundary
+
+Before approval, confirm that the planned staging environment will use:
+
+- A staging-only `.env`.
+- A staging-only `CONSOLE_TOKEN`.
+- A staging-only `SS_PASSWORD`.
+- A staging-only SQLite database initialized empty.
+- A staging-only `config/proxy-servers.json` host override.
+- No production subscription URL, tenant token, SQLite data, node password, or
+  ignored `.proxy-gateway/` material.
+
+Do not write generated staging secrets, subscription URLs, tenant tokens, or raw
+node passwords into Git, docs, PR comments, or chat replies.
+
+### Abort Conditions
+
+Abort before any mutating command if any of these are true:
+
+- The local checkout has unrelated changes or the candidate SHA is unclear.
+- The PR head SHA and recorded candidate SHA do not match.
+- Required local validation or accepted CI-equivalent validation is missing.
+- A staging target already exists and no update/reuse path was approved.
+- The command plan references the production instance, production security
+  group, production `.env`, production SQLite database, or production node
+  config.
+- The plan references the stopped historical instance without the separate
+  historical-node approval.
+- Operator CIDR, VPC, subnet, AMI, key pair, or tags are unknown.
+- Any secret, token, subscription URL, or customer data would be copied from
+  production into staging.
+
+### Dry-Run Record Template
+
+Copy this template into the PR comment, issue, or operator notes before moving
+to `Preflight`:
+
+```text
+Dry-run date:
+Operator:
+Candidate branch:
+Candidate SHA:
+PR:
+Local validation:
+GitHub Actions run / waiver:
+AWS inventory command timestamps:
+Existing staging target:
+Production instance excluded:
+Historical stopped node excluded:
+Operator CIDR:
+Planned VPC / subnet / AMI / key pair:
+Approval phrase received:
+Secret boundary confirmed:
+SQLite boundary confirmed:
+Node config boundary confirmed:
+Abort notes:
+Next step:
+```
+
 ## Preflight
 
 Run locally before provisioning:
