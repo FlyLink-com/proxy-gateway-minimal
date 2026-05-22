@@ -24,6 +24,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - `PR #10 Restore subscriptions with service user` was merged into `master` on 2026-05-22.
 - `PR #12 Stop logging console token` was merged into `master` on 2026-05-23 Asia/Shanghai.
 - `PR #13 Update context token log fix` was merged into `master` on 2026-05-23 Asia/Shanghai.
+- `PR #14 Update local project path` was merged into `master` on 2026-05-23 Asia/Shanghai.
 - `master` now includes a minimal Git-tracked environment foundation: systemd templates, Nginx public gateway template, SQLite backup/restore scripts, expanded env example, and ops recovery documentation.
 - The admin UI is intended for local use or SSH tunnel access only. Do not expose it through the public gateway.
 - The hardening branch was deployed to AWS Singapore `47.129.247.102` on 2026-05-22.
@@ -33,7 +34,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 
 - Current branch: `master`
 - Remote tracking branch: `origin/master`
-- Local `master` and `origin/master` are aligned at merge commit `2328dd7`.
+- Local `master` and `origin/master` should be aligned before new work; use the quick-check commands below for the current commit.
 - Recent architecture checkpoints:
   - `55d2496 docs: design subscription architecture refactor`
   - `04d5eed refactor: introduce subscription core and store contracts`
@@ -43,6 +44,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - GitHub PR #10: merged.
 - GitHub PR #12: merged.
 - GitHub PR #13: merged.
+- GitHub PR #14: merged.
 - Local Vite admin UI: `http://127.0.0.1:5173/`
 - Local backend `127.0.0.1:3456` is not expected to be running unless a local server or SSH tunnel is started.
 - Pre-hardening source branch commit: `d5341d4 docs: add domain https runbook`
