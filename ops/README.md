@@ -83,7 +83,9 @@ Install the public gateway template:
 ```bash
 sudo cp ops/nginx/proxy-gateway-public.conf /etc/nginx/sites-available/proxy-gateway-public.conf
 sudo ln -sf /etc/nginx/sites-available/proxy-gateway-public.conf /etc/nginx/sites-enabled/proxy-gateway-public.conf
+sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t
+sudo systemctl enable --now nginx
 sudo systemctl reload nginx
 ```
 
@@ -112,6 +114,8 @@ Use `docs/DEPLOYMENT_FLOW.md` before promoting a candidate:
 The stopped `i-0589aac321172dd74` instance is historical until a separate ops change explicitly reassigns and verifies it as staging.
 
 Current staging target decision: create a clean staging instance when staging is needed. Do not start the stopped historical instance and call it staging as-is. See `docs/STAGING_TARGET_DECISION.md`.
+
+Clean staging provisioning steps, staging-only secret/data boundaries, validation, promotion gates, and cleanup rules live in `docs/STAGING_PROVISIONING.md`.
 
 ## Backup And Restore
 

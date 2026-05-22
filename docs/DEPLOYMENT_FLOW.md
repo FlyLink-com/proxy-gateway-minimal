@@ -37,7 +37,7 @@ Verified read-only on 2026-05-23 Asia/Shanghai.
 
 The stopped `proxy-gateway-aws-sg` instance must not be treated as staging just because it exists. If it is reused, first make a separate ops change that records the intent, tags it as staging, verifies its disk/runtime state, and confirms no production data or tokens will be reused.
 
-The staging target decision is recorded in `docs/STAGING_TARGET_DECISION.md`. Current recommendation: create a clean, explicitly tagged staging instance when staging is needed; do not start the stopped historical instance as-is.
+The staging target decision is recorded in `docs/STAGING_TARGET_DECISION.md`. Current recommendation: create a clean, explicitly tagged staging instance when staging is needed; do not start the stopped historical instance as-is. The clean-instance provisioning checklist lives in `docs/STAGING_PROVISIONING.md`.
 
 ## Branch Flow
 
@@ -134,7 +134,9 @@ Record:
 
 Do not change AWS during candidate selection.
 
-### 3. Staging Verification
+### 3. Staging Provisioning And Verification
+
+If no staging target is assigned, follow `docs/STAGING_PROVISIONING.md` after explicit operator approval. The runbook separates read-only planning from mutating AWS commands and records the required staging-only `.env`, SQLite, and node-config boundaries.
 
 Only after a staging target is assigned:
 

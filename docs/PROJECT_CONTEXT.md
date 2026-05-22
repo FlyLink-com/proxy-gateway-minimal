@@ -20,6 +20,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - Detailed topology and branch/AWS role definitions live in `docs/ENVIRONMENT_TOPOLOGY.md`.
 - Deployment, staging, production promotion, and rollback rules live in `docs/DEPLOYMENT_FLOW.md`.
 - Staging target decision lives in `docs/STAGING_TARGET_DECISION.md`: current recommendation is a new clean staging instance, not starting the stopped historical node as-is.
+- Clean staging provisioning, validation, promotion gates, and cleanup rules live in `docs/STAGING_PROVISIONING.md`.
 
 ## Current Stage
 
@@ -164,6 +165,7 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 - `docs/ENVIRONMENT_TOPOLOGY.md`: source-of-truth map for local repo, GitHub, branch roles, and AWS runtime roles.
 - `docs/DEPLOYMENT_FLOW.md`: promotion flow from development to candidate, staging, production, and rollback.
 - `docs/STAGING_TARGET_DECISION.md`: decision record for choosing a clean staging instance versus rebuilding the stopped historical node.
+- `docs/STAGING_PROVISIONING.md`: operator runbook for creating, validating, stopping, or destroying a clean staging instance.
 - `docs/DOMAIN_HTTPS.md`: domain HTTPS runbook. Currently paused.
 - `docs/superpowers/specs/2026-05-22-admin-console-real-api-design.md`: real admin API integration design.
 - `docs/superpowers/plans/2026-05-22-admin-console-real-api.md`: implementation plan for wiring `admin/` to `/api/admin/*`.

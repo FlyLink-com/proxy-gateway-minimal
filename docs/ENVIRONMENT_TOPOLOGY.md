@@ -64,6 +64,8 @@ No Elastic IP allocation was found for the production public IP during the 2026-
 
 Staging target decision: use a new clean staging instance when staging is needed. The stopped historical instance may be repurposed only through an explicit rebuild and retagging path. See `docs/STAGING_TARGET_DECISION.md`.
 
+Clean staging provisioning, validation, promotion gates, and cleanup rules live in `docs/STAGING_PROVISIONING.md`.
+
 Production runtime path:
 
 ```text
