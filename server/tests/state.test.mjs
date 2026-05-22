@@ -5,6 +5,24 @@ import { join } from "node:path";
 import test from "node:test";
 import { createRuntimeState } from "../state.mjs";
 
+function fakeSubscriptionStore(overrides = {}) {
+  return {
+    listTenants: () => [],
+    getTenant: () => null,
+    findTenantByTokenHash: () => null,
+    createTenant: () => null,
+    renewTenant: () => null,
+    setTenantStatus: () => null,
+    resetTenantToken: () => null,
+    markLastUsed: () => null,
+    createTempLink: () => null,
+    findTempLinkByTokenHash: () => null,
+    markTempLinkUsed: () => null,
+    close: () => {},
+    ...overrides
+  };
+}
+
 test("createRuntimeState exposes expected ports and services", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-state-"));
   let state;
@@ -75,6 +93,8 @@ test("createRuntimeState wires subscription runtime services with default public
     });
 
     assert.equal(state.subscriptions.publicSubscriptionBaseUrl, "http://127.0.0.1:3456");
+    assert.equal(state.subscriptions.core, state.subscriptions.service);
+    assert.equal(state.subscriptions.store, state.subscriptions.repository);
     assert.equal(typeof state.subscriptions.service.createTenant, "function");
     assert.equal(typeof state.subscriptions.repository.close, "function");
   } finally {
@@ -109,11 +129,11 @@ test("createRuntimeState respects PUBLIC_SUBSCRIPTION_BASE_URL override", () => 
 
 test("createRuntimeState closes only owned subscription repositories", () => {
   let closeCount = 0;
-  const repository = {
+  const repository = fakeSubscriptionStore({
     close: () => {
       closeCount += 1;
     }
-  };
+  });
 
   const state = createRuntimeState({
     rootDir: new URL("../../", import.meta.url),
@@ -126,11 +146,13 @@ test("createRuntimeState closes only owned subscription repositories", () => {
   state.subscriptions.close();
 
   assert.equal(closeCount, 0);
+  assert.equal(state.subscriptions.store, repository);
   assert.equal(state.subscriptions.repository, repository);
+  assert.equal(state.subscriptions.core, state.subscriptions.service);
   assert.equal(typeof state.subscriptions.service.createTenant, "function");
 });
 
-test("createRuntimeState does not create a repository when subscription service is injected alone", () => {
+test("createRuntimeState does not create a store when subscription core is injected alone", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-service-only-"));
   const service = { createTenant: () => {} };
 
@@ -139,11 +161,13 @@ test("createRuntimeState does not create a repository when subscription service 
       rootDir: new URL("../../", import.meta.url),
       env: { CONSOLE_TOKEN: "secret", SS_PASSWORD: "pw" },
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
-      subscriptionService: service,
+      subscriptionCore: service,
       autoStartHttpProxy: false
     });
 
+    assert.equal(state.subscriptions.store, null);
     assert.equal(state.subscriptions.repository, null);
+    assert.equal(state.subscriptions.core, service);
     assert.equal(state.subscriptions.service, service);
     assert.equal(existsSync(join(dir, "subscriptions.sqlite")), false);
   } finally {

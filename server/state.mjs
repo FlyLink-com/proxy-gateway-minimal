@@ -10,8 +10,8 @@ import { isPortListening } from "./services/ports.mjs";
 import { loadProxyConfig } from "./services/config.mjs";
 import { createCommandRunner } from "./services/command.mjs";
 import { resolveConsoleToken } from "./services/console-token.mjs";
-import { createSubscriptionRepository } from "./services/subscriptions/repository.mjs";
-import { createSubscriptionService } from "./services/subscriptions/service.mjs";
+import { createSqliteSubscriptionStore } from "./services/subscriptions/repository.mjs";
+import { createSubscriptionCore } from "./services/subscriptions/core.mjs";
 import { DEFAULT_ADMIN_ALLOWED_CIDRS } from "./services/ip-address.mjs";
 import { spawn } from "node:child_process";
 
@@ -106,12 +106,12 @@ export function createRuntimeState(options = {}) {
   const publicSubscriptionBaseUrl = String(env.PUBLIC_SUBSCRIPTION_BASE_URL || `http://${host}:${consolePort}`).trim().replace(/\/+$/, "");
   const adminAllowedCidrs = parseCsv(env.ADMIN_ALLOWED_CIDRS, DEFAULT_ADMIN_ALLOWED_CIDRS);
   const tempLinkTtlMinutes = Number.parseInt(env.SUBSCRIPTION_TEMP_LINK_TTL_MINUTES, 10) || 24 * 60;
-  const ownsSubscriptionRepository = !options.subscriptionRepository && !options.subscriptionService;
-  const subscriptionRepository = options.subscriptionRepository || (
-    ownsSubscriptionRepository ? createSubscriptionRepository({ dbPath: subscriptionDbPath }) : null
+  const ownsSubscriptionStore = !options.subscriptionStore && !options.subscriptionRepository && !options.subscriptionCore && !options.subscriptionService;
+  const subscriptionStore = options.subscriptionStore || options.subscriptionRepository || (
+    ownsSubscriptionStore ? createSqliteSubscriptionStore({ dbPath: subscriptionDbPath }) : null
   );
-  const subscriptionService = options.subscriptionService || createSubscriptionService({
-    repository: subscriptionRepository,
+  const subscriptionCore = options.subscriptionCore || options.subscriptionService || createSubscriptionCore({
+    store: subscriptionStore,
     proxyConfig,
     publicSubscriptionBaseUrl,
     expiringDays: Number.parseInt(env.SUBSCRIPTION_EXPIRING_DAYS, 10) || 7,
@@ -122,8 +122,8 @@ export function createRuntimeState(options = {}) {
   function close() {
     if (closed) return;
     closed = true;
-    if (ownsSubscriptionRepository) {
-      subscriptionRepository.close();
+    if (ownsSubscriptionStore) {
+      subscriptionStore.close();
     }
   }
 
@@ -237,8 +237,10 @@ export function createRuntimeState(options = {}) {
     consoleTokenStorePath: consoleToken.tokenStorePath,
     services: { ssLocal, httpProxy },
     subscriptions: {
-      repository: subscriptionRepository,
-      service: subscriptionService,
+      store: subscriptionStore,
+      core: subscriptionCore,
+      repository: subscriptionStore,
+      service: subscriptionCore,
       publicSubscriptionBaseUrl,
       tempLinkTtlMinutes,
       close
