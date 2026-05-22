@@ -15,6 +15,36 @@
 - HTTP health works when the request Host is `sub.globalcirclecat.com`.
 - DNS is not yet ready: `sub.globalcirclecat.com` has no A record.
 
+## Nginx Configuration
+
+### Subscription Hardening Checklist
+
+Keep `/api/admin` private at Nginx unless a specific operator source IP is configured:
+
+```nginx
+location /api/admin/ {
+    deny all;
+}
+```
+
+When proxying subscription fetches, forward the original client address:
+
+```nginx
+location = /sub/clash.yaml {
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_pass http://127.0.0.1:3456;
+}
+```
+
+Use `$uri` instead of `$request_uri` in access logs so query strings and `token=` values are not written:
+
+```nginx
+log_format proxy_gateway '$remote_addr - $remote_user [$time_local] "$request_method $uri $server_protocol" '
+                         '$status $body_bytes_sent "$http_referer" "$http_user_agent"';
+```
+
 ## DNS Record Required
 
 Create this DNS record in the authoritative DNS provider for `globalcirclecat.com`:

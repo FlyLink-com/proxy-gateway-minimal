@@ -135,8 +135,14 @@ Subscription Admin Core 提供 SQLite 持久化的运营侧订阅用户管理，
 | `SUBSCRIPTION_DB_PATH` | 自定义 SQLite 数据库路径 |
 | `PUBLIC_SUBSCRIPTION_BASE_URL` | 对外展示的订阅 URL 基础地址，默认 `http://127.0.0.1:3456` |
 | `SUBSCRIPTION_EXPIRING_DAYS` | 即将过期统计窗口，默认 7 天 |
+| `SUBSCRIPTION_TEMP_LINK_TTL_MINUTES` | Temporary subscription link lifetime in minutes, defaults to `1440` |
+| `SUB_RATE_LIMIT_WINDOW_MS` | `/sub` rate-limit window in milliseconds, defaults to `60000` |
+| `SUB_RATE_LIMIT_MAX` | `/sub` requests allowed per client IP per window, defaults to `30` |
+| `ADMIN_ALLOWED_CIDRS` | Comma-separated admin source allowlist, defaults to loopback and RFC1918 private ranges |
 
 管理端接口复用现有 Console Token 认证。租户订阅 URL 使用 `create` 或 `reset-token` 生成的租户 Token；Token 只在生成/重置时明文返回，数据库中保存哈希和可识别前缀。`/sub/clash.yaml` 保留 Console Token 兼容，同时支持租户 Token 拉取限定节点的订阅。
+
+Temporary links use `pgtmp_` tokens and resolve through the same `/sub/clash.yaml` endpoint as primary `pgsub_` tokens. Admin APIs remain console-token protected and are additionally source-IP allowlisted in the app.
 
 ## 代理模式
 
