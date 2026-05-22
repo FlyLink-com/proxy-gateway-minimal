@@ -62,6 +62,8 @@ Current AWS Singapore inventory, verified read-only on 2026-05-23:
 
 No Elastic IP allocation was found for the production public IP during the 2026-05-23 `describe-addresses` check. Do not stop the production instance unless an IP change is acceptable or an Elastic IP migration plan is prepared first.
 
+Staging target decision: use a new clean staging instance when staging is needed. The stopped historical instance may be repurposed only through an explicit rebuild and retagging path. See `docs/STAGING_TARGET_DECISION.md`.
+
 Production runtime path:
 
 ```text

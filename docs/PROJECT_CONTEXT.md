@@ -19,6 +19,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - Branch flow: `master` is the stable integrated baseline; use `codex/<task>`, `feat/<feature>`, or `ops/<topic>` for work; use a staging candidate only when an AWS pre-release test is needed.
 - Detailed topology and branch/AWS role definitions live in `docs/ENVIRONMENT_TOPOLOGY.md`.
 - Deployment, staging, production promotion, and rollback rules live in `docs/DEPLOYMENT_FLOW.md`.
+- Staging target decision lives in `docs/STAGING_TARGET_DECISION.md`: current recommendation is a new clean staging instance, not starting the stopped historical node as-is.
 
 ## Current Stage
 
@@ -162,6 +163,7 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 - `qa-report.md`: v0.1.0 test and QA summary. It is useful for test coverage, but the server references are historical.
 - `docs/ENVIRONMENT_TOPOLOGY.md`: source-of-truth map for local repo, GitHub, branch roles, and AWS runtime roles.
 - `docs/DEPLOYMENT_FLOW.md`: promotion flow from development to candidate, staging, production, and rollback.
+- `docs/STAGING_TARGET_DECISION.md`: decision record for choosing a clean staging instance versus rebuilding the stopped historical node.
 - `docs/DOMAIN_HTTPS.md`: domain HTTPS runbook. Currently paused.
 - `docs/superpowers/specs/2026-05-22-admin-console-real-api-design.md`: real admin API integration design.
 - `docs/superpowers/plans/2026-05-22-admin-console-real-api.md`: implementation plan for wiring `admin/` to `/api/admin/*`.
