@@ -41,8 +41,13 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - The admin UI is intended for local use or SSH tunnel access only. Do not expose it through the public gateway.
 - The hardening branch was deployed to AWS Singapore `47.129.247.102` on 2026-05-22.
 - Default tracked node config now points at the active AWS Singapore node `aws-singapore-blue`.
+- Phase 1 completed the staging target decision and clean staging provisioning runbook. It was a docs/ops planning phase only; no AWS resources were created.
 - Phase 2 auth boundary work tightens protected `/api/*` routes to `Authorization: Bearer <console-token>` only; `/sub/clash.yaml` keeps query-token support for Clash/Mihomo subscription clients.
 - Phase 3 adds GitHub Actions CI for PRs into `master` and pushes to `master`; CI runs `npm test`, `npm run admin:test`, and `npm run admin:build` without AWS secrets or production deployment.
+- Phase 3 GitHub-hosted runner validation is currently deferred by the account billing/spending-limit blocker. Manual CI-equivalent validation from clean or current PR heads has been used as a temporary waiver; rerun master CI after the quota/billing issue is resolved.
+- Phase 4.1 added Admin connection health checks in the frontend. The UI checks `/api/health` without auth and `/api/admin/overview` with Bearer auth; no backend endpoint, auth model, AWS, production, or Nginx change was introduced.
+- Phase 4.2 added Admin dangerous action confirmations in the frontend. Disable and temporary-link actions require confirmation, reset-token copy and repeat-submit protection were improved, and generated subscription URLs remain visible-once only.
+- Recent Phase 1 through Phase 4.2 changes did not mutate AWS or production unless explicitly documented above in the older hardening/runtime sync notes.
 
 ## Verified Local State
 
@@ -171,6 +176,10 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 - `docs/DOMAIN_HTTPS.md`: domain HTTPS runbook. Currently paused.
 - `docs/superpowers/specs/2026-05-22-admin-console-real-api-design.md`: real admin API integration design.
 - `docs/superpowers/plans/2026-05-22-admin-console-real-api.md`: implementation plan for wiring `admin/` to `/api/admin/*`.
+- `docs/superpowers/specs/2026-05-23-admin-connection-health-design.md`: Admin connection health design.
+- `docs/superpowers/plans/2026-05-23-admin-connection-health.md`: implementation plan for Admin connection health.
+- `docs/superpowers/specs/2026-05-23-admin-dangerous-action-confirmations-design.md`: Admin dangerous action confirmation design.
+- `docs/superpowers/plans/2026-05-23-admin-dangerous-action-confirmations.md`: implementation plan for Admin dangerous action confirmations.
 - `docs/superpowers/specs/2026-05-21-subscription-admin-core-design.md`: backend subscription-admin design.
 - `docs/superpowers/plans/2026-05-21-subscription-admin-core.md`: implemented plan for the `feat/subscription-admin-core` branch that became `v0.1.0-mvp`.
 
