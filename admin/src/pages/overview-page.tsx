@@ -1,4 +1,6 @@
-export function OverviewPage() {
+import type { AdminApiClient } from "../features/subscriptions/api-client";
+
+export function OverviewPage({ apiClient: _apiClient }: { apiClient: AdminApiClient }) {
   return (
     <div className="page-stack">
       <div className="page-heading">

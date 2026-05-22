@@ -1,6 +1,7 @@
+import type { AdminApiClient } from "../features/subscriptions/api-client";
 import { defaultNode } from "../features/subscriptions/mock-data";
 
-export function NodesPage() {
+export function NodesPage({ apiClient: _apiClient }: { apiClient: AdminApiClient }) {
   return (
     <div className="page-stack">
       <div className="page-heading">

@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { createAdminApiClient } from "../features/subscriptions/api-client";
+import { loadAdminSession, saveAdminSession } from "../features/subscriptions/admin-session";
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -43,5 +44,21 @@ describe("admin API client", () => {
     expect((init.headers as Headers).get("authorization")).toBe("Bearer console-secret");
     expect(tenants).toHaveLength(1);
     expect(tenants[0].nodeName).toBe("aws-singapore-blue");
+  });
+});
+
+describe("admin session", () => {
+  test("persists local API base URL and console token in session storage", () => {
+    sessionStorage.clear();
+
+    saveAdminSession({
+      baseUrl: "http://127.0.0.1:3456/",
+      consoleToken: "secret"
+    });
+
+    expect(loadAdminSession()).toEqual({
+      baseUrl: "http://127.0.0.1:3456/",
+      consoleToken: "secret"
+    });
   });
 });

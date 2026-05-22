@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Check, Copy, MoreHorizontal, RotateCcw, ShieldCheck, ShieldOff } from "lucide-react";
 import { StatusBadge } from "../../components/status-badge";
 import { copyText } from "../../lib/clipboard";
+import type { AdminApiClient } from "./api-client";
 import { createMockSubscriptionStore } from "./mock-client";
 import type { SubscriptionTenant } from "./types";
 import { CreateSubscriptionDialog } from "./create-subscription-dialog";
@@ -22,7 +23,7 @@ function formatLastUsed(value: string | null) {
   }).format(new Date(value));
 }
 
-export function SubscriptionsPage({ search }: { search: string }) {
+export function SubscriptionsPage({ search }: { search: string; apiClient: AdminApiClient }) {
   const [rows, setRows] = useState(() => store.list());
   const [renewTarget, setRenewTarget] = useState<SubscriptionTenant | null>(null);
   const [resetTarget, setResetTarget] = useState<SubscriptionTenant | null>(null);
