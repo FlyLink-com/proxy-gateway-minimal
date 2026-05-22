@@ -1,15 +1,17 @@
-import { useMemo, useState } from "react";
-import { Check, Copy, MoreHorizontal, RotateCcw, ShieldCheck, ShieldOff } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, Copy, Link, MoreHorizontal, RotateCcw, ShieldCheck, ShieldOff } from "lucide-react";
 import { StatusBadge } from "../../components/status-badge";
 import { copyText } from "../../lib/clipboard";
 import type { AdminApiClient } from "./api-client";
-import { createMockSubscriptionStore } from "./mock-client";
 import type { SubscriptionTenant } from "./types";
 import { CreateSubscriptionDialog } from "./create-subscription-dialog";
 import { RenewSubscriptionDialog } from "./renew-subscription-dialog";
 import { ResetTokenDialog } from "./reset-token-dialog";
 
-const store = createMockSubscriptionStore();
+type VisibleOnceResult = {
+  title: string;
+  url: string;
+};
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("zh-CN", { dateStyle: "medium" }).format(new Date(value));
@@ -23,11 +25,41 @@ function formatLastUsed(value: string | null) {
   }).format(new Date(value));
 }
 
-export function SubscriptionsPage({ search }: { search: string; apiClient: AdminApiClient }) {
-  const [rows, setRows] = useState(() => store.list());
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "Admin API request failed.";
+}
+
+export function SubscriptionsPage({
+  search,
+  apiClient
+}: {
+  search: string;
+  apiClient: AdminApiClient;
+}) {
+  const [rows, setRows] = useState<SubscriptionTenant[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [renewTarget, setRenewTarget] = useState<SubscriptionTenant | null>(null);
   const [resetTarget, setResetTarget] = useState<SubscriptionTenant | null>(null);
-  const [lastCopied, setLastCopied] = useState<string | null>(null);
+  const [lastCopied, setLastCopied] = useState(false);
+  const [visibleOnce, setVisibleOnce] = useState<VisibleOnceResult | null>(null);
+
+  const refreshRows = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setRows(await apiClient.listTenants());
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+    } finally {
+      setLoading(false);
+    }
+  }, [apiClient]);
+
+  useEffect(() => {
+    void refreshRows();
+  }, [refreshRows]);
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -47,11 +79,37 @@ export function SubscriptionsPage({ search }: { search: string; apiClient: Admin
     blocked: rows.filter((row) => row.status === "disabled" || row.status === "expired").length
   };
 
-  async function copyLink(row: SubscriptionTenant) {
-    const url = `https://52.221.198.76.sslip.io/sub/clash.yaml?token=${row.tokenPrefix}_hidden`;
-    await copyText(url);
-    setLastCopied(row.id);
-    window.setTimeout(() => setLastCopied(null), 1800);
+  function unavailableExistingUrl() {
+    setActionError("Full subscription URLs are only visible immediately after create, reset, or temporary-link generation.");
+  }
+
+  async function createTempLink(row: SubscriptionTenant) {
+    setActionError("");
+    try {
+      const result = await apiClient.createTempLink(row.id);
+      setVisibleOnce({ title: `Temporary link for ${row.displayName}`, url: result.subscriptionUrl });
+      await refreshRows();
+    } catch (requestError) {
+      setActionError(errorMessage(requestError));
+    }
+  }
+
+  async function toggleStatus(row: SubscriptionTenant) {
+    setActionError("");
+    try {
+      if (row.status === "disabled") await apiClient.enableTenant(row.id);
+      else await apiClient.disableTenant(row.id);
+      await refreshRows();
+    } catch (requestError) {
+      setActionError(errorMessage(requestError));
+    }
+  }
+
+  async function copyVisibleOnce() {
+    if (!visibleOnce) return;
+    await copyText(visibleOnce.url);
+    setLastCopied(true);
+    window.setTimeout(() => setLastCopied(false), 1800);
   }
 
   return (
@@ -62,13 +120,30 @@ export function SubscriptionsPage({ search }: { search: string; apiClient: Admin
           <p className="muted">Manual subscription management for the AWS Singapore node.</p>
         </div>
         <CreateSubscriptionDialog
-          onCreate={(input) => {
-            const result = store.create(input);
-            setRows(store.list());
+          onCreate={async (input) => {
+            const result = await apiClient.createTenant(input);
+            await refreshRows();
             return result.subscriptionUrl;
           }}
         />
       </div>
+
+      {error ? <div className="alert alert-error">{error}</div> : null}
+      {actionError ? <div className="alert alert-error">{actionError}</div> : null}
+      {visibleOnce ? (
+        <div className="visible-once">
+          <strong>{visibleOnce.title}</strong>
+          <code>{visibleOnce.url}</code>
+          <div className="result-actions">
+            <button className="ghost-button" type="button" onClick={copyVisibleOnce}>
+              {lastCopied ? "Copied" : "Copy URL"}
+            </button>
+            <button className="ghost-button" type="button" onClick={() => setVisibleOnce(null)}>
+              Dismiss
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <div className="metric-grid">
         <Metric label="Total" value={counts.total} />
@@ -92,7 +167,17 @@ export function SubscriptionsPage({ search }: { search: string; apiClient: Admin
             </tr>
           </thead>
           <tbody>
-            {filtered.map((row) => (
+            {loading ? (
+              <tr>
+                <td className="loading-row" colSpan={8}>Loading subscriptions...</td>
+              </tr>
+            ) : null}
+            {!loading && filtered.length === 0 ? (
+              <tr>
+                <td className="loading-row" colSpan={8}>No subscriptions found.</td>
+              </tr>
+            ) : null}
+            {!loading && filtered.map((row) => (
               <tr key={row.id}>
                 <td>
                   <strong>{row.displayName}</strong>
@@ -106,8 +191,11 @@ export function SubscriptionsPage({ search }: { search: string; apiClient: Admin
                 <td>{formatLastUsed(row.lastUsedAt)}</td>
                 <td>
                   <div className="action-row">
-                    <button className="icon-button" type="button" onClick={() => copyLink(row)} title="Copy subscription URL">
-                      {lastCopied === row.id ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                    <button className="icon-button" type="button" onClick={unavailableExistingUrl} title="Copy subscription URL">
+                      <Copy aria-hidden="true" />
+                    </button>
+                    <button className="icon-button" type="button" onClick={() => void createTempLink(row)} title="Create temporary link">
+                      <Link aria-hidden="true" />
                     </button>
                     <button className="icon-button" type="button" onClick={() => setRenewTarget(row)} title="Renew subscription">
                       <RotateCcw aria-hidden="true" />
@@ -115,11 +203,7 @@ export function SubscriptionsPage({ search }: { search: string; apiClient: Admin
                     <button
                       className="icon-button"
                       type="button"
-                      onClick={() => {
-                        if (row.status === "disabled") store.enable(row.id);
-                        else store.disable(row.id);
-                        setRows(store.list());
-                      }}
+                      onClick={() => void toggleStatus(row)}
                       title={row.status === "disabled" ? "Enable subscription" : "Disable subscription"}
                     >
                       {row.status === "disabled" ? <ShieldCheck aria-hidden="true" /> : <ShieldOff aria-hidden="true" />}
@@ -138,18 +222,18 @@ export function SubscriptionsPage({ search }: { search: string; apiClient: Admin
       <RenewSubscriptionDialog
         tenant={renewTarget}
         onClose={() => setRenewTarget(null)}
-        onRenew={(input) => {
-          store.renew(input);
-          setRows(store.list());
+        onRenew={async (input) => {
+          await apiClient.renewTenant(input);
+          await refreshRows();
         }}
       />
       <ResetTokenDialog
         tenant={resetTarget}
         onClose={() => {
           setResetTarget(null);
-          setRows(store.list());
+          void refreshRows();
         }}
-        onReset={(id) => store.resetToken(id)}
+        onReset={(id) => apiClient.resetToken(id)}
       />
     </div>
   );

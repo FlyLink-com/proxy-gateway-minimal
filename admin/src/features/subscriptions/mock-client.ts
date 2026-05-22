@@ -76,11 +76,13 @@ export function createMockSubscriptionStore(seed = initialSubscriptions) {
       return { ...row, tokenPrefix: prefix };
     });
     if (!found) return null;
-    return {
-      tenantId: id,
-      tokenPrefix: prefix,
-      subscriptionUrl: `https://52.221.198.76.sslip.io/sub/clash.yaml?token=${prefix}_visible_once`
-    };
+    const tenant = rows.find((row) => row.id === id);
+    return tenant
+      ? {
+          tenant,
+          subscriptionUrl: `https://52.221.198.76.sslip.io/sub/clash.yaml?token=${prefix}_visible_once`
+        }
+      : null;
   }
 
   return { list, create, renew, disable, enable, resetToken };

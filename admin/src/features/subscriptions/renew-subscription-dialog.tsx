@@ -4,7 +4,7 @@ import type { RenewSubscriptionInput, SubscriptionTenant } from "./types";
 type RenewSubscriptionDialogProps = {
   tenant: SubscriptionTenant | null;
   onClose: () => void;
-  onRenew: (input: RenewSubscriptionInput) => void;
+  onRenew: (input: RenewSubscriptionInput) => Promise<void>;
 };
 
 export function RenewSubscriptionDialog({
@@ -13,6 +13,8 @@ export function RenewSubscriptionDialog({
   onRenew
 }: RenewSubscriptionDialogProps) {
   const [expiresAt, setExpiresAt] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     setExpiresAt(tenant ? tenant.expiresAt.slice(0, 10) : "");
@@ -21,13 +23,21 @@ export function RenewSubscriptionDialog({
   if (!tenant) return null;
   const activeTenant = tenant;
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    onRenew({
-      id: activeTenant.id,
-      expiresAt: new Date(`${expiresAt}T00:00:00.000Z`).toISOString()
-    });
-    onClose();
+    setPending(true);
+    setError("");
+    try {
+      await onRenew({
+        id: activeTenant.id,
+        expiresAt: new Date(`${expiresAt}T00:00:00.000Z`).toISOString()
+      });
+      onClose();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Renew subscription failed.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -42,6 +52,7 @@ export function RenewSubscriptionDialog({
         </div>
 
         <form className="form-stack" onSubmit={submit}>
+          {error ? <div className="alert alert-error">{error}</div> : null}
           <label>
             <span>New expiry date</span>
             <input
@@ -53,7 +64,7 @@ export function RenewSubscriptionDialog({
           </label>
           <div className="modal-actions">
             <button className="ghost-button" type="button" onClick={onClose}>Cancel</button>
-            <button className="primary-button" type="submit">Renew</button>
+            <button className="primary-button" type="submit" disabled={pending}>{pending ? "Renewing" : "Renew"}</button>
           </div>
         </form>
       </section>

@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import type { CreateSubscriptionInput } from "./types";
 
 type CreateSubscriptionDialogProps = {
-  onCreate: (input: CreateSubscriptionInput) => string;
+  onCreate: (input: CreateSubscriptionInput) => Promise<string>;
 };
 
 function nextMonthIsoDate() {
@@ -17,23 +17,33 @@ export function CreateSubscriptionDialog({ onCreate }: CreateSubscriptionDialogP
   const [expiresAt, setExpiresAt] = useState(nextMonthIsoDate());
   const [note, setNote] = useState("");
   const [createdUrl, setCreatedUrl] = useState("");
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
 
   function close() {
     setOpen(false);
     setCreatedUrl("");
   }
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const url = onCreate({
-      displayName: displayName.trim(),
-      expiresAt: new Date(`${expiresAt}T00:00:00.000Z`).toISOString(),
-      note: note.trim()
-    });
-    setCreatedUrl(url);
-    setDisplayName("");
-    setNote("");
-    setExpiresAt(nextMonthIsoDate());
+    setPending(true);
+    setError("");
+    try {
+      const url = await onCreate({
+        displayName: displayName.trim(),
+        expiresAt: new Date(`${expiresAt}T00:00:00.000Z`).toISOString(),
+        note: note.trim()
+      });
+      setCreatedUrl(url);
+      setDisplayName("");
+      setNote("");
+      setExpiresAt(nextMonthIsoDate());
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Create subscription failed.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -54,6 +64,7 @@ export function CreateSubscriptionDialog({ onCreate }: CreateSubscriptionDialogP
             </div>
 
             <form className="form-stack" onSubmit={submit}>
+              {error ? <div className="alert alert-error">{error}</div> : null}
               <label>
                 <span>User name</span>
                 <input
@@ -83,7 +94,7 @@ export function CreateSubscriptionDialog({ onCreate }: CreateSubscriptionDialogP
               </label>
               <div className="modal-actions">
                 <button className="ghost-button" type="button" onClick={close}>Cancel</button>
-                <button className="primary-button" type="submit">Create</button>
+                <button className="primary-button" type="submit" disabled={pending}>{pending ? "Creating" : "Create"}</button>
               </div>
             </form>
 

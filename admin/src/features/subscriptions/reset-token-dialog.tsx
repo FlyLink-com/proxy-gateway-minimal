@@ -4,17 +4,32 @@ import type { ResetTokenResult, SubscriptionTenant } from "./types";
 type ResetTokenDialogProps = {
   tenant: SubscriptionTenant | null;
   onClose: () => void;
-  onReset: (id: string) => ResetTokenResult | null;
+  onReset: (id: string) => Promise<ResetTokenResult>;
 };
 
 export function ResetTokenDialog({ tenant, onClose, onReset }: ResetTokenDialogProps) {
   const [result, setResult] = useState<ResetTokenResult | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState("");
 
   if (!tenant) return null;
 
   function close() {
     setResult(null);
+    setError("");
     onClose();
+  }
+
+  async function resetToken() {
+    setPending(true);
+    setError("");
+    try {
+      setResult(await onReset(tenant.id));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Reset token failed.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -29,13 +44,14 @@ export function ResetTokenDialog({ tenant, onClose, onReset }: ResetTokenDialogP
         </div>
 
         <p className="modal-copy">
-          Resetting the token creates a new visible-once subscription URL. The previous token will stop refreshing once the backend is connected.
+          Resetting the token creates a new visible-once subscription URL. The previous token stops refreshing after reset.
         </p>
+        {error ? <div className="alert alert-error">{error}</div> : null}
 
         <div className="modal-actions">
           <button className="ghost-button" type="button" onClick={close}>Cancel</button>
-          <button className="danger-button" type="button" onClick={() => setResult(onReset(tenant.id))}>
-            Reset token
+          <button className="danger-button" type="button" onClick={() => void resetToken()} disabled={pending}>
+            {pending ? "Resetting" : "Reset token"}
           </button>
         </div>
 
