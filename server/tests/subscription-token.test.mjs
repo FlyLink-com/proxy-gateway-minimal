@@ -23,6 +23,20 @@ test("subscription tokens are visible once and stored as hashes", () => {
   assert.equal(verifySubscriptionToken("pgsub_wrong", created.tokenHash), false);
 });
 
+test("temporary subscription tokens use pgtmp prefix and hash storage shape", () => {
+  const bytes = Buffer.alloc(32, 2);
+  const created = createSubscriptionToken({
+    randomBytesFn: () => bytes,
+    prefix: "pgtmp_"
+  });
+  const expectedRaw = `pgtmp_${bytes.toString("base64url")}`;
+
+  assert.equal(created.rawToken, expectedRaw);
+  assert.equal(created.tokenPrefix, expectedRaw.slice(0, 14));
+  assert.equal(created.tokenHash, hashSubscriptionToken(expectedRaw));
+  assert.equal(verifySubscriptionToken(expectedRaw, created.tokenHash), true);
+});
+
 test("tokenPrefix returns a short operator-safe prefix", () => {
   assert.equal(tokenPrefix("pgsub_abcdefghijklmnopqrstuvwxyz"), "pgsub_abcdefgh");
 });

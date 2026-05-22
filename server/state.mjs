@@ -12,6 +12,7 @@ import { createCommandRunner } from "./services/command.mjs";
 import { resolveConsoleToken } from "./services/console-token.mjs";
 import { createSubscriptionRepository } from "./services/subscriptions/repository.mjs";
 import { createSubscriptionService } from "./services/subscriptions/service.mjs";
+import { DEFAULT_ADMIN_ALLOWED_CIDRS } from "./services/ip-address.mjs";
 import { spawn } from "node:child_process";
 
 function rootPathFrom(rootDir) {
@@ -19,6 +20,14 @@ function rootPathFrom(rootDir) {
     return resolve(fileURLToPath(rootDir));
   }
   return resolve(rootDir);
+}
+
+function parseCsv(value, fallback) {
+  const items = String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.length > 0 ? items : fallback;
 }
 
 function createBridgeServer({ socksPort }) {
@@ -95,6 +104,8 @@ export function createRuntimeState(options = {}) {
   });
   const subscriptionDbPath = options.subscriptionDbPath || env.SUBSCRIPTION_DB_PATH || join(rootDir, ".proxy-gateway", "subscriptions.sqlite");
   const publicSubscriptionBaseUrl = String(env.PUBLIC_SUBSCRIPTION_BASE_URL || `http://${host}:${consolePort}`).trim().replace(/\/+$/, "");
+  const adminAllowedCidrs = parseCsv(env.ADMIN_ALLOWED_CIDRS, DEFAULT_ADMIN_ALLOWED_CIDRS);
+  const tempLinkTtlMinutes = Number.parseInt(env.SUBSCRIPTION_TEMP_LINK_TTL_MINUTES, 10) || 24 * 60;
   const ownsSubscriptionRepository = !options.subscriptionRepository && !options.subscriptionService;
   const subscriptionRepository = options.subscriptionRepository || (
     ownsSubscriptionRepository ? createSubscriptionRepository({ dbPath: subscriptionDbPath }) : null
@@ -103,7 +114,8 @@ export function createRuntimeState(options = {}) {
     repository: subscriptionRepository,
     proxyConfig,
     publicSubscriptionBaseUrl,
-    expiringDays: Number.parseInt(env.SUBSCRIPTION_EXPIRING_DAYS, 10) || 7
+    expiringDays: Number.parseInt(env.SUBSCRIPTION_EXPIRING_DAYS, 10) || 7,
+    tempLinkTtlMinutes
   });
   let closed = false;
 
@@ -228,7 +240,15 @@ export function createRuntimeState(options = {}) {
       repository: subscriptionRepository,
       service: subscriptionService,
       publicSubscriptionBaseUrl,
+      tempLinkTtlMinutes,
       close
+    },
+    security: {
+      adminAllowedCidrs,
+      subRateLimit: {
+        windowMs: Number.parseInt(env.SUB_RATE_LIMIT_WINDOW_MS, 10) || 60000,
+        max: Number.parseInt(env.SUB_RATE_LIMIT_MAX, 10) || 30
+      }
     },
     close,
     runCommand,

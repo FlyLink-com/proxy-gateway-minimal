@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { computeSubscriptionStatus } from "./status.mjs";
 import {
+  TEMP_SUBSCRIPTION_TOKEN_PREFIX,
   createSubscriptionToken,
   hashSubscriptionToken,
   verifySubscriptionToken
@@ -126,7 +127,10 @@ export function createSubscriptionService({
   publicSubscriptionBaseUrl,
   nowFn = () => new Date(),
   tokenFactory = () => createSubscriptionToken(),
+  tempTokenFactory = () => createSubscriptionToken({ prefix: TEMP_SUBSCRIPTION_TOKEN_PREFIX }),
   idFactory = () => `tenant_${randomUUID()}`,
+  tempLinkIdFactory = () => `temp_${randomUUID()}`,
+  tempLinkTtlMinutes = 24 * 60,
   expiringDays = DEFAULT_EXPIRING_DAYS
 }) {
   if (!repository) {
@@ -160,6 +164,48 @@ export function createSubscriptionService({
       tokenPrefix: tenant.tokenPrefix,
       lastUsedAt: tenant.lastUsedAt,
       credentialMode: tenant.credentialMode
+    };
+  }
+
+  function serializeTempLink(link, tenant) {
+    return {
+      id: link.id,
+      tenant: serializeTenant(tenant),
+      tokenPrefix: link.tokenPrefix,
+      expiresAt: link.expiresAt,
+      usedAt: link.usedAt,
+      createdAt: link.createdAt
+    };
+  }
+
+  function expiresAtFromNow() {
+    const ttlMs = Number(tempLinkTtlMinutes) * 60 * 1000;
+    return new Date(nowFn().getTime() + ttlMs).toISOString();
+  }
+
+  function resolveTenantAccess(tenantAuth, { markTempLinkId } = {}) {
+    const status = computeStatus(tenantAuth);
+    if (status === "disabled") {
+      return { ok: false, status: 403, error: "Subscription disabled" };
+    }
+    if (status === "expired") {
+      return { ok: false, status: 403, error: "Subscription expired" };
+    }
+
+    const scopedProxyConfig = cloneProxyConfigForNode(proxyConfig, tenantAuth.nodeId);
+    if (scopedProxyConfig.servers.length === 0) {
+      return { ok: false, status: 403, error: "Subscription node unavailable" };
+    }
+
+    const now = isoNow(nowFn);
+    const tenant = repository.markLastUsed(tenantAuth.id, { now });
+    if (markTempLinkId) {
+      repository.markTempLinkUsed(markTempLinkId, { now });
+    }
+    return {
+      ok: true,
+      tenant: serializeTenant(tenant),
+      proxyConfig: scopedProxyConfig
     };
   }
 
@@ -250,31 +296,45 @@ export function createSubscriptionService({
     };
   }
 
+  function createTempLink(id) {
+    const tenant = repository.getTenant(id);
+    if (!tenant) {
+      throw notFoundError(id);
+    }
+
+    const token = tempTokenFactory();
+    const link = repository.createTempLink({
+      id: tempLinkIdFactory(),
+      tenantId: id,
+      tokenHash: token.tokenHash,
+      tokenPrefix: token.tokenPrefix,
+      expiresAt: expiresAtFromNow(),
+      now: isoNow(nowFn)
+    });
+
+    return {
+      ...serializeTempLink(link, tenant),
+      subscriptionUrl: makeSubscriptionUrl(normalizedPublicSubscriptionBaseUrl, token.rawToken)
+    };
+  }
+
   function resolveSubscriptionToken(rawToken) {
-    const tenantAuth = repository.findTenantByTokenHash(hashSubscriptionToken(rawToken));
-    if (!tenantAuth || !verifySubscriptionToken(rawToken, tenantAuth.tokenHash)) {
+    const tokenHash = hashSubscriptionToken(rawToken);
+    const tenantAuth = repository.findTenantByTokenHash(tokenHash);
+    if (tenantAuth && verifySubscriptionToken(rawToken, tenantAuth.tokenHash)) {
+      return resolveTenantAccess(tenantAuth);
+    }
+
+    const tempLink = repository.findTempLinkByTokenHash(tokenHash);
+    if (!tempLink || !verifySubscriptionToken(rawToken, tempLink.tokenHash)) {
       return { ok: false, status: 401, error: "Unauthorized" };
     }
 
-    const status = computeStatus(tenantAuth);
-    if (status === "disabled") {
-      return { ok: false, status: 403, error: "Subscription disabled" };
-    }
-    if (status === "expired") {
-      return { ok: false, status: 403, error: "Subscription expired" };
+    if (new Date(tempLink.expiresAt).getTime() <= nowFn().getTime()) {
+      return { ok: false, status: 403, error: "Subscription link expired" };
     }
 
-    const scopedProxyConfig = cloneProxyConfigForNode(proxyConfig, tenantAuth.nodeId);
-    if (scopedProxyConfig.servers.length === 0) {
-      return { ok: false, status: 403, error: "Subscription node unavailable" };
-    }
-
-    const tenant = repository.markLastUsed(tenantAuth.id, { now: isoNow(nowFn) });
-    return {
-      ok: true,
-      tenant: serializeTenant(tenant),
-      proxyConfig: scopedProxyConfig
-    };
+    return resolveTenantAccess(tempLink.tenant, { markTempLinkId: tempLink.id });
   }
 
   function nodes() {
@@ -320,6 +380,7 @@ export function createSubscriptionService({
     disableTenant,
     enableTenant,
     resetToken,
+    createTempLink,
     resolveSubscriptionToken,
     nodes,
     overview

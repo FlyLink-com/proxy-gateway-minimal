@@ -150,3 +150,27 @@ test("createRuntimeState does not create a repository when subscription service 
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("createRuntimeState parses hardening security environment", () => {
+  const state = createRuntimeState({
+    rootDir: new URL("../../", import.meta.url),
+    env: {
+      CONSOLE_TOKEN: "secret",
+      SS_PASSWORD: "pw",
+      ADMIN_ALLOWED_CIDRS: "127.0.0.1/32,10.0.0.0/8",
+      SUB_RATE_LIMIT_WINDOW_MS: "1000",
+      SUB_RATE_LIMIT_MAX: "2",
+      SUBSCRIPTION_TEMP_LINK_TTL_MINUTES: "30"
+    },
+    autoStartHttpProxy: false,
+    subscriptionDbPath: ":memory:"
+  });
+
+  try {
+    assert.deepEqual(state.security.adminAllowedCidrs, ["127.0.0.1/32", "10.0.0.0/8"]);
+    assert.deepEqual(state.security.subRateLimit, { windowMs: 1000, max: 2 });
+    assert.equal(state.subscriptions.tempLinkTtlMinutes, 30);
+  } finally {
+    state.close();
+  }
+});

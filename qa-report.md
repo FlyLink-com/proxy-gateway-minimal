@@ -1,9 +1,9 @@
 # QA Test Report - Proxy Gateway Console
 
 **Project:** proxy-gateway-minimal v0.1.0
-**Date:** 2026-05-21
+**Date:** 2026-05-22
 **Environment:** Windows, Node.js v24.15.0, Express 5.2.1, sslocal
-**Server:** 47.251.178.125 (Aliyun Shadowsocks, AES-256-GCM)
+**Historical Server:** 47.251.178.125 (Aliyun Shadowsocks, AES-256-GCM)
 
 ---
 
@@ -11,8 +11,8 @@
 
 | Metric | Value |
 |--------|-------|
-| Total Test Items | 76 |
-| PASS | 76 |
+| Total Test Items | 97 |
+| PASS | 97 |
 | FAIL | 0 |
 | **Pass Rate** | **100%** |
 | Health Score | **100/100** |
@@ -21,7 +21,7 @@
 
 ---
 
-## A. Unit Tests (76/76)
+## A. Unit Tests (97/97)
 
 ### Auth Middleware (4 tests)
 - ✅ public paths bypass auth (`/api/health`, `/proxy.pac`)
@@ -105,9 +105,21 @@
 - ✅ tenant-token subscription fetch tests passing
 - ✅ console-token subscription compatibility preserved
 
+## Subscription Hardening
+
+- Temporary subscription token prefix tests: passing
+- Temporary link repository and service tests: passing
+- Primary token reset invalidation test: passing
+- Admin temporary-link route test: passing
+- Admin source-IP allowlist tests: passing
+- `/sub` rate-limit tests: passing
+- Redaction helper tests: passing
+
 ---
 
-## B. Integration / Live Checks
+## B. Historical Integration / Live Checks
+
+These checks are retained from the 2026-05-21 QA report and were not re-run during the 2026-05-22 subscription hardening documentation update.
 
 | Check | Result | Details |
 |-------|--------|---------|
@@ -122,7 +134,7 @@
 | Clash subscription | ✅ | YAML generated with 2 nodes |
 | Token persistence | ✅ | `.proxy-gateway/console-token` |
 | npm module entry | ✅ | `index.mjs` exports app/runtime APIs and Clash subscription helpers |
-| npm package dry run | ✅ | 38 files, excludes tests/secrets/generated state |
+| npm package dry run | ✅ | 42 files, excludes tests/secrets/generated state |
 
 ---
 

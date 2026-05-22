@@ -3,7 +3,10 @@ import test from "node:test";
 import Database from "better-sqlite3";
 import { createSubscriptionService } from "../services/subscriptions/service.mjs";
 import { createSubscriptionRepository } from "../services/subscriptions/repository.mjs";
-import { hashSubscriptionToken } from "../services/subscriptions/tokens.mjs";
+import {
+  TEMP_SUBSCRIPTION_TOKEN_PREFIX,
+  hashSubscriptionToken
+} from "../services/subscriptions/tokens.mjs";
 
 const NOW = "2026-05-21T00:00:00.000Z";
 const LATER = "2026-05-21T01:00:00.000Z";
@@ -36,21 +39,35 @@ function sampleProxyConfig() {
   };
 }
 
+function tokenFromRaw(rawToken) {
+  return {
+    rawToken,
+    tokenHash: hashSubscriptionToken(rawToken),
+    tokenPrefix: rawToken.slice(0, 14)
+  };
+}
+
+function sequenceTokenFactory(rawTokens) {
+  const queue = [...rawTokens];
+  return () => tokenFromRaw(queue.shift() || rawTokens.at(-1));
+}
+
 function withService(fn, options = {}) {
   const database = new Database(":memory:");
   const repository = createSubscriptionRepository({ database });
-  let now = NOW;
+  let now = "2026-05-22T00:00:00.000Z";
+  const primaryTokens = options.rawTokenSequence || [options.rawToken || RAW_TOKEN];
+  const currentNowFn = options.nowFn || (() => new Date(now));
   const serviceOptions = {
     repository,
     proxyConfig: sampleProxyConfig(),
     publicSubscriptionBaseUrl: "https://gateway.example.com/",
-    nowFn: () => new Date(now),
-    tokenFactory: () => ({
-      rawToken: RAW_TOKEN,
-      tokenHash: hashSubscriptionToken(RAW_TOKEN),
-      tokenPrefix: RAW_TOKEN.slice(0, 14)
-    }),
+    nowFn: currentNowFn,
+    tokenFactory: sequenceTokenFactory(primaryTokens),
+    tempTokenFactory: () => tokenFromRaw(options.tempRawToken || `${TEMP_SUBSCRIPTION_TOKEN_PREFIX}visible_once_token`),
     idFactory: () => "tenant_1",
+    tempLinkIdFactory: () => "temp_1",
+    tempLinkTtlMinutes: options.tempLinkTtlMinutes || 24 * 60,
     expiringDays: 7,
     ...options
   };
@@ -275,6 +292,103 @@ test("resolveSubscriptionToken rejects unavailable tenant node without marking l
       error: "Subscription node unavailable"
     });
     assert.equal(context.repository.getTenant("tenant_old_node").lastUsedAt, null);
+  });
+});
+
+test("service creates temporary subscription links and resolves them until expiry", async () => {
+  await withService(({ service, repository }) => {
+    const created = service.createTenant({
+      displayName: "Customer A",
+      expiresAt: "2026-06-21T00:00:00.000Z"
+    });
+    assert.match(created.subscriptionUrl, /token=pgsub_/);
+
+    const temp = service.createTempLink("tenant_1");
+    assert.equal(
+      temp.subscriptionUrl,
+      "https://gateway.example.com/sub/clash.yaml?token=pgtmp_visible_once_token"
+    );
+    assert.equal(temp.tenant.id, "tenant_1");
+    assert.equal(temp.expiresAt, "2026-05-23T00:00:00.000Z");
+
+    const resolved = service.resolveSubscriptionToken("pgtmp_visible_once_token");
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.tenant.id, "tenant_1");
+    assert.equal(resolved.proxyConfig.servers.length, 1);
+    assert.equal(resolved.proxyConfig.servers[0].name, "aws-singapore");
+
+    const usedTempLink = repository.findTempLinkByTokenHash(hashSubscriptionToken("pgtmp_visible_once_token"));
+    assert.equal(usedTempLink.usedAt, "2026-05-22T00:00:00.000Z");
+  }, {
+    tempRawToken: "pgtmp_visible_once_token",
+    tempLinkTtlMinutes: 24 * 60
+  });
+});
+
+test("service rejects expired temporary subscription links", async () => {
+  let current = new Date("2026-05-22T00:00:00.000Z");
+  await withService(({ service }) => {
+    service.createTenant({
+      displayName: "Customer A",
+      expiresAt: "2026-06-21T00:00:00.000Z"
+    });
+    service.createTempLink("tenant_1");
+
+    current = new Date("2026-05-23T00:00:01.000Z");
+    assert.deepEqual(service.resolveSubscriptionToken("pgtmp_visible_once_token"), {
+      ok: false,
+      status: 403,
+      error: "Subscription link expired"
+    });
+  }, {
+    nowFn: () => current,
+    tempRawToken: "pgtmp_visible_once_token",
+    tempLinkTtlMinutes: 24 * 60
+  });
+});
+
+test("disabled tenants block temporary subscription links without marking them used", async () => {
+  await withService(({ service, repository }) => {
+    service.createTenant({
+      displayName: "Customer A",
+      expiresAt: "2026-06-21T00:00:00.000Z"
+    });
+    service.createTempLink("tenant_1");
+    service.disableTenant("tenant_1");
+
+    assert.deepEqual(service.resolveSubscriptionToken("pgtmp_visible_once_token"), {
+      ok: false,
+      status: 403,
+      error: "Subscription disabled"
+    });
+
+    const tempLink = repository.findTempLinkByTokenHash(hashSubscriptionToken("pgtmp_visible_once_token"));
+    assert.equal(tempLink.usedAt, null);
+  }, {
+    tempRawToken: "pgtmp_visible_once_token"
+  });
+});
+
+test("resetting primary token invalidates the previous primary token without deleting temp links", async () => {
+  await withService(({ service }) => {
+    service.createTenant({
+      displayName: "Customer A",
+      expiresAt: "2026-06-21T00:00:00.000Z"
+    });
+    service.createTempLink("tenant_1");
+
+    service.resetToken("tenant_1");
+
+    assert.deepEqual(service.resolveSubscriptionToken("pgsub_visible_once_token"), {
+      ok: false,
+      status: 401,
+      error: "Unauthorized"
+    });
+    assert.equal(service.resolveSubscriptionToken("pgsub_rotated_token").ok, true);
+    assert.equal(service.resolveSubscriptionToken("pgtmp_visible_once_token").ok, true);
+  }, {
+    rawTokenSequence: ["pgsub_visible_once_token", "pgsub_rotated_token"],
+    tempRawToken: "pgtmp_visible_once_token"
   });
 });
 
