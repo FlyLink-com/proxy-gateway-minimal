@@ -314,7 +314,7 @@ describe("reset token dialog", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  test("confirms reset and keeps visible-once result behavior", async () => {
+  test("confirms reset, keeps visible-once result behavior, and removes repeat submit", async () => {
     const onReset = vi.fn(async (id: string) => ({
       tenant: tenant({ id, tokenPrefix: "pgsub_newpre" }),
       subscriptionUrl: "reset-url"
@@ -332,6 +332,9 @@ describe("reset token dialog", () => {
       expect(onReset).toHaveBeenCalledWith("tenant_1");
     });
     expect(await screen.findByText("reset-url")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /confirm reset token/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /done/i })).not.toBeNull();
+    expect(onReset).toHaveBeenCalledTimes(1);
   });
 });
 

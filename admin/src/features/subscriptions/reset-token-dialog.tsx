@@ -22,6 +22,8 @@ export function ResetTokenDialog({ tenant, onClose, onReset }: ResetTokenDialogP
   }
 
   async function resetToken() {
+    if (pending || result) return;
+
     setPending(true);
     setError("");
     try {
@@ -41,7 +43,7 @@ export function ResetTokenDialog({ tenant, onClose, onReset }: ResetTokenDialogP
             <h3 id="reset-token-title">Reset token</h3>
             <p className="muted">{activeTenant.displayName}</p>
           </div>
-          <button className="ghost-button" type="button" onClick={close}>Close</button>
+          <button className="ghost-button" type="button" onClick={close} disabled={pending}>Close</button>
         </div>
 
         <p className="modal-copy">
@@ -51,10 +53,20 @@ export function ResetTokenDialog({ tenant, onClose, onReset }: ResetTokenDialogP
         {error ? <div className="alert alert-error">{error}</div> : null}
 
         <div className="modal-actions">
-          <button className="ghost-button" type="button" onClick={close}>Cancel</button>
-          <button className="danger-button" type="button" onClick={() => void resetToken()} disabled={pending}>
-            {pending ? "Resetting" : "Confirm reset token"}
-          </button>
+          {result ? (
+            <button className="primary-button" type="button" onClick={close}>
+              Done
+            </button>
+          ) : (
+            <>
+              <button className="ghost-button" type="button" onClick={close} disabled={pending}>
+                Cancel
+              </button>
+              <button className="danger-button" type="button" onClick={() => void resetToken()} disabled={pending}>
+                {pending ? "Resetting" : "Confirm reset token"}
+              </button>
+            </>
+          )}
         </div>
 
         {result ? (
