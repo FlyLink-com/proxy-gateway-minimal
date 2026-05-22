@@ -7,6 +7,8 @@ bin/*.exe
 .worktrees/
 coverage/
 .nyc_output/
+output/
 .superpowers/
 docs/superpowers/plans/*.tmp
 .gstack/
+admin/dist/
