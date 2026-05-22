@@ -180,7 +180,7 @@ describe("connection health diagnostics", () => {
 Run:
 
 ```powershell
-npm run admin:test -- --run admin/src/test/connection-health.test.ts
+npm run admin:test -- src/test/connection-health.test.ts
 ```
 
 Expected: FAIL because `admin/src/features/subscriptions/connection-health.ts` does not exist.
@@ -347,7 +347,7 @@ export async function checkAdminConnectionHealth({
 Run:
 
 ```powershell
-npm run admin:test -- --run admin/src/test/connection-health.test.ts
+npm run admin:test -- src/test/connection-health.test.ts
 ```
 
 Expected: PASS for all connection health diagnostics tests.
@@ -622,7 +622,7 @@ describe("connection panel", () => {
 Run:
 
 ```powershell
-npm run admin:test -- --run admin/src/test/connection-panel.test.tsx
+npm run admin:test -- src/test/connection-panel.test.tsx
 ```
 
 Expected: PASS for both panel tests.
