@@ -56,6 +56,22 @@ describe("admin API client", () => {
     expect(tenants).toHaveLength(1);
     expect(tenants[0].nodeName).toBe("aws-singapore-blue");
   });
+
+  test("uses same-origin API paths when base URL is blank", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ items: [] }));
+    const client = createAdminApiClient({
+      baseUrl: "",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    await client.listTenants();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/subscriptions",
+      expect.objectContaining({ headers: expect.any(Headers) })
+    );
+  });
 });
 
 describe("admin session", () => {
@@ -69,6 +85,20 @@ describe("admin session", () => {
 
     expect(loadAdminSession()).toEqual({
       baseUrl: "http://127.0.0.1:3456/",
+      consoleToken: "secret"
+    });
+  });
+
+  test("preserves blank API base URL for same-origin proxy use", () => {
+    sessionStorage.clear();
+
+    saveAdminSession({
+      baseUrl: "",
+      consoleToken: "secret"
+    });
+
+    expect(loadAdminSession()).toEqual({
+      baseUrl: "",
       consoleToken: "secret"
     });
   });

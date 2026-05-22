@@ -115,7 +115,7 @@ npm run admin:build
 npm run admin:test
 ```
 
-The shell calls `/api/admin/subscriptions`, `/api/admin/nodes`, and `/api/admin/overview` through the configured API base URL. It defaults to `http://127.0.0.1:3456`, or `VITE_ADMIN_API_BASE_URL` at build time, and can be changed in the in-app connection panel for local backend access or an SSH tunnel.
+The shell calls `/api/admin/subscriptions`, `/api/admin/nodes`, and `/api/admin/overview`. In Vite dev mode, leave the API base URL blank and open a local backend or SSH tunnel on `127.0.0.1:3456`; the dev server proxies same-origin `/api` requests to that backend. Set `VITE_ADMIN_API_BASE_URL` or the in-app API base URL only when the target explicitly supports browser CORS.
 
 Do not expose this admin shell through the public Nginx gateway. Public production access should continue to allow only health checks and subscription fetches.
 

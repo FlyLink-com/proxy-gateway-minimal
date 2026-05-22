@@ -12,7 +12,7 @@ const viteEnv = import.meta as ImportMeta & {
 };
 
 export const DEFAULT_ADMIN_SESSION: AdminSession = {
-  baseUrl: viteEnv.env?.VITE_ADMIN_API_BASE_URL || "http://127.0.0.1:3456",
+  baseUrl: viteEnv.env?.VITE_ADMIN_API_BASE_URL || "",
   consoleToken: ""
 };
 
@@ -22,7 +22,7 @@ export function loadAdminSession(): AdminSession {
     if (!raw) return DEFAULT_ADMIN_SESSION;
     const parsed = JSON.parse(raw) as Partial<AdminSession>;
     return {
-      baseUrl: parsed.baseUrl || DEFAULT_ADMIN_SESSION.baseUrl,
+      baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : DEFAULT_ADMIN_SESSION.baseUrl,
       consoleToken: parsed.consoleToken || ""
     };
   } catch {

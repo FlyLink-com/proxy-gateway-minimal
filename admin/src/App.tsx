@@ -82,12 +82,16 @@ function ConnectionPanel({
     <form className="connection-panel" onSubmit={submit}>
       <div>
         <strong>Admin API connection</strong>
-        <p className="muted">Use local backend access or an SSH tunnel. Public Nginx blocks admin APIs.</p>
+        <p className="muted">Use the same-origin proxy or an SSH tunnel. Public Nginx blocks admin APIs.</p>
       </div>
       <div className="connection-grid">
         <label>
           <span>API base URL</span>
-          <input value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} />
+          <input
+            value={baseUrl}
+            onChange={(event) => setBaseUrl(event.target.value)}
+            placeholder="Same origin"
+          />
         </label>
         <label>
           <span>Console token</span>

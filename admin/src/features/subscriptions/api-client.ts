@@ -28,7 +28,9 @@ export class AdminApiError extends Error {
 }
 
 function normalizeBaseUrl(baseUrl: string) {
-  return (baseUrl || "http://127.0.0.1:3456").replace(/\/+$/, "");
+  const trimmed = baseUrl.trim();
+  if (!trimmed || trimmed === "/") return "";
+  return trimmed.replace(/\/+$/, "");
 }
 
 function apiUrl(baseUrl: string, path: string) {
