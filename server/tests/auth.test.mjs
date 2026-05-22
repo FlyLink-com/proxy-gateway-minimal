@@ -49,24 +49,34 @@ test("auth middleware blocks control paths without token", async () => {
   }
 });
 
-test("auth middleware accepts bearer token and token query", async () => {
+test("auth middleware accepts bearer token", async () => {
   const app = express();
   app.use(createAuthMiddleware({ token: "secret", publicPaths: [] }));
   app.post("/api/proxy/start", (_req, res) => res.json({ ok: true }));
+
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/proxy/start`, {
+      method: "POST",
+      headers: { authorization: "Bearer secret" }
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true });
+  } finally {
+    server.close();
+  }
+});
+
+test("auth middleware rejects token query for protected paths", async () => {
+  const app = express();
+  app.use(createAuthMiddleware({ token: "secret", publicPaths: [] }));
   app.post("/api/proxy/stop", (_req, res) => res.json({ ok: true }));
 
   const { server, baseUrl } = await listen(app);
   try {
-    const bearer = await fetch(`${baseUrl}/api/proxy/start`, {
-      method: "POST",
-      headers: { authorization: "Bearer secret" }
-    });
-    assert.equal(bearer.status, 200);
-    assert.deepEqual(await bearer.json(), { ok: true });
-
-    const query = await fetch(`${baseUrl}/api/proxy/stop?token=secret`, { method: "POST" });
-    assert.equal(query.status, 200);
-    assert.deepEqual(await query.json(), { ok: true });
+    const response = await fetch(`${baseUrl}/api/proxy/stop?token=secret`, { method: "POST" });
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { error: "Unauthorized" });
   } finally {
     server.close();
   }

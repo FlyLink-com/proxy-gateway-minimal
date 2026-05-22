@@ -48,7 +48,9 @@ test("network status route parses Windows doctor JSON", async () => {
   });
   const { server, baseUrl } = await listen(createApp(state));
   try {
-    const response = await fetch(`${baseUrl}/api/network/status?token=secret`);
+    const response = await fetch(`${baseUrl}/api/network/status`, {
+      headers: { authorization: "Bearer secret" }
+    });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), payload);
   } finally {
@@ -69,7 +71,10 @@ test("network repair route returns repair actions from Windows doctor", async ()
   });
   const { server, baseUrl } = await listen(createApp(state));
   try {
-    const response = await fetch(`${baseUrl}/api/network/repair?token=secret`, { method: "POST" });
+    const response = await fetch(`${baseUrl}/api/network/repair`, {
+      method: "POST",
+      headers: { authorization: "Bearer secret" }
+    });
     assert.equal(response.status, 200);
     assert.deepEqual(await response.json(), payload);
   } finally {

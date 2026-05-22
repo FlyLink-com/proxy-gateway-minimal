@@ -20,7 +20,9 @@ test("ping route blocks hosts outside configured allowlist", async () => {
 
   const { server, baseUrl } = await listen(createApp(state));
   try {
-    const response = await fetch(`${baseUrl}/api/ping/example.com?token=secret`);
+    const response = await fetch(`${baseUrl}/api/ping/example.com`, {
+      headers: { authorization: "Bearer secret" }
+    });
     assert.equal(response.status, 403);
     assert.deepEqual(await response.json(), { error: "Host not allowed" });
   } finally {

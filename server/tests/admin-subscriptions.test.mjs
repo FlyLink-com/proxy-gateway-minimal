@@ -133,8 +133,12 @@ function realSubscriptionContext() {
 }
 
 async function requestJson(baseUrl, path, options = {}) {
-  const response = await fetch(`${baseUrl}${path}?token=secret`, {
-    headers: { "content-type": "application/json", ...(options.headers ?? {}) },
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: {
+      "content-type": "application/json",
+      authorization: "Bearer secret",
+      ...(options.headers ?? {})
+    },
     ...options,
     body: options.body === undefined ? undefined : JSON.stringify(options.body)
   });
