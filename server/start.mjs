@@ -31,32 +31,38 @@ export async function startProxyGateway(options = {}) {
   const app = options.app ?? createApp(state);
 
   const server = app.listen(state.ports.console, state.host);
-  await new Promise((resolve, reject) => {
-    server.once("error", reject);
-    server.once("listening", async () => {
-      try {
-        const addr = server.address();
-        if (!addr) {
-          throw new Error("Console port bind failed");
-        }
+  try {
+    await new Promise((resolve, reject) => {
+      server.once("error", reject);
+      server.once("listening", async () => {
+        try {
+          const addr = server.address();
+          if (!addr) {
+            throw new Error("Console port bind failed");
+          }
 
-        if (state.autoStartHttpProxy) {
-          await state.services.httpProxy.start();
-        }
+          if (state.autoStartHttpProxy) {
+            await state.services.httpProxy.start();
+          }
 
-        logStartup(logger, state);
-        resolve();
-      } catch (error) {
-        await closeServer(server).catch(() => {});
-        reject(error);
-      }
+          logStartup(logger, state);
+          resolve();
+        } catch (error) {
+          reject(error);
+        }
+      });
     });
-  });
+  } catch (error) {
+    await closeServer(server).catch(() => {});
+    state.close?.();
+    throw error;
+  }
 
   async function stop() {
     await state.services.ssLocal.stop();
     await state.services.httpProxy.stop();
     await closeServer(server);
+    state.close?.();
   }
 
   return { app, state, server, stop };

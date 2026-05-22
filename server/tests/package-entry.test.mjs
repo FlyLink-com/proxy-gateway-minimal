@@ -10,6 +10,7 @@ import {
 } from "../../index.mjs";
 
 function fakeState() {
+  let closeCount = 0;
   return {
     rootDir: resolve(fileURLToPath(new URL("../../", import.meta.url))),
     host: "127.0.0.1",
@@ -20,6 +21,12 @@ function fakeState() {
     services: {
       ssLocal: { stop: async () => ({ ok: true }) },
       httpProxy: { start: async () => ({ ok: true }), stop: async () => ({ ok: true }) }
+    },
+    close: () => {
+      closeCount += 1;
+    },
+    get closeCount() {
+      return closeCount;
     },
     isPortListening: async () => false
   };
@@ -33,8 +40,9 @@ test("package root exports stable module APIs", () => {
 });
 
 test("startProxyGateway starts and stops an embedded app", async () => {
+  const state = fakeState();
   const handle = await startProxyGateway({
-    state: fakeState(),
+    state,
     logger: false
   });
 
@@ -46,4 +54,24 @@ test("startProxyGateway starts and stops an embedded app", async () => {
   } finally {
     await handle.stop();
   }
+
+  assert.equal(state.closeCount, 1);
+});
+
+test("startProxyGateway closes runtime state when startup fails", async () => {
+  const state = fakeState();
+  state.autoStartHttpProxy = true;
+  state.services.httpProxy.start = async () => {
+    throw new Error("http proxy failed");
+  };
+
+  await assert.rejects(
+    startProxyGateway({
+      state,
+      logger: false
+    }),
+    /http proxy failed/
+  );
+
+  assert.equal(state.closeCount, 1);
 });

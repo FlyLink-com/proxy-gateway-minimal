@@ -27,7 +27,7 @@ function sampleConfig() {
   };
 }
 
-function fakeState() {
+function fakeState(overrides = {}) {
   return {
     rootDir: new URL("../../", import.meta.url).pathname,
     host: "127.0.0.1",
@@ -39,7 +39,8 @@ function fakeState() {
       httpProxy: { status: () => ({ running: false }), start: async () => ({ ok: true }), stop: async () => ({ ok: true }) }
     },
     isPortListening: async () => false,
-    runCommand: async () => ({ ok: true, stdout: "", stderr: "", code: 0, timedOut: false })
+    runCommand: async () => ({ ok: true, stdout: "", stderr: "", code: 0, timedOut: false }),
+    ...overrides
   };
 }
 
@@ -82,6 +83,7 @@ test("Clash subscription routes are authenticated", async () => {
   try {
     const blocked = await fetch(`${baseUrl}/sub/clash.yaml`);
     assert.equal(blocked.status, 401);
+    assert.deepEqual(await blocked.json(), { error: "Unauthorized" });
 
     const response = await fetch(`${baseUrl}/sub/clash.yaml?token=secret`);
     assert.equal(response.status, 200);
@@ -89,12 +91,42 @@ test("Clash subscription routes are authenticated", async () => {
     const yaml = await response.text();
     assert.match(yaml, /password: "pw:with#chars"/);
 
+    const bearerResponse = await fetch(`${baseUrl}/sub/clash.yaml`, {
+      headers: { authorization: "Bearer secret" }
+    });
+    assert.equal(bearerResponse.status, 200);
+    assert.match(bearerResponse.headers.get("content-type"), /application\/x-yaml/);
+    const bearerYaml = await bearerResponse.text();
+    assert.match(bearerYaml, /password: "pw:with#chars"/);
+    assert.match(bearerYaml, /password: "secondary-secret"/);
+
     const status = await fetch(`${baseUrl}/api/subscription/status?token=secret`);
     assert.equal(status.status, 200);
     const body = await status.json();
     assert.equal(body.serverCount, 2);
     assert.equal(body.subscriptionUrl, "http://127.0.0.1:3456/sub/clash.yaml?token=secret");
     assert.doesNotMatch(JSON.stringify(body), /pw:with#chars|secondary-secret/);
+  } finally {
+    server.close();
+  }
+});
+
+test("Clash subscription route hides subscription service failures", async () => {
+  const state = fakeState({
+    subscriptions: {
+      service: {
+        resolveSubscriptionToken: async () => {
+          throw new Error("database path C:\\secret\\subscriptions.sqlite failed");
+        }
+      }
+    }
+  });
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const response = await fetch(`${baseUrl}/sub/clash.yaml?token=pgsub_broken`);
+    assert.equal(response.status, 500);
+    assert.match(response.headers.get("content-type"), /application\/json/);
+    assert.deepEqual(await response.json(), { error: "internal_error" });
   } finally {
     server.close();
   }

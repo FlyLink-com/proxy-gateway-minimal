@@ -10,6 +10,8 @@ import { isPortListening } from "./services/ports.mjs";
 import { loadProxyConfig } from "./services/config.mjs";
 import { createCommandRunner } from "./services/command.mjs";
 import { resolveConsoleToken } from "./services/console-token.mjs";
+import { createSubscriptionRepository } from "./services/subscriptions/repository.mjs";
+import { createSubscriptionService } from "./services/subscriptions/service.mjs";
 import { spawn } from "node:child_process";
 
 function rootPathFrom(rootDir) {
@@ -91,6 +93,27 @@ export function createRuntimeState(options = {}) {
     configPath: join(rootDir, "config", "proxy-servers.json"),
     env
   });
+  const subscriptionDbPath = options.subscriptionDbPath || env.SUBSCRIPTION_DB_PATH || join(rootDir, ".proxy-gateway", "subscriptions.sqlite");
+  const publicSubscriptionBaseUrl = String(env.PUBLIC_SUBSCRIPTION_BASE_URL || `http://${host}:${consolePort}`).trim().replace(/\/+$/, "");
+  const ownsSubscriptionRepository = !options.subscriptionRepository && !options.subscriptionService;
+  const subscriptionRepository = options.subscriptionRepository || (
+    ownsSubscriptionRepository ? createSubscriptionRepository({ dbPath: subscriptionDbPath }) : null
+  );
+  const subscriptionService = options.subscriptionService || createSubscriptionService({
+    repository: subscriptionRepository,
+    proxyConfig,
+    publicSubscriptionBaseUrl,
+    expiringDays: Number.parseInt(env.SUBSCRIPTION_EXPIRING_DAYS, 10) || 7
+  });
+  let closed = false;
+
+  function close() {
+    if (closed) return;
+    closed = true;
+    if (ownsSubscriptionRepository) {
+      subscriptionRepository.close();
+    }
+  }
 
   const bridgeServer = options.httpProxyServer || createBridgeServer({ socksPort: ports.socks });
   const ssLocal = createSsLocalService({
@@ -201,6 +224,13 @@ export function createRuntimeState(options = {}) {
     consoleTokenSource: consoleToken.source,
     consoleTokenStorePath: consoleToken.tokenStorePath,
     services: { ssLocal, httpProxy },
+    subscriptions: {
+      repository: subscriptionRepository,
+      service: subscriptionService,
+      publicSubscriptionBaseUrl,
+      close
+    },
+    close,
     runCommand,
     isPortListening,
     autoStartHttpProxy: options.autoStartHttpProxy ?? true
