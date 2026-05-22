@@ -65,6 +65,15 @@ function fakeService() {
       tenant: { ...tenant, id, tokenPrefix: "pgsub_new_tok" },
       subscriptionUrl: "https://gateway.example.com/sub/clash.yaml?token=pgsub_new_token"
     }),
+    createTempLink: (id) => ({
+      id: "temp_1",
+      tenant: { ...tenant, id },
+      tokenPrefix: "pgtmp_route_",
+      expiresAt: "2026-05-23T00:00:00.000Z",
+      usedAt: null,
+      createdAt: "2026-05-22T00:00:00.000Z",
+      subscriptionUrl: "https://gateway.example.com/sub/clash.yaml?token=pgtmp_route_token"
+    }),
     nodes: () => [{ id: "node_sg", name: "aws-singapore", status: "online" }],
     overview: () => ({ ok: true, counts: { total: 1, active: 1, expiring: 0, disabledOrExpired: 0 } })
   };
@@ -210,6 +219,26 @@ test("admin subscription routes map validation and missing tenant errors", async
       error: "not_found",
       message: "Subscription tenant not found: missing"
     });
+  } finally {
+    server.close();
+  }
+});
+
+test("admin route creates temporary subscription links", async () => {
+  const { server, baseUrl } = await listen(createApp(fakeState()));
+  try {
+    const created = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_1/temp-link", {
+      method: "POST"
+    });
+
+    assert.equal(created.response.status, 201);
+    assert.equal(created.body.id, "temp_1");
+    assert.equal(created.body.tenant.id, "tenant_1");
+    assert.equal(
+      created.body.subscriptionUrl,
+      "https://gateway.example.com/sub/clash.yaml?token=pgtmp_route_token"
+    );
+    assert.doesNotMatch(JSON.stringify(created.body), /tokenHash/);
   } finally {
     server.close();
   }

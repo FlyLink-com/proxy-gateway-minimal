@@ -82,6 +82,14 @@ export function adminSubscriptionRoutes(state) {
     }
   });
 
+  router.post("/api/admin/subscriptions/:id/temp-link", (req, res) => {
+    try {
+      res.status(201).json(service.createTempLink(req.params.id));
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
   router.get("/api/admin/nodes", (_req, res) => {
     try {
       res.json({ items: service.nodes() });
