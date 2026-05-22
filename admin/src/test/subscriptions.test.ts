@@ -228,6 +228,66 @@ describe("subscription page", () => {
     expect(screen.queryByRole("dialog", { name: /disable subscription/i })).toBeNull();
     expect(await screen.findByText(/Enabled real-user/i)).not.toBeNull();
   });
+
+  test("asks for confirmation before creating a temporary link and cancel does not call the API", async () => {
+    const createTempLink = vi.fn(async (id: string) => ({
+      tenantId: id,
+      tokenPrefix: "pgtmp_prefix",
+      expiresAt: "2026-05-23T00:00:00.000Z",
+      subscriptionUrl: "temp-url"
+    }));
+    const listTenants = vi.fn(async () => [tenant()]);
+
+    render(createElement(SubscriptionsPage, {
+      search: "",
+      apiClient: adminClient({ listTenants, createTempLink })
+    }));
+
+    expect(await screen.findByText("real-user")).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle("Create temporary link"));
+
+    const dialog = screen.getByRole("dialog", { name: /create temporary link/i });
+    expect(within(dialog).getByText(/temporary visible-once link/i)).not.toBeNull();
+    expect(within(dialog).getByText(/does not replace the primary token/i)).not.toBeNull();
+    expect(createTempLink).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
+
+    expect(createTempLink).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: /create temporary link/i })).toBeNull();
+  });
+
+  test("confirms temporary link generation and keeps visible-once result behavior", async () => {
+    const createTempLink = vi.fn(async (id: string) => ({
+      tenantId: id,
+      tokenPrefix: "pgtmp_prefix",
+      expiresAt: "2026-05-23T00:00:00.000Z",
+      subscriptionUrl: "temp-url"
+    }));
+    const listTenants = vi
+      .fn()
+      .mockResolvedValueOnce([tenant()])
+      .mockResolvedValueOnce([tenant()]);
+
+    render(createElement(SubscriptionsPage, {
+      search: "",
+      apiClient: adminClient({ listTenants, createTempLink })
+    }));
+
+    expect(await screen.findByText("real-user")).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle("Create temporary link"));
+    const dialog = screen.getByRole("dialog", { name: /create temporary link/i });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^create temporary link$/i }));
+
+    await waitFor(() => {
+      expect(createTempLink).toHaveBeenCalledWith("tenant_1");
+    });
+    expect(await screen.findByText("Temporary link for real-user")).not.toBeNull();
+    expect(screen.getByText("temp-url")).not.toBeNull();
+    expect(listTenants).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe("overview and nodes pages", () => {

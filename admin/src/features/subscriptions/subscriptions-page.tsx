@@ -45,6 +45,7 @@ export function SubscriptionsPage({
   const [renewTarget, setRenewTarget] = useState<SubscriptionTenant | null>(null);
   const [resetTarget, setResetTarget] = useState<SubscriptionTenant | null>(null);
   const [disableTarget, setDisableTarget] = useState<SubscriptionTenant | null>(null);
+  const [tempLinkTarget, setTempLinkTarget] = useState<SubscriptionTenant | null>(null);
   const [confirmPending, setConfirmPending] = useState(false);
   const [confirmError, setConfirmError] = useState("");
   const [lastCopied, setLastCopied] = useState(false);
@@ -88,21 +89,43 @@ export function SubscriptionsPage({
     setActionError("Full subscription URLs are only visible immediately after create, reset, or temporary-link generation.");
   }
 
-  async function createTempLink(row: SubscriptionTenant) {
+  function requestTempLink(row: SubscriptionTenant) {
     setActionError("");
+    setActionNotice("");
+    setConfirmError("");
+    setDisableTarget(null);
+    setTempLinkTarget(row);
+  }
+
+  async function confirmTempLink() {
+    if (!tempLinkTarget) return;
+
+    const target = tempLinkTarget;
+    setConfirmPending(true);
+    setConfirmError("");
     try {
-      const result = await apiClient.createTempLink(row.id);
-      setVisibleOnce({ title: `Temporary link for ${row.displayName}`, url: result.subscriptionUrl });
+      const result = await apiClient.createTempLink(target.id);
+      setTempLinkTarget(null);
+      setVisibleOnce({ title: `Temporary link for ${target.displayName}`, url: result.subscriptionUrl });
       await refreshRows();
     } catch (requestError) {
-      setActionError(errorMessage(requestError));
+      setConfirmError(errorMessage(requestError));
+    } finally {
+      setConfirmPending(false);
     }
+  }
+
+  function cancelTempLink() {
+    if (confirmPending) return;
+    setTempLinkTarget(null);
+    setConfirmError("");
   }
 
   function requestStatusToggle(row: SubscriptionTenant) {
     setActionError("");
     setActionNotice("");
     setConfirmError("");
+    setTempLinkTarget(null);
     if (row.status === "disabled") {
       void enableSubscription(row);
       return;
@@ -236,7 +259,7 @@ export function SubscriptionsPage({
                     <button className="icon-button" type="button" onClick={unavailableExistingUrl} title="Copy subscription URL">
                       <Copy aria-hidden="true" />
                     </button>
-                    <button className="icon-button" type="button" onClick={() => void createTempLink(row)} title="Create temporary link">
+                    <button className="icon-button" type="button" onClick={() => requestTempLink(row)} title="Create temporary link">
                       <Link aria-hidden="true" />
                     </button>
                     <button className="icon-button" type="button" onClick={() => setRenewTarget(row)} title="Renew subscription">
@@ -280,6 +303,17 @@ export function SubscriptionsPage({
         error={disableTarget ? confirmError : ""}
         onCancel={cancelDisable}
         onConfirm={() => void confirmDisable()}
+      />
+      <ConfirmActionDialog
+        open={Boolean(tempLinkTarget)}
+        title="Create temporary link"
+        tenantName={tempLinkTarget?.displayName ?? ""}
+        consequence="This creates a temporary visible-once link for this user. It does not replace the primary token."
+        confirmLabel="Create temporary link"
+        pending={confirmPending}
+        error={tempLinkTarget ? confirmError : ""}
+        onCancel={cancelTempLink}
+        onConfirm={() => void confirmTempLink()}
       />
       <ResetTokenDialog
         tenant={resetTarget}
