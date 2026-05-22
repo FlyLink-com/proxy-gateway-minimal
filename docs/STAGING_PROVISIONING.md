@@ -137,7 +137,10 @@ $env:HTTP_PROXY=$null; $env:HTTPS_PROXY=$null; $env:ALL_PROXY=$null
 $env:http_proxy=$null; $env:https_proxy=$null; $env:all_proxy=$null
 ```
 
-Run read-only inventory only:
+Run read-only inventory only. The `Project=proxy-gateway-minimal` queries help
+find staging or historical project resources, but they are not sufficient to
+exclude production because the current production blue instance may not carry
+`Project` or `Role` tags.
 
 ```powershell
 aws ec2 describe-instances `
@@ -151,12 +154,34 @@ aws ec2 describe-security-groups `
   --filters Name=tag:Project,Values=proxy-gateway-minimal `
   --query "SecurityGroups[].{GroupId:GroupId,GroupName:GroupName,VpcId:VpcId,Description:Description,Tags:Tags}" `
   --output table
+
+aws ec2 describe-instances `
+  --region ap-southeast-1 `
+  --instance-ids i-004ab1c6c71d06bca i-0589aac321172dd74 `
+  --query "Reservations[].Instances[].{InstanceId:InstanceId,State:State.Name,PublicIp:PublicIpAddress,PrivateIp:PrivateIpAddress,Name:Tags[?Key=='Name']|[0].Value,Project:Tags[?Key=='Project']|[0].Value,Environment:Tags[?Key=='Environment']|[0].Value,Role:Tags[?Key=='Role']|[0].Value,Purpose:Tags[?Key=='Purpose']|[0].Value,SecurityGroups:SecurityGroups[*].GroupId}" `
+  --output table
+
+aws ec2 describe-instances `
+  --region ap-southeast-1 `
+  --filters Name=ip-address,Values=47.129.247.102 `
+  --query "Reservations[].Instances[].{InstanceId:InstanceId,State:State.Name,PublicIp:PublicIpAddress,PrivateIp:PrivateIpAddress,Name:Tags[?Key=='Name']|[0].Value,SecurityGroups:SecurityGroups[*].GroupId}" `
+  --output table
+
+aws ec2 describe-security-groups `
+  --region ap-southeast-1 `
+  --group-ids sg-04a165ec77f430ee8 `
+  --query "SecurityGroups[].{GroupId:GroupId,GroupName:GroupName,VpcId:VpcId,Description:Description,IpPermissions:IpPermissions}" `
+  --output table
 ```
 
 Confirm:
 
 - No current staging instance is already assigned unless this run is explicitly
   an update/reuse path.
+- Production was checked by explicit instance ID and current public IP, not only
+  by `Project` tag.
+- The stopped historical node was checked by explicit instance ID.
+- The production security group was checked by explicit group ID.
 - The active production instance is not the staging target.
 - The stopped historical instance is not being reused as staging.
 - No production security group, volume, `.env`, SQLite database, node config, or
@@ -234,6 +259,8 @@ Local validation:
 GitHub Actions run / waiver:
 AWS inventory command timestamps:
 Existing staging target:
+Production instance lookup method:
+Production security group lookup:
 Production instance excluded:
 Historical stopped node excluded:
 Operator CIDR:
