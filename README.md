@@ -123,6 +123,19 @@ Do not expose this admin shell through the public Nginx gateway. Public producti
 
 For production topology, deployment flow, staging decisions, and staging provisioning, use `docs/PROJECT_CONTEXT.md`, `docs/ENVIRONMENT_TOPOLOGY.md`, `docs/DEPLOYMENT_FLOW.md`, and `docs/STAGING_PROVISIONING.md` as the current source of truth.
 
+## 项目编排模型
+
+本项目采用轻量级人工门禁编排，而不是 Kubernetes、Docker Compose、Terraform 或自动 CD。
+
+- Windows 本地 checkout 负责开发、测试、Admin UI 运营入口和 SSH tunnel 操作。
+- GitHub `master` 是稳定集成基线，功能和运维变更通过 `codex/*`、`feat/*`、`ops/*` 或 docs 分支进入 PR。
+- GitHub Actions CI 负责仓库级验证：`npm test`、`npm run admin:test` 和 `npm run admin:build`。当 GitHub-hosted runner 受 billing/spending-limit blocker 影响时，使用 clean local/manual CI-equivalent validation 作为临时 waiver。
+- Staging 不自动创建。任何 AWS staging mutation 前必须先执行 `docs/STAGING_PROVISIONING.md` 的 dry-run checklist，并获得明确 operator approval。
+- Production 不自动部署。生产变更必须保留 `.env`、SQLite、node config 和 Nginx public admin blocking，并按 `docs/DEPLOYMENT_FLOW.md` 验证。
+- 生产运行由 AWS 上的 systemd、Nginx、Express Console/API、SQLite 和 Shadowsocks 组成。
+
+详细流程以 `docs/PROJECT_CONTEXT.md`、`docs/ENVIRONMENT_TOPOLOGY.md`、`docs/DEPLOYMENT_FLOW.md` 和 `docs/STAGING_PROVISIONING.md` 为准。
+
 ## Clash 订阅
 
 proxy-gateway 为 Clash Verge / Mihomo 提供本地 Shadowsocks 订阅：
