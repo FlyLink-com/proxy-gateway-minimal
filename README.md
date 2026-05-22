@@ -117,7 +117,7 @@ npm run admin:test
 
 The shell calls `/api/admin/subscriptions`, `/api/admin/nodes`, and `/api/admin/overview`. In Vite dev mode, leave the API base URL blank and open a local backend or SSH tunnel on `127.0.0.1:3456`; the dev server proxies same-origin `/api` requests to that backend. Set `VITE_ADMIN_API_BASE_URL` or the in-app API base URL only when the target explicitly supports browser CORS.
 
-The current admin shell includes connection health diagnostics and confirmation dialogs for high-risk subscription actions. Connection health checks `/api/health` without auth, then checks `/api/admin/overview` with Bearer auth. Disable, reset-token, and temporary-link workflows keep generated subscription URLs visible-once only.
+The current admin shell includes connection health diagnostics and confirmation dialogs for sensitive subscription actions. Connection health checks `/api/health` without auth, then checks `/api/admin/overview` with Bearer auth. Disable actions require confirmation, while reset-token and temporary-link workflows keep generated subscription URLs visible-once only.
 
 Do not expose this admin shell through the public Nginx gateway. Public production access should continue to allow only health checks and subscription fetches.
 
