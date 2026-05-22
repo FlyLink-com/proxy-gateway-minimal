@@ -55,11 +55,11 @@ Do not use two-step inline table buttons for reset or disable. They are lightwei
 
 ### Disable Subscription
 
-Disabling an active subscription must no longer execute directly from the table button.
+Any table action that would call `disableTenant(id)` must no longer execute directly from the table button.
 
 Flow:
 
-1. Operator clicks the disable action for an enabled tenant.
+1. Operator clicks the disable action for a tenant whose current table path would call `disableTenant(id)`.
 2. UI opens a danger confirmation dialog.
 3. Dialog states that the selected user will no longer be able to fetch a valid subscription until re-enabled.
 4. Cancel closes the dialog and does not call the API.
@@ -191,7 +191,8 @@ Generated subscription URLs remain transient visible-once values in component st
 - Do not render historical full subscription URLs.
 - Do not store generated URLs in `sessionStorage`.
 - Do not add raw tokens, subscription URLs, or production values to tests or docs.
-- Do not put subscription tokens into query strings in the Admin UI.
+- Do not put console tokens into query strings for Admin API calls.
+- Generated subscription URLs may be rendered only as backend-returned visible-once results after create, reset, or temporary-link generation.
 - Do not change backend auth boundaries.
 - Keep Admin UI local-only or SSH-tunnel-only.
 
@@ -201,7 +202,7 @@ Add or update frontend tests under `admin/src/test/`.
 
 Required coverage:
 
-- Disable active subscription opens confirmation before API call.
+- Any table action that would call `disableTenant()` opens confirmation before API call.
 - Cancel disable does not call `disableTenant()`.
 - Confirm disable calls existing `disableTenant()` and refreshes rows.
 - Enable subscription is documented as non-danger and remains unchanged or covered by an explicit direct-path test.
@@ -226,7 +227,7 @@ npm test
 
 ## Acceptance Criteria
 
-- Disable active subscription no longer executes directly from the table button.
+- Any table action that would call `disableTenant()` no longer executes directly from the table button.
 - Confirm disable calls the existing `disableTenant()` API client method.
 - Cancel disable does not call the API.
 - Enable subscription remains unchanged or is explicitly documented as non-danger.
