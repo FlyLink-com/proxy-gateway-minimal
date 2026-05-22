@@ -1,12 +1,12 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useMemo, useState } from "react";
 import { type AdminPage } from "./app/navigation";
 import { AdminLayout } from "./components/layout/admin-layout";
 import { createAdminApiClient, type AdminApiClient } from "./features/subscriptions/api-client";
 import {
   loadAdminSession,
-  saveAdminSession,
   type AdminSession
 } from "./features/subscriptions/admin-session";
+import { ConnectionPanel } from "./features/subscriptions/connection-panel";
 import { SubscriptionsPage } from "./features/subscriptions/subscriptions-page";
 import { ApiPlaygroundPage } from "./pages/api-playground-page";
 import { DiagnosticsPage } from "./pages/diagnostics-page";
@@ -56,56 +56,4 @@ function renderPage(
     case "settings":
       return <SettingsPage session={adminSession} />;
   }
-}
-
-function ConnectionPanel({
-  session,
-  onSave
-}: {
-  session: AdminSession;
-  onSave: (session: AdminSession) => void;
-}) {
-  const [baseUrl, setBaseUrl] = useState(session.baseUrl);
-  const [consoleToken, setConsoleToken] = useState(session.consoleToken);
-  const [saved, setSaved] = useState(false);
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const next = { baseUrl: baseUrl.trim(), consoleToken: consoleToken.trim() };
-    saveAdminSession(next);
-    onSave(next);
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 1600);
-  }
-
-  return (
-    <form className="connection-panel" onSubmit={submit}>
-      <div>
-        <strong>Admin API connection</strong>
-        <p className="muted">Use the same-origin proxy or an SSH tunnel. Public Nginx blocks admin APIs.</p>
-      </div>
-      <div className="connection-grid">
-        <label>
-          <span>API base URL</span>
-          <input
-            value={baseUrl}
-            onChange={(event) => setBaseUrl(event.target.value)}
-            placeholder="Same origin"
-          />
-        </label>
-        <label>
-          <span>Console token</span>
-          <input
-            value={consoleToken}
-            onChange={(event) => setConsoleToken(event.target.value)}
-            type="password"
-            autoComplete="off"
-          />
-        </label>
-        <button className="primary-button" type="submit">
-          {saved ? "Saved" : "Save"}
-        </button>
-      </div>
-    </form>
-  );
 }
