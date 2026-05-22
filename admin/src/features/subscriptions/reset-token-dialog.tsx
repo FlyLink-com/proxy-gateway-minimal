@@ -22,6 +22,8 @@ export function ResetTokenDialog({ tenant, onClose, onReset }: ResetTokenDialogP
   }
 
   async function resetToken() {
+    if (pending || result) return;
+
     setPending(true);
     setError("");
     try {
@@ -41,24 +43,36 @@ export function ResetTokenDialog({ tenant, onClose, onReset }: ResetTokenDialogP
             <h3 id="reset-token-title">Reset token</h3>
             <p className="muted">{activeTenant.displayName}</p>
           </div>
-          <button className="ghost-button" type="button" onClick={close}>Close</button>
+          <button className="ghost-button" type="button" onClick={close} disabled={pending}>Close</button>
         </div>
 
         <p className="modal-copy">
-          Resetting the token creates a new visible-once subscription URL. The previous token stops refreshing after reset.
+          Resetting this token invalidates the previous subscription URL. A replacement URL is generated after
+          confirmation and is visible once in this dialog.
         </p>
         {error ? <div className="alert alert-error">{error}</div> : null}
 
         <div className="modal-actions">
-          <button className="ghost-button" type="button" onClick={close}>Cancel</button>
-          <button className="danger-button" type="button" onClick={() => void resetToken()} disabled={pending}>
-            {pending ? "Resetting" : "Reset token"}
-          </button>
+          {result ? (
+            <button className="primary-button" type="button" onClick={close}>
+              Done
+            </button>
+          ) : (
+            <>
+              <button className="ghost-button" type="button" onClick={close} disabled={pending}>
+                Cancel
+              </button>
+              <button className="danger-button" type="button" onClick={() => void resetToken()} disabled={pending}>
+                {pending ? "Resetting" : "Confirm reset token"}
+              </button>
+            </>
+          )}
         </div>
 
         {result ? (
           <div className="visible-once">
-            <strong>Visible once URL</strong>
+            <strong>New visible-once URL</strong>
+            <span>Copy this URL now. It will not be shown again after closing this dialog.</span>
             <code>{result.subscriptionUrl}</code>
           </div>
         ) : null}

@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createAdminApiClient, type AdminApiClient } from "../features/subscriptions/api-client";
 import { loadAdminSession, saveAdminSession } from "../features/subscriptions/admin-session";
+import { ResetTokenDialog } from "../features/subscriptions/reset-token-dialog";
 import { SubscriptionsPage } from "../features/subscriptions/subscriptions-page";
 import type { SubscriptionTenant } from "../features/subscriptions/types";
 import { NodesPage } from "../pages/nodes-page";
@@ -155,6 +156,185 @@ describe("subscription page", () => {
 
     expect(writeText).not.toHaveBeenCalled();
     expect(await screen.findByText(/Full subscription URLs are only visible immediately/i)).not.toBeNull();
+  });
+
+  test("asks for confirmation before disabling and cancel does not call the API", async () => {
+    const disableTenant = vi.fn(async (id: string) => tenant({ id, status: "disabled" }));
+    const listTenants = vi.fn(async () => [tenant({ status: "expiring" })]);
+
+    render(createElement(SubscriptionsPage, {
+      search: "",
+      apiClient: adminClient({ listTenants, disableTenant })
+    }));
+
+    expect(await screen.findByText("real-user")).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle("Disable subscription"));
+
+    const dialog = screen.getByRole("dialog", { name: /disable subscription/i });
+    expect(within(dialog).getByText("real-user")).not.toBeNull();
+    expect(within(dialog).getByText(/will not be able to fetch a valid subscription/i)).not.toBeNull();
+    expect(disableTenant).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
+
+    expect(disableTenant).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: /disable subscription/i })).toBeNull();
+  });
+
+  test("confirms every table path that would disable a non-disabled subscription", async () => {
+    const disableTenant = vi.fn(async (id: string) => tenant({ id, status: "disabled" }));
+    const listTenants = vi
+      .fn()
+      .mockResolvedValueOnce([tenant({ status: "expired" })])
+      .mockResolvedValueOnce([tenant({ status: "disabled" })]);
+
+    render(createElement(SubscriptionsPage, {
+      search: "",
+      apiClient: adminClient({ listTenants, disableTenant })
+    }));
+
+    expect(await screen.findByText("real-user")).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle("Disable subscription"));
+    const dialog = screen.getByRole("dialog", { name: /disable subscription/i });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^disable subscription$/i }));
+
+    await waitFor(() => {
+      expect(disableTenant).toHaveBeenCalledWith("tenant_1");
+    });
+    expect(await screen.findByText(/Disabled real-user/i)).not.toBeNull();
+    expect(listTenants).toHaveBeenCalledTimes(2);
+  });
+
+  test("enables disabled subscriptions directly without danger confirmation", async () => {
+    const enableTenant = vi.fn(async (id: string) => tenant({ id, status: "active" }));
+    const listTenants = vi
+      .fn()
+      .mockResolvedValueOnce([tenant({ status: "disabled" })])
+      .mockResolvedValueOnce([tenant({ status: "active" })]);
+
+    render(createElement(SubscriptionsPage, {
+      search: "",
+      apiClient: adminClient({ listTenants, enableTenant })
+    }));
+
+    expect(await screen.findByText("real-user")).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle("Enable subscription"));
+
+    await waitFor(() => {
+      expect(enableTenant).toHaveBeenCalledWith("tenant_1");
+    });
+    expect(screen.queryByRole("dialog", { name: /disable subscription/i })).toBeNull();
+    expect(await screen.findByText(/Enabled real-user/i)).not.toBeNull();
+  });
+
+  test("asks for confirmation before creating a temporary link and cancel does not call the API", async () => {
+    const createTempLink = vi.fn(async (id: string) => ({
+      tenantId: id,
+      tokenPrefix: "pgtmp_prefix",
+      expiresAt: "2026-05-23T00:00:00.000Z",
+      subscriptionUrl: "temp-url"
+    }));
+    const listTenants = vi.fn(async () => [tenant()]);
+
+    render(createElement(SubscriptionsPage, {
+      search: "",
+      apiClient: adminClient({ listTenants, createTempLink })
+    }));
+
+    expect(await screen.findByText("real-user")).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle("Create temporary link"));
+
+    const dialog = screen.getByRole("dialog", { name: /create temporary link/i });
+    expect(within(dialog).getByText(/temporary visible-once link/i)).not.toBeNull();
+    expect(within(dialog).getByText(/does not replace the primary token/i)).not.toBeNull();
+    expect(createTempLink).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
+
+    expect(createTempLink).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: /create temporary link/i })).toBeNull();
+  });
+
+  test("confirms temporary link generation and keeps visible-once result behavior", async () => {
+    const createTempLink = vi.fn(async (id: string) => ({
+      tenantId: id,
+      tokenPrefix: "pgtmp_prefix",
+      expiresAt: "2026-05-23T00:00:00.000Z",
+      subscriptionUrl: "temp-url"
+    }));
+    const listTenants = vi
+      .fn()
+      .mockResolvedValueOnce([tenant()])
+      .mockResolvedValueOnce([tenant()]);
+
+    render(createElement(SubscriptionsPage, {
+      search: "",
+      apiClient: adminClient({ listTenants, createTempLink })
+    }));
+
+    expect(await screen.findByText("real-user")).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle("Create temporary link"));
+    const dialog = screen.getByRole("dialog", { name: /create temporary link/i });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^create temporary link$/i }));
+
+    await waitFor(() => {
+      expect(createTempLink).toHaveBeenCalledWith("tenant_1");
+    });
+    expect(await screen.findByText("Temporary link for real-user")).not.toBeNull();
+    expect(screen.getByText("temp-url")).not.toBeNull();
+    expect(listTenants).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("reset token dialog", () => {
+  test("shows reset consequences and cancel does not call reset", () => {
+    const onReset = vi.fn(async (id: string) => ({
+      tenant: tenant({ id }),
+      subscriptionUrl: "reset-url"
+    }));
+    const onClose = vi.fn();
+
+    render(createElement(ResetTokenDialog, {
+      tenant: tenant(),
+      onClose,
+      onReset
+    }));
+
+    expect(screen.getByText(/invalidates the previous subscription URL/i)).not.toBeNull();
+    expect(screen.getByText(/visible once/i)).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(onReset).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("confirms reset, keeps visible-once result behavior, and removes repeat submit", async () => {
+    const onReset = vi.fn(async (id: string) => ({
+      tenant: tenant({ id, tokenPrefix: "pgsub_newpre" }),
+      subscriptionUrl: "reset-url"
+    }));
+
+    render(createElement(ResetTokenDialog, {
+      tenant: tenant(),
+      onClose: vi.fn(),
+      onReset
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: /confirm reset token/i }));
+
+    await waitFor(() => {
+      expect(onReset).toHaveBeenCalledWith("tenant_1");
+    });
+    expect(await screen.findByText("reset-url")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /confirm reset token/i })).toBeNull();
+    expect(screen.getByRole("button", { name: /done/i })).not.toBeNull();
+    expect(onReset).toHaveBeenCalledTimes(1);
   });
 });
 

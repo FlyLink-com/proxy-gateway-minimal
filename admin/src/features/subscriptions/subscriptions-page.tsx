@@ -4,6 +4,7 @@ import { StatusBadge } from "../../components/status-badge";
 import { copyText } from "../../lib/clipboard";
 import type { AdminApiClient } from "./api-client";
 import type { SubscriptionTenant } from "./types";
+import { ConfirmActionDialog } from "./confirm-action-dialog";
 import { CreateSubscriptionDialog } from "./create-subscription-dialog";
 import { RenewSubscriptionDialog } from "./renew-subscription-dialog";
 import { ResetTokenDialog } from "./reset-token-dialog";
@@ -40,8 +41,13 @@ export function SubscriptionsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
   const [renewTarget, setRenewTarget] = useState<SubscriptionTenant | null>(null);
   const [resetTarget, setResetTarget] = useState<SubscriptionTenant | null>(null);
+  const [disableTarget, setDisableTarget] = useState<SubscriptionTenant | null>(null);
+  const [tempLinkTarget, setTempLinkTarget] = useState<SubscriptionTenant | null>(null);
+  const [confirmPending, setConfirmPending] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
   const [lastCopied, setLastCopied] = useState(false);
   const [visibleOnce, setVisibleOnce] = useState<VisibleOnceResult | null>(null);
 
@@ -83,26 +89,84 @@ export function SubscriptionsPage({
     setActionError("Full subscription URLs are only visible immediately after create, reset, or temporary-link generation.");
   }
 
-  async function createTempLink(row: SubscriptionTenant) {
+  function requestTempLink(row: SubscriptionTenant) {
     setActionError("");
+    setActionNotice("");
+    setConfirmError("");
+    setDisableTarget(null);
+    setTempLinkTarget(row);
+  }
+
+  async function confirmTempLink() {
+    if (!tempLinkTarget) return;
+
+    const target = tempLinkTarget;
+    setConfirmPending(true);
+    setConfirmError("");
     try {
-      const result = await apiClient.createTempLink(row.id);
-      setVisibleOnce({ title: `Temporary link for ${row.displayName}`, url: result.subscriptionUrl });
+      const result = await apiClient.createTempLink(target.id);
+      setTempLinkTarget(null);
+      setVisibleOnce({ title: `Temporary link for ${target.displayName}`, url: result.subscriptionUrl });
+      await refreshRows();
+    } catch (requestError) {
+      setConfirmError(errorMessage(requestError));
+    } finally {
+      setConfirmPending(false);
+    }
+  }
+
+  function cancelTempLink() {
+    if (confirmPending) return;
+    setTempLinkTarget(null);
+    setConfirmError("");
+  }
+
+  function requestStatusToggle(row: SubscriptionTenant) {
+    setActionError("");
+    setActionNotice("");
+    setConfirmError("");
+    setTempLinkTarget(null);
+    if (row.status === "disabled") {
+      void enableSubscription(row);
+      return;
+    }
+    setDisableTarget(row);
+  }
+
+  async function enableSubscription(row: SubscriptionTenant) {
+    setActionError("");
+    setActionNotice("");
+    try {
+      await apiClient.enableTenant(row.id);
+      setActionNotice(`Enabled ${row.displayName}.`);
       await refreshRows();
     } catch (requestError) {
       setActionError(errorMessage(requestError));
     }
   }
 
-  async function toggleStatus(row: SubscriptionTenant) {
-    setActionError("");
+  async function confirmDisable() {
+    if (!disableTarget) return;
+
+    const target = disableTarget;
+    setConfirmPending(true);
+    setConfirmError("");
     try {
-      if (row.status === "disabled") await apiClient.enableTenant(row.id);
-      else await apiClient.disableTenant(row.id);
+      await apiClient.disableTenant(target.id);
+      setDisableTarget(null);
+      setActionNotice(`Disabled ${target.displayName}.`);
       await refreshRows();
     } catch (requestError) {
-      setActionError(errorMessage(requestError));
+      setConfirmError(errorMessage(requestError));
+    } finally {
+      setConfirmPending(false);
     }
+  }
+
+  function cancelDisable() {
+    if (confirmPending) return;
+    setDisableTarget(null);
+    setConfirmError("");
   }
 
   async function copyVisibleOnce() {
@@ -130,6 +194,7 @@ export function SubscriptionsPage({
 
       {error ? <div className="alert alert-error">{error}</div> : null}
       {actionError ? <div className="alert alert-error">{actionError}</div> : null}
+      {actionNotice ? <div className="alert">{actionNotice}</div> : null}
       {visibleOnce ? (
         <div className="visible-once">
           <strong>{visibleOnce.title}</strong>
@@ -194,7 +259,7 @@ export function SubscriptionsPage({
                     <button className="icon-button" type="button" onClick={unavailableExistingUrl} title="Copy subscription URL">
                       <Copy aria-hidden="true" />
                     </button>
-                    <button className="icon-button" type="button" onClick={() => void createTempLink(row)} title="Create temporary link">
+                    <button className="icon-button" type="button" onClick={() => requestTempLink(row)} title="Create temporary link">
                       <Link aria-hidden="true" />
                     </button>
                     <button className="icon-button" type="button" onClick={() => setRenewTarget(row)} title="Renew subscription">
@@ -203,7 +268,7 @@ export function SubscriptionsPage({
                     <button
                       className="icon-button"
                       type="button"
-                      onClick={() => void toggleStatus(row)}
+                      onClick={() => requestStatusToggle(row)}
                       title={row.status === "disabled" ? "Enable subscription" : "Disable subscription"}
                     >
                       {row.status === "disabled" ? <ShieldCheck aria-hidden="true" /> : <ShieldOff aria-hidden="true" />}
@@ -226,6 +291,29 @@ export function SubscriptionsPage({
           await apiClient.renewTenant(input);
           await refreshRows();
         }}
+      />
+      <ConfirmActionDialog
+        open={Boolean(disableTarget)}
+        title="Disable subscription"
+        tenantName={disableTarget?.displayName ?? ""}
+        consequence="This user will not be able to fetch a valid subscription until the subscription is enabled again."
+        confirmLabel="Disable subscription"
+        tone="danger"
+        pending={confirmPending}
+        error={disableTarget ? confirmError : ""}
+        onCancel={cancelDisable}
+        onConfirm={() => void confirmDisable()}
+      />
+      <ConfirmActionDialog
+        open={Boolean(tempLinkTarget)}
+        title="Create temporary link"
+        tenantName={tempLinkTarget?.displayName ?? ""}
+        consequence="This creates a temporary visible-once link for this user. It does not replace the primary token."
+        confirmLabel="Create temporary link"
+        pending={confirmPending}
+        error={tempLinkTarget ? confirmError : ""}
+        onCancel={cancelTempLink}
+        onConfirm={() => void confirmTempLink()}
       />
       <ResetTokenDialog
         tenant={resetTarget}
