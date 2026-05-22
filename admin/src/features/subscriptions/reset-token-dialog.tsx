@@ -45,20 +45,22 @@ export function ResetTokenDialog({ tenant, onClose, onReset }: ResetTokenDialogP
         </div>
 
         <p className="modal-copy">
-          Resetting the token creates a new visible-once subscription URL. The previous token stops refreshing after reset.
+          Resetting this token invalidates the previous subscription URL. A replacement URL is generated after
+          confirmation and is visible once in this dialog.
         </p>
         {error ? <div className="alert alert-error">{error}</div> : null}
 
         <div className="modal-actions">
           <button className="ghost-button" type="button" onClick={close}>Cancel</button>
           <button className="danger-button" type="button" onClick={() => void resetToken()} disabled={pending}>
-            {pending ? "Resetting" : "Reset token"}
+            {pending ? "Resetting" : "Confirm reset token"}
           </button>
         </div>
 
         {result ? (
           <div className="visible-once">
-            <strong>Visible once URL</strong>
+            <strong>New visible-once URL</strong>
+            <span>Copy this URL now. It will not be shown again after closing this dialog.</span>
             <code>{result.subscriptionUrl}</code>
           </div>
         ) : null}

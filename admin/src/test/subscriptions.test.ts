@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createAdminApiClient, type AdminApiClient } from "../features/subscriptions/api-client";
 import { loadAdminSession, saveAdminSession } from "../features/subscriptions/admin-session";
+import { ResetTokenDialog } from "../features/subscriptions/reset-token-dialog";
 import { SubscriptionsPage } from "../features/subscriptions/subscriptions-page";
 import type { SubscriptionTenant } from "../features/subscriptions/types";
 import { NodesPage } from "../pages/nodes-page";
@@ -287,6 +288,50 @@ describe("subscription page", () => {
     expect(await screen.findByText("Temporary link for real-user")).not.toBeNull();
     expect(screen.getByText("temp-url")).not.toBeNull();
     expect(listTenants).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("reset token dialog", () => {
+  test("shows reset consequences and cancel does not call reset", () => {
+    const onReset = vi.fn(async (id: string) => ({
+      tenant: tenant({ id }),
+      subscriptionUrl: "reset-url"
+    }));
+    const onClose = vi.fn();
+
+    render(createElement(ResetTokenDialog, {
+      tenant: tenant(),
+      onClose,
+      onReset
+    }));
+
+    expect(screen.getByText(/invalidates the previous subscription URL/i)).not.toBeNull();
+    expect(screen.getByText(/visible once/i)).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    expect(onReset).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  test("confirms reset and keeps visible-once result behavior", async () => {
+    const onReset = vi.fn(async (id: string) => ({
+      tenant: tenant({ id, tokenPrefix: "pgsub_newpre" }),
+      subscriptionUrl: "reset-url"
+    }));
+
+    render(createElement(ResetTokenDialog, {
+      tenant: tenant(),
+      onClose: vi.fn(),
+      onReset
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: /confirm reset token/i }));
+
+    await waitFor(() => {
+      expect(onReset).toHaveBeenCalledWith("tenant_1");
+    });
+    expect(await screen.findByText("reset-url")).not.toBeNull();
   });
 });
 
