@@ -23,7 +23,23 @@ Keep `/api/admin` private at Nginx unless a specific operator source IP is confi
 
 ```nginx
 location /api/admin/ {
-    deny all;
+    return 404;
+}
+```
+
+Do not expose the static console UI on the public gateway. The public site should allow only health checks and subscription fetches:
+
+```nginx
+location = /api/health {
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_pass http://127.0.0.1:3456;
+}
+
+location / {
+    return 404;
 }
 ```
 
@@ -34,6 +50,7 @@ location = /sub/clash.yaml {
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
     proxy_pass http://127.0.0.1:3456;
 }
 ```

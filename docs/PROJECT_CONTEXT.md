@@ -15,6 +15,7 @@ C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
 - Active branch: `feat/subscription-hardening`
 - Domain-based subscription exposure remains paused.
 - Nginx stays in front of the app as the gateway protection layer.
+- The public Nginx gateway does not expose the static console UI. It only allows `/api/health` and `/sub/clash.yaml`; all other public paths return `404`.
 - This branch adds temporary `pgtmp_` subscription links, explicit primary-token rotation tests, `/sub` rate limiting, app-level `/api/admin` source-IP allowlisting, and token redaction guidance.
 - The hardening branch was deployed to AWS Singapore `47.129.247.102` on 2026-05-22.
 - Default tracked node config now points at the active AWS Singapore node `aws-singapore-blue`.
@@ -43,6 +44,7 @@ git -C C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal log --onel
 - Instance name: `proxy-gateway-node-sg-blue-20260521`
 - Instance state verified live on 2026-05-22: `running`
 - Security group: `sg-04a165ec77f430ee8`
+- Public Nginx exposure verified on 2026-05-22: `/` and `/index.html` return `404`, `/api/admin/subscriptions` returns `404`, `/api/health` returns `200`, and `/sub/clash.yaml` with a valid token returns `200`.
 - Previous AWS instance with project tag `proxy-gateway-minimal`: `i-0589aac321172dd74`, verified live as `stopped`
 - Local ignored files under `.proxy-gateway/aws-singapore/` may be stale. In particular, old cached files referenced `52.221.198.76`; prefer live AWS queries over those cached status files.
 
@@ -120,6 +122,7 @@ Implemented scope:
 - Token rotation.
 - Rate limiting on `/sub`.
 - Block `/api/admin` from public access.
+- Block the public static console UI at Nginx.
 - Desensitize access logs so subscription tokens are not written to logs.
 - Align tracked default node config with the deployed AWS Singapore node.
 
