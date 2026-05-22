@@ -117,7 +117,11 @@ npm run admin:test
 
 The shell calls `/api/admin/subscriptions`, `/api/admin/nodes`, and `/api/admin/overview`. In Vite dev mode, leave the API base URL blank and open a local backend or SSH tunnel on `127.0.0.1:3456`; the dev server proxies same-origin `/api` requests to that backend. Set `VITE_ADMIN_API_BASE_URL` or the in-app API base URL only when the target explicitly supports browser CORS.
 
+The current admin shell includes connection health diagnostics and confirmation dialogs for sensitive subscription actions. Connection health checks `/api/health` without auth, then checks `/api/admin/overview` with Bearer auth. Disable actions require confirmation, while reset-token and temporary-link workflows keep generated subscription URLs visible-once only.
+
 Do not expose this admin shell through the public Nginx gateway. Public production access should continue to allow only health checks and subscription fetches.
+
+For production topology, deployment flow, staging decisions, and staging provisioning, use `docs/PROJECT_CONTEXT.md`, `docs/ENVIRONMENT_TOPOLOGY.md`, `docs/DEPLOYMENT_FLOW.md`, and `docs/STAGING_PROVISIONING.md` as the current source of truth.
 
 ## Clash 订阅
 
@@ -155,9 +159,9 @@ Subscription Admin Core 提供 SQLite 持久化的运营侧订阅用户管理，
 | `SUB_RATE_LIMIT_MAX` | `/sub` requests allowed per client IP per window, defaults to `30` |
 | `ADMIN_ALLOWED_CIDRS` | Comma-separated admin source allowlist, defaults to loopback and RFC1918 private ranges |
 
-管理端接口复用现有 Console Token 认证。租户订阅 URL 使用 `create` 或 `reset-token` 生成的租户 Token；Token 只在生成/重置时明文返回，数据库中保存哈希和可识别前缀。`/sub/clash.yaml` 保留 Console Token 兼容，同时支持租户 Token 拉取限定节点的订阅。
+管理端 API 使用 `Authorization: Bearer <console-token>` 认证。租户订阅 URL 使用 `create`、`reset-token` 或 `temp-link` 生成的订阅 Token；Token 只在生成/重置/临时链接创建时明文返回，数据库中保存哈希和可识别前缀。`/sub/clash.yaml` 保留 query-token 兼容，同时支持租户 Token 拉取限定节点的订阅。
 
-Temporary links use `pgtmp_` tokens and resolve through the same `/sub/clash.yaml` endpoint as primary `pgsub_` tokens. Admin APIs remain console-token protected and are additionally source-IP allowlisted in the app.
+Temporary links use `pgtmp_` tokens and resolve through the same `/sub/clash.yaml` endpoint as primary `pgsub_` tokens. Admin APIs remain Bearer console-token protected and are additionally source-IP allowlisted in the app.
 
 The subscription implementation is structured as a modular monolith:
 
@@ -186,7 +190,7 @@ npm run network:reset      # 清空本项目写入的代理设置
 
 ## API 端点
 
-当前文档列出 36 个 HTTP API 入口；76 是 `server/tests/` 中的测试用例数量。
+下表列出主要 HTTP API 入口；测试数量以当前 `npm test` 输出为准。
 
 ### Shadowsocks 管理
 
@@ -252,6 +256,7 @@ npm run network:reset      # 清空本项目写入的代理设置
 | POST  | `/api/admin/subscriptions/:id/disable`    | 禁用租户订阅                 |
 | POST  | `/api/admin/subscriptions/:id/enable`     | 启用租户订阅                 |
 | POST  | `/api/admin/subscriptions/:id/reset-token`| 重置租户 Token 并返回新 URL  |
+| POST  | `/api/admin/subscriptions/:id/temp-link`  | 生成临时订阅 URL             |
 | GET   | `/api/admin/nodes`                        | 查看可分配订阅节点           |
 | GET   | `/api/admin/overview`                     | 订阅用户统计和节点总览       |
 
@@ -268,6 +273,10 @@ npm run network:reset      # 清空本项目写入的代理设置
 
 ```
 .
+├── .github/
+│   └── workflows/ci.yml  # GitHub Actions repo-level validation
+├── admin/                # Vite React Admin Console Shell
+├── docs/                 # topology, deployment, staging, specs, plans
 ├── index.mjs              # npm 模块导出入口
 ├── bin/
 │   └── proxy-gateway.mjs  # CLI 入口
@@ -277,7 +286,9 @@ npm run network:reset      # 清空本项目写入的代理设置
 │   ├── app.mjs            # Express 应用工厂
 │   ├── state.mjs          # 运行时状态组装
 │   ├── middleware/
-│   │   └── auth.mjs       # Bearer Token 认证
+│   │   ├── admin-allowlist.mjs # Admin API source-IP allowlist
+│   │   ├── auth.mjs       # Bearer Token 认证
+│   │   └── rate-limit.mjs # /sub rate limiting
 │   ├── services/
 │   │   ├── ports.mjs      # TCP 端口探测
 │   │   ├── config.mjs     # 配置加载 + 密码脱敏
@@ -296,7 +307,10 @@ npm run network:reset      # 清空本项目写入的代理设置
 │   │   ├── network.mjs    # /api/network/*
 │   │   ├── admin-subscriptions.mjs # /api/admin/subscriptions/*, /api/admin/nodes, /api/admin/overview
 │   │   └── subscription.mjs # /sub/clash.yaml, /api/subscription/status
-│   └── tests/             # 76 个测试用例，100% 通过
+│   └── tests/             # 服务端测试；数量以 npm test 输出为准
+├── ops/                  # systemd, Nginx, recovery, operator docs
+├── scripts/              # Windows helpers, backup/restore, diagnostics
+└── config/               # ss-local and proxy server templates
 ```
 
 ## 配置文件
@@ -316,7 +330,7 @@ npm run network:reset      # 清空本项目写入的代理设置
 
 ## 技术栈
 
-- **Runtime**: Node.js v24 (ESM)
+- **Runtime**: Node.js 20.x / 22.x / 23.x / 24.x / 25.x / 26.x (ESM)
 - **Framework**: Express 5
 - **Proxy**: socks-proxy-agent + socks (HTTP-to-SOCKS5)
 - **Process**: child_process (ss-local 管理 + 守护进程)
