@@ -4,6 +4,7 @@ import { StatusBadge } from "../../components/status-badge";
 import { copyText } from "../../lib/clipboard";
 import type { AdminApiClient } from "./api-client";
 import type { SubscriptionTenant } from "./types";
+import { ConfirmActionDialog } from "./confirm-action-dialog";
 import { CreateSubscriptionDialog } from "./create-subscription-dialog";
 import { RenewSubscriptionDialog } from "./renew-subscription-dialog";
 import { ResetTokenDialog } from "./reset-token-dialog";
@@ -40,8 +41,12 @@ export function SubscriptionsPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [actionNotice, setActionNotice] = useState("");
   const [renewTarget, setRenewTarget] = useState<SubscriptionTenant | null>(null);
   const [resetTarget, setResetTarget] = useState<SubscriptionTenant | null>(null);
+  const [disableTarget, setDisableTarget] = useState<SubscriptionTenant | null>(null);
+  const [confirmPending, setConfirmPending] = useState(false);
+  const [confirmError, setConfirmError] = useState("");
   const [lastCopied, setLastCopied] = useState(false);
   const [visibleOnce, setVisibleOnce] = useState<VisibleOnceResult | null>(null);
 
@@ -94,15 +99,51 @@ export function SubscriptionsPage({
     }
   }
 
-  async function toggleStatus(row: SubscriptionTenant) {
+  function requestStatusToggle(row: SubscriptionTenant) {
     setActionError("");
+    setActionNotice("");
+    setConfirmError("");
+    if (row.status === "disabled") {
+      void enableSubscription(row);
+      return;
+    }
+    setDisableTarget(row);
+  }
+
+  async function enableSubscription(row: SubscriptionTenant) {
+    setActionError("");
+    setActionNotice("");
     try {
-      if (row.status === "disabled") await apiClient.enableTenant(row.id);
-      else await apiClient.disableTenant(row.id);
+      await apiClient.enableTenant(row.id);
+      setActionNotice(`Enabled ${row.displayName}.`);
       await refreshRows();
     } catch (requestError) {
       setActionError(errorMessage(requestError));
     }
+  }
+
+  async function confirmDisable() {
+    if (!disableTarget) return;
+
+    const target = disableTarget;
+    setConfirmPending(true);
+    setConfirmError("");
+    try {
+      await apiClient.disableTenant(target.id);
+      setDisableTarget(null);
+      setActionNotice(`Disabled ${target.displayName}.`);
+      await refreshRows();
+    } catch (requestError) {
+      setConfirmError(errorMessage(requestError));
+    } finally {
+      setConfirmPending(false);
+    }
+  }
+
+  function cancelDisable() {
+    if (confirmPending) return;
+    setDisableTarget(null);
+    setConfirmError("");
   }
 
   async function copyVisibleOnce() {
@@ -130,6 +171,7 @@ export function SubscriptionsPage({
 
       {error ? <div className="alert alert-error">{error}</div> : null}
       {actionError ? <div className="alert alert-error">{actionError}</div> : null}
+      {actionNotice ? <div className="alert">{actionNotice}</div> : null}
       {visibleOnce ? (
         <div className="visible-once">
           <strong>{visibleOnce.title}</strong>
@@ -203,7 +245,7 @@ export function SubscriptionsPage({
                     <button
                       className="icon-button"
                       type="button"
-                      onClick={() => void toggleStatus(row)}
+                      onClick={() => requestStatusToggle(row)}
                       title={row.status === "disabled" ? "Enable subscription" : "Disable subscription"}
                     >
                       {row.status === "disabled" ? <ShieldCheck aria-hidden="true" /> : <ShieldOff aria-hidden="true" />}
@@ -226,6 +268,18 @@ export function SubscriptionsPage({
           await apiClient.renewTenant(input);
           await refreshRows();
         }}
+      />
+      <ConfirmActionDialog
+        open={Boolean(disableTarget)}
+        title="Disable subscription"
+        tenantName={disableTarget?.displayName ?? ""}
+        consequence="This user will not be able to fetch a valid subscription until the subscription is enabled again."
+        confirmLabel="Disable subscription"
+        tone="danger"
+        pending={confirmPending}
+        error={disableTarget ? confirmError : ""}
+        onCancel={cancelDisable}
+        onConfirm={() => void confirmDisable()}
       />
       <ResetTokenDialog
         tenant={resetTarget}

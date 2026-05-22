@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createAdminApiClient, type AdminApiClient } from "../features/subscriptions/api-client";
 import { loadAdminSession, saveAdminSession } from "../features/subscriptions/admin-session";
 import { SubscriptionsPage } from "../features/subscriptions/subscriptions-page";
@@ -155,6 +155,78 @@ describe("subscription page", () => {
 
     expect(writeText).not.toHaveBeenCalled();
     expect(await screen.findByText(/Full subscription URLs are only visible immediately/i)).not.toBeNull();
+  });
+
+  test("asks for confirmation before disabling and cancel does not call the API", async () => {
+    const disableTenant = vi.fn(async (id: string) => tenant({ id, status: "disabled" }));
+    const listTenants = vi.fn(async () => [tenant({ status: "expiring" })]);
+
+    render(createElement(SubscriptionsPage, {
+      search: "",
+      apiClient: adminClient({ listTenants, disableTenant })
+    }));
+
+    expect(await screen.findByText("real-user")).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle("Disable subscription"));
+
+    const dialog = screen.getByRole("dialog", { name: /disable subscription/i });
+    expect(within(dialog).getByText("real-user")).not.toBeNull();
+    expect(within(dialog).getByText(/will not be able to fetch a valid subscription/i)).not.toBeNull();
+    expect(disableTenant).not.toHaveBeenCalled();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: /cancel/i }));
+
+    expect(disableTenant).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog", { name: /disable subscription/i })).toBeNull();
+  });
+
+  test("confirms every table path that would disable a non-disabled subscription", async () => {
+    const disableTenant = vi.fn(async (id: string) => tenant({ id, status: "disabled" }));
+    const listTenants = vi
+      .fn()
+      .mockResolvedValueOnce([tenant({ status: "expired" })])
+      .mockResolvedValueOnce([tenant({ status: "disabled" })]);
+
+    render(createElement(SubscriptionsPage, {
+      search: "",
+      apiClient: adminClient({ listTenants, disableTenant })
+    }));
+
+    expect(await screen.findByText("real-user")).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle("Disable subscription"));
+    const dialog = screen.getByRole("dialog", { name: /disable subscription/i });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^disable subscription$/i }));
+
+    await waitFor(() => {
+      expect(disableTenant).toHaveBeenCalledWith("tenant_1");
+    });
+    expect(await screen.findByText(/Disabled real-user/i)).not.toBeNull();
+    expect(listTenants).toHaveBeenCalledTimes(2);
+  });
+
+  test("enables disabled subscriptions directly without danger confirmation", async () => {
+    const enableTenant = vi.fn(async (id: string) => tenant({ id, status: "active" }));
+    const listTenants = vi
+      .fn()
+      .mockResolvedValueOnce([tenant({ status: "disabled" })])
+      .mockResolvedValueOnce([tenant({ status: "active" })]);
+
+    render(createElement(SubscriptionsPage, {
+      search: "",
+      apiClient: adminClient({ listTenants, enableTenant })
+    }));
+
+    expect(await screen.findByText("real-user")).not.toBeNull();
+
+    fireEvent.click(screen.getByTitle("Enable subscription"));
+
+    await waitFor(() => {
+      expect(enableTenant).toHaveBeenCalledWith("tenant_1");
+    });
+    expect(screen.queryByRole("dialog", { name: /disable subscription/i })).toBeNull();
+    expect(await screen.findByText(/Enabled real-user/i)).not.toBeNull();
   });
 });
 
