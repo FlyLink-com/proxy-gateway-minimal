@@ -58,6 +58,24 @@ test("startProxyGateway starts and stops an embedded app", async () => {
   assert.equal(state.closeCount, 1);
 });
 
+test("startProxyGateway startup logs do not expose the console token", async () => {
+  const state = fakeState();
+  const logs = [];
+  const handle = await startProxyGateway({
+    state,
+    logger: { log: (...parts) => logs.push(parts.join(" ")) }
+  });
+
+  try {
+    const output = logs.join("\n");
+    assert.doesNotMatch(output, /secret/);
+    assert.doesNotMatch(output, /Console Token:/);
+    assert.match(output, /Console Token Source:/);
+  } finally {
+    await handle.stop();
+  }
+});
+
 test("startProxyGateway closes runtime state when startup fails", async () => {
   const state = fakeState();
   state.autoStartHttpProxy = true;

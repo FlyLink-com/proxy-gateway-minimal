@@ -8,7 +8,10 @@ function logStartup(logger, state) {
   logger.log(`  Console:   http://${state.host}:${state.ports.console}/`);
   logger.log(`  SOCKS5:    ${state.host}:${state.ports.socks} (when ss-local running)`);
   logger.log(`  HTTP Proxy: ${state.host}:${state.ports.httpProxy}`);
-  logger.log(`  Console Token: ${state.consoleToken}`);
+  logger.log(`  Console Token Source: ${state.consoleTokenSource || "runtime"}`);
+  if (state.consoleTokenStorePath) {
+    logger.log(`  Console Token Store: ${state.consoleTokenStorePath}`);
+  }
 }
 
 function closeServer(server) {
