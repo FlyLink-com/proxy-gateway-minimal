@@ -26,7 +26,34 @@ export type RenewSubscriptionInput = {
 };
 
 export type ResetTokenResult = {
-  tenantId: string;
+  tenant: SubscriptionTenant;
   subscriptionUrl: string;
+};
+
+export type CreateSubscriptionResult = {
+  tenant: SubscriptionTenant;
+  subscriptionUrl: string;
+};
+
+export type TempLinkResult = {
+  tenantId: string;
   tokenPrefix: string;
+  expiresAt: string;
+  subscriptionUrl: string;
+};
+
+export type SubscriptionNode = {
+  id: string;
+  name: string;
+  status: string;
+};
+
+export type SubscriptionOverview = {
+  ok: boolean;
+  total: number;
+  active: number;
+  expiring: number;
+  expired: number;
+  disabled: number;
+  nodes: SubscriptionNode[];
 };
