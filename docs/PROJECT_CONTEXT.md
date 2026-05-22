@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-05-22, Asia/Shanghai.
+Last updated: 2026-05-23, Asia/Shanghai.
 
 This file is the handoff note for continuing the `proxy-gateway-minimal` work from a new Codex conversation. Read this file first, then inspect the live repo state before making changes.
 
@@ -22,6 +22,7 @@ C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
 - `PR #7 Refactor subscription core architecture` was merged into `master` on 2026-05-22.
 - `PR #8 Add environment foundation` was merged into `master` on 2026-05-22.
 - `PR #10 Restore subscriptions with service user` was merged into `master` on 2026-05-22.
+- `PR #12 Stop logging console token` was merged into `master` on 2026-05-23 Asia/Shanghai.
 - `master` now includes a minimal Git-tracked environment foundation: systemd templates, Nginx public gateway template, SQLite backup/restore scripts, expanded env example, and ops recovery documentation.
 - The admin UI is intended for local use or SSH tunnel access only. Do not expose it through the public gateway.
 - The hardening branch was deployed to AWS Singapore `47.129.247.102` on 2026-05-22.
@@ -31,7 +32,7 @@ C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
 
 - Current branch: `master`
 - Remote tracking branch: `origin/master`
-- Local `master` and `origin/master` are aligned at merge commit `c0533c5`.
+- Local `master` and `origin/master` are aligned at merge commit `c447e22`.
 - Recent architecture checkpoints:
   - `55d2496 docs: design subscription architecture refactor`
   - `04d5eed refactor: introduce subscription core and store contracts`
@@ -39,6 +40,7 @@ C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
 - GitHub PR #3: merged.
 - GitHub PR #8: merged.
 - GitHub PR #10: merged.
+- GitHub PR #12: merged.
 - Local Vite admin UI: `http://127.0.0.1:5173/`
 - Local backend `127.0.0.1:3456` is not expected to be running unless a local server or SSH tunnel is started.
 - Pre-hardening source branch commit: `d5341d4 docs: add domain https runbook`
@@ -71,6 +73,8 @@ git -C C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal log --onel
 - Production subscription DB path is `/opt/proxy-gateway-minimal/data/subscriptions.sqlite`.
 - Production backup verification passed on 2026-05-22: `/opt/proxy-gateway-minimal/data/backups/subscriptions-20260522T160153Z.sqlite` was created with mode `600` and `sqlite3 ... "pragma integrity_check;"` returned `ok`.
 - Production endpoint verification after ops sync on 2026-05-22: local `/api/health` returned `200`, local `/api/admin/subscriptions` without token returned `401`, public `/` returned `404`, public `/api/health` returned `200`, public `/api/admin/subscriptions` returned `404`, and public `/sub/clash.yaml` without token returned `401`.
+- PR #12 runtime files were synced to production and `proxy-gateway-console.service` was restarted on 2026-05-23 Asia/Shanghai. Post-restart journal check showed `raw_console_token_lines=0`; the service now logs `Console Token Source: env` and `Console Token Store: ...` instead of the raw admin token.
+- Post-restart production endpoint verification on 2026-05-23 Asia/Shanghai: `proxy-gateway-console.service`, `proxy-gateway-ss.service`, and `nginx` were active; public `/api/health` returned `200`, public `/api/admin/subscriptions` returned `404`, and public `/sub/clash.yaml` without token returned `401`.
 - Previous AWS instance with project tag `proxy-gateway-minimal`: `i-0589aac321172dd74`, verified live as `stopped`
 - Local ignored files under `.proxy-gateway/aws-singapore/` may be stale. In particular, old cached files referenced `52.221.198.76`; prefer live AWS queries over those cached status files.
 
@@ -97,7 +101,7 @@ Verified on 2026-05-22:
 - GitHub CLI account: `gaoyi1020-web`
 - Repository permission: `ADMIN`
 - Repository visibility: `PRIVATE`
-- Remote branches checked after PR #10 cleanup: `master`, `ops/domain-https`
+- Remote branches checked after PR #12 cleanup: `master`, `ops/domain-https`
 - AWS CLI identity: IAM user `arn:aws:iam::580857941765:user/gaoyi1020@gmail.com`
 - AWS default region: `us-east-1`; use `--region ap-southeast-1` for the running Singapore node.
 - AWS query for `47.129.247.102` returned the running instance `i-004ab1c6c71d06bca`.
