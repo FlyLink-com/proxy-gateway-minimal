@@ -117,7 +117,11 @@ SUBSCRIPTION_DB_PATH=/opt/proxy-gateway-minimal/.proxy-gateway/subscriptions.sql
 ```
 
 Restore stops `proxy-gateway-console.service`, saves the current database beside
-the live database, installs the backup with mode `600`, and starts the service.
+the live database, installs the backup with mode `600`, applies the owner from
+the systemd service `User`/`Group`, and starts the service. If a deployment uses
+a different service name or needs an explicit owner, set
+`SUBSCRIPTION_SERVICE_NAME`, `SUBSCRIPTION_SERVICE_USER`, or
+`SUBSCRIPTION_SERVICE_GROUP` for the restore command.
 
 ## Verification
 

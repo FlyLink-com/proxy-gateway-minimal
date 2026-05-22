@@ -65,9 +65,15 @@ test("backup and restore scripts protect the SQLite database boundary", () => {
   assert.match(backup, /chmod 600 "\$\{BACKUP_PATH\}"/);
 
   const restore = readText("scripts/restore-subscriptions.sh");
-  assert.match(restore, /systemctl stop proxy-gateway-console\.service/);
+  assert.match(restore, /SERVICE_NAME="\$\{SUBSCRIPTION_SERVICE_NAME:-proxy-gateway-console\.service\}"/);
+  assert.match(restore, /systemctl stop "\$\{SERVICE_NAME\}"/);
   assert.match(restore, /install -m 600/);
-  assert.match(restore, /systemctl start proxy-gateway-console\.service/);
+  assert.match(restore, /SUBSCRIPTION_SERVICE_USER/);
+  assert.match(restore, /systemctl show -p "\$\{property\}" --value "\$\{SERVICE_NAME\}"/);
+  assert.match(restore, /service_property User/);
+  assert.match(restore, /service_property Group/);
+  assert.doesNotMatch(restore, /chown proxy-gateway:proxy-gateway/);
+  assert.match(restore, /systemctl start "\$\{SERVICE_NAME\}"/);
 });
 
 test("ops README documents the recoverable runtime boundary", () => {
