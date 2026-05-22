@@ -186,6 +186,25 @@ textarea {
   min-width: 0;
 }
 
+.connection-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(860px, 100%);
+  min-width: 0;
+}
+
+.connection-actions {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+}
+
+.connection-actions .primary-button,
+.connection-actions .ghost-button {
+  white-space: nowrap;
+}
+
 .connection-grid label {
   display: flex;
   flex-direction: column;
@@ -200,6 +219,28 @@ textarea {
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   padding: 9px 12px;
+}
+
+.connection-health {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+}
+
+.connection-health-ok {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.connection-health-warning {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
 }
 
 .placeholder-panel {
@@ -488,7 +529,13 @@ th {
     grid-template-columns: 1fr;
   }
 
-  .connection-grid .primary-button {
+  .connection-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .connection-actions .primary-button,
+  .connection-actions .ghost-button {
     width: 100%;
   }
 }
