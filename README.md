@@ -159,6 +159,14 @@ Subscription Admin Core 提供 SQLite 持久化的运营侧订阅用户管理，
 
 Temporary links use `pgtmp_` tokens and resolve through the same `/sub/clash.yaml` endpoint as primary `pgsub_` tokens. Admin APIs remain console-token protected and are additionally source-IP allowlisted in the app.
 
+The subscription implementation is structured as a modular monolith:
+
+- `SubscriptionCore` owns subscription business rules.
+- `SubscriptionStore` is the persistence contract.
+- The current SQLite adapter keeps the existing table structure.
+- HTTP routes and future platform/payment integrations call the core instead of reading or writing subscription storage directly.
+- Existing subscription refreshes do not depend on future platform or payment availability.
+
 ## 代理模式
 
 | 模式  | 命令                    | 说明                                        |

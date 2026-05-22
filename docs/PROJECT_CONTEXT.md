@@ -12,29 +12,34 @@ C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
 
 ## Current Stage
 
-- Active branch: `feat/admin-console-shell`
+- Active branch: `feat/subscription-architecture-refactor`
 - Domain-based subscription exposure remains paused.
 - Nginx stays in front of the app as the gateway protection layer.
 - The public Nginx gateway does not expose the static console UI. It only allows `/api/health` and `/sub/clash.yaml`; all other public paths return `404`.
 - `master` already includes the subscription hardening work: temporary `pgtmp_` links, primary-token rotation, `/sub` rate limiting, app-level `/api/admin` source-IP allowlisting, Nginx public UI blocking, and token redaction guidance.
-- The current branch adds a separate Vite React admin UI under `admin/` for operator-only subscription management. It is not merged into the legacy `public/index.html` console.
-- The admin UI now calls the real `/api/admin/*` backend APIs. It is no longer mock-only.
+- `PR #3 Add admin console shell` was merged into `master` on 2026-05-22.
+- The admin UI calls the real `/api/admin/*` backend APIs. It is no longer mock-only.
+- The current branch restructures the subscription system into a modular monolith: `SubscriptionCore`, `SubscriptionStore`, SQLite adapter, serializer/validation modules, and a future platform integration boundary.
 - The admin UI is intended for local use or SSH tunnel access only. Do not expose it through the public gateway.
 - The hardening branch was deployed to AWS Singapore `47.129.247.102` on 2026-05-22.
 - Default tracked node config now points at the active AWS Singapore node `aws-singapore-blue`.
 
 ## Verified Local State
 
-- Current branch: `feat/admin-console-shell`
-- Remote tracking branch: `origin/feat/admin-console-shell`
-- Current admin UI checkpoint: `fix: proxy admin api for local ui testing` on `feat/admin-console-shell`
-- GitHub PR: `#3 Add admin console shell`, Draft, targeting `master`
+- Current branch: `feat/subscription-architecture-refactor`
+- Remote tracking branch: `origin/feat/subscription-architecture-refactor`
+- Base: latest `master` after merging PR #3 at `9637c69`.
+- Current architecture checkpoints:
+  - `55d2496 docs: design subscription architecture refactor`
+  - `04d5eed refactor: introduce subscription core and store contracts`
+- GitHub PR #7: open Draft PR for the subscription architecture refactor.
+- GitHub PR #3: merged.
 - Local Vite admin UI: `http://127.0.0.1:5173/`
 - Local backend `127.0.0.1:3456` is not expected to be running unless a local server or SSH tunnel is started.
 - Pre-hardening source branch commit: `d5341d4 docs: add domain https runbook`
 - Latest deployed hardening base before config alignment: `93b8610 chore: finish subscription hardening verification`
 - `v0.1.0-mvp` is tagged on `master` at `8d38d2c Merge pull request #5 from gaoyi1020-web/feat/subscription-admin-core`
-- Stage close-out goal: verify the real admin UI through an SSH tunnel, then decide whether PR #3 is ready to mark Ready for Review and merge.
+- Stage close-out goal: finish verification, push `feat/subscription-architecture-refactor`, and open a PR for the structural refactor.
 
 Quick check:
 
@@ -176,6 +181,24 @@ Verified on 2026-05-22:
 - Chrome mobile-width check: `innerWidth=390`, `docWidth=390`, `bodyWidth=390`.
 - GitHub PR #3 includes the Vite dev proxy fix for local UI testing through an SSH tunnel.
 - Real UI through Vite dev proxy plus SSH tunnel loaded production data on 2026-05-22: 2 subscription users, no browser fetch failure.
+
+## Recent Subscription Architecture Refactor
+
+Branch: `feat/subscription-architecture-refactor`.
+
+Implemented scope:
+
+- `SubscriptionCore` is exported from `server/services/subscriptions/core.mjs`.
+- `server/services/subscriptions/service.mjs` remains as a compatibility export for existing imports.
+- `SubscriptionStore` required methods are documented and validated in `store-contract.mjs`.
+- Current SQLite implementation is exposed as `createSqliteSubscriptionStore`, with `createSubscriptionRepository` retained as a compatibility alias.
+- Serializer and validation helpers were split out of the core module.
+- `createPlatformSubscriptionIntegration()` defines the future platform/payment caller boundary without adding public platform APIs.
+- Runtime state now exposes both `subscriptions.core/store` and compatibility aliases `subscriptions.service/repository`.
+- Contract tests verify core/store/platform boundaries and confirm public subscription refresh does not depend on platform integration availability.
+- HTTP routes prefer `subscriptions.core` and keep `subscriptions.service` as a compatibility fallback.
+- `SubscriptionCore` exposes `listNodes()` as the stable node-list contract and keeps `nodes()` as a compatibility alias.
+- `/api/admin/overview` returns flat UI fields and retains the legacy `counts` object.
 
 Before continuing from a new session, refresh the repo and current AWS state:
 

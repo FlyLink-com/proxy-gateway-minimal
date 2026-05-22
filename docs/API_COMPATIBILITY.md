@@ -35,3 +35,34 @@ New:
 - `GET /api/subscription/status`
 
 Control routes require the console token. `GET /api/health` and `GET /proxy.pac` remain public.
+
+## Subscription Admin Contract
+
+The structural refactor keeps the subscription HTTP contract stable while moving business rules behind `SubscriptionCore` and persistence behind `SubscriptionStore`.
+
+Admin routes:
+
+- `GET /api/admin/subscriptions`
+- `POST /api/admin/subscriptions`
+- `GET /api/admin/subscriptions/:id`
+- `PATCH /api/admin/subscriptions/:id`
+- `POST /api/admin/subscriptions/:id/renew`
+- `POST /api/admin/subscriptions/:id/disable`
+- `POST /api/admin/subscriptions/:id/enable`
+- `POST /api/admin/subscriptions/:id/reset-token`
+- `POST /api/admin/subscriptions/:id/temp-link`
+- `GET /api/admin/nodes`
+- `GET /api/admin/overview`
+
+Public subscription route:
+
+- `GET /sub/clash.yaml?token=...`
+
+Compatibility rules:
+
+- Admin route paths and response shapes remain compatible with the React admin shell.
+- `GET /api/admin/overview` returns flat UI fields (`total`, `active`, `expiring`, `disabled`, `expired`) and keeps the legacy `counts` object for compatibility.
+- Primary `pgsub_` tokens and temporary `pgtmp_` tokens are still stored as hashes.
+- Full subscription URLs are still visible only on create, reset, or temporary-link creation.
+- `/sub/clash.yaml` depends on `SubscriptionCore`, `SubscriptionStore`, node config, and secrets. It must not depend on future platform or payment availability.
+- SQLite remains the production store adapter in this phase; future stores must implement the `SubscriptionStore` method contract.

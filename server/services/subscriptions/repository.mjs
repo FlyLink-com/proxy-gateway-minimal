@@ -72,7 +72,7 @@ function mapTempLinkAuth(row) {
   };
 }
 
-export function createSubscriptionRepository({ dbPath, database } = {}) {
+export function createSqliteSubscriptionStore({ dbPath, database } = {}) {
   if (!database && !dbPath) {
     throw new Error("dbPath or database is required");
   }
@@ -269,3 +269,5 @@ export function createSubscriptionRepository({ dbPath, database } = {}) {
     close
   };
 }
+
+export const createSubscriptionRepository = createSqliteSubscriptionStore;

@@ -74,12 +74,21 @@ function fakeService() {
       createdAt: "2026-05-22T00:00:00.000Z",
       subscriptionUrl: "https://gateway.example.com/sub/clash.yaml?token=pgtmp_route_token"
     }),
+    listNodes: () => [{ id: "node_sg", name: "aws-singapore", status: "online" }],
     nodes: () => [{ id: "node_sg", name: "aws-singapore", status: "online" }],
-    overview: () => ({ ok: true, counts: { total: 1, active: 1, expiring: 0, disabledOrExpired: 0 } })
+    overview: () => ({
+      ok: true,
+      total: 1,
+      active: 1,
+      expiring: 0,
+      disabled: 0,
+      expired: 0,
+      counts: { total: 1, active: 1, expiring: 0, disabledOrExpired: 0 }
+    })
   };
 }
 
-function fakeState(service = fakeService()) {
+function fakeState(service = fakeService(), subscriptionKey = "service") {
   return {
     rootDir: new URL("../../", import.meta.url).pathname,
     host: "127.0.0.1",
@@ -90,7 +99,7 @@ function fakeState(service = fakeService()) {
       ssLocal: { status: () => ({ running: false }), start: async () => ({ ok: true }), stop: async () => ({ ok: true }) },
       httpProxy: { status: () => ({ running: false }), start: async () => ({ ok: true }), stop: async () => ({ ok: true }) }
     },
-    subscriptions: { service },
+    subscriptions: { [subscriptionKey]: service },
     isPortListening: async () => false,
     runCommand: async () => ({ ok: true, stdout: "", stderr: "", code: 0, timedOut: false })
   };
@@ -255,8 +264,28 @@ test("admin subscription nodes and overview return service outputs", async () =>
     assert.equal(overview.response.status, 200);
     assert.deepEqual(overview.body, {
       ok: true,
+      total: 1,
+      active: 1,
+      expiring: 0,
+      disabled: 0,
+      expired: 0,
       counts: { total: 1, active: 1, expiring: 0, disabledOrExpired: 0 }
     });
+  } finally {
+    server.close();
+  }
+});
+
+test("admin subscription routes work when runtime exposes only subscription core", async () => {
+  const { server, baseUrl } = await listen(createApp(fakeState(fakeService(), "core")));
+  try {
+    const listed = await requestJson(baseUrl, "/api/admin/subscriptions");
+    assert.equal(listed.response.status, 200);
+    assert.equal(listed.body.items[0].id, "tenant_1");
+
+    const nodes = await requestJson(baseUrl, "/api/admin/nodes");
+    assert.equal(nodes.response.status, 200);
+    assert.deepEqual(nodes.body, { items: [{ id: "node_sg", name: "aws-singapore", status: "online" }] });
   } finally {
     server.close();
   }

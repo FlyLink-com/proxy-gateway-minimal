@@ -33,7 +33,7 @@ export function createApp(state, options = {}) {
   app.use(legacyProxyRoutes(state));
   app.use(systemProxyRoutes(state));
   app.use(networkRoutes(state));
-  if (state.subscriptions?.service) {
+  if (state.subscriptions?.core || state.subscriptions?.service) {
     app.use(adminSubscriptionRoutes(state));
   }
   app.use("/sub", createRateLimitMiddleware({
