@@ -113,6 +113,8 @@ The stopped `i-0589aac321172dd74` instance is historical until a separate ops ch
 
 Current staging target decision: create a clean staging instance when staging is needed. Do not start the stopped historical instance and call it staging as-is. See `docs/STAGING_TARGET_DECISION.md`.
 
+Clean staging provisioning steps, staging-only secret/data boundaries, validation, promotion gates, and cleanup rules live in `docs/STAGING_PROVISIONING.md`.
+
 ## Backup And Restore
 
 Create a SQLite backup:
