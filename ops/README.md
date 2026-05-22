@@ -111,6 +111,8 @@ Use `docs/DEPLOYMENT_FLOW.md` before promoting a candidate:
 
 The stopped `i-0589aac321172dd74` instance is historical until a separate ops change explicitly reassigns and verifies it as staging.
 
+Current staging target decision: create a clean staging instance when staging is needed. Do not start the stopped historical instance and call it staging as-is. See `docs/STAGING_TARGET_DECISION.md`.
+
 ## Backup And Restore
 
 Create a SQLite backup:

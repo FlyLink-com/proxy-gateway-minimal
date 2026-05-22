@@ -37,6 +37,8 @@ Verified read-only on 2026-05-23 Asia/Shanghai.
 
 The stopped `proxy-gateway-aws-sg` instance must not be treated as staging just because it exists. If it is reused, first make a separate ops change that records the intent, tags it as staging, verifies its disk/runtime state, and confirms no production data or tokens will be reused.
 
+The staging target decision is recorded in `docs/STAGING_TARGET_DECISION.md`. Current recommendation: create a clean, explicitly tagged staging instance when staging is needed; do not start the stopped historical instance as-is.
+
 ## Branch Flow
 
 Use this flow for normal work:
