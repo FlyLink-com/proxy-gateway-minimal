@@ -2,7 +2,7 @@
 
 轻量级代理网关控制台 — 为 Clash/Mihomo 提供本地 Shadowsocks 节点的管理面板。
 
-> **当前架构**: Clash Verge (7897) 接管流量 → proxy-gateway SOCKS5 (1080) → ss-local → 远程 SS 服务器 (47.251.178.125)
+> **当前架构**: Clash Verge (7897) 接管流量 → proxy-gateway SOCKS5 (1080) → ss-local → 远程 SS 服务器 (47.129.247.102)
 
 ## 架构概览
 
@@ -24,7 +24,7 @@
 │       │                                │                │
 │       ▼                                ▼                │
 │  Clash 订阅 + 管理面板          Remote SS Server        │
-│  /sub/clash.yaml               (47.251.178.125)        │
+│  /sub/clash.yaml               (47.129.247.102)        │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -112,12 +112,12 @@ proxy-gateway 为 Clash Verge / Mihomo 提供本地 Shadowsocks 订阅：
 http://127.0.0.1:3456/sub/clash.yaml?token=你的Token
 ```
 
-在 Clash Verge 中添加此 URL 即可导入 SS 节点。订阅内容包含 `miyao` (18388) 和 `miyao-legacy` (8388) 两个节点。
+在 Clash Verge 中添加此 URL 即可导入 SS 节点。当前生产订阅默认包含 `aws-singapore-blue` (18388) 节点。
 
 ### 完整代理链路
 
 ```
-应用 → Clash (7897) → SOCKS5 (1080) → ss-local → SS Server (47.251.178.125)
+应用 → Clash (7897) → SOCKS5 (1080) → ss-local → SS Server (47.129.247.102)
 ```
 
 ## Subscription Admin Core

@@ -8,15 +8,15 @@ function sampleConfig() {
   return {
     servers: [
       {
-        name: "miyao (Aliyun Shadowsocks)",
-        host: "47.251.178.125",
+        name: "aws-singapore-blue",
+        host: "47.129.247.102",
         port: 18388,
         method: "aes-256-gcm",
         password: "pw:with#chars"
       },
       {
-        name: "miyao-legacy",
-        host: "47.251.178.125",
+        name: "aws-singapore-backup",
+        host: "198.51.100.10",
         port: 8388,
         method: "aes-256-gcm",
         password: "secondary-secret"
@@ -49,13 +49,13 @@ test("generateClashSubscription emits Clash Shadowsocks YAML", () => {
 
   assert.match(yaml, /mixed-port: 7897/);
   assert.match(yaml, /mode: global/);
-  assert.match(yaml, /name: "miyao \(Aliyun Shadowsocks\)"/);
+  assert.match(yaml, /name: "aws-singapore-blue"/);
   assert.match(yaml, /type: ss/);
-  assert.match(yaml, /server: "47\.251\.178\.125"/);
+  assert.match(yaml, /server: "47\.129\.247\.102"/);
   assert.match(yaml, /port: 18388/);
   assert.match(yaml, /cipher: "aes-256-gcm"/);
   assert.match(yaml, /password: "pw:with#chars"/);
-  assert.match(yaml, /- "miyao \(Aliyun Shadowsocks\)"/);
+  assert.match(yaml, /- "aws-singapore-blue"/);
   assert.match(yaml, /- DIRECT/);
   assert.match(yaml, /- MATCH,GLOBAL/);
 });
@@ -72,8 +72,8 @@ test("subscriptionSummary returns metadata without passwords", () => {
   assert.equal(summary.serverCount, 2);
   assert.equal(summary.subscriptionUrl, "http://127.0.0.1:3456/sub/clash.yaml?token=secret");
   assert.deepEqual(summary.servers, [
-    { name: "miyao (Aliyun Shadowsocks)", host: "47.251.178.125", port: 18388, type: "ss" },
-    { name: "miyao-legacy", host: "47.251.178.125", port: 8388, type: "ss" }
+    { name: "aws-singapore-blue", host: "47.129.247.102", port: 18388, type: "ss" },
+    { name: "aws-singapore-backup", host: "198.51.100.10", port: 8388, type: "ss" }
   ]);
   assert.doesNotMatch(JSON.stringify(summary), /pw:with#chars|secondary-secret/);
 });

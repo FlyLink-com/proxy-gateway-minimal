@@ -16,16 +16,17 @@ C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
 - Domain-based subscription exposure remains paused.
 - Nginx stays in front of the app as the gateway protection layer.
 - This branch adds temporary `pgtmp_` subscription links, explicit primary-token rotation tests, `/sub` rate limiting, app-level `/api/admin` source-IP allowlisting, and token redaction guidance.
-- Deployment to AWS Singapore `47.129.247.102` is a separate operations step after merge.
+- The hardening branch was deployed to AWS Singapore `47.129.247.102` on 2026-05-22.
+- Default tracked node config now points at the active AWS Singapore node `aws-singapore-blue`.
 
 ## Verified Local State
 
 - Current branch: `feat/subscription-hardening`
 - Remote tracking branch: `origin/feat/subscription-hardening`
 - Pre-hardening source branch commit: `d5341d4 docs: add domain https runbook`
+- Latest deployed hardening base before config alignment: `93b8610 chore: finish subscription hardening verification`
 - `v0.1.0-mvp` is tagged on `master` at `8d38d2c Merge pull request #5 from gaoyi1020-web/feat/subscription-admin-core`
-- Tracked working tree was clean before this handoff file was added.
-- Stage close-out goal: preserve this handoff file, then continue hardening from a clean branch.
+- Stage close-out goal: keep the handoff file and tracked node config aligned with the live AWS Singapore deployment.
 
 Quick check:
 
@@ -37,6 +38,7 @@ git -C C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal log --onel
 ## Current Operations State
 
 - Current production server: AWS Singapore `47.129.247.102`
+- Current production node name: `aws-singapore-blue`
 - AWS instance: `i-004ab1c6c71d06bca`
 - Instance name: `proxy-gateway-node-sg-blue-20260521`
 - Instance state verified live on 2026-05-22: `running`
@@ -91,7 +93,7 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 
 ## Existing Docs To Read
 
-- `README.md`: user-facing project and API documentation. Some older sections still mention the pre-blue-deploy Aliyun server `47.251.178.125`; treat those as historical unless reverified.
+- `README.md`: user-facing project and API documentation.
 - `qa-report.md`: v0.1.0 test and QA summary. It is useful for test coverage, but the server references are historical.
 - `docs/DOMAIN_HTTPS.md`: domain HTTPS runbook. Currently paused.
 - `docs/superpowers/specs/2026-05-21-subscription-admin-core-design.md`: backend subscription-admin design.
@@ -108,19 +110,20 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 - Console-token subscription compatibility during migration.
 - Existing tests reported as 76 passing in `qa-report.md`.
 
-## Next Work
+## Recent Hardening Close-Out
 
-Next branch: `feat/subscription-hardening`.
+Branch: `feat/subscription-hardening`.
 
-Planned scope:
+Implemented scope:
 
 - Temporary random subscription links.
 - Token rotation.
 - Rate limiting on `/sub`.
 - Block `/api/admin` from public access.
 - Desensitize access logs so subscription tokens are not written to logs.
+- Align tracked default node config with the deployed AWS Singapore node.
 
-Before starting, refresh the repo and current AWS state, then create or switch to the hardening branch from the intended base:
+Before continuing from a new session, refresh the repo and current AWS state:
 
 ```powershell
 cd C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
