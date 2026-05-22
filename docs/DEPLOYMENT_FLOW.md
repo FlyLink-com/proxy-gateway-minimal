@@ -123,6 +123,16 @@ admin tests pass
 admin build passes
 ```
 
+GitHub Actions CI mirrors the repository-level validation for pull requests into `master` and pushes to `master`:
+
+```text
+npm test
+npm run admin:test
+npm run admin:build
+```
+
+The CI workflow installs root and `admin/` dependencies with `npm ci`, does not require AWS secrets, and does not deploy to staging or production. Passing CI is required evidence for a candidate, but it does not replace staging or production endpoint checks.
+
 ### 2. Candidate Selection
 
 Record:

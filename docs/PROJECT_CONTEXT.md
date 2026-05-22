@@ -42,6 +42,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - The hardening branch was deployed to AWS Singapore `47.129.247.102` on 2026-05-22.
 - Default tracked node config now points at the active AWS Singapore node `aws-singapore-blue`.
 - Phase 2 auth boundary work tightens protected `/api/*` routes to `Authorization: Bearer <console-token>` only; `/sub/clash.yaml` keeps query-token support for Clash/Mihomo subscription clients.
+- Phase 3 adds GitHub Actions CI for PRs into `master` and pushes to `master`; CI runs `npm test`, `npm run admin:test`, and `npm run admin:build` without AWS secrets or production deployment.
 
 ## Verified Local State
 
@@ -164,7 +165,7 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 - `README.md`: user-facing project and API documentation.
 - `qa-report.md`: v0.1.0 test and QA summary. It is useful for test coverage, but the server references are historical.
 - `docs/ENVIRONMENT_TOPOLOGY.md`: source-of-truth map for local repo, GitHub, branch roles, and AWS runtime roles.
-- `docs/DEPLOYMENT_FLOW.md`: promotion flow from development to candidate, staging, production, and rollback.
+- `docs/DEPLOYMENT_FLOW.md`: promotion flow from development to CI, candidate, staging, production, and rollback.
 - `docs/STAGING_TARGET_DECISION.md`: decision record for choosing a clean staging instance versus rebuilding the stopped historical node.
 - `docs/STAGING_PROVISIONING.md`: operator runbook for creating, validating, stopping, or destroying a clean staging instance.
 - `docs/DOMAIN_HTTPS.md`: domain HTTPS runbook. Currently paused.
