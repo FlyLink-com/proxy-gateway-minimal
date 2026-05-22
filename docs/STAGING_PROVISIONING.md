@@ -330,10 +330,12 @@ sudo systemctl daemon-reload
 
 sudo cp ops/nginx/proxy-gateway-public.conf /etc/nginx/sites-available/proxy-gateway-public.conf
 sudo ln -sf /etc/nginx/sites-available/proxy-gateway-public.conf /etc/nginx/sites-enabled/proxy-gateway-public.conf
+sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t
 
 sudo systemctl enable --now proxy-gateway-console.service
 sudo systemctl enable --now proxy-gateway-ss.service
+sudo systemctl enable --now nginx
 sudo systemctl reload nginx
 ```
 
