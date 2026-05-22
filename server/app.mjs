@@ -2,6 +2,7 @@ import express from "express";
 import { join } from "node:path";
 import { createAdminAllowlistMiddleware } from "./middleware/admin-allowlist.mjs";
 import { createAuthMiddleware } from "./middleware/auth.mjs";
+import { createRateLimitMiddleware } from "./middleware/rate-limit.mjs";
 import { legacyProxyRoutes } from "./routes/legacy-proxy.mjs";
 import { statusRoutes } from "./routes/status.mjs";
 import { diagnosticsRoutes } from "./routes/diagnostics.mjs";
@@ -35,6 +36,12 @@ export function createApp(state, options = {}) {
   if (state.subscriptions?.service) {
     app.use(adminSubscriptionRoutes(state));
   }
+  app.use("/sub", createRateLimitMiddleware({
+    windowMs: security.subRateLimit?.windowMs,
+    max: security.subRateLimit?.max,
+    nowFn: options.rateLimitNowFn,
+    keyFn: clientIpResolver
+  }));
   app.use(subscriptionRoutes(state));
   app.use(diagnosticsRoutes(state));
 
