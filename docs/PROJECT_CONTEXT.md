@@ -10,11 +10,19 @@ This file is the handoff note for continuing the `proxy-gateway-minimal` work fr
 C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
 ```
 
+## Current Stage
+
+- Active branch: `feat/subscription-hardening`
+- Domain-based subscription exposure remains paused.
+- Nginx stays in front of the app as the gateway protection layer.
+- This branch adds temporary `pgtmp_` subscription links, explicit primary-token rotation tests, `/sub` rate limiting, app-level `/api/admin` source-IP allowlisting, and token redaction guidance.
+- Deployment to AWS Singapore `47.129.247.102` is a separate operations step after merge.
+
 ## Verified Local State
 
-- Current branch: `ops/domain-https`
-- Remote tracking branch: `origin/ops/domain-https`
-- Latest branch commit: `d5341d4 docs: add domain https runbook`
+- Current branch: `feat/subscription-hardening`
+- Remote tracking branch: `origin/feat/subscription-hardening`
+- Pre-hardening source branch commit: `d5341d4 docs: add domain https runbook`
 - `v0.1.0-mvp` is tagged on `master` at `8d38d2c Merge pull request #5 from gaoyi1020-web/feat/subscription-admin-core`
 - Tracked working tree was clean before this handoff file was added.
 - Stage close-out goal: preserve this handoff file, then continue hardening from a clean branch.

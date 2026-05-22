@@ -105,6 +105,7 @@ export function createRuntimeState(options = {}) {
   const subscriptionDbPath = options.subscriptionDbPath || env.SUBSCRIPTION_DB_PATH || join(rootDir, ".proxy-gateway", "subscriptions.sqlite");
   const publicSubscriptionBaseUrl = String(env.PUBLIC_SUBSCRIPTION_BASE_URL || `http://${host}:${consolePort}`).trim().replace(/\/+$/, "");
   const adminAllowedCidrs = parseCsv(env.ADMIN_ALLOWED_CIDRS, DEFAULT_ADMIN_ALLOWED_CIDRS);
+  const tempLinkTtlMinutes = Number.parseInt(env.SUBSCRIPTION_TEMP_LINK_TTL_MINUTES, 10) || 24 * 60;
   const ownsSubscriptionRepository = !options.subscriptionRepository && !options.subscriptionService;
   const subscriptionRepository = options.subscriptionRepository || (
     ownsSubscriptionRepository ? createSubscriptionRepository({ dbPath: subscriptionDbPath }) : null
@@ -113,7 +114,8 @@ export function createRuntimeState(options = {}) {
     repository: subscriptionRepository,
     proxyConfig,
     publicSubscriptionBaseUrl,
-    expiringDays: Number.parseInt(env.SUBSCRIPTION_EXPIRING_DAYS, 10) || 7
+    expiringDays: Number.parseInt(env.SUBSCRIPTION_EXPIRING_DAYS, 10) || 7,
+    tempLinkTtlMinutes
   });
   let closed = false;
 
@@ -238,6 +240,7 @@ export function createRuntimeState(options = {}) {
       repository: subscriptionRepository,
       service: subscriptionService,
       publicSubscriptionBaseUrl,
+      tempLinkTtlMinutes,
       close
     },
     security: {
