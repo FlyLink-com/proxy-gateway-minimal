@@ -28,7 +28,7 @@ export function createDaemonLauncher({
 
       log(`Proxy Gateway daemon started (PID: ${child.pid})`);
       if (tokenInfo.source !== "env") {
-        log(`Console Token: ${token}`);
+        log(`Token stored in: ${tokenInfo.tokenStorePath}`);
       }
 
       return { pid: child.pid, token, generatedToken: tokenInfo.generated };

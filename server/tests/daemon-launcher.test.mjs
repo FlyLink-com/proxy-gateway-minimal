@@ -5,7 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { createDaemonLauncher } from "../services/daemon-launcher.mjs";
 
-test("daemon launcher provides a visible token when env has none", () => {
+test("daemon launcher provides a token to the child process without logging it", () => {
   const rootDir = mkdtempSync(join(tmpdir(), "proxy-gateway-daemon-"));
   const calls = [];
   const logs = [];
@@ -29,8 +29,9 @@ test("daemon launcher provides a visible token when env has none", () => {
     assert.equal(calls[0].options.detached, true);
     assert.equal(calls[0].options.env.CONSOLE_TOKEN, result.token);
     assert.match(result.token, /^[0-9a-f-]{36}$/i);
-    assert.match(logs.join("\n"), /Console Token:/);
-    assert.match(logs.join("\n"), new RegExp(result.token));
+    assert.doesNotMatch(logs.join("\n"), new RegExp(result.token));
+    assert.doesNotMatch(logs.join("\n"), /Console Token:/);
+    assert.match(logs.join("\n"), /Token stored in:/);
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
   }
