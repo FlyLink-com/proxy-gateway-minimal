@@ -10,6 +10,15 @@ This file is the handoff note for continuing the `proxy-gateway-minimal` work fr
 C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 ```
 
+## Environment Topology
+
+- The project now treats GitHub `gaoyi1020-web/proxy-gateway-minimal` plus the local checkout at `C:\Users\g\Projects\订阅管理\proxy-gateway-minimal` as the only active code source of truth.
+- `C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal` is a historical original checkout. It is useful for archaeology only and should not receive new work.
+- `C:\Users\g\OneDrive\文档\订阅管理` is a legacy empty Codex project shell. Do not treat it as a real repository.
+- Current production AWS node is `aws-singapore-blue` on `47.129.247.102`; future pre-release testing should use an explicitly assigned staging target before production changes.
+- Branch flow: `master` is the stable integrated baseline; use `codex/<task>`, `feat/<feature>`, or `ops/<topic>` for work; use a staging candidate only when an AWS pre-release test is needed.
+- Detailed topology and branch/AWS role definitions live in `docs/ENVIRONMENT_TOPOLOGY.md`.
+
 ## Current Stage
 
 - Active branch: `master` for the integrated baseline; create a new feature or ops branch before making further changes.
