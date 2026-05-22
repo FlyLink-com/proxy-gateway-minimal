@@ -46,7 +46,7 @@ function networkErrorResult(): ConnectionHealthResult {
   return result(
     "network-error",
     "Connection check failed",
-    "The browser could not reach the backend. Check the wrong API base URL, whether the backend is running, whether the SSH tunnel is open, and whether browser CORS is blocking the request."
+    "The browser could not reach the backend. Check the API base URL, backend process, SSH tunnel, and browser CORS settings."
   );
 }
 

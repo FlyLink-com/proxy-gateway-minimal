@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import {
   checkAdminConnectionHealth,
   type ConnectionHealthResult
@@ -30,13 +30,17 @@ export function ConnectionPanel({
   const [saved, setSaved] = useState(false);
   const [checking, setChecking] = useState(false);
   const [connectionHealth, setConnectionHealth] = useState<ConnectionHealthResult | null>(null);
+  const inputSeq = useRef(0);
+  const requestSeq = useRef(0);
 
   function updateBaseUrl(value: string) {
+    inputSeq.current += 1;
     setBaseUrl(value);
     setConnectionHealth(null);
   }
 
   function updateConsoleToken(value: string) {
+    inputSeq.current += 1;
     setConsoleToken(value);
     setConnectionHealth(null);
   }
@@ -51,6 +55,10 @@ export function ConnectionPanel({
   }
 
   async function checkConnectionStatus() {
+    const requestId = requestSeq.current + 1;
+    requestSeq.current = requestId;
+    const inputVersion = inputSeq.current;
+
     setSaved(false);
     setChecking(true);
     try {
@@ -58,9 +66,13 @@ export function ConnectionPanel({
         baseUrl,
         consoleToken
       });
-      setConnectionHealth(result);
+      if (requestSeq.current === requestId && inputSeq.current === inputVersion) {
+        setConnectionHealth(result);
+      }
     } finally {
-      setChecking(false);
+      if (requestSeq.current === requestId) {
+        setChecking(false);
+      }
     }
   }
 
