@@ -217,7 +217,7 @@ Required coverage:
 Stage close-out commands:
 
 ```powershell
-git diff --check
+git diff --check origin/master...HEAD
 npm run admin:test
 npm run admin:build
 npm test

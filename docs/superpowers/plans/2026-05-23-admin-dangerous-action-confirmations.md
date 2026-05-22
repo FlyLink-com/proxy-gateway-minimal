@@ -668,7 +668,7 @@ Check:
 Run:
 
 ```powershell
-git diff --check
+git diff --check origin/master...HEAD
 ```
 
 Expected: no output and exit code `0`.
@@ -730,7 +730,7 @@ gh pr create --repo gaoyi1020-web/proxy-gateway-minimal --draft --base master --
 - Generated URLs remain visible-once only.
 
 ## Test Plan
-- git diff --check
+- git diff --check origin/master...HEAD
 - npm run admin:test
 - npm run admin:build
 - npm test
@@ -778,7 +778,7 @@ If `jobs[].steps` is empty and logs are unavailable, document it as the known Gi
 - [ ] No backend endpoint changes.
 - [ ] No auth model changes.
 - [ ] No AWS, production, Nginx, systemd, or deployment changes.
-- [ ] `git diff --check` passes.
+- [ ] `git diff --check origin/master...HEAD` passes.
 - [ ] `npm run admin:test` passes.
 - [ ] `npm run admin:build` passes.
 - [ ] `npm test` passes.
