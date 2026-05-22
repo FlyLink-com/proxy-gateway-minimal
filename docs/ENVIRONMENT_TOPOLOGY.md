@@ -52,13 +52,15 @@ If a change needs AWS testing before production, create or designate a staging d
 
 ## AWS Runtime Roles
 
-Current AWS Singapore inventory, verified on 2026-05-23:
+Current AWS Singapore inventory, verified read-only on 2026-05-23:
 
-| Role | Instance | Public IP | State | Notes |
-| --- | --- | --- | --- | --- |
-| Production blue | `i-004ab1c6c71d06bca` | `47.129.247.102` | `running` | Current in-use subscription node. |
-| Historical stopped node | `i-0589aac321172dd74` | none | `stopped` | Old proxy-gateway node; do not treat as staging without explicit assignment. |
-| Staging / pre-release | TBD | TBD | TBD | Create or assign before testing deployment candidates. |
+| Role | Instance | Public IP | Private IP | State | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Production blue | `i-004ab1c6c71d06bca` | `47.129.247.102` | `172.31.26.232` | `running` | Current in-use subscription node. EC2 tags currently have `Purpose=blue-deploy` but no `Project` or `Role` tag. |
+| Historical stopped node | `i-0589aac321172dd74` | none | `172.31.24.0` | `stopped` | Old proxy-gateway node with `Project=proxy-gateway-minimal`; do not treat as staging without explicit reassignment and verification. |
+| Staging / pre-release | unassigned | unassigned | unassigned | unassigned | Create or assign before testing deployment candidates. |
+
+No Elastic IP allocation was found for the production public IP during the 2026-05-23 `describe-addresses` check. Do not stop the production instance unless an IP change is acceptable or an Elastic IP migration plan is prepared first.
 
 Production runtime path:
 
@@ -67,6 +69,17 @@ Production runtime path:
 ```
 
 The production directory is an operational runtime directory. Do not assume it is a Git checkout or a byte-for-byte copy of `master`. Verify production by service status, file presence, database health, and endpoint behavior.
+
+Production runtime listeners verified on 2026-05-23:
+
+| Address | Port | Role |
+| --- | --- | --- |
+| `0.0.0.0` | `80` | Nginx public gateway |
+| `0.0.0.0` | `18388` | Shadowsocks server |
+| `127.0.0.1` | `3456` | Console/API service |
+| `127.0.0.1` | `18180` | Local HTTP proxy |
+
+Production security group `sg-04a165ec77f430ee8` allows public `80/tcp`, `443/tcp`, and `18388/tcp+udp`; SSH `22/tcp` is restricted to `36.163.181.255/32`. HTTPS on `47.129.247.102` was not active during runtime verification even though `443/tcp` is allowed by the security group.
 
 ## Deployment States
 
@@ -78,6 +91,8 @@ Use these terms consistently:
 | Candidate / 待上线 | A reviewed commit or branch selected for staging verification. |
 | Staging | Candidate deployed to a non-production AWS target for endpoint and service checks. |
 | Production | Verified code/config deployed to the in-use AWS node. |
+
+Detailed promotion and rollback rules live in `docs/DEPLOYMENT_FLOW.md`.
 
 Minimum production checks:
 
