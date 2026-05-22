@@ -1,0 +1,16 @@
+[Unit]
+Description=Proxy Gateway Shadowsocks Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/opt/proxy-gateway-minimal/.env
+ExecStart=/usr/bin/ss-server -s 0.0.0.0 -p 18388 -m aes-256-gcm -k ${SS_PASSWORD} -u
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
