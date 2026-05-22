@@ -13,6 +13,7 @@ export function ResetTokenDialog({ tenant, onClose, onReset }: ResetTokenDialogP
   const [error, setError] = useState("");
 
   if (!tenant) return null;
+  const activeTenant = tenant;
 
   function close() {
     setResult(null);
@@ -24,7 +25,7 @@ export function ResetTokenDialog({ tenant, onClose, onReset }: ResetTokenDialogP
     setPending(true);
     setError("");
     try {
-      setResult(await onReset(tenant.id));
+      setResult(await onReset(activeTenant.id));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Reset token failed.");
     } finally {
@@ -38,7 +39,7 @@ export function ResetTokenDialog({ tenant, onClose, onReset }: ResetTokenDialogP
         <div className="modal-header">
           <div>
             <h3 id="reset-token-title">Reset token</h3>
-            <p className="muted">{tenant.displayName}</p>
+            <p className="muted">{activeTenant.displayName}</p>
           </div>
           <button className="ghost-button" type="button" onClick={close}>Close</button>
         </div>

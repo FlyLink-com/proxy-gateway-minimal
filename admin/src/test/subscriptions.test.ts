@@ -50,7 +50,8 @@ describe("admin API client", () => {
       "http://127.0.0.1:3456/api/admin/subscriptions",
       expect.objectContaining({ headers: expect.any(Headers) })
     );
-    const init = fetchMock.mock.calls[0][1] as RequestInit;
+    const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const init = firstCall[1];
     expect((init.headers as Headers).get("authorization")).toBe("Bearer console-secret");
     expect(tenants).toHaveLength(1);
     expect(tenants[0].nodeName).toBe("aws-singapore-blue");

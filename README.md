@@ -106,7 +106,7 @@ const handle = await startProxyGateway({
 
 ## Admin Console Shell
 
-The subscription admin shell lives in `admin/`. It is a Vite React app used to prototype the operator workflow before the backend subscription database is added.
+The subscription admin shell lives in `admin/`. It is a Vite React app for the operator workflow on top of the real subscription admin APIs.
 
 ```bash
 npm install --prefix admin
@@ -115,7 +115,9 @@ npm run admin:build
 npm run admin:test
 ```
 
-The first admin shell uses mock data and does not change the existing local console in `public/index.html`.
+The shell calls `/api/admin/subscriptions`, `/api/admin/nodes`, and `/api/admin/overview` through the configured API base URL. It defaults to `http://127.0.0.1:3456`, or `VITE_ADMIN_API_BASE_URL` at build time, and can be changed in the in-app connection panel for local backend access or an SSH tunnel.
+
+Do not expose this admin shell through the public Nginx gateway. Public production access should continue to allow only health checks and subscription fetches.
 
 ## Clash 订阅
 

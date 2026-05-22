@@ -5,8 +5,14 @@ export type AdminSession = {
 
 const KEY = "proxy-gateway-admin-session";
 
+const viteEnv = import.meta as ImportMeta & {
+  env?: {
+    VITE_ADMIN_API_BASE_URL?: string;
+  };
+};
+
 export const DEFAULT_ADMIN_SESSION: AdminSession = {
-  baseUrl: import.meta.env.VITE_ADMIN_API_BASE_URL || "http://127.0.0.1:3456",
+  baseUrl: viteEnv.env?.VITE_ADMIN_API_BASE_URL || "http://127.0.0.1:3456",
   consoleToken: ""
 };
 
