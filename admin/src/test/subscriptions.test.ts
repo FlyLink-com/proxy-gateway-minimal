@@ -1,10 +1,16 @@
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createAdminApiClient, type AdminApiClient } from "../features/subscriptions/api-client";
 import { loadAdminSession, saveAdminSession } from "../features/subscriptions/admin-session";
 import { SubscriptionsPage } from "../features/subscriptions/subscriptions-page";
 import type { SubscriptionTenant } from "../features/subscriptions/types";
+import { NodesPage } from "../pages/nodes-page";
+import { OverviewPage } from "../pages/overview-page";
+
+afterEach(() => {
+  cleanup();
+});
 
 function jsonResponse(body: unknown, init: ResponseInit = {}) {
   return new Response(JSON.stringify(body), {
@@ -118,5 +124,38 @@ describe("subscription page", () => {
 
     expect(writeText).not.toHaveBeenCalled();
     expect(await screen.findByText(/Full subscription URLs are only visible immediately/i)).not.toBeNull();
+  });
+});
+
+describe("overview and nodes pages", () => {
+  test("loads overview and nodes from backend endpoints", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ ok: true, total: 1, active: 1, expiring: 0, expired: 0, disabled: 0, nodes: [] }))
+      .mockResolvedValueOnce(jsonResponse({ items: [{ id: "node_sg", name: "aws-singapore-blue", status: "online" }] }));
+    const client = createAdminApiClient({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "secret",
+      fetcher: fetchMock
+    });
+
+    expect((await client.overview()).active).toBe(1);
+    expect((await client.listNodes())[0].name).toBe("aws-singapore-blue");
+  });
+
+  test("renders backend overview metrics and node rows", async () => {
+    const client = adminClient({
+      overview: async () => ({ ok: true, total: 3, active: 2, expiring: 1, expired: 0, disabled: 0, nodes: [] }),
+      listNodes: async () => [{ id: "node_sg", name: "aws-singapore-blue", status: "online" }]
+    });
+
+    const { unmount } = render(createElement(OverviewPage, { apiClient: client }));
+    expect(await screen.findByText("3")).not.toBeNull();
+    expect(await screen.findByText("2")).not.toBeNull();
+    unmount();
+
+    render(createElement(NodesPage, { apiClient: client }));
+    expect(await screen.findByText("aws-singapore-blue")).not.toBeNull();
+    expect(await screen.findByText("online")).not.toBeNull();
   });
 });
