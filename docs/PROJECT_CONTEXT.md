@@ -7,7 +7,7 @@ This file is the handoff note for continuing the `proxy-gateway-minimal` work fr
 ## Repository
 
 ```text
-C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
+C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 ```
 
 ## Current Stage
@@ -23,6 +23,7 @@ C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
 - `PR #8 Add environment foundation` was merged into `master` on 2026-05-22.
 - `PR #10 Restore subscriptions with service user` was merged into `master` on 2026-05-22.
 - `PR #12 Stop logging console token` was merged into `master` on 2026-05-23 Asia/Shanghai.
+- `PR #13 Update context token log fix` was merged into `master` on 2026-05-23 Asia/Shanghai.
 - `master` now includes a minimal Git-tracked environment foundation: systemd templates, Nginx public gateway template, SQLite backup/restore scripts, expanded env example, and ops recovery documentation.
 - The admin UI is intended for local use or SSH tunnel access only. Do not expose it through the public gateway.
 - The hardening branch was deployed to AWS Singapore `47.129.247.102` on 2026-05-22.
@@ -32,7 +33,7 @@ C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
 
 - Current branch: `master`
 - Remote tracking branch: `origin/master`
-- Local `master` and `origin/master` are aligned at merge commit `c447e22`.
+- Local `master` and `origin/master` are aligned at merge commit `2328dd7`.
 - Recent architecture checkpoints:
   - `55d2496 docs: design subscription architecture refactor`
   - `04d5eed refactor: introduce subscription core and store contracts`
@@ -41,6 +42,7 @@ C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
 - GitHub PR #8: merged.
 - GitHub PR #10: merged.
 - GitHub PR #12: merged.
+- GitHub PR #13: merged.
 - Local Vite admin UI: `http://127.0.0.1:5173/`
 - Local backend `127.0.0.1:3456` is not expected to be running unless a local server or SSH tunnel is started.
 - Pre-hardening source branch commit: `d5341d4 docs: add domain https runbook`
@@ -51,8 +53,8 @@ C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
 Quick check:
 
 ```powershell
-git -C C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal status --short --branch
-git -C C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal log --oneline --decorate -8
+git -C C:\Users\g\Projects\订阅管理\proxy-gateway-minimal status --short --branch
+git -C C:\Users\g\Projects\订阅管理\proxy-gateway-minimal log --oneline --decorate -8
 ```
 
 ## Current Operations State
@@ -238,7 +240,7 @@ Non-goals for this branch:
 Before continuing from a new session, refresh the repo and current AWS state:
 
 ```powershell
-cd C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal
+cd C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 git status --short --branch
 git fetch origin
 ```
