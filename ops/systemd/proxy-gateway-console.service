@@ -1,0 +1,22 @@
+[Unit]
+Description=Proxy Gateway Console
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=proxy-gateway
+Group=proxy-gateway
+WorkingDirectory=/opt/proxy-gateway-minimal
+EnvironmentFile=/opt/proxy-gateway-minimal/.env
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node server/index.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/proxy-gateway-minimal/.proxy-gateway
+
+[Install]
+WantedBy=multi-user.target
