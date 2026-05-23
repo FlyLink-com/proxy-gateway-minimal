@@ -1,6 +1,6 @@
 # Proxy Gateway Console
 
-[中文](README.md)
+[中文](README.md) | [Documentation index](docs/README.md)
 
 Lightweight proxy gateway console for local proxy forwarding, Clash/Mihomo subscription delivery, and subscription-tenant operations.
 
@@ -259,15 +259,8 @@ For docs-only changes, `git diff --check origin/master...HEAD` is usually enough
 
 ## Source-Of-Truth Docs
 
-Use these docs for current operational truth:
+Start with `docs/README.md` for the documentation index. It classifies current state docs, active runbooks, execution records, paused docs, and historical specs/plans.
 
-- `docs/PROJECT_CONTEXT.md`: current project stage, validated state, and handoff context.
-- `docs/ENVIRONMENT_TOPOLOGY.md`: local/GitHub/AWS topology.
-- `docs/DEPLOYMENT_FLOW.md`: candidate, staging, production, and rollback flow.
-- `docs/PRODUCTION_DR.md`: single-node production disaster recovery runbook and hard-stop rules.
-- `docs/STAGING_PROVISIONING.md`: clean staging provisioning and dry-run checklist.
-- `docs/CI_MANUAL_VALIDATION.md`: temporary clean-server CI validation while GitHub-hosted Actions is blocked.
-- `docs/NETWORK_FORWARDING.md`: network forwarding architecture and node-change test matrix.
-- `docs/DOMAIN_HTTPS.md`: paused domain HTTPS runbook.
+Use `docs/PROJECT_CONTEXT.md` for the current handoff state. Use the relevant active runbook before production, AWS, DNS, Nginx, HTTPS, staging, deployment, rollback, or node work.
 
 Do not commit secrets, console tokens, subscription URLs with real tokens, SQLite data, AWS credentials, or customer data.

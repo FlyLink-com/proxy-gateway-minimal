@@ -13,6 +13,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 ## Environment Topology
 
 - The project now treats GitHub `gaoyi1020-web/proxy-gateway-minimal` plus the local checkout at `C:\Users\g\Projects\订阅管理\proxy-gateway-minimal` as the only active code source of truth.
+- Documentation navigation starts at `docs/README.md`, which classifies current state docs, active runbooks, execution records, paused docs, and historical specs/plans.
 - `C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal` is a historical original checkout. It is useful for archaeology only and should not receive new work.
 - `C:\Users\g\OneDrive\文档\订阅管理` is a legacy empty Codex project shell. Do not treat it as a real repository.
 - Current production AWS node is `aws-singapore-blue` on `47.129.247.102`; future pre-release testing should use an explicitly assigned staging target before production changes.
