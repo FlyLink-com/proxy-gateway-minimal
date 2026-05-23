@@ -45,7 +45,13 @@ export function createBridgeServer({
         res.end();
         return;
       }
-      proxyRes.body.on("error", (error) => {
+      const upstreamBody = proxyRes.body;
+      res.on("close", () => {
+        if (!res.writableEnded) {
+          upstreamBody.destroy?.();
+        }
+      });
+      upstreamBody.on("error", (error) => {
         if (!res.headersSent) {
           res.writeHead(502);
           res.end(`Proxy Error: ${error.message}`);
@@ -53,7 +59,7 @@ export function createBridgeServer({
         }
         res.destroy(error);
       });
-      proxyRes.body.pipe(res);
+      upstreamBody.pipe(res);
     } catch (error) {
       if (!res.headersSent) {
         res.writeHead(502);

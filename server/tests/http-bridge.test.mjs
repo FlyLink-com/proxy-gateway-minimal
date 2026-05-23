@@ -115,6 +115,40 @@ function rawRequestUntilClose(port, payload, timeoutMs = 1000) {
   });
 }
 
+function rawRequestUntilMatch(port, payload, pattern, timeoutMs = 1000) {
+  return new Promise((resolve, reject) => {
+    let data = "";
+    let settled = false;
+    const socket = net.createConnection({ host: "127.0.0.1", port }, () => {
+      socket.write(payload);
+    });
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        socket.destroy();
+        reject(new Error("socket did not receive expected data"));
+      }
+    }, timeoutMs);
+
+    socket.setEncoding("utf8");
+    socket.on("data", (chunk) => {
+      data += chunk;
+      if (!settled && pattern.test(data)) {
+        settled = true;
+        clearTimeout(timer);
+        resolve({ socket, data });
+      }
+    });
+    socket.on("error", (error) => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
+      }
+    });
+  });
+}
+
 function openConnectTunnel(port) {
   return new Promise((resolve, reject) => {
     let data = "";
@@ -145,6 +179,23 @@ function openConnectTunnel(port) {
         clearTimeout(timer);
         reject(error);
       }
+    });
+  });
+}
+
+function waitForStreamDestroyed(stream, timeoutMs = 1000) {
+  return new Promise((resolve, reject) => {
+    if (stream.destroyed) {
+      resolve();
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      reject(new Error("stream was not destroyed"));
+    }, timeoutMs);
+    stream.once("close", () => {
+      clearTimeout(timer);
+      resolve();
     });
   });
 }
@@ -406,6 +457,44 @@ test("HTTP bridge handles response body stream errors without process-level fail
   });
 });
 
+test("HTTP bridge destroys upstream response body when the client closes early", async () => {
+  await withProcessErrorCapture(async () => {
+    const body = new PassThrough();
+    const server = createBridgeServer({
+      socksPort: 1080,
+      SocksProxyAgentClass: FakeSocksProxyAgent,
+      fetchFn: async () => {
+        setImmediate(() => body.write("partial upstream body"));
+        return {
+          status: 200,
+          headers: headersFrom({ "content-type": "text/plain" }),
+          body
+        };
+      }
+    });
+    const port = await listenBridge(server);
+    let clientSocket;
+
+    try {
+      const response = await rawRequestUntilMatch(
+        port,
+        "GET http://example.test/slow HTTP/1.1\r\nHost: example.test\r\nConnection: keep-alive\r\n\r\n",
+        /partial upstream body/
+      );
+      clientSocket = response.socket;
+
+      clientSocket.destroy();
+      await waitForStreamDestroyed(body);
+    } finally {
+      clientSocket?.destroy();
+      if (!body.destroyed) {
+        body.destroy();
+      }
+      await closeServer(server);
+    }
+  });
+});
+
 test("HTTP bridge handles peer socket errors after CONNECT without process-level failures", async () => {
   await withProcessErrorCapture(async () => {
     const peerSocket = new PassThrough();
@@ -427,6 +516,33 @@ test("HTTP bridge handles peer socket errors after CONNECT without process-level
 
       assert.equal(peerSocket.destroyed, true);
     } finally {
+      tunnelCleanup(peerSocket);
+      await closeServer(server);
+    }
+  });
+});
+
+test("HTTP bridge destroys CONNECT peer socket when the client closes the tunnel", async () => {
+  await withProcessErrorCapture(async () => {
+    const peerSocket = new PassThrough();
+    const server = createBridgeServer({
+      socksPort: 1080,
+      SocksProxyAgentClass: FakeSocksProxyAgent,
+      socksClient: {
+        async createConnection() {
+          return { socket: peerSocket };
+        }
+      }
+    });
+    const port = await listenBridge(server);
+    let tunnel;
+
+    try {
+      tunnel = await openConnectTunnel(port);
+      tunnel.socket.destroy();
+      await waitForStreamDestroyed(peerSocket);
+    } finally {
+      tunnel?.socket.destroy();
       tunnelCleanup(peerSocket);
       await closeServer(server);
     }
