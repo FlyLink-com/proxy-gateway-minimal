@@ -26,6 +26,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - The 2026-05-24 read-only production replacement preflight lives in `docs/production-replacement-preflight/2026-05-24-blue-green-preflight.md`. It did not mutate AWS or production and concluded that green creation should wait until an IP/DNS/node-config cutover strategy is selected.
 - Production cutover strategy decision lives in `docs/PRODUCTION_CUTOVER_STRATEGY.md`. Current recommendation: do not create green yet; prefer DNS/domain abstraction as the medium-term strategy; do not rely on the current unconfirmed public IP as movable.
 - DNS/domain abstraction planning lives in `docs/DOMAIN_ABSTRACTION_PLAN.md`. It proposes `sub.globalcirclecat.com` for subscription delivery and `ss-sg.globalcirclecat.com` for Shadowsocks node DNS, but does not approve DNS, HTTPS, Nginx, AWS, production config, green creation, or cutover execution.
+- DNS/domain implementation gates and commands live in `docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md`. It remains documentation-only until explicit Risk A execution approval and does not approve DNS, Nginx, HTTPS, production config, green creation, or cutover execution.
 
 ## Current Stage
 
@@ -168,6 +169,7 @@ aws ec2 describe-instances --region ap-southeast-1 --filters Name=ip-address,Val
 - That domain subscription plan is currently paused.
 - Do not expose subscriptions through `sub.globalcirclecat.com` unless the user explicitly re-enables the domain plan.
 - `docs/DOMAIN_ABSTRACTION_PLAN.md` is the current planning document for the broader DNS/domain abstraction path. It remains planning-only until explicit Risk A implementation approval.
+- `docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md` converts the domain abstraction plan into exact gates, commands, validation, and rollback, but still requires explicit Risk A execution approval before any mutation.
 - Aliyun CLI is installed (`aliyun version` returned `3.3.15`).
 - AliDNS credentials worked for a read-only `DescribeDomainRecords` call on 2026-05-22.
 - `sub.globalcirclecat.com` had no `sub` record at that time.
@@ -194,6 +196,7 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 - `docs/production-replacement-preflight/2026-05-24-blue-green-preflight.md`: read-only preflight record for blue-green production replacement readiness; no AWS or production mutation was performed.
 - `docs/PRODUCTION_CUTOVER_STRATEGY.md`: production cutover strategy decision record comparing EIP, DNS/domain, and subscription/node-config update options before any green creation approval.
 - `docs/DOMAIN_ABSTRACTION_PLAN.md`: DNS/domain abstraction planning document for subscription base URL, Shadowsocks node host, DNS/TTL, HTTPS/Nginx, client migration, blue/green parallel window, and rollback gates.
+- `docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md`: DNS/domain implementation runbook with explicit approval gates, AliDNS checks and commands, HTTP/HTTPS validation, Nginx access-log redaction checks, runtime config migration gates, client migration window, and rollback steps.
 - `docs/CI_MANUAL_VALIDATION.md`: runbook for temporary clean-server CI-equivalent validation while GitHub-hosted Actions is blocked.
 - `docs/NETWORK_FORWARDING.md`: network forwarding architecture for local, PAC, Clash/Mihomo, Admin, production runtime paths, and the staging test matrix for node changes.
 - `docs/DOMAIN_HTTPS.md`: domain HTTPS runbook. Currently paused.
