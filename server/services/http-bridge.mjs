@@ -3,6 +3,15 @@ import { SocksClient } from "socks";
 import { SocksProxyAgent } from "socks-proxy-agent";
 import nodeFetch from "node-fetch";
 
+function isValidProxyTarget(targetUrl) {
+  try {
+    const parsed = new URL(targetUrl);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export function createBridgeServer({
   socksPort,
   fetchFn = nodeFetch,
@@ -13,7 +22,7 @@ export function createBridgeServer({
   const socksAgent = new SocksProxyAgentClass(`socks5://127.0.0.1:${socksPort}`);
   const server = http.createServer(async (req, res) => {
     const targetUrl = req.url || "";
-    if (!targetUrl.startsWith("http")) {
+    if (!isValidProxyTarget(targetUrl)) {
       res.writeHead(400);
       res.end("Bad Request");
       return;
@@ -32,6 +41,14 @@ export function createBridgeServer({
         headers[key] = value;
       });
       res.writeHead(proxyRes.status, headers);
+      proxyRes.body.on("error", (error) => {
+        if (!res.headersSent) {
+          res.writeHead(502);
+          res.end(`Proxy Error: ${error.message}`);
+          return;
+        }
+        res.destroy(error);
+      });
       proxyRes.body.pipe(res);
     } catch (error) {
       if (!res.headersSent) {
@@ -55,8 +72,14 @@ export function createBridgeServer({
       }
       socket.pipe(clientSocket);
       clientSocket.pipe(socket);
-      socket.on("error", () => clientSocket.destroy());
-      clientSocket.on("error", () => socket.destroy());
+      socket.on("error", () => {
+        socket.destroy();
+        clientSocket.destroy();
+      });
+      clientSocket.on("error", () => {
+        clientSocket.destroy();
+        socket.destroy();
+      });
     }).catch((error) => {
       clientSocket.end(`HTTP/1.1 502 Proxy Error\r\n\r\n${error.message}`);
     });
