@@ -111,7 +111,8 @@ aws ec2 describe-addresses `
   --output table
 ```
 
-If this command returns no allocation, the IP is not confirmed as retained.
+If this command returns no allocation or `InvalidAddress.NotFound`, the IP is
+not confirmed as retained.
 
 Verify the production security group by explicit ID:
 
@@ -185,12 +186,19 @@ Use when the EC2 host is reachable and the public IP is intact.
 Read-only checks:
 
 ```bash
-systemctl status proxy-gateway-console.service proxy-gateway-ss.service nginx --no-pager
+systemctl is-active proxy-gateway-console.service proxy-gateway-ss.service nginx
+systemctl show proxy-gateway-console.service proxy-gateway-ss.service nginx \
+  --property=ActiveState,SubState,Result,ExecMainStatus,NRestarts --no-pager
 journalctl -u proxy-gateway-console.service -n 100 --no-pager
 journalctl -u proxy-gateway-ss.service -n 100 --no-pager
 nginx -t
 ss -lntup
 ```
+
+Do not paste raw `systemctl status`, process command lines, or journal output
+into PRs, docs, chat, or incident records if they include command arguments,
+tokens, passwords, subscription URLs, or environment-derived secrets. Inspect
+locally and record only redacted unit state, timestamps, and error summaries.
 
 Restarting services is production mutation. Only do it after explicit operator
 approval and after recording the current state.
