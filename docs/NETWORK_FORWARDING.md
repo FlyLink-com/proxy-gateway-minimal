@@ -215,9 +215,9 @@ Current limitations to keep explicit:
 - Keep this fixed-port policy until there is a concrete operator need for
   local multi-port runtimes, side-by-side gateway instances, or explicit
   non-default Windows proxy workflows.
-- `network-doctor.ps1` currently reads `CONSOLE_TOKEN` from the process
-  environment or `.proxy-gateway/console-token`; it does not read `.env`
-  directly.
+- `network-doctor.ps1` currently reads `CONSOLE_TOKEN` only from the process
+  environment or `.proxy-gateway/console-token`. It does not read `.env`,
+  production `.env`, or other secret sources by default.
 
 ## Secret And Temporary File Boundary
 
@@ -357,12 +357,9 @@ Application -> 18180 HTTP bridge -> 1080 ss-local -> staging ss-server
 
 Recommended order:
 
-1. P1 repair fix: decide whether `network-doctor.ps1` should read
-   `CONSOLE_TOKEN` from `.env` when the process environment and token store are
-   unavailable.
-2. P2 tests: add explicit coverage for HTTP absolute URL proxying, HTTPS
+1. P2 tests: add explicit coverage for HTTP absolute URL proxying, HTTPS
    `CONNECT`, malformed URLs, SOCKS-down `502`, and loopback binding.
-3. P2 docs/tests: keep Clash/Mihomo subscription mode separated from Windows
+2. P2 docs/tests: keep Clash/Mihomo subscription mode separated from Windows
    local forwarding mode in future diagrams and tests.
 
 ## Forbidden During Architecture Research
