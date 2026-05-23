@@ -203,6 +203,8 @@ npm run network:repair     # 修复代理链
 npm run network:reset      # 清空本项目写入的代理设置
 ```
 
+`network-doctor.ps1` 当前只从进程环境变量 `CONSOLE_TOKEN` 或 `.proxy-gateway/console-token` 读取控制台 Token；默认不读取 `.env`。
+
 ## API 端点
 
 下表列出主要 HTTP API 入口；测试数量以当前 `npm test` 输出为准。
