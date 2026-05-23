@@ -1,5 +1,12 @@
 # DNS / Domain Implementation Runbook
 
+> Status:
+> - Type: Active runbook
+> - Risk: A
+> - Execution authority: Does not authorize DNS, Nginx, HTTPS, production config, green creation, or cutover by itself
+> - Production impact: None unless separately approved
+> - Source of truth for: DNS/domain implementation gates and rollback commands
+
 Last updated: 2026-05-24, Asia/Shanghai.
 
 This runbook converts `docs/DOMAIN_ABSTRACTION_PLAN.md` into execution gates,

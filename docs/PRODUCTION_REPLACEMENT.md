@@ -1,5 +1,12 @@
 # Production Replacement Runbook
 
+> Status:
+> - Type: Active runbook
+> - Risk: A
+> - Execution authority: Does not authorize green creation, production secret copying, or cutover by itself
+> - Production impact: None unless separately approved
+> - Source of truth for: Blue-green production replacement gates
+
 Last updated: 2026-05-24, Asia/Shanghai.
 
 This runbook defines the blue-green production replacement model for the

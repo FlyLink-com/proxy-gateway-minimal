@@ -1,5 +1,12 @@
 # DNS / Domain Abstraction Plan
 
+> Status:
+> - Type: Active planning document
+> - Risk: A
+> - Execution authority: Does not authorize DNS, Nginx, HTTPS, production config, green creation, or cutover by itself
+> - Production impact: None unless separately approved
+> - Source of truth for: DNS/domain abstraction planning
+
 Last updated: 2026-05-24, Asia/Shanghai.
 
 This document plans the DNS/domain abstraction path recommended by
