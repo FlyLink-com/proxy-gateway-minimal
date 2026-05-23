@@ -35,6 +35,7 @@ actions by itself.
 | `docs/NETWORK_FORWARDING.md` | Local forwarding, PAC, Clash/Mihomo subscription forwarding, Admin tunnel, production runtime paths, and network test matrix. | Active architecture source of truth. | Read before network, proxy, node, or subscription-path changes. |
 | `docs/ENVIRONMENT_TOPOLOGY.md` | Local checkout, GitHub, branch roles, AWS runtime roles, and current topology. | Active topology reference. | Read before interpreting environment roles or AWS instance identity. |
 | `docs/NODE_NAMING.md` | Provider-neutral production edge node naming policy. | Active naming policy; runtime migrations remain Risk A. | Read before adding, renaming, exposing, or documenting production node identities. |
+| `docs/SUBSCRIPTION_V2_REPLACEMENT.md` | Subscription V2 design for replacing MVP single-node output with stable-token multi-node delivery. | Active design contract; no execution authority. | Read before implementing or activating Subscription V2. |
 | `docs/API_COMPATIBILITY.md` | API compatibility notes for external callers and existing clients. | Current reference. | Read before changing API response shape or endpoint behavior. |
 | `docs/MIGRATION.md` | Migration notes for earlier project usage and compatibility transitions. | Reference / migration notes. | Read when maintaining compatibility with older local usage. |
 
