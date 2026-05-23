@@ -62,7 +62,7 @@ prod-edge-c target slot:
   Current role: future third recovery/standby slot
   Current traffic: no
   Current instance: none assigned by this document
-  Current GitHub state: no dedicated build-material package yet
+  Current GitHub state: repo-only build-material package under ops/edge-node/
 ```
 
 The exact cloud provider, instance ID, public IP, and security group mappings
@@ -141,10 +141,13 @@ ops/edge-node/systemd/proxy-gateway-ss.service
 ops/edge-node/nginx/proxy-gateway-public.conf
 ops/edge-node/templates/env.example
 ops/edge-node/templates/ss-server.json.example
+ops/edge-node/templates/proxy-servers.json.example
 ops/edge-node/README.md
 ```
 
-These paths are proposed targets only. This document does not create them.
+These paths are tracked as repo-only recovery build materials. They do not
+authorize live node creation, secret injection, SQLite restore, service start,
+DNS mutation, or traffic cutover.
 
 GitHub must not contain:
 
@@ -297,7 +300,7 @@ Recommended sequence:
 ```text
 1. Approve this production edge fleet plan.
 2. Create a separate Risk A plan for prod-edge-b runtime identity migration.
-3. Create a separate repo-only build-materials PR for prod-edge-c.
+3. Review and maintain repo-only build materials for prod-edge-c.
 4. Only then execute node-config, DNS, tenant assignment, or standby promotion work.
 ```
 

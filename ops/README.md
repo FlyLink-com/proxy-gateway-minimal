@@ -5,6 +5,11 @@ subscription service. It is intentionally small: the project remains a modular
 monolith, SQLite remains the production store, and the admin UI/API are still
 operator-only through local access or an SSH tunnel.
 
+Provider-neutral third-node recovery build materials live under
+`ops/edge-node/`. They are repo-only materials for the future `prod-edge-c`
+slot and do not authorize cloud creation, production mutation, secret copying,
+SQLite restore, service start, DNS changes, or traffic cutover by themselves.
+
 ## Recoverable Runtime Boundary
 
 Existing subscription refreshes can be restored from:

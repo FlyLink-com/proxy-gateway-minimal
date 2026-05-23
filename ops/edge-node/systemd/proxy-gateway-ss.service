@@ -1,0 +1,15 @@
+[Unit]
+Description=Proxy Gateway Shadowsocks Edge Node
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/ss-server -c /etc/proxy-gateway/ss-server.json -u
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
