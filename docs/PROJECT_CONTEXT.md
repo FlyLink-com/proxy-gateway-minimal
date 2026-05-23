@@ -4,6 +4,26 @@ Last updated: 2026-05-23, Asia/Shanghai.
 
 This file is the handoff note for continuing the `proxy-gateway-minimal` work from a new Codex conversation. Read this file first, then inspect the live repo state before making changes.
 
+## How To Use This File
+
+Use this file for current handoff state only:
+
+- Current branch and baseline expectations.
+- Current production facts and active blockers.
+- Latest validation baselines.
+- Active runbook links and recent execution records.
+- Current next-step context when it changes durable project state.
+
+Use `docs/README.md` for documentation navigation. Use
+`docs/superpowers/README.md` for historical design and implementation archive
+navigation. Use the relevant active runbook for production, AWS, DNS, Nginx,
+HTTPS, staging, deployment, rollback, or node execution gates.
+
+Future slimming goal: this file should not permanently duplicate every
+historical PR, old stage detail, long command block, or runbook body that
+already lives in a dedicated current doc. Do not delete existing history as
+part of routine updates; shrink it only through an explicit docs cleanup PR.
+
 ## Repository
 
 ```text

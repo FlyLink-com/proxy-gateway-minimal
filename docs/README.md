@@ -19,7 +19,7 @@ actions by itself.
 
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
-| `docs/PROJECT_CONTEXT.md` | Current project handoff, validated state, active blockers, and current operational facts. | Active current-state handoff. | Read first when resuming the repo or before changing project direction. |
+| `docs/PROJECT_CONTEXT.md` | Current project handoff, validated state, active blockers, current operational facts, and latest durable next-step context. | Active current-state handoff; not the full docs index. | Read first when resuming the repo or before changing project direction, then use this index for detailed docs navigation. |
 
 ## Workflow / Agent Rules
 
