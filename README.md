@@ -1,5 +1,7 @@
 # Proxy Gateway Console
 
+[English](README_EN.md)
+
 轻量级代理网关控制台 — 为本地代理转发、Clash/Mihomo 订阅和订阅用户运营提供轻量管理能力。
 
 > **当前网络事实**: Windows 本地系统代理流量和 Clash/Mihomo 订阅流量是两条不同路径。详细网络边界以 `docs/NETWORK_FORWARDING.md` 为准。
