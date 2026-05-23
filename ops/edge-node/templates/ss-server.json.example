@@ -1,0 +1,9 @@
+{
+  "server": "0.0.0.0",
+  "server_port": 18388,
+  "password": "replace_with_approved_shadowsocks_password",
+  "method": "aes-256-gcm",
+  "mode": "tcp_and_udp",
+  "timeout": 300,
+  "fast_open": false
+}
