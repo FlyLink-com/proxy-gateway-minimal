@@ -1,31 +1,39 @@
 # Proxy Gateway Console
 
-轻量级代理网关控制台 — 为 Clash/Mihomo 提供本地 Shadowsocks 节点的管理面板。
+轻量级代理网关控制台 — 为本地代理转发、Clash/Mihomo 订阅和订阅用户运营提供轻量管理能力。
 
-> **当前架构**: Clash Verge (7897) 接管流量 → proxy-gateway SOCKS5 (1080) → ss-local → 远程 SS 服务器 (47.129.247.102)
+> **当前网络事实**: Windows 本地系统代理流量和 Clash/Mihomo 订阅流量是两条不同路径。详细网络边界以 `docs/NETWORK_FORWARDING.md` 为准。
 
 ## 架构概览
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    Clash Verge (:7897)                   │
-│                  (主力代理，接管系统流量)                  │
-│                         │ 订阅                           │
-│                         ▼                               │
-│              Proxy Gateway Console                      │
-│               (Express 5, :3456)                        │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  ┌───────────┐   ┌───────────┐   ┌───────────┐         │
-│  │ Console   │   │ HTTP Proxy│   │ SOCKS5    │         │
-│  │ :3456     │   │ :18180    │   │ :1080     │         │
-│  │ (Web UI)  │   │ (Forward) │──▶│ (ss-local)│         │
-│  └───────────┘   └───────────┘   └───────────┘         │
-│       │                                │                │
-│       ▼                                ▼                │
-│  Clash 订阅 + 管理面板          Remote SS Server        │
-│  /sub/clash.yaml               (47.129.247.102)        │
-└─────────────────────────────────────────────────────────┘
+Windows local forwarding:
+
+Windows app / WinINet / PAC / HTTP_PROXY / HTTPS_PROXY
+        ↓
+127.0.0.1:18180 Node HTTP-to-SOCKS bridge
+        ↓
+127.0.0.1:1080 ss-local SOCKS5
+        ↓
+Remote Shadowsocks server
+
+ALL_PROXY-aware local apps:
+
+Application
+        ↓
+127.0.0.1:1080 ss-local SOCKS5
+        ↓
+Remote Shadowsocks server
+
+Clash/Mihomo subscription forwarding:
+
+Clash / Mihomo
+        ↓
+GET /sub/clash.yaml?token=...
+        ↓
+Receives Shadowsocks YAML
+        ↓
+Connects directly to the remote Shadowsocks server
 ```
 
 | 端口  | 服务         | 说明                              |
@@ -138,7 +146,7 @@ For production topology, deployment flow, staging decisions, staging provisionin
 
 详细流程以 `docs/PROJECT_CONTEXT.md`、`docs/ENVIRONMENT_TOPOLOGY.md`、`docs/DEPLOYMENT_FLOW.md`、`docs/STAGING_PROVISIONING.md` 和 `docs/NETWORK_FORWARDING.md` 为准。
 
-## Clash 订阅
+## Clash/Mihomo 订阅
 
 proxy-gateway 为 Clash Verge / Mihomo 提供本地 Shadowsocks 订阅：
 
@@ -148,10 +156,16 @@ http://127.0.0.1:3456/sub/clash.yaml?token=你的Token
 
 在 Clash Verge 中添加此 URL 即可导入 SS 节点。当前生产订阅默认包含 `aws-singapore-blue` (18388) 节点。
 
-### 完整代理链路
+订阅模式下，proxy-gateway 负责生成订阅 YAML 和执行访问控制；Clash/Mihomo 获取 YAML 后会直接连接远程 Shadowsocks 节点，不经过本地 `127.0.0.1:18180` HTTP bridge 或 `127.0.0.1:1080` ss-local。
+
+### 与 Windows 本地转发的区别
 
 ```
-应用 → Clash (7897) → SOCKS5 (1080) → ss-local → SS Server (47.129.247.102)
+Windows local forwarding:
+应用 -> 127.0.0.1:18180 HTTP bridge -> 127.0.0.1:1080 ss-local -> remote SS
+
+Clash/Mihomo subscription:
+Clash/Mihomo -> /sub/clash.yaml -> remote SS
 ```
 
 ## Subscription Admin Core
@@ -177,6 +191,8 @@ Subscription Admin Core 提供 SQLite 持久化的运营侧订阅用户管理，
 管理端 API 使用 `Authorization: Bearer <console-token>` 认证。租户订阅 URL 使用 `create`、`reset-token` 或 `temp-link` 生成的订阅 Token；Token 只在生成/重置/临时链接创建时明文返回，数据库中保存哈希和可识别前缀。`/sub/clash.yaml` 保留 query-token 兼容，同时支持租户 Token 拉取限定节点的订阅。
 
 Temporary links use `pgtmp_` tokens and resolve through the same `/sub/clash.yaml` endpoint as primary `pgsub_` tokens. Admin APIs remain Bearer console-token protected and are additionally source-IP allowlisted in the app.
+
+Subscription expiry is enforced when a token is resolved: expired tenants receive `403` on `/sub/clash.yaml` even if their stored status remains `active`. The stored `disabled` status is reserved for operator-driven disable actions.
 
 The subscription implementation is structured as a modular monolith:
 
