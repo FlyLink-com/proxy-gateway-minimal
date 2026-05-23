@@ -27,6 +27,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - Production cutover strategy decision lives in `docs/PRODUCTION_CUTOVER_STRATEGY.md`. Current recommendation: do not create green yet; prefer DNS/domain abstraction as the medium-term strategy; do not rely on the current unconfirmed public IP as movable.
 - DNS/domain abstraction planning lives in `docs/DOMAIN_ABSTRACTION_PLAN.md`. It proposes `sub.globalcirclecat.com` for subscription delivery and `ss-sg.globalcirclecat.com` for Shadowsocks node DNS, but does not approve DNS, HTTPS, Nginx, AWS, production config, green creation, or cutover execution.
 - DNS/domain implementation gates and commands live in `docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md`. It remains documentation-only until explicit Risk A execution approval and does not approve DNS, Nginx, HTTPS, production config, green creation, or cutover execution.
+- The 2026-05-24 DNS/domain Stage 0 read-only execution record lives in `docs/domain-implementation-records/2026-05-24-stage0-preflight.md`. It performed only read-only AWS, AliDNS, public boundary, and Nginx log-redaction checks; no DNS, AWS, Nginx, HTTPS, production config, green, or cutover mutation occurred.
 
 ## Current Stage
 
