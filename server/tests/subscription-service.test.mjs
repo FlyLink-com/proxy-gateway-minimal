@@ -239,6 +239,39 @@ test("resolveSubscriptionToken validates token, scopes proxy config to the allow
   });
 });
 
+test("resolveSubscriptionToken throttles repeated tenant last-used writes inside the interval", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context);
+    const markLastUsed = context.repository.markLastUsed.bind(context.repository);
+    const calls = [];
+    context.repository.markLastUsed = (id, input) => {
+      calls.push({ id, now: input.now });
+      return markLastUsed(id, input);
+    };
+
+    context.setNow("2026-05-22T00:00:00.000Z");
+    const first = context.service.resolveSubscriptionToken(RAW_TOKEN);
+    assert.equal(first.ok, true);
+    assert.equal(first.tenant.lastUsedAt, "2026-05-22T00:00:00.000Z");
+    assert.equal(calls.length, 1);
+
+    context.setNow("2026-05-22T00:05:00.000Z");
+    const repeated = context.service.resolveSubscriptionToken(RAW_TOKEN);
+    assert.equal(repeated.ok, true);
+    assert.equal(repeated.tenant.lastUsedAt, "2026-05-22T00:00:00.000Z");
+    assert.equal(calls.length, 1);
+
+    context.setNow("2026-05-22T00:16:00.000Z");
+    const afterInterval = context.service.resolveSubscriptionToken(RAW_TOKEN);
+    assert.equal(afterInterval.ok, true);
+    assert.equal(afterInterval.tenant.lastUsedAt, "2026-05-22T00:16:00.000Z");
+    assert.deepEqual(calls, [
+      { id: "tenant_1", now: "2026-05-22T00:00:00.000Z" },
+      { id: "tenant_1", now: "2026-05-22T00:16:00.000Z" }
+    ]);
+  });
+});
+
 test("resolveSubscriptionToken rejects unknown token", async () => {
   await withService(async (context) => {
     await createActiveTenant(context);
@@ -322,6 +355,46 @@ test("service creates temporary subscription links and resolves them until expir
   }, {
     tempRawToken: "pgtmp_visible_once_token",
     tempLinkTtlMinutes: 24 * 60
+  });
+});
+
+test("temporary link resolution marks temp link usage immediately inside tenant last-used interval", async () => {
+  await withService((context) => {
+    context.service.createTenant({
+      displayName: "Customer A",
+      expiresAt: "2026-06-21T00:00:00.000Z"
+    });
+    context.service.createTempLink("tenant_1");
+
+    const markLastUsed = context.repository.markLastUsed.bind(context.repository);
+    const markTempLinkUsed = context.repository.markTempLinkUsed.bind(context.repository);
+    let lastUsedWrites = 0;
+    const tempLinkWrites = [];
+    context.repository.markLastUsed = (id, input) => {
+      lastUsedWrites += 1;
+      return markLastUsed(id, input);
+    };
+    context.repository.markTempLinkUsed = (id, input) => {
+      tempLinkWrites.push({ id, now: input.now });
+      return markTempLinkUsed(id, input);
+    };
+
+    context.setNow("2026-05-22T00:00:00.000Z");
+    assert.equal(context.service.resolveSubscriptionToken(RAW_TOKEN).ok, true);
+    assert.equal(lastUsedWrites, 1);
+
+    context.setNow("2026-05-22T00:05:00.000Z");
+    const resolved = context.service.resolveSubscriptionToken("pgtmp_visible_once_token");
+    assert.equal(resolved.ok, true);
+    assert.equal(lastUsedWrites, 1);
+    assert.deepEqual(tempLinkWrites, [
+      { id: "temp_1", now: "2026-05-22T00:05:00.000Z" }
+    ]);
+
+    const usedTempLink = context.repository.findTempLinkByTokenHash(hashSubscriptionToken("pgtmp_visible_once_token"));
+    assert.equal(usedTempLink.usedAt, "2026-05-22T00:05:00.000Z");
+  }, {
+    tempRawToken: "pgtmp_visible_once_token"
   });
 });
 
