@@ -102,8 +102,11 @@ export function createSubscriptionCore({
     };
   }
 
-  function selectTenantNode(nodeId) {
+  function selectTenantNode(nodeId, { allowDefault = false } = {}) {
     if (nodeId === undefined || nodeId === null || String(nodeId).trim() === "") {
+      if (!allowDefault) {
+        throw validationError("nodeId is required");
+      }
       return firstNamedServer(proxyConfig);
     }
 
@@ -117,7 +120,7 @@ export function createSubscriptionCore({
 
   function createTenant(input) {
     const now = isoNow(nowFn);
-    const node = selectTenantNode(input.nodeId);
+    const node = selectTenantNode(input.nodeId, { allowDefault: true });
     const token = tokenFactory();
 
     const tenant = subscriptionStore.createTenant({

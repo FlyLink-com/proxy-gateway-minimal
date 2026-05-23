@@ -336,6 +336,26 @@ test("tenant subscription token fetches scoped Clash YAML and disabled tenants a
     assert.match(canaryYaml, /password: "other-secret"/);
     assert.doesNotMatch(canaryYaml, /aws-singapore|shared-secret/);
 
+    const missingNode = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/node", {
+      method: "POST",
+      body: {}
+    });
+    assert.equal(missingNode.response.status, 400);
+    assert.deepEqual(missingNode.body, { error: "validation_error", message: "nodeId is required" });
+
+    const blankNode = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/node", {
+      method: "POST",
+      body: { nodeId: "   " }
+    });
+    assert.equal(blankNode.response.status, 400);
+    assert.deepEqual(blankNode.body, { error: "validation_error", message: "nodeId is required" });
+
+    const afterInvalidReassign = await fetch(`${baseUrl}/sub/clash.yaml?token=${RAW_TOKEN}`);
+    assert.equal(afterInvalidReassign.status, 200);
+    const afterInvalidYaml = await afterInvalidReassign.text();
+    assert.match(afterInvalidYaml, /name: "aws-tokyo"/);
+    assert.doesNotMatch(afterInvalidYaml, /aws-singapore|shared-secret/);
+
     const disabled = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/disable", { method: "POST" });
     assert.equal(disabled.response.status, 200);
     assert.equal(disabled.body.tenant.status, "disabled");

@@ -280,6 +280,19 @@ test("setTenantNode reassigns an existing tenant and scopes future subscription 
   });
 });
 
+test("setTenantNode requires an explicit node and leaves existing assignment unchanged", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context, { nodeId: "node_tokyo" });
+    assert.equal(context.service.getTenant("tenant_1").nodeName, "aws-tokyo");
+
+    assertCode("validation_error", () => context.service.setTenantNode("tenant_1", {}));
+    assertCode("validation_error", () => context.service.setTenantNode("tenant_1", { nodeId: "   " }));
+
+    assert.equal(context.service.getTenant("tenant_1").nodeName, "aws-tokyo");
+    assert.equal(context.repository.getTenant("tenant_1").nodeId, "aws-tokyo");
+  });
+});
+
 test("resolveSubscriptionToken throttles repeated tenant last-used writes inside the interval", async () => {
   await withService(async (context) => {
     await createActiveTenant(context);
