@@ -204,12 +204,12 @@ Public and subscription endpoints:
 |--------|------|---------|
 | GET | `/api/health` | Public health check |
 | GET | `/sub/clash.yaml` | Clash/Mihomo subscription YAML |
-| GET | `/api/subscription/status` | Subscription URL and node count |
 
 Local/protected control endpoints:
 
 | Method | Path | Purpose |
 |--------|------|---------|
+| GET | `/api/subscription/status` | Subscription URL and node count |
 | POST | `/api/ss/start` | Start local `ss-local` |
 | POST | `/api/ss/stop` | Stop local `ss-local` |
 | POST | `/api/proxy/start` | Start the local proxy stack |
