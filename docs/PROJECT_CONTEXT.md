@@ -48,6 +48,10 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - Phase 4.1 added Admin connection health checks in the frontend. The UI checks `/api/health` without auth and `/api/admin/overview` with Bearer auth; no backend endpoint, auth model, AWS, production, or Nginx change was introduced.
 - Phase 4.2 added Admin dangerous action confirmations in the frontend. Disable and temporary-link actions require confirmation, reset-token copy and repeat-submit protection were improved, and generated subscription URLs remain visible-once only.
 - Recent Phase 1 through Phase 4.2 changes did not mutate AWS or production unless explicitly documented above in the older hardening/runtime sync notes.
+- HTTP Bridge robustness work is complete: PR #36 added the spec, PR #37 extracted `createBridgeServer()` into `server/services/http-bridge.mjs` with DI hooks, and PR #38 added boundary tests plus minimal robustness fixes.
+- HTTP Bridge tests now cover malformed targets, injected fetch/SOCKS failures, CONNECT failure, body stream errors, CONNECT peer/client socket errors, loopback binding, and stop/release behavior.
+- `npm test` currently reports 121/121 passing after the HTTP Bridge work. This work did not touch AWS, production, Nginx, systemd, Admin UI, PowerShell, `ss-local`, or `ss-server`.
+- Remaining optional HTTP Bridge follow-ups: HEAD/204 body-null response handling and client-normal-close upstream cleanup. Treat these as separate small tasks, not part of the completed PR #36-#38 sequence.
 
 ## Verified Local State
 
@@ -181,6 +185,7 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 - `docs/superpowers/plans/2026-05-23-admin-connection-health.md`: implementation plan for Admin connection health.
 - `docs/superpowers/specs/2026-05-23-admin-dangerous-action-confirmations-design.md`: Admin dangerous action confirmation design.
 - `docs/superpowers/plans/2026-05-23-admin-dangerous-action-confirmations.md`: implementation plan for Admin dangerous action confirmations.
+- `docs/superpowers/specs/2026-05-23-http-bridge-boundary-tests.md`: HTTP Bridge boundary testing and robustness contract, implemented by PR #37 and PR #38.
 - `docs/superpowers/specs/2026-05-21-subscription-admin-core-design.md`: backend subscription-admin design.
 - `docs/superpowers/plans/2026-05-21-subscription-admin-core.md`: implemented plan for the `feat/subscription-admin-core` branch that became `v0.1.0-mvp`.
 
