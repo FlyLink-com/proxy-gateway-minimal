@@ -1,0 +1,66 @@
+import http from "node:http";
+import { SocksClient } from "socks";
+import { SocksProxyAgent } from "socks-proxy-agent";
+import nodeFetch from "node-fetch";
+
+export function createBridgeServer({
+  socksPort,
+  fetchFn = nodeFetch,
+  SocksProxyAgentClass = SocksProxyAgent,
+  socksClient = SocksClient,
+  timeoutMs = 15000
+}) {
+  const socksAgent = new SocksProxyAgentClass(`socks5://127.0.0.1:${socksPort}`);
+  const server = http.createServer(async (req, res) => {
+    const targetUrl = req.url || "";
+    if (!targetUrl.startsWith("http")) {
+      res.writeHead(400);
+      res.end("Bad Request");
+      return;
+    }
+
+    try {
+      const proxyRes = await fetchFn(targetUrl, {
+        method: req.method,
+        headers: req.headers,
+        body: req.method !== "GET" && req.method !== "HEAD" ? req : undefined,
+        timeout: timeoutMs,
+        agent: socksAgent
+      });
+      const headers = {};
+      proxyRes.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      res.writeHead(proxyRes.status, headers);
+      proxyRes.body.pipe(res);
+    } catch (error) {
+      if (!res.headersSent) {
+        res.writeHead(502);
+      }
+      res.end(`Proxy Error: ${error.message}`);
+    }
+  });
+
+  server.on("connect", (req, clientSocket, head) => {
+    const [hostname, portText] = (req.url || "").split(":");
+    const port = Number.parseInt(portText, 10) || 443;
+    socksClient.createConnection({
+      proxy: { host: "127.0.0.1", port: socksPort, type: 5 },
+      destination: { host: hostname, port },
+      command: "connect"
+    }).then(({ socket }) => {
+      clientSocket.write("HTTP/1.1 200 Connection Established\r\n\r\n");
+      if (head?.length) {
+        socket.write(head);
+      }
+      socket.pipe(clientSocket);
+      clientSocket.pipe(socket);
+      socket.on("error", () => clientSocket.destroy());
+      clientSocket.on("error", () => socket.destroy());
+    }).catch((error) => {
+      clientSocket.end(`HTTP/1.1 502 Proxy Error\r\n\r\n${error.message}`);
+    });
+  });
+
+  return server;
+}
