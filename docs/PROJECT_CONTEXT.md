@@ -173,6 +173,7 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 - `docs/DEPLOYMENT_FLOW.md`: promotion flow from development to CI, candidate, staging, production, and rollback.
 - `docs/STAGING_TARGET_DECISION.md`: decision record for choosing a clean staging instance versus rebuilding the stopped historical node.
 - `docs/STAGING_PROVISIONING.md`: operator runbook for creating, validating, stopping, or destroying a clean staging instance.
+- `docs/NETWORK_FORWARDING.md`: network forwarding architecture for local, PAC, Clash/Mihomo, Admin, production runtime paths, and the staging test matrix for node changes.
 - `docs/DOMAIN_HTTPS.md`: domain HTTPS runbook. Currently paused.
 - `docs/superpowers/specs/2026-05-22-admin-console-real-api-design.md`: real admin API integration design.
 - `docs/superpowers/plans/2026-05-22-admin-console-real-api.md`: implementation plan for wiring `admin/` to `/api/admin/*`.

@@ -20,19 +20,25 @@ data path:
 The most important rule is:
 
 ```text
-Local system proxy mode uses the local HTTP-to-SOCKS bridge and ss-local.
+Local system proxy mode uses the local HTTP-to-SOCKS bridge or local SOCKS5.
 Clash/Mihomo subscription mode does not use local ss-local after it has the YAML.
 ```
 
 ## Mode A: Windows Local Forwarding
 
 This mode is used when the Windows system proxy, user proxy environment
-variables, or the local PAC route traffic into this project.
+variables, or the local PAC route traffic into this project. There are two
+local sub-paths, depending on which Windows or application proxy setting is
+used.
 
 ```text
 Windows application
-  -> WinINet, user proxy environment variables, or PAC
+  -> WinINet, PAC, HTTP_PROXY, or HTTPS_PROXY
   -> 127.0.0.1:18180 Node HTTP-to-SOCKS bridge
+  -> 127.0.0.1:1080 ss-local SOCKS5
+  -> 47.129.247.102:18388 AWS Shadowsocks server
+
+ALL_PROXY-aware application
   -> 127.0.0.1:1080 ss-local SOCKS5
   -> 47.129.247.102:18388 AWS Shadowsocks server
 ```
@@ -186,6 +192,10 @@ architecture research and must not be used for network-forwarding experiments.
 - `env`: sets user-level `HTTP_PROXY`, `HTTPS_PROXY`, and `ALL_PROXY`.
 - `env-off`: clears user-level proxy environment variables.
 - `status`: prints the current WinINet proxy state.
+
+`HTTP_PROXY` and `HTTPS_PROXY` point at the local HTTP bridge
+`127.0.0.1:18180`, while `ALL_PROXY` points directly at the local SOCKS5
+listener `127.0.0.1:1080`.
 
 `scripts/network-doctor.ps1` performs broader diagnostics and repair:
 
