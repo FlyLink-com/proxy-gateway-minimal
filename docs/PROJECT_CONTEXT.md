@@ -22,6 +22,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - Staging target decision lives in `docs/STAGING_TARGET_DECISION.md`: current recommendation is a new clean staging instance, not starting the stopped historical node as-is.
 - Clean staging provisioning, validation, promotion gates, and cleanup rules live in `docs/STAGING_PROVISIONING.md`.
 - Production disaster recovery rules live in `docs/PRODUCTION_DR.md`. The current production service is a single-node deployment, and DR actions remain Risk A work requiring explicit operator approval.
+- Blue-green production replacement planning lives in `docs/PRODUCTION_REPLACEMENT.md`. Creating a green production replacement candidate, handling production secrets/data, and cutting traffic over remain Risk A work requiring explicit operator approval.
 
 ## Current Stage
 
@@ -185,6 +186,7 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 - `docs/STAGING_TARGET_DECISION.md`: decision record for choosing a clean staging instance versus rebuilding the stopped historical node.
 - `docs/STAGING_PROVISIONING.md`: operator runbook for creating, validating, stopping, or destroying a clean staging instance.
 - `docs/PRODUCTION_DR.md`: production single-node disaster recovery runbook, including hard-stop rules, read-only inventory, backup/restore requirements, recovery options, validation, and incident recording.
+- `docs/PRODUCTION_REPLACEMENT.md`: blue-green production replacement runbook for keeping blue online, creating and validating a green production replacement candidate, choosing an IP/DNS/client cutover strategy, and preserving rollback gates.
 - `docs/CI_MANUAL_VALIDATION.md`: runbook for temporary clean-server CI-equivalent validation while GitHub-hosted Actions is blocked.
 - `docs/NETWORK_FORWARDING.md`: network forwarding architecture for local, PAC, Clash/Mihomo, Admin, production runtime paths, and the staging test matrix for node changes.
 - `docs/DOMAIN_HTTPS.md`: domain HTTPS runbook. Currently paused.
