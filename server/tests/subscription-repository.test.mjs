@@ -87,6 +87,18 @@ test("repository does not close injected database handles", () => {
   database.close();
 });
 
+test("repository configures sqlite busy timeout", () => {
+  const database = new Database(":memory:");
+  const repository = createSubscriptionRepository({ database });
+
+  try {
+    assert.equal(database.pragma("busy_timeout", { simple: true }), 2000);
+  } finally {
+    repository.close();
+    database.close();
+  }
+});
+
 test("repository rejects invalid tenant enum fields", async () => {
   await withRepository((repository) => {
     assert.throws(() => {

@@ -81,6 +81,7 @@ export function createSqliteSubscriptionStore({ dbPath, database } = {}) {
   const ownsDatabase = !database;
   const db = database ?? new Database(dbPath);
   db.pragma("journal_mode = WAL");
+  db.pragma("busy_timeout = 2000");
   db.exec(`
     create table if not exists subscription_tenants (
       id text primary key,

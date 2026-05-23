@@ -36,7 +36,9 @@ export function createSubscriptionCore({
   idFactory = () => `tenant_${randomUUID()}`,
   tempLinkIdFactory = () => `temp_${randomUUID()}`,
   tempLinkTtlMinutes = 24 * 60,
-  expiringDays = DEFAULT_EXPIRING_DAYS
+  expiringDays = DEFAULT_EXPIRING_DAYS,
+  lastUsedWriteIntervalMs = 15 * 60 * 1000,
+  lastUsedWriteCache = new Map()
 }) {
   const subscriptionStore = store || repository;
   assertSubscriptionStore(subscriptionStore);
@@ -51,6 +53,16 @@ export function createSubscriptionCore({
   function expiresAtFromNow() {
     const ttlMs = Number(tempLinkTtlMinutes) * 60 * 1000;
     return new Date(nowFn().getTime() + ttlMs).toISOString();
+  }
+
+  function shouldWriteLastUsed(tenantId, nowMs) {
+    const intervalMs = Number(lastUsedWriteIntervalMs);
+    if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+      return true;
+    }
+
+    const previousWriteAt = lastUsedWriteCache.get(tenantId);
+    return previousWriteAt === undefined || nowMs - previousWriteAt >= intervalMs;
   }
 
   function resolveTenantAccess(tenantAuth, { markTempLinkId } = {}) {
@@ -68,7 +80,15 @@ export function createSubscriptionCore({
     }
 
     const now = isoNow(nowFn);
-    const tenant = subscriptionStore.markLastUsed(tenantAuth.id, { now });
+    const nowMs = new Date(now).getTime();
+    let tenant = tenantAuth;
+    if (shouldWriteLastUsed(tenantAuth.id, nowMs)) {
+      const markedTenant = subscriptionStore.markLastUsed(tenantAuth.id, { now });
+      if (markedTenant) {
+        tenant = markedTenant;
+        lastUsedWriteCache.set(tenantAuth.id, nowMs);
+      }
+    }
     if (markTempLinkId) {
       subscriptionStore.markTempLinkUsed(markTempLinkId, { now });
     }
