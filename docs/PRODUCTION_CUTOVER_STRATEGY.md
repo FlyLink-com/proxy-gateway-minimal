@@ -1,5 +1,12 @@
 # Production Cutover Strategy Decision
 
+> Status:
+> - Type: Active decision record
+> - Risk: A
+> - Execution authority: Does not authorize mutation by itself
+> - Production impact: None unless separately approved
+> - Source of truth for: Production cutover strategy selection before green creation
+
 Last updated: 2026-05-24, Asia/Shanghai.
 
 This document records the cutover strategy decision that must be made before

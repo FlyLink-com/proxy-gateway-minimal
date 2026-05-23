@@ -1,5 +1,12 @@
 # Production Disaster Recovery Runbook
 
+> Status:
+> - Type: Active runbook
+> - Risk: A
+> - Execution authority: Does not authorize mutation by itself
+> - Production impact: None unless separately approved
+> - Source of truth for: Single-node production disaster recovery gates
+
 Last updated: 2026-05-24, Asia/Shanghai.
 
 This runbook documents how to reason about and recover the current production

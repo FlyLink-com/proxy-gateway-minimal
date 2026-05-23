@@ -1,5 +1,12 @@
 # Manual CI Validation Runbook
 
+> Status:
+> - Type: Active runbook
+> - Risk: C/B validation support; not a production gate
+> - Execution authority: Does not authorize AWS mutation, staging, production deploy, or self-hosted runner registration
+> - Production impact: None
+> - Source of truth for: Temporary clean-server CI-equivalent validation while GitHub-hosted Actions is blocked
+
 Last updated: 2026-05-23, Asia/Shanghai.
 
 This runbook defines the temporary manual CI-equivalent validation path to use
