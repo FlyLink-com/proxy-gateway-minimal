@@ -44,7 +44,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - Phase 1 completed the staging target decision and clean staging provisioning runbook. It was a docs/ops planning phase only; no AWS resources were created.
 - Phase 2 auth boundary work tightens protected `/api/*` routes to `Authorization: Bearer <console-token>` only; `/sub/clash.yaml` keeps query-token support for Clash/Mihomo subscription clients.
 - Phase 3 adds GitHub Actions CI for PRs into `master` and pushes to `master`; CI runs `npm test`, `npm run admin:test`, and `npm run admin:build` without AWS secrets or production deployment.
-- Phase 3 GitHub-hosted runner validation is currently deferred by the account billing/spending-limit blocker. Manual CI-equivalent validation from clean or current PR heads has been used as a temporary waiver; rerun master CI after the quota/billing issue is resolved.
+- Phase 3 GitHub-hosted runner validation is currently deferred by the account billing/spending-limit blocker. Manual CI-equivalent validation from clean or current PR heads has been used as a temporary waiver; use `docs/CI_MANUAL_VALIDATION.md` for temporary clean-server validation, and rerun master CI after the quota/billing issue is resolved.
 - Phase 4.1 added Admin connection health checks in the frontend. The UI checks `/api/health` without auth and `/api/admin/overview` with Bearer auth; no backend endpoint, auth model, AWS, production, or Nginx change was introduced.
 - Phase 4.2 added Admin dangerous action confirmations in the frontend. Disable and temporary-link actions require confirmation, reset-token copy and repeat-submit protection were improved, and generated subscription URLs remain visible-once only.
 - Recent Phase 1 through Phase 4.2 changes did not mutate AWS or production unless explicitly documented above in the older hardening/runtime sync notes.
@@ -177,6 +177,7 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 - `docs/DEPLOYMENT_FLOW.md`: promotion flow from development to CI, candidate, staging, production, and rollback.
 - `docs/STAGING_TARGET_DECISION.md`: decision record for choosing a clean staging instance versus rebuilding the stopped historical node.
 - `docs/STAGING_PROVISIONING.md`: operator runbook for creating, validating, stopping, or destroying a clean staging instance.
+- `docs/CI_MANUAL_VALIDATION.md`: runbook for temporary clean-server CI-equivalent validation while GitHub-hosted Actions is blocked.
 - `docs/NETWORK_FORWARDING.md`: network forwarding architecture for local, PAC, Clash/Mihomo, Admin, production runtime paths, and the staging test matrix for node changes.
 - `docs/DOMAIN_HTTPS.md`: domain HTTPS runbook. Currently paused.
 - `docs/superpowers/specs/2026-05-22-admin-console-real-api-design.md`: real admin API integration design.

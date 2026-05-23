@@ -131,7 +131,7 @@ npm run admin:test
 npm run admin:build
 ```
 
-The CI workflow installs root and `admin/` dependencies with `npm ci`, does not require AWS secrets, and does not deploy to staging or production. Passing CI is required evidence for a candidate, but it does not replace staging or production endpoint checks.
+The CI workflow installs root and `admin/` dependencies with `npm ci`, does not require AWS secrets, and does not deploy to staging or production. Passing CI is required evidence for a candidate, but it does not replace staging or production endpoint checks. If GitHub-hosted CI is unavailable because of the documented billing or spending-limit blocker, use `docs/CI_MANUAL_VALIDATION.md` for the temporary manual CI-equivalent validation waiver.
 
 ### 2. Candidate Selection
 
