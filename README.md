@@ -133,7 +133,7 @@ The current admin shell includes connection health diagnostics and confirmation 
 
 Do not expose this admin shell through the public Nginx gateway. Public production access should continue to allow only health checks and subscription fetches.
 
-For production topology, deployment flow, staging decisions, staging provisioning, and network forwarding paths, use `docs/PROJECT_CONTEXT.md`, `docs/ENVIRONMENT_TOPOLOGY.md`, `docs/DEPLOYMENT_FLOW.md`, `docs/STAGING_PROVISIONING.md`, and `docs/NETWORK_FORWARDING.md` as the current source of truth.
+For production topology, deployment flow, production disaster recovery, staging decisions, staging provisioning, and network forwarding paths, use `docs/PROJECT_CONTEXT.md`, `docs/ENVIRONMENT_TOPOLOGY.md`, `docs/DEPLOYMENT_FLOW.md`, `docs/PRODUCTION_DR.md`, `docs/STAGING_PROVISIONING.md`, and `docs/NETWORK_FORWARDING.md` as the current source of truth.
 
 ## 项目编排模型
 
@@ -146,7 +146,7 @@ For production topology, deployment flow, staging decisions, staging provisionin
 - Production 不自动部署。生产变更必须保留 `.env`、SQLite、node config 和 Nginx public admin blocking，并按 `docs/DEPLOYMENT_FLOW.md` 验证。
 - 生产运行由 AWS 上的 systemd、Nginx、Express Console/API、SQLite 和 Shadowsocks 组成。
 
-详细流程以 `docs/PROJECT_CONTEXT.md`、`docs/ENVIRONMENT_TOPOLOGY.md`、`docs/DEPLOYMENT_FLOW.md`、`docs/STAGING_PROVISIONING.md` 和 `docs/NETWORK_FORWARDING.md` 为准。
+详细流程以 `docs/PROJECT_CONTEXT.md`、`docs/ENVIRONMENT_TOPOLOGY.md`、`docs/DEPLOYMENT_FLOW.md`、`docs/PRODUCTION_DR.md`、`docs/STAGING_PROVISIONING.md` 和 `docs/NETWORK_FORWARDING.md` 为准。
 
 ## Clash/Mihomo 订阅
 
