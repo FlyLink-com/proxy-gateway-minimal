@@ -25,3 +25,14 @@
 - 长期项目要维护项目记忆和阶段记录，避免每轮重新理解项目；重要提示词应沉淀为项目、阶段、任务三类模板。
 - 不要在提示词、文档、提交信息或回复中写入密钥、token、订阅链接、账号凭证、客户隐私或未公开敏感数据。
 
+## Workflow Risk Tiers
+
+- 每个任务开始前先分类并写清楚：`Risk: A/B/C`、`Process`、`Expected PR count`、`Validation`、`Production/AWS impact`。
+- 默认原则是风险决定流程重量、验证命令固定化、PR 数量最小化；C 档直接，B 档紧凑，A 档严格。
+- C 档适用于 docs-only 任务，例如 README、PROJECT_CONTEXT、NETWORK_FORWARDING、DEPLOYMENT_FLOW、STAGING_PROVISIONING、CI_MANUAL_VALIDATION、runbook、状态记录、小型决策同步、错别字或过期状态修正。流程是从 `master` 新建 `docs/<topic>` 分支，直接改文档，运行 `git diff --check origin/master...HEAD`，开 Draft PR，review 后 ready + merge，再本地收尾。C 档不单独写 spec/plan，不跑 `npm test`，除非文档本身很大或涉及命令/测试基线。
+- B 档适用于中低风险代码任务，例如 server 小型 refactor、测试覆盖、HTTP bridge 小修、PowerShell 诊断脚本小修、Admin UI 局部交互、SQLite busy_timeout/lastUsed 策略、非生产 runtime 小行为修正。流程是一个 `fix/<topic>`、`test/<topic>` 或 `refactor/<topic>` PR 内完成简短设计说明、代码、测试和必要文档，不拆 spec PR + implementation PR。后端/server 运行 `git diff --check origin/master...HEAD` 和 `npm test`；Admin UI 运行 `git diff --check origin/master...HEAD`、`npm run admin:test`、`npm run admin:build`、`npm test`；PowerShell/HTTP bridge 小修先跑对应 targeted test，再跑 `npm test`。
+- A 档适用于 AWS、production、节点、Nginx、systemd、security group、ss-server/ss-local、production node config、订阅 token/auth model 高风险变更、SQLite schema/migration、production deploy/rollback、真实公网连通性测试。流程必须包含 spec/runbook、dry-run checklist、read-only inventory、explicit operator approval、staging 或 clean validation environment、implementation、validation、promotion decision、production gate、closeout。
+- A 档必须保留门禁：不得直接动 production；不得把 historical stopped node 当 staging；不得复制 production `.env`、token、SQLite 或 `SS_PASSWORD`；不得公开 Admin UI；不得开放 `3456`、`18180`、`1080` 到公网；不得跳过 backup、endpoint verification 或 rollback plan。
+- GitHub Actions billing/spending-limit blocker 期间按 `docs/CI_MANUAL_VALIDATION.md` 执行。C 档默认只需要 `git diff --check`；B 档本地验证足够时用本地，确需 clean 环境时才按 manual CI；A 档里的 manual CI 不等于 staging，不等于 production approval。
+- closeout 不要用于每个小 PR。只有完成阶段、改变 `docs/PROJECT_CONTEXT.md` 长期事实、合并 A 档生产/运维变更、引入新的长期运行边界，或完成一串相关 B 档工作时才做 closeout。
+

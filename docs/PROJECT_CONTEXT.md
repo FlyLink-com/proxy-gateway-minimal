@@ -54,6 +54,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - Remaining optional HTTP Bridge follow-ups: HEAD/204 body-null response handling and client-normal-close upstream cleanup. Treat these as separate small tasks, not part of the completed PR #36-#38 sequence.
 - Manual CI-equivalent validation was run on 2026-05-23 Asia/Shanghai against `master` commit `6e9fd58f6be16ab221631c3e187a33c5d04493d5` using a temporary AWS `us-east-1` validation host, not staging or production. Node was `v22.22.2`, npm was `10.9.7`; `npm ci`, `npm ci --prefix admin`, `npm test` (`121/121`), `npm run admin:test` (`24/24`), and `npm run admin:build` all passed.
 - Manual CI validation cleanup on 2026-05-23 Asia/Shanghai: failed first host `i-09369c659f34f9c0b` and successful validation host `i-0b59ded1efe64b920` are both `terminated`; temporary security groups `sg-09b712b7f676472c0` and `sg-02fe60a32c31f4866` were deleted; temporary AWS key pairs and local archive/key files were deleted. No production `.env`, `CONSOLE_TOKEN`, `SS_PASSWORD`, SQLite data, AWS credentials, customer data, or production runtime was copied to the host.
+- Default project workflow now uses A/B/C risk tiers: C 档 docs-only uses direct PR + `git diff --check`; B 档 compact code changes use one PR with focused tests; A 档 AWS/production/node/Nginx/systemd/auth/schema/deploy work keeps the full strict gate. The detailed default rules live in `AGENTS.md`.
 
 ## Verified Local State
 
