@@ -150,7 +150,7 @@ request URLs, command arguments, tokens, or customer data.
 
 ```bash
 sudo nginx -T 2>/dev/null | grep -n 'log_format proxy_gateway'
-sudo nginx -T 2>/dev/null | grep -n '\\$request_uri' || true
+sudo nginx -T 2>/dev/null | grep -nF '$request_uri' || true
 sudo awk 'index($0,"?token=")>0{c++} END{print c+0}' /var/log/nginx/proxy-gateway-access.log
 ```
 
@@ -158,7 +158,7 @@ Expected:
 
 ```text
 log_format proxy_gateway uses $uri, not $request_uri
-$request_uri is not used in active access logs
+no active access_log format should contain $request_uri
 token query count in access log is 0
 ```
 
@@ -338,6 +338,7 @@ sudo certbot --nginx \
   -d sub.globalcirclecat.com \
   --agree-tos \
   --no-eff-email \
+  --no-redirect \
   -m admin@globalcirclecat.com
 ```
 
@@ -347,6 +348,10 @@ DNS name, not an HTTP endpoint.
 Initial HTTPS issuance should avoid an automatic hard redirect unless the
 approved execution record explicitly chooses redirect behavior. Existing
 IP-based clients may need a transition window.
+
+If redirect behavior is explicitly approved later, use a separate reviewed
+Nginx change or a separate Certbot redirect step. Do not enable redirects
+implicitly during initial certificate issuance.
 
 Validate HTTPS:
 
@@ -401,10 +406,19 @@ sudo cp -a /opt/proxy-gateway-minimal/.env \
 Apply the base URL:
 
 ```bash
+sudo grep -q '^PUBLIC_SUBSCRIPTION_BASE_URL=' /opt/proxy-gateway-minimal/.env
+
 sudo sed -i 's#^PUBLIC_SUBSCRIPTION_BASE_URL=.*#PUBLIC_SUBSCRIPTION_BASE_URL=https://sub.globalcirclecat.com#' \
   /opt/proxy-gateway-minimal/.env
+
+sudo grep -qx 'PUBLIC_SUBSCRIPTION_BASE_URL=https://sub.globalcirclecat.com' \
+  /opt/proxy-gateway-minimal/.env
+
 sudo systemctl restart proxy-gateway-console.service
 ```
+
+If `PUBLIC_SUBSCRIPTION_BASE_URL` is missing, stop and decide an explicit add
+path in the execution record. Do not let the replacement silently no-op.
 
 Safe service checks:
 
