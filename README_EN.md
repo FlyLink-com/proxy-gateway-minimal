@@ -264,6 +264,7 @@ Use these docs for current operational truth:
 - `docs/PROJECT_CONTEXT.md`: current project stage, validated state, and handoff context.
 - `docs/ENVIRONMENT_TOPOLOGY.md`: local/GitHub/AWS topology.
 - `docs/DEPLOYMENT_FLOW.md`: candidate, staging, production, and rollback flow.
+- `docs/PRODUCTION_DR.md`: single-node production disaster recovery runbook and hard-stop rules.
 - `docs/STAGING_PROVISIONING.md`: clean staging provisioning and dry-run checklist.
 - `docs/CI_MANUAL_VALIDATION.md`: temporary clean-server CI validation while GitHub-hosted Actions is blocked.
 - `docs/NETWORK_FORWARDING.md`: network forwarding architecture and node-change test matrix.
