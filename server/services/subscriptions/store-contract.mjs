@@ -4,6 +4,7 @@ export const SUBSCRIPTION_STORE_METHODS = [
   "findTenantByTokenHash",
   "createTenant",
   "renewTenant",
+  "setTenantNode",
   "setTenantStatus",
   "resetTenantToken",
   "markLastUsed",

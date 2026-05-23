@@ -292,8 +292,11 @@ npm run network:reset      # 清空本项目写入的代理设置
 | POST  | `/api/admin/subscriptions/:id/enable`     | 启用租户订阅                 |
 | POST  | `/api/admin/subscriptions/:id/reset-token`| 重置租户 Token 并返回新 URL  |
 | POST  | `/api/admin/subscriptions/:id/temp-link`  | 生成临时订阅 URL             |
+| POST  | `/api/admin/subscriptions/:id/node`       | 将租户重新分配到已配置节点   |
 | GET   | `/api/admin/nodes`                        | 查看可分配订阅节点           |
 | GET   | `/api/admin/overview`                     | 订阅用户统计和节点总览       |
+
+创建租户时可传入 `nodeId`，省略时继续使用第一个已配置的命名节点。`POST /api/admin/subscriptions/:id/node` 接受节点 `id` 或 `name`，只影响该租户之后生成的 `/sub/clash.yaml`。把第二生产节点写入 `config/proxy-servers.json`、迁移生产租户节点、或让生产订阅真正输出新节点，仍属于 A 档 production node-config 变更，需要单独门禁。
 
 ### 诊断
 

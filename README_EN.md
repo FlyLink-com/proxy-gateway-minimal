@@ -232,8 +232,11 @@ Admin subscription endpoints:
 | POST | `/api/admin/subscriptions/:id/enable` | Enable a tenant |
 | POST | `/api/admin/subscriptions/:id/reset-token` | Reset a tenant token and return a new visible-once URL |
 | POST | `/api/admin/subscriptions/:id/temp-link` | Create a temporary subscription URL |
+| POST | `/api/admin/subscriptions/:id/node` | Reassign a tenant to a configured node |
 | GET | `/api/admin/nodes` | List assignable nodes |
 | GET | `/api/admin/overview` | Tenant and node overview |
+
+Tenant creation may include `nodeId`; when omitted, the backend keeps using the first configured named node. `POST /api/admin/subscriptions/:id/node` accepts either a node `id` or `name` and only affects that tenant's future `/sub/clash.yaml` output. Adding a second production node to `config/proxy-servers.json`, migrating production tenant assignments, or making production subscriptions emit a new node remains Risk A production node-config work with a separate gate.
 
 ## Validation And CI
 

@@ -58,6 +58,14 @@ export function adminSubscriptionRoutes(state) {
     }
   });
 
+  router.post("/api/admin/subscriptions/:id/node", (req, res) => {
+    try {
+      res.json({ tenant: core.setTenantNode(req.params.id, req.body ?? {}) });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
   router.post("/api/admin/subscriptions/:id/disable", (req, res) => {
     try {
       res.json({ tenant: core.disableTenant(req.params.id) });

@@ -11,6 +11,7 @@ import {
   createSubscriptionSerializer,
   firstNamedServer,
   namedServers,
+  resolveNamedServer,
   serializeNode
 } from "./serializer.mjs";
 import {
@@ -20,9 +21,11 @@ import {
   makeSubscriptionUrl,
   normalizeDisplayName,
   normalizeExpiresAt,
+  normalizeNodeId,
   normalizeNote,
   normalizePublicSubscriptionBaseUrl,
-  notFoundError
+  notFoundError,
+  validationError
 } from "./validation.mjs";
 
 export function createSubscriptionCore({
@@ -99,10 +102,23 @@ export function createSubscriptionCore({
     };
   }
 
+  function selectTenantNode(nodeId) {
+    if (nodeId === undefined || nodeId === null || String(nodeId).trim() === "") {
+      return firstNamedServer(proxyConfig);
+    }
+
+    const normalizedNodeId = normalizeNodeId(nodeId);
+    const node = resolveNamedServer(proxyConfig, normalizedNodeId);
+    if (!node) {
+      throw validationError("nodeId does not match an available node");
+    }
+    return node;
+  }
+
   function createTenant(input) {
     const now = isoNow(nowFn);
+    const node = selectTenantNode(input.nodeId);
     const token = tokenFactory();
-    const node = firstNamedServer(proxyConfig);
 
     const tenant = subscriptionStore.createTenant({
       id: idFactory(),
@@ -138,6 +154,18 @@ export function createSubscriptionCore({
   function renewTenant(id, input) {
     const tenant = subscriptionStore.renewTenant(id, {
       expiresAt: normalizeExpiresAt(input.expiresAt),
+      now: isoNow(nowFn)
+    });
+    if (!tenant) {
+      throw notFoundError(id);
+    }
+    return serializeTenant(tenant);
+  }
+
+  function setTenantNode(id, input) {
+    const node = selectTenantNode(input.nodeId);
+    const tenant = subscriptionStore.setTenantNode(id, {
+      nodeId: node.name,
       now: isoNow(nowFn)
     });
     if (!tenant) {
@@ -276,6 +304,7 @@ export function createSubscriptionCore({
     listTenants,
     getTenant,
     renewTenant,
+    setTenantNode,
     disableTenant,
     enableTenant,
     resetToken,

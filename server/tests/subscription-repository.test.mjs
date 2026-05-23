@@ -48,7 +48,7 @@ test("repository creates and lists tenants without raw tokens", async () => {
   });
 });
 
-test("repository renews, disables, enables, resets token, and marks last use", async () => {
+test("repository renews, reassigns node, disables, enables, resets token, and marks last use", async () => {
   await withRepository((repository) => {
     repository.createTenant(tenantInput({ note: "" }));
 
@@ -57,6 +57,12 @@ test("repository renews, disables, enables, resets token, and marks last use", a
       now: "2026-05-22T00:00:00.000Z"
     });
     assert.equal(repository.getTenant("tenant_1").expiresAt, "2026-08-01T00:00:00.000Z");
+
+    repository.setTenantNode("tenant_1", {
+      nodeId: "prod-edge-b",
+      now: "2026-05-22T12:00:00.000Z"
+    });
+    assert.equal(repository.getTenant("tenant_1").nodeId, "prod-edge-b");
 
     repository.setTenantStatus("tenant_1", { status: "disabled", now: "2026-05-23T00:00:00.000Z" });
     assert.equal(repository.getTenant("tenant_1").status, "disabled");

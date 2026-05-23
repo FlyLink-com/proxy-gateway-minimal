@@ -148,11 +148,31 @@ test("service default idFactory uses tenant-prefixed UUIDs", async () => {
   });
 });
 
-test("createTenant always uses the default first named node", async () => {
+test("createTenant uses the default first named node when no node is requested", async () => {
   await withService(async (context) => {
     const result = await createActiveTenant(context, { nodeName: "aws-tokyo" });
 
     assert.equal(result.tenant.nodeName, "aws-singapore");
+  });
+});
+
+test("createTenant assigns a requested node by id or name", async () => {
+  await withService(async (context) => {
+    const byId = await createActiveTenant(context, { nodeId: "node_tokyo" });
+    assert.equal(byId.tenant.nodeName, "aws-tokyo");
+
+    const byName = await context.service.createTenant({
+      displayName: "Customer B",
+      expiresAt: "2026-06-21T00:00:00.000Z",
+      nodeId: "aws-singapore"
+    });
+    assert.equal(byName.tenant.nodeName, "aws-singapore");
+  }, {
+    idFactory: (() => {
+      const ids = ["tenant_1", "tenant_2"];
+      return () => ids.shift();
+    })(),
+    rawTokenSequence: ["pgsub_tokyo_token", "pgsub_sg_token"]
   });
 });
 
@@ -178,6 +198,11 @@ test("createTenant validation failures throw validation_error", async () => {
       displayName: "Customer A",
       expiresAt: "2026-06-21T00:00:00.000Z",
       note: "x".repeat(501)
+    }));
+    assertCode("validation_error", () => context.service.createTenant({
+      displayName: "Customer A",
+      expiresAt: "2026-06-21T00:00:00.000Z",
+      nodeId: "missing-node"
     }));
   });
 });
@@ -236,6 +261,22 @@ test("resolveSubscriptionToken validates token, scopes proxy config to the allow
     assert.deepEqual(result.proxyConfig.pingHosts, ["1.1.1.1"]);
     assert.deepEqual(result.proxyConfig.nginx, { host: "127.0.0.1", ports: [443] });
     assert.equal(context.repository.getTenant("tenant_1").lastUsedAt, LATER);
+  });
+});
+
+test("setTenantNode reassigns an existing tenant and scopes future subscription output", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context);
+
+    const reassigned = context.service.setTenantNode("tenant_1", { nodeId: "node_tokyo" });
+    assert.equal(reassigned.nodeName, "aws-tokyo");
+
+    context.setNow(LATER);
+    const result = context.service.resolveSubscriptionToken(RAW_TOKEN);
+    assert.equal(result.ok, true);
+    assert.equal(result.proxyConfig.servers.length, 1);
+    assert.equal(result.proxyConfig.servers[0].name, "aws-tokyo");
+    assert.equal(result.proxyConfig.servers[0].password, "other-secret");
   });
 });
 
