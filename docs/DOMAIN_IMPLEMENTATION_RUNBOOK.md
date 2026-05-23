@@ -177,8 +177,12 @@ Target records:
 
 | Host | Type | Value | TTL |
 | --- | --- | --- | --- |
-| `sub.globalcirclecat.com` | A | `47.129.247.102` | `300` |
-| `ss-sg.globalcirclecat.com` | A | `47.129.247.102` | `300` |
+| `sub.globalcirclecat.com` | A | `47.129.247.102` | `600` |
+| `ss-sg.globalcirclecat.com` | A | `47.129.247.102` | `600` |
+
+AliDNS rejected TTL `300` during the 2026-05-24 Stage 1 execution because the
+current valid range is `600` to `86400`. Use `600` unless a later provider plan
+explicitly supports a lower TTL.
 
 If records do not exist, create them:
 
@@ -188,14 +192,14 @@ aliyun alidns AddDomainRecord `
   --RR sub `
   --Type A `
   --Value 47.129.247.102 `
-  --TTL 300
+  --TTL 600
 
 aliyun alidns AddDomainRecord `
   --DomainName globalcirclecat.com `
   --RR ss-sg `
   --Type A `
   --Value 47.129.247.102 `
-  --TTL 300
+  --TTL 600
 ```
 
 If records already exist and point to the expected blue target, lower TTL only:
@@ -209,14 +213,14 @@ aliyun alidns UpdateDomainRecord `
   --RR sub `
   --Type A `
   --Value 47.129.247.102 `
-  --TTL 300
+  --TTL 600
 
 aliyun alidns UpdateDomainRecord `
   --RecordId $SsRecordId `
   --RR ss-sg `
   --Type A `
   --Value 47.129.247.102 `
-  --TTL 300
+  --TTL 600
 ```
 
 Validate DNS:

@@ -49,6 +49,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - DNS/domain abstraction planning lives in `docs/DOMAIN_ABSTRACTION_PLAN.md`. It proposes `sub.globalcirclecat.com` for subscription delivery and `ss-sg.globalcirclecat.com` for Shadowsocks node DNS, but does not approve DNS, HTTPS, Nginx, AWS, production config, green creation, or cutover execution.
 - DNS/domain implementation gates and commands live in `docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md`. It remains documentation-only until explicit Risk A execution approval and does not approve DNS, Nginx, HTTPS, production config, green creation, or cutover execution.
 - The 2026-05-24 DNS/domain Stage 0 read-only execution record lives in `docs/domain-implementation-records/2026-05-24-stage0-preflight.md`. It performed only read-only AWS, AliDNS, public boundary, and Nginx log-redaction checks; no DNS, AWS, Nginx, HTTPS, production config, green, or cutover mutation occurred.
+- The 2026-05-24 DNS/domain Stage 1 execution record lives in `docs/domain-implementation-records/2026-05-24-stage1-dns-records-to-blue.md`. It created AliDNS A records `sub.globalcirclecat.com` and `ss-sg.globalcirclecat.com` pointing to current blue `47.129.247.102` with TTL `600`; no AWS, Nginx, HTTPS, production config, green, or cutover mutation occurred.
 
 ## Current Stage
 
