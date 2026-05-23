@@ -97,6 +97,15 @@ test("Windows network doctor script covers expected proxy layers", () => {
   assert.match(script, /18180/);
 });
 
+test("Windows network doctor human output uses the configured console port", () => {
+  const scriptPath = join(rootDir(), "scripts", "network-doctor.ps1");
+  const script = readFileSync(scriptPath, "utf8");
+
+  assert.doesNotMatch(script, /4077/);
+  assert.match(script, /Console port \$ConsolePort is not listening\./);
+  assert.match(script, /Console \$\(\$ConsolePort\):/);
+});
+
 test("Windows network doctor does not recreate the Internet Settings key during repair", () => {
   const scriptPath = join(rootDir(), "scripts", "network-doctor.ps1");
   const script = readFileSync(scriptPath, "utf8");

@@ -298,7 +298,7 @@ function Measure-NetworkState {
 
     $issues = @()
     if (-not $ports.console.listening) {
-        $issues += New-Issue "console-port-down" "error" "Console port 4077 is not listening."
+        $issues += New-Issue "console-port-down" "error" "Console port $ConsolePort is not listening."
     }
     if (-not $ports.httpProxy.listening) {
         $issues += New-Issue "http-proxy-port-down" "error" "HTTP proxy port 18180 is not listening."
@@ -506,7 +506,7 @@ function Write-HumanReport {
     Write-Host "OK: $($Report.ok)"
     Write-Host ""
     Write-Host "Ports:"
-    Write-Host "  Console 4077: $($Report.summary.consoleListening)"
+    Write-Host "  Console $($ConsolePort): $($Report.summary.consoleListening)"
     Write-Host "  SOCKS5 1080: $($Report.summary.socksListening)"
     Write-Host "  HTTP 18180:  $($Report.summary.httpProxyListening)"
     Write-Host ""
