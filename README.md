@@ -1,6 +1,6 @@
 # Proxy Gateway Console
 
-[English](README_EN.md)
+[English](README_EN.md) | [文档索引](docs/README.md)
 
 轻量级代理网关控制台 — 为本地代理转发、Clash/Mihomo 订阅和订阅用户运营提供轻量管理能力。
 
@@ -133,7 +133,7 @@ The current admin shell includes connection health diagnostics and confirmation 
 
 Do not expose this admin shell through the public Nginx gateway. Public production access should continue to allow only health checks and subscription fetches.
 
-For production topology, deployment flow, production disaster recovery, staging decisions, staging provisioning, and network forwarding paths, use `docs/PROJECT_CONTEXT.md`, `docs/ENVIRONMENT_TOPOLOGY.md`, `docs/DEPLOYMENT_FLOW.md`, `docs/PRODUCTION_DR.md`, `docs/STAGING_PROVISIONING.md`, and `docs/NETWORK_FORWARDING.md` as the current source of truth.
+完整文档入口见 `docs/README.md`。生产拓扑、部署、staging、DR、DNS/domain、网络转发和历史 specs/plans 的 source-of-truth 关系以该索引为准。
 
 ## 项目编排模型
 
@@ -146,7 +146,7 @@ For production topology, deployment flow, production disaster recovery, staging 
 - Production 不自动部署。生产变更必须保留 `.env`、SQLite、node config 和 Nginx public admin blocking，并按 `docs/DEPLOYMENT_FLOW.md` 验证。
 - 生产运行由 AWS 上的 systemd、Nginx、Express Console/API、SQLite 和 Shadowsocks 组成。
 
-详细流程以 `docs/PROJECT_CONTEXT.md`、`docs/ENVIRONMENT_TOPOLOGY.md`、`docs/DEPLOYMENT_FLOW.md`、`docs/PRODUCTION_DR.md`、`docs/STAGING_PROVISIONING.md` 和 `docs/NETWORK_FORWARDING.md` 为准。
+详细流程入口以 `docs/README.md` 为准；该索引会指向当前状态文档、活跃 runbook、执行记录和历史设计文档。
 
 ## Clash/Mihomo 订阅
 
