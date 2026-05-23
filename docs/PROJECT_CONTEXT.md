@@ -39,6 +39,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - Current production AWS node is `aws-singapore-blue` on `47.129.247.102`; future pre-release testing should use an explicitly assigned staging target before production changes.
 - Branch flow: `master` is the stable integrated baseline; use `codex/<task>`, `feat/<feature>`, or `ops/<topic>` for work; use a staging candidate only when an AWS pre-release test is needed.
 - Detailed topology and branch/AWS role definitions live in `docs/ENVIRONMENT_TOPOLOGY.md`.
+- Provider-neutral node naming rules live in `docs/NODE_NAMING.md`. Future durable node identities should use internal abstract names such as `prod-edge-a`, `prod-edge-b`, and `prod-edge-c`; migrating existing production node IDs, DNS names, tenant `nodeId` values, or generated subscription labels remains Risk A production node-config work.
 - Deployment, staging, production promotion, and rollback rules live in `docs/DEPLOYMENT_FLOW.md`.
 - Staging target decision lives in `docs/STAGING_TARGET_DECISION.md`: current recommendation is a new clean staging instance, not starting the stopped historical node as-is.
 - Clean staging provisioning, validation, promotion gates, and cleanup rules live in `docs/STAGING_PROVISIONING.md`.
