@@ -187,18 +187,25 @@ Read-only checks:
 
 ```bash
 systemctl is-active proxy-gateway-console.service proxy-gateway-ss.service nginx
+
 systemctl show proxy-gateway-console.service proxy-gateway-ss.service nginx \
-  --property=ActiveState,SubState,Result,ExecMainStatus,NRestarts --no-pager
+  --property=ActiveState,SubState,Result,ExecMainStatus,NRestarts \
+  --no-pager
+
 journalctl -u proxy-gateway-console.service -n 100 --no-pager
 journalctl -u proxy-gateway-ss.service -n 100 --no-pager
 nginx -t
 ss -lntup
 ```
 
-Do not paste raw `systemctl status`, process command lines, or journal output
-into PRs, docs, chat, or incident records if they include command arguments,
-tokens, passwords, subscription URLs, or environment-derived secrets. Inspect
-locally and record only redacted unit state, timestamps, and error summaries.
+Do not paste raw `systemctl status`, process command lines, `ss -lntup`, or
+journal output into PRs, docs, chat, or incident records if they include
+command arguments, tokens, passwords, subscription URLs, environment-derived
+secrets, or customer data. Record only redacted unit state, timestamps, error
+summaries, and validation outcomes.
+
+Inspect `journalctl` output locally and redact sensitive values before
+recording incident notes.
 
 Restarting services is production mutation. Only do it after explicit operator
 approval and after recording the current state.
