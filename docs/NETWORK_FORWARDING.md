@@ -206,14 +206,18 @@ listener `127.0.0.1:1080`.
 
 Current limitations to keep explicit:
 
-- The scripts currently hard-code `3456`, `1080`, and `18180`.
-- `createRuntimeState()` supports `CONSOLE_PORT`, but `scripts/proxy.ps1` and
-  `scripts/network-doctor.ps1` do not currently derive their ports from `.env`.
+- Windows proxy scripts currently assume the default local ports: Console
+  `3456`, SOCKS5 `1080`, HTTP proxy `18180`, and PAC URL
+  `http://127.0.0.1:3456/proxy.pac`.
+- `createRuntimeState()` supports `CONSOLE_PORT`, and changing it affects the
+  Node runtime. It does not automatically reconfigure `scripts/proxy.ps1`,
+  `scripts/network-doctor.ps1`, or the PAC URL.
+- Keep this fixed-port policy until there is a concrete operator need for
+  local multi-port runtimes, side-by-side gateway instances, or explicit
+  non-default Windows proxy workflows.
 - `network-doctor.ps1` currently reads `CONSOLE_TOKEN` from the process
   environment or `.proxy-gateway/console-token`; it does not read `.env`
   directly.
-- Some `network-doctor.ps1` human-readable output still references the old
-  console port `4077`; that is a follow-up code fix, not an architecture rule.
 
 ## Secret And Temporary File Boundary
 
@@ -353,16 +357,12 @@ Application -> 18180 HTTP bridge -> 1080 ss-local -> staging ss-server
 
 Recommended order:
 
-1. P1 code fix: update stale `network-doctor.ps1` `4077` labels to use
-   `$ConsolePort`.
-2. P1 documentation or code decision: either document that Windows scripts use
-   default ports only, or teach them to read `.env` or explicit parameters.
-3. P1 repair fix: decide whether `network-doctor.ps1` should read
+1. P1 repair fix: decide whether `network-doctor.ps1` should read
    `CONSOLE_TOKEN` from `.env` when the process environment and token store are
    unavailable.
-4. P2 tests: add explicit coverage for HTTP absolute URL proxying, HTTPS
+2. P2 tests: add explicit coverage for HTTP absolute URL proxying, HTTPS
    `CONNECT`, malformed URLs, SOCKS-down `502`, and loopback binding.
-5. P2 docs/tests: keep Clash/Mihomo subscription mode separated from Windows
+3. P2 docs/tests: keep Clash/Mihomo subscription mode separated from Windows
    local forwarding mode in future diagrams and tests.
 
 ## Forbidden During Architecture Research

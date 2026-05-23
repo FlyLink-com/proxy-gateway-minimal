@@ -59,6 +59,8 @@ SS_PASSWORD=your_shadowsocks_password_here
 # CONSOLE_TOKEN=xxx   （固定 Token，不配则自动生成）
 ```
 
+端口策略：`CONSOLE_PORT` 只影响 Node runtime。Windows 代理脚本当前固定使用本地默认端口 `3456` / `1080` / `18180`；修改 `CONSOLE_PORT` 不会自动重配置 `scripts/proxy.ps1`、`scripts/network-doctor.ps1` 或 PAC URL。
+
 ### 3. 启动服务
 
 ```bash
