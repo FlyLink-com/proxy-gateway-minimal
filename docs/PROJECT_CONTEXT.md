@@ -40,6 +40,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - Branch flow: `master` is the stable integrated baseline; use `codex/<task>`, `feat/<feature>`, or `ops/<topic>` for work; use a staging candidate only when an AWS pre-release test is needed.
 - Detailed topology and branch/AWS role definitions live in `docs/ENVIRONMENT_TOPOLOGY.md`.
 - Provider-neutral node naming rules live in `docs/NODE_NAMING.md`. Future durable node identities should use internal abstract names such as `prod-edge-a`, `prod-edge-b`, and `prod-edge-c`; migrating existing production node IDs, DNS names, tenant `nodeId` values, or generated subscription labels remains Risk A production node-config work.
+- Production edge fleet planning lives in `docs/PRODUCTION_EDGE_FLEET.md`. It defines `prod-edge-a` as the current primary slot, `prod-edge-b` as the validated second/replacement slot, and `prod-edge-c` as the future third recovery/standby slot; it does not authorize node creation, DNS changes, production config changes, secret/data copying, or traffic cutover.
 - Deployment, staging, production promotion, and rollback rules live in `docs/DEPLOYMENT_FLOW.md`.
 - Staging target decision lives in `docs/STAGING_TARGET_DECISION.md`: current recommendation is a new clean staging instance, not starting the stopped historical node as-is.
 - Clean staging provisioning, validation, promotion gates, and cleanup rules live in `docs/STAGING_PROVISIONING.md`.
@@ -221,6 +222,7 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 - `docs/STAGING_PROVISIONING.md`: operator runbook for creating, validating, stopping, or destroying a clean staging instance.
 - `docs/PRODUCTION_DR.md`: production single-node disaster recovery runbook, including hard-stop rules, read-only inventory, backup/restore requirements, recovery options, validation, and incident recording.
 - `docs/PRODUCTION_REPLACEMENT.md`: blue-green production replacement runbook for keeping blue online, creating and validating a green production replacement candidate, choosing an IP/DNS/client cutover strategy, and preserving rollback gates.
+- `docs/PRODUCTION_EDGE_FLEET.md`: production edge fleet plan for `prod-edge-a`, `prod-edge-b`, and `prod-edge-c`, including second-node and third-node standby boundaries.
 - `docs/production-replacement-preflight/2026-05-24-blue-green-preflight.md`: read-only preflight record for blue-green production replacement readiness; no AWS or production mutation was performed.
 - `docs/PRODUCTION_CUTOVER_STRATEGY.md`: production cutover strategy decision record comparing EIP, DNS/domain, and subscription/node-config update options before any green creation approval.
 - `docs/DOMAIN_ABSTRACTION_PLAN.md`: DNS/domain abstraction planning document for subscription base URL, Shadowsocks node host, DNS/TTL, HTTPS/Nginx, client migration, blue/green parallel window, and rollback gates.
