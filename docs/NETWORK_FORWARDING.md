@@ -234,6 +234,28 @@ Operational implication:
 - If the local forwarding stack is moved to a multi-user host, add a separate
   hardening task for temporary-file permissions or a safer secret handoff.
 
+## HTTP Bridge Robustness Baseline
+
+The HTTP-to-SOCKS bridge is implemented in
+`server/services/http-bridge.mjs`. `server/state.mjs` wires the production
+runtime with the default `node-fetch`, `SocksProxyAgent`, and `SocksClient`
+dependencies. Tests can inject `fetchFn`, `SocksProxyAgentClass`,
+`socksClient`, and `timeoutMs`.
+
+Current tested behavior:
+
+- malformed or relative proxy request targets return `400`;
+- injected fetch/SOCKS failures return `502` without hanging;
+- failed `CONNECT` attempts return `502` and close the client socket;
+- upstream body stream errors do not become process-level failures;
+- peer/client socket errors after `CONNECT` destroy both sides;
+- `createHttpProxyService` binds the bridge to loopback and releases the
+  listener port on stop.
+
+The boundary suite lives in `server/tests/http-bridge.test.mjs` and uses only
+mocked dependencies plus local loopback sockets. It must not call public
+internet endpoints, AWS, production services, or `47.129.247.102`.
+
 ## Staging Requirement For Node Changes
 
 Any change that affects these surfaces must be tested on a clean staging server
@@ -357,9 +379,11 @@ Application -> 18180 HTTP bridge -> 1080 ss-local -> staging ss-server
 
 Recommended order:
 
-1. P2 tests: add explicit coverage for HTTP absolute URL proxying, HTTPS
-   `CONNECT`, malformed URLs, SOCKS-down `502`, and loopback binding.
-2. P2 docs/tests: keep Clash/Mihomo subscription mode separated from Windows
+1. P2 tests: consider explicit coverage for client-normal-close cleanup on the
+   HTTP bridge upstream socket.
+2. P2 tests: consider response-body edge cases such as `HEAD` or `204` where
+   `proxyRes.body` may be null.
+3. P2 docs/tests: keep Clash/Mihomo subscription mode separated from Windows
    local forwarding mode in future diagrams and tests.
 
 ## Forbidden During Architecture Research
