@@ -1,6 +1,6 @@
 # Environment Topology
 
-Last updated: 2026-05-23, Asia/Shanghai.
+Last updated: 2026-05-24, Asia/Shanghai.
 
 This document defines the operating map for the subscription management project. Use it to avoid mixing local Codex projects, historical repository copies, GitHub branches, and AWS runtime directories.
 
@@ -52,11 +52,12 @@ If a change needs AWS testing before production, create or designate a staging d
 
 ## AWS Runtime Roles
 
-Current AWS Singapore inventory, verified read-only on 2026-05-23:
+Current AWS Singapore inventory, latest updated on 2026-05-24:
 
 | Role | Instance | Public IP | Private IP | State | Notes |
 | --- | --- | --- | --- | --- | --- |
 | Production blue | `i-004ab1c6c71d06bca` | `47.129.247.102` | `172.31.26.232` | `running` | Current in-use subscription node. EC2 tags currently have `Purpose=blue-deploy` but no `Project` or `Role` tag. |
+| Production green candidate | `i-0ad8676ee113d14cb` | `18.136.102.226` | `172.31.18.176` | `running` | Validated production replacement candidate. Not staging, not production cutover, and not receiving DNS/client traffic. |
 | Historical stopped node | `i-0589aac321172dd74` | none | `172.31.24.0` | `stopped` | Old proxy-gateway node with `Project=proxy-gateway-minimal`; do not treat as staging without explicit reassignment and verification. |
 | Staging / pre-release | unassigned | unassigned | unassigned | unassigned | Create or assign before testing deployment candidates. |
 
@@ -84,6 +85,11 @@ Production runtime listeners verified on 2026-05-23:
 | `127.0.0.1` | `18180` | Local HTTP proxy |
 
 Production security group `sg-04a165ec77f430ee8` allows public `80/tcp`, `443/tcp`, and `18388/tcp+udp`; SSH `22/tcp` is restricted to `36.163.181.255/32`. HTTPS on `47.129.247.102` was not active during runtime verification even though `443/tcp` is allowed by the security group.
+
+Green candidate security group `sg-06682c36aa03834f7` mirrors the approved
+green validation boundary: SSH `22/tcp` from `36.163.181.255/32`, public
+`80/tcp`, public `443/tcp` reserved, and public `18388/tcp+udp`. It does not
+open `3456`, `18180`, or `1080`.
 
 ## Deployment States
 
