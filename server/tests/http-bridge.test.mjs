@@ -262,6 +262,75 @@ test("HTTP bridge returns 502 when the injected fetch path fails", async () => {
   }
 });
 
+test("HTTP bridge ends upstream responses with a null body stream", async () => {
+  const server = createBridgeServer({
+    socksPort: 1080,
+    SocksProxyAgentClass: FakeSocksProxyAgent,
+    fetchFn: async () => ({
+      status: 200,
+      headers: headersFrom({ "x-upstream": "null-body" }),
+      body: null
+    })
+  });
+  const port = await listenBridge(server);
+
+  try {
+    const response = await requestThroughBridge(port, { path: "http://example.test/null-body" });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body, "");
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("HTTP bridge handles 204 upstream responses without a body stream", async () => {
+  const server = createBridgeServer({
+    socksPort: 1080,
+    SocksProxyAgentClass: FakeSocksProxyAgent,
+    fetchFn: async () => ({
+      status: 204,
+      headers: headersFrom({}),
+      body: null
+    })
+  });
+  const port = await listenBridge(server);
+
+  try {
+    const response = await requestThroughBridge(port, { path: "http://example.test/no-content" });
+
+    assert.equal(response.statusCode, 204);
+    assert.equal(response.body, "");
+  } finally {
+    await closeServer(server);
+  }
+});
+
+test("HTTP bridge handles HEAD upstream responses without a body stream", async () => {
+  const server = createBridgeServer({
+    socksPort: 1080,
+    SocksProxyAgentClass: FakeSocksProxyAgent,
+    fetchFn: async () => ({
+      status: 200,
+      headers: headersFrom({}),
+      body: null
+    })
+  });
+  const port = await listenBridge(server);
+
+  try {
+    const response = await requestThroughBridge(port, {
+      method: "HEAD",
+      path: "http://example.test/head"
+    });
+
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.body, "");
+  } finally {
+    await closeServer(server);
+  }
+});
+
 test("HTTP bridge CONNECT failure sends 502 and closes the client socket", async () => {
   const server = createBridgeServer({
     socksPort: 1080,

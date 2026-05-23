@@ -41,6 +41,10 @@ export function createBridgeServer({
         headers[key] = value;
       });
       res.writeHead(proxyRes.status, headers);
+      if (!proxyRes.body) {
+        res.end();
+        return;
+      }
       proxyRes.body.on("error", (error) => {
         if (!res.headersSent) {
           res.writeHead(502);
