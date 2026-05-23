@@ -63,7 +63,7 @@ Compatibility rules:
 
 - Admin route paths and response shapes remain compatible with the React admin shell.
 - `POST /api/admin/subscriptions` may include `nodeId`; when omitted, the backend keeps using the first configured named node.
-- `POST /api/admin/subscriptions/:id/node` accepts a configured node `id` or `name` and affects only that tenant's future subscription YAML output.
+- `POST /api/admin/subscriptions/:id/node` is an operator-only maintenance and canary mechanism. It accepts a configured node `id` or `name`, does not change tenant tokens or subscription URLs, and affects only that tenant's future subscription YAML output.
 - `GET /api/admin/overview` returns flat UI fields (`total`, `active`, `expiring`, `disabled`, `expired`) and keeps the legacy `counts` object for compatibility.
 - Primary `pgsub_` tokens and temporary `pgtmp_` tokens are still stored as hashes.
 - Full subscription URLs are still visible only on create, reset, or temporary-link creation.
