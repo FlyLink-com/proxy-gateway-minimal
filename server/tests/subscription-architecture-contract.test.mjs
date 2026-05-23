@@ -78,6 +78,7 @@ test("store contract lists and validates the persistence methods required by the
     "findTenantByTokenHash",
     "createTenant",
     "renewTenant",
+    "setTenantNode",
     "setTenantStatus",
     "resetTenantToken",
     "markLastUsed",

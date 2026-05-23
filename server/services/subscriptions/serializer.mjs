@@ -13,6 +13,11 @@ export function firstNamedServer(proxyConfig) {
   return server;
 }
 
+export function resolveNamedServer(proxyConfig, nodeId) {
+  const normalized = String(nodeId ?? "").trim();
+  return namedServers(proxyConfig).find((server) => server.name === normalized || server.id === normalized) || null;
+}
+
 export function cloneProxyConfigForNode(proxyConfig, nodeName) {
   return {
     ...proxyConfig,

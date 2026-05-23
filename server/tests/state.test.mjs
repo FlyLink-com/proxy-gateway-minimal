@@ -13,6 +13,7 @@ function fakeSubscriptionStore(overrides = {}) {
     createTenant: () => null,
     renewTenant: () => null,
     setTenantStatus: () => null,
+    setTenantNode: () => null,
     resetTenantToken: () => null,
     markLastUsed: () => null,
     createTempLink: () => null,

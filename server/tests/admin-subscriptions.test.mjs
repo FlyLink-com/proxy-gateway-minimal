@@ -74,6 +74,7 @@ function fakeService() {
       createdAt: "2026-05-22T00:00:00.000Z",
       subscriptionUrl: "https://gateway.example.com/sub/clash.yaml?token=pgtmp_route_token"
     }),
+    setTenantNode: (id, body) => ({ ...tenant, id, nodeName: body.nodeId }),
     listNodes: () => [{ id: "node_sg", name: "aws-singapore", status: "online" }],
     nodes: () => [{ id: "node_sg", name: "aws-singapore", status: "online" }],
     overview: () => ({
@@ -202,6 +203,13 @@ test("admin subscription routes create, list, read, mutate, and reset tokens", a
     assert.equal(reset.response.status, 200);
     assert.equal(reset.body.tenant.tokenPrefix, "pgsub_new_tok");
     assert.match(reset.body.subscriptionUrl, /token=pgsub_new_token$/);
+
+    const reassigned = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_1/node", {
+      method: "POST",
+      body: { nodeId: "prod-edge-b" }
+    });
+    assert.equal(reassigned.response.status, 200);
+    assert.equal(reassigned.body.tenant.nodeName, "prod-edge-b");
   } finally {
     server.close();
   }
@@ -313,6 +321,40 @@ test("tenant subscription token fetches scoped Clash YAML and disabled tenants a
     assert.match(yaml, /name: "aws-singapore"/);
     assert.match(yaml, /password: "shared-secret"/);
     assert.doesNotMatch(yaml, /aws-tokyo|other-secret/);
+
+    const reassigned = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/node", {
+      method: "POST",
+      body: { nodeId: "node_tokyo" }
+    });
+    assert.equal(reassigned.response.status, 200);
+    assert.equal(reassigned.body.tenant.nodeName, "aws-tokyo");
+
+    const canarySubscription = await fetch(`${baseUrl}/sub/clash.yaml?token=${RAW_TOKEN}`);
+    assert.equal(canarySubscription.status, 200);
+    const canaryYaml = await canarySubscription.text();
+    assert.match(canaryYaml, /name: "aws-tokyo"/);
+    assert.match(canaryYaml, /password: "other-secret"/);
+    assert.doesNotMatch(canaryYaml, /aws-singapore|shared-secret/);
+
+    const missingNode = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/node", {
+      method: "POST",
+      body: {}
+    });
+    assert.equal(missingNode.response.status, 400);
+    assert.deepEqual(missingNode.body, { error: "validation_error", message: "nodeId is required" });
+
+    const blankNode = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/node", {
+      method: "POST",
+      body: { nodeId: "   " }
+    });
+    assert.equal(blankNode.response.status, 400);
+    assert.deepEqual(blankNode.body, { error: "validation_error", message: "nodeId is required" });
+
+    const afterInvalidReassign = await fetch(`${baseUrl}/sub/clash.yaml?token=${RAW_TOKEN}`);
+    assert.equal(afterInvalidReassign.status, 200);
+    const afterInvalidYaml = await afterInvalidReassign.text();
+    assert.match(afterInvalidYaml, /name: "aws-tokyo"/);
+    assert.doesNotMatch(afterInvalidYaml, /aws-singapore|shared-secret/);
 
     const disabled = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/disable", { method: "POST" });
     assert.equal(disabled.response.status, 200);

@@ -72,6 +72,17 @@ export function normalizeNote(note = "") {
   return normalized;
 }
 
+export function normalizeNodeId(nodeId) {
+  const normalized = String(nodeId ?? "").trim();
+  if (!normalized) {
+    throw validationError("nodeId is required");
+  }
+  if (normalized.length > 80) {
+    throw validationError("nodeId must be at most 80 characters");
+  }
+  return normalized;
+}
+
 export function trimTrailingSlash(value) {
   return String(value || "").replace(/\/+$/, "");
 }

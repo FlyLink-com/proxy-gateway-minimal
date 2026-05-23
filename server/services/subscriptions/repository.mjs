@@ -169,6 +169,15 @@ export function createSqliteSubscriptionStore({ dbPath, database } = {}) {
     return result.changes === 1 ? getTenant(id) : null;
   }
 
+  function setTenantNode(id, { nodeId, now }) {
+    const result = db.prepare(`
+      update subscription_tenants
+      set node_id = ?, updated_at = ?
+      where id = ?
+    `).run(nodeId, now, id);
+    return result.changes === 1 ? getTenant(id) : null;
+  }
+
   function setTenantStatus(id, { status, now }) {
     const result = db.prepare(`
       update subscription_tenants
@@ -261,6 +270,7 @@ export function createSqliteSubscriptionStore({ dbPath, database } = {}) {
     findTenantByTokenHash,
     createTenant,
     renewTenant,
+    setTenantNode,
     setTenantStatus,
     resetTenantToken,
     markLastUsed,
