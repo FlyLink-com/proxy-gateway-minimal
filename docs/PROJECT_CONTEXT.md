@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-05-23, Asia/Shanghai.
+Last updated: 2026-05-24, Asia/Shanghai.
 
 This file is the handoff note for continuing the `proxy-gateway-minimal` work from a new Codex conversation. Read this file first, then inspect the live repo state before making changes.
 
@@ -50,11 +50,12 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - DNS/domain implementation gates and commands live in `docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md`. It remains documentation-only until explicit Risk A execution approval and does not approve DNS, Nginx, HTTPS, production config, green creation, or cutover execution.
 - The 2026-05-24 DNS/domain Stage 0 read-only execution record lives in `docs/domain-implementation-records/2026-05-24-stage0-preflight.md`. It performed only read-only AWS, AliDNS, public boundary, and Nginx log-redaction checks; no DNS, AWS, Nginx, HTTPS, production config, green, or cutover mutation occurred.
 - The 2026-05-24 DNS/domain Stage 1 execution record lives in `docs/domain-implementation-records/2026-05-24-stage1-dns-records-to-blue.md`. It created AliDNS A records `sub.globalcirclecat.com` and `ss-sg.globalcirclecat.com` pointing to current blue `47.129.247.102` with TTL `600`; no AWS, Nginx, HTTPS, production config, green, or cutover mutation occurred.
+- The 2026-05-24 DNS/domain Stage 2 HTTP-only validation record lives in `docs/domain-implementation-records/2026-05-24-stage2-http-only-validation.md`. It confirmed the existing blue Nginx default server returns the expected HTTP public boundary for `sub.globalcirclecat.com` and that active Nginx access-log checks still avoid query-token logging; no DNS, AWS, Nginx, HTTPS, production config, green, or cutover mutation occurred.
 
 ## Current Stage
 
 - Active branch: `master` for the integrated baseline; create a new feature or ops branch before making further changes.
-- Domain-based subscription exposure remains paused.
+- Domain DNS and HTTP-only boundary validation have started, but HTTPS issuance, runtime subscription base URL migration, node-host migration, green creation, and production cutover remain paused unless separately approved.
 - Nginx stays in front of the app as the gateway protection layer.
 - The public Nginx gateway does not expose the static console UI. It only allows `/api/health` and `/sub/clash.yaml`; all other public paths return `404`.
 - `master` already includes the subscription hardening work: temporary `pgtmp_` links, primary-token rotation, `/sub` rate limiting, app-level `/api/admin` source-IP allowlisting, Nginx public UI blocking, and token redaction guidance.
