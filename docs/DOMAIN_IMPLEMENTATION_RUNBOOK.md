@@ -345,6 +345,16 @@ Stage 3 is mutating. Do not run it without Gate 1 approval and successful Stage
 Issue HTTPS only for the subscription gateway host:
 
 ```bash
+sudo cp -a /etc/nginx/sites-available/proxy-gateway-public.conf \
+  /etc/nginx/sites-available/proxy-gateway-public.conf.before-https-<timestamp>
+sudo nginx -t
+
+if ! command -v certbot >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo DEBIAN_FRONTEND=noninteractive apt-get install -y certbot python3-certbot-nginx
+fi
+certbot --version
+
 sudo certbot --nginx \
   -d sub.globalcirclecat.com \
   --agree-tos \
