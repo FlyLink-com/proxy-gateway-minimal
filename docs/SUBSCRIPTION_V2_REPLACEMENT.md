@@ -1,14 +1,15 @@
 # Subscription V2 Replacement Design
 
 > Status:
-> - Type: Active design contract
+> - Type: Active production contract and closeout record
 > - Risk: C for this document, B for code implementation, A for production
->   activation
+>   activation or retirement actions
 > - Execution authority: Does not authorize code deployment, production config
->   changes, node migration, DNS changes, or traffic cutover
+>   changes, node migration, DNS changes, traffic cutover, legacy endpoint
+>   removal, green cleanup, or legacy-blue retirement
 > - Production impact: None until separately approved
-> - Source of truth for: replacing the MVP single-node subscription output with
->   Subscription V2
+> - Source of truth for: current Subscription V2 production behavior and the
+>   remaining closure gates after replacing MVP single-node output
 
 ## Purpose
 
@@ -16,9 +17,9 @@ Subscription V1 was the MVP subscription path. It proves that a tenant token can
 fetch `/sub/clash.yaml`, but the effective output is still scoped to one
 configured node through the tenant `nodeId`.
 
-Subscription V2 is the replacement renderer model. It keeps the current legacy
+Subscription V2 is the production renderer model. It keeps the current legacy
 subscription entry compatible while allowing the platform to publish a
-multi-node edge set after green and future nodes have been validated.
+multi-node edge set.
 
 Device-scoped opaque subscription URLs are the follow-up access model for the
 same V2 YAML output. That design lives in
@@ -56,33 +57,42 @@ Current implementation facts:
   operator canary overrides.
 - PR #66 added operator-only tenant node reassignment, with explicit `nodeId`
   required for reassignment.
+- PR #78 activated Subscription V2 in production on `prod-edge-a` and recorded
+  the active production tenant migration from the legacy node name to
+  `prod-edge-a`.
 
 Production facts:
 
-- Production traffic still serves from blue.
-- Green is a healthy current-code replacement candidate.
-- DNS still points to blue.
-- Cutover is not approved and is not immediately ready.
-- Production `config/proxy-servers.json` has not registered green as an emitted
-  production node.
+- Current production MVP target is `prod-edge-a`.
+- Authoritative DNS for the subscription gateway and primary Shadowsocks node
+  points to the `prod-edge-a` production target.
+- Production V2 output currently emits `prod-edge-a` plus temporary
+  `prod-edge-b`.
+- `prod-edge-b` is the current green node and remains temporary secondary
+  capacity until it is replaced by a durable second node or explicitly removed
+  from production output.
+- Legacy blue is no longer the durable production target. It remains only for
+  review, dependency drain, lessons learned, and controlled exit.
+- Device-scoped opaque subscription artifacts are documented but not
+  implemented or activated.
 
 ## Goals
 
 - Keep the existing legacy subscription entry compatible during renderer
   migration.
 - Keep existing tenant records and server-side tokens stable.
-- Replace MVP single-node output with V2 multi-node output after validation.
+- Keep V2 multi-node output as the current production subscription renderer.
 - Treat time and traffic as the only user entitlement limits.
 - Make the default valid-user output a platform-approved active node set.
 - Preserve operator-only canary control for specific tenants.
 - Keep expired and disabled tenant behavior unchanged.
 - Avoid exposing provider names, cloud vendors, blue/green internals, or
   sensitive values in generated node labels.
-- Roll out through green validation before production activation.
+- Keep remaining shutdown and migration work behind explicit A-tier gates.
 
 ## Non-Goals
 
-- No production activation in this document.
+- No new production activation in this document.
 - No AWS, DNS, Nginx, HTTPS, systemd, deploy, or cutover operation.
 - No SQLite schema migration in the first implementation.
 - No self-service user portal.
@@ -191,9 +201,13 @@ Future traffic quota work must answer:
 - How over-limit users are blocked in the data plane, not only at subscription
   refresh time.
 
-## Implementation Boundary
+## Implementation Status
 
-The first code implementation is B-tier:
+The V2 renderer implementation has landed and is active in production. Default
+primary tenants receive the configured V2 node set, while explicit non-default
+tenant node assignment remains an operator canary override.
+
+The original code implementation was B-tier:
 
 ```text
 Risk: B / compact code change
@@ -209,16 +223,12 @@ Validation:
   - npm test
 ```
 
-Production activation remains A-tier:
+The production activation was A-tier and is recorded separately:
 
 ```text
 Risk: A / production node-config and subscription output activation
-Requires:
-  - green validation with V2 output
-  - fresh production backup decision
-  - approved production node config
-  - rollback plan to V1 output
-  - explicit operator approval
+Record:
+  docs/production-replacement-records/2026-05-24-prod-edge-a-production-activation.md
 ```
 
 ## Test Contract
@@ -238,19 +248,37 @@ The B-tier implementation should prove:
   when provider-neutral names are configured.
 - Temporary links follow the same node-output behavior as their parent tenant.
 
-## Rollout Path
+## Completed Rollout
 
-1. Land this design document.
-2. Implement V2 output in a B-tier PR with tests.
-3. Deploy and validate V2 on green only.
-4. Validate Clash/Mihomo import behavior using non-production test tokens.
-5. Request a separate A-tier production activation plan.
-6. Activate V2 production output only after backup, rollback, and operator
-   approval gates are satisfied.
+Completed:
+
+1. Landed the V2 replacement design.
+2. Implemented V2 output in a B-tier code PR with tests.
+3. Validated V2 on green and clean `prod-edge-a` candidates.
+4. Restored fresh legacy-blue-derived SQLite data to `prod-edge-a`.
+5. Activated `prod-edge-a` as the production MVP target through an A-tier
+   production activation record.
+6. Corrected the active production tenant `nodeId` to `prod-edge-a` after an
+   initial import failure caused by the legacy node assignment.
+
+## Remaining Closure Gates
+
+Do not treat V2 activation as permission to close every legacy or temporary
+path. Close each path through its own gate:
+
+| Item | Current state | Closure rule |
+| --- | --- | --- |
+| Legacy query-token subscription endpoint | Still the compatible production refresh path. | Do not remove until device-scoped opaque artifacts are implemented, validated, migrated, and explicitly activated. |
+| `prod-edge-b` / current green | Currently emitted as temporary secondary node in V2 output. | Do not stop or terminate while it remains in production node config. First replace it with a durable second node or remove it from emitted V2 output through A-tier production node-config work. |
+| Legacy blue | No longer durable production target; kept for review and controlled exit. | Run a read-only retirement preflight before shutdown or termination. Any stop/terminate/security-group change remains A-tier. |
+| Direct production DNS/runtime rollback | Available only through recorded production runbook paths. | Any rollback or DNS change remains A-tier and must preserve subscription refresh behavior. |
+| Device-scoped opaque artifacts | Design documented only. | Implementation is separate work; production activation requires Nginx/logging review and explicit A-tier approval. |
+| Traffic quota enforcement | Not implemented in V2 renderer. | Requires separate data-plane traffic accounting design; subscription refresh blocking alone is not data-plane enforcement. |
+| HTTPS | Not issued or activated by V2 production activation. | Requires separate domain/Nginx/Certbot approval and rollback plan. |
 
 ## Rollback Model
 
-Rollback must be able to return to MVP behavior:
+Rollback from V2 output must be able to return to MVP behavior:
 
 ```text
 valid tenant -> one configured primary node
@@ -260,10 +288,14 @@ Rollback must not require user token rotation or subscription URL changes.
 
 ## Explicit Open Decisions
 
-- Whether the default active node set is "all configured production nodes" or
-  an explicit allowlist in `config/proxy-servers.json`.
+- Whether the default active node set should remain the current configured
+  production nodes or move to an explicit allowlist field.
 - Whether `prod-edge-c` should ever appear in normal subscriptions or remain
   recovery-only.
-- Whether V2 production activation should happen before or after blue-to-green
-  traffic cutover.
+- Whether current `prod-edge-b` should be replaced by a durable second node or
+  removed from V2 output before green cleanup.
+- When and how legacy blue should be retired after read-only retirement
+  preflight.
+- When device-scoped opaque subscription artifacts should replace the legacy
+  query-token URL as the product access model.
 - How traffic quota will be measured and enforced in the data plane.
