@@ -55,6 +55,40 @@ clean caches and temporary files
 retain host only as the approved validation host
 ```
 
+### Current Aliyun Host Inventory
+
+Read-only inventory verified on 2026-05-24:
+
+```text
+Product: Aliyun Simple Application Server / SWAS, not ECS
+Region: us-west-1
+Instance ID: 3e9253d3fb044463b876edacf6af8784
+Public IP: 47.251.178.125
+OS image: Ubuntu 24.04
+Status: Running
+Node: v22.22.2
+npm: 10.9.7
+git: 2.43.0
+```
+
+Use SWAS inventory for this host:
+
+```powershell
+aliyun swas-open list-instances --region us-west-1 --biz-region-id us-west-1
+```
+
+Do not use `aliyun ecs DescribeInstances` as the primary inventory command for
+this host. It is not an ECS instance, so ECS inventory can return no instances
+even while the SWAS validation host is running.
+
+Current access state: SSH access from the Codex local environment was restored
+and verified on 2026-05-24 using the approved local key file
+`~/.ssh/gao_new.pem`. The local `miyao` SSH alias now points at the new key and
+has been verified with `ssh miyao` against the validation host. The old config
+was retained as a local backup outside the repository. Do not record private key
+material, passwords, repository credentials, or other secrets in this runbook,
+PRs, chat, or validation records.
+
 If the Aliyun host is unavailable, use a temporary clean validation server as a
 fallback:
 
