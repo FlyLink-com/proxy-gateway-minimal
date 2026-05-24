@@ -57,20 +57,34 @@ through the admin source-IP allowlist before Bearer auth.
 
 ## Implemented Boundaries
 
-### Public Routes
+### App-Level Public / Pre-Auth Surface
 
-Implemented public routes:
+At the Express app level, these handlers are mounted before Bearer auth:
 
 ```text
 GET /api/health
-GET /proxy.pac
-GET /sub/clash.yaml
+static files under public/
 ```
+
+The auth middleware also has these public allowlist entries:
+
+```text
+/api/health
+/proxy.pac
+/sub/clash.yaml
+```
+
+This means `public/` static serving is part of the Express app pre-auth surface.
+Do not confuse that with the public production gateway boundary.
 
 `/sub/clash.yaml` is public at the middleware boundary because Clash/Mihomo
 clients need to refresh subscriptions without Bearer admin auth. The route
 still requires either a subscription token or the console token semantics
 implemented by `server/routes/subscription.mjs`.
+
+Production Nginx is stricter than the Express app surface. Public production
+access should continue to expose only `/api/health` and `/sub/clash.yaml`; root
+and static UI paths are expected to return `404`.
 
 ### Protected Control Routes
 
