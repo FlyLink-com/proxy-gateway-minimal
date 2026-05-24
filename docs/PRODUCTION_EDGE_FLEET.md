@@ -47,10 +47,10 @@ Current durable facts:
 
 ```text
 prod-edge-a target slot:
-  Current role: primary production edge
-  Current traffic: yes
+  Current role: future clean primary production edge slot
+  Current traffic: no dedicated provider-neutral runtime identity yet
   Current public traffic host: sub.globalcirclecat.com and ss-sg.globalcirclecat.com point to this slot
-  Current runtime identity: legacy provider/region-revealing name remains in production config
+  Current runtime identity: legacy provider/region-revealing node still serves the current path, but should not become the future durable target
 
 prod-edge-b target slot:
   Current role: validated production replacement candidate
@@ -68,6 +68,12 @@ prod-edge-c target slot:
 The exact cloud provider, instance ID, public IP, and security group mappings
 belong in execution records and restricted operational inventory. They should
 not become durable node names or customer-visible labels.
+
+The 2026-05-24 legacy blue connectivity review records the current operator
+decision: preserve the legacy primary node for read-only review, lessons
+learned, dependency drain, and controlled retirement; do not use it as the
+future durable production target. A clean new `prod-edge-a` candidate requires
+a separate Risk A creation and validation approval.
 
 ## Target Slot Semantics
 
@@ -299,9 +305,11 @@ Recommended sequence:
 
 ```text
 1. Approve this production edge fleet plan.
-2. Create a separate Risk A plan for prod-edge-b runtime identity migration.
-3. Review and maintain repo-only build materials for prod-edge-c.
-4. Only then execute node-config, DNS, tenant assignment, or standby promotion work.
+2. Record and absorb legacy blue incident findings before building a new primary candidate.
+3. Create a separate Risk A plan for a clean prod-edge-a candidate.
+4. Create a separate Risk A plan for prod-edge-b runtime identity migration.
+5. Review and maintain repo-only build materials for prod-edge-c.
+6. Only then execute node-config, DNS, tenant assignment, or standby promotion work.
 ```
 
 For the third-node work, start with docs and repo-only build material
