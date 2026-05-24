@@ -1,6 +1,6 @@
 # Network Forwarding Architecture
 
-Last updated: 2026-05-23, Asia/Shanghai.
+Last updated: 2026-05-24, Asia/Shanghai.
 
 This document describes how traffic moves through `proxy-gateway-minimal`.
 It is an architecture and operations reference only. It does not authorize AWS,
@@ -36,11 +36,11 @@ Windows application
   -> WinINet, PAC, HTTP_PROXY, or HTTPS_PROXY
   -> 127.0.0.1:18180 Node HTTP-to-SOCKS bridge
   -> 127.0.0.1:1080 ss-local SOCKS5
-  -> 47.129.247.102:18388 AWS Shadowsocks server
+  -> ss-sg.globalcirclecat.com:18388 current production Shadowsocks node
 
 ALL_PROXY-aware application
   -> 127.0.0.1:1080 ss-local SOCKS5
-  -> 47.129.247.102:18388 AWS Shadowsocks server
+  -> ss-sg.globalcirclecat.com:18388 current production Shadowsocks node
 ```
 
 Implementation notes:
@@ -50,8 +50,9 @@ Implementation notes:
 - `server/services/http-proxy.mjs` binds that bridge to `127.0.0.1:18180`.
 - `server/services/ss-local.mjs` starts `bin/sslocal.exe` from
   `config/ss-local.json`.
-- `config/ss-local.json` currently points at `47.129.247.102:18388` and binds
-  local SOCKS5 on `127.0.0.1:1080`.
+- `config/ss-local.json` currently points at the production primary
+  Shadowsocks DNS name, `ss-sg.globalcirclecat.com:18388`, and binds local
+  SOCKS5 on `127.0.0.1:1080`.
 
 Security boundary:
 
@@ -91,7 +92,7 @@ This mode is used when Clash or Mihomo imports the subscription YAML.
 Clash or Mihomo
   -> GET /sub/clash.yaml?token=...
   -> receives Shadowsocks node YAML
-  -> connects directly to 47.129.247.102:18388
+  -> connects directly to the emitted Shadowsocks nodes
 ```
 
 In this mode `proxy-gateway-minimal` is a subscription generator and access
@@ -149,8 +150,17 @@ Boundaries:
 
 ## Production Runtime Roles
 
-The current production node is AWS Singapore `aws-singapore-blue` at
-`47.129.247.102`.
+The current production primary node is provider-neutral `prod-edge-a`. The
+subscription gateway and primary Shadowsocks node DNS names currently resolve
+to the `prod-edge-a` production target:
+
+```text
+sub.globalcirclecat.com   -> production subscription gateway
+ss-sg.globalcirclecat.com -> primary Shadowsocks node
+```
+
+Legacy blue `47.129.247.102` is not the current production target. It remains
+under retirement review only.
 
 On production, the server has two separate runtime roles:
 
@@ -254,7 +264,7 @@ Current tested behavior:
 
 The boundary suite lives in `server/tests/http-bridge.test.mjs` and uses only
 mocked dependencies plus local loopback sockets. It must not call public
-internet endpoints, AWS, production services, or `47.129.247.102`.
+internet endpoints, AWS, production services, or legacy node IPs.
 
 ## Staging Requirement For Node Changes
 
@@ -390,8 +400,8 @@ Recommended order:
 
 Do not:
 
-- Change production `ss-server`, `.env`, SQLite, Nginx, security group, or
-  `config/proxy-servers.json`.
+- Change production `ss-server`, `.env`, SQLite, Nginx, security group,
+  production DNS, or `config/proxy-servers.json`.
 - Copy production `SS_PASSWORD`, `CONSOLE_TOKEN`, tenant tokens, subscription
   URLs, or SQLite data into docs, PR comments, chat, or staging.
 - Treat the stopped historical instance as staging without explicit reassignment.
