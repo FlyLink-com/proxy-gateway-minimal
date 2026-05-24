@@ -16,9 +16,15 @@ Subscription V1 was the MVP subscription path. It proves that a tenant token can
 fetch `/sub/clash.yaml`, but the effective output is still scoped to one
 configured node through the tenant `nodeId`.
 
-Subscription V2 is the replacement model. It keeps the user-facing subscription
-entry stable while allowing the platform to publish a multi-node edge set after
-green and future nodes have been validated.
+Subscription V2 is the replacement renderer model. It keeps the current legacy
+subscription entry compatible while allowing the platform to publish a
+multi-node edge set after green and future nodes have been validated.
+
+Device-scoped opaque subscription URLs are the follow-up access model for the
+same V2 YAML output. That design lives in
+`docs/SUBSCRIPTION_DEVICE_SCOPED_OPAQUE_URLS.md` and covers random-looking
+refreshable artifact URLs, server-side token containment, and device-abuse
+signals. It does not change this V2 renderer contract by itself.
 
 ## Core Decision
 
@@ -40,7 +46,7 @@ pricing or product segmentation model.
 
 Current implementation facts:
 
-- `/sub/clash.yaml?token=...` is the stable subscription entry.
+- The legacy query-token subscription endpoint is the current compatible entry.
 - Tenant tokens and temporary links are already validated server-side.
 - Expired or disabled tenants are rejected during token resolution.
 - `generateClashSubscription()` can render multiple servers when given a
@@ -62,8 +68,9 @@ Production facts:
 
 ## Goals
 
-- Keep the existing subscription URL stable.
-- Keep existing tenant tokens stable.
+- Keep the existing legacy subscription entry compatible during renderer
+  migration.
+- Keep existing tenant records and server-side tokens stable.
 - Replace MVP single-node output with V2 multi-node output after validation.
 - Treat time and traffic as the only user entitlement limits.
 - Make the default valid-user output a platform-approved active node set.
@@ -91,15 +98,16 @@ already cached nodes.
 
 ## Subscription V2 Model
 
-### Stable User Contract
+### Legacy Compatibility Contract
 
-The user-facing contract remains:
+V2 renderer migration must preserve the current legacy subscription endpoint.
+The renderer should not require users to receive new tenant tokens only because
+the YAML output changed from single-node to multi-node.
 
-```text
-GET /sub/clash.yaml?token=...
-```
-
-V2 must not require users to re-import subscriptions or receive a new token.
+The long-term product access model is device-scoped opaque subscription
+artifacts. That model should keep tenant tokens server-side and avoid embedding
+token-shaped values in the user-visible URL. The renderer must remain usable
+from either access layer.
 
 ### Valid Tenant Output
 
