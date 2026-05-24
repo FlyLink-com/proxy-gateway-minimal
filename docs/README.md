@@ -36,6 +36,7 @@ actions by itself.
 | `docs/ENVIRONMENT_TOPOLOGY.md` | Local checkout, GitHub, branch roles, AWS runtime roles, and current topology. | Active topology reference. | Read before interpreting environment roles or AWS instance identity. |
 | `docs/NODE_NAMING.md` | Provider-neutral production edge node naming policy. | Active naming policy; runtime migrations remain Risk A. | Read before adding, renaming, exposing, or documenting production node identities. |
 | `docs/SUBSCRIPTION_V2_REPLACEMENT.md` | Subscription V2 design for replacing MVP single-node output with stable-token multi-node delivery. | Active design contract; no execution authority. | Read before implementing or activating Subscription V2. |
+| `docs/SUBSCRIPTION_DEVICE_SCOPED_OPAQUE_URLS.md` | Device-scoped opaque subscription artifact design for random-looking refreshable subscription URLs and abuse detection. | Active design contract; no execution authority. | Read before changing subscription URL shape, artifact generation, device binding, or anti-sharing behavior. |
 | `docs/API_COMPATIBILITY.md` | API compatibility notes for external callers and existing clients. | Current reference. | Read before changing API response shape or endpoint behavior. |
 | `docs/MIGRATION.md` | Migration notes for earlier project usage and compatibility transitions. | Reference / migration notes. | Read when maintaining compatibility with older local usage. |
 
