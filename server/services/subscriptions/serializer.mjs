@@ -18,10 +18,26 @@ export function resolveNamedServer(proxyConfig, nodeId) {
   return namedServers(proxyConfig).find((server) => server.name === normalized || server.id === normalized) || null;
 }
 
-export function cloneProxyConfigForNode(proxyConfig, nodeName) {
+export function cloneProxyConfigForSubscriptionOutput(proxyConfig, nodeId) {
+  const defaultNode = firstNamedServer(proxyConfig);
+  const node = resolveNamedServer(proxyConfig, nodeId);
+  if (!node) {
+    return {
+      ...proxyConfig,
+      servers: []
+    };
+  }
+
+  if (node.name === defaultNode.name) {
+    return {
+      ...proxyConfig,
+      servers: namedServers(proxyConfig)
+    };
+  }
+
   return {
     ...proxyConfig,
-    servers: (proxyConfig.servers || []).filter((server) => server.name === nodeName)
+    servers: [node]
   };
 }
 

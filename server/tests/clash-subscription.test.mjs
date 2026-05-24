@@ -56,8 +56,33 @@ test("generateClashSubscription emits Clash Shadowsocks YAML", () => {
   assert.match(yaml, /cipher: "aes-256-gcm"/);
   assert.match(yaml, /password: "pw:with#chars"/);
   assert.match(yaml, /- "aws-singapore-blue"/);
+  assert.match(yaml, /name: "aws-singapore-backup"/);
+  assert.match(yaml, /server: "198\.51\.100\.10"/);
+  assert.match(yaml, /password: "secondary-secret"/);
+  assert.match(yaml, /- "aws-singapore-backup"/);
   assert.match(yaml, /- DIRECT/);
   assert.match(yaml, /- MATCH,GLOBAL/);
+});
+
+test("generateClashSubscription uses configured names as provider-neutral labels", () => {
+  const yaml = generateClashSubscription({
+    servers: [
+      {
+        id: "internal-node-a",
+        name: "prod-edge-a",
+        region: "internal-region",
+        host: "edge-a.globalcirclecat.com",
+        port: 18388,
+        method: "aes-256-gcm",
+        password: "edge-a-secret",
+        note: "operator-only"
+      }
+    ]
+  });
+
+  assert.match(yaml, /name: "prod-edge-a"/);
+  assert.match(yaml, /server: "edge-a\.globalcirclecat\.com"/);
+  assert.doesNotMatch(yaml, /internal-node-a|internal-region|operator-only/);
 });
 
 test("subscriptionSummary returns metadata without passwords", () => {

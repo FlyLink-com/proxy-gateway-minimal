@@ -244,7 +244,7 @@ test("repository stored tokenHash equals hash of raw visible-once token", async 
   });
 });
 
-test("resolveSubscriptionToken validates token, scopes proxy config to the allowed node, and marks lastUsedAt", async () => {
+test("resolveSubscriptionToken returns V2 multi-node output for default tenants and marks lastUsedAt", async () => {
   await withService(async (context) => {
     await createActiveTenant(context);
     context.setNow(LATER);
@@ -255,9 +255,11 @@ test("resolveSubscriptionToken validates token, scopes proxy config to the allow
     assert.equal(result.tenant.id, "tenant_1");
     assert.equal(result.tenant.lastUsedAt, LATER);
     assert.equal(Object.hasOwn(result.tenant, "tokenHash"), false);
-    assert.equal(result.proxyConfig.servers.length, 1);
+    assert.equal(result.proxyConfig.servers.length, 2);
     assert.equal(result.proxyConfig.servers[0].name, "aws-singapore");
     assert.equal(result.proxyConfig.servers[0].password, "shared-secret");
+    assert.equal(result.proxyConfig.servers[1].name, "aws-tokyo");
+    assert.equal(result.proxyConfig.servers[1].password, "other-secret");
     assert.deepEqual(result.proxyConfig.pingHosts, ["1.1.1.1"]);
     assert.deepEqual(result.proxyConfig.nginx, { host: "127.0.0.1", ports: [443] });
     assert.equal(context.repository.getTenant("tenant_1").lastUsedAt, LATER);
@@ -401,8 +403,9 @@ test("service creates temporary subscription links and resolves them until expir
     const resolved = service.resolveSubscriptionToken("pgtmp_visible_once_token");
     assert.equal(resolved.ok, true);
     assert.equal(resolved.tenant.id, "tenant_1");
-    assert.equal(resolved.proxyConfig.servers.length, 1);
+    assert.equal(resolved.proxyConfig.servers.length, 2);
     assert.equal(resolved.proxyConfig.servers[0].name, "aws-singapore");
+    assert.equal(resolved.proxyConfig.servers[1].name, "aws-tokyo");
 
     const usedTempLink = repository.findTempLinkByTokenHash(hashSubscriptionToken("pgtmp_visible_once_token"));
     assert.equal(usedTempLink.usedAt, "2026-05-22T00:00:00.000Z");

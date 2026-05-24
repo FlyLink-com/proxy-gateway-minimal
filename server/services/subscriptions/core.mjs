@@ -7,7 +7,7 @@ import {
 } from "./tokens.mjs";
 import { assertSubscriptionStore } from "./store-contract.mjs";
 import {
-  cloneProxyConfigForNode,
+  cloneProxyConfigForSubscriptionOutput,
   createSubscriptionSerializer,
   firstNamedServer,
   namedServers,
@@ -77,7 +77,7 @@ export function createSubscriptionCore({
       return { ok: false, status: 403, error: "Subscription expired" };
     }
 
-    const scopedProxyConfig = cloneProxyConfigForNode(proxyConfig, tenantAuth.nodeId);
+    const scopedProxyConfig = cloneProxyConfigForSubscriptionOutput(proxyConfig, tenantAuth.nodeId);
     if (scopedProxyConfig.servers.length === 0) {
       return { ok: false, status: 403, error: "Subscription node unavailable" };
     }

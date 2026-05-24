@@ -236,7 +236,7 @@ Admin subscription endpoints:
 | GET | `/api/admin/nodes` | List assignable nodes |
 | GET | `/api/admin/overview` | Tenant and node overview |
 
-Tenant node assignment is an operator-only maintenance and canary mechanism. It does not change tenant tokens or subscription URLs. Tenant creation may include `nodeId`; when omitted, the backend keeps using the first configured named node. `POST /api/admin/subscriptions/:id/node` accepts either a node `id` or `name` and only affects that tenant's future `/sub/clash.yaml` output. Adding a second production node to `config/proxy-servers.json`, migrating production tenant assignments, or making production subscriptions emit a new node remains Risk A production node-config work with a separate gate.
+Tenant node assignment is an operator-only maintenance and canary mechanism. It does not change tenant tokens or subscription URLs. Tenant creation may include `nodeId`; when omitted, the backend keeps using the first configured named node, and default-primary tenants receive the V2 multi-node subscription output. `POST /api/admin/subscriptions/:id/node` accepts either a node `id` or `name` and can scope that tenant's future `/sub/clash.yaml` output to the selected non-default node for canary use. Adding a second production node to `config/proxy-servers.json`, migrating production tenant assignments, or making production subscriptions emit a new production node remains Risk A production node-config work with a separate gate.
 
 ## Validation And CI
 
