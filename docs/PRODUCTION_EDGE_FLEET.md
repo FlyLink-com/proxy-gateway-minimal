@@ -12,12 +12,12 @@ Last updated: 2026-05-24, Asia/Shanghai.
 ## Purpose
 
 This document defines the provider-neutral production edge fleet model for the
-proxy gateway. It turns the current single-primary plus validated replacement
-candidate state into a controlled three-slot plan:
+proxy gateway. It turns the current primary plus iteration/canary capacity into
+a controlled three-slot plan:
 
 ```text
 prod-edge-a: current production primary slot
-prod-edge-b: validated second/replacement slot
+prod-edge-b: iteration/canary secondary slot
 prod-edge-c: future third recovery/standby slot
 ```
 
@@ -47,16 +47,16 @@ Current durable facts:
 
 ```text
 prod-edge-a target slot:
-  Current role: future clean primary production edge slot
-  Current traffic: no dedicated provider-neutral runtime identity yet
+  Current role: active production primary edge slot
+  Current traffic: yes
   Current public traffic host: sub.globalcirclecat.com and ss-sg.globalcirclecat.com point to this slot
-  Current runtime identity: legacy provider/region-revealing node still serves the current path, but should not become the future durable target
+  Current runtime identity: provider-neutral prod-edge-a
 
 prod-edge-b target slot:
-  Current role: validated production replacement candidate
-  Current traffic: no
+  Current role: iteration/canary secondary edge slot
+  Current traffic: yes, as a secondary node emitted by Subscription V2
   Current validation: public boundary, systemd, SQLite integrity, and Shadowsocks TCP reachability passed
-  Current runtime identity: still configured as a replacement candidate, not a durable second-node identity
+  Current runtime identity: provider-neutral prod-edge-b slot, currently carried by the validated green node
 
 prod-edge-c target slot:
   Current role: future third recovery/standby slot
@@ -94,7 +94,8 @@ separate Risk A node identity migration.
 
 ### prod-edge-b
 
-`prod-edge-b` is the second production edge slot.
+`prod-edge-b` is the second production edge slot for iteration, canary, and
+maintenance validation.
 
 Possible modes:
 
@@ -107,13 +108,13 @@ active secondary: generated subscriptions may list both prod-edge-a and prod-edg
 Default recommendation:
 
 ```text
-Start as warm standby.
-Promote to canary only after independent node identity, DNS, subscription YAML, and tenant assignment behavior are approved.
-Do not make it active secondary by default.
+Use prod-edge-b as the iteration/canary slot after it has an approved independent node identity.
+It may appear in Subscription V2 output when production node-config approval has explicitly added it.
+Treat the current carrying instance as replaceable implementation detail, not the durable identity.
 ```
 
-`prod-edge-b` must have an independent node ID before it is used as a durable
-second node. It must not reuse the primary slot identity.
+`prod-edge-b` must keep an independent node ID. It must not reuse the primary
+slot identity and must not become the subscription gateway authority.
 
 ### prod-edge-c
 
@@ -248,8 +249,8 @@ standby validation rather than keeping an unmanaged stale copy online.
 
 ### Path 1: prod-edge-b as warm standby
 
-Use when the goal is to keep the validated second slot available without
-serving ordinary traffic.
+Use when the goal is to keep the second slot available without serving ordinary
+traffic.
 
 Required before promotion:
 
@@ -259,7 +260,7 @@ Required before promotion:
 - node identity migration plan;
 - rollback plan.
 
-### Path 2: prod-edge-b as canary node
+### Path 2: prod-edge-b as iteration/canary node
 
 Use when the goal is controlled small-scope traffic validation.
 
@@ -270,6 +271,21 @@ Required before promotion:
 - selected test tenants;
 - generated YAML validation without recording raw subscription URLs;
 - rollback to primary-only subscription output.
+
+### Path 2b: prod-edge-b as active secondary output
+
+Use when the goal is Subscription V2 multi-node delivery while keeping
+`prod-edge-a` as the subscription gateway and primary slot.
+
+Required before keeping it active:
+
+- explicit Risk A production node-config approval;
+- fresh health check for the carrying instance;
+- confirmation that Subscription V2 output lists provider-neutral labels;
+- rollback plan to remove `prod-edge-b` from generated subscriptions without
+  changing subscription URLs or tenant tokens;
+- lifecycle owner for replacing the carrying instance when it is no longer the
+  desired iteration node.
 
 ### Path 3: prod-edge-c as recovery node
 
@@ -290,7 +306,7 @@ Required before promotion:
 Before runtime work starts, decide:
 
 ```text
-1. Should prod-edge-b remain warm standby or become canary?
+1. Should prod-edge-b remain active secondary output, canary-only, or warm standby?
 2. Should prod-edge-c be cold standby with build materials, or pre-created warm standby?
 3. Should node hosts be edge-a/b/c.globalcirclecat.com?
 4. Should generated subscriptions ever list multiple nodes for normal tenants?
@@ -307,7 +323,7 @@ Recommended sequence:
 1. Approve this production edge fleet plan.
 2. Record and absorb legacy blue incident findings before building a new primary candidate.
 3. Create a separate Risk A plan for a clean prod-edge-a candidate.
-4. Create a separate Risk A plan for prod-edge-b runtime identity migration.
+4. Create separate Risk A records for any prod-edge-b carrying-instance replacement or output-mode change.
 5. Review and maintain repo-only build materials for prod-edge-c.
 6. Only then execute node-config, DNS, tenant assignment, or standby promotion work.
 ```
