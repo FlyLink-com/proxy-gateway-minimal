@@ -52,6 +52,13 @@ The public allowlist is currently:
 /sub/clash.yaml
 ```
 
+The auth middleware also has a public prefix for repository-level opaque
+artifact refresh:
+
+```text
+/sub/a/
+```
+
 Any other `/api/*` path passes through Bearer auth. `/api/admin/*` also passes
 through the admin source-IP allowlist before Bearer auth.
 
@@ -74,6 +81,12 @@ The auth middleware also has these public allowlist entries:
 /sub/clash.yaml
 ```
 
+And this public prefix:
+
+```text
+/sub/a/
+```
+
 This means `public/` static serving is part of the Express app pre-auth surface.
 Do not confuse that with the public production gateway boundary.
 
@@ -82,9 +95,12 @@ clients need to refresh subscriptions without Bearer admin auth. The route
 still requires either a subscription token or the console token semantics
 implemented by `server/routes/subscription.mjs`.
 
-Production Nginx is stricter than the Express app surface. Public production
-access should continue to expose only `/api/health` and `/sub/clash.yaml`; root
-and static UI paths are expected to return `404`.
+Production Nginx is stricter than the Express app surface. Current public
+production access should continue to expose only `/api/health` and
+`/sub/clash.yaml`; root and static UI paths are expected to return `404`.
+Exposing opaque artifact paths publicly remains a separate Risk A production
+activation decision because path artifacts are bearer secrets and require
+Nginx logging review.
 
 ### Protected Control Routes
 
@@ -132,6 +148,10 @@ POST /api/admin/subscriptions/:id/disable
 POST /api/admin/subscriptions/:id/enable
 POST /api/admin/subscriptions/:id/reset-token
 POST /api/admin/subscriptions/:id/temp-link
+POST /api/admin/subscriptions/:id/artifacts
+GET  /api/admin/subscriptions/:id/artifacts
+POST /api/admin/subscription-artifacts/:id/revoke
+POST /api/admin/subscription-artifacts/:id/rotate
 GET  /api/admin/nodes
 GET  /api/admin/overview
 ```
@@ -139,6 +159,10 @@ GET  /api/admin/overview
 `POST /api/admin/subscriptions/:id/node` is the operator-only tenant node
 assignment endpoint. It calls `core.setTenantNode(...)`; validation errors map
 to `400`, and missing tenants map to `404`.
+
+The artifact endpoints are operator-only controls for device-scoped opaque
+subscription artifacts. Create and rotate responses can include a visible-once
+artifact URL; list responses return only non-secret summaries.
 
 ## Subscription Route Behavior
 
@@ -162,6 +186,13 @@ subscription service failure:
 
 The route does not directly decide which nodes a tenant receives. Node
 selection happens inside subscription core / serializer logic.
+
+`GET /sub/a/:artifact` is the repository-level opaque artifact refresh route.
+It does not accept query-token fallback. It resolves a hashed artifact secret
+through subscription core, applies the same tenant expiry/disabled checks, and
+renders YAML from the resulting scoped Subscription V2 proxy config. Unknown
+artifacts return a generic not-found response; revoked or rotated artifacts
+return a gone response.
 
 ## Subscription V2 Node Selection
 
@@ -282,7 +313,7 @@ automatic node reassignment based on carrier conditions
 WebSocket + TLS mixed-protocol subscription output
 VLESS / VMess / Trojan / Reality / gRPC subscription rendering
 blackhole node semantics
-automatic abuse detection
+automatic abuse blocking or carrier-aware abuse detection
 traffic accounting
 traffic quota enforcement
 self-service user portal
@@ -333,6 +364,7 @@ admin source-IP allowlist for /api/admin
 Bearer auth for protected routes
 Subscription V2 node selection
 operator-only tenant node assignment
+device-scoped opaque artifact repository/core/routes/admin support
 expired / disabled token-resolution blocking
 Shadowsocks-only Clash YAML output
 ```
@@ -343,6 +375,7 @@ Not implemented today:
 automatic carrier/DPI detection
 mixed protocol or obfuscation matrix
 blackhole node semantics
+automatic carrier-aware abuse detection
 traffic accounting or quota enforcement
 self-service portal
 route-local loopback checks for each control route file

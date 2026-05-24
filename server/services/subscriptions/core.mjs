@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   TEMP_SUBSCRIPTION_TOKEN_PREFIX,
   createSubscriptionToken,
@@ -36,8 +36,10 @@ export function createSubscriptionCore({
   nowFn = () => new Date(),
   tokenFactory = () => createSubscriptionToken(),
   tempTokenFactory = () => createSubscriptionToken({ prefix: TEMP_SUBSCRIPTION_TOKEN_PREFIX }),
+  artifactSecretFactory = () => randomBytes(32).toString("base64url"),
   idFactory = () => `tenant_${randomUUID()}`,
   tempLinkIdFactory = () => `temp_${randomUUID()}`,
+  artifactIdFactory = () => `artifact_${randomUUID()}`,
   tempLinkTtlMinutes = 24 * 60,
   expiringDays = DEFAULT_EXPIRING_DAYS,
   lastUsedWriteIntervalMs = 15 * 60 * 1000,
@@ -56,6 +58,39 @@ export function createSubscriptionCore({
   function expiresAtFromNow() {
     const ttlMs = Number(tempLinkTtlMinutes) * 60 * 1000;
     return new Date(nowFn().getTime() + ttlMs).toISOString();
+  }
+
+  function artifactPrefix(rawArtifact) {
+    return String(rawArtifact).slice(0, 12);
+  }
+
+  function makeArtifactUrl(rawArtifact) {
+    return `${normalizedPublicSubscriptionBaseUrl.replace(/\/+$/, "")}/sub/a/${encodeURIComponent(rawArtifact)}.yaml`;
+  }
+
+  function hashSignal(value) {
+    if (!value) return null;
+    return createHash("sha256").update(String(value)).digest("hex");
+  }
+
+  function ipPrefix(value) {
+    const text = String(value || "").trim();
+    const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/.exec(text);
+    if (ipv4) {
+      return `${ipv4[1]}.${ipv4[2]}.${ipv4[3]}.0/24`;
+    }
+    if (text.includes(":")) {
+      return `${text.toLowerCase().split(":").slice(0, 4).join(":")}::/64`;
+    }
+    return text;
+  }
+
+  function normalizeArtifactSecret(rawArtifact) {
+    const normalized = String(rawArtifact || "").trim();
+    if (!normalized) {
+      throw validationError("artifact is required");
+    }
+    return normalized;
   }
 
   function shouldWriteLastUsed(tenantId, nowMs) {
@@ -239,6 +274,62 @@ export function createSubscriptionCore({
     };
   }
 
+  function createSubscriptionArtifact(id) {
+    const tenant = subscriptionStore.getTenant(id);
+    if (!tenant) {
+      throw notFoundError(id);
+    }
+
+    const rawArtifact = normalizeArtifactSecret(artifactSecretFactory());
+    const now = isoNow(nowFn);
+    const artifact = subscriptionStore.createArtifact({
+      id: artifactIdFactory(),
+      tenantId: id,
+      artifactHash: hashSubscriptionToken(rawArtifact),
+      artifactPrefix: artifactPrefix(rawArtifact),
+      status: "active",
+      now
+    });
+
+    return {
+      artifact,
+      subscriptionUrl: makeArtifactUrl(rawArtifact)
+    };
+  }
+
+  function listSubscriptionArtifacts(id) {
+    const tenant = subscriptionStore.getTenant(id);
+    if (!tenant) {
+      throw notFoundError(id);
+    }
+    return subscriptionStore.listArtifactsByTenant(id);
+  }
+
+  function revokeSubscriptionArtifact(id) {
+    const artifact = subscriptionStore.revokeArtifact(id, { now: isoNow(nowFn) });
+    if (!artifact) {
+      throw notFoundError(id);
+    }
+    return artifact;
+  }
+
+  function rotateSubscriptionArtifact(id) {
+    const rawArtifact = normalizeArtifactSecret(artifactSecretFactory());
+    const rotated = subscriptionStore.rotateArtifact(id, {
+      id: artifactIdFactory(),
+      artifactHash: hashSubscriptionToken(rawArtifact),
+      artifactPrefix: artifactPrefix(rawArtifact),
+      now: isoNow(nowFn)
+    });
+    if (!rotated) {
+      throw notFoundError(id);
+    }
+    return {
+      ...rotated,
+      subscriptionUrl: makeArtifactUrl(rawArtifact)
+    };
+  }
+
   function resolveSubscriptionToken(rawToken) {
     const tokenHash = hashSubscriptionToken(rawToken);
     const tenantAuth = subscriptionStore.findTenantByTokenHash(tokenHash);
@@ -256,6 +347,34 @@ export function createSubscriptionCore({
     }
 
     return resolveTenantAccess(tempLink.tenant, { markTempLinkId: tempLink.id });
+  }
+
+  function resolveSubscriptionArtifact(rawArtifact, metadata = {}) {
+    const normalizedArtifact = normalizeArtifactSecret(rawArtifact);
+    const artifact = subscriptionStore.findArtifactBySecretHash(hashSubscriptionToken(normalizedArtifact));
+    if (!artifact) {
+      return { ok: false, status: 404, error: "Not found" };
+    }
+
+    if (artifact.status === "revoked") {
+      return { ok: false, status: 410, error: "Subscription artifact revoked" };
+    }
+    if (artifact.status === "rotated") {
+      return { ok: false, status: 410, error: "Subscription artifact rotated" };
+    }
+
+    const result = resolveTenantAccess(artifact.tenant);
+    if (!result.ok) {
+      return result;
+    }
+
+    subscriptionStore.markArtifactRefreshed(artifact.id, {
+      now: isoNow(nowFn),
+      ipPrefixHash: hashSignal(ipPrefix(metadata.ip)),
+      userAgentHash: hashSignal(metadata.userAgent)
+    });
+
+    return result;
   }
 
   function listNodes() {
@@ -312,7 +431,12 @@ export function createSubscriptionCore({
     enableTenant,
     resetToken,
     createTempLink,
+    createSubscriptionArtifact,
+    listSubscriptionArtifacts,
+    revokeSubscriptionArtifact,
+    rotateSubscriptionArtifact,
     resolveSubscriptionToken,
+    resolveSubscriptionArtifact,
     listNodes,
     nodes,
     overview

@@ -74,6 +74,48 @@ function fakeService() {
       createdAt: "2026-05-22T00:00:00.000Z",
       subscriptionUrl: "https://gateway.example.com/sub/clash.yaml?token=pgtmp_route_token"
     }),
+    createSubscriptionArtifact: (id) => ({
+      artifact: {
+        id: "artifact_1",
+        tenantId: id,
+        artifactPrefix: "opaque_pref",
+        status: "active",
+        refreshCount: 0,
+        createdAt: "2026-05-22T00:00:00.000Z",
+        updatedAt: "2026-05-22T00:00:00.000Z"
+      },
+      subscriptionUrl: "https://gateway.example.com/sub/a/opaque_route_secret.yaml"
+    }),
+    listSubscriptionArtifacts: (id) => [{
+      id: "artifact_1",
+      tenantId: id,
+      artifactPrefix: "opaque_pref",
+      status: "active",
+      refreshCount: 0,
+      createdAt: "2026-05-22T00:00:00.000Z",
+      updatedAt: "2026-05-22T00:00:00.000Z"
+    }],
+    revokeSubscriptionArtifact: (id) => ({
+      id,
+      tenantId: "tenant_1",
+      artifactPrefix: "opaque_pref",
+      status: "revoked"
+    }),
+    rotateSubscriptionArtifact: (id) => ({
+      previous: {
+        id,
+        tenantId: "tenant_1",
+        artifactPrefix: "opaque_pref",
+        status: "rotated"
+      },
+      replacement: {
+        id: "artifact_2",
+        tenantId: "tenant_1",
+        artifactPrefix: "opaque_next",
+        status: "active"
+      },
+      subscriptionUrl: "https://gateway.example.com/sub/a/opaque_next_secret.yaml"
+    }),
     setTenantNode: (id, body) => ({ ...tenant, id, nodeName: body.nodeId }),
     listNodes: () => [{ id: "node_sg", name: "aws-singapore", status: "online" }],
     nodes: () => [{ id: "node_sg", name: "aws-singapore", status: "online" }],
@@ -265,6 +307,48 @@ test("admin route creates temporary subscription links", async () => {
   }
 });
 
+test("admin route manages opaque subscription artifacts without exposing raw secrets in summaries", async () => {
+  const { server, baseUrl } = await listen(createApp(fakeState()));
+  try {
+    const created = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_1/artifacts", {
+      method: "POST"
+    });
+    assert.equal(created.response.status, 201);
+    assert.equal(created.body.artifact.id, "artifact_1");
+    assert.equal(created.body.subscriptionUrl, "https://gateway.example.com/sub/a/opaque_route_secret.yaml");
+    assert.equal(Object.hasOwn(created.body.artifact, "artifactHash"), false);
+
+    const listed = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_1/artifacts");
+    assert.equal(listed.response.status, 200);
+    assert.deepEqual(listed.body.items, [{
+      id: "artifact_1",
+      tenantId: "tenant_1",
+      artifactPrefix: "opaque_pref",
+      status: "active",
+      refreshCount: 0,
+      createdAt: "2026-05-22T00:00:00.000Z",
+      updatedAt: "2026-05-22T00:00:00.000Z"
+    }]);
+    assert.doesNotMatch(JSON.stringify(listed.body), /opaque_route_secret|artifactHash/);
+
+    const revoked = await requestJson(baseUrl, "/api/admin/subscription-artifacts/artifact_1/revoke", {
+      method: "POST"
+    });
+    assert.equal(revoked.response.status, 200);
+    assert.equal(revoked.body.artifact.status, "revoked");
+
+    const rotated = await requestJson(baseUrl, "/api/admin/subscription-artifacts/artifact_1/rotate", {
+      method: "POST"
+    });
+    assert.equal(rotated.response.status, 201);
+    assert.equal(rotated.body.previous.status, "rotated");
+    assert.equal(rotated.body.replacement.status, "active");
+    assert.equal(rotated.body.subscriptionUrl, "https://gateway.example.com/sub/a/opaque_next_secret.yaml");
+  } finally {
+    server.close();
+  }
+});
+
 test("admin subscription nodes and overview return service outputs", async () => {
   const { server, baseUrl } = await listen(createApp(fakeState()));
   try {
@@ -364,6 +448,46 @@ test("tenant subscription token fetches V2 Clash YAML and disabled tenants are r
     const blocked = await fetch(`${baseUrl}/sub/clash.yaml?token=${RAW_TOKEN}`);
     assert.equal(blocked.status, 403);
     assert.deepEqual(await blocked.json(), { error: "Subscription disabled" });
+  } finally {
+    server.close();
+    context.close();
+  }
+});
+
+test("opaque artifact route refreshes V2 Clash YAML without accepting query-token fallback", async () => {
+  const context = realSubscriptionContext();
+  const { server, baseUrl } = await listen(createApp(fakeState(context.service)));
+  try {
+    const created = await requestJson(baseUrl, "/api/admin/subscriptions", {
+      method: "POST",
+      body: { displayName: "Customer A", expiresAt: "2026-06-21T00:00:00.000Z" }
+    });
+    assert.equal(created.response.status, 201);
+
+    const artifact = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/artifacts", {
+      method: "POST"
+    });
+    assert.equal(artifact.response.status, 201);
+    const artifactPath = new URL(artifact.body.subscriptionUrl).pathname;
+
+    const subscription = await fetch(`${baseUrl}${artifactPath}`);
+    assert.equal(subscription.status, 200);
+    const yaml = await subscription.text();
+    assert.match(yaml, /name: "aws-singapore"/);
+    assert.match(yaml, /name: "aws-tokyo"/);
+    assert.doesNotMatch(yaml, /tenant_real_1|pgsub_route_visible/);
+
+    const fallback = await fetch(`${baseUrl}/sub/a/missing-artifact.yaml?token=${RAW_TOKEN}`);
+    assert.equal(fallback.status, 404);
+    assert.deepEqual(await fallback.json(), { error: "Not found" });
+
+    const blank = await fetch(`${baseUrl}/sub/a/.yaml`);
+    assert.equal(blank.status, 404);
+    assert.deepEqual(await blank.json(), { error: "Not found" });
+
+    const whitespace = await fetch(`${baseUrl}/sub/a/%20.yaml`);
+    assert.equal(whitespace.status, 404);
+    assert.deepEqual(await whitespace.json(), { error: "Not found" });
   } finally {
     server.close();
     context.close();

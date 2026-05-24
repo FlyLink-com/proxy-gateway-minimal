@@ -84,7 +84,13 @@ test("store contract lists and validates the persistence methods required by the
     "markLastUsed",
     "createTempLink",
     "findTempLinkByTokenHash",
-    "markTempLinkUsed"
+    "markTempLinkUsed",
+    "createArtifact",
+    "listArtifactsByTenant",
+    "findArtifactBySecretHash",
+    "markArtifactRefreshed",
+    "revokeArtifact",
+    "rotateArtifact"
   ]);
 
   assert.throws(

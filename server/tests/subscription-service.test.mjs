@@ -65,7 +65,17 @@ function withService(fn, options = {}) {
     nowFn: currentNowFn,
     tokenFactory: sequenceTokenFactory(primaryTokens),
     tempTokenFactory: () => tokenFromRaw(options.tempRawToken || `${TEMP_SUBSCRIPTION_TOKEN_PREFIX}visible_once_token`),
+    artifactSecretFactory: (() => {
+      const artifacts = options.rawArtifactSequence || [options.rawArtifact || "opaque_device_secret"];
+      const queue = [...artifacts];
+      return () => queue.shift() || artifacts.at(-1);
+    })(),
     idFactory: () => "tenant_1",
+    artifactIdFactory: (() => {
+      const ids = options.artifactIds || ["artifact_1", "artifact_2", "artifact_3"];
+      const queue = [...ids];
+      return () => queue.shift() || ids.at(-1);
+    })(),
     tempLinkIdFactory: () => "temp_1",
     tempLinkTtlMinutes: options.tempLinkTtlMinutes || 24 * 60,
     expiringDays: 7,
@@ -381,6 +391,91 @@ test("resolveSubscriptionToken rejects unavailable tenant node without marking l
       error: "Subscription node unavailable"
     });
     assert.equal(context.repository.getTenant("tenant_old_node").lastUsedAt, null);
+  });
+});
+
+test("service creates visible-once opaque artifacts and resolves them to V2 output", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context);
+
+    const created = context.service.createSubscriptionArtifact("tenant_1");
+    assert.equal(created.artifact.id, "artifact_1");
+    assert.equal(created.artifact.tenantId, "tenant_1");
+    assert.equal(created.artifact.status, "active");
+    assert.equal(Object.hasOwn(created.artifact, "artifactHash"), false);
+    assert.equal(Object.hasOwn(created.artifact, "rawArtifact"), false);
+    assert.equal(created.subscriptionUrl, "https://gateway.example.com/sub/a/opaque_device_secret.yaml");
+
+    const listed = context.service.listSubscriptionArtifacts("tenant_1");
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].id, "artifact_1");
+    assert.equal(Object.hasOwn(listed[0], "artifactHash"), false);
+
+    context.setNow(LATER);
+    const resolved = context.service.resolveSubscriptionArtifact("opaque_device_secret", {
+      ip: "203.0.113.44",
+      userAgent: "Clash/Test"
+    });
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.tenant.id, "tenant_1");
+    assert.equal(resolved.proxyConfig.servers.length, 2);
+    assert.equal(context.repository.listArtifactsByTenant("tenant_1")[0].refreshCount, 1);
+  });
+});
+
+test("service rejects revoked and rotated opaque artifacts", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context);
+    context.service.createSubscriptionArtifact("tenant_1");
+
+    const rotated = context.service.rotateSubscriptionArtifact("artifact_1");
+    assert.equal(rotated.previous.status, "rotated");
+    assert.equal(rotated.replacement.id, "artifact_2");
+
+    assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret"), {
+      ok: false,
+      status: 410,
+      error: "Subscription artifact rotated"
+    });
+
+    context.service.revokeSubscriptionArtifact("artifact_2");
+    assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_replacement_secret"), {
+      ok: false,
+      status: 410,
+      error: "Subscription artifact revoked"
+    });
+    assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret"), {
+      ok: false,
+      status: 410,
+      error: "Subscription artifact rotated"
+    });
+  }, {
+    rawArtifactSequence: ["opaque_device_secret", "opaque_replacement_secret"]
+  });
+});
+
+test("service keeps tenant expiry and disabled behavior for opaque artifacts", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context, { expiresAt: "2026-05-20T23:59:59.000Z" });
+    context.service.createSubscriptionArtifact("tenant_1");
+
+    assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret"), {
+      ok: false,
+      status: 403,
+      error: "Subscription expired"
+    });
+  });
+
+  await withService(async (context) => {
+    await createActiveTenant(context);
+    context.service.createSubscriptionArtifact("tenant_1");
+    context.service.disableTenant("tenant_1");
+
+    assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret"), {
+      ok: false,
+      status: 403,
+      error: "Subscription disabled"
+    });
   });
 });
 

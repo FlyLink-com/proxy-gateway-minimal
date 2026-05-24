@@ -19,6 +19,12 @@ function fakeSubscriptionStore(overrides = {}) {
     createTempLink: () => null,
     findTempLinkByTokenHash: () => null,
     markTempLinkUsed: () => null,
+    createArtifact: () => null,
+    listArtifactsByTenant: () => [],
+    findArtifactBySecretHash: () => null,
+    markArtifactRefreshed: () => null,
+    revokeArtifact: () => null,
+    rotateArtifact: () => null,
     close: () => {},
     ...overrides
   };

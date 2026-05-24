@@ -58,6 +58,22 @@ artifact to the tenant and renders the current dynamic Subscription V2 YAML.
 
 Tenant tokens stay server-side and are never embedded in the user-visible URL.
 
+## Implementation Status
+
+Repository-level backend support now exists for the first implementation slice:
+
+```text
+admin create/list/revoke/rotate artifact APIs
+SQLite-backed artifact records with hashed artifact secrets
+public app-level /sub/a/:artifact refresh route
+server-side tenant resolution and Subscription V2 YAML rendering
+basic hashed device-signal metadata collection
+```
+
+This is not production activation. The final public artifact URL shape, Nginx
+exposure, Nginx access-log handling, production artifact issuance, legacy URL
+deprecation, and user migration remain separate Risk A work.
+
 ## URL Model
 
 The product URL should look like an opaque artifact, not a semantic API route.
@@ -200,8 +216,12 @@ artifact URLs.
 
 ## Conceptual Data Model
 
-No schema is approved by this document. A future implementation can use a table
-similar to:
+The first repository implementation uses a `subscription_artifacts` table with
+the same containment principle as this conceptual model: raw artifact secrets,
+raw IPs, and raw User-Agent values are not stored. The production activation
+schema and migration gate still require separate Risk A approval.
+
+Conceptual model:
 
 ```text
 subscription_artifacts
@@ -318,23 +338,21 @@ Requires:
 
 ## Open Decisions
 
-These must be resolved before implementation:
+These must be resolved before production activation:
 
 - random subdomain plus random path, or stable host plus random path;
-- `404` versus generic `401` for unknown artifacts;
 - suspicious artifact behavior: allow with review, rate-limit, or block;
-- initial device fingerprint fields and thresholds;
-- whether artifact schema needs a migration in the first PR;
-- whether raw artifact URL is generated only once or can be rotated on demand;
+- production Nginx logging posture for path-based bearer artifacts;
+- production artifact issuance and client migration window;
 - how long legacy query-token URLs remain supported.
 
 ## First Implementation Candidate
 
-Suggested next code task:
+Repository implementation task:
 
 ```text
-Branch: refactor/device-scoped-subscription-artifacts
-Risk: B if kept backend-only and non-production
+Branch: refactor/subscription-opaque-artifacts
+Risk: B / compact code change with A production activation boundary
 Goal:
   Add backend support for device-scoped opaque subscription artifacts while
   preserving the current legacy subscription endpoint.

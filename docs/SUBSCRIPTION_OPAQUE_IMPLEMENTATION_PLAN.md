@@ -3,7 +3,7 @@
 Last updated: 2026-05-24, Asia/Shanghai.
 
 > Status:
-> - Type: Active implementation plan
+> - Type: Active implementation plan / implementation checklist
 > - Risk: B for repository implementation; A for production activation
 > - Execution authority: Does not authorize production activation, Nginx changes, DNS changes, deployment, or legacy endpoint removal
 > - Production impact: None until separately approved and deployed
@@ -30,8 +30,9 @@ runtime config, client migration, and rollback decisions.
   override that scopes the tenant to one node.
 - Existing subscription access still resolves tenant tokens server-side and
   rejects expired or disabled tenants at token resolution time.
-- Device-scoped opaque subscription URLs are documented as a design contract
-  only. They are not implemented or activated today.
+- Device-scoped opaque subscription URLs were documented as a design contract
+  before implementation. The first repository implementation adds backend
+  support only; production activation remains separate Risk A work.
 
 ## Target Behavior
 
@@ -271,7 +272,8 @@ Required gates:
 
 ## Recommended Next Step
 
-Open one B-tier implementation PR:
+The B-tier implementation PR should remain bounded to repository behavior and
+tests:
 
 ```text
 Branch: refactor/subscription-opaque-artifacts

@@ -195,3 +195,100 @@ test("repository marks temporary links as used", async () => {
     assert.equal(repository.findTempLinkByTokenHash("missing"), null);
   });
 });
+
+test("repository creates opaque artifacts without exposing raw secrets in summaries", async () => {
+  await withRepository((repository) => {
+    repository.createTenant(tenantInput());
+
+    const artifact = repository.createArtifact({
+      id: "artifact_1",
+      tenantId: "tenant_1",
+      artifactHash: "artifact_hash_1",
+      artifactPrefix: "opaque_pref",
+      status: "active",
+      now: "2026-05-22T00:00:00.000Z"
+    });
+
+    assert.equal(artifact.id, "artifact_1");
+    assert.equal(artifact.tenantId, "tenant_1");
+    assert.equal(artifact.artifactPrefix, "opaque_pref");
+    assert.equal(artifact.status, "active");
+    assert.equal(Object.hasOwn(artifact, "artifactHash"), false);
+
+    const listed = repository.listArtifactsByTenant("tenant_1");
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].id, "artifact_1");
+    assert.equal(listed[0].artifactPrefix, "opaque_pref");
+    assert.equal(Object.hasOwn(listed[0], "artifactHash"), false);
+
+    const auth = repository.findArtifactBySecretHash("artifact_hash_1");
+    assert.equal(auth.id, "artifact_1");
+    assert.equal(auth.artifactHash, "artifact_hash_1");
+    assert.equal(auth.tenant.id, "tenant_1");
+    assert.equal(auth.tenant.tokenHash, "hash_1");
+  });
+});
+
+test("repository records opaque artifact refresh metadata without raw IP or user-agent values", async () => {
+  await withRepository((repository) => {
+    repository.createTenant(tenantInput());
+    repository.createArtifact({
+      id: "artifact_1",
+      tenantId: "tenant_1",
+      artifactHash: "artifact_hash_1",
+      artifactPrefix: "opaque_pref",
+      status: "active",
+      now: "2026-05-22T00:00:00.000Z"
+    });
+
+    const marked = repository.markArtifactRefreshed("artifact_1", {
+      now: "2026-05-22T01:00:00.000Z",
+      ipPrefixHash: "hashed_ip_prefix",
+      userAgentHash: "hashed_user_agent"
+    });
+
+    assert.equal(marked.firstSeenAt, "2026-05-22T01:00:00.000Z");
+    assert.equal(marked.lastSeenAt, "2026-05-22T01:00:00.000Z");
+    assert.equal(marked.refreshCount, 1);
+    assert.equal(Object.hasOwn(marked, "ipPrefixHash"), false);
+    assert.equal(Object.hasOwn(marked, "userAgentHash"), false);
+
+    const auth = repository.findArtifactBySecretHash("artifact_hash_1");
+    assert.equal(auth.boundIpPrefixHash, "hashed_ip_prefix");
+    assert.equal(auth.boundUserAgentHash, "hashed_user_agent");
+  });
+});
+
+test("repository revokes and rotates opaque artifacts", async () => {
+  await withRepository((repository) => {
+    repository.createTenant(tenantInput());
+    repository.createArtifact({
+      id: "artifact_1",
+      tenantId: "tenant_1",
+      artifactHash: "artifact_hash_1",
+      artifactPrefix: "opaque_pref",
+      status: "active",
+      now: "2026-05-22T00:00:00.000Z"
+    });
+
+    const rotated = repository.rotateArtifact("artifact_1", {
+      id: "artifact_2",
+      artifactHash: "artifact_hash_2",
+      artifactPrefix: "opaque_next",
+      now: "2026-05-22T02:00:00.000Z"
+    });
+
+    assert.equal(rotated.previous.status, "rotated");
+    assert.equal(rotated.previous.rotatedAt, "2026-05-22T02:00:00.000Z");
+    assert.equal(rotated.replacement.id, "artifact_2");
+    assert.equal(rotated.replacement.status, "active");
+    assert.equal(repository.findArtifactBySecretHash("artifact_hash_1").status, "rotated");
+    assert.equal(repository.findArtifactBySecretHash("artifact_hash_2").status, "active");
+
+    const revoked = repository.revokeArtifact("artifact_2", {
+      now: "2026-05-22T03:00:00.000Z"
+    });
+    assert.equal(revoked.status, "revoked");
+    assert.equal(revoked.revokedAt, "2026-05-22T03:00:00.000Z");
+  });
+});
