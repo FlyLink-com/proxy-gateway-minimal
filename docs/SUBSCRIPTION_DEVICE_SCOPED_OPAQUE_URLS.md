@@ -70,9 +70,11 @@ server-side tenant resolution and Subscription V2 YAML rendering
 basic hashed device-signal metadata collection
 ```
 
-This is not production activation. The final public artifact URL shape, Nginx
-exposure, Nginx access-log handling, production artifact issuance, legacy URL
-deprecation, and user migration remain separate Risk A work.
+One production canary artifact is now active on `prod-edge-a` for controlled
+operator validation. The canary exposes `/sub/a/*` through Nginx, uses
+`https://sub.globalcirclecat.com`, and redacts artifact paths in the Nginx
+access log. Broader artifact issuance, legacy URL deprecation, user migration,
+traffic enforcement, and abuse-response policy remain separate Risk A work.
 
 ## URL Model
 
