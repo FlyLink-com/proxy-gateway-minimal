@@ -3,17 +3,18 @@
 > Status:
 > - Type: Active runbook
 > - Risk: C/B validation support; not a production gate
-> - Execution authority: Does not authorize AWS mutation, staging, production deploy, or self-hosted runner registration
+> - Execution authority: Does not authorize cloud resource mutation, staging,
+>   production deploy, or self-hosted runner registration
 > - Production impact: None
-> - Source of truth for: Temporary clean-server CI-equivalent validation while GitHub-hosted Actions is blocked
+> - Source of truth for: Aliyun manual CI validation host usage and fallback
+>   clean-server CI-equivalent validation while GitHub-hosted Actions is blocked
 
-Last updated: 2026-05-23, Asia/Shanghai.
+Last updated: 2026-05-24, Asia/Shanghai.
 
-This runbook defines the temporary manual CI-equivalent validation path to use
-when GitHub-hosted Actions cannot start because of the current account billing
-or spending-limit blocker. It is a repository validation procedure only. It is
-not staging, not production deployment, and not approval to mutate AWS
-resources.
+This runbook defines the manual CI-equivalent validation path to use when
+GitHub-hosted Actions cannot start because of the current account billing or
+spending-limit blocker. It is a repository validation procedure only. It is not
+staging, not production deployment, and not approval to mutate cloud resources.
 
 ## When To Use This
 
@@ -31,7 +32,31 @@ PR and record the hosted result.
 
 ## Default Mode
 
-Default to a temporary clean validation server:
+Default to the approved long-lived Aliyun manual CI validation host when it is
+available. This host is long-lived, but every validation run must use a clean
+per-run workspace and must remove the workspace, repository credentials, local
+archives, logs, and dependency caches after the run.
+
+```text
+long-lived Aliyun manual CI validation host
+not staging
+not production
+not self-hosted runner
+clean per-run workspace
+checkout master or PR head
+npm ci
+npm ci --prefix admin
+npm test
+npm run admin:test
+npm run admin:build
+record result in the PR or handoff
+delete per-run workspace and credentials
+clean caches and temporary files
+retain host only as the approved validation host
+```
+
+If the Aliyun host is unavailable, use a temporary clean validation server as a
+fallback:
 
 ```text
 temporary non-production server
@@ -65,12 +90,19 @@ Node: 22.x
 
 The validation host must be:
 
-- Temporary.
 - Non-production.
 - Not a staging target.
 - Not attached to the production security group.
 - Not connected to `/opt/proxy-gateway-minimal` production runtime.
-- Destroyed after validation unless the operator explicitly approves reuse.
+- Cleaned after each validation run.
+
+For the approved long-lived Aliyun manual CI validation host, do not destroy the
+host after each run. Destroying or reprovisioning that host is a separate ops
+decision. Cleanup means deleting run-specific workspaces, archives, logs,
+credentials, and caches from the host after each validation.
+
+For fallback temporary validation servers, destroy the server after validation
+unless the operator explicitly approves reuse.
 
 ## Secret And Data Boundary
 
@@ -87,13 +119,13 @@ Never copy these into the validation server:
 
 For private repository access, prefer GitHub CLI authentication or another
 short-lived repository credential on the validation host. Remove credentials
-before destroying the host. If repository access cannot be granted safely, stop
-and use a local archive transfer instead of weakening the secret boundary.
+after each run. If repository access cannot be granted safely, stop and use a
+local archive transfer instead of weakening the secret boundary.
 
 ## Repository Access
 
 The clone commands below assume short-lived GitHub repository access has already
-been configured on the temporary server. Do not paste long-lived tokens into
+been configured on the validation host. Do not paste long-lived tokens into
 shell history and do not copy production SSH keys to this host.
 
 If short-lived repository access is not available, prepare an archive on the
@@ -103,20 +135,22 @@ operator machine and copy it to the validation server instead:
 $candidateSha = "<candidate-commit-sha>"
 $archive = Join-Path $env:TEMP "proxy-gateway-ci-$candidateSha.tar"
 git archive --format=tar --output $archive $candidateSha
-scp $archive ubuntu@<validation-host>:/tmp/proxy-gateway-ci.tar
+scp $archive <validation-user>@<validation-host>:/tmp/proxy-gateway-ci-$candidateSha.tar
 ```
 
 Then unpack it on the validation server:
 
 ```bash
-mkdir -p proxy-gateway-minimal
-tar -xf /tmp/proxy-gateway-ci.tar -C proxy-gateway-minimal
-cd proxy-gateway-minimal
+run_id="$(date -u +%Y%m%dT%H%M%SZ)-$candidateSha"
+workdir="$HOME/proxy-gateway-manual-ci/$run_id"
+mkdir -p "$workdir"
+tar -xf "/tmp/proxy-gateway-ci-$candidateSha.tar" -C "$workdir"
+cd "$workdir"
 ```
 
 ## Server Setup
 
-On the temporary server:
+On the validation host:
 
 ```bash
 sudo apt-get update
@@ -129,11 +163,15 @@ node --version
 npm --version
 ```
 
-Clean clone:
+Clean clone into a per-run workspace:
 
 ```bash
-git clone https://github.com/gaoyi1020-web/proxy-gateway-minimal.git
-cd proxy-gateway-minimal
+candidate_ref="<master-or-pr-ref>"
+run_id="$(date -u +%Y%m%dT%H%M%SZ)-manual-ci"
+workdir="$HOME/proxy-gateway-manual-ci/$run_id"
+mkdir -p "$workdir"
+git clone https://github.com/gaoyi1020-web/proxy-gateway-minimal.git "$workdir"
+cd "$workdir"
 ```
 
 Validate `master`:
@@ -175,7 +213,7 @@ Record the result in the PR comment or project handoff:
 Manual CI-equivalent validation
 Date:
 Validation host:
-Host lifecycle: temporary / destroyed / retained with approval
+Host lifecycle: long-lived Aliyun validation host retained / temporary host destroyed / retained with approval
 Repository:
 Target: master / PR #<number>
 Commit SHA:
@@ -188,26 +226,36 @@ npm run admin:test:
 npm run admin:build:
 GitHub Actions blocked run:
 Secrets copied: none
-AWS / production touched: no
+Cloud / production touched: no
+Environment cleanup:
 Notes:
 ```
 
-If any command fails, keep the server until logs are collected, then destroy it
-after the failure is recorded. Do not promote, merge, or deploy based on a
-failed manual validation run.
+If any command fails, keep only the minimum logs needed for diagnosis, redact
+sensitive values, then clean the run workspace and credentials after the failure
+is recorded. Do not promote, merge, or deploy based on a failed manual
+validation run.
 
-## Server Cleanup
+## Per-Run Cleanup
 
-Before destroying the server, remove local caches and repository credentials:
+On the long-lived Aliyun validation host, run cleanup after every validation:
 
 ```bash
-history -c || true
+cd "$HOME"
+rm -rf "$HOME/proxy-gateway-manual-ci"
+rm -f /tmp/proxy-gateway-ci-*.tar
 rm -rf ~/.npm ~/.cache ~/.config/gh ~/.git-credentials
+history -c || true
 ```
 
-Then terminate the VM from the cloud provider console or CLI. Record the
-destroyed state in the PR or handoff when the server lifecycle matters for the
-decision.
+Record that the workspace, repository credentials, local archives, logs, and
+caches were removed. Do not leave a checked-out repository, `node_modules`, GH
+credentials, archives, PEM files, logs, or production-derived files on the
+host.
+
+For fallback temporary validation servers, perform the same cleanup and then
+terminate the VM from the cloud provider console or CLI. Record the destroyed
+state in the PR or handoff when the server lifecycle matters for the decision.
 
 ## Optional: GitHub Self-Hosted Runner
 
