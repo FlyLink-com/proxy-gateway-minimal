@@ -10,6 +10,40 @@ function bearerToken(req) {
 export function subscriptionRoutes(state) {
   const router = Router();
 
+  router.get("/sub/a/:artifact", async (req, res) => {
+    const core = state.subscriptions?.core || state.subscriptions?.service;
+    if (!core?.resolveSubscriptionArtifact) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    const rawArtifact = String(req.params.artifact || "").replace(/\.yaml$/i, "");
+    if (!rawArtifact.trim()) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+
+    let result;
+    try {
+      result = await core.resolveSubscriptionArtifact(rawArtifact, {
+        ip: req.ip || req.socket?.remoteAddress || "",
+        userAgent: req.get("user-agent") || ""
+      });
+    } catch {
+      res.status(500).json({ error: "internal_error" });
+      return;
+    }
+
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+
+    res
+      .type("application/x-yaml; charset=utf-8")
+      .send(generateClashSubscription(result.proxyConfig));
+  });
+
   router.get("/sub/clash.yaml", async (req, res) => {
     const token = typeof req.query.token === "string" ? req.query.token : "";
     const bearer = bearerToken(req);

@@ -10,7 +10,13 @@ export const SUBSCRIPTION_STORE_METHODS = [
   "markLastUsed",
   "createTempLink",
   "findTempLinkByTokenHash",
-  "markTempLinkUsed"
+  "markTempLinkUsed",
+  "createArtifact",
+  "listArtifactsByTenant",
+  "findArtifactBySecretHash",
+  "markArtifactRefreshed",
+  "revokeArtifact",
+  "rotateArtifact"
 ];
 
 export function assertSubscriptionStore(store) {

@@ -72,6 +72,47 @@ function mapTempLinkAuth(row) {
   };
 }
 
+function mapArtifact(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    artifactPrefix: row.artifact_prefix,
+    status: row.status,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    rotatedAt: row.rotated_at,
+    revokedAt: row.revoked_at,
+    refreshCount: row.refresh_count,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapArtifactAuth(row) {
+  if (!row) return null;
+  return {
+    ...mapArtifact(row),
+    artifactHash: row.artifact_hash,
+    boundIpPrefixHash: row.bound_ip_prefix_hash,
+    boundUserAgentHash: row.bound_user_agent_hash,
+    tenant: mapTenantAuth({
+      id: row.tenant_id,
+      display_name: row.display_name,
+      status: row.tenant_status,
+      expires_at: row.tenant_expires_at,
+      note: row.tenant_note,
+      node_id: row.tenant_node_id,
+      credential_mode: row.tenant_credential_mode,
+      token_hash: row.tenant_token_hash,
+      token_prefix: row.tenant_token_prefix,
+      last_used_at: row.tenant_last_used_at,
+      created_at: row.tenant_created_at,
+      updated_at: row.tenant_updated_at
+    })
+  };
+}
+
 export function createSqliteSubscriptionStore({ dbPath, database } = {}) {
   if (!database && !dbPath) {
     throw new Error("dbPath or database is required");
@@ -130,6 +171,32 @@ export function createSqliteSubscriptionStore({ dbPath, database } = {}) {
       on subscription_temp_links(tenant_id);
     create index if not exists subscription_temp_links_expires_at_idx
       on subscription_temp_links(expires_at);
+
+    create table if not exists subscription_artifacts (
+      id text primary key,
+      tenant_id text not null references subscription_tenants(id) on delete cascade,
+      artifact_hash text not null,
+      artifact_prefix text not null,
+      status text not null check (status in ('active', 'suspicious', 'revoked', 'rotated')),
+      first_seen_at text,
+      last_seen_at text,
+      rotated_at text,
+      revoked_at text,
+      bound_ip_prefix_hash text,
+      bound_user_agent_hash text,
+      recent_ip_hashes_json text not null default '[]',
+      recent_user_agent_hashes_json text not null default '[]',
+      refresh_count integer not null default 0,
+      created_at text not null,
+      updated_at text not null
+    );
+
+    create unique index if not exists subscription_artifacts_hash_idx
+      on subscription_artifacts(artifact_hash);
+    create index if not exists subscription_artifacts_tenant_id_idx
+      on subscription_artifacts(tenant_id);
+    create index if not exists subscription_artifacts_status_idx
+      on subscription_artifacts(status);
   `);
 
   function listTenants() {
@@ -258,6 +325,140 @@ export function createSqliteSubscriptionStore({ dbPath, database } = {}) {
     return mapTempLink(db.prepare("select * from subscription_temp_links where id = ?").get(id));
   }
 
+  function createArtifact(input) {
+    db.prepare(`
+      insert into subscription_artifacts (
+        id, tenant_id, artifact_hash, artifact_prefix, status,
+        first_seen_at, last_seen_at, rotated_at, revoked_at,
+        bound_ip_prefix_hash, bound_user_agent_hash,
+        recent_ip_hashes_json, recent_user_agent_hashes_json,
+        refresh_count, created_at, updated_at
+      ) values (
+        @id, @tenantId, @artifactHash, @artifactPrefix, @status,
+        null, null, null, null,
+        null, null,
+        '[]', '[]',
+        0, @now, @now
+      )
+    `).run(input);
+    return mapArtifact(db.prepare("select * from subscription_artifacts where id = ?").get(input.id));
+  }
+
+  function listArtifactsByTenant(tenantId) {
+    return db.prepare(`
+      select * from subscription_artifacts
+      where tenant_id = ?
+      order by created_at desc, id asc
+    `).all(tenantId).map(mapArtifact);
+  }
+
+  function findArtifactBySecretHash(artifactHash) {
+    return mapArtifactAuth(db.prepare(`
+      select
+        a.id,
+        a.tenant_id,
+        a.artifact_hash,
+        a.artifact_prefix,
+        a.status,
+        a.first_seen_at,
+        a.last_seen_at,
+        a.rotated_at,
+        a.revoked_at,
+        a.bound_ip_prefix_hash,
+        a.bound_user_agent_hash,
+        a.refresh_count,
+        a.created_at,
+        a.updated_at,
+        t.display_name,
+        t.status as tenant_status,
+        t.expires_at as tenant_expires_at,
+        t.note as tenant_note,
+        t.node_id as tenant_node_id,
+        t.credential_mode as tenant_credential_mode,
+        t.token_hash as tenant_token_hash,
+        t.token_prefix as tenant_token_prefix,
+        t.last_used_at as tenant_last_used_at,
+        t.created_at as tenant_created_at,
+        t.updated_at as tenant_updated_at
+      from subscription_artifacts a
+      join subscription_tenants t on t.id = a.tenant_id
+      where a.artifact_hash = ?
+    `).get(artifactHash));
+  }
+
+  function markArtifactRefreshed(id, { now, ipPrefixHash = null, userAgentHash = null }) {
+    const result = db.prepare(`
+      update subscription_artifacts
+      set
+        first_seen_at = coalesce(first_seen_at, @now),
+        last_seen_at = @now,
+        bound_ip_prefix_hash = coalesce(bound_ip_prefix_hash, @ipPrefixHash),
+        bound_user_agent_hash = coalesce(bound_user_agent_hash, @userAgentHash),
+        refresh_count = refresh_count + 1,
+        updated_at = @now
+      where id = @id
+    `).run({ id, now, ipPrefixHash, userAgentHash });
+
+    if (result.changes !== 1) {
+      return null;
+    }
+
+    return mapArtifact(db.prepare("select * from subscription_artifacts where id = ?").get(id));
+  }
+
+  function revokeArtifact(id, { now }) {
+    const result = db.prepare(`
+      update subscription_artifacts
+      set status = 'revoked', revoked_at = ?, updated_at = ?
+      where id = ?
+    `).run(now, now, id);
+    return result.changes === 1 ? mapArtifact(db.prepare("select * from subscription_artifacts where id = ?").get(id)) : null;
+  }
+
+  const rotateArtifactTransaction = db.transaction((id, input) => {
+    const current = db.prepare("select * from subscription_artifacts where id = ?").get(id);
+    if (!current) {
+      return null;
+    }
+
+    db.prepare(`
+      update subscription_artifacts
+      set status = 'rotated', rotated_at = ?, updated_at = ?
+      where id = ?
+    `).run(input.now, input.now, id);
+
+    db.prepare(`
+      insert into subscription_artifacts (
+        id, tenant_id, artifact_hash, artifact_prefix, status,
+        first_seen_at, last_seen_at, rotated_at, revoked_at,
+        bound_ip_prefix_hash, bound_user_agent_hash,
+        recent_ip_hashes_json, recent_user_agent_hashes_json,
+        refresh_count, created_at, updated_at
+      ) values (
+        @id, @tenantId, @artifactHash, @artifactPrefix, 'active',
+        null, null, null, null,
+        null, null,
+        '[]', '[]',
+        0, @now, @now
+      )
+    `).run({
+      id: input.id,
+      tenantId: current.tenant_id,
+      artifactHash: input.artifactHash,
+      artifactPrefix: input.artifactPrefix,
+      now: input.now
+    });
+
+    return {
+      previous: mapArtifact(db.prepare("select * from subscription_artifacts where id = ?").get(id)),
+      replacement: mapArtifact(db.prepare("select * from subscription_artifacts where id = ?").get(input.id))
+    };
+  });
+
+  function rotateArtifact(id, input) {
+    return rotateArtifactTransaction(id, input);
+  }
+
   function close() {
     if (ownsDatabase) {
       db.close();
@@ -277,6 +478,12 @@ export function createSqliteSubscriptionStore({ dbPath, database } = {}) {
     createTempLink,
     findTempLinkByTokenHash,
     markTempLinkUsed,
+    createArtifact,
+    listArtifactsByTenant,
+    findArtifactBySecretHash,
+    markArtifactRefreshed,
+    revokeArtifact,
+    rotateArtifact,
     close
   };
 }

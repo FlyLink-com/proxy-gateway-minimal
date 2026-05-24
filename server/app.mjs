@@ -13,6 +13,7 @@ import { subscriptionRoutes } from "./routes/subscription.mjs";
 import { resolveClientIp } from "./services/ip-address.mjs";
 
 const PUBLIC_PATHS = ["/api/health", "/proxy.pac", "/sub/clash.yaml"];
+const PUBLIC_PATH_PREFIXES = ["/sub/a/"];
 
 export function createApp(state, options = {}) {
   const app = express();
@@ -28,7 +29,11 @@ export function createApp(state, options = {}) {
     allowedCidrs: security.adminAllowedCidrs,
     resolveClientIpFn: clientIpResolver
   }));
-  app.use(createAuthMiddleware({ token: state.consoleToken, publicPaths: PUBLIC_PATHS }));
+  app.use(createAuthMiddleware({
+    token: state.consoleToken,
+    publicPaths: PUBLIC_PATHS,
+    publicPathPrefixes: PUBLIC_PATH_PREFIXES
+  }));
   app.get("/api/status", statusRoutes(state));
   app.use(legacyProxyRoutes(state));
   app.use(systemProxyRoutes(state));

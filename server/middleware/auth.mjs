@@ -1,6 +1,9 @@
-export function createAuthMiddleware({ token, publicPaths = [] }) {
+export function createAuthMiddleware({ token, publicPaths = [], publicPathPrefixes = [] }) {
   return function authMiddleware(req, res, next) {
-    if (publicPaths.some((path) => req.path === path)) {
+    if (
+      publicPaths.some((path) => req.path === path) ||
+      publicPathPrefixes.some((prefix) => req.path.startsWith(prefix))
+    ) {
       next();
       return;
     }

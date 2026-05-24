@@ -98,6 +98,38 @@ export function adminSubscriptionRoutes(state) {
     }
   });
 
+  router.post("/api/admin/subscriptions/:id/artifacts", (req, res) => {
+    try {
+      res.status(201).json(core.createSubscriptionArtifact(req.params.id));
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/subscriptions/:id/artifacts", (req, res) => {
+    try {
+      res.json({ items: core.listSubscriptionArtifacts(req.params.id) });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/subscription-artifacts/:id/revoke", (req, res) => {
+    try {
+      res.json({ artifact: core.revokeSubscriptionArtifact(req.params.id) });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/subscription-artifacts/:id/rotate", (req, res) => {
+    try {
+      res.status(201).json(core.rotateSubscriptionArtifact(req.params.id));
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
   router.get("/api/admin/nodes", (_req, res) => {
     try {
       res.json({ items: (core.listNodes || core.nodes).call(core) });
