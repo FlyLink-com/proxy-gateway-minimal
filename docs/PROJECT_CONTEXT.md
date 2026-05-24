@@ -36,7 +36,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - Documentation navigation starts at `docs/README.md`, which classifies current state docs, active runbooks, execution records, paused docs, and historical specs/plans.
 - `C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal` is a historical original checkout. It is useful for archaeology only and should not receive new work.
 - `C:\Users\g\OneDrive\文档\订阅管理` is a legacy empty Codex project shell. Do not treat it as a real repository.
-- Current production AWS node is `aws-singapore-blue` on `47.129.247.102`; future pre-release testing should use an explicitly assigned staging target before production changes.
+- Current production MVP target is `prod-edge-a` on `13.215.156.159`; `sub.globalcirclecat.com` and `ss-sg.globalcirclecat.com` now point there in authoritative AliDNS. Legacy blue `47.129.247.102` remains for review and controlled exit only.
 - Branch flow: `master` is the stable integrated baseline; use `codex/<task>`, `feat/<feature>`, or `ops/<topic>` for work; use a staging candidate only when an AWS pre-release test is needed.
 - Detailed topology and branch/AWS role definitions live in `docs/ENVIRONMENT_TOPOLOGY.md`.
 - Provider-neutral node naming rules live in `docs/NODE_NAMING.md`. Future durable node identities should use internal abstract names such as `prod-edge-a`, `prod-edge-b`, and `prod-edge-c`; migrating existing production node IDs, DNS names, tenant `nodeId` values, or generated subscription labels remains Risk A production node-config work.
@@ -56,6 +56,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - The 2026-05-24 `prod-edge-a` cutover preflight lives in `docs/production-replacement-records/2026-05-24-prod-edge-a-cutover-preflight.md`. It confirmed prod-edge-a and green are healthy and reachable, DNS still points to legacy blue, and legacy blue remains unreachable from the local operator network. It concluded prod-edge-a is not ready for immediate cutover until a production SQLite data-authority decision or fresh approved backup/restore path is resolved.
 - The 2026-05-24 node-to-legacy-blue data preflight lives in `docs/production-replacement-records/2026-05-24-node-to-legacy-blue-data-preflight.md`. It confirmed green and prod-edge-a can reach legacy blue on public HTTP and Shadowsocks TCP while the local operator-network path still times out. This supports a path/IP-specific block hypothesis, but it does not solve SQLite authority because no fresh legacy-blue backup was collected and SSH remains restricted by security group policy.
 - The 2026-05-24 legacy-blue fresh backup and prod-edge-a restore record lives in `docs/production-replacement-records/2026-05-24-legacy-blue-fresh-backup-restore.md`. It temporarily allowed SSH from prod-edge-a to legacy blue, repaired legacy blue's active SQLite DB from the latest valid existing backup after a failed backup attempt created an invalid zero-byte active DB file, created a fresh backup from repaired legacy blue, restored that backup to prod-edge-a, validated both SQLite summaries and prod-edge-a public boundary, removed temporary SSH rules, and removed temporary transfer files. It did not change DNS, production node config, tenants, green, or cutover state.
+- The 2026-05-24 prod-edge-a production activation record lives in `docs/production-replacement-records/2026-05-24-prod-edge-a-production-activation.md`. It activated prod-edge-a as the production MVP subscription gateway target, changed authoritative AliDNS records `sub.globalcirclecat.com` and `ss-sg.globalcirclecat.com` to `13.215.156.159`, updated prod-edge-a runtime node config to emit Subscription V2 output with `prod-edge-a` plus temporary `prod-edge-b`, changed prod-edge-a `PUBLIC_SUBSCRIPTION_BASE_URL` to `http://sub.globalcirclecat.com`, and corrected the active production tenant `nodeId` from the legacy node name to `prod-edge-a` after an initial 403 import failure. It did not rotate tokens, change expiry, issue HTTPS, mutate Nginx, clean up green, or retire legacy blue.
 - The 2026-05-24 legacy blue connectivity review lives in `docs/production-incident-records/2026-05-24-legacy-blue-connectivity-review.md`. It records local read-only evidence that TCP to legacy blue `47.129.247.102` timed out on SSH/HTTP/Shadowsocks while current green `18.136.102.226` remained reachable, with AWS status checks still `ok` for both nodes. The operator direction is to preserve legacy blue for review, lessons learned, dependency drain, and controlled exit; do not use it as the future durable production target. A clean new `prod-edge-a`/blue candidate requires separate Risk A creation approval.
 - Production cutover strategy decision lives in `docs/PRODUCTION_CUTOVER_STRATEGY.md`. The selected medium-term path remains DNS/domain abstraction; do not rely on the current unconfirmed blue public IP as movable. Green now exists as a candidate, but cutover is still not approved.
 - DNS/domain abstraction planning lives in `docs/DOMAIN_ABSTRACTION_PLAN.md`. It proposes `sub.globalcirclecat.com` for subscription delivery and `ss-sg.globalcirclecat.com` for Shadowsocks node DNS, but does not approve DNS, HTTPS, Nginx, AWS, production config, green creation, or cutover execution.
@@ -84,7 +85,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - `master` now includes a minimal Git-tracked environment foundation: systemd templates, Nginx public gateway template, SQLite backup/restore scripts, expanded env example, and ops recovery documentation.
 - The admin UI is intended for local use or SSH tunnel access only. Do not expose it through the public gateway.
 - The hardening branch was deployed to AWS Singapore `47.129.247.102` on 2026-05-22.
-- Default tracked node config now points at the active AWS Singapore node `aws-singapore-blue`.
+- Default tracked node config now uses provider-neutral production labels and Subscription V2 output: `prod-edge-a` plus temporary `prod-edge-b`.
 - Phase 1 completed the staging target decision and clean staging provisioning runbook. It was a docs/ops planning phase only; no AWS resources were created.
 - Phase 2 auth boundary work tightens protected `/api/*` routes to `Authorization: Bearer <console-token>` only; `/sub/clash.yaml` keeps query-token support for Clash/Mihomo subscription clients.
 - Phase 3 adds GitHub Actions CI for PRs into `master` and pushes to `master`; CI runs `npm test`, `npm run admin:test`, and `npm run admin:build` without AWS secrets or production deployment.
@@ -135,12 +136,13 @@ git -C C:\Users\g\Projects\订阅管理\proxy-gateway-minimal log --oneline --de
 
 ## Current Operations State
 
-- Current production server: AWS Singapore `47.129.247.102`
-- Current production node name: `aws-singapore-blue`
-- AWS instance: `i-004ab1c6c71d06bca`
-- Instance name: `proxy-gateway-node-sg-blue-20260521`
-- Instance state verified live on 2026-05-22: `running`
-- Security group: `sg-04a165ec77f430ee8`
+- Current production MVP target: `prod-edge-a` on `13.215.156.159`
+- Current production gateway DNS: `sub.globalcirclecat.com -> 13.215.156.159`
+- Current production Shadowsocks primary DNS: `ss-sg.globalcirclecat.com -> 13.215.156.159`
+- Current production instance: `i-0b7791340d3fedff5`
+- Current production security group: `sg-0379ece0b3d305c43`
+- Temporary secondary node in Subscription V2 output: `prod-edge-b` on current green `18.136.102.226`
+- Legacy blue under review: `47.129.247.102`, instance `i-004ab1c6c71d06bca`, security group `sg-04a165ec77f430ee8`
 - Public Nginx exposure verified on 2026-05-22: `/` and `/index.html` return `404`, `/api/admin/subscriptions` returns `404`, `/api/health` returns `200`, and `/sub/clash.yaml` with a valid token returns `200`.
 - Production `proxy-gateway-console.service` and `proxy-gateway-ss.service` were verified active on 2026-05-22.
 - Production admin API is reachable from the server itself on `127.0.0.1:3456` with the production `CONSOLE_TOKEN`.
@@ -159,7 +161,7 @@ git -C C:\Users\g\Projects\订阅管理\proxy-gateway-minimal log --oneline --de
 - Legacy blue connectivity review on 2026-05-24 Asia/Shanghai found current local operator-network TCP timeouts to legacy blue `47.129.247.102` on `22`, `80`, and `18388`, while current green `18.136.102.226` remained reachable on the same ports. AWS instance and system status checks were still `ok` for both nodes, and security groups still allowed the expected service ports. Treat the finding as path/IP-level incident evidence from the current local vantage point; do not claim global customer impact without additional vantage or customer evidence.
 - `prod-edge-a` candidate preflight on 2026-05-24 Asia/Shanghai defined the next mutating approval phrase: `Create a clean prod-edge-a production candidate. Do not cut over traffic.` That phrase authorizes only candidate creation and validation, not DNS cutover, production config migration, tenant migration, green promotion, legacy blue shutdown, or customer traffic movement.
 - `prod-edge-a` candidate creation on 2026-05-24 Asia/Shanghai created `i-0b7791340d3fedff5` / `13.215.156.159` with security group `sg-0379ece0b3d305c43`, deployed `cea90040a45458211570ae207214c4b2963ccc2a`, installed Node `v22.22.2` / npm `10.9.7`, passed `npm test` `133/133`, Admin tests `24/24`, Admin build, service health, SQLite integrity, public boundary `200/404/401/404`, `18388` TCP reachability, and loopback-only checks for `3456` / `18180` / `1080`. It used current green as the temporary runtime boundary source because legacy blue SSH timed out, normalized only the candidate SQLite copy to `prod-edge-a`, and did not change DNS, blue, green, production config, production tenants, or cutover state.
-- Current production traffic remains on blue `47.129.247.102`. `sub.globalcirclecat.com` and `ss-sg.globalcirclecat.com` still point to blue, not green or prod-edge-a. The prod-edge-a and node-to-legacy-blue preflights found prod-edge-a healthy and current for runtime code, and found green/prod-edge-a can reach legacy blue public HTTP and Shadowsocks TCP even though the local operator-network path still times out. The fresh-data blocker for prod-edge-a is now resolved: prod-edge-a has been restored from a fresh legacy-blue-derived SQLite backup and validated. DNS/node-host migration, Subscription V2 production activation, tenant migration, green cleanup, legacy-blue retirement, or cutover still requires separate explicit Risk A approval.
+- Current production subscription gateway authoritative DNS now points to prod-edge-a `13.215.156.159`: `sub.globalcirclecat.com` and `ss-sg.globalcirclecat.com` were updated in AliDNS with TTL `600`. prod-edge-a has fresh legacy-blue-derived SQLite data and runs Subscription V2 output with `prod-edge-a` plus temporary `prod-edge-b` (current green `18.136.102.226`). The active production tenant is assigned to `prod-edge-a`; the disabled tenant was not changed. A temporary local test subscription link was generated under `C:\tmp\` and validated with `200` YAML output containing `prod-edge-a` and `prod-edge-b`; the link/token is not tracked or recorded. Local recursive DNS may return the previous legacy-blue IP until cached TTL expires. Green cleanup, durable second-node replacement, HTTPS, traffic accounting, legacy-blue retirement, or rollback requires separate explicit Risk A approval.
 - Previous AWS instance with project tag `proxy-gateway-minimal`: `i-0589aac321172dd74`, verified live as `stopped`
 - Read-only AWS refresh on 2026-05-23 confirmed no staging/pre-release instance is currently assigned. The stopped `i-0589aac321172dd74` node must not be used as staging unless it is explicitly reassigned, retagged, and verified first.
 - The production public IP `47.129.247.102` was not returned by `describe-addresses` on 2026-05-23, so it is not currently documented as an Elastic IP allocation. Do not stop the production instance without an IP retention plan.
@@ -167,7 +169,15 @@ git -C C:\Users\g\Projects\订阅管理\proxy-gateway-minimal log --oneline --de
 - HTTPS to `https://47.129.247.102/api/health` did not establish on 2026-05-23 even though the security group allows `443/tcp`; the domain HTTPS plan remains paused.
 - Local ignored files under `.proxy-gateway/aws-singapore/` may be stale. In particular, old cached files referenced `52.221.198.76`; prefer live AWS queries over those cached status files.
 
-To connect the local admin UI to the production backend, open an SSH tunnel:
+To connect the local admin UI to the current prod-edge-a backend, open an SSH
+tunnel:
+
+```powershell
+ssh -i "$env:USERPROFILE\.ssh\proxy-gateway-aws-sg-20260521.pem" -L 3456:127.0.0.1:3456 ubuntu@13.215.156.159
+```
+
+For legacy-blue review only, use the old target if the operator network can
+reach it:
 
 ```powershell
 ssh -i "$env:USERPROFILE\.ssh\proxy-gateway-aws-sg-20260521.pem" -L 3456:127.0.0.1:3456 ubuntu@47.129.247.102

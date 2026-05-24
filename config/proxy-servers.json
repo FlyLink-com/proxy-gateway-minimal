@@ -1,18 +1,29 @@
 {
   "servers": [
     {
-      "name": "aws-singapore-blue",
-      "host": "47.129.247.102",
+      "id": "prod-edge-a",
+      "name": "prod-edge-a",
+      "host": "ss-sg.globalcirclecat.com",
       "port": 18388,
       "method": "aes-256-gcm",
       "password": "${SS_PASSWORD}",
       "type": "shadowsocks-libev",
-      "note": "AWS Singapore active node"
+      "note": "Primary production edge node"
+    },
+    {
+      "id": "prod-edge-b",
+      "name": "prod-edge-b",
+      "host": "18.136.102.226",
+      "port": 18388,
+      "method": "aes-256-gcm",
+      "password": "${SS_PASSWORD}",
+      "type": "shadowsocks-libev",
+      "note": "Temporary secondary production edge node"
     }
   ],
-  "pingHosts": ["47.129.247.102"],
+  "pingHosts": ["sub.globalcirclecat.com", "ss-sg.globalcirclecat.com", "18.136.102.226"],
   "nginx": {
-    "host": "47.129.247.102",
+    "host": "sub.globalcirclecat.com",
     "ports": [80, 443, 18388]
   }
 }
