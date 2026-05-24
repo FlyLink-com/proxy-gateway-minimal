@@ -45,8 +45,9 @@ Current implementation facts:
 - Expired or disabled tenants are rejected during token resolution.
 - `generateClashSubscription()` can render multiple servers when given a
   multi-server proxy config.
-- `SubscriptionCore.resolveTenantAccess()` currently scopes the proxy config to
-  one server by calling `cloneProxyConfigForNode(proxyConfig, tenantAuth.nodeId)`.
+- `SubscriptionCore.resolveTenantAccess()` now treats default-primary tenants
+  as V2 multi-node subscribers and explicit non-default node assignments as
+  operator canary overrides.
 - PR #66 added operator-only tenant node reassignment, with explicit `nodeId`
   required for reassignment.
 
@@ -184,7 +185,7 @@ Future traffic quota work must answer:
 
 ## Implementation Boundary
 
-The first code implementation should be B-tier:
+The first code implementation is B-tier:
 
 ```text
 Risk: B / compact code change

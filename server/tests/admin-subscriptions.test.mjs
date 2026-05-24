@@ -303,7 +303,7 @@ test("admin subscription routes work when runtime exposes only subscription core
   }
 });
 
-test("tenant subscription token fetches scoped Clash YAML and disabled tenants are rejected", async () => {
+test("tenant subscription token fetches V2 Clash YAML and disabled tenants are rejected", async () => {
   const context = realSubscriptionContext();
   const { server, baseUrl } = await listen(createApp(fakeState(context.service)));
   try {
@@ -320,7 +320,8 @@ test("tenant subscription token fetches scoped Clash YAML and disabled tenants a
     const yaml = await subscription.text();
     assert.match(yaml, /name: "aws-singapore"/);
     assert.match(yaml, /password: "shared-secret"/);
-    assert.doesNotMatch(yaml, /aws-tokyo|other-secret/);
+    assert.match(yaml, /name: "aws-tokyo"/);
+    assert.match(yaml, /password: "other-secret"/);
 
     const reassigned = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/node", {
       method: "POST",
