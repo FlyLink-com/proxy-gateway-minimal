@@ -1,5 +1,5 @@
 {
-  "server": "47.129.247.102",
+  "server": "ss-sg.globalcirclecat.com",
   "server_port": 18388,
   "password": "${SS_PASSWORD}",
   "method": "aes-256-gcm",

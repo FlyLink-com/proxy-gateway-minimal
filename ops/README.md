@@ -102,12 +102,15 @@ Public Nginx should expose only:
 The admin API and admin UI are not public. Use an SSH tunnel for operator access:
 
 ```powershell
-ssh -i "$env:USERPROFILE\.ssh\proxy-gateway-aws-sg-20260521.pem" -L 3456:127.0.0.1:3456 ubuntu@47.129.247.102
+ssh -i "$env:USERPROFILE\.ssh\proxy-gateway-aws-sg-20260521.pem" -L 3456:127.0.0.1:3456 ubuntu@13.215.156.159
 ```
 
 ## Environment Roles
 
-The current production node is AWS Singapore `47.129.247.102` (`i-004ab1c6c71d06bca`). It is not a staging target.
+The current production MVP target is provider-neutral `prod-edge-a`
+(`13.215.156.159`, `i-0b7791340d3fedff5`). It is not a staging target.
+Legacy blue `47.129.247.102` (`i-004ab1c6c71d06bca`) is under retirement
+review only and should not be used as the current production reference.
 
 Use `docs/DEPLOYMENT_FLOW.md` before promoting a candidate:
 
@@ -161,8 +164,8 @@ curl -i http://127.0.0.1:3456/api/admin/subscriptions
 From a public network:
 
 ```bash
-curl -i http://47.129.247.102/api/health
-curl -i http://47.129.247.102/api/admin/subscriptions
+curl -i http://sub.globalcirclecat.com/api/health
+curl -i http://sub.globalcirclecat.com/api/admin/subscriptions
 ```
 
 Expected public behavior:

@@ -150,13 +150,13 @@ Do not expose this admin shell through the public Nginx gateway. Public producti
 
 ## Clash/Mihomo 订阅
 
-proxy-gateway 为 Clash Verge / Mihomo 提供本地 Shadowsocks 订阅：
+proxy-gateway 为 Clash Verge / Mihomo 提供 Shadowsocks 节点订阅：
 
 ```
 http://127.0.0.1:3456/sub/clash.yaml?token=你的Token
 ```
 
-在 Clash Verge 中添加此 URL 即可导入 SS 节点。当前生产订阅默认包含 `aws-singapore-blue` (18388) 节点。
+在 Clash Verge 中添加此 URL 即可导入 SS 节点。当前生产订阅使用 Subscription V2 输出，默认包含 `prod-edge-a` 和临时 `prod-edge-b` 节点。
 
 订阅模式下，proxy-gateway 负责生成订阅 YAML 和执行访问控制；Clash/Mihomo 获取 YAML 后会直接连接远程 Shadowsocks 节点，不经过本地 `127.0.0.1:18180` HTTP bridge 或 `127.0.0.1:1080` ss-local。
 
