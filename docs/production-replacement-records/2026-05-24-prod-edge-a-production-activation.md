@@ -151,6 +151,57 @@ proxy-groups:
 This proves the running prod-edge-a process loaded the V2 two-node production
 config. Password lines were intentionally not copied into the record.
 
+## Tenant Node Migration Fix
+
+After the first production activation validation, user-side subscription import
+failed because the active tenant still had the legacy node assignment:
+
+```text
+active tenant nodeName before fix -> aws-singapore-blue
+```
+
+The V2 production config no longer contains `aws-singapore-blue`, so token
+resolution correctly returned `403 Subscription node unavailable` for that
+tenant. This was a production node-config migration gap, not a token, expiry,
+or URL problem.
+
+Approved corrective action:
+
+```text
+migrate active production tenant nodeId to prod-edge-a
+```
+
+Result:
+
+```text
+active tenant nodeName after fix -> prod-edge-a
+disabled tenant nodeName -> unchanged
+SQLite integrity_check -> ok
+node_id/status summary:
+  prod-edge-a | active | 1
+  miyao (Aliyun Shadowsocks) | disabled | 1
+```
+
+No token rotation, tenant expiry change, disabled-tenant change, SQLite schema
+change, or subscription URL change was performed.
+
+Temporary test subscription links were generated for operator import testing
+and written only to local workstation files:
+
+```text
+C:\tmp\proxy-gateway-test-subscription-url.txt
+C:\tmp\proxy-gateway-test-subscription-url-direct-ip.txt
+```
+
+Those files are not tracked by Git and their contents are not recorded here.
+Validation of the generated test links:
+
+```text
+domain forced to prod-edge-a -> 200
+direct prod-edge-a IP -> 200
+YAML nodes -> prod-edge-a, prod-edge-b
+```
+
 ## DNS Mutation
 
 AliDNS updates:
