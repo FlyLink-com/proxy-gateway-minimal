@@ -172,8 +172,8 @@ The local opaque artifact import URL file remains the operator handoff file:
 C:\tmp\prod-edge-a-opaque-subscription-url-20260524T143100Z.txt
 ```
 
-The local legacy temporary test URL file was left in place only long enough for
-post-drain validation; it returns `403` after this operation.
+The local legacy temporary test URL file was kept only long enough for
+post-drain validation, returned `403`, and was then deleted locally.
 
 ## Current State After Drain
 
@@ -193,7 +193,7 @@ traffic/device enforcement -> not implemented
 Recommended next decisions:
 
 ```text
-1. Remove local stale legacy test URL files after no further validation is needed.
+1. Keep the opaque artifact import URL handoff file protected; do not paste or commit it.
 2. Plan broader legacy query-token retirement if no clients still depend on it.
 3. Define artifact issuance / rotation policy for additional devices or tenants.
 4. Keep traffic accounting and device-abuse enforcement as separate designs.
