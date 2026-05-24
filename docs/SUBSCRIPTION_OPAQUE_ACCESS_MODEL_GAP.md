@@ -66,6 +66,11 @@ This was a canary only. It did not retire `/sub/clash.yaml?token=...`, rotate
 tenant tokens, issue artifacts to all tenants, add user self-service, or enforce
 traffic/device-abuse policy.
 
+After the operator confirmed the canary import worked, the active tenant's
+primary legacy token was reset and the active tenant's remaining temporary
+`pgtmp_` links were expired. That drained the known active-tenant legacy links
+without removing the `/sub/clash.yaml` route or future query-token support.
+
 ## Gap Summary
 
 ### 1. Production Exposure Is Activated For One Canary Artifact
@@ -143,6 +148,11 @@ subscription access path.
 ### 4. Legacy Query-Token Access Remains Active
 
 PR #87 intentionally kept `/sub/clash.yaml?token=...` working.
+
+The active tenant's known old primary and temporary links have been drained
+after opaque canary validation, but the route itself remains available for any
+future generated legacy token until a separate route-retirement plan is
+approved.
 
 Legacy query-token retirement is not safe until all of these are true:
 
@@ -239,6 +249,7 @@ The current safe statement is:
 opaque artifact backend support: implemented
 legacy query-token access: still active
 production opaque artifact access: canary activated
+active tenant known legacy links: drained
 path-artifact logging posture: artifact path is redacted in Nginx access log
 device-sharing enforcement: observational metadata only
 ```
