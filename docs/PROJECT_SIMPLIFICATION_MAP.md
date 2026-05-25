@@ -240,9 +240,10 @@ routing, and not the local client adapter product.
 
 Known fact:
 
-`docs/PROJECT_CONTEXT.md` is the current resume source, but it now mixes current
-facts, historical execution summaries, validation baselines, production state,
-and future direction in one long file.
+`docs/PROJECT_CONTEXT.md` is the current resume source. It should stay compact:
+current facts, active blockers, latest validation baseline, and links to
+detailed records. Historical execution evidence belongs in the record docs and
+the docs index, not in the handoff body.
 
 Simplification target:
 
@@ -255,9 +256,12 @@ PROJECT_CONTEXT.md
 
 Suggested follow-up:
 
-- C-tier PR: create a compact `docs/CURRENT_STATE.md` or slim the existing
-  `PROJECT_CONTEXT.md` into a shorter handoff with links.
-- Do not delete historical facts until they are reachable from `docs/README.md`.
+- Keep future `PROJECT_CONTEXT.md` updates short. Add current state only when it
+  changes current facts, blockers, or next actions.
+- Do not copy long execution details into `PROJECT_CONTEXT.md` while the
+  relevant record is reachable from `docs/README.md`.
+- If the handoff starts growing again, split detail into a dedicated current
+  doc or record and link it from the handoff.
 
 ### Hotspot 2: Historical Records Are Correct But Noisy
 
