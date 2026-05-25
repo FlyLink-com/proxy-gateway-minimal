@@ -2,7 +2,7 @@
   "schemaVersion": "2026-05-25.1",
   "lastUpdated": "2026-05-25",
   "timezone": "Asia/Shanghai",
-  "status": "active-snapshot",
+  "status": "active-snapshot-a-tier-blocked-only",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
   "sourceDocs": [
     "docs/PROJECT_CONTEXT.md",
@@ -19,9 +19,9 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "activePrBranch": "docs/architecture-nongoals",
-    "activePr": 114,
-    "activePrStatus": "open-draft",
+    "activePrBranch": "refactor/admin-surface-inventory",
+    "activePr": 115,
+    "activePrStatus": "completed-in-pr-115",
     "note": "Branch context is an orientation hint only; run git status before new work."
   },
   "productSpine": [
@@ -90,14 +90,14 @@
       "sourceDoc": "docs/PROJECT_CONTEXT.md"
     },
     {
-      "id": "docs-overload",
-      "summary": "Docs have been partially slimmed, but project state still needs lane and task discipline to avoid handoff sprawl.",
-      "sourceDoc": "docs/PROJECT_SIMPLIFICATION_MAP.md"
+      "id": "risk-a-gated-work",
+      "summary": "C/B simplification backlog is closed; remaining A-tier work needs runbooks, live inventory, explicit approval, validation, and rollback evidence.",
+      "sourceDoc": "docs/PROJECT_CONTEXT.md"
     }
   ],
   "nextRecommendedQueue": [
-    "B1 code module inventory",
-    "B2 Admin UI surface simplification"
+    "A1 legacy query-token retirement (blocked until runbook and approval)",
+    "A2 physical control/edge split (blocked until runbook and approval)"
   ],
   "forbiddenInStateFiles": [
     "raw subscription URLs",

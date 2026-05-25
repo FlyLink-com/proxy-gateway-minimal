@@ -2,7 +2,7 @@
   "schemaVersion": "2026-05-25.1",
   "lastUpdated": "2026-05-25",
   "timezone": "Asia/Shanghai",
-  "status": "active-backlog",
+  "status": "a-tier-blocked-only",
   "purpose": "Machine-readable backlog for simplification and project-control work. This file does not authorize production mutation.",
   "sourceDocs": [
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
@@ -115,7 +115,7 @@
     {
       "id": "B1-code-module-inventory",
       "risk": "B",
-      "status": "queued",
+      "status": "completed-in-pr-115",
       "lane": "subscription-control-plane",
       "title": "Classify code modules by production, UI, prototype, compatibility, and cleanup status",
       "goal": "Use imports, route registration, package scripts, and tests to identify which modules are core, prototype, compatibility, or cleanup candidates.",
@@ -141,7 +141,7 @@
     {
       "id": "B2-admin-ui-surface-simplification",
       "risk": "B",
-      "status": "queued",
+      "status": "completed-in-pr-115",
       "lane": "subscription-control-plane",
       "title": "Simplify Admin UI surface around active operator workflows",
       "goal": "Identify placeholder pages, retained mock data, and active subscription workflows without exposing Admin UI publicly.",
