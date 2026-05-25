@@ -23,7 +23,7 @@
     "stableBaseline": "master",
     "activePrBranch": "none",
     "activePr": null,
-    "activePrStatus": "no-open-pr-after-pr-117-closeout",
+    "activePrStatus": "live-check-required-before-work",
     "note": "Branch context is an orientation hint only; run git status and gh pr list before new work."
   },
   "productSpine": [
