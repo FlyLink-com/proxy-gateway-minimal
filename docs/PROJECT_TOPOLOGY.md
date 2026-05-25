@@ -9,7 +9,8 @@ Last updated: 2026-05-25, Asia/Shanghai.
 >   HTTPS, systemd, node, artifact, credential, mesh, service, or cutover changes
 > - Production impact: None
 > - Source of truth for: Current and target topology relationships across local
->   agent, subscription delivery, production edges, and server mesh planning
+>   agent, operator lab relay, subscription delivery, production edges, and
+>   server mesh planning
 
 ## Current Production Topology
 
@@ -104,6 +105,61 @@ Opaque artifacts are bootstrap/access material, not the main architecture.
 Server Edge Mesh is for edge health, management, validation, and recovery first.
 ```
 
+## Operator Lab / HP Relay Topology
+
+The HP Relay is an operator-owned development network node. It is useful for
+studying local subscription shape, relay behavior, upstream comparison, and
+future Local Edge Agent channel-manager decisions. It is intentionally outside
+the production, staging, and CI lanes.
+
+```mermaid
+flowchart LR
+  subgraph "Operator Devices"
+    W["Windows / iPhone\nClash / Mihomo"]
+  end
+
+  subgraph "Private Operator Lab"
+    HP["HP Relay\nprivate LAN / management access only"]
+    Sub["private relay subscription\noperator import only"]
+    Auto["HP AUTO\nurl-test / fallback policy"]
+    Relays["local relay adapters\nper-upstream listeners"]
+  end
+
+  subgraph "Production Edge Fleet"
+    A["prod-edge-a"]
+    B["prod-edge-b"]
+  end
+
+  W -->|"imports private lab subscription"| Sub
+  Sub -->|"emits HP relay nodes only"| W
+  W -->|"proxy traffic to private relay endpoint"| HP
+  HP --> Auto --> Relays
+  Relays -->|"upstream edge path"| A
+  Relays -->|"upstream edge path"| B
+```
+
+HP Relay boundaries:
+
+```text
+operator lab / development network node only
+not a production edge, not prod-edge-c, and not a public subscription gateway
+not staging, not a CI validation host, and not deploy approval
+not Server Edge Mesh and not the official Local Edge Agent runtime
+private operator access only; no public listener assumption
+may consume protected upstream subscription material for diagnostics
+must not publish tokens, node passwords, artifact URLs, or customer data
+can inform Local Edge Agent and channel-manager design decisions
+```
+
+Practical use:
+
+```text
+compare upstream edge behavior from one controlled local relay point
+test HP AUTO / fallback subscription shape without changing production output
+separate local client subscription issues from production gateway issues
+collect diagnostic evidence, not production activation evidence
+```
+
 ## Control, Delivery, And Data Planes
 
 ```mermaid
@@ -144,6 +200,7 @@ Important separation:
 Repository merge does not imply production activation.
 Runbook text does not imply execution approval.
 Manual CI host is not staging, production, or deploy approval.
+Operator lab relay behavior is diagnostic evidence, not CI or production gate.
 Subscription refresh success does not prove Shadowsocks data-plane health.
 Data-plane traffic accounting cannot be solved by the Node HTTP bridge alone.
 ```
@@ -206,6 +263,7 @@ Use this topology to decide where a change belongs:
 ```text
 docs/code only -> C or B repository PR
 validation only -> local tests or Aliyun manual CI
+operator lab relay -> diagnostics and design evidence only
 AWS/DNS/Nginx/systemd/runtime -> Risk A execution gate
 user-facing import or generated subscription output -> treat as production-sensitive
 local agent protocol prototype -> B repository PR until production activation

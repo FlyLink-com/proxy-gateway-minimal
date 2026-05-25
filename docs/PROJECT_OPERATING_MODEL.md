@@ -134,6 +134,10 @@ Architecture lane:
 CI lane:
   GitHub Actions status, Aliyun manual CI host, validation records
 
+Operator lab lane:
+  HP Relay diagnostics, local path experiments, channel-manager evidence
+  not CI, not staging, not production, not deploy approval
+
 Code capability lane:
   server, Admin UI, renderer, repository, tests
 
