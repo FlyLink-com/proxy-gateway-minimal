@@ -86,20 +86,32 @@ The user-facing contract should stay stable:
 
 ```text
 subscription refresh entry
-server-side tenant token or future opaque artifact
+server-side credential or opaque artifact
 time entitlement
 traffic entitlement
+local agent bootstrap path
 ```
 
 Node output is platform delivery capacity, not a pricing tier. Subscription V2
 can change the emitted node set behind the stable refresh entry. Operator-only
-tenant node assignment is a maintenance and canary mechanism, not a self-service
-plan system.
+node assignment is a maintenance and canary mechanism, not a self-service plan
+system.
 
 Opaque subscription artifacts are the follow-up access model for random-looking
-per-device refresh URLs. Repository support exists, but production exposure,
-artifact issuance, legacy query-token retirement, HTTPS, and device-abuse
+per-device refresh URLs and local-agent bootstrap. Repository support exists,
+but broader artifact issuance, legacy query-token retirement, and device-abuse
 enforcement remain separate work with their own gates.
+
+There is no active tenant-migration workstream in the current product plan. Use
+tenant language only when describing the historical SQLite subscription model,
+server-side compatibility records, or already-recorded production actions. The
+active architecture direction is:
+
+```text
+local proxy production agent
+server-side multi-node edge networking
+stable user-facing subscription/import experience
+```
 
 ## Work Lanes
 

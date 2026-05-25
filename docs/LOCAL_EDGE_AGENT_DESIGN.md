@@ -389,7 +389,7 @@ production edge servers
 remote-edge protocol exposure
 device credential issuance
 production artifacts
-tenant migration
+production access/bootstrap migration
 Nginx / DNS / HTTPS
 service installation
 auto-update
