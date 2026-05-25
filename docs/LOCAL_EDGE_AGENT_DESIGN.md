@@ -1,12 +1,13 @@
 # Local Edge Agent Design
 
 > Status:
-> - Type: Active design proposal
+> - Type: Active design proposal and repository prototype reference
 > - Risk: C for this document, B for repository prototypes, A for production
 >   activation or protocol/node rollout
-> - Execution authority: Does not authorize code implementation, production
->   config changes, DNS changes, Nginx changes, node migration, traffic
->   cutover, customer migration, driver installation, or virtual NIC changes
+> - Execution authority: Repository-only prototypes still do not authorize
+>   production config changes, DNS changes, Nginx changes, node migration,
+>   traffic cutover, customer migration, driver installation, or virtual NIC
+>   changes
 > - Production impact: None until separately approved
 > - Source of truth for: the proposed local channel-adapter client direction
 
@@ -414,6 +415,47 @@ unit tests for config, subscription generation, and secret redaction
 
 This first slice should not be deployed to production. It should prove the
 local sidecar boundary before any remote protocol or production canary work.
+
+## Repository Prototype Status
+
+The first repo-only skeleton now lives in:
+
+```text
+agent/local-edge-agent.mjs
+server/tests/local-edge-agent.test.mjs
+```
+
+It implements only the local control surface:
+
+```text
+loopback-only config validation
+local Clash/Mihomo YAML generation
+foreground local agent app
+GET /health
+GET /clash.yaml
+GET /diagnostics
+redacted diagnostics summaries
+```
+
+It deliberately does not implement:
+
+```text
+remote edge transport
+SOCKS/HTTP traffic forwarding
+device credential storage
+artifact bootstrap
+Windows service installation
+auto-update
+system proxy changes
+TUN / virtual NIC
+production activation
+```
+
+The generated local Clash YAML points only to a loopback SOCKS5 endpoint and
+does not expose remote edge hostnames, credentials, tenant tokens, or artifact
+URLs. The local proxy endpoint is declared but not implemented yet, so this is
+not a usable traffic adapter until the channel adapter slice is added and
+validated.
 
 ## Open Decisions
 
