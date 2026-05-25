@@ -13,7 +13,7 @@
     {
       "id": "C1-doc-context-slimming",
       "risk": "C",
-      "status": "ready",
+      "status": "completed-in-pr-112",
       "lane": "validation-ci",
       "title": "Slim current-state documentation without deleting historical evidence",
       "goal": "Make docs/PROJECT_CONTEXT.md faster to read by keeping current facts and linking to execution records instead of repeating long historical detail.",
@@ -63,7 +63,7 @@
     {
       "id": "C3-validation-baseline-entrypoint",
       "risk": "C",
-      "status": "ready",
+      "status": "completed-in-pr-113",
       "lane": "validation-ci",
       "title": "Create one compact validation baseline entrypoint",
       "goal": "Separate current validation commands from historical pass-count records.",
