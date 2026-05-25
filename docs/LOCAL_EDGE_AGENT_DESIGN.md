@@ -447,7 +447,7 @@ optional runtime wiring for the SOCKS5 adapter when explicitly enabled
 channel profile factory with disabled default and local-development direct TCP
 local-development edge-tunnel skeleton with a one-line JSON CONNECT handshake
 bounded edge-tunnel handshake timeouts and strict boolean success replies
-exported edge-tunnel contract constants and reply codec tests
+exported edge-tunnel contract constants, shared frame-size limit, and codec tests
 ```
 
 It deliberately does not implement:
@@ -494,12 +494,13 @@ target: { host, port, addressType }
 success reply: { ok: true }
 failure reply: { ok: false, error: "connect_failed" }
 framing: one JSON object per line
+max frame bytes: 4096
 ```
 
 Unknown protocol versions, commands, request shapes, target shapes, reply
-shapes, and reply error codes fail closed. Request and target objects must not
-include extra fields. This is still a local-development contract only, not a
-production transport contract.
+shapes, reply error codes, and oversized request or reply frames fail closed.
+Request and target objects must not include extra fields. This is still a
+local-development contract only, not a production transport contract.
 
 ## Open Decisions
 

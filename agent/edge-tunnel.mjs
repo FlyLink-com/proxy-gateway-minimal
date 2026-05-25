@@ -3,7 +3,7 @@ import net from "node:net";
 const PROTOCOL = "globalcirclecat.edge-tunnel";
 const VERSION = 1;
 const COMMAND_CONNECT = "connect";
-const MAX_REQUEST_BYTES = 4096;
+const MAX_FRAME_BYTES = 4096;
 const DEFAULT_HANDSHAKE_TIMEOUT_MS = 5000;
 const REPLY_ERROR_CONNECT_FAILED = "connect_failed";
 
@@ -11,7 +11,7 @@ export const EDGE_TUNNEL_CONTRACT = Object.freeze({
   protocol: PROTOCOL,
   version: VERSION,
   command: COMMAND_CONNECT,
-  maxRequestBytes: MAX_REQUEST_BYTES,
+  maxFrameBytes: MAX_FRAME_BYTES,
   defaultHandshakeTimeoutMs: DEFAULT_HANDSHAKE_TIMEOUT_MS,
   replyErrors: Object.freeze([REPLY_ERROR_CONNECT_FAILED])
 });
@@ -56,7 +56,7 @@ export function encodeConnectRequest(targetInput = {}) {
 }
 
 export function parseConnectRequest(buffer) {
-  if (buffer.length > MAX_REQUEST_BYTES) {
+  if (buffer.length > MAX_FRAME_BYTES) {
     throw new Error("edge tunnel request too large");
   }
 
@@ -105,7 +105,7 @@ export function encodeConnectReply(reply = {}) {
 }
 
 export function parseConnectReply(buffer) {
-  if (buffer.length > MAX_REQUEST_BYTES) {
+  if (buffer.length > MAX_FRAME_BYTES) {
     throw new Error("edge tunnel reply too large");
   }
 
@@ -154,7 +154,7 @@ function readLine(socket, { timeoutMs = DEFAULT_HANDSHAKE_TIMEOUT_MS } = {}) {
 
     function onData(chunk) {
       buffer = Buffer.concat([buffer, chunk]);
-      if (buffer.length > MAX_REQUEST_BYTES) {
+      if (buffer.length > MAX_FRAME_BYTES) {
         cleanup();
         reject(new Error("edge tunnel request too large"));
         return;
