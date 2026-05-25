@@ -86,11 +86,15 @@ stable subscription/import experience
 Current architecture priorities:
 
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
-  opaque artifacts, and rendering authoritative in the control plane.
-  A clean new server is the preferred future `sub-control-a` candidate path;
-  use the dedicated runbook before any provisioning or promotion work.
+  opaque artifacts, and rendering authoritative in the control plane. The
+  current target is to move CI off the current Aliyun server, then evaluate
+  that Aliyun server as the future production `sub-control-a` candidate.
 - Edge Data Plane: make `prod-edge-a/b/c` replaceable capacity with clear
-  rollback and node identity boundaries.
+  rollback and node identity boundaries. Clean rebuild servers are now
+  preferred first for traffic forwarding / data-plane nodes, not for CI.
+- Validation / CI: move manual CI toward a local Linux validation host so the
+  future production subscription control plane does not also run repository
+  validation workloads.
 - Local Edge Agent: keep Clash/Mihomo as routing/UI while a loopback-only local
   adapter can eventually carry traffic over platform-controlled channels.
 - Server Edge Mesh: plan private edge-to-edge health, management, validation,
@@ -103,6 +107,7 @@ Current architecture priorities:
 Use these docs for detail:
 
 - `docs/PROJECT_TOPOLOGY.md`
+- `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`
 - `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`
 - `docs/LOCAL_EDGE_AGENT_DESIGN.md`
@@ -154,6 +159,9 @@ operator approval, validation, and rollback path exist:
 - Legacy query-token retirement.
 - Traffic accounting, quota enforcement, and device-abuse enforcement.
 - Physical control-plane / edge data-plane split.
+- Local Linux manual CI bootstrap, validation, and promotion to the default
+  manual CI host.
+- Aliyun manual CI cleanup or production-control candidate preparation.
 - Clean `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
@@ -188,10 +196,11 @@ The remaining queued items are A-tier and remain blocked:
 - `A1-legacy-query-token-retirement`
 - `A2-physical-control-edge-split`
 
-For A2, the preferred first step is the clean new-server path in
-`docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`. Do not start either
-A-tier item without a specific runbook, read-only inventory, operator approval,
-validation plan, and rollback evidence.
+For A2, the preferred first step is now the role split in
+`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: local Linux manual CI first,
+then Aliyun production-control candidate inventory, then clean edge-node
+rebuild. Do not start either A-tier item without a specific runbook, read-only
+inventory, operator approval, validation plan, and rollback evidence.
 
 Latest A2 preflight:
 
@@ -199,7 +208,9 @@ Latest A2 preflight:
 - External AWS, DNS, public-boundary, and edge-port checks were healthy.
 - Host-internal service / SQLite / backup / journal checks are blocked until
   an approved internal inspection path exists.
-- Clean `sub-control-a` candidate provisioning is not approved.
+- Clean `sub-control-a` candidate provisioning is not approved. The clean
+  new-server control-plane path is now a fallback if the Aliyun candidate path
+  is rejected by inventory or cleanup gates.
 
 ## Current Validation Baseline
 
@@ -298,8 +309,11 @@ High-value entrypoints:
 - `docs/ENVIRONMENT_TOPOLOGY.md` - repo, GitHub, branch, and AWS role map.
 - `docs/DEPLOYMENT_FLOW.md` - deployment, staging, promotion, rollback flow.
 - `docs/CI_MANUAL_VALIDATION.md` - manual validation host workflow.
+- `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` - target split for current
+  Aliyun production subscription control, local Linux manual CI, and clean
+  forwarding edge nodes.
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md` - clean
-  `sub-control-a` candidate gates for the future physical split.
+  `sub-control-a` candidate fallback gates for the future physical split.
 
 Detailed production and incident history remains in:
 

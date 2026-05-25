@@ -160,6 +160,7 @@ docs/DEPLOYMENT_FLOW.md
 docs/PRODUCTION_DR.md
 docs/PRODUCTION_REPLACEMENT.md
 docs/PRODUCTION_EDGE_FLEET.md
+docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md
 docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md
 docs/production-replacement-records/*
 docs/production-incident-records/*
@@ -208,6 +209,8 @@ add promotion checklists from Edge / Node Capacity and Subscription Access
   Control into Production Operations
 define the minimum read-only inventory packet before any production mutation
 keep all production-impacting work serialized through A-tier gates
+keep Aliyun production-control candidate preparation separate from local Linux
+  CI bootstrap and clean edge-node rebuild records
 ```
 
 ## Paused / Blocked Items

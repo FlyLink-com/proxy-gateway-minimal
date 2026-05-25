@@ -11,19 +11,28 @@ Last updated: 2026-05-26, Asia/Shanghai.
 >   edge-node lifecycle changes by itself
 > - Production impact: None unless a later execution record is separately
 >   approved
-> - Source of truth for: using a clean new server as the preferred candidate
->   environment for the future subscription control plane
+> - Source of truth for: using a clean new server as the fallback candidate
+>   environment for the future subscription control plane if the Aliyun
+>   control-plane path is rejected
 
 ## Purpose
 
-The preferred physical control-plane split path is a clean new server, not the
-current co-located production edge host and not the operator lab / HP relay.
+The current preferred physical split path is documented in
+`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: move CI to local Linux, then
+evaluate the current Aliyun server as the future production subscription
+control-plane candidate.
+
+This clean new-server runbook remains active as the fallback path if the
+Aliyun candidate is rejected by inventory, cleanup, security, operational
+ownership, or capacity gates. It is still not the operator lab / HP relay and
+not an edge data-plane server.
 
 The narrow goal is:
 
 ```text
 Create and validate a clean `sub-control-a` candidate server that can become
-the subscription control-plane authority in a later separately approved phase.
+the subscription control-plane authority in a later separately approved phase
+when the Aliyun candidate path is not acceptable.
 ```
 
 This runbook is intentionally conservative. It treats the new server as a
@@ -191,7 +200,7 @@ npm run project-state:check
 npm test
 npm run admin:test
 npm run admin:build
-manual CI on the Aliyun validation host when GitHub-hosted Actions is blocked
+manual CI on the approved validation host when GitHub-hosted Actions is blocked
 ```
 
 Passing repository validation is required evidence, but it is not production
@@ -379,11 +388,15 @@ docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md:
 docs/PRODUCTION_EDGE_FLEET.md:
   edge data-plane slots; the new control-plane candidate is not prod-edge-c
 
+docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md:
+  preferred target split for current Aliyun subscription control, local Linux
+  manual CI, and clean forwarding edge nodes
+
 docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md:
   opaque artifact rollout gaps; this runbook does not expand issuance
 
 docs/CI_MANUAL_VALIDATION.md:
-  Aliyun manual CI fallback; the new server is not the CI host
+  manual CI fallback; the new server is not the CI host
 
 docs/SERVER_EDGE_MESH_WIREGUARD_CANARY_RUNBOOK.md:
   private server mesh canary; not part of this candidate by default
@@ -410,7 +423,8 @@ self-hosted CI runner setup
 
 ## Recommended Next Step
 
-Keep current production co-located until a clean `sub-control-a` candidate is
-created and validated under this runbook. The first future execution should be
-Phase 1 read-only inventory plus a candidate provisioning approval request, not
-DNS, traffic, tenant, or edge-node mutation.
+Use `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` first. Return to this
+runbook only if the Aliyun candidate path is rejected or explicitly paused.
+The first fallback execution should be Phase 1 read-only inventory plus a
+candidate provisioning approval request, not DNS, traffic, tenant, or
+edge-node mutation.

@@ -275,7 +275,8 @@ local focused tests
 npm test
 Admin tests and build
 GitHub Actions when available
-Aliyun manual CI fallback while GitHub-hosted Actions is blocked
+local Linux manual CI target while GitHub-hosted Actions is blocked
+historical Aliyun manual CI fallback until the transition is validated
 validation records
 ```
 
@@ -451,7 +452,9 @@ Do not treat a node as a customer package.
 Do not treat a commercial plan as a node selector.
 Do not treat an opaque artifact as billing proof.
 Do not treat HP Relay as CI, staging, production, or prod-edge-c.
-Do not treat Aliyun manual CI as staging or deploy approval.
+Do not treat manual CI as staging or deploy approval.
+Do not keep routine CI on a host that is being prepared as production
+subscription control plane.
 Do not treat Server Edge Mesh as user VPN or customer data routing.
 Do not treat Local Edge Agent as a replacement for Clash/Mihomo UI in V1.
 Do not treat repository docs as production inventory.
@@ -480,6 +483,10 @@ docs/SERVER_EDGE_MESH_DESIGN.md:
 
 docs/CI_MANUAL_VALIDATION.md:
   manual CI fallback workflow
+
+docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md:
+  current target split for Aliyun subscription control, local Linux CI, and
+  clean edge nodes
 ```
 
 If a future design conflicts with this document, update the boundary first or

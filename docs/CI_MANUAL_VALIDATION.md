@@ -6,7 +6,7 @@
 > - Execution authority: Does not authorize cloud resource mutation, staging,
 >   production deploy, or self-hosted runner registration
 > - Production impact: None
-> - Source of truth for: Aliyun manual CI validation host usage and fallback
+> - Source of truth for: manual CI validation host usage and fallback
 >   clean-server CI-equivalent validation while GitHub-hosted Actions is blocked
 
 Last updated: 2026-05-24, Asia/Shanghai.
@@ -32,13 +32,18 @@ PR and record the hosted result.
 
 ## Default Mode
 
-Default to the approved long-lived Aliyun manual CI validation host when it is
-available. This host is long-lived, but every validation run must use a clean
-per-run workspace and must remove the workspace, repository credentials, local
-archives, logs, and dependency caches after the run.
+Target default is the approved local Linux manual CI validation host once it is
+bootstrapped and validated. Until that transition is recorded, the existing
+Aliyun manual CI validation host remains historical fallback infrastructure.
+Do not keep routine CI on a server that is being prepared as production
+subscription control plane.
+
+Every validation run must use a clean per-run workspace and must remove the
+workspace, repository credentials, local archives, logs, and dependency caches
+after the run.
 
 ```text
-long-lived Aliyun manual CI validation host
+approved manual CI validation host
 not staging
 not production
 not self-hosted runner
@@ -55,7 +60,27 @@ clean caches and temporary files
 retain host only as the approved validation host
 ```
 
-### Current Aliyun Host Inventory
+### Target Local Linux Host Inventory
+
+The target local Linux manual CI host must be verified before it replaces the
+Aliyun fallback:
+
+```text
+OS: Ubuntu 24.04 LTS or compatible Linux
+Node: 22.x
+npm: compatible with package lockfiles
+git: available if using checkout mode
+network: private operator-managed access
+production role: none
+staging role: none
+secrets copied: none
+cleanup: required after every run
+```
+
+The target bootstrap and validation sequence lives in
+`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`.
+
+### Historical Aliyun Host Inventory
 
 Read-only inventory verified on 2026-05-24:
 
@@ -81,7 +106,7 @@ Do not use `aliyun ecs DescribeInstances` as the primary inventory command for
 this host. It is not an ECS instance, so ECS inventory can return no instances
 even while the SWAS validation host is running.
 
-Current access state: SSH access from the Codex local environment was restored
+Current access state as of the historical record: SSH access from the Codex local environment was restored
 and verified on 2026-05-24 using the approved local key file
 `~/.ssh/gao_new.pem`. The local `miyao` SSH alias now points at the new key and
 has been verified with `ssh miyao` against the validation host. The old config
@@ -89,8 +114,8 @@ was retained as a local backup outside the repository. Do not record private key
 material, passwords, repository credentials, or other secrets in this runbook,
 PRs, chat, or validation records.
 
-If the Aliyun host is unavailable, use a temporary clean validation server as a
-fallback:
+If the approved manual CI host is unavailable, use a temporary clean validation
+server as a fallback:
 
 ```text
 temporary non-production server
@@ -130,10 +155,15 @@ The validation host must be:
 - Not connected to `/opt/proxy-gateway-minimal` production runtime.
 - Cleaned after each validation run.
 
-For the approved long-lived Aliyun manual CI validation host, do not destroy the
-host after each run. Destroying or reprovisioning that host is a separate ops
+For any approved long-lived manual CI validation host, do not destroy the host
+after each run. Destroying or reprovisioning that host is a separate ops
 decision. Cleanup means deleting run-specific workspaces, archives, logs,
 credentials, and caches from the host after each validation.
+
+For the historical Aliyun host, cleanup and retirement from the CI lane are
+separate Risk A-adjacent operations because the target plan may reuse that host
+as the production subscription control-plane candidate. Do not mutate it for CI
+cleanup without a specific approval record.
 
 For fallback temporary validation servers, destroy the server after validation
 unless the operator explicitly approves reuse.
@@ -247,7 +277,7 @@ Record the result in the PR comment or project handoff:
 Manual CI-equivalent validation
 Date:
 Validation host:
-Host lifecycle: long-lived Aliyun validation host retained / temporary host destroyed / retained with approval
+Host lifecycle: long-lived manual validation host retained / temporary host destroyed / retained with approval
 Repository:
 Target: master / PR #<number>
 Commit SHA:
@@ -272,7 +302,7 @@ validation run.
 
 ## Per-Run Cleanup
 
-On the long-lived Aliyun validation host, run cleanup after every validation:
+On the long-lived validation host, run cleanup after every validation:
 
 ```bash
 cd "$HOME"

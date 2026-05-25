@@ -24,7 +24,8 @@ edge data plane
 Local Edge Agent
 Server Edge Mesh
 HP Relay / operator lab
-Aliyun manual CI
+local Linux manual CI
+historical Aliyun manual CI
 prod-edge-a / prod-edge-b / prod-edge-c
 opaque artifacts
 Subscription V2
@@ -277,7 +278,8 @@ Production Track:
 
 Validation Track:
   local tests
-  Aliyun manual CI
+  local Linux manual CI after validation
+  historical Aliyun manual CI records
   production read-only checks
   operator-device diagnostics
 

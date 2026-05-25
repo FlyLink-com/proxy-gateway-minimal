@@ -54,7 +54,8 @@ Recommended target identities:
 
 ```text
 sub-control-a:
-  primary subscription control-plane authority
+  primary subscription control-plane authority, currently targeted for the
+  existing Aliyun server after CI exits and Risk A inventory approves it
 
 sub-control-b:
   future standby or replacement subscription control-plane authority
@@ -71,6 +72,20 @@ prod-edge-c:
 
 The names describe roles. They do not imply current host placement and do not
 authorize renaming, DNS changes, or node migration.
+
+Current planning decision:
+
+```text
+Use the current Aliyun server as the first `sub-control-a` candidate only after
+it exits the CI lane and passes production-control inventory.
+
+Use local Linux as manual CI.
+
+Use clean rebuild servers first for edge data-plane forwarding nodes.
+
+Use the clean new-server control-plane runbook only as fallback if Aliyun is
+rejected or cannot be safely cleaned and hardened.
+```
 
 ## Target Topology
 
@@ -191,7 +206,7 @@ prod-edge-c is build-material / future recovery planning only.
 Target production separates these duties:
 
 ```text
-sub-control-a owns subscription and artifact state.
+sub-control-a on Aliyun owns subscription and artifact state after promotion.
 prod-edge-a/b/c carry proxy traffic and report health.
 sub-control-b gives the subscription control plane a recovery path.
 ```
@@ -347,16 +362,19 @@ state or Admin exposure.
 
 Any real production edge-node change is Risk A.
 
-### Phase 4: Clean Control-Plane Candidate
+### Phase 4: Aliyun Control-Plane Candidate
 
-Create and validate a clean `sub-control-a` candidate server before attempting
-any physical split.
+Move manual CI away from the current Aliyun server, then inventory and validate
+that server as the future `sub-control-a` candidate before attempting any
+physical split.
 
 This is Risk A because it involves cloud resources and may later involve
 production-derived state. The candidate should not receive DNS, customer
 traffic, edge data-plane duties, or production authority during this phase.
 
-Use `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md` for the gates.
+Use `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` for the current gates. Use
+`docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md` only as the fallback if
+Aliyun is rejected by inventory or cleanup gates.
 
 ### Phase 5: Control-Plane Standby
 
@@ -370,7 +388,7 @@ planning, and recovery behavior.
 Move subscription control-plane duties off the primary edge host only after:
 
 ```text
-clean sub-control-a candidate behavior is proven
+Aliyun sub-control-a candidate behavior is proven, or the clean fallback path is chosen
 control-plane backups are proven
 edge-only node behavior is proven
 DNS/gateway strategy is approved
@@ -391,7 +409,10 @@ docs/PRODUCTION_EDGE_FLEET.md:
   provider-neutral edge slot planning
 
 docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md:
-  clean new-server candidate gates for `sub-control-a`
+  fallback clean new-server candidate gates for `sub-control-a`
+
+docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md:
+  current target split for Aliyun control, local Linux CI, and clean edge nodes
 
 docs/SERVER_EDGE_MESH_DESIGN.md:
   private edge management / recovery plane
@@ -432,8 +453,7 @@ user-facing VPN
 Before runtime work starts, decide:
 
 ```text
-1. Whether sub-control-a should remain co-located with prod-edge-a for the
-   next production phase.
+1. Whether the current Aliyun server passes inventory as `sub-control-a`.
 2. Whether sub-control-b is cold standby, warm standby, or rebuild-on-restore.
 3. Whether edge nodes should report health by pull, push, or mesh registry.
 4. What edge status fields are safe and useful.
@@ -449,11 +469,13 @@ Keep current production co-located. Use this architecture to guide the next
 repository work:
 
 ```text
-1. Use a clean new server as the preferred `sub-control-a` candidate path.
-2. Add a repository-only edge status model.
-3. Keep generated production YAML changes behind Risk A approval.
-4. Keep HP Relay as operator lab evidence, not production topology.
-5. Keep Server Edge Mesh as private health / recovery infrastructure first.
-6. Defer physical control-plane split until backup/restore and edge-only
+1. Move manual CI toward local Linux.
+2. Inventory Aliyun as the future `sub-control-a` candidate after CI exits.
+3. Use clean rebuild servers for edge data-plane forwarding nodes.
+4. Add a repository-only edge status model.
+5. Keep generated production YAML changes behind Risk A approval.
+6. Keep HP Relay as operator lab evidence, not production topology.
+7. Keep Server Edge Mesh as private health / recovery infrastructure first.
+8. Defer physical control-plane split until backup/restore and edge-only
    behavior are both proven.
 ```

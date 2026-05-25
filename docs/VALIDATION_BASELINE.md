@@ -156,6 +156,11 @@ GitHub-hosted Actions have previously been blocked by account billing or
 spending-limit state. When manual CI is needed, follow
 `docs/CI_MANUAL_VALIDATION.md`.
 
+The target manual CI host is local Linux after bootstrap and validation. The
+historical Aliyun validation host remains a fallback record, but it should not
+stay the routine CI host if that Aliyun server is being prepared as production
+subscription control plane.
+
 Manual CI fallback is:
 
 - A validation workaround.

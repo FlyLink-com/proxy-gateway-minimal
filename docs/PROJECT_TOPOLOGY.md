@@ -58,12 +58,14 @@ legacy blue: stopped, controlled retirement review only
 
 The current production runtime is still co-located: the primary production host
 serves subscription control-plane duties and primary edge data-plane duties.
-The target architecture separates subscription authority from edge capacity.
+The target architecture separates subscription authority from edge capacity and
+now prefers the current Aliyun server as the future subscription control-plane
+candidate after CI is moved to local Linux.
 
 ```mermaid
 flowchart LR
   subgraph "Subscription Control Plane"
-    SC["sub-control-a\nsubscription authority"]
+    SC["sub-control-a\ncurrent Aliyun server\nafter CI exit and approval"]
     SB["sub-control-b\nfuture standby / restore target"]
     State["SQLite / artifact / tenant state"]
     Render["Subscription V2 renderer"]
@@ -95,8 +97,9 @@ flowchart LR
 Target split boundaries:
 
 ```text
-sub-control-a/b produce subscriptions, own artifacts, and keep access state
-prod-edge-a/b/c carry proxy traffic and report health
+sub-control-a on Aliyun produces subscriptions, owns artifacts, and keeps access state after separate approval
+local Linux owns manual CI after separate validation
+prod-edge-a/b/c clean rebuild servers carry proxy traffic and report health
 edge nodes should not own subscription state or expose Admin
 private mesh is health / validation / recovery infrastructure first
 physical split is future Risk A work, not implied by this topology
@@ -153,8 +156,10 @@ Remote Edge becomes the platform-controlled server-side data plane.
 Opaque artifacts are bootstrap/access material, not the main architecture.
 Server Edge Mesh is for edge health, management, validation, and recovery first.
 Subscription control and edge data-plane capacity should split over time.
-The preferred physical split path is a clean new `sub-control-a` candidate
-server, not HP Relay and not `prod-edge-c`.
+The preferred physical split path is now: current Aliyun server as future
+`sub-control-a` after CI exits, local Linux as manual CI, and clean servers as
+edge forwarding capacity. The clean new-server control-plane path remains a
+fallback, not the first target.
 ```
 
 Adjacent boundary matrix:
@@ -165,7 +170,8 @@ Adjacent boundary matrix:
 | Opaque artifacts | Access/bootstrap material and server-side credential containment. | Data-plane routing, local proxying, server mesh membership, or traffic accounting by themselves. |
 | Local Edge Agent | Loopback-only client-side adapter and future platform-controlled channel selection. | Clash/Mihomo UI/rules, TUN/driver/system proxy mutation in V1, HP Relay, or Server Edge Mesh. |
 | HP Relay | Operator lab diagnostics and upstream/channel behavior research. | Production, staging, CI, prod-edge-c, official Local Edge Agent runtime, or Server Edge Mesh. |
-| sub-control-a candidate | Clean future subscription control-plane candidate for validation before promotion. | Edge data-plane traffic, prod-edge-c recovery capacity, HP Relay, CI, or automatic production authority. |
+| sub-control-a candidate | Current Aliyun server after it exits the CI lane and passes production-control inventory, or clean fallback host if Aliyun is rejected. | Edge data-plane traffic, prod-edge-c recovery capacity, HP Relay, CI, or automatic production authority. |
+| local-ci-a | Local Linux manual CI host for repository validation evidence. | Staging, production, deploy approval, production secrets, SQLite, or subscription URL storage. |
 | Server Edge Mesh | Private edge-to-edge health, management, validation, and recovery path. | User VPN, Clash/Mihomo endpoint, Local Edge Agent transport in V1, or ordinary customer traffic routing. |
 | WireGuard canary | Candidate implementation for the private Server Edge Mesh. | Client VPN product, production traffic migration, opaque artifact migration, or approval-free setup. |
 
@@ -316,7 +322,7 @@ not authorized until separate Risk A approval
 flowchart LR
   GH["GitHub master\nsource of truth"] --> PR["short PR boundary"]
   Local["local checkout"] --> PR
-  PR --> Validation["local tests / Aliyun manual CI"]
+  PR --> Validation["local tests / local Linux manual CI"]
   Validation --> Merge["merge to master"]
   Merge -.->|"does not activate production"| ProdGate["Risk A production gate"]
   ProdGate -->|"explicit approval + execution record"| AWS["AWS / DNS / Nginx / systemd"]
@@ -327,7 +333,7 @@ Use this topology to decide where a change belongs:
 
 ```text
 docs/code only -> C or B repository PR
-validation only -> local tests or Aliyun manual CI
+validation only -> local tests or local Linux manual CI after validation
 operator lab relay -> diagnostics and design evidence only
 AWS/DNS/Nginx/systemd/runtime -> Risk A execution gate
 user-facing import or generated subscription output -> treat as production-sensitive
