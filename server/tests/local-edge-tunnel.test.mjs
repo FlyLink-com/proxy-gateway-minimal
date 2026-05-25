@@ -115,7 +115,7 @@ test("edge tunnel exposes a stable local-development protocol contract", () => {
     protocol: "globalcirclecat.edge-tunnel",
     version: 1,
     command: "connect",
-    maxRequestBytes: 4096,
+    maxFrameBytes: 4096,
     defaultHandshakeTimeoutMs: 5000,
     replyErrors: ["connect_failed"]
   });
@@ -207,6 +207,7 @@ test("edge tunnel reply codec accepts only the supported reply contract", () => 
     })}\n`)),
     /unsupported edge tunnel reply/
   );
+  assert.throws(() => parseConnectReply(Buffer.alloc(5000, "a")), /edge tunnel reply too large/);
 });
 
 test("edge tunnel channel rejects malformed success replies", async () => {
