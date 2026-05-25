@@ -1,6 +1,7 @@
 import net from "node:net";
+import { createEdgeTunnelChannel } from "./edge-tunnel.mjs";
 
-const SUPPORTED_TYPES = new Set(["disabled", "direct-tcp"]);
+const SUPPORTED_TYPES = new Set(["disabled", "direct-tcp", "edge-tunnel"]);
 
 export function normalizeChannelProfile(input = {}) {
   const type = String(input.type ?? "disabled").trim();
@@ -10,6 +11,15 @@ export function normalizeChannelProfile(input = {}) {
 
   if (type === "disabled") {
     return { type };
+  }
+
+  if (type === "edge-tunnel") {
+    return {
+      type,
+      allowEdgeTunnel: Boolean(input.allowEdgeTunnel),
+      host: input.host ? String(input.host) : "",
+      port: Number(input.port)
+    };
   }
 
   return {
@@ -57,6 +67,13 @@ export function createChannelFromProfile(input = {}) {
         };
       }
     };
+  }
+
+  if (profile.type === "edge-tunnel") {
+    if (!profile.allowEdgeTunnel) {
+      throw new Error("edge-tunnel requires allowEdgeTunnel for local development");
+    }
+    return createEdgeTunnelChannel({ host: profile.host, port: profile.port });
   }
 
   if (!profile.allowDirectTcp) {
