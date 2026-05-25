@@ -1,0 +1,146 @@
+{
+  "schemaVersion": "2026-05-25.1",
+  "lastUpdated": "2026-05-25",
+  "timezone": "Asia/Shanghai",
+  "status": "active",
+  "purpose": "Machine-readable active project lanes for agent orientation. This file does not authorize production, cloud, deployment, or secret changes.",
+  "sourceDocs": [
+    "docs/PROJECT_CONTEXT.md",
+    "docs/PROJECT_OPERATING_MODEL.md",
+    "docs/PROJECT_SIMPLIFICATION_MAP.md",
+    "docs/PROJECT_TOPOLOGY.md"
+  ],
+  "lanes": [
+    {
+      "id": "subscription-control-plane",
+      "name": "Subscription Control Plane",
+      "status": "active",
+      "riskBoundary": "C/B for repo docs/code; A for production state, tenant state, artifacts, DNS, Nginx, or runtime changes",
+      "purpose": "Own subscription authority, Admin/operator actions, opaque artifacts, and stable subscription rendering.",
+      "primaryDocs": [
+        "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md",
+        "docs/SUBSCRIPTION_V2_REPLACEMENT.md",
+        "docs/SUBSCRIPTION_DEVICE_SCOPED_OPAQUE_URLS.md",
+        "docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md"
+      ],
+      "primaryCodeAreas": [
+        "server/services/subscriptions/*",
+        "server/routes/subscription.mjs",
+        "server/routes/admin-subscriptions.mjs",
+        "server/services/clash-subscription.mjs",
+        "server/middleware/*"
+      ],
+      "nonGoals": [
+        "edge data-plane traffic ownership",
+        "customer VPN routing",
+        "production mutation without Risk A approval"
+      ]
+    },
+    {
+      "id": "edge-data-plane",
+      "name": "Edge Data Plane",
+      "status": "active",
+      "riskBoundary": "A for real node, DNS, Nginx, systemd, production config, tenant, or traffic changes",
+      "purpose": "Make production edge nodes replaceable data-plane capacity while preserving provider-neutral identities and rollback paths.",
+      "primaryDocs": [
+        "docs/PRODUCTION_EDGE_FLEET.md",
+        "docs/NODE_NAMING.md",
+        "docs/PRODUCTION_REPLACEMENT.md",
+        "docs/PRODUCTION_DR.md"
+      ],
+      "primaryCodeAreas": [
+        "ops/edge-node/*",
+        "proxy-servers.json.example",
+        "ops/nginx/*",
+        "ops/systemd/*"
+      ],
+      "nonGoals": [
+        "subscription authority",
+        "Admin public exposure",
+        "node changes without live inventory and approval"
+      ]
+    },
+    {
+      "id": "local-client-adapter",
+      "name": "Local Client Adapter",
+      "status": "prototype-active",
+      "riskBoundary": "B for repo prototype work; A if device credentials, production transport, installer, or runtime activation is introduced",
+      "purpose": "Develop a loopback-only Local Edge Agent path that lets Clash/Mihomo keep routing/UI while platform channels evolve behind it.",
+      "primaryDocs": [
+        "docs/LOCAL_EDGE_AGENT_DESIGN.md",
+        "docs/NETWORK_FORWARDING.md"
+      ],
+      "primaryCodeAreas": [
+        "agent/*",
+        "server/tests/local-edge-*.mjs"
+      ],
+      "nonGoals": [
+        "TUN driver",
+        "system proxy mutation",
+        "public listener",
+        "production remote transport without a separate gate"
+      ]
+    },
+    {
+      "id": "validation-ci",
+      "name": "Validation And CI",
+      "status": "active",
+      "riskBoundary": "C for validation docs; B for validation scripts and test changes; not staging or deploy approval",
+      "purpose": "Keep local tests, Admin tests/build, GitHub Actions intent, and Aliyun manual CI fallback understandable and reproducible.",
+      "primaryDocs": [
+        "docs/CI_MANUAL_VALIDATION.md",
+        "docs/PROJECT_CONTEXT.md"
+      ],
+      "primaryCodeAreas": [
+        "package.json",
+        "server/tests/*",
+        "admin/src/test/*",
+        ".github/workflows/*"
+      ],
+      "nonGoals": [
+        "production approval",
+        "self-hosted runner assumption",
+        "staging substitution"
+      ]
+    },
+    {
+      "id": "operator-lab-hp-relay",
+      "name": "Operator Lab / HP Relay",
+      "status": "experiment",
+      "riskBoundary": "Local/operator experiment only unless explicitly promoted through separate design and risk gate",
+      "purpose": "Support local path, upstream, and channel-behavior research without confusing it with production or staging.",
+      "primaryDocs": [
+        "docs/PROJECT_TOPOLOGY.md",
+        "docs/PROJECT_SIMPLIFICATION_MAP.md"
+      ],
+      "primaryCodeAreas": [],
+      "nonGoals": [
+        "production",
+        "staging",
+        "CI",
+        "prod-edge-c",
+        "Server Edge Mesh",
+        "official Local Edge Agent runtime"
+      ]
+    },
+    {
+      "id": "server-edge-mesh",
+      "name": "Server Edge Mesh",
+      "status": "ops-architecture-active",
+      "riskBoundary": "C for docs/preflight; A for WireGuard install, keys, UDP ingress, service changes, or live mesh validation",
+      "purpose": "Plan private edge-to-edge health, management, validation, and recovery paths.",
+      "primaryDocs": [
+        "docs/SERVER_EDGE_MESH_DESIGN.md",
+        "docs/SERVER_EDGE_MESH_WIREGUARD_CANARY_RUNBOOK.md",
+        "docs/server-edge-mesh-records/2026-05-25-server-edge-mesh-preflight.md"
+      ],
+      "primaryCodeAreas": [],
+      "nonGoals": [
+        "user VPN",
+        "ordinary customer traffic routing",
+        "Local Edge Agent transport",
+        "WireGuard execution without explicit approval"
+      ]
+    }
+  ]
+}

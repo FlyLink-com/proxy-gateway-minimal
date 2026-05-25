@@ -1,6 +1,6 @@
 # Project Operating Model
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-05-25, Asia/Shanghai.
 
 > Status:
 > - Type: Active operating model
@@ -18,8 +18,17 @@ source of truth, PRs as change boundaries, Aliyun as the manual CI fallback
 while GitHub-hosted Actions is blocked, and AWS production changes only through
 serial Risk A runbooks and execution records.
 
-Product direction: keep the user subscription entry stable while evolving node
-capacity, production hosts, DNS, and operational controls behind that entry.
+Use `docs/MULTI_AGENT_OPERATING_MODEL.md` when a task needs multiple agents,
+independent analysis tracks, or explicit subagent task packets.
+Use `docs/PROJECT_SIMPLIFICATION_MAP.md` when a task needs docs slimming,
+module classification, cleanup queue ordering, or a decision on whether a new
+idea belongs on the active product spine.
+Use `docs/PROJECT_CONTROL_PLANE.md` and `project-state/*.json` when a task
+needs compact machine-readable state, lane, and backlog orientation.
+
+Product direction: keep the user subscription entry stable while evolving the
+subscription control plane, edge-node capacity, production hosts, DNS, and
+operational controls behind that entry.
 
 ## Four Layers
 
@@ -34,6 +43,7 @@ capacity, production hosts, DNS, and operational controls behind that entry.
    Aliyun manual CI host while GitHub-hosted Actions is blocked
 
 3. Production operations
+   subscription control plane, edge data plane
    AWS EC2, DNS, Nginx, systemd, SQLite, node config
    Risk A runbooks, explicit approval, execution records
 
@@ -57,24 +67,34 @@ Local:  C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 ```
 
 Use `docs/PROJECT_CONTEXT.md` for current handoff state and
-`docs/README.md` for documentation navigation. Historical checkouts and
-historical design artifacts are background only unless current docs explicitly
-reference them.
+`docs/README.md` for documentation navigation. Use
+`docs/MULTI_AGENT_OPERATING_MODEL.md` for agent role decomposition,
+parallelization rules, task-packet requirements, and subagent verification
+contracts. Use `docs/PROJECT_SIMPLIFICATION_MAP.md` for the current product
+spine, active cleanup lanes, and stop-doing boundaries. Use
+`docs/PROJECT_CONTROL_PLANE.md` and `project-state/*.json` for structured
+orientation only; production facts in those files still require live
+verification before mutation. Historical checkouts and historical design
+artifacts are background only unless current docs explicitly reference them.
 
 ## Production Model
 
-Current production identity uses provider-neutral node names:
+Current production is still partly co-located, but target production identity
+uses separate control-plane and edge-node names:
 
 ```text
-prod-edge-a: current primary production edge slot
-prod-edge-b: iteration / canary secondary slot
-prod-edge-c: future recovery / standby slot
+sub-control-a: primary subscription control-plane authority
+sub-control-b: future standby / restore target for subscription control
+prod-edge-a: current primary edge data-plane slot
+prod-edge-b: iteration / canary edge data-plane slot
+prod-edge-c: future recovery / standby edge data-plane slot
 ```
 
 Legacy names such as blue or green may appear in historical execution records,
 but new durable planning should use provider-neutral names. See
-`docs/NODE_NAMING.md` for naming rules and `docs/PRODUCTION_EDGE_FLEET.md` for
-fleet planning.
+`docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md` for the control/edge split,
+`docs/NODE_NAMING.md` for naming rules, and
+`docs/PRODUCTION_EDGE_FLEET.md` for edge fleet planning.
 
 Production facts drift. Before production-adjacent work, read
 `docs/PROJECT_CONTEXT.md`, then verify live state with the relevant read-only
@@ -86,20 +106,33 @@ The user-facing contract should stay stable:
 
 ```text
 subscription refresh entry
-server-side tenant token or future opaque artifact
+server-side credential or opaque artifact
 time entitlement
 traffic entitlement
+local agent bootstrap path
 ```
 
 Node output is platform delivery capacity, not a pricing tier. Subscription V2
 can change the emitted node set behind the stable refresh entry. Operator-only
-tenant node assignment is a maintenance and canary mechanism, not a self-service
-plan system.
+node assignment is a maintenance and canary mechanism, not a self-service plan
+system.
 
 Opaque subscription artifacts are the follow-up access model for random-looking
-per-device refresh URLs. Repository support exists, but production exposure,
-artifact issuance, legacy query-token retirement, HTTPS, and device-abuse
+per-device refresh URLs and local-agent bootstrap. Repository support exists,
+but broader artifact issuance, legacy query-token retirement, and device-abuse
 enforcement remain separate work with their own gates.
+
+There is no active tenant-migration workstream in the current product plan. Use
+tenant language only when describing the historical SQLite subscription model,
+server-side compatibility records, or already-recorded production actions. The
+active architecture direction is:
+
+```text
+local proxy production agent
+subscription control plane
+server-side multi-node edge networking
+stable user-facing subscription/import experience
+```
 
 ## Work Lanes
 
@@ -122,15 +155,25 @@ Architecture lane:
 CI lane:
   GitHub Actions status, Aliyun manual CI host, validation records
 
+Operator lab lane:
+  HP Relay diagnostics, local path experiments, channel-manager evidence
+  not CI, not staging, not production, not deploy approval
+
 Code capability lane:
   server, Admin UI, renderer, repository, tests
 
 Production ops lane:
+  subscription control plane, edge data plane
   AWS, DNS, Nginx, HTTPS, systemd, SQLite backup/restore, node lifecycle
 ```
 
 Code and docs branches may run in parallel when they do not touch the same
 source-of-truth files. Real external mutation must be serial.
+
+Multi-agent work follows the same rule. Agents may parallelize independent
+analysis or implementation tracks, but the lead agent remains responsible for
+integration, source-of-truth updates, final verification, and user-facing
+claims.
 
 ## Risk Tiers
 
@@ -154,17 +197,22 @@ If a change affects generated production subscription output, production node
 config, production tenants, DNS, or runtime state, treat it as Risk A even when
 the repository code change looks small.
 
+Subagent work does not lower risk. A Risk A task remains Risk A even when a
+subagent performs only one part of the analysis.
+
 ## Control, Delivery, And Data Planes
 
 ```text
 Control plane:
-  Admin API, Subscription Core, SQLite, operator actions, runbooks
+  Admin API, Subscription Core, SQLite, artifacts, operator actions, runbooks
+  sub-control-a / future sub-control-b
 
 Delivery plane:
   /sub/clash.yaml, future /sub/a/*, Subscription V2 YAML renderer
 
 Data plane:
   Shadowsocks nodes, prod-edge fleet, Clash/Mihomo direct connections
+  future Local Edge Agent remote-edge channels
 ```
 
 Clash/Mihomo clients fetch YAML from the delivery plane and then connect
