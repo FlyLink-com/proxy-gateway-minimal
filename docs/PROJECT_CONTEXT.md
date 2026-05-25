@@ -66,6 +66,11 @@ Default risk tiers live in `AGENTS.md`:
 
 Do not lower risk just because a task is easy to run locally.
 
+`docs/PROJECT_OPERATING_MODEL.md` also defines the PR cadence reporting rule:
+after every five merged PRs, give a concise stage report covering the PR range,
+risk tiers, validation evidence, production boundary changes, blockers, and
+recommended next actions.
+
 ## Current Product Direction
 
 The active product spine is:
