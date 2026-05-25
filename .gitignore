@@ -11,4 +11,5 @@ output/
 .superpowers/
 docs/superpowers/plans/*.tmp
 .gstack/
+.vs/
 admin/dist/
