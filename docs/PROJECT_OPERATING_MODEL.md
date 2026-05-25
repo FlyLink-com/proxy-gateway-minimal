@@ -23,6 +23,8 @@ independent analysis tracks, or explicit subagent task packets.
 Use `docs/PROJECT_SIMPLIFICATION_MAP.md` when a task needs docs slimming,
 module classification, cleanup queue ordering, or a decision on whether a new
 idea belongs on the active product spine.
+Use `docs/PROJECT_CONTROL_PLANE.md` and `project-state/*.json` when a task
+needs compact machine-readable state, lane, and backlog orientation.
 
 Product direction: keep the user subscription entry stable while evolving the
 subscription control plane, edge-node capacity, production hosts, DNS, and
@@ -69,9 +71,11 @@ Use `docs/PROJECT_CONTEXT.md` for current handoff state and
 `docs/MULTI_AGENT_OPERATING_MODEL.md` for agent role decomposition,
 parallelization rules, task-packet requirements, and subagent verification
 contracts. Use `docs/PROJECT_SIMPLIFICATION_MAP.md` for the current product
-spine, active cleanup lanes, and stop-doing boundaries. Historical checkouts
-and historical design artifacts are background only unless current docs
-explicitly reference them.
+spine, active cleanup lanes, and stop-doing boundaries. Use
+`docs/PROJECT_CONTROL_PLANE.md` and `project-state/*.json` for structured
+orientation only; production facts in those files still require live
+verification before mutation. Historical checkouts and historical design
+artifacts are background only unless current docs explicitly reference them.
 
 ## Production Model
 

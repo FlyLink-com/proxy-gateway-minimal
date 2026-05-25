@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "2026-05-25.1",
+  "lastUpdated": "2026-05-25",
+  "timezone": "Asia/Shanghai",
+  "status": "active-snapshot",
+  "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
+  "sourceDocs": [
+    "docs/PROJECT_CONTEXT.md",
+    "docs/PROJECT_OPERATING_MODEL.md",
+    "docs/PROJECT_SIMPLIFICATION_MAP.md",
+    "docs/PROJECT_TOPOLOGY.md"
+  ],
+  "repo": {
+    "name": "proxy-gateway-minimal",
+    "github": "gaoyi1020-web/proxy-gateway-minimal",
+    "localPath": "C:\\Users\\g\\Projects\\订阅管理\\proxy-gateway-minimal",
+    "legacyShellPathWarning": "Do not use C:\\Users\\g\\OneDrive\\文档\\订阅管理 as the real code repo."
+  },
+  "branchContext": {
+    "stableBaseline": "master",
+    "activePrBranch": "codex/current-direction-agent-mesh",
+    "activePr": 111,
+    "activePrStatus": "open-draft",
+    "note": "Branch context is for this architecture/docs PR only; run git status before new work."
+  },
+  "productSpine": [
+    "stable subscription/import experience",
+    "authoritative subscription control plane",
+    "replaceable edge data-plane capacity",
+    "local client adapter path",
+    "measured validation and operations"
+  ],
+  "activeDirections": [
+    "Subscription Control / Edge Split",
+    "Local Edge Agent as loopback-only client adapter prototype",
+    "Server Edge Mesh as private operator/edge management path",
+    "Project Control Plane with machine-readable state files"
+  ],
+  "productionSnapshot": {
+    "requiresLiveVerification": true,
+    "currentPrimarySlot": "prod-edge-a",
+    "currentPrimaryPublicIp": "13.215.156.159",
+    "subscriptionGatewayDomain": "sub.globalcirclecat.com",
+    "shadowsocksDomain": "ss-sg.globalcirclecat.com",
+    "httpsGatewayEnabled": true,
+    "forcedHttpRedirect": false,
+    "primaryInstanceId": "i-0b7791340d3fedff5",
+    "primarySecurityGroupId": "sg-0379ece0b3d305c43",
+    "iterationSecondarySlot": "prod-edge-b",
+    "iterationSecondaryCarrierIp": "18.136.102.226",
+    "legacyBlueState": "stopped-for-review-not-terminated",
+    "legacyBlueInstanceId": "i-004ab1c6c71d06bca",
+    "legacyBlueSecurityGroupId": "sg-04a165ec77f430ee8",
+    "publicAdminUiExposed": false,
+    "notes": [
+      "Do not terminate legacy blue or delete its security group without separate Risk A approval.",
+      "Do not trust this snapshot for mutation; verify AWS, DNS, Nginx, systemd, endpoint, and SQLite state live."
+    ]
+  },
+  "accessModelSnapshot": {
+    "currentStableUserEntry": "subscription refresh/import experience",
+    "opaqueArtifactCanaryActive": true,
+    "legacyQueryTokenRouteStillExists": true,
+    "broaderArtifactIssuance": "pending-separate-risk-a-work",
+    "trafficAccounting": "not-implemented"
+  },
+  "validationSnapshot": {
+    "githubHostedActions": "blocked-by-billing-or-spending-limit",
+    "manualCiFallback": "Aliyun SWAS validation host per docs/CI_MANUAL_VALIDATION.md",
+    "manualCiIsStaging": false,
+    "cTierCommand": "git diff --check origin/master...HEAD",
+    "bTierServerCommands": [
+      "git diff --check origin/master...HEAD",
+      "npm test"
+    ],
+    "bTierAdminCommands": [
+      "git diff --check origin/master...HEAD",
+      "npm run admin:test",
+      "npm run admin:build",
+      "npm test"
+    ]
+  },
+  "activeBlockers": [
+    {
+      "id": "github-actions-hosted-runner",
+      "summary": "GitHub-hosted Actions validation is deferred by account billing/spending-limit blocker.",
+      "sourceDoc": "docs/PROJECT_CONTEXT.md"
+    },
+    {
+      "id": "docs-overload",
+      "summary": "Markdown docs alone no longer scale for project state, lanes, task queue, and agent orientation.",
+      "sourceDoc": "docs/PROJECT_SIMPLIFICATION_MAP.md"
+    }
+  ],
+  "nextRecommendedQueue": [
+    "C1 documentation slimming",
+    "C2 architecture non-goal hardening",
+    "C3 validation baseline entrypoint",
+    "B1 code module inventory",
+    "B2 Admin UI surface simplification"
+  ],
+  "forbiddenInStateFiles": [
+    "raw subscription URLs",
+    "tokens",
+    "passwords",
+    "private keys",
+    "cloud credentials",
+    "customer data",
+    "production .env values",
+    "unredacted logs"
+  ]
+}

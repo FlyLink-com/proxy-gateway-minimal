@@ -1,0 +1,190 @@
+{
+  "schemaVersion": "2026-05-25.1",
+  "lastUpdated": "2026-05-25",
+  "timezone": "Asia/Shanghai",
+  "status": "active-backlog",
+  "purpose": "Machine-readable backlog for simplification and project-control work. This file does not authorize production mutation.",
+  "sourceDocs": [
+    "docs/PROJECT_SIMPLIFICATION_MAP.md",
+    "docs/PROJECT_CONTROL_PLANE.md",
+    "docs/MULTI_AGENT_OPERATING_MODEL.md"
+  ],
+  "tasks": [
+    {
+      "id": "C1-doc-context-slimming",
+      "risk": "C",
+      "status": "ready",
+      "lane": "validation-ci",
+      "title": "Slim current-state documentation without deleting historical evidence",
+      "goal": "Make docs/PROJECT_CONTEXT.md faster to read by keeping current facts and linking to execution records instead of repeating long historical detail.",
+      "allowedFiles": [
+        "docs/PROJECT_CONTEXT.md",
+        "docs/README.md",
+        "docs/PROJECT_SIMPLIFICATION_MAP.md",
+        "docs/production-*-records/*.md",
+        "docs/domain-implementation-records/*.md",
+        "docs/server-edge-mesh-records/*.md"
+      ],
+      "forbiddenActions": [
+        "delete historical execution records",
+        "change production facts without evidence",
+        "write secrets or raw subscription URLs",
+        "mutate production or cloud resources"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD"
+      ]
+    },
+    {
+      "id": "C2-architecture-non-goal-hardening",
+      "risk": "C",
+      "status": "ready",
+      "lane": "local-client-adapter",
+      "title": "Harden active architecture docs with explicit non-goals",
+      "goal": "Prevent HP Relay, Server Edge Mesh, Local Edge Agent, WireGuard, opaque artifacts, and Clash/Mihomo from being confused with each other.",
+      "allowedFiles": [
+        "docs/LOCAL_EDGE_AGENT_DESIGN.md",
+        "docs/SERVER_EDGE_MESH_DESIGN.md",
+        "docs/SERVER_EDGE_MESH_WIREGUARD_CANARY_RUNBOOK.md",
+        "docs/PROJECT_TOPOLOGY.md",
+        "docs/PROJECT_SIMPLIFICATION_MAP.md",
+        "project-state/lanes.json"
+      ],
+      "forbiddenActions": [
+        "change runbook approval phrases",
+        "claim WireGuard setup is approved",
+        "treat HP Relay as production",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD"
+      ]
+    },
+    {
+      "id": "C3-validation-baseline-entrypoint",
+      "risk": "C",
+      "status": "ready",
+      "lane": "validation-ci",
+      "title": "Create one compact validation baseline entrypoint",
+      "goal": "Separate current validation commands from historical pass-count records.",
+      "allowedFiles": [
+        "docs/VALIDATION_BASELINE.md",
+        "docs/README.md",
+        "docs/PROJECT_CONTEXT.md",
+        "docs/PROJECT_OPERATING_MODEL.md",
+        "project-state/current.json",
+        "project-state/tasks.json"
+      ],
+      "forbiddenActions": [
+        "change CI workflows",
+        "start manual CI host",
+        "claim manual CI is staging",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD"
+      ]
+    },
+    {
+      "id": "B1-code-module-inventory",
+      "risk": "B",
+      "status": "queued",
+      "lane": "subscription-control-plane",
+      "title": "Classify code modules by production, UI, prototype, compatibility, and cleanup status",
+      "goal": "Use imports, route registration, package scripts, and tests to identify which modules are core, prototype, compatibility, or cleanup candidates.",
+      "allowedFiles": [
+        "server/**/*.mjs",
+        "agent/**/*.mjs",
+        "admin/src/**/*",
+        "package.json",
+        "docs/PROJECT_SIMPLIFICATION_MAP.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "delete legacy-looking code without route/import/test evidence",
+        "mutate production",
+        "change auth semantics",
+        "change subscription output semantics"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm test"
+      ]
+    },
+    {
+      "id": "B2-admin-ui-surface-simplification",
+      "risk": "B",
+      "status": "queued",
+      "lane": "subscription-control-plane",
+      "title": "Simplify Admin UI surface around active operator workflows",
+      "goal": "Identify placeholder pages, retained mock data, and active subscription workflows without exposing Admin UI publicly.",
+      "allowedFiles": [
+        "admin/src/**/*",
+        "docs/PROJECT_SIMPLIFICATION_MAP.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "publicly expose Admin UI",
+        "change backend auth model",
+        "remove test coverage for active workflows",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm run admin:test",
+        "npm run admin:build",
+        "npm test"
+      ]
+    },
+    {
+      "id": "A1-legacy-query-token-retirement",
+      "risk": "A",
+      "status": "blocked-requires-runbook-and-approval",
+      "lane": "subscription-control-plane",
+      "title": "Retire legacy query-token subscription access after opaque artifact migration",
+      "goal": "Move production users to opaque artifacts before changing legacy subscription access semantics.",
+      "allowedFiles": [
+        "docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md",
+        "docs/SUBSCRIPTION_DEVICE_SCOPED_OPAQUE_URLS.md",
+        "docs/production-replacement-records/*.md"
+      ],
+      "forbiddenActions": [
+        "remove /sub/clash.yaml without approved migration",
+        "change production tenant state without approval",
+        "change Nginx routes without approval",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "Risk A runbook-specific validation",
+        "rollback evidence",
+        "endpoint verification"
+      ]
+    },
+    {
+      "id": "A2-physical-control-edge-split",
+      "risk": "A",
+      "status": "blocked-requires-runbook-and-approval",
+      "lane": "edge-data-plane",
+      "title": "Physically split subscription control plane from edge data plane",
+      "goal": "Move toward separate control-plane authority and replaceable edge data-plane nodes.",
+      "allowedFiles": [
+        "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md",
+        "docs/PRODUCTION_EDGE_FLEET.md",
+        "docs/PRODUCTION_DR.md",
+        "docs/production-replacement-records/*.md"
+      ],
+      "forbiddenActions": [
+        "move SQLite authority without approved backup/restore plan",
+        "change DNS without approval",
+        "change node config without approval",
+        "mutate AWS, Nginx, systemd, or tenants without approval"
+      ],
+      "validation": [
+        "Risk A runbook-specific validation",
+        "read-only inventory",
+        "rollback evidence",
+        "production endpoint verification"
+      ]
+    }
+  ]
+}

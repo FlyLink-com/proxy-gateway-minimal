@@ -83,10 +83,19 @@ One multi-agent model:
 
 One simplification map:
   this document defines the cleanup backlog and boundaries.
+
+One project control plane:
+  docs/PROJECT_CONTROL_PLANE.md and project-state/*.json provide compact
+  machine-readable current state, lanes, and task orientation for agents and
+  future consistency tooling.
 ```
 
 Do not add a new long-lived architecture document unless it fits one of the
 active lanes below and has a clear validation or cleanup path.
+
+Do not force every state change into prose. If the update is a compact current
+state, lane, task, or validation summary, prefer `project-state/*.json` plus a
+short doc pointer.
 
 ## Active Lanes
 
@@ -444,6 +453,27 @@ Validation:
 
 ```text
 git diff --check origin/master...HEAD
+```
+
+### C4: Project-State Consistency Checks
+
+Goal:
+
+Make structured state useful without trusting it blindly.
+
+Scope:
+
+- add repository-local checks for JSON validity
+- verify lane docs exist
+- verify task risk tiers and validation fields are present
+- scan docs and project-state for sensitive patterns
+- flag stale timestamps or known-drift production snapshots
+
+Validation:
+
+```text
+git diff --check origin/master...HEAD
+node <future-check-script>
 ```
 
 ### B1: Code Module Inventory
