@@ -18,7 +18,8 @@ export function normalizeChannelProfile(input = {}) {
       type,
       allowEdgeTunnel: Boolean(input.allowEdgeTunnel),
       host: input.host ? String(input.host) : "",
-      port: Number(input.port)
+      port: Number(input.port),
+      handshakeTimeoutMs: input.handshakeTimeoutMs === undefined ? undefined : Number(input.handshakeTimeoutMs)
     };
   }
 
@@ -73,7 +74,11 @@ export function createChannelFromProfile(input = {}) {
     if (!profile.allowEdgeTunnel) {
       throw new Error("edge-tunnel requires allowEdgeTunnel for local development");
     }
-    return createEdgeTunnelChannel({ host: profile.host, port: profile.port });
+    return createEdgeTunnelChannel({
+      host: profile.host,
+      port: profile.port,
+      handshakeTimeoutMs: profile.handshakeTimeoutMs
+    });
   }
 
   if (!profile.allowDirectTcp) {

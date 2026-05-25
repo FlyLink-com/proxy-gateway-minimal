@@ -3,6 +3,15 @@ import net from "node:net";
 const PROTOCOL = "globalcirclecat.edge-tunnel";
 const VERSION = 1;
 const MAX_REQUEST_BYTES = 4096;
+const DEFAULT_HANDSHAKE_TIMEOUT_MS = 5000;
+
+function normalizeHandshakeTimeoutMs(input) {
+  const timeoutMs = input === undefined ? DEFAULT_HANDSHAKE_TIMEOUT_MS : Number(input);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1) {
+    throw new Error("edge tunnel handshake timeout must be a positive integer");
+  }
+  return timeoutMs;
+}
 
 function normalizeTarget(input = {}) {
   const host = String(input.host ?? "").trim();
@@ -59,14 +68,26 @@ export function parseConnectRequest(buffer) {
   };
 }
 
-function readLine(socket) {
+function readLine(socket, { timeoutMs = DEFAULT_HANDSHAKE_TIMEOUT_MS } = {}) {
   return new Promise((resolve, reject) => {
     let buffer = Buffer.alloc(0);
+    const timer = setTimeout(onTimeout, timeoutMs);
 
     function cleanup() {
+      clearTimeout(timer);
       socket.off("data", onData);
-      socket.off("error", reject);
+      socket.off("error", onError);
       socket.off("end", onEnd);
+    }
+
+    function onError(error) {
+      cleanup();
+      reject(error);
+    }
+
+    function onTimeout() {
+      cleanup();
+      reject(new Error("edge tunnel handshake timed out"));
     }
 
     function onEnd() {
@@ -97,7 +118,7 @@ function readLine(socket) {
     }
 
     socket.on("data", onData);
-    socket.once("error", reject);
+    socket.once("error", onError);
     socket.once("end", onEnd);
   });
 }
@@ -106,13 +127,18 @@ function writeReply(socket, ok) {
   socket.write(Buffer.from(`${JSON.stringify(ok ? { ok: true } : { ok: false, error: "connect_failed" })}\n`));
 }
 
-function readReply(socket) {
-  return readLine(socket).then((line) => {
+function readReply(socket, { timeoutMs = DEFAULT_HANDSHAKE_TIMEOUT_MS } = {}) {
+  return readLine(socket, { timeoutMs }).then((line) => {
+    let reply;
     try {
-      return JSON.parse(line.toString("utf8"));
+      reply = JSON.parse(line.toString("utf8"));
     } catch {
       throw new Error("edge tunnel connect failed");
     }
+    if (!reply || reply.ok !== true) {
+      throw new Error("edge tunnel connect failed");
+    }
+    return reply;
   });
 }
 
@@ -127,14 +153,15 @@ function waitForConnect(socket) {
   });
 }
 
-export function createEdgeTunnelServer({ openTcp } = {}) {
+export function createEdgeTunnelServer({ openTcp, handshakeTimeoutMs } = {}) {
   if (typeof openTcp !== "function") {
     throw new Error("openTcp is required");
   }
+  const normalizedHandshakeTimeoutMs = normalizeHandshakeTimeoutMs(handshakeTimeoutMs);
 
   return net.createServer(async (socket) => {
     try {
-      const request = parseConnectRequest(await readLine(socket));
+      const request = parseConnectRequest(await readLine(socket, { timeoutMs: normalizedHandshakeTimeoutMs }));
       const remote = await openTcp(request.target);
       await waitForConnect(remote);
       writeReply(socket, true);
@@ -150,9 +177,10 @@ export function createEdgeTunnelServer({ openTcp } = {}) {
   });
 }
 
-export function createEdgeTunnelChannel({ host, port } = {}) {
+export function createEdgeTunnelChannel({ host, port, handshakeTimeoutMs } = {}) {
   const edgeHost = String(host ?? "").trim();
   const edgePort = Number(port);
+  const normalizedHandshakeTimeoutMs = normalizeHandshakeTimeoutMs(handshakeTimeoutMs);
   if (!edgeHost) {
     throw new Error("edge tunnel host is required");
   }
@@ -173,10 +201,7 @@ export function createEdgeTunnelChannel({ host, port } = {}) {
         const target = normalizeTarget(targetInput);
         await waitForConnect(socket);
         socket.write(encodeConnectRequest(target));
-        const reply = await readReply(socket);
-        if (!reply.ok) {
-          throw new Error("edge tunnel connect failed");
-        }
+        await readReply(socket, { timeoutMs: normalizedHandshakeTimeoutMs });
 
         counters.connectOk += 1;
         lastFailure = null;

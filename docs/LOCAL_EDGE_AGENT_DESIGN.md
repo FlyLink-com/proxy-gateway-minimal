@@ -446,6 +446,7 @@ fail-closed SOCKS5 behavior when the channel is unavailable
 optional runtime wiring for the SOCKS5 adapter when explicitly enabled
 channel profile factory with disabled default and local-development direct TCP
 local-development edge-tunnel skeleton with a one-line JSON CONNECT handshake
+bounded edge-tunnel handshake timeouts and strict boolean success replies
 ```
 
 It deliberately does not implement:
@@ -476,9 +477,10 @@ The `direct-tcp` channel profile is a local-development test profile only. It
 requires an explicit opt-in flag and must not be treated as the production
 agent-to-edge protocol. The `edge-tunnel` channel profile is also local
 development only: it requires an explicit opt-in flag, sends only a minimal
-JSON-line CONNECT request, redacts target details from diagnostics, and has no
-production authentication or encryption. The default channel profile is
-`disabled`, which fails closed.
+JSON-line CONNECT request, rejects malformed success replies, bounds handshake
+waiting with configurable timeouts, redacts target details from diagnostics,
+and has no production authentication or encryption. The default channel profile
+is `disabled`, which fails closed.
 
 ## Open Decisions
 

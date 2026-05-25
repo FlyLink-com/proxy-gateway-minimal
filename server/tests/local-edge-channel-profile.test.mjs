@@ -169,6 +169,38 @@ test("edge-tunnel profile opens an edge channel only when explicitly enabled", a
   }
 });
 
+test("edge-tunnel profile passes handshake timeout to the edge channel", async () => {
+  const serverSockets = new Set();
+  const tunnelServer = net.createServer((socket) => {
+    serverSockets.add(socket);
+    socket.once("close", () => serverSockets.delete(socket));
+  });
+  const tunnelAddress = await listenNet(tunnelServer);
+  const channel = createChannelFromProfile({
+    type: "edge-tunnel",
+    allowEdgeTunnel: true,
+    host: "127.0.0.1",
+    port: tunnelAddress.port,
+    handshakeTimeoutMs: 20
+  });
+
+  try {
+    const startedAt = Date.now();
+    await assert.rejects(
+      () => channel.openTcp({ host: "example.test", port: 443, addressType: "domain" }),
+      /edge tunnel connect failed/
+    );
+    assert.ok(Date.now() - startedAt < 1000);
+    const diagnostics = channel.diagnosticsSnapshot();
+    assert.equal(diagnostics.counters.connectFailure, 1);
+  } finally {
+    for (const socket of serverSockets) {
+      socket.destroy();
+    }
+    await new Promise((resolve) => tunnelServer.close(resolve));
+  }
+});
+
 test("startLocalEdgeAgent can wire a development direct-tcp channel profile", async () => {
   const echoServer = net.createServer((socket) => {
     socket.on("data", (chunk) => {
