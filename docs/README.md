@@ -40,6 +40,8 @@ actions by itself.
 | `project-state/lanes.json` | Machine-readable active lanes, primary docs, code areas, risk boundaries, and non-goals. | Active lane index; no execution authority. | Read before assigning work to a lane or dispatching subagents. |
 | `project-state/tasks.json` | Machine-readable C/B/A backlog for simplification and project-control work. | Active backlog; A-tier entries remain blocked until runbook and approval. | Read before selecting the next cleanup, inventory, or architecture-hardening task. |
 
+Check structured state with `npm run project-state:check`.
+
 ## Network / Runtime
 
 | Document | Purpose | Status | When to read |

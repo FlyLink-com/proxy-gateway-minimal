@@ -463,17 +463,17 @@ Make structured state useful without trusting it blindly.
 
 Scope:
 
-- add repository-local checks for JSON validity
+- maintain repository-local checks for JSON validity
 - verify lane docs exist
 - verify task risk tiers and validation fields are present
-- scan docs and project-state for sensitive patterns
+- scan project-state and declared source docs for raw secret patterns
 - flag stale timestamps or known-drift production snapshots
 
 Validation:
 
 ```text
 git diff --check origin/master...HEAD
-node <future-check-script>
+npm run project-state:check
 ```
 
 ### B1: Code Module Inventory

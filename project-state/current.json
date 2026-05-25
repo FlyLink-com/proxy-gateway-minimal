@@ -78,7 +78,8 @@
       "npm run admin:test",
       "npm run admin:build",
       "npm test"
-    ]
+    ],
+    "projectStateCommand": "npm run project-state:check"
   },
   "activeBlockers": [
     {

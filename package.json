@@ -49,6 +49,7 @@
     "network:status": "powershell -ExecutionPolicy Bypass -File scripts/network-doctor.ps1 status",
     "network:repair": "powershell -ExecutionPolicy Bypass -File scripts/network-doctor.ps1 repair",
     "network:reset": "powershell -ExecutionPolicy Bypass -File scripts/network-doctor.ps1 reset",
+    "project-state:check": "node scripts/check-project-state.mjs",
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",
     "agent:local": "node agent/local-edge-agent.mjs",

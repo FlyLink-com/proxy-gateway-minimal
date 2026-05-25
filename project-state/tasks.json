@@ -86,6 +86,33 @@
       ]
     },
     {
+      "id": "B3-project-state-consistency-checker",
+      "risk": "B",
+      "status": "completed-in-pr-111",
+      "lane": "validation-ci",
+      "title": "Add repository-local project-state consistency checker",
+      "goal": "Validate project-state JSON, lane doc references, task fields, A-tier blocked status, and raw secret patterns through an npm script.",
+      "allowedFiles": [
+        "scripts/check-project-state.mjs",
+        "server/tests/project-state-check.test.mjs",
+        "package.json",
+        "docs/PROJECT_CONTROL_PLANE.md",
+        "docs/PROJECT_SIMPLIFICATION_MAP.md",
+        "docs/README.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate production",
+        "treat structured state as live production inventory",
+        "write secrets or raw subscription URLs",
+        "skip repository tests"
+      ],
+      "validation": [
+        "npm run project-state:check",
+        "npm test"
+      ]
+    },
+    {
       "id": "B1-code-module-inventory",
       "risk": "B",
       "status": "queued",

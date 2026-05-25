@@ -184,7 +184,17 @@ long as the secret value itself is not included.
 
 ## Future Tooling
 
-Future B-tier tooling can validate:
+The first repository-local checker is available:
+
+```text
+npm run project-state:check
+```
+
+It validates JSON parsing, required structured-state files, lane document
+references, task risk/validation fields, A-tier blocked status, and raw secret
+patterns in `project-state` plus declared source docs.
+
+Future B-tier tooling can extend this to validate:
 
 - every lane points to existing docs
 - every task has a risk tier and validation command
