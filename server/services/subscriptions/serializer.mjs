@@ -1,8 +1,14 @@
 import { computeSubscriptionStatus } from "./status.mjs";
-import { SHARED_NODE_MODE } from "./validation.mjs";
+import {
+  firstSubscriptionEligibleEdgeServer,
+  listEdgeNodes,
+  namedEdgeServers,
+  resolveEdgeServer,
+  subscriptionEligibleEdgeServers
+} from "./edge-inventory.mjs";
 
 export function namedServers(proxyConfig) {
-  return (proxyConfig.servers || []).filter((server) => String(server.name || "").trim());
+  return namedEdgeServers(proxyConfig);
 }
 
 export function firstNamedServer(proxyConfig) {
@@ -13,14 +19,22 @@ export function firstNamedServer(proxyConfig) {
   return server;
 }
 
+export function firstEligibleNamedServer(proxyConfig) {
+  return firstSubscriptionEligibleEdgeServer(proxyConfig);
+}
+
 export function resolveNamedServer(proxyConfig, nodeId) {
-  const normalized = String(nodeId ?? "").trim();
-  return namedServers(proxyConfig).find((server) => server.name === normalized || server.id === normalized) || null;
+  return resolveEdgeServer(proxyConfig, nodeId);
+}
+
+export function resolveEligibleNamedServer(proxyConfig, nodeId) {
+  return resolveEdgeServer(proxyConfig, nodeId, { subscriptionEligibleOnly: true });
 }
 
 export function cloneProxyConfigForSubscriptionOutput(proxyConfig, nodeId) {
-  const defaultNode = firstNamedServer(proxyConfig);
-  const node = resolveNamedServer(proxyConfig, nodeId);
+  const eligibleServers = subscriptionEligibleEdgeServers(proxyConfig);
+  const [defaultNode] = eligibleServers;
+  const node = eligibleServers.find((server) => server.name === String(nodeId ?? "").trim() || server.id === String(nodeId ?? "").trim()) || null;
   if (!node) {
     return {
       ...proxyConfig,
@@ -31,7 +45,7 @@ export function cloneProxyConfigForSubscriptionOutput(proxyConfig, nodeId) {
   if (node.name === defaultNode.name) {
     return {
       ...proxyConfig,
-      servers: namedServers(proxyConfig)
+      servers: eligibleServers
     };
   }
 
@@ -42,16 +56,7 @@ export function cloneProxyConfigForSubscriptionOutput(proxyConfig, nodeId) {
 }
 
 export function serializeNode(server) {
-  return {
-    id: server.id || server.name,
-    name: server.name,
-    region: server.region || "",
-    host: server.host,
-    port: server.port,
-    method: server.method,
-    credentialMode: SHARED_NODE_MODE,
-    status: "online"
-  };
+  return listEdgeNodes({ servers: [server] })[0];
 }
 
 export function createSubscriptionSerializer({ nowFn, expiringDays }) {

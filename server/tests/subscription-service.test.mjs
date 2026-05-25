@@ -39,6 +39,50 @@ function sampleProxyConfig() {
   };
 }
 
+function edgeInventoryProxyConfig() {
+  return {
+    servers: [
+      {
+        id: "node_sg",
+        name: "prod-edge-a",
+        role: "primary",
+        region: "Singapore",
+        host: "203.0.113.10",
+        port: 18388,
+        method: "aes-256-gcm",
+        password: "shared-secret",
+        status: "online"
+      },
+      {
+        id: "node_tokyo",
+        name: "prod-edge-b",
+        role: "canary",
+        region: "Tokyo",
+        host: "203.0.113.11",
+        port: 18389,
+        method: "aes-256-gcm",
+        password: "maintenance-secret",
+        maintenance: true,
+        maintenanceReason: "canary maintenance"
+      },
+      {
+        id: "node_legacy",
+        name: "legacy-blue",
+        role: "legacy",
+        region: "Singapore",
+        host: "203.0.113.12",
+        port: 18390,
+        method: "aes-256-gcm",
+        password: "disabled-secret",
+        status: "disabled",
+        disabledReason: "retained for rollback review"
+      }
+    ],
+    pingHosts: ["1.1.1.1"],
+    nginx: { host: "127.0.0.1", ports: [443] }
+  };
+}
+
 function tokenFromRaw(rawToken) {
   return {
     rawToken,
@@ -622,13 +666,125 @@ test("nodes returns planned shared-node summaries", async () => {
     assert.deepEqual(context.service.nodes()[0], {
       id: "node_sg",
       name: "aws-singapore",
+      role: "",
       region: "Singapore",
       host: "203.0.113.10",
       port: 18388,
       method: "aes-256-gcm",
       credentialMode: "shared-node",
-      status: "online"
+      status: "online",
+      maintenance: false,
+      subscriptionEligible: true,
+      reason: ""
     });
+  });
+});
+
+test("nodes returns safe edge inventory summaries without credentials", async () => {
+  await withService(async (context) => {
+    const nodes = context.service.listNodes();
+
+    assert.deepEqual(nodes, [
+      {
+        id: "node_sg",
+        name: "prod-edge-a",
+        role: "primary",
+        region: "Singapore",
+        host: "203.0.113.10",
+        port: 18388,
+        method: "aes-256-gcm",
+        credentialMode: "shared-node",
+        status: "online",
+        maintenance: false,
+        subscriptionEligible: true,
+        reason: ""
+      },
+      {
+        id: "node_tokyo",
+        name: "prod-edge-b",
+        role: "canary",
+        region: "Tokyo",
+        host: "203.0.113.11",
+        port: 18389,
+        method: "aes-256-gcm",
+        credentialMode: "shared-node",
+        status: "maintenance",
+        maintenance: true,
+        subscriptionEligible: false,
+        reason: "canary maintenance"
+      },
+      {
+        id: "node_legacy",
+        name: "legacy-blue",
+        role: "legacy",
+        region: "Singapore",
+        host: "203.0.113.12",
+        port: 18390,
+        method: "aes-256-gcm",
+        credentialMode: "shared-node",
+        status: "disabled",
+        maintenance: false,
+        subscriptionEligible: false,
+        reason: "retained for rollback review"
+      }
+    ]);
+    assert.doesNotMatch(JSON.stringify(nodes), /shared-secret|maintenance-secret|disabled-secret/);
+  }, {
+    proxyConfig: edgeInventoryProxyConfig()
+  });
+});
+
+test("default subscription output excludes maintenance and disabled edge nodes", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context);
+
+    const result = context.service.resolveSubscriptionToken(RAW_TOKEN);
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.proxyConfig.servers.map((server) => server.name), ["prod-edge-a"]);
+    assert.doesNotMatch(JSON.stringify(result.proxyConfig), /maintenance-secret|disabled-secret/);
+  }, {
+    proxyConfig: edgeInventoryProxyConfig()
+  });
+});
+
+test("assigned maintenance or disabled edge nodes fail closed before marking last use", async () => {
+  await withService(async (context) => {
+    context.repository.createTenant(repositoryTenant({
+      id: "tenant_maintenance_node",
+      nodeId: "prod-edge-b",
+      tokenHash: hashSubscriptionToken(OLD_NODE_TOKEN),
+      tokenPrefix: OLD_NODE_TOKEN.slice(0, 14)
+    }));
+    context.setNow(LATER);
+
+    assert.deepEqual(await context.service.resolveSubscriptionToken(OLD_NODE_TOKEN), {
+      ok: false,
+      status: 403,
+      error: "Subscription node unavailable"
+    });
+    assert.equal(context.repository.getTenant("tenant_maintenance_node").lastUsedAt, null);
+  }, {
+    proxyConfig: edgeInventoryProxyConfig()
+  });
+
+  await withService(async (context) => {
+    context.repository.createTenant(repositoryTenant({
+      id: "tenant_disabled_node",
+      nodeId: "legacy-blue",
+      tokenHash: hashSubscriptionToken(OLD_NODE_TOKEN),
+      tokenPrefix: OLD_NODE_TOKEN.slice(0, 14)
+    }));
+    context.setNow(LATER);
+
+    assert.deepEqual(await context.service.resolveSubscriptionToken(OLD_NODE_TOKEN), {
+      ok: false,
+      status: 403,
+      error: "Subscription node unavailable"
+    });
+    assert.equal(context.repository.getTenant("tenant_disabled_node").lastUsedAt, null);
+  }, {
+    proxyConfig: edgeInventoryProxyConfig()
   });
 });
 
@@ -675,12 +831,16 @@ test("overview returns ok, counts, and node summaries", async () => {
     assert.deepEqual(overview.nodes[0], {
       id: "node_sg",
       name: "aws-singapore",
+      role: "",
       region: "Singapore",
       host: "203.0.113.10",
       port: 18388,
       method: "aes-256-gcm",
       credentialMode: "shared-node",
-      status: "online"
+      status: "online",
+      maintenance: false,
+      subscriptionEligible: true,
+      reason: ""
     });
   });
 });

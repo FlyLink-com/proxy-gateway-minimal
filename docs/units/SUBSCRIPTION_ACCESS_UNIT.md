@@ -108,6 +108,7 @@ Production Operations:
 
 ```text
 server/services/subscriptions/*
+server/services/subscriptions/edge-inventory.mjs
 server/routes/subscription.mjs
 server/routes/admin-subscriptions.mjs
 server/services/clash-subscription.mjs
@@ -147,8 +148,8 @@ map each subscription access feature to an owning code anchor and test anchor
 separate current implemented behavior from planned opaque artifact and
   device-bootstrap behavior
 define operator-safe Admin summary fields
-define the handoff format for approved edge inventory from Edge / Node Capacity
-add explicit contract tests when code changes are proposed
+extend the edge inventory handoff beyond repository-local status metadata only
+add explicit contract tests when future access interfaces are proposed
 ```
 
 ## Paused / Blocked Items

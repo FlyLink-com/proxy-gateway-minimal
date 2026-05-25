@@ -128,6 +128,8 @@ docs/LOCAL_EDGE_AGENT_DESIGN.md
 ops/edge-node/*
 ops/nginx/*
 ops/systemd/*
+server/services/subscriptions/edge-inventory.mjs
+server/tests/subscription-service.test.mjs
 ```
 
 Current documented architecture facts:
@@ -162,8 +164,7 @@ operator approval, validation evidence, and rollback planning.
 ## Next Tasks
 
 ```text
-define a minimal edge inventory schema consumable by Subscription Access
-  Control without secrets
+extend the repository-local edge inventory schema beyond static config metadata
 define safe health and readiness summary fields
 define maintenance-mode behavior for subscription rendering without unsafe
   automatic failover

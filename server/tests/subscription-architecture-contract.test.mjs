@@ -118,12 +118,16 @@ test("subscription core exposes listNodes as the stable node-list contract", () 
   assert.deepEqual(core.listNodes(), [{
     id: "node_sg",
     name: "aws-singapore",
+    role: "",
     region: "Singapore",
     host: "203.0.113.10",
     port: 18388,
     method: "aes-256-gcm",
     credentialMode: "shared-node",
-    status: "online"
+    status: "online",
+    maintenance: false,
+    subscriptionEligible: true,
+    reason: ""
   }]);
 });
 

@@ -164,6 +164,34 @@
       ]
     },
     {
+      "id": "B4-edge-inventory-contract",
+      "risk": "B",
+      "status": "completed-in-pr-122",
+      "lane": "subscription-control-plane",
+      "title": "Add repository-local edge inventory contract for subscription rendering",
+      "goal": "Normalize configured edge nodes into safe summaries, exclude maintenance or disabled nodes from subscription output, and fail closed when an assigned node is unavailable.",
+      "allowedFiles": [
+        "server/services/subscriptions/*",
+        "server/tests/subscription-service.test.mjs",
+        "server/tests/subscription-architecture-contract.test.mjs",
+        "docs/units/SUBSCRIPTION_ACCESS_UNIT.md",
+        "docs/units/EDGE_NODE_UNIT.md",
+        "docs/superpowers/plans/2026-05-25-edge-inventory-contract.md",
+        "project-state/tasks.json"
+      ],
+      "forbiddenActions": [
+        "mutate production",
+        "change DNS, Nginx, systemd, AWS, security groups, or runtime config",
+        "change production tenant or artifact state",
+        "write secrets or raw subscription URLs",
+        "treat static edge inventory as live production health"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm test"
+      ]
+    },
+    {
       "id": "A1-legacy-query-token-retirement",
       "risk": "A",
       "status": "blocked-requires-runbook-and-approval",
