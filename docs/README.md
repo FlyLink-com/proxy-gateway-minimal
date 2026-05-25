@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-05-26, Asia/Shanghai.
 
 Use this file as the first navigation point for project documentation. It
 classifies current source-of-truth docs, active runbooks, execution records,
@@ -53,6 +53,7 @@ Check structured state with `npm run project-state:check`.
 | `docs/ENVIRONMENT_TOPOLOGY.md` | Local checkout, GitHub, branch roles, AWS runtime roles, and current topology. | Active topology reference. | Read before interpreting environment roles or AWS instance identity. |
 | `docs/PROJECT_TOPOLOGY.md` | Current and target topology diagrams for production delivery, Local Edge Agent, private operator lab / HP Relay, server edge mesh, control/delivery/data planes, and work lanes. | Active architecture topology; no execution authority. | Read before aligning product direction, drawing architecture diagrams, or deciding whether work belongs to local agent, operator lab relay, server mesh, subscription delivery, or production ops. |
 | `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md` | Target architecture for splitting subscription control-plane authority from edge data-plane capacity. | Active architecture design; no execution authority. | Read before planning control-plane standby, edge-only nodes, edge health registry, or any physical control/edge split. |
+| `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md` | Clean new-server runbook for validating a future `sub-control-a` candidate before any physical control-plane split. | Active Risk A runbook; explicit approval still required before provisioning or mutation. | Read before creating a new subscription control-plane candidate, restoring production-derived state to it, validating its public boundary, or considering promotion. |
 | `docs/NODE_NAMING.md` | Provider-neutral production edge node naming policy. | Active naming policy; runtime migrations remain Risk A. | Read before adding, renaming, exposing, or documenting production node identities. |
 | `docs/ROUTES_ARCHITECTURE.md` | Express route boundaries, public/protected/admin route model, Subscription V2 route behavior, and implemented versus not-yet-implemented routing capabilities. | Active architecture audit; no execution authority. | Read before changing route auth boundaries, subscription routing behavior, or making claims about DPI, protocol, blackhole, traffic, or self-service capabilities. |
 | `docs/SUBSCRIPTION_V2_REPLACEMENT.md` | Subscription V2 design for replacing MVP single-node output with stable-token multi-node delivery. | Active design contract; no execution authority. | Read before implementing or activating Subscription V2. |

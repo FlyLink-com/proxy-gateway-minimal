@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-05-25",
+  "lastUpdated": "2026-05-26",
   "timezone": "Asia/Shanghai",
   "status": "active",
   "purpose": "Machine-readable active project lanes for agent orientation. This file does not authorize production, cloud, deployment, or secret changes.",
@@ -10,7 +10,8 @@
     "docs/units/README.md",
     "docs/PROJECT_OPERATING_MODEL.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
-    "docs/PROJECT_TOPOLOGY.md"
+    "docs/PROJECT_TOPOLOGY.md",
+    "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md"
   ],
   "lanes": [
     {
@@ -60,6 +61,7 @@
       "primaryDocs": [
         "docs/units/SUBSCRIPTION_ACCESS_UNIT.md",
         "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md",
+        "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
         "docs/SUBSCRIPTION_V2_REPLACEMENT.md",
         "docs/SUBSCRIPTION_DEVICE_SCOPED_OPAQUE_URLS.md",
         "docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md"
@@ -189,6 +191,7 @@
         "docs/PRODUCTION_DR.md",
         "docs/PRODUCTION_REPLACEMENT.md",
         "docs/PRODUCTION_EDGE_FLEET.md",
+        "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
         "docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md"
       ],
       "primaryCodeAreas": [

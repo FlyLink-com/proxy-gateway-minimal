@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-05-26, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -87,6 +87,8 @@ Current architecture priorities:
 
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane.
+  A clean new server is the preferred future `sub-control-a` candidate path;
+  use the dedicated runbook before any provisioning or promotion work.
 - Edge Data Plane: make `prod-edge-a/b/c` replaceable capacity with clear
   rollback and node identity boundaries.
 - Local Edge Agent: keep Clash/Mihomo as routing/UI while a loopback-only local
@@ -102,6 +104,7 @@ Use these docs for detail:
 
 - `docs/PROJECT_TOPOLOGY.md`
 - `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`
+- `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`
 - `docs/LOCAL_EDGE_AGENT_DESIGN.md`
 - `docs/SERVER_EDGE_MESH_DESIGN.md`
 - `docs/PROJECT_SIMPLIFICATION_MAP.md`
@@ -151,6 +154,8 @@ operator approval, validation, and rollback path exist:
 - Legacy query-token retirement.
 - Traffic accounting, quota enforcement, and device-abuse enforcement.
 - Physical control-plane / edge data-plane split.
+- Clean `sub-control-a` candidate provisioning, state-copy validation,
+  public-boundary validation, or promotion.
 - `prod-edge-b` carrying-instance replacement or lifecycle mutation.
 - `prod-edge-c` creation or durable third-node recovery work.
 - Legacy blue final termination or security-group cleanup.
@@ -179,8 +184,10 @@ The remaining queued items are A-tier and remain blocked:
 - `A1-legacy-query-token-retirement`
 - `A2-physical-control-edge-split`
 
-Do not start either A-tier item without a specific runbook, read-only inventory,
-operator approval, validation plan, and rollback evidence.
+For A2, the preferred first step is the clean new-server path in
+`docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`. Do not start either
+A-tier item without a specific runbook, read-only inventory, operator approval,
+validation plan, and rollback evidence.
 
 ## Current Validation Baseline
 
@@ -279,6 +286,8 @@ High-value entrypoints:
 - `docs/ENVIRONMENT_TOPOLOGY.md` - repo, GitHub, branch, and AWS role map.
 - `docs/DEPLOYMENT_FLOW.md` - deployment, staging, promotion, rollback flow.
 - `docs/CI_MANUAL_VALIDATION.md` - manual validation host workflow.
+- `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md` - clean
+  `sub-control-a` candidate gates for the future physical split.
 
 Detailed production and incident history remains in:
 
