@@ -18,6 +18,9 @@ source of truth, PRs as change boundaries, Aliyun as the manual CI fallback
 while GitHub-hosted Actions is blocked, and AWS production changes only through
 serial Risk A runbooks and execution records.
 
+Use `docs/MULTI_AGENT_OPERATING_MODEL.md` when a task needs multiple agents,
+independent analysis tracks, or explicit subagent task packets.
+
 Product direction: keep the user subscription entry stable while evolving the
 subscription control plane, edge-node capacity, production hosts, DNS, and
 operational controls behind that entry.
@@ -59,9 +62,11 @@ Local:  C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 ```
 
 Use `docs/PROJECT_CONTEXT.md` for current handoff state and
-`docs/README.md` for documentation navigation. Historical checkouts and
-historical design artifacts are background only unless current docs explicitly
-reference them.
+`docs/README.md` for documentation navigation. Use
+`docs/MULTI_AGENT_OPERATING_MODEL.md` for agent role decomposition,
+parallelization rules, task-packet requirements, and subagent verification
+contracts. Historical checkouts and historical design artifacts are background
+only unless current docs explicitly reference them.
 
 ## Production Model
 
@@ -156,6 +161,11 @@ Production ops lane:
 Code and docs branches may run in parallel when they do not touch the same
 source-of-truth files. Real external mutation must be serial.
 
+Multi-agent work follows the same rule. Agents may parallelize independent
+analysis or implementation tracks, but the lead agent remains responsible for
+integration, source-of-truth updates, final verification, and user-facing
+claims.
+
 ## Risk Tiers
 
 Use the project A/B/C model from `AGENTS.md`.
@@ -177,6 +187,9 @@ A: production, cloud, DNS, Nginx, systemd, auth model, schema, node, deploy
 If a change affects generated production subscription output, production node
 config, production tenants, DNS, or runtime state, treat it as Risk A even when
 the repository code change looks small.
+
+Subagent work does not lower risk. A Risk A task remains Risk A even when a
+subagent performs only one part of the analysis.
 
 ## Control, Delivery, And Data Planes
 

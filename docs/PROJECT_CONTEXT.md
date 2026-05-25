@@ -21,6 +21,9 @@ HTTPS, staging, deployment, rollback, or node execution gates.
 Use `docs/PROJECT_OPERATING_MODEL.md` for the project-level operating model:
 source-of-truth layers, work lanes, risk tiers, production gates, and
 subscription stability principles.
+Use `docs/MULTI_AGENT_OPERATING_MODEL.md` before splitting work across multiple
+agents; it defines lead/subagent roles, task packets, parallelization rules,
+verification, and no-secrets boundaries.
 
 Future slimming goal: this file should not permanently duplicate every
 historical PR, old stage detail, long command block, or runbook body that
@@ -37,6 +40,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 
 - The project now treats GitHub `gaoyi1020-web/proxy-gateway-minimal` plus the local checkout at `C:\Users\g\Projects\订阅管理\proxy-gateway-minimal` as the only active code source of truth.
 - Documentation navigation starts at `docs/README.md`, which classifies current state docs, active runbooks, execution records, paused docs, and historical specs/plans.
+- Multi-agent collaboration rules live in `docs/MULTI_AGENT_OPERATING_MODEL.md`. The lead agent remains responsible for scope, risk tier, source-of-truth updates, final verification, and user-facing claims; subagents must receive explicit task packets and cannot lower A/B/C risk boundaries.
 - `C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal` is a historical original checkout. It is useful for archaeology only and should not receive new work.
 - `C:\Users\g\OneDrive\文档\订阅管理` is a legacy empty Codex project shell. Do not treat it as a real repository.
 - Current production MVP target is `prod-edge-a` on `13.215.156.159`; `sub.globalcirclecat.com` and `ss-sg.globalcirclecat.com` now point there in authoritative AliDNS. Legacy blue instance `i-004ab1c6c71d06bca` has been stopped for controlled retirement review; do not terminate it or delete its security group without separate Risk A approval.
@@ -274,6 +278,7 @@ aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord
 - `README.md`: user-facing project and API documentation.
 - `qa-report.md`: v0.1.0 test and QA summary. It is useful for test coverage, but the server references are historical.
 - `docs/ENVIRONMENT_TOPOLOGY.md`: source-of-truth map for local repo, GitHub, branch roles, and AWS runtime roles.
+- `docs/MULTI_AGENT_OPERATING_MODEL.md`: lead/subagent collaboration model, task packet format, parallelization rules, verification contract, and no-secrets boundary.
 - `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`: target split between subscription control-plane authority and edge data-plane capacity.
 - `docs/DEPLOYMENT_FLOW.md`: promotion flow from development to CI, candidate, staging, production, and rollback.
 - `docs/STAGING_TARGET_DECISION.md`: decision record for choosing a clean staging instance versus rebuilding the stopped historical node.
