@@ -5,6 +5,7 @@ import {
   createChannelFromProfile,
   normalizeChannelProfile
 } from "../../agent/channel-profile.mjs";
+import { createEdgeTunnelServer } from "../../agent/edge-tunnel.mjs";
 import { startLocalEdgeAgent } from "../../agent/local-edge-agent.mjs";
 
 function listenNet(server) {
@@ -102,6 +103,13 @@ test("direct-tcp profile requires explicit local-development opt-in", () => {
   );
 });
 
+test("edge-tunnel profile requires explicit local-development opt-in", () => {
+  assert.throws(
+    () => createChannelFromProfile({ type: "edge-tunnel", host: "127.0.0.1", port: 19000 }),
+    /edge-tunnel requires allowEdgeTunnel/
+  );
+});
+
 test("direct-tcp profile opens a TCP channel only when explicitly enabled", async () => {
   const echoServer = net.createServer((socket) => {
     socket.on("data", (chunk) => {
@@ -122,6 +130,41 @@ test("direct-tcp profile opens a TCP channel only when explicitly enabled", asyn
     assert.equal(diagnostics.counters.connectOk, 1);
     assert.equal(diagnostics.lastFailure, null);
   } finally {
+    await new Promise((resolve) => echoServer.close(resolve));
+  }
+});
+
+test("edge-tunnel profile opens an edge channel only when explicitly enabled", async () => {
+  const echoServer = net.createServer((socket) => {
+    socket.on("data", (chunk) => {
+      socket.write(Buffer.concat([Buffer.from("echo:"), chunk]));
+    });
+  });
+  const echoAddress = await listenNet(echoServer);
+  const tunnelServer = createEdgeTunnelServer({
+    openTcp: async () => net.connect({ host: "127.0.0.1", port: echoAddress.port })
+  });
+  const tunnelAddress = await listenNet(tunnelServer);
+  const channel = createChannelFromProfile({
+    type: "edge-tunnel",
+    allowEdgeTunnel: true,
+    host: "127.0.0.1",
+    port: tunnelAddress.port
+  });
+
+  try {
+    const socket = await channel.openTcp({ host: "example.test", port: 443, addressType: "domain" });
+    socket.write(Buffer.from("ping"));
+    assert.deepEqual(await readBytes(socket, 9), Buffer.from("echo:ping"));
+    socket.destroy();
+
+    const diagnostics = channel.diagnosticsSnapshot();
+    assert.equal(diagnostics.profile.type, "edge-tunnel");
+    assert.equal(diagnostics.profile.host, "[redacted]");
+    assert.equal(diagnostics.counters.connectOk, 1);
+    assert.equal(diagnostics.lastFailure, null);
+  } finally {
+    await new Promise((resolve) => tunnelServer.close(resolve));
     await new Promise((resolve) => echoServer.close(resolve));
   }
 });

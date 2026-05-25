@@ -423,9 +423,11 @@ The first repo-only skeleton now lives in:
 ```text
 agent/local-edge-agent.mjs
 agent/channel-profile.mjs
+agent/edge-tunnel.mjs
 agent/socks5-adapter.mjs
 server/tests/local-edge-agent.test.mjs
 server/tests/local-edge-channel-profile.test.mjs
+server/tests/local-edge-tunnel.test.mjs
 server/tests/local-edge-socks-adapter.test.mjs
 ```
 
@@ -443,12 +445,15 @@ standalone SOCKS5 CONNECT adapter with injected channel interface
 fail-closed SOCKS5 behavior when the channel is unavailable
 optional runtime wiring for the SOCKS5 adapter when explicitly enabled
 channel profile factory with disabled default and local-development direct TCP
+local-development edge-tunnel skeleton with a one-line JSON CONNECT handshake
 ```
 
 It deliberately does not implement:
 
 ```text
-remote edge transport
+production remote edge transport
+transport authentication
+transport encryption
 HTTP proxy adapter
 device credential storage
 artifact bootstrap
@@ -469,8 +474,11 @@ not a usable traffic adapter until a real agent-to-edge channel is added.
 
 The `direct-tcp` channel profile is a local-development test profile only. It
 requires an explicit opt-in flag and must not be treated as the production
-agent-to-edge protocol. The default channel profile is `disabled`, which fails
-closed.
+agent-to-edge protocol. The `edge-tunnel` channel profile is also local
+development only: it requires an explicit opt-in flag, sends only a minimal
+JSON-line CONNECT request, redacts target details from diagnostics, and has no
+production authentication or encryption. The default channel profile is
+`disabled`, which fails closed.
 
 ## Open Decisions
 
