@@ -20,6 +20,9 @@ serial Risk A runbooks and execution records.
 
 Use `docs/MULTI_AGENT_OPERATING_MODEL.md` when a task needs multiple agents,
 independent analysis tracks, or explicit subagent task packets.
+Use `docs/DOMAIN_UNIT_BOUNDARIES.md` when a task needs to separate product
+business, commercial entitlement, subscription access, edge nodes, local
+client work, validation, operator lab, and production operations.
 Use `docs/PROJECT_SIMPLIFICATION_MAP.md` when a task needs docs slimming,
 module classification, cleanup queue ordering, or a decision on whether a new
 idea belongs on the active product spine.
@@ -58,6 +61,41 @@ operational controls behind that entry.
 Do not collapse these layers. A repository merge does not imply production
 activation. A runbook does not imply execution approval. A validation host is
 not staging or production.
+
+## Domain Units
+
+Use domain units before choosing a branch, task packet, or implementation
+surface:
+
+```text
+Product business:
+  user-facing service promise, workflows, and acceptance criteria
+
+Commercial / entitlement:
+  packages, validity, quota, renewal, and customer commercial status
+
+Subscription access control:
+  artifacts, tokens, device bootstrap, Subscription V2 output, Admin access ops
+
+Edge / node capacity:
+  prod-edge fleet, health, upstream path, node replacement, private mesh when approved
+
+Local client:
+  Clash/Mihomo expectations and Local Edge Agent loopback adapter
+
+Validation / CI:
+  local tests, GitHub Actions, Aliyun manual CI evidence
+
+Operator lab:
+  HP Relay and network/channel experiments, not runtime authority
+
+Production operations:
+  AWS, DNS, Nginx, HTTPS, systemd, SQLite, node lifecycle, rollback records
+```
+
+Business, commercial entitlement, subscription access, and nodes must not be
+treated as the same unit. See `docs/DOMAIN_UNIT_BOUNDARIES.md` for the detailed
+interface rules and anti-collapse checks.
 
 ## Active Source Of Truth
 

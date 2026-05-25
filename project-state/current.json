@@ -6,6 +6,7 @@
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
   "sourceDocs": [
     "docs/PROJECT_CONTEXT.md",
+    "docs/DOMAIN_UNIT_BOUNDARIES.md",
     "docs/PROJECT_OPERATING_MODEL.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/PROJECT_TOPOLOGY.md",
@@ -19,10 +20,10 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "activePrBranch": "refactor/admin-surface-inventory",
-    "activePr": 115,
-    "activePrStatus": "completed-in-pr-115",
-    "note": "Branch context is an orientation hint only; run git status before new work."
+    "activePrBranch": "none",
+    "activePr": null,
+    "activePrStatus": "no-open-pr-after-pr-117-closeout",
+    "note": "Branch context is an orientation hint only; run git status and gh pr list before new work."
   },
   "productSpine": [
     "stable subscription/import experience",
@@ -32,6 +33,7 @@
     "measured validation and operations"
   ],
   "activeDirections": [
+    "Domain Unit Boundaries for product business, commercial entitlement, subscription access, nodes, validation, operator lab, and production ops",
     "Subscription Control / Edge Split",
     "Local Edge Agent as loopback-only client adapter prototype",
     "Server Edge Mesh as private operator/edge management path",
