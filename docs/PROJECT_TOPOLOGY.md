@@ -155,6 +155,17 @@ Server Edge Mesh is for edge health, management, validation, and recovery first.
 Subscription control and edge data-plane capacity should split over time.
 ```
 
+Adjacent boundary matrix:
+
+| Concept | Owns | Does not own |
+| --- | --- | --- |
+| Clash/Mihomo | User-facing routing, rules, UI, and imported subscription handling. | Platform channel selection, server mesh, production edge lifecycle, or subscription authority. |
+| Opaque artifacts | Access/bootstrap material and server-side credential containment. | Data-plane routing, local proxying, server mesh membership, or traffic accounting by themselves. |
+| Local Edge Agent | Loopback-only client-side adapter and future platform-controlled channel selection. | Clash/Mihomo UI/rules, TUN/driver/system proxy mutation in V1, HP Relay, or Server Edge Mesh. |
+| HP Relay | Operator lab diagnostics and upstream/channel behavior research. | Production, staging, CI, prod-edge-c, official Local Edge Agent runtime, or Server Edge Mesh. |
+| Server Edge Mesh | Private edge-to-edge health, management, validation, and recovery path. | User VPN, Clash/Mihomo endpoint, Local Edge Agent transport in V1, or ordinary customer traffic routing. |
+| WireGuard canary | Candidate implementation for the private Server Edge Mesh. | Client VPN product, production traffic migration, opaque artifact migration, or approval-free setup. |
+
 ## Operator Lab / HP Relay Topology
 
 The HP Relay is an operator-owned development network node. It is useful for

@@ -33,6 +33,8 @@
       "nonGoals": [
         "edge data-plane traffic ownership",
         "customer VPN routing",
+        "server mesh membership",
+        "local client routing",
         "production mutation without Risk A approval"
       ]
     },
@@ -78,6 +80,9 @@
         "TUN driver",
         "system proxy mutation",
         "public listener",
+        "HP Relay promotion",
+        "Server Edge Mesh transport in V1",
+        "Clash/Mihomo UI or rules replacement",
         "production remote transport without a separate gate"
       ]
     },
@@ -120,7 +125,9 @@
         "CI",
         "prod-edge-c",
         "Server Edge Mesh",
-        "official Local Edge Agent runtime"
+        "official Local Edge Agent runtime",
+        "public subscription gateway",
+        "customer traffic service"
       ]
     },
     {
@@ -139,6 +146,9 @@
         "user VPN",
         "ordinary customer traffic routing",
         "Local Edge Agent transport",
+        "HP Relay promotion",
+        "opaque artifact migration",
+        "Clash/Mihomo endpoint exposure",
         "WireGuard execution without explicit approval"
       ]
     }

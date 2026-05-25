@@ -39,6 +39,40 @@ server's public path.
 
 The mesh is not a user-facing VPN product in V1.
 
+## Adjacent Boundary Map
+
+The Server Edge Mesh is an operations architecture lane. It should not absorb
+client-product, subscription-access, or operator-lab concepts.
+
+```text
+Server Edge Mesh:
+  private server-to-server health, validation, management, and recovery path
+
+WireGuard:
+  preferred first candidate for the server mesh transport
+  not approved until a separate Risk A execution approval exists
+
+Local Edge Agent:
+  client-side loopback adapter
+  does not connect directly to the private mesh in V1
+
+HP Relay:
+  operator lab / diagnostic relay
+  not a production mesh peer and not prod-edge-c
+
+Opaque artifacts:
+  subscription access/bootstrap mechanism
+  not mesh membership, not routing, and not health transport
+
+Clash/Mihomo:
+  user-facing router/UI
+  must not receive private mesh endpoints in V1
+```
+
+Any future mesh-backed user traffic, local-agent channel, artifact bootstrap
+change, or automatic failover is separate A-tier architecture and execution
+work.
+
 ## Core Decision
 
 Use a server-side private mesh as production infrastructure, not as the first

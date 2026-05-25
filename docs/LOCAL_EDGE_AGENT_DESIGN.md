@@ -68,6 +68,42 @@ Local Edge Agent becomes the platform-controlled data-plane adapter.
 Remote Edge becomes the platform-controlled server-side data plane.
 ```
 
+## Adjacent Boundary Map
+
+The Local Edge Agent must not be used as a label for every local or mesh
+experiment.
+
+```text
+Local Edge Agent:
+  loopback-only client-side channel adapter
+  emits local Clash/Mihomo subscription
+  accepts local proxy traffic from Clash/Mihomo
+
+Clash/Mihomo:
+  user-facing router, rules engine, and UI
+  not replaced by the agent in V1
+
+Opaque artifacts:
+  access/bootstrap material
+  not the data-plane channel and not local routing logic
+
+HP Relay:
+  operator lab / diagnostic relay
+  not the official agent runtime and not production
+
+Server Edge Mesh:
+  private server-to-server operations path
+  not a Local Edge Agent transport in V1
+
+WireGuard:
+  candidate server-edge mesh technology
+  not a client profile, not agent transport, and not approved by this design
+```
+
+If a change introduces device credentials, production remote transport, service
+installation, public listeners, system proxy mutation, or user traffic movement,
+it is no longer a repo-only local-agent prototype and must be reclassified.
+
 ## Why Not Start With TUN / Virtual NIC
 
 Virtual NIC and TUN mode would make the product more powerful, but they also
