@@ -496,9 +496,10 @@ failure reply: { ok: false, error: "connect_failed" }
 framing: one JSON object per line
 ```
 
-Unknown protocol versions, commands, reply shapes, and reply error codes fail
-closed. This is still a local-development contract only, not a production
-transport contract.
+Unknown protocol versions, commands, request shapes, target shapes, reply
+shapes, and reply error codes fail closed. Request and target objects must not
+include extra fields. This is still a local-development contract only, not a
+production transport contract.
 
 ## Open Decisions
 
