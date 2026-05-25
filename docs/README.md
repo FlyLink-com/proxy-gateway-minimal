@@ -27,6 +27,7 @@ actions by itself.
 | --- | --- | --- | --- |
 | `AGENTS.md` | Default agent instructions, A/B/C risk tiers, validation expectations, and safety boundaries. | Active workflow rules. | Read before repo, ops, CI, network, deployment, or production-adjacent work. |
 | `docs/PROJECT_OPERATING_MODEL.md` | Project operating model for source-of-truth layers, work lanes, risk tiers, production gates, and subscription stability. | Active operating model; no execution authority. | Read when deciding how to classify, sequence, or parallelize project work. |
+| `docs/PROJECT_SIMPLIFICATION_MAP.md` | Project simplification map for product spine, active lanes, cleanup queue, code-inventory candidates, and stop-doing boundaries. | Active simplification map; no execution authority. | Read before slimming docs, classifying modules, or deciding whether a new idea belongs on the main product path. |
 | `docs/MULTI_AGENT_OPERATING_MODEL.md` | Multi-agent collaboration model covering lead/subagent roles, task packets, parallelization rules, verification, and no-secrets boundaries. | Active operating model; no execution authority. | Read before splitting work across multiple agents or dispatching independent review/implementation tracks. |
 | `docs/CI_MANUAL_VALIDATION.md` | Aliyun manual CI validation host workflow and fallback clean-server CI-equivalent validation while GitHub-hosted Actions is blocked. | Active runbook, not staging or deploy approval. | Read before using a manual validation host for repo-level CI evidence. |
 
