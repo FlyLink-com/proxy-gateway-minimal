@@ -7,19 +7,23 @@ Last updated: 2026-05-24, Asia/Shanghai.
 > - Risk: A
 > - Execution authority: Does not authorize cloud mutation, DNS mutation, production config changes, node identity migration, secret copying, SQLite copying, traffic cutover, or standby promotion by itself
 > - Production impact: None unless separately approved
-> - Source of truth for: Provider-neutral production edge slot model and third-node standby planning
+> - Source of truth for: Provider-neutral production edge data-plane slot model
+>   and third-node standby planning
 
 ## Purpose
 
-This document defines the provider-neutral production edge fleet model for the
-proxy gateway. It turns the current primary plus iteration/canary capacity into
-a controlled three-slot plan:
+This document defines the provider-neutral production edge data-plane fleet
+model for the proxy gateway. It turns the current primary plus iteration/canary
+capacity into a controlled three-slot plan:
 
 ```text
 prod-edge-a: current production primary slot
 prod-edge-b: iteration/canary secondary slot
 prod-edge-c: future third recovery/standby slot
 ```
+
+This is edge data-plane planning. The target subscription control-plane split
+lives in `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`.
 
 The plan is documentation-only. It does not rename current runtime nodes,
 change generated subscriptions, create a third node, change DNS, change
@@ -28,6 +32,8 @@ production `.env`, copy secrets, copy SQLite data, or move traffic.
 ## Relationship To Other Docs
 
 - `docs/NODE_NAMING.md`: provider-neutral node naming policy.
+- `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`: target split between
+  subscription control-plane authority and edge data-plane capacity.
 - `docs/PRODUCTION_DR.md`: production incident recovery and standby promotion
   gates.
 - `docs/PRODUCTION_REPLACEMENT.md`: blue/green replacement gates.
@@ -65,6 +71,12 @@ prod-edge-c target slot:
   Current GitHub state: repo-only build-material package under ops/edge-node/
 ```
 
+Current `prod-edge-a` is still co-located: it carries both subscription
+control-plane duties and primary edge data-plane duties. The target direction
+is to split those duties over time, but this document only defines the edge
+slots. It does not authorize `sub-control-a` / `sub-control-b` creation,
+database movement, artifact movement, DNS migration, or runtime role changes.
+
 The exact cloud provider, instance ID, public IP, and security group mappings
 belong in execution records and restricted operational inventory. They should
 not become durable node names or customer-visible labels.
@@ -81,13 +93,16 @@ a separate Risk A creation and validation approval.
 
 `prod-edge-a` is the primary production edge slot.
 
-Expected responsibilities:
+Current co-located responsibilities include:
 
 - Public subscription gateway route through the approved public host.
 - Active Shadowsocks node for current production clients.
 - Loopback Admin/API runtime.
 - SQLite subscription store primary source of truth until another data
   topology is explicitly approved.
+
+Target edge-only responsibilities should narrow to data-plane capacity and
+health reporting after a separately approved control/edge split.
 
 Do not rename the current live runtime identity to `prod-edge-a` without a
 separate Risk A node identity migration.

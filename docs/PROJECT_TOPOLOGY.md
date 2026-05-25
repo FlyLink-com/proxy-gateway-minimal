@@ -9,8 +9,8 @@ Last updated: 2026-05-25, Asia/Shanghai.
 >   HTTPS, systemd, node, artifact, credential, mesh, service, or cutover changes
 > - Production impact: None
 > - Source of truth for: Current and target topology relationships across local
->   agent, operator lab relay, subscription delivery, production edges, and
->   server mesh planning
+>   agent, subscription control plane, operator lab relay, subscription
+>   delivery, production edges, and server mesh planning
 
 ## Current Production Topology
 
@@ -54,10 +54,59 @@ prod-edge-c: future recovery / standby slot, build materials only
 legacy blue: stopped, controlled retirement review only
 ```
 
+## Target Subscription Control / Edge Split
+
+The current production runtime is still co-located: the primary production host
+serves subscription control-plane duties and primary edge data-plane duties.
+The target architecture separates subscription authority from edge capacity.
+
+```mermaid
+flowchart LR
+  subgraph "Subscription Control Plane"
+    SC["sub-control-a\nsubscription authority"]
+    SB["sub-control-b\nfuture standby / restore target"]
+    State["SQLite / artifact / tenant state"]
+    Render["Subscription V2 renderer"]
+  end
+
+  subgraph "Edge Data Plane"
+    A["prod-edge-a\nedge capacity"]
+    B["prod-edge-b\nedge capacity"]
+    C["prod-edge-c\nfuture edge capacity"]
+  end
+
+  subgraph "Private Operations Plane"
+    Mesh["wg-edge / private mesh candidate"]
+    Health["future edge health registry"]
+  end
+
+  Clients["Clash / Mihomo\nor future Local Edge Agent"] -->|"refresh / bootstrap"| SC
+  SC --> State --> Render
+  Render -->|"approved edge policy"| Clients
+  Clients -->|"proxy traffic"| A
+  Clients -.->|"optional secondary path"| B
+  SC -.->|"backup / restore path"| SB
+  A -.-> Mesh
+  B -.-> Mesh
+  C -.-> Mesh
+  Mesh -.-> Health -.-> SC
+```
+
+Target split boundaries:
+
+```text
+sub-control-a/b produce subscriptions, own artifacts, and keep access state
+prod-edge-a/b/c carry proxy traffic and report health
+edge nodes should not own subscription state or expose Admin
+private mesh is health / validation / recovery infrastructure first
+physical split is future Risk A work, not implied by this topology
+```
+
 ## Target Product Topology
 
 The active product direction is not tenant migration. It is a local proxy
-production agent plus server-side multi-node edge networking.
+production agent plus a subscription control plane feeding server-side
+multi-node edge networking.
 
 ```mermaid
 flowchart LR
@@ -103,6 +152,7 @@ Local Edge Agent becomes the platform-controlled channel adapter.
 Remote Edge becomes the platform-controlled server-side data plane.
 Opaque artifacts are bootstrap/access material, not the main architecture.
 Server Edge Mesh is for edge health, management, validation, and recovery first.
+Subscription control and edge data-plane capacity should split over time.
 ```
 
 ## Operator Lab / HP Relay Topology
@@ -169,6 +219,7 @@ flowchart TB
     Core["Subscription Core / artifact repository"]
     State["SQLite state"]
     Docs["Runbooks / execution records"]
+    Control["sub-control-a / future sub-control-b"]
   end
 
   subgraph "Delivery Plane"
@@ -185,7 +236,7 @@ flowchart TB
     Outbound["remote outbound traffic"]
   end
 
-  Admin --> Core --> State
+  Admin --> Control --> Core --> State
   Docs -.->|"gates and records"| Admin
   Core --> Renderer
   Gateway --> Refresh --> Renderer

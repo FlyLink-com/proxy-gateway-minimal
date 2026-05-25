@@ -22,6 +22,9 @@ The current production direction separates three concerns:
 subscription gateway:
   stable user refresh entry and opaque artifact delivery
 
+subscription control plane:
+  authoritative subscription state, artifact state, Admin, and rendering
+
 local edge agent:
   future loopback-only client-side channel adapter
 
@@ -109,6 +112,23 @@ prod-edge-c: future recovery/standby slot
 The mesh should use these provider-neutral identities. Cloud provider names,
 instance IDs, and public IPs belong in restricted inventory or execution
 records, not in durable mesh identity.
+
+### Subscription Control / Edge Split
+
+`docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md` defines the target split
+between subscription authority and edge capacity:
+
+```text
+sub-control-a / future sub-control-b:
+  subscription state, artifacts, Admin, rendering, backup / restore authority
+
+prod-edge-a / prod-edge-b / prod-edge-c:
+  edge data-plane traffic and health / readiness reporting
+```
+
+The mesh belongs to the edge and operations side of that split. It can support
+edge health and recovery, but it does not make edge nodes subscription
+authorities.
 
 ### Subscription V2 And Opaque Artifacts
 

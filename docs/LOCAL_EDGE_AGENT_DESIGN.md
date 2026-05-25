@@ -110,6 +110,10 @@ Remote Edge
   -> exports server-side health and accounting signals
 ```
 
+This aligns with `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`: the
+subscription control plane bootstraps and authorizes the agent, while
+`prod-edge-*` nodes provide replaceable data-plane capacity.
+
 ## V1 Component Boundaries
 
 ### Local Subscription Server

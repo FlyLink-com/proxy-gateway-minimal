@@ -1,6 +1,6 @@
 # Project Operating Model
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-05-25, Asia/Shanghai.
 
 > Status:
 > - Type: Active operating model
@@ -18,8 +18,9 @@ source of truth, PRs as change boundaries, Aliyun as the manual CI fallback
 while GitHub-hosted Actions is blocked, and AWS production changes only through
 serial Risk A runbooks and execution records.
 
-Product direction: keep the user subscription entry stable while evolving node
-capacity, production hosts, DNS, and operational controls behind that entry.
+Product direction: keep the user subscription entry stable while evolving the
+subscription control plane, edge-node capacity, production hosts, DNS, and
+operational controls behind that entry.
 
 ## Four Layers
 
@@ -34,6 +35,7 @@ capacity, production hosts, DNS, and operational controls behind that entry.
    Aliyun manual CI host while GitHub-hosted Actions is blocked
 
 3. Production operations
+   subscription control plane, edge data plane
    AWS EC2, DNS, Nginx, systemd, SQLite, node config
    Risk A runbooks, explicit approval, execution records
 
@@ -63,18 +65,22 @@ reference them.
 
 ## Production Model
 
-Current production identity uses provider-neutral node names:
+Current production is still partly co-located, but target production identity
+uses separate control-plane and edge-node names:
 
 ```text
-prod-edge-a: current primary production edge slot
-prod-edge-b: iteration / canary secondary slot
-prod-edge-c: future recovery / standby slot
+sub-control-a: primary subscription control-plane authority
+sub-control-b: future standby / restore target for subscription control
+prod-edge-a: current primary edge data-plane slot
+prod-edge-b: iteration / canary edge data-plane slot
+prod-edge-c: future recovery / standby edge data-plane slot
 ```
 
 Legacy names such as blue or green may appear in historical execution records,
 but new durable planning should use provider-neutral names. See
-`docs/NODE_NAMING.md` for naming rules and `docs/PRODUCTION_EDGE_FLEET.md` for
-fleet planning.
+`docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md` for the control/edge split,
+`docs/NODE_NAMING.md` for naming rules, and
+`docs/PRODUCTION_EDGE_FLEET.md` for edge fleet planning.
 
 Production facts drift. Before production-adjacent work, read
 `docs/PROJECT_CONTEXT.md`, then verify live state with the relevant read-only
@@ -109,6 +115,7 @@ active architecture direction is:
 
 ```text
 local proxy production agent
+subscription control plane
 server-side multi-node edge networking
 stable user-facing subscription/import experience
 ```
@@ -142,6 +149,7 @@ Code capability lane:
   server, Admin UI, renderer, repository, tests
 
 Production ops lane:
+  subscription control plane, edge data plane
   AWS, DNS, Nginx, HTTPS, systemd, SQLite backup/restore, node lifecycle
 ```
 
@@ -174,13 +182,15 @@ the repository code change looks small.
 
 ```text
 Control plane:
-  Admin API, Subscription Core, SQLite, operator actions, runbooks
+  Admin API, Subscription Core, SQLite, artifacts, operator actions, runbooks
+  sub-control-a / future sub-control-b
 
 Delivery plane:
   /sub/clash.yaml, future /sub/a/*, Subscription V2 YAML renderer
 
 Data plane:
   Shadowsocks nodes, prod-edge fleet, Clash/Mihomo direct connections
+  future Local Edge Agent remote-edge channels
 ```
 
 Clash/Mihomo clients fetch YAML from the delivery plane and then connect
