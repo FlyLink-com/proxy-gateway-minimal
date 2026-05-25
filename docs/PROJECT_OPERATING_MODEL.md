@@ -25,6 +25,8 @@ module classification, cleanup queue ordering, or a decision on whether a new
 idea belongs on the active product spine.
 Use `docs/PROJECT_CONTROL_PLANE.md` and `project-state/*.json` when a task
 needs compact machine-readable state, lane, and backlog orientation.
+Use `docs/VALIDATION_BASELINE.md` when a task needs the current validation
+command matrix; keep historical pass counts in PRs or execution records.
 
 Product direction: keep the user subscription entry stable while evolving the
 subscription control plane, edge-node capacity, production hosts, DNS, and
@@ -74,8 +76,9 @@ contracts. Use `docs/PROJECT_SIMPLIFICATION_MAP.md` for the current product
 spine, active cleanup lanes, and stop-doing boundaries. Use
 `docs/PROJECT_CONTROL_PLANE.md` and `project-state/*.json` for structured
 orientation only; production facts in those files still require live
-verification before mutation. Historical checkouts and historical design
-artifacts are background only unless current docs explicitly reference them.
+verification before mutation. Use `docs/VALIDATION_BASELINE.md` for current
+validation commands. Historical checkouts and historical design artifacts are
+background only unless current docs explicitly reference them.
 
 ## Production Model
 
@@ -181,11 +184,12 @@ Use the project A/B/C model from `AGENTS.md`.
 
 ```text
 C: docs-only
-   Validation: git diff --check origin/master...HEAD
+   Validation: see docs/VALIDATION_BASELINE.md; usually git diff --check
    No code or external mutation.
 
 B: compact code change
-   Validation: targeted tests plus npm test, and Admin tests/build when needed.
+   Validation: see docs/VALIDATION_BASELINE.md; targeted tests plus npm test,
+   and Admin tests/build when needed.
    No AWS, DNS, production, Nginx, HTTPS, systemd, deploy, or cutover mutation.
 
 A: production, cloud, DNS, Nginx, systemd, auth model, schema, node, deploy

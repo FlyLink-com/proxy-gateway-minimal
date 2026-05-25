@@ -8,7 +8,8 @@
     "docs/PROJECT_CONTEXT.md",
     "docs/PROJECT_OPERATING_MODEL.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
-    "docs/PROJECT_TOPOLOGY.md"
+    "docs/PROJECT_TOPOLOGY.md",
+    "docs/VALIDATION_BASELINE.md"
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
@@ -18,10 +19,10 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "activePrBranch": "codex/current-direction-agent-mesh",
-    "activePr": 111,
+    "activePrBranch": "docs/validation-baseline",
+    "activePr": 113,
     "activePrStatus": "open-draft",
-    "note": "Branch context is for this architecture/docs PR only; run git status before new work."
+    "note": "Branch context is an orientation hint only; run git status before new work."
   },
   "productSpine": [
     "stable subscription/import experience",
@@ -65,6 +66,7 @@
     "trafficAccounting": "not-implemented"
   },
   "validationSnapshot": {
+    "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "githubHostedActions": "blocked-by-billing-or-spending-limit",
     "manualCiFallback": "Aliyun SWAS validation host per docs/CI_MANUAL_VALIDATION.md",
     "manualCiIsStaging": false,
@@ -89,14 +91,12 @@
     },
     {
       "id": "docs-overload",
-      "summary": "Markdown docs alone no longer scale for project state, lanes, task queue, and agent orientation.",
+      "summary": "Docs have been partially slimmed, but project state still needs lane and task discipline to avoid handoff sprawl.",
       "sourceDoc": "docs/PROJECT_SIMPLIFICATION_MAP.md"
     }
   ],
   "nextRecommendedQueue": [
-    "C1 documentation slimming",
     "C2 architecture non-goal hardening",
-    "C3 validation baseline entrypoint",
     "B1 code module inventory",
     "B2 Admin UI surface simplification"
   ],

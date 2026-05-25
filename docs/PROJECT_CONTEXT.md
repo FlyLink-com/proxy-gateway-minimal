@@ -174,32 +174,16 @@ A-tier tasks in `project-state/tasks.json` remain blocked.
 
 ## Current Validation Baseline
 
-For C-tier docs-only work:
+Use `docs/VALIDATION_BASELINE.md` as the active validation command matrix.
 
-```powershell
-git diff --check origin/master...HEAD
-```
+Short version:
 
-For project-state changes:
-
-```powershell
-npm run project-state:check
-npm test
-```
-
-For backend or shared server changes:
-
-```powershell
-npm test
-```
-
-For Admin UI changes:
-
-```powershell
-npm run admin:test
-npm run admin:build
-npm test
-```
+- C docs-only: `git diff --check origin/master...HEAD`
+- Project-state JSON: `npm run project-state:check` plus diff check
+- Server/shared code: `npm test` plus diff check
+- Admin UI: `npm run admin:test`, `npm run admin:build`, `npm test`, and diff
+  check
+- A-tier work: runbook-specific validation only; there is no generic shortcut
 
 Latest PR #111 validation before merge:
 
@@ -277,6 +261,7 @@ High-value entrypoints:
 - `docs/PROJECT_OPERATING_MODEL.md` - source-of-truth layers and work lanes.
 - `docs/PROJECT_SIMPLIFICATION_MAP.md` - cleanup map and complexity hotspots.
 - `docs/PROJECT_CONTROL_PLANE.md` - structured project-state model.
+- `docs/VALIDATION_BASELINE.md` - current validation command matrix.
 - `project-state/current.json` - compact current-state snapshot.
 - `project-state/lanes.json` - active lane index and risk boundaries.
 - `project-state/tasks.json` - active backlog.
