@@ -38,7 +38,7 @@
     {
       "id": "C2-architecture-non-goal-hardening",
       "risk": "C",
-      "status": "ready",
+      "status": "completed-in-pr-114",
       "lane": "local-client-adapter",
       "title": "Harden active architecture docs with explicit non-goals",
       "goal": "Prevent HP Relay, Server Edge Mesh, Local Edge Agent, WireGuard, opaque artifacts, and Clash/Mihomo from being confused with each other.",

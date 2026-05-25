@@ -301,24 +301,29 @@ Simplification target:
 ```text
 Local Edge Agent:
   product client adapter
+  not HP Relay, not Server Edge Mesh, not WireGuard setup
 
 Server Edge Mesh:
   private operator/edge management path
+  not user VPN, not Local Edge Agent transport in V1
 
 HP Relay:
   operator lab and research node
+  not production, staging, CI, prod-edge-c, or official agent runtime
 
 Subscription artifacts:
   access/bootstrap mechanism
+  not routing, mesh membership, or traffic accounting by themselves
 
 Clash/Mihomo:
   current user router/UI
+  not replaced by Local Edge Agent in V1
 ```
 
 Suggested follow-up:
 
-- C-tier PR: add a short "what this is not" block to each active architecture
-  doc if it is missing or too weak.
+- Keep active architecture docs explicit about these non-goals whenever a new
+  channel, mesh, relay, or subscription-access idea is introduced.
 
 ### Hotspot 4: Code Has Production, Prototype, And Legacy-Looking Areas
 

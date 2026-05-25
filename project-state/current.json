@@ -19,8 +19,8 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "activePrBranch": "docs/validation-baseline",
-    "activePr": 113,
+    "activePrBranch": "docs/architecture-nongoals",
+    "activePr": 114,
     "activePrStatus": "open-draft",
     "note": "Branch context is an orientation hint only; run git status before new work."
   },
@@ -96,7 +96,6 @@
     }
   ],
   "nextRecommendedQueue": [
-    "C2 architecture non-goal hardening",
     "B1 code module inventory",
     "B2 Admin UI surface simplification"
   ],

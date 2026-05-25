@@ -54,6 +54,17 @@ tenant migration
 legacy node retirement
 ```
 
+Adjacent boundary:
+
+```text
+This runbook is about one server-to-server WireGuard canary only.
+It is not a Local Edge Agent transport runbook.
+It is not an HP Relay promotion path.
+It is not an opaque artifact migration runbook.
+It is not a Clash/Mihomo client configuration runbook.
+It is not a user VPN or customer traffic migration runbook.
+```
+
 ## Current Preflight Facts
 
 Source record:
@@ -155,6 +166,8 @@ This runbook does not authorize:
 user-facing WireGuard profiles
 Clash/Mihomo WireGuard nodes
 Local Edge Agent channel changes
+HP Relay promotion or production use
+opaque artifact issuance or migration
 ordinary customer traffic over mesh
 traffic accounting
 quota enforcement
