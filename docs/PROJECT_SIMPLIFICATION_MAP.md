@@ -333,13 +333,14 @@ The repository contains production server paths, Admin UI paths, Local Edge
 Agent prototype paths, network diagnostic paths, and legacy/compatibility-looking
 routes. These should not be deleted by intuition.
 
-Initial module classification for future audit:
+Current module classification:
 
 ```text
 Production core:
   server/app.mjs
   server/index.mjs
   server/start.mjs
+  server/state.mjs
   server/middleware/*
   server/routes/subscription.mjs
   server/routes/admin-subscriptions.mjs
@@ -348,30 +349,76 @@ Production core:
   server/services/clash-subscription.mjs
   server/services/config.mjs
   server/services/console-token.mjs
+  server/services/ip-address.mjs
   server/services/redaction.mjs
 
-Operator/Admin UI:
-  admin/src/features/subscriptions/*
+Admin active operator surface:
+  admin/src/App.tsx
+  admin/src/app/navigation.ts
   admin/src/components/*
-  admin/src/pages/*
+  admin/src/features/subscriptions/api-client.ts
+  admin/src/features/subscriptions/admin-session.ts
+  admin/src/features/subscriptions/connection-*.ts*
+  admin/src/features/subscriptions/*-dialog.tsx
+  admin/src/features/subscriptions/subscriptions-page.tsx
+  admin/src/features/subscriptions/types.ts
+  admin/src/pages/overview-page.tsx
+  admin/src/pages/nodes-page.tsx
+  admin/src/test/*
 
 Prototype product path:
-  agent/*
+  agent/channel-profile.mjs
+  agent/edge-tunnel.mjs
+  agent/local-edge-agent.mjs
+  agent/socks5-adapter.mjs
   server/tests/local-edge-*.mjs
 
 Network diagnostics / compatibility audit candidates:
   server/routes/legacy-proxy.mjs
   server/routes/network.mjs
   server/routes/system-proxy.mjs
+  server/routes/diagnostics.mjs
   server/services/http-bridge.mjs
   server/services/http-proxy.mjs
   server/services/daemon-launcher.mjs
   server/services/ss-local.mjs
+  scripts/network-doctor.ps1
+  scripts/proxy.ps1
   daemon.mjs
+
+Repository tooling and validation:
+  scripts/check-project-state.mjs
+  server/tests/project-state-check.test.mjs
+  project-state/*.json
+  package.json
+
+Operator build materials:
+  ops/*
+  bin/proxy-gateway.mjs
+
+Cleanup completed in B2:
+  admin/src/pages/diagnostics-page.tsx
+  admin/src/pages/api-playground-page.tsx
+  admin/src/pages/settings-page.tsx
+  admin/src/features/subscriptions/mock-client.ts
+  admin/src/features/subscriptions/mock-data.ts
 ```
 
-This classification is not an approval to remove files. It is the starting
-point for a B-tier code inventory PR with tests.
+Evidence used:
+
+- `server/app.mjs` registers production/public/admin/subscription routes.
+- `package.json` exports the Local Edge Agent prototype modules and exposes the
+  server, CLI, Admin, network, and validation scripts.
+- `admin/src/app/navigation.ts` now exposes only the active Admin pages:
+  Overview, Subscriptions, and Nodes.
+- `rg` showed the deleted Admin placeholder pages were only reachable from the
+  Admin navigation and App switch.
+- `rg` showed the deleted Admin mock files were not imported by current app or
+  test code; remaining mentions are historical `docs/superpowers/*` records.
+
+This classification is not an approval to remove additional files. Compatibility
+and diagnostics modules remain retained unless a separate B-tier audit proves
+they are unreachable or a separate A-tier plan changes runtime behavior.
 
 ### Hotspot 5: Validation Baselines Are Scattered
 
@@ -487,6 +534,8 @@ npm run project-state:check
 
 ### B1: Code Module Inventory
 
+Status: completed in PR #115.
+
 Goal:
 
 Classify code modules as production, operator UI, prototype, compatibility, or
@@ -514,6 +563,8 @@ npm run admin:build
 ```
 
 ### B2: Admin UI Surface Simplification
+
+Status: completed in PR #115.
 
 Goal:
 

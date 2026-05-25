@@ -160,17 +160,22 @@ staging, not production, and not deployment approval.
 
 ## Current Work Queue
 
-Use `project-state/tasks.json` as the compact backlog source. As of this
-handoff, the intended follow-up sequence after PR #111 is:
+Use `project-state/tasks.json` as the compact backlog source. The current C/B
+simplification queue is closed:
 
-1. `C1-doc-context-slimming` - slim this handoff and keep history in record docs.
-2. `C3-validation-baseline-entrypoint` - create one current validation entrypoint.
-3. `C2-architecture-non-goal-hardening` - harden architecture non-goals.
-4. `B1-code-module-inventory` - classify modules by core/prototype/compat/cleanup.
-5. `B2-admin-ui-surface-simplification` - simplify Admin UI surface around
-   active operator workflows.
+- `C1-doc-context-slimming` - completed in PR #112.
+- `C3-validation-baseline-entrypoint` - completed in PR #113.
+- `C2-architecture-non-goal-hardening` - completed in PR #114.
+- `B1-code-module-inventory` - completed in PR #115.
+- `B2-admin-ui-surface-simplification` - completed in PR #115.
 
-A-tier tasks in `project-state/tasks.json` remain blocked.
+The remaining queued items are A-tier and remain blocked:
+
+- `A1-legacy-query-token-retirement`
+- `A2-physical-control-edge-split`
+
+Do not start either A-tier item without a specific runbook, read-only inventory,
+operator approval, validation plan, and rollback evidence.
 
 ## Current Validation Baseline
 

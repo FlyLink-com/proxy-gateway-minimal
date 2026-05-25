@@ -1,20 +1,9 @@
-import {
-  Activity,
-  Code2,
-  Gauge,
-  Network,
-  Settings,
-  Users,
-  type LucideIcon
-} from "lucide-react";
+import { Gauge, Network, Users, type LucideIcon } from "lucide-react";
 
 export type AdminPage =
   | "overview"
   | "subscriptions"
-  | "nodes"
-  | "diagnostics"
-  | "api-playground"
-  | "settings";
+  | "nodes";
 
 export type NavItem = {
   id: AdminPage;
@@ -25,17 +14,11 @@ export type NavItem = {
 export const navItems: NavItem[] = [
   { id: "overview", label: "Overview", icon: Gauge },
   { id: "subscriptions", label: "Subscriptions", icon: Users },
-  { id: "nodes", label: "Nodes", icon: Network },
-  { id: "diagnostics", label: "Diagnostics", icon: Activity },
-  { id: "api-playground", label: "API Playground", icon: Code2 },
-  { id: "settings", label: "Settings", icon: Settings }
+  { id: "nodes", label: "Nodes", icon: Network }
 ];
 
 export const pageTitles: Record<AdminPage, string> = {
   overview: "Overview",
   subscriptions: "Subscriptions",
-  nodes: "Nodes",
-  diagnostics: "Diagnostics",
-  "api-playground": "API Playground",
-  settings: "Settings"
+  nodes: "Nodes"
 };
