@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-05-25, Asia/Shanghai.
 
 Use this file as the first navigation point for project documentation. It
 classifies current source-of-truth docs, active runbooks, execution records,
@@ -42,6 +42,7 @@ actions by itself.
 | `docs/SUBSCRIPTION_OPAQUE_IMPLEMENTATION_PLAN.md` | First repository implementation plan for device-scoped opaque subscription artifacts. | Active implementation plan; broader production activation remains Risk A. | Read before implementing opaque artifact repository/core/routes/admin APIs or planning further production activation. |
 | `docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md` | Remaining access-model gaps after repository-level opaque artifact support, including canary exposure, path logging, issuance, legacy query-token retirement, and device-abuse enforcement. | Active gap record; further activation remains Risk A. | Read before expanding `/sub/a/*`, issuing more production artifacts, retiring query-token access, or planning traffic-accounting enforcement. |
 | `docs/LOCAL_EDGE_AGENT_DESIGN.md` | Local Edge Agent design for a loopback-only channel adapter that lets Clash/Mihomo use platform-controlled remote-edge channels without system network takeover. | Active design proposal; no implementation or production authority. | Read before prototyping a local agent, channel adapter, device credential flow, or agent-to-edge protocol. |
+| `docs/SERVER_EDGE_MESH_DESIGN.md` | Server-side private edge mesh design for provider-neutral edge-to-edge health, management, validation, and recovery paths. | Active design proposal; no mesh setup or production authority. | Read before planning WireGuard/private mesh setup, edge service registry, mesh health checks, or mesh-assisted recovery. |
 | `docs/API_COMPATIBILITY.md` | API compatibility notes for external callers and existing clients. | Current reference. | Read before changing API response shape or endpoint behavior. |
 | `docs/MIGRATION.md` | Migration notes for earlier project usage and compatibility transitions. | Reference / migration notes. | Read when maintaining compatibility with older local usage. |
 
