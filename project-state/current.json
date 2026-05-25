@@ -12,6 +12,7 @@
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/PROJECT_TOPOLOGY.md",
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
+    "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
     "docs/VALIDATION_BASELINE.md"
   ],
   "repo": {
@@ -103,9 +104,15 @@
       "id": "clean-sub-control-a-candidate",
       "summary": "A clean new server is the preferred sub-control-a candidate path, but provisioning, state-copy validation, public-boundary validation, and promotion remain Risk A.",
       "sourceDoc": "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md"
+    },
+    {
+      "id": "a2-host-internal-inventory-blocked",
+      "summary": "2026-05-26 A2 read-only preflight found external AWS, DNS, public-boundary, and edge-port checks healthy, but host-internal service, SQLite, backup, Nginx, and journal checks are blocked by SSH key-exchange closure from the current operator environment.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md"
     }
   ],
   "nextRecommendedQueue": [
+    "Complete A2 host-internal read-only inventory through an approved SSH or equivalent inspection path",
     "A2 clean sub-control-a candidate preflight/runbook path (blocked until live inventory and approval)",
     "A1 legacy query-token retirement (blocked until runbook and approval)",
     "A2 physical control/edge split promotion decision (blocked until candidate, backup/restore, edge-only behavior, rollback, and approval)"

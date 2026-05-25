@@ -156,6 +156,10 @@ operator approval, validation, and rollback path exist:
 - Physical control-plane / edge data-plane split.
 - Clean `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
+- A2 host-internal read-only inventory is currently incomplete because SSH to
+  `prod-edge-a` / `prod-edge-b` closes during key exchange from the current
+  operator environment. See
+  `docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md`.
 - `prod-edge-b` carrying-instance replacement or lifecycle mutation.
 - `prod-edge-c` creation or durable third-node recovery work.
 - Legacy blue final termination or security-group cleanup.
@@ -188,6 +192,14 @@ For A2, the preferred first step is the clean new-server path in
 `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`. Do not start either
 A-tier item without a specific runbook, read-only inventory, operator approval,
 validation plan, and rollback evidence.
+
+Latest A2 preflight:
+
+- `docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md`
+- External AWS, DNS, public-boundary, and edge-port checks were healthy.
+- Host-internal service / SQLite / backup / journal checks are blocked until
+  an approved internal inspection path exists.
+- Clean `sub-control-a` candidate provisioning is not approved.
 
 ## Current Validation Baseline
 
