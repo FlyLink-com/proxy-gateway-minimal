@@ -422,8 +422,10 @@ The first repo-only skeleton now lives in:
 
 ```text
 agent/local-edge-agent.mjs
+agent/channel-profile.mjs
 agent/socks5-adapter.mjs
 server/tests/local-edge-agent.test.mjs
+server/tests/local-edge-channel-profile.test.mjs
 server/tests/local-edge-socks-adapter.test.mjs
 ```
 
@@ -440,6 +442,7 @@ redacted diagnostics summaries
 standalone SOCKS5 CONNECT adapter with injected channel interface
 fail-closed SOCKS5 behavior when the channel is unavailable
 optional runtime wiring for the SOCKS5 adapter when explicitly enabled
+channel profile factory with disabled default and local-development direct TCP
 ```
 
 It deliberately does not implement:
@@ -463,6 +466,11 @@ channel implementation. The foreground local agent can wire the SOCKS5 adapter
 only when explicitly started with an injected channel. The default foreground
 local agent still does not start real traffic forwarding by itself, so this is
 not a usable traffic adapter until a real agent-to-edge channel is added.
+
+The `direct-tcp` channel profile is a local-development test profile only. It
+requires an explicit opt-in flag and must not be treated as the production
+agent-to-edge protocol. The default channel profile is `disabled`, which fails
+closed.
 
 ## Open Decisions
 

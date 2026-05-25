@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
+import { createChannelFromProfile } from "./channel-profile.mjs";
 import { startLocalSocksAdapter } from "./socks5-adapter.mjs";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -125,15 +126,17 @@ export async function startLocalEdgeAgent({
   config: configInput = {},
   diagnostics = {},
   startProxyAdapter = false,
-  channel
+  channel,
+  channelProfile
 } = {}) {
   const config = normalizeAgentConfig(configInput, { allowEphemeral: true });
+  const resolvedChannel = channel ?? (channelProfile ? createChannelFromProfile(channelProfile) : null);
   let proxy = null;
   if (startProxyAdapter) {
     proxy = await startLocalSocksAdapter({
       bindHost: config.bindHost,
       port: config.proxyPort,
-      channel
+      channel: resolvedChannel
     });
     config.proxyPort = proxy.address.port;
   }
@@ -161,6 +164,7 @@ export async function startLocalEdgeAgent({
       resolve({
         server,
         proxy,
+        channel: resolvedChannel,
         config,
         subscriptionUrl: `http://${config.bindHost}:${config.subscriptionPort}/clash.yaml`,
         close: () =>
