@@ -6,6 +6,7 @@
   "main": "./index.mjs",
   "exports": {
     ".": "./index.mjs",
+    "./agent/channel-profile": "./agent/channel-profile.mjs",
     "./agent/local-edge-agent": "./agent/local-edge-agent.mjs",
     "./agent/socks5-adapter": "./agent/socks5-adapter.mjs",
     "./package.json": "./package.json"
