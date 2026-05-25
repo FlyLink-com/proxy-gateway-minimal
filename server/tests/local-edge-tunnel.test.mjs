@@ -124,11 +124,52 @@ test("edge tunnel exposes a stable local-development protocol contract", () => {
 test("edge tunnel rejects unsupported or oversized requests", () => {
   assert.throws(() => parseConnectRequest(Buffer.from("{}\n")), /unsupported edge tunnel request/);
   assert.throws(
+    () => parseConnectRequest(Buffer.from(`${JSON.stringify([
+      "globalcirclecat.edge-tunnel",
+      1,
+      "connect"
+    ])}\n`)),
+    /unsupported edge tunnel request/
+  );
+  assert.throws(
     () => parseConnectRequest(Buffer.from(`${JSON.stringify({
       protocol: "globalcirclecat.edge-tunnel",
       version: 2,
       command: "connect",
       target: { host: "example.test", port: 443, addressType: "domain" }
+    })}\n`)),
+    /unsupported edge tunnel request/
+  );
+  assert.throws(
+    () => parseConnectRequest(Buffer.from(`${JSON.stringify({
+      protocol: "globalcirclecat.edge-tunnel",
+      version: 1,
+      command: "connect",
+      target: { host: "example.test", port: 443, addressType: "domain" },
+      detail: "secret"
+    })}\n`)),
+    /unsupported edge tunnel request/
+  );
+  assert.throws(
+    () => parseConnectRequest(Buffer.from(`${JSON.stringify({
+      protocol: "globalcirclecat.edge-tunnel",
+      version: 1,
+      command: "connect",
+      target: ["example.test", 443, "domain"]
+    })}\n`)),
+    /unsupported edge tunnel request/
+  );
+  assert.throws(
+    () => parseConnectRequest(Buffer.from(`${JSON.stringify({
+      protocol: "globalcirclecat.edge-tunnel",
+      version: 1,
+      command: "connect",
+      target: {
+        host: "example.test",
+        port: 443,
+        addressType: "domain",
+        detail: "secret"
+      }
     })}\n`)),
     /unsupported edge tunnel request/
   );

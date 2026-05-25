@@ -67,7 +67,13 @@ export function parseConnectRequest(buffer) {
     throw new Error("unsupported edge tunnel request");
   }
 
+  if (!hasExactKeys(payload, ["protocol", "version", "command", "target"])) {
+    throw new Error("unsupported edge tunnel request");
+  }
   if (payload.protocol !== PROTOCOL || payload.version !== VERSION || payload.command !== COMMAND_CONNECT) {
+    throw new Error("unsupported edge tunnel request");
+  }
+  if (!hasExactKeys(payload.target, ["host", "port", "addressType"])) {
     throw new Error("unsupported edge tunnel request");
   }
 
