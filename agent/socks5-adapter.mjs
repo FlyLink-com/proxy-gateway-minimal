@@ -1,4 +1,5 @@
 import net from "node:net";
+import { redactedLastFailure, sanitizeDiagnosticsCounters } from "./diagnostics.mjs";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 
@@ -225,8 +226,8 @@ export function createSocks5Adapter({ channel } = {}) {
       return {
         ok: true,
         adapter: "socks5",
-        counters: { ...counters },
-        lastFailure
+        counters: sanitizeDiagnosticsCounters(counters),
+        lastFailure: redactedLastFailure(lastFailure)
       };
     }
   };

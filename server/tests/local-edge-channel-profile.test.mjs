@@ -90,9 +90,12 @@ test("createChannelFromProfile disabled profile fails closed with redacted diagn
   );
   const diagnostics = channel.diagnosticsSnapshot();
   const serialized = JSON.stringify(diagnostics);
-  assert.equal(diagnostics.profile.type, "disabled");
-  assert.equal(diagnostics.counters.connectFailure, 1);
-  assert.equal(diagnostics.lastFailure.class, "channel_disabled");
+  assert.deepEqual(diagnostics, {
+    ok: true,
+    profile: { type: "disabled" },
+    counters: { connectOk: 0, connectFailure: 1 },
+    lastFailure: { class: "channel_disabled" }
+  });
   assert.doesNotMatch(serialized, /secret\.example/);
 });
 
@@ -125,10 +128,15 @@ test("direct-tcp profile opens a TCP channel only when explicitly enabled", asyn
     socket.destroy();
 
     const diagnostics = channel.diagnosticsSnapshot();
-    assert.equal(diagnostics.profile.type, "direct-tcp");
-    assert.equal(diagnostics.profile.developmentOnly, true);
-    assert.equal(diagnostics.counters.connectOk, 1);
-    assert.equal(diagnostics.lastFailure, null);
+    assert.deepEqual(diagnostics, {
+      ok: true,
+      profile: {
+        type: "direct-tcp",
+        developmentOnly: true
+      },
+      counters: { connectOk: 1, connectFailure: 0 },
+      lastFailure: null
+    });
   } finally {
     await new Promise((resolve) => echoServer.close(resolve));
   }
@@ -159,10 +167,16 @@ test("edge-tunnel profile opens an edge channel only when explicitly enabled", a
     socket.destroy();
 
     const diagnostics = channel.diagnosticsSnapshot();
-    assert.equal(diagnostics.profile.type, "edge-tunnel");
-    assert.equal(diagnostics.profile.host, "[redacted]");
-    assert.equal(diagnostics.counters.connectOk, 1);
-    assert.equal(diagnostics.lastFailure, null);
+    assert.deepEqual(diagnostics, {
+      ok: true,
+      profile: {
+        type: "edge-tunnel",
+        host: "[redacted]",
+        port: tunnelAddress.port
+      },
+      counters: { connectOk: 1, connectFailure: 0 },
+      lastFailure: null
+    });
   } finally {
     await new Promise((resolve) => tunnelServer.close(resolve));
     await new Promise((resolve) => echoServer.close(resolve));
@@ -192,6 +206,7 @@ test("edge-tunnel profile passes handshake timeout to the edge channel", async (
     );
     assert.ok(Date.now() - startedAt < 1000);
     const diagnostics = channel.diagnosticsSnapshot();
+    assert.deepEqual(diagnostics.lastFailure, { class: "edge_tunnel_failure" });
     assert.equal(diagnostics.counters.connectFailure, 1);
   } finally {
     for (const socket of serverSockets) {

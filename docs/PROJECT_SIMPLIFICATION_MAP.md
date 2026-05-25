@@ -368,6 +368,7 @@ Admin active operator surface:
 
 Prototype product path:
   agent/channel-profile.mjs
+  agent/diagnostics.mjs
   agent/edge-tunnel.mjs
   agent/local-edge-agent.mjs
   agent/socks5-adapter.mjs
