@@ -422,7 +422,9 @@ The first repo-only skeleton now lives in:
 
 ```text
 agent/local-edge-agent.mjs
+agent/socks5-adapter.mjs
 server/tests/local-edge-agent.test.mjs
+server/tests/local-edge-socks-adapter.test.mjs
 ```
 
 It implements only the local control surface:
@@ -435,13 +437,15 @@ GET /health
 GET /clash.yaml
 GET /diagnostics
 redacted diagnostics summaries
+standalone SOCKS5 CONNECT adapter with injected channel interface
+fail-closed SOCKS5 behavior when the channel is unavailable
 ```
 
 It deliberately does not implement:
 
 ```text
 remote edge transport
-SOCKS/HTTP traffic forwarding
+HTTP proxy adapter
 device credential storage
 artifact bootstrap
 Windows service installation
@@ -453,9 +457,10 @@ production activation
 
 The generated local Clash YAML points only to a loopback SOCKS5 endpoint and
 does not expose remote edge hostnames, credentials, tenant tokens, or artifact
-URLs. The local proxy endpoint is declared but not implemented yet, so this is
-not a usable traffic adapter until the channel adapter slice is added and
-validated.
+URLs. The SOCKS5 adapter is now a standalone module, but it requires an injected
+channel implementation. The default foreground local agent still does not start
+real traffic forwarding by itself, so this is not a usable traffic adapter until
+a real agent-to-edge channel is added and wired into the agent runtime.
 
 ## Open Decisions
 
