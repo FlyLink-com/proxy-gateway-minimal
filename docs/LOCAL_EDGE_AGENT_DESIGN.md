@@ -447,6 +447,7 @@ optional runtime wiring for the SOCKS5 adapter when explicitly enabled
 channel profile factory with disabled default and local-development direct TCP
 local-development edge-tunnel skeleton with a one-line JSON CONNECT handshake
 bounded edge-tunnel handshake timeouts and strict boolean success replies
+exported edge-tunnel contract constants and reply codec tests
 ```
 
 It deliberately does not implement:
@@ -481,6 +482,23 @@ JSON-line CONNECT request, rejects malformed success replies, bounds handshake
 waiting with configurable timeouts, redacts target details from diagnostics,
 and has no production authentication or encryption. The default channel profile
 is `disabled`, which fails closed.
+
+The current edge-tunnel protocol contract is intentionally narrow:
+
+```text
+protocol: globalcirclecat.edge-tunnel
+version: 1
+command: connect
+request: { protocol, version, command, target }
+target: { host, port, addressType }
+success reply: { ok: true }
+failure reply: { ok: false, error: "connect_failed" }
+framing: one JSON object per line
+```
+
+Unknown protocol versions, commands, reply shapes, and reply error codes fail
+closed. This is still a local-development contract only, not a production
+transport contract.
 
 ## Open Decisions
 

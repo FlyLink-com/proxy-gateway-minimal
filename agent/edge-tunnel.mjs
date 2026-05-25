@@ -2,8 +2,19 @@ import net from "node:net";
 
 const PROTOCOL = "globalcirclecat.edge-tunnel";
 const VERSION = 1;
+const COMMAND_CONNECT = "connect";
 const MAX_REQUEST_BYTES = 4096;
 const DEFAULT_HANDSHAKE_TIMEOUT_MS = 5000;
+const REPLY_ERROR_CONNECT_FAILED = "connect_failed";
+
+export const EDGE_TUNNEL_CONTRACT = Object.freeze({
+  protocol: PROTOCOL,
+  version: VERSION,
+  command: COMMAND_CONNECT,
+  maxRequestBytes: MAX_REQUEST_BYTES,
+  defaultHandshakeTimeoutMs: DEFAULT_HANDSHAKE_TIMEOUT_MS,
+  replyErrors: Object.freeze([REPLY_ERROR_CONNECT_FAILED])
+});
 
 function normalizeHandshakeTimeoutMs(input) {
   const timeoutMs = input === undefined ? DEFAULT_HANDSHAKE_TIMEOUT_MS : Number(input);
@@ -37,7 +48,7 @@ export function encodeConnectRequest(targetInput = {}) {
     `${JSON.stringify({
       protocol: PROTOCOL,
       version: VERSION,
-      command: "connect",
+      command: COMMAND_CONNECT,
       target
     })}\n`,
     "utf8"
@@ -56,16 +67,56 @@ export function parseConnectRequest(buffer) {
     throw new Error("unsupported edge tunnel request");
   }
 
-  if (payload.protocol !== PROTOCOL || payload.version !== VERSION || payload.command !== "connect") {
+  if (payload.protocol !== PROTOCOL || payload.version !== VERSION || payload.command !== COMMAND_CONNECT) {
     throw new Error("unsupported edge tunnel request");
   }
 
   return {
     protocol: PROTOCOL,
     version: VERSION,
-    command: "connect",
+    command: COMMAND_CONNECT,
     target: normalizeTarget(payload.target)
   };
+}
+
+function hasExactKeys(value, keys) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const actual = Object.keys(value).sort();
+  const expected = [...keys].sort();
+  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
+}
+
+export function encodeConnectReply(reply = {}) {
+  if (reply.ok === true) {
+    return Buffer.from(`${JSON.stringify({ ok: true })}\n`, "utf8");
+  }
+  if (reply.ok === false && reply.error === REPLY_ERROR_CONNECT_FAILED) {
+    return Buffer.from(`${JSON.stringify({ ok: false, error: REPLY_ERROR_CONNECT_FAILED })}\n`, "utf8");
+  }
+  throw new Error("unsupported edge tunnel reply");
+}
+
+export function parseConnectReply(buffer) {
+  if (buffer.length > MAX_REQUEST_BYTES) {
+    throw new Error("edge tunnel reply too large");
+  }
+
+  let reply;
+  try {
+    reply = JSON.parse(buffer.toString("utf8").trimEnd());
+  } catch {
+    throw new Error("unsupported edge tunnel reply");
+  }
+
+  if (hasExactKeys(reply, ["ok"]) && reply.ok === true) {
+    return { ok: true };
+  }
+  if (hasExactKeys(reply, ["ok", "error"]) && reply.ok === false && reply.error === REPLY_ERROR_CONNECT_FAILED) {
+    return { ok: false, error: REPLY_ERROR_CONNECT_FAILED };
+  }
+  throw new Error("unsupported edge tunnel reply");
 }
 
 function readLine(socket, { timeoutMs = DEFAULT_HANDSHAKE_TIMEOUT_MS } = {}) {
@@ -124,21 +175,20 @@ function readLine(socket, { timeoutMs = DEFAULT_HANDSHAKE_TIMEOUT_MS } = {}) {
 }
 
 function writeReply(socket, ok) {
-  socket.write(Buffer.from(`${JSON.stringify(ok ? { ok: true } : { ok: false, error: "connect_failed" })}\n`));
+  socket.write(encodeConnectReply(ok ? { ok: true } : { ok: false, error: REPLY_ERROR_CONNECT_FAILED }));
 }
 
 function readReply(socket, { timeoutMs = DEFAULT_HANDSHAKE_TIMEOUT_MS } = {}) {
   return readLine(socket, { timeoutMs }).then((line) => {
-    let reply;
     try {
-      reply = JSON.parse(line.toString("utf8"));
+      const reply = parseConnectReply(line);
+      if (reply.ok !== true) {
+        throw new Error("edge tunnel connect failed");
+      }
+      return reply;
     } catch {
       throw new Error("edge tunnel connect failed");
     }
-    if (!reply || reply.ok !== true) {
-      throw new Error("edge tunnel connect failed");
-    }
-    return reply;
   });
 }
 

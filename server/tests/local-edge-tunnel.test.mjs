@@ -4,7 +4,10 @@ import test from "node:test";
 import {
   createEdgeTunnelChannel,
   createEdgeTunnelServer,
+  EDGE_TUNNEL_CONTRACT,
+  encodeConnectReply,
   encodeConnectRequest,
+  parseConnectReply,
   parseConnectRequest
 } from "../../agent/edge-tunnel.mjs";
 
@@ -107,9 +110,62 @@ test("edge tunnel connect request round-trips without credentials", () => {
   });
 });
 
+test("edge tunnel exposes a stable local-development protocol contract", () => {
+  assert.deepEqual(EDGE_TUNNEL_CONTRACT, {
+    protocol: "globalcirclecat.edge-tunnel",
+    version: 1,
+    command: "connect",
+    maxRequestBytes: 4096,
+    defaultHandshakeTimeoutMs: 5000,
+    replyErrors: ["connect_failed"]
+  });
+});
+
 test("edge tunnel rejects unsupported or oversized requests", () => {
   assert.throws(() => parseConnectRequest(Buffer.from("{}\n")), /unsupported edge tunnel request/);
+  assert.throws(
+    () => parseConnectRequest(Buffer.from(`${JSON.stringify({
+      protocol: "globalcirclecat.edge-tunnel",
+      version: 2,
+      command: "connect",
+      target: { host: "example.test", port: 443, addressType: "domain" }
+    })}\n`)),
+    /unsupported edge tunnel request/
+  );
   assert.throws(() => parseConnectRequest(Buffer.alloc(5000, "a")), /edge tunnel request too large/);
+});
+
+test("edge tunnel reply codec accepts only the supported reply contract", () => {
+  assert.deepEqual(parseConnectReply(encodeConnectReply({ ok: true })), { ok: true });
+  assert.deepEqual(
+    parseConnectReply(encodeConnectReply({ ok: false, error: "connect_failed" })),
+    { ok: false, error: "connect_failed" }
+  );
+
+  assert.throws(
+    () => encodeConnectReply({ ok: false, error: "secret_backend_error" }),
+    /unsupported edge tunnel reply/
+  );
+  assert.throws(
+    () => parseConnectReply(Buffer.from(`${JSON.stringify({ ok: false, error: "secret_backend_error" })}\n`)),
+    /unsupported edge tunnel reply/
+  );
+  assert.throws(
+    () => parseConnectReply(Buffer.from(`${JSON.stringify({ ok: "yes" })}\n`)),
+    /unsupported edge tunnel reply/
+  );
+  assert.throws(
+    () => parseConnectReply(Buffer.from(`${JSON.stringify({ ok: true, detail: "secret" })}\n`)),
+    /unsupported edge tunnel reply/
+  );
+  assert.throws(
+    () => parseConnectReply(Buffer.from(`${JSON.stringify({
+      ok: false,
+      error: "connect_failed",
+      detail: "secret"
+    })}\n`)),
+    /unsupported edge tunnel reply/
+  );
 });
 
 test("edge tunnel channel rejects malformed success replies", async () => {
