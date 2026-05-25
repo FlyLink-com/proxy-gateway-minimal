@@ -1,6 +1,6 @@
 # Subscription Control / Edge Split Architecture
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-05-26, Asia/Shanghai.
 
 > Status:
 > - Type: Active architecture design
@@ -347,18 +347,30 @@ state or Admin exposure.
 
 Any real production edge-node change is Risk A.
 
-### Phase 4: Control-Plane Standby
+### Phase 4: Clean Control-Plane Candidate
+
+Create and validate a clean `sub-control-a` candidate server before attempting
+any physical split.
+
+This is Risk A because it involves cloud resources and may later involve
+production-derived state. The candidate should not receive DNS, customer
+traffic, edge data-plane duties, or production authority during this phase.
+
+Use `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md` for the gates.
+
+### Phase 5: Control-Plane Standby
 
 Design and validate `sub-control-b` as a restore target or standby.
 
 This is Risk A because it involves database, artifacts, secrets, DNS/gateway
 planning, and recovery behavior.
 
-### Phase 5: Optional Physical Split
+### Phase 6: Optional Physical Split
 
 Move subscription control-plane duties off the primary edge host only after:
 
 ```text
+clean sub-control-a candidate behavior is proven
 control-plane backups are proven
 edge-only node behavior is proven
 DNS/gateway strategy is approved
@@ -377,6 +389,9 @@ docs/PROJECT_OPERATING_MODEL.md:
 
 docs/PRODUCTION_EDGE_FLEET.md:
   provider-neutral edge slot planning
+
+docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md:
+  clean new-server candidate gates for `sub-control-a`
 
 docs/SERVER_EDGE_MESH_DESIGN.md:
   private edge management / recovery plane
@@ -434,10 +449,11 @@ Keep current production co-located. Use this architecture to guide the next
 repository work:
 
 ```text
-1. Add a repository-only edge status model.
-2. Keep generated production YAML changes behind Risk A approval.
-3. Keep HP Relay as operator lab evidence, not production topology.
-4. Keep Server Edge Mesh as private health / recovery infrastructure first.
-5. Defer physical control-plane split until backup/restore and edge-only
+1. Use a clean new server as the preferred `sub-control-a` candidate path.
+2. Add a repository-only edge status model.
+3. Keep generated production YAML changes behind Risk A approval.
+4. Keep HP Relay as operator lab evidence, not production topology.
+5. Keep Server Edge Mesh as private health / recovery infrastructure first.
+6. Defer physical control-plane split until backup/restore and edge-only
    behavior are both proven.
 ```

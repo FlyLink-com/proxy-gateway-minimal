@@ -1,6 +1,6 @@
 # Project Topology
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-05-26, Asia/Shanghai.
 
 > Status:
 > - Type: Active architecture topology
@@ -153,6 +153,8 @@ Remote Edge becomes the platform-controlled server-side data plane.
 Opaque artifacts are bootstrap/access material, not the main architecture.
 Server Edge Mesh is for edge health, management, validation, and recovery first.
 Subscription control and edge data-plane capacity should split over time.
+The preferred physical split path is a clean new `sub-control-a` candidate
+server, not HP Relay and not `prod-edge-c`.
 ```
 
 Adjacent boundary matrix:
@@ -163,6 +165,7 @@ Adjacent boundary matrix:
 | Opaque artifacts | Access/bootstrap material and server-side credential containment. | Data-plane routing, local proxying, server mesh membership, or traffic accounting by themselves. |
 | Local Edge Agent | Loopback-only client-side adapter and future platform-controlled channel selection. | Clash/Mihomo UI/rules, TUN/driver/system proxy mutation in V1, HP Relay, or Server Edge Mesh. |
 | HP Relay | Operator lab diagnostics and upstream/channel behavior research. | Production, staging, CI, prod-edge-c, official Local Edge Agent runtime, or Server Edge Mesh. |
+| sub-control-a candidate | Clean future subscription control-plane candidate for validation before promotion. | Edge data-plane traffic, prod-edge-c recovery capacity, HP Relay, CI, or automatic production authority. |
 | Server Edge Mesh | Private edge-to-edge health, management, validation, and recovery path. | User VPN, Clash/Mihomo endpoint, Local Edge Agent transport in V1, or ordinary customer traffic routing. |
 | WireGuard canary | Candidate implementation for the private Server Edge Mesh. | Client VPN product, production traffic migration, opaque artifact migration, or approval-free setup. |
 

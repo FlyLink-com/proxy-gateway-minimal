@@ -1,6 +1,6 @@
 # Production Edge Fleet Plan
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-05-26, Asia/Shanghai.
 
 > Status:
 > - Type: Active planning document
@@ -34,6 +34,9 @@ production `.env`, copy secrets, copy SQLite data, or move traffic.
 - `docs/NODE_NAMING.md`: provider-neutral node naming policy.
 - `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`: target split between
   subscription control-plane authority and edge data-plane capacity.
+- `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`: clean new-server
+  gates for a future `sub-control-a` candidate. It is not an edge slot and
+  does not create `prod-edge-c`.
 - `docs/PRODUCTION_DR.md`: production incident recovery and standby promotion
   gates.
 - `docs/PRODUCTION_REPLACEMENT.md`: blue/green replacement gates.
@@ -76,6 +79,9 @@ control-plane duties and primary edge data-plane duties. The target direction
 is to split those duties over time, but this document only defines the edge
 slots. It does not authorize `sub-control-a` / `sub-control-b` creation,
 database movement, artifact movement, DNS migration, or runtime role changes.
+The preferred future `sub-control-a` path is a clean new server governed by
+`docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`; it must not be treated
+as `prod-edge-c` or as customer proxy capacity.
 
 The exact cloud provider, instance ID, public IP, and security group mappings
 belong in execution records and restricted operational inventory. They should
