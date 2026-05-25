@@ -1,4 +1,5 @@
 import net from "node:net";
+import { redactedLastFailure, sanitizeDiagnosticsCounters } from "./diagnostics.mjs";
 
 const PROTOCOL = "globalcirclecat.edge-tunnel";
 const VERSION = 1;
@@ -277,8 +278,8 @@ export function createEdgeTunnelChannel({ host, port, handshakeTimeoutMs } = {})
           host: "[redacted]",
           port: edgePort
         },
-        counters: { ...counters },
-        lastFailure
+        counters: sanitizeDiagnosticsCounters(counters),
+        lastFailure: redactedLastFailure(lastFailure)
       };
     }
   };

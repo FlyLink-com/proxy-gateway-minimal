@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { LOCAL_EDGE_DIAGNOSTICS_CONTRACT } from "../../agent/diagnostics.mjs";
 import {
   buildLocalClashSubscription,
   createLocalEdgeAgentApp,
@@ -59,6 +60,26 @@ test("buildLocalClashSubscription emits only loopback local proxy details", () =
   assert.doesNotMatch(yaml, /ss-sg\.globalcirclecat\.com|edge-secret|prod-edge-a/);
 });
 
+test("local edge diagnostics contract exposes stable counter and failure class keys", () => {
+  assert.deepEqual(LOCAL_EDGE_DIAGNOSTICS_CONTRACT.counterKeys, [
+    "connectOk",
+    "connectFailure",
+    "connectTimeout",
+    "unsupportedCommand",
+    "protocolError"
+  ]);
+  assert.deepEqual(LOCAL_EDGE_DIAGNOSTICS_CONTRACT.failureClasses, [
+    "channel_disabled",
+    "channel_failure",
+    "connect_failed",
+    "edge_tunnel_failure",
+    "protocol_error",
+    "timeout",
+    "unsupported_command",
+    "unknown"
+  ]);
+});
+
 test("redactedDiagnostics removes credentials, tokens, URLs, and raw targets", () => {
   const summary = redactedDiagnostics({
     activeEdge: {
@@ -84,6 +105,28 @@ test("redactedDiagnostics removes credentials, tokens, URLs, and raw targets", (
   assert.equal(summary.counters.connectOk, 4);
   assert.equal(summary.lastFailure.class, "timeout");
   assert.doesNotMatch(serialized, /edge-secret|tenant-token|local-artifact|secret=value|example\.test/);
+});
+
+test("redactedDiagnostics keeps only stable diagnostic counters and failure classes", () => {
+  const summary = redactedDiagnostics({
+    counters: {
+      connectOk: 2,
+      connectFailure: 1,
+      rawTarget: "secret.example",
+      secretCounterName: 7
+    },
+    lastFailure: {
+      class: "raw_secret_backend_failure",
+      detail: "secret backend detail"
+    }
+  });
+
+  assert.deepEqual(summary.counters, {
+    connectOk: 2,
+    connectFailure: 1
+  });
+  assert.deepEqual(summary.lastFailure, { class: "unknown" });
+  assert.doesNotMatch(JSON.stringify(summary), /secret|raw_secret|backend/i);
 });
 
 test("createLocalEdgeAgentApp exposes health, local YAML, and redacted diagnostics", async () => {
