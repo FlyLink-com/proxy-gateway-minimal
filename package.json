@@ -6,6 +6,7 @@
   "main": "./index.mjs",
   "exports": {
     ".": "./index.mjs",
+    "./agent/local-edge-agent": "./agent/local-edge-agent.mjs",
     "./package.json": "./package.json"
   },
   "bin": {
@@ -23,6 +24,7 @@
     "server/middleware",
     "server/routes",
     "server/services",
+    "agent",
     "public",
     "config",
     "scripts",
@@ -46,6 +48,7 @@
     "network:reset": "powershell -ExecutionPolicy Bypass -File scripts/network-doctor.ps1 reset",
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",
+    "agent:local": "node agent/local-edge-agent.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "daemon": "node daemon.mjs",
     "admin:dev": "npm run dev --prefix admin",
