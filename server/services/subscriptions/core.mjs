@@ -9,9 +9,10 @@ import { assertSubscriptionStore } from "./store-contract.mjs";
 import {
   cloneProxyConfigForSubscriptionOutput,
   createSubscriptionSerializer,
+  firstEligibleNamedServer,
   firstNamedServer,
   namedServers,
-  resolveNamedServer,
+  resolveEligibleNamedServer,
   serializeNode
 } from "./serializer.mjs";
 import {
@@ -142,11 +143,15 @@ export function createSubscriptionCore({
       if (!allowDefault) {
         throw validationError("nodeId is required");
       }
-      return firstNamedServer(proxyConfig);
+      try {
+        return firstEligibleNamedServer(proxyConfig);
+      } catch {
+        throw validationError("nodeId does not match an available node");
+      }
     }
 
     const normalizedNodeId = normalizeNodeId(nodeId);
-    const node = resolveNamedServer(proxyConfig, normalizedNodeId);
+    const node = resolveEligibleNamedServer(proxyConfig, normalizedNodeId);
     if (!node) {
       throw validationError("nodeId does not match an available node");
     }
