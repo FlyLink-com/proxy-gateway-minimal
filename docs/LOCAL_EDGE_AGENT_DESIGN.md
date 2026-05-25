@@ -439,6 +439,7 @@ GET /diagnostics
 redacted diagnostics summaries
 standalone SOCKS5 CONNECT adapter with injected channel interface
 fail-closed SOCKS5 behavior when the channel is unavailable
+optional runtime wiring for the SOCKS5 adapter when explicitly enabled
 ```
 
 It deliberately does not implement:
@@ -458,9 +459,10 @@ production activation
 The generated local Clash YAML points only to a loopback SOCKS5 endpoint and
 does not expose remote edge hostnames, credentials, tenant tokens, or artifact
 URLs. The SOCKS5 adapter is now a standalone module, but it requires an injected
-channel implementation. The default foreground local agent still does not start
-real traffic forwarding by itself, so this is not a usable traffic adapter until
-a real agent-to-edge channel is added and wired into the agent runtime.
+channel implementation. The foreground local agent can wire the SOCKS5 adapter
+only when explicitly started with an injected channel. The default foreground
+local agent still does not start real traffic forwarding by itself, so this is
+not a usable traffic adapter until a real agent-to-edge channel is added.
 
 ## Open Decisions
 

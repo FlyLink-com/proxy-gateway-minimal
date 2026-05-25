@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
+import { startLocalSocksAdapter } from "./socks5-adapter.mjs";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 const DEFAULTS = {
@@ -15,15 +16,16 @@ function yamlQuote(value) {
   return JSON.stringify(String(value ?? ""));
 }
 
-function normalizePort(value, fieldName) {
+function normalizePort(value, fieldName, { allowEphemeral = false } = {}) {
   const port = Number(value);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  const minimum = allowEphemeral ? 0 : 1;
+  if (!Number.isInteger(port) || port < minimum || port > 65535) {
     throw new Error(`${fieldName} must be an integer TCP port`);
   }
   return port;
 }
 
-export function normalizeAgentConfig(input = {}) {
+export function normalizeAgentConfig(input = {}, options = {}) {
   const bindHost = String(input.bindHost ?? DEFAULTS.bindHost).trim();
   if (!LOOPBACK_HOSTS.has(bindHost)) {
     throw new Error("bindHost must be loopback-only");
@@ -31,8 +33,8 @@ export function normalizeAgentConfig(input = {}) {
 
   return {
     bindHost,
-    subscriptionPort: normalizePort(input.subscriptionPort ?? DEFAULTS.subscriptionPort, "subscriptionPort"),
-    proxyPort: normalizePort(input.proxyPort ?? DEFAULTS.proxyPort, "proxyPort"),
+    subscriptionPort: normalizePort(input.subscriptionPort ?? DEFAULTS.subscriptionPort, "subscriptionPort", options),
+    proxyPort: normalizePort(input.proxyPort ?? DEFAULTS.proxyPort, "proxyPort", options),
     profileName: String(input.profileName ?? DEFAULTS.profileName),
     localNodeName: String(input.localNodeName ?? DEFAULTS.localNodeName),
     activeEdge: {
@@ -42,8 +44,8 @@ export function normalizeAgentConfig(input = {}) {
   };
 }
 
-export function buildLocalClashSubscription(input = {}) {
-  const config = normalizeAgentConfig(input);
+export function buildLocalClashSubscription(input = {}, options = {}) {
+  const config = normalizeAgentConfig(input, options);
   const nodeName = config.localNodeName;
   const lines = [
     "mixed-port: 7897",
@@ -89,8 +91,13 @@ export function redactedDiagnostics(input = {}) {
   };
 }
 
-export function createLocalEdgeAgentApp({ config: configInput = {}, diagnostics = {} } = {}) {
-  const config = normalizeAgentConfig(configInput);
+export function createLocalEdgeAgentApp({
+  config: configInput = {},
+  diagnostics = {},
+  proxyImplemented = false,
+  trustedConfig = false
+} = {}) {
+  const config = trustedConfig ? configInput : normalizeAgentConfig(configInput, { allowEphemeral: true });
   const app = express();
 
   app.get("/health", (_req, res) => {
@@ -99,12 +106,12 @@ export function createLocalEdgeAgentApp({ config: configInput = {}, diagnostics 
       bindHost: config.bindHost,
       subscriptionPort: config.subscriptionPort,
       proxyPort: config.proxyPort,
-      proxyImplemented: false
+      proxyImplemented
     });
   });
 
   app.get("/clash.yaml", (_req, res) => {
-    res.type("application/x-yaml").send(buildLocalClashSubscription(config));
+    res.type("application/x-yaml").send(buildLocalClashSubscription(config, { allowEphemeral: true }));
   });
 
   app.get("/diagnostics", (_req, res) => {
@@ -114,19 +121,61 @@ export function createLocalEdgeAgentApp({ config: configInput = {}, diagnostics 
   return app;
 }
 
-export function startLocalEdgeAgent({ config: configInput = {}, diagnostics = {} } = {}) {
-  const config = normalizeAgentConfig(configInput);
-  const app = createLocalEdgeAgentApp({ config, diagnostics });
+export async function startLocalEdgeAgent({
+  config: configInput = {},
+  diagnostics = {},
+  startProxyAdapter = false,
+  channel
+} = {}) {
+  const config = normalizeAgentConfig(configInput, { allowEphemeral: true });
+  let proxy = null;
+  if (startProxyAdapter) {
+    proxy = await startLocalSocksAdapter({
+      bindHost: config.bindHost,
+      port: config.proxyPort,
+      channel
+    });
+    config.proxyPort = proxy.address.port;
+  }
+
+  const app = createLocalEdgeAgentApp({
+    config,
+    diagnostics,
+    proxyImplemented: Boolean(proxy),
+    trustedConfig: true
+  });
   const server = createServer(app);
 
   return new Promise((resolve, reject) => {
-    server.once("error", reject);
+    async function fail(error) {
+      if (proxy) {
+        await proxy.close();
+      }
+      reject(error);
+    }
+
+    server.once("error", fail);
     server.listen(config.subscriptionPort, config.bindHost, () => {
-      server.off("error", reject);
+      server.off("error", fail);
+      config.subscriptionPort = server.address().port;
       resolve({
         server,
+        proxy,
         config,
-        subscriptionUrl: `http://${config.bindHost}:${config.subscriptionPort}/clash.yaml`
+        subscriptionUrl: `http://${config.bindHost}:${config.subscriptionPort}/clash.yaml`,
+        close: () =>
+          new Promise((closeResolve, closeReject) => {
+            server.close(async (error) => {
+              if (error) {
+                closeReject(error);
+                return;
+              }
+              if (proxy) {
+                await proxy.close();
+              }
+              closeResolve();
+            });
+          })
       });
     });
   });
