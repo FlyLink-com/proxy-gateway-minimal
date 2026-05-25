@@ -19,6 +19,7 @@ subscription-control and edge-networking product. That direction is valid, but
 the information structure is now carrying too much at once:
 
 - current product direction
+- product business versus commercial entitlement boundaries
 - production facts
 - historical execution records
 - future architecture ideas
@@ -76,6 +77,11 @@ One documentation index:
 One operating model:
   docs/PROJECT_OPERATING_MODEL.md defines risk, lanes, gates, and product
   stability principles.
+
+One domain-unit boundary:
+  docs/DOMAIN_UNIT_BOUNDARIES.md separates product business, commercial
+  entitlement, subscription access, nodes, local client, validation, operator
+  lab, and production operations.
 
 One multi-agent model:
   docs/MULTI_AGENT_OPERATING_MODEL.md defines task packets, parallelization,
@@ -292,13 +298,25 @@ Suggested follow-up:
 
 Known fact:
 
-Local Edge Agent, Server Edge Mesh, HP Relay, WireGuard, Clash/Mihomo
-subscriptions, and opaque artifacts are related, but they are not the same
-thing.
+Product business, commercial entitlement, subscription access, Local Edge
+Agent, Server Edge Mesh, HP Relay, WireGuard, Clash/Mihomo subscriptions, and
+opaque artifacts are related, but they are not the same thing.
 
 Simplification target:
 
 ```text
+Product business:
+  user-facing service promise and workflows
+  not billing, node config, or runtime authority
+
+Commercial entitlement:
+  plan / validity / quota / renewal decision source
+  not Clash YAML rendering and not node selection by itself
+
+Subscription access:
+  artifact, token, device bootstrap, and Subscription V2 output boundary
+  not payment collection and not node runtime ownership
+
 Local Edge Agent:
   product client adapter
   not HP Relay, not Server Edge Mesh, not WireGuard setup
@@ -324,6 +342,8 @@ Suggested follow-up:
 
 - Keep active architecture docs explicit about these non-goals whenever a new
   channel, mesh, relay, or subscription-access idea is introduced.
+- Use `docs/DOMAIN_UNIT_BOUNDARIES.md` before splitting product, commercial,
+  subscription, node, CI, or lab work across agents.
 
 ### Hotspot 4: Code Has Production, Prototype, And Legacy-Looking Areas
 

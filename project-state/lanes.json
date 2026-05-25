@@ -6,11 +6,48 @@
   "purpose": "Machine-readable active project lanes for agent orientation. This file does not authorize production, cloud, deployment, or secret changes.",
   "sourceDocs": [
     "docs/PROJECT_CONTEXT.md",
+    "docs/DOMAIN_UNIT_BOUNDARIES.md",
     "docs/PROJECT_OPERATING_MODEL.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/PROJECT_TOPOLOGY.md"
   ],
   "lanes": [
+    {
+      "id": "product-business",
+      "name": "Product Business",
+      "status": "active-boundary",
+      "riskBoundary": "C for product docs and acceptance criteria; B for UI/code behavior; A if production access semantics change",
+      "purpose": "Own the user-facing service promise, workflows, and acceptance criteria without owning commercial payment state or node runtime configuration.",
+      "primaryDocs": [
+        "docs/DOMAIN_UNIT_BOUNDARIES.md",
+        "docs/PROJECT_OPERATING_MODEL.md",
+        "docs/PROJECT_SIMPLIFICATION_MAP.md"
+      ],
+      "primaryCodeAreas": [],
+      "nonGoals": [
+        "payment collection",
+        "node configuration",
+        "CI execution",
+        "AWS or DNS mutation"
+      ]
+    },
+    {
+      "id": "commercial-entitlement",
+      "name": "Commercial / Entitlement",
+      "status": "planned-boundary",
+      "riskBoundary": "C for architecture docs; B/A depends on future integration surface and production access semantics",
+      "purpose": "Separate package, validity, quota, renewal, and customer commercial status decisions from subscription rendering and node capacity.",
+      "primaryDocs": [
+        "docs/DOMAIN_UNIT_BOUNDARIES.md"
+      ],
+      "primaryCodeAreas": [],
+      "nonGoals": [
+        "Subscription V2 YAML rendering",
+        "opaque artifact authority",
+        "edge-node health",
+        "Clash/Mihomo configuration"
+      ]
+    },
     {
       "id": "subscription-control-plane",
       "name": "Subscription Control Plane",
