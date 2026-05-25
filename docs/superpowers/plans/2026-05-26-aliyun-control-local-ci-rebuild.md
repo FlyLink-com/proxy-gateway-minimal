@@ -87,7 +87,7 @@ git diff --check returns no output
 - Modify: `docs/CI_MANUAL_VALIDATION.md`
 - Create: `docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md`
 
-- [ ] **Step 1: Collect read-only host inventory**
+- [x] **Step 1: Collect read-only host inventory**
 
 On the local Linux CI candidate, run:
 

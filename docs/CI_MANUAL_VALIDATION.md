@@ -9,7 +9,7 @@
 > - Source of truth for: manual CI validation host usage and fallback
 >   clean-server CI-equivalent validation while GitHub-hosted Actions is blocked
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-05-26, Asia/Shanghai.
 
 This runbook defines the manual CI-equivalent validation path to use when
 GitHub-hosted Actions cannot start because of the current account billing or
@@ -79,6 +79,34 @@ cleanup: required after every run
 
 The target bootstrap and validation sequence lives in
 `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`.
+
+Current target read-only inventory:
+
+- `docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md`
+
+Current target status:
+
+```text
+Host: hp-server
+Candidate role: local-ci-a
+Reachability: SSH BatchMode works from the operator machine
+Hardware: sufficient for manual CI validation
+git: present
+Node.js 22: absent
+npm: absent
+Current host reality: operator-lab HP server, not a sterile CI appliance
+Next gate: explicit bootstrap approval before package install or validation
+```
+
+Required approval phrase before installing packages or running archive-based
+manual CI validation:
+
+```text
+Approve local Linux manual CI bootstrap. No production secrets, no production data, no deploy, no staging.
+```
+
+Until the bootstrap and validation record exists, this host is only a candidate
+and must not replace the historical Aliyun fallback.
 
 ### Historical Aliyun Host Inventory
 

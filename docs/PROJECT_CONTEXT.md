@@ -160,7 +160,10 @@ operator approval, validation, and rollback path exist:
 - Traffic accounting, quota enforcement, and device-abuse enforcement.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI bootstrap, validation, and promotion to the default
-  manual CI host.
+  manual CI host. The first read-only inventory is recorded in
+  `docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md`;
+  `hp-server` is reachable and hardware-ready, but Node.js 22/npm are absent
+  and bootstrap is not approved.
 - Aliyun manual CI cleanup or production-control candidate preparation.
 - Clean `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
@@ -201,6 +204,15 @@ For A2, the preferred first step is now the role split in
 then Aliyun production-control candidate inventory, then clean edge-node
 rebuild. Do not start either A-tier item without a specific runbook, read-only
 inventory, operator approval, validation plan, and rollback evidence.
+
+Latest local Linux CI candidate inventory:
+
+- `docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md`
+- `hp-server` is reachable through the approved local SSH key.
+- Hardware and git are sufficient for manual CI, but Node.js 22/npm are absent.
+- The host is currently an operator-lab HP server, not a sterile CI appliance.
+- Bootstrap and archive-based validation require the explicit approval phrase
+  in `docs/CI_MANUAL_VALIDATION.md`.
 
 Latest A2 preflight:
 
