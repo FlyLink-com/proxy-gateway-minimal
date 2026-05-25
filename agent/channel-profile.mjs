@@ -1,5 +1,6 @@
 import net from "node:net";
 import { createEdgeTunnelChannel } from "./edge-tunnel.mjs";
+import { redactedLastFailure, sanitizeDiagnosticsCounters } from "./diagnostics.mjs";
 
 const SUPPORTED_TYPES = new Set(["disabled", "direct-tcp", "edge-tunnel"]);
 
@@ -63,8 +64,8 @@ export function createChannelFromProfile(input = {}) {
         return {
           ok: true,
           profile,
-          counters: { ...counters },
-          lastFailure
+          counters: sanitizeDiagnosticsCounters(counters),
+          lastFailure: redactedLastFailure(lastFailure)
         };
       }
     };
@@ -107,8 +108,8 @@ export function createChannelFromProfile(input = {}) {
           type: "direct-tcp",
           developmentOnly: true
         },
-        counters: { ...counters },
-        lastFailure
+        counters: sanitizeDiagnosticsCounters(counters),
+        lastFailure: redactedLastFailure(lastFailure)
       };
     }
   };

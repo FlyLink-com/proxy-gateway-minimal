@@ -2,6 +2,7 @@ import express from "express";
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import { createChannelFromProfile } from "./channel-profile.mjs";
+import { redactedLastFailure, sanitizeDiagnosticsCounters } from "./diagnostics.mjs";
 import { startLocalSocksAdapter } from "./socks5-adapter.mjs";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
@@ -72,9 +73,6 @@ export function buildLocalClashSubscription(input = {}, options = {}) {
 }
 
 export function redactedDiagnostics(input = {}) {
-  const counters = input.counters && typeof input.counters === "object" ? input.counters : {};
-  const lastFailure = input.lastFailure && typeof input.lastFailure === "object" ? input.lastFailure : null;
-
   return {
     ok: true,
     agent: "local-edge-agent",
@@ -83,12 +81,8 @@ export function redactedDiagnostics(input = {}) {
       id: input.activeEdge?.id ? String(input.activeEdge.id) : null,
       host: input.activeEdge?.host ? "[redacted]" : null
     },
-    counters: { ...counters },
-    lastFailure: lastFailure
-      ? {
-          class: lastFailure.class ? String(lastFailure.class) : "unknown"
-        }
-      : null
+    counters: sanitizeDiagnosticsCounters(input.counters),
+    lastFailure: redactedLastFailure(input.lastFailure)
   };
 }
 

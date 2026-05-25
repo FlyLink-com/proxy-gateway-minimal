@@ -463,6 +463,7 @@ The first repo-only skeleton now lives in:
 ```text
 agent/local-edge-agent.mjs
 agent/channel-profile.mjs
+agent/diagnostics.mjs
 agent/edge-tunnel.mjs
 agent/socks5-adapter.mjs
 server/tests/local-edge-agent.test.mjs
@@ -480,7 +481,7 @@ foreground local agent app
 GET /health
 GET /clash.yaml
 GET /diagnostics
-redacted diagnostics summaries
+redacted diagnostics summaries with a stable counter/failure contract
 standalone SOCKS5 CONNECT adapter with injected channel interface
 fail-closed SOCKS5 behavior when the channel is unavailable
 optional runtime wiring for the SOCKS5 adapter when explicitly enabled
@@ -488,6 +489,7 @@ channel profile factory with disabled default and local-development direct TCP
 local-development edge-tunnel skeleton with a one-line JSON CONNECT handshake
 bounded edge-tunnel handshake timeouts and strict boolean success replies
 exported edge-tunnel contract constants, shared frame-size limit, and codec tests
+shared diagnostics redaction helpers for channel and adapter snapshots
 ```
 
 It deliberately does not implement:
@@ -541,6 +543,32 @@ Unknown protocol versions, commands, request shapes, target shapes, reply
 shapes, reply error codes, and oversized request or reply frames fail closed.
 Request and target objects must not include extra fields. This is still a
 local-development contract only, not a production transport contract.
+
+The current diagnostics contract is also intentionally narrow:
+
+```text
+counter keys:
+  connectOk
+  connectFailure
+  connectTimeout
+  unsupportedCommand
+  protocolError
+
+failure classes:
+  channel_disabled
+  channel_failure
+  connect_failed
+  edge_tunnel_failure
+  protocol_error
+  timeout
+  unsupported_command
+  unknown
+```
+
+Unknown counter keys are dropped. Unknown failure classes are normalized to
+`unknown`. Diagnostics snapshots must not include remote edge hosts, raw
+targets, raw errors, tokens, artifact URLs, customer URLs, credentials, payloads,
+or secret-like counter or failure fields.
 
 ## Open Decisions
 
