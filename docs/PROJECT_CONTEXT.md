@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-05-25, Asia/Shanghai.
 
 This file is the handoff note for continuing the `proxy-gateway-minimal` work from a new Codex conversation. Read this file first, then inspect the live repo state before making changes.
 
@@ -49,6 +49,7 @@ C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 - Device-scoped opaque subscription implementation planning lives in `docs/SUBSCRIPTION_OPAQUE_IMPLEMENTATION_PLAN.md`. It defines the B-tier repository/code slice for artifact storage, artifact refresh routing, admin artifact operations, and tests. The first production canary is active, but broader activation, tenant artifact issuance, legacy endpoint removal, and deployment expansion remain separate Risk A work.
 - The post-implementation opaque access-model gap record lives in `docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md`. It records that backend support is implemented and one production opaque artifact canary is active, but additional artifact issuance/migration, legacy query-token retirement, redirect changes, and traffic/device-abuse enforcement remain separate work with Risk A production gates where applicable.
 - Local Edge Agent design lives in `docs/LOCAL_EDGE_AGENT_DESIGN.md`. It defines a next-generation channel-adapter direction: Clash/Mihomo remains the local router/UI, while a loopback-only local agent generates a local subscription and carries traffic over platform-controlled remote-edge channels. V1 explicitly does not create a virtual NIC, enable TUN, mutate system proxy/PAC/routes, install drivers, expose public listeners, or replace Clash/Mihomo.
+- Server Edge Mesh design lives in `docs/SERVER_EDGE_MESH_DESIGN.md`. It defines a server-side private edge mesh direction, with WireGuard as the preferred first candidate, for provider-neutral edge-to-edge health, management, validation, and recovery paths. V1 is not user-facing, does not route ordinary customer traffic, does not expose mesh endpoints to Clash/Mihomo or the Local Edge Agent, and does not authorize WireGuard setup, security-group changes, service changes, secret distribution, traffic migration, or cutover.
 - Production edge fleet planning lives in `docs/PRODUCTION_EDGE_FLEET.md`. It defines `prod-edge-a` as the current primary slot, `prod-edge-b` as the iteration/canary secondary slot, and `prod-edge-c` as the future third recovery/standby slot; it does not authorize node creation, DNS changes, production config changes, secret/data copying, or traffic cutover. Repo-only provider-neutral recovery build materials for `prod-edge-c` live under `ops/edge-node/`; they do not contain production secrets, SQLite data, cloud credentials, private keys, or customer data.
 - Deployment, staging, production promotion, and rollback rules live in `docs/DEPLOYMENT_FLOW.md`.
 - Staging target decision lives in `docs/STAGING_TARGET_DECISION.md`: current recommendation is a new clean staging instance, not starting the stopped historical node as-is.
