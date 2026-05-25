@@ -1,6 +1,6 @@
 # Project Operating Model
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-05-25, Asia/Shanghai.
 
 > Status:
 > - Type: Active operating model
@@ -131,6 +131,26 @@ Production ops lane:
 
 Code and docs branches may run in parallel when they do not touch the same
 source-of-truth files. Real external mutation must be serial.
+
+## PR Cadence Reporting
+
+Every five merged PRs, pause before starting the next lane of work and give the
+operator a concise stage report for that five-PR window.
+
+The report should include:
+
+```text
+PR range and PR numbers
+what changed and why
+risk tier for the work
+validation evidence, including Aliyun manual CI when used
+production, AWS, DNS, Nginx, systemd, tenant, artifact, and cutover impact
+open blockers and recommended next actions
+```
+
+Do not treat this as a closeout requirement after every small PR. It is a
+fixed cadence report to prevent long-running work from drifting without a
+project-management checkpoint.
 
 ## Risk Tiers
 

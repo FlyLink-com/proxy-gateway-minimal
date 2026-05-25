@@ -20,7 +20,10 @@ navigation. Use the relevant active runbook for production, AWS, DNS, Nginx,
 HTTPS, staging, deployment, rollback, or node execution gates.
 Use `docs/PROJECT_OPERATING_MODEL.md` for the project-level operating model:
 source-of-truth layers, work lanes, risk tiers, production gates, and
-subscription stability principles.
+subscription stability principles. It also defines the PR cadence reporting
+rule: after every five merged PRs, provide a stage report covering the PR range,
+risk tiers, validation evidence, production boundary changes, blockers, and
+recommended next actions.
 
 Future slimming goal: this file should not permanently duplicate every
 historical PR, old stage detail, long command block, or runbook body that
