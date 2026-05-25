@@ -7,6 +7,7 @@
   "sourceDocs": [
     "docs/PROJECT_CONTEXT.md",
     "docs/DOMAIN_UNIT_BOUNDARIES.md",
+    "docs/units/README.md",
     "docs/PROJECT_OPERATING_MODEL.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/PROJECT_TOPOLOGY.md",

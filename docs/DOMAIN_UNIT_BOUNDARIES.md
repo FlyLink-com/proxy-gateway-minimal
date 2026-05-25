@@ -460,6 +460,9 @@ Do not treat repository docs as production inventory.
 ## Relationship To Existing Docs
 
 ```text
+docs/units/README.md:
+  per-unit design index and standard unit template
+
 docs/PROJECT_OPERATING_MODEL.md:
   workflow layers, lanes, PR cadence, and risk tiers
 

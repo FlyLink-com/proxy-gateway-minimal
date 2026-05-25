@@ -23,6 +23,8 @@ independent analysis tracks, or explicit subagent task packets.
 Use `docs/DOMAIN_UNIT_BOUNDARIES.md` when a task needs to separate product
 business, commercial entitlement, subscription access, edge nodes, local
 client work, validation, operator lab, and production operations.
+Use `docs/units/README.md` when a task needs the detailed design for one
+specific unit and its interfaces.
 Use `docs/PROJECT_SIMPLIFICATION_MAP.md` when a task needs docs slimming,
 module classification, cleanup queue ordering, or a decision on whether a new
 idea belongs on the active product spine.
