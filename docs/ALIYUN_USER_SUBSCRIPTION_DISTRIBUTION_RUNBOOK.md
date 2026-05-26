@@ -207,8 +207,10 @@ static company site preview: implemented in repository only
   - current positioning: geek-style AI / automation research company surface
   - cooperation directions: mainstream media advertising, operations growth,
     and frontier product research
-  - visible lead collection stays frontend-only mailto and does not persist
-    customer data in the repository app
+  - visible lead collection posts to the repository-only public lead intake
+    endpoint `/api/public/leads` with validation and success/error UI
+  - no external Webhook, CRM, email automation, DNS, or production deployment is
+    configured by this repository-only UI change
   - it must not hard-link the customer portal route, subscription artifacts,
     Admin API, or any login-after-entry URL
   - Aliyun DNS domain inventory has been read-only checked for future public

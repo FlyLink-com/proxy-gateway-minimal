@@ -275,6 +275,23 @@ textarea {
   color: #ffffff;
 }
 
+.company-site-nav .company-site-workbench-link {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 6px;
+  border: 1px solid rgba(125, 211, 252, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fafc;
+}
+
+.company-site-workbench-link svg {
+  width: 16px;
+  height: 16px;
+}
+
 .company-site-hero {
   min-height: calc(100vh - 76px);
   padding: clamp(44px, 7vw, 96px) clamp(20px, 5vw, 72px) 56px;
@@ -347,6 +364,13 @@ textarea {
   background: #7dd3fc;
   box-shadow: 0 12px 30px rgba(35, 209, 139, 0.24);
   transform: translateY(-1px);
+}
+
+.company-site-primary:disabled {
+  background: #94a3b8;
+  box-shadow: none;
+  cursor: wait;
+  transform: none;
 }
 
 .company-site-primary:hover svg {
@@ -487,6 +511,10 @@ textarea {
   box-shadow: 0 18px 40px rgba(2, 6, 23, 0.28);
 }
 
+.site-api-console {
+  width: min(360px, calc(100% - 48px));
+}
+
 .site-terminal-card span {
   color: #7dd3fc;
   font-size: 12px;
@@ -498,6 +526,8 @@ textarea {
   font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
   font-size: 13px;
   line-height: 1.4;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .company-site-section,
@@ -618,6 +648,23 @@ textarea {
   gap: 14px;
 }
 
+.company-site-outcomes {
+  margin-top: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.company-site-outcomes span {
+  border: 1px solid rgba(15, 118, 110, 0.2);
+  border-radius: 999px;
+  background: #ffffff;
+  color: #0f766e;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .company-site-direction {
   min-height: 150px;
   padding: 18px;
@@ -663,6 +710,32 @@ textarea {
   animation: site-flow 10s ease-in-out infinite alternate;
 }
 
+.company-site-workflow {
+  align-content: start;
+}
+
+.company-site-workflow-header {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border: 1px solid rgba(226, 232, 240, 0.22);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.42);
+}
+
+.company-site-workflow-header span {
+  color: #7dd3fc;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.company-site-workflow-header strong {
+  font-size: 20px;
+  line-height: 1.2;
+}
+
 .site-effect-flow::before {
   content: "";
   position: absolute;
@@ -693,6 +766,20 @@ textarea {
 .site-effect-step strong {
   font-size: 20px;
   line-height: 1.18;
+}
+
+.workflow-node::after {
+  content: "";
+  position: absolute;
+  left: 28px;
+  bottom: -17px;
+  width: 2px;
+  height: 17px;
+  background: rgba(125, 211, 252, 0.42);
+}
+
+.workflow-node:last-child::after {
+  display: none;
 }
 
 .company-site-scenario-grid {
@@ -764,14 +851,22 @@ textarea {
 
 .company-site-steps li {
   min-height: 90px;
-  display: grid;
-  place-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   border-radius: 8px;
   background: #ffffff;
   border: 1px solid rgba(15, 118, 110, 0.18);
   color: #0f3f3b;
   font-weight: 800;
+}
+
+.company-site-steps li span {
+  color: #0f766e;
+  font-size: 12px;
 }
 
 .company-site-contact {
@@ -836,6 +931,7 @@ textarea {
 }
 
 .company-site-contact-form input,
+.company-site-contact-form select,
 .company-site-contact-form textarea {
   width: 100%;
   border: 1px solid rgba(203, 213, 225, 0.4);
@@ -856,6 +952,26 @@ textarea {
 .company-site-contact-form input::placeholder,
 .company-site-contact-form textarea::placeholder {
   color: #7b8794;
+}
+
+.company-site-form-status {
+  margin: 0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.company-site-form-status-ok {
+  border: 1px solid rgba(34, 197, 94, 0.34);
+  background: rgba(240, 253, 244, 0.92);
+  color: #166534;
+}
+
+.company-site-form-status-error {
+  border: 1px solid rgba(248, 113, 113, 0.44);
+  background: rgba(254, 242, 242, 0.95);
+  color: #991b1b;
 }
 
 .company-site-contact-form .company-site-primary {

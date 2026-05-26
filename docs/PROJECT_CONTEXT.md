@@ -100,6 +100,9 @@ Current architecture priorities:
   media advertising, operations growth, and frontier product research. Logged-in
   customer portal entry is a separate operator-issued dynamic entry concept and
   must not be hard-linked from the public site or public campaign landing pages.
+  The public site uses a repository-only `/api/public/leads` intake endpoint
+  for validated contact submissions; no external Webhook/CRM/email automation,
+  DNS, or production deployment is implied by that route.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a

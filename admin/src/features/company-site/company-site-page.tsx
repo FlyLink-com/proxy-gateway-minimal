@@ -4,8 +4,10 @@ import {
   Building2,
   CheckCircle2,
   FlaskConical,
+  LockKeyhole,
   Megaphone
 } from "lucide-react";
+import { type FormEvent, useState } from "react";
 
 const capabilities = [
   {
@@ -37,7 +39,7 @@ const cooperationDirections = [
   },
   {
     title: "多域名投放落地页",
-    description: "域名池只承载公开获客、广告测试和品牌触达；登录态工具入口继续由运营侧单独发放。"
+    description: "域名池只承载公开获客、广告测试和品牌触达；客户工作台入口按交付说明单独提供。"
   }
 ];
 
@@ -73,9 +75,51 @@ const collaborationSteps = [
   "运营复盘"
 ];
 
-const contactEmail = "gccltd.co@outlook.com";
+const workflowNodes = [
+  "接收 Webhook",
+  "大模型提炼",
+  "发送企业微信",
+  "记录线索状态"
+];
+
+const contactEmail = "hello@globalcirclecat.com";
+
+function readFormValue(formData: FormData, name: string) {
+  return String(formData.get(name) ?? "").trim();
+}
 
 export function CompanySitePage() {
+  const [leadStatus, setLeadStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+
+  async function handleLeadSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const payload = {
+      organization: readFormValue(formData, "organization"),
+      email: readFormValue(formData, "email"),
+      direction: readFormValue(formData, "direction"),
+      stage: readFormValue(formData, "stage"),
+      message: readFormValue(formData, "message")
+    };
+
+    setLeadStatus("submitting");
+    try {
+      const response = await fetch("/api/public/leads", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      if (!response.ok) {
+        throw new Error("Lead intake failed");
+      }
+      form.reset();
+      setLeadStatus("success");
+    } catch (error) {
+      setLeadStatus("error");
+    }
+  }
+
   return (
     <main className="company-site-shell">
       <header className="company-site-header">
@@ -88,6 +132,10 @@ export function CompanySitePage() {
           <a href="#scenarios">场景</a>
           <a href="#delivery">合作</a>
           <a href="#contact">联系</a>
+          <a className="company-site-workbench-link" href="#contact" aria-label="开发者工作台申请访问">
+            <LockKeyhole aria-hidden="true" />
+            开发者工作台
+          </a>
         </nav>
       </header>
 
@@ -100,11 +148,11 @@ export function CompanySitePage() {
           </p>
           <div className="company-site-actions">
             <a className="company-site-primary" href="#contact">
-              申请沙盒访问
+              获取 API 密钥（限时免费）
               <ArrowRight aria-hidden="true" />
             </a>
-            <a className="company-site-secondary" href="#scenarios">
-              查看合作方向
+            <a className="company-site-secondary" href="#api-proof">
+              查看 API 示例
             </a>
           </div>
         </div>
@@ -112,11 +160,11 @@ export function CompanySitePage() {
         <div className="company-site-visual" aria-label="AI 研发与运营增长视觉示意">
           <div className="site-orbit site-orbit-a" />
           <div className="site-orbit site-orbit-b" />
-          <div className="site-terminal-card" aria-hidden="true">
-            <span>research.log</span>
-            <code>agent.prototype()</code>
-            <code>media.signal.scan()</code>
-            <code>growth.loop.measure()</code>
+          <div className="site-terminal-card site-api-console">
+            <span>API Sandbox 示例</span>
+            <code>{`curl -X POST https://api.globalcirclecat.com/v1/sandbox/run`}</code>
+            <code>{`{ "intent": "media_lead_triage" }`}</code>
+            <code>{`{ "next_action": "send_wecom_summary" }`}</code>
           </div>
           <div className="site-signal-card site-signal-card-main">
             <Bot aria-hidden="true" />
@@ -168,13 +216,22 @@ export function CompanySitePage() {
               </article>
             ))}
           </div>
+          <div className="company-site-outcomes" aria-label="产品效果指标">
+            {productOutcomes.map((outcome) => (
+              <span key={outcome}>{outcome}</span>
+            ))}
+          </div>
         </div>
         <div className="company-site-effect-layout">
-          <div className="site-effect-flow" aria-label="产品效果示意">
-            {productOutcomes.map((outcome, index) => (
-              <div className="site-effect-step" key={outcome}>
+          <div className="site-effect-flow company-site-workflow" aria-label="运营自动化工作流示意" id="api-proof">
+            <div className="company-site-workflow-header">
+              <span>workflow.demo</span>
+              <strong>从线索进入到自动跟进</strong>
+            </div>
+            {workflowNodes.map((node, index) => (
+              <div className="site-effect-step workflow-node" key={node}>
                 <span>{String(index + 1).padStart(2, "0")}</span>
-                <strong>{outcome}</strong>
+                <strong>{node}</strong>
               </div>
             ))}
           </div>
@@ -200,8 +257,11 @@ export function CompanySitePage() {
           </p>
         </div>
         <ol className="company-site-steps">
-          {collaborationSteps.map((step) => (
-            <li key={step}>{step}</li>
+          {collaborationSteps.map((step, index) => (
+            <li key={step}>
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              {step}
+            </li>
           ))}
         </ol>
       </section>
@@ -211,43 +271,59 @@ export function CompanySitePage() {
           <Building2 aria-hidden="true" />
           <h2>联系我们</h2>
           <p>
-            留下合作方向、投放目标或前沿产品研究需求，我们会通过邮件回复。
-            登录态客户工具仍通过单独发放的动态入口访问。
+            留下合作方向、投放目标或前沿产品研究需求，表单会进入公开站点 lead intake。
+            已有客户请按交付说明进入工作台；公开官网不承载客户数据。
           </p>
-          <a className="company-site-email" href={`mailto:${contactEmail}`}>
+          <span className="company-site-email">
             {contactEmail}
-          </a>
+          </span>
         </div>
-        <form
-          className="company-site-contact-form"
-          action={`mailto:${contactEmail}`}
-          method="post"
-          encType="text/plain"
-        >
+        <form className="company-site-contact-form" onSubmit={handleLeadSubmit}>
           <label>
             公司或机构
-            <input name="organization" type="text" placeholder="公司、团队或项目名称" />
+            <input name="organization" type="text" placeholder="公司、团队或项目名称" required />
           </label>
           <label>
-            联系邮箱
+            工作邮箱
             <input name="email" type="email" placeholder="name@example.com" required />
           </label>
           <label>
-            投放或运营目标
-            <input name="growth_goal" type="text" placeholder="获客、转化、私域运营或内容增长" required />
+            合作方向
+            <select name="direction" required defaultValue="">
+              <option value="" disabled>
+                选择最接近的需求
+              </option>
+              <option value="获取 API 密钥">获取 API 密钥</option>
+              <option value="预约自动化诊断">预约自动化诊断</option>
+              <option value="主流媒体广告投放">主流媒体广告投放</option>
+              <option value="前沿产品研究">前沿产品研究</option>
+            </select>
           </label>
           <label>
-            技术需求
+            预算或阶段
+            <input name="stage" type="text" placeholder="探索、试点、投放中或已有预算" />
+          </label>
+          <label>
+            需求说明
             <textarea
-              name="technical_need"
+              name="message"
               rows={4}
-              placeholder="简单说明 AI Agent、API 沙盒、自动化工作流或前沿产品研究方向"
+              placeholder="说明 AI Agent、API 沙盒、广告投放、自动化工作流或前沿产品研究方向"
               required
             />
           </label>
-          <p>表单会调用本机邮件客户端，不会在当前页面保存信息。</p>
-          <button className="company-site-primary" type="submit">
-            发送合作需求
+          {leadStatus === "success" ? (
+            <p className="company-site-form-status company-site-form-status-ok" role="status">
+              已提交，我们会在 2 小时内联系你。
+            </p>
+          ) : null}
+          {leadStatus === "error" ? (
+            <p className="company-site-form-status company-site-form-status-error" role="alert">
+              提交失败，请稍后重试或直接联系 {contactEmail}。
+            </p>
+          ) : null}
+          <button className="company-site-primary" type="submit" disabled={leadStatus === "submitting"}>
+            {leadStatus === "submitting" ? "提交中" : "提交自动化诊断"}
             <ArrowRight aria-hidden="true" />
           </button>
         </form>
