@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-05-26",
+  "lastUpdated": "2026-05-27",
   "timezone": "Asia/Shanghai",
   "status": "active-snapshot-a-tier-blocked-only",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
@@ -25,6 +25,7 @@
     "docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md",
     "docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md",
     "docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md",
+    "docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md",
     "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md",
     "docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md",
     "docs/production-replacement-records/2026-05-26-channel-lab-a-creation.md",
@@ -62,6 +63,7 @@
     "Aliyun platform lead review queue exists as repo-only public lead intake to protected operator-safe review summaries without CRM, Webhook, email automation, Aliyun deployment, DNS, production storage, or user traffic",
     "Aliyun platform account and entitlement shell exists as repo-only in-memory lead-to-account conversion and entitlement summaries without billing, payment collection, SQLite persistence, Aliyun deployment, DNS, production storage, or user traffic",
     "Aliyun platform dynamic entry and subscription access grant shell exists as repo-only in-memory Admin-only summaries without raw portal URLs, raw artifact references, subscription URLs, SQLite persistence, Aliyun deployment, DNS, production storage, public portal resolution, or user traffic",
+    "Aliyun promotion runbook Package 5 exists as repo-only gate design separating live inventory, source-state decision, private state-copy validation, public-boundary dry run, DNS promotion, observation, rollback, and cleanup without authorizing Aliyun deployment, DNS, state copy, public listener exposure, edge traffic, or production authority transfer",
     "Domain Unit Boundaries for product business, commercial entitlement, subscription access, nodes, validation, operator lab, and production ops",
     "Aliyun user-management / subscription-distribution platform as the near-term production-control target",
     "HP local Linux as manual CI and operator lab only",
@@ -199,7 +201,8 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Aliyun Subscription Control Platform MVP Package 5: Aliyun promotion runbook repo-only PR",
+    "Aliyun promotion Gate A live inventory refresh",
+    "prod-edge-a source access / source-state planning before any private state-copy validation",
     "channel-lab-a Hysteria2 latency investigation, TUIC/VLESS-XUDP comparison, GUI import evidence, or cleanup decision",
     "clean edge node rebuild planning",
     "Aliyun subscription distribution promotion planning with accepted outage context",

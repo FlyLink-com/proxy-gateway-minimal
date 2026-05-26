@@ -1,6 +1,6 @@
 # Aliyun User Management / Subscription Distribution Runbook
 
-Last updated: 2026-05-26, Asia/Shanghai.
+Last updated: 2026-05-27, Asia/Shanghai.
 
 > Status:
 > - Type: Active architecture and Risk A runbook
@@ -402,6 +402,369 @@ integration:
   after a separate design and validation record
 ```
 
+## Promotion Gate Model
+
+Package 5 of the Aliyun Subscription Control Platform MVP converts the later
+Aliyun promotion into explicit gates. This section is a repo-only runbook
+design. It does not execute any gate.
+
+Current accepted-outage context changes the rollback model:
+
+```text
+prod-edge-a and prod-edge-b are documented as stopped after the Singapore
+stop-only cleanup.
+
+Do not describe rollback as "return to the current running prod-edge-a" unless
+a fresh live inventory proves that a running rollback source exists.
+
+The default rollback choice before promotion is now one of:
+  keep accepted outage and revert Aliyun candidate/public-boundary changes, or
+  request a separate rollback-start gate for stopped AWS nodes before relying
+  on them as a rollback target.
+```
+
+### Gate 0: Repo-Only Runbook PR
+
+Purpose:
+
+```text
+Complete the design and documentation package before any Aliyun promotion
+operation.
+```
+
+Allowed:
+
+```text
+update this runbook
+update project context and project-state orientation
+record the Package 5 design closeout
+run repository validation for docs/project-state consistency
+```
+
+Forbidden:
+
+```text
+SSH into Aliyun or AWS to perform mutation
+copy production state
+change DNS
+expose public listeners
+start, stop, reboot, terminate, or clean any node
+```
+
+Required validation:
+
+```text
+npm run project-state:check
+git diff --check origin/master...HEAD
+```
+
+### Command Separation
+
+Read-only inventory commands belong only to inventory records. Mutation commands
+belong only to later approved A-tier execution records. Do not mix them in one
+approval or one PR.
+
+Allowed read-only command templates:
+
+```powershell
+git status --short --branch
+git rev-parse HEAD
+
+aliyun alidns DescribeDomainRecords --DomainName globalcirclecat.com --RRKeyWord sub --PageSize 10
+
+aws ec2 describe-instances --region ap-southeast-1 --instance-ids <instance-id> --output table
+aws ec2 describe-instance-status --region ap-southeast-1 --instance-ids <instance-id> --include-all-instances --output table
+
+ssh -o BatchMode=yes miyao "hostname; date; systemctl is-active proxy-gateway-candidate nginx wg-quick@wg-home ufw; ss -lntup; curl -fsS http://127.0.0.1:3456/api/health"
+ssh -o BatchMode=yes hp-server "hostname; date; nc -vz -w 3 <public-ip> 22"
+```
+
+The templates above must be adjusted to the approved host aliases and current
+inventory target. They must not print `.env` values, private keys, tokens,
+subscription URLs, SQLite rows, or customer data.
+
+Mutation command families are never allowed in Gate 0 or Gate A:
+
+```text
+systemctl restart/start/stop
+nginx config install or reload
+ufw allow/delete/enable/disable
+aliyun DNS add/update/delete
+aws ec2 start/stop/reboot/terminate
+aws security-group ingress/egress mutation
+sqlite restore/import/copy from production state
+rsync/scp of production state, .env, artifact state, or private keys
+wg-quick up/down or WireGuard key generation
+```
+
+### Gate A: Live Inventory Refresh
+
+Purpose:
+
+```text
+Replace stale 2026-05-26 planning facts with live evidence before any mutation.
+```
+
+Allowed read-only checks:
+
+```text
+git status and current commit for the operator checkout
+Aliyun host identity, OS, disk, memory, listeners, UFW, Nginx, systemd, and
+candidate app health
+AliDNS records for subscription and edge hostnames
+AWS instance state, public IP association, security groups, and tags for
+prod-edge-a, prod-edge-b, legacy blue, and channel-lab-a
+public endpoint behavior from the operator and HP vantage points
+candidate SQLite integrity_check without row dumps
+presence/absence of candidate backup files by name and metadata only
+```
+
+Forbidden in this gate:
+
+```text
+service restart
+DNS change
+firewall or security-group change
+SQLite copy
+artifact copy
+production .env readout
+secret, token, subscription URL, private key, SQLite row, or customer data
+printing
+AWS start, stop, reboot, terminate, or volume detach
+```
+
+Required output:
+
+```text
+new production-replacement-records entry
+promotion readiness decision: blocked / ready-for-source-access / ready-for-state-copy
+explicit rollback-source status: none / accepted-outage / rollback-start-needed / live-source-ready
+```
+
+### Gate B: Source Access Or Source-State Decision
+
+Purpose:
+
+```text
+Decide how Aliyun can receive validated state, or explicitly choose a
+fresh-control-plane start without copying unavailable production state.
+```
+
+Current known blocker:
+
+```text
+The latest recorded source inspection could not execute commands on prod-edge-a:
+SSM was unavailable and SSH closed before banner/auth. That evidence is stale
+after the stop-only cleanup and must be refreshed before a state-copy decision.
+```
+
+Allowed read-only planning:
+
+```text
+compare source-access options
+identify whether rollback-start of stopped AWS nodes is required before source
+backup
+define rescue-volume, SSM bootstrap, SSH remediation, or clean-start options as
+separate later approvals
+define what state is intentionally abandoned if the operator chooses clean start
+```
+
+Forbidden in this gate:
+
+```text
+reboot
+stop or start
+security-group change
+SSH service mutation
+SSM agent installation
+volume detach/attach
+SQLite backup or copy
+```
+
+Required output:
+
+```text
+chosen next approval path
+state-copy source status
+rollback-source status
+privacy boundary for any later backup movement
+```
+
+### Gate C: Private State-Copy Validation
+
+Purpose:
+
+```text
+Prove Aliyun can render subscription artifacts from approved state while still
+keeping public traffic and production authority unchanged.
+```
+
+Prerequisites:
+
+```text
+Gate A live inventory is fresh
+Gate B source-state path is approved
+fresh source backup exists if state is copied
+source SQLite integrity_check passes if state is copied
+candidate SQLite backup exists before restore
+candidate SQLite integrity_check passes before and after restore
+private transfer path is approved
+raw tokens, subscription URLs, .env values, private keys, SQLite rows, and
+customer data are never printed or recorded
+```
+
+Allowed mutation only after explicit A-tier approval:
+
+```text
+private backup transfer to Aliyun
+candidate SQLite restore or import
+candidate-only local service reload if required by the approved procedure
+private rendering validation through loopback or operator tunnel
+```
+
+Forbidden in this gate:
+
+```text
+DNS change
+public 80/443 exposure
+public Admin exposure
+user traffic movement
+edge traffic activation
+production authority transfer
+```
+
+Required output:
+
+```text
+state-copy validation record
+candidate health evidence
+private subscription rendering evidence with sensitive material redacted
+rollback of candidate state or retained candidate backup path
+```
+
+### Gate D: Public Boundary Dry Run
+
+Purpose:
+
+```text
+Prepare the Aliyun public subscription boundary without moving DNS or user
+traffic.
+```
+
+Prerequisites:
+
+```text
+Gate C passed or a clean-start control-plane path is explicitly accepted
+Admin routes remain private or blocked from the public boundary
+Nginx config can be tested without exposing Admin
+UFW and provider firewall posture are understood
+WireGuard wg-home role is accepted, scoped, or separately removed
+```
+
+Allowed actions only after explicit A-tier approval:
+
+```text
+stage Nginx public server config without DNS cutover
+run Nginx config test
+validate local and tunnelled public-boundary behavior
+confirm public Admin blocking rule
+prepare rollback config files
+```
+
+Forbidden in this gate:
+
+```text
+DNS record mutation
+user traffic movement
+subscription output mutation
+edge node rollout
+unreviewed firewall exposure
+```
+
+### Gate E: DNS And Production Distribution Promotion
+
+Purpose:
+
+```text
+Move subscription distribution authority to Aliyun after private validation and
+public-boundary checks have passed.
+```
+
+Prerequisites:
+
+```text
+Gate A live inventory is current
+Gate B source-state decision is explicit
+Gate C private validation passed or clean-start authority is explicitly accepted
+Gate D public boundary dry-run passed
+rollback-source decision is explicit
+final candidate backup exists
+final AliDNS current values are recorded
+observation window length is stated
+```
+
+Required approval phrase:
+
+```text
+Approve Aliyun production subscription distribution promotion. Allow the documented DNS and public subscription-boundary changes only. No public Admin, no edge traffic activation, no unrelated node mutation, and rollback follows the recorded accepted-outage or rollback-start decision.
+```
+
+Required validation after promotion:
+
+```text
+public /api/health returns expected authRequired health
+public Admin remains blocked
+authorized subscription refresh passes without exposing raw token or URL in logs
+opaque artifact canary passes privately if still active and approved for this gate
+AliDNS records match the approved target
+old DNS values and rollback decision are recorded
+observation window starts
+```
+
+### Gate F: Observation, Rollback, And Cleanup Decision
+
+Purpose:
+
+```text
+Separate promotion success from cleanup of old nodes, old records, or lab paths.
+```
+
+Allowed read-only checks:
+
+```text
+public health and authorized subscription refresh sampling
+Nginx and app logs for errors without sensitive output
+AliDNS confirmation
+subscription output inventory
+AWS stopped-node inventory
+```
+
+Rollback choices:
+
+```text
+if accepted outage continues:
+  revert Aliyun public boundary and DNS to the previously recorded state, then
+  keep outage documented until another restore path is approved
+
+if rollback-start was approved before promotion:
+  start the approved rollback node and restore DNS/runtime according to that
+  separate rollback-start record
+
+if clean-start authority was accepted:
+  restore candidate backup or disable public distribution according to the
+  clean-start promotion record
+```
+
+Cleanup non-goals:
+
+```text
+no AWS termination
+no security-group deletion
+no channel-lab cleanup
+no legacy query-token retirement
+no broader opaque artifact issuance
+```
+
 ## Execution Phases
 
 ### Phase 0: Record Decision And Current Inventory
@@ -599,20 +962,26 @@ Aliyun.
 Required approval phrase:
 
 ```text
-Approve Aliyun production subscription distribution promotion. Include DNS change, production state copy, Nginx public boundary, and rollback to current prod-edge-a.
+Approve Aliyun production subscription distribution promotion. Allow the documented DNS and public subscription-boundary changes only. No public Admin, no edge traffic activation, no unrelated node mutation, and rollback follows the recorded accepted-outage or rollback-start decision.
 ```
 
 Required validation:
 
 ```text
-final backup
+Gate A live inventory is current
+Gate B source-state decision is explicit
+Gate C private state-copy validation passed, or clean-start authority is
+explicitly accepted
+Gate D public-boundary dry run passed
+rollback-source decision is explicit
+final candidate backup
 candidate service active
 candidate Nginx config test passes
 public /api/health passes after DNS/gateway change
 public Admin remains blocked
 authorized subscription refresh passes
 opaque artifact canary passes if still active
-current production rollback path is documented
+accepted-outage or rollback-start path is documented
 observation window is started
 ```
 
@@ -762,12 +1131,13 @@ Node drain/stop:
 The next executable gate is:
 
 ```text
-clean edge node rebuild planning, or Aliyun production subscription
-distribution promotion planning after private state validation is unblocked.
+Aliyun promotion Gate A live inventory refresh, prod-edge-a source access /
+source-state planning, clean edge node rebuild planning, or rollback-start
+planning for stopped AWS Singapore nodes if temporary restore is needed.
 ```
 
 Do not move DNS, promote production authority, expose public Admin, start edge
 traffic, restart stopped AWS nodes, terminate instances, or delete security
-groups before source access planning, any approved source access remediation,
-private validation, state handling, promotion, rebuild, rollback, and cleanup
-gates are separately approved and recorded.
+groups before live inventory, source-state planning, any approved source access
+remediation, private validation, public-boundary dry run, promotion, rebuild,
+rollback, and cleanup gates are separately approved and recorded.

@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-05-26, Asia/Shanghai.
+Last updated: 2026-05-27, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -134,6 +134,15 @@ Current architecture priorities:
   exist. It does not expose raw customer portal URLs, artifact references,
   subscription URLs, SQLite persistence, Aliyun deployment, production storage,
   public portal resolution, DNS, or user traffic.
+- Aliyun Promotion Runbook / Package 5: the repository-only promotion gate
+  model is documented in `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
+  and recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md`.
+  It separates repo-only design, live read-only inventory, source-state
+  decision, private state-copy validation, public-boundary dry run, DNS
+  promotion, observation, rollback, and cleanup. It does not authorize Aliyun
+  deployment, DNS changes, state copy, public listener exposure, edge traffic,
+  or production authority transfer.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a
@@ -314,6 +323,8 @@ operator approval, validation, and rollback path exist:
   `docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md`.
   The latest source internal inspection attempt is
   `docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md`.
+  The Package 5 promotion runbook readiness record is
+  `docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md`.
 - Clean fallback `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
@@ -402,6 +413,7 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - `docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md`
 - `docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md`
 - `docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md`
+- `docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md`
 - The current Aliyun SWAS host is reachable through SSH alias `miyao`.
 - It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
   `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
@@ -436,9 +448,9 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - Follow-up source internal inspection confirmed prod-edge-a EC2 health and
   production public endpoint health, but SSM inventory is empty and SSH TCP/22
   closes before banner/auth. Source command execution remains blocked.
-- The next gate is explicit prod-edge-a source access remediation planning,
-  followed by separate remediation approval if mutation is needed, then Aliyun
-  private state-copy validation approval.
+- The next promotion gate is Aliyun Gate A live inventory refresh, followed by
+  source access / source-state planning, separate remediation approval if
+  mutation is needed, and then Aliyun private state-copy validation approval.
 
 Latest Aliyun user-management / subscription-distribution decision:
 
@@ -460,8 +472,9 @@ Latest Aliyun user-management / subscription-distribution decision:
 - The tracked static node config still references `prod-edge-a` and
   `prod-edge-b`, so subscription output/config must be rebuilt before the
   service can be considered healthy again.
-- The next executable gate is clean edge node rebuild planning, Aliyun
-  promotion planning, or a rollback-start approval for the stopped AWS nodes.
+- The next executable gate is Aliyun Gate A live inventory refresh, clean edge
+  node rebuild planning, source access / source-state planning, or a
+  rollback-start approval for the stopped AWS nodes.
 
 Latest A2 preflight:
 
