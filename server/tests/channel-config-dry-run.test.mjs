@@ -90,6 +90,75 @@ test("dryRunChannelConfig validates and summarizes channel candidates without se
   });
 });
 
+test("dryRunChannelConfig returns a safe local benchmark plan without connecting remotely", () => {
+  withConfig(candidateConfig(), (configPath) => {
+    const summary = dryRunChannelConfig({
+      configPath,
+      env: {
+        SS_PASSWORD: "ss-secret",
+        VLESS_UUID: "11111111-1111-4111-8111-111111111111",
+        HY2_PASSWORD: "hy2-secret",
+        TUIC_UUID: "22222222-2222-4222-8222-222222222222",
+        TUIC_PASSWORD: "tuic-secret",
+        TUIC_TOKEN: "tuic-token"
+      }
+    });
+
+    assert.deepEqual(summary.benchmarkPlan, {
+      mode: "local-dry-run",
+      remoteConnections: false,
+      metrics: [
+        "successRate",
+        "timeoutCount",
+        "connectTimeMs",
+        "timeToFirstByteMs",
+        "p50Ms",
+        "p95Ms",
+        "p99Ms"
+      ],
+      probes: [
+        {
+          name: "ss-baseline",
+          protocol: "ss",
+          role: "baseline",
+          host: "ss.example.test",
+          port: 18388,
+          checks: ["clash-render", "tcp-connect", "http-generate-204-through-proxy"],
+          udpProbe: false
+        },
+        {
+          name: "vless-candidate",
+          protocol: "vless",
+          role: "candidate",
+          host: "vless.example.test",
+          port: 443,
+          checks: ["clash-render", "tcp-connect", "http-generate-204-through-proxy", "sustained-session"],
+          udpProbe: true
+        },
+        {
+          name: "hy2-candidate",
+          protocol: "hysteria2",
+          role: "candidate",
+          host: "hy2.example.test",
+          port: 443,
+          checks: ["clash-render", "tcp-connect", "http-generate-204-through-proxy", "sustained-session"],
+          udpProbe: true
+        },
+        {
+          name: "tuic-candidate",
+          protocol: "tuic",
+          role: "candidate",
+          host: "tuic.example.test",
+          port: 10443,
+          checks: ["clash-render", "tcp-connect", "http-generate-204-through-proxy", "sustained-session"],
+          udpProbe: true
+        }
+      ]
+    });
+    assert.doesNotMatch(JSON.stringify(summary.benchmarkPlan), /ss-secret|hy2-secret|tuic-secret|tuic-token|11111111|22222222/);
+  });
+});
+
 test("dryRunChannelConfig rejects invalid configs without leaking provided secrets", () => {
   withConfig(
     {
