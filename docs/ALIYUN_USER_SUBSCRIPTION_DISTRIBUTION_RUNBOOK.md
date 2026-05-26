@@ -113,10 +113,14 @@ Repository-only platform work has started without production authority:
 ```text
 private Admin subscriptions workflow: implemented
 customer-facing user portal MVP shell: implemented in repository only
+  - current UI reference: EqualDCDN /use-style auth card plus user dashboard
+  - includes login/signup shell, package selection, subscription link boxes,
+    backup-link placeholder, app downloads, usage steps, and safety checklist
 Subscription V2 renderer: implemented
 opaque artifact issue / refresh / rotate / revoke contracts: implemented
 overview distribution readiness summary: implemented for configured inventory
 public registration/auth model: not approved
+public payment flow: not approved
 runtime promotion to Aliyun: not approved
 production state copy to Aliyun: not completed
 DNS or public traffic migration: not approved
