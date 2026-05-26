@@ -108,9 +108,12 @@ Current architecture priorities:
 - Channel Upgrade MVP: prioritize Clash/Mihomo-native subscription rendering
   for multi-protocol channel candidates. SS remains the baseline; VLESS/XUDP,
   Hysteria2, and TUIC are renderer-supported candidate families; QUIC/MPTCP stay
-  research items until measured in controlled canaries. Runtime canaries are
-  gated by `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`; repository renderer/config
-  support does not authorize remote protocol deployment by itself.
+  research items until measured in controlled canaries. The repository channel
+  strategy engine now separates default `stable` output from `private`,
+  `canary`, and `recovery` capacity while preserving explicit operator canary
+  assignment as single-node output. Runtime canaries are gated by
+  `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`; repository renderer/config support
+  does not authorize remote protocol deployment by itself.
 - Local Edge Agent: keep as a parked future node/agent adaptation asset, not
   the current mainline for the next channel-upgrade slice.
 - Server Edge Mesh: plan private edge-to-edge health, management, validation,
@@ -129,6 +132,7 @@ Use these docs for detail:
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`
 - `docs/LOCAL_EDGE_AGENT_DESIGN.md`
 - `docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md`
+- `docs/CHANNEL_STRATEGY_ENGINE.md`
 - `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`
 - `docs/SERVER_EDGE_MESH_DESIGN.md`
 - `docs/PROJECT_SIMPLIFICATION_MAP.md`
@@ -224,9 +228,11 @@ operator approval, validation, and rollback path exist:
 - DNS, Nginx, HTTPS redirect behavior, systemd, production runtime config,
   tenant state, or SQLite authority changes.
 
-GitHub-hosted Actions validation has previously been blocked by billing or
-spending-limit constraints. Manual CI fallback is documented, but it is not
-staging, not production, and not deployment approval.
+GitHub-hosted Actions validation is currently blocked by billing,
+spending-limit, or quota constraints. The expected account-quota recovery date
+is 2026-06-01; until then, PR validation uses local and HP manual CI evidence
+per `docs/CI_MANUAL_VALIDATION.md`. Manual CI fallback is documented, but it is
+not staging, not production, and not deployment approval.
 
 ## Current Work Queue
 
@@ -238,6 +244,9 @@ simplification queue is closed:
 - `C2-architecture-non-goal-hardening` - completed in PR #114.
 - `B1-code-module-inventory` - completed in PR #115.
 - `B2-admin-ui-surface-simplification` - completed in PR #115.
+- `B5-channel-strategy-engine-mvp` - completed in the Channel Strategy Engine work; default
+  subscription rendering now uses the `stable` pool, while explicit operator
+  assignment can still emit a single private/canary/recovery node.
 
 The remaining queued items are A-tier and remain blocked:
 

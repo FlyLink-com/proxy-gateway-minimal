@@ -14,6 +14,7 @@
     "docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md",
     "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
+    "docs/CHANNEL_STRATEGY_ENGINE.md",
     "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md",
     "docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md",
     "docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md",
@@ -56,6 +57,7 @@
     "Aliyun current server as private loopback-only subscription control-plane candidate after CI cleanup",
     "Local Linux manual CI as the target validation host",
     "Clean rebuild servers as traffic forwarding edge data-plane nodes",
+    "Channel Strategy Engine for stable/private/canary/recovery node-pool selection in repository subscription rendering",
     "Channel runtime canary execution remains gated by docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md after repository renderer/config support",
     "Local Edge Agent as loopback-only client adapter prototype",
     "Server Edge Mesh as private operator/edge management path",
@@ -99,7 +101,7 @@
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, and validation evidence before it is marked Ready, submitted for merge, or reported complete. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
-    "githubHostedActions": "blocked-by-billing-or-spending-limit",
+    "githubHostedActions": "blocked-by-billing-spending-limit-or-quota-until-2026-06-01-expected",
     "manualCiFallback": "HP local Linux manual CI is bootstrapped and archive-validation passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922; historical Aliyun SWAS validation-host residue has been cleaned from the CI lane; Aliyun candidate preparation is complete; Aliyun state-copy preflight and prod-edge-a source internal inspection attempts are recorded, but private state-copy remains blocked by source access",
     "manualCiIsStaging": false,
     "cTierCommand": "git diff --check origin/master...HEAD",
@@ -118,7 +120,7 @@
   "activeBlockers": [
     {
       "id": "github-actions-hosted-runner",
-      "summary": "GitHub-hosted Actions validation is deferred by account billing/spending-limit blocker.",
+      "summary": "GitHub-hosted Actions validation is deferred by account billing/spending-limit/quota blocker until the expected 2026-06-01 quota recovery; use local and HP manual CI evidence meanwhile.",
       "sourceDoc": "docs/PROJECT_CONTEXT.md"
     },
     {

@@ -391,7 +391,9 @@ export function createSubscriptionCore({
   }
 
   function summarizeDistribution(nodes) {
-    const eligibleNodes = nodes.filter((node) => node.subscriptionEligible).length;
+    const eligibleNodes = nodes.filter(
+      (node) => node.subscriptionEligible && node.channelPool === "stable"
+    ).length;
     const blockedNodes = nodes.length - eligibleNodes;
     const blockers = [];
 

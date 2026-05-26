@@ -15,6 +15,7 @@
     "docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md",
     "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
+    "docs/CHANNEL_STRATEGY_ENGINE.md",
     "docs/MULTI_AGENT_OPERATING_MODEL.md"
   ],
   "tasks": [
@@ -197,6 +198,37 @@
       "validation": [
         "git diff --check origin/master...HEAD",
         "npm test"
+      ]
+    },
+    {
+      "id": "B5-channel-strategy-engine-mvp",
+      "risk": "B",
+      "status": "completed",
+      "lane": "edge-data-plane",
+      "title": "Add repository-local channel strategy engine for subscription rendering",
+      "goal": "Separate default stable node output from private, canary, and recovery capacity while preserving explicit operator canary assignment as single-node output.",
+      "allowedFiles": [
+        "server/services/subscriptions/*",
+        "server/tests/subscription-service.test.mjs",
+        "server/tests/subscription-architecture-contract.test.mjs",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/README.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate production",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, or runtime config",
+        "change production tenant or artifact state",
+        "write secrets or raw subscription URLs",
+        "treat static channel strategy as live node health measurement"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/subscription-service.test.mjs",
+        "node --test server/tests/subscription-architecture-contract.test.mjs server/tests/clash-subscription.test.mjs server/tests/admin-subscriptions.test.mjs",
+        "npm test",
+        "npm run project-state:check"
       ]
     },
     {

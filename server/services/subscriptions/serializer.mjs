@@ -1,5 +1,6 @@
 import { computeSubscriptionStatus } from "./status.mjs";
 import {
+  defaultSubscriptionEdgeServers,
   firstSubscriptionEligibleEdgeServer,
   listEdgeNodes,
   namedEdgeServers,
@@ -32,9 +33,11 @@ export function resolveEligibleNamedServer(proxyConfig, nodeId) {
 }
 
 export function cloneProxyConfigForSubscriptionOutput(proxyConfig, nodeId) {
+  const defaultServers = defaultSubscriptionEdgeServers(proxyConfig);
+  const [defaultNode] = defaultServers;
   const eligibleServers = subscriptionEligibleEdgeServers(proxyConfig);
-  const [defaultNode] = eligibleServers;
-  const node = eligibleServers.find((server) => server.name === String(nodeId ?? "").trim() || server.id === String(nodeId ?? "").trim()) || null;
+  const normalizedNodeId = String(nodeId ?? "").trim();
+  const node = eligibleServers.find((server) => server.name === normalizedNodeId || server.id === normalizedNodeId) || null;
   if (!node) {
     return {
       ...proxyConfig,
@@ -42,10 +45,10 @@ export function cloneProxyConfigForSubscriptionOutput(proxyConfig, nodeId) {
     };
   }
 
-  if (node.name === defaultNode.name) {
+  if (defaultNode && node.name === defaultNode.name) {
     return {
       ...proxyConfig,
-      servers: eligibleServers
+      servers: defaultServers
     };
   }
 
