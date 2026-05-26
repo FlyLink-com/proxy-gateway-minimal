@@ -417,7 +417,8 @@ Scope:
 ```
 
 Requires runbook, read-only inventory, explicit approval, validation evidence,
-and cleanup path.
+and cleanup path. Runtime canary execution gates live in
+`docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`.
 
 ### Stage 3: Controlled prod-edge-b Canary
 
@@ -431,6 +432,8 @@ Scope:
 ```
 
 This stage must prove reliability and rollback before broader rollout.
+Use `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md` before deploying or exposing any
+candidate runtime on `prod-edge-b` or another approved target.
 
 ## Non-Goals
 

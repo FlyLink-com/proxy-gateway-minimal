@@ -98,7 +98,9 @@ Current architecture priorities:
 - Channel Upgrade MVP: prioritize Clash/Mihomo-native subscription rendering
   for multi-protocol channel candidates. SS remains the baseline; VLESS/XUDP,
   Hysteria2, and TUIC are renderer-supported candidate families; QUIC/MPTCP stay
-  research items until measured in controlled canaries.
+  research items until measured in controlled canaries. Runtime canaries are
+  gated by `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`; repository renderer/config
+  support does not authorize remote protocol deployment by itself.
 - Local Edge Agent: keep as a parked future node/agent adaptation asset, not
   the current mainline for the next channel-upgrade slice.
 - Server Edge Mesh: plan private edge-to-edge health, management, validation,
@@ -116,6 +118,7 @@ Use these docs for detail:
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`
 - `docs/LOCAL_EDGE_AGENT_DESIGN.md`
 - `docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md`
+- `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`
 - `docs/SERVER_EDGE_MESH_DESIGN.md`
 - `docs/PROJECT_SIMPLIFICATION_MAP.md`
 - `docs/MULTI_AGENT_OPERATING_MODEL.md`
@@ -163,6 +166,11 @@ operator approval, validation, and rollback path exist:
 - Broader opaque artifact issuance.
 - Legacy query-token retirement.
 - Traffic accounting, quota enforcement, and device-abuse enforcement.
+- Channel runtime canary execution for VLESS/XUDP, Hysteria2, TUIC, or any
+  other protocol candidate. Repository renderer/config support is merged, but
+  runtime deployment, node config activation, security-group changes,
+  operator-device canaries, or broader rollout remain A-tier and must follow
+  `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See
