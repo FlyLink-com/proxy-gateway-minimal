@@ -288,17 +288,17 @@ Current findings:
 The Aliyun host is reachable and has Node.js 22, npm, and git available.
 No active manual-CI workspace, repository archive, GitHub CLI config, or git
 credential file was found in the read-only scan.
-Nginx and proxy-gateway are not installed or active.
 The approved cleanup record
 `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md` removed
 the remaining root npm/cache residue and rechecked it absent.
-WireGuard wg-home is active on UDP 51820 and must be explicitly accepted,
-scoped, or removed during candidate hardening.
-UFW is inactive and iptables default policies are ACCEPT, so the host is not
-yet a hardened production-control boundary.
-No bootstrap, deploy, DNS, Nginx, systemd, firewall, WireGuard, SQLite, secret,
-artifact, tenant, production authority, edge traffic, or cutover mutation has
-been performed.
+The approved candidate-preparation record
+`docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md`
+deployed a private candidate app, loopback-only Nginx boundary, and UFW
+hardening.
+WireGuard wg-home remains active on UDP 51820 as an explicitly preserved lab
+path; it was not mutated or promoted.
+No DNS, production authority, user traffic, production SQLite copy, artifact
+copy, edge traffic, AWS, public Admin, or cutover mutation has been performed.
 ```
 
 ### Phase 3: Aliyun Subscription-Control Candidate Bootstrap
@@ -323,6 +323,24 @@ public Admin remains blocked if Nginx is configured
 no edge data-plane listener is opened
 no production DNS points to the candidate
 no production SQLite authority has moved
+```
+
+Execution record:
+
+```text
+docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md
+```
+
+Current candidate status:
+
+```text
+proxy-gateway-candidate.service: active / enabled
+candidate app: 127.0.0.1:3456 only
+candidate Nginx: 127.0.0.1:18080 only
+UFW: active, deny incoming, allow outgoing, allow OpenSSH and existing wg-home
+public HP-side checks: 3456, 18080, 80, and 443 closed; 22 open
+AliDNS: still points production subscription domains to prod-edge-a
+AWS prod-edge-a/prod-edge-b: still running
 ```
 
 ### Phase 4: State Copy And Rendering Validation
@@ -436,8 +454,8 @@ Recommended order:
 1. Local Linux CI readiness is documented and HP manual CI has passed.
 2. Aliyun read-only inventory is documented.
 3. Aliyun manual CI lane cleanup is completed and rechecked.
-4. Approve Aliyun subscription-control candidate preparation.
-5. Bootstrap candidate control-plane service without production authority.
+4. Aliyun subscription-control candidate preparation is approved and recorded.
+5. Candidate control-plane service is bootstrapped without production authority.
 6. Validate private state copy and subscription rendering after separate
    state-handling approval.
 7. Promote Aliyun user-management / subscription-distribution after separate
@@ -514,6 +532,6 @@ observation, unless a later approved technical MVP integration gate requires a
 new edge.
 ```
 
-The immediate next execution should be Aliyun subscription-control candidate
-preparation approval, not production DNS, not SQLite movement, not node
-shutdown, and not Aliyun production promotion.
+The immediate next execution should be Aliyun private state-copy validation
+approval, not production DNS, not public Admin exposure, not edge traffic, not
+node shutdown, and not Aliyun production promotion.

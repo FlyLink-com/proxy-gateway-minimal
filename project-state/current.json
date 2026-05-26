@@ -19,6 +19,7 @@
     "docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md",
     "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md",
     "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md",
+    "docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md",
     "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/VALIDATION_BASELINE.md"
@@ -49,7 +50,7 @@
     "HP local Linux as manual CI and operator lab only",
     "Controlled drain and retirement of non-Aliyun / non-HP nodes after Aliyun promotion",
     "Subscription Control / Edge Split",
-    "Aliyun current server as future subscription control-plane candidate after CI exits",
+    "Aliyun current server as private loopback-only subscription control-plane candidate after CI cleanup",
     "Local Linux manual CI as the target validation host",
     "Clean rebuild servers as traffic forwarding edge data-plane nodes",
     "Channel runtime canary execution remains gated by docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md after repository renderer/config support",
@@ -89,7 +90,7 @@
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, and validation evidence before it is marked Ready, submitted for merge, or reported complete. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
     "githubHostedActions": "blocked-by-billing-or-spending-limit",
-    "manualCiFallback": "HP local Linux manual CI is bootstrapped and archive-validation passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922; historical Aliyun SWAS validation-host residue has been cleaned from the CI lane and the host is pending subscription-control candidate preparation approval",
+    "manualCiFallback": "HP local Linux manual CI is bootstrapped and archive-validation passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922; historical Aliyun SWAS validation-host residue has been cleaned from the CI lane; Aliyun candidate preparation is complete and the next gate is private state-copy validation approval",
     "manualCiIsStaging": false,
     "cTierCommand": "git diff --check origin/master...HEAD",
     "bTierServerCommands": [
@@ -117,13 +118,13 @@
     },
     {
       "id": "aliyun-control-local-ci-rebuild",
-      "summary": "The target rebuild direction is current Aliyun as future production subscription-control candidate, HP/local Linux as manual CI and operator lab, and controlled drain/retirement for non-Aliyun / non-HP nodes; HP manual CI has passed and Aliyun CI residue cleanup is complete, but candidate bootstrap remains gated.",
+      "summary": "The target rebuild direction is current Aliyun as future production subscription-control candidate, HP/local Linux as manual CI and operator lab, and controlled drain/retirement for non-Aliyun / non-HP nodes; HP manual CI has passed, Aliyun CI residue cleanup is complete, and Aliyun private candidate bootstrap is complete without production authority.",
       "sourceDoc": "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md"
     },
     {
-      "id": "aliyun-sub-control-candidate-prep-blocked",
-      "summary": "Aliyun has Node.js 22/npm/git and no active proxy-gateway runtime, but Nginx is absent, WireGuard wg-home is active, UFW is inactive, and iptables defaults are ACCEPT; subscription-control bootstrap needs separate approval and hardening.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md"
+      "id": "aliyun-private-state-copy-blocked",
+      "summary": "Aliyun candidate app is active on 127.0.0.1:3456, candidate Nginx is active on 127.0.0.1:18080, UFW is deny-incoming with SSH and existing wg-home allowed, and HP-side checks show public 3456/18080/80/443 closed; production state-copy and promotion remain blocked without separate approval.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md"
     },
     {
       "id": "non-aliyun-hp-node-retirement-blocked",
@@ -142,8 +143,6 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Aliyun subscription-control candidate preparation approval",
-    "Aliyun subscription-control candidate bootstrap without DNS, user traffic, production authority, or edge traffic",
     "Aliyun private state-copy validation approval",
     "Aliyun production subscription authority promotion approval",
     "Subscription-output inventory proving AWS nodes are no longer emitted, or explicit client-cache-window acceptance",

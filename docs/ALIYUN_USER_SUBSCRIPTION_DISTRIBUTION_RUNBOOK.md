@@ -377,6 +377,26 @@ confirm no edge proxy listener is opened
 confirm no production DNS points to candidate
 ```
 
+Execution record:
+
+```text
+docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md
+```
+
+Current status:
+
+```text
+Aliyun candidate app is active on 127.0.0.1:3456.
+Candidate Nginx is active on 127.0.0.1:18080.
+UFW is active with default deny incoming and OpenSSH plus existing wg-home
+51820/udp allowed.
+Public checks from HP show 3456, 18080, 80, and 443 closed and SSH open.
+AliDNS still points sub.globalcirclecat.com and ss-sg.globalcirclecat.com to
+13.215.156.159.
+No production authority, DNS, user traffic, state-copy, edge traffic, AWS, or
+public Admin mutation has been performed.
+```
+
 ### Phase 3: Production State Copy Validation
 
 Goal:
@@ -583,9 +603,9 @@ Node drain/stop:
 The next executable gate is:
 
 ```text
-Aliyun subscription control-plane candidate preparation approval.
+Aliyun private state-copy validation approval.
 ```
 
-Do not move DNS, copy SQLite state, promote production authority, or stop AWS
-nodes before candidate preparation, private validation, state handling, and
-promotion gates are separately approved and recorded.
+Do not move DNS, promote production authority, expose public Admin, start edge
+traffic, or stop AWS nodes before private validation, state handling, promotion,
+and drain gates are separately approved and recorded.

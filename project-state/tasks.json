@@ -10,6 +10,7 @@
     "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
     "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md",
+    "docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/MULTI_AGENT_OPERATING_MODEL.md"
   ],
@@ -251,7 +252,7 @@
     {
       "id": "A3-aliyun-user-subscription-distribution-platform",
       "risk": "A",
-      "status": "cleanup-completed-blocked-requires-candidate-prep-approval",
+      "status": "candidate-prepared-blocked-requires-private-state-copy-approval",
       "lane": "subscription-control-plane",
       "title": "Build Aliyun as the user-management and subscription-distribution platform",
       "goal": "Move user management, subscription rendering, opaque artifact authority, and private Admin control toward Aliyun while keeping HP as validation/lab and without granting production authority until promotion gates pass.",
@@ -264,7 +265,6 @@
         "project-state/*.json"
       ],
       "forbiddenActions": [
-        "bootstrap Aliyun before candidate-preparation approval",
         "move DNS before promotion approval",
         "copy SQLite or artifact state without state-copy approval",
         "expose public Admin",

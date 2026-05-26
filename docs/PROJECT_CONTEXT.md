@@ -96,9 +96,9 @@ Current architecture priorities:
   lab, and all other nodes in a controlled drain/retirement queue. See
   `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
-  opaque artifacts, and rendering authoritative in the control plane. The
-  current target is to move CI off the current Aliyun server, then evaluate
-  that Aliyun server as the future production `sub-control-a` candidate.
+  opaque artifacts, and rendering authoritative in the control plane. CI has
+  moved off the current Aliyun server, and that host is now prepared as a
+  private loopback-only `sub-control-a` candidate without production authority.
 - Edge Data Plane: current AWS `prod-edge-a/b` remain production/runtime
   dependencies until Aliyun promotion and node drain are explicitly approved.
   Do not add or keep non-Aliyun/HP nodes as the default direction; drain and
@@ -195,10 +195,10 @@ operator approval, validation, and rollback path exist:
   and
   `docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md`.
   It is not staging, not production, and not deploy approval.
-- Aliyun manual CI cleanup or production-control candidate preparation. The
-  first read-only Aliyun inventory is recorded in
-  `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md`.
-- Clean `sub-control-a` candidate provisioning, state-copy validation,
+- Aliyun private state-copy validation or production-control promotion. The
+  current Aliyun candidate-preparation record is
+  `docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md`.
+- Clean fallback `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
   `prod-edge-a` / `prod-edge-b` closes during key exchange from the current
@@ -264,6 +264,7 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 
 - `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md`
 - `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md`
+- `docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md`
 - The current Aliyun SWAS host is reachable through SSH alias `miyao`.
 - It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
   `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
@@ -273,16 +274,20 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   `/tmp/proxy-gateway-ci-*.tar` archives; the post-cleanup recheck found CI
   workspace, GitHub CLI config, git credentials, npm/cache residue, and CI
   archives absent.
-- Nginx and proxy-gateway runtime are not installed or active.
+- A private candidate proxy-gateway runtime is now active on loopback only, and
+  candidate Nginx is active on loopback only.
 - WireGuard `wg-home` is active on UDP 51820 and must be explicitly accepted,
-  scoped, or removed during candidate hardening.
-- UFW is inactive and iptables default policies are ACCEPT; this is not a final
-  production-control boundary.
-- No package install, deploy, DNS, Nginx, systemd, firewall, WireGuard, SQLite,
-  secret, artifact, tenant, production authority, edge traffic, or cutover
-  mutation was performed.
-- The next gate is explicit Aliyun subscription-control candidate preparation
-  approval.
+  scoped, or removed during any future production hardening.
+- UFW is active with default deny incoming / allow outgoing and only OpenSSH
+  plus existing `wg-home` UDP 51820 allowed inbound.
+- The candidate app listens on `127.0.0.1:3456`; candidate Nginx listens on
+  `127.0.0.1:18080`; no edge proxy listener was opened.
+- HP-side external validation found public 3456, 18080, 80, and 443 closed and
+  SSH 22 open.
+- No DNS, user traffic, production authority, production SQLite copy, artifact
+  copy, edge traffic, AWS, public Admin, WireGuard, tenant, or cutover mutation
+  was performed.
+- The next gate is explicit Aliyun private state-copy validation approval.
 
 Latest Aliyun user-management / subscription-distribution decision:
 
@@ -304,9 +309,9 @@ Latest Aliyun user-management / subscription-distribution decision:
 - The preflight also found the tracked static node config still references
   `prod-edge-a` and `prod-edge-b`, so node cleanup remains sequenced but not
   executable until Aliyun promotion and subscription-output drain evidence.
-- The next executable gate is Aliyun subscription-control candidate preparation
-  approval or, for node cleanup specifically, a later drain-and-stop approval
-  after Aliyun promotion.
+- The next executable gate is Aliyun private state-copy validation approval or,
+  for node cleanup specifically, a later drain-and-stop approval after Aliyun
+  promotion.
 
 Latest A2 preflight:
 
