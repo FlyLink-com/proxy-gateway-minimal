@@ -334,6 +334,40 @@
       ]
     },
     {
+      "id": "B9-channel-extended-measurement-assessment",
+      "risk": "B",
+      "status": "completed",
+      "lane": "edge-data-plane",
+      "title": "Add repository-local channel extended measurement assessment",
+      "goal": "Classify already-collected local benchmark summaries into ready, needs-more-samples, or hold states before an operator requests the next channel canary gate.",
+      "allowedFiles": [
+        "server/services/channel-extended-measurement.mjs",
+        "server/tests/channel-extended-measurement.test.mjs",
+        "server/tests/package-entry.test.mjs",
+        "scripts/channel-extended-assessment.mjs",
+        "package.json",
+        "index.mjs",
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate production",
+        "run probes or contact edge nodes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, or runtime config",
+        "change production tenant or artifact state",
+        "write secrets or raw subscription URLs",
+        "treat extended assessment as automatic production rollout"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/channel-extended-measurement.test.mjs server/tests/package-entry.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "A0-channel-canary-server-selection",
       "risk": "A",
       "status": "mihomo-import-validation-passed-blocked-before-extended-measurement-broader-rollout-or-cleanup-approval",

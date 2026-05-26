@@ -17,6 +17,7 @@ export {
 export { dryRunChannelConfig } from "./server/services/channel-config-dry-run.mjs";
 export { buildChannelCandidateReport } from "./server/services/channel-candidate-report.mjs";
 export { buildChannelDecisionPack } from "./server/services/channel-decision-pack.mjs";
+export { assessChannelExtendedMeasurement } from "./server/services/channel-extended-measurement.mjs";
 export { runChannelBenchmarkPlan } from "./server/services/channel-benchmark-runner.mjs";
 export {
   CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,

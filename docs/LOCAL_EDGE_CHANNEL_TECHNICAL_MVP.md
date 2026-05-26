@@ -472,6 +472,28 @@ The decision pack is meant for review and archival. It does not make runtime
 changes, deploy protocol services, edit subscription output, change DNS, or
 approve a Risk A channel canary.
 
+Repository-local extended measurement assessment is available through
+`assessChannelExtendedMeasurement(...)`. It consumes an already-collected local
+benchmark summary and classifies each probe as:
+
+```text
+ready_for_decision
+needs_extended_measurement
+hold_for_investigation
+```
+
+The default assessment thresholds require enough samples, high success rate,
+low timeout rate, and bounded P95/P99 latency before a candidate can be treated
+as ready for an operator decision. The output remains advisory and redacted; it
+does not run probes, contact edge nodes, deploy runtime protocols, change
+subscription output, or approve any canary.
+
+To assess a local benchmark summary:
+
+```bash
+npm run channel:extended-assessment -- <path-to-local-summary.json>
+```
+
 To create a safe editable fixture from a local dry-run summary:
 
 ```bash
