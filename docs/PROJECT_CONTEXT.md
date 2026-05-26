@@ -171,7 +171,9 @@ operator approval, validation, and rollback path exist:
   and
   `docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md`.
   It is not staging, not production, and not deploy approval.
-- Aliyun manual CI cleanup or production-control candidate preparation.
+- Aliyun manual CI cleanup or production-control candidate preparation. The
+  first read-only Aliyun inventory is recorded in
+  `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md`.
 - Clean `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
@@ -225,8 +227,29 @@ Latest local Linux CI candidate inventory:
   and `npm run admin:build`.
 - Per-run workspace, archive, npm cache, GitHub config, and git credentials
   were cleaned after validation.
-- The next gate is Aliyun CI cleanup inventory and explicit cleanup approval
-  before retiring Aliyun from the validation lane.
+- The next gate is explicit Aliyun CI cleanup approval before retiring Aliyun
+  from the validation lane.
+
+Latest Aliyun CI cleanup / subscription-control candidate inventory:
+
+- `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md`
+- The current Aliyun SWAS host is reachable through SSH alias `miyao`.
+- It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
+  `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
+- No active manual-CI workspace, repository archive, GitHub CLI config, or git
+  credential file was found in the read-only scan.
+- Small user-level npm/cache residue remains and requires explicit cleanup
+  approval before deletion.
+- Nginx and proxy-gateway runtime are not installed or active.
+- WireGuard `wg-home` is active on UDP 51820 and must be explicitly accepted,
+  scoped, or removed during candidate hardening.
+- UFW is inactive and iptables default policies are ACCEPT; this is not a final
+  production-control boundary.
+- No cleanup, package install, deploy, DNS, Nginx, systemd, firewall, SQLite,
+  secret, artifact, tenant, production authority, edge traffic, or cutover
+  mutation was performed.
+- The next gates are explicit Aliyun manual CI lane cleanup approval, recheck,
+  then explicit Aliyun subscription-control candidate preparation approval.
 
 Latest A2 preflight:
 

@@ -272,6 +272,30 @@ the host is also required for unrelated production traffic
 backup/restore capacity is insufficient
 ```
 
+Current inventory record:
+
+```text
+docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md
+```
+
+Current findings:
+
+```text
+The Aliyun host is reachable and has Node.js 22, npm, and git available.
+No active manual-CI workspace, repository archive, GitHub CLI config, or git
+credential file was found in the read-only scan.
+Nginx and proxy-gateway are not installed or active.
+Small npm/cache residue remains and requires explicit cleanup approval before
+deletion.
+WireGuard wg-home is active on UDP 51820 and must be explicitly accepted,
+scoped, or removed during candidate hardening.
+UFW is inactive and iptables default policies are ACCEPT, so the host is not
+yet a hardened production-control boundary.
+No cleanup, bootstrap, deploy, DNS, Nginx, systemd, firewall, SQLite, secret,
+artifact, tenant, production authority, edge traffic, or cutover mutation has
+been performed.
+```
+
 ### Phase 3: Aliyun Subscription-Control Candidate Bootstrap
 
 Goal:
@@ -407,13 +431,14 @@ Cleanup must not happen before rollback is no longer needed.
 Recommended order:
 
 ```text
-1. Finish this docs-only direction PR.
-2. Read-only inventory for the local Linux CI host.
-3. Bootstrap and validate local Linux manual CI.
-4. Mark Aliyun manual CI usage as retired after local CI proves clean.
-5. Read-only inventory for the current Aliyun server as sub-control-a candidate.
-6. Clean the Aliyun host and bootstrap candidate control-plane service.
-7. Validate private state copy and subscription rendering.
+1. Local Linux CI readiness is documented and HP manual CI has passed.
+2. Aliyun read-only inventory is documented.
+3. Approve and run Aliyun manual CI lane cleanup.
+4. Recheck Aliyun CI residue after cleanup.
+5. Approve Aliyun subscription-control candidate preparation.
+6. Bootstrap candidate control-plane service without production authority.
+7. Validate private state copy and subscription rendering after separate
+   state-handling approval.
 8. Build clean forwarding nodes.
 9. Run promotion/cutover planning.
 10. Retire old nodes only after the observation window.
