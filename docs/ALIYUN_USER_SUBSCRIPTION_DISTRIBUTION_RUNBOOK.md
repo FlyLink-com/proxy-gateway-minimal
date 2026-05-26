@@ -428,6 +428,32 @@ are printed or recorded
 rollback source remains current production authority
 ```
 
+Current preflight record:
+
+```text
+docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md
+```
+
+Current preflight status:
+
+```text
+Aliyun private candidate app, loopback Nginx, UFW, and candidate SQLite
+integrity are healthy.
+AliDNS still points sub.globalcirclecat.com and ss-sg.globalcirclecat.com to
+13.215.156.159.
+No public Admin, public 80/443/3456/18080 exposure, DNS change, user traffic
+change, production authority transfer, or state-copy was observed or performed.
+State-copy validation remains blocked because prod-edge-a source internal SSH
+inspection timed out during banner exchange, so source SQLite integrity and
+fresh source backup have not been verified in this gate.
+```
+
+Recommended source-inspection gate before private state-copy validation:
+
+```text
+Approve prod-edge-a source internal state-copy inspection. Read-only only. No DNS change, no user traffic, no service restart, no SQLite copy, no public Admin.
+```
+
 ### Phase 4: Aliyun Distribution Promotion
 
 Goal:
@@ -603,9 +629,9 @@ Node drain/stop:
 The next executable gate is:
 
 ```text
-Aliyun private state-copy validation approval.
+prod-edge-a source internal state-copy inspection.
 ```
 
 Do not move DNS, promote production authority, expose public Admin, start edge
-traffic, or stop AWS nodes before private validation, state handling, promotion,
-and drain gates are separately approved and recorded.
+traffic, or stop AWS nodes before source inspection, private validation, state
+handling, promotion, and drain gates are separately approved and recorded.
