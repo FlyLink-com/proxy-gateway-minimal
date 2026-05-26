@@ -35,7 +35,7 @@ Shadowsocks-only data plane
 Clash/Mihomo direct remote-node connection
 ```
 
-The new technical MVP is separate:
+The new technical MVP is separate. The long-term client-side shape can still be:
 
 ```text
 Local Edge Agent
@@ -44,10 +44,14 @@ Local Edge Agent
   -> measured data-plane quality loop
 ```
 
-It should prove whether a platform-controlled local loopback adapter plus
-pluggable remote channels can improve real proxy-session stability, quality,
-resilience, and observability without changing the user's main Clash/Mihomo
-workflow.
+The immediate implementation track is simpler: use Clash/Mihomo's native
+protocol support first, and make the subscription renderer express channel
+candidates directly in YAML. The Local Edge Agent remains a parked future
+node/agent adaptation asset until that line is explicitly reopened.
+
+The MVP should prove whether platform-controlled channel candidates can improve
+real proxy-session stability, quality, resilience, and observability without
+changing the user's main Clash/Mihomo workflow.
 
 ## Safety Boundary
 
@@ -267,6 +271,23 @@ Output:
 ```
 
 No runtime, protocol deployment, edge mutation, or production change.
+
+### Stage 1A: Repository-Only Direct Subscription Channel Renderer
+
+```text
+Risk: B
+Scope:
+  Clash/Mihomo-native multi-protocol renderer
+  SS baseline
+  VLESS/XUDP candidate fields
+  url-test / fallback groups
+  fail-closed unsupported protocols
+  no production config change
+```
+
+This is the current mainline for channel upgrade. It uses the existing
+Clash/Mihomo client as the protocol executor and keeps remote runtime deployment
+as a separate A-tier gate.
 
 ### Stage 1: Repository-Only Agent Channel Harness
 

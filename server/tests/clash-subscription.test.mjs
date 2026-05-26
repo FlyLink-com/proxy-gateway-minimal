@@ -85,6 +85,75 @@ test("generateClashSubscription uses configured names as provider-neutral labels
   assert.doesNotMatch(yaml, /internal-node-a|internal-region|operator-only/);
 });
 
+test("generateClashSubscription emits VLESS XUDP candidate YAML", () => {
+  const yaml = generateClashSubscription({
+    servers: [
+      {
+        name: "ss-baseline",
+        host: "ss.example.test",
+        port: 18388,
+        method: "aes-256-gcm",
+        password: "ss-secret",
+        protocol: "ss"
+      },
+      {
+        name: "vless-xudp-candidate",
+        host: "vless.example.test",
+        port: 443,
+        protocol: "vless",
+        uuid: "11111111-1111-4111-8111-111111111111",
+        udp: true,
+        packetEncoding: "xudp",
+        tls: true,
+        serverName: "front.example.test",
+        network: "tcp",
+        flow: "xtls-rprx-vision",
+        clientFingerprint: "chrome"
+      }
+    ]
+  });
+
+  assert.match(yaml, /name: "ss-baseline"/);
+  assert.match(yaml, /type: ss/);
+  assert.match(yaml, /name: "vless-xudp-candidate"/);
+  assert.match(yaml, /type: vless/);
+  assert.match(yaml, /server: "vless\.example\.test"/);
+  assert.match(yaml, /port: 443/);
+  assert.match(yaml, /uuid: "11111111-1111-4111-8111-111111111111"/);
+  assert.match(yaml, /udp: true/);
+  assert.match(yaml, /packet-encoding: "xudp"/);
+  assert.match(yaml, /tls: true/);
+  assert.match(yaml, /servername: "front\.example\.test"/);
+  assert.match(yaml, /network: "tcp"/);
+  assert.match(yaml, /flow: "xtls-rprx-vision"/);
+  assert.match(yaml, /client-fingerprint: "chrome"/);
+  assert.match(yaml, /name: AUTO/);
+  assert.match(yaml, /type: url-test/);
+  assert.match(yaml, /url: "https:\/\/www\.gstatic\.com\/generate_204"/);
+  assert.match(yaml, /name: FALLBACK/);
+  assert.match(yaml, /type: fallback/);
+  assert.match(yaml, /- AUTO/);
+  assert.match(yaml, /- FALLBACK/);
+});
+
+test("generateClashSubscription rejects unsupported protocol instead of silently emitting it", () => {
+  assert.throws(
+    () =>
+      generateClashSubscription({
+        servers: [
+          {
+            name: "bad-candidate",
+            host: "bad.example.test",
+            port: 443,
+            protocol: "unknown-protocol",
+            password: "secret"
+          }
+        ]
+      }),
+    /unsupported Clash proxy protocol/
+  );
+});
+
 test("subscriptionSummary returns metadata without passwords", () => {
   const summary = subscriptionSummary({
     proxyConfig: sampleConfig(),
