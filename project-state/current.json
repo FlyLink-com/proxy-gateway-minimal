@@ -15,6 +15,7 @@
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
     "docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md",
     "docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md",
+    "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md",
     "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
     "docs/VALIDATION_BASELINE.md"
   ],
@@ -107,8 +108,18 @@
     },
     {
       "id": "aliyun-control-local-ci-rebuild",
-      "summary": "The target rebuild direction is current Aliyun as future production subscription control-plane candidate, local Linux as manual CI, and clean servers as forwarding edge nodes; all execution remains gated.",
+      "summary": "The target rebuild direction is current Aliyun as future production subscription control-plane candidate, local Linux as manual CI, and clean servers as forwarding edge nodes; HP manual CI has passed and Aliyun read-only inventory is recorded, but cleanup/bootstrap remain gated.",
       "sourceDoc": "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md"
+    },
+    {
+      "id": "aliyun-ci-cleanup-approval-blocked",
+      "summary": "Aliyun read-only inventory found no active manual-CI workspace/archive/GH config/git credentials, but npm/cache residue remains and cleanup requires explicit approval before any deletion or candidate preparation.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md"
+    },
+    {
+      "id": "aliyun-sub-control-candidate-prep-blocked",
+      "summary": "Aliyun has Node.js 22/npm/git and no active proxy-gateway runtime, but Nginx is absent, WireGuard wg-home is active, UFW is inactive, and iptables defaults are ACCEPT; subscription-control bootstrap needs separate approval and hardening.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md"
     },
     {
       "id": "a2-host-internal-inventory-blocked",
@@ -117,8 +128,10 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Aliyun manual CI cleanup / retirement from validation lane after local Linux CI passes",
-    "Aliyun production-control candidate read-only inventory",
+    "Aliyun manual CI cleanup approval and cleanup execution",
+    "Aliyun CI residue recheck after cleanup",
+    "Aliyun subscription-control candidate preparation approval",
+    "Aliyun subscription-control candidate bootstrap without DNS, user traffic, production authority, or edge traffic",
     "Clean edge-node forwarding rebuild preflight",
     "A1 legacy query-token retirement (blocked until runbook and approval)",
     "A2 physical control/edge split promotion decision (blocked until candidate, backup/restore, edge-only behavior, rollback, and approval)"
