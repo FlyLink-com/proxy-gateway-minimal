@@ -1,6 +1,6 @@
 # Commercial / Entitlement Unit
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-05-26, Asia/Shanghai.
 
 > Status:
 > - Type: Active unit design
@@ -115,13 +115,17 @@ docs/DOMAIN_UNIT_BOUNDARIES.md
 docs/PROJECT_CONTEXT.md
 docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md
 server/services/subscriptions/*
+server/services/platform/control-plane-contract.mjs
 server/routes/subscription.mjs
 server/routes/admin-subscriptions.mjs
+server/tests/platform-control-plane-contract.test.mjs
 ```
 
 The server anchors currently represent technical subscription access behavior.
-They are not evidence of a complete commercial entitlement, billing, CRM,
-order, invoice, or renewal system.
+The platform control-plane contract adds repository-only account and entitlement
+decision shapes, but it is not evidence of a complete commercial entitlement,
+billing, CRM, order, invoice, renewal system, production storage, or payment
+provider integration.
 
 ## Risk And Validation
 
@@ -144,6 +148,8 @@ decide MVP commercial states versus later billing integration states
 separate technical subscription expiry/status from commercial validity
 define how access control consumes entitlement decisions without payment internals
 add tests only when implementation begins
+extend the platform entitlement contract only through repo-only tests until a
+  later production storage or billing integration gate is approved
 ```
 
 ## Paused / Blocked Items

@@ -51,6 +51,9 @@ test("public lead intake accepts validated company-site submissions without auth
     assert.equal(received[0].organization, "Acme Research");
     assert.equal(received[0].email, "ops@example.com");
     assert.equal(received[0].source, "company-site");
+    assert.equal(received[0].type, "platform_lead");
+    assert.equal(received[0].status, "new");
+    assert.equal(received[0].submittedAt, received[0].createdAt);
   } finally {
     server.close();
   }
