@@ -842,5 +842,53 @@ test("overview returns ok, counts, and node summaries", async () => {
       subscriptionEligible: true,
       reason: ""
     });
+    assert.deepEqual(overview.distribution, {
+      mode: "subscription-v2",
+      ready: true,
+      eligibleNodes: 2,
+      blockedNodes: 0,
+      blockers: []
+    });
+  });
+});
+
+test("overview reports distribution blockers when no node can render subscriptions", async () => {
+  await withService(async (context) => {
+    const overview = context.service.overview();
+
+    assert.deepEqual(overview.distribution, {
+      mode: "subscription-v2",
+      ready: false,
+      eligibleNodes: 0,
+      blockedNodes: 2,
+      blockers: ["no_subscription_eligible_nodes"]
+    });
+  }, {
+    proxyConfig: {
+      servers: [
+        {
+          id: "node_maintenance",
+          name: "prod-edge-a",
+          region: "Singapore",
+          host: "203.0.113.10",
+          port: 18388,
+          method: "aes-256-gcm",
+          password: "maintenance-secret",
+          maintenance: true
+        },
+        {
+          id: "node_disabled",
+          name: "prod-edge-b",
+          region: "Singapore",
+          host: "203.0.113.11",
+          port: 18388,
+          method: "aes-256-gcm",
+          password: "disabled-secret",
+          status: "disabled"
+        }
+      ],
+      pingHosts: [],
+      nginx: {}
+    }
   });
 });

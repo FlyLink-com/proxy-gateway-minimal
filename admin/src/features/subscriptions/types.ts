@@ -56,4 +56,11 @@ export type SubscriptionOverview = {
   expired: number;
   disabled: number;
   nodes: SubscriptionNode[];
+  distribution: {
+    mode: "subscription-v2";
+    ready: boolean;
+    eligibleNodes: number;
+    blockedNodes: number;
+    blockers: string[];
+  };
 };

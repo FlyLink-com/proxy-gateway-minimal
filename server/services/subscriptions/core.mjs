@@ -390,8 +390,27 @@ export function createSubscriptionCore({
     return listNodes();
   }
 
+  function summarizeDistribution(nodes) {
+    const eligibleNodes = nodes.filter((node) => node.subscriptionEligible).length;
+    const blockedNodes = nodes.length - eligibleNodes;
+    const blockers = [];
+
+    if (eligibleNodes === 0) {
+      blockers.push("no_subscription_eligible_nodes");
+    }
+
+    return {
+      mode: "subscription-v2",
+      ready: blockers.length === 0,
+      eligibleNodes,
+      blockedNodes,
+      blockers
+    };
+  }
+
   function overview() {
     const tenants = subscriptionStore.listTenants().map(serializeTenant);
+    const nodeSummaries = listNodes();
     const counts = {
       total: tenants.length,
       active: 0,
@@ -422,7 +441,8 @@ export function createSubscriptionCore({
         expiring: counts.expiring,
         disabledOrExpired: counts.disabledOrExpired
       },
-      nodes: listNodes()
+      nodes: nodeSummaries,
+      distribution: summarizeDistribution(nodeSummaries)
     };
   }
 

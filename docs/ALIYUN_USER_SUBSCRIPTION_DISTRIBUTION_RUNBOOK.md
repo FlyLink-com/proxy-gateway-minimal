@@ -106,6 +106,20 @@ self-hosted CI
 
 This is a management and distribution platform, not a new networking stack.
 
+## Repository Implementation Status
+
+Repository-only platform work has started without production authority:
+
+```text
+private Admin subscriptions workflow: implemented
+Subscription V2 renderer: implemented
+opaque artifact issue / refresh / rotate / revoke contracts: implemented
+overview distribution readiness summary: implemented for configured inventory
+runtime promotion to Aliyun: not approved
+production state copy to Aliyun: not completed
+DNS or public traffic migration: not approved
+```
+
 ## Current Read-Only Facts
 
 These facts were refreshed read-only on 2026-05-26. They are drift-prone and
@@ -147,15 +161,15 @@ Current AWS inventory:
 
 ```text
 i-0b7791340d3fedff5:
-  status: running
-  public IP: 13.215.156.159
-  documented role: prod-edge-a / current production target
+  status: stopped under accepted outage decision
+  public IP: none after stop
+  documented role: prod-edge-a / stopped former production target
   security group: sg-0379ece0b3d305c43
 
 i-0ad8676ee113d14cb:
-  status: running
-  public IP: 18.136.102.226
-  documented role: prod-edge-b / green candidate / emitted secondary slot
+  status: stopped under accepted outage decision
+  public IP: none after stop
+  documented role: prod-edge-b / stopped former green candidate
   security group: sg-06682c36aa03834f7
 
 i-004ab1c6c71d06bca:
@@ -173,6 +187,12 @@ i-0609ff48af3946c1c:
   documented project tag: MeshCentral
   note: do not mutate as part of proxy-gateway cleanup without separate owner
     confirmation
+```
+
+Stop-only cleanup record:
+
+```text
+docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md
 ```
 
 ## Target End State
@@ -633,10 +653,12 @@ Node drain/stop:
 The next executable gate is:
 
 ```text
-prod-edge-a source access remediation planning.
+clean edge node rebuild planning, or Aliyun production subscription
+distribution promotion planning after private state validation is unblocked.
 ```
 
 Do not move DNS, promote production authority, expose public Admin, start edge
-traffic, or stop AWS nodes before source access planning, any approved source
-access remediation, private validation, state handling, promotion, and drain
+traffic, restart stopped AWS nodes, terminate instances, or delete security
+groups before source access planning, any approved source access remediation,
+private validation, state handling, promotion, rebuild, rollback, and cleanup
 gates are separately approved and recorded.

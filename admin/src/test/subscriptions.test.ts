@@ -135,7 +135,22 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
       subscriptionUrl: "temp-url"
     }),
     listNodes: async () => [],
-    overview: async () => ({ ok: true, total: 0, active: 0, expiring: 0, expired: 0, disabled: 0, nodes: [] }),
+    overview: async () => ({
+      ok: true,
+      total: 0,
+      active: 0,
+      expiring: 0,
+      expired: 0,
+      disabled: 0,
+      nodes: [],
+      distribution: {
+        mode: "subscription-v2",
+        ready: false,
+        eligibleNodes: 0,
+        blockedNodes: 0,
+        blockers: ["no_subscription_eligible_nodes"]
+      }
+    }),
     ...overrides
   };
 }
@@ -342,7 +357,22 @@ describe("overview and nodes pages", () => {
   test("loads overview and nodes from backend endpoints", async () => {
     const fetchMock = vi
       .fn()
-      .mockResolvedValueOnce(jsonResponse({ ok: true, total: 1, active: 1, expiring: 0, expired: 0, disabled: 0, nodes: [] }))
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        total: 1,
+        active: 1,
+        expiring: 0,
+        expired: 0,
+        disabled: 0,
+        nodes: [],
+        distribution: {
+          mode: "subscription-v2",
+          ready: true,
+          eligibleNodes: 1,
+          blockedNodes: 0,
+          blockers: []
+        }
+      }))
       .mockResolvedValueOnce(jsonResponse({ items: [{ id: "node_sg", name: "aws-singapore-blue", status: "online" }] }));
     const client = createAdminApiClient({
       baseUrl: "http://127.0.0.1:3456",
@@ -356,13 +386,31 @@ describe("overview and nodes pages", () => {
 
   test("renders backend overview metrics and node rows", async () => {
     const client = adminClient({
-      overview: async () => ({ ok: true, total: 3, active: 2, expiring: 1, expired: 0, disabled: 0, nodes: [] }),
+      overview: async () => ({
+        ok: true,
+        total: 3,
+        active: 2,
+        expiring: 1,
+        expired: 0,
+        disabled: 0,
+        nodes: [],
+        distribution: {
+          mode: "subscription-v2",
+          ready: true,
+          eligibleNodes: 2,
+          blockedNodes: 1,
+          blockers: []
+        }
+      }),
       listNodes: async () => [{ id: "node_sg", name: "aws-singapore-blue", status: "online" }]
     });
 
     const { unmount } = render(createElement(OverviewPage, { apiClient: client }));
+    expect(await screen.findByText("Subscription distribution")).not.toBeNull();
+    expect(await screen.findByText("Ready")).not.toBeNull();
     expect(await screen.findByText("3")).not.toBeNull();
-    expect(await screen.findByText("2")).not.toBeNull();
+    expect(within(screen.getByText("Eligible nodes").closest(".metric-card") as HTMLElement).getByText("2")).not.toBeNull();
+    expect(within(screen.getByText("Blocked nodes").closest(".metric-card") as HTMLElement).getByText("1")).not.toBeNull();
     unmount();
 
     render(createElement(NodesPage, { apiClient: client }));
