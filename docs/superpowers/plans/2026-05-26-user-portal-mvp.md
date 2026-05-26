@@ -100,6 +100,7 @@ Expected: PASS.
 - Modify: `admin/src/App.tsx`
 - Modify: `admin/src/styles.css`
 - Modify: `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
+- Modify: `docs/PROJECT_CONTEXT.md`
 - Modify: `docs/units/SUBSCRIPTION_ACCESS_UNIT.md`
 
 - [x] **Step 1: Write the failing public-site isolation test**
@@ -225,6 +226,62 @@ public auth, portal entry links, runtime deployment, DNS, Nginx, or production
 traffic changes.
 
 - [x] **Step 4: Run verification**
+
+Run:
+
+```powershell
+npm run test --prefix admin -- src/test/company-site.test.tsx
+npm run admin:test
+npm run admin:build
+npm test
+npm run project-state:check
+git diff --check origin/master...HEAD
+```
+
+Expected: all pass.
+
+### Task 6: Geek AI Company Site And Domain-Pool Planning
+
+**Files:**
+- Modify: `admin/src/features/company-site/company-site-page.tsx`
+- Test: `admin/src/test/company-site.test.tsx`
+- Modify: `admin/src/styles.css`
+- Modify: `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
+- Modify: `docs/units/SUBSCRIPTION_ACCESS_UNIT.md`
+
+- [x] **Step 1: Write the failing AI/geek-positioning test**
+
+```tsx
+window.location.hash = "#/site";
+render(<App />);
+expect(screen.getByRole("heading", { name: "GlobalCircle AI" })).toBeTruthy();
+expect(screen.getByText(/AI Agent 研发与运营自动化实验室/)).toBeTruthy();
+expect(screen.getByText("主流媒体广告投放")).toBeTruthy();
+expect(screen.getByText("前沿产品研究")).toBeTruthy();
+```
+
+- [x] **Step 2: Verify RED**
+
+Run: `npm run test --prefix admin -- src/test/company-site.test.tsx`
+
+Observed: FAIL against the previous subscription-access site copy.
+
+- [x] **Step 3: Implement AI / operations-growth company site**
+
+Reposition the public site as a modern geek-style AI and automation research
+company surface. Replace the old subscription-service story with Agent Studio,
+API Sandbox, private knowledge access, operations automation, mainstream-media
+advertising cooperation, frontier product research, multi-domain landing-page
+planning, and qualified business lead collection.
+
+- [x] **Step 4: Record domain-pool planning boundary**
+
+Use Aliyun DNS CLI read-only inventory to record the eight observed planning
+domains. The record is for public site / campaign landing-page design only; it
+does not authorize DNS changes, Aliyun deployment, portal exposure, production
+traffic, or customer-specific access material on the public site.
+
+- [x] **Step 5: Run verification**
 
 Run:
 

@@ -179,8 +179,11 @@ textarea {
 
 .company-site-shell {
   min-height: 100vh;
-  background: #f6f8fb;
-  color: #172033;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(35, 209, 139, 0.18), transparent 32%),
+    radial-gradient(circle at 86% 10%, rgba(96, 165, 250, 0.16), transparent 30%),
+    linear-gradient(180deg, #070b10 0%, #0d1118 48%, #f5f7fb 48%, #f5f7fb 100%);
+  color: #f8fafc;
 }
 
 @keyframes site-float {
@@ -224,8 +227,8 @@ textarea {
   align-items: center;
   justify-content: space-between;
   gap: 24px;
-  background: rgba(246, 248, 251, 0.94);
-  border-bottom: 1px solid #d9e2ef;
+  background: rgba(7, 11, 16, 0.82);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
   position: sticky;
   top: 0;
   z-index: 2;
@@ -246,8 +249,8 @@ textarea {
   border-radius: 8px;
   display: grid;
   place-items: center;
-  background: #101828;
-  color: #f8fafc;
+  background: linear-gradient(135deg, #23d18b, #7dd3fc);
+  color: #071110;
   font-weight: 800;
 }
 
@@ -262,10 +265,14 @@ textarea {
 }
 
 .company-site-nav a {
-  color: #475569;
+  color: #cbd5e1;
   text-decoration: none;
   font-size: 14px;
   padding: 8px 10px;
+}
+
+.company-site-nav a:hover {
+  color: #ffffff;
 }
 
 .company-site-hero {
@@ -292,7 +299,7 @@ textarea {
 .company-site-band p,
 .company-site-contact p,
 .company-site-card p {
-  color: #526173;
+  color: #cbd5e1;
 }
 
 .company-site-hero p {
@@ -327,8 +334,8 @@ textarea {
 
 .company-site-primary {
   border: 0;
-  background: #0f766e;
-  color: #ffffff;
+  background: #23d18b;
+  color: #071110;
   cursor: pointer;
   transition:
     background 160ms ease,
@@ -337,8 +344,8 @@ textarea {
 }
 
 .company-site-primary:hover {
-  background: #0d9488;
-  box-shadow: 0 12px 26px rgba(15, 118, 110, 0.24);
+  background: #7dd3fc;
+  box-shadow: 0 12px 30px rgba(35, 209, 139, 0.24);
   transform: translateY(-1px);
 }
 
@@ -354,9 +361,9 @@ textarea {
 }
 
 .company-site-secondary {
-  border: 1px solid #c6d3e1;
-  color: #172033;
-  background: #ffffff;
+  border: 1px solid rgba(203, 213, 225, 0.28);
+  color: #f8fafc;
+  background: rgba(255, 255, 255, 0.08);
 }
 
 .company-site-visual {
@@ -365,8 +372,10 @@ textarea {
   position: relative;
   overflow: hidden;
   background:
-    linear-gradient(145deg, rgba(15, 23, 42, 0.98), rgba(30, 41, 59, 0.94)),
-    #111827;
+    linear-gradient(145deg, rgba(5, 10, 18, 0.98), rgba(16, 24, 40, 0.94)),
+    repeating-linear-gradient(90deg, rgba(125, 211, 252, 0.04) 0 1px, transparent 1px 52px),
+    #0b1220;
+  border: 1px solid rgba(125, 211, 252, 0.18);
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
 }
 
@@ -464,6 +473,33 @@ textarea {
   animation-delay: -4s;
 }
 
+.site-terminal-card {
+  position: absolute;
+  right: 58px;
+  bottom: 46px;
+  width: min(270px, calc(100% - 48px));
+  padding: 16px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.72);
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.28);
+}
+
+.site-terminal-card span {
+  color: #7dd3fc;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.site-terminal-card code {
+  color: #d9f99d;
+  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .company-site-section,
 .company-site-band,
 .company-site-contact,
@@ -473,6 +509,7 @@ textarea {
 
 .company-site-section {
   padding: 74px 0;
+  color: #0f172a;
 }
 
 .company-site-section-heading {
@@ -482,7 +519,7 @@ textarea {
 
 .company-site-section-heading span,
 .company-site-band span {
-  color: #0f766e;
+  color: #23d18b;
   font-weight: 800;
   font-size: 13px;
   text-transform: uppercase;
@@ -500,16 +537,18 @@ textarea {
 
 .company-site-capabilities {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
 }
 
 .company-site-card {
   min-height: 210px;
-  border: 1px solid #d9e2ef;
+  border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 8px;
   padding: 24px;
-  background: #ffffff;
+  background: rgba(15, 23, 42, 0.72);
+  color: #f8fafc;
+  backdrop-filter: blur(16px);
   transition:
     border-color 160ms ease,
     box-shadow 160ms ease,
@@ -518,15 +557,15 @@ textarea {
 
 .company-site-card:hover,
 .company-site-scenario-card:hover {
-  border-color: rgba(15, 118, 110, 0.28);
-  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.08);
+  border-color: rgba(35, 209, 139, 0.34);
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
   transform: translateY(-3px);
 }
 
 .company-site-card svg {
   width: 26px;
   height: 26px;
-  color: #0f766e;
+  color: #23d18b;
 }
 
 .company-site-card h3 {
@@ -541,6 +580,7 @@ textarea {
 
 .company-site-product-effect {
   padding: 76px 0 18px;
+  color: #0f172a;
 }
 
 .company-site-effect-copy {
@@ -571,6 +611,34 @@ textarea {
   line-height: 1.7;
 }
 
+.company-site-direction-list {
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.company-site-direction {
+  min-height: 150px;
+  padding: 18px;
+  border: 1px solid rgba(15, 118, 110, 0.16);
+  border-radius: 10px;
+  background: #ffffff;
+  box-shadow: 0 12px 34px rgba(15, 23, 42, 0.06);
+}
+
+.company-site-direction strong {
+  color: #0f172a;
+  font-size: 18px;
+}
+
+.company-site-direction p {
+  margin: 10px 0 0;
+  color: #526173;
+  font-size: 15px;
+  line-height: 1.62;
+}
+
 .company-site-effect-layout {
   display: grid;
   grid-template-columns: minmax(300px, 0.74fr) minmax(0, 1fr);
@@ -586,7 +654,7 @@ textarea {
   gap: 16px;
   border-radius: 12px;
   background:
-    linear-gradient(120deg, rgba(15, 23, 42, 0.98), rgba(15, 118, 110, 0.78), rgba(15, 23, 42, 0.98)),
+    linear-gradient(120deg, rgba(15, 23, 42, 0.98), rgba(15, 118, 110, 0.82), rgba(88, 28, 135, 0.78), rgba(15, 23, 42, 0.98)),
     #101828;
   background-size: 180% 180%;
   color: #ffffff;
@@ -671,13 +739,17 @@ textarea {
   grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1fr);
   gap: 36px;
   align-items: center;
-  background: #e9f7f4;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(236, 253, 245, 0.98)),
+    #ffffff;
   border: 1px solid #bfe5dc;
   border-radius: 12px;
+  color: #0f172a;
 }
 
 .company-site-band p {
   margin: 16px 0 0;
+  color: #475569;
   line-height: 1.7;
 }
 
@@ -711,7 +783,9 @@ textarea {
   align-items: center;
   gap: 34px;
   border-radius: 12px;
-  background: #172033;
+  background:
+    radial-gradient(circle at 12% 12%, rgba(35, 209, 139, 0.2), transparent 36%),
+    linear-gradient(145deg, #111827, #172033);
   color: #ffffff;
 }
 
@@ -1773,7 +1847,8 @@ th {
   .company-site-hero,
   .company-site-band,
   .company-site-capabilities,
-  .company-site-effect-layout {
+  .company-site-effect-layout,
+  .company-site-direction-list {
     grid-template-columns: 1fr;
   }
 
@@ -1897,6 +1972,13 @@ th {
     left: auto;
   }
 
+  .site-terminal-card {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    padding: 14px;
+  }
+
   .company-site-band,
   .company-site-contact,
   .company-site-product-effect {
@@ -1957,16 +2039,19 @@ th {
   .company-site-primary svg,
   .company-site-card,
   .company-site-scenario-card,
+  .company-site-direction,
   .site-effect-flow,
   .site-orbit,
-  .site-signal-card {
+  .site-signal-card,
+  .site-terminal-card {
     animation: none;
     transition: none;
   }
 
   .company-site-primary:hover,
   .company-site-card:hover,
-  .company-site-scenario-card:hover {
+  .company-site-scenario-card:hover,
+  .company-site-direction:hover {
     box-shadow: none;
     transform: none;
   }

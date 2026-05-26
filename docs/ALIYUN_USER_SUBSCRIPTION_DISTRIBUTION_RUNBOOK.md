@@ -114,6 +114,8 @@ planes:
 ```text
 Public company site:
   brand, business contact, product/service explanation
+  AI / automation / advertising cooperation positioning
+  public advertising landing-page experiments when separately deployed
   no customer auth
   no subscription artifact
   no Admin API call
@@ -136,6 +138,41 @@ portal subdomain directly derived from the public website domain
 shared cookie domain between website and portal
 shared analytics or scripts that correlate the two planes
 ```
+
+Read-only Aliyun DNS inventory on 2026-05-26 showed the account currently has
+eight domains available for planning:
+
+```text
+globalcirclecat.com
+globalcirclecat.shop
+globalcirclecat.cloud
+globalcirclecat.icu
+pleasehelpme.cn
+pleasehelpme.shop
+pleasehelpme.fun
+pleasehelpme.cyou
+```
+
+Design implication:
+
+```text
+primary public brand site:
+  can use a stable public brand domain after a separate deployment/DNS gate
+
+mainstream-media advertising landing pages:
+  can later use an approved domain pool for campaign segmentation, A/B tests,
+  and lead-source separation
+
+logged-in customer portal:
+  remains operator-issued and dynamic
+  must not be hard-linked from the public site or campaign pages
+  must not share cookies or customer-specific access material with the public
+  brand/advertising surface
+```
+
+This inventory is read-only planning evidence only. It is not a DNS change, not
+a deployment decision, and not approval to expose any portal or subscription
+endpoint.
 
 Future dynamic portal entrance configuration can be modeled without storing
 secrets in repository docs:
@@ -166,9 +203,16 @@ customer-facing user portal MVP shell: implemented in repository only
   - includes login/signup shell, package selection, subscription link boxes,
     backup-link placeholder, app downloads, usage steps, and safety checklist
 static company site preview: implemented in repository only
-  - official site content is brand/business/service explanation only
+  - official site content is brand/business/cooperation explanation only
+  - current positioning: geek-style AI / automation research company surface
+  - cooperation directions: mainstream media advertising, operations growth,
+    and frontier product research
+  - visible lead collection stays frontend-only mailto and does not persist
+    customer data in the repository app
   - it must not hard-link the customer portal route, subscription artifacts,
     Admin API, or any login-after-entry URL
+  - Aliyun DNS domain inventory has been read-only checked for future public
+    site / campaign landing-page planning, with no DNS mutation
 customer portal entrance model: planned as an operator-issued dynamic entry
   - future entry metadata may be represented by server-side YAML or another
     controlled config source

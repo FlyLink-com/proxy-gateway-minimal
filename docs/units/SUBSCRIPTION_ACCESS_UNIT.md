@@ -98,9 +98,13 @@ Local Client:
   local diagnostics
 
 Public Company Site:
-  may describe the service and collect business interest
+  may describe the business, technical research direction, cooperation offers,
+    and collect business interest
+  may later support public campaign landing pages on approved domains
   must not directly link to logged-in portal hosts, subscription artifacts,
   Admin APIs, or customer-specific access material
+  must not share customer-specific portal state, cookie scope, or access
+    material with advertising landing pages
 
 Validation / CI:
   exposes testable contracts for storage, rendering, Admin behavior, token

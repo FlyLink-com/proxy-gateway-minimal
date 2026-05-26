@@ -1,50 +1,76 @@
-import { ArrowRight, Building2, CheckCircle2, Globe2, ShieldCheck, Workflow } from "lucide-react";
+import {
+  ArrowRight,
+  Bot,
+  Building2,
+  CheckCircle2,
+  FlaskConical,
+  Megaphone
+} from "lucide-react";
 
 const capabilities = [
   {
-    title: "稳定订阅",
-    description: "为个人和小团队提供清晰的订阅入口，减少重复配置和手动维护。"
+    title: "Agent Studio",
+    description: "把业务流程拆成可验证的智能体原型，先跑通闭环，再进入交付和运营。"
   },
   {
-    title: "多端导入",
-    description: "覆盖桌面端和移动端常见客户端，开通后按指引完成导入。"
+    title: "API Sandbox",
+    description: "为开发者和内部团队提供可试验的接口沙盒，快速验证模型、工具和自动化链路。"
   },
   {
-    title: "持续支持",
-    description: "入口更新、套餐状态和使用问题都通过已确认的服务渠道处理。"
+    title: "私有知识接入",
+    description: "围绕企业资料、产品文档和运营素材建立受控知识接入，保持边界清晰。"
+  },
+  {
+    title: "运营自动化",
+    description: "把线索收集、内容生产、客户跟进和复盘指标沉淀成可复用工作流。"
+  }
+];
+
+const cooperationDirections = [
+  {
+    title: "主流媒体广告投放",
+    description: "面向搜索、信息流、社交平台和内容平台的获客链路设计，重点关注线索质量和可追踪转化。"
+  },
+  {
+    title: "前沿产品研究",
+    description: "围绕 AI Agent、自动化工作流、API 沙盒和新型交互产品做快速验证与样品交付。"
+  },
+  {
+    title: "多域名投放落地页",
+    description: "域名池只承载公开获客、广告测试和品牌触达；登录态工具入口继续由运营侧单独发放。"
   }
 ];
 
 const scenarios = [
   {
-    title: "个人多端",
-    description: "桌面端、移动端按同一开通节奏导入，适合长期自用和多设备使用。"
+    title: "广告投放线索分流",
+    description: "把投放落地页、邮件联系和人工跟进连接起来，让线索来源、意图和后续动作更清楚。"
   },
   {
-    title: "小团队协作",
-    description: "统一确认需求、统一发送入口，减少成员之间反复转发和解释成本。"
+    title: "私域用户运营",
+    description: "通过智能体辅助分层、触达和内容复用，提升小团队运营效率。"
   },
   {
-    title: "移动办公",
-    description: "适合出差、远程协作和临时设备切换，重点是入口清晰、指引明确。"
+    title: "企业知识助手",
+    description: "把分散资料整理为可查询、可追问、可审计的内部知识服务。"
   },
   {
-    title: "长期维护",
-    description: "入口更新、套餐状态和常见问题通过已确认渠道持续跟进。"
+    title: "内容生产工作流",
+    description: "把选题、素材、初稿、审核和发布准备拆成稳定流程，适合广告与品牌运营团队。"
   }
 ];
 
 const productOutcomes = [
-  "一处开通，多端导入",
-  "入口更新更清晰",
-  "持续服务跟进"
+  "获客链路更短",
+  "运营动作可追踪",
+  "AI 工作流可复用"
 ];
 
-const deliverySteps = [
-  "确认需求",
-  "完成开通",
-  "接收入口",
-  "导入客户端"
+const collaborationSteps = [
+  "问题诊断",
+  "样品验证",
+  "投放测试",
+  "运营复盘"
 ];
 
 const contactEmail = "gccltd.co@outlook.com";
@@ -53,61 +79,67 @@ export function CompanySitePage() {
   return (
     <main className="company-site-shell">
       <header className="company-site-header">
-        <a className="company-site-brand" href="#top" aria-label="GlobalCircle Access home">
+        <a className="company-site-brand" href="#top" aria-label="GlobalCircle AI home">
           <span>GC</span>
-          <strong>GlobalCircle Access</strong>
+          <strong>GlobalCircle AI</strong>
         </a>
         <nav className="company-site-nav" aria-label="公司官网导航">
-          <a href="#capabilities">服务</a>
+          <a href="#capabilities">能力</a>
           <a href="#scenarios">场景</a>
-          <a href="#delivery">开通</a>
+          <a href="#delivery">合作</a>
           <a href="#contact">联系</a>
         </nav>
       </header>
 
       <section className="company-site-hero" id="top">
         <div className="company-site-hero-copy">
-          <h1>GlobalCircle Access</h1>
+          <h1>GlobalCircle AI</h1>
           <p>
-            稳定订阅接入，面向个人和小团队的轻量服务。开通后获取专属入口，
-            按指引完成客户端导入。
+            AI Agent 研发与运营自动化实验室。面向主流媒体广告投放、增长运营和
+            前沿产品研究，构建可落地的智能体、API 沙盒与自动化工作流。
           </p>
           <div className="company-site-actions">
             <a className="company-site-primary" href="#contact">
-              获取客户入口
+              申请沙盒访问
               <ArrowRight aria-hidden="true" />
             </a>
-            <a className="company-site-secondary" href="#capabilities">
-              了解服务
+            <a className="company-site-secondary" href="#scenarios">
+              查看合作方向
             </a>
           </div>
         </div>
 
-        <div className="company-site-visual" aria-label="订阅服务视觉示意">
+        <div className="company-site-visual" aria-label="AI 研发与运营增长视觉示意">
           <div className="site-orbit site-orbit-a" />
           <div className="site-orbit site-orbit-b" />
+          <div className="site-terminal-card" aria-hidden="true">
+            <span>research.log</span>
+            <code>agent.prototype()</code>
+            <code>media.signal.scan()</code>
+            <code>growth.loop.measure()</code>
+          </div>
           <div className="site-signal-card site-signal-card-main">
-            <Globe2 aria-hidden="true" />
-            <span>Service</span>
-            <strong>稳定接入</strong>
+            <Bot aria-hidden="true" />
+            <span>Agent Lab</span>
+            <strong>智能体样品</strong>
           </div>
           <div className="site-signal-card site-signal-card-sub">
-            <ShieldCheck aria-hidden="true" />
-            <span>Member</span>
-            <strong>专属入口</strong>
+            <Megaphone aria-hidden="true" />
+            <span>Media Ops</span>
+            <strong>投放实验</strong>
           </div>
           <div className="site-signal-card site-signal-card-edge">
-            <Workflow aria-hidden="true" />
-            <span>Guide</span>
-            <strong>多端导入</strong>
+            <FlaskConical aria-hidden="true" />
+            <span>Research</span>
+            <strong>前沿研究</strong>
           </div>
         </div>
       </section>
 
       <section className="company-site-section" id="capabilities">
         <div className="company-site-section-heading">
-          <span>服务能力</span>
-          <h2>稳定、清晰、易上手的订阅接入服务</h2>
+          <span>技术能力</span>
+          <h2>极客型团队，把前沿技术变成可运营产品</h2>
         </div>
         <div className="company-site-capabilities">
           {capabilities.map((item) => (
@@ -122,12 +154,20 @@ export function CompanySitePage() {
 
       <section className="company-site-product-effect" id="scenarios">
         <div className="company-site-effect-copy">
-          <span>应用场景</span>
-          <h2>覆盖更多常见订阅接入场景</h2>
+          <span>合作方向</span>
+          <h2>从研发探索到广告投放和运营增长</h2>
           <p>
-            这个服务的核心不是复杂配置，而是把开通、入口、导入和后续支持整理成清晰流程。
-            因此它可以覆盖个人、小团队、移动办公和长期维护等高频需求。
+            我们更适合做技术向、探索向的增长合作：一边研究前沿产品形态，
+            一边把广告投放、线索收集、内容生产和客户运营变成可衡量的系统。
           </p>
+          <div className="company-site-direction-list">
+            {cooperationDirections.map((direction) => (
+              <article className="company-site-direction" key={direction.title}>
+                <strong>{direction.title}</strong>
+                <p>{direction.description}</p>
+              </article>
+            ))}
+          </div>
         </div>
         <div className="company-site-effect-layout">
           <div className="site-effect-flow" aria-label="产品效果示意">
@@ -152,15 +192,15 @@ export function CompanySitePage() {
 
       <section className="company-site-band" id="delivery">
         <div>
-          <span>开通流程</span>
-          <h2>开通后获取专属入口</h2>
+          <span>合作流程</span>
+          <h2>先验证问题，再扩大投放和产品实验</h2>
           <p>
-            完成开通后，我们会通过已确认的服务渠道发送专属入口和导入说明。
-            用户只需要保存最新入口，并按指引导入客户端。
+            不直接堆功能，也不空谈概念。每次合作先定义目标、样品和指标，
+            再决定是否进入更大规模的投放、运营自动化或产品研究。
           </p>
         </div>
         <ol className="company-site-steps">
-          {deliverySteps.map((step) => (
+          {collaborationSteps.map((step) => (
             <li key={step}>{step}</li>
           ))}
         </ol>
@@ -171,7 +211,8 @@ export function CompanySitePage() {
           <Building2 aria-hidden="true" />
           <h2>联系我们</h2>
           <p>
-            留下联系方式和需求说明，我们会通过邮件回复。已开通用户仍使用专属入口访问。
+            留下合作方向、投放目标或前沿产品研究需求，我们会通过邮件回复。
+            登录态客户工具仍通过单独发放的动态入口访问。
           </p>
           <a className="company-site-email" href={`mailto:${contactEmail}`}>
             {contactEmail}
@@ -184,25 +225,29 @@ export function CompanySitePage() {
           encType="text/plain"
         >
           <label>
-            称呼
-            <input name="name" type="text" placeholder="您的称呼" />
+            公司或机构
+            <input name="organization" type="text" placeholder="公司、团队或项目名称" />
           </label>
           <label>
-            联系方式
-            <input name="contact" type="text" placeholder="邮箱或即时通讯方式" required />
+            联系邮箱
+            <input name="email" type="email" placeholder="name@example.com" required />
           </label>
           <label>
-            需求说明
+            投放或运营目标
+            <input name="growth_goal" type="text" placeholder="获客、转化、私域运营或内容增长" required />
+          </label>
+          <label>
+            技术需求
             <textarea
-              name="message"
+              name="technical_need"
               rows={4}
-              placeholder="简单说明使用人数、设备和开通需求"
+              placeholder="简单说明 AI Agent、API 沙盒、自动化工作流或前沿产品研究方向"
               required
             />
           </label>
           <p>表单会调用本机邮件客户端，不会在当前页面保存信息。</p>
           <button className="company-site-primary" type="submit">
-            发送邮件
+            发送合作需求
             <ArrowRight aria-hidden="true" />
           </button>
         </form>
