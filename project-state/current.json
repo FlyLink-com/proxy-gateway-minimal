@@ -25,6 +25,7 @@
     "docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md",
     "docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md",
     "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md",
+    "docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md",
     "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/VALIDATION_BASELINE.md"
@@ -133,6 +134,11 @@
       "sourceDoc": "docs/PROJECT_CONTEXT.md"
     },
     {
+      "id": "channel-canary-server-selection",
+      "summary": "Read-only selection inventory recommends a clean provider-neutral channel-lab-a target and Hysteria2 as the first runtime canary direction, but no provider, region, instance, firewall delta, runtime, or traffic action is approved.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md"
+    },
+    {
       "id": "aliyun-control-local-ci-rebuild",
       "summary": "The target rebuild direction is current Aliyun as future production subscription-control candidate, HP/local Linux as manual CI and operator lab, and controlled drain/retirement for non-Aliyun / non-HP nodes; HP manual CI has passed, Aliyun CI residue cleanup is complete, and Aliyun private candidate bootstrap is complete without production authority.",
       "sourceDoc": "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md"
@@ -159,7 +165,7 @@
     }
   ],
   "nextRecommendedQueue": [
-    "channel canary server selection read-only inventory",
+    "channel-lab-a concrete provider/region/instance/cost/firewall shortlist or creation approval",
     "clean edge node rebuild planning",
     "Aliyun subscription distribution promotion planning with accepted outage context",
     "rollback-start approval for stopped AWS Singapore nodes if temporary restore is needed",

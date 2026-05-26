@@ -179,6 +179,11 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   `docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md`.
   It stopped `prod-edge-a` and `prod-edge-b`, retained security groups, left
   DNS unchanged, did not terminate instances, and did not mutate Aliyun.
+- The latest channel canary server selection inventory is recorded in
+  `docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md`.
+  It recommends a clean provider-neutral `channel-lab-a` target and Hysteria2
+  as the first protocol family, but it did not create a server, choose a
+  provider, deploy runtime, open ports, or change traffic.
 - Legacy blue `i-004ab1c6c71d06bca` is stopped and retained for controlled
   retirement review. Do not terminate it or delete its security group without
   separate A-tier approval.
@@ -204,6 +209,9 @@ operator approval, validation, and rollback path exist:
   security-group/firewall changes, operator-device canaries, or broader rollout
   remain A-tier and must follow `docs/CHANNEL_CANARY_SERVER_SELECTION.md` and
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`.
+  The current read-only selection record recommends `channel-lab-a` for a first
+  Hysteria2 canary, but creation still requires provider, region, instance,
+  cost, firewall, cleanup, and rollback details plus a separate approval phrase.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See
