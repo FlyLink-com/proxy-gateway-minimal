@@ -110,7 +110,7 @@
   },
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
-    "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, and validation evidence before it is marked Ready, submitted for merge, or reported complete. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
+    "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, validation evidence, and Agent / Task Routing metadata before it is marked Ready, submitted for merge, or reported complete. The routing metadata must name the lead agent, supporting agents if any, primary unit, secondary units, follow-up agent suitability, and recommended next owner. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
     "githubHostedActions": "blocked-by-billing-spending-limit-or-quota-until-2026-06-01-expected",
     "manualCiFallback": "HP local Linux manual CI is bootstrapped and archive-validation passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922; historical Aliyun SWAS validation-host residue has been cleaned from the CI lane; Aliyun candidate preparation is complete; Aliyun state-copy preflight and prod-edge-a source internal inspection attempts are recorded, but private state-copy remains blocked by source access",
     "manualCiIsStaging": false,

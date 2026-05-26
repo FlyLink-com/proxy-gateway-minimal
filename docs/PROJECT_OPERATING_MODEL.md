@@ -1,6 +1,6 @@
 # Project Operating Model
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-05-26, Asia/Shanghai.
 
 > Status:
 > - Type: Active operating model
@@ -242,12 +242,25 @@ validation:
   commands or runbook-specific checks actually run
   failures or skipped checks explained
   remaining gates stated explicitly
+
+agent / task routing:
+  lead agent name
+  supporting agents used, or none
+  primary unit and secondary impacted units
+  whether the task is suitable for future specialist agents
+  recommended next owner when follow-up work remains
 ```
 
 Incomplete PRs stay Draft. A PR that contains only design, only inventory, or
 only a runbook can still be valid only when that is its explicitly approved
 scope; in that case the PR body must say what was not executed and which gate
 comes next.
+
+PR descriptions should use `.github/pull_request_template.md` unless a more
+specific runbook requires a stricter format. The template's Agent / Task
+Routing section is mandatory even for single-agent PRs; write `none` or `not
+applicable` rather than omitting the field. This keeps future multi-agent task
+splitting visible in the PR history.
 
 Do not split design, execution, and validation across separate PRs by default.
 Use a split only when the risk model requires it, when the operator explicitly
