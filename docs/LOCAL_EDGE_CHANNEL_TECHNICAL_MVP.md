@@ -418,6 +418,18 @@ runtime protocols, or mutate local or production state. The helper normalizes
 runner output into the same versioned sample fixture shape and redacts raw
 runner errors from samples.
 
+The local CLI wrapper is explicit opt-in:
+
+```powershell
+npm run channel:benchmark-run -- .\path\to\local-dry-run-plan.json `
+  --runner .\path\to\trusted-local-runner.mjs
+```
+
+The runner module must be a local trusted file and must export `runProbe`.
+The repository does not ship a default network probe runner. This keeps the
+benchmark path usable for repeatable local experiments without turning a repo
+validation command into a hidden remote connection or protocol canary.
+
 The preferred local fixture shape is versioned:
 
 ```json
