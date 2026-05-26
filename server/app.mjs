@@ -10,9 +10,10 @@ import { systemProxyRoutes } from "./routes/system-proxy.mjs";
 import { networkRoutes } from "./routes/network.mjs";
 import { adminSubscriptionRoutes } from "./routes/admin-subscriptions.mjs";
 import { subscriptionRoutes } from "./routes/subscription.mjs";
+import { publicLeadRoutes } from "./routes/public-leads.mjs";
 import { resolveClientIp } from "./services/ip-address.mjs";
 
-const PUBLIC_PATHS = ["/api/health", "/proxy.pac", "/sub/clash.yaml"];
+const PUBLIC_PATHS = ["/api/health", "/api/public/leads", "/proxy.pac", "/sub/clash.yaml"];
 const PUBLIC_PATH_PREFIXES = ["/sub/a/"];
 
 export function createApp(state, options = {}) {
@@ -34,6 +35,7 @@ export function createApp(state, options = {}) {
     publicPaths: PUBLIC_PATHS,
     publicPathPrefixes: PUBLIC_PATH_PREFIXES
   }));
+  app.use(publicLeadRoutes(state));
   app.get("/api/status", statusRoutes(state));
   app.use(legacyProxyRoutes(state));
   app.use(systemProxyRoutes(state));

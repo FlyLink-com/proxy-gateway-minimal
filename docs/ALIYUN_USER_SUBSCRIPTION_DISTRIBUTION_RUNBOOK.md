@@ -106,6 +106,92 @@ self-hosted CI
 
 This is a management and distribution platform, not a new networking stack.
 
+## Public Site / User Portal Separation
+
+The public company site and the logged-in customer portal are separate delivery
+planes:
+
+```text
+Public company site:
+  brand, business contact, product/service explanation
+  AI / automation / advertising cooperation positioning
+  public advertising landing-page experiments when separately deployed
+  no customer auth
+  no subscription artifact
+  no Admin API call
+  no hard link to the customer portal
+
+Dynamic customer portal:
+  operator-issued entry
+  may rotate by customer, time window, or risk state
+  displays user subscription state after entry/auth
+  keeps subscription material opaque and visible only inside the customer flow
+```
+
+The public site can run on an Aliyun website/domain after a separate deployment
+gate, but it must not be the same public path as the logged-in portal. Avoid:
+
+```text
+/login on the public website
+/use on the public website
+portal subdomain directly derived from the public website domain
+shared cookie domain between website and portal
+shared analytics or scripts that correlate the two planes
+```
+
+Read-only Aliyun DNS inventory on 2026-05-26 showed the account currently has
+eight domains available for planning:
+
+```text
+globalcirclecat.com
+globalcirclecat.shop
+globalcirclecat.cloud
+globalcirclecat.icu
+pleasehelpme.cn
+pleasehelpme.shop
+pleasehelpme.fun
+pleasehelpme.cyou
+```
+
+Design implication:
+
+```text
+primary public brand site:
+  can use a stable public brand domain after a separate deployment/DNS gate
+
+mainstream-media advertising landing pages:
+  can later use an approved domain pool for campaign segmentation, A/B tests,
+  and lead-source separation
+
+logged-in customer portal:
+  remains operator-issued and dynamic
+  must not be hard-linked from the public site or campaign pages
+  must not share cookies or customer-specific access material with the public
+  brand/advertising surface
+```
+
+This inventory is read-only planning evidence only. It is not a DNS change, not
+a deployment decision, and not approval to expose any portal or subscription
+endpoint.
+
+Future dynamic portal entrance configuration can be modeled without storing
+secrets in repository docs:
+
+```yaml
+portalEntrances:
+  - customerRef: customer-public-id
+    status: active
+    hostRef: operator-issued-host
+    pathRef: operator-issued-path
+    delivery: out-of-band
+    expiresAt: 2026-06-26T00:00:00Z
+    rotationPolicy: manual-or-risk-triggered
+```
+
+The example above is a shape only. It is not a production config, not a DNS
+change, not a portal host assignment, and not an authorization to expose the
+portal publicly.
+
 ## Repository Implementation Status
 
 Repository-only platform work has started without production authority:
@@ -113,10 +199,31 @@ Repository-only platform work has started without production authority:
 ```text
 private Admin subscriptions workflow: implemented
 customer-facing user portal MVP shell: implemented in repository only
+  - current UI reference: EqualDCDN /use-style auth card plus user dashboard
+  - includes login/signup shell, package selection, subscription link boxes,
+    backup-link placeholder, app downloads, usage steps, and safety checklist
+static company site preview: implemented in repository only
+  - official site content is brand/business/cooperation explanation only
+  - current positioning: geek-style AI / automation research company surface
+  - cooperation directions: mainstream media advertising, operations growth,
+    and frontier product research
+  - visible lead collection posts to the repository-only public lead intake
+    endpoint `/api/public/leads` with validation and success/error UI
+  - no external Webhook, CRM, email automation, DNS, or production deployment is
+    configured by this repository-only UI change
+  - it must not hard-link the customer portal route, subscription artifacts,
+    Admin API, or any login-after-entry URL
+  - Aliyun DNS domain inventory has been read-only checked for future public
+    site / campaign landing-page planning, with no DNS mutation
+customer portal entrance model: planned as an operator-issued dynamic entry
+  - future entry metadata may be represented by server-side YAML or another
+    controlled config source
+  - the public site must not embed the live portal host or path
 Subscription V2 renderer: implemented
 opaque artifact issue / refresh / rotate / revoke contracts: implemented
 overview distribution readiness summary: implemented for configured inventory
 public registration/auth model: not approved
+public payment flow: not approved
 runtime promotion to Aliyun: not approved
 production state copy to Aliyun: not completed
 DNS or public traffic migration: not approved
