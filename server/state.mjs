@@ -10,6 +10,7 @@ import { resolveConsoleToken } from "./services/console-token.mjs";
 import { createSqliteSubscriptionStore } from "./services/subscriptions/repository.mjs";
 import { createSubscriptionCore } from "./services/subscriptions/core.mjs";
 import { DEFAULT_ADMIN_ALLOWED_CIDRS } from "./services/ip-address.mjs";
+import { createPlatformAccountEntitlementShell } from "./services/platform/account-entitlement-shell.mjs";
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { spawn } from "node:child_process";
 
@@ -60,6 +61,7 @@ export function createRuntimeState(options = {}) {
     tempLinkTtlMinutes
   });
   const platformLeadQueue = options.platformLeadQueue || createPlatformLeadReviewQueue();
+  const platformAccountShell = options.platformAccountShell || createPlatformAccountEntitlementShell();
   let closed = false;
 
   function close() {
@@ -189,7 +191,8 @@ export function createRuntimeState(options = {}) {
       close
     },
     platform: {
-      leadQueue: platformLeadQueue
+      leadQueue: platformLeadQueue,
+      accountShell: platformAccountShell
     },
     security: {
       adminAllowedCidrs,

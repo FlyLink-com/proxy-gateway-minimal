@@ -260,6 +260,23 @@ expired / disabled / pending states fail closed
 no billing provider integration
 ```
 
+**Repository anchors after Package 3 implementation:**
+
+```text
+server/services/platform/account-entitlement-shell.mjs
+server/routes/admin-platform.mjs
+server/tests/platform-account-entitlement-shell.test.mjs
+server/tests/platform-account-routes.test.mjs
+```
+
+The Package 3 shell is repository-only in-memory behavior. Protected Admin API
+routes can convert a reviewed lead into an operator-safe account summary and
+create/list entitlement summaries for that account. Entitlement usability is
+computed from active status plus validity windows. It does not add billing,
+payment collection, SQLite persistence, CRM, external automation, Aliyun
+deployment, DNS changes, production storage, customer data copy, or user
+traffic.
+
 ### Package 4: Dynamic Customer Entry Concept
 
 **Risk:** B repo-only; A later for production activation.

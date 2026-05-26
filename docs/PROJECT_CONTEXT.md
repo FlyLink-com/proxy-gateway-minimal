@@ -119,6 +119,13 @@ Current architecture priorities:
   routes in `server/routes/admin-platform.mjs`. This is not CRM, Webhook,
   email automation, Aliyun deployment, production storage, or customer portal
   activation.
+- Platform Account / Entitlement Shell: repository-only protected Admin routes
+  can convert reviewed leads into in-memory account summaries and create/list
+  account entitlement summaries through
+  `server/services/platform/account-entitlement-shell.mjs`. Entitlement
+  usability is fail-closed from status and validity windows. This is not
+  billing, payment collection, CRM, SQLite persistence, Aliyun deployment,
+  production storage, customer portal activation, DNS, or user traffic.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a

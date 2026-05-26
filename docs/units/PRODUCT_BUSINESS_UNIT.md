@@ -113,6 +113,9 @@ server/services/platform/lead-review-queue.mjs
 server/routes/admin-platform.mjs
 server/tests/platform-lead-review-queue.test.mjs
 server/tests/platform-lead-routes.test.mjs
+server/services/platform/account-entitlement-shell.mjs
+server/tests/platform-account-entitlement-shell.test.mjs
+server/tests/platform-account-routes.test.mjs
 ```
 
 These anchors describe current direction and boundaries. They do not imply that
@@ -124,6 +127,12 @@ stores it in an in-memory review queue, and exposes protected operator-safe
 summaries for review-status movement. It is not CRM, Webhook, email
 automation, billing, Aliyun deployment, customer portal activation, or
 production storage.
+
+The platform account / entitlement shell is the current repository-only
+implementation anchor for the reviewed-lead-to-account workflow. It lets
+protected operator routes create operator-safe account summaries and entitlement
+summaries without billing, payment, CRM, Aliyun deployment, customer portal
+activation, production storage, or user traffic.
 
 ## Risk And Validation
 
@@ -149,7 +158,9 @@ document import success, expired access, disabled access, and unavailable
   capacity user states
 map Local Edge Agent expectations without making it a production requirement
 identify which operator workflows are product workflows versus production ops
-connect reviewed leads to account / entitlement shell fixtures
+wire account / entitlement summaries into customer portal fixtures
+define how pending, active, expired, disabled, and suspended states appear in
+  the portal without exposing subscription secrets
 ```
 
 ## Paused / Blocked Items
