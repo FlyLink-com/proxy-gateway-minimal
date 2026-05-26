@@ -6,6 +6,7 @@ import {
   CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
   createApp,
   createRuntimeState,
+  createChannelBenchmarkFixtureFromPlan,
   generateClashSubscription,
   normalizeChannelBenchmarkFixture,
   summarizeChannelBenchmarkResults,
@@ -38,6 +39,7 @@ function fakeState() {
 test("package root exports stable module APIs", () => {
   assert.equal(typeof createApp, "function");
   assert.equal(typeof createRuntimeState, "function");
+  assert.equal(typeof createChannelBenchmarkFixtureFromPlan, "function");
   assert.equal(typeof generateClashSubscription, "function");
   assert.equal(typeof CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION, "string");
   assert.equal(typeof normalizeChannelBenchmarkFixture, "function");

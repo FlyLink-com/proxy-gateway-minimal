@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
+  createChannelBenchmarkFixtureFromPlan,
   normalizeChannelBenchmarkFixture,
   summarizeChannelBenchmarkResults
 } from "../services/channel-benchmark-results.mjs";
@@ -217,6 +218,76 @@ test("normalizeChannelBenchmarkFixture rejects unsupported fixture metadata with
   );
 });
 
+test("createChannelBenchmarkFixtureFromPlan emits editable safe sample placeholders", () => {
+  const fixture = createChannelBenchmarkFixtureFromPlan(
+    {
+      mode: "local-dry-run",
+      remoteConnections: false,
+      probes: [
+        {
+          name: "ss-baseline",
+          protocol: "ss",
+          role: "baseline",
+          host: "ss.secret.example",
+          port: 18388,
+          checks: ["tcp-connect"],
+          udpProbe: false
+        },
+        {
+          name: "vless-candidate",
+          protocol: "vless",
+          role: "candidate",
+          host: "vless.secret.example",
+          port: 443,
+          checks: ["tcp-connect", "sustained-session"],
+          udpProbe: true
+        }
+      ]
+    },
+    { generatedAt: "2026-05-26T15:45:00.000Z" }
+  );
+
+  assert.deepEqual(fixture, {
+    schemaVersion: CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
+    generatedAt: "2026-05-26T15:45:00.000Z",
+    samples: [
+      {
+        probeName: "ss-baseline",
+        protocol: "ss",
+        role: "baseline",
+        ok: false,
+        durationMs: 0,
+        connectTimeMs: 0,
+        timeToFirstByteMs: 0,
+        errorClass: "unknown_failure"
+      },
+      {
+        probeName: "vless-candidate",
+        protocol: "vless",
+        role: "candidate",
+        ok: false,
+        durationMs: 0,
+        connectTimeMs: 0,
+        timeToFirstByteMs: 0,
+        errorClass: "unknown_failure"
+      }
+    ]
+  });
+  assert.doesNotMatch(JSON.stringify(fixture), /secret\.example|host|port|checks|udpProbe/);
+});
+
+test("createChannelBenchmarkFixtureFromPlan rejects remote benchmark plans", () => {
+  assert.throws(
+    () =>
+      createChannelBenchmarkFixtureFromPlan({
+        mode: "runtime-canary",
+        remoteConnections: true,
+        probes: [{ name: "unsafe", protocol: "ss", role: "baseline" }]
+      }),
+    /benchmark fixture generation requires a local dry-run plan/
+  );
+});
+
 test("channel benchmark summary CLI prints safe JSON from a local sample file", () => {
   withSamples(
     {
@@ -258,6 +329,50 @@ test("channel benchmark summary CLI prints safe JSON from a local sample file", 
       assert.equal(summary.totals.successRate, 0.5);
       assert.equal(summary.totals.timeoutCount, 1);
       assert.doesNotMatch(stdout, /secret|targetUrl|rawError|token=/);
+    }
+  );
+});
+
+test("channel benchmark fixture CLI prints safe placeholders from a local dry-run summary", () => {
+  withSamples(
+    {
+      ok: true,
+      benchmarkPlan: {
+        mode: "local-dry-run",
+        remoteConnections: false,
+        probes: [
+          {
+            name: "ss-baseline",
+            protocol: "ss",
+            role: "baseline",
+            host: "ss.secret.example",
+            port: 18388,
+            checks: ["tcp-connect"],
+            udpProbe: false
+          }
+        ]
+      }
+    },
+    (summaryPath) => {
+      const stdout = execFileSync(process.execPath, ["scripts/channel-benchmark-fixture.mjs", summaryPath], {
+        cwd: new URL("../../", import.meta.url),
+        encoding: "utf8"
+      });
+
+      const fixture = JSON.parse(stdout);
+      assert.equal(fixture.schemaVersion, CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION);
+      assert.equal(fixture.samples.length, 1);
+      assert.deepEqual(fixture.samples[0], {
+        probeName: "ss-baseline",
+        protocol: "ss",
+        role: "baseline",
+        ok: false,
+        durationMs: 0,
+        connectTimeMs: 0,
+        timeToFirstByteMs: 0,
+        errorClass: "unknown_failure"
+      });
+      assert.doesNotMatch(stdout, /secret\.example|host|port|checks|udpProbe/);
     }
   );
 });

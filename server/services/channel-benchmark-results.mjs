@@ -118,6 +118,37 @@ function finalizeProbe(probe) {
   };
 }
 
+function normalizePlanProbe(probe) {
+  if (!isObject(probe)) {
+    throw new Error("benchmark plan probe must be an object");
+  }
+  return {
+    probeName: textField(probe.name, "probe.name"),
+    protocol: textField(probe.protocol, "probe.protocol"),
+    role: textField(probe.role, "probe.role"),
+    ok: false,
+    durationMs: 0,
+    connectTimeMs: 0,
+    timeToFirstByteMs: 0,
+    errorClass: "unknown_failure"
+  };
+}
+
+export function createChannelBenchmarkFixtureFromPlan(plan, { generatedAt = new Date().toISOString() } = {}) {
+  if (!isObject(plan)) {
+    throw new Error("benchmark fixture generation requires a local dry-run plan");
+  }
+  if (plan.mode !== "local-dry-run" || plan.remoteConnections !== false || !Array.isArray(plan.probes)) {
+    throw new Error("benchmark fixture generation requires a local dry-run plan");
+  }
+
+  return {
+    schemaVersion: CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
+    generatedAt,
+    samples: plan.probes.map(normalizePlanProbe)
+  };
+}
+
 export function normalizeChannelBenchmarkFixture(payload) {
   if (Array.isArray(payload)) {
     return {
