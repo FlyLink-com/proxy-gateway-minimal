@@ -67,6 +67,78 @@ test("loadProxyConfig leaves SS_PASSWORD markers literal outside password fields
   }
 });
 
+test("loadProxyConfig supports protocol-specific channel candidate secrets", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "proxy-config-"));
+
+  try {
+    const configPath = join(tempDir, "proxy-servers.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          servers: [
+            {
+              id: "vless-candidate",
+              name: "vless-candidate",
+              host: "vless.example.test",
+              port: 443,
+              protocol: "vless",
+              uuid: "${VLESS_UUID}",
+              packetEncoding: "xudp",
+              tls: true,
+              serverName: "front.example.test"
+            },
+            {
+              id: "hy2-candidate",
+              name: "hy2-candidate",
+              host: "hy2.example.test",
+              port: 443,
+              protocol: "hysteria2",
+              password: "${HY2_PASSWORD}",
+              obfsPassword: "${HY2_OBFS_PASSWORD}",
+              sni: "front.example.test"
+            },
+            {
+              id: "tuic-candidate",
+              name: "tuic-candidate",
+              host: "tuic.example.test",
+              port: 10443,
+              protocol: "tuic",
+              uuid: "${TUIC_UUID}",
+              password: "${TUIC_PASSWORD}",
+              token: "${TUIC_TOKEN}",
+              sni: "tuic-front.example.test"
+            }
+          ]
+        },
+        null,
+        2
+      )
+    );
+
+    const config = loadProxyConfig({
+      configPath,
+      env: {
+        VLESS_UUID: "11111111-1111-4111-8111-111111111111",
+        HY2_PASSWORD: "hy2-secret",
+        HY2_OBFS_PASSWORD: "hy2-obfs-secret",
+        TUIC_UUID: "22222222-2222-4222-8222-222222222222",
+        TUIC_PASSWORD: "tuic-secret",
+        TUIC_TOKEN: "tuic-token"
+      }
+    });
+
+    assert.equal(config.servers[0].uuid, "11111111-1111-4111-8111-111111111111");
+    assert.equal(config.servers[1].password, "hy2-secret");
+    assert.equal(config.servers[1].obfsPassword, "hy2-obfs-secret");
+    assert.equal(config.servers[2].uuid, "22222222-2222-4222-8222-222222222222");
+    assert.equal(config.servers[2].password, "tuic-secret");
+    assert.equal(config.servers[2].token, "tuic-token");
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("publicProxyConfig redacts server passwords", () => {
   const config = {
     servers: [
@@ -97,6 +169,62 @@ test("publicProxyConfig redacts server passwords", () => {
     ],
     pingHosts: ["203.0.113.10"],
     nginx: { host: "203.0.113.10", ports: [443] }
+  });
+});
+
+test("publicProxyConfig redacts protocol-specific channel candidate secrets", () => {
+  const config = {
+    servers: [
+      {
+        name: "vless-candidate",
+        host: "vless.example.test",
+        port: 443,
+        protocol: "vless",
+        uuid: "11111111-1111-4111-8111-111111111111"
+      },
+      {
+        name: "hy2-candidate",
+        host: "hy2.example.test",
+        port: 443,
+        protocol: "hysteria2",
+        password: "hy2-secret",
+        obfsPassword: "hy2-obfs-secret"
+      },
+      {
+        name: "tuic-candidate",
+        host: "tuic.example.test",
+        port: 10443,
+        protocol: "tuic",
+        uuid: "22222222-2222-4222-8222-222222222222",
+        password: "tuic-secret",
+        token: "tuic-token"
+      }
+    ]
+  };
+
+  assert.deepEqual(publicProxyConfig(config), {
+    servers: [
+      {
+        name: "vless-candidate",
+        host: "vless.example.test",
+        port: 443,
+        protocol: "vless"
+      },
+      {
+        name: "hy2-candidate",
+        host: "hy2.example.test",
+        port: 443,
+        protocol: "hysteria2"
+      },
+      {
+        name: "tuic-candidate",
+        host: "tuic.example.test",
+        port: 10443,
+        protocol: "tuic"
+      }
+    ],
+    pingHosts: [],
+    nginx: {}
   });
 });
 
