@@ -317,6 +317,16 @@ Required approval phrase:
 Approve Aliyun manual CI lane cleanup. No production authority transfer, no DNS change, no user traffic.
 ```
 
+Cleanup execution record:
+
+```text
+docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md
+```
+
+That record removed only root user npm/cache residue and matching CI archive
+files. It did not perform DNS, Nginx, systemd, firewall, WireGuard, SQLite,
+tenant, artifact, production-authority, or user-traffic mutation.
+
 Allowed:
 
 ```text
@@ -573,8 +583,9 @@ Node drain/stop:
 The next executable gate is:
 
 ```text
-Aliyun manual CI lane cleanup approval.
+Aliyun subscription control-plane candidate preparation approval.
 ```
 
-Do not bootstrap the Aliyun platform, move DNS, copy SQLite state, or stop AWS
-nodes before that cleanup is approved, executed, and rechecked.
+Do not move DNS, copy SQLite state, promote production authority, or stop AWS
+nodes before candidate preparation, private validation, state handling, and
+promotion gates are separately approved and recorded.

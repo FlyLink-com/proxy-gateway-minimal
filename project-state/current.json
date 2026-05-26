@@ -18,6 +18,7 @@
     "docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md",
     "docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md",
     "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md",
+    "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md",
     "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/VALIDATION_BASELINE.md"
@@ -88,7 +89,7 @@
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, and validation evidence before it is marked Ready, submitted for merge, or reported complete. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
     "githubHostedActions": "blocked-by-billing-or-spending-limit",
-    "manualCiFallback": "HP local Linux manual CI is bootstrapped and archive-validation passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922; historical Aliyun SWAS validation host remains pending cleanup/retirement from the CI lane",
+    "manualCiFallback": "HP local Linux manual CI is bootstrapped and archive-validation passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922; historical Aliyun SWAS validation-host residue has been cleaned from the CI lane and the host is pending subscription-control candidate preparation approval",
     "manualCiIsStaging": false,
     "cTierCommand": "git diff --check origin/master...HEAD",
     "bTierServerCommands": [
@@ -116,13 +117,8 @@
     },
     {
       "id": "aliyun-control-local-ci-rebuild",
-      "summary": "The target rebuild direction is current Aliyun as future production subscription-control candidate, HP/local Linux as manual CI and operator lab, and controlled drain/retirement for non-Aliyun / non-HP nodes; HP manual CI has passed and Aliyun read-only inventory is recorded, but cleanup/bootstrap remain gated.",
+      "summary": "The target rebuild direction is current Aliyun as future production subscription-control candidate, HP/local Linux as manual CI and operator lab, and controlled drain/retirement for non-Aliyun / non-HP nodes; HP manual CI has passed and Aliyun CI residue cleanup is complete, but candidate bootstrap remains gated.",
       "sourceDoc": "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md"
-    },
-    {
-      "id": "aliyun-ci-cleanup-approval-blocked",
-      "summary": "Aliyun read-only inventory found no active manual-CI workspace/archive/GH config/git credentials, but npm/cache residue remains and cleanup requires explicit approval before any deletion or candidate preparation.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md"
     },
     {
       "id": "aliyun-sub-control-candidate-prep-blocked",
@@ -146,8 +142,6 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Aliyun manual CI cleanup approval and cleanup execution",
-    "Aliyun CI residue recheck after cleanup",
     "Aliyun subscription-control candidate preparation approval",
     "Aliyun subscription-control candidate bootstrap without DNS, user traffic, production authority, or edge traffic",
     "Aliyun private state-copy validation approval",

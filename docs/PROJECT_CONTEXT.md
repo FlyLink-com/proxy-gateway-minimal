@@ -258,29 +258,31 @@ Latest local Linux CI candidate inventory:
   and `npm run admin:build`.
 - Per-run workspace, archive, npm cache, GitHub config, and git credentials
   were cleaned after validation.
-- The next gate is explicit Aliyun CI cleanup approval before retiring Aliyun
-  from the validation lane.
+- Aliyun CI cleanup has been completed; HP is now the manual CI lane.
 
 Latest Aliyun CI cleanup / subscription-control candidate inventory:
 
 - `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md`
+- `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md`
 - The current Aliyun SWAS host is reachable through SSH alias `miyao`.
 - It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
   `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
 - No active manual-CI workspace, repository archive, GitHub CLI config, or git
   credential file was found in the read-only scan.
-- Small user-level npm/cache residue remains and requires explicit cleanup
-  approval before deletion.
+- The cleanup removed only `/root/.npm`, `/root/.cache`, and any matching
+  `/tmp/proxy-gateway-ci-*.tar` archives; the post-cleanup recheck found CI
+  workspace, GitHub CLI config, git credentials, npm/cache residue, and CI
+  archives absent.
 - Nginx and proxy-gateway runtime are not installed or active.
 - WireGuard `wg-home` is active on UDP 51820 and must be explicitly accepted,
   scoped, or removed during candidate hardening.
 - UFW is inactive and iptables default policies are ACCEPT; this is not a final
   production-control boundary.
-- No cleanup, package install, deploy, DNS, Nginx, systemd, firewall, SQLite,
+- No package install, deploy, DNS, Nginx, systemd, firewall, WireGuard, SQLite,
   secret, artifact, tenant, production authority, edge traffic, or cutover
   mutation was performed.
-- The next gates are explicit Aliyun manual CI lane cleanup approval, recheck,
-  then explicit Aliyun subscription-control candidate preparation approval.
+- The next gate is explicit Aliyun subscription-control candidate preparation
+  approval.
 
 Latest Aliyun user-management / subscription-distribution decision:
 
@@ -302,9 +304,9 @@ Latest Aliyun user-management / subscription-distribution decision:
 - The preflight also found the tracked static node config still references
   `prod-edge-a` and `prod-edge-b`, so node cleanup remains sequenced but not
   executable until Aliyun promotion and subscription-output drain evidence.
-- The next executable gate remains Aliyun manual CI lane cleanup approval or,
-  for node cleanup specifically, a later drain-and-stop approval after Aliyun
-  promotion.
+- The next executable gate is Aliyun subscription-control candidate preparation
+  approval or, for node cleanup specifically, a later drain-and-stop approval
+  after Aliyun promotion.
 
 Latest A2 preflight:
 

@@ -97,7 +97,7 @@ Node.js 22: v22.22.3, user-local under ~/.local/ci-node/
 npm: 10.9.8
 Current host reality: operator-lab HP server, not a sterile CI appliance
 Latest validation: archive-based manual CI passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922
-Next gate: Aliyun CI cleanup inventory and explicit cleanup approval before retiring Aliyun from the CI lane
+Next gate: Aliyun subscription-control candidate preparation approval; Aliyun CI cleanup is completed and HP is the manual CI lane
 ```
 
 Historical bootstrap approval phrase used on 2026-05-26:
