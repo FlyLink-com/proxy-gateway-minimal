@@ -50,6 +50,7 @@
     "network:repair": "powershell -ExecutionPolicy Bypass -File scripts/network-doctor.ps1 repair",
     "network:reset": "powershell -ExecutionPolicy Bypass -File scripts/network-doctor.ps1 reset",
     "channel:dry-run": "node scripts/channel-config-dry-run.mjs",
+    "channel:benchmark-summary": "node scripts/channel-benchmark-summary.mjs",
     "project-state:check": "node scripts/check-project-state.mjs",
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",

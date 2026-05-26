@@ -1,6 +1,21 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { summarizeChannelBenchmarkResults } from "../services/channel-benchmark-results.mjs";
+
+function withSamples(samples, fn) {
+  const tempDir = mkdtempSync(join(tmpdir(), "channel-benchmark-samples-"));
+  try {
+    const samplesPath = join(tempDir, "samples.json");
+    writeFileSync(samplesPath, JSON.stringify(samples, null, 2));
+    return fn(samplesPath);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
 
 test("summarizeChannelBenchmarkResults aggregates per-probe latency and failure metrics safely", () => {
   const summary = summarizeChannelBenchmarkResults(
@@ -137,6 +152,50 @@ test("summarizeChannelBenchmarkResults validates sample shape without echoing ra
       assert.match(error.message, /benchmark sample ok must be a boolean/);
       assert.doesNotMatch(error.message, /secret|rawError/);
       return true;
+    }
+  );
+});
+
+test("channel benchmark summary CLI prints safe JSON from a local sample file", () => {
+  withSamples(
+    {
+      generatedAt: "2026-05-26T15:30:00.000Z",
+      samples: [
+        {
+          probeName: "ss-baseline",
+          protocol: "ss",
+          role: "baseline",
+          ok: true,
+          durationMs: 100,
+          connectTimeMs: 30,
+          timeToFirstByteMs: 70,
+          targetUrl: "https://secret.example/token=raw-secret"
+        },
+        {
+          probeName: "ss-baseline",
+          protocol: "ss",
+          role: "baseline",
+          ok: false,
+          durationMs: 200,
+          connectTimeMs: 80,
+          errorClass: "timeout",
+          rawError: "secret backend timeout"
+        }
+      ]
+    },
+    (samplesPath) => {
+      const stdout = execFileSync(process.execPath, ["scripts/channel-benchmark-summary.mjs", samplesPath], {
+        cwd: new URL("../../", import.meta.url),
+        encoding: "utf8"
+      });
+
+      const summary = JSON.parse(stdout);
+      assert.equal(summary.ok, true);
+      assert.equal(summary.mode, "local-benchmark-summary");
+      assert.equal(summary.generatedAt, "2026-05-26T15:30:00.000Z");
+      assert.equal(summary.totals.successRate, 0.5);
+      assert.equal(summary.totals.timeoutCount, 1);
+      assert.doesNotMatch(stdout, /secret|targetUrl|rawError|token=/);
     }
   );
 });
