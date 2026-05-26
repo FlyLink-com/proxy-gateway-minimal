@@ -113,6 +113,12 @@ blockers, and the required next action. Decision packs remain advisory only and
 do not authorize runtime canary, server, firewall, DNS, or subscription output
 changes.
 
+`assessChannelExtendedMeasurement(...)` can classify already-collected local
+benchmark summaries into `ready_for_decision`, `needs_extended_measurement`, or
+`hold_for_investigation`. This closes the repository-side gap between short
+smoke samples and longer measurement evidence, but it remains advisory only and
+does not activate node config or rollout behavior.
+
 ## Distribution Readiness
 
 Subscription overview distribution readiness is based on the default stable

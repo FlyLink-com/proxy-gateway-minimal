@@ -56,6 +56,7 @@
     "channel:benchmark-score": "node scripts/channel-benchmark-score.mjs",
     "channel:candidate-report": "node scripts/channel-candidate-report.mjs",
     "channel:decision-pack": "node scripts/channel-decision-pack.mjs",
+    "channel:extended-assessment": "node scripts/channel-extended-assessment.mjs",
     "project-state:check": "node scripts/check-project-state.mjs",
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",

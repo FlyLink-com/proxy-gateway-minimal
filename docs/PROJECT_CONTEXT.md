@@ -129,8 +129,11 @@ Current architecture priorities:
   candidate reports can join dry-run config metadata with scores into
   stable/canary/private/hold/missing-measurement groups for operator review,
   and decision packs can turn those inputs into safe baseline/canary/blocker
-  artifacts. These repository tools do not mutate runtime config or activate
-  nodes. Runtime canaries are gated by
+  artifacts. Extended measurement assessments can classify already-collected
+  local benchmark summaries as ready, needing more samples, or hold for
+  investigation before an operator decides on the next canary gate. These
+  repository tools do not mutate runtime config or activate nodes. Runtime
+  canaries are gated by
   `docs/CHANNEL_CANARY_SERVER_SELECTION.md` and
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`; repository renderer/config support
   does not authorize server creation or remote protocol deployment by itself.
@@ -319,6 +322,10 @@ simplification queue is closed:
 - `B8-channel-decision-pack` - completed in the Channel Decision Pack work;
   dry-run summaries and measurement scores can be packaged into advisory
   baseline/canary/blocker decision artifacts without production mutation.
+- `B9-channel-extended-measurement-assessment` - completed in the Channel
+  Extended Measurement Assessment work; already-collected local benchmark
+  summaries can be classified into ready, needs-more-samples, or hold states
+  without running probes, touching edge nodes, or mutating production.
 
 The remaining queued items are A-tier and remain blocked:
 

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
+  assessChannelExtendedMeasurement,
   buildChannelCandidateReport,
   buildChannelDecisionPack,
   createApp,
@@ -43,6 +44,7 @@ function fakeState() {
 test("package root exports stable module APIs", () => {
   assert.equal(typeof createApp, "function");
   assert.equal(typeof createRuntimeState, "function");
+  assert.equal(typeof assessChannelExtendedMeasurement, "function");
   assert.equal(typeof buildChannelCandidateReport, "function");
   assert.equal(typeof buildChannelDecisionPack, "function");
   assert.equal(typeof createChannelBenchmarkFixtureFromPlan, "function");
