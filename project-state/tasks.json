@@ -301,7 +301,7 @@
     {
       "id": "A0-channel-canary-server-selection",
       "risk": "A",
-      "status": "server-created-blocked-before-runtime-deployment-or-cleanup-approval",
+      "status": "runtime-deployed-blocked-before-operator-device-canary-or-cleanup-approval",
       "lane": "edge-data-plane",
       "title": "Select clean server for channel runtime canary",
       "goal": "Choose a disposable provider-neutral canary server for one protocol family after long-haul path, UDP, lifecycle, security, metrics, and rollback checks.",

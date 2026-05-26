@@ -191,6 +191,12 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   restricted to the operator `/32`, and UDP/443 reserved for a future Hysteria2
   canary. No Hysteria2 runtime, DNS, Nginx, production config, subscription
   output, or traffic canary was performed.
+- The approved Hysteria2 runtime deployment is recorded in
+  `docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-runtime.md`.
+  Hysteria2 v2.9.2 is active on `channel-lab-a`, UDP/443 is listening, and a
+  host-only client smoke test returned HTTP 200 through the local Hysteria
+  path. No operator-device canary, DNS, production config, subscription output,
+  or production traffic was performed.
 - Legacy blue `i-004ab1c6c71d06bca` is stopped and retained for controlled
   retirement review. Do not terminate it or delete its security group without
   separate A-tier approval.
@@ -216,10 +222,9 @@ operator approval, validation, and rollback path exist:
   security-group/firewall changes, operator-device canaries, or broader rollout
   remain A-tier and must follow `docs/CHANNEL_CANARY_SERVER_SELECTION.md` and
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`.
-  The current `channel-lab-a` creation record proves only the clean server and
-  approved ingress exist. Hysteria2 runtime deployment, operator-device canary
-  traffic, and cleanup/termination each still require separate approval and
-  evidence.
+  The current `channel-lab-a` runtime record proves only host-local Hysteria2
+  runtime health. Operator-device canary traffic, subscription output changes,
+  and cleanup/termination each still require separate approval and evidence.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See
