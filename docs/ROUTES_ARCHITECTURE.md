@@ -317,6 +317,25 @@ This means expired tenants are blocked at token resolution time. The system
 does not currently materialize expired tenants into stored `disabled` status by
 background cron, and `disabled` remains an operator-driven stored status.
 
+## Public Proxy Config Redaction
+
+`GET /api/proxy/servers` returns `publicProxyConfig(...)`, not raw runtime node
+config. Public summaries must redact protocol credentials before they leave the
+process:
+
+```text
+password
+uuid
+token
+obfs-password / obfsPassword
+secret
+private-key / privateKey
+```
+
+The runtime config loader may substitute these values from environment
+placeholders for renderer use, but public diagnostics and config summaries must
+not expose them.
+
 ## Local Device Control Routes
 
 `server/routes/network.mjs` exposes:

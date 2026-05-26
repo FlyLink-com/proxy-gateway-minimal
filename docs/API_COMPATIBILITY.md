@@ -70,4 +70,7 @@ Compatibility rules:
 - Full subscription URLs are still visible only on create, reset, or temporary-link creation.
 - Adding a second production node to `config/proxy-servers.json`, migrating production tenant `nodeId` values, or emitting a new production node remains Risk A production node-config work.
 - `/sub/clash.yaml` depends on `SubscriptionCore`, `SubscriptionStore`, node config, and secrets. It must not depend on future platform or payment availability.
+- Public proxy config summaries redact protocol credentials, including
+  Shadowsocks passwords, VLESS/TUIC UUIDs, TUIC tokens, and Hysteria2
+  obfuscation passwords.
 - SQLite remains the production store adapter in this phase; future stores must implement the `SubscriptionStore` method contract.

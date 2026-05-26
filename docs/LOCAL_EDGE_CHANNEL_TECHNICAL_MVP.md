@@ -334,6 +334,8 @@ Scope:
   VLESS/XUDP candidate fields
   Hysteria2 candidate fields
   TUIC candidate fields
+  protocol-specific config placeholder contract
+  public config redaction for protocol credentials
   url-test / fallback groups
   fail-closed unsupported protocols
   no production config change
@@ -341,7 +343,9 @@ Scope:
 
 This is the current mainline for channel upgrade. It uses the existing
 Clash/Mihomo client as the protocol executor and keeps remote runtime deployment
-as a separate A-tier gate.
+as a separate A-tier gate. Repository config support may define how protocol
+candidate secrets are loaded and redacted, but activating those candidates in
+production node config remains separate A-tier work.
 
 ### Stage 1: Repository-Only Agent Channel Harness
 

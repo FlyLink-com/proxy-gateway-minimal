@@ -5,11 +5,32 @@ function pathFrom(input) {
   return input instanceof URL ? fileURLToPath(input) : input;
 }
 
-const SS_PASSWORD_PLACEHOLDER = "${SS_PASSWORD}";
+const SENSITIVE_CONFIG_KEYS = new Set([
+  "password",
+  "token",
+  "uuid",
+  "secret",
+  "privatekey",
+  "private-key",
+  "obfspassword",
+  "obfs-password"
+]);
+
+function isSensitiveConfigKey(key = "") {
+  return SENSITIVE_CONFIG_KEYS.has(String(key).toLowerCase());
+}
+
+function envPlaceholderName(value) {
+  const match = /^\$\{([A-Z0-9_]+)\}$/.exec(value);
+  return match?.[1] || "";
+}
 
 function replaceSecretPlaceholders(value, env, key) {
-  if (key === "password" && value === SS_PASSWORD_PLACEHOLDER) {
-    return env.SS_PASSWORD ?? "";
+  if (isSensitiveConfigKey(key) && typeof value === "string") {
+    const envName = envPlaceholderName(value);
+    if (envName) {
+      return env[envName] ?? "";
+    }
   }
 
   if (Array.isArray(value)) {
@@ -28,16 +49,16 @@ function replaceSecretPlaceholders(value, env, key) {
   return value;
 }
 
-function stripPasswordKeys(value) {
+function stripSensitiveConfigKeys(value) {
   if (Array.isArray(value)) {
-    return value.map(stripPasswordKeys);
+    return value.map(stripSensitiveConfigKeys);
   }
 
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value)
-        .filter(([key]) => key !== "password")
-        .map(([key, item]) => [key, stripPasswordKeys(item)])
+        .filter(([key]) => !isSensitiveConfigKey(key))
+        .map(([key, item]) => [key, stripSensitiveConfigKeys(item)])
     );
   }
 
@@ -50,7 +71,7 @@ export function loadProxyConfig({ configPath, env = process.env }) {
 }
 
 export function publicProxyConfig(config) {
-  return stripPasswordKeys({
+  return stripSensitiveConfigKeys({
     servers: config.servers || [],
     pingHosts: config.pingHosts || [],
     nginx: config.nginx || {}
