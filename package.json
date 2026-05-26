@@ -7,6 +7,7 @@
   "exports": {
     ".": "./index.mjs",
     "./agent/channel-benchmark": "./agent/channel-benchmark.mjs",
+    "./agent/channel-manager": "./agent/channel-manager.mjs",
     "./agent/channel-profile": "./agent/channel-profile.mjs",
     "./agent/channel-probe": "./agent/channel-probe.mjs",
     "./agent/edge-tunnel": "./agent/edge-tunnel.mjs",
