@@ -218,6 +218,53 @@ test("generateClashSubscription emits Hysteria2 and TUIC candidate YAML", () => 
   assert.match(yaml, /- "tuic-candidate"/);
 });
 
+test("generateClashSubscription emits long-haul quality groups without leaking metadata fields", () => {
+  const yaml = generateClashSubscription({
+    servers: [
+      {
+        name: "ss-stable",
+        host: "ss.example.test",
+        port: 18388,
+        protocol: "ss",
+        method: "aes-256-gcm",
+        password: "ss-secret",
+        qualityClass: "stable",
+        channelRole: "baseline"
+      },
+      {
+        name: "hy2-long-haul",
+        host: "hy2.example.test",
+        port: 443,
+        protocol: "hysteria2",
+        password: "hy2-secret",
+        qualityClass: "weak-network",
+        channelRole: "candidate"
+      },
+      {
+        name: "tuic-long-haul",
+        host: "tuic.example.test",
+        port: 10443,
+        protocol: "tuic",
+        uuid: "22222222-2222-4222-8222-222222222222",
+        password: "tuic-secret",
+        quality: "weak-network",
+        role: "candidate"
+      }
+    ]
+  });
+
+  assert.match(
+    yaml,
+    /name: WEAK-NETWORK\n    type: url-test\n    url: "https:\/\/www\.gstatic\.com\/generate_204"\n    interval: 300\n    tolerance: 50\n    proxies:\n      - "hy2-long-haul"\n      - "tuic-long-haul"/
+  );
+  assert.match(
+    yaml,
+    /name: STABLE\n    type: fallback\n    url: "https:\/\/www\.gstatic\.com\/generate_204"\n    interval: 300\n    proxies:\n      - "ss-stable"/
+  );
+  assert.match(yaml, /name: GLOBAL\n    type: select\n    proxies:\n      - AUTO\n      - WEAK-NETWORK\n      - STABLE\n      - FALLBACK/);
+  assert.doesNotMatch(yaml, /qualityClass|weak-network|channelRole|baseline|candidate/);
+});
+
 test("generateClashSubscription rejects unsupported protocol instead of silently emitting it", () => {
   assert.throws(
     () =>

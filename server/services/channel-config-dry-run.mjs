@@ -5,6 +5,10 @@ function text(value) {
   return String(value ?? "").trim();
 }
 
+function metadataToken(value) {
+  return text(value).toLowerCase().replace(/[\s_]+/g, "-");
+}
+
 function protocolForSummary(server) {
   const raw = text(server.protocol || server.clashType || server.type || "ss").toLowerCase();
   if (raw === "ss" || raw === "shadowsocks" || raw === "shadowsocks-libev" || raw === "shadowsocks-rust") {
@@ -27,7 +31,8 @@ function safeServerSummary(server, index) {
     name: text(server.name || server.id) || `server-${index + 1}`,
     host: text(server.host),
     port: Number(server.port),
-    protocol: protocolForSummary(server)
+    protocol: protocolForSummary(server),
+    qualityClass: metadataToken(server.qualityClass || server.quality || server.channelQuality)
   };
 }
 
@@ -64,6 +69,7 @@ function buildBenchmarkPlan(servers) {
       name: server.name,
       protocol: server.protocol,
       role: server.protocol === "ss" ? "baseline" : "candidate",
+      qualityClass: server.qualityClass,
       host: server.host,
       port: server.port,
       checks: probeChecks(server.protocol),

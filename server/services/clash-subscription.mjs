@@ -10,6 +10,10 @@ function text(value) {
   return String(value ?? "").trim();
 }
 
+function metadataToken(value) {
+  return text(value).toLowerCase().replace(/[\s_]+/g, "-");
+}
+
 function bool(value) {
   return value === true || value === "true";
 }
@@ -93,7 +97,9 @@ function clashProxy(server, index) {
     name: clashName(server, index),
     type: protocol,
     host: requireText(server.host, "server"),
-    port: requirePort(server.port)
+    port: requirePort(server.port),
+    qualityClass: metadataToken(server.qualityClass || server.quality || server.channelQuality),
+    channelRole: metadataToken(server.channelRole || server.role)
   };
 
   if (protocol === "ss") {
@@ -190,6 +196,34 @@ function pushOptionalStringList(lines, key, values) {
   }
 }
 
+function pushProxyGroup(lines, { name, type, servers, tolerance }) {
+  if (!Array.isArray(servers) || servers.length === 0) {
+    return false;
+  }
+
+  lines.push(
+    `  - name: ${name}`,
+    `    type: ${type}`,
+    "    url: \"https://www.gstatic.com/generate_204\"",
+    "    interval: 300"
+  );
+  if (tolerance !== undefined) {
+    lines.push(`    tolerance: ${tolerance}`);
+  }
+  lines.push("    proxies:");
+
+  for (const server of servers) {
+    lines.push(`      - ${yamlQuote(server.name)}`);
+  }
+
+  return true;
+}
+
+function qualityGroupServers(servers, qualityClasses) {
+  const allowed = new Set(qualityClasses);
+  return servers.filter((server) => allowed.has(server.qualityClass));
+}
+
 function pushProxy(lines, server) {
   lines.push(
     `  - name: ${yamlQuote(server.name)}`,
@@ -266,29 +300,19 @@ export function generateClashSubscription(proxyConfig) {
   lines.push("proxy-groups:");
 
   if (servers.length > 0) {
-    lines.push(
-      "  - name: AUTO",
-      "    type: url-test",
-      "    url: \"https://www.gstatic.com/generate_204\"",
-      "    interval: 300",
-      "    proxies:"
-    );
-
-    for (const server of servers) {
-      lines.push(`      - ${yamlQuote(server.name)}`);
-    }
-
-    lines.push(
-      "  - name: FALLBACK",
-      "    type: fallback",
-      "    url: \"https://www.gstatic.com/generate_204\"",
-      "    interval: 300",
-      "    proxies:"
-    );
-
-    for (const server of servers) {
-      lines.push(`      - ${yamlQuote(server.name)}`);
-    }
+    pushProxyGroup(lines, { name: "AUTO", type: "url-test", servers });
+    pushProxyGroup(lines, {
+      name: "WEAK-NETWORK",
+      type: "url-test",
+      servers: qualityGroupServers(servers, ["weak-network", "long-haul", "high-loss"]),
+      tolerance: 50
+    });
+    pushProxyGroup(lines, {
+      name: "STABLE",
+      type: "fallback",
+      servers: qualityGroupServers(servers, ["stable"])
+    });
+    pushProxyGroup(lines, { name: "FALLBACK", type: "fallback", servers });
   }
 
   lines.push(
@@ -298,7 +322,14 @@ export function generateClashSubscription(proxyConfig) {
   );
 
   if (servers.length > 0) {
-    lines.push("      - AUTO", "      - FALLBACK");
+    lines.push("      - AUTO");
+    if (qualityGroupServers(servers, ["weak-network", "long-haul", "high-loss"]).length > 0) {
+      lines.push("      - WEAK-NETWORK");
+    }
+    if (qualityGroupServers(servers, ["stable"]).length > 0) {
+      lines.push("      - STABLE");
+    }
+    lines.push("      - FALLBACK");
   }
 
   for (const server of servers) {
