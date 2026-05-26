@@ -39,6 +39,39 @@ function countProtocols(servers) {
   return counts;
 }
 
+function probeChecks(protocol) {
+  const checks = ["clash-render", "tcp-connect", "http-generate-204-through-proxy"];
+  if (protocol !== "ss") {
+    checks.push("sustained-session");
+  }
+  return checks;
+}
+
+function buildBenchmarkPlan(servers) {
+  return {
+    mode: "local-dry-run",
+    remoteConnections: false,
+    metrics: [
+      "successRate",
+      "timeoutCount",
+      "connectTimeMs",
+      "timeToFirstByteMs",
+      "p50Ms",
+      "p95Ms",
+      "p99Ms"
+    ],
+    probes: servers.map((server) => ({
+      name: server.name,
+      protocol: server.protocol,
+      role: server.protocol === "ss" ? "baseline" : "candidate",
+      host: server.host,
+      port: server.port,
+      checks: probeChecks(server.protocol),
+      udpProbe: server.protocol !== "ss"
+    }))
+  };
+}
+
 export function dryRunChannelConfig({ configPath, env = process.env }) {
   const proxyConfig = loadProxyConfig({ configPath, env });
   const yaml = generateClashSubscription(proxyConfig);
@@ -49,6 +82,7 @@ export function dryRunChannelConfig({ configPath, env = process.env }) {
     serverCount: servers.length,
     protocolCounts: countProtocols(servers),
     generatedYamlBytes: Buffer.byteLength(yaml, "utf8"),
-    servers
+    servers,
+    benchmarkPlan: buildBenchmarkPlan(servers)
   };
 }

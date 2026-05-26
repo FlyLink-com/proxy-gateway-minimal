@@ -354,9 +354,9 @@ npm run channel:dry-run -- <path-to-proxy-servers.json>
 ```
 
 The dry-run loads the config, validates protocol families and required fields,
-renders Clash YAML in memory, and prints only a safe JSON summary. It does not
-connect to a remote node, deploy protocol runtime, mutate production config, or
-print credentials.
+renders Clash YAML in memory, and prints only a safe JSON summary with a local
+benchmark plan. It does not connect to a remote node, deploy protocol runtime,
+mutate production config, or print credentials.
 
 #### Stage 1A Config Contract Design
 
