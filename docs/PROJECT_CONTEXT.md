@@ -99,10 +99,9 @@ Current architecture priorities:
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a
   private loopback-only `sub-control-a` candidate without production authority.
-- Edge Data Plane: current AWS `prod-edge-a/b` remain production/runtime
-  dependencies until Aliyun promotion and node drain are explicitly approved.
-  Do not add or keep non-Aliyun/HP nodes as the default direction; drain and
-  retirement are now the near-term queue.
+- Edge Data Plane: AWS Singapore `prod-edge-a/b` have been stopped under an
+  accepted-outage cleanup decision. New edge capacity now needs clean rebuild
+  planning; do not describe the current state as serving production traffic.
 - Validation / CI: move manual CI toward a local Linux validation host so the
   future production subscription control plane does not also run repository
   validation workloads.
@@ -137,33 +136,39 @@ Use these docs for detail:
 
 ## Current Production Snapshot
 
-This snapshot reflects documented project state as of 2026-05-25. Refresh live
+This snapshot reflects documented project state as of 2026-05-26. Refresh live
 AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
 
-- Current production MVP target: `prod-edge-a` on `13.215.156.159`.
-- Current production gateway DNS: `sub.globalcirclecat.com -> 13.215.156.159`.
-- Current production Shadowsocks DNS: `ss-sg.globalcirclecat.com -> 13.215.156.159`.
-- Current production instance: `i-0b7791340d3fedff5`.
-- Current production security group: `sg-0379ece0b3d305c43`.
-- HTTPS is enabled for `https://sub.globalcirclecat.com` with no forced
-  HTTP-to-HTTPS redirect.
-- Nginx remains the public gateway/protection layer.
-- Public gateway permits `/api/health`, `/sub/clash.yaml`, and the controlled
-  opaque artifact path `/sub/a/*`; the public Admin UI remains blocked.
+- Current production service status: accepted outage. AWS Singapore
+  `prod-edge-a` and `prod-edge-b` are stopped.
+- Current DNS records are unchanged but stale for active service:
+  `sub.globalcirclecat.com -> 13.215.156.159` and
+  `ss-sg.globalcirclecat.com -> 13.215.156.159`.
+- Current stopped primary instance: `i-0b7791340d3fedff5`; security group
+  retained: `sg-0379ece0b3d305c43`.
+- Current stopped secondary instance: `i-0ad8676ee113d14cb`; security group
+  retained: `sg-06682c36aa03834f7`.
+- The stopped instances have no Elastic IP associations after stop; rollback by
+  start may require DNS/config updates if AWS assigns new public IPv4 addresses.
+- HTTPS and public subscription endpoints on the stopped AWS nodes are expected
+  to time out until new capacity or rollback is approved.
 - The active opaque artifact canary exists for controlled operator validation.
   The full import URL is stored only in a local `C:\tmp\...` file and must not
   be pasted, committed, logged, or written into docs.
 - Legacy `/sub/clash.yaml?token=...` support still exists until a separate
   A-tier retirement plan is approved.
-- Subscription V2 output includes `prod-edge-a` plus `prod-edge-b` as the
-  iteration/canary secondary slot.
-- `prod-edge-b` is currently carried by the validated green instance
-  `18.136.102.226`; lifecycle changes remain A-tier.
+- Subscription V2 tracked config still references `prod-edge-a` and
+  `prod-edge-b`, but those carrying instances are stopped under the accepted
+  outage decision.
 - The latest non-Aliyun node cleanup preflight is recorded in
   `docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md`.
   It refreshed AWS, AliDNS, public endpoint, and repository-reference evidence
   and did not perform any stop, terminate, DNS, security-group, runtime, tenant,
   SQLite, or artifact mutation.
+- The approved stop-only cleanup is recorded in
+  `docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md`.
+  It stopped `prod-edge-a` and `prod-edge-b`, retained security groups, left
+  DNS unchanged, did not terminate instances, and did not mutate Aliyun.
 - Legacy blue `i-004ab1c6c71d06bca` is stopped and retained for controlled
   retirement review. Do not terminate it or delete its security group without
   separate A-tier approval.
@@ -208,14 +213,11 @@ operator approval, validation, and rollback path exist:
   `prod-edge-a` / `prod-edge-b` closes during key exchange from the current
   operator environment. See
   `docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md`.
-- `prod-edge-b` carrying-instance replacement or lifecycle mutation.
+- `prod-edge-b` carrying-instance replacement, restart, or lifecycle mutation.
 - `prod-edge-c` creation or durable third-node recovery work.
-- AWS node drain, stop, termination, or security-group cleanup as part of the
-  new "Aliyun + HP only" target. The latest cleanup preflight confirms
-  `prod-edge-a` is still blocked by AliDNS/user-facing dependency and
-  `prod-edge-b` is still blocked by the documented temporary secondary-slot
-  dependency. Drain/stop/termination each require separate A-tier approvals and
-  evidence.
+- AWS node restart, termination, or security-group cleanup after the accepted
+  stop-only cleanup. Restart/rollback, termination, and security-group cleanup
+  each require separate A-tier approvals and evidence.
 - Legacy blue final termination or security-group cleanup.
 - WireGuard install, mesh key generation, UDP security-group changes,
   `wg-quick` start, or live mesh validation.
@@ -271,6 +273,7 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - `docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md`
 - `docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md`
 - `docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md`
+- `docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md`
 - The current Aliyun SWAS host is reachable through SSH alias `miyao`.
 - It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
   `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
@@ -319,19 +322,18 @@ Latest Aliyun user-management / subscription-distribution decision:
   `codex/local-edge-channel-probe-harness`; it owns local edge channel probe,
   benchmark, and manager work and must not be coupled to Aliyun production
   authority without a later integration gate.
-- Read-only refresh on 2026-05-26 found AWS still has running `prod-edge-a`
-  `13.215.156.159` and `prod-edge-b` `18.136.102.226`.
+- On 2026-05-26, the operator approved stopping AWS Singapore `prod-edge-a` and
+  `prod-edge-b` with accepted service outage. Both instances are stopped.
 - Authoritative AliDNS still points `sub.globalcirclecat.com` and
-  `ss-sg.globalcirclecat.com` to `13.215.156.159`, so no AWS node can be
-  stopped before Aliyun promotion and node drain evidence.
+  `ss-sg.globalcirclecat.com` to `13.215.156.159`, but that AWS instance is now
+  stopped and has no public IP association.
 - Latest cleanup preflight:
   `docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md`.
-- The preflight also found the tracked static node config still references
-  `prod-edge-a` and `prod-edge-b`, so node cleanup remains sequenced but not
-  executable until Aliyun promotion and subscription-output drain evidence.
-- The next executable gate is prod-edge-a source access remediation planning or,
-  for node cleanup specifically, a later drain-and-stop approval after Aliyun
-  promotion.
+- The tracked static node config still references `prod-edge-a` and
+  `prod-edge-b`, so subscription output/config must be rebuilt before the
+  service can be considered healthy again.
+- The next executable gate is clean edge node rebuild planning, Aliyun
+  promotion planning, or a rollback-start approval for the stopped AWS nodes.
 
 Latest A2 preflight:
 
