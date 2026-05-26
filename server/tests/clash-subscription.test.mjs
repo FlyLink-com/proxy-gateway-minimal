@@ -136,6 +136,88 @@ test("generateClashSubscription emits VLESS XUDP candidate YAML", () => {
   assert.match(yaml, /- FALLBACK/);
 });
 
+test("generateClashSubscription emits Hysteria2 and TUIC candidate YAML", () => {
+  const yaml = generateClashSubscription({
+    servers: [
+      {
+        name: "hy2-candidate",
+        host: "hy2.example.test",
+        port: 443,
+        protocol: "hysteria2",
+        password: "hy2-secret",
+        ports: "443-8443",
+        hopInterval: 30,
+        up: "30 Mbps",
+        down: "200 Mbps",
+        obfs: "salamander",
+        obfsPassword: "hy2-obfs-secret",
+        sni: "front.example.test",
+        skipCertVerify: false,
+        fingerprint: "sha256-fingerprint",
+        alpn: ["h3"],
+        bbrProfile: "standard"
+      },
+      {
+        name: "tuic-candidate",
+        host: "tuic.example.test",
+        port: 10443,
+        protocol: "tuic",
+        uuid: "22222222-2222-4222-8222-222222222222",
+        password: "tuic-secret",
+        token: "tuic-token",
+        udpRelayMode: "native",
+        congestionController: "bbr",
+        bbrProfile: "aggressive",
+        sni: "tuic-front.example.test",
+        alpn: ["h3"],
+        disableSni: false,
+        reduceRtt: true,
+        requestTimeout: 8000,
+        maxUdpRelayPacketSize: 1500,
+        fastOpen: true,
+        skipCertVerify: false,
+        maxOpenStreams: 20
+      }
+    ]
+  });
+
+  assert.match(yaml, /name: "hy2-candidate"/);
+  assert.match(yaml, /type: hysteria2/);
+  assert.match(yaml, /server: "hy2\.example\.test"/);
+  assert.match(yaml, /ports: "443-8443"/);
+  assert.match(yaml, /hop-interval: 30/);
+  assert.match(yaml, /password: "hy2-secret"/);
+  assert.match(yaml, /up: "30 Mbps"/);
+  assert.match(yaml, /down: "200 Mbps"/);
+  assert.match(yaml, /obfs: "salamander"/);
+  assert.match(yaml, /obfs-password: "hy2-obfs-secret"/);
+  assert.match(yaml, /sni: "front\.example\.test"/);
+  assert.match(yaml, /skip-cert-verify: false/);
+  assert.match(yaml, /fingerprint: "sha256-fingerprint"/);
+  assert.match(yaml, /alpn:\n      - "h3"/);
+  assert.match(yaml, /bbr-profile: "standard"/);
+
+  assert.match(yaml, /name: "tuic-candidate"/);
+  assert.match(yaml, /type: tuic/);
+  assert.match(yaml, /server: "tuic\.example\.test"/);
+  assert.match(yaml, /uuid: "22222222-2222-4222-8222-222222222222"/);
+  assert.match(yaml, /password: "tuic-secret"/);
+  assert.match(yaml, /token: "tuic-token"/);
+  assert.match(yaml, /udp-relay-mode: "native"/);
+  assert.match(yaml, /congestion-controller: "bbr"/);
+  assert.match(yaml, /bbr-profile: "aggressive"/);
+  assert.match(yaml, /sni: "tuic-front\.example\.test"/);
+  assert.match(yaml, /disable-sni: false/);
+  assert.match(yaml, /reduce-rtt: true/);
+  assert.match(yaml, /request-timeout: 8000/);
+  assert.match(yaml, /max-udp-relay-packet-size: 1500/);
+  assert.match(yaml, /fast-open: true/);
+  assert.match(yaml, /skip-cert-verify: false/);
+  assert.match(yaml, /max-open-streams: 20/);
+  assert.match(yaml, /- "hy2-candidate"/);
+  assert.match(yaml, /- "tuic-candidate"/);
+});
+
 test("generateClashSubscription rejects unsupported protocol instead of silently emitting it", () => {
   assert.throws(
     () =>

@@ -252,6 +252,40 @@ servername
 network
 flow
 client-fingerprint
+
+type: hysteria2
+server
+port
+password
+ports
+hop-interval
+up / down
+obfs
+obfs-password
+sni
+skip-cert-verify
+fingerprint
+alpn
+bbr-profile
+
+type: tuic
+server
+port
+uuid
+password
+token
+udp-relay-mode
+congestion-controller
+bbr-profile
+sni
+alpn
+disable-sni
+reduce-rtt
+request-timeout
+max-udp-relay-packet-size
+fast-open
+skip-cert-verify
+max-open-streams
 ```
 
 It creates `AUTO` url-test, `FALLBACK`, and `GLOBAL` select groups, then adds
@@ -379,7 +413,7 @@ Subscription V2 node selection
 operator-only tenant node assignment
 device-scoped opaque artifact repository/core/routes/admin support
 expired / disabled token-resolution blocking
-Shadowsocks and VLESS Clash YAML output
+Shadowsocks, VLESS, Hysteria2, and TUIC Clash YAML output
 ```
 
 Not implemented today:

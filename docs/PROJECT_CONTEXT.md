@@ -96,9 +96,9 @@ Current architecture priorities:
   future production subscription control plane does not also run repository
   validation workloads.
 - Channel Upgrade MVP: prioritize Clash/Mihomo-native subscription rendering
-  for multi-protocol channel candidates. SS remains the baseline; VLESS/XUDP is
-  the first candidate family; QUIC/MPTCP stay research items until measured in
-  controlled canaries.
+  for multi-protocol channel candidates. SS remains the baseline; VLESS/XUDP,
+  Hysteria2, and TUIC are renderer-supported candidate families; QUIC/MPTCP stay
+  research items until measured in controlled canaries.
 - Local Edge Agent: keep as a parked future node/agent adaptation asset, not
   the current mainline for the next channel-upgrade slice.
 - Server Edge Mesh: plan private edge-to-edge health, management, validation,
