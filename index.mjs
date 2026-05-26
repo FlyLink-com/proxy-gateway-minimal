@@ -15,6 +15,7 @@ export {
   subscriptionSummary
 } from "./server/services/clash-subscription.mjs";
 export { dryRunChannelConfig } from "./server/services/channel-config-dry-run.mjs";
+export { runChannelBenchmarkPlan } from "./server/services/channel-benchmark-runner.mjs";
 export {
   CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
   createChannelBenchmarkFixtureFromPlan,
