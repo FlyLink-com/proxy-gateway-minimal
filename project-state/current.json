@@ -66,6 +66,7 @@
     "Channel Strategy Engine for stable/private/canary/recovery node-pool selection in repository subscription rendering",
     "Channel Measurement Scoring for advisory quality tiers and recommended pools from local benchmark summaries",
     "Channel Candidate Reports for safe operator review of dry-run config metadata joined with measurement scores",
+    "Channel Decision Packs for advisory baseline/canary/blocker review artifacts from local channel evidence",
     "Channel runtime canary execution remains gated by docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md after repository renderer/config support",
     "Channel runtime canary server selection and execution remain gated by docs/CHANNEL_CANARY_SERVER_SELECTION.md and docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md after repository renderer/config support",
     "Local Edge Agent as loopback-only client adapter prototype",
