@@ -286,13 +286,19 @@ real remote edge mutation.
 Initial repository support now includes a local channel probe harness:
 
 ```text
+agent/channel-benchmark.mjs
 agent/channel-probe.mjs
+server/tests/local-edge-channel-benchmark.test.mjs
 server/tests/local-edge-channel-probe.test.mjs
 ```
 
 This harness records injected-channel TCP open success/failure, safe target
 IDs, and latency summaries. It deliberately does not retain target hostnames or
 raw channel errors in result snapshots.
+
+The benchmark wrapper adds safe candidate labels, target counts, iteration
+counts, counters, and latency summaries so later canary work can compare SS
+baseline and protocol candidates without leaking target details.
 
 ### Stage 2: Lab Edge Runtime Proof
 

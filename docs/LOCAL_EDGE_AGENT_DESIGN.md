@@ -462,12 +462,14 @@ The first repo-only skeleton now lives in:
 
 ```text
 agent/local-edge-agent.mjs
+agent/channel-benchmark.mjs
 agent/channel-profile.mjs
 agent/channel-probe.mjs
 agent/diagnostics.mjs
 agent/edge-tunnel.mjs
 agent/socks5-adapter.mjs
 server/tests/local-edge-agent.test.mjs
+server/tests/local-edge-channel-benchmark.test.mjs
 server/tests/local-edge-channel-profile.test.mjs
 server/tests/local-edge-channel-probe.test.mjs
 server/tests/local-edge-tunnel.test.mjs
@@ -494,6 +496,8 @@ exported edge-tunnel contract constants, shared frame-size limit, and codec test
 shared diagnostics redaction helpers for channel and adapter snapshots
 repository-only channel probe harness with safe target IDs, latency summaries,
 and redacted success/failure metrics
+repository-only channel benchmark runner that wraps probe matrices into
+redacted, repeatable candidate reports
 ```
 
 It deliberately does not implement:
@@ -579,6 +583,11 @@ injected channel's TCP open behavior and summarize redacted latency/counter
 results, but it does not open production channels by itself, does not store
 target hostnames in probe results, and does not prove any protocol candidate is
 production-ready.
+
+The current benchmark runner is also repository-only. It wraps probe matrices
+into repeatable reports with safe benchmark labels, target counts, iterations,
+counters, and latency summaries. It is an input for later SS-baseline versus
+candidate comparison, not a production proof by itself.
 
 ## Open Decisions
 
