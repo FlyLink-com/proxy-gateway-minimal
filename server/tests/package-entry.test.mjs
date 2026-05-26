@@ -3,9 +3,11 @@ import test from "node:test";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
   createApp,
   createRuntimeState,
   generateClashSubscription,
+  normalizeChannelBenchmarkFixture,
   summarizeChannelBenchmarkResults,
   startProxyGateway
 } from "../../index.mjs";
@@ -37,6 +39,8 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof createApp, "function");
   assert.equal(typeof createRuntimeState, "function");
   assert.equal(typeof generateClashSubscription, "function");
+  assert.equal(typeof CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION, "string");
+  assert.equal(typeof normalizeChannelBenchmarkFixture, "function");
   assert.equal(typeof summarizeChannelBenchmarkResults, "function");
   assert.equal(typeof startProxyGateway, "function");
 });

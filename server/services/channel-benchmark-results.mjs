@@ -8,6 +8,22 @@ const KNOWN_ERROR_CLASSES = new Set([
   "unknown_failure"
 ]);
 
+export const CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION = "channel-benchmark-samples/v1";
+
+const FIXTURE_KEYS = new Set(["schemaVersion", "generatedAt", "samples"]);
+
+function isObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function assertFixtureKeys(payload) {
+  for (const key of Object.keys(payload)) {
+    if (!FIXTURE_KEYS.has(key)) {
+      throw new Error("channel benchmark fixture contains unsupported metadata");
+    }
+  }
+}
+
 function textField(value, fieldName) {
   const text = String(value ?? "").trim();
   if (!text) {
@@ -99,6 +115,42 @@ function finalizeProbe(probe) {
       connect: percentileSummary(probe.connectTimes),
       timeToFirstByte: percentileSummary(probe.firstByteTimes)
     }
+  };
+}
+
+export function normalizeChannelBenchmarkFixture(payload) {
+  if (Array.isArray(payload)) {
+    return {
+      schemaVersion: CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
+      generatedAt: undefined,
+      samples: payload
+    };
+  }
+
+  if (!isObject(payload)) {
+    throw new Error("channel benchmark fixture must be an object or sample array");
+  }
+
+  assertFixtureKeys(payload);
+
+  const schemaVersion = String(payload.schemaVersion || CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION).trim();
+  if (schemaVersion !== CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION) {
+    throw new Error("unsupported channel benchmark fixture schema");
+  }
+
+  if (!Array.isArray(payload.samples)) {
+    throw new Error("channel benchmark fixture samples must be an array");
+  }
+
+  const generatedAt =
+    payload.generatedAt === undefined || payload.generatedAt === null || payload.generatedAt === ""
+      ? undefined
+      : textField(payload.generatedAt, "generatedAt");
+
+  return {
+    schemaVersion,
+    generatedAt,
+    samples: payload.samples
   };
 }
 
