@@ -8,6 +8,7 @@ type AdminLayoutProps = {
   search: string;
   onSearchChange: (value: string) => void;
   onNavigate: (page: AdminPage) => void;
+  onOpenPortal: () => void;
   children: ReactNode;
 };
 
@@ -16,6 +17,7 @@ export function AdminLayout({
   search,
   onSearchChange,
   onNavigate,
+  onOpenPortal,
   children
 }: AdminLayoutProps) {
   return (
@@ -26,6 +28,7 @@ export function AdminLayout({
           activePage={activePage}
           search={search}
           onSearchChange={onSearchChange}
+          onOpenPortal={onOpenPortal}
         />
         <section className="admin-content">{children}</section>
       </div>
