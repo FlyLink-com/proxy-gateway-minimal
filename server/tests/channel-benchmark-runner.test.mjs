@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 import { runChannelBenchmarkPlan } from "../services/channel-benchmark-runner.mjs";
+
+const repoRoot = fileURLToPath(new URL("../../", import.meta.url));
 
 function localPlan() {
   return {
@@ -173,7 +176,7 @@ test("channel benchmark runner CLI requires an explicit local runner module", ()
     assert.throws(
       () =>
         execFileSync(process.execPath, ["scripts/channel-benchmark-runner.mjs", planPath], {
-          cwd: new URL("../../", import.meta.url),
+          cwd: repoRoot,
           encoding: "utf8",
           stdio: "pipe"
         }),
@@ -192,7 +195,7 @@ test("channel benchmark runner CLI rejects URL runner modules", () => {
     assert.throws(
       () =>
         execFileSync(process.execPath, ["scripts/channel-benchmark-runner.mjs", planPath, "--runner", "https://secret.example/runner.mjs"], {
-          cwd: new URL("../../", import.meta.url),
+          cwd: repoRoot,
           encoding: "utf8",
           stdio: "pipe"
         }),
@@ -219,7 +222,7 @@ test("channel benchmark runner CLI prints safe samples from an explicit local ru
         "2026-05-26T16:30:00.000Z"
       ],
       {
-        cwd: new URL("../../", import.meta.url),
+        cwd: repoRoot,
         encoding: "utf8"
       }
     );
@@ -249,6 +252,59 @@ test("channel benchmark runner CLI prints safe samples from an explicit local ru
           connectTimeMs: 101,
           timeToFirstByteMs: 0,
           errorClass: "timeout"
+        }
+      ]
+    });
+    assert.doesNotMatch(stdout, /secret\.example|rawTarget|rawError|token=raw|host|port|checks|udpProbe/);
+  });
+});
+
+test("synthetic local runner template produces deterministic safe samples through the CLI", () => {
+  withLocalPlanFiles(({ planPath }) => {
+    const runnerPath = join(repoRoot, "scripts", "channel-benchmark-synthetic-runner.example.mjs");
+    const runnerSource = readFileSync(runnerPath, "utf8");
+    assert.doesNotMatch(runnerSource, /node:(net|http|https|dgram|tls|child_process)|fetch|WebSocket/);
+
+    const stdout = execFileSync(
+      process.execPath,
+      [
+        "scripts/channel-benchmark-runner.mjs",
+        planPath,
+        "--runner",
+        runnerPath,
+        "--generated-at",
+        "2026-05-26T16:45:00.000Z"
+      ],
+      {
+        cwd: repoRoot,
+        encoding: "utf8"
+      }
+    );
+
+    const fixture = JSON.parse(stdout);
+    assert.deepEqual(fixture, {
+      schemaVersion: "channel-benchmark-samples/v1",
+      generatedAt: "2026-05-26T16:45:00.000Z",
+      samples: [
+        {
+          probeName: "ss-baseline",
+          protocol: "ss",
+          role: "baseline",
+          qualityClass: "stable",
+          ok: true,
+          durationMs: 80,
+          connectTimeMs: 20,
+          timeToFirstByteMs: 50
+        },
+        {
+          probeName: "hy2-long-haul",
+          protocol: "hysteria2",
+          role: "candidate",
+          qualityClass: "weak-network",
+          ok: true,
+          durationMs: 144,
+          connectTimeMs: 48,
+          timeToFirstByteMs: 96
         }
       ]
     });
