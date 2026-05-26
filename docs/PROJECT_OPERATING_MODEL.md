@@ -14,9 +14,11 @@ Last updated: 2026-05-25, Asia/Shanghai.
 ## Summary
 
 This project uses GitHub and the local checkout as the code and documentation
-source of truth, PRs as change boundaries, Aliyun as the manual CI fallback
-while GitHub-hosted Actions is blocked, and AWS production changes only through
-serial Risk A runbooks and execution records.
+source of truth, PRs as change boundaries, local Linux as the target manual CI
+fallback while GitHub-hosted Actions is blocked, and production changes only
+through serial Risk A runbooks and execution records. Historical Aliyun manual
+CI evidence remains valid, but Aliyun is now being separated from the CI lane
+so it can be evaluated as the future subscription control plane.
 
 Use `docs/MULTI_AGENT_OPERATING_MODEL.md` when a task needs multiple agents,
 independent analysis tracks, or explicit subagent task packets.
@@ -47,7 +49,7 @@ operational controls behind that entry.
 2. Development and validation
    local development, targeted tests, npm test
    GitHub Actions when available
-   Aliyun manual CI host while GitHub-hosted Actions is blocked
+   local Linux manual CI host while GitHub-hosted Actions is blocked
 
 3. Production operations
    subscription control plane, edge data plane
@@ -86,7 +88,7 @@ Local client:
   Clash/Mihomo expectations and Local Edge Agent loopback adapter
 
 Validation / CI:
-  local tests, GitHub Actions, Aliyun manual CI evidence
+  local tests, GitHub Actions, local Linux manual CI evidence
 
 Operator lab:
   HP Relay and network/channel experiments, not runtime authority
@@ -126,7 +128,8 @@ Current production is still partly co-located, but target production identity
 uses separate control-plane and edge-node names:
 
 ```text
-sub-control-a: primary subscription control-plane authority
+sub-control-a: primary subscription control-plane authority, targeting Aliyun
+  after CI exits and Risk A inventory approves it
 sub-control-b: future standby / restore target for subscription control
 prod-edge-a: current primary edge data-plane slot
 prod-edge-b: iteration / canary edge data-plane slot
@@ -196,7 +199,7 @@ Architecture lane:
   docs, design contracts, route audits, node naming, operating model
 
 CI lane:
-  GitHub Actions status, Aliyun manual CI host, validation records
+  GitHub Actions status, local Linux manual CI host, validation records
 
 Operator lab lane:
   HP Relay diagnostics, local path experiments, channel-manager evidence
@@ -229,7 +232,7 @@ The report should include:
 PR range and PR numbers
 what changed and why
 risk tier for the work
-validation evidence, including Aliyun manual CI when used
+validation evidence, including manual CI when used
 production, AWS, DNS, Nginx, HTTPS, systemd, tenant, artifact, and cutover impact
 open blockers and recommended next actions
 ```

@@ -7,6 +7,7 @@
   "sourceDocs": [
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/PROJECT_CONTROL_PLANE.md",
+    "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
     "docs/MULTI_AGENT_OPERATING_MODEL.md"
   ],
@@ -222,10 +223,12 @@
       "status": "blocked-requires-runbook-and-approval",
       "lane": "edge-data-plane",
       "title": "Physically split subscription control plane from edge data plane",
-      "goal": "Move toward separate control-plane authority and replaceable edge data-plane nodes, using a clean new `sub-control-a` candidate server as the preferred first physical split path.",
+      "goal": "Move toward the current Aliyun server as production subscription control-plane candidate, local Linux as manual CI, and clean rebuild servers as replaceable edge data-plane forwarding nodes.",
       "allowedFiles": [
+        "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
         "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md",
         "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
+        "docs/CI_MANUAL_VALIDATION.md",
         "docs/PRODUCTION_EDGE_FLEET.md",
         "docs/PRODUCTION_DR.md",
         "docs/production-replacement-records/*.md"

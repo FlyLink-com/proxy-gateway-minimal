@@ -47,11 +47,17 @@ stable subscription/import experience
 In concrete terms:
 
 ```text
-sub-control-a / future sub-control-b
+sub-control-a on the current Aliyun server / future sub-control-b
   own subscription state, artifacts, Admin, rendering, and operator actions
+  after separate Risk A promotion
 
 prod-edge-a / prod-edge-b / future prod-edge-c
-  carry edge data-plane traffic and report health
+  are clean or clean-rebuilt forwarding nodes that carry edge data-plane
+  traffic and report health
+
+local-ci-a on local Linux
+  owns manual CI validation after bootstrap, with no production secrets or
+  deploy authority
 
 Local Edge Agent
   is the future local loopback channel adapter path
@@ -117,6 +123,7 @@ Purpose:
 Primary docs:
 
 - `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`
+- `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`
 - `docs/SUBSCRIPTION_V2_REPLACEMENT.md`
 - `docs/SUBSCRIPTION_DEVICE_SCOPED_OPAQUE_URLS.md`
 - `docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md`
@@ -445,8 +452,9 @@ they are unreachable or a separate A-tier plan changes runtime behavior.
 
 Known fact:
 
-The repo has local tests, Admin tests/build, GitHub Actions intent, and Aliyun
-manual CI fallback records. Historical pass counts differ by date and branch.
+The repo has local tests, Admin tests/build, GitHub Actions intent, historical
+Aliyun manual CI fallback records, and a target local Linux manual CI lane.
+Historical pass counts differ by date and branch.
 
 Simplification target:
 
@@ -628,8 +636,9 @@ Always Risk A. This changes production access semantics.
 
 Goal:
 
-Move from co-located production toward a separate subscription control plane and
-replaceable edge data-plane nodes.
+Move from co-located production toward the current Aliyun server as
+subscription control plane, local Linux as manual CI, and replaceable clean
+edge data-plane nodes.
 
 Scope:
 

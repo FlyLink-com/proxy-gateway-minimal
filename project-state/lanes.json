@@ -11,6 +11,7 @@
     "docs/PROJECT_OPERATING_MODEL.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/PROJECT_TOPOLOGY.md",
+    "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md"
   ],
   "lanes": [
@@ -60,6 +61,7 @@
       "purpose": "Own subscription authority, Admin/operator actions, opaque artifacts, and stable subscription rendering.",
       "primaryDocs": [
         "docs/units/SUBSCRIPTION_ACCESS_UNIT.md",
+        "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
         "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md",
         "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
         "docs/SUBSCRIPTION_V2_REPLACEMENT.md",
@@ -136,9 +138,10 @@
       "name": "Validation And CI",
       "status": "active",
       "riskBoundary": "C for validation docs; B for validation scripts and test changes; not staging or deploy approval",
-      "purpose": "Keep local tests, Admin tests/build, GitHub Actions intent, and Aliyun manual CI fallback understandable and reproducible.",
+      "purpose": "Keep local tests, Admin tests/build, GitHub Actions intent, target local Linux manual CI, and historical Aliyun manual CI fallback understandable and reproducible.",
       "primaryDocs": [
         "docs/units/VALIDATION_CI_UNIT.md",
+        "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
         "docs/CI_MANUAL_VALIDATION.md",
         "docs/PROJECT_CONTEXT.md"
       ],
@@ -151,6 +154,7 @@
       "nonGoals": [
         "production approval",
         "self-hosted runner assumption",
+        "routine CI on a host being prepared as production subscription control",
         "staging substitution"
       ]
     },
@@ -187,6 +191,7 @@
         "docs/units/PRODUCTION_OPS_UNIT.md",
         "docs/PROJECT_CONTEXT.md",
         "docs/PROJECT_OPERATING_MODEL.md",
+        "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
         "docs/DEPLOYMENT_FLOW.md",
         "docs/PRODUCTION_DR.md",
         "docs/PRODUCTION_REPLACEMENT.md",

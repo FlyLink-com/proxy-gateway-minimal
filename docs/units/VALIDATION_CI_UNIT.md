@@ -42,7 +42,9 @@ local focused test selection
 npm test baseline validation
 Admin UI test and build validation
 GitHub Actions CI when available
-Aliyun manual CI fallback while GitHub-hosted Actions is blocked
+local Linux manual CI target while GitHub-hosted Actions is blocked
+historical Aliyun manual CI fallback until the local Linux transition is
+  validated
 clean-environment validation evidence when required
 validation records for PRs or handoffs
 failure logs with secrets redacted
@@ -79,7 +81,9 @@ product scope decisions
 
 Passing validation is required evidence for many changes, but it is not
 deployment approval. Manual CI fallback is not staging, not production, and not
-a self-hosted runner assumption.
+a self-hosted runner assumption. The current target is to move routine manual
+CI to local Linux so the Aliyun server can be evaluated separately as the
+production subscription control-plane candidate.
 
 ## Inputs
 
@@ -156,6 +160,7 @@ Production Operations:
 docs/DOMAIN_UNIT_BOUNDARIES.md
 docs/VALIDATION_BASELINE.md
 docs/CI_MANUAL_VALIDATION.md
+docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md
 docs/DEPLOYMENT_FLOW.md
 .github/workflows/ci.yml
 package.json
@@ -207,7 +212,9 @@ keep GitHub Actions billing/spending-limit blockers framed as runner
   availability issues
 add validation records only where they affect PR review, handoff, or current
   project state
-keep manual CI fallback aligned with GitHub Actions command sequence
+keep local Linux manual CI aligned with GitHub Actions command sequence
+keep historical Aliyun manual CI evidence available while moving routine CI off
+  the future production control-plane candidate
 ensure manual CI cleanup remains part of every manual validation record
 avoid treating validation success as staging, deploy, production, or node
   promotion approval
@@ -219,7 +226,9 @@ avoid treating validation success as staging, deploy, production, or node
 GitHub-hosted Actions as the only validation path while billing blockers remain
 self-hosted runner registration
 manual CI host mutation outside the approved validation boundary
-using Aliyun manual CI as staging
+using manual CI as staging
+continuing routine CI on the future production subscription control-plane
+  candidate after local Linux CI is validated
 using manual CI as production approval
 deploy or cutover based only on repository validation
 copying production secrets, subscription URLs, SQLite data, or customer data

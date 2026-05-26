@@ -11,7 +11,10 @@
     "docs/PROJECT_OPERATING_MODEL.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/PROJECT_TOPOLOGY.md",
+    "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
+    "docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md",
+    "docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md",
     "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
     "docs/VALIDATION_BASELINE.md"
   ],
@@ -38,7 +41,9 @@
   "activeDirections": [
     "Domain Unit Boundaries for product business, commercial entitlement, subscription access, nodes, validation, operator lab, and production ops",
     "Subscription Control / Edge Split",
-    "Clean new-server `sub-control-a` candidate as the preferred future physical split path",
+    "Aliyun current server as future subscription control-plane candidate after CI exits",
+    "Local Linux manual CI as the target validation host",
+    "Clean rebuild servers as traffic forwarding edge data-plane nodes",
     "Local Edge Agent as loopback-only client adapter prototype",
     "Server Edge Mesh as private operator/edge management path",
     "Project Control Plane with machine-readable state files"
@@ -74,7 +79,7 @@
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "githubHostedActions": "blocked-by-billing-or-spending-limit",
-    "manualCiFallback": "Aliyun SWAS validation host per docs/CI_MANUAL_VALIDATION.md",
+    "manualCiFallback": "HP local Linux manual CI is bootstrapped and archive-validation passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922; historical Aliyun SWAS validation host remains pending cleanup/retirement from the CI lane",
     "manualCiIsStaging": false,
     "cTierCommand": "git diff --check origin/master...HEAD",
     "bTierServerCommands": [
@@ -101,9 +106,9 @@
       "sourceDoc": "docs/PROJECT_CONTEXT.md"
     },
     {
-      "id": "clean-sub-control-a-candidate",
-      "summary": "A clean new server is the preferred sub-control-a candidate path, but provisioning, state-copy validation, public-boundary validation, and promotion remain Risk A.",
-      "sourceDoc": "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md"
+      "id": "aliyun-control-local-ci-rebuild",
+      "summary": "The target rebuild direction is current Aliyun as future production subscription control-plane candidate, local Linux as manual CI, and clean servers as forwarding edge nodes; all execution remains gated.",
+      "sourceDoc": "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md"
     },
     {
       "id": "a2-host-internal-inventory-blocked",
@@ -112,8 +117,9 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Complete A2 host-internal read-only inventory through an approved SSH or equivalent inspection path",
-    "A2 clean sub-control-a candidate preflight/runbook path (blocked until live inventory and approval)",
+    "Aliyun manual CI cleanup / retirement from validation lane after local Linux CI passes",
+    "Aliyun production-control candidate read-only inventory",
+    "Clean edge-node forwarding rebuild preflight",
     "A1 legacy query-token retirement (blocked until runbook and approval)",
     "A2 physical control/edge split promotion decision (blocked until candidate, backup/restore, edge-only behavior, rollback, and approval)"
   ],
