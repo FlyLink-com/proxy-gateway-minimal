@@ -1,6 +1,6 @@
 # Multi-Agent Operating Model
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-05-26, Asia/Shanghai.
 
 > Status:
 > - Type: Active operating model
@@ -499,6 +499,25 @@ Code Agent:
 ```
 
 ## Verification Contract
+
+PR descriptions must include an Agent / Task Routing section, even when no
+subagents were used:
+
+```text
+Lead agent:
+Supporting agents used:
+Primary unit:
+Secondary units:
+Follow-up agent suitability:
+Recommended next owner:
+```
+
+Use `Follow-up agent suitability` to say whether the task naturally splits into
+Architecture, Code, Validation / CI, Operator Lab, Production Ops, Product
+Business, Commercial / Entitlement, Subscription Access, Edge / Node Capacity,
+or Local Client follow-up work. If a task should remain lead-owned because it
+touches source-of-truth files, secrets, production gates, or cross-unit
+integration, state that explicitly.
 
 Subagent reports must include:
 
