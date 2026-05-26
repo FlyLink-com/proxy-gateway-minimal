@@ -265,6 +265,39 @@
       ]
     },
     {
+      "id": "B7-channel-candidate-report",
+      "risk": "B",
+      "status": "completed",
+      "lane": "edge-data-plane",
+      "title": "Add repository-local channel candidate reports",
+      "goal": "Join safe channel config dry-run summaries with measurement scores into grouped operator recommendations without exposing hosts, ports, credentials, raw errors, tokens, or subscription URLs.",
+      "allowedFiles": [
+        "server/services/channel-candidate-report.mjs",
+        "server/tests/channel-candidate-report.test.mjs",
+        "server/tests/package-entry.test.mjs",
+        "scripts/channel-candidate-report.mjs",
+        "package.json",
+        "index.mjs",
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate production",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, or runtime config",
+        "change production tenant or artifact state",
+        "write secrets or raw subscription URLs",
+        "treat candidate reports as automatic production rollout"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/channel-candidate-report.test.mjs server/tests/package-entry.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "A1-legacy-query-token-retirement",
       "risk": "A",
       "status": "blocked-requires-runbook-and-approval",
