@@ -14,6 +14,7 @@
     "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
     "docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md",
+    "docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md",
     "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
     "docs/VALIDATION_BASELINE.md"
   ],
@@ -78,7 +79,7 @@
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "githubHostedActions": "blocked-by-billing-or-spending-limit",
-    "manualCiFallback": "Target local Linux validation host per docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md and docs/CI_MANUAL_VALIDATION.md; historical Aliyun SWAS validation host retained until transition is validated",
+    "manualCiFallback": "HP local Linux manual CI is bootstrapped and archive-validation passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922; historical Aliyun SWAS validation host remains pending cleanup/retirement from the CI lane",
     "manualCiIsStaging": false,
     "cTierCommand": "git diff --check origin/master...HEAD",
     "bTierServerCommands": [
@@ -110,18 +111,12 @@
       "sourceDoc": "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md"
     },
     {
-      "id": "local-linux-ci-bootstrap-blocked",
-      "summary": "Read-only inventory found hp-server reachable and hardware-ready as a local manual CI candidate, but Node.js 22/npm are absent and bootstrap requires explicit approval.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md"
-    },
-    {
       "id": "a2-host-internal-inventory-blocked",
       "summary": "2026-05-26 A2 read-only preflight found external AWS, DNS, public-boundary, and edge-port checks healthy, but host-internal service, SQLite, backup, Nginx, and journal checks are blocked by SSH key-exchange closure from the current operator environment.",
       "sourceDoc": "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md"
     }
   ],
   "nextRecommendedQueue": [
-    "Local Linux manual CI bootstrap approval and archive-based validation",
     "Aliyun manual CI cleanup / retirement from validation lane after local Linux CI passes",
     "Aliyun production-control candidate read-only inventory",
     "Clean edge-node forwarding rebuild preflight",

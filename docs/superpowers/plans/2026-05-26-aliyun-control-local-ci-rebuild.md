@@ -108,7 +108,7 @@ Expected:
 host identity, OS, disk, memory, Node, npm, git, and network state are recorded without secrets.
 ```
 
-- [ ] **Step 2: Request approval before mutation**
+- [x] **Step 2: Request approval before mutation**
 
 Use this approval phrase before installing packages or changing host state:
 
@@ -116,7 +116,7 @@ Use this approval phrase before installing packages or changing host state:
 Approve local Linux manual CI bootstrap. No production secrets, no production data, no deploy, no staging.
 ```
 
-- [ ] **Step 3: Bootstrap Node.js 22 if needed**
+- [x] **Step 3: Bootstrap Node.js 22 if needed**
 
 Run only after approval:
 
@@ -134,7 +134,7 @@ Expected:
 node is v22.x, npm is available, git is available.
 ```
 
-- [ ] **Step 4: Validate archive-based CI**
+- [x] **Step 4: Validate archive-based CI**
 
 From the Windows checkout:
 
@@ -167,7 +167,7 @@ Expected:
 All commands pass.
 ```
 
-- [ ] **Step 5: Clean validation workspace**
+- [x] **Step 5: Clean validation workspace**
 
 Run:
 

@@ -83,6 +83,7 @@ The target bootstrap and validation sequence lives in
 Current target read-only inventory:
 
 - `docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md`
+- `docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md`
 
 Current target status:
 
@@ -92,21 +93,22 @@ Candidate role: local-ci-a
 Reachability: SSH BatchMode works from the operator machine
 Hardware: sufficient for manual CI validation
 git: present
-Node.js 22: absent
-npm: absent
+Node.js 22: v22.22.3, user-local under ~/.local/ci-node/
+npm: 10.9.8
 Current host reality: operator-lab HP server, not a sterile CI appliance
-Next gate: explicit bootstrap approval before package install or validation
+Latest validation: archive-based manual CI passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922
+Next gate: Aliyun CI cleanup inventory and explicit cleanup approval before retiring Aliyun from the CI lane
 ```
 
-Required approval phrase before installing packages or running archive-based
-manual CI validation:
+Historical bootstrap approval phrase used on 2026-05-26:
 
 ```text
 Approve local Linux manual CI bootstrap. No production secrets, no production data, no deploy, no staging.
 ```
 
-Until the bootstrap and validation record exists, this host is only a candidate
-and must not replace the historical Aliyun fallback.
+The HP host is now usable for archive-based manual CI validation. It is still
+not staging, not production, not deploy approval, and not a self-hosted GitHub
+runner.
 
 ### Historical Aliyun Host Inventory
 

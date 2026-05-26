@@ -159,11 +159,12 @@ operator approval, validation, and rollback path exist:
 - Legacy query-token retirement.
 - Traffic accounting, quota enforcement, and device-abuse enforcement.
 - Physical control-plane / edge data-plane split.
-- Local Linux manual CI bootstrap, validation, and promotion to the default
-  manual CI host. The first read-only inventory is recorded in
-  `docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md`;
-  `hp-server` is reachable and hardware-ready, but Node.js 22/npm are absent
-  and bootstrap is not approved.
+- Local Linux manual CI is now bootstrapped and validated as an archive-based
+  repository validation host. See
+  `docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md`
+  and
+  `docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md`.
+  It is not staging, not production, and not deploy approval.
 - Aliyun manual CI cleanup or production-control candidate preparation.
 - Clean `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
@@ -208,11 +209,18 @@ inventory, operator approval, validation plan, and rollback evidence.
 Latest local Linux CI candidate inventory:
 
 - `docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md`
+- `docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md`
 - `hp-server` is reachable through the approved local SSH key.
-- Hardware and git are sufficient for manual CI, but Node.js 22/npm are absent.
-- The host is currently an operator-lab HP server, not a sterile CI appliance.
-- Bootstrap and archive-based validation require the explicit approval phrase
-  in `docs/CI_MANUAL_VALIDATION.md`.
+- Node.js `v22.22.3` and npm `10.9.8` are available through a user-local
+  toolchain under `~/.local/ci-node/`.
+- Archive-based manual CI passed for commit
+  `4dacd1edf0b179cea38654de4cda2fd845c6d922`: `npm ci`,
+  `npm ci --prefix admin`, `npm test` 180/180, `npm run admin:test` 25/25,
+  and `npm run admin:build`.
+- Per-run workspace, archive, npm cache, GitHub config, and git credentials
+  were cleaned after validation.
+- The next gate is Aliyun CI cleanup inventory and explicit cleanup approval
+  before retiring Aliyun from the validation lane.
 
 Latest A2 preflight:
 
