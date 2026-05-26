@@ -1,0 +1,16 @@
+{
+  "mode": "channel-measurement-bundle",
+  "generatedAt": "2026-05-26T18:45:00.000+08:00",
+  "runId": "2026-05-26-channel-lab-a-hysteria2-short-canary",
+  "candidateSet": "channel-lab-a-hysteria2-short-canary",
+  "windows": [
+    {
+      "id": "operator-device-short-canary",
+      "summaryFile": "inputs/operator-device-summary.json"
+    },
+    {
+      "id": "mihomo-import-short-canary",
+      "summaryFile": "inputs/mihomo-import-summary.json"
+    }
+  ]
+}
