@@ -134,6 +134,15 @@ subscription material, endpoints, credentials, raw errors, or notes. Bundle
 reports remain repository evidence only; they do not create measurements or
 activate runtime nodes.
 
+Redacted historical bundle fixtures may live under
+`docs/channel-measurement-bundles/` when they only contain aggregate
+measurement evidence. These fixtures are useful for regression testing the
+repository tools against real canary evidence, but they are not runtime
+configuration and must remain free of hosts, ports, credentials, tokens,
+subscription URLs, raw logs, and customer data. Short-canary fixtures must not
+be described as extended-measurement-ready when they do not meet the configured
+window or sample thresholds.
+
 ## Distribution Readiness
 
 Subscription overview distribution readiness is based on the default stable

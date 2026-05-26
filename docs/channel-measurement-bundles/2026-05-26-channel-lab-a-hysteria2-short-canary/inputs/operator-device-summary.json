@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "mode": "local-benchmark-summary",
+  "generatedAt": "2026-05-26T18:20:00.000+08:00",
+  "sourceRecord": "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-operator-device-canary.md",
+  "probes": [
+    {
+      "name": "channel-lab-a-hysteria2-operator-device",
+      "protocol": "hysteria2",
+      "role": "candidate",
+      "qualityClass": "short-canary",
+      "sampleCount": 20,
+      "successRate": 1,
+      "timeoutCount": 0,
+      "latencyMs": {
+        "duration": {
+          "p50": 1121.3,
+          "p95": 2162.4,
+          "max": 2279.4
+        }
+      }
+    }
+  ]
+}
