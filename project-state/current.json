@@ -22,6 +22,7 @@
     "docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md",
     "docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md",
     "docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md",
+    "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md",
     "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/VALIDATION_BASELINE.md"
@@ -50,7 +51,7 @@
     "Domain Unit Boundaries for product business, commercial entitlement, subscription access, nodes, validation, operator lab, and production ops",
     "Aliyun user-management / subscription-distribution platform as the near-term production-control target",
     "HP local Linux as manual CI and operator lab only",
-    "Controlled drain and retirement of non-Aliyun / non-HP nodes after Aliyun promotion",
+    "AWS Singapore prod-edge-a/b stopped with accepted outage; clean edge rebuild is now required before restored service",
     "Subscription Control / Edge Split",
     "Aliyun current server as private loopback-only subscription control-plane candidate after CI cleanup",
     "Local Linux manual CI as the target validation host",
@@ -62,22 +63,29 @@
   ],
   "productionSnapshot": {
     "requiresLiveVerification": true,
-    "currentPrimarySlot": "prod-edge-a",
-    "currentPrimaryPublicIp": "13.215.156.159",
+    "serviceStatus": "accepted-outage-after-singapore-prod-edge-stop",
+    "currentPrimarySlot": "prod-edge-a-stopped",
+    "currentPrimaryPublicIp": null,
     "subscriptionGatewayDomain": "sub.globalcirclecat.com",
     "shadowsocksDomain": "ss-sg.globalcirclecat.com",
     "httpsGatewayEnabled": true,
     "forcedHttpRedirect": false,
     "primaryInstanceId": "i-0b7791340d3fedff5",
+    "primaryInstanceState": "stopped",
     "primarySecurityGroupId": "sg-0379ece0b3d305c43",
-    "iterationSecondarySlot": "prod-edge-b",
-    "iterationSecondaryCarrierIp": "18.136.102.226",
+    "iterationSecondarySlot": "prod-edge-b-stopped",
+    "iterationSecondaryCarrierIp": null,
+    "iterationSecondaryInstanceId": "i-0ad8676ee113d14cb",
+    "iterationSecondaryInstanceState": "stopped",
+    "iterationSecondarySecurityGroupId": "sg-06682c36aa03834f7",
     "legacyBlueState": "stopped-for-review-not-terminated",
     "legacyBlueInstanceId": "i-004ab1c6c71d06bca",
     "legacyBlueSecurityGroupId": "sg-04a165ec77f430ee8",
     "publicAdminUiExposed": false,
     "notes": [
-      "Do not terminate legacy blue or delete its security group without separate Risk A approval.",
+      "sub.globalcirclecat.com and ss-sg.globalcirclecat.com still point at the old 13.215.156.159 address, but the instance is stopped and has no public IP association.",
+      "Stopped instances have no Elastic IP association; rollback by starting may require DNS/config updates if AWS assigns new public IP addresses.",
+      "Do not terminate legacy blue or delete any security group without separate Risk A approval.",
       "Do not trust this snapshot for mutation; verify AWS, DNS, Nginx, systemd, endpoint, and SQLite state live."
     ]
   },
@@ -130,8 +138,8 @@
     },
     {
       "id": "non-aliyun-hp-node-retirement-blocked",
-      "summary": "The target is now Aliyun plus HP only, but the latest cleanup preflight found AWS prod-edge-a and prod-edge-b still running, AliDNS still points sub.globalcirclecat.com and ss-sg.globalcirclecat.com to prod-edge-a, and tracked config/docs still reference prod-edge-b; drain, stop, termination, and security-group cleanup each require separate Risk A gates.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md"
+      "summary": "AWS Singapore prod-edge-a and prod-edge-b were stopped with accepted outage. DNS and tracked config still reference the old AWS addresses, termination/security-group cleanup remains unapproved, and clean edge rebuild or rollback-start now requires separate Risk A gates.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md"
     },
     {
       "id": "technical-mvp-track-separated",
@@ -145,11 +153,9 @@
     }
   ],
   "nextRecommendedQueue": [
-    "prod-edge-a source access remediation planning",
-    "Aliyun private state-copy validation approval after source access and source integrity checks pass",
-    "Aliyun production subscription authority promotion approval",
-    "Subscription-output inventory proving AWS nodes are no longer emitted, or explicit client-cache-window acceptance",
-    "AWS node drain-and-stop approval after Aliyun promotion",
+    "clean edge node rebuild planning",
+    "Aliyun subscription distribution promotion planning with accepted outage context",
+    "rollback-start approval for stopped AWS Singapore nodes if temporary restore is needed",
     "Legacy stopped node termination and security-group cleanup approval after observation window",
     "A1 legacy query-token retirement (blocked until runbook and approval)",
     "A2 physical control/edge split promotion decision (blocked until candidate, backup/restore, edge-only behavior, rollback, and approval)"
