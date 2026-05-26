@@ -350,6 +350,22 @@ explicit approval phrase required
 no deployment performed by the docs PR
 ```
 
+**Repository anchors after Package 5 implementation:**
+
+```text
+docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md
+docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md
+docs/PROJECT_CONTEXT.md
+project-state/current.json
+```
+
+The Package 5 runbook is repository-only. It defines the later promotion ladder
+as repo-only design, live read-only inventory, source access / source-state
+decision, private state-copy validation, public-boundary dry run, DNS
+promotion, observation, rollback, and cleanup. It does not execute Aliyun
+deployment, DNS mutation, public listener exposure, state copy, edge traffic, or
+production authority transfer.
+
 ## Validation Policy
 
 ```text
