@@ -166,8 +166,11 @@ Current architecture priorities:
   and decision packs can turn those inputs into safe baseline/canary/blocker
   artifacts. Extended measurement assessments can classify already-collected
   local benchmark summaries as ready, needing more samples, or hold for
-  investigation before an operator decides on the next canary gate. These
-  repository tools do not mutate runtime config or activate nodes. Runtime
+  investigation before an operator decides on the next canary gate. Measurement
+  investigation reports can consume safe bundle reports and classify hold
+  patterns such as sustained tail latency or isolated tail spikes into advisory
+  next actions. These repository tools do not mutate runtime config or activate
+  nodes. Runtime
   canaries are gated by
   `docs/CHANNEL_CANARY_SERVER_SELECTION.md` and
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`; repository renderer/config support
@@ -375,6 +378,11 @@ simplification queue is closed:
   Extended Measurement Assessment work; already-collected local benchmark
   summaries can be classified into ready, needs-more-samples, or hold states
   without running probes, touching edge nodes, or mutating production.
+- `B10-channel-measurement-investigation` - completed in the Channel
+  Measurement Investigation work; safe measurement bundle reports can be
+  classified into sustained latency, isolated spike, reliability, or
+  evidence-gap follow-up patterns without running probes, touching edge nodes,
+  or mutating production.
 
 The remaining queued items are A-tier and remain blocked:
 

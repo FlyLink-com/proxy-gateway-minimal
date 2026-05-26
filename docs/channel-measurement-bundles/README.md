@@ -17,3 +17,10 @@ the approved operator-device extended measurement. It contains three 60-sample
 windows for the direct Hysteria2 client path and three 60-sample windows for
 the standalone Mihomo path. Its generated bundle report is evidence for
 operator review; it is not rollout approval.
+
+Use `npm run channel:measurement-investigation -- <bundle-report.json>` to
+turn a safe bundle report into a repository-local investigation summary. The
+investigation report classifies hold patterns such as sustained tail latency or
+isolated tail spikes and recommends the next review action without running new
+probes, exposing raw local paths, changing node config, or approving runtime
+rollout.
