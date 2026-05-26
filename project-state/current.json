@@ -31,6 +31,7 @@
     "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-runtime.md",
     "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-operator-device-canary.md",
     "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-mihomo-import-validation.md",
+    "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-extended-measurement.md",
     "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/VALIDATION_BASELINE.md"
@@ -168,8 +169,8 @@
     },
     {
       "id": "channel-canary-server-selection",
-      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance exists, Hysteria2 v2.9.2 is active, one controlled operator-device short canary passed, and standalone Mihomo import/runtime validation passed. Extended measurement, GUI import evidence, DNS, production config, subscription output, broader rollout, and cleanup remain gated.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-mihomo-import-validation.md"
+      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance exists, Hysteria2 v2.9.2 is active, short operator-device and Mihomo canaries passed, and extended operator-device measurement completed. The extended bundle has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. GUI import evidence, DNS, production config, subscription output, broader rollout, protocol comparison, and cleanup remain gated.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-extended-measurement.md"
     },
     {
       "id": "aliyun-control-local-ci-rebuild",
@@ -199,7 +200,7 @@
   ],
   "nextRecommendedQueue": [
     "Aliyun Subscription Control Platform MVP Package 5: Aliyun promotion runbook repo-only PR",
-    "channel-lab-a extended Hysteria2 measurement using channel:extended-assessment evidence, GUI import evidence, or cleanup decision",
+    "channel-lab-a Hysteria2 latency investigation, TUIC/VLESS-XUDP comparison, GUI import evidence, or cleanup decision",
     "clean edge node rebuild planning",
     "Aliyun subscription distribution promotion planning with accepted outage context",
     "rollback-start approval for stopped AWS Singapore nodes if temporary restore is needed",

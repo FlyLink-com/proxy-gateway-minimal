@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "mode": "local-benchmark-summary",
+  "generatedAt": "2026-05-26T15:58:56.8511890Z",
+  "source": "operator-device-extended-measurement",
+  "windowId": "direct-window-1",
+  "probes": [
+    {
+      "name": "channel-lab-a-hysteria2-operator-device",
+      "protocol": "hysteria2",
+      "role": "candidate",
+      "qualityClass": "extended-operator-device",
+      "sampleCount": 60,
+      "successRate": 1.0,
+      "timeoutCount": 0,
+      "latencyMs": {
+        "connect": {
+          "p50": 0.6,
+          "p95": 15.9,
+          "p99": 26.1
+        },
+        "ttfb": {
+          "p50": 1419.2,
+          "p95": 1462.6,
+          "p99": 1995.2
+        },
+        "duration": {
+          "p50": 1419.2,
+          "p95": 1462.6,
+          "p99": 1995.2,
+          "max": 1995.2
+        }
+      }
+    }
+  ]
+}

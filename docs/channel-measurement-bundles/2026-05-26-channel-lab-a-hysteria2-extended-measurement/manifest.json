@@ -1,0 +1,32 @@
+{
+  "mode": "channel-measurement-bundle",
+  "generatedAt": "2026-05-26T16:15:00.000Z",
+  "runId": "2026-05-26-channel-lab-a-hysteria2-extended-measurement",
+  "candidateSet": "channel-lab-a-hysteria2-extended-measurement",
+  "windows": [
+    {
+      "id": "operator-device-direct-window-1",
+      "summaryFile": "inputs/operator-device-direct-window-1.json"
+    },
+    {
+      "id": "operator-device-direct-window-2",
+      "summaryFile": "inputs/operator-device-direct-window-2.json"
+    },
+    {
+      "id": "operator-device-direct-window-3",
+      "summaryFile": "inputs/operator-device-direct-window-3.json"
+    },
+    {
+      "id": "mihomo-import-window-1",
+      "summaryFile": "inputs/mihomo-import-window-1.json"
+    },
+    {
+      "id": "mihomo-import-window-2",
+      "summaryFile": "inputs/mihomo-import-window-2.json"
+    },
+    {
+      "id": "mihomo-import-window-3",
+      "summaryFile": "inputs/mihomo-import-window-3.json"
+    }
+  ]
+}

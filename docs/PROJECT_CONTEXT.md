@@ -258,6 +258,16 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   errors. No all-user rollout, subscription output change, DNS, Nginx,
   production config, system proxy, TUN, runtime reconfiguration,
   security-group mutation, or production traffic was performed.
+- The approved Hysteria2 extended measurement is recorded in
+  `docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-extended-measurement.md`.
+  Direct Hysteria2 and standalone Mihomo paths each completed 3 windows of 60
+  operator-device samples with 180/180 successes and no timeouts. The
+  repository bundle report classified both probes as `hold_for_investigation`:
+  the direct path exceeded p95/p99 latency thresholds, and the Mihomo path had
+  one p99 latency spike. No all-user rollout, subscription output change, DNS,
+  Nginx, production config, runtime reconfiguration, service restart,
+  security-group mutation, system proxy change, TUN, or production traffic was
+  performed.
 - Legacy blue `i-004ab1c6c71d06bca` is stopped and retained for controlled
   retirement review. Do not terminate it or delete its security group without
   separate A-tier approval.
@@ -283,11 +293,13 @@ operator approval, validation, and rollback path exist:
   security-group/firewall changes, operator-device canaries, or broader rollout
   remain A-tier and must follow `docs/CHANNEL_CANARY_SERVER_SELECTION.md` and
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`.
-  The current `channel-lab-a` records prove server runtime health, one short
-  controlled operator-device Hysteria2 canary, and one standalone Mihomo
-  import/runtime validation only. Extended measurements, GUI import evidence,
-  subscription output changes, broader rollout, and cleanup/termination each
-  still require separate approval and evidence.
+  The current `channel-lab-a` records prove server runtime health, short
+  controlled canaries, and one extended operator-device Hysteria2 measurement.
+  Extended measurement volume is sufficient, but the latest result is
+  `hold_for_investigation` because latency thresholds were exceeded. GUI import
+  evidence, TUIC/VLESS-XUDP comparison, subscription output changes, broader
+  rollout, and cleanup/termination each still require separate approval and
+  evidence.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See
