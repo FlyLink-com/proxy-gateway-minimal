@@ -15,6 +15,31 @@ const capabilities = [
   }
 ];
 
+const scenarios = [
+  {
+    title: "个人多端",
+    description: "桌面端、移动端按同一开通节奏导入，适合长期自用和多设备使用。"
+  },
+  {
+    title: "小团队协作",
+    description: "统一确认需求、统一发送入口，减少成员之间反复转发和解释成本。"
+  },
+  {
+    title: "移动办公",
+    description: "适合出差、远程协作和临时设备切换，重点是入口清晰、指引明确。"
+  },
+  {
+    title: "长期维护",
+    description: "入口更新、套餐状态和常见问题通过已确认渠道持续跟进。"
+  }
+];
+
+const productOutcomes = [
+  "一处开通，多端导入",
+  "入口更新更清晰",
+  "持续服务跟进"
+];
+
 const deliverySteps = [
   "确认需求",
   "完成开通",
@@ -34,6 +59,7 @@ export function CompanySitePage() {
         </a>
         <nav className="company-site-nav" aria-label="公司官网导航">
           <a href="#capabilities">服务</a>
+          <a href="#scenarios">场景</a>
           <a href="#delivery">开通</a>
           <a href="#contact">联系</a>
         </nav>
@@ -91,6 +117,36 @@ export function CompanySitePage() {
               <p>{item.description}</p>
             </article>
           ))}
+        </div>
+      </section>
+
+      <section className="company-site-product-effect" id="scenarios">
+        <div className="company-site-effect-copy">
+          <span>应用场景</span>
+          <h2>覆盖更多常见订阅接入场景</h2>
+          <p>
+            这个服务的核心不是复杂配置，而是把开通、入口、导入和后续支持整理成清晰流程。
+            因此它可以覆盖个人、小团队、移动办公和长期维护等高频需求。
+          </p>
+        </div>
+        <div className="company-site-effect-layout">
+          <div className="site-effect-flow" aria-label="产品效果示意">
+            {productOutcomes.map((outcome, index) => (
+              <div className="site-effect-step" key={outcome}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <strong>{outcome}</strong>
+              </div>
+            ))}
+          </div>
+          <div className="company-site-scenario-grid">
+            {scenarios.map((scenario) => (
+              <article className="company-site-scenario-card" key={scenario.title}>
+                <CheckCircle2 aria-hidden="true" />
+                <h3>{scenario.title}</h3>
+                <p>{scenario.description}</p>
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 

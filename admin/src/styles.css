@@ -183,6 +183,40 @@ textarea {
   color: #172033;
 }
 
+@keyframes site-float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
+@keyframes site-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0.95;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes site-flow {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  100% {
+    background-position: 100% 50%;
+  }
+}
+
 .company-site-header {
   min-height: 76px;
   padding: 18px clamp(20px, 5vw, 72px);
@@ -296,12 +330,27 @@ textarea {
   background: #0f766e;
   color: #ffffff;
   cursor: pointer;
+  transition:
+    background 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.company-site-primary:hover {
+  background: #0d9488;
+  box-shadow: 0 12px 26px rgba(15, 118, 110, 0.24);
+  transform: translateY(-1px);
+}
+
+.company-site-primary:hover svg {
+  transform: translateX(2px);
 }
 
 .company-site-primary svg,
 .company-site-secondary svg {
   width: 18px;
   height: 18px;
+  transition: transform 160ms ease;
 }
 
 .company-site-secondary {
@@ -342,6 +391,7 @@ textarea {
   border-radius: 999px;
   background: rgba(45, 212, 191, 0.16);
   filter: blur(1px);
+  animation: site-pulse 7s ease-in-out infinite;
 }
 
 .site-orbit-a {
@@ -370,6 +420,15 @@ textarea {
   background: rgba(15, 23, 42, 0.74);
   color: #f8fafc;
   box-shadow: 0 18px 42px rgba(2, 6, 23, 0.3);
+  animation: site-float 7s ease-in-out infinite;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease;
+}
+
+.site-signal-card:hover {
+  background: rgba(15, 23, 42, 0.88);
+  border-color: rgba(94, 234, 212, 0.48);
 }
 
 .site-signal-card svg {
@@ -396,16 +455,19 @@ textarea {
 .site-signal-card-sub {
   top: 190px;
   right: 42px;
+  animation-delay: -2s;
 }
 
 .site-signal-card-edge {
   bottom: 54px;
   left: 106px;
+  animation-delay: -4s;
 }
 
 .company-site-section,
 .company-site-band,
-.company-site-contact {
+.company-site-contact,
+.company-site-product-effect {
   margin: 0 clamp(20px, 5vw, 72px);
 }
 
@@ -448,6 +510,17 @@ textarea {
   border-radius: 8px;
   padding: 24px;
   background: #ffffff;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.company-site-card:hover,
+.company-site-scenario-card:hover {
+  border-color: rgba(15, 118, 110, 0.28);
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.08);
+  transform: translateY(-3px);
 }
 
 .company-site-card svg {
@@ -463,6 +536,132 @@ textarea {
 
 .company-site-card p {
   margin: 0;
+  line-height: 1.65;
+}
+
+.company-site-product-effect {
+  padding: 76px 0 18px;
+}
+
+.company-site-effect-copy {
+  max-width: 860px;
+  margin-bottom: 30px;
+}
+
+.company-site-effect-copy span {
+  color: #0f766e;
+  font-weight: 800;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.company-site-effect-copy h2 {
+  margin: 10px 0 0;
+  font-size: clamp(30px, 4.2vw, 50px);
+  line-height: 1.06;
+  letter-spacing: 0;
+}
+
+.company-site-effect-copy p {
+  max-width: 760px;
+  margin: 18px 0 0;
+  color: #526173;
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.company-site-effect-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.74fr) minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.site-effect-flow {
+  min-height: 320px;
+  padding: 22px;
+  display: grid;
+  align-content: center;
+  gap: 16px;
+  border-radius: 12px;
+  background:
+    linear-gradient(120deg, rgba(15, 23, 42, 0.98), rgba(15, 118, 110, 0.78), rgba(15, 23, 42, 0.98)),
+    #101828;
+  background-size: 180% 180%;
+  color: #ffffff;
+  overflow: hidden;
+  position: relative;
+  animation: site-flow 10s ease-in-out infinite alternate;
+}
+
+.site-effect-flow::before {
+  content: "";
+  position: absolute;
+  inset: 34px 28px;
+  border: 1px dashed rgba(125, 211, 252, 0.36);
+  border-radius: 999px;
+}
+
+.site-effect-step {
+  position: relative;
+  z-index: 1;
+  min-height: 72px;
+  padding: 16px;
+  display: grid;
+  gap: 7px;
+  border: 1px solid rgba(226, 232, 240, 0.22);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.58);
+  backdrop-filter: blur(14px);
+}
+
+.site-effect-step span {
+  color: #7dd3fc;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.site-effect-step strong {
+  font-size: 20px;
+  line-height: 1.18;
+}
+
+.company-site-scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.company-site-scenario-card {
+  min-height: 152px;
+  padding: 22px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid #d9e2ef;
+  border-radius: 8px;
+  background: #ffffff;
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.company-site-scenario-card svg {
+  width: 24px;
+  height: 24px;
+  color: #0f766e;
+}
+
+.company-site-scenario-card h3 {
+  margin: 2px 0 0;
+  font-size: 20px;
+}
+
+.company-site-scenario-card p {
+  margin: 0;
+  color: #526173;
   line-height: 1.65;
 }
 
@@ -1573,7 +1772,8 @@ th {
 
   .company-site-hero,
   .company-site-band,
-  .company-site-capabilities {
+  .company-site-capabilities,
+  .company-site-effect-layout {
     grid-template-columns: 1fr;
   }
 
@@ -1698,8 +1898,17 @@ th {
   }
 
   .company-site-band,
-  .company-site-contact {
+  .company-site-contact,
+  .company-site-product-effect {
     padding: 24px;
+  }
+
+  .company-site-scenario-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .site-effect-flow {
+    min-height: auto;
   }
 
   .company-site-contact-form {
@@ -1740,5 +1949,25 @@ th {
   .portal-plan-row,
   .portal-profile-list div {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .company-site-primary,
+  .company-site-primary svg,
+  .company-site-card,
+  .company-site-scenario-card,
+  .site-effect-flow,
+  .site-orbit,
+  .site-signal-card {
+    animation: none;
+    transition: none;
+  }
+
+  .company-site-primary:hover,
+  .company-site-card:hover,
+  .company-site-scenario-card:hover {
+    box-shadow: none;
+    transform: none;
   }
 }

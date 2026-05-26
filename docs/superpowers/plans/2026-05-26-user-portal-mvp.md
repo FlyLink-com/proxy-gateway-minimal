@@ -146,6 +146,53 @@ git diff --check origin/master...HEAD
 
 Expected: all pass.
 
+### Task 5: Product Effect And Scenario Motion Pass
+
+**Files:**
+- Modify: `admin/src/features/company-site/company-site-page.tsx`
+- Test: `admin/src/test/company-site.test.tsx`
+- Modify: `admin/src/styles.css`
+
+- [x] **Step 1: Write the failing scenario/product-effect test**
+
+```tsx
+window.location.hash = "#/site";
+render(<App />);
+expect(screen.getByRole("heading", { name: "覆盖更多常见订阅接入场景" })).toBeTruthy();
+expect(screen.getByText("个人多端")).toBeTruthy();
+expect(screen.getByText("一处开通，多端导入")).toBeTruthy();
+```
+
+- [x] **Step 2: Verify RED**
+
+Run: `npm run test --prefix admin -- src/test/company-site.test.tsx`
+
+Expected: FAIL until the company site presents customer scenarios and product
+outcomes.
+
+- [x] **Step 3: Implement visible product scenarios and CSS motion**
+
+Add a public scenarios section for personal multi-device use, small teams,
+mobile work, and long-term maintenance. Add restrained CSS-only motion to the
+hero visual, outcome flow, buttons, and cards, with `prefers-reduced-motion`
+fallback. Keep the public site free of internal architecture terms and portal
+links.
+
+- [x] **Step 4: Run verification**
+
+Run:
+
+```powershell
+npm run test --prefix admin -- src/test/company-site.test.tsx
+npm run admin:test
+npm run admin:build
+npm test
+npm run project-state:check
+git diff --check origin/master...HEAD
+```
+
+Expected: all pass.
+
 ### Task 4: Public Contact Collection
 
 **Files:**
