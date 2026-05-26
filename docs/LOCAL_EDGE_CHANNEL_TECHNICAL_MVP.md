@@ -372,6 +372,18 @@ The same aggregation is available as a local CLI for already-collected samples:
 npm run channel:benchmark-summary -- <path-to-local-samples.json>
 ```
 
+To create a safe editable fixture from a local dry-run summary:
+
+```bash
+npm run channel:dry-run -- <path-to-proxy-servers.json> > channel-dry-run.json
+npm run channel:benchmark-fixture -- channel-dry-run.json > channel-samples.json
+```
+
+The fixture generator reads only the local dry-run summary and copies only
+provider-neutral probe name, protocol, and role into sample placeholders. It
+does not copy dry-run probe hosts, ports, checks, or UDP flags into the sample
+fixture, and it does not execute benchmark probes.
+
 The preferred local fixture shape is versioned:
 
 ```json

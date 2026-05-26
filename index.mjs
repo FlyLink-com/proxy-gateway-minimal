@@ -17,6 +17,7 @@ export {
 export { dryRunChannelConfig } from "./server/services/channel-config-dry-run.mjs";
 export {
   CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
+  createChannelBenchmarkFixtureFromPlan,
   normalizeChannelBenchmarkFixture,
   summarizeChannelBenchmarkResults
 } from "./server/services/channel-benchmark-results.mjs";
