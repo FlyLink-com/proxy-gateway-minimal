@@ -432,6 +432,7 @@ Current preflight record:
 
 ```text
 docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md
+docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md
 ```
 
 Current preflight status:
@@ -446,12 +447,15 @@ change, production authority transfer, or state-copy was observed or performed.
 State-copy validation remains blocked because prod-edge-a source internal SSH
 inspection timed out during banner exchange, so source SQLite integrity and
 fresh source backup have not been verified in this gate.
+Follow-up source internal inspection confirmed EC2 health and public endpoint
+health, but SSM is unavailable and SSH TCP/22 closes before banner/auth, so
+source command execution remains blocked.
 ```
 
-Recommended source-inspection gate before private state-copy validation:
+Recommended source-access planning gate before private state-copy validation:
 
 ```text
-Approve prod-edge-a source internal state-copy inspection. Read-only only. No DNS change, no user traffic, no service restart, no SQLite copy, no public Admin.
+Approve prod-edge-a source access remediation planning. Read-only planning only. No reboot, no stop, no service restart, no security-group change, no DNS change, no SQLite copy.
 ```
 
 ### Phase 4: Aliyun Distribution Promotion
@@ -629,9 +633,10 @@ Node drain/stop:
 The next executable gate is:
 
 ```text
-prod-edge-a source internal state-copy inspection.
+prod-edge-a source access remediation planning.
 ```
 
 Do not move DNS, promote production authority, expose public Admin, start edge
-traffic, or stop AWS nodes before source inspection, private validation, state
-handling, promotion, and drain gates are separately approved and recorded.
+traffic, or stop AWS nodes before source access planning, any approved source
+access remediation, private validation, state handling, promotion, and drain
+gates are separately approved and recorded.

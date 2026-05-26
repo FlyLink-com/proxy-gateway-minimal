@@ -12,6 +12,7 @@
     "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md",
     "docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md",
     "docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md",
+    "docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/MULTI_AGENT_OPERATING_MODEL.md"
   ],
@@ -253,7 +254,7 @@
     {
       "id": "A3-aliyun-user-subscription-distribution-platform",
       "risk": "A",
-      "status": "state-copy-preflight-recorded-blocked-by-prod-edge-a-source-internal-inspection",
+      "status": "source-internal-inspection-attempted-blocked-by-prod-edge-a-source-access",
       "lane": "subscription-control-plane",
       "title": "Build Aliyun as the user-management and subscription-distribution platform",
       "goal": "Move user management, subscription rendering, opaque artifact authority, and private Admin control toward Aliyun while keeping HP as validation/lab and without granting production authority until promotion gates pass.",

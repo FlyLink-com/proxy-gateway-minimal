@@ -21,6 +21,7 @@
     "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md",
     "docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md",
     "docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md",
+    "docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md",
     "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/VALIDATION_BASELINE.md"
@@ -91,7 +92,7 @@
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, and validation evidence before it is marked Ready, submitted for merge, or reported complete. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
     "githubHostedActions": "blocked-by-billing-or-spending-limit",
-    "manualCiFallback": "HP local Linux manual CI is bootstrapped and archive-validation passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922; historical Aliyun SWAS validation-host residue has been cleaned from the CI lane; Aliyun candidate preparation is complete; Aliyun state-copy preflight is recorded but private state-copy remains blocked by prod-edge-a source internal inspection",
+    "manualCiFallback": "HP local Linux manual CI is bootstrapped and archive-validation passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922; historical Aliyun SWAS validation-host residue has been cleaned from the CI lane; Aliyun candidate preparation is complete; Aliyun state-copy preflight and prod-edge-a source internal inspection attempts are recorded, but private state-copy remains blocked by source access",
     "manualCiIsStaging": false,
     "cTierCommand": "git diff --check origin/master...HEAD",
     "bTierServerCommands": [
@@ -124,8 +125,8 @@
     },
     {
       "id": "aliyun-private-state-copy-blocked",
-      "summary": "Aliyun candidate app is active on 127.0.0.1:3456, candidate Nginx is active on 127.0.0.1:18080, UFW is deny-incoming with SSH and existing wg-home allowed, candidate SQLite integrity_check is ok, and HP-side checks show public 3456/18080/80/443 closed; private state-copy remains blocked because prod-edge-a source internal SSH inspection timed out during banner exchange.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md"
+      "summary": "Aliyun candidate app is active on 127.0.0.1:3456, candidate Nginx is active on 127.0.0.1:18080, UFW is deny-incoming with SSH and existing wg-home allowed, candidate SQLite integrity_check is ok, and HP-side checks show public 3456/18080/80/443 closed; private state-copy remains blocked because prod-edge-a has no SSM path and SSH TCP/22 closes before banner/auth.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md"
     },
     {
       "id": "non-aliyun-hp-node-retirement-blocked",
@@ -144,8 +145,8 @@
     }
   ],
   "nextRecommendedQueue": [
-    "prod-edge-a source internal state-copy inspection approval",
-    "Aliyun private state-copy validation approval after source inspection passes",
+    "prod-edge-a source access remediation planning",
+    "Aliyun private state-copy validation approval after source access and source integrity checks pass",
     "Aliyun production subscription authority promotion approval",
     "Subscription-output inventory proving AWS nodes are no longer emitted, or explicit client-cache-window acceptance",
     "AWS node drain-and-stop approval after Aliyun promotion",
