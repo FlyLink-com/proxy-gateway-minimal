@@ -71,10 +71,10 @@ flowchart LR
     Render["Subscription V2 renderer"]
   end
 
-  subgraph "Edge Data Plane"
-    A["prod-edge-a\nedge capacity"]
-    B["prod-edge-b\nedge capacity"]
-    C["prod-edge-c\nfuture edge capacity"]
+  subgraph "Current Non-Aliyun Node Dependencies"
+    A["prod-edge-a\nAWS dependency until drain"]
+    B["prod-edge-b\nAWS secondary until drain"]
+    C["historical / future nodes\nno default keep path"]
   end
 
   subgraph "Private Operations Plane"
@@ -84,9 +84,9 @@ flowchart LR
 
   Clients["Clash / Mihomo\nor future Local Edge Agent"] -->|"refresh / bootstrap"| SC
   SC --> State --> Render
-  Render -->|"approved edge policy"| Clients
-  Clients -->|"proxy traffic"| A
-  Clients -.->|"optional secondary path"| B
+  Render -->|"approved policy"| Clients
+  Clients -.->|"existing traffic until drain"| A
+  Clients -.->|"existing secondary until drain"| B
   SC -.->|"backup / restore path"| SB
   A -.-> Mesh
   B -.-> Mesh
@@ -99,7 +99,9 @@ Target split boundaries:
 ```text
 sub-control-a on Aliyun produces subscriptions, owns artifacts, and keeps access state after separate approval
 local Linux owns manual CI after separate validation
-prod-edge-a/b/c clean rebuild servers carry proxy traffic and report health
+prod-edge-a/b are current AWS runtime dependencies until Aliyun promotion and drain approval
+non-Aliyun / non-HP nodes should be drained and retired through explicit gates
+future edge rebuilds are deferred unless a technical MVP integration gate approves them
 edge nodes should not own subscription state or expose Admin
 private mesh is health / validation / recovery infrastructure first
 physical split is future Risk A work, not implied by this topology
@@ -127,10 +129,10 @@ flowchart LR
     Ch["Agent-to-edge channel manager\nfuture authenticated / encrypted transport"]
   end
 
-  subgraph "Server Edge Fleet"
-    A["prod-edge-a"]
-    B["prod-edge-b"]
-    C3["prod-edge-c"]
+  subgraph "Remote Channel Targets"
+    A["current prod-edge-a\nuntil drain"]
+    B["current prod-edge-b\nuntil drain"]
+    C3["future target\nrequires new approval"]
     Mesh["private edge mesh\nfuture management / recovery plane"]
   end
 
@@ -152,14 +154,15 @@ Target product boundaries:
 ```text
 Clash/Mihomo remains the router and user-facing client.
 Local Edge Agent becomes the platform-controlled channel adapter.
-Remote Edge becomes the platform-controlled server-side data plane.
+Remote Edge or channel targets become the platform-controlled server-side data
+plane only after a later approved integration gate.
 Opaque artifacts are bootstrap/access material, not the main architecture.
 Server Edge Mesh is for edge health, management, validation, and recovery first.
 Subscription control and edge data-plane capacity should split over time.
 The preferred physical split path is now: current Aliyun server as future
-`sub-control-a` after CI exits, local Linux as manual CI, and clean servers as
-edge forwarding capacity. The clean new-server control-plane path remains a
-fallback, not the first target.
+`sub-control-a` after CI exits, HP/local Linux as manual CI and operator lab,
+and non-Aliyun / non-HP nodes drained through controlled retirement gates. The
+clean new-server control-plane path remains a fallback, not the first target.
 ```
 
 Adjacent boundary matrix:
@@ -172,6 +175,7 @@ Adjacent boundary matrix:
 | HP Relay | Operator lab diagnostics and upstream/channel behavior research. | Production, staging, CI, prod-edge-c, official Local Edge Agent runtime, or Server Edge Mesh. |
 | sub-control-a candidate | Current Aliyun server after it exits the CI lane and passes production-control inventory, or clean fallback host if Aliyun is rejected. | Edge data-plane traffic, prod-edge-c recovery capacity, HP Relay, CI, or automatic production authority. |
 | local-ci-a | Local Linux manual CI host for repository validation evidence. | Staging, production, deploy approval, production secrets, SQLite, or subscription URL storage. |
+| Non-Aliyun node retirement | Controlled drain, stop, termination, and security-group cleanup after Aliyun promotion. | Approval-free shutdown, DNS change, or deletion while rollback depends on the node. |
 | Server Edge Mesh | Private edge-to-edge health, management, validation, and recovery path. | User VPN, Clash/Mihomo endpoint, Local Edge Agent transport in V1, or ordinary customer traffic routing. |
 | WireGuard canary | Candidate implementation for the private Server Edge Mesh. | Client VPN product, production traffic migration, opaque artifact migration, or approval-free setup. |
 
@@ -252,7 +256,7 @@ flowchart TB
   subgraph "Data Plane"
     Clash["Clash / Mihomo"]
     Agent["Local Edge Agent adapter"]
-    Edges["prod-edge-a / prod-edge-b / prod-edge-c"]
+    Edges["current prod-edge-a / prod-edge-b\nuntil drain"]
     Outbound["remote outbound traffic"]
   end
 

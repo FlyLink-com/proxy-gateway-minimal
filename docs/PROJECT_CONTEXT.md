@@ -85,13 +85,18 @@ stable subscription/import experience
 
 Current architecture priorities:
 
+- Aliyun Registration / Distribution Platform: the near-term business split is
+  Aliyun for registration/subscription distribution, HP for local CI/operator
+  lab, and all other nodes in a controlled drain/retirement queue. See
+  `docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md`.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. The
   current target is to move CI off the current Aliyun server, then evaluate
   that Aliyun server as the future production `sub-control-a` candidate.
-- Edge Data Plane: make `prod-edge-a/b/c` replaceable capacity with clear
-  rollback and node identity boundaries. Clean rebuild servers are now
-  preferred first for traffic forwarding / data-plane nodes, not for CI.
+- Edge Data Plane: current AWS `prod-edge-a/b` remain production/runtime
+  dependencies until Aliyun promotion and node drain are explicitly approved.
+  Do not add or keep non-Aliyun/HP nodes as the default direction; drain and
+  retirement are now the near-term queue.
 - Validation / CI: move manual CI toward a local Linux validation host so the
   future production subscription control plane does not also run repository
   validation workloads.
@@ -113,6 +118,7 @@ Current architecture priorities:
 Use these docs for detail:
 
 - `docs/PROJECT_TOPOLOGY.md`
+- `docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md`
 - `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`
 - `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`
@@ -189,6 +195,9 @@ operator approval, validation, and rollback path exist:
   `docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md`.
 - `prod-edge-b` carrying-instance replacement or lifecycle mutation.
 - `prod-edge-c` creation or durable third-node recovery work.
+- AWS node drain, stop, termination, or security-group cleanup as part of the
+  new "Aliyun + HP only" target. Drain/stop/termination each require separate
+  A-tier approvals and evidence.
 - Legacy blue final termination or security-group cleanup.
 - WireGuard install, mesh key generation, UDP security-group changes,
   `wg-quick` start, or live mesh validation.
@@ -257,6 +266,23 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   mutation was performed.
 - The next gates are explicit Aliyun manual CI lane cleanup approval, recheck,
   then explicit Aliyun subscription-control candidate preparation approval.
+
+Latest Aliyun registration / distribution platform decision:
+
+- `docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md`
+- Near-term target: Aliyun becomes the registration/subscription distribution
+  platform, HP remains local CI/operator lab, and all other nodes are drained
+  and retired through explicit A-tier gates.
+- The separate technical MVP branch is PR #129,
+  `codex/local-edge-channel-probe-harness`; it owns local edge channel probe,
+  benchmark, and manager work and must not be coupled to Aliyun production
+  authority without a later integration gate.
+- Read-only refresh on 2026-05-26 found AWS still has running `prod-edge-a`
+  `13.215.156.159` and `prod-edge-b` `18.136.102.226`.
+- Authoritative AliDNS still points `sub.globalcirclecat.com` and
+  `ss-sg.globalcirclecat.com` to `13.215.156.159`, so no AWS node can be
+  stopped before Aliyun promotion and node drain evidence.
+- The next executable gate remains Aliyun manual CI lane cleanup approval.
 
 Latest A2 preflight:
 
@@ -366,8 +392,8 @@ High-value entrypoints:
 - `docs/DEPLOYMENT_FLOW.md` - deployment, staging, promotion, rollback flow.
 - `docs/CI_MANUAL_VALIDATION.md` - manual validation host workflow.
 - `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` - target split for current
-  Aliyun production subscription control, local Linux manual CI, and clean
-  forwarding edge nodes.
+  Aliyun production subscription control, local Linux manual CI, and controlled
+  non-Aliyun node drain / retirement.
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md` - clean
   `sub-control-a` candidate fallback gates for the future physical split.
 

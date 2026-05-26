@@ -390,7 +390,11 @@ docs/PRODUCTION_EDGE_FLEET.md:
 
 docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md:
   preferred target split for current Aliyun subscription control, local Linux
-  manual CI, and clean forwarding edge nodes
+  manual CI, and controlled non-Aliyun node drain / retirement
+
+docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md:
+  latest business split for Aliyun registration / distribution, HP
+  validation/lab, and non-Aliyun node retirement gates
 
 docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md:
   opaque artifact rollout gaps; this runbook does not expand issuance

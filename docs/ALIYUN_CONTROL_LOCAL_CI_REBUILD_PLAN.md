@@ -1,4 +1,4 @@
-# Aliyun Control / Local CI / Clean Edge Rebuild Plan
+# Aliyun Control / Local CI / Node Retirement Plan
 
 Last updated: 2026-05-26, Asia/Shanghai.
 
@@ -12,7 +12,8 @@ Last updated: 2026-05-26, Asia/Shanghai.
 > - Production impact: None
 > - Source of truth for: the target rebuild direction where the current Aliyun
 >   server becomes the production subscription control plane, a local Linux
->   server becomes manual CI, and clean servers become traffic forwarding edges
+>   server becomes manual CI, and non-Aliyun / non-HP nodes are drained through
+>   controlled retirement gates
 
 ## Purpose
 
@@ -26,14 +27,17 @@ local Linux server:
   manual CI / clean validation host
 
 clean rebuild servers:
-  traffic forwarding / edge data-plane capacity
+  no longer the default near-term target; non-Aliyun / non-HP nodes move to a
+  controlled drain and retirement queue
 ```
 
 This plan replaces the earlier default assumption that a clean new server is
-the preferred first physical subscription-control candidate. Clean servers are
-now preferred for edge data-plane rebuilds. The existing clean new-server
-control-plane runbook remains a fallback if the Aliyun host cannot be safely
-promoted.
+the preferred first physical subscription-control candidate. After the latest
+business split, the default near-term target is tighter: Aliyun for
+registration/subscription distribution, HP for validation/operator lab, and all
+other nodes drained and retired after explicit A-tier gates. The existing clean
+new-server control-plane runbook remains a fallback if the Aliyun host cannot
+be safely promoted.
 
 This document is planning only. It records the target boundaries and execution
 order so later Risk A work can be performed without mixing CI, production
@@ -81,24 +85,23 @@ The local Linux server replaces the Aliyun manual CI fallback only after it is
 validated and documented. Until then, existing validation records remain
 historical facts, not a reason to keep CI on the future production control host.
 
-### Clean Edge Data Plane
+### Non-Aliyun Node Drain / Retirement
 
 Target role:
 
 ```text
-prod-edge-a / prod-edge-b / prod-edge-c:
-  clean rebuild traffic forwarding nodes
-  carry proxy traffic
-  expose only approved edge listener ports
-  report safe health and readiness summaries
-  do not own subscription SQLite state
-  do not expose Admin
-  do not generate or issue subscription artifacts
-  can be replaced without moving subscription authority
+prod-edge-a / prod-edge-b / historical nodes:
+  remain runtime dependencies until Aliyun promotion and drain are approved
+  must be removed from subscription output before shutdown unless the operator
+    explicitly accepts a stale-client window
+  must not own future subscription authority
+  must not be kept as the default clean edge target
+  must be stopped or terminated only through separate Risk A records
 ```
 
-Clean servers should be used here first because edge nodes are meant to be
-replaceable capacity.
+Clean edge rebuilds are deferred. If the technical MVP branch later proves a
+new channel needs a dedicated edge, that work must enter through a separate
+integration and edge-node approval gate.
 
 ### HP / Operator Lab
 
@@ -132,14 +135,14 @@ flowchart LR
     Admin["private Admin API"]
   end
 
-  subgraph "Edge Data Plane"
-    A["prod-edge-a\nclean forwarding node"]
-    B["prod-edge-b\nclean forwarding node"]
-    C["prod-edge-c\nfuture recovery node"]
-  end
-
   subgraph "Operator Lab"
     HP["HP Relay\nresearch only"]
+  end
+
+  subgraph "Retirement Queue"
+    A["prod-edge-a\ncurrent AWS dependency"]
+    B["prod-edge-b\ncurrent AWS secondary"]
+    C["historical AWS nodes\nstopped / review"]
   end
 
   Repo["GitHub master / PR"] -->|"archive or clean checkout"| LocalCI
@@ -147,12 +150,12 @@ flowchart LR
   Client["Clash / Mihomo\nor future Local Edge Agent"] -->|"subscription refresh"| Nginx
   Nginx --> Aliyun --> App --> Store
   Admin --> App
-  App -->|"Subscription V2 edge policy"| Client
-  Client -->|"proxy traffic"| A
-  Client -.->|"secondary / canary"| B
-  C -.->|"recovery when approved"| Client
-  HP -.->|"operator research evidence"| A
-  HP -.->|"operator research evidence"| B
+  App -->|"Subscription / channel policy"| Client
+  Client -.->|"existing traffic until drain"| A
+  Client -.->|"existing secondary until drain"| B
+  A -.->|"drain / stop / terminate gates"| C
+  B -.->|"drain / stop / terminate gates"| C
+  HP -.->|"operator research evidence only"| Aliyun
 ```
 
 ## Required Separation Rules
@@ -160,9 +163,10 @@ flowchart LR
 ```text
 CI must not run on the production subscription control plane.
 Production subscription control must not run on the manual CI host.
-Edge nodes must not own subscription state or Admin.
+Non-Aliyun nodes must not own future subscription state or Admin.
 Operator lab must not become production, staging, CI, or prod-edge-c.
-Clean servers are preferred for forwarding edge nodes, not for CI.
+Clean edge rebuilds are deferred unless a later technical MVP integration gate
+approves them.
 Manual CI evidence is not staging, not deploy approval, and not production
 approval.
 ```
@@ -346,38 +350,35 @@ no raw tokens, URLs, .env values, passwords, private keys, or customer data are
 printed or recorded
 ```
 
-### Phase 5: Clean Edge Rebuild
+### Phase 5: Non-Aliyun Node Drain
 
 Goal:
 
 ```text
-Build clean forwarding nodes that carry traffic but do not own subscription
-authority.
+Remove AWS and other non-Aliyun / non-HP nodes from future user dependency
+before shutdown.
 ```
 
-Each edge node requires a separate Risk A record covering:
+Each node requires a separate Risk A record covering:
 
 ```text
-provider / region / instance identity
-public and private IP
-security group or firewall rules
-approved edge listener set
-runtime service inventory
-node ID and provider-neutral label
-health checks
-rollback path
-whether the node is canary-only, active-secondary, or standby
+current DNS references
+current subscription-output references
+current runtime role
+current instance state
+whether stale clients may still use the node
+rollback dependency
+stop approval
+termination approval, if any
 ```
 
-Required edge boundary:
+Required before stop:
 
 ```text
-no Admin
-no subscription SQLite authority
-no artifact authority
-no CI workspaces
-no production control-plane backups
-no unapproved mesh membership
+Aliyun is promoted or the operator accepts the remaining dependency
+subscription output no longer emits the node, or stale-client window is accepted
+DNS no longer points active names to the node, unless explicitly accepted
+rollback plan is documented
 ```
 
 ### Phase 6: Promotion And Cutover
@@ -399,7 +400,7 @@ Nginx public boundary
 Admin private access
 subscription refresh validation
 opaque artifact validation
-edge data-plane validation
+  node drain validation
 rollback to current production authority
 observation window
 ```
@@ -417,8 +418,8 @@ Cleanup may include:
 
 ```text
 removing old CI workspaces from Aliyun
-retiring old AWS edge/control co-location
-retiring old green/canary carrying instances
+retiring old AWS edge/control co-location after drain
+retiring old green/canary carrying instances after drain
 retiring legacy blue after separate approval
 closing obsolete security-group or firewall ingress
 removing stale local operator URLs
@@ -439,9 +440,11 @@ Recommended order:
 6. Bootstrap candidate control-plane service without production authority.
 7. Validate private state copy and subscription rendering after separate
    state-handling approval.
-8. Build clean forwarding nodes.
-9. Run promotion/cutover planning.
-10. Retire old nodes only after the observation window.
+8. Promote Aliyun registration / subscription distribution after separate
+   promotion approval.
+9. Drain non-Aliyun / non-HP nodes from DNS and subscription output.
+10. Stop, then later terminate old nodes only after observation windows and
+    separate approvals.
 ```
 
 ## Relationship To Existing Documents
@@ -457,7 +460,12 @@ docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md:
   remains the fallback if the Aliyun host cannot safely become sub-control-a.
 
 docs/PRODUCTION_EDGE_FLEET.md:
-  owns clean forwarding node roles and edge slot semantics.
+  owns historical edge slot semantics and must be read before draining current
+  prod-edge-a / prod-edge-b dependencies.
+
+docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md:
+  owns the latest business decision: Aliyun for registration/distribution, HP
+  for validation/lab, and all other nodes in controlled retirement queue.
 
 docs/PROJECT_TOPOLOGY.md:
   shows the target topology after this direction is accepted.
@@ -483,6 +491,7 @@ systemd changes
 Aliyun host mutation
 local Linux host mutation
 edge-node creation
+AWS node drain / stop / termination
 WireGuard changes
 legacy node termination
 security-group cleanup
@@ -499,8 +508,11 @@ control-plane candidate after it exits the CI lane.
 
 Use a local Linux server as manual CI.
 
-Use clean rebuild servers as replaceable traffic forwarding nodes.
+Drain and retire non-Aliyun / non-HP nodes after Aliyun promotion and
+observation, unless a later approved technical MVP integration gate requires a
+new edge.
 ```
 
-The immediate next execution should be local Linux CI readiness, not production
-DNS, not SQLite movement, not edge cleanup, and not Aliyun production promotion.
+The immediate next execution should be Aliyun manual CI lane cleanup, not
+production DNS, not SQLite movement, not node shutdown, and not Aliyun
+production promotion.

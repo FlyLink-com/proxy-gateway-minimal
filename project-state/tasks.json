@@ -223,7 +223,7 @@
       "status": "blocked-requires-runbook-and-approval",
       "lane": "edge-data-plane",
       "title": "Physically split subscription control plane from edge data plane",
-      "goal": "Move toward the current Aliyun server as production subscription control-plane candidate, local Linux as manual CI, and clean rebuild servers as replaceable edge data-plane forwarding nodes.",
+      "goal": "Move toward the current Aliyun server as production subscription-control candidate, HP/local Linux as manual CI and operator lab, and controlled drain/retirement for non-Aliyun / non-HP nodes.",
       "allowedFiles": [
         "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
         "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md",
@@ -244,6 +244,68 @@
         "read-only inventory",
         "rollback evidence",
         "production endpoint verification"
+      ]
+    },
+    {
+      "id": "A3-aliyun-registration-distribution-platform",
+      "risk": "A",
+      "status": "blocked-requires-cleanup-approval",
+      "lane": "subscription-control-plane",
+      "title": "Build Aliyun as the registration and subscription distribution platform",
+      "goal": "Move registration, subscription rendering, opaque artifact authority, and private Admin control toward Aliyun while keeping HP as validation/lab and without granting production authority until promotion gates pass.",
+      "allowedFiles": [
+        "docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md",
+        "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
+        "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md",
+        "docs/production-replacement-records/*.md",
+        "ops/**/*.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "bootstrap Aliyun before CI cleanup approval and recheck",
+        "move DNS before promotion approval",
+        "copy SQLite or artifact state without state-copy approval",
+        "expose public Admin",
+        "run CI on the production-control candidate",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "Risk A runbook-specific validation",
+        "Aliyun cleanup recheck",
+        "private candidate health checks",
+        "SQLite integrity checks when state-copy is approved",
+        "rollback evidence"
+      ]
+    },
+    {
+      "id": "A4-non-aliyun-hp-node-retirement",
+      "risk": "A",
+      "status": "blocked-requires-aliyun-promotion-and-drain-approval",
+      "lane": "edge-data-plane",
+      "title": "Drain and retire non-Aliyun / non-HP nodes",
+      "goal": "Close all nodes outside Aliyun and HP only after Aliyun production subscription distribution is promoted, DNS and subscription output no longer require AWS nodes, and rollback dependencies are explicitly accepted.",
+      "allowedFiles": [
+        "docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md",
+        "docs/PRODUCTION_EDGE_FLEET.md",
+        "docs/production-replacement-records/*.md",
+        "docs/production-incident-records/*.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "stop prod-edge-a while DNS still points to it without explicit approval",
+        "stop prod-edge-b while subscription output still emits it without explicit approval",
+        "terminate instances before the observation window",
+        "delete security groups before dependency inventory",
+        "mutate MeshCentral-tagged resources without separate owner confirmation",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "Risk A read-only node inventory",
+        "DNS inventory",
+        "subscription output inventory",
+        "rollback dependency check",
+        "post-stop observation",
+        "separate termination evidence"
       ]
     }
   ]

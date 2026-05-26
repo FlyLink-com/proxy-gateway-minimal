@@ -25,6 +25,21 @@ prod-edge-c: future third recovery/standby slot
 This is edge data-plane planning. The target subscription control-plane split
 lives in `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`.
 
+Latest business decision:
+
+```text
+Aliyun becomes the near-term registration / subscription distribution platform.
+HP remains local CI and operator lab.
+Non-Aliyun / non-HP nodes move to a controlled drain and retirement queue after
+Aliyun promotion.
+```
+
+Therefore this document remains useful for understanding current edge slot
+dependencies and rollback risk, but it is no longer the default plan to keep
+or expand clean edge capacity before the Aliyun platform is promoted. Use
+`docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md` for the current
+drain / stop / termination gates.
+
 The plan is documentation-only. It does not rename current runtime nodes,
 change generated subscriptions, create a third node, change DNS, change
 production `.env`, copy secrets, copy SQLite data, or move traffic.
@@ -36,7 +51,9 @@ production `.env`, copy secrets, copy SQLite data, or move traffic.
   subscription control-plane authority and edge data-plane capacity.
 - `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: current target split where
   Aliyun becomes the subscription control-plane candidate, local Linux becomes
-  manual CI, and clean servers become forwarding edges.
+  manual CI, and non-Aliyun / non-HP nodes drain through controlled retirement.
+- `docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md`: latest business
+  split and node drain / stop / termination gates.
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`: fallback clean
   new-server gates for a future `sub-control-a` candidate. It is not an edge
   slot and does not create `prod-edge-c`.
@@ -346,12 +363,13 @@ Before runtime work starts, decide:
 Recommended sequence:
 
 ```text
-1. Approve this production edge fleet plan.
-2. Record and absorb legacy blue incident findings before building a new primary candidate.
-3. Create a separate Risk A plan for a clean prod-edge-a candidate.
-4. Create separate Risk A records for any prod-edge-b carrying-instance replacement or output-mode change.
-5. Review and maintain repo-only build materials for prod-edge-c.
-6. Only then execute node-config, DNS, tenant assignment, or standby promotion work.
+1. Promote Aliyun only through the registration / distribution platform runbook.
+2. Use this edge fleet plan to identify current AWS node dependencies.
+3. Drain AWS nodes from DNS and generated subscription output after Aliyun
+   promotion.
+4. Stop non-Aliyun / non-HP nodes only after explicit drain/stop approval.
+5. Terminate instances and delete security groups only after the observation
+   window proves no rollback dependency remains.
 ```
 
 For the third-node work, start with docs and repo-only build material
