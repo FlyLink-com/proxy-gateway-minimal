@@ -17,6 +17,7 @@ function sendError(res, error) {
 export function adminPlatformRoutes(state) {
   const router = Router();
   const leadQueue = state.platform?.leadQueue;
+  const accountShell = state.platform?.accountShell;
 
   router.get("/api/admin/platform/leads", (req, res) => {
     try {
@@ -29,6 +30,50 @@ export function adminPlatformRoutes(state) {
   router.post("/api/admin/platform/leads/:id/status", (req, res) => {
     try {
       res.json({ lead: leadQueue.updateLeadStatus(req.params.id, req.body ?? {}) });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/leads/:id/account", (req, res) => {
+    try {
+      const lead = leadQueue.getLead(req.params.id);
+      const account = accountShell.createAccountFromLead(lead, req.body ?? {});
+      const updatedLead = leadQueue.updateLeadStatus(req.params.id, { status: "converted" });
+      res.status(201).json({ account, lead: updatedLead });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/platform/accounts", (req, res) => {
+    try {
+      res.json({ items: accountShell.listAccounts({ status: req.query.status }) });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/accounts/:id/entitlements", (req, res) => {
+    try {
+      const entitlement = accountShell.createEntitlement(req.params.id, req.body ?? {});
+      res.status(201).json({ entitlement });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/platform/accounts/:id/entitlements", (req, res) => {
+    try {
+      res.json({ items: accountShell.listEntitlements({ accountId: req.params.id }) });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/platform/entitlements", (req, res) => {
+    try {
+      res.json({ items: accountShell.listEntitlements({ accountId: req.query.accountId }) });
     } catch (error) {
       sendError(res, error);
     }

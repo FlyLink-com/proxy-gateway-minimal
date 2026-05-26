@@ -22,9 +22,12 @@ produces entitlement decisions for product and access-control units. It does
 not render subscription YAML, choose network nodes, own opaque artifacts, or
 measure edge health.
 
-Current repository note: no full commercial system exists in this repo.
-Existing subscription expiry and status behavior is technical access control,
-not a complete billing, CRM, order, or commercial entitlement system.
+Current repository note: a repo-only in-memory account / entitlement shell now
+exists for Aliyun Subscription Control Platform MVP validation. It proves
+operator-safe account summaries, entitlement summaries, plan/status validation,
+and fail-closed usable-entitlement decisions. It is not a complete billing,
+CRM, order, invoice, renewal, payment, production storage, or commercial
+entitlement system.
 
 ## Responsibilities
 
@@ -119,11 +122,17 @@ server/services/platform/control-plane-contract.mjs
 server/routes/subscription.mjs
 server/routes/admin-subscriptions.mjs
 server/tests/platform-control-plane-contract.test.mjs
+server/services/platform/account-entitlement-shell.mjs
+server/routes/admin-platform.mjs
+server/tests/platform-account-entitlement-shell.test.mjs
+server/tests/platform-account-routes.test.mjs
 ```
 
 The server anchors currently represent technical subscription access behavior.
 The platform control-plane contract adds repository-only account and entitlement
-decision shapes, but it is not evidence of a complete commercial entitlement,
+decision shapes. The account / entitlement shell adds repository-only in-memory
+operator workflows for converting a lead to an account and creating entitlement
+summaries, but it is not evidence of a complete commercial entitlement,
 billing, CRM, order, invoice, renewal system, production storage, or payment
 provider integration.
 
@@ -143,13 +152,12 @@ Docs-only validation:
 ## Next Tasks
 
 ```text
-define the minimal entitlement decision shape
-decide MVP commercial states versus later billing integration states
-separate technical subscription expiry/status from commercial validity
+wire repository-safe account / entitlement summaries into the customer portal
+decide later MVP commercial states versus billing integration states
+separate technical subscription expiry/status from commercial validity in UI
 define how access control consumes entitlement decisions without payment internals
-add tests only when implementation begins
-extend the platform entitlement contract only through repo-only tests until a
-  later production storage or billing integration gate is approved
+extend platform entitlement behavior only through repo-only tests until a later
+  production storage or billing integration gate is approved
 ```
 
 ## Paused / Blocked Items
