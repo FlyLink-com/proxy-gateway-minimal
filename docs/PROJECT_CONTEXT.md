@@ -115,9 +115,10 @@ Current architecture priorities:
   local benchmark summaries into advisory quality tiers and recommended pools;
   candidate reports can join dry-run config metadata with scores into
   stable/canary/private/hold/missing-measurement groups for operator review. It
-  does not mutate runtime config or activate nodes. Runtime canaries are gated by
+  does not mutate runtime config or activate nodes. Runtime canaries are gated
+  by `docs/CHANNEL_CANARY_SERVER_SELECTION.md` and
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`; repository renderer/config support
-  does not authorize remote protocol deployment by itself.
+  does not authorize server creation or remote protocol deployment by itself.
 - Local Edge Agent: keep as a parked future node/agent adaptation asset, not
   the current mainline for the next channel-upgrade slice.
 - Server Edge Mesh: plan private edge-to-edge health, management, validation,
@@ -137,6 +138,7 @@ Use these docs for detail:
 - `docs/LOCAL_EDGE_AGENT_DESIGN.md`
 - `docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md`
 - `docs/CHANNEL_STRATEGY_ENGINE.md`
+- `docs/CHANNEL_CANARY_SERVER_SELECTION.md`
 - `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`
 - `docs/SERVER_EDGE_MESH_DESIGN.md`
 - `docs/PROJECT_SIMPLIFICATION_MAP.md`
@@ -177,6 +179,40 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   `docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md`.
   It stopped `prod-edge-a` and `prod-edge-b`, retained security groups, left
   DNS unchanged, did not terminate instances, and did not mutate Aliyun.
+- The latest channel canary server selection inventory is recorded in
+  `docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md`.
+  It recommends a clean provider-neutral `channel-lab-a` target and Hysteria2
+  as the first protocol family, but it did not create a server, choose a
+  provider, deploy runtime, open ports, or change traffic.
+- The approved `channel-lab-a` creation is recorded in
+  `docs/production-replacement-records/2026-05-26-channel-lab-a-creation.md`.
+  It created an AWS ap-southeast-1 clean canary instance
+  `i-0f2cf745a1bb5ba51` with security group `sg-0cad3c8a7380528f9`, SSH
+  restricted to the operator `/32`, and UDP/443 reserved for a future Hysteria2
+  canary. No Hysteria2 runtime, DNS, Nginx, production config, subscription
+  output, or traffic canary was performed.
+- The approved Hysteria2 runtime deployment is recorded in
+  `docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-runtime.md`.
+  Hysteria2 v2.9.2 is active on `channel-lab-a`, UDP/443 is listening, and a
+  host-only client smoke test returned HTTP 200 through the local Hysteria
+  path. No operator-device canary, DNS, production config, subscription output,
+  or production traffic was performed.
+- The approved controlled operator-device Hysteria2 canary is recorded in
+  `docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-operator-device-canary.md`.
+  A local Hysteria2 client on the operator device completed 20/20 short HTTP
+  proxy samples through `channel-lab-a` with no client log errors. Local canary
+  config was generated outside the repository and is sensitive. No all-user
+  rollout, subscription output change, DNS, Nginx, production config, runtime
+  reconfiguration, security-group mutation, or production traffic was
+  performed.
+- The approved controlled Mihomo import validation is recorded in
+  `docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-mihomo-import-validation.md`.
+  A temporary standalone Mihomo v1.19.25 core on the operator device parsed the
+  local Hysteria2 canary config, listened on `127.0.0.1:28280`, and completed
+  20/20 short HTTP proxy samples through `channel-lab-a` with no Mihomo log
+  errors. No all-user rollout, subscription output change, DNS, Nginx,
+  production config, system proxy, TUN, runtime reconfiguration,
+  security-group mutation, or production traffic was performed.
 - Legacy blue `i-004ab1c6c71d06bca` is stopped and retained for controlled
   retirement review. Do not terminate it or delete its security group without
   separate A-tier approval.
@@ -198,9 +234,15 @@ operator approval, validation, and rollback path exist:
 - Traffic accounting, quota enforcement, and device-abuse enforcement.
 - Channel runtime canary execution for VLESS/XUDP, Hysteria2, TUIC, or any
   other protocol candidate. Repository renderer/config support is merged, but
-  runtime deployment, node config activation, security-group changes,
-  operator-device canaries, or broader rollout remain A-tier and must follow
+  server selection, server creation, runtime deployment, node config activation,
+  security-group/firewall changes, operator-device canaries, or broader rollout
+  remain A-tier and must follow `docs/CHANNEL_CANARY_SERVER_SELECTION.md` and
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`.
+  The current `channel-lab-a` records prove server runtime health, one short
+  controlled operator-device Hysteria2 canary, and one standalone Mihomo
+  import/runtime validation only. Extended measurements, GUI import evidence,
+  subscription output changes, broader rollout, and cleanup/termination each
+  still require separate approval and evidence.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See

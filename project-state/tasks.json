@@ -9,6 +9,7 @@
     "docs/PROJECT_CONTROL_PLANE.md",
     "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
+    "docs/CHANNEL_CANARY_SERVER_SELECTION.md",
     "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md",
     "docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md",
     "docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md",
@@ -16,6 +17,8 @@
     "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/CHANNEL_STRATEGY_ENGINE.md",
+    "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-operator-device-canary.md",
+    "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-mihomo-import-validation.md",
     "docs/MULTI_AGENT_OPERATING_MODEL.md"
   ],
   "tasks": [
@@ -295,6 +298,34 @@
         "node --test server/tests/channel-candidate-report.test.mjs server/tests/package-entry.test.mjs",
         "npm test",
         "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "A0-channel-canary-server-selection",
+      "risk": "A",
+      "status": "mihomo-import-validation-passed-blocked-before-extended-measurement-broader-rollout-or-cleanup-approval",
+      "lane": "edge-data-plane",
+      "title": "Select clean server for channel runtime canary",
+      "goal": "Choose a disposable provider-neutral canary server for one protocol family after long-haul path, UDP, lifecycle, security, metrics, and rollback checks.",
+      "allowedFiles": [
+        "docs/CHANNEL_CANARY_SERVER_SELECTION.md",
+        "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md",
+        "docs/production-replacement-records/*.md",
+        "docs/production-incident-records/*.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "create a server without explicit approval",
+        "change DNS, Nginx, systemd, firewall, security groups, production config, tenants, or artifacts without approval",
+        "copy production secrets, SQLite data, opaque artifact URLs, or raw subscription URLs",
+        "run multiple protocol families in the first canary",
+        "treat HP, Aliyun control-plane candidate, or stopped historical nodes as edge canary capacity without a separate gate"
+      ],
+      "validation": [
+        "Risk A read-only server-selection inventory",
+        "protocol-specific runtime canary runbook validation",
+        "rollback evidence",
+        "controlled operator-device metrics"
       ]
     },
     {
