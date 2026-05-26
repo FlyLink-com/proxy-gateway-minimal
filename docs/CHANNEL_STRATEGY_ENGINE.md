@@ -101,6 +101,11 @@ The current subscription renderer does not consume these scores automatically.
 An operator must still review the report and, for any runtime effect, use the
 appropriate Risk A runbook and approval gate.
 
+`buildChannelCandidateReport(...)` can combine dry-run config metadata with
+measurement scores into grouped operator recommendations. The report is safe
+for review because it omits hosts, ports, credentials, raw errors, tokens, and
+subscription URLs. It is still advisory evidence only.
+
 ## Distribution Readiness
 
 Subscription overview distribution readiness is based on the default stable

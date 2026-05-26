@@ -427,6 +427,28 @@ To score a local benchmark summary:
 npm run channel:benchmark-score -- <path-to-local-summary.json>
 ```
 
+Repository-local candidate reporting is available through
+`buildChannelCandidateReport(...)`. It joins a safe channel config dry-run
+summary with a safe measurement score and groups nodes for operator review:
+
+```text
+stable
+canary
+private
+hold
+missingMeasurement
+```
+
+To generate a local candidate report:
+
+```bash
+npm run channel:candidate-report -- <path-to-dry-run-summary.json> <path-to-score.json>
+```
+
+The report intentionally omits hosts, ports, credentials, tokens, raw
+subscription URLs, and raw errors. It does not edit node config, assign tenants,
+change DNS, deploy runtime protocols, or authorize canary rollout.
+
 To create a safe editable fixture from a local dry-run summary:
 
 ```bash

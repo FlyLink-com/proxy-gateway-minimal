@@ -113,7 +113,9 @@ Current architecture priorities:
   `canary`, and `recovery` capacity while preserving explicit operator canary
   assignment as single-node output. Repository measurement scoring can now turn
   local benchmark summaries into advisory quality tiers and recommended pools;
-  it does not mutate runtime config or activate nodes. Runtime canaries are gated by
+  candidate reports can join dry-run config metadata with scores into
+  stable/canary/private/hold/missing-measurement groups for operator review. It
+  does not mutate runtime config or activate nodes. Runtime canaries are gated by
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`; repository renderer/config support
   does not authorize remote protocol deployment by itself.
 - Local Edge Agent: keep as a parked future node/agent adaptation asset, not
@@ -252,6 +254,10 @@ simplification queue is closed:
 - `B6-channel-measurement-scoring` - completed in the Channel Measurement
   Scoring work; local benchmark summaries can be scored into quality tiers,
   channel scores, reason codes, and advisory pools without production mutation.
+- `B7-channel-candidate-report` - completed in the Channel Candidate Report
+  work; dry-run config summaries and measurement scores can be joined into
+  safe grouped operator recommendations without exposing hosts, ports, tokens,
+  credentials, or raw errors.
 
 The remaining queued items are A-tier and remain blocked:
 
