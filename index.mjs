@@ -19,6 +19,7 @@ export { buildChannelCandidateReport } from "./server/services/channel-candidate
 export { buildChannelDecisionPack } from "./server/services/channel-decision-pack.mjs";
 export { assessChannelExtendedMeasurement } from "./server/services/channel-extended-measurement.mjs";
 export { buildChannelExtendedMeasurementReport } from "./server/services/channel-extended-report.mjs";
+export { buildChannelMeasurementBundleReport } from "./server/services/channel-measurement-bundle.mjs";
 export { runChannelBenchmarkPlan } from "./server/services/channel-benchmark-runner.mjs";
 export {
   CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,

@@ -126,6 +126,14 @@ decision pack, still needs more observation, or should be held for
 investigation. The report omits hosts, ports, credentials, raw errors, tokens,
 and subscription URLs, and it does not collect measurements by itself.
 
+`buildChannelMeasurementBundleReport(...)` can wrap a manifest of local
+measurement windows and their already-collected summaries into a safe bundle
+report. The manifest lets operator-collected evidence keep stable run IDs,
+candidate-set labels, and window IDs without emitting local file paths,
+subscription material, endpoints, credentials, raw errors, or notes. Bundle
+reports remain repository evidence only; they do not create measurements or
+activate runtime nodes.
+
 ## Distribution Readiness
 
 Subscription overview distribution readiness is based on the default stable
