@@ -381,6 +381,8 @@ The repository config contract treats these as sensitive runtime material:
 ```text
 loadProxyConfig:
   may replace sensitive `${ENV_NAME}` placeholders in memory
+  validates supported protocol families, host, port, and protocol-required
+  credentials before the renderer receives the config
 
 publicProxyConfig:
   must recursively remove sensitive protocol credential fields before returning
