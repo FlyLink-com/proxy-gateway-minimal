@@ -9,6 +9,15 @@ import {
   publicProxyConfig
 } from "../services/config.mjs";
 
+function captureError(fn) {
+  try {
+    fn();
+  } catch (error) {
+    return error;
+  }
+  return null;
+}
+
 test("loadProxyConfig substitutes SS_PASSWORD only in memory", () => {
   const configPath = new URL("../../config/proxy-servers.json", import.meta.url);
   const config = loadProxyConfig({
@@ -134,6 +143,98 @@ test("loadProxyConfig supports protocol-specific channel candidate secrets", () 
     assert.equal(config.servers[2].uuid, "22222222-2222-4222-8222-222222222222");
     assert.equal(config.servers[2].password, "tuic-secret");
     assert.equal(config.servers[2].token, "tuic-token");
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("loadProxyConfig rejects unsupported channel candidate protocols", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "proxy-config-"));
+
+  try {
+    const configPath = join(tempDir, "proxy-servers.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        servers: [
+          {
+            name: "bad-candidate",
+            host: "bad.example.test",
+            port: 443,
+            protocol: "vmess",
+            password: "${BAD_SECRET}"
+          }
+        ]
+      })
+    );
+
+    const error = captureError(() => loadProxyConfig({ configPath, env: { BAD_SECRET: "do-not-leak" } }));
+    assert.match(error?.message, /proxy server bad-candidate protocol is unsupported/);
+    assert.doesNotMatch(error.message, /do-not-leak/);
+    assert.doesNotThrow(() => readFileSync(configPath, "utf8"));
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("loadProxyConfig rejects channel candidates missing required credentials", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "proxy-config-"));
+
+  try {
+    const configPath = join(tempDir, "proxy-servers.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        servers: [
+          {
+            name: "vless-candidate",
+            host: "vless.example.test",
+            port: 443,
+            protocol: "vless",
+            packetEncoding: "xudp"
+          },
+          {
+            name: "hy2-candidate",
+            host: "hy2.example.test",
+            port: 443,
+            protocol: "hysteria2",
+            password: "${HY2_PASSWORD}"
+          }
+        ]
+      })
+    );
+
+    const error = captureError(() => loadProxyConfig({ configPath, env: { HY2_PASSWORD: "do-not-leak" } }));
+    assert.match(error?.message, /proxy server vless-candidate uuid is required/);
+    assert.doesNotMatch(error.message, /do-not-leak/);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("loadProxyConfig rejects invalid channel candidate ports", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "proxy-config-"));
+
+  try {
+    const configPath = join(tempDir, "proxy-servers.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        servers: [
+          {
+            name: "hy2-candidate",
+            host: "hy2.example.test",
+            port: 70000,
+            protocol: "hysteria2",
+            password: "${HY2_PASSWORD}"
+          }
+        ]
+      })
+    );
+
+    const error = captureError(() => loadProxyConfig({ configPath, env: { HY2_PASSWORD: "do-not-leak" } }));
+    assert.match(error?.message, /proxy server hy2-candidate port must be an integer TCP port/);
+    assert.doesNotMatch(error.message, /do-not-leak/);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
   }

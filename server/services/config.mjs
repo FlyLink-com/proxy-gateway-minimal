@@ -25,6 +25,87 @@ function envPlaceholderName(value) {
   return match?.[1] || "";
 }
 
+function text(value) {
+  return String(value ?? "").trim();
+}
+
+function serverLabel(server, index) {
+  return text(server?.name || server?.id) || `server[${index}]`;
+}
+
+function normalizeProtocol(server) {
+  const raw = text(server?.protocol || server?.clashType || server?.type || "ss").toLowerCase();
+  if (raw === "ss" || raw === "shadowsocks" || raw === "shadowsocks-libev" || raw === "shadowsocks-rust") {
+    return "ss";
+  }
+  if (raw === "vless") {
+    return "vless";
+  }
+  if (raw === "hysteria2" || raw === "hy2") {
+    return "hysteria2";
+  }
+  if (raw === "tuic") {
+    return "tuic";
+  }
+  return "";
+}
+
+function requireConfigText(server, index, fieldName, ...keys) {
+  for (const key of keys) {
+    const value = text(server?.[key]);
+    if (value) {
+      return;
+    }
+  }
+  throw new Error(`proxy server ${serverLabel(server, index)} ${fieldName} is required`);
+}
+
+function requireConfigPort(server, index) {
+  const port = Number(server?.port);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(`proxy server ${serverLabel(server, index)} port must be an integer TCP port`);
+  }
+}
+
+function validateProxyServer(server, index) {
+  const label = serverLabel(server, index);
+  const protocol = normalizeProtocol(server);
+  if (!protocol) {
+    throw new Error(`proxy server ${label} protocol is unsupported`);
+  }
+
+  requireConfigText(server, index, "host", "host");
+  requireConfigPort(server, index);
+
+  if (protocol === "ss") {
+    requireConfigText(server, index, "cipher", "method", "cipher");
+    requireConfigText(server, index, "password", "password");
+    return;
+  }
+
+  if (protocol === "vless") {
+    requireConfigText(server, index, "uuid", "uuid");
+    return;
+  }
+
+  if (protocol === "hysteria2") {
+    requireConfigText(server, index, "password", "password");
+    return;
+  }
+
+  requireConfigText(server, index, "uuid", "uuid");
+  requireConfigText(server, index, "password", "password");
+}
+
+export function validateProxyConfig(config) {
+  if (!Array.isArray(config?.servers)) {
+    throw new Error("proxy config servers must be an array");
+  }
+
+  config.servers.forEach(validateProxyServer);
+  return config;
+}
+
 function replaceSecretPlaceholders(value, env, key) {
   if (isSensitiveConfigKey(key) && typeof value === "string") {
     const envName = envPlaceholderName(value);
@@ -67,7 +148,7 @@ function stripSensitiveConfigKeys(value) {
 
 export function loadProxyConfig({ configPath, env = process.env }) {
   const raw = readFileSync(pathFrom(configPath), "utf8");
-  return replaceSecretPlaceholders(JSON.parse(raw), env);
+  return validateProxyConfig(replaceSecretPlaceholders(JSON.parse(raw), env));
 }
 
 export function publicProxyConfig(config) {
