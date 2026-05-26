@@ -113,6 +113,93 @@ The HP host is now usable for archive-based manual CI validation. It is still
 not staging, not production, not deploy approval, and not a self-hosted GitHub
 runner.
 
+## HP Local CI Lanes
+
+HP is the approved `local-ci-a` validation host while GitHub-hosted Actions are
+blocked. Treat it as a small manual CI pool with explicit lanes instead of a
+single vague "run CI" bucket:
+
+```text
+ci-smoke:
+  Goal:
+    quick repository confidence for docs, project-state, or narrow follow-up
+    work
+  Typical commands:
+    git diff --check origin/master...HEAD on the operator checkout
+    npm run project-state:check when project-state or source docs changed
+    focused targeted tests when a touched module has one
+  HP use:
+    optional; prefer local execution unless clean-host evidence is requested
+
+ci-full:
+  Goal:
+    CI-equivalent merge evidence for implementation PRs or hosted-runner
+    startup failures
+  Commands on HP archive workspace:
+    npm ci
+    npm ci --prefix admin
+    npm test
+    npm run admin:test
+    npm run admin:build
+  HP use:
+    default manual CI evidence for B-tier implementation PRs when GitHub
+    Actions cannot start or when clean-host evidence is requested
+
+ci-visual:
+  Goal:
+    browser/rendering evidence for UI, portal, public-site, and visual workflow
+    changes
+  Commands:
+    run the relevant app locally or in an isolated validation workspace
+    capture desktop/mobile screenshots
+    check console output, key DOM anchors, and obvious layout defects
+  HP use:
+    allowed only when the browser toolchain is present and the run remains
+    repository-only; otherwise run visual QA on the operator machine and record
+    it separately from HP manual CI
+```
+
+Do not run every PR through every lane. Select the smallest lane that satisfies
+the touched surface and risk tier:
+
+```text
+C docs-only:
+  local ci-smoke is enough unless clean-host evidence is explicitly needed
+
+B server/shared runtime:
+  local focused test + npm test; use HP ci-full when hosted CI is unavailable
+  and merge evidence needs clean-host validation
+
+B Admin UI / public site / portal:
+  local focused UI test + admin:test + admin:build + npm test
+  add visual QA for rendered UX changes
+  use HP ci-full when hosted CI is unavailable and clean-host evidence is needed
+
+A production/cloud/node/runtime:
+  HP CI can provide repository validation evidence only
+  it does not replace A-tier inventory, approval, staging/validation,
+  endpoint checks, backups, rollback plans, or execution records
+```
+
+Concurrency guidance:
+
+```text
+ordinary Node test jobs:
+  keep to 2-3 concurrent manual jobs at most
+
+build or browser-heavy jobs:
+  keep to 1-2 concurrent manual jobs
+
+production or A-tier work:
+  never use HP concurrency as an approval shortcut
+```
+
+The default Codex entrypoint is the local `proxy-gateway-manual-ci` skill. It
+uses archive transfer to avoid leaving GitHub credentials on HP and currently
+maps to the `ci-full` lane. Use `-PlanOnly` before an unfamiliar run to confirm
+the target commit, host, key, and cleanup plan without transferring archives or
+executing remote commands.
+
 ### Historical Aliyun Host Inventory
 
 Read-only inventory verified on 2026-05-24:

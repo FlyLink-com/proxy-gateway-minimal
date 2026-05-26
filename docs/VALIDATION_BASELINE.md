@@ -1,6 +1,6 @@
 # Validation Baseline
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-05-26, Asia/Shanghai.
 
 > Status:
 > - Type: Active validation entrypoint
@@ -178,6 +178,15 @@ historical Aliyun validation host remains a fallback record, but it should not
 stay the routine CI host if that Aliyun server is being prepared as production
 subscription control plane.
 
+HP `local-ci-a` lane selection is defined in `docs/CI_MANUAL_VALIDATION.md`:
+
+- `ci-smoke` for quick local confidence on docs, project-state, or narrow
+  follow-up work.
+- `ci-full` for CI-equivalent HP archive validation when hosted Actions cannot
+  start and clean-host merge evidence is needed.
+- `ci-visual` for rendered UI, portal, public-site, or browser workflow
+  evidence when the change has visible UX impact.
+
 Manual CI fallback is:
 
 - A validation workaround.
@@ -187,7 +196,8 @@ Manual CI fallback is:
 - Not deploy approval.
 
 Do not start a manual CI host or copy archives to it unless the task explicitly
-requires that validation level.
+requires that validation level. Do not run every PR through every manual lane;
+choose the narrowest lane that proves the actual risk.
 
 ## Historical Evidence
 
