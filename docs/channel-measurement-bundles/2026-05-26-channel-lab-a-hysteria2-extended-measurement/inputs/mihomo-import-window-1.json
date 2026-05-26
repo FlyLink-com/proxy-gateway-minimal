@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "mode": "local-benchmark-summary",
+  "generatedAt": "2026-05-26T16:04:18.6788483Z",
+  "source": "operator-device-extended-measurement",
+  "windowId": "mihomo-window-1",
+  "probes": [
+    {
+      "name": "channel-lab-a-hysteria2-mihomo-import",
+      "protocol": "hysteria2",
+      "role": "candidate",
+      "qualityClass": "extended-mihomo-import",
+      "sampleCount": 60,
+      "successRate": 1.0,
+      "timeoutCount": 0,
+      "latencyMs": {
+        "connect": {
+          "p50": 0.6,
+          "p95": 21.2,
+          "p99": 25.1
+        },
+        "ttfb": {
+          "p50": 922.8,
+          "p95": 945.3,
+          "p99": 2726.5
+        },
+        "duration": {
+          "p50": 922.8,
+          "p95": 945.3,
+          "p99": 2726.5,
+          "max": 2726.5
+        }
+      }
+    }
+  ]
+}

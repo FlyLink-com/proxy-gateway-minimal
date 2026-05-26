@@ -1,0 +1,70 @@
+{
+  "ok": true,
+  "mode": "channel-measurement-bundle-report",
+  "generatedAt": "2026-05-26T16:15:00.000Z",
+  "sourceGeneratedAt": "2026-05-26T16:15:00.000Z",
+  "runId": "2026-05-26-channel-lab-a-hysteria2-extended-measurement",
+  "candidateSet": "channel-lab-a-hysteria2-extended-measurement",
+  "windowCount": 6,
+  "windowIds": [
+    "operator-device-direct-window-1",
+    "operator-device-direct-window-2",
+    "operator-device-direct-window-3",
+    "mihomo-import-window-1",
+    "mihomo-import-window-2",
+    "mihomo-import-window-3"
+  ],
+  "extendedReport": {
+    "ok": true,
+    "mode": "channel-extended-measurement-report",
+    "generatedAt": "2026-05-26T16:15:00.000Z",
+    "windowCount": 6,
+    "thresholds": {
+      "minimumWindows": 2,
+      "minimumSamples": 60,
+      "minimumSuccessRate": 0.98,
+      "maximumTimeoutRate": 0.01,
+      "maximumP95DurationMs": 1200,
+      "maximumP99DurationMs": 1800
+    },
+    "probeCount": 2,
+    "readyCount": 0,
+    "needsExtendedMeasurementCount": 0,
+    "holdCount": 2,
+    "probes": [
+      {
+        "name": "channel-lab-a-hysteria2-mihomo-import",
+        "protocol": "hysteria2",
+        "role": "candidate",
+        "qualityClass": "extended-mihomo-import",
+        "windowCount": 3,
+        "readyWindowCount": 2,
+        "needsExtendedMeasurementWindowCount": 0,
+        "holdWindowCount": 1,
+        "totalSampleCount": 180,
+        "readiness": "hold_for_investigation",
+        "reasonCodes": [
+          "hold_window_present",
+          "high_p99_latency"
+        ]
+      },
+      {
+        "name": "channel-lab-a-hysteria2-operator-device",
+        "protocol": "hysteria2",
+        "role": "candidate",
+        "qualityClass": "extended-operator-device",
+        "windowCount": 3,
+        "readyWindowCount": 0,
+        "needsExtendedMeasurementWindowCount": 0,
+        "holdWindowCount": 3,
+        "totalSampleCount": 180,
+        "readiness": "hold_for_investigation",
+        "reasonCodes": [
+          "hold_window_present",
+          "high_p95_latency",
+          "high_p99_latency"
+        ]
+      }
+    ]
+  }
+}
