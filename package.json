@@ -53,6 +53,7 @@
     "channel:benchmark-run": "node scripts/channel-benchmark-runner.mjs",
     "channel:benchmark-fixture": "node scripts/channel-benchmark-fixture.mjs",
     "channel:benchmark-summary": "node scripts/channel-benchmark-summary.mjs",
+    "channel:benchmark-score": "node scripts/channel-benchmark-score.mjs",
     "project-state:check": "node scripts/check-project-state.mjs",
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",

@@ -132,6 +132,82 @@ function finalizeProbe(probe) {
   }, probe.qualityClass);
 }
 
+function boundedScore(value) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function latencyPenalty(p95DurationMs) {
+  if (p95DurationMs === null || p95DurationMs === undefined) {
+    return 20;
+  }
+  return Math.floor(p95DurationMs / 100);
+}
+
+function timeoutRateFor(probe) {
+  return probe.sampleCount === 0 ? 0 : roundRate(probe.timeoutCount / probe.sampleCount);
+}
+
+function scoreProbe(probe) {
+  const p95DurationMs = probe.latencyMs?.duration?.p95 ?? null;
+  const timeoutRate = timeoutRateFor(probe);
+  const channelScore = boundedScore(
+    probe.successRate * 100 -
+      timeoutRate * 50 -
+      latencyPenalty(p95DurationMs)
+  );
+  const reasonCodes = [];
+
+  if (probe.sampleCount === 0) {
+    reasonCodes.push("insufficient_samples");
+  }
+  if (probe.successRate < 0.5) {
+    reasonCodes.push("low_success_rate");
+  } else if (probe.successRate < 0.95) {
+    reasonCodes.push("reduced_success_rate");
+  }
+  if (timeoutRate > 0) {
+    reasonCodes.push("timeout_failures");
+  }
+  if (p95DurationMs !== null && p95DurationMs > 1000) {
+    reasonCodes.push("high_p95_latency");
+  }
+
+  let qualityTier = "healthy";
+  if (probe.sampleCount === 0) {
+    qualityTier = "unknown";
+  } else if (probe.successRate < 0.5 || timeoutRate >= 0.5) {
+    qualityTier = "blocked";
+  } else if (probe.successRate < 0.95 || timeoutRate > 0 || (p95DurationMs !== null && p95DurationMs > 800)) {
+    qualityTier = "degraded";
+  }
+
+  let recommendedPool = "hold";
+  if (qualityTier === "healthy" && probe.role === "baseline") {
+    recommendedPool = "stable";
+    reasonCodes.push("stable_baseline_healthy");
+  } else if (qualityTier === "healthy" && probe.role === "candidate") {
+    recommendedPool = "canary";
+    reasonCodes.push("candidate_requires_canary");
+  } else if (qualityTier === "degraded") {
+    recommendedPool = "private";
+    reasonCodes.push("operator_private_only");
+  }
+
+  return withQualityClass({
+    name: probe.name,
+    protocol: probe.protocol,
+    role: probe.role,
+    sampleCount: probe.sampleCount,
+    successRate: probe.successRate,
+    timeoutRate,
+    p95DurationMs,
+    channelScore,
+    qualityTier,
+    recommendedPool,
+    reasonCodes
+  }, probe.qualityClass);
+}
+
 function normalizePlanProbe(probe) {
   if (!isObject(probe)) {
     throw new Error("benchmark plan probe must be an object");
@@ -269,5 +345,20 @@ export function summarizeChannelBenchmarkResults(samples, { generatedAt = new Da
       successRate: totals.sampleCount === 0 ? 0 : roundRate(totals.successCount / totals.sampleCount)
     },
     probes: [...probes.values()].map(finalizeProbe)
+  };
+}
+
+export function scoreChannelBenchmarkSummary(summary, { generatedAt = new Date().toISOString() } = {}) {
+  if (!isObject(summary) || summary.mode !== "local-benchmark-summary" || !Array.isArray(summary.probes)) {
+    throw new Error("channel measurement scoring requires a local benchmark summary");
+  }
+
+  return {
+    ok: true,
+    mode: "channel-measurement-score",
+    generatedAt,
+    sourceGeneratedAt: summary.generatedAt,
+    probeCount: summary.probes.length,
+    candidates: summary.probes.map(scoreProbe)
   };
 }

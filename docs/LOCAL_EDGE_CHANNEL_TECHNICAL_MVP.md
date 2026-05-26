@@ -398,6 +398,35 @@ The same aggregation is available as a local CLI for already-collected samples:
 npm run channel:benchmark-summary -- <path-to-local-samples.json>
 ```
 
+Repository-local measurement scoring is available through
+`scoreChannelBenchmarkSummary(...)`. It consumes a local benchmark summary and
+returns safe channel quality classifications:
+
+```text
+qualityTier:
+  healthy
+  degraded
+  blocked
+  unknown
+
+recommendedPool:
+  stable
+  canary
+  private
+  hold
+```
+
+The scorer produces `channelScore`, timeout rate, P95 duration, and reason
+codes without copying raw target URLs, raw errors, tokens, credentials, or
+customer data. It is advisory only. It does not mutate `config/proxy-servers.json`,
+assign tenants, change DNS, deploy protocol runtimes, or promote any node.
+
+To score a local benchmark summary:
+
+```bash
+npm run channel:benchmark-score -- <path-to-local-summary.json>
+```
+
 To create a safe editable fixture from a local dry-run summary:
 
 ```bash

@@ -8,6 +8,7 @@ import {
   CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
   createChannelBenchmarkFixtureFromPlan,
   normalizeChannelBenchmarkFixture,
+  scoreChannelBenchmarkSummary,
   summarizeChannelBenchmarkResults
 } from "../services/channel-benchmark-results.mjs";
 
@@ -165,6 +166,133 @@ test("summarizeChannelBenchmarkResults validates sample shape without echoing ra
       return true;
     }
   );
+});
+
+test("scoreChannelBenchmarkSummary classifies safe channel quality and rollout recommendations", () => {
+  const summary = summarizeChannelBenchmarkResults(
+    [
+      {
+        probeName: "ss-baseline",
+        protocol: "ss",
+        role: "baseline",
+        qualityClass: "stable",
+        ok: true,
+        durationMs: 120,
+        connectTimeMs: 30,
+        timeToFirstByteMs: 80
+      },
+      {
+        probeName: "ss-baseline",
+        protocol: "ss",
+        role: "baseline",
+        qualityClass: "stable",
+        ok: true,
+        durationMs: 140,
+        connectTimeMs: 35,
+        timeToFirstByteMs: 90
+      },
+      {
+        probeName: "hy2-candidate",
+        protocol: "hysteria2",
+        role: "candidate",
+        qualityClass: "weak-network",
+        ok: true,
+        durationMs: 180,
+        connectTimeMs: 40,
+        timeToFirstByteMs: 100
+      },
+      {
+        probeName: "hy2-candidate",
+        protocol: "hysteria2",
+        role: "candidate",
+        qualityClass: "weak-network",
+        ok: true,
+        durationMs: 220,
+        connectTimeMs: 45,
+        timeToFirstByteMs: 120
+      },
+      {
+        probeName: "tuic-candidate",
+        protocol: "tuic",
+        role: "candidate",
+        qualityClass: "weak-network",
+        ok: false,
+        durationMs: 3000,
+        connectTimeMs: 0,
+        errorClass: "timeout",
+        rawError: "secret backend timeout"
+      },
+      {
+        probeName: "tuic-candidate",
+        protocol: "tuic",
+        role: "candidate",
+        qualityClass: "weak-network",
+        ok: false,
+        durationMs: 3000,
+        connectTimeMs: 0,
+        errorClass: "timeout"
+      }
+    ],
+    { generatedAt: "2026-05-26T19:20:00.000Z" }
+  );
+
+  const scored = scoreChannelBenchmarkSummary(summary, {
+    generatedAt: "2026-05-26T19:21:00.000Z"
+  });
+
+  assert.deepEqual(scored, {
+    ok: true,
+    mode: "channel-measurement-score",
+    generatedAt: "2026-05-26T19:21:00.000Z",
+    sourceGeneratedAt: "2026-05-26T19:20:00.000Z",
+    probeCount: 3,
+    candidates: [
+      {
+        name: "ss-baseline",
+        protocol: "ss",
+        role: "baseline",
+        qualityClass: "stable",
+        sampleCount: 2,
+        successRate: 1,
+        timeoutRate: 0,
+        p95DurationMs: 140,
+        channelScore: 99,
+        qualityTier: "healthy",
+        recommendedPool: "stable",
+        reasonCodes: ["stable_baseline_healthy"]
+      },
+      {
+        name: "hy2-candidate",
+        protocol: "hysteria2",
+        role: "candidate",
+        qualityClass: "weak-network",
+        sampleCount: 2,
+        successRate: 1,
+        timeoutRate: 0,
+        p95DurationMs: 220,
+        channelScore: 98,
+        qualityTier: "healthy",
+        recommendedPool: "canary",
+        reasonCodes: ["candidate_requires_canary"]
+      },
+      {
+        name: "tuic-candidate",
+        protocol: "tuic",
+        role: "candidate",
+        qualityClass: "weak-network",
+        sampleCount: 2,
+        successRate: 0,
+        timeoutRate: 1,
+        p95DurationMs: 3000,
+        channelScore: 0,
+        qualityTier: "blocked",
+        recommendedPool: "hold",
+        reasonCodes: ["low_success_rate", "timeout_failures", "high_p95_latency"]
+      }
+    ]
+  });
+
+  assert.doesNotMatch(JSON.stringify(scored), /secret|rawError|token=/);
 });
 
 test("normalizeChannelBenchmarkFixture accepts the versioned local sample fixture contract", () => {
@@ -339,6 +467,58 @@ test("channel benchmark summary CLI prints safe JSON from a local sample file", 
       assert.equal(summary.totals.successRate, 0.5);
       assert.equal(summary.totals.timeoutCount, 1);
       assert.doesNotMatch(stdout, /secret|targetUrl|rawError|token=/);
+    }
+  );
+});
+
+test("channel benchmark score CLI prints safe channel recommendations from a local summary", () => {
+  withSamples(
+    {
+      ok: true,
+      mode: "local-benchmark-summary",
+      generatedAt: "2026-05-26T19:30:00.000Z",
+      sampleCount: 2,
+      probeCount: 1,
+      totals: {
+        sampleCount: 2,
+        successCount: 2,
+        failureCount: 0,
+        successRate: 1,
+        timeoutCount: 0
+      },
+      probes: [
+        {
+          name: "hy2-candidate",
+          protocol: "hysteria2",
+          role: "candidate",
+          qualityClass: "weak-network",
+          sampleCount: 2,
+          successCount: 2,
+          failureCount: 0,
+          successRate: 1,
+          timeoutCount: 0,
+          errorCounts: {},
+          latencyMs: {
+            duration: { p50: 180, p95: 220, p99: 220 },
+            connect: { p50: 40, p95: 45, p99: 45 },
+            timeToFirstByte: { p50: 100, p95: 120, p99: 120 }
+          },
+          rawError: "secret backend detail"
+        }
+      ]
+    },
+    (summaryPath) => {
+      const stdout = execFileSync(process.execPath, ["scripts/channel-benchmark-score.mjs", summaryPath], {
+        cwd: new URL("../../", import.meta.url),
+        encoding: "utf8"
+      });
+
+      const scored = JSON.parse(stdout);
+      assert.equal(scored.ok, true);
+      assert.equal(scored.mode, "channel-measurement-score");
+      assert.equal(scored.candidates[0].recommendedPool, "canary");
+      assert.equal(scored.candidates[0].qualityTier, "healthy");
+      assert.doesNotMatch(stdout, /secret|rawError|token=/);
     }
   );
 });

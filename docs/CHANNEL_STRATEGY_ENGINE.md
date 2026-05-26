@@ -18,6 +18,11 @@ The strategy engine is a static renderer contract. It is not live health
 measurement, automatic traffic steering, provider orchestration, or production
 rollout approval.
 
+Repository-local measurement scoring can produce advisory `recommendedPool`
+values from local benchmark summaries. Those recommendations remain operator
+evidence. They do not automatically change subscription output or runtime node
+configuration.
+
 ## Node Pools
 
 Configured edge nodes may declare one of these pools:
@@ -79,6 +84,22 @@ tokens, opaque artifact paths, cloud credentials, or customer data.
 
 `canaryWeight` is reserved metadata for later measured rollout design. The
 current renderer does not perform weighted distribution.
+
+## Measurement Scoring Input
+
+`scoreChannelBenchmarkSummary(...)` converts redacted local benchmark summaries
+into advisory channel quality records:
+
+```text
+channelScore
+qualityTier
+recommendedPool
+reasonCodes
+```
+
+The current subscription renderer does not consume these scores automatically.
+An operator must still review the report and, for any runtime effect, use the
+appropriate Risk A runbook and approval gate.
 
 ## Distribution Readiness
 

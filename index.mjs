@@ -20,6 +20,7 @@ export {
   CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
   createChannelBenchmarkFixtureFromPlan,
   normalizeChannelBenchmarkFixture,
+  scoreChannelBenchmarkSummary,
   summarizeChannelBenchmarkResults
 } from "./server/services/channel-benchmark-results.mjs";
 export {
