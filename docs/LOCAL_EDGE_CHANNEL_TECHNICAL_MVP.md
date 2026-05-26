@@ -347,6 +347,49 @@ as a separate A-tier gate. Repository config support may define how protocol
 candidate secrets are loaded and redacted, but activating those candidates in
 production node config remains separate A-tier work.
 
+#### Stage 1A Config Contract Design
+
+Design intent:
+
+```text
+Keep node candidate definitions in repository config format.
+Load protocol credentials from environment placeholders only at runtime.
+Allow the renderer to receive concrete protocol fields after config loading.
+Never expose protocol credentials through public config summaries.
+Keep production node activation separate from repository support.
+```
+
+Protocol candidate fields may include credentials beyond the original
+Shadowsocks `password`, for example:
+
+```text
+VLESS:
+  uuid
+
+Hysteria2:
+  password
+  obfs-password / obfsPassword
+
+TUIC:
+  uuid
+  password
+  token
+```
+
+The repository config contract treats these as sensitive runtime material:
+
+```text
+loadProxyConfig:
+  may replace sensitive `${ENV_NAME}` placeholders in memory
+
+publicProxyConfig:
+  must recursively remove sensitive protocol credential fields before returning
+  diagnostics or public summaries
+```
+
+This design keeps PR-level renderer/config work useful for channel development
+without changing tracked production node config or enabling any runtime channel.
+
 ### Stage 1: Repository-Only Agent Channel Harness
 
 ```text
