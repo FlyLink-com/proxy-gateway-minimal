@@ -200,6 +200,8 @@ operator approval, validation, and rollback path exist:
   `docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md`.
   The latest private state-copy preflight record is
   `docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md`.
+  The latest source internal inspection attempt is
+  `docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md`.
 - Clean fallback `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
@@ -268,6 +270,7 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md`
 - `docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md`
 - `docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md`
+- `docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md`
 - The current Aliyun SWAS host is reachable through SSH alias `miyao`.
 - It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
   `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
@@ -299,8 +302,12 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - Private state-copy validation is still blocked because prod-edge-a source
   internal SSH inspection timed out during banner exchange; source SQLite
   integrity and fresh source backup are not yet verified.
-- The next gate is explicit prod-edge-a source internal state-copy inspection
-  approval, followed by separate Aliyun private state-copy validation approval.
+- Follow-up source internal inspection confirmed prod-edge-a EC2 health and
+  production public endpoint health, but SSM inventory is empty and SSH TCP/22
+  closes before banner/auth. Source command execution remains blocked.
+- The next gate is explicit prod-edge-a source access remediation planning,
+  followed by separate remediation approval if mutation is needed, then Aliyun
+  private state-copy validation approval.
 
 Latest Aliyun user-management / subscription-distribution decision:
 
@@ -322,16 +329,18 @@ Latest Aliyun user-management / subscription-distribution decision:
 - The preflight also found the tracked static node config still references
   `prod-edge-a` and `prod-edge-b`, so node cleanup remains sequenced but not
   executable until Aliyun promotion and subscription-output drain evidence.
-- The next executable gate is prod-edge-a source internal state-copy inspection
-  approval or, for node cleanup specifically, a later drain-and-stop approval
-  after Aliyun promotion.
+- The next executable gate is prod-edge-a source access remediation planning or,
+  for node cleanup specifically, a later drain-and-stop approval after Aliyun
+  promotion.
 
 Latest A2 preflight:
 
 - `docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md`
 - External AWS, DNS, public-boundary, and edge-port checks were healthy.
 - Host-internal service / SQLite / backup / journal checks are blocked until
-  an approved internal inspection path exists.
+  an approved internal inspection path exists. The latest source inspection
+  attempt confirmed the path is still blocked before SSH banner/auth and SSM is
+  unavailable.
 - Clean `sub-control-a` candidate provisioning is not approved. The clean
   new-server control-plane path is now a fallback if the Aliyun candidate path
   is rejected by inventory or cleanup gates.
