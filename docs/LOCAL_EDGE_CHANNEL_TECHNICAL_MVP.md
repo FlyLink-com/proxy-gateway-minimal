@@ -347,6 +347,17 @@ as a separate A-tier gate. Repository config support may define how protocol
 candidate secrets are loaded and redacted, but activating those candidates in
 production node config remains separate A-tier work.
 
+Repository-local dry-run support is available for candidate config validation:
+
+```bash
+npm run channel:dry-run -- <path-to-proxy-servers.json>
+```
+
+The dry-run loads the config, validates protocol families and required fields,
+renders Clash YAML in memory, and prints only a safe JSON summary. It does not
+connect to a remote node, deploy protocol runtime, mutate production config, or
+print credentials.
+
 #### Stage 1A Config Contract Design
 
 Design intent:
