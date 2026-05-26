@@ -441,6 +441,16 @@ Required approval phrase:
 Approve AWS node drain preflight. Read-only only. No stop, no terminate, no DNS change, no security-group change.
 ```
 
+Latest read-only cleanup preflight:
+
+```text
+docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md
+```
+
+That preflight did not perform cleanup. It confirmed `prod-edge-a` is still
+blocked by authoritative DNS and public gateway dependency, while `prod-edge-b`
+is still blocked by the documented temporary secondary-slot dependency.
+
 Drain criteria before any stop:
 
 ```text

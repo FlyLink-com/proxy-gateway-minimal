@@ -9,6 +9,7 @@
     "docs/PROJECT_CONTROL_PLANE.md",
     "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
+    "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/MULTI_AGENT_OPERATING_MODEL.md"
   ],
   "tasks": [
@@ -280,7 +281,7 @@
     {
       "id": "A4-non-aliyun-hp-node-retirement",
       "risk": "A",
-      "status": "blocked-requires-aliyun-promotion-and-drain-approval",
+      "status": "preflight-recorded-blocked-requires-aliyun-promotion-and-drain-approval",
       "lane": "edge-data-plane",
       "title": "Drain and retire non-Aliyun / non-HP nodes",
       "goal": "Close all nodes outside Aliyun and HP only after Aliyun production subscription distribution is promoted, DNS and subscription output no longer require AWS nodes, and rollback dependencies are explicitly accepted.",

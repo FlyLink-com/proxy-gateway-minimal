@@ -153,6 +153,11 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   iteration/canary secondary slot.
 - `prod-edge-b` is currently carried by the validated green instance
   `18.136.102.226`; lifecycle changes remain A-tier.
+- The latest non-Aliyun node cleanup preflight is recorded in
+  `docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md`.
+  It refreshed AWS, AliDNS, public endpoint, and repository-reference evidence
+  and did not perform any stop, terminate, DNS, security-group, runtime, tenant,
+  SQLite, or artifact mutation.
 - Legacy blue `i-004ab1c6c71d06bca` is stopped and retained for controlled
   retirement review. Do not terminate it or delete its security group without
   separate A-tier approval.
@@ -196,8 +201,11 @@ operator approval, validation, and rollback path exist:
 - `prod-edge-b` carrying-instance replacement or lifecycle mutation.
 - `prod-edge-c` creation or durable third-node recovery work.
 - AWS node drain, stop, termination, or security-group cleanup as part of the
-  new "Aliyun + HP only" target. Drain/stop/termination each require separate
-  A-tier approvals and evidence.
+  new "Aliyun + HP only" target. The latest cleanup preflight confirms
+  `prod-edge-a` is still blocked by AliDNS/user-facing dependency and
+  `prod-edge-b` is still blocked by the documented temporary secondary-slot
+  dependency. Drain/stop/termination each require separate A-tier approvals and
+  evidence.
 - Legacy blue final termination or security-group cleanup.
 - WireGuard install, mesh key generation, UDP security-group changes,
   `wg-quick` start, or live mesh validation.
@@ -226,9 +234,10 @@ The remaining queued items are A-tier and remain blocked:
 
 For A2, the preferred first step is now the role split in
 `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: local Linux manual CI first,
-then Aliyun production-control candidate inventory, then clean edge-node
-rebuild. Do not start either A-tier item without a specific runbook, read-only
-inventory, operator approval, validation plan, and rollback evidence.
+then Aliyun production-control candidate inventory, then controlled
+non-Aliyun node drain / retirement after Aliyun promotion. Do not start either
+A-tier item without a specific runbook, read-only inventory, operator approval,
+validation plan, and rollback evidence.
 
 Latest local Linux CI candidate inventory:
 
@@ -282,7 +291,14 @@ Latest Aliyun user-management / subscription-distribution decision:
 - Authoritative AliDNS still points `sub.globalcirclecat.com` and
   `ss-sg.globalcirclecat.com` to `13.215.156.159`, so no AWS node can be
   stopped before Aliyun promotion and node drain evidence.
-- The next executable gate remains Aliyun manual CI lane cleanup approval.
+- Latest cleanup preflight:
+  `docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md`.
+- The preflight also found the tracked static node config still references
+  `prod-edge-a` and `prod-edge-b`, so node cleanup remains sequenced but not
+  executable until Aliyun promotion and subscription-output drain evidence.
+- The next executable gate remains Aliyun manual CI lane cleanup approval or,
+  for node cleanup specifically, a later drain-and-stop approval after Aliyun
+  promotion.
 
 Latest A2 preflight:
 

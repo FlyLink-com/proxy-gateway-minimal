@@ -19,6 +19,7 @@
     "docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md",
     "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md",
     "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
+    "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/VALIDATION_BASELINE.md"
   ],
   "repo": {
@@ -129,8 +130,8 @@
     },
     {
       "id": "non-aliyun-hp-node-retirement-blocked",
-      "summary": "The target is now Aliyun plus HP only, but AWS prod-edge-a and prod-edge-b remain running and DNS still points sub.globalcirclecat.com and ss-sg.globalcirclecat.com to prod-edge-a; drain, stop, termination, and security-group cleanup each require separate Risk A gates.",
-      "sourceDoc": "docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md"
+      "summary": "The target is now Aliyun plus HP only, but the latest cleanup preflight found AWS prod-edge-a and prod-edge-b still running, AliDNS still points sub.globalcirclecat.com and ss-sg.globalcirclecat.com to prod-edge-a, and tracked config/docs still reference prod-edge-b; drain, stop, termination, and security-group cleanup each require separate Risk A gates.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md"
     },
     {
       "id": "technical-mvp-track-separated",
@@ -150,8 +151,9 @@
     "Aliyun subscription-control candidate bootstrap without DNS, user traffic, production authority, or edge traffic",
     "Aliyun private state-copy validation approval",
     "Aliyun production subscription authority promotion approval",
-    "Non-Aliyun / non-HP node drain preflight",
-    "AWS node stop after Aliyun promotion and drain approval",
+    "Subscription-output inventory proving AWS nodes are no longer emitted, or explicit client-cache-window acceptance",
+    "AWS node drain-and-stop approval after Aliyun promotion",
+    "Legacy stopped node termination and security-group cleanup approval after observation window",
     "A1 legacy query-token retirement (blocked until runbook and approval)",
     "A2 physical control/edge split promotion decision (blocked until candidate, backup/restore, edge-only behavior, rollback, and approval)"
   ],
