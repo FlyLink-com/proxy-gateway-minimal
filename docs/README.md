@@ -21,6 +21,12 @@ actions by itself.
 | --- | --- | --- | --- |
 | `docs/PROJECT_CONTEXT.md` | Compact current handoff, active blockers, documented production snapshot, validation baseline, and latest durable next-step context. | Active current-state handoff; not the full docs index or execution-history archive. | Read first when resuming the repo or before changing project direction, then use this index for detailed docs navigation and execution records. |
 
+## Goal Documents
+
+| Document | Purpose | Status | When to read |
+| --- | --- | --- | --- |
+| `docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md` | Goal-driven execution plan for the Aliyun Subscription Control Platform MVP, keeping Aliyun as the control-plane candidate, HP as `local-ci-a` / operator lab, and edge capacity replaceable. | Active goal; repo-only until separate Risk A approval. | Read before starting PRs under the Aliyun control-platform MVP or assigning specialist agents to platform, entitlement, subscription access, validation, or production-ops work. |
+
 ## Workflow / Agent Rules
 
 | Document | Purpose | Status | When to read |

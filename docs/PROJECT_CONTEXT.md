@@ -91,6 +91,11 @@ stable subscription/import experience
 
 Current architecture priorities:
 
+- Active Goal: `docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md`
+  is the current goal-driven execution baseline. It authorizes repo-only B/C
+  implementation and documentation first, allows HP `ci-full` validation when
+  needed, and does not authorize Aliyun deployment, DNS changes, production
+  traffic, state copy, edge rebuild, or public runtime mutation.
 - Aliyun User Management / Subscription Distribution: the near-term business
   split is Aliyun for user management/subscription distribution, HP for local CI/operator
   lab, and all other nodes in a controlled drain/retirement queue. See
@@ -141,6 +146,7 @@ Current architecture priorities:
 Use these docs for detail:
 
 - `docs/PROJECT_TOPOLOGY.md`
+- `docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md`
 - `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
 - `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`
 - `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`
