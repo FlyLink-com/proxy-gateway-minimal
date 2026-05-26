@@ -119,6 +119,13 @@ benchmark summaries into `ready_for_decision`, `needs_extended_measurement`, or
 smoke samples and longer measurement evidence, but it remains advisory only and
 does not activate node config or rollout behavior.
 
+`buildChannelExtendedMeasurementReport(...)` can combine multiple local
+benchmark summary windows into a safe extended measurement report. It answers
+whether a candidate has enough independent measurement windows to move toward a
+decision pack, still needs more observation, or should be held for
+investigation. The report omits hosts, ports, credentials, raw errors, tokens,
+and subscription URLs, and it does not collect measurements by itself.
+
 ## Distribution Readiness
 
 Subscription overview distribution readiness is based on the default stable
