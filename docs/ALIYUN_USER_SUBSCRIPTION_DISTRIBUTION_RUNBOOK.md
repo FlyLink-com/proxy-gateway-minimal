@@ -1,4 +1,4 @@
-# Aliyun Registration / Distribution Platform Runbook
+# Aliyun User Management / Subscription Distribution Runbook
 
 Last updated: 2026-05-26, Asia/Shanghai.
 
@@ -12,8 +12,9 @@ Last updated: 2026-05-26, Asia/Shanghai.
 >   deletion by itself
 > - Production impact: None
 > - Source of truth for: the near-term business split where Aliyun owns the
->   registration / subscription distribution platform, HP remains validation
->   and operator lab, and all other nodes enter a controlled retirement queue
+>   user-management and subscription-distribution platform, HP remains
+>   validation/operator lab, and non-Aliyun nodes enter a separate controlled
+>   retirement queue
 
 ## Business Decision
 
@@ -21,7 +22,7 @@ The near-term infrastructure split is:
 
 ```text
 Aliyun:
-  registration / subscription distribution platform
+  user management / subscription distribution platform
   future sub-control-a candidate
 
 HP:
@@ -29,13 +30,13 @@ HP:
   operator lab and network research
 
 all other nodes:
-  drain and retire through explicit Risk A gates
+  drain and retire through separate explicit Risk A gates
 ```
 
 The separate technical MVP branch owns new transport/channel capability work.
-That branch should not be coupled to the Aliyun production-control build until
-both tracks have their own validation evidence and an explicit integration
-gate.
+That branch should not be coupled to this management/distribution platform
+until both tracks have their own validation evidence and an explicit
+integration gate.
 
 Current technical MVP branch observed during this runbook creation:
 
@@ -46,15 +47,16 @@ Purpose: local edge channel probe / benchmark / manager work
 Status: open draft, mergeable at the time of read-only check
 ```
 
-## Meaning Of Registration / Distribution Platform
+## Meaning Of User Management / Subscription Distribution
 
-In this project, the Aliyun registration / distribution platform means:
+In this project, the Aliyun platform is deliberately small:
 
 ```text
-tenant and operator-controlled subscription authority
+user / tenant records
+subscription lifecycle management
 opaque artifact issuance and validation
 Subscription V2 rendering
-edge or channel policy distribution
+subscription and channel policy distribution
 private Admin API
 SQLite subscription and artifact authority until another approved store exists
 backup and restore responsibility
@@ -72,7 +74,37 @@ public Admin UI
 user VPN
 automatic traffic failover
 unapproved WireGuard mesh
+edge-node lifecycle owner
 ```
+
+## MVP Scope
+
+The first Aliyun platform build should stay intentionally small:
+
+```text
+private operator/Admin access
+user or tenant record management
+subscription lifecycle management
+opaque artifact issuance and validation
+Subscription V2 rendering
+public subscription distribution endpoint after promotion approval
+backup and restore procedure for the subscription database
+```
+
+Explicitly defer:
+
+```text
+payment / billing / CRM workflows
+automatic node health routing
+transport protocol experiments
+edge-node lifecycle management
+multi-region control plane
+distributed database
+public Admin UI
+self-hosted CI
+```
+
+This is a management and distribution platform, not a new networking stack.
 
 ## Current Read-Only Facts
 
@@ -150,7 +182,7 @@ Near-term target:
 ```text
 Aliyun:
   sub-control-a
-  owns subscription registration / distribution
+  owns user management and subscription distribution
   serves public subscription refresh only after promotion approval
   keeps Admin private
   does not run CI
@@ -178,7 +210,7 @@ AWS prod-edge-a / prod-edge-b:
 Owner for this branch of work:
 
 ```text
-Aliyun registration / subscription distribution platform
+Aliyun user management / subscription distribution platform
 ```
 
 Allowed after explicit gates:
@@ -191,8 +223,10 @@ private candidate validation
 state-copy validation
 Nginx public boundary
 DNS migration
-AWS node drain and retirement
 ```
+
+Node drain and retirement are adjacent operations after promotion; they are not
+part of the platform bootstrap itself.
 
 ### Technical MVP Track
 
@@ -364,18 +398,19 @@ are printed or recorded
 rollback source remains current production authority
 ```
 
-### Phase 4: Aliyun Promotion
+### Phase 4: Aliyun Distribution Promotion
 
 Goal:
 
 ```text
-Move public subscription registration / distribution authority to Aliyun.
+Move public user-management-backed subscription distribution authority to
+Aliyun.
 ```
 
 Required approval phrase:
 
 ```text
-Approve Aliyun production subscription authority promotion. Include DNS change, production state copy, Nginx public boundary, and rollback to current prod-edge-a.
+Approve Aliyun production subscription distribution promotion. Include DNS change, production state copy, Nginx public boundary, and rollback to current prod-edge-a.
 ```
 
 Required validation:
@@ -392,7 +427,7 @@ current production rollback path is documented
 observation window is started
 ```
 
-### Phase 5: AWS Node Drain
+### Phase 5: Adjacent AWS Node Drain
 
 Goal:
 

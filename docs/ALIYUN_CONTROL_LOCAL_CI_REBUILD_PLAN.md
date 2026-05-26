@@ -34,7 +34,7 @@ clean rebuild servers:
 This plan replaces the earlier default assumption that a clean new server is
 the preferred first physical subscription-control candidate. After the latest
 business split, the default near-term target is tighter: Aliyun for
-registration/subscription distribution, HP for validation/operator lab, and all
+user management/subscription distribution, HP for validation/operator lab, and all
 other nodes drained and retired after explicit A-tier gates. The existing clean
 new-server control-plane runbook remains a fallback if the Aliyun host cannot
 be safely promoted.
@@ -440,7 +440,7 @@ Recommended order:
 6. Bootstrap candidate control-plane service without production authority.
 7. Validate private state copy and subscription rendering after separate
    state-handling approval.
-8. Promote Aliyun registration / subscription distribution after separate
+8. Promote Aliyun user-management / subscription-distribution after separate
    promotion approval.
 9. Drain non-Aliyun / non-HP nodes from DNS and subscription output.
 10. Stop, then later terminate old nodes only after observation windows and
@@ -463,9 +463,10 @@ docs/PRODUCTION_EDGE_FLEET.md:
   owns historical edge slot semantics and must be read before draining current
   prod-edge-a / prod-edge-b dependencies.
 
-docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md:
-  owns the latest business decision: Aliyun for registration/distribution, HP
-  for validation/lab, and all other nodes in controlled retirement queue.
+docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md:
+  owns the latest business decision: Aliyun for user management/subscription
+  distribution, HP for validation/lab, and all other nodes in controlled
+  retirement queue.
 
 docs/PROJECT_TOPOLOGY.md:
   shows the target topology after this direction is accepted.

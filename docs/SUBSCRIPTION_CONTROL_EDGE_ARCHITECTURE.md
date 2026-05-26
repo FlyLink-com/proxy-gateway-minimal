@@ -418,9 +418,9 @@ docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md:
 docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md:
   current target split for Aliyun control, local Linux CI, and clean edge nodes
 
-docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md:
-  latest business split: Aliyun registration / distribution platform, HP
-  validation/lab, and controlled retirement of other nodes
+docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md:
+  latest business split: Aliyun user management / subscription distribution,
+  HP validation/lab, and controlled retirement of other nodes
 
 docs/SERVER_EDGE_MESH_DESIGN.md:
   private edge management / recovery plane

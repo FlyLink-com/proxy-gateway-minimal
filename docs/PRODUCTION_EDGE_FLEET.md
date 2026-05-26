@@ -28,7 +28,8 @@ lives in `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`.
 Latest business decision:
 
 ```text
-Aliyun becomes the near-term registration / subscription distribution platform.
+Aliyun becomes the near-term user-management / subscription-distribution
+platform.
 HP remains local CI and operator lab.
 Non-Aliyun / non-HP nodes move to a controlled drain and retirement queue after
 Aliyun promotion.
@@ -37,7 +38,7 @@ Aliyun promotion.
 Therefore this document remains useful for understanding current edge slot
 dependencies and rollback risk, but it is no longer the default plan to keep
 or expand clean edge capacity before the Aliyun platform is promoted. Use
-`docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md` for the current
+`docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md` for the current
 drain / stop / termination gates.
 
 The plan is documentation-only. It does not rename current runtime nodes,
@@ -52,7 +53,7 @@ production `.env`, copy secrets, copy SQLite data, or move traffic.
 - `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: current target split where
   Aliyun becomes the subscription control-plane candidate, local Linux becomes
   manual CI, and non-Aliyun / non-HP nodes drain through controlled retirement.
-- `docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md`: latest business
+- `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`: latest business
   split and node drain / stop / termination gates.
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`: fallback clean
   new-server gates for a future `sub-control-a` candidate. It is not an edge
@@ -363,7 +364,8 @@ Before runtime work starts, decide:
 Recommended sequence:
 
 ```text
-1. Promote Aliyun only through the registration / distribution platform runbook.
+1. Promote Aliyun only through the user-management / subscription-distribution
+   runbook.
 2. Use this edge fleet plan to identify current AWS node dependencies.
 3. Drain AWS nodes from DNS and generated subscription output after Aliyun
    promotion.

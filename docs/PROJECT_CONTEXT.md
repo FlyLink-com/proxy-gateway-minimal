@@ -85,10 +85,10 @@ stable subscription/import experience
 
 Current architecture priorities:
 
-- Aliyun Registration / Distribution Platform: the near-term business split is
-  Aliyun for registration/subscription distribution, HP for local CI/operator
+- Aliyun User Management / Subscription Distribution: the near-term business
+  split is Aliyun for user management/subscription distribution, HP for local CI/operator
   lab, and all other nodes in a controlled drain/retirement queue. See
-  `docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md`.
+  `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. The
   current target is to move CI off the current Aliyun server, then evaluate
@@ -118,7 +118,7 @@ Current architecture priorities:
 Use these docs for detail:
 
 - `docs/PROJECT_TOPOLOGY.md`
-- `docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md`
+- `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
 - `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`
 - `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`
@@ -267,12 +267,12 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - The next gates are explicit Aliyun manual CI lane cleanup approval, recheck,
   then explicit Aliyun subscription-control candidate preparation approval.
 
-Latest Aliyun registration / distribution platform decision:
+Latest Aliyun user-management / subscription-distribution decision:
 
-- `docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md`
-- Near-term target: Aliyun becomes the registration/subscription distribution
-  platform, HP remains local CI/operator lab, and all other nodes are drained
-  and retired through explicit A-tier gates.
+- `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
+- Near-term target: Aliyun becomes the user-management and subscription
+  distribution platform, HP remains local CI/operator lab, and all other nodes
+  are drained and retired through explicit A-tier gates.
 - The separate technical MVP branch is PR #129,
   `codex/local-edge-channel-probe-harness`; it owns local edge channel probe,
   benchmark, and manager work and must not be coupled to Aliyun production

@@ -11,7 +11,7 @@
     "docs/PROJECT_OPERATING_MODEL.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/PROJECT_TOPOLOGY.md",
-    "docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md",
+    "docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md",
     "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
     "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md",
@@ -43,7 +43,7 @@
   ],
   "activeDirections": [
     "Domain Unit Boundaries for product business, commercial entitlement, subscription access, nodes, validation, operator lab, and production ops",
-    "Aliyun registration / subscription distribution platform as the near-term production-control target",
+    "Aliyun user-management / subscription-distribution platform as the near-term production-control target",
     "HP local Linux as manual CI and operator lab only",
     "Controlled drain and retirement of non-Aliyun / non-HP nodes after Aliyun promotion",
     "Subscription Control / Edge Split",
@@ -130,12 +130,12 @@
     {
       "id": "non-aliyun-hp-node-retirement-blocked",
       "summary": "The target is now Aliyun plus HP only, but AWS prod-edge-a and prod-edge-b remain running and DNS still points sub.globalcirclecat.com and ss-sg.globalcirclecat.com to prod-edge-a; drain, stop, termination, and security-group cleanup each require separate Risk A gates.",
-      "sourceDoc": "docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md"
+      "sourceDoc": "docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md"
     },
     {
       "id": "technical-mvp-track-separated",
       "summary": "PR #129 owns local edge channel probe/benchmark/manager work and must not be coupled to Aliyun production authority until both tracks pass a later integration gate.",
-      "sourceDoc": "docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md"
+      "sourceDoc": "docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md"
     },
     {
       "id": "a2-host-internal-inventory-blocked",

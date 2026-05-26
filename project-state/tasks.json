@@ -247,14 +247,14 @@
       ]
     },
     {
-      "id": "A3-aliyun-registration-distribution-platform",
+      "id": "A3-aliyun-user-subscription-distribution-platform",
       "risk": "A",
       "status": "blocked-requires-cleanup-approval",
       "lane": "subscription-control-plane",
-      "title": "Build Aliyun as the registration and subscription distribution platform",
-      "goal": "Move registration, subscription rendering, opaque artifact authority, and private Admin control toward Aliyun while keeping HP as validation/lab and without granting production authority until promotion gates pass.",
+      "title": "Build Aliyun as the user-management and subscription-distribution platform",
+      "goal": "Move user management, subscription rendering, opaque artifact authority, and private Admin control toward Aliyun while keeping HP as validation/lab and without granting production authority until promotion gates pass.",
       "allowedFiles": [
-        "docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md",
+        "docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md",
         "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
         "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md",
         "docs/production-replacement-records/*.md",
@@ -285,7 +285,7 @@
       "title": "Drain and retire non-Aliyun / non-HP nodes",
       "goal": "Close all nodes outside Aliyun and HP only after Aliyun production subscription distribution is promoted, DNS and subscription output no longer require AWS nodes, and rollback dependencies are explicitly accepted.",
       "allowedFiles": [
-        "docs/ALIYUN_REGISTRATION_DISTRIBUTION_PLATFORM_RUNBOOK.md",
+        "docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md",
         "docs/PRODUCTION_EDGE_FLEET.md",
         "docs/production-replacement-records/*.md",
         "docs/production-incident-records/*.md",
