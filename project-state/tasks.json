@@ -232,6 +232,39 @@
       ]
     },
     {
+      "id": "B6-channel-measurement-scoring",
+      "risk": "B",
+      "status": "completed",
+      "lane": "edge-data-plane",
+      "title": "Add repository-local channel measurement scoring",
+      "goal": "Convert redacted local benchmark summaries into advisory channel scores, quality tiers, recommended pools, and reason codes without mutating runtime config.",
+      "allowedFiles": [
+        "server/services/channel-benchmark-results.mjs",
+        "server/tests/channel-benchmark-results.test.mjs",
+        "server/tests/package-entry.test.mjs",
+        "scripts/channel-benchmark-score.mjs",
+        "package.json",
+        "index.mjs",
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate production",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, or runtime config",
+        "change production tenant or artifact state",
+        "write secrets or raw subscription URLs",
+        "treat scoring output as automatic production rollout"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/channel-benchmark-results.test.mjs server/tests/package-entry.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "A1-legacy-query-token-retirement",
       "risk": "A",
       "status": "blocked-requires-runbook-and-approval",

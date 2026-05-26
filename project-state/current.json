@@ -58,6 +58,7 @@
     "Local Linux manual CI as the target validation host",
     "Clean rebuild servers as traffic forwarding edge data-plane nodes",
     "Channel Strategy Engine for stable/private/canary/recovery node-pool selection in repository subscription rendering",
+    "Channel Measurement Scoring for advisory quality tiers and recommended pools from local benchmark summaries",
     "Channel runtime canary execution remains gated by docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md after repository renderer/config support",
     "Local Edge Agent as loopback-only client adapter prototype",
     "Server Edge Mesh as private operator/edge management path",
