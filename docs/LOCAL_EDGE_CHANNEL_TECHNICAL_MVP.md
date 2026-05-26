@@ -430,6 +430,12 @@ The repository does not ship a default network probe runner. This keeps the
 benchmark path usable for repeatable local experiments without turning a repo
 validation command into a hidden remote connection or protocol canary.
 
+For deterministic CLI smoke tests, the repository includes
+`scripts/channel-benchmark-synthetic-runner.example.mjs`. It is a synthetic
+local runner template only: it derives stable placeholder timings from
+provider-neutral protocol and quality-class metadata, imports no network
+modules, and does not prove real edge performance.
+
 The preferred local fixture shape is versioned:
 
 ```json
