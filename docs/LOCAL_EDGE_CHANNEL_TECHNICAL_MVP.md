@@ -372,10 +372,30 @@ The same aggregation is available as a local CLI for already-collected samples:
 npm run channel:benchmark-summary -- <path-to-local-samples.json>
 ```
 
-The sample file may be either an array of samples or an object with a `samples`
-array and optional `generatedAt`. The command only reads the local file and
-prints a redacted JSON summary; it does not execute benchmark probes, contact
-edge nodes, or read production state.
+The preferred local fixture shape is versioned:
+
+```json
+{
+  "schemaVersion": "channel-benchmark-samples/v1",
+  "generatedAt": "2026-05-26T15:30:00.000Z",
+  "samples": [
+    {
+      "probeName": "ss-baseline",
+      "protocol": "ss",
+      "role": "baseline",
+      "ok": true,
+      "durationMs": 100,
+      "connectTimeMs": 30,
+      "timeToFirstByteMs": 70
+    }
+  ]
+}
+```
+
+The command only reads the local file and prints a redacted JSON summary; it
+does not execute benchmark probes, contact edge nodes, or read production state.
+Unsupported fixture versions and extra top-level metadata fail closed so sample
+files do not become a side channel for secrets or raw runtime details.
 
 #### Stage 1A Config Contract Design
 

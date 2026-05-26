@@ -15,7 +15,11 @@ export {
   subscriptionSummary
 } from "./server/services/clash-subscription.mjs";
 export { dryRunChannelConfig } from "./server/services/channel-config-dry-run.mjs";
-export { summarizeChannelBenchmarkResults } from "./server/services/channel-benchmark-results.mjs";
+export {
+  CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
+  normalizeChannelBenchmarkFixture,
+  summarizeChannelBenchmarkResults
+} from "./server/services/channel-benchmark-results.mjs";
 export {
   defaultConsoleTokenStorePath,
   resolveConsoleToken

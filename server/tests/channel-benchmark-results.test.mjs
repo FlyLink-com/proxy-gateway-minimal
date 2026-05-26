@@ -4,7 +4,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { summarizeChannelBenchmarkResults } from "../services/channel-benchmark-results.mjs";
+import {
+  CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
+  normalizeChannelBenchmarkFixture,
+  summarizeChannelBenchmarkResults
+} from "../services/channel-benchmark-results.mjs";
 
 function withSamples(samples, fn) {
   const tempDir = mkdtempSync(join(tmpdir(), "channel-benchmark-samples-"));
@@ -156,9 +160,67 @@ test("summarizeChannelBenchmarkResults validates sample shape without echoing ra
   );
 });
 
+test("normalizeChannelBenchmarkFixture accepts the versioned local sample fixture contract", () => {
+  const fixture = normalizeChannelBenchmarkFixture({
+    schemaVersion: CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
+    generatedAt: "2026-05-26T15:40:00.000Z",
+    samples: [
+      {
+        probeName: "ss-baseline",
+        protocol: "ss",
+        role: "baseline",
+        ok: true,
+        durationMs: 100
+      }
+    ]
+  });
+
+  assert.deepEqual(fixture, {
+    schemaVersion: CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
+    generatedAt: "2026-05-26T15:40:00.000Z",
+    samples: [
+      {
+        probeName: "ss-baseline",
+        protocol: "ss",
+        role: "baseline",
+        ok: true,
+        durationMs: 100
+      }
+    ]
+  });
+});
+
+test("normalizeChannelBenchmarkFixture rejects unsupported fixture metadata without echoing raw values", () => {
+  assert.throws(
+    () =>
+      normalizeChannelBenchmarkFixture({
+        schemaVersion: "channel-benchmark-samples/v999",
+        generatedAt: "2026-05-26T15:40:00.000Z",
+        samples: []
+      }),
+    /unsupported channel benchmark fixture schema/
+  );
+
+  assert.throws(
+    () =>
+      normalizeChannelBenchmarkFixture({
+        schemaVersion: CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
+        generatedAt: "2026-05-26T15:40:00.000Z",
+        samples: [],
+        rawSecret: "secret-token-value"
+      }),
+    (error) => {
+      assert.match(error.message, /channel benchmark fixture contains unsupported metadata/);
+      assert.doesNotMatch(error.message, /secret-token-value|rawSecret/);
+      return true;
+    }
+  );
+});
+
 test("channel benchmark summary CLI prints safe JSON from a local sample file", () => {
   withSamples(
     {
+      schemaVersion: CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
       generatedAt: "2026-05-26T15:30:00.000Z",
       samples: [
         {
