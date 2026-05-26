@@ -287,11 +287,15 @@ textarea {
   padding: 0 18px;
   font-weight: 700;
   text-decoration: none;
+  font: inherit;
+  font-size: 15px;
 }
 
 .company-site-primary {
+  border: 0;
   background: #0f766e;
   color: #ffffff;
+  cursor: pointer;
 }
 
 .company-site-primary svg,
@@ -503,18 +507,18 @@ textarea {
   margin-top: 72px;
   margin-bottom: 72px;
   padding: 34px;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(320px, 1fr);
   align-items: center;
-  justify-content: space-between;
-  gap: 28px;
+  gap: 34px;
   border-radius: 12px;
   background: #172033;
   color: #ffffff;
 }
 
-.company-site-contact > div {
+.company-site-contact-copy {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   max-width: 680px;
 }
 
@@ -527,6 +531,63 @@ textarea {
 .company-site-contact p {
   margin: 0;
   color: #cbd5e1;
+}
+
+.company-site-email {
+  width: fit-content;
+  color: #7dd3fc;
+  font-weight: 800;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.company-site-email:hover {
+  text-decoration: underline;
+}
+
+.company-site-contact-form {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(226, 232, 240, 0.16);
+}
+
+.company-site-contact-form label {
+  display: grid;
+  gap: 7px;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.company-site-contact-form input,
+.company-site-contact-form textarea {
+  width: 100%;
+  border: 1px solid rgba(203, 213, 225, 0.4);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #172033;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+  padding: 11px 12px;
+}
+
+.company-site-contact-form textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+.company-site-contact-form input::placeholder,
+.company-site-contact-form textarea::placeholder {
+  color: #7b8794;
+}
+
+.company-site-contact-form .company-site-primary {
+  width: fit-content;
+  margin-top: 2px;
 }
 
 .connection-panel {
@@ -1530,7 +1591,7 @@ th {
 
   .company-site-contact {
     align-items: flex-start;
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .portal-use-shell,
@@ -1639,6 +1700,14 @@ th {
   .company-site-band,
   .company-site-contact {
     padding: 24px;
+  }
+
+  .company-site-contact-form {
+    padding: 18px;
+  }
+
+  .company-site-contact-form .company-site-primary {
+    width: 100%;
   }
 
   .company-site-steps {

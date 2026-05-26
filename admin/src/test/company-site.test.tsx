@@ -3,6 +3,8 @@ import { createElement } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { App } from "../App";
 
+const contactEmail = "gccltd.co@outlook.com";
+
 afterEach(() => {
   cleanup();
   window.location.hash = "";
@@ -27,5 +29,22 @@ describe("company site route", () => {
       .filter((href) => href.includes("portal") || href.includes("/use"));
 
     expect(exposedPortalLinks).toEqual([]);
+  });
+
+  test("collects public contact details through the company email", () => {
+    window.location.hash = "#/site";
+
+    const { container } = render(createElement(App));
+
+    const emailLink = screen.getByRole("link", { name: contactEmail });
+    expect(emailLink.getAttribute("href")).toBe(`mailto:${contactEmail}`);
+    expect(screen.getByLabelText("称呼")).not.toBeNull();
+    expect(screen.getByLabelText("联系方式")).not.toBeNull();
+    expect(screen.getByLabelText("需求说明")).not.toBeNull();
+
+    const contactForm = container.querySelector("form.company-site-contact-form");
+    expect(contactForm?.getAttribute("action")).toBe(`mailto:${contactEmail}`);
+    expect(contactForm?.getAttribute("method")).toBe("post");
+    expect(screen.getByRole("button", { name: /发送邮件/ })).not.toBeNull();
   });
 });

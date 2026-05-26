@@ -22,6 +22,8 @@ const deliverySteps = [
   "导入客户端"
 ];
 
+const contactEmail = "gccltd.co@outlook.com";
+
 export function CompanySitePage() {
   return (
     <main className="company-site-shell">
@@ -109,15 +111,45 @@ export function CompanySitePage() {
       </section>
 
       <section className="company-site-contact" id="contact">
-        <div>
+        <div className="company-site-contact-copy">
           <Building2 aria-hidden="true" />
-          <h2>获取客户入口</h2>
-          <p>请通过已确认的商务或客服渠道申请开通，已开通用户使用专属入口访问。</p>
+          <h2>联系我们</h2>
+          <p>
+            留下联系方式和需求说明，我们会通过邮件回复。已开通用户仍使用专属入口访问。
+          </p>
+          <a className="company-site-email" href={`mailto:${contactEmail}`}>
+            {contactEmail}
+          </a>
         </div>
-        <a className="company-site-primary" href="#contact">
-          联系开通
-          <ArrowRight aria-hidden="true" />
-        </a>
+        <form
+          className="company-site-contact-form"
+          action={`mailto:${contactEmail}`}
+          method="post"
+          encType="text/plain"
+        >
+          <label>
+            称呼
+            <input name="name" type="text" placeholder="您的称呼" />
+          </label>
+          <label>
+            联系方式
+            <input name="contact" type="text" placeholder="邮箱或即时通讯方式" required />
+          </label>
+          <label>
+            需求说明
+            <textarea
+              name="message"
+              rows={4}
+              placeholder="简单说明使用人数、设备和开通需求"
+              required
+            />
+          </label>
+          <p>表单会调用本机邮件客户端，不会在当前页面保存信息。</p>
+          <button className="company-site-primary" type="submit">
+            发送邮件
+            <ArrowRight aria-hidden="true" />
+          </button>
+        </form>
       </section>
     </main>
   );

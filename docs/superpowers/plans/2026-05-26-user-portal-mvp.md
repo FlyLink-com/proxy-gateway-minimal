@@ -145,3 +145,49 @@ git diff --check origin/master...HEAD
 ```
 
 Expected: all pass.
+
+### Task 4: Public Contact Collection
+
+**Files:**
+- Modify: `admin/src/features/company-site/company-site-page.tsx`
+- Test: `admin/src/test/company-site.test.tsx`
+- Modify: `admin/src/styles.css`
+
+- [x] **Step 1: Write the failing public contact test**
+
+```tsx
+window.location.hash = "#/site";
+render(<App />);
+expect(screen.getByRole("link", { name: "gccltd.co@outlook.com" })).toBeTruthy();
+expect(screen.getByLabelText("称呼")).toBeTruthy();
+expect(screen.getByLabelText("联系方式")).toBeTruthy();
+expect(screen.getByLabelText("需求说明")).toBeTruthy();
+```
+
+- [x] **Step 2: Verify RED**
+
+Run: `npm run test --prefix admin -- src/test/company-site.test.tsx`
+
+Expected: FAIL until the public site exposes a contact email and contact form.
+
+- [x] **Step 3: Implement frontend-only collection**
+
+Add a public contact block with the company mailbox and a `mailto:` form. The
+form calls the user's local mail client and does not add backend persistence,
+public auth, portal entry links, runtime deployment, DNS, Nginx, or production
+traffic changes.
+
+- [x] **Step 4: Run verification**
+
+Run:
+
+```powershell
+npm run test --prefix admin -- src/test/company-site.test.tsx
+npm run admin:test
+npm run admin:build
+npm test
+npm run project-state:check
+git diff --check origin/master...HEAD
+```
+
+Expected: all pass.
