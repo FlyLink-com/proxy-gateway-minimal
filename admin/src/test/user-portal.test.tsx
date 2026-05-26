@@ -68,6 +68,13 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
   };
 }
 
+async function enterPortalDashboard() {
+  fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "customer@example.com" } });
+  fireEvent.change(screen.getByLabelText("密码"), { target: { value: "correct horse battery staple" } });
+  fireEvent.click(screen.getByRole("button", { name: "登录" }));
+  return screen.findByRole("navigation", { name: "用户中心导航" });
+}
+
 describe("user portal route", () => {
   test("opens a separate customer portal on the EqualDCDN /use-style auth shell", async () => {
     render(createElement(App));
@@ -111,11 +118,7 @@ describe("user portal onboarding", () => {
 
     render(createElement(UserPortalPage, { apiClient: adminClient({ createTenant }) }));
 
-    fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "customer@example.com" } });
-    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "correct horse battery staple" } });
-    fireEvent.click(screen.getByRole("button", { name: "登录" }));
-
-    const portalNav = await screen.findByRole("navigation", { name: "用户中心导航" });
+    const portalNav = await enterPortalDashboard();
     expect(within(portalNav).getByText("Dashboard")).not.toBeNull();
     expect(within(portalNav).getByText("订阅管理")).not.toBeNull();
     expect(within(portalNav).getByText("开始使用")).not.toBeNull();
@@ -147,5 +150,48 @@ describe("user portal onboarding", () => {
     fireEvent.click(within(result).getAllByRole("button", { name: "复制" })[0]);
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://sub.example.test/import/visible-once"));
+  });
+
+  test("renders device onboarding guides and user-facing FAQ", async () => {
+    render(createElement(UserPortalPage, { apiClient: adminClient() }));
+
+    await enterPortalDashboard();
+    fireEvent.click(screen.getByRole("button", { name: "开始使用" }));
+
+    expect(screen.getByText("订阅导入指南")).not.toBeNull();
+    expect(screen.getByText("Windows / macOS")).not.toBeNull();
+    expect(screen.getByText("iOS / Android")).not.toBeNull();
+    expect(screen.getByText("常见问题")).not.toBeNull();
+    expect(screen.getByText("更新订阅失败怎么办？")).not.toBeNull();
+    expect(screen.getByText("为什么有些网站仍显示原 IP？")).not.toBeNull();
+  });
+
+  test("separates recommended and forbidden safety actions", async () => {
+    render(createElement(UserPortalPage, { apiClient: adminClient() }));
+
+    await enterPortalDashboard();
+    fireEvent.click(screen.getByRole("button", { name: "安全清单" }));
+
+    expect(screen.getByText("正确做法")).not.toBeNull();
+    expect(screen.getByText("禁止做法")).not.toBeNull();
+    expect(screen.getByText("保持订阅链接私密，仅在自己的设备中导入。")).not.toBeNull();
+    expect(screen.getByText("不要共享订阅链接或账号。")).not.toBeNull();
+  });
+
+  test("shows support and profile placeholders without implying live integrations", async () => {
+    render(createElement(UserPortalPage, { apiClient: adminClient() }));
+
+    await enterPortalDashboard();
+    fireEvent.click(screen.getByRole("button", { name: "客服支持" }));
+
+    expect(screen.getByText("工单系统")).not.toBeNull();
+    expect(screen.getByText("邮箱支持")).not.toBeNull();
+    expect(screen.getByText("即时消息")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+
+    expect(screen.getByText("设备管理")).not.toBeNull();
+    expect(screen.getByText("账单记录")).not.toBeNull();
+    expect(screen.getByText("账号安全")).not.toBeNull();
   });
 });

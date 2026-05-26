@@ -79,8 +79,60 @@ const navItems: Array<{ id: PortalView; label: string; icon: typeof LayoutDashbo
 
 const appDownloads = [
   { label: "Clash Verge Rev", platform: "Windows / macOS", note: "推荐桌面客户端" },
-  { label: "FlClash", platform: "Android / iOS", note: "移动端导入入口" },
-  { label: "Mihomo Party", platform: "Windows / Linux", note: "高级客户端" }
+  { label: "FlClash", platform: "iOS / Android", note: "移动端导入入口" },
+  { label: "Mihomo Party", platform: "Linux / Advanced", note: "高级客户端" }
+];
+
+const onboardingGuides = [
+  {
+    platform: "Windows / macOS",
+    app: "Clash Verge Rev",
+    steps: ["复制订阅链接", "Profiles 中粘贴导入", "选择规则模式", "打开系统代理"]
+  },
+  {
+    platform: "iOS / Android",
+    app: "FlClash / Karing",
+    steps: ["安装移动端客户端", "从剪贴板导入订阅", "更新配置", "选择延迟较低的节点"]
+  },
+  {
+    platform: "Linux / Advanced",
+    app: "Mihomo Party",
+    steps: ["导入订阅配置", "检查端口和系统代理", "按需开启 TUN", "保留原配置作为回退"]
+  }
+];
+
+const faqItems = [
+  {
+    question: "更新订阅失败怎么办？",
+    answer: "先复制最新订阅链接重新导入，再检查系统时间、网络代理和客户端版本。"
+  },
+  {
+    question: "为什么有些网站仍显示原 IP？",
+    answer: "通常是系统代理未开启、规则未命中、DNS 缓存或浏览器已有连接未重建导致。"
+  },
+  {
+    question: "换设备后需要重新生成订阅吗？",
+    answer: "当前 MVP 允许复制同一受控订阅；正式设备限制会在阿里云平台侧单独接入。"
+  }
+];
+
+const subscriptionStates = [
+  { label: "未购买", description: "选择套餐后由运营侧生成订阅。", activeWhenCreated: false },
+  { label: "已可用", description: "订阅链接已生成，可复制到客户端。", activeWhenCreated: true },
+  { label: "即将过期", description: "后续接入续费提醒和到期通知。", activeWhenCreated: false },
+  { label: "已过期", description: "后续接入恢复购买和历史记录。", activeWhenCreated: false }
+];
+
+const supportChannels = [
+  { title: "工单系统", status: "待接入", detail: "提交客户端、系统版本、错误截图和订阅导入状态。" },
+  { title: "邮箱支持", status: "待配置", detail: "用于订单、账号和长期问题追踪，不在仓库写入真实地址。" },
+  { title: "即时消息", status: "待配置", detail: "用于紧急联络和状态通知，不在 MVP 中接入外部客服。" }
+];
+
+const profileModules = [
+  { title: "设备管理", detail: "后续展示已导入订阅的设备和最近活跃时间。" },
+  { title: "账单记录", detail: "后续展示套餐、续费、退款和开票状态。" },
+  { title: "账号安全", detail: "后续接入密码、二次验证和登录会话管理。" }
 ];
 
 const usageSteps = [
@@ -92,14 +144,14 @@ const usageSteps = [
 ];
 
 const checklist = {
-  usage: [
-    "有在有效期内的订阅。",
-    "选择住宅节点或运营侧分配节点。",
-    "开启规则或配置模式。",
-    "打开系统代理。",
-    "复制完整最新的订阅链接。"
+  recommended: [
+    "保持订阅链接私密，仅在自己的设备中导入。",
+    "先更新订阅，再判断节点是否异常。",
+    "只保留一个系统代理或 VPN 入口。",
+    "更换设备前确认旧客户端已停止连接。",
+    "遇到问题时保留客户端、系统版本和错误截图。"
   ],
-  security: [
+  forbidden: [
     "不要使用已经暴露在普通代理下的账号。",
     "关闭其他 VPN，避免本地链路冲突。",
     "不要共享订阅链接或账号。",
@@ -363,6 +415,25 @@ function renderDashboard(created: CreatedSubscription | null, selectedPlan: Port
           <span><User aria-hidden="true" /> 个人中心</span>
         </div>
       </section>
+
+      <section className="portal-use-card">
+        <span className="portal-card-label">订阅状态</span>
+        <div className="portal-state-grid">
+          {subscriptionStates.map((state) => (
+            <div
+              className={cn(
+                "portal-state-item",
+                created === null && state.label === "未购买" && "active",
+                created !== null && state.activeWhenCreated && "active"
+              )}
+              key={state.label}
+            >
+              <strong>{state.label}</strong>
+              <small>{state.description}</small>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
@@ -517,6 +588,23 @@ function UseInstructions({
       </div>
 
       <div className="portal-use-card">
+        <span className="portal-card-label">订阅导入指南</span>
+        <div className="portal-guide-grid">
+          {onboardingGuides.map((guide) => (
+            <section className="portal-guide-item" key={guide.platform}>
+              <h3>{guide.platform}</h3>
+              <p>{guide.app}</p>
+              <ol>
+                {guide.steps.map((step) => (
+                  <li key={step}>{step}</li>
+                ))}
+              </ol>
+            </section>
+          ))}
+        </div>
+      </div>
+
+      <div className="portal-use-card">
         <span className="portal-card-label">使用步骤</span>
         <ol className="portal-step-list">
           {usageSteps.map((step) => (
@@ -526,8 +614,15 @@ function UseInstructions({
       </div>
 
       <div className="portal-use-card">
-        <span className="portal-card-label">联系我们</span>
-        <p>如订阅无法导入、节点不可用或客户端状态异常，请联系运营支持并附上客户端、系统和错误截图。</p>
+        <span className="portal-card-label">常见问题</span>
+        <div className="portal-faq-list">
+          {faqItems.map((item) => (
+            <details className="portal-faq-item" key={item.question} open>
+              <summary>{item.question}</summary>
+              <p>{item.answer}</p>
+            </details>
+          ))}
+        </div>
       </div>
     </section>
   );
@@ -564,27 +659,25 @@ function LinkBox({
 function Checklist() {
   return (
     <div className="portal-use-stack">
-      <ChecklistSection title="使用清单" items={checklist.usage} />
-      <ChecklistSection title="安全清单" items={checklist.security} />
+      <ChecklistSection title="正确做法" items={checklist.recommended} tone="good" />
+      <ChecklistSection title="禁止做法" items={checklist.forbidden} tone="bad" />
     </div>
   );
 }
 
-function ChecklistSection({ title, items }: { title: string; items: string[] }) {
+function ChecklistSection({ title, items, tone }: { title: string; items: string[]; tone: "good" | "bad" }) {
+  const Icon = tone === "bad" ? CircleX : CircleCheck;
   return (
     <section className="portal-use-card">
       <div className="portal-section-heading">
-        <ShieldCheck aria-hidden="true" />
+        {tone === "bad" ? <CircleX aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />}
         <h2>{title}</h2>
       </div>
       <div className="portal-check-list">
         {items.map((item) => (
-          <div className="portal-check-item" key={item}>
+          <div className={cn("portal-check-item", tone)} key={item}>
             <span>{item}</span>
-            <span className="portal-check-actions" aria-label="清单状态">
-              <CircleCheck aria-hidden="true" />
-              <CircleX aria-hidden="true" />
-            </span>
+            <Icon aria-hidden="true" />
           </div>
         ))}
       </div>
@@ -598,9 +691,15 @@ function SupportPanel() {
       <span className="portal-card-label">客服支持</span>
       <h2>提交问题前先完成清单排查</h2>
       <p>当前 MVP 不接入在线客服系统，只保留面向用户的支持入口形态。真实支持渠道、工单和通知后续在阿里云平台侧接入。</p>
-      <div className="portal-support-row">
-        <FileText aria-hidden="true" />
-        <span>发送客户端、系统版本、订阅导入状态和错误截图。</span>
+      <div className="portal-support-grid">
+        {supportChannels.map((channel) => (
+          <div className="portal-support-card" key={channel.title}>
+            <FileText aria-hidden="true" />
+            <strong>{channel.title}</strong>
+            <small>{channel.status}</small>
+            <p>{channel.detail}</p>
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -633,6 +732,14 @@ function ProfilePanel({
           <dd>{created ? "active" : "pending"}</dd>
         </div>
       </dl>
+      <div className="portal-profile-module-grid">
+        {profileModules.map((module) => (
+          <div className="portal-profile-module" key={module.title}>
+            <strong>{module.title}</strong>
+            <small>{module.detail}</small>
+          </div>
+        ))}
+      </div>
     </section>
   );
 }
