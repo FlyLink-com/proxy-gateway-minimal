@@ -106,6 +106,13 @@ measurement scores into grouped operator recommendations. The report is safe
 for review because it omits hosts, ports, credentials, raw errors, tokens, and
 subscription URLs. It is still advisory evidence only.
 
+`buildChannelDecisionPack(...)` can turn the dry-run summary and measurement
+score into an operator decision artifact that identifies the selected baseline,
+canary candidates, private candidates, hold blockers, missing measurement
+blockers, and the required next action. Decision packs remain advisory only and
+do not authorize runtime canary, server, firewall, DNS, or subscription output
+changes.
+
 ## Distribution Readiness
 
 Subscription overview distribution readiness is based on the default stable

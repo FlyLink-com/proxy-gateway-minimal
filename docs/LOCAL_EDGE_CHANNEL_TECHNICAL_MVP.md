@@ -449,6 +449,29 @@ The report intentionally omits hosts, ports, credentials, tokens, raw
 subscription URLs, and raw errors. It does not edit node config, assign tenants,
 change DNS, deploy runtime protocols, or authorize canary rollout.
 
+Repository-local decision packaging is available through
+`buildChannelDecisionPack(...)`. It turns a dry-run summary and measurement
+score into a safe operator artifact with:
+
+```text
+selectedBaseline
+canaryCandidates
+privateCandidates
+holdBlockers
+requiredNextAction
+decisionEvidence
+```
+
+To generate a local decision pack:
+
+```bash
+npm run channel:decision-pack -- <path-to-dry-run-summary.json> <path-to-score.json>
+```
+
+The decision pack is meant for review and archival. It does not make runtime
+changes, deploy protocol services, edit subscription output, change DNS, or
+approve a Risk A channel canary.
+
 To create a safe editable fixture from a local dry-run summary:
 
 ```bash
