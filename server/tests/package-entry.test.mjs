@@ -9,6 +9,7 @@ import {
   createChannelBenchmarkFixtureFromPlan,
   generateClashSubscription,
   normalizeChannelBenchmarkFixture,
+  runChannelBenchmarkPlan,
   summarizeChannelBenchmarkResults,
   startProxyGateway
 } from "../../index.mjs";
@@ -43,6 +44,7 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof generateClashSubscription, "function");
   assert.equal(typeof CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION, "string");
   assert.equal(typeof normalizeChannelBenchmarkFixture, "function");
+  assert.equal(typeof runChannelBenchmarkPlan, "function");
   assert.equal(typeof summarizeChannelBenchmarkResults, "function");
   assert.equal(typeof startProxyGateway, "function");
 });

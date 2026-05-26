@@ -410,6 +410,14 @@ provider-neutral probe name, protocol, role, and quality class into sample
 placeholders. It does not copy dry-run probe hosts, ports, checks, or UDP flags
 into the sample fixture, and it does not execute benchmark probes.
 
+Repository-local probe runner scaffolding is available through
+`runChannelBenchmarkPlan(...)`. It accepts only a local dry-run benchmark plan
+and requires an injected `runProbe` function. There is no default network probe
+implementation, so importing this helper does not connect to edge nodes, deploy
+runtime protocols, or mutate local or production state. The helper normalizes
+runner output into the same versioned sample fixture shape and redacts raw
+runner errors from samples.
+
 The preferred local fixture shape is versioned:
 
 ```json
