@@ -10,6 +10,7 @@ import { resolveConsoleToken } from "./services/console-token.mjs";
 import { createSqliteSubscriptionStore } from "./services/subscriptions/repository.mjs";
 import { createSubscriptionCore } from "./services/subscriptions/core.mjs";
 import { DEFAULT_ADMIN_ALLOWED_CIDRS } from "./services/ip-address.mjs";
+import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { spawn } from "node:child_process";
 
 function rootPathFrom(rootDir) {
@@ -58,6 +59,7 @@ export function createRuntimeState(options = {}) {
     expiringDays: Number.parseInt(env.SUBSCRIPTION_EXPIRING_DAYS, 10) || 7,
     tempLinkTtlMinutes
   });
+  const platformLeadQueue = options.platformLeadQueue || createPlatformLeadReviewQueue();
   let closed = false;
 
   function close() {
@@ -185,6 +187,9 @@ export function createRuntimeState(options = {}) {
       publicSubscriptionBaseUrl,
       tempLinkTtlMinutes,
       close
+    },
+    platform: {
+      leadQueue: platformLeadQueue
     },
     security: {
       adminAllowedCidrs,

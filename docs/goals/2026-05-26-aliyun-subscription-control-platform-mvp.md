@@ -219,6 +219,21 @@ no external Webhook / CRM / email automation configured
 tests prove invalid data does not echo sensitive submitted fields
 ```
 
+**Repository anchors after Package 2 implementation:**
+
+```text
+server/services/platform/lead-review-queue.mjs
+server/routes/admin-platform.mjs
+server/tests/platform-lead-review-queue.test.mjs
+server/tests/platform-lead-routes.test.mjs
+```
+
+The Package 2 queue is a repository-only in-memory review queue. Public lead
+intake can feed it, and protected Admin API routes can list safe summaries and
+move leads through review statuses. It does not add SQLite persistence,
+external CRM, Webhook, email automation, Aliyun deployment, DNS changes,
+production storage, customer data copy, or user traffic.
+
 ### Package 3: Customer Account And Entitlement Shell
 
 **Risk:** B repo-only.

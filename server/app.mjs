@@ -9,6 +9,7 @@ import { diagnosticsRoutes } from "./routes/diagnostics.mjs";
 import { systemProxyRoutes } from "./routes/system-proxy.mjs";
 import { networkRoutes } from "./routes/network.mjs";
 import { adminSubscriptionRoutes } from "./routes/admin-subscriptions.mjs";
+import { adminPlatformRoutes } from "./routes/admin-platform.mjs";
 import { subscriptionRoutes } from "./routes/subscription.mjs";
 import { publicLeadRoutes } from "./routes/public-leads.mjs";
 import { resolveClientIp } from "./services/ip-address.mjs";
@@ -42,6 +43,9 @@ export function createApp(state, options = {}) {
   app.use(networkRoutes(state));
   if (state.subscriptions?.core || state.subscriptions?.service) {
     app.use(adminSubscriptionRoutes(state));
+  }
+  if (state.platform?.leadQueue) {
+    app.use(adminPlatformRoutes(state));
   }
   app.use("/sub", createRateLimitMiddleware({
     windowMs: security.subRateLimit?.windowMs,
