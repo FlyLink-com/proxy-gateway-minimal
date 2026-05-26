@@ -1,4 +1,8 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { runChannelBenchmarkPlan } from "../services/channel-benchmark-runner.mjs";
 
@@ -29,6 +33,40 @@ function localPlan() {
       }
     ]
   };
+}
+
+function withLocalPlanFiles(fn) {
+  const tempDir = mkdtempSync(join(tmpdir(), "channel-benchmark-runner-"));
+  try {
+    const planPath = join(tempDir, "plan.json");
+    const runnerPath = join(tempDir, "runner.mjs");
+    writeFileSync(planPath, JSON.stringify(localPlan(), null, 2));
+    writeFileSync(
+      runnerPath,
+      `export async function runProbe(probe) {
+  if (probe.protocol === "ss") {
+    return {
+      ok: true,
+      durationMs: 88,
+      connectTimeMs: 24,
+      timeToFirstByteMs: 56,
+      rawTarget: "https://secret.example/token=raw"
+    };
+  }
+  return {
+    ok: false,
+    durationMs: 233,
+    connectTimeMs: 101,
+    errorClass: "timeout",
+    rawError: "hy2.secret.example timed out"
+  };
+}
+`
+    );
+    return fn({ planPath, runnerPath });
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 }
 
 test("runChannelBenchmarkPlan requires an injected probe runner", async () => {
@@ -128,4 +166,92 @@ test("runChannelBenchmarkPlan normalizes injected probe failures without leaking
     assert.equal(sample.durationMs, 0);
   }
   assert.doesNotMatch(JSON.stringify(fixture), /secret\.example|token=raw|connect to/);
+});
+
+test("channel benchmark runner CLI requires an explicit local runner module", () => {
+  withLocalPlanFiles(({ planPath }) => {
+    assert.throws(
+      () =>
+        execFileSync(process.execPath, ["scripts/channel-benchmark-runner.mjs", planPath], {
+          cwd: new URL("../../", import.meta.url),
+          encoding: "utf8",
+          stdio: "pipe"
+        }),
+      (error) => {
+        const stderr = String(error.stderr ?? "");
+        assert.match(stderr, /--runner local module path is required/);
+        assert.doesNotMatch(stderr, /secret\.example|token=raw|host|port/);
+        return true;
+      }
+    );
+  });
+});
+
+test("channel benchmark runner CLI rejects URL runner modules", () => {
+  withLocalPlanFiles(({ planPath }) => {
+    assert.throws(
+      () =>
+        execFileSync(process.execPath, ["scripts/channel-benchmark-runner.mjs", planPath, "--runner", "https://secret.example/runner.mjs"], {
+          cwd: new URL("../../", import.meta.url),
+          encoding: "utf8",
+          stdio: "pipe"
+        }),
+      (error) => {
+        const stderr = String(error.stderr ?? "");
+        assert.match(stderr, /--runner must be a local module path/);
+        assert.doesNotMatch(stderr, /secret\.example|runner\.mjs|host|port/);
+        return true;
+      }
+    );
+  });
+});
+
+test("channel benchmark runner CLI prints safe samples from an explicit local runner", () => {
+  withLocalPlanFiles(({ planPath, runnerPath }) => {
+    const stdout = execFileSync(
+      process.execPath,
+      [
+        "scripts/channel-benchmark-runner.mjs",
+        planPath,
+        "--runner",
+        runnerPath,
+        "--generated-at",
+        "2026-05-26T16:30:00.000Z"
+      ],
+      {
+        cwd: new URL("../../", import.meta.url),
+        encoding: "utf8"
+      }
+    );
+
+    const fixture = JSON.parse(stdout);
+    assert.deepEqual(fixture, {
+      schemaVersion: "channel-benchmark-samples/v1",
+      generatedAt: "2026-05-26T16:30:00.000Z",
+      samples: [
+        {
+          probeName: "ss-baseline",
+          protocol: "ss",
+          role: "baseline",
+          qualityClass: "stable",
+          ok: true,
+          durationMs: 88,
+          connectTimeMs: 24,
+          timeToFirstByteMs: 56
+        },
+        {
+          probeName: "hy2-long-haul",
+          protocol: "hysteria2",
+          role: "candidate",
+          qualityClass: "weak-network",
+          ok: false,
+          durationMs: 233,
+          connectTimeMs: 101,
+          timeToFirstByteMs: 0,
+          errorClass: "timeout"
+        }
+      ]
+    });
+    assert.doesNotMatch(stdout, /secret\.example|rawTarget|rawError|token=raw|host|port|checks|udpProbe/);
+  });
 });
