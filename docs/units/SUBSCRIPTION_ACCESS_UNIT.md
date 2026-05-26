@@ -33,6 +33,7 @@ Subscription V2 rendering from approved state and approved edge inventory
 Admin access operations for create/update/disable/rotate/inspect workflows
 operator-safe summaries without raw secrets or URLs
 device bootstrap records when implemented
+dynamic customer portal entrance records when implemented
 legacy access compatibility until separately retired
 ```
 
@@ -68,6 +69,7 @@ Subscription V2 YAML or successor subscription output
 opaque artifact responses when implemented and approved
 token-contained access records
 device bootstrap material when implemented
+dynamic portal entrance metadata suitable for operator-issued customer access
 operator-safe access summaries
 node delivery policy derived only from approved inventory
 access-state audit boundaries suitable for validation without secrets
@@ -94,6 +96,11 @@ Local Client:
   produces subscription output and future bootstrap material
   does not own local adapter runtime, system proxy mutation, TUN behavior, or
   local diagnostics
+
+Public Company Site:
+  may describe the service and collect business interest
+  must not directly link to logged-in portal hosts, subscription artifacts,
+  Admin APIs, or customer-specific access material
 
 Validation / CI:
   exposes testable contracts for storage, rendering, Admin behavior, token
@@ -158,6 +165,7 @@ add explicit contract tests when future access interfaces are proposed
 broader opaque artifact issuance
 legacy query-token retirement
 device-scoped bootstrap records unless implemented by separate task
+dynamic portal entrance YAML/config runtime unless implemented by separate task
 traffic accounting, quota enforcement, and device-abuse enforcement
 production access-state mutation
 ```

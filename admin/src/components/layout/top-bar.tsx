@@ -6,9 +6,10 @@ type TopBarProps = {
   search: string;
   onSearchChange: (value: string) => void;
   onOpenPortal: () => void;
+  onOpenSite: () => void;
 };
 
-export function TopBar({ activePage, search, onSearchChange, onOpenPortal }: TopBarProps) {
+export function TopBar({ activePage, search, onSearchChange, onOpenPortal, onOpenSite }: TopBarProps) {
   return (
     <header className="top-bar">
       <div>
@@ -16,6 +17,16 @@ export function TopBar({ activePage, search, onSearchChange, onOpenPortal }: Top
         <h1>{pageTitles[activePage]}</h1>
       </div>
       <div className="top-bar-actions">
+        <a
+          className="ghost-button top-bar-link"
+          href="#/site"
+          onClick={(event) => {
+            event.preventDefault();
+            onOpenSite();
+          }}
+        >
+          Preview site
+        </a>
         <a
           className="ghost-button top-bar-link"
           href="#/portal"

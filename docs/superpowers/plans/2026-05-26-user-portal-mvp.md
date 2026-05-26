@@ -91,3 +91,57 @@ Record that the repository now has a user portal MVP shell for controlled subscr
 Run: `git diff --check origin/master...HEAD`
 
 Expected: PASS.
+
+### Task 3: Static Company Site And Dynamic Entry Boundary
+
+**Files:**
+- Create: `admin/src/features/company-site/company-site-page.tsx`
+- Test: `admin/src/test/company-site.test.tsx`
+- Modify: `admin/src/App.tsx`
+- Modify: `admin/src/styles.css`
+- Modify: `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
+- Modify: `docs/units/SUBSCRIPTION_ACCESS_UNIT.md`
+
+- [x] **Step 1: Write the failing public-site isolation test**
+
+```tsx
+window.location.hash = "#/site";
+render(<App />);
+expect(screen.getByRole("heading", { name: "GlobalCircle Access" })).toBeTruthy();
+expect(container.querySelectorAll('a[href*="portal"]').length).toBe(0);
+```
+
+- [x] **Step 2: Verify RED**
+
+Run: `npm run test --prefix admin -- src/test/company-site.test.tsx`
+
+Expected: FAIL until `#/site` exists.
+
+- [x] **Step 3: Implement the static company site**
+
+Add a `#/site` route for repository preview. The page is a brand/business
+website only: it can show service capabilities and a contact/opening CTA, but
+must not link to `#/portal`, `/use`, subscription artifacts, Admin APIs, or
+login-after-entry URLs.
+
+- [x] **Step 4: Document dynamic portal entrance boundary**
+
+Record the future operator-issued dynamic portal entry shape. It may later be
+backed by server-side YAML or another controlled config source, but this PR does
+not implement runtime YAML, DNS, Nginx, Aliyun deployment, auth, or public
+traffic changes.
+
+- [x] **Step 5: Run verification**
+
+Run:
+
+```powershell
+npm run test --prefix admin -- src/test/company-site.test.tsx
+npm run admin:test
+npm run admin:build
+npm test
+npm run project-state:check
+git diff --check origin/master...HEAD
+```
+
+Expected: all pass.

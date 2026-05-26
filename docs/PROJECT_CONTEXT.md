@@ -95,6 +95,10 @@ Current architecture priorities:
   split is Aliyun for user management/subscription distribution, HP for local CI/operator
   lab, and all other nodes in a controlled drain/retirement queue. See
   `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`.
+- Public Site / Portal Split: the repository now treats the static company site
+  as a brand/business surface only. Logged-in customer portal entry is a
+  separate operator-issued dynamic entry concept and must not be hard-linked
+  from the public site.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a

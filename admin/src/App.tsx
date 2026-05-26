@@ -7,13 +7,17 @@ import {
 } from "./features/subscriptions/admin-session";
 import { ConnectionPanel } from "./features/subscriptions/connection-panel";
 import { SubscriptionsPage } from "./features/subscriptions/subscriptions-page";
+import { CompanySitePage } from "./features/company-site/company-site-page";
 import { UserPortalPage } from "./features/user-portal/user-portal-page";
 import { NodesPage } from "./pages/nodes-page";
 import { OverviewPage } from "./pages/overview-page";
 
-type AppRoute = "admin" | "portal";
+type AppRoute = "admin" | "portal" | "site";
 
 function routeFromHash(): AppRoute {
+  if (window.location.hash === "#/site") {
+    return "site";
+  }
   return window.location.hash === "#/portal" ? "portal" : "admin";
 }
 
@@ -40,9 +44,18 @@ export function App() {
     setRoute("portal");
   }
 
+  function openSite() {
+    window.location.hash = "/site";
+    setRoute("site");
+  }
+
   function openAdmin() {
     window.location.hash = "";
     setRoute("admin");
+  }
+
+  if (route === "site") {
+    return <CompanySitePage />;
   }
 
   if (route === "portal") {
@@ -56,6 +69,7 @@ export function App() {
       onSearchChange={setSearch}
       onNavigate={setActivePage}
       onOpenPortal={openPortal}
+      onOpenSite={openSite}
     >
       <ConnectionPanel session={adminSession} onSave={setAdminSession} />
       {renderPage(activePage, search, apiClient)}

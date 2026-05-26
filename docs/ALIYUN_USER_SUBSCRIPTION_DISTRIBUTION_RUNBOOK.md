@@ -106,6 +106,55 @@ self-hosted CI
 
 This is a management and distribution platform, not a new networking stack.
 
+## Public Site / User Portal Separation
+
+The public company site and the logged-in customer portal are separate delivery
+planes:
+
+```text
+Public company site:
+  brand, business contact, product/service explanation
+  no customer auth
+  no subscription artifact
+  no Admin API call
+  no hard link to the customer portal
+
+Dynamic customer portal:
+  operator-issued entry
+  may rotate by customer, time window, or risk state
+  displays user subscription state after entry/auth
+  keeps subscription material opaque and visible only inside the customer flow
+```
+
+The public site can run on an Aliyun website/domain after a separate deployment
+gate, but it must not be the same public path as the logged-in portal. Avoid:
+
+```text
+/login on the public website
+/use on the public website
+portal subdomain directly derived from the public website domain
+shared cookie domain between website and portal
+shared analytics or scripts that correlate the two planes
+```
+
+Future dynamic portal entrance configuration can be modeled without storing
+secrets in repository docs:
+
+```yaml
+portalEntrances:
+  - customerRef: customer-public-id
+    status: active
+    hostRef: operator-issued-host
+    pathRef: operator-issued-path
+    delivery: out-of-band
+    expiresAt: 2026-06-26T00:00:00Z
+    rotationPolicy: manual-or-risk-triggered
+```
+
+The example above is a shape only. It is not a production config, not a DNS
+change, not a portal host assignment, and not an authorization to expose the
+portal publicly.
+
 ## Repository Implementation Status
 
 Repository-only platform work has started without production authority:
@@ -116,6 +165,14 @@ customer-facing user portal MVP shell: implemented in repository only
   - current UI reference: EqualDCDN /use-style auth card plus user dashboard
   - includes login/signup shell, package selection, subscription link boxes,
     backup-link placeholder, app downloads, usage steps, and safety checklist
+static company site preview: implemented in repository only
+  - official site content is brand/business/service explanation only
+  - it must not hard-link the customer portal route, subscription artifacts,
+    Admin API, or any login-after-entry URL
+customer portal entrance model: planned as an operator-issued dynamic entry
+  - future entry metadata may be represented by server-side YAML or another
+    controlled config source
+  - the public site must not embed the live portal host or path
 Subscription V2 renderer: implemented
 opaque artifact issue / refresh / rotate / revoke contracts: implemented
 overview distribution readiness summary: implemented for configured inventory
