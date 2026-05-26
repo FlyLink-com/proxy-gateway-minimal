@@ -26,6 +26,7 @@
     "docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md",
     "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md",
     "docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md",
+    "docs/production-replacement-records/2026-05-26-channel-lab-a-creation.md",
     "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/VALIDATION_BASELINE.md"
@@ -135,8 +136,8 @@
     },
     {
       "id": "channel-canary-server-selection",
-      "summary": "Read-only selection inventory recommends a clean provider-neutral channel-lab-a target and Hysteria2 as the first runtime canary direction, but no provider, region, instance, firewall delta, runtime, or traffic action is approved.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md"
+      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance now exists, but Hysteria2 runtime deployment, canary traffic, DNS, production config, and cleanup remain gated.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-26-channel-lab-a-creation.md"
     },
     {
       "id": "aliyun-control-local-ci-rebuild",
@@ -165,7 +166,7 @@
     }
   ],
   "nextRecommendedQueue": [
-    "channel-lab-a concrete provider/region/instance/cost/firewall shortlist or creation approval",
+    "channel-lab-a Hysteria2 runtime deployment gate or cleanup decision",
     "clean edge node rebuild planning",
     "Aliyun subscription distribution promotion planning with accepted outage context",
     "rollback-start approval for stopped AWS Singapore nodes if temporary restore is needed",

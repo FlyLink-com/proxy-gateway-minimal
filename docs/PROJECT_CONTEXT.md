@@ -184,6 +184,13 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   It recommends a clean provider-neutral `channel-lab-a` target and Hysteria2
   as the first protocol family, but it did not create a server, choose a
   provider, deploy runtime, open ports, or change traffic.
+- The approved `channel-lab-a` creation is recorded in
+  `docs/production-replacement-records/2026-05-26-channel-lab-a-creation.md`.
+  It created an AWS ap-southeast-1 clean canary instance
+  `i-0f2cf745a1bb5ba51` with security group `sg-0cad3c8a7380528f9`, SSH
+  restricted to the operator `/32`, and UDP/443 reserved for a future Hysteria2
+  canary. No Hysteria2 runtime, DNS, Nginx, production config, subscription
+  output, or traffic canary was performed.
 - Legacy blue `i-004ab1c6c71d06bca` is stopped and retained for controlled
   retirement review. Do not terminate it or delete its security group without
   separate A-tier approval.
@@ -209,9 +216,10 @@ operator approval, validation, and rollback path exist:
   security-group/firewall changes, operator-device canaries, or broader rollout
   remain A-tier and must follow `docs/CHANNEL_CANARY_SERVER_SELECTION.md` and
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`.
-  The current read-only selection record recommends `channel-lab-a` for a first
-  Hysteria2 canary, but creation still requires provider, region, instance,
-  cost, firewall, cleanup, and rollback details plus a separate approval phrase.
+  The current `channel-lab-a` creation record proves only the clean server and
+  approved ingress exist. Hysteria2 runtime deployment, operator-device canary
+  traffic, and cleanup/termination each still require separate approval and
+  evidence.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See
