@@ -5,24 +5,37 @@ type TopBarProps = {
   activePage: AdminPage;
   search: string;
   onSearchChange: (value: string) => void;
+  onOpenPortal: () => void;
 };
 
-export function TopBar({ activePage, search, onSearchChange }: TopBarProps) {
+export function TopBar({ activePage, search, onSearchChange, onOpenPortal }: TopBarProps) {
   return (
     <header className="top-bar">
       <div>
         <p className="eyebrow">Admin Console</p>
         <h1>{pageTitles[activePage]}</h1>
       </div>
-      <label className="search-box">
-        <Search aria-hidden="true" />
-        <span className="sr-only">Search subscriptions</span>
-        <input
-          value={search}
-          onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Search subscriptions..."
-        />
-      </label>
+      <div className="top-bar-actions">
+        <a
+          className="ghost-button top-bar-link"
+          href="#/portal"
+          onClick={(event) => {
+            event.preventDefault();
+            onOpenPortal();
+          }}
+        >
+          Open user portal
+        </a>
+        <label className="search-box">
+          <Search aria-hidden="true" />
+          <span className="sr-only">Search subscriptions</span>
+          <input
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Search subscriptions..."
+          />
+        </label>
+      </div>
     </header>
   );
 }

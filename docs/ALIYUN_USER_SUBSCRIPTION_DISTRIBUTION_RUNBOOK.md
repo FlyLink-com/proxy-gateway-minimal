@@ -112,9 +112,11 @@ Repository-only platform work has started without production authority:
 
 ```text
 private Admin subscriptions workflow: implemented
+customer-facing user portal MVP shell: implemented in repository only
 Subscription V2 renderer: implemented
 opaque artifact issue / refresh / rotate / revoke contracts: implemented
 overview distribution readiness summary: implemented for configured inventory
+public registration/auth model: not approved
 runtime promotion to Aliyun: not approved
 production state copy to Aliyun: not completed
 DNS or public traffic migration: not approved
