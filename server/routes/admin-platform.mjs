@@ -18,6 +18,7 @@ export function adminPlatformRoutes(state) {
   const router = Router();
   const leadQueue = state.platform?.leadQueue;
   const accountShell = state.platform?.accountShell;
+  const accessShell = state.platform?.accessShell;
 
   router.get("/api/admin/platform/leads", (req, res) => {
     try {
@@ -74,6 +75,28 @@ export function adminPlatformRoutes(state) {
   router.get("/api/admin/platform/entitlements", (req, res) => {
     try {
       res.json({ items: accountShell.listEntitlements({ accountId: req.query.accountId }) });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/accounts/:accountId/entitlements/:entitlementId/dynamic-entry", (req, res) => {
+    try {
+      const access = accessShell.issueDynamicEntry(req.params.accountId, req.params.entitlementId, req.body ?? {});
+      res.status(201).json({ access });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/platform/access-grants", (req, res) => {
+    try {
+      res.json({
+        items: accessShell.listAccessGrants({
+          accountId: req.query.accountId,
+          entitlementId: req.query.entitlementId
+        })
+      });
     } catch (error) {
       sendError(res, error);
     }

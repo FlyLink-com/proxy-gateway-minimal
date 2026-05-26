@@ -76,6 +76,22 @@ operator validation. The canary exposes `/sub/a/*` through Nginx, uses
 access log. Broader artifact issuance, legacy URL deprecation, user migration,
 traffic enforcement, and abuse-response policy remain separate Risk A work.
 
+Repository-level platform access grant support now also exists for the Aliyun
+Subscription Control Platform MVP path:
+
+```text
+protected Admin-only dynamic-entry access grant creation
+in-memory access grant summaries linked to account and entitlement shells
+visible-once posture and dynamic-entry / artifact presence flags
+raw portal URL, artifact reference, and subscription URL redaction in summaries
+```
+
+This dynamic-entry shell is not a public resolver and is not a customer-facing
+login endpoint. It represents operator-issued metadata only, behind the
+protected Admin API boundary. Production activation, persistence, public portal
+resolution, DNS, Nginx, HTTPS, logging review, state copy, and user traffic
+remain separate Risk A gates.
+
 ## URL Model
 
 The product URL should look like an opaque artifact, not a semantic API route.

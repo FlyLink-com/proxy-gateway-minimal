@@ -120,11 +120,15 @@ Production Operations:
 ```text
 server/services/subscriptions/*
 server/services/platform/control-plane-contract.mjs
+server/services/platform/subscription-access-shell.mjs
 server/services/subscriptions/edge-inventory.mjs
 server/routes/subscription.mjs
 server/routes/admin-subscriptions.mjs
+server/routes/admin-platform.mjs
 server/services/clash-subscription.mjs
 server/tests/platform-control-plane-contract.test.mjs
+server/tests/platform-subscription-access-shell.test.mjs
+server/tests/platform-access-routes.test.mjs
 server/tests/subscription-token.test.mjs
 server/tests/subscription-service.test.mjs
 server/tests/subscription-repository.test.mjs
@@ -166,6 +170,8 @@ add explicit contract tests when future access interfaces are proposed
 use the platform control-plane contract as the repo-only boundary for account,
   entitlement, and dynamic-entry metadata before any storage or production
   activation
+keep dynamic customer-entry access grants Admin-only until a separate public
+  portal resolver and production auth gate are approved
 ```
 
 ## Paused / Blocked Items

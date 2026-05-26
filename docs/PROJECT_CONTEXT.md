@@ -126,6 +126,14 @@ Current architecture priorities:
   usability is fail-closed from status and validity windows. This is not
   billing, payment collection, CRM, SQLite persistence, Aliyun deployment,
   production storage, customer portal activation, DNS, or user traffic.
+- Platform Dynamic Entry / Access Grant Shell: repository-only protected Admin
+  routes can issue and list in-memory subscription access grant summaries
+  through `server/services/platform/subscription-access-shell.mjs`. The
+  summary exposes only operator-safe metadata such as issued status, delivery
+  type, visible-once posture, and whether dynamic entry or artifact references
+  exist. It does not expose raw customer portal URLs, artifact references,
+  subscription URLs, SQLite persistence, Aliyun deployment, production storage,
+  public portal resolution, DNS, or user traffic.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a

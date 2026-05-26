@@ -44,7 +44,7 @@ export function createApp(state, options = {}) {
   if (state.subscriptions?.core || state.subscriptions?.service) {
     app.use(adminSubscriptionRoutes(state));
   }
-  if (state.platform?.leadQueue || state.platform?.accountShell) {
+  if (state.platform?.leadQueue || state.platform?.accountShell || state.platform?.accessShell) {
     app.use(adminPlatformRoutes(state));
   }
   app.use("/sub", createRateLimitMiddleware({
