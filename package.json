@@ -58,6 +58,7 @@
     "channel:decision-pack": "node scripts/channel-decision-pack.mjs",
     "channel:extended-assessment": "node scripts/channel-extended-assessment.mjs",
     "channel:extended-report": "node scripts/channel-extended-report.mjs",
+    "channel:measurement-bundle": "node scripts/channel-measurement-bundle.mjs",
     "project-state:check": "node scripts/check-project-state.mjs",
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",

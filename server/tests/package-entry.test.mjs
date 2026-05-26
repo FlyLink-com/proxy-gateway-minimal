@@ -8,6 +8,7 @@ import {
   buildChannelCandidateReport,
   buildChannelDecisionPack,
   buildChannelExtendedMeasurementReport,
+  buildChannelMeasurementBundleReport,
   createApp,
   createRuntimeState,
   createChannelBenchmarkFixtureFromPlan,
@@ -49,6 +50,7 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof buildChannelCandidateReport, "function");
   assert.equal(typeof buildChannelDecisionPack, "function");
   assert.equal(typeof buildChannelExtendedMeasurementReport, "function");
+  assert.equal(typeof buildChannelMeasurementBundleReport, "function");
   assert.equal(typeof createChannelBenchmarkFixtureFromPlan, "function");
   assert.equal(typeof generateClashSubscription, "function");
   assert.equal(typeof CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION, "string");
