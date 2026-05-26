@@ -113,6 +113,12 @@ Current architecture priorities:
   `server/services/platform/control-plane-contract.mjs`. They provide
   validation and operator-safe summaries only; no SQLite schema, production
   storage, billing provider, Aliyun runtime, DNS, or user traffic is activated.
+- Platform Lead Review Queue: repository-only public lead intake can now feed an
+  in-memory platform review queue under
+  `server/services/platform/lead-review-queue.mjs`, with protected operator
+  routes in `server/routes/admin-platform.mjs`. This is not CRM, Webhook,
+  email automation, Aliyun deployment, production storage, or customer portal
+  activation.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a

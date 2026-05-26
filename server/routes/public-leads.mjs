@@ -18,6 +18,18 @@ export function publicLeadRoutes(state, options = {}) {
   const nowFn = options.nowFn || (() => new Date());
 
   router.post("/api/public/leads", async (req, res) => {
+    const leadQueue = options.leadQueue || state.platform?.leadQueue;
+    if (leadQueue) {
+      try {
+        leadQueue.enqueueLead(req.body ?? {});
+      } catch (error) {
+        res.status(400).json({ error: "validation_error" });
+        return;
+      }
+      res.status(202).json({ ok: true, status: "accepted" });
+      return;
+    }
+
     let lead;
     try {
       lead = normalizePublicLeadSubmission(req.body ?? {}, nowFn());

@@ -58,6 +58,7 @@
   "activeDirections": [
     "Goal-driven execution: Aliyun Subscription Control Platform MVP is active as a repo-only B/C target until separate Risk A approval",
     "Aliyun platform domain contract exists as repo-only lead/account/entitlement/subscription-access grant normalization with operator-safe summaries",
+    "Aliyun platform lead review queue exists as repo-only public lead intake to protected operator-safe review summaries without CRM, Webhook, email automation, Aliyun deployment, DNS, production storage, or user traffic",
     "Domain Unit Boundaries for product business, commercial entitlement, subscription access, nodes, validation, operator lab, and production ops",
     "Aliyun user-management / subscription-distribution platform as the near-term production-control target",
     "HP local Linux as manual CI and operator lab only",
@@ -195,7 +196,7 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Aliyun Subscription Control Platform MVP Package 2: lead intake to platform review queue repo-only PR",
+    "Aliyun Subscription Control Platform MVP Package 3: customer account and entitlement shell repo-only PR",
     "channel-lab-a extended Hysteria2 measurement using channel:extended-assessment evidence, GUI import evidence, or cleanup decision",
     "clean edge node rebuild planning",
     "Aliyun subscription distribution promotion planning with accepted outage context",

@@ -1,6 +1,6 @@
 # Product Business Unit
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-05-26, Asia/Shanghai.
 
 > Status:
 > - Type: Active unit design
@@ -108,10 +108,22 @@ docs/PROJECT_TOPOLOGY.md
 docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md
 docs/LOCAL_EDGE_AGENT_DESIGN.md
 docs/PROJECT_SIMPLIFICATION_MAP.md
+docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md
+server/services/platform/lead-review-queue.mjs
+server/routes/admin-platform.mjs
+server/tests/platform-lead-review-queue.test.mjs
+server/tests/platform-lead-routes.test.mjs
 ```
 
 These anchors describe current direction and boundaries. They do not imply that
 every product workflow is already implemented.
+
+The platform lead review queue is the current repository-only implementation
+anchor for the public-site lead workflow. It validates public interest,
+stores it in an in-memory review queue, and exposes protected operator-safe
+summaries for review-status movement. It is not CRM, Webhook, email
+automation, billing, Aliyun deployment, customer portal activation, or
+production storage.
 
 ## Risk And Validation
 
@@ -132,12 +144,12 @@ the appropriate A-tier gate.
 ## Next Tasks
 
 ```text
-define the minimum current MVP service promise
 separate product acceptance criteria from technical access-control tests
 document import success, expired access, disabled access, and unavailable
   capacity user states
 map Local Edge Agent expectations without making it a production requirement
 identify which operator workflows are product workflows versus production ops
+connect reviewed leads to account / entitlement shell fixtures
 ```
 
 ## Paused / Blocked Items
