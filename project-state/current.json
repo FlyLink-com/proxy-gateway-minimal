@@ -86,6 +86,7 @@
   },
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
+    "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, and validation evidence before it is marked Ready, submitted for merge, or reported complete. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
     "githubHostedActions": "blocked-by-billing-or-spending-limit",
     "manualCiFallback": "HP local Linux manual CI is bootstrapped and archive-validation passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922; historical Aliyun SWAS validation host remains pending cleanup/retirement from the CI lane",
     "manualCiIsStaging": false,

@@ -66,6 +66,12 @@ Default risk tiers live in `AGENTS.md`:
 
 Do not lower risk just because a task is easy to run locally.
 
+Every PR must complete its approved design -> execution -> validation loop
+before it is marked Ready, submitted for merge, or reported complete. A
+spec-only, runbook-only, or inventory-only PR is allowed only when that is the
+explicit scope and the PR body states the non-goals, skipped execution, and next
+approval gate.
+
 `docs/PROJECT_OPERATING_MODEL.md` also defines the PR cadence reporting rule:
 after every five merged PRs, give a concise stage report covering the PR range,
 risk tiers, validation evidence, production boundary changes, blockers, and
