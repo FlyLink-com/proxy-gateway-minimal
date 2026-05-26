@@ -81,7 +81,11 @@ it exits the CI lane and passes production-control inventory.
 
 Use local Linux as manual CI.
 
-Use clean rebuild servers first for edge data-plane forwarding nodes.
+Use HP as operator lab, not production.
+
+Move non-Aliyun / non-HP nodes into controlled drain and retirement after
+Aliyun promotion. Clean edge rebuilds are no longer the default near-term
+direction unless a later technical MVP integration gate requires them.
 
 Use the clean new-server control-plane runbook only as fallback if Aliyun is
 rejected or cannot be safely cleaned and hardened.
@@ -414,6 +418,10 @@ docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md:
 docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md:
   current target split for Aliyun control, local Linux CI, and clean edge nodes
 
+docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md:
+  latest business split: Aliyun user management / subscription distribution,
+  HP validation/lab, and controlled retirement of other nodes
+
 docs/SERVER_EDGE_MESH_DESIGN.md:
   private edge management / recovery plane
 
@@ -471,11 +479,11 @@ repository work:
 ```text
 1. Move manual CI toward local Linux.
 2. Inventory Aliyun as the future `sub-control-a` candidate after CI exits.
-3. Use clean rebuild servers for edge data-plane forwarding nodes.
-4. Add a repository-only edge status model.
-5. Keep generated production YAML changes behind Risk A approval.
-6. Keep HP Relay as operator lab evidence, not production topology.
-7. Keep Server Edge Mesh as private health / recovery infrastructure first.
-8. Defer physical control-plane split until backup/restore and edge-only
+3. Keep HP Relay as operator lab evidence, not production topology.
+4. Keep generated production YAML changes behind Risk A approval.
+5. Drain non-Aliyun / non-HP nodes only after Aliyun promotion and explicit
+   node-drain gates.
+6. Keep Server Edge Mesh as private health / recovery infrastructure first.
+7. Defer physical control-plane split until backup/restore and edge-only
    behavior are both proven.
 ```

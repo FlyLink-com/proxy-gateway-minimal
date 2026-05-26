@@ -221,6 +221,39 @@ analysis or implementation tracks, but the lead agent remains responsible for
 integration, source-of-truth updates, final verification, and user-facing
 claims.
 
+## PR Definition Of Done
+
+Every PR must close its assigned loop before it can be marked Ready, submitted
+for merge, or reported as complete.
+
+Required PR loop:
+
+```text
+design / intent:
+  what this PR is meant to change
+  risk tier and explicit non-goals
+  expected production / cloud / runtime impact
+
+execution:
+  repository changes, execution record, or approved inventory actually done
+  source-of-truth docs and project-state updated when facts changed
+
+validation:
+  commands or runbook-specific checks actually run
+  failures or skipped checks explained
+  remaining gates stated explicitly
+```
+
+Incomplete PRs stay Draft. A PR that contains only design, only inventory, or
+only a runbook can still be valid only when that is its explicitly approved
+scope; in that case the PR body must say what was not executed and which gate
+comes next.
+
+Do not split design, execution, and validation across separate PRs by default.
+Use a split only when the risk model requires it, when the operator explicitly
+approves a spec-only / inventory-only gate, or when external mutation must wait
+for a later Risk A approval.
+
 ## PR Cadence Reporting
 
 Every five merged PRs, pause before starting the next lane of work and give the

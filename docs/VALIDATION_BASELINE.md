@@ -31,6 +31,23 @@ Is production healthy right now?
 Is a deploy, cutover, or CI host run approved?
 ```
 
+## PR Completion Gate
+
+Before a PR is marked Ready, submitted for merge, or reported complete, confirm
+that the PR contains all three parts of its approved scope:
+
+```text
+design / intent recorded
+execution or approved no-op / inventory performed
+validation evidence recorded
+```
+
+For implementation PRs, validation means the relevant command set in this file
+has actually been run. For Risk A PRs, validation means the relevant runbook and
+execution record contain the runbook-specific checks. For spec-only,
+runbook-only, or inventory-only PRs, the PR body must explicitly state that no
+runtime mutation was performed and list the next approval gate.
+
 ## Baseline Commands
 
 ### C: Docs Only

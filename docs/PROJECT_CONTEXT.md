@@ -66,6 +66,12 @@ Default risk tiers live in `AGENTS.md`:
 
 Do not lower risk just because a task is easy to run locally.
 
+Every PR must complete its approved design -> execution -> validation loop
+before it is marked Ready, submitted for merge, or reported complete. A
+spec-only, runbook-only, or inventory-only PR is allowed only when that is the
+explicit scope and the PR body states the non-goals, skipped execution, and next
+approval gate.
+
 `docs/PROJECT_OPERATING_MODEL.md` also defines the PR cadence reporting rule:
 after every five merged PRs, give a concise stage report covering the PR range,
 risk tiers, validation evidence, production boundary changes, blockers, and
@@ -85,13 +91,18 @@ stable subscription/import experience
 
 Current architecture priorities:
 
+- Aliyun User Management / Subscription Distribution: the near-term business
+  split is Aliyun for user management/subscription distribution, HP for local CI/operator
+  lab, and all other nodes in a controlled drain/retirement queue. See
+  `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
-  opaque artifacts, and rendering authoritative in the control plane. The
-  current target is to move CI off the current Aliyun server, then evaluate
-  that Aliyun server as the future production `sub-control-a` candidate.
-- Edge Data Plane: make `prod-edge-a/b/c` replaceable capacity with clear
-  rollback and node identity boundaries. Clean rebuild servers are now
-  preferred first for traffic forwarding / data-plane nodes, not for CI.
+  opaque artifacts, and rendering authoritative in the control plane. CI has
+  moved off the current Aliyun server, and that host is now prepared as a
+  private loopback-only `sub-control-a` candidate without production authority.
+- Edge Data Plane: current AWS `prod-edge-a/b` remain production/runtime
+  dependencies until Aliyun promotion and node drain are explicitly approved.
+  Do not add or keep non-Aliyun/HP nodes as the default direction; drain and
+  retirement are now the near-term queue.
 - Validation / CI: move manual CI toward a local Linux validation host so the
   future production subscription control plane does not also run repository
   validation workloads.
@@ -113,6 +124,7 @@ Current architecture priorities:
 Use these docs for detail:
 
 - `docs/PROJECT_TOPOLOGY.md`
+- `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
 - `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`
 - `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`
@@ -147,6 +159,11 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   iteration/canary secondary slot.
 - `prod-edge-b` is currently carried by the validated green instance
   `18.136.102.226`; lifecycle changes remain A-tier.
+- The latest non-Aliyun node cleanup preflight is recorded in
+  `docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md`.
+  It refreshed AWS, AliDNS, public endpoint, and repository-reference evidence
+  and did not perform any stop, terminate, DNS, security-group, runtime, tenant,
+  SQLite, or artifact mutation.
 - Legacy blue `i-004ab1c6c71d06bca` is stopped and retained for controlled
   retirement review. Do not terminate it or delete its security group without
   separate A-tier approval.
@@ -178,10 +195,10 @@ operator approval, validation, and rollback path exist:
   and
   `docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md`.
   It is not staging, not production, and not deploy approval.
-- Aliyun manual CI cleanup or production-control candidate preparation. The
-  first read-only Aliyun inventory is recorded in
-  `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md`.
-- Clean `sub-control-a` candidate provisioning, state-copy validation,
+- Aliyun private state-copy validation or production-control promotion. The
+  current Aliyun candidate-preparation record is
+  `docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md`.
+- Clean fallback `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
   `prod-edge-a` / `prod-edge-b` closes during key exchange from the current
@@ -189,6 +206,12 @@ operator approval, validation, and rollback path exist:
   `docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md`.
 - `prod-edge-b` carrying-instance replacement or lifecycle mutation.
 - `prod-edge-c` creation or durable third-node recovery work.
+- AWS node drain, stop, termination, or security-group cleanup as part of the
+  new "Aliyun + HP only" target. The latest cleanup preflight confirms
+  `prod-edge-a` is still blocked by AliDNS/user-facing dependency and
+  `prod-edge-b` is still blocked by the documented temporary secondary-slot
+  dependency. Drain/stop/termination each require separate A-tier approvals and
+  evidence.
 - Legacy blue final termination or security-group cleanup.
 - WireGuard install, mesh key generation, UDP security-group changes,
   `wg-quick` start, or live mesh validation.
@@ -217,9 +240,10 @@ The remaining queued items are A-tier and remain blocked:
 
 For A2, the preferred first step is now the role split in
 `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: local Linux manual CI first,
-then Aliyun production-control candidate inventory, then clean edge-node
-rebuild. Do not start either A-tier item without a specific runbook, read-only
-inventory, operator approval, validation plan, and rollback evidence.
+then Aliyun production-control candidate inventory, then controlled
+non-Aliyun node drain / retirement after Aliyun promotion. Do not start either
+A-tier item without a specific runbook, read-only inventory, operator approval,
+validation plan, and rollback evidence.
 
 Latest local Linux CI candidate inventory:
 
@@ -234,29 +258,60 @@ Latest local Linux CI candidate inventory:
   and `npm run admin:build`.
 - Per-run workspace, archive, npm cache, GitHub config, and git credentials
   were cleaned after validation.
-- The next gate is explicit Aliyun CI cleanup approval before retiring Aliyun
-  from the validation lane.
+- Aliyun CI cleanup has been completed; HP is now the manual CI lane.
 
 Latest Aliyun CI cleanup / subscription-control candidate inventory:
 
 - `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md`
+- `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md`
+- `docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md`
 - The current Aliyun SWAS host is reachable through SSH alias `miyao`.
 - It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
   `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
 - No active manual-CI workspace, repository archive, GitHub CLI config, or git
   credential file was found in the read-only scan.
-- Small user-level npm/cache residue remains and requires explicit cleanup
-  approval before deletion.
-- Nginx and proxy-gateway runtime are not installed or active.
+- The cleanup removed only `/root/.npm`, `/root/.cache`, and any matching
+  `/tmp/proxy-gateway-ci-*.tar` archives; the post-cleanup recheck found CI
+  workspace, GitHub CLI config, git credentials, npm/cache residue, and CI
+  archives absent.
+- A private candidate proxy-gateway runtime is now active on loopback only, and
+  candidate Nginx is active on loopback only.
 - WireGuard `wg-home` is active on UDP 51820 and must be explicitly accepted,
-  scoped, or removed during candidate hardening.
-- UFW is inactive and iptables default policies are ACCEPT; this is not a final
-  production-control boundary.
-- No cleanup, package install, deploy, DNS, Nginx, systemd, firewall, SQLite,
-  secret, artifact, tenant, production authority, edge traffic, or cutover
-  mutation was performed.
-- The next gates are explicit Aliyun manual CI lane cleanup approval, recheck,
-  then explicit Aliyun subscription-control candidate preparation approval.
+  scoped, or removed during any future production hardening.
+- UFW is active with default deny incoming / allow outgoing and only OpenSSH
+  plus existing `wg-home` UDP 51820 allowed inbound.
+- The candidate app listens on `127.0.0.1:3456`; candidate Nginx listens on
+  `127.0.0.1:18080`; no edge proxy listener was opened.
+- HP-side external validation found public 3456, 18080, 80, and 443 closed and
+  SSH 22 open.
+- No DNS, user traffic, production authority, production SQLite copy, artifact
+  copy, edge traffic, AWS, public Admin, WireGuard, tenant, or cutover mutation
+  was performed.
+- The next gate is explicit Aliyun private state-copy validation approval.
+
+Latest Aliyun user-management / subscription-distribution decision:
+
+- `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
+- Near-term target: Aliyun becomes the user-management and subscription
+  distribution platform, HP remains local CI/operator lab, and all other nodes
+  are drained and retired through explicit A-tier gates.
+- The separate technical MVP branch is PR #129,
+  `codex/local-edge-channel-probe-harness`; it owns local edge channel probe,
+  benchmark, and manager work and must not be coupled to Aliyun production
+  authority without a later integration gate.
+- Read-only refresh on 2026-05-26 found AWS still has running `prod-edge-a`
+  `13.215.156.159` and `prod-edge-b` `18.136.102.226`.
+- Authoritative AliDNS still points `sub.globalcirclecat.com` and
+  `ss-sg.globalcirclecat.com` to `13.215.156.159`, so no AWS node can be
+  stopped before Aliyun promotion and node drain evidence.
+- Latest cleanup preflight:
+  `docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md`.
+- The preflight also found the tracked static node config still references
+  `prod-edge-a` and `prod-edge-b`, so node cleanup remains sequenced but not
+  executable until Aliyun promotion and subscription-output drain evidence.
+- The next executable gate is Aliyun private state-copy validation approval or,
+  for node cleanup specifically, a later drain-and-stop approval after Aliyun
+  promotion.
 
 Latest A2 preflight:
 
@@ -366,8 +421,8 @@ High-value entrypoints:
 - `docs/DEPLOYMENT_FLOW.md` - deployment, staging, promotion, rollback flow.
 - `docs/CI_MANUAL_VALIDATION.md` - manual validation host workflow.
 - `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` - target split for current
-  Aliyun production subscription control, local Linux manual CI, and clean
-  forwarding edge nodes.
+  Aliyun production subscription control, local Linux manual CI, and controlled
+  non-Aliyun node drain / retirement.
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md` - clean
   `sub-control-a` candidate fallback gates for the future physical split.
 
