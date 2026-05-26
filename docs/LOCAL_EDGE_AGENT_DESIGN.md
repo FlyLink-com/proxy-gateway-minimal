@@ -463,11 +463,13 @@ The first repo-only skeleton now lives in:
 ```text
 agent/local-edge-agent.mjs
 agent/channel-profile.mjs
+agent/channel-probe.mjs
 agent/diagnostics.mjs
 agent/edge-tunnel.mjs
 agent/socks5-adapter.mjs
 server/tests/local-edge-agent.test.mjs
 server/tests/local-edge-channel-profile.test.mjs
+server/tests/local-edge-channel-probe.test.mjs
 server/tests/local-edge-tunnel.test.mjs
 server/tests/local-edge-socks-adapter.test.mjs
 ```
@@ -490,6 +492,8 @@ local-development edge-tunnel skeleton with a one-line JSON CONNECT handshake
 bounded edge-tunnel handshake timeouts and strict boolean success replies
 exported edge-tunnel contract constants, shared frame-size limit, and codec tests
 shared diagnostics redaction helpers for channel and adapter snapshots
+repository-only channel probe harness with safe target IDs, latency summaries,
+and redacted success/failure metrics
 ```
 
 It deliberately does not implement:
@@ -569,6 +573,12 @@ Unknown counter keys are dropped. Unknown failure classes are normalized to
 `unknown`. Diagnostics snapshots must not include remote edge hosts, raw
 targets, raw errors, tokens, artifact URLs, customer URLs, credentials, payloads,
 or secret-like counter or failure fields.
+
+The current channel probe harness is repository-only. It can measure an
+injected channel's TCP open behavior and summarize redacted latency/counter
+results, but it does not open production channels by itself, does not store
+target hostnames in probe results, and does not prove any protocol candidate is
+production-ready.
 
 ## Open Decisions
 

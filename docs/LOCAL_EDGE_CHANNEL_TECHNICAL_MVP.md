@@ -283,6 +283,17 @@ Scope:
 No production transport, no device credential storage, no service install, no
 real remote edge mutation.
 
+Initial repository support now includes a local channel probe harness:
+
+```text
+agent/channel-probe.mjs
+server/tests/local-edge-channel-probe.test.mjs
+```
+
+This harness records injected-channel TCP open success/failure, safe target
+IDs, and latency summaries. It deliberately does not retain target hostnames or
+raw channel errors in result snapshots.
+
 ### Stage 2: Lab Edge Runtime Proof
 
 ```text
