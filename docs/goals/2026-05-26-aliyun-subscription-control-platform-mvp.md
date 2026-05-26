@@ -177,6 +177,21 @@ server tests define valid/invalid state transitions
 no production secrets, URLs, or customer data
 ```
 
+**Repository anchors after Package 1 implementation:**
+
+```text
+server/services/platform/control-plane-contract.mjs
+server/tests/platform-control-plane-contract.test.mjs
+server/routes/public-leads.mjs
+server/tests/public-leads.test.mjs
+```
+
+The Package 1 contract is pure repository behavior. It defines normalized
+platform lead, account, entitlement, and subscription-access grant shapes plus
+operator-safe summaries. It does not add SQLite schema, production storage,
+payment integration, Aliyun runtime mutation, DNS changes, state copy, or user
+traffic.
+
 ### Package 2: Lead Intake To Platform Review Queue
 
 **Risk:** B repo-only.

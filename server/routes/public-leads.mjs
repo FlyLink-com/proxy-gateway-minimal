@@ -1,35 +1,15 @@
 import { Router } from "express";
-
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function cleanString(value, maxLength) {
-  if (typeof value !== "string") {
-    return "";
-  }
-  return value.trim().replace(/\s+/g, " ").slice(0, maxLength);
-}
+import { normalizePlatformLead } from "../services/platform/control-plane-contract.mjs";
 
 export function normalizePublicLeadSubmission(payload, now = new Date()) {
-  const organization = cleanString(payload?.organization, 120);
-  const email = cleanString(payload?.email, 160).toLowerCase();
-  const direction = cleanString(payload?.direction, 120);
-  const stage = cleanString(payload?.stage, 120);
-  const message = cleanString(payload?.message, 1200);
-
-  if (!organization || !email || !direction || !message || !EMAIL_PATTERN.test(email)) {
-    const error = new Error("Invalid public lead submission");
-    error.code = "validation_error";
-    throw error;
-  }
-
+  const timestamp = now instanceof Date ? now : new Date(now);
+  const lead = normalizePlatformLead(payload, {
+    now: timestamp,
+    idFactory: () => `lead_${timestamp.getTime().toString(36)}`
+  });
   return {
-    organization,
-    email,
-    direction,
-    stage,
-    message,
-    source: "company-site",
-    submittedAt: now.toISOString()
+    ...lead,
+    submittedAt: lead.createdAt
   };
 }
 

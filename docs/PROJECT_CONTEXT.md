@@ -108,6 +108,11 @@ Current architecture priorities:
   The public site uses a repository-only `/api/public/leads` intake endpoint
   for validated contact submissions; no external Webhook/CRM/email automation,
   DNS, or production deployment is implied by that route.
+- Platform Domain Contract: repository-only platform lead, account,
+  entitlement, and subscription-access grant shapes live under
+  `server/services/platform/control-plane-contract.mjs`. They provide
+  validation and operator-safe summaries only; no SQLite schema, production
+  storage, billing provider, Aliyun runtime, DNS, or user traffic is activated.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a
