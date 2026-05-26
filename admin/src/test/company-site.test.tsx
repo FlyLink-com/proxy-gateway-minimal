@@ -28,6 +28,9 @@ describe("company site route", () => {
       /Public Site|Brand only|Operator issued|Controlled|Admin API|YAML|官网只承载|control plane|data plane|WireGuard|Server Edge|Local Edge|Channel Manager|订阅接入|专属入口|导入客户端|开通流程|动态入口/
     );
     expect(container.innerHTML).not.toMatch(/mailto:|gccltd\.co@outlook\.com/);
+    expect(container.innerHTML).not.toMatch(
+      /login-after-entry|subscriptionUrl|token=|entryRef|artifactRef|access-grants|#\/portal|\/use/
+    );
 
     const exposedPortalLinks = Array.from(container.querySelectorAll("a"))
       .map((link) => link.getAttribute("href") ?? "")

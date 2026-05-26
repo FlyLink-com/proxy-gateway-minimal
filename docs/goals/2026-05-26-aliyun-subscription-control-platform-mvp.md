@@ -304,6 +304,25 @@ public site does not expose the login-after-entry URL
 subscription artifacts remain visible-once / redacted in summaries
 ```
 
+**Repository anchors after Package 4 implementation:**
+
+```text
+server/services/platform/subscription-access-shell.mjs
+server/routes/admin-platform.mjs
+server/tests/platform-subscription-access-shell.test.mjs
+server/tests/platform-access-routes.test.mjs
+admin/src/test/company-site.test.tsx
+```
+
+The Package 4 shell is repository-only in-memory behavior. Protected Admin API
+routes can issue and list subscription access grant summaries for an existing
+account and usable entitlement. Responses expose only safe metadata such as
+issued status, delivery type, visible-once posture, and dynamic-entry/artifact
+presence booleans. They do not expose raw portal URLs, artifact references,
+subscription URLs, public customer portal resolution, SQLite persistence,
+Aliyun deployment, DNS changes, production storage, customer data copy, or user
+traffic.
+
 ### Package 5: Aliyun Promotion Runbook
 
 **Risk:** C runbook first; A for any execution.
