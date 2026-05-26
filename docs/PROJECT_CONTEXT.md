@@ -97,6 +97,11 @@ Current architecture priorities:
   validation workloads.
 - Local Edge Agent: keep Clash/Mihomo as routing/UI while a loopback-only local
   adapter can eventually carry traffic over platform-controlled channels.
+- Local Edge Channel Technical MVP: define the next technical MVP as the
+  shortest safe path to prove frontier-grade transport capability through the
+  Local Edge Agent channel manager, not as a lowest-tech proxy. SS remains the
+  baseline; VLESS/XUDP is the first candidate; QUIC/MPTCP stay research items
+  until measured in controlled canaries.
 - Server Edge Mesh: plan private edge-to-edge health, management, validation,
   and recovery paths. It is not a user VPN and does not authorize WireGuard
   execution by itself.
@@ -111,6 +116,7 @@ Use these docs for detail:
 - `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`
 - `docs/LOCAL_EDGE_AGENT_DESIGN.md`
+- `docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md`
 - `docs/SERVER_EDGE_MESH_DESIGN.md`
 - `docs/PROJECT_SIMPLIFICATION_MAP.md`
 - `docs/MULTI_AGENT_OPERATING_MODEL.md`
