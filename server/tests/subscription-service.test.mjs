@@ -83,6 +83,80 @@ function edgeInventoryProxyConfig() {
   };
 }
 
+function channelStrategyProxyConfig() {
+  return {
+    servers: [
+      {
+        id: "node_canary",
+        name: "channel-lab-a",
+        role: "canary",
+        region: "Singapore",
+        channelPool: "canary",
+        strategyPriority: 5,
+        protocol: "hysteria2",
+        host: "198.51.100.20",
+        port: 443,
+        password: "hy2-secret",
+        status: "online"
+      },
+      {
+        id: "node_stable_b",
+        name: "stable-b",
+        role: "edge",
+        region: "Tokyo",
+        channelPool: "stable",
+        strategyPriority: 20,
+        host: "203.0.113.20",
+        port: 18388,
+        method: "aes-256-gcm",
+        password: "stable-b-secret",
+        status: "online"
+      },
+      {
+        id: "node_private",
+        name: "private-operator",
+        role: "private",
+        region: "Singapore",
+        channelPool: "private",
+        strategyPriority: 1,
+        host: "198.51.100.30",
+        port: 18389,
+        method: "aes-256-gcm",
+        password: "private-secret",
+        status: "online"
+      },
+      {
+        id: "node_stable_a",
+        name: "stable-a",
+        role: "edge",
+        region: "Singapore",
+        channelPool: "stable",
+        strategyPriority: 10,
+        host: "203.0.113.10",
+        port: 18388,
+        method: "aes-256-gcm",
+        password: "stable-a-secret",
+        status: "online"
+      },
+      {
+        id: "node_recovery",
+        name: "recovery-a",
+        role: "recovery",
+        region: "Singapore",
+        channelPool: "recovery",
+        strategyPriority: 1,
+        host: "198.51.100.40",
+        port: 18390,
+        method: "aes-256-gcm",
+        password: "recovery-secret",
+        status: "online"
+      }
+    ],
+    pingHosts: ["1.1.1.1"],
+    nginx: { host: "127.0.0.1", ports: [443] }
+  };
+}
+
 function tokenFromRaw(rawToken) {
   return {
     rawToken,
@@ -668,6 +742,9 @@ test("nodes returns planned shared-node summaries", async () => {
       name: "aws-singapore",
       role: "",
       region: "Singapore",
+      channelPool: "stable",
+      strategyPriority: 0,
+      canaryWeight: 0,
       host: "203.0.113.10",
       port: 18388,
       method: "aes-256-gcm",
@@ -690,6 +767,9 @@ test("nodes returns safe edge inventory summaries without credentials", async ()
         name: "prod-edge-a",
         role: "primary",
         region: "Singapore",
+        channelPool: "stable",
+        strategyPriority: 0,
+        canaryWeight: 0,
         host: "203.0.113.10",
         port: 18388,
         method: "aes-256-gcm",
@@ -704,6 +784,9 @@ test("nodes returns safe edge inventory summaries without credentials", async ()
         name: "prod-edge-b",
         role: "canary",
         region: "Tokyo",
+        channelPool: "canary",
+        strategyPriority: 0,
+        canaryWeight: 0,
         host: "203.0.113.11",
         port: 18389,
         method: "aes-256-gcm",
@@ -718,6 +801,9 @@ test("nodes returns safe edge inventory summaries without credentials", async ()
         name: "legacy-blue",
         role: "legacy",
         region: "Singapore",
+        channelPool: "stable",
+        strategyPriority: 0,
+        canaryWeight: 0,
         host: "203.0.113.12",
         port: 18390,
         method: "aes-256-gcm",
@@ -745,6 +831,44 @@ test("default subscription output excludes maintenance and disabled edge nodes",
     assert.doesNotMatch(JSON.stringify(result.proxyConfig), /maintenance-secret|disabled-secret/);
   }, {
     proxyConfig: edgeInventoryProxyConfig()
+  });
+});
+
+test("default channel strategy emits only stable pool nodes in priority order", async () => {
+  await withService(async (context) => {
+    const created = await createActiveTenant(context);
+    assert.equal(created.tenant.nodeName, "stable-a");
+
+    const result = context.service.resolveSubscriptionToken(RAW_TOKEN);
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.proxyConfig.servers.map((server) => server.name), [
+      "stable-a",
+      "stable-b"
+    ]);
+    assert.doesNotMatch(
+      JSON.stringify(result.proxyConfig),
+      /hy2-secret|private-secret|recovery-secret/
+    );
+  }, {
+    proxyConfig: channelStrategyProxyConfig()
+  });
+});
+
+test("explicit channel strategy canary assignment emits only the assigned node", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context, { nodeId: "node_canary" });
+
+    const result = context.service.resolveSubscriptionToken(RAW_TOKEN);
+
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.proxyConfig.servers.map((server) => server.name), [
+      "channel-lab-a"
+    ]);
+    assert.equal(result.proxyConfig.servers[0].protocol, "hysteria2");
+    assert.doesNotMatch(JSON.stringify(result.proxyConfig), /stable-a-secret|stable-b-secret|private-secret|recovery-secret/);
+  }, {
+    proxyConfig: channelStrategyProxyConfig()
   });
 });
 
@@ -833,6 +957,9 @@ test("overview returns ok, counts, and node summaries", async () => {
       name: "aws-singapore",
       role: "",
       region: "Singapore",
+      channelPool: "stable",
+      strategyPriority: 0,
+      canaryWeight: 0,
       host: "203.0.113.10",
       port: 18388,
       method: "aes-256-gcm",
@@ -849,6 +976,22 @@ test("overview returns ok, counts, and node summaries", async () => {
       blockedNodes: 0,
       blockers: []
     });
+  });
+});
+
+test("overview distribution readiness follows the default stable channel pool", async () => {
+  await withService(async (context) => {
+    const overview = context.service.overview();
+
+    assert.deepEqual(overview.distribution, {
+      mode: "subscription-v2",
+      ready: true,
+      eligibleNodes: 2,
+      blockedNodes: 3,
+      blockers: []
+    });
+  }, {
+    proxyConfig: channelStrategyProxyConfig()
   });
 });
 

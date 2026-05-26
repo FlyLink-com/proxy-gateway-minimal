@@ -12,9 +12,12 @@
 Last updated: 2026-05-26, Asia/Shanghai.
 
 This runbook defines the manual CI-equivalent validation path to use when
-GitHub-hosted Actions cannot start because of the current account billing or
-spending-limit blocker. It is a repository validation procedure only. It is not
-staging, not production deployment, and not approval to mutate cloud resources.
+GitHub-hosted Actions cannot start because of the current account billing,
+spending-limit, or quota blocker. The current expected account-quota recovery
+date is 2026-06-01; until then, PR validation uses local and HP manual CI
+evidence instead of treating hosted `Validate` startup failures as code
+failures. It is a repository validation procedure only. It is not staging, not
+production deployment, and not approval to mutate cloud resources.
 
 ## When To Use This
 
