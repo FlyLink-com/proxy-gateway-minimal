@@ -16,10 +16,11 @@ describe("company site route", () => {
 
     expect(screen.getByRole("heading", { name: "GlobalCircle Access" })).not.toBeNull();
     expect(screen.getByRole("link", { name: "获取客户入口" })).not.toBeNull();
-    expect(screen.getByText(/官网只承载品牌、商务沟通和服务说明/)).not.toBeNull();
+    expect(screen.getByText(/稳定订阅接入，面向个人和小团队的轻量服务/)).not.toBeNull();
     expect(screen.queryByRole("heading", { name: "Log in" })).toBeNull();
     expect(screen.queryByLabelText("邮箱")).toBeNull();
     expect(screen.queryByLabelText("密码")).toBeNull();
+    expect(container.textContent).not.toMatch(/Public Site|Brand only|Operator issued|Controlled|Admin API|YAML|官网只承载/);
 
     const exposedPortalLinks = Array.from(container.querySelectorAll("a"))
       .map((link) => link.getAttribute("href") ?? "")

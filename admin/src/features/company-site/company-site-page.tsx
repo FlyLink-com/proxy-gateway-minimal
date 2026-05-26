@@ -2,24 +2,24 @@ import { ArrowRight, Building2, CheckCircle2, Globe2, ShieldCheck, Workflow } fr
 
 const capabilities = [
   {
-    title: "订阅分发",
-    description: "将客户订阅、套餐状态和客户端导入材料集中在受控分发流程中。"
+    title: "稳定订阅",
+    description: "为个人和小团队提供清晰的订阅入口，减少重复配置和手动维护。"
   },
   {
-    title: "接入治理",
-    description: "通过服务端授权、可撤销入口和运营审核降低公开暴露面。"
+    title: "多端导入",
+    description: "覆盖桌面端和移动端常见客户端，开通后按指引完成导入。"
   },
   {
-    title: "节点解耦",
-    description: "平台侧只管理用户和订阅，转发能力由独立边缘节点承载。"
+    title: "持续支持",
+    description: "入口更新、套餐状态和使用问题都通过已确认的服务渠道处理。"
   }
 ];
 
 const deliverySteps = [
-  "商务确认",
-  "运营开通",
-  "专属入口发放",
-  "客户端导入"
+  "确认需求",
+  "完成开通",
+  "接收入口",
+  "导入客户端"
 ];
 
 export function CompanySitePage() {
@@ -31,8 +31,8 @@ export function CompanySitePage() {
           <strong>GlobalCircle Access</strong>
         </a>
         <nav className="company-site-nav" aria-label="公司官网导航">
-          <a href="#capabilities">能力</a>
-          <a href="#delivery">交付</a>
+          <a href="#capabilities">服务</a>
+          <a href="#delivery">开通</a>
           <a href="#contact">联系</a>
         </nav>
       </header>
@@ -41,7 +41,8 @@ export function CompanySitePage() {
         <div className="company-site-hero-copy">
           <h1>GlobalCircle Access</h1>
           <p>
-            面向个人和小团队的订阅接入服务。官网只承载品牌、商务沟通和服务说明。
+            稳定订阅接入，面向个人和小团队的轻量服务。开通后获取专属入口，
+            按指引完成客户端导入。
           </p>
           <div className="company-site-actions">
             <a className="company-site-primary" href="#contact">
@@ -49,36 +50,36 @@ export function CompanySitePage() {
               <ArrowRight aria-hidden="true" />
             </a>
             <a className="company-site-secondary" href="#capabilities">
-              查看能力
+              了解服务
             </a>
           </div>
         </div>
 
-        <div className="company-site-visual" aria-label="订阅平台视觉示意">
+        <div className="company-site-visual" aria-label="订阅服务视觉示意">
           <div className="site-orbit site-orbit-a" />
           <div className="site-orbit site-orbit-b" />
           <div className="site-signal-card site-signal-card-main">
             <Globe2 aria-hidden="true" />
-            <span>Public Site</span>
-            <strong>Brand only</strong>
+            <span>Service</span>
+            <strong>稳定接入</strong>
           </div>
           <div className="site-signal-card site-signal-card-sub">
             <ShieldCheck aria-hidden="true" />
-            <span>Access</span>
-            <strong>Operator issued</strong>
+            <span>Member</span>
+            <strong>专属入口</strong>
           </div>
           <div className="site-signal-card site-signal-card-edge">
             <Workflow aria-hidden="true" />
-            <span>Delivery</span>
-            <strong>Controlled</strong>
+            <span>Guide</span>
+            <strong>多端导入</strong>
           </div>
         </div>
       </section>
 
       <section className="company-site-section" id="capabilities">
         <div className="company-site-section-heading">
-          <span>Service</span>
-          <h2>一个轻量、可运营、可替换的订阅分发平台</h2>
+          <span>服务能力</span>
+          <h2>稳定、清晰、易上手的订阅接入服务</h2>
         </div>
         <div className="company-site-capabilities">
           {capabilities.map((item) => (
@@ -93,11 +94,11 @@ export function CompanySitePage() {
 
       <section className="company-site-band" id="delivery">
         <div>
-          <span>Delivery</span>
-          <h2>客户入口由运营侧发放</h2>
+          <span>开通流程</span>
+          <h2>开通后获取专属入口</h2>
           <p>
-            官网不直接承载登录后界面。开通后的访问入口通过独立渠道发放，并可按客户、
-            周期或风险状态进行轮换。
+            完成开通后，我们会通过已确认的服务渠道发送专属入口和导入说明。
+            用户只需要保存最新入口，并按指引导入客户端。
           </p>
         </div>
         <ol className="company-site-steps">
