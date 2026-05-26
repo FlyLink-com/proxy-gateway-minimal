@@ -358,6 +358,14 @@ renders Clash YAML in memory, and prints only a safe JSON summary with a local
 benchmark plan. It does not connect to a remote node, deploy protocol runtime,
 mutate production config, or print credentials.
 
+Repository-local benchmark result aggregation is available as a code-level
+building block through `summarizeChannelBenchmarkResults(...)`. It consumes
+already-collected local samples, computes per-probe success rate, timeout count,
+and P50/P95/P99 latency summaries, and returns a redacted summary without raw
+target URLs, raw errors, tokens, or credentials. It does not run probes, open
+network connections, mutate runtime state, or authorize production canaries by
+itself.
+
 #### Stage 1A Config Contract Design
 
 Design intent:
@@ -411,6 +419,7 @@ Scope:
   Local Edge Agent channel interface
   mock channel
   local metrics collector
+  safe benchmark result aggregation
   redacted diagnostics
   benchmark harness
 ```

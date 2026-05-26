@@ -6,6 +6,7 @@ import {
   createApp,
   createRuntimeState,
   generateClashSubscription,
+  summarizeChannelBenchmarkResults,
   startProxyGateway
 } from "../../index.mjs";
 
@@ -36,6 +37,7 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof createApp, "function");
   assert.equal(typeof createRuntimeState, "function");
   assert.equal(typeof generateClashSubscription, "function");
+  assert.equal(typeof summarizeChannelBenchmarkResults, "function");
   assert.equal(typeof startProxyGateway, "function");
 });
 
