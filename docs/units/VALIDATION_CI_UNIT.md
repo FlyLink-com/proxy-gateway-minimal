@@ -1,6 +1,6 @@
 # Validation / CI Unit
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-05-26, Asia/Shanghai.
 
 > Status:
 > - Type: Active unit design
@@ -45,6 +45,7 @@ GitHub Actions CI when available
 local Linux manual CI target while GitHub-hosted Actions is blocked
 historical Aliyun manual CI fallback until the local Linux transition is
   validated
+HP local-ci-a lane selection: ci-smoke, ci-full, ci-visual
 clean-environment validation evidence when required
 validation records for PRs or handoffs
 failure logs with secrets redacted
@@ -60,6 +61,7 @@ which commit or branch was validated
 whether it passed or failed
 whether GitHub-hosted CI was blocked before job execution
 whether manual CI fallback was used
+which HP lane was selected when HP manual CI was used
 whether cleanup was completed for manual validation hosts
 ```
 
@@ -84,6 +86,12 @@ deployment approval. Manual CI fallback is not staging, not production, and not
 a self-hosted runner assumption. The current target is to move routine manual
 CI to local Linux so the Aliyun server can be evaluated separately as the
 production subscription control-plane candidate.
+
+HP lane selection is a validation-scope decision, not an infrastructure
+promotion decision. `ci-smoke` is local confidence, `ci-full` is clean-host
+archive validation, and `ci-visual` is browser/rendering evidence. None of
+those lanes authorizes staging, deploy, production traffic, node promotion, or
+subscription artifact mutation.
 
 ## Inputs
 
@@ -213,6 +221,8 @@ keep GitHub Actions billing/spending-limit blockers framed as runner
 add validation records only where they affect PR review, handoff, or current
   project state
 keep local Linux manual CI aligned with GitHub Actions command sequence
+keep HP lane selection explicit so docs-only, implementation, and visual PRs do
+  not all escalate to full clean-host runs by default
 keep historical Aliyun manual CI evidence available while moving routine CI off
   the future production control-plane candidate
 ensure manual CI cleanup remains part of every manual validation record

@@ -332,6 +332,8 @@ Latest local Linux CI candidate inventory:
 - Per-run workspace, archive, npm cache, GitHub config, and git credentials
   were cleaned after validation.
 - Aliyun CI cleanup has been completed; HP is now the manual CI lane.
+- HP manual CI is split into `ci-smoke`, `ci-full`, and `ci-visual`; not every
+  PR should trigger every lane.
 
 Latest Aliyun CI cleanup / subscription-control candidate inventory:
 
@@ -425,6 +427,8 @@ Short version:
 - Server/shared code: `npm test` plus diff check
 - Admin UI: `npm run admin:test`, `npm run admin:build`, `npm test`, and diff
   check
+- Manual CI lanes: `ci-smoke`, `ci-full`, and `ci-visual` are selected per
+  `docs/CI_MANUAL_VALIDATION.md`; the Codex skill maps to `ci-full`
 - A-tier work: runbook-specific validation only; there is no generic shortcut
 
 Latest PR #111 validation before merge:
