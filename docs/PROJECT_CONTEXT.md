@@ -95,13 +95,12 @@ Current architecture priorities:
 - Validation / CI: move manual CI toward a local Linux validation host so the
   future production subscription control plane does not also run repository
   validation workloads.
-- Local Edge Agent: keep Clash/Mihomo as routing/UI while a loopback-only local
-  adapter can eventually carry traffic over platform-controlled channels.
-- Local Edge Channel Technical MVP: define the next technical MVP as the
-  shortest safe path to prove frontier-grade transport capability through the
-  Local Edge Agent channel manager, not as a lowest-tech proxy. SS remains the
-  baseline; VLESS/XUDP is the first candidate; QUIC/MPTCP stay research items
-  until measured in controlled canaries.
+- Channel Upgrade MVP: prioritize Clash/Mihomo-native subscription rendering
+  for multi-protocol channel candidates. SS remains the baseline; VLESS/XUDP,
+  Hysteria2, and TUIC are renderer-supported candidate families; QUIC/MPTCP stay
+  research items until measured in controlled canaries.
+- Local Edge Agent: keep as a parked future node/agent adaptation asset, not
+  the current mainline for the next channel-upgrade slice.
 - Server Edge Mesh: plan private edge-to-edge health, management, validation,
   and recovery paths. It is not a user VPN and does not authorize WireGuard
   execution by itself.

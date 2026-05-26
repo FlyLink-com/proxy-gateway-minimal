@@ -35,7 +35,7 @@ Shadowsocks-only data plane
 Clash/Mihomo direct remote-node connection
 ```
 
-The new technical MVP is separate:
+The new technical MVP is separate. The long-term client-side shape can still be:
 
 ```text
 Local Edge Agent
@@ -44,10 +44,14 @@ Local Edge Agent
   -> measured data-plane quality loop
 ```
 
-It should prove whether a platform-controlled local loopback adapter plus
-pluggable remote channels can improve real proxy-session stability, quality,
-resilience, and observability without changing the user's main Clash/Mihomo
-workflow.
+The immediate implementation track is simpler: use Clash/Mihomo's native
+protocol support first, and make the subscription renderer express channel
+candidates directly in YAML. The Local Edge Agent remains a parked future
+node/agent adaptation asset until that line is explicitly reopened.
+
+The MVP should prove whether platform-controlled channel candidates can improve
+real proxy-session stability, quality, resilience, and observability without
+changing the user's main Clash/Mihomo workflow.
 
 ## Safety Boundary
 
@@ -80,6 +84,8 @@ flowchart LR
   subgraph "Remote Edge Candidates"
     SS["SS baseline"]
     VLESS["VLESS / XUDP candidate"]
+    HY2["Hysteria2 candidate"]
+    TUIC["TUIC candidate"]
     QUIC["QUIC research candidate"]
     Future["future multi-path / PEP candidate"]
   end
@@ -95,10 +101,14 @@ flowchart LR
   AgentProxy --> Manager
   Manager --> SS
   Manager --> VLESS
+  Manager --> HY2
+  Manager --> TUIC
   Manager -.-> QUIC
   Manager -.-> Future
   SS --> Canary
   VLESS --> Canary
+  HY2 --> Canary
+  TUIC --> Canary
   QUIC -.-> Canary
   Future -.-> Canary
   ProdA -.->|"not used for aggressive experiments"| Manager
@@ -182,6 +192,52 @@ smux
 This makes VLESS/XUDP a reasonable canary candidate, but not a production
 promise.
 
+### Hysteria2 / TUIC Candidates
+
+Hysteria2 and TUIC are additional Clash/Mihomo-native candidate families for the
+direct subscription renderer track. They belong in the same repository-only
+renderer contract as VLESS/XUDP until a separate A-tier runtime canary approves
+remote service deployment, node config activation, and rollback.
+
+The renderer contract can express Hysteria2 fields such as:
+
+```text
+ports
+hop-interval
+password
+up / down
+obfs
+obfs-password
+sni
+skip-cert-verify
+fingerprint
+alpn
+bbr-profile
+```
+
+The renderer contract can express TUIC fields such as:
+
+```text
+token
+uuid
+password
+udp-relay-mode
+congestion-controller
+bbr-profile
+sni
+alpn
+disable-sni
+reduce-rtt
+request-timeout
+max-udp-relay-packet-size
+fast-open
+skip-cert-verify
+max-open-streams
+```
+
+These fields are a renderer capability, not proof that matching edge runtime
+services have been deployed.
+
 ### QUIC Research Candidate
 
 QUIC is a UDP-based multiplexed secure transport with connection migration
@@ -262,11 +318,30 @@ Risk: C
 Scope: docs-only
 Output:
   this document
-  VLESS/XUDP canary matrix
+  VLESS/XUDP/Hysteria2/TUIC canary matrix
   protocol source notes
 ```
 
 No runtime, protocol deployment, edge mutation, or production change.
+
+### Stage 1A: Repository-Only Direct Subscription Channel Renderer
+
+```text
+Risk: B
+Scope:
+  Clash/Mihomo-native multi-protocol renderer
+  SS baseline
+  VLESS/XUDP candidate fields
+  Hysteria2 candidate fields
+  TUIC candidate fields
+  url-test / fallback groups
+  fail-closed unsupported protocols
+  no production config change
+```
+
+This is the current mainline for channel upgrade. It uses the existing
+Clash/Mihomo client as the protocol executor and keeps remote runtime deployment
+as a separate A-tier gate.
 
 ### Stage 1: Repository-Only Agent Channel Harness
 
@@ -340,6 +415,10 @@ External protocol references used for this design:
   `https://xtls.github.io/en/config/outbound.html`
 - MetaCubex Mihomo VLESS docs:
   `https://wiki.metacubex.one/config/proxies/vless/`
+- MetaCubex Mihomo Hysteria2 docs:
+  `https://wiki.metacubex.one/en/config/proxies/hysteria2/`
+- MetaCubex Mihomo TUIC docs:
+  `https://wiki.metacubex.one/en/config/proxies/tuic/`
 - RFC 9000 QUIC:
   `https://www.rfc-editor.org/rfc/rfc9000`
 - RFC 8684 MPTCP:

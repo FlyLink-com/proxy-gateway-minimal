@@ -231,7 +231,8 @@ Risk A production node-config work unless the change is purely local/test.
 
 ## Clash YAML Renderer
 
-`generateClashSubscription(...)` currently emits Shadowsocks nodes only:
+`generateClashSubscription(...)` emits Clash/Mihomo proxy entries from the
+configured edge node protocol. Current repository support includes:
 
 ```text
 type: ss
@@ -239,17 +240,63 @@ server
 port
 cipher
 password
+
+type: vless
+server
+port
+uuid
+udp
+packet-encoding
+tls
+servername
+network
+flow
+client-fingerprint
+
+type: hysteria2
+server
+port
+password
+ports
+hop-interval
+up / down
+obfs
+obfs-password
+sni
+skip-cert-verify
+fingerprint
+alpn
+bbr-profile
+
+type: tuic
+server
+port
+uuid
+password
+token
+udp-relay-mode
+congestion-controller
+bbr-profile
+sni
+alpn
+disable-sni
+reduce-rtt
+request-timeout
+max-udp-relay-packet-size
+fast-open
+skip-cert-verify
+max-open-streams
 ```
 
-It creates one `GLOBAL` select group and adds `DIRECT` as the final option.
+It creates `AUTO` url-test, `FALLBACK`, and `GLOBAL` select groups, then adds
+`DIRECT` as the final option. Unsupported protocols fail closed instead of
+being silently omitted or emitted.
 
-The renderer does not currently emit mixed protocol fields such as:
+The renderer does not currently emit other mixed protocol fields such as:
 
 ```text
 ws-opts
-tls
 sni
-vless
 vmess
 trojan
 reality
@@ -311,7 +358,7 @@ automatic carrier / ISP / region / ASN detection
 automatic DPI or SNI failure detection
 automatic node reassignment based on carrier conditions
 WebSocket + TLS mixed-protocol subscription output
-VLESS / VMess / Trojan / Reality / gRPC subscription rendering
+VMess / Trojan / Reality / gRPC subscription rendering
 blackhole node semantics
 automatic abuse blocking or carrier-aware abuse detection
 traffic accounting
@@ -366,14 +413,14 @@ Subscription V2 node selection
 operator-only tenant node assignment
 device-scoped opaque artifact repository/core/routes/admin support
 expired / disabled token-resolution blocking
-Shadowsocks-only Clash YAML output
+Shadowsocks, VLESS, Hysteria2, and TUIC Clash YAML output
 ```
 
 Not implemented today:
 
 ```text
 automatic carrier/DPI detection
-mixed protocol or obfuscation matrix
+full mixed protocol or obfuscation matrix
 blackhole node semantics
 automatic carrier-aware abuse detection
 traffic accounting or quota enforcement
