@@ -92,6 +92,7 @@
       "primaryDocs": [
         "docs/units/EDGE_NODE_UNIT.md",
         "docs/PRODUCTION_EDGE_FLEET.md",
+        "docs/CHANNEL_CANARY_SERVER_SELECTION.md",
         "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md",
         "docs/NODE_NAMING.md",
         "docs/PRODUCTION_REPLACEMENT.md",

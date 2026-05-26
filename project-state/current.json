@@ -15,6 +15,7 @@
     "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
     "docs/CHANNEL_STRATEGY_ENGINE.md",
+    "docs/CHANNEL_CANARY_SERVER_SELECTION.md",
     "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md",
     "docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md",
     "docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md",
@@ -61,6 +62,7 @@
     "Channel Measurement Scoring for advisory quality tiers and recommended pools from local benchmark summaries",
     "Channel Candidate Reports for safe operator review of dry-run config metadata joined with measurement scores",
     "Channel runtime canary execution remains gated by docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md after repository renderer/config support",
+    "Channel runtime canary server selection and execution remain gated by docs/CHANNEL_CANARY_SERVER_SELECTION.md and docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md after repository renderer/config support",
     "Local Edge Agent as loopback-only client adapter prototype",
     "Server Edge Mesh as private operator/edge management path",
     "Project Control Plane with machine-readable state files"
@@ -127,7 +129,7 @@
     },
     {
       "id": "risk-a-gated-work",
-      "summary": "C/B simplification backlog is closed; remaining A-tier work needs runbooks, live inventory, explicit approval, validation, and rollback evidence. Channel runtime canaries are gated by docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md.",
+      "summary": "C/B simplification backlog is closed; remaining A-tier work needs runbooks, live inventory, explicit approval, validation, and rollback evidence. Channel runtime canary server selection is gated by docs/CHANNEL_CANARY_SERVER_SELECTION.md before runtime deployment under docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md.",
       "sourceDoc": "docs/PROJECT_CONTEXT.md"
     },
     {
@@ -157,6 +159,7 @@
     }
   ],
   "nextRecommendedQueue": [
+    "channel canary server selection read-only inventory",
     "clean edge node rebuild planning",
     "Aliyun subscription distribution promotion planning with accepted outage context",
     "rollback-start approval for stopped AWS Singapore nodes if temporary restore is needed",
