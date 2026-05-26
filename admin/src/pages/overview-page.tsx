@@ -36,7 +36,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
       <div className="page-heading">
         <div>
           <h2>Service overview</h2>
-          <p className="muted">Current production subscription service summary.</p>
+          <p className="muted">Private subscription-control platform summary.</p>
         </div>
       </div>
 
@@ -49,11 +49,29 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
         <Metric label="Expiring" value={overview?.expiring ?? 0} />
         <Metric label="Disabled / expired" value={(overview?.disabled ?? 0) + (overview?.expired ?? 0)} />
       </div>
+
+      <div className="page-heading">
+        <div>
+          <h2>Subscription distribution</h2>
+          <p className="muted">Repository-configured V2 rendering readiness for operator review.</p>
+        </div>
+      </div>
+      <div className="metric-grid">
+        <Metric label="Readiness" value={overview?.distribution.ready ? "Ready" : "Blocked"} />
+        <Metric label="Eligible nodes" value={overview?.distribution.eligibleNodes ?? 0} />
+        <Metric label="Blocked nodes" value={overview?.distribution.blockedNodes ?? 0} />
+        <Metric label="Blockers" value={overview?.distribution.blockers.length ?? 0} />
+      </div>
+      {overview?.distribution.blockers.length ? (
+        <div className="alert alert-error">
+          {overview.distribution.blockers.join(", ")}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="metric-card">
       <span>{label}</span>
