@@ -26,7 +26,8 @@ function candidateConfig() {
         port: 18388,
         protocol: "ss",
         method: "aes-256-gcm",
-        password: "${SS_PASSWORD}"
+        password: "${SS_PASSWORD}",
+        qualityClass: "stable"
       },
       {
         name: "vless-candidate",
@@ -42,7 +43,8 @@ function candidateConfig() {
         host: "hy2.example.test",
         port: 443,
         protocol: "hysteria2",
-        password: "${HY2_PASSWORD}"
+        password: "${HY2_PASSWORD}",
+        qualityClass: "weak-network"
       },
       {
         name: "tuic-candidate",
@@ -51,7 +53,8 @@ function candidateConfig() {
         protocol: "tuic",
         uuid: "${TUIC_UUID}",
         password: "${TUIC_PASSWORD}",
-        token: "${TUIC_TOKEN}"
+        token: "${TUIC_TOKEN}",
+        quality: "weak-network"
       }
     ]
   };
@@ -81,10 +84,10 @@ test("dryRunChannelConfig validates and summarizes channel candidates without se
     });
     assert.equal(summary.generatedYamlBytes > 0, true);
     assert.deepEqual(summary.servers, [
-      { name: "ss-baseline", host: "ss.example.test", port: 18388, protocol: "ss" },
-      { name: "vless-candidate", host: "vless.example.test", port: 443, protocol: "vless" },
-      { name: "hy2-candidate", host: "hy2.example.test", port: 443, protocol: "hysteria2" },
-      { name: "tuic-candidate", host: "tuic.example.test", port: 10443, protocol: "tuic" }
+      { name: "ss-baseline", host: "ss.example.test", port: 18388, protocol: "ss", qualityClass: "stable" },
+      { name: "vless-candidate", host: "vless.example.test", port: 443, protocol: "vless", qualityClass: "" },
+      { name: "hy2-candidate", host: "hy2.example.test", port: 443, protocol: "hysteria2", qualityClass: "weak-network" },
+      { name: "tuic-candidate", host: "tuic.example.test", port: 10443, protocol: "tuic", qualityClass: "weak-network" }
     ]);
     assert.doesNotMatch(JSON.stringify(summary), /ss-secret|hy2-secret|tuic-secret|tuic-token|11111111|22222222/);
   });
@@ -121,6 +124,7 @@ test("dryRunChannelConfig returns a safe local benchmark plan without connecting
           name: "ss-baseline",
           protocol: "ss",
           role: "baseline",
+          qualityClass: "stable",
           host: "ss.example.test",
           port: 18388,
           checks: ["clash-render", "tcp-connect", "http-generate-204-through-proxy"],
@@ -130,6 +134,7 @@ test("dryRunChannelConfig returns a safe local benchmark plan without connecting
           name: "vless-candidate",
           protocol: "vless",
           role: "candidate",
+          qualityClass: "",
           host: "vless.example.test",
           port: 443,
           checks: ["clash-render", "tcp-connect", "http-generate-204-through-proxy", "sustained-session"],
@@ -139,6 +144,7 @@ test("dryRunChannelConfig returns a safe local benchmark plan without connecting
           name: "hy2-candidate",
           protocol: "hysteria2",
           role: "candidate",
+          qualityClass: "weak-network",
           host: "hy2.example.test",
           port: 443,
           checks: ["clash-render", "tcp-connect", "http-generate-204-through-proxy", "sustained-session"],
@@ -148,6 +154,7 @@ test("dryRunChannelConfig returns a safe local benchmark plan without connecting
           name: "tuic-candidate",
           protocol: "tuic",
           role: "candidate",
+          qualityClass: "weak-network",
           host: "tuic.example.test",
           port: 10443,
           checks: ["clash-render", "tcp-connect", "http-generate-204-through-proxy", "sustained-session"],

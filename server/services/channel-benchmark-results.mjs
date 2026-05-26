@@ -32,6 +32,10 @@ function textField(value, fieldName) {
   return text;
 }
 
+function optionalMetadataToken(value) {
+  return String(value ?? "").trim().toLowerCase().replace(/[\s_]+/g, "-");
+}
+
 function requiredNonNegativeNumber(value, fieldName) {
   const number = Number(value);
   if (!Number.isFinite(number) || number < 0) {
@@ -83,8 +87,18 @@ function percentileSummary(values) {
   };
 }
 
-function createProbeSummary({ name, protocol, role }) {
+function withQualityClass(payload, qualityClass) {
+  if (!qualityClass) {
+    return payload;
+  }
   return {
+    ...payload,
+    qualityClass
+  };
+}
+
+function createProbeSummary({ name, protocol, role, qualityClass }) {
+  return withQualityClass({
     name,
     protocol,
     role,
@@ -96,11 +110,11 @@ function createProbeSummary({ name, protocol, role }) {
     durations: [],
     connectTimes: [],
     firstByteTimes: []
-  };
+  }, qualityClass);
 }
 
 function finalizeProbe(probe) {
-  return {
+  return withQualityClass({
     name: probe.name,
     protocol: probe.protocol,
     role: probe.role,
@@ -115,14 +129,14 @@ function finalizeProbe(probe) {
       connect: percentileSummary(probe.connectTimes),
       timeToFirstByte: percentileSummary(probe.firstByteTimes)
     }
-  };
+  }, probe.qualityClass);
 }
 
 function normalizePlanProbe(probe) {
   if (!isObject(probe)) {
     throw new Error("benchmark plan probe must be an object");
   }
-  return {
+  return withQualityClass({
     probeName: textField(probe.name, "probe.name"),
     protocol: textField(probe.protocol, "probe.protocol"),
     role: textField(probe.role, "probe.role"),
@@ -131,7 +145,7 @@ function normalizePlanProbe(probe) {
     connectTimeMs: 0,
     timeToFirstByteMs: 0,
     errorClass: "unknown_failure"
-  };
+  }, optionalMetadataToken(probe.qualityClass));
 }
 
 export function createChannelBenchmarkFixtureFromPlan(plan, { generatedAt = new Date().toISOString() } = {}) {
@@ -206,15 +220,16 @@ export function summarizeChannelBenchmarkResults(samples, { generatedAt = new Da
     const name = textField(sample.probeName ?? sample.name, "probeName");
     const protocol = textField(sample.protocol, "protocol");
     const role = textField(sample.role, "role");
+    const qualityClass = optionalMetadataToken(sample.qualityClass);
     const ok = booleanField(sample.ok, "ok");
     const durationMs = requiredNonNegativeNumber(sample.durationMs, "durationMs");
     const connectTimeMs = optionalNonNegativeNumber(sample.connectTimeMs, "connectTimeMs");
     const timeToFirstByteMs = optionalNonNegativeNumber(sample.timeToFirstByteMs, "timeToFirstByteMs");
-    const key = `${name}\u0000${protocol}\u0000${role}`;
+    const key = `${name}\u0000${protocol}\u0000${role}\u0000${qualityClass}`;
 
     let probe = probes.get(key);
     if (!probe) {
-      probe = createProbeSummary({ name, protocol, role });
+      probe = createProbeSummary({ name, protocol, role, qualityClass });
       probes.set(key, probe);
     }
 

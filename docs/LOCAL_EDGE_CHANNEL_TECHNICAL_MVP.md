@@ -337,6 +337,7 @@ Scope:
   protocol-specific config placeholder contract
   public config redaction for protocol credentials
   url-test / fallback groups
+  quality-class proxy groups for long-haul path selection
   fail-closed unsupported protocols
   no production config change
 ```
@@ -357,6 +358,31 @@ The dry-run loads the config, validates protocol families and required fields,
 renders Clash YAML in memory, and prints only a safe JSON summary with a local
 benchmark plan. It does not connect to a remote node, deploy protocol runtime,
 mutate production config, or print credentials.
+
+The renderer can use provider-neutral node metadata for client-side path
+selection without exposing that metadata as Clash proxy fields. Supported
+metadata today:
+
+```text
+qualityClass / quality / channelQuality:
+  stable
+  weak-network
+  long-haul
+  high-loss
+
+channelRole / role:
+  baseline
+  candidate
+  canary
+```
+
+When weak-network, long-haul, or high-loss nodes are present, the YAML includes
+a dedicated `WEAK-NETWORK` `url-test` group with a conservative tolerance for
+long-distance path variance. When stable nodes are present, the YAML includes a
+`STABLE` fallback group. `GLOBAL` remains a user-visible `select` group and
+keeps `AUTO`, quality groups, `FALLBACK`, individual nodes, and `DIRECT`
+available. This is still repository-only rendering behavior; it does not deploy
+matching protocol runtimes or activate any production node.
 
 Repository-local benchmark result aggregation is available as a code-level
 building block through `summarizeChannelBenchmarkResults(...)`. It consumes
@@ -380,9 +406,9 @@ npm run channel:benchmark-fixture -- channel-dry-run.json > channel-samples.json
 ```
 
 The fixture generator reads only the local dry-run summary and copies only
-provider-neutral probe name, protocol, and role into sample placeholders. It
-does not copy dry-run probe hosts, ports, checks, or UDP flags into the sample
-fixture, and it does not execute benchmark probes.
+provider-neutral probe name, protocol, role, and quality class into sample
+placeholders. It does not copy dry-run probe hosts, ports, checks, or UDP flags
+into the sample fixture, and it does not execute benchmark probes.
 
 The preferred local fixture shape is versioned:
 
@@ -395,6 +421,7 @@ The preferred local fixture shape is versioned:
       "probeName": "ss-baseline",
       "protocol": "ss",
       "role": "baseline",
+      "qualityClass": "stable",
       "ok": true,
       "durationMs": 100,
       "connectTimeMs": 30,
