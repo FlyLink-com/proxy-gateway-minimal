@@ -366,6 +366,17 @@ target URLs, raw errors, tokens, or credentials. It does not run probes, open
 network connections, mutate runtime state, or authorize production canaries by
 itself.
 
+The same aggregation is available as a local CLI for already-collected samples:
+
+```bash
+npm run channel:benchmark-summary -- <path-to-local-samples.json>
+```
+
+The sample file may be either an array of samples or an object with a `samples`
+array and optional `generatedAt`. The command only reads the local file and
+prints a redacted JSON summary; it does not execute benchmark probes, contact
+edge nodes, or read production state.
+
 #### Stage 1A Config Contract Design
 
 Design intent:
