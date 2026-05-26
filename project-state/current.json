@@ -28,6 +28,7 @@
     "docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md",
     "docs/production-replacement-records/2026-05-26-channel-lab-a-creation.md",
     "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-runtime.md",
+    "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-operator-device-canary.md",
     "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/VALIDATION_BASELINE.md"
@@ -137,8 +138,8 @@
     },
     {
       "id": "channel-canary-server-selection",
-      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance exists and Hysteria2 v2.9.2 is active with host-only smoke validation, but operator-device canary traffic, DNS, production config, subscription output, and cleanup remain gated.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-runtime.md"
+      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance exists, Hysteria2 v2.9.2 is active, and one controlled operator-device short canary passed. Extended measurement, DNS, production config, subscription output, broader rollout, and cleanup remain gated.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-operator-device-canary.md"
     },
     {
       "id": "aliyun-control-local-ci-rebuild",
@@ -167,7 +168,7 @@
     }
   ],
   "nextRecommendedQueue": [
-    "channel-lab-a controlled operator-device Hysteria2 canary or cleanup decision",
+    "channel-lab-a extended Hysteria2 measurement, controlled Mihomo import validation, or cleanup decision",
     "clean edge node rebuild planning",
     "Aliyun subscription distribution promotion planning with accepted outage context",
     "rollback-start approval for stopped AWS Singapore nodes if temporary restore is needed",

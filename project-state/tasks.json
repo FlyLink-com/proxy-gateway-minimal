@@ -17,6 +17,7 @@
     "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/CHANNEL_STRATEGY_ENGINE.md",
+    "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-operator-device-canary.md",
     "docs/MULTI_AGENT_OPERATING_MODEL.md"
   ],
   "tasks": [
@@ -301,7 +302,7 @@
     {
       "id": "A0-channel-canary-server-selection",
       "risk": "A",
-      "status": "runtime-deployed-blocked-before-operator-device-canary-or-cleanup-approval",
+      "status": "operator-device-short-canary-passed-blocked-before-extended-measurement-broader-rollout-or-cleanup-approval",
       "lane": "edge-data-plane",
       "title": "Select clean server for channel runtime canary",
       "goal": "Choose a disposable provider-neutral canary server for one protocol family after long-haul path, UDP, lifecycle, security, metrics, and rollback checks.",
