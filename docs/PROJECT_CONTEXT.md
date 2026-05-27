@@ -239,6 +239,13 @@ Current architecture priorities:
   initialized candidate-only in-memory validation state, and passed private
   clean-start rendering metadata checks. No DNS, public listener, public Admin,
   provider firewall, AWS, historical state-copy, edge traffic, user traffic, or
+  production authority transfer was performed. The provider-firewall hardening
+  execution record is
+  `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-execution.md`;
+  it removed broad provider inbound rules and left only current operator
+  management `/32` access for SSH and the existing wg-home UDP lab path. Public
+  80/443/3456/18080 remain closed, AliDNS is unchanged, and no public-boundary
+  dry run, DNS promotion, user traffic, edge traffic, AWS mutation, or
   production authority transfer was performed.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
@@ -449,8 +456,10 @@ operator approval, validation, and rollback path exist:
   The latest clean-start private validation execution attempt is
   `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-execution.md`;
   it passed after candidate runtime refresh and private metadata-only
-  validation. Provider-firewall hardening remains required before any
-  public-boundary dry run or DNS promotion.
+  validation. The latest provider-firewall hardening execution record is
+  `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-execution.md`;
+  provider-level public 80/443/3456/18080 remain closed. A public-boundary dry
+  run and DNS promotion remain separate A-tier gates.
 - Clean fallback `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
