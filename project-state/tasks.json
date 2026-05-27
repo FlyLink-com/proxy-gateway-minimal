@@ -694,6 +694,48 @@
       ]
     },
     {
+      "id": "B17-admin-approval-policy-review",
+      "risk": "B",
+      "status": "completed-in-pr-193",
+      "lane": "subscription-control-plane",
+      "title": "Render Aliyun approval policy metadata in Admin Overview",
+      "goal": "Let operators review exact-phrase fail-closed approval policy metadata in the protected Admin Overview Aliyun gate surface without exposing approval phrase text, submission routes, or execution controls.",
+      "allowedFiles": [
+        "admin/src/features/subscriptions/types.ts",
+        "admin/src/pages/overview-page.tsx",
+        "admin/src/test/subscriptions.test.ts",
+        "admin/src/styles.css",
+        "docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate Aliyun runtime",
+        "change DNS",
+        "change provider firewall",
+        "change UFW",
+        "submit or execute approval phrases",
+        "render raw approval phrase text",
+        "add approval submission routes",
+        "add execution controls",
+        "initialize candidate state",
+        "copy state",
+        "mutate AWS",
+        "open a public listener",
+        "move user traffic",
+        "move edge traffic",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm run admin:test -- subscriptions.test.ts",
+        "npm run admin:test",
+        "npm run admin:build",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "C4-tuic-comparison-canary-plan",
       "risk": "C",
       "status": "completed-in-pr-174",
