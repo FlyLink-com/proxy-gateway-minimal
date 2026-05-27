@@ -943,6 +943,14 @@ simplification queue is closed:
   evidence and the subscription renderer without returning YAML, exposing
   hosts/ports/credentials/tokens, changing subscription output, contacting
   edge nodes, deploying runtime, moving traffic, or activating production.
+- `B40-channel-subscription-activation-package` - completed in the Channel
+  Subscription Activation Package work; repository-local helpers and CLI
+  scripts can now combine a safe activation-flow fixture, render proof against
+  local proxy config, and execution-record template readiness into one safe
+  subscription-output activation request package. The package does not return
+  YAML or record Markdown and does not submit approval, expose execution
+  controls, change subscription output, contact edge nodes, deploy runtime,
+  move traffic, or activate production.
 - `B28-channel-lab-target-decision` - completed in the Channel Lab Target
   Decision work; the protected Admin platform route and Admin Overview can now
   convert safe target inventory packets into an advisory next target gate after

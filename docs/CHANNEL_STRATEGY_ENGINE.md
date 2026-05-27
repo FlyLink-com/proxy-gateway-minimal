@@ -363,6 +363,32 @@ hosts, ports, URLs, credentials, raw logs, tokens, subscription URLs, and YAML.
 It does not contact edge nodes, deploy runtimes, submit approvals, expose
 execution routes, move traffic, or authorize production activation.
 
+`buildChannelSubscriptionActivationPackage(...)` is the repository-local package
+layer after render proof. It consumes the same safe activation-flow fixture and
+local proxy config, builds the render proof, checks the execution-record
+template readiness, and emits one safe subscription-output activation request
+package. The package requires both proof pieces before marking the later A-tier
+request as ready:
+
+```text
+activation-flow fixture
+  -> render proof against local proxy config
+  -> record-template readiness
+  -> subscription-output activation package
+```
+
+The CLI helper is:
+
+```bash
+npm run channel:subscription-activation-package -- <path-to-activation-flow-fixture.json> <path-to-proxy-servers.json>
+```
+
+The package does not return YAML or record Markdown. It returns only safe
+metadata such as proof status, rendered proxy count, protocol counts, suggested
+record path, blocker codes, and approval-readiness booleans. It does not submit
+approval phrases, expose execution routes, change subscription output, contact
+edge nodes, deploy runtimes, move traffic, or activate production.
+
 `buildChannelLabTargetDecision(...)` is the repository-local target decision
 layer after a read-only runtime inventory finds that the current lab target is
 not directly deployable. It accepts only a safe target inventory packet, then

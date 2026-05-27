@@ -25,6 +25,7 @@ export { buildChannelRuntimeGatePacket } from "./server/services/channel-runtime
 export { buildChannelRuntimeInventorySummary } from "./server/services/channel-runtime-inventory-summary.mjs";
 export { buildChannelRuntimeRegistry } from "./server/services/channel-runtime-registry.mjs";
 export { buildChannelSubscriptionActivationFlow } from "./server/services/channel-subscription-activation-flow.mjs";
+export { buildChannelSubscriptionActivationPackage } from "./server/services/channel-subscription-activation-package.mjs";
 export { buildChannelSubscriptionActivationRecordTemplate } from "./server/services/channel-subscription-activation-record-template.mjs";
 export {
   CHANNEL_SUBSCRIPTION_ACTIVATION_FLOW_FIXTURE_SCHEMA_VERSION,
