@@ -591,7 +591,7 @@
     {
       "id": "C6-aliyun-a-tier-execution-record-templates",
       "risk": "C",
-      "status": "completed-in-current-branch",
+      "status": "completed-in-pr-189",
       "lane": "subscription-control-plane",
       "title": "Add Aliyun next A-tier execution-record templates",
       "goal": "Provide safe dated execution-record skeletons for clean-start private validation and provider-firewall hardening without granting execution authority or allowing sensitive output.",
