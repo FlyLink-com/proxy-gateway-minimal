@@ -62,6 +62,7 @@
     "channel:measurement-bundle": "node scripts/channel-measurement-bundle.mjs",
     "channel:measurement-investigation": "node scripts/channel-measurement-investigation.mjs",
     "channel:runtime-gate-packet": "node scripts/channel-runtime-gate-packet.mjs",
+    "channel:runtime-evidence-bridge": "node scripts/channel-runtime-evidence-bridge.mjs",
     "channel:runtime-inventory-summary": "node scripts/channel-runtime-inventory-summary.mjs",
     "channel:runtime-registry": "node scripts/channel-runtime-registry.mjs",
     "channel:system-decision-flow": "node scripts/channel-system-decision-flow.mjs",
