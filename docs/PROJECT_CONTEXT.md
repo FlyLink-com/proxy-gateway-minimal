@@ -143,6 +143,17 @@ Current architecture priorities:
   exist. It does not expose raw customer portal URLs, artifact references,
   subscription URLs, SQLite persistence, Aliyun deployment, production storage,
   public portal resolution, DNS, or user traffic.
+- Platform Resource Package CLI: repository-only local tooling can combine
+  account, entitlement, subscription access grant, and optional channel
+  activation package summaries into an operator-safe resource package through
+  `server/services/platform/resource-package.mjs` and
+  `scripts/platform-resource-package.mjs`. It returns only safe delivery
+  metadata, hashed customer/operator references, blockers, next action, and
+  safety flags. It does not expose organization names, customer emails, raw
+  portal URLs, artifact references, subscription URLs, tokens, credentials,
+  node hosts, raw ports, YAML, approval phrases, public routes, approval
+  submission, execution controls, SQLite persistence, Aliyun deployment, DNS,
+  production storage, user traffic, edge traffic, or production authority.
 - Platform Clean-Start Package: repository-only clean-start readiness support
   lives in `server/services/platform/clean-start-control-plane.mjs` and the
   protected Admin route `/api/admin/platform/clean-start`. It summarizes
