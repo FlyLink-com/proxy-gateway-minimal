@@ -302,7 +302,13 @@ Current architecture priorities:
   with a matching execution template in
   `docs/production-replacement-records/templates/aliyun-aegis-service-repair-execution-template.md`.
   It requires an exact approval phrase and is limited to Aegis-only process
-  cleanup and service restart with proxy-gateway health guards.
+  cleanup and service restart with proxy-gateway health guards. A fresh
+  read-only preflight is recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-preflight.md`;
+  it confirms the subscription boundary remains healthy, public Admin remains
+  blocked, 3456/18080 remain externally closed from HP, SQLite integrity and
+  safe aggregates are ok, and `aegis.service` is still failed due to leftover
+  Aegis process state. No Aegis repair mutation has been performed.
 - Clean Edge Node Rebuild Gate: the next clean edge data-plane rebuild gate is
   defined in
   `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md`,
@@ -476,6 +482,13 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   post-repair validation, and sensitive-output boundaries. It does not execute
   Aegis process cleanup, service restart, reinstall, disablement, reboot, or
   any DNS / Nginx / proxy-gateway / firewall / AWS / tenant / edge mutation.
+- The fresh Aegis repair preflight is recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-preflight.md`.
+  It confirms the Aliyun subscription boundary is still healthy, Admin/no-token
+  behavior remains safe, private ports remain externally closed from HP,
+  SQLite integrity and safe aggregate counts are ok, and `aegis.service`
+  remains failed with leftover Aegis process evidence. It does not execute
+  repair mutation and still requires the exact Aegis repair approval phrase.
 - The clean edge node rebuild runbook is recorded in
   `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md`.
   It defines the exact approval phrase, clean edge host/bootstrap/private
