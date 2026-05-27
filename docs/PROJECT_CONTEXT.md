@@ -935,6 +935,14 @@ simplification queue is closed:
   review-only and does not expose approval submission, execution controls, YAML
   generation, subscription-output mutation, edge-node contact, runtime
   deployment, traffic movement, or production activation.
+- `B39-channel-subscription-render-proof` - completed in the Channel
+  Subscription Render Proof work; repository-local helpers and CLI scripts can
+  now match a safe activation-flow fixture against a local proxy config,
+  internally render the selected Clash/Mihomo output, and return only a safe
+  proof summary. This closes a repo-side integration check between activation
+  evidence and the subscription renderer without returning YAML, exposing
+  hosts/ports/credentials/tokens, changing subscription output, contacting
+  edge nodes, deploying runtime, moving traffic, or activating production.
 - `B28-channel-lab-target-decision` - completed in the Channel Lab Target
   Decision work; the protected Admin platform route and Admin Overview can now
   convert safe target inventory packets into an advisory next target gate after

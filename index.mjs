@@ -36,6 +36,7 @@ export {
 export { buildChannelSubscriptionActivationHandoff } from "./server/services/channel-subscription-activation-handoff.mjs";
 export { buildChannelSubscriptionActivationReadiness } from "./server/services/channel-subscription-activation-readiness.mjs";
 export { buildChannelSubscriptionOutputDraft } from "./server/services/channel-subscription-output-draft.mjs";
+export { buildChannelSubscriptionRenderProof } from "./server/services/channel-subscription-render-proof.mjs";
 export { buildChannelSystemDecisionFlow } from "./server/services/channel-system-decision-flow.mjs";
 export { buildAccessModelInventorySummary } from "./server/services/platform/access-model-inventory-summary.mjs";
 export { buildCleanEdgeReadinessSummary } from "./server/services/clean-edge-readiness-summary.mjs";
