@@ -7,6 +7,7 @@ import type {
   AliyunGateEvidenceSummary,
   ChannelRuntimeEvidenceBridge,
   ChannelRuntimeEvidenceBridgeInput,
+  ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
@@ -83,6 +84,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
       <ChannelSystemReviewPanel apiClient={apiClient} />
       <ChannelRuntimeEvidenceBridgePanel apiClient={apiClient} />
       <ChannelRuntimeGateWorkbenchPanel apiClient={apiClient} />
+      <ChannelRuntimeExecutionHandoffPanel apiClient={apiClient} />
       <AliyunGateReviewPanel apiClient={apiClient} />
     </div>
   );
@@ -438,6 +440,96 @@ function ChannelRuntimeGateWorkbenchPanel({ apiClient }: { apiClient: AdminApiCl
                 {!workbench.gate.approvalPolicy.approvalPhraseEchoed
                   ? "Approval phrase not echoed"
                   : "Approval phrase echoed"}
+              </li>
+            </ul>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ChannelRuntimeExecutionHandoffPanel({ apiClient }: { apiClient: AdminApiClient }) {
+  const [packetText, setPacketText] = useState("");
+  const [handoff, setHandoff] = useState<ChannelRuntimeExecutionHandoff | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewing(true);
+    setError("");
+    try {
+      const input = parseChannelRuntimeEvidenceBridgeInput(packetText);
+      const nextHandoff = await apiClient.reviewChannelRuntimeExecutionHandoff(input);
+      setHandoff(nextHandoff);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+      setHandoff(null);
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  return (
+    <section className="gate-review-card" aria-labelledby="channel-runtime-execution-handoff-heading">
+      <div className="page-heading">
+        <div>
+          <h2 id="channel-runtime-execution-handoff-heading">Channel runtime execution handoff</h2>
+          <p className="muted">Protected A-tier handoff packet preview for safe runtime gate evidence.</p>
+        </div>
+      </div>
+
+      <div className="alert">
+        This handoff prepares operator review material only; it does not submit approvals or execute runtime changes.
+      </div>
+
+      {error ? <div className="alert alert-error">{error}</div> : null}
+
+      <form className="channel-review-form" onSubmit={handleReviewSubmit}>
+        <label htmlFor="channel-runtime-execution-handoff-packet">Safe runtime execution handoff packet</label>
+        <textarea
+          id="channel-runtime-execution-handoff-packet"
+          value={packetText}
+          onChange={(event) => setPacketText(event.target.value)}
+          placeholder='{"dryRunSummary":{},"measurementScore":{},"runtimeEvidenceInput":{"records":[]}}'
+          rows={8}
+        />
+        <button className="primary-button" type="submit" disabled={reviewing}>
+          {reviewing ? "Reviewing..." : "Review execution handoff"}
+        </button>
+      </form>
+
+      {handoff ? (
+        <>
+          <div className="metric-grid">
+            <Metric label="Handoff mode" value={handoff.mode} />
+            <Metric label="Handoff status" value={handoff.handoff.status} />
+            <Metric label="Execution authority" value={handoff.handoff.executionAuthority} />
+            <Metric label="Runbook" value={handoff.handoff.nextGate.runbook} />
+            <Metric label="Approval candidates" value={handoff.handoff.counts.canaryReady} />
+            <Metric label="Runtime blockers" value={handoff.handoff.counts.runtimeBlocked} />
+          </div>
+          <div className="gate-boundary">
+            <strong>Execution handoff boundary</strong>
+            <ul>
+              <li>{handoff.safety.noRuntimeMutation ? "No runtime mutation" : "Runtime mutation flag missing"}</li>
+              <li>{handoff.safety.noApprovalSubmission ? "No approval submission" : "Approval submission flag missing"}</li>
+              <li>{handoff.safety.noTrafficMovement ? "No traffic movement" : "Traffic movement flag missing"}</li>
+              <li>
+                {handoff.handoff.nextGate.approvalSubmissionRoute === null
+                  ? "No approval submission route"
+                  : "Approval submission route exposed"}
+              </li>
+              <li>
+                {handoff.handoff.nextGate.runtimeExecutionRoute === null
+                  ? "No runtime execution route"
+                  : "Runtime execution route exposed"}
+              </li>
+              <li>
+                {!handoff.handoff.nextGate.approvalTextIncluded
+                  ? "Approval text not included"
+                  : "Approval text included"}
               </li>
             </ul>
           </div>

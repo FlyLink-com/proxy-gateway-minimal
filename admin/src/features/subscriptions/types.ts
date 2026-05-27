@@ -268,3 +268,58 @@ export type ChannelRuntimeGateWorkbench = {
     omittedFields: string[];
   };
 };
+
+export type ChannelRuntimeExecutionHandoff = {
+  ok: boolean;
+  mode: "channel-runtime-execution-handoff-packet";
+  generatedAt: string;
+  sourceGeneratedAt: string;
+  handoff: {
+    status: string;
+    requiredNextAction: string;
+    executionAuthority: string;
+    counts: {
+      canaryReady: number;
+      runtimeBlocked: number;
+      missingRuntimeInventory: number;
+    };
+    nextGate: {
+      risk: "A" | string;
+      gate: string;
+      approvalRequestReady: boolean;
+      exactApprovalRequired: boolean;
+      approvalTextIncluded: boolean;
+      approvalSubmissionRoute: string | null;
+      runtimeExecutionRoute: string | null;
+      executesGate: boolean;
+      runbook: string;
+    };
+  };
+  checklists: {
+    preflight: string[];
+    validation: string[];
+    rollback: string[];
+  };
+  candidates: {
+    approvalReady: Array<Record<string, unknown>>;
+    blocked: Array<Record<string, unknown>>;
+    missingInventory: Array<Record<string, unknown>>;
+  };
+  source: {
+    workbenchMode: string;
+    bridgeMode: string;
+    systemMode: string;
+    gatePacketMode: string;
+  };
+  safety: {
+    advisoryOnly: boolean;
+    summaryOnly: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+    noApprovalSubmission: boolean;
+    noTrafficMovement: boolean;
+    requiresSeparateRiskAApproval: boolean;
+    approvalTextIncluded: boolean;
+    omittedFields: string[];
+  };
+};

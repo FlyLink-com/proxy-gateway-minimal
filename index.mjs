@@ -17,6 +17,7 @@ export {
 export { dryRunChannelConfig } from "./server/services/channel-config-dry-run.mjs";
 export { buildChannelCandidateReport } from "./server/services/channel-candidate-report.mjs";
 export { buildChannelDecisionPack } from "./server/services/channel-decision-pack.mjs";
+export { buildChannelRuntimeExecutionHandoff } from "./server/services/channel-runtime-execution-handoff.mjs";
 export { buildChannelRuntimeEvidenceBridge } from "./server/services/channel-runtime-evidence-bridge.mjs";
 export { buildChannelRuntimeGateWorkbench } from "./server/services/channel-runtime-gate-workbench.mjs";
 export { buildChannelRuntimeGatePacket } from "./server/services/channel-runtime-gate-packet.mjs";

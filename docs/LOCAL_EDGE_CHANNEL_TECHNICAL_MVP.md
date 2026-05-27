@@ -587,6 +587,16 @@ approval phrases, echo approval phrase text, contact edge nodes, deploy
 runtimes, mutate firewall or DNS state, move traffic, or change subscription
 output.
 
+The protected Admin platform route
+`POST /api/admin/platform/channel-runtime-execution-handoff` and its Admin
+Overview panel are the final repository-side review layer before an A-tier
+runtime canary gate. They convert safe runtime bridge packets into a handoff
+packet with execution authority explicitly marked `not_granted`, the source
+runbook, candidate counts, grouped candidates, and checklist keys for preflight,
+validation, and rollback. The handoff remains review-only and does not expose
+approval submission, runtime execution, edge-node contact, DNS/firewall/systemd
+mutation, traffic movement, or subscription-output changes.
+
 Repository-local extended measurement assessment is available through
 `assessChannelExtendedMeasurement(...)`. It consumes an already-collected local
 benchmark summary and classifies each probe as:

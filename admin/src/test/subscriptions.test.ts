@@ -10,6 +10,7 @@ import type {
   AliyunGateEvidenceSummary,
   ChannelRuntimeEvidenceBridge,
   ChannelRuntimeEvidenceBridgeInput,
+  ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
@@ -263,6 +264,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelSystem: async () => channelSystemDecisionFlow(),
     reviewChannelRuntimeEvidence: async () => channelRuntimeEvidenceBridge(),
     reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
+    reviewChannelRuntimeExecutionHandoff: async () => channelRuntimeExecutionHandoff(),
     ...overrides
   };
 }
@@ -465,6 +467,72 @@ function channelRuntimeGateWorkbench(): ChannelRuntimeGateWorkbench {
       noTrafficMovement: true,
       requiresSeparateRiskAApproval: true,
       approvalPhraseEchoed: false,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
+    }
+  };
+}
+
+function channelRuntimeExecutionHandoff(): ChannelRuntimeExecutionHandoff {
+  return {
+    ok: true,
+    mode: "channel-runtime-execution-handoff-packet",
+    generatedAt: "2026-05-27T23:03:00.000Z",
+    sourceGeneratedAt: "2026-05-27T23:02:00.000Z",
+    handoff: {
+      status: "ready_for_operator_approval_request",
+      requiredNextAction: "request_risk_a_runtime_canary_approval",
+      executionAuthority: "not_granted",
+      counts: {
+        canaryReady: 1,
+        runtimeBlocked: 0,
+        missingRuntimeInventory: 0
+      },
+      nextGate: {
+        risk: "A",
+        gate: "risk_a_channel_runtime_canary",
+        approvalRequestReady: true,
+        exactApprovalRequired: true,
+        approvalTextIncluded: false,
+        approvalSubmissionRoute: null,
+        runtimeExecutionRoute: null,
+        executesGate: false,
+        runbook: "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md"
+      }
+    },
+    checklists: {
+      preflight: ["confirm_channel_runtime_canary_runbook"],
+      validation: ["record_operator_device_canary_metrics"],
+      rollback: ["document_runtime_cleanup_or_retain_decision"]
+    },
+    candidates: {
+      approvalReady: [
+        {
+          name: "tuic-lab",
+          protocol: "tuic",
+          qualityTier: "healthy",
+          channelScore: 94,
+          approvalGate: "risk_a_channel_runtime_canary",
+          approvalRequired: true
+        }
+      ],
+      blocked: [],
+      missingInventory: []
+    },
+    source: {
+      workbenchMode: "channel-runtime-gate-workbench",
+      bridgeMode: "channel-runtime-evidence-bridge",
+      systemMode: "channel-system-decision-flow",
+      gatePacketMode: "channel-runtime-gate-packet"
+    },
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      requiresSeparateRiskAApproval: true,
+      approvalTextIncluded: false,
       omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
     }
   };
@@ -1094,5 +1162,32 @@ describe("overview and nodes pages", () => {
     expect(within(workbenchRegion).getByText(/No approval submission route/i)).not.toBeNull();
     expect(within(workbenchRegion).getByText(/Approval phrase not echoed/i)).not.toBeNull();
     expect(within(workbenchRegion).queryByText(/secret\.example|token=|subscriptionUrl|approvalPhrase/i)).toBeNull();
+  });
+
+  test("renders channel runtime execution handoff without execution controls or approval text", async () => {
+    const reviewChannelRuntimeExecutionHandoff = vi.fn(async () => channelRuntimeExecutionHandoff());
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewChannelRuntimeExecutionHandoff })
+    }));
+
+    expect(await screen.findByText("Channel runtime execution handoff")).not.toBeNull();
+    const handoffRegion = screen.getByRole("region", { name: "Channel runtime execution handoff" });
+    fireEvent.change(screen.getByLabelText(/safe runtime execution handoff packet/i), {
+      target: { value: JSON.stringify(channelRuntimeGateWorkbenchInput()) }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review execution handoff/i }));
+
+    await waitFor(() => {
+      expect(reviewChannelRuntimeExecutionHandoff).toHaveBeenCalledWith(channelRuntimeGateWorkbenchInput());
+    });
+    expect(await screen.findByText("channel-runtime-execution-handoff-packet")).not.toBeNull();
+    expect(within(handoffRegion).getByText("ready_for_operator_approval_request")).not.toBeNull();
+    expect(within(handoffRegion).getByText("not_granted")).not.toBeNull();
+    expect(within(handoffRegion).getByText("docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md")).not.toBeNull();
+    expect(within(handoffRegion).getByText(/No approval submission route/i)).not.toBeNull();
+    expect(within(handoffRegion).getByText(/No runtime execution route/i)).not.toBeNull();
+    expect(within(handoffRegion).getByText(/Approval text not included/i)).not.toBeNull();
+    expect(within(handoffRegion).queryByText(/secret\.example|token=|subscriptionUrl|approvalPhrase/i)).toBeNull();
   });
 });

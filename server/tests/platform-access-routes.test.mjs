@@ -858,6 +858,93 @@ test("admin platform channel runtime gate workbench route rejects unsafe input w
   }
 });
 
+test("admin platform channel runtime execution handoff route is protected and returns advisory packet", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  try {
+    const unauthenticated = await fetch(`${baseUrl}/api/admin/platform/channel-runtime-execution-handoff`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+    assert.equal(unauthenticated.status, 401);
+
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-runtime-execution-handoff`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        dryRunSummary: channelSafeDryRunSummary(),
+        measurementScore: channelMeasurementScore(),
+        runtimeEvidenceInput: channelRuntimeEvidenceInput()
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.channelRuntimeExecutionHandoff.mode, "channel-runtime-execution-handoff-packet");
+    assert.equal(body.channelRuntimeExecutionHandoff.handoff.status, "ready_for_operator_approval_request");
+    assert.equal(body.channelRuntimeExecutionHandoff.handoff.executionAuthority, "not_granted");
+    assert.equal(body.channelRuntimeExecutionHandoff.handoff.nextGate.approvalRequestReady, true);
+    assert.equal(body.channelRuntimeExecutionHandoff.handoff.nextGate.approvalSubmissionRoute, null);
+    assert.equal(body.channelRuntimeExecutionHandoff.handoff.nextGate.runtimeExecutionRoute, null);
+    assert.equal(body.channelRuntimeExecutionHandoff.safety.noRuntimeMutation, true);
+    assert.equal(body.channelRuntimeExecutionHandoff.safety.noApprovalSubmission, true);
+    assert.equal(body.channelRuntimeExecutionHandoff.safety.noTrafficMovement, true);
+
+    const serialized = JSON.stringify(body);
+    assert.equal(serialized.includes("ss.secret.example"), false);
+    assert.equal(serialized.includes("tuic.secret.example"), false);
+    assert.equal(serialized.includes("\"host\""), false);
+    assert.equal(serialized.includes("\"port\""), false);
+    assert.doesNotMatch(serialized, /"approvalPhrase"\s*:/);
+    assert.equal(serialized.includes("token="), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin platform channel runtime execution handoff route rejects unsafe input without echoing it", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-runtime-execution-handoff`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        dryRunSummary: channelSafeDryRunSummary(),
+        measurementScore: channelMeasurementScore(),
+        runtimeEvidenceInput: channelRuntimeEvidenceInput({
+          candidateName: "203.0.113.10:443",
+          targetLabel: "runtime-secret.example"
+        })
+      })
+    });
+
+    assert.equal(response.status, 400);
+    const serialized = JSON.stringify(await response.json());
+    assert.equal(serialized.includes("203.0.113.10"), false);
+    assert.equal(serialized.includes("runtime-secret.example"), false);
+    assert.equal(serialized.includes("443"), false);
+    assert.equal(serialized.includes("validation_error"), true);
+  } finally {
+    server.close();
+  }
+});
+
 test("admin platform channel system decision route rejects unsafe runtime evidence without echoing it", async () => {
   const { leadQueue, accountShell, accessShell } = createPlatformState();
   const { server, baseUrl } = await listen(createApp(fakeState({
