@@ -328,7 +328,14 @@ Current architecture priorities:
   AWS nodes. It requires an exact approval phrase before clean host
   provisioning/bootstrap/private validation and explicitly keeps DNS,
   subscription output, user traffic, public Admin, AWS rollback-start,
-  stopped-node termination, and security-group deletion out of scope.
+  stopped-node termination, and security-group deletion out of scope. A fresh
+  read-only preflight is recorded in
+  `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-preflight.md`;
+  it confirms the Aliyun subscription boundary is healthy from a remote
+  vantage, public Admin is blocked, no-token refresh returns 401, Aliyun
+  3456/18080/18388 are not externally reachable from that vantage, the old AWS
+  edge address is not serving, `prod-edge-a/b` remain stopped without public IP
+  association, and no clean edge target has been selected or provisioned.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host now serves the approved
@@ -522,7 +529,13 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   not execute cloud provisioning, DNS changes, subscription-output changes,
   user traffic, public Admin exposure, AWS rollback-start, stopped-node
   termination, or security-group deletion. It also keeps the current Aliyun
-  subscription-control host and HP out of the edge-node role.
+  subscription-control host and HP out of the edge-node role. The matching
+  read-only preflight is recorded in
+  `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-preflight.md`.
+  It excludes proxy-contaminated local Windows DNS/TCP checks, uses AliDNS and
+  Aliyun remote-vantage evidence, confirms `sub` on Aliyun, `ss-sg` on the old
+  stopped AWS address, private Aliyun app ports closed externally, stopped AWS
+  nodes without public IP association, and no selected clean edge target.
 - The opaque artifact issuance and legacy query-token retirement runbook is
   recorded in
   `docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md`.
@@ -914,12 +927,12 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   disabled smoke state, and unchanged edge DNS. A read-only observation/Aegis
   follow-up then confirmed stable public samples and narrowed Aegis to a failed
   systemd unit with Aegis processes still present. The optional Aegis repair
-  runbook and execution template now exist, but no repair has been approved or
-  executed. The remaining work is Aegis repair approval if desired, clean edge
-  rebuild execution approval, rollback-start decisions, broader artifact
-  issuance, and legacy query-token retirement. The clean edge rebuild runbook
-  and execution template now exist, but no clean edge host has been provisioned,
-  bootstrapped, or activated. The opaque artifact issuance and legacy
+  gate was later approved and attempted, but it failed safely and left broader
+  vendor-agent repair unapproved. The remaining work is clean edge rebuild
+  execution approval, rollback-start decisions, broader artifact issuance, and
+  legacy query-token retirement. The clean edge rebuild runbook, execution
+  template, and read-only preflight now exist, but no clean edge host has been
+  provisioned, bootstrapped, or activated. The opaque artifact issuance and legacy
   query-token retirement runbook now exists and deliberately separates artifact
   issuance from legacy-token retirement; neither gate has been executed.
 
