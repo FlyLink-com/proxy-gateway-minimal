@@ -11,6 +11,7 @@ import type {
   ChannelRuntimeGateWorkbench,
   ChannelSubscriptionActivationFlow,
   ChannelSubscriptionActivationHandoff,
+  ChannelSubscriptionActivationPackage,
   ChannelSubscriptionActivationRecordTemplate,
   ChannelSubscriptionActivationReadiness,
   ChannelSubscriptionOutputDraft,
@@ -87,6 +88,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelRuntimeExecutionHandoff: async () => channelRuntimeExecutionHandoff(),
     reviewChannelSubscriptionActivationFlow: async () => channelSubscriptionActivationFlow(),
     reviewChannelSubscriptionActivationRecordTemplate: async () => channelSubscriptionActivationRecordTemplate(),
+    reviewChannelSubscriptionActivationPackage: async () => channelSubscriptionActivationPackage(),
     reviewChannelSubscriptionActivationHandoff: async () => channelSubscriptionActivationHandoff(),
     reviewChannelSubscriptionOutputDraft: async () => channelSubscriptionOutputDraft(),
     reviewChannelSubscriptionActivationReadiness: async () => channelSubscriptionActivationReadiness(),
@@ -586,6 +588,73 @@ function channelSubscriptionActivationRecordTemplate(): ChannelSubscriptionActiv
       yamlNotGenerated: true,
       requiresSeparateRiskAApproval: true,
       omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls", "yaml"]
+    }
+  };
+}
+
+function channelSubscriptionActivationPackage(): ChannelSubscriptionActivationPackage {
+  return {
+    ok: true,
+    mode: "channel-subscription-activation-package",
+    generatedAt: "2026-05-28T10:07:00.000Z",
+    status: "ready_for_risk_a_subscription_output_activation_request",
+    blockers: [],
+    package: {
+      renderProofReady: true,
+      recordTemplateReady: true,
+      approvalRequestReady: true,
+      executionAuthority: "not_granted",
+      requiredNextAction: "request_risk_a_subscription_output_activation_approval"
+    },
+    renderProof: {
+      status: "render_proof_ready_for_subscription_output_activation_request",
+      internalYamlRenderCompleted: true,
+      yamlReturned: false,
+      renderedProxyCount: 2,
+      generatedYamlBytes: 512,
+      protocolCounts: { ss: 1, tuic: 1 },
+      baseline: [{ name: "ss-baseline", protocol: "ss" }],
+      canary: [{ name: "tuic-lab", protocol: "tuic" }]
+    },
+    recordTemplate: {
+      mode: "channel-subscription-activation-record-template",
+      title: "Channel Subscription Output Activation Execution Record",
+      suggestedPath: "docs/production-replacement-records/2026-05-28-channel-subscription-output-activation.md",
+      markdownReturned: false,
+      approvalRequestReady: true,
+      executionAuthority: "not_granted",
+      blockers: []
+    },
+    gate: {
+      risk: "A",
+      gate: "risk_a_subscription_output_activation",
+      approvalRequestReady: true,
+      exactApprovalRequired: true,
+      executionAuthority: "not_granted",
+      approvalSubmissionRoute: null,
+      subscriptionOutputExecutionRoute: null,
+      executesGate: false
+    },
+    source: {
+      fixtureGeneratedAt: "2026-05-28T10:05:00.000Z",
+      sourceGeneratedAt: "2026-05-28T10:04:00.000Z",
+      fixtureSchemaVersion: "channel-subscription-activation-flow-fixture/v1"
+    },
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
+      packageOnly: true,
+      renderProofRequired: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      noSubscriptionOutputMutation: true,
+      yamlReturned: false,
+      yamlNotReturned: true,
+      recordMarkdownReturned: false,
+      requiresSeparateRiskAApproval: true,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls", "yaml", "recordMarkdown"]
     }
   };
 }
