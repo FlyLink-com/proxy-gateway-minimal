@@ -26,6 +26,7 @@
     "docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md",
     "docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md",
     "docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md",
+    "docs/production-replacement-records/2026-05-27-aliyun-gate-a-live-inventory.md",
     "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md",
     "docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md",
     "docs/production-replacement-records/2026-05-26-channel-lab-a-creation.md",
@@ -182,8 +183,8 @@
     },
     {
       "id": "aliyun-private-state-copy-blocked",
-      "summary": "Aliyun candidate app is active on 127.0.0.1:3456, candidate Nginx is active on 127.0.0.1:18080, UFW is deny-incoming with SSH and existing wg-home allowed, candidate SQLite integrity_check is ok, and HP-side checks show public 3456/18080/80/443 closed; private state-copy remains blocked because prod-edge-a has no SSM path and SSH TCP/22 closes before banner/auth.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md"
+      "summary": "Aliyun Gate A live inventory found candidate app active on 127.0.0.1:3456, candidate Nginx active on 127.0.0.1:18080, candidate SQLite integrity_check ok, and HP-side checks still not observing Aliyun public 80/443/3456/18080 exposure. Promotion remains blocked because AliDNS points to a stopped AWS address, source state is not available, Aliyun provider firewall is too broad, existing wg-home UDP lab path remains active, and tracked node config still references stopped or stale AWS targets.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-27-aliyun-gate-a-live-inventory.md"
     },
     {
       "id": "non-aliyun-hp-node-retirement-blocked",
@@ -202,8 +203,8 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Aliyun promotion Gate A live inventory refresh",
-    "prod-edge-a source access / source-state planning before any private state-copy validation",
+    "Aliyun Gate B source access / source-state planning before any private state-copy validation",
+    "Aliyun provider-firewall hardening plan before public-boundary dry run",
     "channel-lab-a Hysteria2 latency investigation, TUIC/VLESS-XUDP comparison, GUI import evidence, or cleanup decision",
     "clean edge node rebuild planning",
     "Aliyun subscription distribution promotion planning with accepted outage context",
