@@ -798,4 +798,37 @@ describe("overview and nodes pages", () => {
     expect(screen.getByText(/No runtime execution controls are exposed/i)).not.toBeNull();
     expect(screen.queryByText(/secret\.example|token=|subscriptionUrl/i)).toBeNull();
   });
+
+  test("blocks unsafe channel evidence before calling the protected review API", async () => {
+    const reviewChannelSystem = vi.fn(async () => channelSystemDecisionFlow());
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewChannelSystem })
+    }));
+
+    expect(await screen.findByText("Channel system review")).not.toBeNull();
+    fireEvent.change(screen.getByLabelText(/safe channel evidence packet/i), {
+      target: {
+        value: JSON.stringify({
+          ...channelSystemReviewInput(),
+          runtimeInventoryInput: {
+            records: [
+              {
+                candidateName: "tuic-lab",
+                host: "runtime-secret.example",
+                port: 443,
+                token: "token=runtime-secret"
+              }
+            ]
+          }
+        })
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review channel system/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Safe channel evidence packet contains forbidden runtime details.")).not.toBeNull();
+    });
+    expect(reviewChannelSystem).not.toHaveBeenCalled();
+  });
 });

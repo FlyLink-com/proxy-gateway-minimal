@@ -97,7 +97,61 @@ function parseChannelSystemReviewInput(value: string): ChannelSystemReviewInput 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("Safe channel evidence packet must be a JSON object.");
   }
+  assertSafeChannelSystemEvidence(parsed);
   return parsed as ChannelSystemReviewInput;
+}
+
+const CHANNEL_SYSTEM_FORBIDDEN_EVIDENCE_KEYS = new Set([
+  "artifact",
+  "artifactRef",
+  "artifactReference",
+  "artifactUrl",
+  "credential",
+  "credentials",
+  "customerData",
+  "customerEmail",
+  "email",
+  "host",
+  "hosts",
+  "ip",
+  "ips",
+  "nodeCredential",
+  "password",
+  "port",
+  "ports",
+  "rawError",
+  "rawLog",
+  "secret",
+  "sourceIp",
+  "subscriptionUrl",
+  "targetHost",
+  "targetPort",
+  "token",
+  "url",
+  "userAgent"
+]);
+
+const CHANNEL_SYSTEM_FORBIDDEN_VALUE_PATTERN = /https?:\/\/|token=|subscriptionUrl|artifactUrl|secret\.example/i;
+
+function assertSafeChannelSystemEvidence(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      assertSafeChannelSystemEvidence(item);
+    }
+    return;
+  }
+  if (!value || typeof value !== "object") {
+    if (typeof value === "string" && CHANNEL_SYSTEM_FORBIDDEN_VALUE_PATTERN.test(value)) {
+      throw new Error("Safe channel evidence packet contains forbidden runtime details.");
+    }
+    return;
+  }
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (CHANNEL_SYSTEM_FORBIDDEN_EVIDENCE_KEYS.has(key)) {
+      throw new Error("Safe channel evidence packet contains forbidden runtime details.");
+    }
+    assertSafeChannelSystemEvidence(nestedValue);
+  }
 }
 
 function ChannelSystemReviewPanel({ apiClient }: { apiClient: AdminApiClient }) {
@@ -168,8 +222,14 @@ function ChannelSystemReviewPanel({ apiClient }: { apiClient: AdminApiClient }) 
             <ul>
               <li>{review.safety.advisoryOnly ? "Advisory-only artifact" : "Advisory flag missing"}</li>
               <li>{review.safety.noRuntimeMutation ? "No runtime mutation" : "Runtime mutation flag missing"}</li>
+              <li>{review.safety.noProductionMutation ? "No production mutation" : "Production mutation flag missing"}</li>
               <li>{review.safety.noApprovalSubmission ? "No approval submission" : "Approval submission flag missing"}</li>
               <li>{review.safety.noTrafficMovement ? "No traffic movement" : "Traffic movement flag missing"}</li>
+              <li>
+                {review.safety.requiresSeparateRiskAApproval
+                  ? "Separate Risk A approval required"
+                  : "Risk A approval flag missing"}
+              </li>
             </ul>
           </div>
         </>
