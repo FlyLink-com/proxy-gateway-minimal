@@ -113,9 +113,21 @@ blockers, and the required next action. Decision packs remain advisory only and
 do not authorize runtime canary, server, firewall, DNS, or subscription output
 changes.
 
-`buildChannelRuntimeRegistry(...)` can combine the decision-pack path with a
-safe runtime inventory summary. This is the first repository-level integration
-layer between channel measurement evidence and runtime lifecycle evidence:
+`buildChannelRuntimeInventorySummary(...)` normalizes operator-provided runtime
+gate facts into a safe repository artifact before they are consumed by the
+registry. It accepts only summary fields such as candidate name, protocol,
+target label, lifecycle status, deployment readiness, blocker codes, and the
+next gate. It rejects raw hosts, ports, URLs, credentials, tokens, raw logs, and
+subscription URLs.
+
+```bash
+npm run channel:runtime-inventory-summary -- <path-to-safe-inventory-input.json>
+```
+
+`buildChannelRuntimeRegistry(...)` can then combine the decision-pack path with
+that safe runtime inventory summary. This is the first repository-level
+integration layer between channel measurement evidence and runtime lifecycle
+evidence:
 
 ```text
 dry-run config summary

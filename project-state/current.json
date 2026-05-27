@@ -119,6 +119,7 @@
     "Channel Measurement Scoring for advisory quality tiers and recommended pools from local benchmark summaries",
     "Channel Candidate Reports for safe operator review of dry-run config metadata joined with measurement scores",
     "Channel Decision Packs for advisory baseline/canary/blocker review artifacts from local channel evidence",
+    "Channel Runtime Inventory Summary for normalizing operator-provided runtime gate facts into safe registry input artifacts without raw hosts, ports, URLs, credentials, raw logs, tokens, subscription URLs, customer data, runtime mutation, or production activation",
     "Channel Runtime Registry for joining dry-run config, measurement scores, and safe runtime inventory summaries into canary-ready, runtime-blocked, and missing-inventory groups without runtime mutation",
     "Channel Extended Measurement Assessment for advisory ready/needs-more-samples/hold classification from already-collected local summaries",
     "Channel Measurement Investigation for advisory hold-pattern classification from safe measurement bundle reports",

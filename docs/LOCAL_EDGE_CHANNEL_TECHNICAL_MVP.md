@@ -480,10 +480,21 @@ The decision pack is meant for review and archival. It does not make runtime
 changes, deploy protocol services, edit subscription output, change DNS, or
 approve a Risk A channel canary.
 
+Repository-local runtime inventory summary support is available through
+`buildChannelRuntimeInventorySummary(...)`. It converts safe operator-provided
+runtime gate facts into the summary contract consumed by the runtime registry.
+The summary can record candidate name, protocol, target label, lifecycle
+status, deployment readiness, blocker codes, and the next gate. It must not
+contain raw hosts, ports, URLs, credentials, raw logs, tokens, subscription
+URLs, artifact URLs, cloud credentials, or customer data.
+
+```bash
+npm run channel:runtime-inventory-summary -- <path-to-safe-inventory-input.json>
+```
+
 Repository-local runtime registry integration is available through
-`buildChannelRuntimeRegistry(...)`. It joins the dry-run summary,
-measurement score, and a safe runtime inventory summary into one channel
-system state:
+`buildChannelRuntimeRegistry(...)`. It joins the dry-run summary, measurement
+score, and a safe runtime inventory summary into one channel system state:
 
 ```text
 selected baseline
