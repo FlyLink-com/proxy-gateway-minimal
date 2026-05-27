@@ -3,6 +3,8 @@ import test from "node:test";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "../app.mjs";
+import { buildChannelSubscriptionActivationFlow } from "../services/channel-subscription-activation-flow.mjs";
+import { createChannelSubscriptionActivationFlowFixture } from "../services/channel-subscription-activation-flow-fixture.mjs";
 import { createPlatformAccountEntitlementShell } from "../services/platform/account-entitlement-shell.mjs";
 import { createPlatformAliyunGateEvidenceShell } from "../services/platform/aliyun-gate-evidence-shell.mjs";
 import { createPlatformLeadReviewQueue } from "../services/platform/lead-review-queue.mjs";
@@ -557,6 +559,30 @@ function channelRuntimeEvidenceInput(overrides = {}) {
       }
     ]
   };
+}
+
+function channelActivationFlowFixture() {
+  const flow = buildChannelSubscriptionActivationFlow({
+    dryRunSummary: channelSafeDryRunSummary(),
+    measurementScore: channelMeasurementScore(),
+    runtimeEvidenceInput: channelRuntimeEvidenceInput({
+      checks: {
+        cloudIdentityVerified: true,
+        networkPostureVerified: true,
+        hostInventoryCompleted: true,
+        runtimeSlotAvailable: true,
+        runtimeInstalled: true,
+        serviceActive: true,
+        operatorImportValidated: true,
+        cleanupRequired: false
+      },
+      nextGate: "subscription_output_activation_approval"
+    }),
+    generatedAt: "2026-05-27T20:04:55.000Z"
+  });
+  return createChannelSubscriptionActivationFlowFixture(flow, {
+    generatedAt: "2026-05-27T20:05:00.000Z"
+  });
 }
 
 test("admin platform channel system decision route is protected and returns safe readiness evidence", async () => {
@@ -1330,6 +1356,97 @@ test("admin platform channel subscription activation flow route rejects unsafe i
         },
         measurementScore: channelMeasurementScore(),
         runtimeEvidenceInput: channelRuntimeEvidenceInput()
+      })
+    });
+
+    assert.equal(response.status, 400);
+    const serialized = JSON.stringify(await response.json());
+    assert.equal(serialized.includes("runtime-secret.example"), false);
+    assert.equal(serialized.includes("token=unsafe"), false);
+    assert.equal(serialized.includes("validation_error"), true);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin platform channel subscription activation record template route is protected and returns a safe template", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  try {
+    const unauthenticated = await fetch(`${baseUrl}/api/admin/platform/channel-subscription-activation-record-template`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+    assert.equal(unauthenticated.status, 401);
+
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-subscription-activation-record-template`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        activationFlowFixture: channelActivationFlowFixture()
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(
+      body.channelSubscriptionActivationRecordTemplate.mode,
+      "channel-subscription-activation-record-template"
+    );
+    assert.equal(body.channelSubscriptionActivationRecordTemplate.readiness.approvalRequestReady, true);
+    assert.equal(body.channelSubscriptionActivationRecordTemplate.readiness.executionAuthority, "not_granted");
+    assert.equal(
+      body.channelSubscriptionActivationRecordTemplate.record.suggestedPath,
+      "docs/production-replacement-records/2026-05-27-channel-subscription-output-activation.md"
+    );
+    assert.match(
+      body.channelSubscriptionActivationRecordTemplate.record.markdown,
+      /^# Channel Subscription Output Activation Execution Record/m
+    );
+    assert.match(body.channelSubscriptionActivationRecordTemplate.record.markdown, /Approval Evidence/);
+    assert.equal(body.channelSubscriptionActivationRecordTemplate.safety.templateOnly, true);
+    assert.equal(body.channelSubscriptionActivationRecordTemplate.safety.noApprovalSubmission, true);
+    assert.equal(body.channelSubscriptionActivationRecordTemplate.safety.noSubscriptionOutputMutation, true);
+
+    const serialized = JSON.stringify(body);
+    assert.equal(serialized.includes("ss.secret.example"), false);
+    assert.equal(serialized.includes("tuic.secret.example"), false);
+    assert.equal(serialized.includes("\"host\""), false);
+    assert.equal(serialized.includes("\"port\""), false);
+    assert.equal(serialized.includes("token="), false);
+    assert.equal(serialized.includes("approvalPhrase"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin platform channel subscription activation record template route rejects unsafe fixtures without echoing them", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-subscription-activation-record-template`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        activationFlowFixture: {
+          ...channelActivationFlowFixture(),
+          rawUrl: "https://runtime-secret.example/sub/a/unsafe?token=unsafe"
+        }
       })
     });
 

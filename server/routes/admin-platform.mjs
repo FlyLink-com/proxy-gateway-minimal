@@ -6,6 +6,7 @@ import { buildChannelRuntimeGateWorkbench } from "../services/channel-runtime-ga
 import { buildChannelSubscriptionActivationFlow } from "../services/channel-subscription-activation-flow.mjs";
 import { buildChannelSubscriptionActivationHandoff } from "../services/channel-subscription-activation-handoff.mjs";
 import { buildChannelSubscriptionActivationReadiness } from "../services/channel-subscription-activation-readiness.mjs";
+import { buildChannelSubscriptionActivationRecordTemplate } from "../services/channel-subscription-activation-record-template.mjs";
 import { buildChannelSubscriptionOutputDraft } from "../services/channel-subscription-output-draft.mjs";
 import { buildChannelSystemDecisionFlow } from "../services/channel-system-decision-flow.mjs";
 import { buildCleanEdgeReadinessSummary } from "../services/clean-edge-readiness-summary.mjs";
@@ -79,6 +80,12 @@ function channelSubscriptionActivationHandoffValidationError() {
 
 function channelSubscriptionActivationFlowValidationError() {
   const error = new Error("channel subscription activation flow input is invalid");
+  error.code = "validation_error";
+  return error;
+}
+
+function channelSubscriptionActivationRecordTemplateValidationError() {
+  const error = new Error("channel subscription activation record template input is invalid");
   error.code = "validation_error";
   return error;
 }
@@ -264,6 +271,19 @@ export function adminPlatformRoutes(state) {
       });
     } catch {
       sendError(res, channelSubscriptionActivationFlowValidationError());
+    }
+  });
+
+  router.post("/api/admin/platform/channel-subscription-activation-record-template", (req, res) => {
+    try {
+      const input = req.body ?? {};
+      res.json({
+        channelSubscriptionActivationRecordTemplate: buildChannelSubscriptionActivationRecordTemplate(
+          input.activationFlowFixture ?? input
+        )
+      });
+    } catch {
+      sendError(res, channelSubscriptionActivationRecordTemplateValidationError());
     }
   });
 
