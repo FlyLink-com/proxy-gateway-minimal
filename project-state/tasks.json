@@ -935,6 +935,48 @@
       ]
     },
     {
+      "id": "B30-clean-edge-readiness-admin-review",
+      "risk": "B",
+      "status": "completed-in-pr-233",
+      "lane": "edge-data-plane",
+      "title": "Add protected clean edge readiness Admin review surface",
+      "goal": "Expose safe clean edge readiness packets through protected Admin API and Overview UI before a separate exact-approved clean edge rebuild execution gate.",
+      "allowedFiles": [
+        "server/routes/admin-platform.mjs",
+        "server/tests/platform-access-routes.test.mjs",
+        "admin/src/features/subscriptions/api-client.ts",
+        "admin/src/features/subscriptions/types.ts",
+        "admin/src/pages/overview-page.tsx",
+        "admin/src/test/subscriptions.test.ts",
+        "docs/CLEAN_EDGE_READINESS_SUMMARY.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "select, create, provision, bootstrap, or activate a clean edge target",
+        "mutate production",
+        "query live cloud, DNS, Nginx, systemd, SQLite, tenants, artifacts, or edge nodes",
+        "submit approval phrases",
+        "echo approval text",
+        "add execution routes or execution controls",
+        "add public routes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, firewall, provider, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, or subscription-output state",
+        "write secrets, raw hosts, raw IPs, raw ports, raw logs, credentials, raw subscription URLs, SQLite rows, customer data, or exact management-source values",
+        "treat Admin readiness output as clean edge rebuild approval"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/platform-access-routes.test.mjs server/tests/clean-edge-readiness-summary.test.mjs",
+        "npm run test --prefix admin -- src/test/subscriptions.test.ts",
+        "npm run admin:test",
+        "npm run admin:build",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "B12-aliyun-gate-decision-packet",
       "risk": "B",
       "status": "completed-in-pr-181",

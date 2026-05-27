@@ -10,6 +10,7 @@ import type {
   ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
   ChannelSystemDecisionFlow,
+  CleanEdgeReadinessSummary,
   SubscriptionTenant
 } from "../features/subscriptions/types";
 
@@ -80,6 +81,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
     reviewChannelRuntimeExecutionHandoff: async () => channelRuntimeExecutionHandoff(),
     reviewChannelLabTargetDecision: async () => channelLabTargetDecision(),
+    reviewCleanEdgeReadiness: async () => cleanEdgeReadinessSummary(),
     overview: async () => ({
       ok: true,
       total: 0,
@@ -97,6 +99,59 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
       }
     }),
     ...overrides
+  };
+}
+
+function cleanEdgeReadinessSummary(): CleanEdgeReadinessSummary {
+  return {
+    ok: true,
+    mode: "clean-edge-readiness-summary",
+    generatedAt: "2026-05-27T21:40:00.000Z",
+    readiness: {
+      preconditionsReady: false,
+      approvalRequired: true,
+      executionAllowed: false,
+      blockers: ["clean edge readiness not reviewed"]
+    },
+    repoState: {
+      branchSynced: false,
+      noOpenPrs: false,
+      projectStateCheckPassed: false
+    },
+    subscriptionBoundary: {
+      subOnAliyun: false,
+      healthOk: false,
+      adminBlocked: false,
+      rootBlocked: false,
+      noTokenRejected: false
+    },
+    edgeDns: {
+      ssSgUnchangedOnOldAws: false
+    },
+    stoppedNodes: {
+      prodEdgeAStopped: false,
+      prodEdgeANoPublicIp: false,
+      prodEdgeBStopped: false,
+      prodEdgeBNoPublicIp: false
+    },
+    cleanTarget: {
+      noTargetSelected: false,
+      noTargetProvisioned: false
+    },
+    approval: {
+      exactApprovalReceived: false
+    },
+    notes: [],
+    safety: {
+      summaryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noCloudMutation: true,
+      noDnsMutation: true,
+      noSubscriptionOutputMutation: true,
+      noSecretHandling: true,
+      omittedFields: ["rawHosts", "rawIps", "rawPorts", "rawSecrets", "tokens", "subscriptionUrls"]
+    }
   };
 }
 

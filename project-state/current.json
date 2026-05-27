@@ -76,9 +76,9 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "activePrBranch": "none",
-    "activePr": null,
-    "activePrStatus": "live-check-required-before-work",
+    "activePrBranch": "codex/clean-edge-readiness-admin-review",
+    "activePr": 233,
+    "activePrStatus": "draft-open-local-validation-passed",
     "note": "Branch context is an orientation hint only; run git status and gh pr list before new work."
   },
   "productSpine": [
@@ -117,6 +117,7 @@
     "Clean edge rebuild execution handoff exists as a docs-only A-tier task packet: it recommends prod-edge-c as the first clean rebuild logical identity, consolidates approval phrase, source evidence, start checklist, stop conditions, execution envelope, execution-record target, and not-performed boundaries, and still performs no host provisioning, host assignment, firewall mutation, bootstrap, secret injection, DNS change, subscription-output change, user traffic, public Admin, rollback-start, termination, or security-group deletion",
     "Post-PR #226 clean edge live check exists as a read-only record: Aliyun host remote-vantage checks reconfirm sub.globalcirclecat.com on Aliyun, ss-sg.globalcirclecat.com on the old AWS address, public health/Admin/root/no-token behavior safe, proxy-gateway-candidate/nginx/certbot.timer active, aegis.service failed as a separate follow-up, and clean edge execution still blocked until exact approval",
     "Clean edge readiness summary helper exists as repo-only tooling for normalizing safe operator-provided clean edge gate facts into redacted readiness/blocker evidence without cloud queries, live inventory, approval submission, host provisioning, bootstrap, secret handling, DNS, subscription-output, Admin, AWS, or edge traffic mutation",
+    "Clean edge readiness Admin API/UI exists as repo-only protected review surface for submitting the same safe readiness packets and showing preconditions, approval-required state, blockers, and no-mutation safety flags without public routes, approval submission, approval text, host selection/provisioning, bootstrap, secret handling, DNS, subscription-output, AWS/Aliyun mutation, or edge traffic",
     "Opaque artifact issuance and legacy query-token retirement runbook plus execution templates exist as repo-only A-tier gate material: artifact issuance and legacy-token retirement are separate exact-approval gates, future route removal is a separate compatibility gate, and short confirmations are insufficient; no artifact issuance, token rotation, DNS, Nginx, Admin, edge, AWS, or state-copy mutation has been performed",
     "Aliyun promotion runbook Package 5 exists as repo-only gate design separating live inventory, source-state decision, private state-copy validation, public-boundary dry run, DNS promotion, observation, rollback, and cleanup without authorizing Aliyun deployment, DNS, state copy, public listener exposure, edge traffic, or production authority transfer",
     "Aliyun clean-start control-plane is now the default path unless the operator explicitly requires historical state preservation; the repo package exists, and clean-start private validation plus provider-firewall hardening each have standalone Risk A runbooks before runtime initialization, public-boundary dry run, DNS promotion, edge rebuild, or rollback-start",

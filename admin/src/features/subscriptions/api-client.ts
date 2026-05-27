@@ -10,6 +10,8 @@ import type {
   ChannelRuntimeGateWorkbench,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
+  CleanEdgeReadinessInput,
+  CleanEdgeReadinessSummary,
   CreateSubscriptionInput,
   CreateSubscriptionResult,
   ProviderFirewallEvidenceInput,
@@ -212,7 +214,17 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
             body: JSON.stringify(input)
           }
         )
-      ).channelLabTargetDecision
+      ).channelLabTargetDecision,
+    reviewCleanEdgeReadiness: async (input: CleanEdgeReadinessInput) =>
+      (
+        await request<{ cleanEdgeReadiness: CleanEdgeReadinessSummary }>(
+          "/api/admin/platform/clean-edge-readiness-summary",
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).cleanEdgeReadiness
   };
 }
 

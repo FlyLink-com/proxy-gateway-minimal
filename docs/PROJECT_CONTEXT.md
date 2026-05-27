@@ -574,7 +574,10 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   helper documented in `docs/CLEAN_EDGE_READINESS_SUMMARY.md` can normalize
   safe operator-provided clean edge gate facts into a redacted readiness
   summary via `npm run platform:clean-edge-readiness-summary -- <safe.json>`.
-  The helper is not live inventory, not approval authority, and not execution.
+  The same safe packet shape is also available through protected Admin review
+  route `POST /api/admin/platform/clean-edge-readiness-summary` and the Admin
+  Overview `Clean edge readiness` panel. These surfaces are not live inventory,
+  not approval authority, not public routes, and not execution.
 - The opaque artifact issuance and legacy query-token retirement runbook is
   recorded in
   `docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md`.
