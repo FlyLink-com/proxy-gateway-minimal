@@ -432,6 +432,58 @@ keeping Aliyun runtime initialization, provider-firewall hardening,
 public-boundary dry run, DNS promotion, edge rebuild, rollback-start, state
 copy, and production authority as separate A-tier gates.
 
+### Package 7: Aliyun Gate Decision Packet
+
+**Risk:** B repo-only; A for any Aliyun runtime validation, provider-firewall
+mutation, public-boundary dry run, DNS promotion, or production authority
+transfer.
+
+**Primary unit:** Subscription Control Platform.
+
+**Goal:** Give operators one protected, redacted decision packet that shows
+which Aliyun execution gates are ready for explicit approval and which remain
+blocked.
+
+**Files likely touched:**
+
+```text
+server/services/platform/*.mjs
+server/routes/admin-platform.mjs
+server/tests/*.test.mjs
+docs/PROJECT_CONTEXT.md
+project-state/*.json
+```
+
+**Acceptance:**
+
+```text
+gate packet lists clean-start private validation, provider-firewall hardening,
+public-boundary dry run, and DNS promotion separately
+approval phrases are explicit for the next executable A-tier gates
+blocked gates stay blocked until previous execution evidence exists
+operator-safe summaries do not echo firewall raw rules, management-source
+labels, raw portal URLs, artifact references, node hosts, node credentials,
+tokens, subscription URLs, customer emails, or organization names
+no Aliyun deployment, firewall change, listener exposure, DNS change, traffic,
+state copy, AWS mutation, or production authority is performed by the repo PR
+```
+
+**Repository anchors after Package 7 implementation:**
+
+```text
+server/services/platform/aliyun-gate-decision-packet.mjs
+server/routes/admin-platform.mjs
+server/tests/platform-aliyun-gate-packet.test.mjs
+server/tests/platform-access-routes.test.mjs
+docs/PROJECT_CONTEXT.md
+project-state/current.json
+```
+
+The Package 7 implementation is repository-only. It converts existing
+clean-start readiness and optional provider-firewall evidence into a protected
+Admin API packet at `/api/admin/platform/aliyun-gates`. It is an
+execution-before-decision aid, not a deployment mechanism or approval record.
+
 ## Validation Policy
 
 ```text
@@ -491,7 +543,8 @@ Ready PRs must contain the complete loop for their approved scope.
 5. Complete: prepare Aliyun promotion runbook and Gate A/B planning without
    executing production mutation.
 6. Complete: build the clean-start control-plane repo implementation package.
-7. Next A-tier: request Aliyun clean-start private validation and provider
+7. Complete: add the protected Aliyun gate decision packet for execution-before-decision review.
+8. Next A-tier: request Aliyun clean-start private validation and provider
    firewall hardening as separate gates.
 ```
 

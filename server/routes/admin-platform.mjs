@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { createCleanStartControlPlanePackage } from "../services/platform/clean-start-control-plane.mjs";
+import { createAliyunGateDecisionPacket } from "../services/platform/aliyun-gate-decision-packet.mjs";
 
 function sendError(res, error) {
   if (error.code === "validation_error") {
@@ -20,14 +21,31 @@ export function adminPlatformRoutes(state) {
   const leadQueue = state.platform?.leadQueue;
   const accountShell = state.platform?.accountShell;
   const accessShell = state.platform?.accessShell;
+  const aliyunGateEvidence = state.platform?.aliyunGateEvidence || {};
+
+  function buildCleanStartPackage() {
+    return createCleanStartControlPlanePackage({
+      accountShell,
+      accessShell,
+      proxyConfig: state.proxyConfig,
+      now: new Date()
+    });
+  }
 
   router.get("/api/admin/platform/clean-start", (req, res) => {
     try {
+      res.json({ cleanStart: buildCleanStartPackage() });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/platform/aliyun-gates", (req, res) => {
+    try {
       res.json({
-        cleanStart: createCleanStartControlPlanePackage({
-          accountShell,
-          accessShell,
-          proxyConfig: state.proxyConfig,
+        aliyunGates: createAliyunGateDecisionPacket({
+          cleanStart: buildCleanStartPackage(),
+          providerFirewall: aliyunGateEvidence.providerFirewall,
           now: new Date()
         })
       });

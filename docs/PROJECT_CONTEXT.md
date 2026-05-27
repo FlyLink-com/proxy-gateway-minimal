@@ -149,6 +149,18 @@ Current architecture priorities:
   organization names. It is not Aliyun deployment, runtime initialization,
   public listener exposure, DNS, provider-firewall hardening, SQLite
   persistence, state copy, user traffic, or production authority.
+- Platform Aliyun Gate Decision Packet: repository-only gate-decision support
+  lives in `server/services/platform/aliyun-gate-decision-packet.mjs` and the
+  protected Admin route `/api/admin/platform/aliyun-gates`. It summarizes the
+  clean-start private validation, provider-firewall hardening,
+  public-boundary dry run, and DNS promotion gates with explicit approval
+  phrases for the next executable A-tier gates, blockers, source docs, and
+  not-authorized actions. It does not expose firewall raw rules, management
+  source labels, raw portal URLs, artifact references, subscription URLs, node
+  hosts, node credentials, tokens, customer emails, or organization names. It
+  is not Aliyun deployment, firewall mutation, public listener exposure, DNS,
+  state copy, AWS mutation, user traffic, edge traffic, or production
+  authority.
 - Aliyun Promotion Runbook / Package 5: the repository-only promotion gate
   model is documented in `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
   and recorded in
@@ -170,8 +182,10 @@ Current architecture priorities:
   `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md`
   and
   `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`.
-  Runtime initialization, public-boundary dry run, DNS promotion, edge rebuild,
-  and rollback-start remain separate A-tier gates.
+  The protected `/api/admin/platform/aliyun-gates` packet can now show which
+  next gates are ready for operator approval and which remain blocked. Runtime
+  initialization, public-boundary dry run, DNS promotion, edge rebuild, and
+  rollback-start remain separate A-tier gates.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a
