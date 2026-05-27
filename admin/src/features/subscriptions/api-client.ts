@@ -4,6 +4,7 @@ import type {
   AliyunGateEvidenceSummary,
   ChannelRuntimeEvidenceBridge,
   ChannelRuntimeEvidenceBridgeInput,
+  ChannelRuntimeGateWorkbench,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
   CreateSubscriptionInput,
@@ -178,7 +179,17 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
             body: JSON.stringify(input)
           }
         )
-      ).channelRuntimeEvidence
+      ).channelRuntimeEvidence,
+    reviewChannelRuntimeGate: async (input: ChannelRuntimeEvidenceBridgeInput) =>
+      (
+        await request<{ channelRuntimeGateWorkbench: ChannelRuntimeGateWorkbench }>(
+          "/api/admin/platform/channel-runtime-gate-workbench",
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).channelRuntimeGateWorkbench
   };
 }
 

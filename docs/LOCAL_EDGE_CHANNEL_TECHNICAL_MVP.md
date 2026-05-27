@@ -578,6 +578,15 @@ composition. The UI/API surface remains review-only and does not add approval
 submission, runtime deployment, DNS, firewall, traffic, or subscription-output
 controls.
 
+The protected Admin platform route
+`POST /api/admin/platform/channel-runtime-gate-workbench` and its Admin Overview
+panel are the next repository integration loop. They convert safe runtime bridge
+packets into gate-facing advisory status, approval-readiness metadata, counts,
+and grouped candidates. The workbench remains review-only: it does not submit
+approval phrases, echo approval phrase text, contact edge nodes, deploy
+runtimes, mutate firewall or DNS state, move traffic, or change subscription
+output.
+
 Repository-local extended measurement assessment is available through
 `assessChannelExtendedMeasurement(...)`. It consumes an already-collected local
 benchmark summary and classifies each probe as:

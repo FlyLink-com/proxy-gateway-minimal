@@ -10,6 +10,7 @@ import type {
   AliyunGateEvidenceSummary,
   ChannelRuntimeEvidenceBridge,
   ChannelRuntimeEvidenceBridgeInput,
+  ChannelRuntimeGateWorkbench,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
   SubscriptionTenant
@@ -261,6 +262,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
       aliyunGateEvidence("incomplete", "ready_for_artifact_issuance_gate"),
     reviewChannelSystem: async () => channelSystemDecisionFlow(),
     reviewChannelRuntimeEvidence: async () => channelRuntimeEvidenceBridge(),
+    reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
     ...overrides
   };
 }
@@ -402,6 +404,67 @@ function channelRuntimeEvidenceBridge(): ChannelRuntimeEvidenceBridge {
       noApprovalSubmission: true,
       noTrafficMovement: true,
       requiresSeparateRiskAApproval: true,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
+    }
+  };
+}
+
+function channelRuntimeGateWorkbenchInput(): ChannelRuntimeEvidenceBridgeInput {
+  return channelRuntimeEvidenceBridgeInput();
+}
+
+function channelRuntimeGateWorkbench(): ChannelRuntimeGateWorkbench {
+  return {
+    ok: true,
+    mode: "channel-runtime-gate-workbench",
+    generatedAt: "2026-05-27T20:03:00.000Z",
+    sourceGeneratedAt: "2026-05-27T20:02:00.000Z",
+    gate: {
+      status: "approval_ready",
+      requiredNextAction: "request_risk_a_runtime_canary_approval",
+      approvalRequestReady: true,
+      counts: {
+        canaryReady: 1,
+        runtimeBlocked: 0,
+        missingRuntimeInventory: 0
+      },
+      approvalPolicy: {
+        risk: "A",
+        approvalRequired: true,
+        exactPhraseRequired: true,
+        approvalPhraseEchoed: false,
+        approvalSubmissionRoute: null,
+        executesGate: false
+      }
+    },
+    candidates: {
+      approvalReady: [
+        {
+          name: "tuic-lab",
+          protocol: "tuic",
+          qualityTier: "healthy",
+          channelScore: 94,
+          approvalGate: "risk_a_channel_runtime_canary",
+          approvalRequired: true
+        }
+      ],
+      blocked: [],
+      missingInventory: []
+    },
+    source: {
+      bridgeMode: "channel-runtime-evidence-bridge",
+      systemMode: "channel-system-decision-flow",
+      gatePacketMode: "channel-runtime-gate-packet"
+    },
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      requiresSeparateRiskAApproval: true,
+      approvalPhraseEchoed: false,
       omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
     }
   };
@@ -1006,5 +1069,30 @@ describe("overview and nodes pages", () => {
       expect(screen.getByText("Safe channel evidence packet contains forbidden runtime details.")).not.toBeNull();
     });
     expect(reviewChannelRuntimeEvidence).not.toHaveBeenCalled();
+  });
+
+  test("renders channel runtime gate workbench without execution controls or approval phrase", async () => {
+    const reviewChannelRuntimeGate = vi.fn(async () => channelRuntimeGateWorkbench());
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewChannelRuntimeGate })
+    }));
+
+    expect(await screen.findByText("Channel runtime gate workbench")).not.toBeNull();
+    const workbenchRegion = screen.getByRole("region", { name: "Channel runtime gate workbench" });
+    fireEvent.change(screen.getByLabelText(/safe runtime gate workbench packet/i), {
+      target: { value: JSON.stringify(channelRuntimeGateWorkbenchInput()) }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review runtime gate/i }));
+
+    await waitFor(() => {
+      expect(reviewChannelRuntimeGate).toHaveBeenCalledWith(channelRuntimeGateWorkbenchInput());
+    });
+    expect(await screen.findByText("channel-runtime-gate-workbench")).not.toBeNull();
+    expect(within(workbenchRegion).getByText("approval_ready")).not.toBeNull();
+    expect(within(workbenchRegion).getByText("request_risk_a_runtime_canary_approval")).not.toBeNull();
+    expect(within(workbenchRegion).getByText(/No approval submission route/i)).not.toBeNull();
+    expect(within(workbenchRegion).getByText(/Approval phrase not echoed/i)).not.toBeNull();
+    expect(within(workbenchRegion).queryByText(/secret\.example|token=|subscriptionUrl|approvalPhrase/i)).toBeNull();
   });
 });

@@ -7,6 +7,7 @@ import type {
   AliyunGateEvidenceSummary,
   ChannelRuntimeEvidenceBridge,
   ChannelRuntimeEvidenceBridgeInput,
+  ChannelRuntimeGateWorkbench,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
   ProviderFirewallEvidenceInput,
@@ -81,6 +82,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
 
       <ChannelSystemReviewPanel apiClient={apiClient} />
       <ChannelRuntimeEvidenceBridgePanel apiClient={apiClient} />
+      <ChannelRuntimeGateWorkbenchPanel apiClient={apiClient} />
       <AliyunGateReviewPanel apiClient={apiClient} />
     </div>
   );
@@ -346,6 +348,96 @@ function ChannelRuntimeEvidenceBridgePanel({ apiClient }: { apiClient: AdminApiC
                 {bridge.safety.requiresSeparateRiskAApproval
                   ? "Separate Risk A approval required"
                   : "Risk A approval flag missing"}
+              </li>
+            </ul>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ChannelRuntimeGateWorkbenchPanel({ apiClient }: { apiClient: AdminApiClient }) {
+  const [packetText, setPacketText] = useState("");
+  const [workbench, setWorkbench] = useState<ChannelRuntimeGateWorkbench | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewing(true);
+    setError("");
+    try {
+      const input = parseChannelRuntimeEvidenceBridgeInput(packetText);
+      const nextWorkbench = await apiClient.reviewChannelRuntimeGate(input);
+      setWorkbench(nextWorkbench);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+      setWorkbench(null);
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  return (
+    <section className="gate-review-card" aria-labelledby="channel-runtime-gate-workbench-heading">
+      <div className="page-heading">
+        <div>
+          <h2 id="channel-runtime-gate-workbench-heading">Channel runtime gate workbench</h2>
+          <p className="muted">Protected gate-facing view for safe runtime bridge packets.</p>
+        </div>
+      </div>
+
+      <div className="alert">
+        This workbench summarizes the next Risk A runtime gate; it does not submit approvals or execute runtime changes.
+      </div>
+
+      {error ? <div className="alert alert-error">{error}</div> : null}
+
+      <form className="channel-review-form" onSubmit={handleReviewSubmit}>
+        <label htmlFor="channel-runtime-gate-workbench-packet">Safe runtime gate workbench packet</label>
+        <textarea
+          id="channel-runtime-gate-workbench-packet"
+          value={packetText}
+          onChange={(event) => setPacketText(event.target.value)}
+          placeholder='{"dryRunSummary":{},"measurementScore":{},"runtimeEvidenceInput":{"records":[]}}'
+          rows={8}
+        />
+        <button className="primary-button" type="submit" disabled={reviewing}>
+          {reviewing ? "Reviewing..." : "Review runtime gate"}
+        </button>
+      </form>
+
+      {workbench ? (
+        <>
+          <div className="metric-grid">
+            <Metric label="Workbench mode" value={workbench.mode} />
+            <Metric label="Gate status" value={workbench.gate.status} />
+            <Metric label="Next action" value={workbench.gate.requiredNextAction || "none"} />
+            <Metric label="Approval candidates" value={workbench.gate.counts.canaryReady} />
+            <Metric label="Runtime blockers" value={workbench.gate.counts.runtimeBlocked} />
+            <Metric label="Missing inventory" value={workbench.gate.counts.missingRuntimeInventory} />
+          </div>
+          <div className="gate-boundary">
+            <strong>Gate boundary</strong>
+            <ul>
+              <li>{workbench.safety.noRuntimeMutation ? "No runtime mutation" : "Runtime mutation flag missing"}</li>
+              <li>{workbench.safety.noApprovalSubmission ? "No approval submission" : "Approval submission flag missing"}</li>
+              <li>{workbench.safety.noTrafficMovement ? "No traffic movement" : "Traffic movement flag missing"}</li>
+              <li>
+                {workbench.safety.requiresSeparateRiskAApproval
+                  ? "Separate Risk A approval required"
+                  : "Risk A approval flag missing"}
+              </li>
+              <li>
+                {workbench.gate.approvalPolicy.approvalSubmissionRoute === null
+                  ? "No approval submission route"
+                  : "Approval submission route exposed"}
+              </li>
+              <li>
+                {!workbench.gate.approvalPolicy.approvalPhraseEchoed
+                  ? "Approval phrase not echoed"
+                  : "Approval phrase echoed"}
               </li>
             </ul>
           </div>

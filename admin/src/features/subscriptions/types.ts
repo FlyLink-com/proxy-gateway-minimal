@@ -222,3 +222,49 @@ export type ChannelRuntimeEvidenceBridge = {
     omittedFields: string[];
   };
 };
+
+export type ChannelRuntimeGateWorkbench = {
+  ok: boolean;
+  mode: "channel-runtime-gate-workbench";
+  generatedAt: string;
+  sourceGeneratedAt: string;
+  gate: {
+    status: string;
+    requiredNextAction: string;
+    approvalRequestReady: boolean;
+    counts: {
+      canaryReady: number;
+      runtimeBlocked: number;
+      missingRuntimeInventory: number;
+    };
+    approvalPolicy: {
+      risk: "A" | string;
+      approvalRequired: boolean;
+      exactPhraseRequired: boolean;
+      approvalPhraseEchoed: boolean;
+      approvalSubmissionRoute: string | null;
+      executesGate: boolean;
+    };
+  };
+  candidates: {
+    approvalReady: Array<Record<string, unknown>>;
+    blocked: Array<Record<string, unknown>>;
+    missingInventory: Array<Record<string, unknown>>;
+  };
+  source: {
+    bridgeMode: string;
+    systemMode: string;
+    gatePacketMode: string;
+  };
+  safety: {
+    advisoryOnly: boolean;
+    summaryOnly: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+    noApprovalSubmission: boolean;
+    noTrafficMovement: boolean;
+    requiresSeparateRiskAApproval: boolean;
+    approvalPhraseEchoed: boolean;
+    omittedFields: string[];
+  };
+};

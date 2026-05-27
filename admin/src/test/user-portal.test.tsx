@@ -6,6 +6,7 @@ import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import type { AdminApiClient } from "../features/subscriptions/api-client";
 import type {
   ChannelRuntimeEvidenceBridge,
+  ChannelRuntimeGateWorkbench,
   ChannelSystemDecisionFlow,
   SubscriptionTenant
 } from "../features/subscriptions/types";
@@ -74,6 +75,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     }),
     reviewChannelSystem: async () => channelSystemDecisionFlow(),
     reviewChannelRuntimeEvidence: async () => channelRuntimeEvidenceBridge(),
+    reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
     overview: async () => ({
       ok: true,
       total: 0,
@@ -140,6 +142,54 @@ function channelRuntimeEvidenceBridge(): ChannelRuntimeEvidenceBridge {
       noApprovalSubmission: true,
       noTrafficMovement: true,
       requiresSeparateRiskAApproval: true,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
+    }
+  };
+}
+
+function channelRuntimeGateWorkbench(): ChannelRuntimeGateWorkbench {
+  return {
+    ok: true,
+    mode: "channel-runtime-gate-workbench",
+    generatedAt: "2026-05-27T20:03:00.000Z",
+    sourceGeneratedAt: "2026-05-27T20:02:00.000Z",
+    gate: {
+      status: "blocked",
+      requiredNextAction: "collect_runtime_inventory",
+      approvalRequestReady: false,
+      counts: {
+        canaryReady: 0,
+        runtimeBlocked: 0,
+        missingRuntimeInventory: 1
+      },
+      approvalPolicy: {
+        risk: "A",
+        approvalRequired: false,
+        exactPhraseRequired: true,
+        approvalPhraseEchoed: false,
+        approvalSubmissionRoute: null,
+        executesGate: false
+      }
+    },
+    candidates: {
+      approvalReady: [],
+      blocked: [],
+      missingInventory: []
+    },
+    source: {
+      bridgeMode: "channel-runtime-evidence-bridge",
+      systemMode: "channel-system-decision-flow",
+      gatePacketMode: "channel-runtime-gate-packet"
+    },
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      requiresSeparateRiskAApproval: true,
+      approvalPhraseEchoed: false,
       omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
     }
   };

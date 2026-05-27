@@ -9,6 +9,7 @@ import {
   buildChannelCandidateReport,
   buildChannelDecisionPack,
   buildChannelRuntimeEvidenceBridge,
+  buildChannelRuntimeGateWorkbench,
   buildChannelRuntimeGatePacket,
   buildChannelRuntimeInventorySummary,
   buildChannelRuntimeRegistry,
@@ -57,6 +58,7 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof buildChannelCandidateReport, "function");
   assert.equal(typeof buildChannelDecisionPack, "function");
   assert.equal(typeof buildChannelRuntimeEvidenceBridge, "function");
+  assert.equal(typeof buildChannelRuntimeGateWorkbench, "function");
   assert.equal(typeof buildChannelRuntimeGatePacket, "function");
   assert.equal(typeof buildChannelRuntimeInventorySummary, "function");
   assert.equal(typeof buildChannelRuntimeRegistry, "function");

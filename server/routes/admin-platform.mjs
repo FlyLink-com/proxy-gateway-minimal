@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { buildChannelRuntimeEvidenceBridge } from "../services/channel-runtime-evidence-bridge.mjs";
+import { buildChannelRuntimeGateWorkbench } from "../services/channel-runtime-gate-workbench.mjs";
 import { buildChannelSystemDecisionFlow } from "../services/channel-system-decision-flow.mjs";
 import { createCleanStartControlPlanePackage } from "../services/platform/clean-start-control-plane.mjs";
 import { createAliyunGateDecisionPacket } from "../services/platform/aliyun-gate-decision-packet.mjs";
@@ -35,6 +36,12 @@ function channelSystemValidationError() {
 
 function channelRuntimeEvidenceBridgeValidationError() {
   const error = new Error("channel runtime evidence bridge input is invalid");
+  error.code = "validation_error";
+  return error;
+}
+
+function channelRuntimeGateWorkbenchValidationError() {
+  const error = new Error("channel runtime gate workbench input is invalid");
   error.code = "validation_error";
   return error;
 }
@@ -118,6 +125,21 @@ export function adminPlatformRoutes(state) {
       });
     } catch {
       sendError(res, channelRuntimeEvidenceBridgeValidationError());
+    }
+  });
+
+  router.post("/api/admin/platform/channel-runtime-gate-workbench", (req, res) => {
+    try {
+      const input = req.body ?? {};
+      res.json({
+        channelRuntimeGateWorkbench: buildChannelRuntimeGateWorkbench({
+          dryRunSummary: input.dryRunSummary,
+          measurementScore: input.measurementScore,
+          runtimeEvidenceInput: input.runtimeEvidenceInput
+        })
+      });
+    } catch {
+      sendError(res, channelRuntimeGateWorkbenchValidationError());
     }
   });
 

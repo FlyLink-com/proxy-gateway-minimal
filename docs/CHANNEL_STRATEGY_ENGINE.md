@@ -209,6 +209,18 @@ system readiness artifact without using the local CLI. This protected surface
 still does not expose approval submission, runtime deployment, DNS, firewall,
 traffic, or subscription-output controls.
 
+`buildChannelRuntimeGateWorkbench(...)` is the next repository-local integration
+step for those safe bridge packets. It converts the bridge output into
+gate-facing advisory status, approval-readiness metadata, candidate counts, and
+candidate groupings for operator review before a separate Risk A runtime canary
+gate.
+
+The same workbench is available through the protected Admin platform route
+`POST /api/admin/platform/channel-runtime-gate-workbench` and an Admin Overview
+review panel. It does not submit approval phrases, echo approval phrase text,
+contact edge nodes, deploy runtimes, mutate DNS/firewall/systemd config, move
+traffic, or change subscription output.
+
 `assessChannelExtendedMeasurement(...)` can classify already-collected local
 benchmark summaries into `ready_for_decision`, `needs_extended_measurement`, or
 `hold_for_investigation`. This closes the repository-side gap between short
