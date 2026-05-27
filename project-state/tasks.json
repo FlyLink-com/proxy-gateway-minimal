@@ -474,6 +474,44 @@
       ]
     },
     {
+      "id": "B13-aliyun-gate-evidence-shell",
+      "risk": "B",
+      "status": "completed-in-current-branch",
+      "lane": "subscription-control-plane",
+      "title": "Add repository-local Aliyun gate evidence shell",
+      "goal": "Record operator-provided provider-firewall gate evidence through protected Admin routes so the Aliyun gate decision packet can consume evidence without performing A-tier mutation.",
+      "allowedFiles": [
+        "server/services/platform/aliyun-gate-evidence-shell.mjs",
+        "server/routes/admin-platform.mjs",
+        "server/state.mjs",
+        "server/tests/platform-aliyun-gate-evidence-shell.test.mjs",
+        "server/tests/platform-access-routes.test.mjs",
+        "docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md",
+        "docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate Aliyun runtime",
+        "change DNS",
+        "change provider firewall",
+        "change UFW",
+        "expose a public listener",
+        "expose public Admin",
+        "copy state",
+        "mutate AWS",
+        "move user traffic",
+        "move edge traffic",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/platform-aliyun-gate-evidence-shell.test.mjs server/tests/platform-access-routes.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "C4-tuic-comparison-canary-plan",
       "risk": "C",
       "status": "completed-in-current-branch",
@@ -584,7 +622,7 @@
     {
       "id": "A3-aliyun-user-subscription-distribution-platform",
       "risk": "A",
-      "status": "clean-start-repo-support-and-gate-decision-packet-complete-private-validation-and-firewall-runbooks-ready-runtime-gates-blocked",
+      "status": "clean-start-repo-support-gate-decision-packet-and-gate-evidence-shell-complete-private-validation-and-firewall-runbooks-ready-runtime-gates-blocked",
       "lane": "subscription-control-plane",
       "title": "Build Aliyun as the user-management and subscription-distribution platform",
       "goal": "Move user management, subscription rendering, opaque artifact authority, and private Admin control toward Aliyun while keeping HP as validation/lab and without granting production authority until promotion gates pass.",

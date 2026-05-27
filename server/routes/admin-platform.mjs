@@ -16,12 +16,22 @@ function sendError(res, error) {
   res.status(500).json({ error: "internal_error", message: error.message });
 }
 
+function requireAliyunGateEvidenceShell(shell) {
+  if (shell) {
+    return shell;
+  }
+  const error = new Error("Aliyun gate evidence shell is not configured");
+  error.code = "validation_error";
+  throw error;
+}
+
 export function adminPlatformRoutes(state) {
   const router = Router();
   const leadQueue = state.platform?.leadQueue;
   const accountShell = state.platform?.accountShell;
   const accessShell = state.platform?.accessShell;
   const aliyunGateEvidence = state.platform?.aliyunGateEvidence || {};
+  const aliyunGateEvidenceShell = state.platform?.aliyunGateEvidenceShell;
 
   function buildCleanStartPackage() {
     return createCleanStartControlPlanePackage({
@@ -45,10 +55,30 @@ export function adminPlatformRoutes(state) {
       res.json({
         aliyunGates: createAliyunGateDecisionPacket({
           cleanStart: buildCleanStartPackage(),
-          providerFirewall: aliyunGateEvidence.providerFirewall,
+          providerFirewall: aliyunGateEvidenceShell
+            ? aliyunGateEvidenceShell.providerFirewallEvidenceForDecisionPacket()
+            : aliyunGateEvidence.providerFirewall,
           now: new Date()
         })
       });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/platform/aliyun-gate-evidence", (req, res) => {
+    try {
+      res.json({ evidence: aliyunGateEvidenceShell ? aliyunGateEvidenceShell.summary() : null });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/aliyun-gate-evidence/provider-firewall", (req, res) => {
+    try {
+      const evidence = requireAliyunGateEvidenceShell(aliyunGateEvidenceShell)
+        .recordProviderFirewallEvidence(req.body ?? {});
+      res.status(201).json({ evidence });
     } catch (error) {
       sendError(res, error);
     }
