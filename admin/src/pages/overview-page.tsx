@@ -11,6 +11,8 @@ import type {
   ChannelRuntimeEvidenceBridgeInput,
   ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
+  ChannelSubscriptionActivationFlow,
+  ChannelSubscriptionActivationFlowInput,
   ChannelSubscriptionActivationHandoff,
   ChannelSubscriptionActivationHandoffInput,
   ChannelSubscriptionActivationReadiness,
@@ -98,6 +100,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
       <ChannelSubscriptionOutputDraftPanel apiClient={apiClient} />
       <ChannelSubscriptionActivationReadinessPanel apiClient={apiClient} />
       <ChannelSubscriptionActivationHandoffPanel apiClient={apiClient} />
+      <ChannelSubscriptionActivationFlowPanel apiClient={apiClient} />
       <ChannelLabTargetDecisionPanel apiClient={apiClient} />
       <CleanEdgeReadinessReviewPanel apiClient={apiClient} />
       <AliyunGateReviewPanel apiClient={apiClient} />
@@ -169,6 +172,19 @@ function parseChannelSubscriptionActivationHandoffInput(value: string): ChannelS
     throw new Error("Safe channel subscription activation handoff packet contains forbidden runtime details.");
   }
   return parsed as ChannelSubscriptionActivationHandoffInput;
+}
+
+function parseChannelSubscriptionActivationFlowInput(value: string): ChannelSubscriptionActivationFlowInput {
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Safe channel subscription activation flow packet must be a JSON object.");
+  }
+  try {
+    assertSafeChannelSystemEvidence(parsed);
+  } catch {
+    throw new Error("Safe channel subscription activation flow packet contains forbidden runtime details.");
+  }
+  return parsed as ChannelSubscriptionActivationFlowInput;
 }
 
 function parseChannelLabTargetDecisionInput(value: string): ChannelLabTargetDecisionInput {
@@ -906,6 +922,106 @@ function ChannelSubscriptionActivationHandoffPanel({ apiClient }: { apiClient: A
           </div>
           {handoff.handoff.blockers.length ? (
             <div className="alert alert-error">{handoff.handoff.blockers.join(", ")}</div>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ChannelSubscriptionActivationFlowPanel({ apiClient }: { apiClient: AdminApiClient }) {
+  const [packetText, setPacketText] = useState("");
+  const [flow, setFlow] = useState<ChannelSubscriptionActivationFlow | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewing(true);
+    setError("");
+    try {
+      const input = parseChannelSubscriptionActivationFlowInput(packetText);
+      const nextFlow = await apiClient.reviewChannelSubscriptionActivationFlow(input);
+      setFlow(nextFlow);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+      setFlow(null);
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  return (
+    <section className="gate-review-card" aria-labelledby="channel-subscription-activation-flow-heading">
+      <div className="page-heading">
+        <div>
+          <h2 id="channel-subscription-activation-flow-heading">
+            Channel subscription activation flow
+          </h2>
+          <p className="muted">
+            Protected end-to-end review from runtime evidence to subscription-output activation handoff.
+          </p>
+        </div>
+      </div>
+
+      <div className="alert">
+        This panel links existing review stages only; it does not submit approvals, expose execution routes, generate YAML, or change subscription output.
+      </div>
+
+      {error ? <div className="alert alert-error">{error}</div> : null}
+
+      <form className="channel-review-form" onSubmit={handleReviewSubmit}>
+        <label htmlFor="channel-subscription-activation-flow-packet">
+          Safe channel subscription activation flow packet
+        </label>
+        <textarea
+          id="channel-subscription-activation-flow-packet"
+          value={packetText}
+          onChange={(event) => setPacketText(event.target.value)}
+          placeholder='{"dryRunSummary":{},"measurementScore":{},"runtimeEvidenceInput":{"records":[]}}'
+          rows={8}
+        />
+        <button className="primary-button" type="submit" disabled={reviewing}>
+          {reviewing ? "Reviewing..." : "Review activation flow"}
+        </button>
+      </form>
+
+      {flow ? (
+        <>
+          <div className="metric-grid">
+            <Metric label="Flow mode" value={flow.mode} />
+            <Metric label="Flow status" value={flow.flowStatus} />
+            <Metric label="Required next action" value={flow.requiredNextAction} />
+            <Metric label="Activation gate" value={flow.gate.gate} />
+            <Metric label="Execution authority" value={flow.gate.executionAuthority} />
+            <Metric label="Stage count" value={Object.keys(flow.stages).length} />
+          </div>
+          <div className="gate-boundary">
+            <strong>Activation flow boundary</strong>
+            <ul>
+              <li>
+                {flow.safety.noSubscriptionOutputMutation
+                  ? "No subscription output mutation"
+                  : "Subscription output mutation flag missing"}
+              </li>
+              <li>{flow.safety.yamlNotGenerated ? "YAML not generated" : "YAML generation flag missing"}</li>
+              <li>{flow.safety.noRuntimeMutation ? "No runtime mutation" : "Runtime mutation flag missing"}</li>
+              <li>{flow.safety.noTrafficMovement ? "No traffic movement" : "Traffic movement flag missing"}</li>
+              <li>
+                {flow.gate.approvalSubmissionRoute === null
+                  ? "No approval submission route"
+                  : "Approval submission route exposed"}
+              </li>
+              <li>
+                {flow.gate.subscriptionOutputExecutionRoute === null
+                  ? "No subscription output execution route"
+                  : "Subscription output execution route exposed"}
+              </li>
+              <li>{!flow.gate.approvalTextIncluded ? "Approval text not included" : "Approval text included"}</li>
+            </ul>
+          </div>
+          {flow.blockers.length ? (
+            <div className="alert alert-error">{flow.blockers.join(", ")}</div>
           ) : null}
         </>
       ) : null}

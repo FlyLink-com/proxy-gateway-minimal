@@ -615,10 +615,17 @@ Admin Overview panels, are the repository-side handoff layers after the draft.
 They check whether a safe draft has enough baseline/canary evidence to request
 a separate Risk A subscription-output activation gate, then package that state
 with execution authority explicitly marked `not_granted`, checklist keys, no
-approval text, and no approval or execution route. These layers remain
+approval text, and no approval or execution route.
+
+The protected Admin platform route
+`POST /api/admin/platform/channel-subscription-activation-flow` and its Admin
+Overview panel are the repository-side end-to-end review layer after the
+handoff packet. They link draft, readiness, and handoff stages into one flow
+summary so the operator can see whether the channel system is ready to request
+the next A-tier subscription-output activation gate. These layers remain
 review-only and do not generate YAML, change real subscription output, submit
-approval phrases, contact edge nodes, deploy runtimes, move traffic, or
-activate production.
+approval phrases, expose execution routes, contact edge nodes, deploy
+runtimes, move traffic, or activate production.
 
 The protected Admin platform route
 `POST /api/admin/platform/channel-lab-target-decision` and its Admin Overview

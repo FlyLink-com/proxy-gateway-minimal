@@ -172,6 +172,8 @@ export type ChannelSubscriptionActivationReadinessInput = ChannelRuntimeEvidence
 
 export type ChannelSubscriptionActivationHandoffInput = ChannelRuntimeEvidenceBridgeInput;
 
+export type ChannelSubscriptionActivationFlowInput = ChannelRuntimeEvidenceBridgeInput;
+
 export type ChannelLabTargetDecisionInput = {
   generatedAt?: string;
   inventory: unknown;
@@ -512,6 +514,61 @@ export type ChannelSubscriptionActivationHandoff = {
     yamlNotGenerated: boolean;
     requiresSeparateRiskAApproval: boolean;
     approvalTextIncluded: boolean;
+    omittedFields: string[];
+  };
+};
+
+export type ChannelSubscriptionActivationFlow = {
+  ok: boolean;
+  mode: "channel-subscription-activation-flow";
+  generatedAt: string;
+  sourceGeneratedAt: string;
+  flowStatus: string;
+  requiredNextAction: string;
+  blockers: string[];
+  stages: {
+    runtimeEvidenceBridge: {
+      mode: string;
+      status: string;
+    };
+    subscriptionOutputDraft: {
+      mode: string;
+      status: string;
+    };
+    activationReadiness: {
+      mode: string;
+      status: string;
+    };
+    activationHandoff: {
+      mode: string;
+      status: string;
+    };
+  };
+  gate: {
+    risk: "A" | string;
+    gate: string;
+    approvalRequestReady: boolean;
+    exactApprovalRequired: boolean;
+    executionAuthority: string;
+    approvalTextIncluded: boolean;
+    approvalSubmissionRoute: string | null;
+    subscriptionOutputExecutionRoute: string | null;
+    executesGate: boolean;
+    runbook: string;
+  };
+  outputs: {
+    activationHandoff: ChannelSubscriptionActivationHandoff;
+  };
+  safety: {
+    advisoryOnly: boolean;
+    summaryOnly: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+    noApprovalSubmission: boolean;
+    noTrafficMovement: boolean;
+    noSubscriptionOutputMutation: boolean;
+    yamlNotGenerated: boolean;
+    requiresSeparateRiskAApproval: boolean;
     omittedFields: string[];
   };
 };

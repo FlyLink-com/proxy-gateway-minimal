@@ -1236,6 +1236,113 @@ test("admin platform channel subscription activation handoff route rejects unsaf
   }
 });
 
+test("admin platform channel subscription activation flow route is protected and returns advisory pipeline", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  try {
+    const unauthenticated = await fetch(`${baseUrl}/api/admin/platform/channel-subscription-activation-flow`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+    assert.equal(unauthenticated.status, 401);
+
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-subscription-activation-flow`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        dryRunSummary: channelSafeDryRunSummary(),
+        measurementScore: channelMeasurementScore(),
+        runtimeEvidenceInput: channelRuntimeEvidenceInput({
+          checks: {
+            cloudIdentityVerified: true,
+            networkPostureVerified: true,
+            hostInventoryCompleted: true,
+            runtimeSlotAvailable: true,
+            runtimeInstalled: true,
+            serviceActive: true,
+            operatorImportValidated: true,
+            cleanupRequired: false
+          },
+          nextGate: "subscription_output_activation_approval"
+        })
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.channelSubscriptionActivationFlow.mode, "channel-subscription-activation-flow");
+    assert.equal(
+      body.channelSubscriptionActivationFlow.flowStatus,
+      "ready_for_a_tier_subscription_output_activation_request"
+    );
+    assert.equal(
+      body.channelSubscriptionActivationFlow.requiredNextAction,
+      "request_risk_a_subscription_output_activation_approval"
+    );
+    assert.equal(body.channelSubscriptionActivationFlow.gate.executionAuthority, "not_granted");
+    assert.equal(body.channelSubscriptionActivationFlow.gate.approvalSubmissionRoute, null);
+    assert.equal(body.channelSubscriptionActivationFlow.gate.subscriptionOutputExecutionRoute, null);
+    assert.equal(body.channelSubscriptionActivationFlow.outputs.activationHandoff.mode, "channel-subscription-activation-handoff-packet");
+    assert.equal(body.channelSubscriptionActivationFlow.safety.noSubscriptionOutputMutation, true);
+    assert.equal(body.channelSubscriptionActivationFlow.safety.yamlNotGenerated, true);
+    assert.equal(body.channelSubscriptionActivationFlow.safety.noApprovalSubmission, true);
+
+    const serialized = JSON.stringify(body);
+    assert.equal(serialized.includes("ss.secret.example"), false);
+    assert.equal(serialized.includes("tuic.secret.example"), false);
+    assert.equal(serialized.includes("\"host\""), false);
+    assert.equal(serialized.includes("\"port\""), false);
+    assert.equal(serialized.includes("token="), false);
+    assert.equal(serialized.includes("approvalPhrase"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin platform channel subscription activation flow route rejects unsafe input without echoing it", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-subscription-activation-flow`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        dryRunSummary: {
+          ok: true,
+          servers: [
+            { name: "https://runtime-secret.example?token=unsafe", protocol: "tuic", qualityClass: "weak-network" }
+          ]
+        },
+        measurementScore: channelMeasurementScore(),
+        runtimeEvidenceInput: channelRuntimeEvidenceInput()
+      })
+    });
+
+    assert.equal(response.status, 400);
+    const serialized = JSON.stringify(await response.json());
+    assert.equal(serialized.includes("runtime-secret.example"), false);
+    assert.equal(serialized.includes("token=unsafe"), false);
+    assert.equal(serialized.includes("validation_error"), true);
+  } finally {
+    server.close();
+  }
+});
+
 test("admin platform channel lab target decision route is protected and returns advisory target gate", async () => {
   const { leadQueue, accountShell, accessShell } = createPlatformState();
   const { server, baseUrl } = await listen(createApp(fakeState({

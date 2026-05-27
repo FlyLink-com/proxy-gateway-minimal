@@ -24,6 +24,7 @@ export { buildChannelRuntimeGateWorkbench } from "./server/services/channel-runt
 export { buildChannelRuntimeGatePacket } from "./server/services/channel-runtime-gate-packet.mjs";
 export { buildChannelRuntimeInventorySummary } from "./server/services/channel-runtime-inventory-summary.mjs";
 export { buildChannelRuntimeRegistry } from "./server/services/channel-runtime-registry.mjs";
+export { buildChannelSubscriptionActivationFlow } from "./server/services/channel-subscription-activation-flow.mjs";
 export { buildChannelSubscriptionActivationHandoff } from "./server/services/channel-subscription-activation-handoff.mjs";
 export { buildChannelSubscriptionActivationReadiness } from "./server/services/channel-subscription-activation-readiness.mjs";
 export { buildChannelSubscriptionOutputDraft } from "./server/services/channel-subscription-output-draft.mjs";
