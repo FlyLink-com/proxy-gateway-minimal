@@ -355,8 +355,11 @@ Current architecture priorities:
   subscription-output controls. The protected Admin Overview can now consume
   that route from a read-only channel system review panel, so operators can
   paste a safe evidence packet and inspect flow status, required next action,
-  canary readiness, and runtime blockers without execution controls. Extended
-  measurement assessments can classify
+  canary readiness, and runtime blockers without execution controls. The
+  channel runtime evidence bridge can now convert safe runtime evidence packets
+  into runtime inventory input and the full system decision readiness artifact
+  without edge-node contact, runtime mutation, approval submission, traffic
+  movement, or production activation. Extended measurement assessments can classify
   already-collected local benchmark summaries as ready, needing more samples,
   or hold for investigation before an operator decides on the next canary gate. Measurement
   investigation reports can consume safe bundle reports and classify hold
@@ -735,6 +738,11 @@ simplification queue is closed:
   to the protected review API and render flow status, required next action,
   canary readiness, and runtime blockers without exposing approval submission,
   runtime execution, DNS, firewall, traffic, or subscription-output controls.
+- `B24-channel-runtime-evidence-bridge` - completed in the Channel Runtime
+  Evidence Bridge work; safe runtime evidence packets can now be converted
+  into runtime inventory input and full channel system readiness artifacts
+  without edge-node contact, runtime mutation, approval submission, traffic
+  movement, subscription-output change, or production activation.
 - `C4-tuic-comparison-canary-plan` - completed in the TUIC Comparison Canary
   Plan work; TUIC is now the documented next measured channel candidate after
   the held Hysteria2 extended measurement, while VLESS/XUDP remains the

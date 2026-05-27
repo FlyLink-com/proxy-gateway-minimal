@@ -182,6 +182,20 @@ required next action, canary-ready count, and runtime blocker count. It does
 not expose runtime execution, approval submission, DNS, firewall, traffic, or
 subscription-output controls.
 
+`buildChannelRuntimeEvidenceBridge(...)` adds a repository-local bridge between
+operator-collected runtime evidence and the system decision flow. It accepts
+only safe read-only check booleans, blocker codes, candidate labels, protocol
+names, target labels, and next-gate labels; it then creates the runtime
+inventory input and full channel system readiness artifact in one step:
+
+```bash
+npm run channel:runtime-evidence-bridge -- <path-to-dry-run-summary.json> <path-to-score.json> <path-to-safe-runtime-evidence.json>
+```
+
+The bridge is still advisory evidence. It does not inspect live hosts, contact
+edge nodes, query cloud APIs, run probes, deploy runtimes, change firewall
+rules, submit approval phrases, move traffic, or change subscription output.
+
 `assessChannelExtendedMeasurement(...)` can classify already-collected local
 benchmark summaries into `ready_for_decision`, `needs_extended_measurement`, or
 `hold_for_investigation`. This closes the repository-side gap between short

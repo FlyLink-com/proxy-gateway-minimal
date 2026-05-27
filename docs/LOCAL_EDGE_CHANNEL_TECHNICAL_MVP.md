@@ -547,6 +547,24 @@ readiness result in the existing protected Admin UI. This UI does not submit
 approval phrases, deploy runtimes, mutate runtime inventory, move traffic, or
 change subscription output.
 
+Repository-local runtime evidence bridge support is available through
+`buildChannelRuntimeEvidenceBridge(...)`. It converts safe runtime evidence
+packets into the runtime inventory input consumed by the system decision flow,
+then returns both the normalized runtime inventory input and the full channel
+system readiness artifact:
+
+```bash
+npm run channel:runtime-evidence-bridge -- <path-to-dry-run-summary.json> <path-to-score.json> <path-to-safe-runtime-evidence.json>
+```
+
+The bridge accepts only summary evidence such as candidate name, protocol,
+target label, boolean read-only checks, blocker codes, and next gate labels. It
+does not accept raw hosts, ports, URLs, credentials, raw logs, tokens,
+subscription URLs, artifact URLs, cloud credentials, or customer data. It does
+not contact edge nodes, query cloud APIs, run probes, deploy runtimes, change
+firewall rules, submit approval phrases, move traffic, or approve subscription
+output.
+
 Repository-local extended measurement assessment is available through
 `assessChannelExtendedMeasurement(...)`. It consumes an already-collected local
 benchmark summary and classifies each probe as:
