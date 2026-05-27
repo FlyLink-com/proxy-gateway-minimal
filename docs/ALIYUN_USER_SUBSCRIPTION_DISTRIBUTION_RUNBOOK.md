@@ -617,6 +617,13 @@ Latest clean-start planning record:
 docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md
 ```
 
+Latest clean-start and firewall execution gate runbooks:
+
+```text
+docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md
+docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md
+```
+
 Current planning outcome:
 
 ```text
@@ -646,7 +653,9 @@ restore
 Provider-firewall hardening is now a separate prerequisite before Gate D
 public-boundary dry run. Gate A found Aliyun provider firewall rules too broad;
 host UFW currently blocks most paths, but provider-level broad inbound rules
-must not remain the safety boundary for promotion.
+must not remain the safety boundary for promotion. The standalone hardening
+gate is defined in
+`docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`.
 
 ### Gate C-Start: Clean-Start Private Validation
 
@@ -1262,6 +1271,13 @@ request separate A-tier approvals for:
   DNS promotion,
   edge rebuild,
   or AWS rollback-start if temporary restore is needed.
+```
+
+The first two approval paths now have standalone execution-gate runbooks:
+
+```text
+docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md
+docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md
 ```
 
 Do not move DNS, promote production authority, expose public Admin, start edge
