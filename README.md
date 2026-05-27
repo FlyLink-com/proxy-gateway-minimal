@@ -135,6 +135,24 @@ Do not expose this admin shell through the public Nginx gateway. Public producti
 
 完整文档入口见 `docs/README.md`。生产拓扑、部署、staging、DR、DNS/domain、网络转发和历史 specs/plans 的 source-of-truth 关系以该索引为准。
 
+### 历史节点变更索引
+
+历史节点、槽位和供应商角色的变更不要只凭记忆追溯。统一从
+`docs/README.md` 的 `Historical Node Change Index` 查起，再进入对应执行记录。
+
+该索引集中标注了：
+
+- legacy blue AWS host 的备份、停机和保留状态。
+- green / `prod-edge-b` 早期候选记录。
+- `prod-edge-a` 候选、激活、HTTPS 和 opaque artifact canary 记录。
+- Singapore `prod-edge-a` / `prod-edge-b` stop-only 记录。
+- Aliyun subscription control / distribution host 的准备、推广和观测记录。
+- future clean edge / `prod-edge-c` 重建入口。
+- `channel-lab-a` Hysteria2 / TUIC canary 记录。
+- server edge mesh / WireGuard preflight 入口。
+
+这些记录只是审计索引，不是实时 inventory，也不授权 start、stop、rollback、termination、DNS、firewall、subscription-output 或 traffic 变更。生产或节点动作仍必须读取对应 Risk A runbook 并取得明确 operator approval。
+
 ## 项目编排模型
 
 本项目采用轻量级人工门禁编排，而不是 Kubernetes、Docker Compose、Terraform 或自动 CD。
