@@ -143,7 +143,26 @@ const CHANNEL_SYSTEM_FORBIDDEN_EVIDENCE_KEYS = new Set([
   "userAgent"
 ]);
 
-const CHANNEL_SYSTEM_FORBIDDEN_VALUE_PATTERN = /https?:\/\/|token=|subscriptionUrl|artifactUrl|secret\.example/i;
+const CHANNEL_SYSTEM_FORBIDDEN_VALUE_PATTERN = /[a-z][a-z0-9+.-]*:\/\/|token=|subscriptionUrl|artifactUrl|password|credential|rawLog|rawError|secret\.example/i;
+const CHANNEL_SYSTEM_IPV4_VALUE_PATTERN = /\b(?:\d{1,3}\.){3}\d{1,3}\b/;
+const CHANNEL_SYSTEM_IPV6_VALUE_PATTERN = /\b(?:[0-9a-f]{0,4}:){2,}[0-9a-f]{0,4}\b/i;
+const CHANNEL_SYSTEM_DOMAIN_VALUE_PATTERN = /\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,}\b/i;
+const CHANNEL_SYSTEM_HOST_PORT_VALUE_PATTERN = /\b(?:[a-z0-9-]+(?:\.[a-z0-9-]+)+|(?:\d{1,3}\.){3}\d{1,3}|\[[0-9a-f:]+\]):\d{2,5}\b/i;
+const CHANNEL_SYSTEM_PORT_LABEL_PATTERN = /^\d{2,5}$/;
+const ISO_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+
+function hasForbiddenChannelSystemValue(value: string): boolean {
+  if (ISO_TIMESTAMP_PATTERN.test(value)) {
+    return false;
+  }
+  return CHANNEL_SYSTEM_FORBIDDEN_VALUE_PATTERN.test(value)
+    || CHANNEL_SYSTEM_IPV4_VALUE_PATTERN.test(value)
+    || CHANNEL_SYSTEM_IPV6_VALUE_PATTERN.test(value)
+    || CHANNEL_SYSTEM_DOMAIN_VALUE_PATTERN.test(value)
+    || CHANNEL_SYSTEM_HOST_PORT_VALUE_PATTERN.test(value)
+    || CHANNEL_SYSTEM_PORT_LABEL_PATTERN.test(value)
+    || value.includes("@");
+}
 
 function assertSafeChannelSystemEvidence(value: unknown): void {
   if (Array.isArray(value)) {
@@ -153,7 +172,7 @@ function assertSafeChannelSystemEvidence(value: unknown): void {
     return;
   }
   if (!value || typeof value !== "object") {
-    if (typeof value === "string" && CHANNEL_SYSTEM_FORBIDDEN_VALUE_PATTERN.test(value)) {
+    if (typeof value === "string" && hasForbiddenChannelSystemValue(value)) {
       throw new Error("Safe channel evidence packet contains forbidden runtime details.");
     }
     return;

@@ -476,6 +476,16 @@ function channelDryRunSummary() {
   };
 }
 
+function channelSafeDryRunSummary() {
+  return {
+    ok: true,
+    servers: [
+      { name: "ss-baseline", protocol: "ss", qualityClass: "stable" },
+      { name: "tuic-lab", protocol: "tuic", qualityClass: "weak-network" }
+    ]
+  };
+}
+
 function channelMeasurementScore() {
   return {
     ok: true,
@@ -620,7 +630,7 @@ test("admin platform channel runtime evidence bridge route is protected and retu
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        dryRunSummary: channelDryRunSummary(),
+        dryRunSummary: channelSafeDryRunSummary(),
         measurementScore: channelMeasurementScore(),
         runtimeEvidenceInput: channelRuntimeEvidenceInput()
       })
@@ -662,7 +672,7 @@ test("admin platform channel runtime evidence bridge route rejects unsafe eviden
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        dryRunSummary: channelDryRunSummary(),
+        dryRunSummary: channelSafeDryRunSummary(),
         measurementScore: channelMeasurementScore(),
         runtimeEvidenceInput: channelRuntimeEvidenceInput({
           host: "runtime-secret.example",
@@ -677,6 +687,86 @@ test("admin platform channel runtime evidence bridge route rejects unsafe eviden
     assert.equal(serialized.includes("runtime-secret.example"), false);
     assert.equal(serialized.includes("443"), false);
     assert.equal(serialized.includes("token=runtime-secret"), false);
+    assert.equal(serialized.includes("validation_error"), true);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin platform channel runtime evidence bridge route rejects unsafe allowed runtime labels without echoing them", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-runtime-evidence-bridge`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        dryRunSummary: channelSafeDryRunSummary(),
+        measurementScore: channelMeasurementScore(),
+        runtimeEvidenceInput: channelRuntimeEvidenceInput({
+          candidateName: "203.0.113.10:443",
+          targetLabel: "198.51.100.7:443"
+        })
+      })
+    });
+
+    assert.equal(response.status, 400);
+    const serialized = JSON.stringify(await response.json());
+    assert.equal(serialized.includes("203.0.113.10"), false);
+    assert.equal(serialized.includes("198.51.100.7"), false);
+    assert.equal(serialized.includes("443"), false);
+    assert.equal(serialized.includes("validation_error"), true);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin platform channel runtime evidence bridge route rejects unsafe summary inputs without echoing them", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-runtime-evidence-bridge`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        dryRunSummary: {
+          ok: true,
+          servers: [
+            { name: "https://runtime-secret.example?token=unsafe", protocol: "tuic", qualityClass: "weak-network" }
+          ]
+        },
+        measurementScore: {
+          ...channelMeasurementScore(),
+          candidates: [
+            {
+              ...channelMeasurementScore().candidates[0],
+              name: "198.51.100.7:443"
+            }
+          ]
+        },
+        runtimeEvidenceInput: channelRuntimeEvidenceInput()
+      })
+    });
+
+    assert.equal(response.status, 400);
+    const serialized = JSON.stringify(await response.json());
+    assert.equal(serialized.includes("runtime-secret.example"), false);
+    assert.equal(serialized.includes("198.51.100.7"), false);
+    assert.equal(serialized.includes("token=unsafe"), false);
     assert.equal(serialized.includes("validation_error"), true);
   } finally {
     server.close();

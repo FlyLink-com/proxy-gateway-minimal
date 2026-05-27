@@ -975,4 +975,36 @@ describe("overview and nodes pages", () => {
     });
     expect(reviewChannelRuntimeEvidence).not.toHaveBeenCalled();
   });
+
+  test("blocks unsafe runtime evidence bridge labels before calling the protected review API", async () => {
+    const reviewChannelRuntimeEvidence = vi.fn(async () => channelRuntimeEvidenceBridge());
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewChannelRuntimeEvidence })
+    }));
+
+    expect(await screen.findByText("Channel runtime evidence bridge")).not.toBeNull();
+    fireEvent.change(screen.getByLabelText(/safe runtime evidence bridge packet/i), {
+      target: {
+        value: JSON.stringify({
+          ...channelRuntimeEvidenceBridgeInput(),
+          runtimeEvidenceInput: {
+            records: [
+              {
+                candidateName: "203.0.113.10:443",
+                protocol: "tuic",
+                targetLabel: "198.51.100.7:443"
+              }
+            ]
+          }
+        })
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review runtime evidence bridge/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Safe channel evidence packet contains forbidden runtime details.")).not.toBeNull();
+    });
+    expect(reviewChannelRuntimeEvidence).not.toHaveBeenCalled();
+  });
 });

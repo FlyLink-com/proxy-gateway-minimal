@@ -565,6 +565,11 @@ not contact edge nodes, query cloud APIs, run probes, deploy runtimes, change
 firewall rules, submit approval phrases, move traffic, or approve subscription
 output.
 
+This safe-summary boundary applies to the full bridge packet, not only the
+runtime evidence section. Dry-run summaries and measurement scores must also use
+provider-neutral candidate labels and must not include raw IPs, hostnames,
+host:port pairs, URLs, tokens, credentials, or raw logs.
+
 The bridge is also available through the protected Admin platform route
 `POST /api/admin/platform/channel-runtime-evidence-bridge` and an Admin
 Overview review panel. This closes the first repository integration loop from

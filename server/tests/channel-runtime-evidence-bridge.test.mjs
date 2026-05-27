@@ -25,8 +25,8 @@ function dryRunSummary() {
   return {
     ok: true,
     servers: [
-      { name: "ss-baseline", host: "ss.secret.example", port: 18388, protocol: "ss", qualityClass: "stable" },
-      { name: "tuic-lab", host: "tuic.secret.example", port: 10443, protocol: "tuic", qualityClass: "weak-network" }
+      { name: "ss-baseline", protocol: "ss", qualityClass: "stable" },
+      { name: "tuic-lab", protocol: "tuic", qualityClass: "weak-network" }
     ]
   };
 }
@@ -183,6 +183,36 @@ test("runtime evidence bridge rejects unsafe runtime details without echoing raw
     (error) => {
       assert.match(error.message, /safe runtime evidence bridge/);
       assert.doesNotMatch(error.message, /runtime-secret|443|token|secret\.example/);
+      return true;
+    }
+  );
+});
+
+test("runtime evidence bridge rejects unsafe summary details without echoing raw values", () => {
+  assert.throws(
+    () => buildChannelRuntimeEvidenceBridge({
+      dryRunSummary: {
+        ok: true,
+        servers: [
+          { name: "198.51.100.7:443", protocol: "tuic", qualityClass: "weak-network" }
+        ]
+      },
+      measurementScore: {
+        ...measurementScore(),
+        candidates: [
+          {
+            ...measurementScore().candidates[0],
+            name: "https://runtime-secret.example?token=unsafe"
+          }
+        ]
+      },
+      runtimeEvidenceInput: {
+        records: []
+      }
+    }),
+    (error) => {
+      assert.match(error.message, /safe runtime evidence bridge/);
+      assert.doesNotMatch(error.message, /runtime-secret|198\.51\.100\.7|443|token/);
       return true;
     }
   );

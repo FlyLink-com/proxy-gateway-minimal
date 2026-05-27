@@ -188,6 +188,11 @@ only safe read-only check booleans, blocker codes, candidate labels, protocol
 names, target labels, and next-gate labels; it then creates the runtime
 inventory input and full channel system readiness artifact in one step:
 
+The bridge input must be a safe summary packet end to end. The dry-run summary,
+measurement score, and runtime evidence sections reject raw endpoint-like labels
+or values such as IPs, hostnames, host:port pairs, URLs, tokens, credentials, or
+raw logs rather than silently redacting them.
+
 ```bash
 npm run channel:runtime-evidence-bridge -- <path-to-dry-run-summary.json> <path-to-score.json> <path-to-safe-runtime-evidence.json>
 ```
