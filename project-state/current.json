@@ -29,6 +29,7 @@
     "docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md",
     "docs/production-replacement-records/2026-05-27-aliyun-gate-a-live-inventory.md",
     "docs/production-replacement-records/2026-05-27-aliyun-gate-b-source-firewall-plan.md",
+    "docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md",
     "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md",
     "docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md",
     "docs/production-replacement-records/2026-05-26-channel-lab-a-creation.md",
@@ -67,6 +68,7 @@
     "Aliyun platform account and entitlement shell exists as repo-only in-memory lead-to-account conversion and entitlement summaries without billing, payment collection, SQLite persistence, Aliyun deployment, DNS, production storage, or user traffic",
     "Aliyun platform dynamic entry and subscription access grant shell exists as repo-only in-memory Admin-only summaries without raw portal URLs, raw artifact references, subscription URLs, SQLite persistence, Aliyun deployment, DNS, production storage, public portal resolution, or user traffic",
     "Aliyun promotion runbook Package 5 exists as repo-only gate design separating live inventory, source-state decision, private state-copy validation, public-boundary dry run, DNS promotion, observation, rollback, and cleanup without authorizing Aliyun deployment, DNS, state copy, public listener exposure, edge traffic, or production authority transfer",
+    "Aliyun clean-start control-plane planning is now the default path for the next repo-only package unless the operator explicitly requires historical state preservation; it avoids historical AWS SQLite/artifact/query-token state copy and keeps runtime initialization, firewall hardening, public-boundary dry run, DNS promotion, edge rebuild, and rollback-start as separate Risk A gates",
     "Domain Unit Boundaries for product business, commercial entitlement, subscription access, nodes, validation, operator lab, and production ops",
     "Aliyun user-management / subscription-distribution platform as the near-term production-control target",
     "HP local Linux as manual CI and operator lab only",
@@ -187,8 +189,8 @@
     },
     {
       "id": "aliyun-private-state-copy-blocked",
-      "summary": "Aliyun Gate A found candidate app/Nginx and candidate SQLite healthy privately, but promotion remains blocked. Gate B planning recommends clean-start Aliyun control plane unless historical subscription state preservation is explicitly required; state preservation should use a separate source-state rescue planning path, temporary restore requires rollback-start preflight, and Aliyun provider firewall hardening is required before public-boundary dry run.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-27-aliyun-gate-b-source-firewall-plan.md"
+      "summary": "Aliyun Gate A found candidate app/Nginx and candidate SQLite healthy privately, but promotion remains blocked. Clean-start Aliyun control-plane planning is now the default path for the next repo-only package unless historical subscription state preservation is explicitly required; state preservation should use a separate source-state rescue planning path, temporary restore requires rollback-start preflight, and Aliyun provider firewall hardening is required before public-boundary dry run.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md"
     },
     {
       "id": "non-aliyun-hp-node-retirement-blocked",
@@ -207,7 +209,8 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Aliyun Gate B source-state decision approval: clean-start control plane versus state-preserving source rescue versus rollback-start preflight",
+    "Aliyun clean-start control-plane repo implementation package: initialization shapes, operator-safe summaries, private rendering dry-run support, tests, and docs/project-state synchronization",
+    "Aliyun clean-start private validation approval after repo evidence is complete",
     "Aliyun provider-firewall hardening approval before public-boundary dry run",
     "TUIC runtime inventory and comparison canary approval path after held Hysteria2 measurement, or VLESS/XUDP secondary comparison if TUIC is rejected",
     "channel-lab-a Hysteria2 latency investigation, GUI import evidence, or cleanup decision",
