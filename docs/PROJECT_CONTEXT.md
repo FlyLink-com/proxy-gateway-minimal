@@ -280,7 +280,13 @@ Current architecture priorities:
   it observed five stable public samples, confirmed DNS remained in the
   intended split state, confirmed DB aggregate safety, and diagnosed Aegis as a
   failed systemd unit with Aegis processes still present. No Aegis repair or
-  other host mutation was performed.
+  other host mutation was performed. The optional Aegis repair gate is defined
+  in
+  `docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md`,
+  with a matching execution template in
+  `docs/production-replacement-records/templates/aliyun-aegis-service-repair-execution-template.md`.
+  It requires an exact approval phrase and is limited to Aegis-only process
+  cleanup and service restart with proxy-gateway health guards.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host now serves the approved
@@ -399,6 +405,12 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   failed while Aegis updater/client/monitor processes remain present. It did
   not mutate DNS, firewall, Nginx, proxy-gateway, Aegis, AWS, tenants,
   artifacts, or edge traffic.
+- The optional Aegis repair runbook is recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md`.
+  It defines the exact approval phrase, Aegis-only repair scope, hard stops,
+  post-repair validation, and sensitive-output boundaries. It does not execute
+  Aegis process cleanup, service restart, reinstall, disablement, reboot, or
+  any DNS / Nginx / proxy-gateway / firewall / AWS / tenant / edge mutation.
 - The latest channel canary server selection inventory is recorded in
   `docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md`.
   It recommends a clean provider-neutral `channel-lab-a` target and Hysteria2
@@ -708,9 +720,11 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   Admin blocked, no-token subscription rejection, one authorized smoke refresh,
   disabled smoke state, and unchanged edge DNS. A read-only observation/Aegis
   follow-up then confirmed stable public samples and narrowed Aegis to a failed
-  systemd unit with Aegis processes still present. The remaining work is Aegis
-  repair approval if desired, clean edge rebuild or rollback-start decisions,
-  broader artifact issuance, and legacy query-token retirement.
+  systemd unit with Aegis processes still present. The optional Aegis repair
+  runbook and execution template now exist, but no repair has been approved or
+  executed. The remaining work is Aegis repair approval if desired, clean edge
+  rebuild or rollback-start decisions, broader artifact issuance, and legacy
+  query-token retirement.
 
 Latest Aliyun user-management / subscription-distribution decision:
 
@@ -735,7 +749,10 @@ Latest Aliyun user-management / subscription-distribution decision:
 - The next executable gates are separate A-tier approvals for Aliyun
   `aegis.service` repair if desired, clean edge node rebuild planning,
   rollback-start approval for stopped AWS nodes if temporary restore is needed,
-  broader artifact issuance, or legacy query-token retirement.
+  broader artifact issuance, or legacy query-token retirement. Aegis repair
+  must use the exact approval phrase from
+  `docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md`;
+  short confirmations such as `同意` do not authorize it.
 
 Latest A2 preflight:
 
