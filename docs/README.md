@@ -42,7 +42,8 @@ actions by itself.
 | `docs/CI_MANUAL_VALIDATION.md` | Manual CI validation host workflow; target direction is local Linux manual CI, with historical Aliyun manual CI facts retained until the transition is validated. | Active runbook, not staging or deploy approval. | Read before using a manual validation host for repo-level CI evidence. |
 | `docs/stage-reports/2026-05-27-pr-169-173.md` | PR cadence report for merged PRs #169-#173. | Stage report; no production or runtime authority. | Read for the five-PR checkpoint covering Aliyun promotion gates, channel investigation/comparison tooling, Gate A inventory, and Gate B source/firewall planning. |
 | `docs/stage-reports/2026-05-27-pr-174-179.md` | PR cadence report for merged PRs #174-#179. | Stage report; no production or runtime authority. | Read for the checkpoint covering TUIC comparison planning, Aliyun clean-start planning and repo package, heavyweight agent ownership, and private-validation / provider-firewall gate runbooks. |
-| `docs/stage-reports/2026-05-27-pr-180-184.md` | PR cadence report for merged PRs #180-#184. | Latest stage report; no production or runtime authority. | Read for the checkpoint covering Aliyun gate decision packet, gate evidence shell, project-state closeouts, validation evidence, and remaining A-tier gates. |
+| `docs/stage-reports/2026-05-27-pr-180-184.md` | PR cadence report for merged PRs #180-#184. | Stage report; no production or runtime authority. | Read for the checkpoint covering Aliyun gate decision packet, gate evidence shell, project-state closeouts, validation evidence, and remaining A-tier gates. |
+| `docs/stage-reports/2026-05-27-pr-185-189.md` | PR cadence report for merged PRs #185-#189. | Latest stage report; no production or runtime authority. | Read for the checkpoint covering Aliyun Admin gate review UI, execution handoff packet, execution-record templates, validation evidence, and exact-phrase A-tier gates. |
 
 ## Structured Project State
 
