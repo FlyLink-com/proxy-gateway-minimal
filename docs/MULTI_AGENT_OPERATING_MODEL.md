@@ -52,10 +52,12 @@ subagent output is evidence, not truth, until the lead verifies it
 parallel work is allowed only when file ownership and external state do not conflict
 ```
 
-## Current Heavyweight Agents
+## Current Heavyweight Specialist Agents
 
-The current project has two heavyweight specialist agents. They are long-running
-ownership lanes, not temporary reviewers.
+The lead agent remains the global owner for scope, risk, integration, and final
+verification. Under that global lead, the current project has two heavyweight
+specialist agents. They are long-running ownership lanes, not temporary
+reviewers.
 
 ### Subscription Control Platform Agent
 
@@ -67,6 +69,8 @@ keep subscription state, artifacts, account/entitlement shells, and rendering
   in the control plane
 prepare clean-start authority, private validation, firewall, public-boundary,
   DNS-promotion, observation, rollback, and cleanup gates
+coordinate Aliyun outward-facing platform preparation without exposing public
+  Admin, dynamic customer entries, or subscription artifacts before approval
 ```
 
 Owns:
@@ -77,6 +81,7 @@ platform lead/account/entitlement/access-grant shells
 opaque artifact and legacy query-token retirement planning
 Aliyun clean-start versus state-preserving source decisions
 provider-firewall and public-boundary runbook preparation
+public site / portal separation and dynamic-entry delivery boundaries
 ```
 
 Does not own:
