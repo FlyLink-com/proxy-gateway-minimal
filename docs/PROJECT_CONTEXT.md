@@ -77,6 +77,12 @@ after every five merged PRs, give a concise stage report covering the PR range,
 risk tiers, validation evidence, production boundary changes, blockers, and
 recommended next actions.
 
+Latest cadence report:
+
+```text
+docs/stage-reports/2026-05-27-pr-169-173.md
+```
+
 ## Current Product Direction
 
 The active product spine is:
