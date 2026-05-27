@@ -557,7 +557,7 @@
     {
       "id": "C5-aliyun-next-a-tier-execution-packet",
       "risk": "C",
-      "status": "completed-in-current-branch",
+      "status": "completed-in-pr-188",
       "lane": "subscription-control-plane",
       "title": "Add Aliyun next A-tier execution handoff packet",
       "goal": "Create a repo-only operator handoff that keeps Aliyun clean-start private validation and provider-firewall hardening as exact-phrase, separately executable Risk A gates.",
