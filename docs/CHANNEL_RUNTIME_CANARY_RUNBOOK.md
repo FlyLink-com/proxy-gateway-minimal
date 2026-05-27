@@ -1,6 +1,6 @@
 # Channel Runtime Canary Runbook
 
-Last updated: 2026-05-26, Asia/Shanghai.
+Last updated: 2026-05-27, Asia/Shanghai.
 
 > Status:
 > - Type: Active Risk A runbook and implementation gate
@@ -41,16 +41,19 @@ only make a controlled canary possible after separate A-tier approval.
 Current baseline facts to verify before any execution:
 
 ```text
-prod-edge-a:
-  stable production baseline
-  do not use for aggressive channel experiments
+Aliyun subscription boundary:
+  current subscription-distribution control boundary
+  does not execute channel runtimes
+  do not mutate for protocol experiments
 
-prod-edge-b:
-  iteration / canary secondary slot
-  preferred first production-adjacent candidate after fresh inventory
+AWS Singapore prod-edge-a/prod-edge-b:
+  stopped under accepted outage
+  not current serving edge capacity
+  not runtime-canary targets unless a rollback-start or clean-rebuild gate
+  separately approves their use
 
-lab edge / operator lab:
-  acceptable for earlier isolated protocol runtime proof
+channel-lab / clean edge:
+  acceptable for isolated protocol runtime proof after the matching A-tier gate
 
 Local Edge Agent:
   parked future node/agent adaptation asset
@@ -77,7 +80,8 @@ Design principles:
 one protocol family per canary
 one target node or lab edge per canary
 one controlled operator device first
-no prod-edge-a mutation for first experiments
+no Aliyun subscription-boundary mutation for first experiments
+no stopped AWS rollback-start as a side effect
 no all-user output
 no DNS cutover
 no subscription-control authority move
@@ -112,7 +116,7 @@ This runbook does not authorize or include:
 production DNS changes
 production Nginx changes
 production HTTPS or redirect changes
-prod-edge-a mutation
+Aliyun subscription-boundary mutation
 production SQLite mutation
 opaque artifact issuance or rotation
 legacy query-token retirement
@@ -232,7 +236,7 @@ record redacted service state and listening-port evidence
 Not allowed:
 
 ```text
-prod-edge-a mutation
+Aliyun subscription-boundary mutation
 DNS change
 Nginx public gateway change
 production subscription base URL change
@@ -298,7 +302,7 @@ all-tenant or all-user migration
 tenant/artifact state mutation without explicit approval
 legacy query-token retirement
 opaque artifact broad issuance
-prod-edge-a baseline replacement
+Aliyun subscription-boundary replacement
 ```
 
 ## Stage 4: Operator Device Canary
@@ -344,7 +348,8 @@ candidate reduces observed proxy-session timeout symptoms versus baseline
 candidate does not materially regress P95/P99 latency
 candidate does not leak credentials through YAML, logs, diagnostics, or docs
 candidate can be disabled and baseline restored quickly
-candidate failure does not affect prod-edge-a or all-user subscription output
+candidate failure does not affect the Aliyun subscription boundary or all-user
+subscription output
 ```
 
 ## Stage 5: Promotion Decision
@@ -461,8 +466,9 @@ Approve controlled operator-device channel canary for <protocol>. No all-user ro
 ```
 
 Any broader rollout, production DNS change, production config change,
-prod-edge-a mutation, tenant/artifact mutation, or cutover requires a separate
-Risk A approval phrase and execution record.
+Aliyun subscription-boundary mutation, stopped-node rollback-start,
+tenant/artifact mutation, or cutover requires a separate Risk A approval phrase
+and execution record.
 
 ## Repository Validation For This Runbook
 

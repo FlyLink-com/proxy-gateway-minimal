@@ -1,6 +1,6 @@
 # Local Edge Channel Technical MVP
 
-Last updated: 2026-05-26, Asia/Shanghai.
+Last updated: 2026-05-27, Asia/Shanghai.
 
 > Status:
 > - Type: Active technical MVP design
@@ -13,7 +13,7 @@ Last updated: 2026-05-26, Asia/Shanghai.
 >   cutover
 > - Production impact: None
 > - Source of truth for: the frontier data-plane technical MVP definition for
->   Local Edge Agent channel work
+>   channel-upgrade work
 
 ## Definition
 
@@ -25,17 +25,20 @@ For this project:
 Technical MVP = shortest safe path to prove frontier-grade transport capability
 ```
 
-The current production MVP remains the stable operating baseline:
+The current production state is no longer a serving Shadowsocks edge baseline.
+As of the current project context:
 
 ```text
-prod-edge-a + prod-edge-b
-Subscription V2
-opaque artifact canary
-Shadowsocks-only data plane
-Clash/Mihomo direct remote-node connection
+Aliyun subscription distribution boundary: promoted
+sub.globalcirclecat.com: served by Aliyun control/subscription boundary
+edge data-plane traffic: pending clean rebuild or separately approved canary
+AWS Singapore prod-edge-a/prod-edge-b: stopped under accepted outage
+tracked SS config: historical comparison input only until edge rebuild
 ```
 
-The new technical MVP is separate. The long-term client-side shape can still be:
+Therefore this technical MVP treats SS as the comparison and rollback model, not
+as proof that a current production edge is serving traffic. The long-term
+client-side shape can still be:
 
 ```text
 Local Edge Agent
@@ -91,8 +94,9 @@ flowchart LR
   end
 
   subgraph "Production Boundary"
-    ProdA["prod-edge-a\nstable production baseline"]
-    Canary["prod-edge-b or lab edge\ncontrolled experiment only"]
+    Control["Aliyun subscription boundary\ncurrent control/distribution"]
+    EdgePending["edge data-plane\npending clean rebuild"]
+    Canary["channel-lab or clean edge\ncontrolled experiment only"]
   end
 
   Clash -->|"imports local URL"| AgentSub
@@ -111,10 +115,12 @@ flowchart LR
   TUIC --> Canary
   QUIC -.-> Canary
   Future -.-> Canary
-  ProdA -.->|"not used for aggressive experiments"| Manager
+  Control -.->|"does not execute protocol runtime"| Manager
+  EdgePending -.->|"requires separate A-tier gate"| Canary
 ```
 
-Clash/Mihomo should see a stable local node:
+For the future Local Edge Agent track, Clash/Mihomo should see a stable local
+node:
 
 ```yaml
 proxies:
@@ -124,8 +130,10 @@ proxies:
     port: <local-agent-port>
 ```
 
-Remote protocol details should be owned by Local Edge Agent and remote-edge
-runtime, not exposed as the main user-facing product contract.
+For the current Clash/Mihomo-native renderer track, Clash/Mihomo may see
+explicit remote protocol candidates in YAML. Remote protocol activation is still
+owned by separately approved remote-edge runtime gates, not by this design
+document.
 
 ## Goals
 
@@ -650,37 +658,41 @@ real remote edge mutation.
 ```text
 Risk: A
 Scope:
-  lab edge or explicitly approved prod-edge-b canary only
+  channel-lab or explicitly approved clean edge canary only
   one operator device
   explicit rollback
-  no prod-edge-a mutation
+  no Aliyun control-boundary mutation
+  no stopped AWS rollback-start mutation
 ```
 
 Requires runbook, read-only inventory, explicit approval, validation evidence,
 and cleanup path. Runtime canary execution gates live in
 `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`.
 
-### Stage 3: Controlled prod-edge-b Canary
+### Stage 3: Controlled Clean Edge Canary
 
 ```text
 Risk: A
 Scope:
-  prod-edge-b or replacement canary slot
+  channel-lab or clean replacement edge canary slot
   operator-device only
   no broad user activation
-  no prod-edge-a baseline change
+  no Aliyun subscription-boundary change
+  no all-user edge activation
 ```
 
 This stage must prove reliability and rollback before broader rollout.
 Use `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md` before deploying or exposing any
-candidate runtime on `prod-edge-b` or another approved target.
+candidate runtime on `channel-lab`, a clean replacement edge, or another
+approved target.
 
 ## Non-Goals
 
 This technical MVP does not:
 
 ```text
-replace current prod-edge-a production baseline
+replace current Aliyun subscription boundary
+activate edge data-plane traffic
 change production DNS
 change production Nginx
 retire legacy query-token access

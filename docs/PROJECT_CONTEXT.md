@@ -334,6 +334,14 @@ Current architecture priorities:
   `docs/CHANNEL_CANARY_SERVER_SELECTION.md` and
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`; repository renderer/config support
   does not authorize server creation or remote protocol deployment by itself.
+  The Technical MVP baseline wording is now aligned with the current Aliyun
+  subscription boundary and stopped AWS edge state: SS remains a comparison and
+  rollback model, not proof of currently serving edge traffic. The next TUIC
+  Stage 0 read-only inventory handoff is
+  `docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md`;
+  it requires the exact inventory approval phrase before any live inventory and
+  still does not authorize TUIC runtime deployment, port exposure, subscription
+  output changes, operator-device traffic, or cleanup mutation.
 - Local Edge Agent: keep as a parked future node/agent adaptation asset, not
   the current mainline for the next channel-upgrade slice.
 - Server Edge Mesh: plan private edge-to-edge health, management, validation,
@@ -526,6 +534,13 @@ operator approval, validation, and rollback path exist:
   TUIC runtime deployment, server creation, port exposure, subscription output
   changes, DNS, Nginx, systemd, firewall/security-group changes, operator-device
   traffic, or production traffic.
+- The TUIC runtime inventory gate handoff is documented in
+  `docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md`.
+  It defines the next exact Stage 0 read-only inventory approval phrase, the
+  allowed evidence, stop conditions, and later deployment/canary gates. It did
+  not execute TUIC inventory, deploy TUIC, create a server, open ports, change
+  firewall/security groups, change subscription output, run operator-device
+  traffic, or clean up `channel-lab-a`.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See
