@@ -341,7 +341,14 @@ Current architecture priorities:
   it recommends `prod-edge-c` as the first clean rebuild logical identity and
   consolidates the approval phrase, start checklist, stop conditions, execution
   envelope, execution-record target, and not-performed boundaries for a future
-  Production Operations Agent.
+  Production Operations Agent. A post-PR #226 read-only live check is recorded
+  in
+  `docs/production-replacement-records/2026-05-27-post-226-clean-edge-live-check.md`;
+  it reconfirms from the Aliyun host vantage that `sub` resolves to Aliyun,
+  `ss-sg` remains on the old AWS address, public health/Admin/root/no-token
+  behavior remains safe, proxy-gateway-candidate/nginx/certbot.timer are
+  active, `aegis.service` remains failed as a separate follow-up, and exact
+  approval is still required before any clean edge execution.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host now serves the approved
@@ -551,7 +558,12 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   execution handoff packet is recorded in
   `docs/production-replacement-records/2026-05-27-clean-edge-rebuild-execution-handoff.md`;
   it remains docs-only and does not provision, assign, bootstrap, inject
-  secrets, start services, change DNS, or change subscription output.
+  secrets, start services, change DNS, or change subscription output. The
+  post-PR #226 read-only live check is recorded in
+  `docs/production-replacement-records/2026-05-27-post-226-clean-edge-live-check.md`;
+  it reconfirms the Aliyun public subscription boundary, unchanged `ss-sg`,
+  safe public Admin/no-token behavior, active proxy-gateway-candidate/nginx,
+  and failed `aegis.service` without executing any mutation.
 - The opaque artifact issuance and legacy query-token retirement runbook is
   recorded in
   `docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md`.
@@ -990,6 +1002,8 @@ Latest Aliyun user-management / subscription-distribution decision:
   `docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md`;
   clean edge rebuild must use the exact approval phrase from
   `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md`;
+  the latest read-only live check before execution is
+  `docs/production-replacement-records/2026-05-27-post-226-clean-edge-live-check.md`;
   opaque artifact issuance and legacy query-token retirement must use their
   separate exact approval phrases from
   `docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md`.
