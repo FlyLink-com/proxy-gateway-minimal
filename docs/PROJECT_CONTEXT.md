@@ -378,7 +378,11 @@ Current architecture priorities:
   Admin Overview review panel can now run that bridge from safe operator
   runtime evidence packets without requiring CLI composition and without
   exposing runtime deployment, approval submission, DNS, firewall, traffic, or
-  subscription-output controls. Extended measurement assessments can classify
+  subscription-output controls. A protected channel runtime gate workbench can
+  now turn the same safe runtime bridge packets into gate-facing advisory
+  status, counts, approval-readiness metadata, and candidate groupings without
+  adding approval submission, approval-phrase echo, runtime execution,
+  edge-node contact, traffic movement, or production activation. Extended measurement assessments can classify
   already-collected local benchmark summaries as ready, needing more samples,
   or hold for investigation before an operator decides on the next canary gate. Measurement
   investigation reports can consume safe bundle reports and classify hold
@@ -785,6 +789,13 @@ simplification queue is closed:
   routes, execution controls, edge-node contact, runtime mutation, approval
   submission, DNS, firewall, traffic, subscription-output change, or production
   activation.
+- `B26-channel-runtime-gate-workbench` - completed in the Channel Runtime Gate
+  Workbench work; the protected Admin platform route and Admin Overview can now
+  convert safe runtime bridge packets into gate-facing advisory status,
+  approval-readiness metadata, candidate counts, and grouped candidates without
+  public routes, approval submission, approval-phrase echo, runtime execution,
+  edge-node contact, DNS, firewall, traffic movement, subscription-output
+  change, or production activation.
 - `C4-tuic-comparison-canary-plan` - completed in the TUIC Comparison Canary
   Plan work; TUIC is now the documented next measured channel candidate after
   the held Hysteria2 extended measurement, while VLESS/XUDP remains the
