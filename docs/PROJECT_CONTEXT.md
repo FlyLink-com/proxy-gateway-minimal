@@ -408,7 +408,14 @@ Current architecture priorities:
   `not_granted`, source runbook reference, candidate counts, grouped
   candidates, and preflight/validation/rollback checklist keys without
   approval submission, approval text, runtime execution, edge-node contact,
-  traffic movement, or production activation. Extended measurement assessments can classify
+  traffic movement, or production activation. A protected channel lab target
+  decision layer can now accept safe target inventory packets after a blocked
+  runtime inventory and return whether to request a fresh `channel-lab-b`
+  selection gate, a separate `channel-lab-a` access/port/cleanup gate, or the
+  normal Risk A runtime canary approval gate. It does not contact edge nodes,
+  create servers, submit approval phrases, expose approval text, deploy
+  runtimes, mutate DNS/firewall/systemd state, move traffic, or change
+  subscription output. Extended measurement assessments can classify
   already-collected local benchmark summaries as ready, needing more samples,
   or hold for investigation before an operator decides on the next canary gate. Measurement
   investigation reports can consume safe bundle reports and classify hold
@@ -845,6 +852,15 @@ simplification queue is closed:
   counts, grouped candidates, and preflight/validation/rollback checklist keys,
   and does not expose public routes, approval submission, approval text,
   runtime execution, edge-node contact, DNS, firewall, traffic movement,
+  subscription-output change, or production activation.
+- `B28-channel-lab-target-decision` - completed in the Channel Lab Target
+  Decision work; the protected Admin platform route and Admin Overview can now
+  convert safe target inventory packets into an advisory next target gate after
+  a blocked runtime inventory. The packet chooses between a fresh
+  `channel-lab-b` selection gate, a separate `channel-lab-a`
+  access/port/cleanup gate, or the normal Risk A runtime canary approval gate
+  without public routes, edge-node contact, server creation, runtime mutation,
+  approval submission, approval text, DNS, firewall, traffic movement,
   subscription-output change, or production activation.
 - `C4-tuic-comparison-canary-plan` - completed in the TUIC Comparison Canary
   Plan work; TUIC is now the documented next measured channel candidate after

@@ -5,6 +5,8 @@ import type {
   AliyunGateDecision,
   AliyunGateDecisionPacket,
   AliyunGateEvidenceSummary,
+  ChannelLabTargetDecision,
+  ChannelLabTargetDecisionInput,
   ChannelRuntimeEvidenceBridge,
   ChannelRuntimeEvidenceBridgeInput,
   ChannelRuntimeExecutionHandoff,
@@ -85,6 +87,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
       <ChannelRuntimeEvidenceBridgePanel apiClient={apiClient} />
       <ChannelRuntimeGateWorkbenchPanel apiClient={apiClient} />
       <ChannelRuntimeExecutionHandoffPanel apiClient={apiClient} />
+      <ChannelLabTargetDecisionPanel apiClient={apiClient} />
       <AliyunGateReviewPanel apiClient={apiClient} />
     </div>
   );
@@ -115,6 +118,15 @@ function parseChannelRuntimeEvidenceBridgeInput(value: string): ChannelRuntimeEv
   }
   assertSafeChannelSystemEvidence(parsed);
   return parsed as ChannelRuntimeEvidenceBridgeInput;
+}
+
+function parseChannelLabTargetDecisionInput(value: string): ChannelLabTargetDecisionInput {
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Safe channel lab target inventory packet must be a JSON object.");
+  }
+  assertSafeChannelSystemEvidence(parsed);
+  return parsed as ChannelLabTargetDecisionInput;
 }
 
 const CHANNEL_SYSTEM_FORBIDDEN_EVIDENCE_KEYS = new Set([
@@ -528,6 +540,96 @@ function ChannelRuntimeExecutionHandoffPanel({ apiClient }: { apiClient: AdminAp
               </li>
               <li>
                 {!handoff.handoff.nextGate.approvalTextIncluded
+                  ? "Approval text not included"
+                  : "Approval text included"}
+              </li>
+            </ul>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ChannelLabTargetDecisionPanel({ apiClient }: { apiClient: AdminApiClient }) {
+  const [packetText, setPacketText] = useState("");
+  const [decision, setDecision] = useState<ChannelLabTargetDecision | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewing(true);
+    setError("");
+    try {
+      const input = parseChannelLabTargetDecisionInput(packetText);
+      const nextDecision = await apiClient.reviewChannelLabTargetDecision(input);
+      setDecision(nextDecision);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+      setDecision(null);
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  return (
+    <section className="gate-review-card" aria-labelledby="channel-lab-target-decision-heading">
+      <div className="page-heading">
+        <div>
+          <h2 id="channel-lab-target-decision-heading">Channel lab target decision</h2>
+          <p className="muted">Protected target decision surface for TUIC comparison inventory.</p>
+        </div>
+      </div>
+
+      <div className="alert">
+        This panel decides the next lab-target gate only; it does not create servers, open ports, or execute runtime changes.
+      </div>
+
+      {error ? <div className="alert alert-error">{error}</div> : null}
+
+      <form className="channel-review-form" onSubmit={handleReviewSubmit}>
+        <label htmlFor="channel-lab-target-decision-packet">Safe channel lab target inventory packet</label>
+        <textarea
+          id="channel-lab-target-decision-packet"
+          value={packetText}
+          onChange={(event) => setPacketText(event.target.value)}
+          placeholder='{"inventory":{"targetLabel":"channel-lab-a","protocol":"tuic","checks":{}}}'
+          rows={8}
+        />
+        <button className="primary-button" type="submit" disabled={reviewing}>
+          {reviewing ? "Reviewing..." : "Review target decision"}
+        </button>
+      </form>
+
+      {decision ? (
+        <>
+          <div className="metric-grid">
+            <Metric label="Decision mode" value={decision.mode} />
+            <Metric label="Decision status" value={decision.status} />
+            <Metric label="Next action" value={decision.requiredNextAction} />
+            <Metric label="Next gate" value={decision.nextGate.gate} />
+            <Metric label="Execution authority" value={decision.executionAuthority} />
+            <Metric label="Blockers" value={decision.blockers.length} />
+          </div>
+          <div className="gate-boundary">
+            <strong>Target decision boundary</strong>
+            <ul>
+              <li>{decision.safety.noRuntimeMutation ? "No runtime mutation" : "Runtime mutation flag missing"}</li>
+              <li>{decision.safety.noApprovalSubmission ? "No approval submission" : "Approval submission flag missing"}</li>
+              <li>{decision.safety.noTrafficMovement ? "No traffic movement" : "Traffic movement flag missing"}</li>
+              <li>
+                {decision.nextGate.approvalSubmissionRoute === null
+                  ? "No approval submission route"
+                  : "Approval submission route exposed"}
+              </li>
+              <li>
+                {decision.nextGate.runtimeExecutionRoute === null
+                  ? "No runtime execution route"
+                  : "Runtime execution route exposed"}
+              </li>
+              <li>
+                {!decision.nextGate.approvalTextIncluded
                   ? "Approval text not included"
                   : "Approval text included"}
               </li>

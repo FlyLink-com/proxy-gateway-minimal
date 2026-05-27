@@ -847,6 +847,58 @@
       ]
     },
     {
+      "id": "B28-channel-lab-target-decision",
+      "risk": "B",
+      "status": "completed-in-current-pr",
+      "lane": "edge-data-plane",
+      "title": "Add protected channel lab target decision API and UI",
+      "goal": "Convert safe target inventory packets into an advisory next target gate after blocked runtime inventory without contacting edge nodes or executing runtime changes.",
+      "allowedFiles": [
+        "server/services/channel-lab-target-decision.mjs",
+        "server/tests/channel-lab-target-decision.test.mjs",
+        "server/routes/admin-platform.mjs",
+        "server/tests/platform-access-routes.test.mjs",
+        "server/tests/package-entry.test.mjs",
+        "index.mjs",
+        "admin/src/features/subscriptions/api-client.ts",
+        "admin/src/features/subscriptions/types.ts",
+        "admin/src/pages/overview-page.tsx",
+        "admin/src/test/subscriptions.test.ts",
+        "admin/src/test/user-portal.test.tsx",
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/PROJECT_CONTEXT.md",
+        "docs/README.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate production",
+        "run probes or contact edge nodes",
+        "create servers",
+        "download or deploy protocol runtimes",
+        "submit approval phrases",
+        "add approval submission routes",
+        "echo approval text",
+        "add runtime execution routes",
+        "add runtime execution controls",
+        "add public routes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, or subscription-output state",
+        "write secrets, raw hosts, raw ports, raw logs, credentials, or raw subscription URLs",
+        "treat target decision output as runtime deployment approval"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/channel-lab-target-decision.test.mjs server/tests/platform-access-routes.test.mjs server/tests/package-entry.test.mjs",
+        "npm run test --prefix admin -- src/test/subscriptions.test.ts src/test/user-portal.test.tsx",
+        "npm run admin:test",
+        "npm run admin:build",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "B12-aliyun-gate-decision-packet",
       "risk": "B",
       "status": "completed-in-pr-181",

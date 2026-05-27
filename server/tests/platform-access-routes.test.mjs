@@ -945,6 +945,96 @@ test("admin platform channel runtime execution handoff route rejects unsafe inpu
   }
 });
 
+test("admin platform channel lab target decision route is protected and returns advisory target gate", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  try {
+    const unauthenticated = await fetch(`${baseUrl}/api/admin/platform/channel-lab-target-decision`, {
+      method: "POST"
+    });
+    assert.equal(unauthenticated.status, 401);
+
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-lab-target-decision`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        inventory: {
+          targetLabel: "channel-lab-a",
+          protocol: "tuic",
+          lifecycleStatus: "running",
+          checks: {
+            cloudIdentityVerified: true,
+            networkPostureVerified: true,
+            sshBannerReachable: false,
+            ssmRegistered: false,
+            hostInventoryCompleted: false,
+            incumbentRuntimePresent: true,
+            incumbentRuntimeProtocol: "hysteria2",
+            candidatePortPlanRecorded: false,
+            cleanupDecisionRecorded: false
+          },
+          blockerCodes: ["ssh_banner_timeout", "ssm_unavailable"],
+          nextGate: "channel_lab_b_selection_gate"
+        }
+      })
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.channelLabTargetDecision.mode, "channel-lab-target-decision");
+    assert.equal(body.channelLabTargetDecision.status, "fresh_target_recommended");
+    assert.equal(body.channelLabTargetDecision.requiredNextAction, "request_channel_lab_b_selection_gate");
+    assert.equal(body.channelLabTargetDecision.nextGate.gate, "risk_a_channel_lab_b_selection");
+    assert.equal(body.channelLabTargetDecision.nextGate.approvalSubmissionRoute, null);
+    assert.equal(body.channelLabTargetDecision.nextGate.runtimeExecutionRoute, null);
+    assert.equal(body.channelLabTargetDecision.safety.noRuntimeMutation, true);
+    assert.equal(body.channelLabTargetDecision.safety.noApprovalSubmission, true);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin platform channel lab target decision route rejects unsafe inventory without echoing it", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-lab-target-decision`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        inventory: {
+          targetLabel: "channel-lab-a",
+          protocol: "tuic",
+          host: "203.0.113.10",
+          port: 443,
+          note: "runtime-secret.example token=hidden"
+        }
+      })
+    });
+    assert.equal(response.status, 400);
+    const serialized = JSON.stringify(await response.json());
+    assert.equal(serialized.includes("203.0.113.10"), false);
+    assert.equal(serialized.includes("443"), false);
+    assert.equal(serialized.includes("runtime-secret.example"), false);
+    assert.equal(serialized.includes("token=hidden"), false);
+  } finally {
+    server.close();
+  }
+});
+
 test("admin platform channel system decision route rejects unsafe runtime evidence without echoing it", async () => {
   const { leadQueue, accountShell, accessShell } = createPlatformState();
   const { server, baseUrl } = await listen(createApp(fakeState({

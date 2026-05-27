@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { buildChannelLabTargetDecision } from "../services/channel-lab-target-decision.mjs";
 import { buildChannelRuntimeExecutionHandoff } from "../services/channel-runtime-execution-handoff.mjs";
 import { buildChannelRuntimeEvidenceBridge } from "../services/channel-runtime-evidence-bridge.mjs";
 import { buildChannelRuntimeGateWorkbench } from "../services/channel-runtime-gate-workbench.mjs";
@@ -49,6 +50,12 @@ function channelRuntimeGateWorkbenchValidationError() {
 
 function channelRuntimeExecutionHandoffValidationError() {
   const error = new Error("channel runtime execution handoff input is invalid");
+  error.code = "validation_error";
+  return error;
+}
+
+function channelLabTargetDecisionValidationError() {
+  const error = new Error("channel lab target decision input is invalid");
   error.code = "validation_error";
   return error;
 }
@@ -162,6 +169,16 @@ export function adminPlatformRoutes(state) {
       });
     } catch {
       sendError(res, channelRuntimeExecutionHandoffValidationError());
+    }
+  });
+
+  router.post("/api/admin/platform/channel-lab-target-decision", (req, res) => {
+    try {
+      res.json({
+        channelLabTargetDecision: buildChannelLabTargetDecision(req.body ?? {})
+      });
+    } catch {
+      sendError(res, channelLabTargetDecisionValidationError());
     }
   });
 

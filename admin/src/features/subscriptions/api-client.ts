@@ -2,6 +2,8 @@ import type {
   AccessMigrationEvidenceInput,
   AliyunGateDecisionPacket,
   AliyunGateEvidenceSummary,
+  ChannelLabTargetDecision,
+  ChannelLabTargetDecisionInput,
   ChannelRuntimeEvidenceBridge,
   ChannelRuntimeEvidenceBridgeInput,
   ChannelRuntimeExecutionHandoff,
@@ -200,7 +202,17 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
             body: JSON.stringify(input)
           }
         )
-      ).channelRuntimeExecutionHandoff
+      ).channelRuntimeExecutionHandoff,
+    reviewChannelLabTargetDecision: async (input: ChannelLabTargetDecisionInput) =>
+      (
+        await request<{ channelLabTargetDecision: ChannelLabTargetDecision }>(
+          "/api/admin/platform/channel-lab-target-decision",
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).channelLabTargetDecision
   };
 }
 

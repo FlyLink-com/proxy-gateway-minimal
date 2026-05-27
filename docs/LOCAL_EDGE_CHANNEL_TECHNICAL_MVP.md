@@ -597,6 +597,17 @@ validation, and rollback. The handoff remains review-only and does not expose
 approval submission, runtime execution, edge-node contact, DNS/firewall/systemd
 mutation, traffic movement, or subscription-output changes.
 
+The protected Admin platform route
+`POST /api/admin/platform/channel-lab-target-decision` and its Admin Overview
+panel are the next repository-side target selection layer after a runtime
+inventory blocks deployment on the current lab target. They accept a safe
+target inventory packet and return an advisory choice between requesting a new
+`channel-lab-b` selection gate, requesting a separate `channel-lab-a`
+access/port/cleanup gate, or proceeding to the normal Risk A runtime canary
+approval request. This remains review-only and does not contact edge nodes,
+probe SSH or SSM, create servers, deploy runtimes, submit approval phrases,
+mutate DNS/firewall/systemd state, move traffic, or change subscription output.
+
 Repository-local extended measurement assessment is available through
 `assessChannelExtendedMeasurement(...)`. It consumes an already-collected local
 benchmark summary and classifies each probe as:
