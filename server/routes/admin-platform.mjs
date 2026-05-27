@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { buildChannelSystemDecisionFlow } from "../services/channel-system-decision-flow.mjs";
 import { createCleanStartControlPlanePackage } from "../services/platform/clean-start-control-plane.mjs";
 import { createAliyunGateDecisionPacket } from "../services/platform/aliyun-gate-decision-packet.mjs";
 
@@ -23,6 +24,12 @@ function requireAliyunGateEvidenceShell(shell) {
   const error = new Error("Aliyun gate evidence shell is not configured");
   error.code = "validation_error";
   throw error;
+}
+
+function channelSystemValidationError() {
+  const error = new Error("channel system decision flow input is invalid");
+  error.code = "validation_error";
+  return error;
 }
 
 export function adminPlatformRoutes(state) {
@@ -74,6 +81,21 @@ export function adminPlatformRoutes(state) {
       res.json({ evidence: aliyunGateEvidenceShell ? aliyunGateEvidenceShell.summary() : null });
     } catch (error) {
       sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/channel-system-decision-flow", (req, res) => {
+    try {
+      const input = req.body ?? {};
+      res.json({
+        channelSystem: buildChannelSystemDecisionFlow({
+          dryRunSummary: input.dryRunSummary,
+          measurementScore: input.measurementScore,
+          runtimeInventoryInput: input.runtimeInventoryInput
+        })
+      });
+    } catch {
+      sendError(res, channelSystemValidationError());
     }
   });
 

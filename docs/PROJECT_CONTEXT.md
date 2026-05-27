@@ -337,7 +337,10 @@ Current architecture priorities:
   system decision flows can now build the runtime inventory summary, runtime
   registry, runtime gate packet, and top-level readiness status from the three
   safe local inputs in one repository artifact without contacting edge nodes or
-  authorizing runtime changes. Extended measurement assessments can classify
+  authorizing runtime changes. A protected Admin platform route can now expose
+  the same channel system decision flow for operator review surfaces without
+  adding approval submission, runtime, DNS, firewall, traffic, or
+  subscription-output controls. Extended measurement assessments can classify
   already-collected local benchmark summaries as ready, needing more samples,
   or hold for investigation before an operator decides on the next canary gate. Measurement
   investigation reports can consume safe bundle reports and classify hold
@@ -703,6 +706,10 @@ simplification queue is closed:
   input can now be composed into a single advisory system readiness artifact
   without running probes, contacting edge nodes, submitting approval phrases,
   deploying runtimes, moving traffic, or changing subscription output.
+- `B22-channel-system-review-api` - completed in the Channel System Review API
+  work; the protected Admin platform surface can now accept the same safe
+  channel decision inputs and return the redacted system readiness artifact
+  without exposing a public route or adding any execution controls.
   missing-inventory states without submitting approval phrases, deploying
   runtimes, moving traffic, changing subscription output, or authorizing
   rollout.

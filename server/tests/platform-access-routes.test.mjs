@@ -465,3 +465,144 @@ test("admin platform Aliyun gate evidence route fails closed when evidence shell
     server.close();
   }
 });
+
+function channelDryRunSummary() {
+  return {
+    ok: true,
+    servers: [
+      { name: "ss-baseline", host: "ss.secret.example", port: 18388, protocol: "ss", qualityClass: "stable" },
+      { name: "tuic-lab", host: "tuic.secret.example", port: 10443, protocol: "tuic", qualityClass: "weak-network" }
+    ]
+  };
+}
+
+function channelMeasurementScore() {
+  return {
+    ok: true,
+    mode: "channel-measurement-score",
+    generatedAt: "2026-05-27T20:00:00.000Z",
+    candidates: [
+      {
+        name: "ss-baseline",
+        protocol: "ss",
+        qualityClass: "stable",
+        channelScore: 99,
+        qualityTier: "healthy",
+        recommendedPool: "stable",
+        reasonCodes: ["stable_baseline_healthy"]
+      },
+      {
+        name: "tuic-lab",
+        protocol: "tuic",
+        qualityClass: "weak-network",
+        channelScore: 94,
+        qualityTier: "healthy",
+        recommendedPool: "canary",
+        reasonCodes: ["candidate_requires_canary"]
+      }
+    ]
+  };
+}
+
+function channelRuntimeInventoryInput(overrides = {}) {
+  return {
+    generatedAt: "2026-05-27T20:01:00.000Z",
+    records: [
+      {
+        candidateName: "tuic-lab",
+        protocol: "tuic",
+        targetLabel: "channel-lab-b",
+        lifecycleStatus: "inventory_ready",
+        deploymentReady: true,
+        blockers: [],
+        nextGate: "runtime_deployment_approval",
+        ...overrides
+      }
+    ]
+  };
+}
+
+test("admin platform channel system decision route is protected and returns safe readiness evidence", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  try {
+    const unauthenticated = await fetch(`${baseUrl}/api/admin/platform/channel-system-decision-flow`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+    assert.equal(unauthenticated.status, 401);
+
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-system-decision-flow`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        dryRunSummary: channelDryRunSummary(),
+        measurementScore: channelMeasurementScore(),
+        runtimeInventoryInput: channelRuntimeInventoryInput()
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.channelSystem.mode, "channel-system-decision-flow");
+    assert.equal(body.channelSystem.flowStatus, "approval_ready");
+    assert.equal(body.channelSystem.requiredNextAction, "request_risk_a_runtime_canary_approval");
+    assert.equal(body.channelSystem.systemReadiness.canaryReadyCount, 1);
+    assert.equal(body.channelSystem.safety.noRuntimeMutation, true);
+    assert.equal(body.channelSystem.safety.noApprovalSubmission, true);
+    assert.equal(body.channelSystem.safety.noTrafficMovement, true);
+
+    const serialized = JSON.stringify(body);
+    assert.equal(serialized.includes("ss.secret.example"), false);
+    assert.equal(serialized.includes("tuic.secret.example"), false);
+    assert.equal(serialized.includes("\"host\""), false);
+    assert.equal(serialized.includes("\"port\""), false);
+    assert.equal(serialized.includes("token="), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin platform channel system decision route rejects unsafe runtime evidence without echoing it", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-system-decision-flow`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        dryRunSummary: channelDryRunSummary(),
+        measurementScore: channelMeasurementScore(),
+        runtimeInventoryInput: channelRuntimeInventoryInput({
+          host: "runtime-secret.example",
+          port: 443,
+          token: "token=runtime-secret"
+        })
+      })
+    });
+
+    assert.equal(response.status, 400);
+    const serialized = JSON.stringify(await response.json());
+    assert.equal(serialized.includes("runtime-secret.example"), false);
+    assert.equal(serialized.includes("443"), false);
+    assert.equal(serialized.includes("token=runtime-secret"), false);
+    assert.equal(serialized.includes("validation_error"), true);
+  } finally {
+    server.close();
+  }
+});

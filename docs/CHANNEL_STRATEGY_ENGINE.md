@@ -169,6 +169,13 @@ The system decision flow is still advisory evidence. It does not contact edge
 nodes, run probes, submit approval phrases, deploy runtimes, change firewall
 rules, move traffic, or approve subscription output.
 
+The same decision flow is also available through the protected Admin platform
+route `POST /api/admin/platform/channel-system-decision-flow` for operator
+review surfaces that need to submit already-collected safe evidence and receive
+one readiness packet. The route is not public and does not add any execution
+control; it only returns the same redacted advisory evidence as the local
+builder.
+
 `assessChannelExtendedMeasurement(...)` can classify already-collected local
 benchmark summaries into `ready_for_decision`, `needs_extended_measurement`, or
 `hold_for_investigation`. This closes the repository-side gap between short
