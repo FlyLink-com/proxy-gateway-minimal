@@ -5,6 +5,7 @@ import { buildChannelRuntimeEvidenceBridge } from "../services/channel-runtime-e
 import { buildChannelRuntimeGateWorkbench } from "../services/channel-runtime-gate-workbench.mjs";
 import { buildChannelSubscriptionActivationFlow } from "../services/channel-subscription-activation-flow.mjs";
 import { buildChannelSubscriptionActivationHandoff } from "../services/channel-subscription-activation-handoff.mjs";
+import { buildChannelSubscriptionActivationPackage } from "../services/channel-subscription-activation-package.mjs";
 import { buildChannelSubscriptionActivationReadiness } from "../services/channel-subscription-activation-readiness.mjs";
 import { buildChannelSubscriptionActivationRecordTemplate } from "../services/channel-subscription-activation-record-template.mjs";
 import { buildChannelSubscriptionOutputDraft } from "../services/channel-subscription-output-draft.mjs";
@@ -86,6 +87,12 @@ function channelSubscriptionActivationFlowValidationError() {
 
 function channelSubscriptionActivationRecordTemplateValidationError() {
   const error = new Error("channel subscription activation record template input is invalid");
+  error.code = "validation_error";
+  return error;
+}
+
+function channelSubscriptionActivationPackageValidationError() {
+  const error = new Error("channel subscription activation package input is invalid");
   error.code = "validation_error";
   return error;
 }
@@ -284,6 +291,20 @@ export function adminPlatformRoutes(state) {
       });
     } catch {
       sendError(res, channelSubscriptionActivationRecordTemplateValidationError());
+    }
+  });
+
+  router.post("/api/admin/platform/channel-subscription-activation-package", (req, res) => {
+    try {
+      const input = req.body ?? {};
+      res.json({
+        channelSubscriptionActivationPackage: buildChannelSubscriptionActivationPackage({
+          fixture: input.activationFlowFixture ?? input,
+          proxyConfig: state.proxyConfig
+        })
+      });
+    } catch {
+      sendError(res, channelSubscriptionActivationPackageValidationError());
     }
   });
 

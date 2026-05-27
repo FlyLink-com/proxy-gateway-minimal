@@ -389,6 +389,14 @@ record path, blocker codes, and approval-readiness booleans. It does not submit
 approval phrases, expose execution routes, change subscription output, contact
 edge nodes, deploy runtimes, move traffic, or activate production.
 
+The same package layer is available through the protected Admin platform route
+`POST /api/admin/platform/channel-subscription-activation-package`. The route
+uses the current runtime `proxyConfig` as the local renderer config source and
+accepts only a safe activation-flow fixture. It is still review-only: it does
+not expose public access, return YAML or record Markdown, add execution
+controls, change subscription output, contact edge nodes, deploy runtimes, move
+traffic, or activate production.
+
 `buildChannelLabTargetDecision(...)` is the repository-local target decision
 layer after a read-only runtime inventory finds that the current lab target is
 not directly deployable. It accepts only a safe target inventory packet, then

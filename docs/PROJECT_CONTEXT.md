@@ -951,6 +951,14 @@ simplification queue is closed:
   YAML or record Markdown and does not submit approval, expose execution
   controls, change subscription output, contact edge nodes, deploy runtime,
   move traffic, or activate production.
+- `B41-channel-subscription-activation-package-api` - completed in the Channel
+  Subscription Activation Package API work; the protected Admin platform route
+  can now build the same safe activation package from a submitted
+  activation-flow fixture and the current runtime `proxyConfig`. The route is
+  review-only and does not expose public access, return YAML or record
+  Markdown, submit approval, expose execution controls, change subscription
+  output, contact edge nodes, deploy runtime, move traffic, or activate
+  production.
 - `B28-channel-lab-target-decision` - completed in the Channel Lab Target
   Decision work; the protected Admin platform route and Admin Overview can now
   convert safe target inventory packets into an advisory next target gate after
