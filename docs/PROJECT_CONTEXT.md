@@ -343,6 +343,13 @@ Current architecture priorities:
   it requires the exact inventory approval phrase before any live inventory and
   still does not authorize TUIC runtime deployment, port exposure, subscription
   output changes, operator-device traffic, or cleanup mutation.
+  The approved Stage 0 read-only inventory execution is recorded in
+  `docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-execution.md`.
+  It verified `channel-lab-a` AWS identity, running state, SG posture, ENI, and
+  TUIC upstream release metadata, but host-internal inventory was blocked by
+  SSH banner timeout and SSM was unavailable. TUIC deployment remains blocked;
+  the recommended next path is a clean `channel-lab-b` comparison gate, or a
+  separate `channel-lab-a` access/port/cleanup plan before reuse.
 - Local Edge Agent: keep as a parked future node/agent adaptation asset, not
   the current mainline for the next channel-upgrade slice.
 - Server Edge Mesh: plan private edge-to-edge health, management, validation,
@@ -542,6 +549,15 @@ operator approval, validation, and rollback path exist:
   not execute TUIC inventory, deploy TUIC, create a server, open ports, change
   firewall/security groups, change subscription output, run operator-device
   traffic, or clean up `channel-lab-a`.
+- The approved TUIC Stage 0 read-only inventory execution is recorded in
+  `docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-execution.md`.
+  It verified that `channel-lab-a` is still running in AWS ap-southeast-1 with
+  the expected security group and UDP/443 Hysteria2 exposure, but SSH reached
+  TCP connect and timed out before banner/auth, while SSM is not registered.
+  Host-internal runtime state was not reverified, so TUIC runtime deployment is
+  blocked. The record recommends a fresh `channel-lab-b` TUIC comparison gate
+  unless the operator separately approves `channel-lab-a` access remediation,
+  second-port planning, or Hysteria2 cleanup planning.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See

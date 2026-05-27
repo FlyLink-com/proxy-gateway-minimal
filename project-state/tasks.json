@@ -830,7 +830,7 @@
     {
       "id": "A0-channel-canary-server-selection",
       "risk": "A",
-      "status": "blocked-tuic-stage0-runtime-inventory-gate-ready-but-not-executed-runtime-deployment-broader-rollout-or-cleanup-approval-still-required",
+      "status": "blocked-tuic-stage0-inventory-executed-channel-lab-a-runtime-deployment-blocked-channel-lab-b-or-access-port-cleanup-gate-required",
       "lane": "edge-data-plane",
       "title": "Select clean server for channel runtime canary",
       "goal": "Choose or verify a disposable provider-neutral canary server for one protocol family after long-haul path, UDP, lifecycle, security, metrics, rollback, and the TUIC Stage 0 read-only inventory gate.",
@@ -841,7 +841,8 @@
         "docs/production-incident-records/*.md",
         "project-state/*.json",
         "docs/CHANNEL_TUIC_COMPARISON_CANARY_PLAN.md",
-        "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md"
+        "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md",
+        "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-execution.md"
       ],
       "forbiddenActions": [
         "create a server without explicit approval",
@@ -849,14 +850,16 @@
         "copy production secrets, SQLite data, opaque artifact URLs, or raw subscription URLs",
         "run multiple protocol families in the first canary",
         "treat HP, Aliyun control-plane candidate, or stopped historical nodes as edge canary capacity without a separate gate",
-        "treat TUIC runtime inventory gate handoff as runtime deployment approval"
+        "treat TUIC runtime inventory gate handoff as runtime deployment approval",
+        "treat TUIC Stage 0 read-only inventory execution as channel-lab-a runtime deployment readiness"
       ],
       "validation": [
         "Risk A read-only server-selection inventory",
         "protocol-specific runtime canary runbook validation",
         "rollback evidence",
         "controlled operator-device metrics",
-        "TUIC Stage 0 read-only inventory gate before deployment"
+        "TUIC Stage 0 read-only inventory gate before deployment",
+        "fresh channel-lab-b selection or explicit channel-lab-a access/port/cleanup gate after blocked inventory"
       ]
     },
     {
