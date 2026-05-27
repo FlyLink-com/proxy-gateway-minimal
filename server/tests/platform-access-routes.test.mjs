@@ -585,6 +585,38 @@ function channelActivationFlowFixture() {
   });
 }
 
+function channelProxyConfig() {
+  return {
+    servers: [
+      {
+        id: "node_ss",
+        name: "ss-baseline",
+        protocol: "ss",
+        host: "ss.secret.example",
+        port: 18388,
+        method: "aes-256-gcm",
+        password: "ss-secret",
+        qualityClass: "stable"
+      },
+      {
+        id: "node_tuic",
+        name: "tuic-lab",
+        protocol: "tuic",
+        host: "tuic.secret.example",
+        port: 10443,
+        uuid: "22222222-2222-4222-8222-222222222222",
+        password: "tuic-secret",
+        token: "tuic-token",
+        udpRelayMode: "native",
+        congestionController: "bbr",
+        qualityClass: "weak-network"
+      }
+    ],
+    pingHosts: ["sub.secret.example"],
+    nginx: { host: "gateway.secret.example", ports: [443] }
+  };
+}
+
 test("admin platform channel system decision route is protected and returns safe readiness evidence", async () => {
   const { leadQueue, accountShell, accessShell } = createPlatformState();
   const { server, baseUrl } = await listen(createApp(fakeState({
@@ -1437,6 +1469,102 @@ test("admin platform channel subscription activation record template route rejec
   })));
   try {
     const response = await fetch(`${baseUrl}/api/admin/platform/channel-subscription-activation-record-template`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        activationFlowFixture: {
+          ...channelActivationFlowFixture(),
+          rawUrl: "https://runtime-secret.example/sub/a/unsafe?token=unsafe"
+        }
+      })
+    });
+
+    assert.equal(response.status, 400);
+    const serialized = JSON.stringify(await response.json());
+    assert.equal(serialized.includes("runtime-secret.example"), false);
+    assert.equal(serialized.includes("token=unsafe"), false);
+    assert.equal(serialized.includes("validation_error"), true);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin platform channel subscription activation package route is protected and returns safe package metadata", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell,
+    proxyConfig: channelProxyConfig()
+  })));
+  try {
+    const unauthenticated = await fetch(`${baseUrl}/api/admin/platform/channel-subscription-activation-package`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({})
+    });
+    assert.equal(unauthenticated.status, 401);
+
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-subscription-activation-package`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        activationFlowFixture: channelActivationFlowFixture()
+      })
+    });
+
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.channelSubscriptionActivationPackage.mode, "channel-subscription-activation-package");
+    assert.equal(
+      body.channelSubscriptionActivationPackage.status,
+      "ready_for_risk_a_subscription_output_activation_request"
+    );
+    assert.equal(body.channelSubscriptionActivationPackage.package.renderProofReady, true);
+    assert.equal(body.channelSubscriptionActivationPackage.package.recordTemplateReady, true);
+    assert.equal(body.channelSubscriptionActivationPackage.package.approvalRequestReady, true);
+    assert.equal(body.channelSubscriptionActivationPackage.renderProof.internalYamlRenderCompleted, true);
+    assert.equal(body.channelSubscriptionActivationPackage.renderProof.yamlReturned, false);
+    assert.equal(body.channelSubscriptionActivationPackage.recordTemplate.markdownReturned, false);
+    assert.equal(body.channelSubscriptionActivationPackage.gate.approvalRequestReady, true);
+    assert.equal(body.channelSubscriptionActivationPackage.gate.executesGate, false);
+    assert.equal(body.channelSubscriptionActivationPackage.safety.noSubscriptionOutputMutation, true);
+    assert.equal(body.channelSubscriptionActivationPackage.safety.noRuntimeMutation, true);
+    assert.equal(body.channelSubscriptionActivationPackage.safety.noApprovalSubmission, true);
+
+    const serialized = JSON.stringify(body);
+    assert.equal(serialized.includes("ss.secret.example"), false);
+    assert.equal(serialized.includes("tuic.secret.example"), false);
+    assert.equal(serialized.includes("gateway.secret.example"), false);
+    assert.equal(serialized.includes("ss-secret"), false);
+    assert.equal(serialized.includes("tuic-secret"), false);
+    assert.equal(serialized.includes("tuic-token"), false);
+    assert.equal(serialized.includes("22222222"), false);
+    assert.equal(serialized.includes("\"host\""), false);
+    assert.equal(serialized.includes("\"port\""), false);
+    assert.equal(serialized.includes("token="), false);
+    assert.equal(serialized.includes("# Channel Subscription Output Activation Execution Record"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin platform channel subscription activation package route rejects unsafe fixtures without echoing them", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell,
+    proxyConfig: channelProxyConfig()
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/channel-subscription-activation-package`, {
       method: "POST",
       headers: {
         ...authHeaders(),

@@ -1428,6 +1428,44 @@
       ]
     },
     {
+      "id": "B41-channel-subscription-activation-package-api",
+      "risk": "B",
+      "status": "completed-in-pr-251",
+      "lane": "edge-data-plane",
+      "title": "Add protected channel subscription activation package API",
+      "goal": "Expose safe activation package generation through a protected Admin platform route using current runtime proxyConfig and submitted activation-flow fixture input without granting execution authority.",
+      "allowedFiles": [
+        "server/routes/admin-platform.mjs",
+        "server/tests/platform-access-routes.test.mjs",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "return Clash or Mihomo YAML",
+        "return execution-record Markdown",
+        "change real subscription output",
+        "mutate production",
+        "query or contact live edge nodes",
+        "deploy runtimes",
+        "submit approval phrases",
+        "echo or store approval text",
+        "add execution routes or execution controls",
+        "add public routes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, firewall, provider, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, or subscription-output state",
+        "write secrets, raw hosts, raw IPs, raw ports, raw URLs, raw logs, credentials, raw subscription URLs, SQLite rows, customer data, or exact management-source values",
+        "treat protected activation package API output as subscription-output activation approval or execution evidence"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/platform-access-routes.test.mjs server/tests/channel-subscription-activation-package.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "B12-aliyun-gate-decision-packet",
       "risk": "B",
       "status": "completed-in-pr-181",
