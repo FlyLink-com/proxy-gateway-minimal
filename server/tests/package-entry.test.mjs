@@ -17,6 +17,7 @@ import {
   buildChannelRuntimeInventorySummary,
   buildChannelRuntimeRegistry,
   buildChannelSubscriptionActivationFlow,
+  buildChannelSubscriptionActivationRecordTemplate,
   CHANNEL_SUBSCRIPTION_ACTIVATION_FLOW_FIXTURE_SCHEMA_VERSION,
   createChannelSubscriptionActivationFlowFixture,
   normalizeChannelSubscriptionActivationFlowFixture,
@@ -77,6 +78,7 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof buildChannelRuntimeInventorySummary, "function");
   assert.equal(typeof buildChannelRuntimeRegistry, "function");
   assert.equal(typeof buildChannelSubscriptionActivationFlow, "function");
+  assert.equal(typeof buildChannelSubscriptionActivationRecordTemplate, "function");
   assert.equal(typeof CHANNEL_SUBSCRIPTION_ACTIVATION_FLOW_FIXTURE_SCHEMA_VERSION, "string");
   assert.equal(typeof createChannelSubscriptionActivationFlowFixture, "function");
   assert.equal(typeof normalizeChannelSubscriptionActivationFlowFixture, "function");

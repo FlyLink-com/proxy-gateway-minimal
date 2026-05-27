@@ -910,6 +910,15 @@ simplification queue is closed:
   metadata; replay remains advisory and does not generate YAML, submit
   approvals, expose execution routes, change subscription output, contact edge
   nodes, deploy runtime, move traffic, or activate production.
+- `B36-channel-subscription-activation-record-template` - completed in the
+  Channel Subscription Activation Record Template work; repository-local
+  helpers and CLI scripts can now turn a safe activation-flow fixture into a
+  Markdown execution-record skeleton for later exact-approved A-tier work. The
+  template contains TODO sections for approval reference, preflight,
+  activation, validation, rollback, and not-performed evidence; it does not
+  store approval text, generate YAML, submit approvals, expose execution
+  routes, change subscription output, contact edge nodes, deploy runtime, move
+  traffic, or activate production.
 - `B28-channel-lab-target-decision` - completed in the Channel Lab Target
   Decision work; the protected Admin platform route and Admin Overview can now
   convert safe target inventory packets into an advisory next target gate after

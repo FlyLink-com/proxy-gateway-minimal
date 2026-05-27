@@ -316,6 +316,26 @@ production. It exists because the channel system is not established until
 review evidence can be preserved, replayed, and handed to a later exact-phrase
 A-tier runtime or subscription-output gate.
 
+`buildChannelSubscriptionActivationRecordTemplate(...)` is the repository-local
+execution-record template layer after fixture/replay. It consumes a safe
+activation-flow fixture and emits a Markdown record skeleton for a future
+A-tier subscription-output activation execution record. The template contains
+the fixture timestamps, readiness state, candidate counts, blockers, and TODO
+sections for approval reference, preflight evidence, activation evidence,
+validation evidence, rollback evidence, and not-performed boundaries.
+
+The CLI helper is:
+
+```bash
+npm run channel:subscription-activation-record-template -- <path-to-activation-flow-fixture.json>
+```
+
+This template generator is still repo-only. It does not submit or store
+approval phrase text, expose execution routes, generate YAML, change
+subscription output, contact edge nodes, deploy runtimes, move traffic, or
+activate production. It only prepares the evidence shape that a later
+exact-approved A-tier execution record must fill in with live facts.
+
 `buildChannelLabTargetDecision(...)` is the repository-local target decision
 layer after a read-only runtime inventory finds that the current lab target is
 not directly deployable. It accepts only a safe target inventory packet, then
