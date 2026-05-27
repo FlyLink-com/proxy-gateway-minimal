@@ -536,6 +536,58 @@ The Package 8 implementation is repository-only. It records operator-provided
 evidence for decision support and keeps execution authority in the separate
 A-tier runbooks.
 
+### Package 9: Admin Gate Review Surface
+
+**Risk:** B repo-only Admin UI; A for any Aliyun runtime validation,
+provider-firewall mutation, public-boundary dry run, DNS promotion, state copy,
+user traffic, edge traffic, or production authority transfer.
+
+**Primary unit:** Subscription Control Platform / Admin UI.
+
+**Goal:** Surface the existing protected Aliyun gate decision packet and
+gate-evidence summary in the Admin Overview page so operators can review the
+next A-tier gates without expanding navigation or exposing execution controls.
+
+**Files likely touched:**
+
+```text
+admin/src/features/subscriptions/api-client.ts
+admin/src/features/subscriptions/types.ts
+admin/src/pages/overview-page.tsx
+admin/src/test/subscriptions.test.ts
+admin/src/styles.css
+docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md
+docs/PROJECT_CONTEXT.md
+project-state/*.json
+```
+
+**Acceptance:**
+
+```text
+Overview consumes /api/admin/platform/aliyun-gates and gate-evidence summaries
+gate status, blockers, not-authorized boundaries, and safe boolean evidence are visible
+provider-firewall evidence can be recorded only as booleans
+approval phrases are not submitted through the UI
+no raw firewall rules, management-source labels, wg-home decision text, notes,
+tokens, subscription URLs, customer data, node hosts, or credentials are
+displayed or submitted
+no Aliyun runtime, provider firewall, DNS, public listener, state copy, AWS,
+user traffic, or edge traffic is mutated by the repo PR
+```
+
+**Repository anchors after Package 9 implementation:**
+
+```text
+admin/src/pages/overview-page.tsx
+admin/src/features/subscriptions/api-client.ts
+admin/src/features/subscriptions/types.ts
+admin/src/test/subscriptions.test.ts
+```
+
+The Package 9 implementation is repository-only. It turns Package 7/8 backend
+metadata into an internal operator review surface and keeps every real Aliyun
+execution action behind the separate A-tier runbooks.
+
 ## Validation Policy
 
 ```text
@@ -597,7 +649,8 @@ Ready PRs must contain the complete loop for their approved scope.
 6. Complete: build the clean-start control-plane repo implementation package.
 7. Complete: add the protected Aliyun gate decision packet for execution-before-decision review.
 8. Complete: add the protected Aliyun gate evidence shell for operator-recorded gate evidence.
-9. Next A-tier: request Aliyun clean-start private validation and provider
+9. Current repo package: add the Admin Overview Aliyun gate review surface.
+10. Next A-tier: request Aliyun clean-start private validation and provider
    firewall hardening as separate gates.
 ```
 

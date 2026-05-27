@@ -17,6 +17,7 @@
     "docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md",
     "docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md",
     "docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md",
+    "docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md",
     "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/CHANNEL_STRATEGY_ENGINE.md",
@@ -507,6 +508,47 @@
       "validation": [
         "git diff --check origin/master...HEAD",
         "node --test server/tests/platform-aliyun-gate-evidence-shell.test.mjs server/tests/platform-access-routes.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "B14-admin-aliyun-gate-review-surface",
+      "risk": "B",
+      "status": "completed-in-current-branch",
+      "lane": "subscription-control-plane",
+      "title": "Add Admin Overview surface for Aliyun gate review",
+      "goal": "Let operators review the protected Aliyun gate decision packet and record provider-firewall gate evidence as booleans without exposing A-tier execution controls.",
+      "allowedFiles": [
+        "admin/src/features/subscriptions/api-client.ts",
+        "admin/src/features/subscriptions/types.ts",
+        "admin/src/pages/overview-page.tsx",
+        "admin/src/test/subscriptions.test.ts",
+        "admin/src/styles.css",
+        "docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate Aliyun runtime",
+        "change DNS",
+        "change provider firewall",
+        "change UFW",
+        "submit approval phrases through the UI",
+        "expose A-tier execution buttons",
+        "expose a public listener",
+        "expose public Admin",
+        "copy state",
+        "mutate AWS",
+        "move user traffic",
+        "move edge traffic",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm run admin:test -- subscriptions.test.ts",
+        "npm run admin:test",
+        "npm run admin:build",
         "npm test",
         "npm run project-state:check"
       ]

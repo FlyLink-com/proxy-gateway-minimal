@@ -5,7 +5,11 @@ import { createAdminApiClient, type AdminApiClient } from "../features/subscript
 import { loadAdminSession, saveAdminSession } from "../features/subscriptions/admin-session";
 import { ResetTokenDialog } from "../features/subscriptions/reset-token-dialog";
 import { SubscriptionsPage } from "../features/subscriptions/subscriptions-page";
-import type { SubscriptionTenant } from "../features/subscriptions/types";
+import type {
+  AliyunGateDecisionPacket,
+  AliyunGateEvidenceSummary,
+  SubscriptionTenant
+} from "../features/subscriptions/types";
 import { NodesPage } from "../pages/nodes-page";
 import { OverviewPage } from "../pages/overview-page";
 
@@ -72,6 +76,37 @@ describe("admin API client", () => {
       "/api/admin/subscriptions",
       expect.objectContaining({ headers: expect.any(Headers) })
     );
+  });
+
+  test("loads and records Aliyun gate review data without raw firewall details", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse({ aliyunGates: aliyunGatePacket() }))
+      .mockResolvedValueOnce(jsonResponse({ evidence: aliyunGateEvidence() }))
+      .mockResolvedValueOnce(jsonResponse({ evidence: aliyunGateEvidence("ready_for_gate_packet") }));
+    const client = createAdminApiClient({
+      baseUrl: "",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    expect((await client.getAliyunGates()).gates).toHaveLength(2);
+    expect((await client.getAliyunGateEvidence())?.providerFirewall?.status).toBe("incomplete");
+    await client.recordProviderFirewallEvidence({
+      hasRollbackSnapshot: true,
+      hasManagementSourceDecision: true,
+      hasWgHomeDecision: false
+    });
+
+    const recordCall = fetchMock.mock.calls[2] as unknown as [string, RequestInit];
+    expect(recordCall[0]).toBe("/api/admin/platform/aliyun-gate-evidence/provider-firewall");
+    expect(recordCall[1].method).toBe("POST");
+    expect(JSON.parse(String(recordCall[1].body))).toEqual({
+      hasRollbackSnapshot: true,
+      hasManagementSourceDecision: true,
+      hasWgHomeDecision: false
+    });
+    expect(JSON.stringify(recordCall[1].body)).not.toMatch(/rawRules|note|token|operator-home|secret-label/i);
   });
 });
 
@@ -151,7 +186,88 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
         blockers: ["no_subscription_eligible_nodes"]
       }
     }),
+    getAliyunGates: async () => aliyunGatePacket(),
+    getAliyunGateEvidence: async () => aliyunGateEvidence(),
+    recordProviderFirewallEvidence: async () => aliyunGateEvidence("ready_for_gate_packet"),
     ...overrides
+  };
+}
+
+function aliyunGatePacket(status = "blocked"): AliyunGateDecisionPacket {
+  return {
+    type: "aliyun_gate_decision_packet",
+    status,
+    generatedAt: "2026-05-27T16:00:00.000Z",
+    redacted: true,
+    sourceDocs: [
+      "docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md"
+    ],
+    notAuthorized: [
+      "Aliyun runtime mutation",
+      "DNS change",
+      "provider firewall mutation",
+      "public listener exposure",
+      "user traffic",
+      "edge traffic"
+    ],
+    gates: [
+      {
+        id: "aliyun_clean_start_private_validation",
+        label: "Aliyun clean-start private validation",
+        risk: "A",
+        status: "ready_for_operator_approval",
+        approvalRequired: true,
+        requiredApprovalPhrase: "Approve Aliyun clean-start private validation. No DNS change.",
+        sourceDoc: "docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md",
+        blockers: [],
+        preflightSummary: {
+          status: "ready_for_private_validation",
+          privateRenderingDryRun: {
+            status: "ready",
+            nodeCount: 1,
+            protocols: ["ss"],
+            generatedYamlBytes: 512,
+            redacted: true
+          },
+          blockerCount: 0
+        }
+      },
+      {
+        id: "aliyun_provider_firewall_hardening",
+        label: "Aliyun provider-firewall hardening",
+        risk: "A",
+        status: "blocked",
+        approvalRequired: true,
+        requiredApprovalPhrase: "Approve Aliyun provider firewall hardening. No DNS change.",
+        sourceDoc: "docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md",
+        blockers: ["missing provider firewall rollback snapshot"],
+        preflightSummary: {
+          hasRollbackSnapshot: false,
+          hasManagementSourceDecision: false,
+          hasWgHomeDecision: false,
+          wgHomeDecisionEchoed: false,
+          rawRulesEchoed: false
+        }
+      }
+    ]
+  };
+}
+
+function aliyunGateEvidence(status = "incomplete"): AliyunGateEvidenceSummary {
+  return {
+    type: "aliyun_gate_evidence_summary",
+    providerFirewall: {
+      type: "provider_firewall_evidence_summary",
+      status,
+      hasRollbackSnapshot: status === "ready_for_gate_packet",
+      hasManagementSourceDecision: status === "ready_for_gate_packet",
+      hasWgHomeDecision: false,
+      rawRulesProvided: false,
+      rawRulesEchoed: false,
+      noteProvided: false,
+      recordedAt: "2026-05-27T16:00:00.000Z",
+      updatedAt: "2026-05-27T16:00:00.000Z"
+    }
   };
 }
 
@@ -416,5 +532,44 @@ describe("overview and nodes pages", () => {
     render(createElement(NodesPage, { apiClient: client }));
     expect(await screen.findByText("aws-singapore-blue")).not.toBeNull();
     expect(await screen.findByText("online")).not.toBeNull();
+  });
+
+  test("renders Aliyun gate review and records boolean provider-firewall evidence", async () => {
+    const getAliyunGates = vi
+      .fn()
+      .mockResolvedValueOnce(aliyunGatePacket())
+      .mockResolvedValueOnce(aliyunGatePacket("blocked"));
+    const getAliyunGateEvidence = vi
+      .fn()
+      .mockResolvedValueOnce(aliyunGateEvidence())
+      .mockResolvedValueOnce(aliyunGateEvidence("ready_for_gate_packet"));
+    const recordProviderFirewallEvidence = vi.fn(async () => aliyunGateEvidence("ready_for_gate_packet"));
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({
+        getAliyunGates,
+        getAliyunGateEvidence,
+        recordProviderFirewallEvidence
+      })
+    }));
+
+    expect(await screen.findByText("Aliyun promotion gates")).not.toBeNull();
+    expect(await screen.findByText("Aliyun clean-start private validation")).not.toBeNull();
+    expect(screen.getByText("missing provider firewall rollback snapshot")).not.toBeNull();
+    expect(screen.getByText(/No A-tier execution buttons are exposed/i)).not.toBeNull();
+
+    fireEvent.click(screen.getByLabelText(/rollback snapshot recorded/i));
+    fireEvent.click(screen.getByLabelText(/management source decision recorded/i));
+    fireEvent.click(screen.getByLabelText(/wg-home decision recorded/i));
+    fireEvent.click(screen.getByRole("button", { name: /record provider-firewall evidence/i }));
+
+    await waitFor(() => {
+      expect(recordProviderFirewallEvidence).toHaveBeenCalledWith({
+        hasRollbackSnapshot: true,
+        hasManagementSourceDecision: true,
+        hasWgHomeDecision: true
+      });
+    });
+    expect(await screen.findByText(/Provider-firewall evidence recorded/i)).not.toBeNull();
   });
 });

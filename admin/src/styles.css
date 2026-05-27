@@ -1123,6 +1123,7 @@ textarea {
 
 .metric-card strong {
   font-size: 28px;
+  overflow-wrap: anywhere;
 }
 
 .table-card {
@@ -1297,6 +1298,94 @@ th {
   border-color: #fecaca;
   background: #fef2f2;
   color: #991b1b;
+}
+
+.gate-review-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.gate-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.gate-list,
+.gate-evidence-form,
+.gate-boundary {
+  display: grid;
+  gap: 12px;
+}
+
+.gate-row,
+.gate-evidence-form,
+.gate-boundary {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.gate-row > div {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gate-row .status-badge {
+  justify-content: center;
+  max-width: 180px;
+  text-align: center;
+  white-space: normal;
+}
+
+.gate-row strong,
+.gate-evidence-form h3 {
+  margin: 0;
+}
+
+.gate-blockers,
+.gate-boundary ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #334155;
+}
+
+.approval-phrase {
+  margin: 0;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: #3730a3;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.gate-evidence-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.check-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  color: #334155;
+  font-weight: 700;
+}
+
+.check-row input {
+  width: 16px;
+  height: 16px;
 }
 
 .loading-row {
