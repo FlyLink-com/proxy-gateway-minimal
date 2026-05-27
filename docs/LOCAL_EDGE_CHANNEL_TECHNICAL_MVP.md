@@ -533,6 +533,14 @@ credentials, or customer data. They do not contact edge nodes, query cloud APIs,
 deploy runtimes, change firewall rules, submit approval phrases, move traffic,
 or approve subscription output.
 
+The repository also exposes this decision flow through the protected Admin
+platform route `POST /api/admin/platform/channel-system-decision-flow`. The
+route is intended for operator review UI/API integration only. It requires
+Bearer admin auth through the existing Admin boundary, accepts the same safe
+inputs, returns the same redacted readiness artifact, and does not provide
+runtime, firewall, DNS, node, approval, traffic, or subscription-output
+execution controls.
+
 Repository-local extended measurement assessment is available through
 `assessChannelExtendedMeasurement(...)`. It consumes an already-collected local
 benchmark summary and classifies each probe as:
