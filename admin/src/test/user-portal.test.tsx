@@ -6,6 +6,7 @@ import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import type { AdminApiClient } from "../features/subscriptions/api-client";
 import type {
   ChannelRuntimeEvidenceBridge,
+  ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
   ChannelSystemDecisionFlow,
   SubscriptionTenant
@@ -76,6 +77,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelSystem: async () => channelSystemDecisionFlow(),
     reviewChannelRuntimeEvidence: async () => channelRuntimeEvidenceBridge(),
     reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
+    reviewChannelRuntimeExecutionHandoff: async () => channelRuntimeExecutionHandoff(),
     overview: async () => ({
       ok: true,
       total: 0,
@@ -190,6 +192,63 @@ function channelRuntimeGateWorkbench(): ChannelRuntimeGateWorkbench {
       noTrafficMovement: true,
       requiresSeparateRiskAApproval: true,
       approvalPhraseEchoed: false,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
+    }
+  };
+}
+
+function channelRuntimeExecutionHandoff(): ChannelRuntimeExecutionHandoff {
+  return {
+    ok: true,
+    mode: "channel-runtime-execution-handoff-packet",
+    generatedAt: "2026-05-27T20:04:00.000Z",
+    sourceGeneratedAt: "2026-05-27T20:03:00.000Z",
+    handoff: {
+      status: "blocked_before_operator_approval_request",
+      requiredNextAction: "collect_runtime_inventory",
+      executionAuthority: "not_granted",
+      counts: {
+        canaryReady: 0,
+        runtimeBlocked: 0,
+        missingRuntimeInventory: 1
+      },
+      nextGate: {
+        risk: "A",
+        gate: "risk_a_channel_runtime_canary",
+        approvalRequestReady: false,
+        exactApprovalRequired: true,
+        approvalTextIncluded: false,
+        approvalSubmissionRoute: null,
+        runtimeExecutionRoute: null,
+        executesGate: false,
+        runbook: "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md"
+      }
+    },
+    checklists: {
+      preflight: ["confirm_channel_runtime_canary_runbook"],
+      validation: ["record_operator_device_canary_metrics"],
+      rollback: ["document_runtime_cleanup_or_retain_decision"]
+    },
+    candidates: {
+      approvalReady: [],
+      blocked: [],
+      missingInventory: []
+    },
+    source: {
+      workbenchMode: "channel-runtime-gate-workbench",
+      bridgeMode: "channel-runtime-evidence-bridge",
+      systemMode: "channel-system-decision-flow",
+      gatePacketMode: "channel-runtime-gate-packet"
+    },
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      requiresSeparateRiskAApproval: true,
+      approvalTextIncluded: false,
       omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
     }
   };

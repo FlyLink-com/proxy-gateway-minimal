@@ -4,6 +4,7 @@ import type {
   AliyunGateEvidenceSummary,
   ChannelRuntimeEvidenceBridge,
   ChannelRuntimeEvidenceBridgeInput,
+  ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
@@ -189,7 +190,17 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
             body: JSON.stringify(input)
           }
         )
-      ).channelRuntimeGateWorkbench
+      ).channelRuntimeGateWorkbench,
+    reviewChannelRuntimeExecutionHandoff: async (input: ChannelRuntimeEvidenceBridgeInput) =>
+      (
+        await request<{ channelRuntimeExecutionHandoff: ChannelRuntimeExecutionHandoff }>(
+          "/api/admin/platform/channel-runtime-execution-handoff",
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).channelRuntimeExecutionHandoff
   };
 }
 

@@ -221,6 +221,20 @@ review panel. It does not submit approval phrases, echo approval phrase text,
 contact edge nodes, deploy runtimes, mutate DNS/firewall/systemd config, move
 traffic, or change subscription output.
 
+`buildChannelRuntimeExecutionHandoff(...)` is the repository-local handoff layer
+after the workbench. It converts the same safe runtime bridge packet into an
+operator-safe execution handoff packet for the next A-tier runtime canary
+approval request. The packet records gate status, execution authority
+(`not_granted`), candidate counts, grouped candidates, the source runbook, and
+preflight/validation/rollback checklist keys.
+
+The same handoff is available through the protected Admin platform route
+`POST /api/admin/platform/channel-runtime-execution-handoff` and an Admin
+Overview review panel. It is still advisory evidence only: it does not submit
+approval text, expose an approval submission route, expose a runtime execution
+route, contact edge nodes, deploy runtimes, change firewall/DNS/systemd state,
+move traffic, or change subscription output.
+
 `assessChannelExtendedMeasurement(...)` can classify already-collected local
 benchmark summaries into `ready_for_decision`, `needs_extended_measurement`, or
 `hold_for_investigation`. This closes the repository-side gap between short

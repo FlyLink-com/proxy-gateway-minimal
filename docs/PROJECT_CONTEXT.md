@@ -395,7 +395,13 @@ Current architecture priorities:
   now turn the same safe runtime bridge packets into gate-facing advisory
   status, counts, approval-readiness metadata, and candidate groupings without
   adding approval submission, approval-phrase echo, runtime execution,
-  edge-node contact, traffic movement, or production activation. Extended measurement assessments can classify
+  edge-node contact, traffic movement, or production activation. A protected
+  channel runtime execution handoff can now convert those safe bridge packets
+  into operator-safe A-tier handoff material with execution authority marked
+  `not_granted`, source runbook reference, candidate counts, grouped
+  candidates, and preflight/validation/rollback checklist keys without
+  approval submission, approval text, runtime execution, edge-node contact,
+  traffic movement, or production activation. Extended measurement assessments can classify
   already-collected local benchmark summaries as ready, needing more samples,
   or hold for investigation before an operator decides on the next canary gate. Measurement
   investigation reports can consume safe bundle reports and classify hold
@@ -819,6 +825,15 @@ simplification queue is closed:
   public routes, approval submission, approval-phrase echo, runtime execution,
   edge-node contact, DNS, firewall, traffic movement, subscription-output
   change, or production activation.
+- `B27-channel-runtime-execution-handoff` - completed in the Channel Runtime
+  Execution Handoff work; the protected Admin platform route and Admin Overview
+  can now convert safe runtime bridge packets into an operator-safe handoff
+  packet for a future A-tier runtime canary approval request. The packet marks
+  execution authority as `not_granted`, records the source runbook, candidate
+  counts, grouped candidates, and preflight/validation/rollback checklist keys,
+  and does not expose public routes, approval submission, approval text,
+  runtime execution, edge-node contact, DNS, firewall, traffic movement,
+  subscription-output change, or production activation.
 - `C4-tuic-comparison-canary-plan` - completed in the TUIC Comparison Canary
   Plan work; TUIC is now the documented next measured channel candidate after
   the held Hysteria2 extended measurement, while VLESS/XUDP remains the
