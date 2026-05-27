@@ -231,10 +231,9 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Use docs/production-replacement-records/2026-05-27-aliyun-repo-mvp-closeout.md to confirm the repo-only Aliyun Subscription Control Platform MVP phase is ready for exact-phrase A-tier handoff",
-    "Use docs/production-replacement-records/2026-05-27-aliyun-next-a-tier-execution-packet.md before any Aliyun clean-start private validation or provider-firewall hardening execution",
-    "Use docs/production-replacement-records/templates/aliyun-clean-start-private-validation-execution-template.md or docs/production-replacement-records/templates/aliyun-provider-firewall-hardening-execution-template.md only after the matching exact approval phrase is received",
-    "Aliyun DNS promotion planning and approval after clean-start private validation, provider-firewall hardening, HP management-source addition, and public-boundary dry run evidence",
+    "Use docs/production-replacement-records/2026-05-27-aliyun-public-boundary-dry-run-execution.md before deciding whether the Aliyun candidate is ready for DNS promotion",
+    "Request the exact Aliyun production subscription distribution promotion approval phrase before any durable 80/443 exposure, DNS mutation, or production authority transfer",
+    "If DNS promotion is approved, keep public Admin blocked, keep edge traffic activation out of scope, and use the accepted-outage rollback posture unless a separate rollback-start gate is approved first",
     "Decide whether durable 80/443 exposure should be re-opened only during DNS promotion or through a repeat public-boundary dry run",
     "Investigate HP wg-home logical handshake only if the tunnel path is required; provider UDP/51820 now reaches Aliyun from HP",
     "TUIC runtime inventory and comparison canary approval path after held Hysteria2 measurement, or VLESS/XUDP secondary comparison if TUIC is rejected",
