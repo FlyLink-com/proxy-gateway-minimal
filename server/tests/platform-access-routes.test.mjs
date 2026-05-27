@@ -353,6 +353,83 @@ test("admin platform Aliyun gate evidence route records provider-firewall eviden
   }
 });
 
+test("admin platform Aliyun gate evidence route records access-migration evidence for artifact gates", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const aliyunGateEvidenceShell = createPlatformAliyunGateEvidenceShell({
+    nowFn: () => "2026-05-27T15:30:00.000Z"
+  });
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell,
+    aliyunGateEvidenceShell
+  })));
+  try {
+    const created = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence/access-migration`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        hasLiveAccessModelInventory: true,
+        hasApprovedArtifactScope: true,
+        artifactIssuanceCompleted: false,
+        artifactRefreshObservationRecorded: false,
+        hasApprovedLegacyRetirementScope: false,
+        rawSubscriptionUrls: ["https://sub.example/sub/clash.yaml?token=secret-token"],
+        rawArtifactUrls: ["https://sub.example/sub/a/artifact-secret.yaml"],
+        rawTokens: ["pgsub_secret"],
+        note: "private note with customer@example.com"
+      })
+    });
+    assert.equal(created.status, 201);
+    const createdBody = await created.json();
+    assert.equal(createdBody.evidence.accessMigration.status, "ready_for_artifact_issuance_gate");
+    assert.equal(createdBody.evidence.accessMigration.hasLiveAccessModelInventory, true);
+    assert.equal(createdBody.evidence.accessMigration.hasApprovedArtifactScope, true);
+    assert.equal(createdBody.evidence.accessMigration.rawUrlsProvided, true);
+    assert.equal(createdBody.evidence.accessMigration.rawUrlsEchoed, false);
+    assert.equal(createdBody.evidence.accessMigration.rawTokensProvided, true);
+    assert.equal(createdBody.evidence.accessMigration.rawTokensEchoed, false);
+    assert.equal(createdBody.evidence.accessMigration.rawArtifactsProvided, true);
+    assert.equal(createdBody.evidence.accessMigration.rawArtifactsEchoed, false);
+
+    const packet = await fetch(`${baseUrl}/api/admin/platform/aliyun-gates`, {
+      headers: authHeaders()
+    });
+    assert.equal(packet.status, 200);
+    const packetBody = await packet.json();
+    const artifactGate = packetBody.aliyunGates.gates.find((gate) => gate.id === "aliyun_opaque_artifact_issuance");
+    const legacyGate = packetBody.aliyunGates.gates.find((gate) => gate.id === "aliyun_legacy_query_token_retirement");
+    assert.equal(artifactGate.status, "ready_for_operator_approval");
+    assert.deepEqual(artifactGate.blockers, []);
+    assert.equal(legacyGate.status, "blocked");
+    assert.deepEqual(legacyGate.blockers, [
+      "broader opaque artifact issuance not completed",
+      "artifact refresh observation not recorded",
+      "approved legacy retirement scope not recorded"
+    ]);
+
+    const listed = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence`, {
+      headers: authHeaders()
+    });
+    assert.equal(listed.status, 200);
+    const serialized = JSON.stringify({
+      created: createdBody,
+      listed: await listed.json(),
+      packet: packetBody
+    });
+    assert.equal(serialized.includes("sub.example"), false);
+    assert.equal(serialized.includes("secret-token"), false);
+    assert.equal(serialized.includes("artifact-secret"), false);
+    assert.equal(serialized.includes("pgsub_secret"), false);
+    assert.equal(serialized.includes("customer@example.com"), false);
+  } finally {
+    server.close();
+  }
+});
+
 test("admin platform Aliyun gate evidence route fails closed when evidence shell is unavailable", async () => {
   const { leadQueue, accountShell, accessShell } = createPlatformState();
   const { server, baseUrl } = await listen(createApp(fakeState({
@@ -372,6 +449,18 @@ test("admin platform Aliyun gate evidence route fails closed when evidence shell
 
     assert.equal(response.status, 400);
     assert.equal((await response.json()).error, "validation_error");
+
+    const accessMigrationResponse = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence/access-migration`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ hasLiveAccessModelInventory: true })
+    });
+
+    assert.equal(accessMigrationResponse.status, 400);
+    assert.equal((await accessMigrationResponse.json()).error, "validation_error");
   } finally {
     server.close();
   }

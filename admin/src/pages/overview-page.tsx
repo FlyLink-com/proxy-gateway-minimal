@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import type { AdminApiClient } from "../features/subscriptions/api-client";
 import type {
+  AccessMigrationEvidenceInput,
   AliyunGateDecision,
   AliyunGateDecisionPacket,
   AliyunGateEvidenceSummary,
@@ -95,10 +96,17 @@ function AliyunGateReviewPanel({ apiClient }: { apiClient: AdminApiClient }) {
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const [evidenceForm, setEvidenceForm] = useState<ProviderFirewallEvidenceInput>({
+  const [providerFirewallForm, setProviderFirewallForm] = useState<ProviderFirewallEvidenceInput>({
     hasRollbackSnapshot: false,
     hasManagementSourceDecision: false,
     hasWgHomeDecision: false
+  });
+  const [accessMigrationForm, setAccessMigrationForm] = useState<AccessMigrationEvidenceInput>({
+    hasLiveAccessModelInventory: false,
+    hasApprovedArtifactScope: false,
+    artifactIssuanceCompleted: false,
+    artifactRefreshObservationRecorded: false,
+    hasApprovedLegacyRetirementScope: false
   });
 
   useEffect(() => {
@@ -113,10 +121,20 @@ function AliyunGateReviewPanel({ apiClient }: { apiClient: AdminApiClient }) {
         setEvidence(nextEvidence);
         const providerFirewall = nextEvidence?.providerFirewall;
         if (providerFirewall) {
-          setEvidenceForm({
+          setProviderFirewallForm({
             hasRollbackSnapshot: providerFirewall.hasRollbackSnapshot,
             hasManagementSourceDecision: providerFirewall.hasManagementSourceDecision,
             hasWgHomeDecision: providerFirewall.hasWgHomeDecision
+          });
+        }
+        const accessMigration = nextEvidence?.accessMigration;
+        if (accessMigration) {
+          setAccessMigrationForm({
+            hasLiveAccessModelInventory: accessMigration.hasLiveAccessModelInventory,
+            hasApprovedArtifactScope: accessMigration.hasApprovedArtifactScope,
+            artifactIssuanceCompleted: accessMigration.artifactIssuanceCompleted,
+            artifactRefreshObservationRecorded: accessMigration.artifactRefreshObservationRecorded,
+            hasApprovedLegacyRetirementScope: accessMigration.hasApprovedLegacyRetirementScope
           });
         }
       })
@@ -140,13 +158,13 @@ function AliyunGateReviewPanel({ apiClient }: { apiClient: AdminApiClient }) {
     setEvidence(nextEvidence);
   }
 
-  async function handleEvidenceSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleProviderFirewallSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
     setError("");
     setMessage("");
     try {
-      const nextEvidence = await apiClient.recordProviderFirewallEvidence(evidenceForm);
+      const nextEvidence = await apiClient.recordProviderFirewallEvidence(providerFirewallForm);
       setEvidence(nextEvidence);
       await refreshAfterEvidenceRecord();
       setMessage("Provider-firewall evidence recorded.");
@@ -157,7 +175,25 @@ function AliyunGateReviewPanel({ apiClient }: { apiClient: AdminApiClient }) {
     }
   }
 
+  async function handleAccessMigrationSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const nextEvidence = await apiClient.recordAccessMigrationEvidence(accessMigrationForm);
+      setEvidence(nextEvidence);
+      await refreshAfterEvidenceRecord();
+      setMessage("Access-migration evidence recorded.");
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const providerFirewall = evidence?.providerFirewall ?? null;
+  const accessMigration = evidence?.accessMigration ?? null;
   const readyGateCount = gatePacket?.gates.filter((gate) => gate.status === "ready_for_operator_approval").length ?? 0;
   const blockerCount = gatePacket?.gates.reduce((count, gate) => count + gate.blockers.length, 0) ?? 0;
 
@@ -194,59 +230,151 @@ function AliyunGateReviewPanel({ apiClient }: { apiClient: AdminApiClient }) {
           ))}
         </div>
 
-        <form className="gate-evidence-form" onSubmit={handleEvidenceSubmit}>
-          <div>
-            <h3>Provider-firewall evidence</h3>
-            <p className="muted">
-              Store only rollback, management-source, and wg-home decision booleans for the gate packet.
-            </p>
-          </div>
+        <div className="gate-evidence-stack">
+          <form className="gate-evidence-form" onSubmit={handleProviderFirewallSubmit}>
+            <div>
+              <h3>Provider-firewall evidence</h3>
+              <p className="muted">
+                Store only rollback, management-source, and wg-home decision booleans for the gate packet.
+              </p>
+            </div>
 
-          <div className="gate-evidence-summary">
-            <Metric label="Evidence status" value={providerFirewall?.status ?? "not_recorded"} />
-            <Metric label="Raw rules echoed" value={providerFirewall?.rawRulesEchoed ? "Yes" : "No"} />
-          </div>
+            <div className="gate-evidence-summary">
+              <Metric label="Evidence status" value={providerFirewall?.status ?? "not_recorded"} />
+              <Metric label="Raw rules echoed" value={providerFirewall?.rawRulesEchoed ? "Yes" : "No"} />
+            </div>
 
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={evidenceForm.hasRollbackSnapshot}
-              onChange={(event) =>
-                setEvidenceForm((current) => ({ ...current, hasRollbackSnapshot: event.target.checked }))
-              }
-            />
-            <span>Rollback snapshot recorded</span>
-          </label>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={providerFirewallForm.hasRollbackSnapshot}
+                onChange={(event) =>
+                  setProviderFirewallForm((current) => ({ ...current, hasRollbackSnapshot: event.target.checked }))
+                }
+              />
+              <span>Rollback snapshot recorded</span>
+            </label>
 
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={evidenceForm.hasManagementSourceDecision}
-              onChange={(event) =>
-                setEvidenceForm((current) => ({
-                  ...current,
-                  hasManagementSourceDecision: event.target.checked
-                }))
-              }
-            />
-            <span>Management source decision recorded</span>
-          </label>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={providerFirewallForm.hasManagementSourceDecision}
+                onChange={(event) =>
+                  setProviderFirewallForm((current) => ({
+                    ...current,
+                    hasManagementSourceDecision: event.target.checked
+                  }))
+                }
+              />
+              <span>Management source decision recorded</span>
+            </label>
 
-          <label className="check-row">
-            <input
-              type="checkbox"
-              checked={evidenceForm.hasWgHomeDecision}
-              onChange={(event) =>
-                setEvidenceForm((current) => ({ ...current, hasWgHomeDecision: event.target.checked }))
-              }
-            />
-            <span>wg-home decision recorded</span>
-          </label>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={providerFirewallForm.hasWgHomeDecision}
+                onChange={(event) =>
+                  setProviderFirewallForm((current) => ({ ...current, hasWgHomeDecision: event.target.checked }))
+                }
+              />
+              <span>wg-home decision recorded</span>
+            </label>
 
-          <button className="primary-button" type="submit" disabled={saving}>
-            {saving ? "Recording..." : "Record provider-firewall evidence"}
-          </button>
-        </form>
+            <button className="primary-button" type="submit" disabled={saving}>
+              {saving ? "Recording..." : "Record provider-firewall evidence"}
+            </button>
+          </form>
+
+          <form className="gate-evidence-form" onSubmit={handleAccessMigrationSubmit}>
+            <div>
+              <h3>Access migration evidence</h3>
+              <p className="muted">
+                Store only access-model, artifact-scope, and retirement readiness booleans for the gate packet.
+              </p>
+            </div>
+
+            <div className="gate-evidence-summary">
+              <Metric label="Evidence status" value={accessMigration?.status ?? "not_recorded"} />
+              <Metric label="Raw URLs echoed" value={accessMigration?.rawUrlsEchoed ? "Yes" : "No"} />
+              <Metric label="Raw tokens echoed" value={accessMigration?.rawTokensEchoed ? "Yes" : "No"} />
+              <Metric label="Raw artifacts echoed" value={accessMigration?.rawArtifactsEchoed ? "Yes" : "No"} />
+            </div>
+
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={accessMigrationForm.hasLiveAccessModelInventory}
+                onChange={(event) =>
+                  setAccessMigrationForm((current) => ({
+                    ...current,
+                    hasLiveAccessModelInventory: event.target.checked
+                  }))
+                }
+              />
+              <span>Live access-model inventory recorded</span>
+            </label>
+
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={accessMigrationForm.hasApprovedArtifactScope}
+                onChange={(event) =>
+                  setAccessMigrationForm((current) => ({
+                    ...current,
+                    hasApprovedArtifactScope: event.target.checked
+                  }))
+                }
+              />
+              <span>Approved artifact scope recorded</span>
+            </label>
+
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={accessMigrationForm.artifactIssuanceCompleted}
+                onChange={(event) =>
+                  setAccessMigrationForm((current) => ({
+                    ...current,
+                    artifactIssuanceCompleted: event.target.checked
+                  }))
+                }
+              />
+              <span>Artifact issuance completed</span>
+            </label>
+
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={accessMigrationForm.artifactRefreshObservationRecorded}
+                onChange={(event) =>
+                  setAccessMigrationForm((current) => ({
+                    ...current,
+                    artifactRefreshObservationRecorded: event.target.checked
+                  }))
+                }
+              />
+              <span>Artifact refresh observation recorded</span>
+            </label>
+
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={accessMigrationForm.hasApprovedLegacyRetirementScope}
+                onChange={(event) =>
+                  setAccessMigrationForm((current) => ({
+                    ...current,
+                    hasApprovedLegacyRetirementScope: event.target.checked
+                  }))
+                }
+              />
+              <span>Approved legacy retirement scope recorded</span>
+            </label>
+
+            <button className="primary-button" type="submit" disabled={saving}>
+              {saving ? "Recording..." : "Record access-migration evidence"}
+            </button>
+          </form>
+        </div>
       </div>
 
       {gatePacket?.notAuthorized.length ? (

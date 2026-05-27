@@ -1318,6 +1318,7 @@ th {
 }
 
 .gate-list,
+.gate-evidence-stack,
 .gate-evidence-form,
 .gate-boundary {
   display: grid;
