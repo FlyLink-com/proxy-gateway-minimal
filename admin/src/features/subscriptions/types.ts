@@ -160,6 +160,12 @@ export type ChannelSystemReviewInput = {
   runtimeInventoryInput: unknown;
 };
 
+export type ChannelRuntimeEvidenceBridgeInput = {
+  dryRunSummary: unknown;
+  measurementScore: unknown;
+  runtimeEvidenceInput: unknown;
+};
+
 export type ChannelSystemReadiness = {
   runtimeGateStatus: string;
   selectedBaselineReady: boolean;
@@ -178,6 +184,36 @@ export type ChannelSystemDecisionFlow = {
   outputs: Record<string, unknown>;
   safety: {
     advisoryOnly: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+    noApprovalSubmission: boolean;
+    noTrafficMovement: boolean;
+    requiresSeparateRiskAApproval: boolean;
+    omittedFields: string[];
+  };
+};
+
+export type ChannelRuntimeEvidenceBridge = {
+  ok: boolean;
+  mode: "channel-runtime-evidence-bridge";
+  generatedAt: string;
+  sourceGeneratedAt: string;
+  runtimeInventoryInput: {
+    generatedAt: string;
+    records: Array<{
+      candidateName: string;
+      protocol: string;
+      targetLabel: string;
+      lifecycleStatus: string;
+      deploymentReady: boolean;
+      blockers: string[];
+      nextGate: string;
+    }>;
+  };
+  channelSystem: ChannelSystemDecisionFlow;
+  safety: {
+    advisoryOnly: boolean;
+    summaryOnly: boolean;
     noRuntimeMutation: boolean;
     noProductionMutation: boolean;
     noApprovalSubmission: boolean;

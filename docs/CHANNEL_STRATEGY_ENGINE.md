@@ -188,6 +188,11 @@ only safe read-only check booleans, blocker codes, candidate labels, protocol
 names, target labels, and next-gate labels; it then creates the runtime
 inventory input and full channel system readiness artifact in one step:
 
+The bridge input must be a safe summary packet end to end. The dry-run summary,
+measurement score, and runtime evidence sections reject raw endpoint-like labels
+or values such as IPs, hostnames, host:port pairs, URLs, tokens, credentials, or
+raw logs rather than silently redacting them.
+
 ```bash
 npm run channel:runtime-evidence-bridge -- <path-to-dry-run-summary.json> <path-to-score.json> <path-to-safe-runtime-evidence.json>
 ```
@@ -195,6 +200,14 @@ npm run channel:runtime-evidence-bridge -- <path-to-dry-run-summary.json> <path-
 The bridge is still advisory evidence. It does not inspect live hosts, contact
 edge nodes, query cloud APIs, run probes, deploy runtimes, change firewall
 rules, submit approval phrases, move traffic, or change subscription output.
+
+The same bridge is available through the protected Admin platform route
+`POST /api/admin/platform/channel-runtime-evidence-bridge` and an Admin
+Overview review panel. Operators can paste the same safe runtime evidence
+bridge packet and receive the normalized runtime inventory input plus channel
+system readiness artifact without using the local CLI. This protected surface
+still does not expose approval submission, runtime deployment, DNS, firewall,
+traffic, or subscription-output controls.
 
 `assessChannelExtendedMeasurement(...)` can classify already-collected local
 benchmark summaries into `ready_for_decision`, `needs_extended_measurement`, or

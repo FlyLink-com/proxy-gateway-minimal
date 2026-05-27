@@ -8,6 +8,8 @@ import { SubscriptionsPage } from "../features/subscriptions/subscriptions-page"
 import type {
   AliyunGateDecisionPacket,
   AliyunGateEvidenceSummary,
+  ChannelRuntimeEvidenceBridge,
+  ChannelRuntimeEvidenceBridgeInput,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
   SubscriptionTenant
@@ -152,6 +154,28 @@ describe("admin API client", () => {
     expect(channelSystem.flowStatus).toBe("approval_ready");
     expect(channelSystem.systemReadiness.canaryReadyCount).toBe(1);
   });
+
+  test("bridges runtime evidence through the protected platform endpoint", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ channelRuntimeEvidence: channelRuntimeEvidenceBridge() }));
+    const client = createAdminApiClient({
+      baseUrl: "",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    const bridge = await client.reviewChannelRuntimeEvidence(channelRuntimeEvidenceBridgeInput());
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/channel-runtime-evidence-bridge",
+      expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
+    );
+    const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelRuntimeEvidenceBridgeInput());
+    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
+    expect(bridge.mode).toBe("channel-runtime-evidence-bridge");
+    expect(bridge.channelSystem.flowStatus).toBe("approval_ready");
+  });
 });
 
 describe("admin session", () => {
@@ -236,6 +260,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     recordAccessMigrationEvidence: async () =>
       aliyunGateEvidence("incomplete", "ready_for_artifact_issuance_gate"),
     reviewChannelSystem: async () => channelSystemDecisionFlow(),
+    reviewChannelRuntimeEvidence: async () => channelRuntimeEvidenceBridge(),
     ...overrides
   };
 }
@@ -308,6 +333,70 @@ function channelSystemDecisionFlow(): ChannelSystemDecisionFlow {
     outputs: {},
     safety: {
       advisoryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      requiresSeparateRiskAApproval: true,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
+    }
+  };
+}
+
+function channelRuntimeEvidenceBridgeInput(): ChannelRuntimeEvidenceBridgeInput {
+  return {
+    dryRunSummary: channelSystemReviewInput().dryRunSummary,
+    measurementScore: channelSystemReviewInput().measurementScore,
+    runtimeEvidenceInput: {
+      generatedAt: "2026-05-27T20:01:00.000Z",
+      records: [
+        {
+          candidateName: "tuic-lab",
+          protocol: "tuic",
+          targetLabel: "channel-lab-b",
+          observedAt: "2026-05-27T20:01:30.000Z",
+          checks: {
+            cloudIdentityVerified: true,
+            networkPostureVerified: true,
+            hostInventoryCompleted: true,
+            runtimeSlotAvailable: true,
+            runtimeInstalled: false,
+            serviceActive: false,
+            operatorImportValidated: false,
+            cleanupRequired: false
+          },
+          blockerCodes: [],
+          nextGate: "runtime_deployment_approval"
+        }
+      ]
+    }
+  };
+}
+
+function channelRuntimeEvidenceBridge(): ChannelRuntimeEvidenceBridge {
+  return {
+    ok: true,
+    mode: "channel-runtime-evidence-bridge",
+    generatedAt: "2026-05-27T20:02:00.000Z",
+    sourceGeneratedAt: "2026-05-27T20:01:00.000Z",
+    runtimeInventoryInput: {
+      generatedAt: "2026-05-27T20:01:00.000Z",
+      records: [
+        {
+          candidateName: "tuic-lab",
+          protocol: "tuic",
+          targetLabel: "channel-lab-b",
+          lifecycleStatus: "inventory_ready",
+          deploymentReady: true,
+          blockers: [],
+          nextGate: "runtime_deployment_approval"
+        }
+      ]
+    },
+    channelSystem: channelSystemDecisionFlow(),
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
       noRuntimeMutation: true,
       noProductionMutation: true,
       noApprovalSubmission: true,
@@ -830,5 +919,92 @@ describe("overview and nodes pages", () => {
       expect(screen.getByText("Safe channel evidence packet contains forbidden runtime details.")).not.toBeNull();
     });
     expect(reviewChannelSystem).not.toHaveBeenCalled();
+  });
+
+  test("renders channel runtime evidence bridge readiness without execution controls", async () => {
+    const reviewChannelRuntimeEvidence = vi.fn(async () => channelRuntimeEvidenceBridge());
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewChannelRuntimeEvidence })
+    }));
+
+    expect(await screen.findByText("Channel runtime evidence bridge")).not.toBeNull();
+    fireEvent.change(screen.getByLabelText(/safe runtime evidence bridge packet/i), {
+      target: { value: JSON.stringify(channelRuntimeEvidenceBridgeInput()) }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review runtime evidence bridge/i }));
+
+    await waitFor(() => {
+      expect(reviewChannelRuntimeEvidence).toHaveBeenCalledWith(channelRuntimeEvidenceBridgeInput());
+    });
+    expect(await screen.findByText("channel-runtime-evidence-bridge")).not.toBeNull();
+    expect(screen.getByText("approval_ready")).not.toBeNull();
+    expect(screen.getByText(/No runtime execution controls are exposed/i)).not.toBeNull();
+    expect(screen.queryByText(/secret\.example|token=|subscriptionUrl/i)).toBeNull();
+  });
+
+  test("blocks unsafe runtime evidence bridge packet before calling the protected review API", async () => {
+    const reviewChannelRuntimeEvidence = vi.fn(async () => channelRuntimeEvidenceBridge());
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewChannelRuntimeEvidence })
+    }));
+
+    expect(await screen.findByText("Channel runtime evidence bridge")).not.toBeNull();
+    fireEvent.change(screen.getByLabelText(/safe runtime evidence bridge packet/i), {
+      target: {
+        value: JSON.stringify({
+          ...channelRuntimeEvidenceBridgeInput(),
+          runtimeEvidenceInput: {
+            records: [
+              {
+                candidateName: "tuic-lab",
+                host: "runtime-secret.example",
+                port: 443,
+                token: "token=runtime-secret"
+              }
+            ]
+          }
+        })
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review runtime evidence bridge/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Safe channel evidence packet contains forbidden runtime details.")).not.toBeNull();
+    });
+    expect(reviewChannelRuntimeEvidence).not.toHaveBeenCalled();
+  });
+
+  test("blocks unsafe runtime evidence bridge labels before calling the protected review API", async () => {
+    const reviewChannelRuntimeEvidence = vi.fn(async () => channelRuntimeEvidenceBridge());
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewChannelRuntimeEvidence })
+    }));
+
+    expect(await screen.findByText("Channel runtime evidence bridge")).not.toBeNull();
+    fireEvent.change(screen.getByLabelText(/safe runtime evidence bridge packet/i), {
+      target: {
+        value: JSON.stringify({
+          ...channelRuntimeEvidenceBridgeInput(),
+          runtimeEvidenceInput: {
+            records: [
+              {
+                candidateName: "203.0.113.10:443",
+                protocol: "tuic",
+                targetLabel: "198.51.100.7:443"
+              }
+            ]
+          }
+        })
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review runtime evidence bridge/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Safe channel evidence packet contains forbidden runtime details.")).not.toBeNull();
+    });
+    expect(reviewChannelRuntimeEvidence).not.toHaveBeenCalled();
   });
 });

@@ -2,6 +2,8 @@ import type {
   AccessMigrationEvidenceInput,
   AliyunGateDecisionPacket,
   AliyunGateEvidenceSummary,
+  ChannelRuntimeEvidenceBridge,
+  ChannelRuntimeEvidenceBridgeInput,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
   CreateSubscriptionInput,
@@ -166,7 +168,17 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
             body: JSON.stringify(input)
           }
         )
-      ).channelSystem
+      ).channelSystem,
+    reviewChannelRuntimeEvidence: async (input: ChannelRuntimeEvidenceBridgeInput) =>
+      (
+        await request<{ channelRuntimeEvidence: ChannelRuntimeEvidenceBridge }>(
+          "/api/admin/platform/channel-runtime-evidence-bridge",
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).channelRuntimeEvidence
   };
 }
 
