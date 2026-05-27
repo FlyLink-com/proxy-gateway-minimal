@@ -13,6 +13,8 @@ import type {
   ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
   ChannelLabTargetDecision,
+  CleanEdgeReadinessInput,
+  CleanEdgeReadinessSummary,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
   SubscriptionTenant
@@ -201,6 +203,29 @@ describe("admin API client", () => {
     expect(decision.mode).toBe("channel-lab-target-decision");
     expect(decision.status).toBe("fresh_target_recommended");
   });
+
+  test("reviews clean edge readiness through the protected platform endpoint", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ cleanEdgeReadiness: cleanEdgeReadinessSummary() }));
+    const client = createAdminApiClient({
+      baseUrl: "",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    const summary = await client.reviewCleanEdgeReadiness(cleanEdgeReadinessInput());
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/clean-edge-readiness-summary",
+      expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
+    );
+    const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect(JSON.parse(String(reviewCall[1].body))).toEqual(cleanEdgeReadinessInput());
+    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
+    expect(summary.mode).toBe("clean-edge-readiness-summary");
+    expect(summary.readiness.preconditionsReady).toBe(true);
+    expect(summary.readiness.executionAllowed).toBe(false);
+  });
 });
 
 describe("admin session", () => {
@@ -289,6 +314,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
     reviewChannelRuntimeExecutionHandoff: async () => channelRuntimeExecutionHandoff(),
     reviewChannelLabTargetDecision: async () => channelLabTargetDecision(),
+    reviewCleanEdgeReadiness: async () => cleanEdgeReadinessSummary(),
     ...overrides
   };
 }
@@ -622,6 +648,103 @@ function channelLabTargetDecision(): ChannelLabTargetDecision {
       noTrafficMovement: true,
       requiresSeparateRiskAApproval: true,
       omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
+    }
+  };
+}
+
+function cleanEdgeReadinessInput(): CleanEdgeReadinessInput {
+  return {
+    generatedAt: "2026-05-27T21:40:00.000Z",
+    repoState: {
+      branchSynced: true,
+      noOpenPrs: true,
+      projectStateCheckPassed: true
+    },
+    subscriptionBoundary: {
+      subOnAliyun: true,
+      healthOk: true,
+      adminBlocked: true,
+      rootBlocked: true,
+      noTokenRejected: true
+    },
+    edgeDns: {
+      ssSgUnchangedOnOldAws: true
+    },
+    stoppedNodes: {
+      prodEdgeAStopped: true,
+      prodEdgeANoPublicIp: true,
+      prodEdgeBStopped: true,
+      prodEdgeBNoPublicIp: true
+    },
+    cleanTarget: {
+      noTargetSelected: true,
+      noTargetProvisioned: true
+    },
+    approval: {
+      exactApprovalReceived: false
+    },
+    notes: ["summary only"]
+  };
+}
+
+function cleanEdgeReadinessSummary(): CleanEdgeReadinessSummary {
+  return {
+    ok: true,
+    mode: "clean-edge-readiness-summary",
+    generatedAt: "2026-05-27T21:40:00.000Z",
+    readiness: {
+      preconditionsReady: true,
+      approvalRequired: true,
+      executionAllowed: false,
+      blockers: []
+    },
+    repoState: {
+      branchSynced: true,
+      noOpenPrs: true,
+      projectStateCheckPassed: true
+    },
+    subscriptionBoundary: {
+      subOnAliyun: true,
+      healthOk: true,
+      adminBlocked: true,
+      rootBlocked: true,
+      noTokenRejected: true
+    },
+    edgeDns: {
+      ssSgUnchangedOnOldAws: true
+    },
+    stoppedNodes: {
+      prodEdgeAStopped: true,
+      prodEdgeANoPublicIp: true,
+      prodEdgeBStopped: true,
+      prodEdgeBNoPublicIp: true
+    },
+    cleanTarget: {
+      noTargetSelected: true,
+      noTargetProvisioned: true
+    },
+    approval: {
+      exactApprovalReceived: false
+    },
+    notes: ["summary only"],
+    safety: {
+      summaryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noCloudMutation: true,
+      noDnsMutation: true,
+      noSubscriptionOutputMutation: true,
+      noSecretHandling: true,
+      omittedFields: [
+        "rawHosts",
+        "rawIps",
+        "rawPorts",
+        "rawSecrets",
+        "tokens",
+        "subscriptionUrls",
+        "credentials",
+        "customerData"
+      ]
     }
   };
 }
@@ -1304,5 +1427,56 @@ describe("overview and nodes pages", () => {
     expect(within(decisionRegion).getByText(/No runtime execution route/i)).not.toBeNull();
     expect(within(decisionRegion).getByText(/Approval text not included/i)).not.toBeNull();
     expect(within(decisionRegion).queryByText(/secret\.example|token=|subscriptionUrl|approvalPhrase/i)).toBeNull();
+  });
+
+  test("renders clean edge readiness review without execution controls", async () => {
+    const reviewCleanEdgeReadiness = vi.fn(async () => cleanEdgeReadinessSummary());
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewCleanEdgeReadiness } as unknown as Partial<AdminApiClient>)
+    }));
+
+    expect(await screen.findByText("Clean edge readiness")).not.toBeNull();
+    const readinessRegion = screen.getByRole("region", { name: "Clean edge readiness" });
+    fireEvent.change(screen.getByLabelText(/safe clean edge readiness packet/i), {
+      target: { value: JSON.stringify(cleanEdgeReadinessInput()) }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review clean edge readiness/i }));
+
+    await waitFor(() => {
+      expect(reviewCleanEdgeReadiness).toHaveBeenCalledWith(cleanEdgeReadinessInput());
+    });
+    expect(await screen.findByText("clean-edge-readiness-summary")).not.toBeNull();
+    expect(within(readinessRegion).getByText("Preconditions ready")).not.toBeNull();
+    expect(within(readinessRegion).getByText("Approval required")).not.toBeNull();
+    expect(within(readinessRegion).getByText(/No cloud mutation/i)).not.toBeNull();
+    expect(within(readinessRegion).getByText(/No DNS mutation/i)).not.toBeNull();
+    expect(within(readinessRegion).getByText(/No subscription output mutation/i)).not.toBeNull();
+    expect(within(readinessRegion).queryByText(/secret\.example|token=|subscriptionUrl|approvalPhrase/i)).toBeNull();
+  });
+
+  test("blocks unsafe clean edge readiness packet before calling the protected review API", async () => {
+    const reviewCleanEdgeReadiness = vi.fn(async () => cleanEdgeReadinessSummary());
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewCleanEdgeReadiness } as unknown as Partial<AdminApiClient>)
+    }));
+
+    expect(await screen.findByText("Clean edge readiness")).not.toBeNull();
+    fireEvent.change(screen.getByLabelText(/safe clean edge readiness packet/i), {
+      target: {
+        value: JSON.stringify({
+          ...cleanEdgeReadinessInput(),
+          rawHost: "edge-secret.example",
+          rawSubscriptionUrl: "https://sub.example/sub/clash.yaml?token=secret"
+        })
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review clean edge readiness/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText("Safe clean edge readiness packet contains forbidden runtime details.")).not.toBeNull();
+    });
+    expect(reviewCleanEdgeReadiness).not.toHaveBeenCalled();
   });
 });

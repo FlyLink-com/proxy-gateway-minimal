@@ -4,6 +4,7 @@ import { buildChannelRuntimeExecutionHandoff } from "../services/channel-runtime
 import { buildChannelRuntimeEvidenceBridge } from "../services/channel-runtime-evidence-bridge.mjs";
 import { buildChannelRuntimeGateWorkbench } from "../services/channel-runtime-gate-workbench.mjs";
 import { buildChannelSystemDecisionFlow } from "../services/channel-system-decision-flow.mjs";
+import { buildCleanEdgeReadinessSummary } from "../services/clean-edge-readiness-summary.mjs";
 import { createCleanStartControlPlanePackage } from "../services/platform/clean-start-control-plane.mjs";
 import { createAliyunGateDecisionPacket } from "../services/platform/aliyun-gate-decision-packet.mjs";
 
@@ -56,6 +57,12 @@ function channelRuntimeExecutionHandoffValidationError() {
 
 function channelLabTargetDecisionValidationError() {
   const error = new Error("channel lab target decision input is invalid");
+  error.code = "validation_error";
+  return error;
+}
+
+function cleanEdgeReadinessSummaryValidationError() {
+  const error = new Error("clean edge readiness summary input is invalid");
   error.code = "validation_error";
   return error;
 }
@@ -179,6 +186,16 @@ export function adminPlatformRoutes(state) {
       });
     } catch {
       sendError(res, channelLabTargetDecisionValidationError());
+    }
+  });
+
+  router.post("/api/admin/platform/clean-edge-readiness-summary", (req, res) => {
+    try {
+      res.json({
+        cleanEdgeReadiness: buildCleanEdgeReadinessSummary(req.body ?? {})
+      });
+    } catch {
+      sendError(res, cleanEdgeReadinessSummaryValidationError());
     }
   });
 

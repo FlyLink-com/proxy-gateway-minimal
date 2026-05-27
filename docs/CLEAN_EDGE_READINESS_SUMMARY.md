@@ -19,6 +19,20 @@ subscription output, expose Admin, start traffic, or submit approval.
 npm run platform:clean-edge-readiness-summary -- safe-clean-edge-input.json
 ```
 
+## Protected Admin Review
+
+The same summary can be reviewed through the protected Admin platform API:
+
+```text
+POST /api/admin/platform/clean-edge-readiness-summary
+```
+
+Admin Overview also exposes a `Clean edge readiness` review panel for the same
+safe packet shape. This surface is private Admin-only and remains review-only:
+it does not submit approval phrases, expose approval text, create hosts, select
+targets, bootstrap hosts, inject secrets, change DNS, change subscription
+output, expose public Admin, mutate AWS/Aliyun, or move traffic.
+
 The input file must contain safe booleans and optional safe notes only. Do not
 include raw hosts, IPs, ports, URLs, tokens, secrets, credentials, customer
 data, SQLite rows, YAML payloads, private keys, or exact management-source

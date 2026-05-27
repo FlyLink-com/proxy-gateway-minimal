@@ -13,6 +13,8 @@ import type {
   ChannelRuntimeGateWorkbench,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
+  CleanEdgeReadinessInput,
+  CleanEdgeReadinessSummary,
   ProviderFirewallEvidenceInput,
   SubscriptionOverview
 } from "../features/subscriptions/types";
@@ -88,6 +90,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
       <ChannelRuntimeGateWorkbenchPanel apiClient={apiClient} />
       <ChannelRuntimeExecutionHandoffPanel apiClient={apiClient} />
       <ChannelLabTargetDecisionPanel apiClient={apiClient} />
+      <CleanEdgeReadinessReviewPanel apiClient={apiClient} />
       <AliyunGateReviewPanel apiClient={apiClient} />
     </div>
   );
@@ -127,6 +130,19 @@ function parseChannelLabTargetDecisionInput(value: string): ChannelLabTargetDeci
   }
   assertSafeChannelSystemEvidence(parsed);
   return parsed as ChannelLabTargetDecisionInput;
+}
+
+function parseCleanEdgeReadinessInput(value: string): CleanEdgeReadinessInput {
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Safe clean edge readiness packet must be a JSON object.");
+  }
+  try {
+    assertSafeChannelSystemEvidence(parsed);
+  } catch {
+    throw new Error("Safe clean edge readiness packet contains forbidden runtime details.");
+  }
+  return parsed as CleanEdgeReadinessInput;
 }
 
 const CHANNEL_SYSTEM_FORBIDDEN_EVIDENCE_KEYS = new Set([
@@ -635,6 +651,91 @@ function ChannelLabTargetDecisionPanel({ apiClient }: { apiClient: AdminApiClien
               </li>
             </ul>
           </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function CleanEdgeReadinessReviewPanel({ apiClient }: { apiClient: AdminApiClient }) {
+  const [packetText, setPacketText] = useState("");
+  const [summary, setSummary] = useState<CleanEdgeReadinessSummary | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewing(true);
+    setError("");
+    try {
+      const input = parseCleanEdgeReadinessInput(packetText);
+      const nextSummary = await apiClient.reviewCleanEdgeReadiness(input);
+      setSummary(nextSummary);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+      setSummary(null);
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  return (
+    <section className="gate-review-card" aria-labelledby="clean-edge-readiness-heading">
+      <div className="page-heading">
+        <div>
+          <h2 id="clean-edge-readiness-heading">Clean edge readiness</h2>
+          <p className="muted">Protected readiness surface for clean edge rebuild preconditions.</p>
+        </div>
+      </div>
+
+      <div className="alert">
+        This panel reviews safe clean-edge facts only; it does not submit approval, create hosts, inject secrets, change DNS, or move traffic.
+      </div>
+
+      {error ? <div className="alert alert-error">{error}</div> : null}
+
+      <form className="channel-review-form" onSubmit={handleReviewSubmit}>
+        <label htmlFor="clean-edge-readiness-packet">Safe clean edge readiness packet</label>
+        <textarea
+          id="clean-edge-readiness-packet"
+          value={packetText}
+          onChange={(event) => setPacketText(event.target.value)}
+          placeholder='{"repoState":{},"subscriptionBoundary":{},"edgeDns":{},"stoppedNodes":{},"cleanTarget":{},"approval":{}}'
+          rows={8}
+        />
+        <button className="primary-button" type="submit" disabled={reviewing}>
+          {reviewing ? "Reviewing..." : "Review clean edge readiness"}
+        </button>
+      </form>
+
+      {summary ? (
+        <>
+          <div className="metric-grid">
+            <Metric label="Summary mode" value={summary.mode} />
+            <Metric label="Readiness" value={summary.readiness.preconditionsReady ? "Preconditions ready" : "Blocked"} />
+            <Metric label="Approval" value={summary.readiness.approvalRequired ? "Approval required" : "Approval recorded"} />
+            <Metric label="Execution allowed" value={summary.readiness.executionAllowed ? "Yes" : "No"} />
+            <Metric label="Blockers" value={summary.readiness.blockers.length} />
+          </div>
+          <div className="gate-boundary">
+            <strong>Readiness boundary</strong>
+            <ul>
+              <li>{summary.safety.summaryOnly ? "Summary-only evidence" : "Summary-only flag missing"}</li>
+              <li>{summary.safety.noRuntimeMutation ? "No runtime mutation" : "Runtime mutation flag missing"}</li>
+              <li>{summary.safety.noProductionMutation ? "No production mutation" : "Production mutation flag missing"}</li>
+              <li>{summary.safety.noCloudMutation ? "No cloud mutation" : "Cloud mutation flag missing"}</li>
+              <li>{summary.safety.noDnsMutation ? "No DNS mutation" : "DNS mutation flag missing"}</li>
+              <li>
+                {summary.safety.noSubscriptionOutputMutation
+                  ? "No subscription output mutation"
+                  : "Subscription output mutation flag missing"}
+              </li>
+              <li>{summary.safety.noSecretHandling ? "No secret handling" : "Secret-handling flag missing"}</li>
+            </ul>
+          </div>
+          {summary.readiness.blockers.length ? (
+            <div className="alert alert-error">{summary.readiness.blockers.join(", ")}</div>
+          ) : null}
         </>
       ) : null}
     </section>

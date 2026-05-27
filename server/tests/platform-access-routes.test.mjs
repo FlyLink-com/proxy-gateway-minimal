@@ -1035,6 +1035,93 @@ test("admin platform channel lab target decision route rejects unsafe inventory 
   }
 });
 
+test("admin platform clean edge readiness route is protected and redacts unsafe input", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  const safeInput = {
+    generatedAt: "2026-05-27T21:40:00.000Z",
+    repoState: {
+      branchSynced: true,
+      noOpenPrs: true,
+      projectStateCheckPassed: true
+    },
+    subscriptionBoundary: {
+      subOnAliyun: true,
+      healthOk: true,
+      adminBlocked: true,
+      rootBlocked: true,
+      noTokenRejected: true
+    },
+    edgeDns: {
+      ssSgUnchangedOnOldAws: true
+    },
+    stoppedNodes: {
+      prodEdgeAStopped: true,
+      prodEdgeANoPublicIp: true,
+      prodEdgeBStopped: true,
+      prodEdgeBNoPublicIp: true
+    },
+    cleanTarget: {
+      noTargetSelected: true,
+      noTargetProvisioned: true
+    },
+    approval: {
+      exactApprovalReceived: false
+    },
+    notes: ["summary only"]
+  };
+
+  try {
+    const unauthenticated = await fetch(`${baseUrl}/api/admin/platform/clean-edge-readiness-summary`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(safeInput)
+    });
+    assert.equal(unauthenticated.status, 401);
+
+    const response = await fetch(`${baseUrl}/api/admin/platform/clean-edge-readiness-summary`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(safeInput)
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.cleanEdgeReadiness.mode, "clean-edge-readiness-summary");
+    assert.equal(body.cleanEdgeReadiness.readiness.preconditionsReady, true);
+    assert.equal(body.cleanEdgeReadiness.readiness.approvalRequired, true);
+    assert.equal(body.cleanEdgeReadiness.readiness.executionAllowed, false);
+    assert.equal(body.cleanEdgeReadiness.safety.noCloudMutation, true);
+    assert.equal(body.cleanEdgeReadiness.safety.noSecretHandling, true);
+
+    const unsafe = await fetch(`${baseUrl}/api/admin/platform/clean-edge-readiness-summary`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        ...safeInput,
+        rawHost: "edge-secret.example",
+        rawSubscriptionUrl: "https://sub.example/sub/clash.yaml?token=secret"
+      })
+    });
+    assert.equal(unsafe.status, 400);
+    const serialized = JSON.stringify(await unsafe.json());
+    assert.equal(serialized.includes("edge-secret.example"), false);
+    assert.equal(serialized.includes("sub.example"), false);
+    assert.equal(serialized.includes("token=secret"), false);
+  } finally {
+    server.close();
+  }
+});
+
 test("admin platform channel system decision route rejects unsafe runtime evidence without echoing it", async () => {
   const { leadQueue, accountShell, accessShell } = createPlatformState();
   const { server, baseUrl } = await listen(createApp(fakeState({

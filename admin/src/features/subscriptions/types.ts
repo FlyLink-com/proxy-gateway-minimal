@@ -367,3 +367,99 @@ export type ChannelLabTargetDecision = {
     omittedFields: string[];
   };
 };
+
+export type CleanEdgeReadinessInput = {
+  generatedAt?: string;
+  repoState?: {
+    branchSynced?: boolean;
+    noOpenPrs?: boolean;
+    projectStateCheckPassed?: boolean;
+  };
+  subscriptionBoundary?: {
+    subOnAliyun?: boolean;
+    healthOk?: boolean;
+    adminBlocked?: boolean;
+    rootBlocked?: boolean;
+    noTokenRejected?: boolean;
+  };
+  edgeDns?: {
+    ssSgUnchangedOnOldAws?: boolean;
+  };
+  stoppedNodes?: {
+    prodEdgeAStopped?: boolean;
+    prodEdgeANoPublicIp?: boolean;
+    prodEdgeBStopped?: boolean;
+    prodEdgeBNoPublicIp?: boolean;
+  };
+  cleanTarget?: {
+    noTargetSelected?: boolean;
+    noTargetProvisioned?: boolean;
+  };
+  approval?: {
+    exactApprovalReceived?: boolean;
+  };
+  notes?: string[];
+};
+
+export type CleanEdgeRepoState = {
+  branchSynced: boolean;
+  noOpenPrs: boolean;
+  projectStateCheckPassed: boolean;
+};
+
+export type CleanEdgeSubscriptionBoundary = {
+  subOnAliyun: boolean;
+  healthOk: boolean;
+  adminBlocked: boolean;
+  rootBlocked: boolean;
+  noTokenRejected: boolean;
+};
+
+export type CleanEdgeDnsState = {
+  ssSgUnchangedOnOldAws: boolean;
+};
+
+export type CleanEdgeStoppedNodes = {
+  prodEdgeAStopped: boolean;
+  prodEdgeANoPublicIp: boolean;
+  prodEdgeBStopped: boolean;
+  prodEdgeBNoPublicIp: boolean;
+};
+
+export type CleanEdgeTargetState = {
+  noTargetSelected: boolean;
+  noTargetProvisioned: boolean;
+};
+
+export type CleanEdgeApprovalState = {
+  exactApprovalReceived: boolean;
+};
+
+export type CleanEdgeReadinessSummary = {
+  ok: boolean;
+  mode: "clean-edge-readiness-summary";
+  generatedAt: string;
+  readiness: {
+    preconditionsReady: boolean;
+    approvalRequired: boolean;
+    executionAllowed: boolean;
+    blockers: string[];
+  };
+  repoState: CleanEdgeRepoState;
+  subscriptionBoundary: CleanEdgeSubscriptionBoundary;
+  edgeDns: CleanEdgeDnsState;
+  stoppedNodes: CleanEdgeStoppedNodes;
+  cleanTarget: CleanEdgeTargetState;
+  approval: CleanEdgeApprovalState;
+  notes: string[];
+  safety: {
+    summaryOnly: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+    noCloudMutation: boolean;
+    noDnsMutation: boolean;
+    noSubscriptionOutputMutation: boolean;
+    noSecretHandling: boolean;
+    omittedFields: string[];
+  };
+};
