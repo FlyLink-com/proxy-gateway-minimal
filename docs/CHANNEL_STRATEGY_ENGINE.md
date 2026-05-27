@@ -249,6 +249,22 @@ YAML, submit approval phrases, expose an approval submission route, expose an
 execution route, contact edge nodes, deploy runtimes, change
 firewall/DNS/systemd state, move traffic, or change subscription output.
 
+`buildChannelSubscriptionActivationReadiness(...)` is the next
+repository-local integration layer after the draft. It consumes the same safe
+runtime bridge packet and verifies whether the draft has a baseline pool, a
+canary output pool, no blocked candidates, and canary evidence that has reached
+the `subscription_output_activation_approval` next gate. The result is an
+advisory activation-readiness packet for a later Risk A subscription-output
+activation request.
+
+The same readiness layer is available through the protected Admin platform
+route `POST /api/admin/platform/channel-subscription-activation-readiness` and
+an Admin Overview review panel. It marks execution authority as `not_granted`,
+does not include approval text, and exposes no approval submission or execution
+route. It does not emit Clash/Mihomo YAML, change real subscription output,
+contact edge nodes, deploy runtimes, change firewall/DNS/systemd state, move
+traffic, or activate production.
+
 `buildChannelLabTargetDecision(...)` is the repository-local target decision
 layer after a read-only runtime inventory finds that the current lab target is
 not directly deployable. It accepts only a safe target inventory packet, then

@@ -16,6 +16,7 @@ import {
   buildChannelRuntimeGatePacket,
   buildChannelRuntimeInventorySummary,
   buildChannelRuntimeRegistry,
+  buildChannelSubscriptionActivationReadiness,
   buildChannelSubscriptionOutputDraft,
   buildChannelSystemDecisionFlow,
   buildChannelExtendedMeasurementReport,
@@ -69,6 +70,7 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof buildChannelRuntimeGatePacket, "function");
   assert.equal(typeof buildChannelRuntimeInventorySummary, "function");
   assert.equal(typeof buildChannelRuntimeRegistry, "function");
+  assert.equal(typeof buildChannelSubscriptionActivationReadiness, "function");
   assert.equal(typeof buildChannelSubscriptionOutputDraft, "function");
   assert.equal(typeof buildChannelSystemDecisionFlow, "function");
   assert.equal(typeof buildChannelExtendedMeasurementReport, "function");

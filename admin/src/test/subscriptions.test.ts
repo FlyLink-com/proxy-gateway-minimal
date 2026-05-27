@@ -12,6 +12,8 @@ import type {
   ChannelRuntimeEvidenceBridgeInput,
   ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
+  ChannelSubscriptionActivationReadiness,
+  ChannelSubscriptionActivationReadinessInput,
   ChannelSubscriptionOutputDraft,
   ChannelSubscriptionOutputDraftInput,
   ChannelLabTargetDecision,
@@ -253,6 +255,33 @@ describe("admin API client", () => {
     expect(draft.subscriptionOutputDraft.yamlGenerated).toBe(false);
     expect(draft.subscriptionOutputDraft.realSubscriptionOutputChanged).toBe(false);
   });
+
+  test("reviews channel subscription activation readiness through the protected platform endpoint", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      channelSubscriptionActivationReadiness: channelSubscriptionActivationReadiness()
+    }));
+    const client = createAdminApiClient({
+      baseUrl: "",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    const readiness = await client.reviewChannelSubscriptionActivationReadiness(
+      channelSubscriptionActivationReadinessInput()
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/channel-subscription-activation-readiness",
+      expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
+    );
+    const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionActivationReadinessInput());
+    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
+    expect(readiness.mode).toBe("channel-subscription-activation-readiness");
+    expect(readiness.activationGate.executionAuthority).toBe("not_granted");
+    expect(readiness.subscriptionOutputDraft.realSubscriptionOutputChanged).toBe(false);
+  });
 });
 
 describe("admin session", () => {
@@ -340,6 +369,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelRuntimeEvidence: async () => channelRuntimeEvidenceBridge(),
     reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
     reviewChannelRuntimeExecutionHandoff: async () => channelRuntimeExecutionHandoff(),
+    reviewChannelSubscriptionActivationReadiness: async () => channelSubscriptionActivationReadiness(),
     reviewChannelSubscriptionOutputDraft: async () => channelSubscriptionOutputDraft(),
     reviewChannelLabTargetDecision: async () => channelLabTargetDecision(),
     reviewCleanEdgeReadiness: async () => cleanEdgeReadinessSummary(),
@@ -670,6 +700,81 @@ function channelSubscriptionOutputDraft(): ChannelSubscriptionOutputDraft {
       runbook: "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md"
     },
     source: {
+      bridgeMode: "channel-runtime-evidence-bridge",
+      systemMode: "channel-system-decision-flow",
+      runtimeRegistryMode: "channel-runtime-registry",
+      runtimeGatePacketMode: "channel-runtime-gate-packet"
+    },
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      noSubscriptionOutputMutation: true,
+      yamlNotGenerated: true,
+      requiresSeparateRiskAApproval: true,
+      approvalTextIncluded: false,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls", "yaml"]
+    }
+  };
+}
+
+function channelSubscriptionActivationReadinessInput(): ChannelSubscriptionActivationReadinessInput {
+  return channelRuntimeEvidenceBridgeInput();
+}
+
+function channelSubscriptionActivationReadiness(): ChannelSubscriptionActivationReadiness {
+  return {
+    ok: true,
+    mode: "channel-subscription-activation-readiness",
+    generatedAt: "2026-05-28T10:02:00.000Z",
+    sourceGeneratedAt: "2026-05-28T10:02:00.000Z",
+    status: "ready_for_subscription_output_activation_request",
+    readiness: {
+      baselineReady: true,
+      canaryOutputCandidateCount: 1,
+      blockedCandidateCount: 0,
+      runtimeCanaryCompleted: true,
+      blockers: []
+    },
+    subscriptionOutputDraft: {
+      yamlGenerated: false,
+      realSubscriptionOutputChanged: false,
+      activationAllowed: false,
+      baselinePool: channelSubscriptionOutputDraft().subscriptionOutputDraft.baselinePool,
+      canaryPool: [
+        {
+          name: "tuic-lab",
+          protocol: "tuic",
+          qualityClass: "weak-network",
+          qualityTier: "healthy",
+          channelScore: 94,
+          targetLabel: "channel-lab-b",
+          lifecycleStatus: "runtime_deployed",
+          nextGate: "subscription_output_activation_approval",
+          reasonCodes: ["candidate_requires_canary"]
+        }
+      ],
+      privatePool: [],
+      blockedPool: []
+    },
+    activationGate: {
+      risk: "A",
+      gate: "risk_a_subscription_output_activation",
+      requiredNextAction: "request_risk_a_subscription_output_activation_approval",
+      approvalRequestReady: true,
+      exactApprovalRequired: true,
+      executionAuthority: "not_granted",
+      approvalTextIncluded: false,
+      approvalSubmissionRoute: null,
+      executionRoute: null,
+      runbook: "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md"
+    },
+    source: {
+      draftMode: "channel-subscription-output-draft",
+      draftStatus: "draft_ready_for_runtime_gate_review",
       bridgeMode: "channel-runtime-evidence-bridge",
       systemMode: "channel-system-decision-flow",
       runtimeRegistryMode: "channel-runtime-registry",
@@ -1553,6 +1658,35 @@ describe("overview and nodes pages", () => {
       expect(screen.getByText("Safe channel subscription draft packet contains forbidden runtime details.")).not.toBeNull();
     });
     expect(reviewChannelSubscriptionOutputDraft).not.toHaveBeenCalled();
+  });
+
+  test("renders channel subscription activation readiness without execution controls", async () => {
+    const reviewChannelSubscriptionActivationReadiness = vi.fn(async () => channelSubscriptionActivationReadiness());
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewChannelSubscriptionActivationReadiness })
+    }));
+
+    expect(await screen.findByText("Channel subscription activation readiness")).not.toBeNull();
+    const readinessRegion = screen.getByRole("region", { name: "Channel subscription activation readiness" });
+    fireEvent.change(screen.getByLabelText(/safe channel activation readiness packet/i), {
+      target: { value: JSON.stringify(channelSubscriptionActivationReadinessInput()) }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review activation readiness/i }));
+
+    await waitFor(() => {
+      expect(reviewChannelSubscriptionActivationReadiness).toHaveBeenCalledWith(
+        channelSubscriptionActivationReadinessInput()
+      );
+    });
+    expect(await screen.findByText("channel-subscription-activation-readiness")).not.toBeNull();
+    expect(within(readinessRegion).getByText("ready_for_subscription_output_activation_request")).not.toBeNull();
+    expect(within(readinessRegion).getByText("risk_a_subscription_output_activation")).not.toBeNull();
+    expect(within(readinessRegion).getByText("not_granted")).not.toBeNull();
+    expect(within(readinessRegion).getByText(/No subscription output mutation/i)).not.toBeNull();
+    expect(within(readinessRegion).getByText(/No approval submission route/i)).not.toBeNull();
+    expect(within(readinessRegion).getByText(/No execution route/i)).not.toBeNull();
+    expect(within(readinessRegion).queryByText(/secret\.example|token=|subscriptionUrl|approvalPhrase/i)).toBeNull();
   });
 
   test("renders channel lab target decision without execution controls or approval text", async () => {

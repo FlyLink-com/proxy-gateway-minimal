@@ -168,6 +168,8 @@ export type ChannelRuntimeEvidenceBridgeInput = {
 
 export type ChannelSubscriptionOutputDraftInput = ChannelRuntimeEvidenceBridgeInput;
 
+export type ChannelSubscriptionActivationReadinessInput = ChannelRuntimeEvidenceBridgeInput;
+
 export type ChannelLabTargetDecisionInput = {
   generatedAt?: string;
   inventory: unknown;
@@ -372,6 +374,63 @@ export type ChannelSubscriptionOutputDraft = {
     runbook: string;
   };
   source: {
+    bridgeMode: string;
+    systemMode: string;
+    runtimeRegistryMode: string;
+    runtimeGatePacketMode: string;
+  };
+  safety: {
+    advisoryOnly: boolean;
+    summaryOnly: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+    noApprovalSubmission: boolean;
+    noTrafficMovement: boolean;
+    noSubscriptionOutputMutation: boolean;
+    yamlNotGenerated: boolean;
+    requiresSeparateRiskAApproval: boolean;
+    approvalTextIncluded: boolean;
+    omittedFields: string[];
+  };
+};
+
+export type ChannelSubscriptionActivationReadiness = {
+  ok: boolean;
+  mode: "channel-subscription-activation-readiness";
+  generatedAt: string;
+  sourceGeneratedAt: string;
+  status: string;
+  readiness: {
+    baselineReady: boolean;
+    canaryOutputCandidateCount: number;
+    blockedCandidateCount: number;
+    runtimeCanaryCompleted: boolean;
+    blockers: string[];
+  };
+  subscriptionOutputDraft: {
+    yamlGenerated: boolean;
+    realSubscriptionOutputChanged: boolean;
+    activationAllowed: boolean;
+    baselinePool: ChannelSubscriptionOutputDraftCandidate[];
+    canaryPool: ChannelSubscriptionOutputDraftCandidate[];
+    privatePool: ChannelSubscriptionOutputDraftCandidate[];
+    blockedPool: ChannelSubscriptionOutputDraftCandidate[];
+  };
+  activationGate: {
+    risk: "A" | string;
+    gate: string;
+    requiredNextAction: string;
+    approvalRequestReady: boolean;
+    exactApprovalRequired: boolean;
+    executionAuthority: string;
+    approvalTextIncluded: boolean;
+    approvalSubmissionRoute: string | null;
+    executionRoute: string | null;
+    runbook: string;
+  };
+  source: {
+    draftMode: string;
+    draftStatus: string;
     bridgeMode: string;
     systemMode: string;
     runtimeRegistryMode: string;

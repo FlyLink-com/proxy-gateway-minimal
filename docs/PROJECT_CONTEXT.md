@@ -874,6 +874,15 @@ simplification queue is closed:
   activation not approved, no approval submission route, no execution route,
   no edge-node contact, no runtime mutation, no traffic movement, and no
   production activation.
+- `B32-channel-subscription-activation-readiness` - completed in the Channel
+  Subscription Activation Readiness work; the protected Admin platform route
+  and Admin Overview can now convert safe runtime bridge packets into an
+  advisory subscription-output activation readiness gate. The packet marks
+  execution authority as `not_granted`, references the A-tier runtime canary
+  runbook, keeps approval text out of the output, exposes no approval
+  submission or execution route, generates no YAML, mutates no real
+  subscription output, contacts no edge nodes, deploys no runtime, moves no
+  traffic, and performs no production activation.
 - `B28-channel-lab-target-decision` - completed in the Channel Lab Target
   Decision work; the protected Admin platform route and Admin Overview can now
   convert safe target inventory packets into an advisory next target gate after
