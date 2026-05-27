@@ -11,6 +11,8 @@ import type {
   ChannelRuntimeEvidenceBridgeInput,
   ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
+  ChannelSubscriptionActivationHandoff,
+  ChannelSubscriptionActivationHandoffInput,
   ChannelSubscriptionActivationReadiness,
   ChannelSubscriptionActivationReadinessInput,
   ChannelSubscriptionOutputDraft,
@@ -95,6 +97,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
       <ChannelRuntimeExecutionHandoffPanel apiClient={apiClient} />
       <ChannelSubscriptionOutputDraftPanel apiClient={apiClient} />
       <ChannelSubscriptionActivationReadinessPanel apiClient={apiClient} />
+      <ChannelSubscriptionActivationHandoffPanel apiClient={apiClient} />
       <ChannelLabTargetDecisionPanel apiClient={apiClient} />
       <CleanEdgeReadinessReviewPanel apiClient={apiClient} />
       <AliyunGateReviewPanel apiClient={apiClient} />
@@ -153,6 +156,19 @@ function parseChannelSubscriptionActivationReadinessInput(value: string): Channe
     throw new Error("Safe channel activation readiness packet contains forbidden runtime details.");
   }
   return parsed as ChannelSubscriptionActivationReadinessInput;
+}
+
+function parseChannelSubscriptionActivationHandoffInput(value: string): ChannelSubscriptionActivationHandoffInput {
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Safe channel subscription activation handoff packet must be a JSON object.");
+  }
+  try {
+    assertSafeChannelSystemEvidence(parsed);
+  } catch {
+    throw new Error("Safe channel subscription activation handoff packet contains forbidden runtime details.");
+  }
+  return parsed as ChannelSubscriptionActivationHandoffInput;
 }
 
 function parseChannelLabTargetDecisionInput(value: string): ChannelLabTargetDecisionInput {
@@ -786,6 +802,110 @@ function ChannelSubscriptionActivationReadinessPanel({ apiClient }: { apiClient:
           </div>
           {readiness.readiness.blockers.length ? (
             <div className="alert alert-error">{readiness.readiness.blockers.join(", ")}</div>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ChannelSubscriptionActivationHandoffPanel({ apiClient }: { apiClient: AdminApiClient }) {
+  const [packetText, setPacketText] = useState("");
+  const [handoff, setHandoff] = useState<ChannelSubscriptionActivationHandoff | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewing(true);
+    setError("");
+    try {
+      const input = parseChannelSubscriptionActivationHandoffInput(packetText);
+      const nextHandoff = await apiClient.reviewChannelSubscriptionActivationHandoff(input);
+      setHandoff(nextHandoff);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+      setHandoff(null);
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  return (
+    <section className="gate-review-card" aria-labelledby="channel-subscription-activation-handoff-heading">
+      <div className="page-heading">
+        <div>
+          <h2 id="channel-subscription-activation-handoff-heading">
+            Channel subscription activation handoff
+          </h2>
+          <p className="muted">
+            Protected operator handoff before any subscription-output activation request.
+          </p>
+        </div>
+      </div>
+
+      <div className="alert">
+        This panel prepares handoff evidence only; it does not submit approvals, expose execution routes, generate YAML, or change subscription output.
+      </div>
+
+      {error ? <div className="alert alert-error">{error}</div> : null}
+
+      <form className="channel-review-form" onSubmit={handleReviewSubmit}>
+        <label htmlFor="channel-subscription-activation-handoff-packet">
+          Safe channel subscription activation handoff packet
+        </label>
+        <textarea
+          id="channel-subscription-activation-handoff-packet"
+          value={packetText}
+          onChange={(event) => setPacketText(event.target.value)}
+          placeholder='{"dryRunSummary":{},"measurementScore":{},"runtimeEvidenceInput":{"records":[]}}'
+          rows={8}
+        />
+        <button className="primary-button" type="submit" disabled={reviewing}>
+          {reviewing ? "Reviewing..." : "Review activation handoff"}
+        </button>
+      </form>
+
+      {handoff ? (
+        <>
+          <div className="metric-grid">
+            <Metric label="Handoff mode" value={handoff.mode} />
+            <Metric label="Handoff status" value={handoff.handoff.status} />
+            <Metric label="Activation gate" value={handoff.handoff.nextGate.gate} />
+            <Metric label="Execution authority" value={handoff.handoff.executionAuthority} />
+            <Metric label="Baseline candidates" value={handoff.handoff.counts.baselinePool} />
+            <Metric label="Canary candidates" value={handoff.handoff.counts.canaryPool} />
+          </div>
+          <div className="gate-boundary">
+            <strong>Activation handoff boundary</strong>
+            <ul>
+              <li>
+                {handoff.safety.noSubscriptionOutputMutation
+                  ? "No subscription output mutation"
+                  : "Subscription output mutation flag missing"}
+              </li>
+              <li>{handoff.safety.yamlNotGenerated ? "YAML not generated" : "YAML generation flag missing"}</li>
+              <li>{handoff.safety.noRuntimeMutation ? "No runtime mutation" : "Runtime mutation flag missing"}</li>
+              <li>{handoff.safety.noTrafficMovement ? "No traffic movement" : "Traffic movement flag missing"}</li>
+              <li>
+                {handoff.handoff.nextGate.approvalSubmissionRoute === null
+                  ? "No approval submission route"
+                  : "Approval submission route exposed"}
+              </li>
+              <li>
+                {handoff.handoff.nextGate.subscriptionOutputExecutionRoute === null
+                  ? "No subscription output execution route"
+                  : "Subscription output execution route exposed"}
+              </li>
+              <li>
+                {!handoff.handoff.nextGate.approvalTextIncluded
+                  ? "Approval text not included"
+                  : "Approval text included"}
+              </li>
+            </ul>
+          </div>
+          {handoff.handoff.blockers.length ? (
+            <div className="alert alert-error">{handoff.handoff.blockers.join(", ")}</div>
           ) : null}
         </>
       ) : null}

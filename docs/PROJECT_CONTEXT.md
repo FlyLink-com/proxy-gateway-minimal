@@ -883,6 +883,16 @@ simplification queue is closed:
   submission or execution route, generates no YAML, mutates no real
   subscription output, contacts no edge nodes, deploys no runtime, moves no
   traffic, and performs no production activation.
+- `B33-channel-subscription-activation-handoff` - completed in the Channel
+  Subscription Activation Handoff work; the protected Admin platform route and
+  Admin Overview can now convert safe runtime bridge packets into an
+  operator-safe A-tier handoff packet for a future subscription-output
+  activation request. The packet marks execution authority as `not_granted`,
+  carries preflight/validation/rollback checklist keys, keeps approval text out
+  of the output, exposes no approval submission or subscription-output
+  execution route, generates no YAML, mutates no real subscription output,
+  contacts no edge nodes, deploys no runtime, moves no traffic, and performs
+  no production activation.
 - `B28-channel-lab-target-decision` - completed in the Channel Lab Target
   Decision work; the protected Admin platform route and Admin Overview can now
   convert safe target inventory packets into an advisory next target gate after

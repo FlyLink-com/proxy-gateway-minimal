@@ -265,6 +265,21 @@ route. It does not emit Clash/Mihomo YAML, change real subscription output,
 contact edge nodes, deploy runtimes, change firewall/DNS/systemd state, move
 traffic, or activate production.
 
+`buildChannelSubscriptionActivationHandoff(...)` is the repository-local
+handoff layer after activation readiness. It converts the same safe runtime
+bridge packet into an operator-safe A-tier handoff packet with activation
+status, execution authority (`not_granted`), candidate counts, grouped
+candidates, the source runbook, and preflight/validation/rollback checklist
+keys for a later subscription-output activation request.
+
+The same handoff layer is available through the protected Admin platform route
+`POST /api/admin/platform/channel-subscription-activation-handoff` and an
+Admin Overview review panel. It remains advisory only: it does not include
+approval text, submit approval phrases, expose approval submission, expose a
+subscription-output execution route, emit Clash/Mihomo YAML, change real
+subscription output, contact edge nodes, deploy runtimes, change
+firewall/DNS/systemd state, move traffic, or activate production.
+
 `buildChannelLabTargetDecision(...)` is the repository-local target decision
 layer after a read-only runtime inventory finds that the current lab target is
 not directly deployable. It accepts only a safe target inventory packet, then
