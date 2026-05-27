@@ -108,6 +108,14 @@ export type ProviderFirewallEvidenceInput = {
   hasWgHomeDecision: boolean;
 };
 
+export type AccessMigrationEvidenceInput = {
+  hasLiveAccessModelInventory: boolean;
+  hasApprovedArtifactScope: boolean;
+  artifactIssuanceCompleted: boolean;
+  artifactRefreshObservationRecorded: boolean;
+  hasApprovedLegacyRetirementScope: boolean;
+};
+
 export type ProviderFirewallEvidenceSummary = {
   type: "provider_firewall_evidence_summary";
   status: "incomplete" | "ready_for_gate_packet" | string;
@@ -121,7 +129,27 @@ export type ProviderFirewallEvidenceSummary = {
   updatedAt: string;
 };
 
+export type AccessMigrationEvidenceSummary = {
+  type: "access_migration_evidence_summary";
+  status: "incomplete" | "ready_for_artifact_issuance_gate" | "ready_for_legacy_retirement_gate" | string;
+  hasLiveAccessModelInventory: boolean;
+  hasApprovedArtifactScope: boolean;
+  artifactIssuanceCompleted: boolean;
+  artifactRefreshObservationRecorded: boolean;
+  hasApprovedLegacyRetirementScope: boolean;
+  rawUrlsProvided: boolean;
+  rawUrlsEchoed: boolean;
+  rawTokensProvided: boolean;
+  rawTokensEchoed: boolean;
+  rawArtifactsProvided: boolean;
+  rawArtifactsEchoed: boolean;
+  noteProvided: boolean;
+  recordedAt: string;
+  updatedAt: string;
+};
+
 export type AliyunGateEvidenceSummary = {
   type: "aliyun_gate_evidence_summary";
   providerFirewall: ProviderFirewallEvidenceSummary | null;
+  accessMigration: AccessMigrationEvidenceSummary | null;
 };

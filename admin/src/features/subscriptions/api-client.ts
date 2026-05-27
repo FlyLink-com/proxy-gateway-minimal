@@ -1,4 +1,5 @@
 import type {
+  AccessMigrationEvidenceInput,
   AliyunGateDecisionPacket,
   AliyunGateEvidenceSummary,
   CreateSubscriptionInput,
@@ -138,6 +139,16 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
       (
         await request<{ evidence: AliyunGateEvidenceSummary }>(
           "/api/admin/platform/aliyun-gate-evidence/provider-firewall",
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).evidence,
+    recordAccessMigrationEvidence: async (input: AccessMigrationEvidenceInput) =>
+      (
+        await request<{ evidence: AliyunGateEvidenceSummary }>(
+          "/api/admin/platform/aliyun-gate-evidence/access-migration",
           {
             method: "POST",
             body: JSON.stringify(input)

@@ -83,7 +83,8 @@ describe("admin API client", () => {
       .fn()
       .mockResolvedValueOnce(jsonResponse({ aliyunGates: aliyunGatePacket() }))
       .mockResolvedValueOnce(jsonResponse({ evidence: aliyunGateEvidence() }))
-      .mockResolvedValueOnce(jsonResponse({ evidence: aliyunGateEvidence("ready_for_gate_packet") }));
+      .mockResolvedValueOnce(jsonResponse({ evidence: aliyunGateEvidence("ready_for_gate_packet") }))
+      .mockResolvedValueOnce(jsonResponse({ evidence: aliyunGateEvidence("ready_for_gate_packet", "ready_for_artifact_issuance_gate") }));
     const client = createAdminApiClient({
       baseUrl: "",
       consoleToken: "console-secret",
@@ -107,6 +108,25 @@ describe("admin API client", () => {
       hasWgHomeDecision: false
     });
     expect(JSON.stringify(recordCall[1].body)).not.toMatch(/rawRules|note|token|operator-home|secret-label/i);
+
+    await client.recordAccessMigrationEvidence({
+      hasLiveAccessModelInventory: true,
+      hasApprovedArtifactScope: true,
+      artifactIssuanceCompleted: false,
+      artifactRefreshObservationRecorded: false,
+      hasApprovedLegacyRetirementScope: false
+    });
+    const accessMigrationCall = fetchMock.mock.calls[3] as unknown as [string, RequestInit];
+    expect(accessMigrationCall[0]).toBe("/api/admin/platform/aliyun-gate-evidence/access-migration");
+    expect(accessMigrationCall[1].method).toBe("POST");
+    expect(JSON.parse(String(accessMigrationCall[1].body))).toEqual({
+      hasLiveAccessModelInventory: true,
+      hasApprovedArtifactScope: true,
+      artifactIssuanceCompleted: false,
+      artifactRefreshObservationRecorded: false,
+      hasApprovedLegacyRetirementScope: false
+    });
+    expect(JSON.stringify(accessMigrationCall[1].body)).not.toMatch(/subscriptionUrl|artifactUrl|rawTokens|token|secret/i);
   });
 });
 
@@ -189,6 +209,8 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     getAliyunGates: async () => aliyunGatePacket(),
     getAliyunGateEvidence: async () => aliyunGateEvidence(),
     recordProviderFirewallEvidence: async () => aliyunGateEvidence("ready_for_gate_packet"),
+    recordAccessMigrationEvidence: async () =>
+      aliyunGateEvidence("incomplete", "ready_for_artifact_issuance_gate"),
     ...overrides
   };
 }
@@ -267,7 +289,7 @@ function aliyunGatePacket(status = "blocked"): AliyunGateDecisionPacket {
   };
 }
 
-function aliyunGateEvidence(status = "incomplete"): AliyunGateEvidenceSummary {
+function aliyunGateEvidence(status = "incomplete", accessMigrationStatus = "incomplete"): AliyunGateEvidenceSummary {
   return {
     type: "aliyun_gate_evidence_summary",
     providerFirewall: {
@@ -278,6 +300,24 @@ function aliyunGateEvidence(status = "incomplete"): AliyunGateEvidenceSummary {
       hasWgHomeDecision: false,
       rawRulesProvided: false,
       rawRulesEchoed: false,
+      noteProvided: false,
+      recordedAt: "2026-05-27T16:00:00.000Z",
+      updatedAt: "2026-05-27T16:00:00.000Z"
+    },
+    accessMigration: {
+      type: "access_migration_evidence_summary",
+      status: accessMigrationStatus,
+      hasLiveAccessModelInventory: accessMigrationStatus !== "incomplete",
+      hasApprovedArtifactScope: accessMigrationStatus !== "incomplete",
+      artifactIssuanceCompleted: false,
+      artifactRefreshObservationRecorded: false,
+      hasApprovedLegacyRetirementScope: false,
+      rawUrlsProvided: false,
+      rawUrlsEchoed: false,
+      rawTokensProvided: false,
+      rawTokensEchoed: false,
+      rawArtifactsProvided: false,
+      rawArtifactsEchoed: false,
       noteProvided: false,
       recordedAt: "2026-05-27T16:00:00.000Z",
       updatedAt: "2026-05-27T16:00:00.000Z"
@@ -590,5 +630,47 @@ describe("overview and nodes pages", () => {
       });
     });
     expect(await screen.findByText(/Provider-firewall evidence recorded/i)).not.toBeNull();
+  });
+
+  test("renders Aliyun access-migration evidence and records boolean artifact gate readiness", async () => {
+    const getAliyunGates = vi
+      .fn()
+      .mockResolvedValueOnce(aliyunGatePacket())
+      .mockResolvedValueOnce(aliyunGatePacket("blocked"));
+    const getAliyunGateEvidence = vi
+      .fn()
+      .mockResolvedValueOnce(aliyunGateEvidence())
+      .mockResolvedValueOnce(aliyunGateEvidence("incomplete", "ready_for_artifact_issuance_gate"));
+    const recordAccessMigrationEvidence = vi.fn(async () =>
+      aliyunGateEvidence("incomplete", "ready_for_artifact_issuance_gate"));
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({
+        getAliyunGates,
+        getAliyunGateEvidence,
+        recordAccessMigrationEvidence
+      })
+    }));
+
+    expect(await screen.findByText("Access migration evidence")).not.toBeNull();
+    expect(screen.getByText(/Store only access-model, artifact-scope, and retirement readiness booleans/i)).not.toBeNull();
+    expect(screen.getByText(/Raw URLs echoed/i)).not.toBeNull();
+    expect(screen.getByText(/Raw tokens echoed/i)).not.toBeNull();
+    expect(screen.getByText(/Raw artifacts echoed/i)).not.toBeNull();
+
+    fireEvent.click(screen.getByLabelText(/live access-model inventory recorded/i));
+    fireEvent.click(screen.getByLabelText(/approved artifact scope recorded/i));
+    fireEvent.click(screen.getByRole("button", { name: /record access-migration evidence/i }));
+
+    await waitFor(() => {
+      expect(recordAccessMigrationEvidence).toHaveBeenCalledWith({
+        hasLiveAccessModelInventory: true,
+        hasApprovedArtifactScope: true,
+        artifactIssuanceCompleted: false,
+        artifactRefreshObservationRecorded: false,
+        hasApprovedLegacyRetirementScope: false
+      });
+    });
+    expect(await screen.findByText(/Access-migration evidence recorded/i)).not.toBeNull();
   });
 });

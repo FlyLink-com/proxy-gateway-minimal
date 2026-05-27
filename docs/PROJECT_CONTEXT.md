@@ -168,28 +168,31 @@ Current architecture priorities:
 - Platform Aliyun Gate Evidence Shell: repository-only operator evidence
   support lives in `server/services/platform/aliyun-gate-evidence-shell.mjs`
   with protected Admin routes `/api/admin/platform/aliyun-gate-evidence` and
-  `/api/admin/platform/aliyun-gate-evidence/provider-firewall`. It records
-  in-memory provider-firewall gate evidence for decision support and exposes
-  only status/boolean summaries. It lets the gate decision packet consume
-  boolean internal evidence without retaining or echoing firewall raw rules,
-  management-source labels, wg-home decision text, private notes, raw portal URLs, artifact
-  references, subscription URLs, node hosts, node credentials, tokens, customer
-  emails, or organization names. It is not Aliyun deployment, firewall
+  `/api/admin/platform/aliyun-gate-evidence/provider-firewall` plus
+  `/api/admin/platform/aliyun-gate-evidence/access-migration`. It records
+  in-memory provider-firewall and access-migration gate evidence for decision
+  support and exposes only status/boolean summaries. It lets the gate decision
+  packet consume boolean internal evidence without retaining or echoing
+  firewall raw rules, management-source labels, wg-home decision text, private
+  notes, raw portal URLs, artifact references, subscription URLs, raw tokens,
+  node hosts, node credentials, customer emails, or organization names. It is
+  not Aliyun deployment, firewall
   mutation, UFW change, public listener exposure, DNS, SQLite persistence,
-  state copy, AWS mutation, user traffic, edge traffic, or production
-  authority.
+  state copy, AWS mutation, artifact issuance, legacy query-token retirement,
+  user traffic, edge traffic, or production authority.
 - Platform Aliyun Gate Review UI: repository-only Admin Overview support can
   show the protected Aliyun gate decision packet and gate-evidence summary for
   operator review. It displays exact-phrase fail-closed approval policy
   metadata for the executable gates without showing approval phrase text. It
-  can record provider-firewall evidence only as booleans and does not submit
-  approval phrases or expose A-tier execution buttons. It does not display or
-  submit raw firewall rules, management-source labels, wg-home decision text,
-  notes, raw portal URLs, artifact references, subscription URLs, node hosts,
-  node credentials, tokens, customer emails, or organization names. It is not
-  Aliyun deployment, firewall mutation, UFW change, public listener exposure,
-  DNS, SQLite persistence, state copy, AWS mutation, user traffic, edge
-  traffic, or production authority.
+  can record provider-firewall and access-migration evidence only as booleans
+  and does not submit approval phrases or expose A-tier execution buttons. It
+  does not display or submit raw firewall rules, management-source labels,
+  wg-home decision text, notes, raw portal URLs, artifact references,
+  subscription URLs, raw tokens, node hosts, node credentials, customer emails,
+  or organization names. It is not Aliyun deployment, firewall mutation, UFW
+  change, public listener exposure, DNS, SQLite persistence, state copy, AWS
+  mutation, artifact issuance, legacy query-token retirement, user traffic,
+  edge traffic, or production authority.
 - Aliyun Promotion Runbook / Package 5: the repository-only promotion gate
   model is documented in `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
   and recorded in

@@ -60,7 +60,13 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     getAliyunGateEvidence: async () => null,
     recordProviderFirewallEvidence: async () => ({
       type: "aliyun_gate_evidence_summary",
-      providerFirewall: null
+      providerFirewall: null,
+      accessMigration: null
+    }),
+    recordAccessMigrationEvidence: async () => ({
+      type: "aliyun_gate_evidence_summary",
+      providerFirewall: null,
+      accessMigration: null
     }),
     overview: async () => ({
       ok: true,

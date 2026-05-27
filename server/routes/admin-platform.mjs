@@ -58,6 +58,9 @@ export function adminPlatformRoutes(state) {
           providerFirewall: aliyunGateEvidenceShell
             ? aliyunGateEvidenceShell.providerFirewallEvidenceForDecisionPacket()
             : aliyunGateEvidence.providerFirewall,
+          accessMigration: aliyunGateEvidenceShell
+            ? aliyunGateEvidenceShell.accessMigrationEvidenceForDecisionPacket()
+            : aliyunGateEvidence.accessMigration,
           now: new Date()
         })
       });
@@ -78,6 +81,16 @@ export function adminPlatformRoutes(state) {
     try {
       const evidence = requireAliyunGateEvidenceShell(aliyunGateEvidenceShell)
         .recordProviderFirewallEvidence(req.body ?? {});
+      res.status(201).json({ evidence });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/aliyun-gate-evidence/access-migration", (req, res) => {
+    try {
+      const evidence = requireAliyunGateEvidenceShell(aliyunGateEvidenceShell)
+        .recordAccessMigrationEvidence(req.body ?? {});
       res.status(201).json({ evidence });
     } catch (error) {
       sendError(res, error);
