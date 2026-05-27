@@ -510,12 +510,19 @@ To build the registry:
 npm run channel:runtime-registry -- <path-to-dry-run-summary.json> <path-to-score.json> <path-to-runtime-inventory-summary.json>
 ```
 
-This closes the repository-side gap between "measurement recommends canary"
-and "runtime is actually ready to request a canary gate." The registry must not
-contain hosts, ports, credentials, raw errors, tokens, subscription URLs,
-artifact URLs, cloud credentials, or customer data. It does not contact edge
-nodes, query cloud APIs, deploy runtimes, change firewall rules, or approve
-subscription output.
+To build the runtime gate packet:
+
+```bash
+npm run channel:runtime-gate-packet -- <path-to-runtime-registry.json>
+```
+
+This closes the repository-side gap between "measurement recommends canary",
+"runtime inventory says it is ready", and "an operator can now request the next
+Risk A runtime canary gate." The registry and gate packet must not contain
+hosts, ports, credentials, raw errors, tokens, subscription URLs, artifact URLs,
+cloud credentials, or customer data. They do not contact edge nodes, query cloud
+APIs, deploy runtimes, change firewall rules, submit approval phrases, move
+traffic, or approve subscription output.
 
 Repository-local extended measurement assessment is available through
 `assessChannelExtendedMeasurement(...)`. It consumes an already-collected local

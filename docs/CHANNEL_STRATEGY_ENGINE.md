@@ -135,12 +135,24 @@ dry-run config summary
   -> decision pack
   -> runtime inventory summary
   -> channel runtime registry
+  -> runtime gate packet
 ```
 
 The registry distinguishes canary-ready candidates from runtime-blocked
 candidates and candidates that still lack runtime inventory. It remains
 operator evidence only: it does not run probes, download protocol runtimes,
 deploy services, change firewall rules, or activate subscription output.
+
+`buildChannelRuntimeGatePacket(...)` converts the registry into an
+operator-facing gate packet that says whether a candidate is ready to request a
+separate Risk A runtime canary approval, blocked by runtime inventory, or still
+missing inventory. It marks approval-ready candidates with the generic
+`risk_a_channel_runtime_canary` gate, but it does not submit approval phrases,
+create servers, deploy runtimes, move traffic, or authorize rollout.
+
+```bash
+npm run channel:runtime-gate-packet -- <path-to-runtime-registry.json>
+```
 
 `assessChannelExtendedMeasurement(...)` can classify already-collected local
 benchmark summaries into `ready_for_decision`, `needs_extended_measurement`, or
