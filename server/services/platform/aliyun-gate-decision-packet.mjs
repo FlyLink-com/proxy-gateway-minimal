@@ -4,6 +4,11 @@ const CLEAN_START_PRIVATE_VALIDATION_APPROVAL =
 const PROVIDER_FIREWALL_HARDENING_APPROVAL =
   "Approve Aliyun provider firewall hardening. Restrict inbound to documented management and approved public-boundary ports only. No DNS change, no Nginx public promotion, no production authority transfer, no state copy, no user traffic, no edge traffic, and rollback by restoring the recorded provider firewall rules.";
 
+const APPROVAL_PHRASES_BY_GATE = Object.freeze({
+  aliyun_clean_start_private_validation: CLEAN_START_PRIVATE_VALIDATION_APPROVAL,
+  aliyun_provider_firewall_hardening: PROVIDER_FIREWALL_HARDENING_APPROVAL
+});
+
 const SOURCE_DOCS = {
   cleanStartPrivateValidation:
     "docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md",
@@ -159,5 +164,30 @@ export function createAliyunGateDecisionPacket({
     ],
     notAuthorized: NOT_AUTHORIZED,
     gates
+  };
+}
+
+export function evaluateAliyunGateApprovalPhrase({ gateId, phrase } = {}) {
+  if (!Object.hasOwn(APPROVAL_PHRASES_BY_GATE, gateId)) {
+    return {
+      approved: false,
+      gateId,
+      reason: "unknown_gate"
+    };
+  }
+
+  const submittedPhrase = typeof phrase === "string" ? phrase.trim() : "";
+  if (submittedPhrase !== APPROVAL_PHRASES_BY_GATE[gateId]) {
+    return {
+      approved: false,
+      gateId,
+      reason: "phrase_mismatch"
+    };
+  }
+
+  return {
+    approved: true,
+    gateId,
+    reason: "exact_phrase_matched"
   };
 }

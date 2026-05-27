@@ -214,6 +214,10 @@ Current architecture priorities:
   Execution-record templates for the two next gates live under
   `docs/production-replacement-records/templates/` and must only be copied into
   dated execution records after the matching exact approval phrase is received.
+  The repository also has a tested Aliyun gate approval-phrase policy in
+  `server/services/platform/aliyun-gate-decision-packet.mjs`; it accepts only
+  the exact phrase for the named gate and rejects short confirmations without
+  echoing submitted text.
   The protected `/api/admin/platform/aliyun-gates` packet can now show which
   next gates are ready for operator approval and which remain blocked, and the
   protected gate-evidence shell can record operator-provided provider-firewall
