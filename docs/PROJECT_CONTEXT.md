@@ -80,7 +80,7 @@ recommended next actions.
 Latest cadence report:
 
 ```text
-docs/stage-reports/2026-05-27-pr-174-179.md
+docs/stage-reports/2026-05-27-pr-180-184.md
 ```
 
 ## Current Product Direction
