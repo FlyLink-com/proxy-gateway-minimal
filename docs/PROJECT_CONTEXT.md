@@ -430,6 +430,15 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   user traffic, public Admin exposure, AWS rollback-start, stopped-node
   termination, or security-group deletion. It also keeps the current Aliyun
   subscription-control host and HP out of the edge-node role.
+- The opaque artifact issuance and legacy query-token retirement runbook is
+  recorded in
+  `docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md`.
+  It splits broader artifact issuance from later legacy query-token retirement,
+  defines exact approval phrases and execution templates for both gates, and
+  keeps future route removal as a separate compatibility gate. It does not
+  issue artifacts, rotate or drain legacy tokens, change DNS, change Nginx,
+  expose public Admin, activate edge traffic, mutate AWS, copy historical
+  state, or record raw subscription URLs, tokens, or artifact secrets.
 - The latest channel canary server selection inventory is recorded in
   `docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md`.
   It recommends a clean provider-neutral `channel-lab-a` target and Hysteria2
@@ -490,8 +499,12 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
 The following remain blocked unless a specific runbook, read-only inventory,
 operator approval, validation, and rollback path exist:
 
-- Broader opaque artifact issuance.
-- Legacy query-token retirement.
+- Broader opaque artifact issuance, now gated by
+  `docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md`.
+- Legacy query-token retirement, now gated by
+  `docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md`
+  after broader artifact issuance and observation. Future route removal remains
+  a separate compatibility gate.
 - Traffic accounting, quota enforcement, and device-abuse enforcement.
 - Channel runtime canary execution for VLESS/XUDP, Hysteria2, TUIC, or any
   other protocol candidate. Repository renderer/config support is merged, but
@@ -745,7 +758,9 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   rebuild execution approval, rollback-start decisions, broader artifact
   issuance, and legacy query-token retirement. The clean edge rebuild runbook
   and execution template now exist, but no clean edge host has been provisioned,
-  bootstrapped, or activated.
+  bootstrapped, or activated. The opaque artifact issuance and legacy
+  query-token retirement runbook now exists and deliberately separates artifact
+  issuance from legacy-token retirement; neither gate has been executed.
 
 Latest Aliyun user-management / subscription-distribution decision:
 
@@ -774,8 +789,11 @@ Latest Aliyun user-management / subscription-distribution decision:
   must use the exact approval phrase from
   `docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md`;
   clean edge rebuild must use the exact approval phrase from
-  `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md`.
-  Short confirmations such as `同意` do not authorize either gate.
+  `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md`;
+  opaque artifact issuance and legacy query-token retirement must use their
+  separate exact approval phrases from
+  `docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md`.
+  Short confirmations such as `同意` do not authorize any of those gates.
 
 Latest A2 preflight:
 
