@@ -937,7 +937,7 @@
     {
       "id": "B30-clean-edge-readiness-admin-review",
       "risk": "B",
-      "status": "in-progress",
+      "status": "completed-in-pr-233",
       "lane": "edge-data-plane",
       "title": "Add protected clean edge readiness Admin review surface",
       "goal": "Expose safe clean edge readiness packets through protected Admin API and Overview UI before a separate exact-approved clean edge rebuild execution gate.",

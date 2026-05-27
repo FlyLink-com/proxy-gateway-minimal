@@ -76,9 +76,9 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "activePrBranch": "none",
-    "activePr": null,
-    "activePrStatus": "live-check-required-before-work",
+    "activePrBranch": "codex/clean-edge-readiness-admin-review",
+    "activePr": 233,
+    "activePrStatus": "draft-open-local-validation-passed",
     "note": "Branch context is an orientation hint only; run git status and gh pr list before new work."
   },
   "productSpine": [
