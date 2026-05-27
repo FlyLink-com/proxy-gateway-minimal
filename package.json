@@ -66,6 +66,8 @@
     "channel:runtime-inventory-summary": "node scripts/channel-runtime-inventory-summary.mjs",
     "channel:runtime-registry": "node scripts/channel-runtime-registry.mjs",
     "channel:system-decision-flow": "node scripts/channel-system-decision-flow.mjs",
+    "channel:subscription-activation-fixture": "node scripts/channel-subscription-activation-flow-fixture.mjs",
+    "channel:subscription-activation-replay": "node scripts/channel-subscription-activation-flow-replay.mjs",
     "platform:access-inventory-summary": "node scripts/access-model-inventory-summary.mjs",
     "platform:clean-edge-readiness-summary": "node scripts/clean-edge-readiness-summary.mjs",
     "project-state:check": "node scripts/check-project-state.mjs",

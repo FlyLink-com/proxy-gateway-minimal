@@ -1176,6 +1176,49 @@
       ]
     },
     {
+      "id": "B35-channel-subscription-activation-flow-fixture",
+      "risk": "B",
+      "status": "completed-in-pr-244",
+      "lane": "edge-data-plane",
+      "title": "Add channel subscription activation flow fixture and replay tooling",
+      "goal": "Let operators save and replay safe activation-flow evidence packets for later handoff without granting execution authority.",
+      "allowedFiles": [
+        "server/services/channel-subscription-activation-flow-fixture.mjs",
+        "server/tests/channel-subscription-activation-flow-fixture.test.mjs",
+        "scripts/channel-subscription-activation-flow-fixture.mjs",
+        "scripts/channel-subscription-activation-flow-replay.mjs",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/PROJECT_CONTEXT.md",
+        "index.mjs",
+        "package.json",
+        "server/tests/package-entry.test.mjs",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "generate Clash or Mihomo YAML",
+        "change real subscription output",
+        "mutate production",
+        "query or contact live edge nodes",
+        "deploy runtimes",
+        "submit approval phrases",
+        "echo approval text",
+        "add execution routes or execution controls",
+        "add public routes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, firewall, provider, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, or subscription-output state",
+        "write secrets, raw hosts, raw IPs, raw ports, raw logs, credentials, raw subscription URLs, SQLite rows, customer data, or exact management-source values",
+        "treat activation-flow fixture or replay output as subscription-output activation approval"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/channel-subscription-activation-flow-fixture.test.mjs server/tests/channel-subscription-activation-flow.test.mjs server/tests/channel-subscription-activation-handoff.test.mjs server/tests/channel-subscription-activation-readiness.test.mjs server/tests/channel-subscription-output-draft.test.mjs server/tests/package-entry.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "B12-aliyun-gate-decision-packet",
       "risk": "B",
       "status": "completed-in-pr-181",

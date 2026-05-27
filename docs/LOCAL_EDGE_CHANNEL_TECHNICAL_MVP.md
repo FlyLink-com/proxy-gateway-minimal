@@ -627,6 +627,22 @@ review-only and do not generate YAML, change real subscription output, submit
 approval phrases, expose execution routes, contact edge nodes, deploy
 runtimes, move traffic, or activate production.
 
+Activation-flow evidence can now be preserved and replayed locally without
+turning it into execution authority:
+
+```bash
+npm run channel:subscription-activation-fixture -- <path-to-activation-flow.json>
+npm run channel:subscription-activation-replay -- <path-to-activation-flow-fixture.json>
+```
+
+The fixture accepts either the raw `channel-subscription-activation-flow`
+packet or a wrapper with `channelSubscriptionActivationFlow`. It rejects raw
+runtime details such as hosts, ports, URLs, credentials, raw logs, tokens,
+subscription URLs, YAML, or approval phrase material. Replay returns an
+advisory summary plus the safe activation-flow packet so later operators can
+recheck evidence handoff without contacting edge nodes, generating YAML,
+submitting approvals, changing subscription output, or moving traffic.
+
 The protected Admin platform route
 `POST /api/admin/platform/channel-lab-target-decision` and its Admin Overview
 panel are the next repository-side target selection layer after a runtime
