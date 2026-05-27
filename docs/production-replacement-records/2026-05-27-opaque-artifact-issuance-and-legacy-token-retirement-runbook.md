@@ -104,6 +104,19 @@ private key
 Allowed evidence is limited to counts, statuses, boolean checks, redacted
 prefixes, and operator-safe summaries.
 
+Repository helper:
+
+```text
+docs/ACCESS_MODEL_INVENTORY_SUMMARY.md
+server/services/platform/access-model-inventory-summary.mjs
+scripts/access-model-inventory-summary.mjs
+```
+
+This helper can normalize safe operator-provided inventory JSON into a redacted
+preflight summary for review. It does not query production, read SQLite, issue
+artifacts, retire legacy tokens, mutate runtime state, or replace the exact
+approval phrases below.
+
 ## Common Read-Only Preflight
 
 Before either execution gate, perform a fresh read-only inventory and record
