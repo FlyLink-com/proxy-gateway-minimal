@@ -653,10 +653,13 @@ Ready PRs must contain the complete loop for their approved scope.
 10. Complete: add the next A-tier execution handoff packet that
    keeps clean-start private validation and provider-firewall hardening as
    exact-phrase, separate gates.
-11. Current repo package: add execution-record templates for the next two
+11. Complete: add execution-record templates for the next two
    A-tier Aliyun gates so approved execution can record safe evidence without
    leaking sensitive output or merging scopes.
-12. Next A-tier: request Aliyun clean-start private validation and provider
+12. Current repo package: codify exact Aliyun approval phrase matching so short
+   confirmations and wrong-gate phrases fail closed without echoing submitted
+   text.
+13. Next A-tier: request Aliyun clean-start private validation and provider
    firewall hardening as separate gates.
 ```
 

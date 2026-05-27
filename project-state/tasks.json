@@ -622,6 +622,41 @@
       ]
     },
     {
+      "id": "B15-aliyun-approval-phrase-policy",
+      "risk": "B",
+      "status": "completed-in-current-branch",
+      "lane": "subscription-control-plane",
+      "title": "Codify Aliyun gate approval phrase policy",
+      "goal": "Make Aliyun A-tier approval checks accept only the exact phrase for the named gate while rejecting short confirmations and wrong-gate phrases without echoing submitted text.",
+      "allowedFiles": [
+        "server/services/platform/aliyun-gate-decision-packet.mjs",
+        "server/tests/platform-aliyun-gate-packet.test.mjs",
+        "docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate Aliyun runtime",
+        "change DNS",
+        "change provider firewall",
+        "change UFW",
+        "submit or execute approval phrases",
+        "initialize candidate state",
+        "copy state",
+        "mutate AWS",
+        "open a public listener",
+        "move user traffic",
+        "move edge traffic",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/platform-aliyun-gate-packet.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "C4-tuic-comparison-canary-plan",
       "risk": "C",
       "status": "completed-in-pr-174",

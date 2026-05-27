@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createAliyunGateDecisionPacket } from "../services/platform/aliyun-gate-decision-packet.mjs";
+import {
+  createAliyunGateDecisionPacket,
+  evaluateAliyunGateApprovalPhrase
+} from "../services/platform/aliyun-gate-decision-packet.mjs";
 
 const NOW = "2026-05-27T14:00:00.000Z";
 
@@ -114,4 +117,62 @@ test("Aliyun gate decision packet never echoes provider firewall raw rules or se
   assert.equal(serialized.includes("203.0.113.99"), false);
   assert.equal(serialized.includes("operator-home-secret-label"), false);
   assert.equal(serialized.includes("wg-home-secret-scope-label"), false);
+});
+
+test("Aliyun gate approval phrase policy accepts only the exact phrase for the named gate", () => {
+  const packet = createAliyunGateDecisionPacket({
+    cleanStart: readyCleanStartPackage(),
+    providerFirewall: {
+      hasRollbackSnapshot: true,
+      managementSource: "operator-management-source-recorded",
+      wgHomeDecision: "scope-recorded"
+    },
+    now: NOW
+  });
+  const cleanStart = packet.gates.find((gate) => gate.id === "aliyun_clean_start_private_validation");
+  const firewall = packet.gates.find((gate) => gate.id === "aliyun_provider_firewall_hardening");
+
+  assert.deepEqual(
+    evaluateAliyunGateApprovalPhrase({
+      gateId: cleanStart.id,
+      phrase: cleanStart.requiredApprovalPhrase
+    }),
+    {
+      approved: true,
+      gateId: cleanStart.id,
+      reason: "exact_phrase_matched"
+    }
+  );
+
+  assert.deepEqual(
+    evaluateAliyunGateApprovalPhrase({
+      gateId: firewall.id,
+      phrase: cleanStart.requiredApprovalPhrase
+    }),
+    {
+      approved: false,
+      gateId: firewall.id,
+      reason: "phrase_mismatch"
+    }
+  );
+});
+
+test("Aliyun gate approval phrase policy rejects short confirmations without echoing submitted text", () => {
+  for (const phrase of ["同意", "继续", "开始", "ok", "go"]) {
+    const result = evaluateAliyunGateApprovalPhrase({
+      gateId: "aliyun_clean_start_private_validation",
+      phrase
+    });
+
+    assert.equal(result.approved, false);
+    assert.equal(result.gateId, "aliyun_clean_start_private_validation");
+    assert.equal(result.reason, "phrase_mismatch");
+    assert.equal(JSON.stringify(result).includes(phrase), false);
+  }
+
+  assert.deepEqual(evaluateAliyunGateApprovalPhrase({ gateId: "unknown_gate", phrase: "同意" }), {
+    approved: false,
+    gateId: "unknown_gate",
+    reason: "unknown_gate"
+  });
 });
