@@ -176,14 +176,16 @@ Current architecture priorities:
   authority.
 - Platform Aliyun Gate Review UI: repository-only Admin Overview support can
   show the protected Aliyun gate decision packet and gate-evidence summary for
-  operator review. It can record provider-firewall evidence only as booleans
-  and does not submit approval phrases or expose A-tier execution buttons. It
-  does not display or submit raw firewall rules, management-source labels,
-  wg-home decision text, notes, raw portal URLs, artifact references,
-  subscription URLs, node hosts, node credentials, tokens, customer emails, or
-  organization names. It is not Aliyun deployment, firewall mutation, UFW
-  change, public listener exposure, DNS, SQLite persistence, state copy, AWS
-  mutation, user traffic, edge traffic, or production authority.
+  operator review. It displays exact-phrase fail-closed approval policy
+  metadata for the executable gates without showing approval phrase text. It
+  can record provider-firewall evidence only as booleans and does not submit
+  approval phrases or expose A-tier execution buttons. It does not display or
+  submit raw firewall rules, management-source labels, wg-home decision text,
+  notes, raw portal URLs, artifact references, subscription URLs, node hosts,
+  node credentials, tokens, customer emails, or organization names. It is not
+  Aliyun deployment, firewall mutation, UFW change, public listener exposure,
+  DNS, SQLite persistence, state copy, AWS mutation, user traffic, edge
+  traffic, or production authority.
 - Aliyun Promotion Runbook / Package 5: the repository-only promotion gate
   model is documented in `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
   and recorded in

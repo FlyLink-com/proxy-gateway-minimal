@@ -71,6 +71,14 @@ export type AliyunGateStatus =
   | "completed"
   | string;
 
+export type AliyunGateApprovalPolicy = {
+  mode: "exact_phrase_for_named_gate" | string;
+  phraseBoundToGate: boolean;
+  acceptsShortConfirmation: boolean;
+  approvalSubmissionRoute: string | null;
+  executesGate: boolean;
+};
+
 export type AliyunGateDecision = {
   id: string;
   label: string;
@@ -78,6 +86,7 @@ export type AliyunGateDecision = {
   status: AliyunGateStatus;
   approvalRequired: boolean;
   requiredApprovalPhrase?: string;
+  approvalPolicy?: AliyunGateApprovalPolicy;
   sourceDoc: string;
   blockers: string[];
   preflightSummary?: Record<string, unknown>;

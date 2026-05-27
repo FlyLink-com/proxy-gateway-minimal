@@ -659,10 +659,13 @@ Ready PRs must contain the complete loop for their approved scope.
 12. Complete: codify exact Aliyun approval phrase matching so short
    confirmations and wrong-gate phrases fail closed without echoing submitted
    text.
-13. Current repo package: expose the exact-phrase fail-closed policy as
+13. Complete: expose the exact-phrase fail-closed policy as
    operator-facing gate packet metadata without adding approval submission or
    execution controls.
-14. Next A-tier: request Aliyun clean-start private validation and provider
+14. Current repo package: render the approval policy metadata in the Admin
+   Overview Aliyun gate review surface without adding approval submission or
+   execution controls.
+15. Next A-tier: request Aliyun clean-start private validation and provider
    firewall hardening as separate gates.
 ```
 

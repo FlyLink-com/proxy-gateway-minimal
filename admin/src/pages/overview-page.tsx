@@ -285,6 +285,15 @@ function GateRow({ gate }: { gate: AliyunGateDecision }) {
       {gate.approvalRequired ? (
         <p className="approval-phrase">Approval required; phrase available in the source runbook.</p>
       ) : null}
+      {gate.approvalPolicy ? (
+        <ul className="approval-policy-list" aria-label={`${gate.label} approval policy`}>
+          <li>{gate.approvalPolicy.mode === "exact_phrase_for_named_gate" ? "Exact phrase required" : "Approval policy recorded"}</li>
+          <li>{gate.approvalPolicy.phraseBoundToGate ? "Gate-bound approval" : "Gate binding not recorded"}</li>
+          <li>{gate.approvalPolicy.acceptsShortConfirmation ? "Short confirmations accepted" : "Short confirmations rejected"}</li>
+          <li>{gate.approvalPolicy.approvalSubmissionRoute ? "Approval submission route configured" : "No approval submission route"}</li>
+          <li>{gate.approvalPolicy.executesGate ? "Gate execution control exposed" : "No gate execution control"}</li>
+        </ul>
+      ) : null}
     </article>
   );
 }

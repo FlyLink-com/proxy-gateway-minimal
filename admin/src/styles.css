@@ -1368,6 +1368,17 @@ th {
   font-size: 13px;
 }
 
+.approval-policy-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 10px 10px 10px 28px;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 13px;
+}
+
 .gate-evidence-summary {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

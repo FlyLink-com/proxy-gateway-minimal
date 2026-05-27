@@ -217,6 +217,13 @@ function aliyunGatePacket(status = "blocked"): AliyunGateDecisionPacket {
         risk: "A",
         status: "ready_for_operator_approval",
         approvalRequired: true,
+        approvalPolicy: {
+          mode: "exact_phrase_for_named_gate",
+          phraseBoundToGate: true,
+          acceptsShortConfirmation: false,
+          approvalSubmissionRoute: null,
+          executesGate: false
+        },
         requiredApprovalPhrase: "Approve Aliyun clean-start private validation. No DNS change.",
         sourceDoc: "docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md",
         blockers: [],
@@ -238,6 +245,13 @@ function aliyunGatePacket(status = "blocked"): AliyunGateDecisionPacket {
         risk: "A",
         status: "blocked",
         approvalRequired: true,
+        approvalPolicy: {
+          mode: "exact_phrase_for_named_gate",
+          phraseBoundToGate: true,
+          acceptsShortConfirmation: false,
+          approvalSubmissionRoute: null,
+          executesGate: false
+        },
         requiredApprovalPhrase: "Approve Aliyun provider firewall hardening. No DNS change.",
         sourceDoc: "docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md",
         blockers: ["missing provider firewall rollback snapshot"],
@@ -557,6 +571,11 @@ describe("overview and nodes pages", () => {
     expect(await screen.findByText("Aliyun clean-start private validation")).not.toBeNull();
     expect(screen.getByText("missing provider firewall rollback snapshot")).not.toBeNull();
     expect(screen.getByText(/No A-tier execution buttons are exposed/i)).not.toBeNull();
+    expect(screen.getAllByText(/Exact phrase required/i)).toHaveLength(2);
+    expect(screen.getAllByText(/Gate-bound approval/i)).toHaveLength(2);
+    expect(screen.getAllByText(/Short confirmations rejected/i)).toHaveLength(2);
+    expect(screen.getAllByText(/No approval submission route/i)).toHaveLength(2);
+    expect(screen.getAllByText(/No gate execution control/i)).toHaveLength(2);
 
     fireEvent.click(screen.getByLabelText(/rollback snapshot recorded/i));
     fireEvent.click(screen.getByLabelText(/management source decision recorded/i));
