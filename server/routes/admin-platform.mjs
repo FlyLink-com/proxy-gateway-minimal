@@ -3,6 +3,7 @@ import { buildChannelLabTargetDecision } from "../services/channel-lab-target-de
 import { buildChannelRuntimeExecutionHandoff } from "../services/channel-runtime-execution-handoff.mjs";
 import { buildChannelRuntimeEvidenceBridge } from "../services/channel-runtime-evidence-bridge.mjs";
 import { buildChannelRuntimeGateWorkbench } from "../services/channel-runtime-gate-workbench.mjs";
+import { buildChannelSubscriptionActivationFlow } from "../services/channel-subscription-activation-flow.mjs";
 import { buildChannelSubscriptionActivationHandoff } from "../services/channel-subscription-activation-handoff.mjs";
 import { buildChannelSubscriptionActivationReadiness } from "../services/channel-subscription-activation-readiness.mjs";
 import { buildChannelSubscriptionOutputDraft } from "../services/channel-subscription-output-draft.mjs";
@@ -72,6 +73,12 @@ function channelSubscriptionActivationReadinessValidationError() {
 
 function channelSubscriptionActivationHandoffValidationError() {
   const error = new Error("channel subscription activation handoff input is invalid");
+  error.code = "validation_error";
+  return error;
+}
+
+function channelSubscriptionActivationFlowValidationError() {
+  const error = new Error("channel subscription activation flow input is invalid");
   error.code = "validation_error";
   return error;
 }
@@ -242,6 +249,21 @@ export function adminPlatformRoutes(state) {
       });
     } catch {
       sendError(res, channelSubscriptionActivationHandoffValidationError());
+    }
+  });
+
+  router.post("/api/admin/platform/channel-subscription-activation-flow", (req, res) => {
+    try {
+      const input = req.body ?? {};
+      res.json({
+        channelSubscriptionActivationFlow: buildChannelSubscriptionActivationFlow({
+          dryRunSummary: input.dryRunSummary,
+          measurementScore: input.measurementScore,
+          runtimeEvidenceInput: input.runtimeEvidenceInput
+        })
+      });
+    } catch {
+      sendError(res, channelSubscriptionActivationFlowValidationError());
     }
   });
 

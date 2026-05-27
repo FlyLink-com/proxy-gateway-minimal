@@ -280,6 +280,21 @@ subscription-output execution route, emit Clash/Mihomo YAML, change real
 subscription output, contact edge nodes, deploy runtimes, change
 firewall/DNS/systemd state, move traffic, or activate production.
 
+`buildChannelSubscriptionActivationFlow(...)` is the repository-local
+end-to-end review layer after the handoff packet. It consumes the same safe
+runtime bridge packet and links the subscription-output draft, activation
+readiness, and activation handoff into one flow summary. The flow exposes
+stage status, required next action, the A-tier activation gate, and the safe
+handoff output for operator review.
+
+The same flow layer is available through the protected Admin platform route
+`POST /api/admin/platform/channel-subscription-activation-flow` and an Admin
+Overview review panel. It remains advisory only: it does not include approval
+text, submit approval phrases, expose approval submission, expose a
+subscription-output execution route, emit Clash/Mihomo YAML, change real
+subscription output, contact edge nodes, deploy runtimes, change
+firewall/DNS/systemd state, move traffic, or activate production.
+
 `buildChannelLabTargetDecision(...)` is the repository-local target decision
 layer after a read-only runtime inventory finds that the current lab target is
 not directly deployable. It accepts only a safe target inventory packet, then

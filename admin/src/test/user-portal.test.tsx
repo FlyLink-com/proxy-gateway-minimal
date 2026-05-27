@@ -9,6 +9,7 @@ import type {
   ChannelRuntimeEvidenceBridge,
   ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
+  ChannelSubscriptionActivationFlow,
   ChannelSubscriptionActivationHandoff,
   ChannelSubscriptionActivationReadiness,
   ChannelSubscriptionOutputDraft,
@@ -83,6 +84,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelRuntimeEvidence: async () => channelRuntimeEvidenceBridge(),
     reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
     reviewChannelRuntimeExecutionHandoff: async () => channelRuntimeExecutionHandoff(),
+    reviewChannelSubscriptionActivationFlow: async () => channelSubscriptionActivationFlow(),
     reviewChannelSubscriptionActivationHandoff: async () => channelSubscriptionActivationHandoff(),
     reviewChannelSubscriptionOutputDraft: async () => channelSubscriptionOutputDraft(),
     reviewChannelSubscriptionActivationReadiness: async () => channelSubscriptionActivationReadiness(),
@@ -486,6 +488,63 @@ function channelSubscriptionActivationHandoff(): ChannelSubscriptionActivationHa
       yamlNotGenerated: true,
       requiresSeparateRiskAApproval: true,
       approvalTextIncluded: false,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls", "yaml"]
+    }
+  };
+}
+
+function channelSubscriptionActivationFlow(): ChannelSubscriptionActivationFlow {
+  return {
+    ok: true,
+    mode: "channel-subscription-activation-flow",
+    generatedAt: "2026-05-27T20:04:55.000Z",
+    sourceGeneratedAt: "2026-05-27T20:04:50.000Z",
+    flowStatus: "blocked_before_a_tier_subscription_output_activation_request",
+    requiredNextAction: "resolve_subscription_output_activation_blockers",
+    blockers: ["baseline_pool_missing", "canary_pool_missing"],
+    stages: {
+      runtimeEvidenceBridge: {
+        mode: "channel-runtime-evidence-bridge",
+        status: "reviewed"
+      },
+      subscriptionOutputDraft: {
+        mode: "channel-subscription-output-draft",
+        status: "draft_blocked_before_activation_review"
+      },
+      activationReadiness: {
+        mode: "channel-subscription-activation-readiness",
+        status: "blocked_before_subscription_output_activation"
+      },
+      activationHandoff: {
+        mode: "channel-subscription-activation-handoff-packet",
+        status: "blocked_before_operator_approval_request"
+      }
+    },
+    gate: {
+      risk: "A",
+      gate: "risk_a_subscription_output_activation",
+      approvalRequestReady: false,
+      exactApprovalRequired: true,
+      executionAuthority: "not_granted",
+      approvalTextIncluded: false,
+      approvalSubmissionRoute: null,
+      subscriptionOutputExecutionRoute: null,
+      executesGate: false,
+      runbook: "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md"
+    },
+    outputs: {
+      activationHandoff: channelSubscriptionActivationHandoff()
+    },
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      noSubscriptionOutputMutation: true,
+      yamlNotGenerated: true,
+      requiresSeparateRiskAApproval: true,
       omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls", "yaml"]
     }
   };

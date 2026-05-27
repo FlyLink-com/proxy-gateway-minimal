@@ -893,6 +893,15 @@ simplification queue is closed:
   execution route, generates no YAML, mutates no real subscription output,
   contacts no edge nodes, deploys no runtime, moves no traffic, and performs
   no production activation.
+- `B34-channel-subscription-activation-flow` - completed in the Channel
+  Subscription Activation Flow work; the protected Admin platform route and
+  Admin Overview can now link subscription-output draft, activation readiness,
+  and activation handoff into one end-to-end review packet. The flow marks
+  execution authority as `not_granted`, keeps approval text out of the output,
+  exposes no approval submission or subscription-output execution route,
+  generates no YAML, mutates no real subscription output, contacts no edge
+  nodes, deploys no runtime, moves no traffic, and performs no production
+  activation.
 - `B28-channel-lab-target-decision` - completed in the Channel Lab Target
   Decision work; the protected Admin platform route and Admin Overview can now
   convert safe target inventory packets into an advisory next target gate after
