@@ -237,6 +237,25 @@ clean-start control-plane repo package: implemented in repository only
   - no Aliyun deployment, runtime initialization, public listener, DNS,
     provider-firewall change, SQLite persistence, state copy, user traffic, or
     production authority is activated by this repository package
+Aliyun gate decision packet: implemented in repository only
+  - `server/services/platform/aliyun-gate-decision-packet.mjs` turns
+    clean-start readiness and optional provider-firewall evidence into a
+    protected operator decision packet
+  - protected Admin route:
+    `/api/admin/platform/aliyun-gates`
+  - the packet separates clean-start private validation,
+    provider-firewall hardening, public-boundary dry run, and DNS promotion
+    into separate gates with blockers, source docs, and not-authorized actions
+  - the next executable A-tier gates include explicit approval phrases; later
+    public-boundary and DNS gates stay blocked until previous execution
+    evidence exists
+  - summaries do not echo firewall raw rules, management-source labels,
+    wg-home decision text, raw portal URLs, artifact references, subscription
+    URLs, node hosts, node credentials, tokens, customer emails, or
+    organization names
+  - no Aliyun deployment, firewall mutation, public listener, DNS, SQLite
+    persistence, state copy, AWS mutation, user traffic, edge traffic, or
+    production authority is activated by this repository package
 public registration/auth model: not approved
 public payment flow: not approved
 runtime promotion to Aliyun: not approved

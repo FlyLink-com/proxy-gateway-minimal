@@ -10,14 +10,14 @@ import { listen } from "./helpers/listen.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 
-function fakeState({ leadQueue, accountShell, accessShell, proxyConfig }) {
+function fakeState({ leadQueue, accountShell, accessShell, proxyConfig, aliyunGateEvidence }) {
   return {
     rootDir: ROOT,
     host: "127.0.0.1",
     ports: { console: 3456, socks: 1080, httpProxy: 18180 },
     consoleToken: "secret",
     proxyConfig: proxyConfig || { servers: [], pingHosts: [], nginx: { host: "127.0.0.1", ports: [] } },
-    platform: { leadQueue, accountShell, accessShell },
+    platform: { leadQueue, accountShell, accessShell, aliyunGateEvidence },
     services: {
       ssLocal: {
         start: async () => ({ ok: true }),
@@ -184,6 +184,76 @@ test("admin platform clean-start route returns protected redacted private render
     assert.equal(serialized.includes("artifact_ref_secret"), false);
     assert.equal(serialized.includes("ops@example.com"), false);
     assert.equal(serialized.includes("Acme Research"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin platform Aliyun gate packet route is protected and redacts firewall evidence", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  accessShell.issueDynamicEntry("acct_1", "ent_1", {
+    entryRef: "entry_ref_secret",
+    artifactRef: "artifact_ref_secret",
+    rawEntryUrl: "https://portal-secret.example/use?token=dynamic-secret"
+  });
+  const proxyConfig = {
+    servers: [
+      {
+        name: "clean-edge-a",
+        host: "edge-secret.example",
+        port: 443,
+        type: "ss",
+        cipher: "aes-256-gcm",
+        password: "node-password-secret",
+        qualityClass: "stable"
+      }
+    ],
+    pingHosts: [],
+    nginx: { host: "127.0.0.1", ports: [] }
+  };
+  const aliyunGateEvidence = {
+    providerFirewall: {
+      hasRollbackSnapshot: true,
+      managementSource: "operator-home-secret-label",
+      wgHomeDecision: "wg-home-secret-scope-label",
+      rawRules: ["ALLOW 203.0.113.99/32 udp 51820 token=secret"]
+    }
+  };
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell,
+    proxyConfig,
+    aliyunGateEvidence
+  })));
+  try {
+    const unauthenticated = await fetch(`${baseUrl}/api/admin/platform/aliyun-gates`);
+    assert.equal(unauthenticated.status, 401);
+
+    const response = await fetch(`${baseUrl}/api/admin/platform/aliyun-gates`, {
+      headers: authHeaders()
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.aliyunGates.type, "aliyun_gate_decision_packet");
+    assert.equal(body.aliyunGates.status, "blocked");
+    assert.equal(body.aliyunGates.gates[0].risk, "A");
+    assert.equal(
+      body.aliyunGates.gates.some((gate) => gate.status === "ready_for_operator_approval"),
+      true
+    );
+
+    const serialized = JSON.stringify(body);
+    assert.equal(serialized.includes("edge-secret.example"), false);
+    assert.equal(serialized.includes("node-password-secret"), false);
+    assert.equal(serialized.includes("portal-secret.example"), false);
+    assert.equal(serialized.includes("dynamic-secret"), false);
+    assert.equal(serialized.includes("entry_ref_secret"), false);
+    assert.equal(serialized.includes("artifact_ref_secret"), false);
+    assert.equal(serialized.includes("203.0.113.99"), false);
+    assert.equal(serialized.includes("operator-home-secret-label"), false);
+    assert.equal(serialized.includes("wg-home-secret-scope-label"), false);
+    assert.equal(serialized.includes("token=secret"), false);
   } finally {
     server.close();
   }
