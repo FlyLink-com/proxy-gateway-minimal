@@ -321,6 +321,13 @@ operator approval, validation, and rollback path exist:
   evidence, TUIC/VLESS-XUDP comparison, subscription output changes, broader
   rollout, and cleanup/termination each still require separate approval and
   evidence.
+- The TUIC comparison canary plan is documented in
+  `docs/CHANNEL_TUIC_COMPARISON_CANARY_PLAN.md`. It defines TUIC as the next
+  measured channel candidate after the held Hysteria2 extended measurement,
+  with VLESS/XUDP as the secondary comparison candidate. It does not authorize
+  TUIC runtime deployment, server creation, port exposure, subscription output
+  changes, DNS, Nginx, systemd, firewall/security-group changes, operator-device
+  traffic, or production traffic.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See
@@ -401,6 +408,11 @@ simplification queue is closed:
   produce advisory next-candidate comparison plans for TUIC or VLESS/XUDP after
   a held Hysteria2 result without running probes, touching edge nodes, or
   mutating production.
+- `C4-tuic-comparison-canary-plan` - completed in the TUIC Comparison Canary
+  Plan work; TUIC is now the documented next measured channel candidate after
+  the held Hysteria2 extended measurement, while VLESS/XUDP remains the
+  secondary comparison candidate. Runtime inventory, deployment, measurement,
+  and cleanup remain A-tier.
 
 The remaining queued items are A-tier and remain blocked:
 
