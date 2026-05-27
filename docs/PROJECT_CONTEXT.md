@@ -327,7 +327,10 @@ Current architecture priorities:
   customer data. Channel runtime registry integration can join dry-run config,
   measurement score, and those safe runtime inventory summaries into
   canary-ready, runtime-blocked, and missing-inventory groups without contacting
-  edge nodes or mutating runtime state. Extended measurement assessments can classify
+  edge nodes or mutating runtime state. Channel runtime gate packets can turn
+  the registry into an operator-safe approval-readiness packet for the next
+  separate Risk A runtime canary gate without submitting approval phrases,
+  deploying runtimes, moving traffic, or changing subscription output. Extended measurement assessments can classify
   already-collected local benchmark summaries as ready, needing more samples,
   or hold for investigation before an operator decides on the next canary gate. Measurement
   investigation reports can consume safe bundle reports and classify hold
@@ -683,6 +686,12 @@ simplification queue is closed:
   normalized into safe registry input artifacts without raw hosts, ports, URLs,
   credentials, raw logs, tokens, subscription URLs, customer data, runtime
   mutation, or production activation.
+- `B20-channel-runtime-gate-packet` - completed in the Channel Runtime Gate
+  Packet work; runtime registry output can now be turned into an operator-safe
+  approval-readiness packet that distinguishes approval-ready, blocked, and
+  missing-inventory states without submitting approval phrases, deploying
+  runtimes, moving traffic, changing subscription output, or authorizing
+  rollout.
 - `C4-tuic-comparison-canary-plan` - completed in the TUIC Comparison Canary
   Plan work; TUIC is now the documented next measured channel candidate after
   the held Hysteria2 extended measurement, while VLESS/XUDP remains the
