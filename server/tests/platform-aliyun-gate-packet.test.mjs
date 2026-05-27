@@ -50,6 +50,10 @@ test("Aliyun gate decision packet exposes approval-ready clean-start gate and bl
     "public Admin exposure",
     "AWS mutation",
     "state copy",
+    "artifact issuance execution",
+    "legacy query-token retirement execution",
+    "legacy route removal",
+    "raw subscription URL or artifact secret recording",
     "user traffic",
     "edge traffic"
   ]);
@@ -94,6 +98,51 @@ test("Aliyun gate decision packet exposes approval-ready clean-start gate and bl
   ]);
 });
 
+test("Aliyun gate decision packet exposes separate artifact issuance and legacy retirement gates", () => {
+  const packet = createAliyunGateDecisionPacket({
+    cleanStart: readyCleanStartPackage(),
+    providerFirewall: {
+      hasRollbackSnapshot: true,
+      managementSource: "operator-management-source-recorded",
+      wgHomeDecision: "scope-recorded"
+    },
+    now: NOW
+  });
+
+  const artifactIssuance = packet.gates.find((gate) => gate.id === "aliyun_opaque_artifact_issuance");
+  assert.equal(artifactIssuance.label, "Aliyun opaque artifact issuance");
+  assert.equal(artifactIssuance.status, "blocked");
+  assert.equal(artifactIssuance.risk, "A");
+  assert.equal(artifactIssuance.approvalRequired, true);
+  assert.equal(artifactIssuance.approvalPolicy.acceptsShortConfirmation, false);
+  assert.equal(artifactIssuance.approvalPolicy.executesGate, false);
+  assert.match(artifactIssuance.sourceDoc, /opaque-artifact-issuance-and-legacy-token-retirement-runbook/);
+  assert.deepEqual(artifactIssuance.blockers, [
+    "live access-model inventory not recorded",
+    "approved tenant/device artifact scope not recorded"
+  ]);
+  assert.match(artifactIssuance.requiredApprovalPhrase, /^Approve broader opaque artifact issuance\./);
+
+  const legacyRetirement = packet.gates.find((gate) => gate.id === "aliyun_legacy_query_token_retirement");
+  assert.equal(legacyRetirement.label, "Aliyun legacy query-token retirement");
+  assert.equal(legacyRetirement.status, "blocked");
+  assert.equal(legacyRetirement.risk, "A");
+  assert.equal(legacyRetirement.approvalRequired, true);
+  assert.equal(legacyRetirement.approvalPolicy.acceptsShortConfirmation, false);
+  assert.equal(legacyRetirement.approvalPolicy.executesGate, false);
+  assert.match(legacyRetirement.sourceDoc, /opaque-artifact-issuance-and-legacy-token-retirement-runbook/);
+  assert.deepEqual(legacyRetirement.blockers, [
+    "broader opaque artifact issuance not completed",
+    "artifact refresh observation not recorded",
+    "approved legacy retirement scope not recorded"
+  ]);
+  assert.match(legacyRetirement.requiredApprovalPhrase, /^Approve legacy query-token retirement\./);
+
+  assert.equal(packet.notAuthorized.includes("artifact issuance execution"), true);
+  assert.equal(packet.notAuthorized.includes("legacy query-token retirement execution"), true);
+  assert.equal(packet.notAuthorized.includes("legacy route removal"), true);
+});
+
 test("Aliyun gate decision packet never echoes provider firewall raw rules or sensitive clean-start material", () => {
   const packet = createAliyunGateDecisionPacket({
     cleanStart: {
@@ -111,6 +160,13 @@ test("Aliyun gate decision packet never echoes provider firewall raw rules or se
         "ALLOW 0.0.0.0/0 tcp 22 token=secret",
         "ALLOW 203.0.113.99/32 udp 51820"
       ]
+    },
+    accessMigration: {
+      hasLiveAccessModelInventory: true,
+      hasApprovedArtifactScope: true,
+      rawArtifactUrl: "https://sub.example.com/sub/a/artifact-secret",
+      rawSubscriptionUrl: "https://sub.example.com/sub/clash.yaml?token=hidden",
+      customerEmail: "customer@example.com"
     },
     now: NOW
   });
@@ -131,6 +187,9 @@ test("Aliyun gate decision packet never echoes provider firewall raw rules or se
   assert.equal(serialized.includes("203.0.113.99"), false);
   assert.equal(serialized.includes("operator-home-secret-label"), false);
   assert.equal(serialized.includes("wg-home-secret-scope-label"), false);
+  assert.equal(serialized.includes("artifact-secret"), false);
+  assert.equal(serialized.includes("token=hidden"), false);
+  assert.equal(serialized.includes("customer@example.com"), false);
 });
 
 test("Aliyun gate approval phrase policy accepts only the exact phrase for the named gate", () => {
@@ -166,6 +225,36 @@ test("Aliyun gate approval phrase policy accepts only the exact phrase for the n
     {
       approved: false,
       gateId: firewall.id,
+      reason: "phrase_mismatch"
+    }
+  );
+});
+
+test("Aliyun gate approval phrase policy accepts artifact migration phrases only for their named gates", () => {
+  const packet = createAliyunGateDecisionPacket({ cleanStart: readyCleanStartPackage(), now: NOW });
+  const artifactIssuance = packet.gates.find((gate) => gate.id === "aliyun_opaque_artifact_issuance");
+  const legacyRetirement = packet.gates.find((gate) => gate.id === "aliyun_legacy_query_token_retirement");
+
+  assert.deepEqual(
+    evaluateAliyunGateApprovalPhrase({
+      gateId: artifactIssuance.id,
+      phrase: artifactIssuance.requiredApprovalPhrase
+    }),
+    {
+      approved: true,
+      gateId: artifactIssuance.id,
+      reason: "exact_phrase_matched"
+    }
+  );
+
+  assert.deepEqual(
+    evaluateAliyunGateApprovalPhrase({
+      gateId: legacyRetirement.id,
+      phrase: artifactIssuance.requiredApprovalPhrase
+    }),
+    {
+      approved: false,
+      gateId: legacyRetirement.id,
       reason: "phrase_mismatch"
     }
   );
