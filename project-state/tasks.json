@@ -402,6 +402,39 @@
       ]
     },
     {
+      "id": "B11-channel-candidate-comparison",
+      "risk": "B",
+      "status": "completed",
+      "lane": "edge-data-plane",
+      "title": "Add repository-local channel candidate comparison plans",
+      "goal": "Convert safe investigation reports and dry-run config summaries into advisory next-candidate comparison plans after a held channel measurement.",
+      "allowedFiles": [
+        "server/services/channel-candidate-comparison.mjs",
+        "server/tests/channel-candidate-comparison.test.mjs",
+        "scripts/channel-candidate-comparison.mjs",
+        "package.json",
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate production",
+        "run probes or contact edge nodes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, or runtime config",
+        "change production tenant or artifact state",
+        "write secrets or raw subscription URLs",
+        "treat comparison plans as automatic runtime canary approval"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/channel-candidate-comparison.test.mjs",
+        "node --test server/tests/channel-candidate-comparison.test.mjs server/tests/channel-measurement-investigation.test.mjs server/tests/channel-config-dry-run.test.mjs server/tests/channel-decision-pack.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "A0-channel-canary-server-selection",
       "risk": "A",
       "status": "mihomo-import-validation-passed-blocked-before-extended-measurement-broader-rollout-or-cleanup-approval",

@@ -78,6 +78,7 @@
     "Channel Decision Packs for advisory baseline/canary/blocker review artifacts from local channel evidence",
     "Channel Extended Measurement Assessment for advisory ready/needs-more-samples/hold classification from already-collected local summaries",
     "Channel Measurement Investigation for advisory hold-pattern classification from safe measurement bundle reports",
+    "Channel Candidate Comparison for advisory next-candidate plans after held measurement results",
     "Channel runtime canary execution remains gated by docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md after repository renderer/config support",
     "Channel runtime canary server selection and execution remain gated by docs/CHANNEL_CANARY_SERVER_SELECTION.md and docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md after repository renderer/config support",
     "Local Edge Agent as loopback-only client adapter prototype",

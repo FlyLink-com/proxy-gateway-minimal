@@ -142,6 +142,14 @@ adds a safe `rolloutRecommendation` and `nextAction`, but it remains advisory:
 it does not run probes, mutate configs, deploy runtime protocols, change DNS,
 or approve broader rollout.
 
+`buildChannelCandidateComparisonPlan(...)` can combine an investigation report
+with a dry-run config summary to identify safe next comparison candidates after
+a hold result. For example, when Hysteria2 is held for latency investigation,
+the plan can list TUIC and VLESS/XUDP candidates as advisory comparison options
+while keeping the held Hysteria2 candidate out of rollout. Comparison plans do
+not run probes, contact servers, deploy runtimes, change subscription output,
+or approve any Risk A canary.
+
 Redacted historical bundle fixtures may live under
 `docs/channel-measurement-bundles/` when they only contain aggregate
 measurement evidence. These fixtures are useful for regression testing the

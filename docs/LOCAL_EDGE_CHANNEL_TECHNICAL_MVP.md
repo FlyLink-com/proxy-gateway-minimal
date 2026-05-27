@@ -507,6 +507,19 @@ It gives an advisory next action only; it does not run probes, contact edge
 nodes, mutate runtime config, change subscription output, or approve any
 Risk A rollout.
 
+To turn an investigation report plus a dry-run config summary into a next
+candidate comparison plan:
+
+```bash
+npm run channel:candidate-comparison -- <path-to-investigation-report.json> <path-to-dry-run-summary.json>
+```
+
+The comparison plan separates baseline references, held protocols, private
+capacity, and next comparison candidates. It is useful after a Hysteria2 hold
+to identify TUIC or VLESS/XUDP as the next measured candidate family, but it is
+still advisory. It does not create servers, run probes, deploy protocol
+runtimes, edit subscription output, or approve the Risk A comparison canary.
+
 To create a safe editable fixture from a local dry-run summary:
 
 ```bash

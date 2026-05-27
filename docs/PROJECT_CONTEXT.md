@@ -168,8 +168,11 @@ Current architecture priorities:
   local benchmark summaries as ready, needing more samples, or hold for
   investigation before an operator decides on the next canary gate. Measurement
   investigation reports can consume safe bundle reports and classify hold
-  patterns such as sustained tail latency or isolated tail spikes into advisory
-  next actions. These repository tools do not mutate runtime config or activate
+  patterns such as sustained tail latency or isolated tail spikes into
+  advisory next actions. Candidate comparison plans can combine those
+  investigation reports with dry-run config summaries to identify TUIC or
+  VLESS/XUDP as the next measured candidate family after a held Hysteria2
+  result. These repository tools do not mutate runtime config or activate
   nodes. Runtime
   canaries are gated by
   `docs/CHANNEL_CANARY_SERVER_SELECTION.md` and
@@ -383,6 +386,11 @@ simplification queue is closed:
   classified into sustained latency, isolated spike, reliability, or
   evidence-gap follow-up patterns without running probes, touching edge nodes,
   or mutating production.
+- `B11-channel-candidate-comparison` - completed in the Channel Candidate
+  Comparison work; safe investigation reports and dry-run config summaries can
+  produce advisory next-candidate comparison plans for TUIC or VLESS/XUDP after
+  a held Hysteria2 result without running probes, touching edge nodes, or
+  mutating production.
 
 The remaining queued items are A-tier and remain blocked:
 
