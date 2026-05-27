@@ -287,6 +287,17 @@ Current architecture priorities:
   `docs/production-replacement-records/templates/aliyun-aegis-service-repair-execution-template.md`.
   It requires an exact approval phrase and is limited to Aegis-only process
   cleanup and service restart with proxy-gateway health guards.
+- Clean Edge Node Rebuild Gate: the next clean edge data-plane rebuild gate is
+  defined in
+  `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md`,
+  with a matching execution template in
+  `docs/production-replacement-records/templates/clean-edge-node-rebuild-execution-template.md`.
+  It treats the rebuilt edge host as replaceable data-plane capacity, not as
+  the current Aliyun control-plane host, HP, or a rollback-start of the stopped
+  AWS nodes. It requires an exact approval phrase before clean host
+  provisioning/bootstrap/private validation and explicitly keeps DNS,
+  subscription output, user traffic, public Admin, AWS rollback-start,
+  stopped-node termination, and security-group deletion out of scope.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host now serves the approved
@@ -411,6 +422,14 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   post-repair validation, and sensitive-output boundaries. It does not execute
   Aegis process cleanup, service restart, reinstall, disablement, reboot, or
   any DNS / Nginx / proxy-gateway / firewall / AWS / tenant / edge mutation.
+- The clean edge node rebuild runbook is recorded in
+  `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md`.
+  It defines the exact approval phrase, clean edge host/bootstrap/private
+  validation scope, rollback/stop posture, hard stops, and next gates. It does
+  not execute cloud provisioning, DNS changes, subscription-output changes,
+  user traffic, public Admin exposure, AWS rollback-start, stopped-node
+  termination, or security-group deletion. It also keeps the current Aliyun
+  subscription-control host and HP out of the edge-node role.
 - The latest channel canary server selection inventory is recorded in
   `docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md`.
   It recommends a clean provider-neutral `channel-lab-a` target and Hysteria2
@@ -723,8 +742,10 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   systemd unit with Aegis processes still present. The optional Aegis repair
   runbook and execution template now exist, but no repair has been approved or
   executed. The remaining work is Aegis repair approval if desired, clean edge
-  rebuild or rollback-start decisions, broader artifact issuance, and legacy
-  query-token retirement.
+  rebuild execution approval, rollback-start decisions, broader artifact
+  issuance, and legacy query-token retirement. The clean edge rebuild runbook
+  and execution template now exist, but no clean edge host has been provisioned,
+  bootstrapped, or activated.
 
 Latest Aliyun user-management / subscription-distribution decision:
 
@@ -747,12 +768,14 @@ Latest Aliyun user-management / subscription-distribution decision:
   `prod-edge-b`, so subscription output/config must be rebuilt before the
   service can be considered healthy again.
 - The next executable gates are separate A-tier approvals for Aliyun
-  `aegis.service` repair if desired, clean edge node rebuild planning,
+  `aegis.service` repair if desired, clean edge node rebuild execution,
   rollback-start approval for stopped AWS nodes if temporary restore is needed,
   broader artifact issuance, or legacy query-token retirement. Aegis repair
   must use the exact approval phrase from
   `docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md`;
-  short confirmations such as `同意` do not authorize it.
+  clean edge rebuild must use the exact approval phrase from
+  `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md`.
+  Short confirmations such as `同意` do not authorize either gate.
 
 Latest A2 preflight:
 
