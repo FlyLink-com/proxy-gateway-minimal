@@ -440,7 +440,7 @@
     {
       "id": "B12-aliyun-gate-decision-packet",
       "risk": "B",
-      "status": "completed-in-current-branch",
+      "status": "completed-in-pr-181",
       "lane": "subscription-control-plane",
       "title": "Add repository-local Aliyun gate decision packet",
       "goal": "Expose a protected, redacted Admin decision packet for clean-start private validation, provider-firewall hardening, public-boundary dry run, and DNS promotion gates before any Risk A execution.",
