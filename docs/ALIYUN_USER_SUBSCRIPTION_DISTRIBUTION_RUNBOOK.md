@@ -596,11 +596,22 @@ Latest Gate B planning record:
 docs/production-replacement-records/2026-05-27-aliyun-gate-b-source-firewall-plan.md
 ```
 
+Latest clean-start planning record:
+
+```text
+docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md
+```
+
 Current planning outcome:
 
 ```text
 recommended default: clean-start Aliyun control plane unless the operator
 explicitly requires historical subscription state preservation
+
+clean-start is now the active planning default for the next repo-only package:
+new accounts, entitlements, subscription-access grants, opaque artifacts, and
+Subscription V2 outputs should be issued from Aliyun clean-start authority
+after the relevant private validation gates pass
 
 state-preserving fallback: source-state rescue planning, preferably
 rescue-volume/snapshot based before relying on SSH-first remediation
@@ -609,8 +620,9 @@ temporary restore fallback: separate AWS rollback-start preflight and mutation
 approval before any stopped node is treated as a live source or user-facing
 rollback target
 
-source-copy status: blocked until the operator chooses clean-start or an
-approved state-preserving source path
+source-copy status: not part of the clean-start default path; historical
+source-copy remains blocked unless the operator later approves a
+state-preserving source path
 
 rollback-source status: rollback-start-needed if AWS is used for temporary
 restore
@@ -620,6 +632,64 @@ Provider-firewall hardening is now a separate prerequisite before Gate D
 public-boundary dry run. Gate A found Aliyun provider firewall rules too broad;
 host UFW currently blocks most paths, but provider-level broad inbound rules
 must not remain the safety boundary for promotion.
+
+### Gate C-Start: Clean-Start Private Validation
+
+Purpose:
+
+```text
+Validate candidate-only clean-start state and private subscription rendering
+without copying historical AWS state and without exposing public traffic.
+```
+
+Prerequisites:
+
+```text
+clean-start repo implementation package has passed local validation
+operator explicitly accepts clean-start authority for this gate
+candidate backup and rollback/cleanup decision are defined
+candidate app and loopback Nginx are healthy
+provider-firewall hardening remains scheduled before any public-boundary dry run
+raw tokens, subscription URLs, .env values, private keys, SQLite rows, and
+customer data are never printed or recorded
+```
+
+Required approval phrase:
+
+```text
+Approve Aliyun clean-start private validation. Allow candidate-only clean-start state initialization and private rendering checks on Aliyun. No DNS change, no public listener exposure, no public Admin, no edge traffic, no AWS mutation, and no historical state copy.
+```
+
+Allowed mutation only after explicit A-tier approval:
+
+```text
+candidate-only clean-start state initialization
+candidate backup before and after validation
+candidate SQLite integrity checks without row dumps
+private app health, Admin auth-boundary, and subscription rendering checks
+```
+
+Forbidden in this gate:
+
+```text
+historical AWS state copy
+DNS change
+public 80/443 promotion
+public Admin exposure
+edge traffic activation
+AWS rollback-start or source rescue
+customer-facing announcement or rollout
+```
+
+Required output:
+
+```text
+clean-start private validation record
+candidate health evidence
+candidate SQLite integrity evidence
+private subscription rendering evidence with sensitive material redacted
+rollback or cleanup decision for candidate-only state
+```
 
 ### Gate C: Private State-Copy Validation
 
@@ -929,6 +999,14 @@ Validate Aliyun rendering with approved production-derived state while still
 keeping production authority on the current host.
 ```
 
+Clean-start alternative:
+
+```text
+If historical state is not required, use Gate C-Start clean-start private
+validation instead of production state-copy validation. Do not copy AWS SQLite,
+opaque artifact, legacy query-token, or subscription-output state in that path.
+```
+
 Requires separate approval because SQLite and artifact state are sensitive.
 
 Required approval phrase:
@@ -1162,17 +1240,24 @@ Node drain/stop:
 The next executable gate is:
 
 ```text
-choose one Gate B source-state path:
-  clean-start control plane,
-  state-preserving source rescue planning,
-  or AWS rollback-start preflight for temporary restore;
+build the clean-start control-plane repo implementation package:
+  clean-start initialization shapes,
+  operator-safe decision summaries,
+  private rendering dry-run support,
+  tests,
+  and docs/project-state synchronization;
 
-and request a separate Aliyun provider-firewall hardening approval before any
-public-boundary dry run.
+then request separate A-tier approvals for:
+  Aliyun clean-start private validation,
+  Aliyun provider-firewall hardening,
+  public-boundary dry run,
+  DNS promotion,
+  edge rebuild,
+  or AWS rollback-start if temporary restore is needed.
 ```
 
 Do not move DNS, promote production authority, expose public Admin, start edge
 traffic, restart stopped AWS nodes, terminate instances, or delete security
-groups before live inventory, source-state planning, any approved source access
-remediation, private validation, public-boundary dry run, promotion, rebuild,
-rollback, and cleanup gates are separately approved and recorded.
+groups before live inventory, clean-start or source-state planning, private
+validation, public-boundary dry run, promotion, rebuild, rollback, and cleanup
+gates are separately approved and recorded.

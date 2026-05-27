@@ -366,6 +366,54 @@ promotion, observation, rollback, and cleanup. It does not execute Aliyun
 deployment, DNS mutation, public listener exposure, state copy, edge traffic, or
 production authority transfer.
 
+### Package 6: Clean-Start Control Plane Package
+
+**Risk:** B for repo-only code/tests; C for planning/docs; A for any Aliyun
+runtime validation, firewall hardening, public-boundary dry run, DNS promotion,
+or production authority transfer.
+
+**Primary unit:** Subscription Control Platform.
+
+**Goal:** Build the repository support for Aliyun clean-start authority without
+depending on historical AWS SQLite, artifact, legacy query-token, or
+subscription-output state.
+
+**Files likely touched:**
+
+```text
+server/services/platform/*.mjs
+server/routes/admin-platform.mjs
+test/**/*.mjs
+docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md
+docs/production-replacement-records/*.md
+docs/PROJECT_CONTEXT.md
+project-state/current.json
+```
+
+**Acceptance:**
+
+```text
+clean-start initialization shapes are explicit
+operator-safe summaries do not expose raw portal URLs, artifact references,
+tokens, subscription URLs, credentials, SQLite rows, or customer data
+private rendering dry-run support is fail-closed and redacted
+tests cover clean-start account, entitlement, grant, and rendering boundaries
+no Aliyun deployment or runtime mutation is performed by the repo PR
+```
+
+**Repository anchors after planning:**
+
+```text
+docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md
+docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md
+docs/PROJECT_CONTEXT.md
+project-state/current.json
+```
+
+Package 6 should produce repository evidence first. Candidate-only
+clean-start initialization and private rendering on Aliyun require a later
+A-tier approval and execution record.
+
 ## Validation Policy
 
 ```text
@@ -416,14 +464,17 @@ Ready PRs must contain the complete loop for their approved scope.
 ## First Recommended PR Sequence
 
 ```text
-1. C: land this goal document and project-state orientation.
-2. B: implement repository platform lead queue behind the existing public lead
-   intake boundary.
-3. B: add account / entitlement shell tests and fail-closed server contracts.
-4. B: update portal UI to consume repository-safe account / entitlement /
-   subscription-access summaries.
-5. C/A-gated: prepare Aliyun promotion runbook update from the proven repo
-   contracts, without executing production mutation.
+1. Complete: land this goal document and project-state orientation.
+2. Complete: implement repository platform lead queue behind the existing
+   public lead intake boundary.
+3. Complete: add account / entitlement shell tests and fail-closed server
+   contracts.
+4. Complete: add subscription-access grant shell and operator-safe summaries.
+5. Complete: prepare Aliyun promotion runbook and Gate A/B planning without
+   executing production mutation.
+6. Next: build the clean-start control-plane repo implementation package.
+7. Later A-tier: request Aliyun clean-start private validation and provider
+   firewall hardening as separate gates.
 ```
 
 ## Stop Conditions

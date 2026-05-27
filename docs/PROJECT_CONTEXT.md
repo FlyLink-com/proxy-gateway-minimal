@@ -149,6 +149,16 @@ Current architecture priorities:
   promotion, observation, rollback, and cleanup. It does not authorize Aliyun
   deployment, DNS changes, state copy, public listener exposure, edge traffic,
   or production authority transfer.
+- Aliyun Clean-Start Control Plane: the Gate B clean-start recommendation is
+  now captured as the default planning direction in
+  `docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md`.
+  Clean-start means Aliyun is planned as a new subscription-control authority
+  without copying historical AWS SQLite, artifact, legacy query-token, or
+  subscription-output state. The next repo-only package should build
+  clean-start initialization, operator-safe summaries, private rendering dry-run
+  support, tests, and docs/project-state synchronization. Runtime
+  initialization, provider-firewall hardening, public-boundary dry run, DNS
+  promotion, edge rebuild, and rollback-start remain separate A-tier gates.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a
@@ -348,6 +358,8 @@ operator approval, validation, and rollback path exist:
   `docs/production-replacement-records/2026-05-27-aliyun-gate-a-live-inventory.md`.
   The latest Gate B source-state and provider-firewall planning record is
   `docs/production-replacement-records/2026-05-27-aliyun-gate-b-source-firewall-plan.md`.
+  The latest clean-start control-plane planning record is
+  `docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md`.
 - Clean fallback `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
@@ -454,6 +466,7 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - `docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md`
 - `docs/production-replacement-records/2026-05-27-aliyun-gate-a-live-inventory.md`
 - `docs/production-replacement-records/2026-05-27-aliyun-gate-b-source-firewall-plan.md`
+- `docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md`
 - The current Aliyun SWAS host is reachable through SSH alias `miyao`.
 - It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
   `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
@@ -502,6 +515,13 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   temporary service restoration is required, use a separate AWS rollback-start
   preflight. Provider-firewall hardening remains a separate prerequisite before
   any public-boundary dry run.
+- Aliyun clean-start control-plane planning now makes clean-start the active
+  default for the next repo-only package. New accounts, entitlements,
+  subscription-access grants, opaque artifacts, and Subscription V2 outputs
+  should be issued from Aliyun clean-start authority after private validation.
+  Historical AWS state copy is no longer the default dependency for the MVP,
+  but remains available only through a separate state-preserving source rescue
+  path if the operator later requires continuity.
 
 Latest Aliyun user-management / subscription-distribution decision:
 
@@ -523,9 +543,11 @@ Latest Aliyun user-management / subscription-distribution decision:
 - The tracked static node config still references `prod-edge-a` and
   `prod-edge-b`, so subscription output/config must be rebuilt before the
   service can be considered healthy again.
-- The next executable gate is Aliyun Gate B source-state decision approval,
-  provider-firewall hardening approval, clean edge node rebuild planning, or a
-  rollback-start approval for the stopped AWS nodes.
+- The next executable gate is the clean-start repo implementation package,
+  followed by separate approvals for Aliyun clean-start private validation,
+  provider-firewall hardening, clean edge node rebuild planning, or a
+  rollback-start approval for the stopped AWS nodes if temporary restore is
+  needed.
 
 Latest A2 preflight:
 
