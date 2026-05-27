@@ -11,6 +11,8 @@ import type {
   ChannelRuntimeEvidenceBridgeInput,
   ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
+  ChannelSubscriptionActivationReadiness,
+  ChannelSubscriptionActivationReadinessInput,
   ChannelSubscriptionOutputDraft,
   ChannelSubscriptionOutputDraftInput,
   ChannelSystemDecisionFlow,
@@ -92,6 +94,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
       <ChannelRuntimeGateWorkbenchPanel apiClient={apiClient} />
       <ChannelRuntimeExecutionHandoffPanel apiClient={apiClient} />
       <ChannelSubscriptionOutputDraftPanel apiClient={apiClient} />
+      <ChannelSubscriptionActivationReadinessPanel apiClient={apiClient} />
       <ChannelLabTargetDecisionPanel apiClient={apiClient} />
       <CleanEdgeReadinessReviewPanel apiClient={apiClient} />
       <AliyunGateReviewPanel apiClient={apiClient} />
@@ -137,6 +140,19 @@ function parseChannelSubscriptionOutputDraftInput(value: string): ChannelSubscri
     throw new Error("Safe channel subscription draft packet contains forbidden runtime details.");
   }
   return parsed as ChannelSubscriptionOutputDraftInput;
+}
+
+function parseChannelSubscriptionActivationReadinessInput(value: string): ChannelSubscriptionActivationReadinessInput {
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Safe channel activation readiness packet must be a JSON object.");
+  }
+  try {
+    assertSafeChannelSystemEvidence(parsed);
+  } catch {
+    throw new Error("Safe channel activation readiness packet contains forbidden runtime details.");
+  }
+  return parsed as ChannelSubscriptionActivationReadinessInput;
 }
 
 function parseChannelLabTargetDecisionInput(value: string): ChannelLabTargetDecisionInput {
@@ -667,6 +683,110 @@ function ChannelSubscriptionOutputDraftPanel({ apiClient }: { apiClient: AdminAp
               </li>
             </ul>
           </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ChannelSubscriptionActivationReadinessPanel({ apiClient }: { apiClient: AdminApiClient }) {
+  const [packetText, setPacketText] = useState("");
+  const [readiness, setReadiness] = useState<ChannelSubscriptionActivationReadiness | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewing(true);
+    setError("");
+    try {
+      const input = parseChannelSubscriptionActivationReadinessInput(packetText);
+      const nextReadiness = await apiClient.reviewChannelSubscriptionActivationReadiness(input);
+      setReadiness(nextReadiness);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+      setReadiness(null);
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  return (
+    <section className="gate-review-card" aria-labelledby="channel-subscription-activation-readiness-heading">
+      <div className="page-heading">
+        <div>
+          <h2 id="channel-subscription-activation-readiness-heading">
+            Channel subscription activation readiness
+          </h2>
+          <p className="muted">
+            Protected readiness review before any subscription-output activation request.
+          </p>
+        </div>
+      </div>
+
+      <div className="alert">
+        This panel prepares activation-readiness evidence only; it does not submit approvals, generate YAML, or change real subscription output.
+      </div>
+
+      {error ? <div className="alert alert-error">{error}</div> : null}
+
+      <form className="channel-review-form" onSubmit={handleReviewSubmit}>
+        <label htmlFor="channel-subscription-activation-readiness-packet">
+          Safe channel activation readiness packet
+        </label>
+        <textarea
+          id="channel-subscription-activation-readiness-packet"
+          value={packetText}
+          onChange={(event) => setPacketText(event.target.value)}
+          placeholder='{"dryRunSummary":{},"measurementScore":{},"runtimeEvidenceInput":{"records":[]}}'
+          rows={8}
+        />
+        <button className="primary-button" type="submit" disabled={reviewing}>
+          {reviewing ? "Reviewing..." : "Review activation readiness"}
+        </button>
+      </form>
+
+      {readiness ? (
+        <>
+          <div className="metric-grid">
+            <Metric label="Readiness mode" value={readiness.mode} />
+            <Metric label="Readiness status" value={readiness.status} />
+            <Metric label="Activation gate" value={readiness.activationGate.gate} />
+            <Metric label="Execution authority" value={readiness.activationGate.executionAuthority} />
+            <Metric label="Canary candidates" value={readiness.readiness.canaryOutputCandidateCount} />
+            <Metric label="Blockers" value={readiness.readiness.blockers.length} />
+          </div>
+          <div className="gate-boundary">
+            <strong>Activation readiness boundary</strong>
+            <ul>
+              <li>
+                {readiness.safety.noSubscriptionOutputMutation
+                  ? "No subscription output mutation"
+                  : "Subscription output mutation flag missing"}
+              </li>
+              <li>{readiness.safety.yamlNotGenerated ? "YAML not generated" : "YAML generation flag missing"}</li>
+              <li>{readiness.safety.noRuntimeMutation ? "No runtime mutation" : "Runtime mutation flag missing"}</li>
+              <li>{readiness.safety.noTrafficMovement ? "No traffic movement" : "Traffic movement flag missing"}</li>
+              <li>
+                {readiness.activationGate.approvalSubmissionRoute === null
+                  ? "No approval submission route"
+                  : "Approval submission route exposed"}
+              </li>
+              <li>
+                {readiness.activationGate.executionRoute === null
+                  ? "No execution route"
+                  : "Execution route exposed"}
+              </li>
+              <li>
+                {!readiness.activationGate.approvalTextIncluded
+                  ? "Approval text not included"
+                  : "Approval text included"}
+              </li>
+            </ul>
+          </div>
+          {readiness.readiness.blockers.length ? (
+            <div className="alert alert-error">{readiness.readiness.blockers.join(", ")}</div>
+          ) : null}
         </>
       ) : null}
     </section>
