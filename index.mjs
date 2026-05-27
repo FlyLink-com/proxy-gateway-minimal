@@ -20,6 +20,7 @@ export { buildChannelDecisionPack } from "./server/services/channel-decision-pac
 export { buildChannelRuntimeGatePacket } from "./server/services/channel-runtime-gate-packet.mjs";
 export { buildChannelRuntimeInventorySummary } from "./server/services/channel-runtime-inventory-summary.mjs";
 export { buildChannelRuntimeRegistry } from "./server/services/channel-runtime-registry.mjs";
+export { buildChannelSystemDecisionFlow } from "./server/services/channel-system-decision-flow.mjs";
 export { assessChannelExtendedMeasurement } from "./server/services/channel-extended-measurement.mjs";
 export { buildChannelExtendedMeasurementReport } from "./server/services/channel-extended-report.mjs";
 export { buildChannelMeasurementBundleReport } from "./server/services/channel-measurement-bundle.mjs";

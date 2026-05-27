@@ -64,6 +64,7 @@
     "channel:runtime-gate-packet": "node scripts/channel-runtime-gate-packet.mjs",
     "channel:runtime-inventory-summary": "node scripts/channel-runtime-inventory-summary.mjs",
     "channel:runtime-registry": "node scripts/channel-runtime-registry.mjs",
+    "channel:system-decision-flow": "node scripts/channel-system-decision-flow.mjs",
     "project-state:check": "node scripts/check-project-state.mjs",
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",

@@ -333,7 +333,11 @@ Current architecture priorities:
   edge nodes or mutating runtime state. Channel runtime gate packets can turn
   the registry into an operator-safe approval-readiness packet for the next
   separate Risk A runtime canary gate without submitting approval phrases,
-  deploying runtimes, moving traffic, or changing subscription output. Extended measurement assessments can classify
+  deploying runtimes, moving traffic, or changing subscription output. Channel
+  system decision flows can now build the runtime inventory summary, runtime
+  registry, runtime gate packet, and top-level readiness status from the three
+  safe local inputs in one repository artifact without contacting edge nodes or
+  authorizing runtime changes. Extended measurement assessments can classify
   already-collected local benchmark summaries as ready, needing more samples,
   or hold for investigation before an operator decides on the next canary gate. Measurement
   investigation reports can consume safe bundle reports and classify hold
@@ -692,6 +696,13 @@ simplification queue is closed:
 - `B20-channel-runtime-gate-packet` - completed in the Channel Runtime Gate
   Packet work; runtime registry output can now be turned into an operator-safe
   approval-readiness packet that distinguishes approval-ready, blocked, and
+  missing-inventory states without submitting approval phrases, deploying
+  runtimes, moving traffic, or changing subscription output.
+- `B21-channel-system-decision-flow` - completed in the Channel System Decision
+  Flow work; dry-run summary, measurement score, and safe runtime inventory
+  input can now be composed into a single advisory system readiness artifact
+  without running probes, contacting edge nodes, submitting approval phrases,
+  deploying runtimes, moving traffic, or changing subscription output.
   missing-inventory states without submitting approval phrases, deploying
   runtimes, moving traffic, changing subscription output, or authorizing
   rollout.
