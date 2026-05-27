@@ -608,6 +608,18 @@ reviewed against subscription-output intent, but it remains review-only and
 does not generate YAML, submit approvals, deploy runtimes, contact edge nodes,
 move traffic, or change subscription output.
 
+The protected Admin platform routes
+`POST /api/admin/platform/channel-subscription-activation-readiness` and
+`POST /api/admin/platform/channel-subscription-activation-handoff`, plus their
+Admin Overview panels, are the repository-side handoff layers after the draft.
+They check whether a safe draft has enough baseline/canary evidence to request
+a separate Risk A subscription-output activation gate, then package that state
+with execution authority explicitly marked `not_granted`, checklist keys, no
+approval text, and no approval or execution route. These layers remain
+review-only and do not generate YAML, change real subscription output, submit
+approval phrases, contact edge nodes, deploy runtimes, move traffic, or
+activate production.
+
 The protected Admin platform route
 `POST /api/admin/platform/channel-lab-target-decision` and its Admin Overview
 panel are the next repository-side target selection layer after a runtime

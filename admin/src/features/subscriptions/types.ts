@@ -170,6 +170,8 @@ export type ChannelSubscriptionOutputDraftInput = ChannelRuntimeEvidenceBridgeIn
 
 export type ChannelSubscriptionActivationReadinessInput = ChannelRuntimeEvidenceBridgeInput;
 
+export type ChannelSubscriptionActivationHandoffInput = ChannelRuntimeEvidenceBridgeInput;
+
 export type ChannelLabTargetDecisionInput = {
   generatedAt?: string;
   inventory: unknown;
@@ -431,6 +433,69 @@ export type ChannelSubscriptionActivationReadiness = {
   source: {
     draftMode: string;
     draftStatus: string;
+    bridgeMode: string;
+    systemMode: string;
+    runtimeRegistryMode: string;
+    runtimeGatePacketMode: string;
+  };
+  safety: {
+    advisoryOnly: boolean;
+    summaryOnly: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+    noApprovalSubmission: boolean;
+    noTrafficMovement: boolean;
+    noSubscriptionOutputMutation: boolean;
+    yamlNotGenerated: boolean;
+    requiresSeparateRiskAApproval: boolean;
+    approvalTextIncluded: boolean;
+    omittedFields: string[];
+  };
+};
+
+export type ChannelSubscriptionActivationHandoff = {
+  ok: boolean;
+  mode: "channel-subscription-activation-handoff-packet";
+  generatedAt: string;
+  sourceGeneratedAt: string;
+  handoff: {
+    status: string;
+    requiredNextAction: string;
+    executionAuthority: string;
+    blockers: string[];
+    counts: {
+      baselinePool: number;
+      canaryPool: number;
+      privatePool: number;
+      blockedPool: number;
+    };
+    nextGate: {
+      risk: "A" | string;
+      gate: string;
+      approvalRequestReady: boolean;
+      exactApprovalRequired: boolean;
+      approvalTextIncluded: boolean;
+      approvalSubmissionRoute: string | null;
+      subscriptionOutputExecutionRoute: string | null;
+      executesGate: boolean;
+      runbook: string;
+    };
+  };
+  checklists: {
+    preflight: string[];
+    validation: string[];
+    rollback: string[];
+  };
+  candidates: {
+    baseline: ChannelSubscriptionOutputDraftCandidate[];
+    canary: ChannelSubscriptionOutputDraftCandidate[];
+    private: ChannelSubscriptionOutputDraftCandidate[];
+    blocked: ChannelSubscriptionOutputDraftCandidate[];
+  };
+  source: {
+    readinessMode: string;
+    readinessStatus: string;
+    draftMode: string;
     bridgeMode: string;
     systemMode: string;
     runtimeRegistryMode: string;
