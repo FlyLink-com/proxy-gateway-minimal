@@ -4,9 +4,17 @@ const CLEAN_START_PRIVATE_VALIDATION_APPROVAL =
 const PROVIDER_FIREWALL_HARDENING_APPROVAL =
   "Approve Aliyun provider firewall hardening. Restrict inbound to documented management and approved public-boundary ports only. No DNS change, no Nginx public promotion, no production authority transfer, no state copy, no user traffic, no edge traffic, and rollback by restoring the recorded provider firewall rules.";
 
+const OPAQUE_ARTIFACT_ISSUANCE_APPROVAL =
+  "Approve broader opaque artifact issuance. Allow approved-tenant artifact issuance, visible-once handoff metadata, and private/public refresh validation on the Aliyun subscription boundary. No legacy query-token route removal, no DNS change, no public Admin, no edge traffic, no AWS mutation, no historical state copy, and no raw subscription URLs or artifact secrets recorded.";
+
+const LEGACY_QUERY_TOKEN_RETIREMENT_APPROVAL =
+  "Approve legacy query-token retirement. Allow approved legacy token drain/rotation after opaque artifact validation. No /sub/clash.yaml route removal, no DNS change, no public Admin, no edge traffic, no AWS mutation, no tenant disablement outside approved scope, and no raw tokens or subscription URLs recorded.";
+
 const APPROVAL_PHRASES_BY_GATE = Object.freeze({
   aliyun_clean_start_private_validation: CLEAN_START_PRIVATE_VALIDATION_APPROVAL,
-  aliyun_provider_firewall_hardening: PROVIDER_FIREWALL_HARDENING_APPROVAL
+  aliyun_provider_firewall_hardening: PROVIDER_FIREWALL_HARDENING_APPROVAL,
+  aliyun_opaque_artifact_issuance: OPAQUE_ARTIFACT_ISSUANCE_APPROVAL,
+  aliyun_legacy_query_token_retirement: LEGACY_QUERY_TOKEN_RETIREMENT_APPROVAL
 });
 
 const SOURCE_DOCS = {
@@ -14,6 +22,8 @@ const SOURCE_DOCS = {
     "docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md",
   providerFirewallHardening:
     "docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md",
+  artifactAccessMigration:
+    "docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md",
   aliyunRunbook: "docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md"
 };
 
@@ -25,6 +35,10 @@ const NOT_AUTHORIZED = [
   "public Admin exposure",
   "AWS mutation",
   "state copy",
+  "artifact issuance execution",
+  "legacy query-token retirement execution",
+  "legacy route removal",
+  "raw subscription URL or artifact secret recording",
   "user traffic",
   "edge traffic"
 ];
@@ -62,6 +76,31 @@ function firewallBlockers(providerFirewall = {}) {
   return blockers;
 }
 
+function artifactIssuanceBlockers(accessMigration = {}) {
+  const blockers = [];
+  if (!accessMigration.hasLiveAccessModelInventory) {
+    blockers.push("live access-model inventory not recorded");
+  }
+  if (!accessMigration.hasApprovedArtifactScope) {
+    blockers.push("approved tenant/device artifact scope not recorded");
+  }
+  return blockers;
+}
+
+function legacyRetirementBlockers(accessMigration = {}) {
+  const blockers = [];
+  if (!accessMigration.artifactIssuanceCompleted) {
+    blockers.push("broader opaque artifact issuance not completed");
+  }
+  if (!accessMigration.artifactRefreshObservationRecorded) {
+    blockers.push("artifact refresh observation not recorded");
+  }
+  if (!accessMigration.hasApprovedLegacyRetirementScope) {
+    blockers.push("approved legacy retirement scope not recorded");
+  }
+  return blockers;
+}
+
 function gateStatus(blockers) {
   return blockers.length === 0 ? "ready_for_operator_approval" : "blocked";
 }
@@ -94,15 +133,33 @@ function providerFirewallSummary(providerFirewall = {}) {
   };
 }
 
+function accessMigrationSummary(accessMigration = {}) {
+  return {
+    hasLiveAccessModelInventory: accessMigration.hasLiveAccessModelInventory === true,
+    hasApprovedArtifactScope: accessMigration.hasApprovedArtifactScope === true,
+    artifactIssuanceCompleted: accessMigration.artifactIssuanceCompleted === true,
+    artifactRefreshObservationRecorded: accessMigration.artifactRefreshObservationRecorded === true,
+    hasApprovedLegacyRetirementScope: accessMigration.hasApprovedLegacyRetirementScope === true,
+    rawUrlsEchoed: false,
+    rawTokensEchoed: false,
+    rawArtifactsEchoed: false
+  };
+}
+
 export function createAliyunGateDecisionPacket({
   cleanStart,
   providerFirewall = {},
+  accessMigration = {},
   now
 } = {}) {
   const cleanStartGateBlockers = cleanStartBlockers(cleanStart);
   const firewallGateBlockers = firewallBlockers(providerFirewall);
+  const artifactIssuanceGateBlockers = artifactIssuanceBlockers(accessMigration);
+  const legacyRetirementGateBlockers = legacyRetirementBlockers(accessMigration);
   const cleanStartStatus = gateStatus(cleanStartGateBlockers);
   const firewallStatus = gateStatus(firewallGateBlockers);
+  const artifactIssuanceStatus = gateStatus(artifactIssuanceGateBlockers);
+  const legacyRetirementStatus = gateStatus(legacyRetirementGateBlockers);
   const publicBoundaryBlockers = [];
 
   if (cleanStartStatus !== "completed") {
@@ -157,6 +214,30 @@ export function createAliyunGateDecisionPacket({
         "public-boundary dry run not completed",
         "final rollback decision not recorded"
       ]
+    },
+    {
+      id: "aliyun_opaque_artifact_issuance",
+      label: "Aliyun opaque artifact issuance",
+      risk: "A",
+      status: artifactIssuanceStatus,
+      approvalRequired: true,
+      approvalPolicy: EXACT_APPROVAL_POLICY,
+      requiredApprovalPhrase: OPAQUE_ARTIFACT_ISSUANCE_APPROVAL,
+      sourceDoc: SOURCE_DOCS.artifactAccessMigration,
+      blockers: artifactIssuanceGateBlockers,
+      preflightSummary: accessMigrationSummary(accessMigration)
+    },
+    {
+      id: "aliyun_legacy_query_token_retirement",
+      label: "Aliyun legacy query-token retirement",
+      risk: "A",
+      status: legacyRetirementStatus,
+      approvalRequired: true,
+      approvalPolicy: EXACT_APPROVAL_POLICY,
+      requiredApprovalPhrase: LEGACY_QUERY_TOKEN_RETIREMENT_APPROVAL,
+      sourceDoc: SOURCE_DOCS.artifactAccessMigration,
+      blockers: legacyRetirementGateBlockers,
+      preflightSummary: accessMigrationSummary(accessMigration)
     }
   ];
 
@@ -170,6 +251,7 @@ export function createAliyunGateDecisionPacket({
     sourceDocs: [
       SOURCE_DOCS.cleanStartPrivateValidation,
       SOURCE_DOCS.providerFirewallHardening,
+      SOURCE_DOCS.artifactAccessMigration,
       SOURCE_DOCS.aliyunRunbook
     ],
     notAuthorized: NOT_AUTHORIZED,

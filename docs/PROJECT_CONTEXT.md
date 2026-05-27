@@ -156,14 +156,15 @@ Current architecture priorities:
   lives in `server/services/platform/aliyun-gate-decision-packet.mjs` and the
   protected Admin route `/api/admin/platform/aliyun-gates`. It summarizes the
   clean-start private validation, provider-firewall hardening,
-  public-boundary dry run, and DNS promotion gates with explicit approval
-  phrases for the next executable A-tier gates, blockers, source docs, and
-  not-authorized actions. It does not expose firewall raw rules, management
-  source labels, raw portal URLs, artifact references, subscription URLs, node
-  hosts, node credentials, tokens, customer emails, or organization names. It
-  is not Aliyun deployment, firewall mutation, public listener exposure, DNS,
-  state copy, AWS mutation, user traffic, edge traffic, or production
-  authority.
+  public-boundary dry run, DNS promotion, broader opaque artifact issuance,
+  and legacy query-token retirement gates with explicit approval phrases for
+  the next executable A-tier gates, blockers, source docs, and not-authorized
+  actions. It does not expose firewall raw rules, management source labels, raw
+  portal URLs, artifact references, subscription URLs, node hosts, node
+  credentials, tokens, customer emails, or organization names. It is not Aliyun
+  deployment, firewall mutation, public listener exposure, DNS, state copy, AWS
+  mutation, artifact issuance, legacy query-token retirement, legacy route
+  removal, user traffic, edge traffic, or production authority.
 - Platform Aliyun Gate Evidence Shell: repository-only operator evidence
   support lives in `server/services/platform/aliyun-gate-evidence-shell.mjs`
   with protected Admin routes `/api/admin/platform/aliyun-gate-evidence` and
