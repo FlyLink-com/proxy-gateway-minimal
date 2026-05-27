@@ -174,6 +174,10 @@ export type ChannelSubscriptionActivationHandoffInput = ChannelRuntimeEvidenceBr
 
 export type ChannelSubscriptionActivationFlowInput = ChannelRuntimeEvidenceBridgeInput;
 
+export type ChannelSubscriptionActivationRecordTemplateInput = {
+  activationFlowFixture: unknown;
+};
+
 export type ChannelLabTargetDecisionInput = {
   generatedAt?: string;
   inventory: unknown;
@@ -562,6 +566,42 @@ export type ChannelSubscriptionActivationFlow = {
   safety: {
     advisoryOnly: boolean;
     summaryOnly: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+    noApprovalSubmission: boolean;
+    noTrafficMovement: boolean;
+    noSubscriptionOutputMutation: boolean;
+    yamlNotGenerated: boolean;
+    requiresSeparateRiskAApproval: boolean;
+    omittedFields: string[];
+  };
+};
+
+export type ChannelSubscriptionActivationRecordTemplate = {
+  ok: boolean;
+  mode: "channel-subscription-activation-record-template";
+  generatedAt: string;
+  source: {
+    fixtureSchemaVersion: string;
+    fixtureGeneratedAt: string;
+    sourceGeneratedAt: string;
+    flowStatus: string;
+    requiredNextAction: string;
+  };
+  readiness: {
+    approvalRequestReady: boolean;
+    executionAuthority: string;
+    blockers: string[];
+  };
+  record: {
+    title: string;
+    suggestedPath: string;
+    markdown: string;
+  };
+  safety: {
+    advisoryOnly: boolean;
+    summaryOnly: boolean;
+    templateOnly: boolean;
     noRuntimeMutation: boolean;
     noProductionMutation: boolean;
     noApprovalSubmission: boolean;

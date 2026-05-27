@@ -331,9 +331,10 @@ npm run channel:subscription-activation-record-template -- <path-to-activation-f
 ```
 
 The same template layer is available through the protected Admin platform route
-`POST /api/admin/platform/channel-subscription-activation-record-template`.
-The route accepts a wrapper with `activationFlowFixture` or the fixture itself
-and returns the same Markdown skeleton and safety metadata for operator review.
+`POST /api/admin/platform/channel-subscription-activation-record-template` and
+an Admin Overview review panel. The route accepts a wrapper with
+`activationFlowFixture` or the fixture itself and returns the same Markdown
+skeleton and safety metadata for operator review.
 
 This template generator is still repo-only. It does not submit or store
 approval phrase text, expose execution routes, generate YAML, change

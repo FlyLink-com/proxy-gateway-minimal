@@ -1300,6 +1300,49 @@
       ]
     },
     {
+      "id": "B38-channel-subscription-activation-record-template-ui",
+      "risk": "B",
+      "status": "completed-in-pr-247",
+      "lane": "edge-data-plane",
+      "title": "Add Admin channel subscription activation record template panel",
+      "goal": "Wire the protected activation-record-template route into Admin Overview so operators can review safe activation-flow fixtures and record skeleton metadata without granting execution authority.",
+      "allowedFiles": [
+        "admin/src/features/subscriptions/api-client.ts",
+        "admin/src/features/subscriptions/types.ts",
+        "admin/src/pages/overview-page.tsx",
+        "admin/src/test/subscriptions.test.ts",
+        "admin/src/test/user-portal.test.tsx",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "generate Clash or Mihomo YAML",
+        "change real subscription output",
+        "mutate production",
+        "query or contact live edge nodes",
+        "deploy runtimes",
+        "submit approval phrases",
+        "echo or store approval text",
+        "add execution routes or execution controls",
+        "add public routes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, firewall, provider, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, or subscription-output state",
+        "write secrets, raw hosts, raw IPs, raw ports, raw URLs, raw logs, credentials, raw subscription URLs, SQLite rows, customer data, or exact management-source values",
+        "treat the Admin record-template panel output as subscription-output activation approval or execution evidence"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm run test --prefix admin -- src/test/subscriptions.test.ts src/test/user-portal.test.tsx",
+        "npm run admin:test",
+        "npm run admin:build",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "B12-aliyun-gate-decision-packet",
       "risk": "B",
       "status": "completed-in-pr-181",
