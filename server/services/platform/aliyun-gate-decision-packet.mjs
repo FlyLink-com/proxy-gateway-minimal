@@ -29,6 +29,14 @@ const NOT_AUTHORIZED = [
   "edge traffic"
 ];
 
+const EXACT_APPROVAL_POLICY = Object.freeze({
+  mode: "exact_phrase_for_named_gate",
+  phraseBoundToGate: true,
+  acceptsShortConfirmation: false,
+  approvalSubmissionRoute: null,
+  executesGate: false
+});
+
 function cleanStartBlockers(cleanStart = {}) {
   const blockers = [];
   if (cleanStart.status !== "ready_for_private_validation") {
@@ -111,6 +119,7 @@ export function createAliyunGateDecisionPacket({
       risk: "A",
       status: cleanStartStatus,
       approvalRequired: true,
+      approvalPolicy: EXACT_APPROVAL_POLICY,
       requiredApprovalPhrase: CLEAN_START_PRIVATE_VALIDATION_APPROVAL,
       sourceDoc: SOURCE_DOCS.cleanStartPrivateValidation,
       blockers: cleanStartGateBlockers,
@@ -122,6 +131,7 @@ export function createAliyunGateDecisionPacket({
       risk: "A",
       status: firewallStatus,
       approvalRequired: true,
+      approvalPolicy: EXACT_APPROVAL_POLICY,
       requiredApprovalPhrase: PROVIDER_FIREWALL_HARDENING_APPROVAL,
       sourceDoc: SOURCE_DOCS.providerFirewallHardening,
       blockers: firewallGateBlockers,

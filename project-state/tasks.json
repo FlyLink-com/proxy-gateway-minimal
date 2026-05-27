@@ -657,6 +657,43 @@
       ]
     },
     {
+      "id": "B16-aliyun-approval-policy-metadata",
+      "risk": "B",
+      "status": "completed-in-current-branch",
+      "lane": "subscription-control-plane",
+      "title": "Expose Aliyun approval policy metadata in gate packets",
+      "goal": "Show the exact-phrase, named-gate, fail-closed approval policy in the protected Aliyun gate decision packet without adding approval submission or execution controls.",
+      "allowedFiles": [
+        "server/services/platform/aliyun-gate-decision-packet.mjs",
+        "server/tests/platform-aliyun-gate-packet.test.mjs",
+        "docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate Aliyun runtime",
+        "change DNS",
+        "change provider firewall",
+        "change UFW",
+        "submit or execute approval phrases",
+        "add approval submission routes",
+        "add execution controls",
+        "initialize candidate state",
+        "copy state",
+        "mutate AWS",
+        "open a public listener",
+        "move user traffic",
+        "move edge traffic",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/platform-aliyun-gate-packet.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "C4-tuic-comparison-canary-plan",
       "risk": "C",
       "status": "completed-in-pr-174",
