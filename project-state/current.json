@@ -16,6 +16,7 @@
     "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
     "docs/CHANNEL_STRATEGY_ENGINE.md",
+    "docs/CHANNEL_TUIC_COMPARISON_CANARY_PLAN.md",
     "docs/CHANNEL_CANARY_SERVER_SELECTION.md",
     "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md",
     "docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md",
@@ -81,6 +82,7 @@
     "Channel Extended Measurement Assessment for advisory ready/needs-more-samples/hold classification from already-collected local summaries",
     "Channel Measurement Investigation for advisory hold-pattern classification from safe measurement bundle reports",
     "Channel Candidate Comparison for advisory next-candidate plans after held measurement results",
+    "TUIC Comparison Canary Planning as the next measured candidate after the held Hysteria2 extended measurement, with VLESS/XUDP as the secondary comparison path",
     "Channel runtime canary execution remains gated by docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md after repository renderer/config support",
     "Channel runtime canary server selection and execution remain gated by docs/CHANNEL_CANARY_SERVER_SELECTION.md and docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md after repository renderer/config support",
     "Local Edge Agent as loopback-only client adapter prototype",
@@ -175,7 +177,7 @@
     },
     {
       "id": "channel-canary-server-selection",
-      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance exists, Hysteria2 v2.9.2 is active, short operator-device and Mihomo canaries passed, and extended operator-device measurement completed. The extended bundle has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. GUI import evidence, DNS, production config, subscription output, broader rollout, protocol comparison, and cleanup remain gated.",
+      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance exists, Hysteria2 v2.9.2 is active, short operator-device and Mihomo canaries passed, and extended operator-device measurement completed. The extended bundle has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. TUIC is now the documented next measured comparison candidate, VLESS/XUDP is secondary, and GUI import evidence, DNS, production config, subscription output, broader rollout, runtime comparison, and cleanup remain gated.",
       "sourceDoc": "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-extended-measurement.md"
     },
     {
@@ -207,7 +209,8 @@
   "nextRecommendedQueue": [
     "Aliyun Gate B source-state decision approval: clean-start control plane versus state-preserving source rescue versus rollback-start preflight",
     "Aliyun provider-firewall hardening approval before public-boundary dry run",
-    "channel-lab-a Hysteria2 latency investigation, TUIC/VLESS-XUDP comparison, GUI import evidence, or cleanup decision",
+    "TUIC runtime inventory and comparison canary approval path after held Hysteria2 measurement, or VLESS/XUDP secondary comparison if TUIC is rejected",
+    "channel-lab-a Hysteria2 latency investigation, GUI import evidence, or cleanup decision",
     "clean edge node rebuild planning",
     "Aliyun subscription distribution promotion planning with accepted outage context",
     "rollback-start approval for stopped AWS Singapore nodes if temporary restore is needed",

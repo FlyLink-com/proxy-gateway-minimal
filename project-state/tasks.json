@@ -435,9 +435,36 @@
       ]
     },
     {
+      "id": "C4-tuic-comparison-canary-plan",
+      "risk": "C",
+      "status": "completed-in-current-branch",
+      "lane": "edge-data-plane",
+      "title": "Define TUIC as the next measured channel candidate after held Hysteria2",
+      "goal": "Record the docs-only comparison plan that makes TUIC the primary next measured candidate and keeps VLESS/XUDP as the secondary comparison path without authorizing runtime canary execution.",
+      "allowedFiles": [
+        "docs/CHANNEL_TUIC_COMPARISON_CANARY_PLAN.md",
+        "docs/README.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "create a server",
+        "deploy TUIC runtime",
+        "open ports or change firewalls/security groups",
+        "change DNS, Nginx, systemd, AWS, Aliyun, production config, tenants, or artifacts",
+        "change subscription output",
+        "run operator-device TUIC traffic",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "A0-channel-canary-server-selection",
       "risk": "A",
-      "status": "mihomo-import-validation-passed-blocked-before-extended-measurement-broader-rollout-or-cleanup-approval",
+      "status": "hysteria2-extended-measurement-hold-tuic-comparison-plan-ready-blocked-before-runtime-inventory-broader-rollout-or-cleanup-approval",
       "lane": "edge-data-plane",
       "title": "Select clean server for channel runtime canary",
       "goal": "Choose a disposable provider-neutral canary server for one protocol family after long-haul path, UDP, lifecycle, security, metrics, and rollback checks.",
