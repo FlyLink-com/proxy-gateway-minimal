@@ -17,6 +17,7 @@
     "docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md",
     "docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md",
     "docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md",
+    "docs/production-replacement-records/2026-05-27-aliyun-next-a-tier-execution-packet.md",
     "docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md",
     "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
@@ -550,6 +551,38 @@
         "npm run admin:test",
         "npm run admin:build",
         "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "C5-aliyun-next-a-tier-execution-packet",
+      "risk": "C",
+      "status": "completed-in-current-branch",
+      "lane": "subscription-control-plane",
+      "title": "Add Aliyun next A-tier execution handoff packet",
+      "goal": "Create a repo-only operator handoff that keeps Aliyun clean-start private validation and provider-firewall hardening as exact-phrase, separately executable Risk A gates.",
+      "allowedFiles": [
+        "docs/production-replacement-records/2026-05-27-aliyun-next-a-tier-execution-packet.md",
+        "docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md",
+        "docs/PROJECT_CONTEXT.md",
+        "docs/README.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate Aliyun runtime",
+        "change DNS",
+        "change provider firewall",
+        "change UFW",
+        "initialize candidate state",
+        "copy state",
+        "mutate AWS",
+        "open a public listener",
+        "move user traffic",
+        "move edge traffic",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
         "npm run project-state:check"
       ]
     },
