@@ -847,6 +847,20 @@ publicProxyConfig:
 This design keeps PR-level renderer/config work useful for channel development
 without changing tracked production node config or enabling any runtime channel.
 
+The repository-local activation package closes the current safe evidence chain
+without activating production:
+
+```bash
+npm run channel:subscription-activation-package -- <path-to-activation-flow-fixture.json> <path-to-proxy-servers.json>
+```
+
+It requires a replayable activation-flow fixture, verifies the selected
+baseline/canary candidates against local proxy config through the real
+Clash/Mihomo renderer, checks execution-record template readiness, and returns
+only safe activation-package metadata. It intentionally does not return YAML,
+record Markdown, host/port details, credentials, tokens, subscription URLs, or
+approval phrase text.
+
 ### Stage 1: Repository-Only Agent Channel Harness
 
 ```text
