@@ -659,7 +659,7 @@
     {
       "id": "B16-aliyun-approval-policy-metadata",
       "risk": "B",
-      "status": "completed-in-current-branch",
+      "status": "completed-in-pr-192",
       "lane": "subscription-control-plane",
       "title": "Expose Aliyun approval policy metadata in gate packets",
       "goal": "Show the exact-phrase, named-gate, fail-closed approval policy in the protected Aliyun gate decision packet without adding approval submission or execution controls.",
