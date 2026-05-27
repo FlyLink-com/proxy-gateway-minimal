@@ -849,7 +849,7 @@
     {
       "id": "B28-channel-lab-target-decision",
       "risk": "B",
-      "status": "completed-in-current-pr",
+      "status": "completed-in-pr-229",
       "lane": "edge-data-plane",
       "title": "Add protected channel lab target decision API and UI",
       "goal": "Convert safe target inventory packets into an advisory next target gate after blocked runtime inventory without contacting edge nodes or executing runtime changes.",
@@ -894,6 +894,42 @@
         "npm run test --prefix admin -- src/test/subscriptions.test.ts src/test/user-portal.test.tsx",
         "npm run admin:test",
         "npm run admin:build",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "B29-clean-edge-readiness-summary",
+      "risk": "B",
+      "status": "completed-in-pr-230",
+      "lane": "edge-data-plane",
+      "title": "Add repository-local clean edge readiness summary",
+      "goal": "Normalize safe operator-provided clean edge readiness facts before a separate exact-approved clean edge rebuild execution gate.",
+      "allowedFiles": [
+        "server/services/clean-edge-readiness-summary.mjs",
+        "server/tests/clean-edge-readiness-summary.test.mjs",
+        "scripts/clean-edge-readiness-summary.mjs",
+        "docs/CLEAN_EDGE_READINESS_SUMMARY.md",
+        "docs/PROJECT_CONTEXT.md",
+        "docs/README.md",
+        "index.mjs",
+        "package.json",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "select, create, provision, bootstrap, or activate a clean edge target",
+        "mutate production",
+        "query live cloud, DNS, Nginx, systemd, SQLite, tenants, artifacts, or edge nodes",
+        "submit approval phrases",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, firewall, provider, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, or subscription-output state",
+        "write secrets, raw hosts, raw IPs, raw ports, raw logs, credentials, raw subscription URLs, SQLite rows, customer data, or exact management-source values",
+        "treat readiness summary output as clean edge rebuild approval"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/clean-edge-readiness-summary.test.mjs server/tests/package-entry.test.mjs",
         "npm test",
         "npm run project-state:check"
       ]
