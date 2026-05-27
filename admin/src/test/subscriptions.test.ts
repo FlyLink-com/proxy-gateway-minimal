@@ -8,6 +8,8 @@ import { SubscriptionsPage } from "../features/subscriptions/subscriptions-page"
 import type {
   AliyunGateDecisionPacket,
   AliyunGateEvidenceSummary,
+  ChannelSystemDecisionFlow,
+  ChannelSystemReviewInput,
   SubscriptionTenant
 } from "../features/subscriptions/types";
 import { NodesPage } from "../pages/nodes-page";
@@ -128,6 +130,28 @@ describe("admin API client", () => {
     });
     expect(JSON.stringify(accessMigrationCall[1].body)).not.toMatch(/subscriptionUrl|artifactUrl|rawTokens|token|secret/i);
   });
+
+  test("reviews channel system readiness through the protected platform endpoint", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ channelSystem: channelSystemDecisionFlow() }));
+    const client = createAdminApiClient({
+      baseUrl: "",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    const channelSystem = await client.reviewChannelSystem(channelSystemReviewInput());
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/channel-system-decision-flow",
+      expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
+    );
+    const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSystemReviewInput());
+    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential/i);
+    expect(channelSystem.flowStatus).toBe("approval_ready");
+    expect(channelSystem.systemReadiness.canaryReadyCount).toBe(1);
+  });
 });
 
 describe("admin session", () => {
@@ -211,7 +235,86 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     recordProviderFirewallEvidence: async () => aliyunGateEvidence("ready_for_gate_packet"),
     recordAccessMigrationEvidence: async () =>
       aliyunGateEvidence("incomplete", "ready_for_artifact_issuance_gate"),
+    reviewChannelSystem: async () => channelSystemDecisionFlow(),
     ...overrides
+  };
+}
+
+function channelSystemReviewInput(): ChannelSystemReviewInput {
+  return {
+    dryRunSummary: {
+      ok: true,
+      servers: [
+        { name: "ss-baseline", protocol: "ss", qualityClass: "stable" },
+        { name: "tuic-lab", protocol: "tuic", qualityClass: "weak-network" }
+      ]
+    },
+    measurementScore: {
+      ok: true,
+      mode: "channel-measurement-score",
+      generatedAt: "2026-05-27T20:00:00.000Z",
+      candidates: [
+        {
+          name: "ss-baseline",
+          protocol: "ss",
+          qualityClass: "stable",
+          channelScore: 99,
+          qualityTier: "healthy",
+          recommendedPool: "stable",
+          reasonCodes: ["stable_baseline_healthy"]
+        },
+        {
+          name: "tuic-lab",
+          protocol: "tuic",
+          qualityClass: "weak-network",
+          channelScore: 94,
+          qualityTier: "healthy",
+          recommendedPool: "canary",
+          reasonCodes: ["candidate_requires_canary"]
+        }
+      ]
+    },
+    runtimeInventoryInput: {
+      generatedAt: "2026-05-27T20:01:00.000Z",
+      records: [
+        {
+          candidateName: "tuic-lab",
+          protocol: "tuic",
+          targetLabel: "channel-lab-b",
+          lifecycleStatus: "inventory_ready",
+          deploymentReady: true,
+          blockers: [],
+          nextGate: "runtime_deployment_approval"
+        }
+      ]
+    }
+  };
+}
+
+function channelSystemDecisionFlow(): ChannelSystemDecisionFlow {
+  return {
+    ok: true,
+    mode: "channel-system-decision-flow",
+    generatedAt: "2026-05-27T20:02:00.000Z",
+    flowStatus: "approval_ready",
+    requiredNextAction: "request_risk_a_runtime_canary_approval",
+    systemReadiness: {
+      runtimeGateStatus: "approval_ready",
+      selectedBaselineReady: true,
+      canaryReadyCount: 1,
+      runtimeBlockedCount: 0,
+      missingRuntimeInventoryCount: 0
+    },
+    outputs: {},
+    safety: {
+      advisoryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      requiresSeparateRiskAApproval: true,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
+    }
   };
 }
 
@@ -672,5 +775,27 @@ describe("overview and nodes pages", () => {
       });
     });
     expect(await screen.findByText(/Access-migration evidence recorded/i)).not.toBeNull();
+  });
+
+  test("renders channel system review readiness from safe operator evidence without execution controls", async () => {
+    const reviewChannelSystem = vi.fn(async () => channelSystemDecisionFlow());
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewChannelSystem })
+    }));
+
+    expect(await screen.findByText("Channel system review")).not.toBeNull();
+    fireEvent.change(screen.getByLabelText(/safe channel evidence packet/i), {
+      target: { value: JSON.stringify(channelSystemReviewInput()) }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review channel system/i }));
+
+    await waitFor(() => {
+      expect(reviewChannelSystem).toHaveBeenCalledWith(channelSystemReviewInput());
+    });
+    expect(await screen.findByText("approval_ready")).not.toBeNull();
+    expect(screen.getByText("request_risk_a_runtime_canary_approval")).not.toBeNull();
+    expect(screen.getByText(/No runtime execution controls are exposed/i)).not.toBeNull();
+    expect(screen.queryByText(/secret\.example|token=|subscriptionUrl/i)).toBeNull();
   });
 });

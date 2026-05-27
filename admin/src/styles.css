@@ -1320,6 +1320,7 @@ th {
 .gate-list,
 .gate-evidence-stack,
 .gate-evidence-form,
+.channel-review-form,
 .gate-boundary {
   display: grid;
   gap: 12px;
@@ -1358,6 +1359,23 @@ th {
   margin: 0;
   padding-left: 18px;
   color: #334155;
+}
+
+.channel-review-form label {
+  color: #334155;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.channel-review-form textarea {
+  width: 100%;
+  min-height: 180px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  color: #0f172a;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  resize: vertical;
 }
 
 .approval-phrase {

@@ -340,7 +340,11 @@ Current architecture priorities:
   authorizing runtime changes. A protected Admin platform route can now expose
   the same channel system decision flow for operator review surfaces without
   adding approval submission, runtime, DNS, firewall, traffic, or
-  subscription-output controls. Extended measurement assessments can classify
+  subscription-output controls. The protected Admin Overview can now consume
+  that route from a read-only channel system review panel, so operators can
+  paste a safe evidence packet and inspect flow status, required next action,
+  canary readiness, and runtime blockers without execution controls. Extended
+  measurement assessments can classify
   already-collected local benchmark summaries as ready, needing more samples,
   or hold for investigation before an operator decides on the next canary gate. Measurement
   investigation reports can consume safe bundle reports and classify hold
@@ -710,9 +714,11 @@ simplification queue is closed:
   work; the protected Admin platform surface can now accept the same safe
   channel decision inputs and return the redacted system readiness artifact
   without exposing a public route or adding any execution controls.
-  missing-inventory states without submitting approval phrases, deploying
-  runtimes, moving traffic, changing subscription output, or authorizing
-  rollout.
+- `B23-channel-system-review-ui` - completed in the Channel System Review UI
+  work; the protected Admin Overview can now submit safe channel decision inputs
+  to the protected review API and render flow status, required next action,
+  canary readiness, and runtime blockers without exposing approval submission,
+  runtime execution, DNS, firewall, traffic, or subscription-output controls.
 - `C4-tuic-comparison-canary-plan` - completed in the TUIC Comparison Canary
   Plan work; TUIC is now the documented next measured channel candidate after
   the held Hysteria2 extended measurement, while VLESS/XUDP remains the

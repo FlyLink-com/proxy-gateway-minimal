@@ -541,6 +541,12 @@ inputs, returns the same redacted readiness artifact, and does not provide
 runtime, firewall, DNS, node, approval, traffic, or subscription-output
 execution controls.
 
+The Admin Overview now includes a read-only channel system review surface for
+that route. Operators can paste a safe evidence packet and receive the redacted
+readiness result in the existing protected Admin UI. This UI does not submit
+approval phrases, deploy runtimes, mutate runtime inventory, move traffic, or
+change subscription output.
+
 Repository-local extended measurement assessment is available through
 `assessChannelExtendedMeasurement(...)`. It consumes an already-collected local
 benchmark summary and classifies each probe as:

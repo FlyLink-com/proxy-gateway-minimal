@@ -589,7 +589,7 @@
     {
       "id": "B22-channel-system-review-api",
       "risk": "B",
-      "status": "completed-in-current-pr",
+      "status": "completed-in-pr-214",
       "lane": "edge-data-plane",
       "title": "Add protected channel system review API",
       "goal": "Expose the repository-local channel system decision flow through a protected Admin platform route for operator review without adding execution controls.",
@@ -617,6 +617,47 @@
       "validation": [
         "git diff --check origin/master...HEAD",
         "node --test server/tests/platform-access-routes.test.mjs server/tests/channel-system-decision-flow.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "B23-channel-system-review-ui",
+      "risk": "B",
+      "status": "completed-in-current-pr",
+      "lane": "edge-data-plane",
+      "title": "Add protected Admin channel system review UI",
+      "goal": "Let operators submit safe channel decision evidence to the protected review API and inspect readiness, next action, and blockers in Admin Overview without adding execution controls.",
+      "allowedFiles": [
+        "admin/src/features/subscriptions/api-client.ts",
+        "admin/src/features/subscriptions/types.ts",
+        "admin/src/pages/overview-page.tsx",
+        "admin/src/test/subscriptions.test.ts",
+        "admin/src/styles.css",
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate production",
+        "run probes or contact edge nodes",
+        "download or deploy protocol runtimes",
+        "submit approval phrases",
+        "add approval submission routes",
+        "add runtime execution controls",
+        "add public routes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, or subscription-output state",
+        "write secrets, raw hosts, raw ports, raw logs, credentials, or raw subscription URLs",
+        "treat protected UI review output as runtime deployment approval"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm run test --prefix admin -- src/test/subscriptions.test.ts",
+        "npm run admin:test",
+        "npm run admin:build",
         "npm test",
         "npm run project-state:check"
       ]
