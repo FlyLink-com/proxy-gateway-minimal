@@ -140,6 +140,15 @@ Current architecture priorities:
   exist. It does not expose raw customer portal URLs, artifact references,
   subscription URLs, SQLite persistence, Aliyun deployment, production storage,
   public portal resolution, DNS, or user traffic.
+- Platform Clean-Start Package: repository-only clean-start readiness support
+  lives in `server/services/platform/clean-start-control-plane.mjs` and the
+  protected Admin route `/api/admin/platform/clean-start`. It summarizes
+  account, entitlement, access-grant, and private rendering dry-run readiness
+  without exposing raw portal URLs, artifact references, subscription URLs,
+  node hosts, node credentials, source-state paths, tokens, customer emails, or
+  organization names. It is not Aliyun deployment, runtime initialization,
+  public listener exposure, DNS, provider-firewall hardening, SQLite
+  persistence, state copy, user traffic, or production authority.
 - Aliyun Promotion Runbook / Package 5: the repository-only promotion gate
   model is documented in `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
   and recorded in
@@ -522,6 +531,10 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   Historical AWS state copy is no longer the default dependency for the MVP,
   but remains available only through a separate state-preserving source rescue
   path if the operator later requires continuity.
+- The clean-start repo package now provides protected operator-safe readiness
+  and private rendering dry-run metadata in repository code. It does not perform
+  Aliyun runtime initialization, state copy, public listener exposure, provider
+  firewall mutation, DNS change, edge rebuild, or production promotion.
 
 Latest Aliyun user-management / subscription-distribution decision:
 
@@ -543,11 +556,10 @@ Latest Aliyun user-management / subscription-distribution decision:
 - The tracked static node config still references `prod-edge-a` and
   `prod-edge-b`, so subscription output/config must be rebuilt before the
   service can be considered healthy again.
-- The next executable gate is the clean-start repo implementation package,
-  followed by separate approvals for Aliyun clean-start private validation,
-  provider-firewall hardening, clean edge node rebuild planning, or a
-  rollback-start approval for the stopped AWS nodes if temporary restore is
-  needed.
+- The next executable gates are separate A-tier approvals for Aliyun
+  clean-start private validation, provider-firewall hardening, clean edge node
+  rebuild planning, or rollback-start approval for the stopped AWS nodes if
+  temporary restore is needed.
 
 Latest A2 preflight:
 

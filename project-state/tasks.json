@@ -546,7 +546,7 @@
     {
       "id": "A3-aliyun-user-subscription-distribution-platform",
       "risk": "A",
-      "status": "clean-start-repo-implementation-next-runtime-gates-blocked",
+      "status": "clean-start-repo-support-complete-runtime-gates-blocked",
       "lane": "subscription-control-plane",
       "title": "Build Aliyun as the user-management and subscription-distribution platform",
       "goal": "Move user management, subscription rendering, opaque artifact authority, and private Admin control toward Aliyun while keeping HP as validation/lab and without granting production authority until promotion gates pass.",

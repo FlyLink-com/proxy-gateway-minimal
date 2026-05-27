@@ -222,6 +222,21 @@ customer portal entrance model: planned as an operator-issued dynamic entry
 Subscription V2 renderer: implemented
 opaque artifact issue / refresh / rotate / revoke contracts: implemented
 overview distribution readiness summary: implemented for configured inventory
+clean-start control-plane repo package: implemented in repository only
+  - `server/services/platform/clean-start-control-plane.mjs` builds an
+    operator-safe clean-start readiness package from account, entitlement,
+    access-grant, and current renderer metadata
+  - private rendering dry-run support renders only in process and returns
+    metadata such as readiness status, node count, protocol list, and generated
+    YAML byte size
+  - the summary redacts raw portal URLs, artifact references, subscription
+    URLs, node hosts, node credentials, source-state paths, tokens, customer
+    emails, and organization names
+  - protected Admin route:
+    `/api/admin/platform/clean-start`
+  - no Aliyun deployment, runtime initialization, public listener, DNS,
+    provider-firewall change, SQLite persistence, state copy, user traffic, or
+    production authority is activated by this repository package
 public registration/auth model: not approved
 public payment flow: not approved
 runtime promotion to Aliyun: not approved
@@ -1240,14 +1255,7 @@ Node drain/stop:
 The next executable gate is:
 
 ```text
-build the clean-start control-plane repo implementation package:
-  clean-start initialization shapes,
-  operator-safe decision summaries,
-  private rendering dry-run support,
-  tests,
-  and docs/project-state synchronization;
-
-then request separate A-tier approvals for:
+request separate A-tier approvals for:
   Aliyun clean-start private validation,
   Aliyun provider-firewall hardening,
   public-boundary dry run,
