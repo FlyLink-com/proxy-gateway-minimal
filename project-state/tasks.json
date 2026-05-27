@@ -696,7 +696,7 @@
     {
       "id": "B17-admin-approval-policy-review",
       "risk": "B",
-      "status": "completed-in-current-branch",
+      "status": "completed-in-pr-193",
       "lane": "subscription-control-plane",
       "title": "Render Aliyun approval policy metadata in Admin Overview",
       "goal": "Let operators review exact-phrase fail-closed approval policy metadata in the protected Admin Overview Aliyun gate surface without exposing approval phrase text, submission routes, or execution controls.",

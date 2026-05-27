@@ -662,7 +662,7 @@ Ready PRs must contain the complete loop for their approved scope.
 13. Complete: expose the exact-phrase fail-closed policy as
    operator-facing gate packet metadata without adding approval submission or
    execution controls.
-14. Current repo package: render the approval policy metadata in the Admin
+14. Complete: render the approval policy metadata in the Admin
    Overview Aliyun gate review surface without adding approval submission or
    execution controls.
 15. Next A-tier: request Aliyun clean-start private validation and provider
