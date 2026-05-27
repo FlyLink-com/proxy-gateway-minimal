@@ -37,6 +37,7 @@
     "docs/production-replacement-records/2026-05-27-aliyun-hp-management-source-firewall-execution.md",
     "docs/production-replacement-records/2026-05-27-aliyun-public-boundary-dry-run-execution.md",
     "docs/production-replacement-records/2026-05-27-aliyun-production-subscription-distribution-promotion.md",
+    "docs/production-replacement-records/2026-05-27-aliyun-promotion-observation-aegis-readonly.md",
     "docs/production-replacement-records/2026-05-27-aliyun-next-a-tier-execution-packet.md",
     "docs/production-replacement-records/2026-05-27-aliyun-repo-mvp-closeout.md",
     "docs/production-replacement-records/templates/aliyun-clean-start-private-validation-execution-template.md",
@@ -91,6 +92,7 @@
     "Historical pre-promotion Aliyun HP management-source firewall follow-up passed for the not-yet-online candidate: HP public /32 was added for SSH and existing wg-home UDP, transient broad rule creation was immediately corrected, HP TCP/22 and UDP/51820 reachability to Aliyun were verified, public 80/443/3456/18080 remained closed, and DNS, AWS, state, user traffic, edge traffic, and production authority were unchanged; HP wg-home logical handshake remains a separate operator-lab follow-up",
     "Historical pre-promotion Aliyun public-boundary dry run passed and was cleaned up for the not-yet-online candidate: temporary HP-scoped 80/443 verified Nginx /api/health exposure with Admin/root returning 404 and 3456/18080 staying private; final public 80/443/3456/18080 were closed again, and DNS, AWS, state, user traffic, edge traffic, and production authority were unchanged",
     "Aliyun production subscription-distribution promotion passed after exact approval: sub.globalcirclecat.com now points to the Aliyun public subscription boundary on durable 80/443 with HTTPS, public health returns 200, public Admin/root return 404, no-token subscription refresh returns 401, one authorized smoke refresh returned 200 and the smoke tenant is disabled; ss-sg.globalcirclecat.com, edge traffic, AWS, historical state copy, public Admin, 3456, and 18080 remain out of scope; Aliyun aegis.service is a recorded follow-up",
+    "Aliyun post-promotion observation passed read-only: five public samples returned health=200, admin=404, and no-token subscription=401; AliDNS remained sub on Aliyun and ss-sg on old AWS; proxy-gateway-candidate/nginx/ufw/certbot.timer stayed active; DB integrity stayed ok with the promotion smoke tenant disabled; Aegis was diagnosed as a failed systemd unit while Aegis updater/client/monitor processes remained present",
     "Aliyun promotion runbook Package 5 exists as repo-only gate design separating live inventory, source-state decision, private state-copy validation, public-boundary dry run, DNS promotion, observation, rollback, and cleanup without authorizing Aliyun deployment, DNS, state copy, public listener exposure, edge traffic, or production authority transfer",
     "Aliyun clean-start control-plane is now the default path unless the operator explicitly requires historical state preservation; the repo package exists, and clean-start private validation plus provider-firewall hardening each have standalone Risk A runbooks before runtime initialization, public-boundary dry run, DNS promotion, edge rebuild, or rollback-start",
     "Domain Unit Boundaries for product business, commercial entitlement, subscription access, nodes, validation, operator lab, and production ops",
@@ -164,7 +166,7 @@
       "sub.globalcirclecat.com now points to the Aliyun candidate public IP and serves the approved public subscription boundary on 80/443 with public Admin blocked.",
       "ss-sg.globalcirclecat.com still points at the old 13.215.156.159 address by design; edge traffic activation is not approved.",
       "Stopped instances have no Elastic IP association; rollback by starting may require DNS/config updates if AWS assigns new public IP addresses.",
-      "Aliyun aegis.service failed during certbot installation and is tracked as a separate host security-agent follow-up; proxy-gateway-candidate, nginx, ufw, and certbot.timer are active.",
+      "Aliyun aegis.service failed during certbot installation and read-only follow-up found Aegis processes still present; proxy-gateway-candidate, nginx, ufw, and certbot.timer are active.",
       "Do not terminate legacy blue or delete any security group without separate Risk A approval.",
       "Do not trust this snapshot for mutation; verify AWS, DNS, Nginx, systemd, endpoint, and SQLite state live."
     ]
@@ -238,8 +240,7 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Run an Aliyun promotion observation follow-up using docs/production-replacement-records/2026-05-27-aliyun-production-subscription-distribution-promotion.md as the baseline evidence",
-    "Investigate or document the Aliyun aegis.service failure separately from proxy-gateway promotion, because proxy-gateway-candidate, nginx, ufw, and certbot.timer remain active",
+    "Request a separate Aliyun Aegis service repair approval if the operator wants process cleanup and service restart; otherwise leave it as a tracked host security-agent follow-up",
     "Keep public Admin blocked and keep edge traffic activation out of scope until a separate exact approval and execution record exists",
     "Plan clean edge node rebuild now that Aliyun owns subscription distribution but ss-sg and edge data-plane remain unchanged",
     "Investigate HP wg-home logical handshake only if the tunnel path is required; provider UDP/51820 now reaches Aliyun from HP",

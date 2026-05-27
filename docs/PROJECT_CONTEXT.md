@@ -274,7 +274,13 @@ Current architecture priorities:
   blocking/no-token behavior plus a single authorized smoke refresh, and kept
   `ss-sg.globalcirclecat.com`, edge traffic, AWS, historical state copy,
   public Admin, 3456, and 18080 out of scope. The smoke tenant is disabled and
-  the Aliyun `aegis.service` side effect is recorded for follow-up.
+  the Aliyun `aegis.service` side effect is recorded for follow-up. The
+  post-promotion observation and Aegis read-only follow-up is recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-promotion-observation-aegis-readonly.md`;
+  it observed five stable public samples, confirmed DNS remained in the
+  intended split state, confirmed DB aggregate safety, and diagnosed Aegis as a
+  failed systemd unit with Aegis processes still present. No Aegis repair or
+  other host mutation was performed.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host now serves the approved
@@ -386,6 +392,13 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   issued HTTPS for the subscription boundary, verified public health/Admin
   blocking/no-token and authorized-smoke behavior, left `ss-sg` unchanged, did
   not activate edge traffic, and recorded an Aliyun `aegis.service` follow-up.
+- The post-promotion observation and Aegis read-only follow-up is recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-promotion-observation-aegis-readonly.md`.
+  It observed five stable public samples, preserved the intended DNS split,
+  confirmed DB integrity and disabled-smoke state, and found `aegis.service`
+  failed while Aegis updater/client/monitor processes remain present. It did
+  not mutate DNS, firewall, Nginx, proxy-gateway, Aegis, AWS, tenants,
+  artifacts, or edge traffic.
 - The latest channel canary server selection inventory is recorded in
   `docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md`.
   It recommends a clean provider-neutral `channel-lab-a` target and Hysteria2
@@ -693,8 +706,10 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   subscription-distribution promotion now each have execution records. The
   latest promotion record proves `sub.globalcirclecat.com` on Aliyun, public
   Admin blocked, no-token subscription rejection, one authorized smoke refresh,
-  disabled smoke state, and unchanged edge DNS. The remaining work is
-  observation/Aegis follow-up, clean edge rebuild or rollback-start decisions,
+  disabled smoke state, and unchanged edge DNS. A read-only observation/Aegis
+  follow-up then confirmed stable public samples and narrowed Aegis to a failed
+  systemd unit with Aegis processes still present. The remaining work is Aegis
+  repair approval if desired, clean edge rebuild or rollback-start decisions,
   broader artifact issuance, and legacy query-token retirement.
 
 Latest Aliyun user-management / subscription-distribution decision:
@@ -717,11 +732,10 @@ Latest Aliyun user-management / subscription-distribution decision:
 - The tracked static node config still references `prod-edge-a` and
   `prod-edge-b`, so subscription output/config must be rebuilt before the
   service can be considered healthy again.
-- The next executable gates are separate A-tier approvals for clean edge node
-  rebuild planning, rollback-start approval for stopped AWS nodes if temporary
-  restore is needed, broader artifact issuance, or legacy query-token
-  retirement. Observation and Aliyun `aegis.service` follow-up should run
-  before declaring the promotion fully closed.
+- The next executable gates are separate A-tier approvals for Aliyun
+  `aegis.service` repair if desired, clean edge node rebuild planning,
+  rollback-start approval for stopped AWS nodes if temporary restore is needed,
+  broader artifact issuance, or legacy query-token retirement.
 
 Latest A2 preflight:
 
