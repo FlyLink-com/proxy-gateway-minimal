@@ -196,6 +196,14 @@ The bridge is still advisory evidence. It does not inspect live hosts, contact
 edge nodes, query cloud APIs, run probes, deploy runtimes, change firewall
 rules, submit approval phrases, move traffic, or change subscription output.
 
+The same bridge is available through the protected Admin platform route
+`POST /api/admin/platform/channel-runtime-evidence-bridge` and an Admin
+Overview review panel. Operators can paste the same safe runtime evidence
+bridge packet and receive the normalized runtime inventory input plus channel
+system readiness artifact without using the local CLI. This protected surface
+still does not expose approval submission, runtime deployment, DNS, firewall,
+traffic, or subscription-output controls.
+
 `assessChannelExtendedMeasurement(...)` can classify already-collected local
 benchmark summaries into `ready_for_decision`, `needs_extended_measurement`, or
 `hold_for_investigation`. This closes the repository-side gap between short

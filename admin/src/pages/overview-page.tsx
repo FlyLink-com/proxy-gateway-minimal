@@ -5,6 +5,8 @@ import type {
   AliyunGateDecision,
   AliyunGateDecisionPacket,
   AliyunGateEvidenceSummary,
+  ChannelRuntimeEvidenceBridge,
+  ChannelRuntimeEvidenceBridgeInput,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
   ProviderFirewallEvidenceInput,
@@ -78,6 +80,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
       ) : null}
 
       <ChannelSystemReviewPanel apiClient={apiClient} />
+      <ChannelRuntimeEvidenceBridgePanel apiClient={apiClient} />
       <AliyunGateReviewPanel apiClient={apiClient} />
     </div>
   );
@@ -99,6 +102,15 @@ function parseChannelSystemReviewInput(value: string): ChannelSystemReviewInput 
   }
   assertSafeChannelSystemEvidence(parsed);
   return parsed as ChannelSystemReviewInput;
+}
+
+function parseChannelRuntimeEvidenceBridgeInput(value: string): ChannelRuntimeEvidenceBridgeInput {
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Safe runtime evidence bridge packet must be a JSON object.");
+  }
+  assertSafeChannelSystemEvidence(parsed);
+  return parsed as ChannelRuntimeEvidenceBridgeInput;
 }
 
 const CHANNEL_SYSTEM_FORBIDDEN_EVIDENCE_KEYS = new Set([
@@ -227,6 +239,92 @@ function ChannelSystemReviewPanel({ apiClient }: { apiClient: AdminApiClient }) 
               <li>{review.safety.noTrafficMovement ? "No traffic movement" : "Traffic movement flag missing"}</li>
               <li>
                 {review.safety.requiresSeparateRiskAApproval
+                  ? "Separate Risk A approval required"
+                  : "Risk A approval flag missing"}
+              </li>
+            </ul>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ChannelRuntimeEvidenceBridgePanel({ apiClient }: { apiClient: AdminApiClient }) {
+  const [packetText, setPacketText] = useState("");
+  const [bridge, setBridge] = useState<ChannelRuntimeEvidenceBridge | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewing(true);
+    setError("");
+    try {
+      const input = parseChannelRuntimeEvidenceBridgeInput(packetText);
+      const nextBridge = await apiClient.reviewChannelRuntimeEvidence(input);
+      setBridge(nextBridge);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+      setBridge(null);
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  const runtimeBlockers = bridge
+    ? bridge.channelSystem.systemReadiness.runtimeBlockedCount
+      + bridge.channelSystem.systemReadiness.missingRuntimeInventoryCount
+    : 0;
+
+  return (
+    <section className="gate-review-card" aria-labelledby="channel-runtime-evidence-bridge-heading">
+      <div className="page-heading">
+        <div>
+          <h2 id="channel-runtime-evidence-bridge-heading">Channel runtime evidence bridge</h2>
+          <p className="muted">Protected bridge from safe runtime evidence packets into channel system readiness.</p>
+        </div>
+      </div>
+
+      <div className="alert">
+        This bridge reviews runtime evidence only; it does not expose approval, deployment, DNS, firewall, or traffic controls.
+      </div>
+
+      {error ? <div className="alert alert-error">{error}</div> : null}
+
+      <form className="channel-review-form" onSubmit={handleReviewSubmit}>
+        <label htmlFor="channel-runtime-evidence-bridge-packet">Safe runtime evidence bridge packet</label>
+        <textarea
+          id="channel-runtime-evidence-bridge-packet"
+          value={packetText}
+          onChange={(event) => setPacketText(event.target.value)}
+          placeholder='{"dryRunSummary":{},"measurementScore":{},"runtimeEvidenceInput":{"records":[]}}'
+          rows={8}
+        />
+        <button className="primary-button" type="submit" disabled={reviewing}>
+          {reviewing ? "Reviewing..." : "Review runtime evidence bridge"}
+        </button>
+      </form>
+
+      {bridge ? (
+        <>
+          <div className="metric-grid">
+            <Metric label="Bridge mode" value={bridge.mode} />
+            <Metric label="Flow status" value={bridge.channelSystem.flowStatus} />
+            <Metric label="Canary ready" value={bridge.channelSystem.systemReadiness.canaryReadyCount} />
+            <Metric label="Runtime blockers" value={runtimeBlockers} />
+          </div>
+          <div className="gate-boundary">
+            <strong>Bridge boundary</strong>
+            <ul>
+              <li>{bridge.safety.advisoryOnly ? "Advisory-only artifact" : "Advisory flag missing"}</li>
+              <li>{bridge.safety.summaryOnly ? "Summary-only runtime evidence" : "Summary-only flag missing"}</li>
+              <li>{bridge.safety.noRuntimeMutation ? "No runtime mutation" : "Runtime mutation flag missing"}</li>
+              <li>{bridge.safety.noProductionMutation ? "No production mutation" : "Production mutation flag missing"}</li>
+              <li>{bridge.safety.noApprovalSubmission ? "No approval submission" : "Approval submission flag missing"}</li>
+              <li>{bridge.safety.noTrafficMovement ? "No traffic movement" : "Traffic movement flag missing"}</li>
+              <li>
+                {bridge.safety.requiresSeparateRiskAApproval
                   ? "Separate Risk A approval required"
                   : "Risk A approval flag missing"}
               </li>

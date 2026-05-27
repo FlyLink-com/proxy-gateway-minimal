@@ -374,7 +374,11 @@ Current architecture priorities:
   channel runtime evidence bridge can now convert safe runtime evidence packets
   into runtime inventory input and the full system decision readiness artifact
   without edge-node contact, runtime mutation, approval submission, traffic
-  movement, or production activation. Extended measurement assessments can classify
+  movement, or production activation. The protected Admin platform route and
+  Admin Overview review panel can now run that bridge from safe operator
+  runtime evidence packets without requiring CLI composition and without
+  exposing runtime deployment, approval submission, DNS, firewall, traffic, or
+  subscription-output controls. Extended measurement assessments can classify
   already-collected local benchmark summaries as ready, needing more samples,
   or hold for investigation before an operator decides on the next canary gate. Measurement
   investigation reports can consume safe bundle reports and classify hold
@@ -774,6 +778,13 @@ simplification queue is closed:
   into runtime inventory input and full channel system readiness artifacts
   without edge-node contact, runtime mutation, approval submission, traffic
   movement, subscription-output change, or production activation.
+- `B25-channel-runtime-evidence-review` - completed in the Channel Runtime
+  Evidence Review work; the protected Admin platform route and Admin Overview
+  can now accept safe runtime evidence bridge packets and return the normalized
+  runtime inventory input plus channel system readiness artifact without public
+  routes, execution controls, edge-node contact, runtime mutation, approval
+  submission, DNS, firewall, traffic, subscription-output change, or production
+  activation.
 - `C4-tuic-comparison-canary-plan` - completed in the TUIC Comparison Canary
   Plan work; TUIC is now the documented next measured channel candidate after
   the held Hysteria2 extended measurement, while VLESS/XUDP remains the

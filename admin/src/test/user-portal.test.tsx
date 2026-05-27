@@ -4,7 +4,11 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { App } from "../App";
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import type { AdminApiClient } from "../features/subscriptions/api-client";
-import type { ChannelSystemDecisionFlow, SubscriptionTenant } from "../features/subscriptions/types";
+import type {
+  ChannelRuntimeEvidenceBridge,
+  ChannelSystemDecisionFlow,
+  SubscriptionTenant
+} from "../features/subscriptions/types";
 
 afterEach(() => {
   cleanup();
@@ -69,6 +73,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
       accessMigration: null
     }),
     reviewChannelSystem: async () => channelSystemDecisionFlow(),
+    reviewChannelRuntimeEvidence: async () => channelRuntimeEvidenceBridge(),
     overview: async () => ({
       ok: true,
       total: 0,
@@ -106,6 +111,30 @@ function channelSystemDecisionFlow(): ChannelSystemDecisionFlow {
     outputs: {},
     safety: {
       advisoryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      requiresSeparateRiskAApproval: true,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
+    }
+  };
+}
+
+function channelRuntimeEvidenceBridge(): ChannelRuntimeEvidenceBridge {
+  return {
+    ok: true,
+    mode: "channel-runtime-evidence-bridge",
+    generatedAt: "2026-05-27T20:02:00.000Z",
+    sourceGeneratedAt: "2026-05-27T20:01:00.000Z",
+    runtimeInventoryInput: {
+      generatedAt: "2026-05-27T20:01:00.000Z",
+      records: []
+    },
+    channelSystem: channelSystemDecisionFlow(),
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
       noRuntimeMutation: true,
       noProductionMutation: true,
       noApprovalSubmission: true,

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { buildChannelRuntimeEvidenceBridge } from "../services/channel-runtime-evidence-bridge.mjs";
 import { buildChannelSystemDecisionFlow } from "../services/channel-system-decision-flow.mjs";
 import { createCleanStartControlPlanePackage } from "../services/platform/clean-start-control-plane.mjs";
 import { createAliyunGateDecisionPacket } from "../services/platform/aliyun-gate-decision-packet.mjs";
@@ -28,6 +29,12 @@ function requireAliyunGateEvidenceShell(shell) {
 
 function channelSystemValidationError() {
   const error = new Error("channel system decision flow input is invalid");
+  error.code = "validation_error";
+  return error;
+}
+
+function channelRuntimeEvidenceBridgeValidationError() {
+  const error = new Error("channel runtime evidence bridge input is invalid");
   error.code = "validation_error";
   return error;
 }
@@ -96,6 +103,21 @@ export function adminPlatformRoutes(state) {
       });
     } catch {
       sendError(res, channelSystemValidationError());
+    }
+  });
+
+  router.post("/api/admin/platform/channel-runtime-evidence-bridge", (req, res) => {
+    try {
+      const input = req.body ?? {};
+      res.json({
+        channelRuntimeEvidence: buildChannelRuntimeEvidenceBridge({
+          dryRunSummary: input.dryRunSummary,
+          measurementScore: input.measurementScore,
+          runtimeEvidenceInput: input.runtimeEvidenceInput
+        })
+      });
+    } catch {
+      sendError(res, channelRuntimeEvidenceBridgeValidationError());
     }
   });
 
