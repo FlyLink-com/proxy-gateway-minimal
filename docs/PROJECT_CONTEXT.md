@@ -211,6 +211,9 @@ Current architecture priorities:
   and explicitly says that short confirmations such as `同意`, `继续`, or
   `开始` do not authorize execution. It is repo-only documentation and does
   not perform Aliyun, firewall, DNS, runtime, state, or traffic mutation.
+  Execution-record templates for the two next gates live under
+  `docs/production-replacement-records/templates/` and must only be copied into
+  dated execution records after the matching exact approval phrase is received.
   The protected `/api/admin/platform/aliyun-gates` packet can now show which
   next gates are ready for operator approval and which remain blocked, and the
   protected gate-evidence shell can record operator-provided provider-firewall
