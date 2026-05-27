@@ -5,6 +5,8 @@ import type {
   AliyunGateDecision,
   AliyunGateDecisionPacket,
   AliyunGateEvidenceSummary,
+  ChannelSystemDecisionFlow,
+  ChannelSystemReviewInput,
   ProviderFirewallEvidenceInput,
   SubscriptionOverview
 } from "../features/subscriptions/types";
@@ -75,6 +77,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
         </div>
       ) : null}
 
+      <ChannelSystemReviewPanel apiClient={apiClient} />
       <AliyunGateReviewPanel apiClient={apiClient} />
     </div>
   );
@@ -86,6 +89,152 @@ function Metric({ label, value }: { label: string; value: number | string }) {
       <span>{label}</span>
       <strong>{value}</strong>
     </div>
+  );
+}
+
+function parseChannelSystemReviewInput(value: string): ChannelSystemReviewInput {
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Safe channel evidence packet must be a JSON object.");
+  }
+  assertSafeChannelSystemEvidence(parsed);
+  return parsed as ChannelSystemReviewInput;
+}
+
+const CHANNEL_SYSTEM_FORBIDDEN_EVIDENCE_KEYS = new Set([
+  "artifact",
+  "artifactRef",
+  "artifactReference",
+  "artifactUrl",
+  "credential",
+  "credentials",
+  "customerData",
+  "customerEmail",
+  "email",
+  "host",
+  "hosts",
+  "ip",
+  "ips",
+  "nodeCredential",
+  "password",
+  "port",
+  "ports",
+  "rawError",
+  "rawLog",
+  "secret",
+  "sourceIp",
+  "subscriptionUrl",
+  "targetHost",
+  "targetPort",
+  "token",
+  "url",
+  "userAgent"
+]);
+
+const CHANNEL_SYSTEM_FORBIDDEN_VALUE_PATTERN = /https?:\/\/|token=|subscriptionUrl|artifactUrl|secret\.example/i;
+
+function assertSafeChannelSystemEvidence(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      assertSafeChannelSystemEvidence(item);
+    }
+    return;
+  }
+  if (!value || typeof value !== "object") {
+    if (typeof value === "string" && CHANNEL_SYSTEM_FORBIDDEN_VALUE_PATTERN.test(value)) {
+      throw new Error("Safe channel evidence packet contains forbidden runtime details.");
+    }
+    return;
+  }
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (CHANNEL_SYSTEM_FORBIDDEN_EVIDENCE_KEYS.has(key)) {
+      throw new Error("Safe channel evidence packet contains forbidden runtime details.");
+    }
+    assertSafeChannelSystemEvidence(nestedValue);
+  }
+}
+
+function ChannelSystemReviewPanel({ apiClient }: { apiClient: AdminApiClient }) {
+  const [packetText, setPacketText] = useState("");
+  const [review, setReview] = useState<ChannelSystemDecisionFlow | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewing(true);
+    setError("");
+    try {
+      const input = parseChannelSystemReviewInput(packetText);
+      const nextReview = await apiClient.reviewChannelSystem(input);
+      setReview(nextReview);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+      setReview(null);
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  const runtimeBlockers = review
+    ? review.systemReadiness.runtimeBlockedCount + review.systemReadiness.missingRuntimeInventoryCount
+    : 0;
+
+  return (
+    <section className="gate-review-card" aria-labelledby="channel-system-review-heading">
+      <div className="page-heading">
+        <div>
+          <h2 id="channel-system-review-heading">Channel system review</h2>
+          <p className="muted">Protected review surface for channel readiness packets.</p>
+        </div>
+      </div>
+
+      <div className="alert">
+        No runtime execution controls are exposed; this panel only reviews protected channel decision evidence.
+      </div>
+
+      {error ? <div className="alert alert-error">{error}</div> : null}
+
+      <form className="channel-review-form" onSubmit={handleReviewSubmit}>
+        <label htmlFor="channel-system-safe-evidence">Safe channel evidence packet</label>
+        <textarea
+          id="channel-system-safe-evidence"
+          value={packetText}
+          onChange={(event) => setPacketText(event.target.value)}
+          placeholder='{"dryRunSummary":{},"measurementScore":{},"runtimeInventoryInput":{}}'
+          rows={8}
+        />
+        <button className="primary-button" type="submit" disabled={reviewing}>
+          {reviewing ? "Reviewing..." : "Review channel system"}
+        </button>
+      </form>
+
+      {review ? (
+        <>
+          <div className="metric-grid">
+            <Metric label="Flow status" value={review.flowStatus} />
+            <Metric label="Next action" value={review.requiredNextAction || "none"} />
+            <Metric label="Canary ready" value={review.systemReadiness.canaryReadyCount} />
+            <Metric label="Runtime blockers" value={runtimeBlockers} />
+          </div>
+          <div className="gate-boundary">
+            <strong>Review boundary</strong>
+            <ul>
+              <li>{review.safety.advisoryOnly ? "Advisory-only artifact" : "Advisory flag missing"}</li>
+              <li>{review.safety.noRuntimeMutation ? "No runtime mutation" : "Runtime mutation flag missing"}</li>
+              <li>{review.safety.noProductionMutation ? "No production mutation" : "Production mutation flag missing"}</li>
+              <li>{review.safety.noApprovalSubmission ? "No approval submission" : "Approval submission flag missing"}</li>
+              <li>{review.safety.noTrafficMovement ? "No traffic movement" : "Traffic movement flag missing"}</li>
+              <li>
+                {review.safety.requiresSeparateRiskAApproval
+                  ? "Separate Risk A approval required"
+                  : "Risk A approval flag missing"}
+              </li>
+            </ul>
+          </div>
+        </>
+      ) : null}
+    </section>
   );
 }
 

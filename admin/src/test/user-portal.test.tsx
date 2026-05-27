@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { App } from "../App";
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import type { AdminApiClient } from "../features/subscriptions/api-client";
-import type { SubscriptionTenant } from "../features/subscriptions/types";
+import type { ChannelSystemDecisionFlow, SubscriptionTenant } from "../features/subscriptions/types";
 
 afterEach(() => {
   cleanup();
@@ -68,6 +68,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
       providerFirewall: null,
       accessMigration: null
     }),
+    reviewChannelSystem: async () => channelSystemDecisionFlow(),
     overview: async () => ({
       ok: true,
       total: 0,
@@ -85,6 +86,33 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
       }
     }),
     ...overrides
+  };
+}
+
+function channelSystemDecisionFlow(): ChannelSystemDecisionFlow {
+  return {
+    ok: true,
+    mode: "channel-system-decision-flow",
+    generatedAt: "2026-05-27T20:02:00.000Z",
+    flowStatus: "blocked",
+    requiredNextAction: "collect_runtime_inventory",
+    systemReadiness: {
+      runtimeGateStatus: "blocked",
+      selectedBaselineReady: false,
+      canaryReadyCount: 0,
+      runtimeBlockedCount: 0,
+      missingRuntimeInventoryCount: 1
+    },
+    outputs: {},
+    safety: {
+      advisoryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      requiresSeparateRiskAApproval: true,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
+    }
   };
 }
 

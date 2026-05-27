@@ -176,6 +176,12 @@ one readiness packet. The route is not public and does not add any execution
 control; it only returns the same redacted advisory evidence as the local
 builder.
 
+The Admin Overview contains the first protected UI integration for that route.
+It lets operators submit a safe channel evidence packet and inspect flow status,
+required next action, canary-ready count, and runtime blocker count. It does
+not expose runtime execution, approval submission, DNS, firewall, traffic, or
+subscription-output controls.
+
 `assessChannelExtendedMeasurement(...)` can classify already-collected local
 benchmark summaries into `ready_for_decision`, `needs_extended_measurement`, or
 `hold_for_investigation`. This closes the repository-side gap between short

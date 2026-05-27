@@ -153,3 +153,36 @@ export type AliyunGateEvidenceSummary = {
   providerFirewall: ProviderFirewallEvidenceSummary | null;
   accessMigration: AccessMigrationEvidenceSummary | null;
 };
+
+export type ChannelSystemReviewInput = {
+  dryRunSummary: unknown;
+  measurementScore: unknown;
+  runtimeInventoryInput: unknown;
+};
+
+export type ChannelSystemReadiness = {
+  runtimeGateStatus: string;
+  selectedBaselineReady: boolean;
+  canaryReadyCount: number;
+  runtimeBlockedCount: number;
+  missingRuntimeInventoryCount: number;
+};
+
+export type ChannelSystemDecisionFlow = {
+  ok: boolean;
+  mode: "channel-system-decision-flow";
+  generatedAt: string;
+  flowStatus: string;
+  requiredNextAction: string;
+  systemReadiness: ChannelSystemReadiness;
+  outputs: Record<string, unknown>;
+  safety: {
+    advisoryOnly: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+    noApprovalSubmission: boolean;
+    noTrafficMovement: boolean;
+    requiresSeparateRiskAApproval: boolean;
+    omittedFields: string[];
+  };
+};

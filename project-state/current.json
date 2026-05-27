@@ -125,6 +125,7 @@
     "Channel Runtime Gate Packet for turning runtime registry output into operator-safe approval-readiness evidence before separate Risk A runtime canary gates",
     "Channel System Decision Flow for composing dry-run summaries, measurement scores, and safe runtime inventory inputs into one advisory readiness artifact without probes, runtime mutation, approval submission, traffic movement, or production activation",
     "Channel System Review API for exposing the same advisory decision flow through a protected Admin platform route without public access, execution controls, runtime mutation, approval submission, traffic movement, or production activation",
+    "Channel System Review UI for submitting safe channel decision evidence to the protected Admin platform route and rendering flow status, required next action, canary readiness, and runtime blockers in Admin Overview without execution controls, runtime mutation, approval submission, traffic movement, or subscription-output change",
     "Channel Extended Measurement Assessment for advisory ready/needs-more-samples/hold classification from already-collected local summaries",
     "Channel Measurement Investigation for advisory hold-pattern classification from safe measurement bundle reports",
     "Channel Candidate Comparison for advisory next-candidate plans after held measurement results",

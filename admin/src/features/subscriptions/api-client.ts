@@ -2,6 +2,8 @@ import type {
   AccessMigrationEvidenceInput,
   AliyunGateDecisionPacket,
   AliyunGateEvidenceSummary,
+  ChannelSystemDecisionFlow,
+  ChannelSystemReviewInput,
   CreateSubscriptionInput,
   CreateSubscriptionResult,
   ProviderFirewallEvidenceInput,
@@ -154,7 +156,17 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
             body: JSON.stringify(input)
           }
         )
-      ).evidence
+      ).evidence,
+    reviewChannelSystem: async (input: ChannelSystemReviewInput) =>
+      (
+        await request<{ channelSystem: ChannelSystemDecisionFlow }>(
+          "/api/admin/platform/channel-system-decision-flow",
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).channelSystem
   };
 }
 
