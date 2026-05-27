@@ -26,6 +26,7 @@ export { buildChannelRuntimeInventorySummary } from "./server/services/channel-r
 export { buildChannelRuntimeRegistry } from "./server/services/channel-runtime-registry.mjs";
 export { buildChannelSystemDecisionFlow } from "./server/services/channel-system-decision-flow.mjs";
 export { buildAccessModelInventorySummary } from "./server/services/platform/access-model-inventory-summary.mjs";
+export { buildCleanEdgeReadinessSummary } from "./server/services/clean-edge-readiness-summary.mjs";
 export { assessChannelExtendedMeasurement } from "./server/services/channel-extended-measurement.mjs";
 export { buildChannelExtendedMeasurementReport } from "./server/services/channel-extended-report.mjs";
 export { buildChannelMeasurementBundleReport } from "./server/services/channel-measurement-bundle.mjs";

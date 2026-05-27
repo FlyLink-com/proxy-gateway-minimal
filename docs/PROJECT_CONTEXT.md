@@ -570,7 +570,11 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   `docs/production-replacement-records/2026-05-27-post-226-clean-edge-live-check.md`;
   it reconfirms the Aliyun public subscription boundary, unchanged `ss-sg`,
   safe public Admin/no-token behavior, active proxy-gateway-candidate/nginx,
-  and failed `aegis.service` without executing any mutation.
+  and failed `aegis.service` without executing any mutation. The repository
+  helper documented in `docs/CLEAN_EDGE_READINESS_SUMMARY.md` can normalize
+  safe operator-provided clean edge gate facts into a redacted readiness
+  summary via `npm run platform:clean-edge-readiness-summary -- <safe.json>`.
+  The helper is not live inventory, not approval authority, and not execution.
 - The opaque artifact issuance and legacy query-token retirement runbook is
   recorded in
   `docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md`.
@@ -1020,6 +1024,9 @@ Latest Aliyun user-management / subscription-distribution decision:
   `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md`;
   the latest read-only live check before execution is
   `docs/production-replacement-records/2026-05-27-post-226-clean-edge-live-check.md`;
+  safe readiness facts can be normalized with
+  `npm run platform:clean-edge-readiness-summary -- <safe.json>` but that
+  helper is not live inventory or execution authority;
   opaque artifact issuance and legacy query-token retirement must use their
   separate exact approval phrases from
   `docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md`.
