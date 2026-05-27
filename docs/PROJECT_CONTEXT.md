@@ -228,6 +228,11 @@ Current architecture priorities:
   protected gate-evidence shell can record operator-provided provider-firewall
   evidence for that packet. Runtime initialization, public-boundary dry run,
   DNS promotion, edge rebuild, and rollback-start remain separate A-tier gates.
+  The repo-only B/C MVP closeout audit lives in
+  `docs/production-replacement-records/2026-05-27-aliyun-repo-mvp-closeout.md`
+  and records that repository contracts, protected Admin review surfaces, gate
+  policy metadata, and validation boundaries are ready for the next exact-phrase
+  A-tier decision gate.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a

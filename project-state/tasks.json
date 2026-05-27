@@ -18,6 +18,7 @@
     "docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md",
     "docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md",
     "docs/production-replacement-records/2026-05-27-aliyun-next-a-tier-execution-packet.md",
+    "docs/production-replacement-records/2026-05-27-aliyun-repo-mvp-closeout.md",
     "docs/production-replacement-records/templates/aliyun-clean-start-private-validation-execution-template.md",
     "docs/production-replacement-records/templates/aliyun-provider-firewall-hardening-execution-template.md",
     "docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md",
@@ -732,6 +733,38 @@
         "npm run admin:test",
         "npm run admin:build",
         "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "C7-aliyun-repo-mvp-closeout",
+      "risk": "C",
+      "status": "completed-in-current-branch",
+      "lane": "subscription-control-plane",
+      "title": "Close out Aliyun repo-only MVP phase before exact-phrase A-tier handoff",
+      "goal": "Record that the Aliyun Subscription Control Platform B/C repository implementation path is complete and that remaining work is exact-phrase A-tier execution only.",
+      "allowedFiles": [
+        "docs/production-replacement-records/2026-05-27-aliyun-repo-mvp-closeout.md",
+        "docs/README.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate Aliyun runtime",
+        "change DNS",
+        "change provider firewall",
+        "change UFW",
+        "submit or execute approval phrases",
+        "initialize candidate state",
+        "copy state",
+        "mutate AWS",
+        "open a public listener",
+        "move user traffic",
+        "move edge traffic",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
         "npm run project-state:check"
       ]
     },
