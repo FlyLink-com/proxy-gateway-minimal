@@ -113,6 +113,23 @@ blockers, and the required next action. Decision packs remain advisory only and
 do not authorize runtime canary, server, firewall, DNS, or subscription output
 changes.
 
+`buildChannelRuntimeRegistry(...)` can combine the decision-pack path with a
+safe runtime inventory summary. This is the first repository-level integration
+layer between channel measurement evidence and runtime lifecycle evidence:
+
+```text
+dry-run config summary
+  -> measurement score
+  -> decision pack
+  -> runtime inventory summary
+  -> channel runtime registry
+```
+
+The registry distinguishes canary-ready candidates from runtime-blocked
+candidates and candidates that still lack runtime inventory. It remains
+operator evidence only: it does not run probes, download protocol runtimes,
+deploy services, change firewall rules, or activate subscription output.
+
 `assessChannelExtendedMeasurement(...)` can classify already-collected local
 benchmark summaries into `ready_for_decision`, `needs_extended_measurement`, or
 `hold_for_investigation`. This closes the repository-side gap between short

@@ -321,9 +321,12 @@ Current architecture priorities:
   candidate reports can join dry-run config metadata with scores into
   stable/canary/private/hold/missing-measurement groups for operator review,
   and decision packs can turn those inputs into safe baseline/canary/blocker
-  artifacts. Extended measurement assessments can classify already-collected
-  local benchmark summaries as ready, needing more samples, or hold for
-  investigation before an operator decides on the next canary gate. Measurement
+  artifacts. Channel runtime registry integration can now join dry-run config,
+  measurement score, and safe runtime inventory summaries into canary-ready,
+  runtime-blocked, and missing-inventory groups without contacting edge nodes
+  or mutating runtime state. Extended measurement assessments can classify
+  already-collected local benchmark summaries as ready, needing more samples,
+  or hold for investigation before an operator decides on the next canary gate. Measurement
   investigation reports can consume safe bundle reports and classify hold
   patterns such as sustained tail latency or isolated tail spikes into
   advisory next actions. Candidate comparison plans can combine those
@@ -667,6 +670,11 @@ simplification queue is closed:
   produce advisory next-candidate comparison plans for TUIC or VLESS/XUDP after
   a held Hysteria2 result without running probes, touching edge nodes, or
   mutating production.
+- `B18-channel-runtime-registry` - completed in the Channel Runtime Registry
+  work; dry-run summaries, measurement scores, and safe runtime inventory
+  summaries can now be joined into canary-ready, runtime-blocked, and
+  missing-inventory groups without running probes, touching edge nodes,
+  deploying runtimes, opening ports, or changing subscription output.
 - `C4-tuic-comparison-canary-plan` - completed in the TUIC Comparison Canary
   Plan work; TUIC is now the documented next measured channel candidate after
   the held Hysteria2 extended measurement, while VLESS/XUDP remains the
