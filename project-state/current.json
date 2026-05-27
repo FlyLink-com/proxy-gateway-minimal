@@ -34,6 +34,7 @@
     "docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-execution.md",
     "docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md",
     "docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-execution.md",
+    "docs/production-replacement-records/2026-05-27-aliyun-hp-management-source-firewall-execution.md",
     "docs/production-replacement-records/2026-05-27-aliyun-next-a-tier-execution-packet.md",
     "docs/production-replacement-records/2026-05-27-aliyun-repo-mvp-closeout.md",
     "docs/production-replacement-records/templates/aliyun-clean-start-private-validation-execution-template.md",
@@ -85,6 +86,7 @@
     "Aliyun Subscription Control Platform repo-only B/C MVP closeout audit exists and records completed repository packages, protected surfaces, validation boundaries, and remaining exact-phrase A-tier gates without Aliyun deployment, DNS, firewall mutation, runtime mutation, state copy, public listener exposure, user traffic, or edge traffic",
     "Aliyun clean-start private validation execution passed after exact approval and candidate runtime refresh to current master; private metadata-only clean-start readiness and rendering checks passed without DNS, public listener, public Admin, provider firewall, AWS, historical state copy, edge traffic, user traffic, or production authority transfer",
     "Aliyun provider firewall hardening execution passed for the not-yet-online candidate: broad provider inbound rules were removed, SSH and existing wg-home UDP were scoped to the current operator management /32, public 80/443/3456/18080 remain closed, and AliDNS, AWS, state, user traffic, edge traffic, and production authority were unchanged",
+    "Aliyun HP management-source firewall follow-up passed for the not-yet-online candidate: HP public /32 was added for SSH and existing wg-home UDP, transient broad rule creation was immediately corrected, HP TCP/22 and UDP/51820 reachability to Aliyun were verified, public 80/443/3456/18080 remain closed, and DNS, AWS, state, user traffic, edge traffic, and production authority were unchanged; HP wg-home logical handshake remains a separate operator-lab follow-up",
     "Aliyun promotion runbook Package 5 exists as repo-only gate design separating live inventory, source-state decision, private state-copy validation, public-boundary dry run, DNS promotion, observation, rollback, and cleanup without authorizing Aliyun deployment, DNS, state copy, public listener exposure, edge traffic, or production authority transfer",
     "Aliyun clean-start control-plane is now the default path unless the operator explicitly requires historical state preservation; the repo package exists, and clean-start private validation plus provider-firewall hardening each have standalone Risk A runbooks before runtime initialization, public-boundary dry run, DNS promotion, edge rebuild, or rollback-start",
     "Domain Unit Boundaries for product business, commercial entitlement, subscription access, nodes, validation, operator lab, and production ops",
@@ -207,8 +209,8 @@
     },
     {
       "id": "aliyun-private-state-copy-blocked",
-      "summary": "Aliyun Gate A found candidate app/Nginx and candidate SQLite healthy privately, clean-start private validation passes after candidate runtime refresh to current master, and provider firewall hardening has removed broad inbound rules. Promotion remains blocked by public-boundary dry run, DNS promotion, and any separate state-preserving source path if the operator later rejects clean-start.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-execution.md"
+      "summary": "Aliyun Gate A found candidate app/Nginx and candidate SQLite healthy privately, clean-start private validation passes after candidate runtime refresh to current master, provider firewall hardening has removed broad inbound rules, and HP is now a scoped management source. Promotion remains blocked by public-boundary dry run, DNS promotion, and any separate state-preserving source path if the operator later rejects clean-start.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-27-aliyun-hp-management-source-firewall-execution.md"
     },
     {
       "id": "non-aliyun-hp-node-retirement-blocked",
@@ -231,7 +233,7 @@
     "Use docs/production-replacement-records/2026-05-27-aliyun-next-a-tier-execution-packet.md before any Aliyun clean-start private validation or provider-firewall hardening execution",
     "Use docs/production-replacement-records/templates/aliyun-clean-start-private-validation-execution-template.md or docs/production-replacement-records/templates/aliyun-provider-firewall-hardening-execution-template.md only after the matching exact approval phrase is received",
     "Aliyun public-boundary dry run approval after provider firewall hardening, with explicit decision whether and when to open 80/443",
-    "Decide whether HP should be added as a separate approved Aliyun provider-firewall management source before HP needs SSH/WireGuard access again",
+    "Investigate HP wg-home logical handshake only if the tunnel path is required; provider UDP/51820 now reaches Aliyun from HP",
     "TUIC runtime inventory and comparison canary approval path after held Hysteria2 measurement, or VLESS/XUDP secondary comparison if TUIC is rejected",
     "channel-lab-a Hysteria2 latency investigation, GUI import evidence, or cleanup decision",
     "clean edge node rebuild planning",
