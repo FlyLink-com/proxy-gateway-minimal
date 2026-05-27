@@ -27,7 +27,8 @@
     "docs/CHANNEL_STRATEGY_ENGINE.md",
     "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-operator-device-canary.md",
     "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-mihomo-import-validation.md",
-    "docs/MULTI_AGENT_OPERATING_MODEL.md"
+    "docs/MULTI_AGENT_OPERATING_MODEL.md",
+    "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md"
   ],
   "tasks": [
     {
@@ -796,31 +797,66 @@
       ]
     },
     {
+      "id": "C8-technical-mvp-baseline-and-tuic-inventory-gate",
+      "risk": "C",
+      "status": "completed-in-current-docs-update",
+      "lane": "edge-data-plane",
+      "title": "Align technical MVP baseline and add TUIC runtime inventory gate handoff",
+      "goal": "Update the technical MVP baseline from stale prod-edge serving language to the current Aliyun subscription boundary / edge-pending state, and create the repo-only handoff for TUIC Stage 0 read-only inventory without authorizing runtime mutation.",
+      "allowedFiles": [
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md",
+        "docs/CHANNEL_TUIC_COMPARISON_CANARY_PLAN.md",
+        "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md",
+        "docs/README.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "execute TUIC inventory",
+        "deploy TUIC runtime",
+        "create a server",
+        "open ports or change firewalls/security groups",
+        "change DNS, Nginx, systemd, AWS, Aliyun, production config, tenants, or artifacts",
+        "change subscription output",
+        "run operator-device TUIC traffic",
+        "write secrets or raw subscription URLs"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "A0-channel-canary-server-selection",
       "risk": "A",
-      "status": "hysteria2-extended-measurement-hold-tuic-comparison-plan-ready-blocked-before-runtime-inventory-broader-rollout-or-cleanup-approval",
+      "status": "blocked-tuic-stage0-runtime-inventory-gate-ready-but-not-executed-runtime-deployment-broader-rollout-or-cleanup-approval-still-required",
       "lane": "edge-data-plane",
       "title": "Select clean server for channel runtime canary",
-      "goal": "Choose a disposable provider-neutral canary server for one protocol family after long-haul path, UDP, lifecycle, security, metrics, and rollback checks.",
+      "goal": "Choose or verify a disposable provider-neutral canary server for one protocol family after long-haul path, UDP, lifecycle, security, metrics, rollback, and the TUIC Stage 0 read-only inventory gate.",
       "allowedFiles": [
         "docs/CHANNEL_CANARY_SERVER_SELECTION.md",
         "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md",
         "docs/production-replacement-records/*.md",
         "docs/production-incident-records/*.md",
-        "project-state/*.json"
+        "project-state/*.json",
+        "docs/CHANNEL_TUIC_COMPARISON_CANARY_PLAN.md",
+        "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md"
       ],
       "forbiddenActions": [
         "create a server without explicit approval",
         "change DNS, Nginx, systemd, firewall, security groups, production config, tenants, or artifacts without approval",
         "copy production secrets, SQLite data, opaque artifact URLs, or raw subscription URLs",
         "run multiple protocol families in the first canary",
-        "treat HP, Aliyun control-plane candidate, or stopped historical nodes as edge canary capacity without a separate gate"
+        "treat HP, Aliyun control-plane candidate, or stopped historical nodes as edge canary capacity without a separate gate",
+        "treat TUIC runtime inventory gate handoff as runtime deployment approval"
       ],
       "validation": [
         "Risk A read-only server-selection inventory",
         "protocol-specific runtime canary runbook validation",
         "rollback evidence",
-        "controlled operator-device metrics"
+        "controlled operator-device metrics",
+        "TUIC Stage 0 read-only inventory gate before deployment"
       ]
     },
     {

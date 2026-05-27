@@ -55,7 +55,8 @@
     "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-extended-measurement.md",
     "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
-    "docs/VALIDATION_BASELINE.md"
+    "docs/VALIDATION_BASELINE.md",
+    "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md"
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
@@ -121,7 +122,8 @@
     "Channel runtime canary server selection and execution remain gated by docs/CHANNEL_CANARY_SERVER_SELECTION.md and docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md after repository renderer/config support",
     "Local Edge Agent as loopback-only client adapter prototype",
     "Server Edge Mesh as private operator/edge management path",
-    "Project Control Plane with machine-readable state files"
+    "Project Control Plane with machine-readable state files",
+    "TUIC runtime inventory gate handoff as the next exact-phrase Stage 0 read-only inventory path after the held Hysteria2 measurement, without TUIC deployment, port exposure, subscription output change, operator-device traffic, or cleanup mutation"
   ],
   "activeGoal": {
     "id": "aliyun-subscription-control-platform-mvp",
@@ -216,7 +218,7 @@
     },
     {
       "id": "channel-canary-server-selection",
-      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance exists, Hysteria2 v2.9.2 is active, short operator-device and Mihomo canaries passed, and extended operator-device measurement completed. The extended bundle has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. TUIC is now the documented next measured comparison candidate, VLESS/XUDP is secondary, and GUI import evidence, DNS, production config, subscription output, broader rollout, runtime comparison, and cleanup remain gated.",
+      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance exists, Hysteria2 v2.9.2 is active, short operator-device and Mihomo canaries passed, and extended operator-device measurement completed. The extended bundle has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. TUIC is now the documented next measured comparison candidate, and its Stage 0 read-only inventory gate handoff is ready but not executed. VLESS/XUDP is secondary, and GUI import evidence, DNS, production config, subscription output, broader rollout, runtime comparison, and cleanup remain gated.",
       "sourceDoc": "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-extended-measurement.md"
     },
     {
@@ -246,6 +248,7 @@
     }
   ],
   "nextRecommendedQueue": [
+    "Request the exact TUIC Stage 0 read-only inventory approval phrase from docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md before any TUIC runtime deployment, port exposure, operator-device traffic, or cleanup decision",
     "Request the exact Aliyun Aegis service repair approval phrase from docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md if the operator wants process cleanup and service restart; otherwise leave it as a tracked host security-agent follow-up",
     "Keep public Admin blocked and keep edge traffic activation out of scope until a separate exact approval and execution record exists",
     "Request the exact clean edge node rebuild approval phrase from docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md if the operator wants clean edge host provisioning/bootstrap/private validation; otherwise leave edge data-plane pending",

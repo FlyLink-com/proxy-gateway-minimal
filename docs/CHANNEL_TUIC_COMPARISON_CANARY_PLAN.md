@@ -89,6 +89,11 @@ TUIC must not inherit the Hysteria2 runtime by assumption. A TUIC canary needs
 its own runtime inventory, runtime deployment approval, measurement windows,
 and cleanup decision.
 
+The next A-tier handoff for that inventory is recorded in
+`docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md`.
+It defines the exact Stage 0 read-only inventory approval phrase, allowed
+read-only evidence, stop conditions, and the later runtime deployment gates.
+
 ## Proposed Measurement Shape
 
 The first TUIC comparison should mirror the Hysteria2 measurement structure so
@@ -165,6 +170,18 @@ Goal:
 ```text
 decide whether the TUIC candidate should reuse channel-lab-a or require a fresh
 channel-lab-b target
+```
+
+Next handoff record:
+
+```text
+docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md
+```
+
+Exact approval phrase:
+
+```text
+Approve Channel Runtime Canary Stage 0 read-only inventory for TUIC. No runtime mutation.
 ```
 
 Allowed:
