@@ -1298,27 +1298,31 @@ Node drain/stop:
 
 ## Current Next Action
 
-The next executable gate is:
+The latest candidate-only execution records show:
 
 ```text
-request separate A-tier approvals for:
-  Aliyun clean-start private validation,
-  Aliyun provider-firewall hardening,
-  public-boundary dry run,
-  DNS promotion,
-  edge rebuild,
-  or AWS rollback-start if temporary restore is needed.
+Aliyun clean-start private validation: completed and recorded
+Aliyun provider-firewall hardening: completed and recorded
+Aliyun HP management-source firewall follow-up: completed and recorded
+Aliyun public-boundary dry run: completed, validated, and cleaned up
 ```
 
-The first two approval paths now have standalone execution-gate runbooks:
+Current executable gates are now:
 
 ```text
-docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md
-docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md
+DNS promotion / production subscription distribution promotion
+clean edge rebuild planning
+AWS rollback-start if temporary restore is needed
+post-promotion observation and later cleanup
 ```
+
+DNS promotion still requires the exact approval phrase in Phase 4. The promotion
+gate should re-open durable 80/443 only as part of the approved promotion, keep
+Admin public access blocked, keep edge traffic activation out of scope, and use
+the accepted-outage rollback posture unless a separate rollback-start gate is
+approved first.
 
 Do not move DNS, promote production authority, expose public Admin, start edge
 traffic, restart stopped AWS nodes, terminate instances, or delete security
-groups before live inventory, clean-start or source-state planning, private
-validation, public-boundary dry run, promotion, rebuild, rollback, and cleanup
-gates are separately approved and recorded.
+groups before the relevant promotion, rebuild, rollback, and cleanup gates are
+separately approved and recorded.
