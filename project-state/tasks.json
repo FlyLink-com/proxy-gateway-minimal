@@ -624,7 +624,7 @@
     {
       "id": "B15-aliyun-approval-phrase-policy",
       "risk": "B",
-      "status": "completed-in-current-branch",
+      "status": "completed-in-pr-191",
       "lane": "subscription-control-plane",
       "title": "Codify Aliyun gate approval phrase policy",
       "goal": "Make Aliyun A-tier approval checks accept only the exact phrase for the named gate while rejecting short confirmations and wrong-gate phrases without echoing submitted text.",
