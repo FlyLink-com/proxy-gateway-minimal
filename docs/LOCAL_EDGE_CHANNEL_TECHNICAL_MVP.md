@@ -516,13 +516,22 @@ To build the runtime gate packet:
 npm run channel:runtime-gate-packet -- <path-to-runtime-registry.json>
 ```
 
+To build the full repository-local system decision flow from the three safe
+inputs:
+
+```bash
+npm run channel:system-decision-flow -- <path-to-dry-run-summary.json> <path-to-score.json> <path-to-safe-inventory-input.json>
+```
+
 This closes the repository-side gap between "measurement recommends canary",
 "runtime inventory says it is ready", and "an operator can now request the next
-Risk A runtime canary gate." The registry and gate packet must not contain
-hosts, ports, credentials, raw errors, tokens, subscription URLs, artifact URLs,
-cloud credentials, or customer data. They do not contact edge nodes, query cloud
-APIs, deploy runtimes, change firewall rules, submit approval phrases, move
-traffic, or approve subscription output.
+Risk A runtime canary gate." The system decision flow emits the normalized
+runtime inventory summary, runtime registry, runtime gate packet, and top-level
+readiness status in one artifact. These artifacts must not contain hosts,
+ports, credentials, raw errors, tokens, subscription URLs, artifact URLs, cloud
+credentials, or customer data. They do not contact edge nodes, query cloud APIs,
+deploy runtimes, change firewall rules, submit approval phrases, move traffic,
+or approve subscription output.
 
 Repository-local extended measurement assessment is available through
 `assessChannelExtendedMeasurement(...)`. It consumes an already-collected local

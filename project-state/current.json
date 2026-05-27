@@ -122,6 +122,7 @@
     "Channel Runtime Inventory Summary for normalizing operator-provided runtime gate facts into safe registry input artifacts without raw hosts, ports, URLs, credentials, raw logs, tokens, subscription URLs, customer data, runtime mutation, or production activation",
     "Channel Runtime Registry for joining dry-run config, measurement scores, and safe runtime inventory summaries into canary-ready, runtime-blocked, and missing-inventory groups without runtime mutation",
     "Channel Runtime Gate Packet for turning runtime registry output into operator-safe approval-readiness evidence before separate Risk A runtime canary gates",
+    "Channel System Decision Flow for composing dry-run summaries, measurement scores, and safe runtime inventory inputs into one advisory readiness artifact without probes, runtime mutation, approval submission, traffic movement, or production activation",
     "Channel Extended Measurement Assessment for advisory ready/needs-more-samples/hold classification from already-collected local summaries",
     "Channel Measurement Investigation for advisory hold-pattern classification from safe measurement bundle reports",
     "Channel Candidate Comparison for advisory next-candidate plans after held measurement results",

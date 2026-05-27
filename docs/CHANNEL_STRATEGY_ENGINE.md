@@ -136,6 +136,7 @@ dry-run config summary
   -> runtime inventory summary
   -> channel runtime registry
   -> runtime gate packet
+  -> channel system decision flow
 ```
 
 The registry distinguishes canary-ready candidates from runtime-blocked
@@ -153,6 +154,20 @@ create servers, deploy runtimes, move traffic, or authorize rollout.
 ```bash
 npm run channel:runtime-gate-packet -- <path-to-runtime-registry.json>
 ```
+
+`buildChannelSystemDecisionFlow(...)` wraps the safe repository chain end to
+end. It accepts a dry-run summary, measurement score, and safe runtime
+inventory input, then emits the normalized runtime inventory summary, runtime
+registry, runtime gate packet, and top-level system readiness in one operator
+artifact:
+
+```bash
+npm run channel:system-decision-flow -- <path-to-dry-run-summary.json> <path-to-score.json> <path-to-safe-inventory-input.json>
+```
+
+The system decision flow is still advisory evidence. It does not contact edge
+nodes, run probes, submit approval phrases, deploy runtimes, change firewall
+rules, move traffic, or approve subscription output.
 
 `assessChannelExtendedMeasurement(...)` can classify already-collected local
 benchmark summaries into `ready_for_decision`, `needs_extended_measurement`, or
