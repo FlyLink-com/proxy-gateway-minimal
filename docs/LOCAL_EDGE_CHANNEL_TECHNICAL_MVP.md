@@ -643,6 +643,19 @@ advisory summary plus the safe activation-flow packet so later operators can
 recheck evidence handoff without contacting edge nodes, generating YAML,
 submitting approvals, changing subscription output, or moving traffic.
 
+The same safe fixture can be converted into a Markdown execution-record
+template for later A-tier work:
+
+```bash
+npm run channel:subscription-activation-record-template -- <path-to-activation-flow-fixture.json>
+```
+
+The template generator writes a record skeleton only. It includes TODO sections
+for approval reference, preflight evidence, activation evidence, validation,
+rollback, and not-performed boundaries. It does not store exact approval text,
+generate YAML, change subscription output, contact edge nodes, deploy runtimes,
+move traffic, or activate production.
+
 The protected Admin platform route
 `POST /api/admin/platform/channel-lab-target-decision` and its Admin Overview
 panel are the next repository-side target selection layer after a runtime
