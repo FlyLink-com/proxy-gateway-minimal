@@ -414,6 +414,24 @@ Package 6 should produce repository evidence first. Candidate-only
 clean-start initialization and private rendering on Aliyun require a later
 A-tier approval and execution record.
 
+**Repository anchors after Package 6 implementation:**
+
+```text
+server/services/platform/clean-start-control-plane.mjs
+server/routes/admin-platform.mjs
+server/tests/platform-clean-start-control-plane.test.mjs
+server/tests/platform-access-routes.test.mjs
+docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md
+docs/PROJECT_CONTEXT.md
+project-state/current.json
+```
+
+The Package 6 implementation is repository-only. It provides an
+operator-safe clean-start readiness package and protected Admin route while
+keeping Aliyun runtime initialization, provider-firewall hardening,
+public-boundary dry run, DNS promotion, edge rebuild, rollback-start, state
+copy, and production authority as separate A-tier gates.
+
 ## Validation Policy
 
 ```text
@@ -472,8 +490,8 @@ Ready PRs must contain the complete loop for their approved scope.
 4. Complete: add subscription-access grant shell and operator-safe summaries.
 5. Complete: prepare Aliyun promotion runbook and Gate A/B planning without
    executing production mutation.
-6. Next: build the clean-start control-plane repo implementation package.
-7. Later A-tier: request Aliyun clean-start private validation and provider
+6. Complete: build the clean-start control-plane repo implementation package.
+7. Next A-tier: request Aliyun clean-start private validation and provider
    firewall hardening as separate gates.
 ```
 

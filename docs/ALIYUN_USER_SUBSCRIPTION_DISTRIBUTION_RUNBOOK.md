@@ -222,6 +222,21 @@ customer portal entrance model: planned as an operator-issued dynamic entry
 Subscription V2 renderer: implemented
 opaque artifact issue / refresh / rotate / revoke contracts: implemented
 overview distribution readiness summary: implemented for configured inventory
+clean-start control-plane repo package: implemented in repository only
+  - `server/services/platform/clean-start-control-plane.mjs` builds an
+    operator-safe clean-start readiness package from account, entitlement,
+    access-grant, and current renderer metadata
+  - private rendering dry-run support renders only in process and returns
+    metadata such as readiness status, node count, protocol list, and generated
+    YAML byte size
+  - the summary redacts raw portal URLs, artifact references, subscription
+    URLs, node hosts, node credentials, source-state paths, tokens, customer
+    emails, and organization names
+  - protected Admin route:
+    `/api/admin/platform/clean-start`
+  - no Aliyun deployment, runtime initialization, public listener, DNS,
+    provider-firewall change, SQLite persistence, state copy, user traffic, or
+    production authority is activated by this repository package
 public registration/auth model: not approved
 public payment flow: not approved
 runtime promotion to Aliyun: not approved
@@ -602,6 +617,13 @@ Latest clean-start planning record:
 docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md
 ```
 
+Latest clean-start and firewall execution gate runbooks:
+
+```text
+docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md
+docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md
+```
+
 Current planning outcome:
 
 ```text
@@ -631,7 +653,9 @@ restore
 Provider-firewall hardening is now a separate prerequisite before Gate D
 public-boundary dry run. Gate A found Aliyun provider firewall rules too broad;
 host UFW currently blocks most paths, but provider-level broad inbound rules
-must not remain the safety boundary for promotion.
+must not remain the safety boundary for promotion. The standalone hardening
+gate is defined in
+`docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`.
 
 ### Gate C-Start: Clean-Start Private Validation
 
@@ -1240,20 +1264,20 @@ Node drain/stop:
 The next executable gate is:
 
 ```text
-build the clean-start control-plane repo implementation package:
-  clean-start initialization shapes,
-  operator-safe decision summaries,
-  private rendering dry-run support,
-  tests,
-  and docs/project-state synchronization;
-
-then request separate A-tier approvals for:
+request separate A-tier approvals for:
   Aliyun clean-start private validation,
   Aliyun provider-firewall hardening,
   public-boundary dry run,
   DNS promotion,
   edge rebuild,
   or AWS rollback-start if temporary restore is needed.
+```
+
+The first two approval paths now have standalone execution-gate runbooks:
+
+```text
+docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md
+docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md
 ```
 
 Do not move DNS, promote production authority, expose public Admin, start edge

@@ -140,6 +140,15 @@ Current architecture priorities:
   exist. It does not expose raw customer portal URLs, artifact references,
   subscription URLs, SQLite persistence, Aliyun deployment, production storage,
   public portal resolution, DNS, or user traffic.
+- Platform Clean-Start Package: repository-only clean-start readiness support
+  lives in `server/services/platform/clean-start-control-plane.mjs` and the
+  protected Admin route `/api/admin/platform/clean-start`. It summarizes
+  account, entitlement, access-grant, and private rendering dry-run readiness
+  without exposing raw portal URLs, artifact references, subscription URLs,
+  node hosts, node credentials, source-state paths, tokens, customer emails, or
+  organization names. It is not Aliyun deployment, runtime initialization,
+  public listener exposure, DNS, provider-firewall hardening, SQLite
+  persistence, state copy, user traffic, or production authority.
 - Aliyun Promotion Runbook / Package 5: the repository-only promotion gate
   model is documented in `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
   and recorded in
@@ -154,11 +163,15 @@ Current architecture priorities:
   `docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md`.
   Clean-start means Aliyun is planned as a new subscription-control authority
   without copying historical AWS SQLite, artifact, legacy query-token, or
-  subscription-output state. The next repo-only package should build
-  clean-start initialization, operator-safe summaries, private rendering dry-run
-  support, tests, and docs/project-state synchronization. Runtime
-  initialization, provider-firewall hardening, public-boundary dry run, DNS
-  promotion, edge rebuild, and rollback-start remain separate A-tier gates.
+  subscription-output state. The clean-start repo package now exists as
+  protected operator-safe readiness and private rendering dry-run metadata. The
+  next execution gates are separate A-tier approvals for clean-start private
+  validation and provider-firewall hardening, documented in
+  `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md`
+  and
+  `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`.
+  Runtime initialization, public-boundary dry run, DNS promotion, edge rebuild,
+  and rollback-start remain separate A-tier gates.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a
@@ -360,6 +373,11 @@ operator approval, validation, and rollback path exist:
   `docs/production-replacement-records/2026-05-27-aliyun-gate-b-source-firewall-plan.md`.
   The latest clean-start control-plane planning record is
   `docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md`.
+  The clean-start private validation and provider-firewall hardening gate
+  runbooks are
+  `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md`
+  and
+  `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`.
 - Clean fallback `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
@@ -467,6 +485,8 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - `docs/production-replacement-records/2026-05-27-aliyun-gate-a-live-inventory.md`
 - `docs/production-replacement-records/2026-05-27-aliyun-gate-b-source-firewall-plan.md`
 - `docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md`
+- `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md`
+- `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`
 - The current Aliyun SWAS host is reachable through SSH alias `miyao`.
 - It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
   `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
@@ -522,6 +542,15 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   Historical AWS state copy is no longer the default dependency for the MVP,
   but remains available only through a separate state-preserving source rescue
   path if the operator later requires continuity.
+- The clean-start repo package now provides protected operator-safe readiness
+  and private rendering dry-run metadata in repository code. It does not perform
+  Aliyun runtime initialization, state copy, public listener exposure, provider
+  firewall mutation, DNS change, edge rebuild, or production promotion.
+- Standalone A-tier execution gate runbooks now exist for clean-start private
+  validation and provider-firewall hardening. They define approval phrases,
+  fresh read-only preflight requirements, allowed/forbidden actions, validation
+  evidence, rollback, and not-performed boundaries, but do not execute Aliyun,
+  DNS, firewall, AWS, state-copy, public-listener, or traffic mutation.
 
 Latest Aliyun user-management / subscription-distribution decision:
 
@@ -543,11 +572,14 @@ Latest Aliyun user-management / subscription-distribution decision:
 - The tracked static node config still references `prod-edge-a` and
   `prod-edge-b`, so subscription output/config must be rebuilt before the
   service can be considered healthy again.
-- The next executable gate is the clean-start repo implementation package,
-  followed by separate approvals for Aliyun clean-start private validation,
-  provider-firewall hardening, clean edge node rebuild planning, or a
-  rollback-start approval for the stopped AWS nodes if temporary restore is
-  needed.
+- The next executable gates are separate A-tier approvals for Aliyun
+  clean-start private validation, provider-firewall hardening, clean edge node
+  rebuild planning, or rollback-start approval for the stopped AWS nodes if
+  temporary restore is needed. The first two gates now have standalone runbooks
+  in
+  `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md`
+  and
+  `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`.
 
 Latest A2 preflight:
 
