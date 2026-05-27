@@ -649,8 +649,11 @@ Ready PRs must contain the complete loop for their approved scope.
 6. Complete: build the clean-start control-plane repo implementation package.
 7. Complete: add the protected Aliyun gate decision packet for execution-before-decision review.
 8. Complete: add the protected Aliyun gate evidence shell for operator-recorded gate evidence.
-9. Current repo package: add the Admin Overview Aliyun gate review surface.
-10. Next A-tier: request Aliyun clean-start private validation and provider
+9. Complete: add the Admin Overview Aliyun gate review surface.
+10. Current repo package: add the next A-tier execution handoff packet that
+   keeps clean-start private validation and provider-firewall hardening as
+   exact-phrase, separate gates.
+11. Next A-tier: request Aliyun clean-start private validation and provider
    firewall hardening as separate gates.
 ```
 

@@ -205,6 +205,12 @@ Current architecture priorities:
   `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md`
   and
   `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`.
+  The next-gate handoff packet lives in
+  `docs/production-replacement-records/2026-05-27-aliyun-next-a-tier-execution-packet.md`;
+  it copies the exact approval phrases and evidence targets for the two gates
+  and explicitly says that short confirmations such as `同意`, `继续`, or
+  `开始` do not authorize execution. It is repo-only documentation and does
+  not perform Aliyun, firewall, DNS, runtime, state, or traffic mutation.
   The protected `/api/admin/platform/aliyun-gates` packet can now show which
   next gates are ready for operator approval and which remain blocked, and the
   protected gate-evidence shell can record operator-provided provider-firewall
