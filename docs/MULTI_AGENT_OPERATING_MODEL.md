@@ -1,6 +1,6 @@
 # Multi-Agent Operating Model
 
-Last updated: 2026-05-26, Asia/Shanghai.
+Last updated: 2026-05-27, Asia/Shanghai.
 
 > Status:
 > - Type: Active operating model
@@ -50,6 +50,110 @@ subagents receive explicit task packets, not vague inherited context
 subagents do not touch production unless a Risk A runbook explicitly says so
 subagent output is evidence, not truth, until the lead verifies it
 parallel work is allowed only when file ownership and external state do not conflict
+```
+
+## Current Heavyweight Agents
+
+The current project has two heavyweight specialist agents. They are long-running
+ownership lanes, not temporary reviewers.
+
+### Subscription Control Platform Agent
+
+Primary mission:
+
+```text
+build the Aliyun subscription-control platform MVP
+keep subscription state, artifacts, account/entitlement shells, and rendering
+  in the control plane
+prepare clean-start authority, private validation, firewall, public-boundary,
+  DNS-promotion, observation, rollback, and cleanup gates
+```
+
+Owns:
+
+```text
+Aliyun user-management / subscription-distribution planning
+platform lead/account/entitlement/access-grant shells
+opaque artifact and legacy query-token retirement planning
+Aliyun clean-start versus state-preserving source decisions
+provider-firewall and public-boundary runbook preparation
+```
+
+Does not own:
+
+```text
+new transport protocol design
+channel-lab runtime experiments
+edge protocol selection
+production mutation without A-tier approval
+manual CI as staging or production approval
+```
+
+Current task boundary:
+
+```text
+repo-only B/C work can continue under this agent
+Aliyun runtime, DNS, firewall, state-copy, public listener, production authority,
+  or cleanup work remains Risk A and needs separate approval
+```
+
+### Channel Technical MVP Agent
+
+Primary mission:
+
+```text
+build the technical MVP for stronger channel capability
+advance Clash/Mihomo-native multi-protocol subscription rendering
+measure SS baseline, Hysteria2, TUIC, VLESS/XUDP, and later candidates with
+  safe aggregate evidence
+turn measurement evidence into candidate reports, investigation reports,
+  decision packs, and next-candidate plans
+```
+
+Owns:
+
+```text
+channel strategy engine
+channel benchmark fixtures, scoring, reports, and decision packs
+Hysteria2 hold investigation and cleanup decision support
+TUIC comparison planning
+VLESS/XUDP secondary comparison planning
+future runtime inventory packets for approved protocol canaries
+```
+
+Does not own:
+
+```text
+Aliyun subscription-control authority
+customer/account entitlement policy
+production DNS, Nginx, firewall, systemd, or node mutation
+all-user rollout or subscription output activation
+Local Edge Agent production activation unless the project explicitly reopens it
+```
+
+Current task boundary:
+
+```text
+repo-only C/B channel planning and tooling can continue under this agent
+runtime canaries, server creation, port exposure, operator-device traffic,
+  cleanup, or broader rollout remain Risk A and need separate approval
+```
+
+### Lead Verification Rule
+
+The lead agent must verify both heavyweight lanes before claiming completion:
+
+```text
+Subscription Control Platform Agent output:
+  check against docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md
+  check against docs/PROJECT_CONTEXT.md and project-state/current.json
+  confirm no runtime authority was implied by repo-only work
+
+Channel Technical MVP Agent output:
+  check against docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md
+  check against docs/CHANNEL_STRATEGY_ENGINE.md
+  check against docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md
+  confirm no runtime canary or production output was implied by repo-only work
 ```
 
 ## Agent Roles
