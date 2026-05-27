@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { createCleanStartControlPlanePackage } from "../services/platform/clean-start-control-plane.mjs";
 
 function sendError(res, error) {
   if (error.code === "validation_error") {
@@ -19,6 +20,21 @@ export function adminPlatformRoutes(state) {
   const leadQueue = state.platform?.leadQueue;
   const accountShell = state.platform?.accountShell;
   const accessShell = state.platform?.accessShell;
+
+  router.get("/api/admin/platform/clean-start", (req, res) => {
+    try {
+      res.json({
+        cleanStart: createCleanStartControlPlanePackage({
+          accountShell,
+          accessShell,
+          proxyConfig: state.proxyConfig,
+          now: new Date()
+        })
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
 
   router.get("/api/admin/platform/leads", (req, res) => {
     try {
