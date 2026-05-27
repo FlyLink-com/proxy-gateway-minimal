@@ -217,7 +217,10 @@ Current architecture priorities:
   The repository also has a tested Aliyun gate approval-phrase policy in
   `server/services/platform/aliyun-gate-decision-packet.mjs`; it accepts only
   the exact phrase for the named gate and rejects short confirmations without
-  echoing submitted text.
+  echoing submitted text. The gate packet exposes the same fail-closed
+  policy as operator-facing metadata for the clean-start private validation and
+  provider-firewall hardening gates, while still exposing no approval
+  submission route and no execution control.
   The protected `/api/admin/platform/aliyun-gates` packet can now show which
   next gates are ready for operator approval and which remain blocked, and the
   protected gate-evidence shell can record operator-provided provider-firewall

@@ -58,6 +58,13 @@ test("Aliyun gate decision packet exposes approval-ready clean-start gate and bl
   assert.equal(cleanStart.status, "ready_for_operator_approval");
   assert.equal(cleanStart.risk, "A");
   assert.equal(cleanStart.approvalRequired, true);
+  assert.deepEqual(cleanStart.approvalPolicy, {
+    mode: "exact_phrase_for_named_gate",
+    phraseBoundToGate: true,
+    acceptsShortConfirmation: false,
+    approvalSubmissionRoute: null,
+    executesGate: false
+  });
   assert.equal(
     cleanStart.requiredApprovalPhrase,
     "Approve Aliyun clean-start private validation. Allow candidate-only clean-start state initialization and private rendering checks on Aliyun. No DNS change, no public listener exposure, no public Admin, no edge traffic, no AWS mutation, and no historical state copy."
@@ -66,6 +73,13 @@ test("Aliyun gate decision packet exposes approval-ready clean-start gate and bl
 
   const firewall = packet.gates.find((gate) => gate.id === "aliyun_provider_firewall_hardening");
   assert.equal(firewall.status, "blocked");
+  assert.deepEqual(firewall.approvalPolicy, {
+    mode: "exact_phrase_for_named_gate",
+    phraseBoundToGate: true,
+    acceptsShortConfirmation: false,
+    approvalSubmissionRoute: null,
+    executesGate: false
+  });
   assert.deepEqual(firewall.blockers, [
     "missing provider firewall rollback snapshot",
     "missing management source decision",
