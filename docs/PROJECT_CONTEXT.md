@@ -180,6 +180,18 @@ Current architecture priorities:
   mutation, UFW change, public listener exposure, DNS, SQLite persistence,
   state copy, AWS mutation, artifact issuance, legacy query-token retirement,
   user traffic, edge traffic, or production authority.
+- Platform Access Model Inventory Summary: repository-only local tooling can
+  normalize operator-provided subscription-access inventory facts into a
+  redacted preflight summary through
+  `server/services/platform/access-model-inventory-summary.mjs` and
+  `scripts/access-model-inventory-summary.mjs`. It accepts only safe counts,
+  booleans, and note labels; rejects raw subscription URLs, raw artifact URLs,
+  tokens, artifact secrets, customer emails, SQLite rows, credentials, and
+  other unsupported fields without echoing submitted values; and produces
+  blocker evidence for broader opaque artifact issuance preflight. It is not
+  Aliyun runtime inspection, SQLite access, artifact issuance, legacy
+  query-token retirement, legacy route removal, DNS, Nginx, firewall, AWS,
+  edge traffic, or production authority.
 - Platform Aliyun Gate Review UI: repository-only Admin Overview support can
   show the protected Aliyun gate decision packet and gate-evidence summary for
   operator review. It displays exact-phrase fail-closed approval policy
@@ -471,6 +483,10 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   issue artifacts, rotate or drain legacy tokens, change DNS, change Nginx,
   expose public Admin, activate edge traffic, mutate AWS, copy historical
   state, or record raw subscription URLs, tokens, or artifact secrets.
+- The access-model inventory summary helper is documented in
+  `docs/ACCESS_MODEL_INVENTORY_SUMMARY.md`. It is repo-only B-tier support for
+  those gates: it can produce redacted preflight summaries from safe operator
+  JSON, but it does not gather live inventory or execute either A-tier gate.
 - The latest channel canary server selection inventory is recorded in
   `docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md`.
   It recommends a clean provider-neutral `channel-lab-a` target and Hysteria2
