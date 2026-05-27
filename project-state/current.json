@@ -27,6 +27,7 @@
     "docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md",
     "docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md",
     "docs/production-replacement-records/2026-05-27-aliyun-gate-a-live-inventory.md",
+    "docs/production-replacement-records/2026-05-27-aliyun-gate-b-source-firewall-plan.md",
     "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md",
     "docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md",
     "docs/production-replacement-records/2026-05-26-channel-lab-a-creation.md",
@@ -184,8 +185,8 @@
     },
     {
       "id": "aliyun-private-state-copy-blocked",
-      "summary": "Aliyun Gate A live inventory found candidate app active on 127.0.0.1:3456, candidate Nginx active on 127.0.0.1:18080, candidate SQLite integrity_check ok, and HP-side checks still not observing Aliyun public 80/443/3456/18080 exposure. Promotion remains blocked because AliDNS points to a stopped AWS address, source state is not available, Aliyun provider firewall is too broad, existing wg-home UDP lab path remains active, and tracked node config still references stopped or stale AWS targets.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-27-aliyun-gate-a-live-inventory.md"
+      "summary": "Aliyun Gate A found candidate app/Nginx and candidate SQLite healthy privately, but promotion remains blocked. Gate B planning recommends clean-start Aliyun control plane unless historical subscription state preservation is explicitly required; state preservation should use a separate source-state rescue planning path, temporary restore requires rollback-start preflight, and Aliyun provider firewall hardening is required before public-boundary dry run.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-27-aliyun-gate-b-source-firewall-plan.md"
     },
     {
       "id": "non-aliyun-hp-node-retirement-blocked",
@@ -204,8 +205,8 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Aliyun Gate B source access / source-state planning before any private state-copy validation",
-    "Aliyun provider-firewall hardening plan before public-boundary dry run",
+    "Aliyun Gate B source-state decision approval: clean-start control plane versus state-preserving source rescue versus rollback-start preflight",
+    "Aliyun provider-firewall hardening approval before public-boundary dry run",
     "channel-lab-a Hysteria2 latency investigation, TUIC/VLESS-XUDP comparison, GUI import evidence, or cleanup decision",
     "clean edge node rebuild planning",
     "Aliyun subscription distribution promotion planning with accepted outage context",

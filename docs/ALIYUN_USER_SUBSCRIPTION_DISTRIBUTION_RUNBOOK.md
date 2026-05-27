@@ -590,6 +590,37 @@ rollback-source status
 privacy boundary for any later backup movement
 ```
 
+Latest Gate B planning record:
+
+```text
+docs/production-replacement-records/2026-05-27-aliyun-gate-b-source-firewall-plan.md
+```
+
+Current planning outcome:
+
+```text
+recommended default: clean-start Aliyun control plane unless the operator
+explicitly requires historical subscription state preservation
+
+state-preserving fallback: source-state rescue planning, preferably
+rescue-volume/snapshot based before relying on SSH-first remediation
+
+temporary restore fallback: separate AWS rollback-start preflight and mutation
+approval before any stopped node is treated as a live source or user-facing
+rollback target
+
+source-copy status: blocked until the operator chooses clean-start or an
+approved state-preserving source path
+
+rollback-source status: rollback-start-needed if AWS is used for temporary
+restore
+```
+
+Provider-firewall hardening is now a separate prerequisite before Gate D
+public-boundary dry run. Gate A found Aliyun provider firewall rules too broad;
+host UFW currently blocks most paths, but provider-level broad inbound rules
+must not remain the safety boundary for promotion.
+
 ### Gate C: Private State-Copy Validation
 
 Purpose:
@@ -1131,10 +1162,13 @@ Node drain/stop:
 The next executable gate is:
 
 ```text
-Aliyun Gate B source access / source-state planning, provider-firewall
-hardening planning before any public-boundary dry run, clean edge node rebuild
-planning, or rollback-start planning for stopped AWS Singapore nodes if
-temporary restore is needed.
+choose one Gate B source-state path:
+  clean-start control plane,
+  state-preserving source rescue planning,
+  or AWS rollback-start preflight for temporary restore;
+
+and request a separate Aliyun provider-firewall hardening approval before any
+public-boundary dry run.
 ```
 
 Do not move DNS, promote production authority, expose public Admin, start edge
