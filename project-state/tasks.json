@@ -1343,6 +1343,48 @@
       ]
     },
     {
+      "id": "B39-channel-subscription-render-proof",
+      "risk": "B",
+      "status": "completed-in-pr-249",
+      "lane": "edge-data-plane",
+      "title": "Add channel subscription render proof tooling",
+      "goal": "Match safe activation-flow fixtures against local proxy config and internally render selected Clash/Mihomo output while returning only safe summary proof.",
+      "allowedFiles": [
+        "server/services/channel-subscription-render-proof.mjs",
+        "server/tests/channel-subscription-render-proof.test.mjs",
+        "server/tests/package-entry.test.mjs",
+        "scripts/channel-subscription-render-proof.mjs",
+        "package.json",
+        "index.mjs",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "return Clash or Mihomo YAML",
+        "change real subscription output",
+        "mutate production",
+        "query or contact live edge nodes",
+        "deploy runtimes",
+        "submit approval phrases",
+        "echo or store approval text",
+        "add execution routes or execution controls",
+        "add public routes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, firewall, provider, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, or subscription-output state",
+        "write secrets, raw hosts, raw IPs, raw ports, raw URLs, raw logs, credentials, raw subscription URLs, SQLite rows, customer data, or exact management-source values",
+        "treat render proof output as subscription-output activation approval or execution evidence"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/channel-subscription-render-proof.test.mjs server/tests/package-entry.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "B12-aliyun-gate-decision-packet",
       "risk": "B",
       "status": "completed-in-pr-181",

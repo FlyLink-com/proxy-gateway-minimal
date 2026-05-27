@@ -663,6 +663,22 @@ surfaces. It accepts only safe activation-flow fixture material and returns a
 Markdown skeleton plus safety metadata; it does not expose approval submission
 or subscription-output execution controls.
 
+Activation-flow fixtures can also be checked against the actual repository
+subscription renderer without returning YAML:
+
+```bash
+npm run channel:subscription-render-proof -- <path-to-activation-flow-fixture.json> <path-to-proxy-servers.json>
+```
+
+`buildChannelSubscriptionRenderProof(...)` matches the fixture's baseline and
+canary candidate labels to a local proxy config, internally renders the
+selected Clash/Mihomo YAML, and returns only a safe proof summary such as
+rendered proxy count, protocol counts, and selected candidate labels. It does
+not return YAML, hosts, ports, URLs, credentials, tokens, raw logs, or
+subscription URLs. It also does not mutate subscription output, contact edge
+nodes, deploy runtimes, submit approvals, move traffic, or activate
+production.
+
 The protected Admin platform route
 `POST /api/admin/platform/channel-lab-target-decision` and its Admin Overview
 panel are the next repository-side target selection layer after a runtime

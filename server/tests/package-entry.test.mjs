@@ -25,6 +25,7 @@ import {
   buildChannelSubscriptionActivationHandoff,
   buildChannelSubscriptionActivationReadiness,
   buildChannelSubscriptionOutputDraft,
+  buildChannelSubscriptionRenderProof,
   buildChannelSystemDecisionFlow,
   buildChannelExtendedMeasurementReport,
   buildChannelMeasurementBundleReport,
@@ -86,6 +87,7 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof buildChannelSubscriptionActivationHandoff, "function");
   assert.equal(typeof buildChannelSubscriptionActivationReadiness, "function");
   assert.equal(typeof buildChannelSubscriptionOutputDraft, "function");
+  assert.equal(typeof buildChannelSubscriptionRenderProof, "function");
   assert.equal(typeof buildChannelSystemDecisionFlow, "function");
   assert.equal(typeof buildChannelExtendedMeasurementReport, "function");
   assert.equal(typeof buildChannelMeasurementBundleReport, "function");

@@ -342,6 +342,27 @@ subscription output, contact edge nodes, deploy runtimes, move traffic, or
 activate production. It only prepares the evidence shape that a later
 exact-approved A-tier execution record must fill in with live facts.
 
+`buildChannelSubscriptionRenderProof(...)` is the repository-local render proof
+layer after activation-flow fixture preservation. It accepts a safe
+activation-flow fixture plus a local proxy config, matches the baseline and
+canary candidates named by the fixture to the config, and internally calls the
+Clash/Mihomo renderer for that selected set. The result is a safe proof packet:
+render status, rendered proxy count, protocol counts, and baseline/canary
+labels.
+
+The CLI helper is:
+
+```bash
+npm run channel:subscription-render-proof -- <path-to-activation-flow-fixture.json> <path-to-proxy-servers.json>
+```
+
+This proof exists to close a repository-side integration gap: activation-flow
+evidence can now be checked against the actual subscription renderer without
+returning YAML or mutating subscription output. The proof intentionally omits
+hosts, ports, URLs, credentials, raw logs, tokens, subscription URLs, and YAML.
+It does not contact edge nodes, deploy runtimes, submit approvals, expose
+execution routes, move traffic, or authorize production activation.
+
 `buildChannelLabTargetDecision(...)` is the repository-local target decision
 layer after a read-only runtime inventory finds that the current lab target is
 not directly deployable. It accepts only a safe target inventory packet, then

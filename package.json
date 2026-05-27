@@ -69,6 +69,7 @@
     "channel:subscription-activation-fixture": "node scripts/channel-subscription-activation-flow-fixture.mjs",
     "channel:subscription-activation-replay": "node scripts/channel-subscription-activation-flow-replay.mjs",
     "channel:subscription-activation-record-template": "node scripts/channel-subscription-activation-record-template.mjs",
+    "channel:subscription-render-proof": "node scripts/channel-subscription-render-proof.mjs",
     "platform:access-inventory-summary": "node scripts/access-model-inventory-summary.mjs",
     "platform:clean-edge-readiness-summary": "node scripts/clean-edge-readiness-summary.mjs",
     "project-state:check": "node scripts/check-project-state.mjs",
