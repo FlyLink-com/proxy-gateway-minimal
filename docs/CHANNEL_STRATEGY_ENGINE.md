@@ -235,6 +235,20 @@ approval text, expose an approval submission route, expose a runtime execution
 route, contact edge nodes, deploy runtimes, change firewall/DNS/systemd state,
 move traffic, or change subscription output.
 
+`buildChannelLabTargetDecision(...)` is the repository-local target decision
+layer after a read-only runtime inventory finds that the current lab target is
+not directly deployable. It accepts only a safe target inventory packet, then
+recommends whether to request a fresh `channel-lab-b` selection gate, a separate
+`channel-lab-a` access/port/cleanup gate, or the normal Risk A runtime canary
+approval gate.
+
+The same target decision layer is available through the protected Admin
+platform route `POST /api/admin/platform/channel-lab-target-decision` and an
+Admin Overview review panel. It remains review-only: it does not contact edge
+nodes, probe SSH or SSM, create servers, submit approval phrases, expose
+approval text, deploy runtimes, change firewall/DNS/systemd state, move
+traffic, or change subscription output.
+
 `assessChannelExtendedMeasurement(...)` can classify already-collected local
 benchmark summaries into `ready_for_decision`, `needs_extended_measurement`, or
 `hold_for_investigation`. This closes the repository-side gap between short

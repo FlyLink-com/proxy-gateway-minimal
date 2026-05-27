@@ -8,6 +8,7 @@ import {
   buildAccessModelInventorySummary,
   buildChannelCandidateReport,
   buildChannelDecisionPack,
+  buildChannelLabTargetDecision,
   buildChannelRuntimeExecutionHandoff,
   buildChannelRuntimeEvidenceBridge,
   buildChannelRuntimeGateWorkbench,
@@ -58,6 +59,7 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof buildAccessModelInventorySummary, "function");
   assert.equal(typeof buildChannelCandidateReport, "function");
   assert.equal(typeof buildChannelDecisionPack, "function");
+  assert.equal(typeof buildChannelLabTargetDecision, "function");
   assert.equal(typeof buildChannelRuntimeExecutionHandoff, "function");
   assert.equal(typeof buildChannelRuntimeEvidenceBridge, "function");
   assert.equal(typeof buildChannelRuntimeGateWorkbench, "function");

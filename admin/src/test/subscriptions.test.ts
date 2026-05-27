@@ -12,6 +12,7 @@ import type {
   ChannelRuntimeEvidenceBridgeInput,
   ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
+  ChannelLabTargetDecision,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
   SubscriptionTenant
@@ -178,6 +179,28 @@ describe("admin API client", () => {
     expect(bridge.mode).toBe("channel-runtime-evidence-bridge");
     expect(bridge.channelSystem.flowStatus).toBe("approval_ready");
   });
+
+  test("reviews channel lab target decisions through the protected platform endpoint", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ channelLabTargetDecision: channelLabTargetDecision() }));
+    const client = createAdminApiClient({
+      baseUrl: "",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    const decision = await client.reviewChannelLabTargetDecision(channelLabTargetInventoryInput());
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/channel-lab-target-decision",
+      expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
+    );
+    const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelLabTargetInventoryInput());
+    expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
+    expect(decision.mode).toBe("channel-lab-target-decision");
+    expect(decision.status).toBe("fresh_target_recommended");
+  });
 });
 
 describe("admin session", () => {
@@ -265,6 +288,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelRuntimeEvidence: async () => channelRuntimeEvidenceBridge(),
     reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
     reviewChannelRuntimeExecutionHandoff: async () => channelRuntimeExecutionHandoff(),
+    reviewChannelLabTargetDecision: async () => channelLabTargetDecision(),
     ...overrides
   };
 }
@@ -533,6 +557,70 @@ function channelRuntimeExecutionHandoff(): ChannelRuntimeExecutionHandoff {
       noTrafficMovement: true,
       requiresSeparateRiskAApproval: true,
       approvalTextIncluded: false,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
+    }
+  };
+}
+
+function channelLabTargetInventoryInput() {
+  return {
+    inventory: {
+      targetLabel: "channel-lab-a",
+      protocol: "tuic",
+      lifecycleStatus: "running",
+      checks: {
+        cloudIdentityVerified: true,
+        networkPostureVerified: true,
+        sshBannerReachable: false,
+        ssmRegistered: false,
+        hostInventoryCompleted: false,
+        incumbentRuntimePresent: true,
+        incumbentRuntimeProtocol: "hysteria2",
+        candidatePortPlanRecorded: false,
+        cleanupDecisionRecorded: false
+      },
+      blockerCodes: ["ssh_banner_timeout", "ssm_unavailable"],
+      nextGate: "channel_lab_b_selection_gate"
+    }
+  };
+}
+
+function channelLabTargetDecision(): ChannelLabTargetDecision {
+  return {
+    ok: true,
+    mode: "channel-lab-target-decision",
+    generatedAt: "2026-05-27T23:15:00.000Z",
+    status: "fresh_target_recommended",
+    requiredNextAction: "request_channel_lab_b_selection_gate",
+    executionAuthority: "not_granted",
+    target: {
+      targetLabel: "channel-lab-a",
+      protocol: "tuic",
+      lifecycleStatus: "running",
+      reuseRecommendation: "not_recommended"
+    },
+    blockers: ["ssh_banner_timeout", "ssm_unavailable", "host_inventory_incomplete"],
+    nextGate: {
+      risk: "A",
+      gate: "risk_a_channel_lab_b_selection",
+      approvalRequired: true,
+      approvalTextIncluded: false,
+      approvalSubmissionRoute: null,
+      runtimeExecutionRoute: null,
+      runbook: "docs/CHANNEL_CANARY_SERVER_SELECTION.md"
+    },
+    alternatives: {
+      channelLabAAccessCleanupGate: true,
+      freshChannelLabBSelection: true
+    },
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      requiresSeparateRiskAApproval: true,
       omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
     }
   };
@@ -1189,5 +1277,32 @@ describe("overview and nodes pages", () => {
     expect(within(handoffRegion).getByText(/No runtime execution route/i)).not.toBeNull();
     expect(within(handoffRegion).getByText(/Approval text not included/i)).not.toBeNull();
     expect(within(handoffRegion).queryByText(/secret\.example|token=|subscriptionUrl|approvalPhrase/i)).toBeNull();
+  });
+
+  test("renders channel lab target decision without execution controls or approval text", async () => {
+    const reviewChannelLabTargetDecision = vi.fn(async () => channelLabTargetDecision());
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewChannelLabTargetDecision })
+    }));
+
+    expect(await screen.findByText("Channel lab target decision")).not.toBeNull();
+    const decisionRegion = screen.getByRole("region", { name: "Channel lab target decision" });
+    fireEvent.change(screen.getByLabelText(/safe channel lab target inventory packet/i), {
+      target: { value: JSON.stringify(channelLabTargetInventoryInput()) }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review target decision/i }));
+
+    await waitFor(() => {
+      expect(reviewChannelLabTargetDecision).toHaveBeenCalledWith(channelLabTargetInventoryInput());
+    });
+    expect(await screen.findByText("channel-lab-target-decision")).not.toBeNull();
+    expect(within(decisionRegion).getByText("fresh_target_recommended")).not.toBeNull();
+    expect(within(decisionRegion).getByText("request_channel_lab_b_selection_gate")).not.toBeNull();
+    expect(within(decisionRegion).getByText("risk_a_channel_lab_b_selection")).not.toBeNull();
+    expect(within(decisionRegion).getByText(/No approval submission route/i)).not.toBeNull();
+    expect(within(decisionRegion).getByText(/No runtime execution route/i)).not.toBeNull();
+    expect(within(decisionRegion).getByText(/Approval text not included/i)).not.toBeNull();
+    expect(within(decisionRegion).queryByText(/secret\.example|token=|subscriptionUrl|approvalPhrase/i)).toBeNull();
   });
 });

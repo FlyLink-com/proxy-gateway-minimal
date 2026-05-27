@@ -166,6 +166,11 @@ export type ChannelRuntimeEvidenceBridgeInput = {
   runtimeEvidenceInput: unknown;
 };
 
+export type ChannelLabTargetDecisionInput = {
+  generatedAt?: string;
+  inventory: unknown;
+};
+
 export type ChannelSystemReadiness = {
   runtimeGateStatus: string;
   selectedBaselineReady: boolean;
@@ -320,6 +325,45 @@ export type ChannelRuntimeExecutionHandoff = {
     noTrafficMovement: boolean;
     requiresSeparateRiskAApproval: boolean;
     approvalTextIncluded: boolean;
+    omittedFields: string[];
+  };
+};
+
+export type ChannelLabTargetDecision = {
+  ok: boolean;
+  mode: "channel-lab-target-decision";
+  generatedAt: string;
+  status: string;
+  requiredNextAction: string;
+  executionAuthority: string;
+  target: {
+    targetLabel: string;
+    protocol: string;
+    lifecycleStatus: string;
+    reuseRecommendation: string;
+  };
+  blockers: string[];
+  nextGate: {
+    risk: "A" | string;
+    gate: string;
+    approvalRequired: boolean;
+    approvalTextIncluded: boolean;
+    approvalSubmissionRoute: string | null;
+    runtimeExecutionRoute: string | null;
+    runbook: string;
+  };
+  alternatives: {
+    channelLabAAccessCleanupGate: boolean;
+    freshChannelLabBSelection: boolean;
+  };
+  safety: {
+    advisoryOnly: boolean;
+    summaryOnly: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+    noApprovalSubmission: boolean;
+    noTrafficMovement: boolean;
+    requiresSeparateRiskAApproval: boolean;
     omittedFields: string[];
   };
 };

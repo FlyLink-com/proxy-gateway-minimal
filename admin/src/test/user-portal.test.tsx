@@ -5,6 +5,7 @@ import { App } from "../App";
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import type { AdminApiClient } from "../features/subscriptions/api-client";
 import type {
+  ChannelLabTargetDecision,
   ChannelRuntimeEvidenceBridge,
   ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
@@ -78,6 +79,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelRuntimeEvidence: async () => channelRuntimeEvidenceBridge(),
     reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
     reviewChannelRuntimeExecutionHandoff: async () => channelRuntimeExecutionHandoff(),
+    reviewChannelLabTargetDecision: async () => channelLabTargetDecision(),
     overview: async () => ({
       ok: true,
       total: 0,
@@ -249,6 +251,47 @@ function channelRuntimeExecutionHandoff(): ChannelRuntimeExecutionHandoff {
       noTrafficMovement: true,
       requiresSeparateRiskAApproval: true,
       approvalTextIncluded: false,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
+    }
+  };
+}
+
+function channelLabTargetDecision(): ChannelLabTargetDecision {
+  return {
+    ok: true,
+    mode: "channel-lab-target-decision",
+    generatedAt: "2026-05-27T20:05:00.000Z",
+    status: "fresh_target_recommended",
+    requiredNextAction: "request_channel_lab_b_selection_gate",
+    executionAuthority: "not_granted",
+    target: {
+      targetLabel: "channel-lab-a",
+      protocol: "tuic",
+      lifecycleStatus: "running",
+      reuseRecommendation: "not_recommended"
+    },
+    blockers: ["ssh_banner_timeout"],
+    nextGate: {
+      risk: "A",
+      gate: "risk_a_channel_lab_b_selection",
+      approvalRequired: true,
+      approvalTextIncluded: false,
+      approvalSubmissionRoute: null,
+      runtimeExecutionRoute: null,
+      runbook: "docs/CHANNEL_CANARY_SERVER_SELECTION.md"
+    },
+    alternatives: {
+      channelLabAAccessCleanupGate: true,
+      freshChannelLabBSelection: true
+    },
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      requiresSeparateRiskAApproval: true,
       omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
     }
   };
