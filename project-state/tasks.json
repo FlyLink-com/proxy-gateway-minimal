@@ -476,7 +476,7 @@
     {
       "id": "B13-aliyun-gate-evidence-shell",
       "risk": "B",
-      "status": "completed-in-current-branch",
+      "status": "completed-in-pr-183",
       "lane": "subscription-control-plane",
       "title": "Add repository-local Aliyun gate evidence shell",
       "goal": "Record operator-provided provider-firewall gate evidence through protected Admin routes so the Aliyun gate decision packet can consume evidence without performing A-tier mutation.",
