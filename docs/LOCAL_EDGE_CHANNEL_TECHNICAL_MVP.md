@@ -480,6 +480,32 @@ The decision pack is meant for review and archival. It does not make runtime
 changes, deploy protocol services, edit subscription output, change DNS, or
 approve a Risk A channel canary.
 
+Repository-local runtime registry integration is available through
+`buildChannelRuntimeRegistry(...)`. It joins the dry-run summary,
+measurement score, and a safe runtime inventory summary into one channel
+system state:
+
+```text
+selected baseline
+canary-ready candidates
+runtime-blocked candidates
+missing runtime inventory candidates
+required next action
+```
+
+To build the registry:
+
+```bash
+npm run channel:runtime-registry -- <path-to-dry-run-summary.json> <path-to-score.json> <path-to-runtime-inventory-summary.json>
+```
+
+This closes the repository-side gap between "measurement recommends canary"
+and "runtime is actually ready to request a canary gate." The registry must not
+contain hosts, ports, credentials, raw errors, tokens, subscription URLs,
+artifact URLs, cloud credentials, or customer data. It does not contact edge
+nodes, query cloud APIs, deploy runtimes, change firewall rules, or approve
+subscription output.
+
 Repository-local extended measurement assessment is available through
 `assessChannelExtendedMeasurement(...)`. It consumes an already-collected local
 benchmark summary and classifies each probe as:

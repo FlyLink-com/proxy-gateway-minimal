@@ -17,6 +17,7 @@ export {
 export { dryRunChannelConfig } from "./server/services/channel-config-dry-run.mjs";
 export { buildChannelCandidateReport } from "./server/services/channel-candidate-report.mjs";
 export { buildChannelDecisionPack } from "./server/services/channel-decision-pack.mjs";
+export { buildChannelRuntimeRegistry } from "./server/services/channel-runtime-registry.mjs";
 export { assessChannelExtendedMeasurement } from "./server/services/channel-extended-measurement.mjs";
 export { buildChannelExtendedMeasurementReport } from "./server/services/channel-extended-report.mjs";
 export { buildChannelMeasurementBundleReport } from "./server/services/channel-measurement-bundle.mjs";
