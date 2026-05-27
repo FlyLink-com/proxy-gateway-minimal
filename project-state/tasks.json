@@ -798,7 +798,7 @@
     {
       "id": "B27-channel-runtime-execution-handoff",
       "risk": "B",
-      "status": "completed-in-current-pr",
+      "status": "completed-in-pr-225",
       "lane": "edge-data-plane",
       "title": "Add protected channel runtime execution handoff API and UI",
       "goal": "Convert safe runtime bridge packets into operator-safe A-tier handoff material without submitting approvals or executing runtime changes.",
