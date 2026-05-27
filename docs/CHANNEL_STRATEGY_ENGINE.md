@@ -295,6 +295,27 @@ subscription-output execution route, emit Clash/Mihomo YAML, change real
 subscription output, contact edge nodes, deploy runtimes, change
 firewall/DNS/systemd state, move traffic, or activate production.
 
+`createChannelSubscriptionActivationFlowFixture(...)` and
+`replayChannelSubscriptionActivationFlowFixture(...)` are the repository-local
+fixture and replay layer after activation-flow review. They let operators save
+and replay a safe activation-flow packet for later evidence handoff without
+copying raw hosts, ports, URLs, credentials, raw logs, tokens, subscription
+URLs, YAML, or approval text into the fixture.
+
+The CLI helpers are:
+
+```bash
+npm run channel:subscription-activation-fixture -- <path-to-activation-flow.json>
+npm run channel:subscription-activation-replay -- <path-to-activation-flow-fixture.json>
+```
+
+The fixture/replay layer is not another execution gate. It does not submit
+approval phrases, expose execution routes, generate YAML, change subscription
+output, contact edge nodes, deploy runtimes, move traffic, or activate
+production. It exists because the channel system is not established until
+review evidence can be preserved, replayed, and handed to a later exact-phrase
+A-tier runtime or subscription-output gate.
+
 `buildChannelLabTargetDecision(...)` is the repository-local target decision
 layer after a read-only runtime inventory finds that the current lab target is
 not directly deployable. It accepts only a safe target inventory packet, then

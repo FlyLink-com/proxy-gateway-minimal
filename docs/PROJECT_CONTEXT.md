@@ -902,6 +902,14 @@ simplification queue is closed:
   generates no YAML, mutates no real subscription output, contacts no edge
   nodes, deploys no runtime, moves no traffic, and performs no production
   activation.
+- `B35-channel-subscription-activation-flow-fixture` - completed in the
+  Channel Subscription Activation Flow Fixture work; repository-local helpers
+  and CLI scripts can now save and replay safe activation-flow packets for
+  evidence handoff. The fixture rejects raw hosts, ports, URLs, credentials,
+  raw logs, tokens, subscription URLs, YAML, approval phrases, and unsupported
+  metadata; replay remains advisory and does not generate YAML, submit
+  approvals, expose execution routes, change subscription output, contact edge
+  nodes, deploy runtime, move traffic, or activate production.
 - `B28-channel-lab-target-decision` - completed in the Channel Lab Target
   Decision work; the protected Admin platform route and Admin Overview can now
   convert safe target inventory packets into an advisory next target gate after
