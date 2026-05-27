@@ -166,6 +166,8 @@ export type ChannelRuntimeEvidenceBridgeInput = {
   runtimeEvidenceInput: unknown;
 };
 
+export type ChannelSubscriptionOutputDraftInput = ChannelRuntimeEvidenceBridgeInput;
+
 export type ChannelLabTargetDecisionInput = {
   generatedAt?: string;
   inventory: unknown;
@@ -323,6 +325,67 @@ export type ChannelRuntimeExecutionHandoff = {
     noProductionMutation: boolean;
     noApprovalSubmission: boolean;
     noTrafficMovement: boolean;
+    requiresSeparateRiskAApproval: boolean;
+    approvalTextIncluded: boolean;
+    omittedFields: string[];
+  };
+};
+
+export type ChannelSubscriptionOutputDraftCandidate = {
+  name: string;
+  protocol: string;
+  qualityClass?: string;
+  qualityTier?: string;
+  channelScore?: number | null;
+  targetLabel?: string;
+  lifecycleStatus?: string;
+  nextGate?: string;
+  reasonCodes?: string[];
+  blockers?: string[];
+};
+
+export type ChannelSubscriptionOutputDraft = {
+  ok: boolean;
+  mode: "channel-subscription-output-draft";
+  generatedAt: string;
+  sourceGeneratedAt: string;
+  status: string;
+  subscriptionOutputDraft: {
+    yamlGenerated: boolean;
+    realSubscriptionOutputChanged: boolean;
+    activationAllowed: boolean;
+    baselinePool: ChannelSubscriptionOutputDraftCandidate[];
+    canaryPool: ChannelSubscriptionOutputDraftCandidate[];
+    privatePool: ChannelSubscriptionOutputDraftCandidate[];
+    blockedPool: ChannelSubscriptionOutputDraftCandidate[];
+  };
+  nextGate: {
+    risk: "A" | string;
+    gate: string;
+    requiredNextAction: string;
+    approvalRequired: boolean;
+    exactApprovalRequired: boolean;
+    subscriptionOutputActivationApproved: boolean;
+    approvalTextIncluded: boolean;
+    approvalSubmissionRoute: string | null;
+    executionRoute: string | null;
+    runbook: string;
+  };
+  source: {
+    bridgeMode: string;
+    systemMode: string;
+    runtimeRegistryMode: string;
+    runtimeGatePacketMode: string;
+  };
+  safety: {
+    advisoryOnly: boolean;
+    summaryOnly: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+    noApprovalSubmission: boolean;
+    noTrafficMovement: boolean;
+    noSubscriptionOutputMutation: boolean;
+    yamlNotGenerated: boolean;
     requiresSeparateRiskAApproval: boolean;
     approvalTextIncluded: boolean;
     omittedFields: string[];

@@ -235,6 +235,20 @@ approval text, expose an approval submission route, expose a runtime execution
 route, contact edge nodes, deploy runtimes, change firewall/DNS/systemd state,
 move traffic, or change subscription output.
 
+`buildChannelSubscriptionOutputDraft(...)` is the repository-local bridge from
+safe channel runtime evidence into subscription-output planning. It consumes
+the same safe runtime bridge packet, then returns a summary-only draft with
+baseline, canary, private, and blocked pools. The draft explicitly records that
+YAML was not generated, real subscription output was not changed, and
+activation is not allowed.
+
+The same draft layer is available through the protected Admin platform route
+`POST /api/admin/platform/channel-subscription-output-draft` and an Admin
+Overview review panel. It remains review-only: it does not emit Clash/Mihomo
+YAML, submit approval phrases, expose an approval submission route, expose an
+execution route, contact edge nodes, deploy runtimes, change
+firewall/DNS/systemd state, move traffic, or change subscription output.
+
 `buildChannelLabTargetDecision(...)` is the repository-local target decision
 layer after a read-only runtime inventory finds that the current lab target is
 not directly deployable. It accepts only a safe target inventory packet, then

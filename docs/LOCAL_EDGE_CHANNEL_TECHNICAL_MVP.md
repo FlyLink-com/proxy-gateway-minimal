@@ -598,6 +598,17 @@ approval submission, runtime execution, edge-node contact, DNS/firewall/systemd
 mutation, traffic movement, or subscription-output changes.
 
 The protected Admin platform route
+`POST /api/admin/platform/channel-subscription-output-draft` and its Admin
+Overview panel are the repository-side bridge from channel runtime evidence to
+subscription-output planning. They summarize baseline, canary, private, and
+blocked pools from safe runtime evidence while keeping `yamlGenerated=false`,
+`realSubscriptionOutputChanged=false`, and `activationAllowed=false`. This layer
+exists because the channel system is not complete until runtime evidence can be
+reviewed against subscription-output intent, but it remains review-only and
+does not generate YAML, submit approvals, deploy runtimes, contact edge nodes,
+move traffic, or change subscription output.
+
+The protected Admin platform route
 `POST /api/admin/platform/channel-lab-target-decision` and its Admin Overview
 panel are the next repository-side target selection layer after a runtime
 inventory blocks deployment on the current lab target. They accept a safe

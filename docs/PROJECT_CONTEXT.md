@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-05-27, Asia/Shanghai.
+Last updated: 2026-05-28, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -408,7 +408,13 @@ Current architecture priorities:
   `not_granted`, source runbook reference, candidate counts, grouped
   candidates, and preflight/validation/rollback checklist keys without
   approval submission, approval text, runtime execution, edge-node contact,
-  traffic movement, or production activation. A protected channel lab target
+  traffic movement, or production activation. A protected channel subscription
+  output draft layer can now convert safe runtime bridge packets into
+  summary-only baseline/canary/private/blocked pools for subscription-output
+  planning while explicitly keeping YAML generation disabled, real
+  subscription output unchanged, activation not approved, no approval
+  submission route, no execution route, no edge-node contact, no runtime
+  mutation, and no traffic movement. A protected channel lab target
   decision layer can now accept safe target inventory packets after a blocked
   runtime inventory and return whether to request a fresh `channel-lab-b`
   selection gate, a separate `channel-lab-a` access/port/cleanup gate, or the
@@ -860,6 +866,14 @@ simplification queue is closed:
   and does not expose public routes, approval submission, approval text,
   runtime execution, edge-node contact, DNS, firewall, traffic movement,
   subscription-output change, or production activation.
+- `B31-channel-subscription-output-draft` - completed in the Channel
+  Subscription Output Draft work; the protected Admin platform route and Admin
+  Overview can now convert safe runtime bridge packets into summary-only
+  baseline/canary/private/blocked pools for subscription-output planning. The
+  packet keeps YAML generation disabled, real subscription output unchanged,
+  activation not approved, no approval submission route, no execution route,
+  no edge-node contact, no runtime mutation, no traffic movement, and no
+  production activation.
 - `B28-channel-lab-target-decision` - completed in the Channel Lab Target
   Decision work; the protected Admin platform route and Admin Overview can now
   convert safe target inventory packets into an advisory next target gate after
