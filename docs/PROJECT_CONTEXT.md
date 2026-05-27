@@ -232,7 +232,14 @@ Current architecture priorities:
   `docs/production-replacement-records/2026-05-27-aliyun-repo-mvp-closeout.md`
   and records that repository contracts, protected Admin review surfaces, gate
   policy metadata, and validation boundaries are ready for the next exact-phrase
-  A-tier decision gate.
+  A-tier decision gate. The exact-phrase clean-start private validation
+  attempt is recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-execution.md`;
+  it refreshed the loopback-only Aliyun candidate runtime to current `master`,
+  initialized candidate-only in-memory validation state, and passed private
+  clean-start rendering metadata checks. No DNS, public listener, public Admin,
+  provider firewall, AWS, historical state-copy, edge traffic, user traffic, or
+  production authority transfer was performed.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a
@@ -439,6 +446,11 @@ operator approval, validation, and rollback path exist:
   `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md`
   and
   `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`.
+  The latest clean-start private validation execution attempt is
+  `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-execution.md`;
+  it passed after candidate runtime refresh and private metadata-only
+  validation. Provider-firewall hardening remains required before any
+  public-boundary dry run or DNS promotion.
 - Clean fallback `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
