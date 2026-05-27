@@ -7,6 +7,7 @@ import {
   assessChannelExtendedMeasurement,
   buildChannelCandidateReport,
   buildChannelDecisionPack,
+  buildChannelRuntimeInventorySummary,
   buildChannelRuntimeRegistry,
   buildChannelExtendedMeasurementReport,
   buildChannelMeasurementBundleReport,
@@ -50,6 +51,7 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof assessChannelExtendedMeasurement, "function");
   assert.equal(typeof buildChannelCandidateReport, "function");
   assert.equal(typeof buildChannelDecisionPack, "function");
+  assert.equal(typeof buildChannelRuntimeInventorySummary, "function");
   assert.equal(typeof buildChannelRuntimeRegistry, "function");
   assert.equal(typeof buildChannelExtendedMeasurementReport, "function");
   assert.equal(typeof buildChannelMeasurementBundleReport, "function");

@@ -321,10 +321,13 @@ Current architecture priorities:
   candidate reports can join dry-run config metadata with scores into
   stable/canary/private/hold/missing-measurement groups for operator review,
   and decision packs can turn those inputs into safe baseline/canary/blocker
-  artifacts. Channel runtime registry integration can now join dry-run config,
-  measurement score, and safe runtime inventory summaries into canary-ready,
-  runtime-blocked, and missing-inventory groups without contacting edge nodes
-  or mutating runtime state. Extended measurement assessments can classify
+  artifacts. Channel runtime inventory summary support can now normalize
+  operator-provided runtime gate facts into safe summary artifacts without raw
+  hosts, ports, URLs, credentials, raw logs, tokens, subscription URLs, or
+  customer data. Channel runtime registry integration can join dry-run config,
+  measurement score, and those safe runtime inventory summaries into
+  canary-ready, runtime-blocked, and missing-inventory groups without contacting
+  edge nodes or mutating runtime state. Extended measurement assessments can classify
   already-collected local benchmark summaries as ready, needing more samples,
   or hold for investigation before an operator decides on the next canary gate. Measurement
   investigation reports can consume safe bundle reports and classify hold
@@ -675,6 +678,11 @@ simplification queue is closed:
   summaries can now be joined into canary-ready, runtime-blocked, and
   missing-inventory groups without running probes, touching edge nodes,
   deploying runtimes, opening ports, or changing subscription output.
+- `B19-channel-runtime-inventory-summary` - completed in the Channel Runtime
+  Inventory Summary work; operator-provided runtime gate facts can now be
+  normalized into safe registry input artifacts without raw hosts, ports, URLs,
+  credentials, raw logs, tokens, subscription URLs, customer data, runtime
+  mutation, or production activation.
 - `C4-tuic-comparison-canary-plan` - completed in the TUIC Comparison Canary
   Plan work; TUIC is now the documented next measured channel candidate after
   the held Hysteria2 extended measurement, while VLESS/XUDP remains the

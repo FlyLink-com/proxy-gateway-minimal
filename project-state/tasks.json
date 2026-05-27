@@ -446,7 +446,7 @@
     {
       "id": "B18-channel-runtime-registry",
       "risk": "B",
-      "status": "completed-in-current-pr",
+      "status": "completed-in-pr-208",
       "lane": "edge-data-plane",
       "title": "Add repository-local channel runtime registry",
       "goal": "Join dry-run config summaries, measurement scores, and safe runtime inventory summaries into canary-ready, runtime-blocked, and missing-inventory groups without touching runtime state.",
@@ -473,6 +473,41 @@
       "validation": [
         "git diff --check origin/master...HEAD",
         "node --test server/tests/channel-runtime-registry.test.mjs server/tests/channel-decision-pack.test.mjs server/tests/channel-candidate-report.test.mjs server/tests/package-entry.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "B19-channel-runtime-inventory-summary",
+      "risk": "B",
+      "status": "completed-in-current-pr",
+      "lane": "edge-data-plane",
+      "title": "Add repository-local channel runtime inventory summary",
+      "goal": "Normalize operator-provided runtime gate facts into safe runtime inventory summary artifacts consumed by the channel runtime registry without carrying raw runtime details.",
+      "allowedFiles": [
+        "server/services/channel-runtime-inventory-summary.mjs",
+        "server/tests/channel-runtime-inventory-summary.test.mjs",
+        "scripts/channel-runtime-inventory-summary.mjs",
+        "package.json",
+        "index.mjs",
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/PROJECT_CONTEXT.md",
+        "docs/README.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "mutate production",
+        "run probes or contact edge nodes",
+        "download or deploy protocol runtimes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, or runtime config",
+        "change production tenant or artifact state",
+        "write secrets, raw hosts, raw ports, raw logs, credentials, or raw subscription URLs",
+        "treat runtime inventory summary output as runtime deployment approval"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/channel-runtime-inventory-summary.test.mjs server/tests/channel-runtime-registry.test.mjs server/tests/package-entry.test.mjs",
         "npm test",
         "npm run project-state:check"
       ]

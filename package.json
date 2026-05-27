@@ -61,6 +61,7 @@
     "channel:extended-report": "node scripts/channel-extended-report.mjs",
     "channel:measurement-bundle": "node scripts/channel-measurement-bundle.mjs",
     "channel:measurement-investigation": "node scripts/channel-measurement-investigation.mjs",
+    "channel:runtime-inventory-summary": "node scripts/channel-runtime-inventory-summary.mjs",
     "channel:runtime-registry": "node scripts/channel-runtime-registry.mjs",
     "project-state:check": "node scripts/check-project-state.mjs",
     "test": "npm run test:server",
