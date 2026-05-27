@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-05-27",
+  "lastUpdated": "2026-05-28",
   "timezone": "Asia/Shanghai",
   "status": "active-snapshot-aliyun-subscription-promoted-edge-blocked",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
@@ -143,6 +143,7 @@
     "Channel Runtime Evidence Review API/UI for submitting safe runtime evidence bridge packets through protected Admin surfaces and returning normalized runtime inventory plus channel system readiness artifacts without public routes, edge-node contact, runtime mutation, approval submission, traffic movement, subscription-output change, or production activation",
     "Channel Runtime Gate Workbench API/UI for converting safe runtime bridge packets into gate-facing advisory status, approval-readiness metadata, candidate counts, and grouped candidates without public routes, edge-node contact, runtime mutation, approval submission, approval-phrase echo, traffic movement, subscription-output change, or production activation",
     "Channel Runtime Execution Handoff API/UI for converting safe runtime bridge packets into operator-safe A-tier handoff material with execution authority marked not_granted, source runbook reference, candidate counts, grouped candidates, and preflight/validation/rollback checklist keys without public routes, edge-node contact, runtime mutation, approval submission, approval text, traffic movement, subscription-output change, or production activation",
+    "Channel Subscription Output Draft API/UI for converting safe runtime bridge packets into summary-only baseline/canary/private/blocked pools for subscription-output planning without public routes, YAML generation, real subscription-output mutation, activation approval, approval submission, execution routes, edge-node contact, runtime mutation, traffic movement, or production activation",
     "Channel Lab Target Decision API/UI for converting safe target inventory packets into advisory next target gates after blocked runtime inventory, choosing between fresh channel-lab-b selection, channel-lab-a access/port/cleanup, or Risk A runtime canary request without public routes, edge-node contact, server creation, runtime mutation, approval submission, approval text, traffic movement, subscription-output change, or production activation",
     "Channel Extended Measurement Assessment for advisory ready/needs-more-samples/hold classification from already-collected local summaries",
     "Channel Measurement Investigation for advisory hold-pattern classification from safe measurement bundle reports",

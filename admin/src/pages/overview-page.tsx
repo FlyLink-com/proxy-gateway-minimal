@@ -11,6 +11,8 @@ import type {
   ChannelRuntimeEvidenceBridgeInput,
   ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
+  ChannelSubscriptionOutputDraft,
+  ChannelSubscriptionOutputDraftInput,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
   CleanEdgeReadinessInput,
@@ -89,6 +91,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
       <ChannelRuntimeEvidenceBridgePanel apiClient={apiClient} />
       <ChannelRuntimeGateWorkbenchPanel apiClient={apiClient} />
       <ChannelRuntimeExecutionHandoffPanel apiClient={apiClient} />
+      <ChannelSubscriptionOutputDraftPanel apiClient={apiClient} />
       <ChannelLabTargetDecisionPanel apiClient={apiClient} />
       <CleanEdgeReadinessReviewPanel apiClient={apiClient} />
       <AliyunGateReviewPanel apiClient={apiClient} />
@@ -121,6 +124,19 @@ function parseChannelRuntimeEvidenceBridgeInput(value: string): ChannelRuntimeEv
   }
   assertSafeChannelSystemEvidence(parsed);
   return parsed as ChannelRuntimeEvidenceBridgeInput;
+}
+
+function parseChannelSubscriptionOutputDraftInput(value: string): ChannelSubscriptionOutputDraftInput {
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Safe channel subscription draft packet must be a JSON object.");
+  }
+  try {
+    assertSafeChannelSystemEvidence(parsed);
+  } catch {
+    throw new Error("Safe channel subscription draft packet contains forbidden runtime details.");
+  }
+  return parsed as ChannelSubscriptionOutputDraftInput;
 }
 
 function parseChannelLabTargetDecisionInput(value: string): ChannelLabTargetDecisionInput {
@@ -558,6 +574,96 @@ function ChannelRuntimeExecutionHandoffPanel({ apiClient }: { apiClient: AdminAp
                 {!handoff.handoff.nextGate.approvalTextIncluded
                   ? "Approval text not included"
                   : "Approval text included"}
+              </li>
+            </ul>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ChannelSubscriptionOutputDraftPanel({ apiClient }: { apiClient: AdminApiClient }) {
+  const [packetText, setPacketText] = useState("");
+  const [draft, setDraft] = useState<ChannelSubscriptionOutputDraft | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewing(true);
+    setError("");
+    try {
+      const input = parseChannelSubscriptionOutputDraftInput(packetText);
+      const nextDraft = await apiClient.reviewChannelSubscriptionOutputDraft(input);
+      setDraft(nextDraft);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+      setDraft(null);
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  return (
+    <section className="gate-review-card" aria-labelledby="channel-subscription-output-draft-heading">
+      <div className="page-heading">
+        <div>
+          <h2 id="channel-subscription-output-draft-heading">Channel subscription output draft</h2>
+          <p className="muted">Protected draft review from channel runtime evidence into subscription-output planning.</p>
+        </div>
+      </div>
+
+      <div className="alert">
+        This panel reviews subscription-output draft evidence only; it does not generate YAML, submit approvals, or change real subscription output.
+      </div>
+
+      {error ? <div className="alert alert-error">{error}</div> : null}
+
+      <form className="channel-review-form" onSubmit={handleReviewSubmit}>
+        <label htmlFor="channel-subscription-output-draft-packet">Safe channel subscription draft packet</label>
+        <textarea
+          id="channel-subscription-output-draft-packet"
+          value={packetText}
+          onChange={(event) => setPacketText(event.target.value)}
+          placeholder='{"dryRunSummary":{},"measurementScore":{},"runtimeEvidenceInput":{"records":[]}}'
+          rows={8}
+        />
+        <button className="primary-button" type="submit" disabled={reviewing}>
+          {reviewing ? "Reviewing..." : "Review subscription draft"}
+        </button>
+      </form>
+
+      {draft ? (
+        <>
+          <div className="metric-grid">
+            <Metric label="Draft mode" value={draft.mode} />
+            <Metric label="Draft status" value={draft.status} />
+            <Metric label="Baseline pool" value={draft.subscriptionOutputDraft.baselinePool.length} />
+            <Metric label="Canary pool" value={draft.subscriptionOutputDraft.canaryPool.length} />
+            <Metric label="Blocked pool" value={draft.subscriptionOutputDraft.blockedPool.length} />
+            <Metric label="Next gate" value={draft.nextGate.gate} />
+          </div>
+          <div className="gate-boundary">
+            <strong>Subscription draft boundary</strong>
+            <ul>
+              <li>{draft.safety.yamlNotGenerated ? "YAML not generated" : "YAML generation flag missing"}</li>
+              <li>
+                {draft.safety.noSubscriptionOutputMutation
+                  ? "No subscription output mutation"
+                  : "Subscription output mutation flag missing"}
+              </li>
+              <li>{draft.safety.noRuntimeMutation ? "No runtime mutation" : "Runtime mutation flag missing"}</li>
+              <li>{draft.safety.noTrafficMovement ? "No traffic movement" : "Traffic movement flag missing"}</li>
+              <li>
+                {!draft.subscriptionOutputDraft.activationAllowed
+                  ? "Activation not approved"
+                  : "Activation unexpectedly allowed"}
+              </li>
+              <li>
+                {draft.nextGate.approvalSubmissionRoute === null
+                  ? "No approval submission route"
+                  : "Approval submission route exposed"}
               </li>
             </ul>
           </div>

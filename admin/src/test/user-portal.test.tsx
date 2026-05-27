@@ -9,6 +9,7 @@ import type {
   ChannelRuntimeEvidenceBridge,
   ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
+  ChannelSubscriptionOutputDraft,
   ChannelSystemDecisionFlow,
   CleanEdgeReadinessSummary,
   SubscriptionTenant
@@ -80,6 +81,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelRuntimeEvidence: async () => channelRuntimeEvidenceBridge(),
     reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
     reviewChannelRuntimeExecutionHandoff: async () => channelRuntimeExecutionHandoff(),
+    reviewChannelSubscriptionOutputDraft: async () => channelSubscriptionOutputDraft(),
     reviewChannelLabTargetDecision: async () => channelLabTargetDecision(),
     reviewCleanEdgeReadiness: async () => cleanEdgeReadinessSummary(),
     overview: async () => ({
@@ -307,6 +309,56 @@ function channelRuntimeExecutionHandoff(): ChannelRuntimeExecutionHandoff {
       requiresSeparateRiskAApproval: true,
       approvalTextIncluded: false,
       omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls"]
+    }
+  };
+}
+
+function channelSubscriptionOutputDraft(): ChannelSubscriptionOutputDraft {
+  return {
+    ok: true,
+    mode: "channel-subscription-output-draft",
+    generatedAt: "2026-05-27T20:04:30.000Z",
+    sourceGeneratedAt: "2026-05-27T20:04:00.000Z",
+    status: "blocked_before_subscription_output_draft",
+    subscriptionOutputDraft: {
+      yamlGenerated: false,
+      realSubscriptionOutputChanged: false,
+      activationAllowed: false,
+      baselinePool: [],
+      canaryPool: [],
+      privatePool: [],
+      blockedPool: []
+    },
+    nextGate: {
+      risk: "A",
+      gate: "resolve_channel_subscription_output_draft_blockers",
+      requiredNextAction: "resolve_channel_subscription_output_draft_blockers",
+      approvalRequired: false,
+      exactApprovalRequired: false,
+      subscriptionOutputActivationApproved: false,
+      approvalTextIncluded: false,
+      approvalSubmissionRoute: null,
+      executionRoute: null,
+      runbook: "docs/CHANNEL_STRATEGY_ENGINE.md"
+    },
+    source: {
+      bridgeMode: "channel-runtime-evidence-bridge",
+      systemMode: "channel-system-decision-flow",
+      runtimeRegistryMode: "channel-runtime-registry",
+      runtimeGatePacketMode: "channel-runtime-gate-packet"
+    },
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      noSubscriptionOutputMutation: true,
+      yamlNotGenerated: true,
+      requiresSeparateRiskAApproval: true,
+      approvalTextIncluded: false,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls", "yaml"]
     }
   };
 }

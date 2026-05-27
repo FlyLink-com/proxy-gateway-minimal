@@ -3,6 +3,7 @@ import { buildChannelLabTargetDecision } from "../services/channel-lab-target-de
 import { buildChannelRuntimeExecutionHandoff } from "../services/channel-runtime-execution-handoff.mjs";
 import { buildChannelRuntimeEvidenceBridge } from "../services/channel-runtime-evidence-bridge.mjs";
 import { buildChannelRuntimeGateWorkbench } from "../services/channel-runtime-gate-workbench.mjs";
+import { buildChannelSubscriptionOutputDraft } from "../services/channel-subscription-output-draft.mjs";
 import { buildChannelSystemDecisionFlow } from "../services/channel-system-decision-flow.mjs";
 import { buildCleanEdgeReadinessSummary } from "../services/clean-edge-readiness-summary.mjs";
 import { createCleanStartControlPlanePackage } from "../services/platform/clean-start-control-plane.mjs";
@@ -51,6 +52,12 @@ function channelRuntimeGateWorkbenchValidationError() {
 
 function channelRuntimeExecutionHandoffValidationError() {
   const error = new Error("channel runtime execution handoff input is invalid");
+  error.code = "validation_error";
+  return error;
+}
+
+function channelSubscriptionOutputDraftValidationError() {
+  const error = new Error("channel subscription output draft input is invalid");
   error.code = "validation_error";
   return error;
 }
@@ -176,6 +183,21 @@ export function adminPlatformRoutes(state) {
       });
     } catch {
       sendError(res, channelRuntimeExecutionHandoffValidationError());
+    }
+  });
+
+  router.post("/api/admin/platform/channel-subscription-output-draft", (req, res) => {
+    try {
+      const input = req.body ?? {};
+      res.json({
+        channelSubscriptionOutputDraft: buildChannelSubscriptionOutputDraft({
+          dryRunSummary: input.dryRunSummary,
+          measurementScore: input.measurementScore,
+          runtimeEvidenceInput: input.runtimeEvidenceInput
+        })
+      });
+    } catch {
+      sendError(res, channelSubscriptionOutputDraftValidationError());
     }
   });
 

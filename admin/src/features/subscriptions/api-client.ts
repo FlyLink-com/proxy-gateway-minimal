@@ -8,6 +8,8 @@ import type {
   ChannelRuntimeEvidenceBridgeInput,
   ChannelRuntimeExecutionHandoff,
   ChannelRuntimeGateWorkbench,
+  ChannelSubscriptionOutputDraft,
+  ChannelSubscriptionOutputDraftInput,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
   CleanEdgeReadinessInput,
@@ -205,6 +207,16 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
           }
         )
       ).channelRuntimeExecutionHandoff,
+    reviewChannelSubscriptionOutputDraft: async (input: ChannelSubscriptionOutputDraftInput) =>
+      (
+        await request<{ channelSubscriptionOutputDraft: ChannelSubscriptionOutputDraft }>(
+          "/api/admin/platform/channel-subscription-output-draft",
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).channelSubscriptionOutputDraft,
     reviewChannelLabTargetDecision: async (input: ChannelLabTargetDecisionInput) =>
       (
         await request<{ channelLabTargetDecision: ChannelLabTargetDecision }>(

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-05-27",
+  "lastUpdated": "2026-05-28",
   "timezone": "Asia/Shanghai",
   "status": "a-tier-blocked-only",
   "purpose": "Machine-readable backlog for simplification and project-control work. This file does not authorize production mutation.",
@@ -969,6 +969,55 @@
       "validation": [
         "git diff --check origin/master...HEAD",
         "node --test server/tests/platform-access-routes.test.mjs server/tests/clean-edge-readiness-summary.test.mjs",
+        "npm run test --prefix admin -- src/test/subscriptions.test.ts",
+        "npm run admin:test",
+        "npm run admin:build",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "B31-channel-subscription-output-draft",
+      "risk": "B",
+      "status": "completed-in-pr-238",
+      "lane": "edge-data-plane",
+      "title": "Add protected channel subscription output draft review",
+      "goal": "Convert safe channel runtime evidence into an operator-safe subscription-output draft before any separate Risk A runtime canary, subscription-output, or rollout gate.",
+      "allowedFiles": [
+        "server/services/channel-subscription-output-draft.mjs",
+        "server/tests/channel-subscription-output-draft.test.mjs",
+        "server/routes/admin-platform.mjs",
+        "server/tests/platform-access-routes.test.mjs",
+        "admin/src/features/subscriptions/api-client.ts",
+        "admin/src/features/subscriptions/types.ts",
+        "admin/src/pages/overview-page.tsx",
+        "admin/src/test/subscriptions.test.ts",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/README.md",
+        "docs/PROJECT_CONTEXT.md",
+        "index.mjs",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "generate Clash or Mihomo YAML",
+        "change real subscription output",
+        "mutate production",
+        "query or contact live edge nodes",
+        "deploy runtimes",
+        "submit approval phrases",
+        "echo approval text",
+        "add execution routes or execution controls",
+        "add public routes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, firewall, provider, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, or subscription-output state",
+        "write secrets, raw hosts, raw IPs, raw ports, raw logs, credentials, raw subscription URLs, SQLite rows, customer data, or exact management-source values",
+        "treat subscription-output draft output as runtime canary or production rollout approval"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/channel-subscription-output-draft.test.mjs server/tests/platform-access-routes.test.mjs server/tests/package-entry.test.mjs",
         "npm run test --prefix admin -- src/test/subscriptions.test.ts",
         "npm run admin:test",
         "npm run admin:build",
