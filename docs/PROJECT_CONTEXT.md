@@ -98,10 +98,13 @@ stable subscription/import experience
 Current architecture priorities:
 
 - Active Goal: `docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md`
-  is the current goal-driven execution baseline. It authorizes repo-only B/C
-  implementation and documentation first, allows HP `ci-full` validation when
-  needed, and does not authorize Aliyun deployment, DNS changes, production
-  traffic, state copy, edge rebuild, or public runtime mutation.
+  is the current goal-driven execution baseline. It started repo-only B/C and
+  HP `ci-full` validation first; subsequent exact-phrase A-tier approvals now
+  cover the completed clean-start private validation, provider-firewall
+  hardening, public-boundary dry run, and production subscription-distribution
+  promotion records. It still does not authorize public Admin, edge traffic,
+  AWS rollback-start, historical state copy, broader artifact issuance, or
+  legacy query-token retirement.
 - Aliyun User Management / Subscription Distribution: the near-term business
   split is Aliyun for user management/subscription distribution, HP for local CI/operator
   lab, and all other nodes in a controlled drain/retirement queue. See
@@ -227,7 +230,8 @@ Current architecture priorities:
   next gates are ready for operator approval and which remain blocked, and the
   protected gate-evidence shell can record operator-provided provider-firewall
   evidence for that packet. Runtime initialization, public-boundary dry run,
-  DNS promotion, edge rebuild, and rollback-start remain separate A-tier gates.
+  and production subscription-distribution promotion have execution records;
+  edge rebuild and rollback-start remain separate A-tier gates.
   The repo-only B/C MVP closeout audit lives in
   `docs/production-replacement-records/2026-05-27-aliyun-repo-mvp-closeout.md`
   and records that repository contracts, protected Admin review surfaces, gate
@@ -262,11 +266,20 @@ Current architecture priorities:
   private, then removed the temporary provider rules, UFW rules, Nginx config,
   and temporary self-signed certificate. Final public 80/443/3456/18080 are
   closed again, AliDNS is unchanged, and no user traffic, state-copy, AWS
-  mutation, or production authority transfer was performed.
+  mutation, or production authority transfer was performed. The exact-phrase
+  production subscription-distribution promotion is recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-production-subscription-distribution-promotion.md`;
+  it promoted `sub.globalcirclecat.com` to the Aliyun public subscription
+  boundary with durable 80/443 and HTTPS, validated public health/Admin
+  blocking/no-token behavior plus a single authorized smoke refresh, and kept
+  `ss-sg.globalcirclecat.com`, edge traffic, AWS, historical state copy,
+  public Admin, 3456, and 18080 out of scope. The smoke tenant is disabled and
+  the Aliyun `aegis.service` side effect is recorded for follow-up.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
-  moved off the current Aliyun server, and that host is now prepared as a
-  private loopback-only `sub-control-a` candidate without production authority.
+  moved off the current Aliyun server, and that host now serves the approved
+  public subscription-distribution boundary while keeping the app private,
+  Admin blocked, and edge data-plane activation out of scope.
 - Edge Data Plane: AWS Singapore `prod-edge-a/b` have been stopped under an
   accepted-outage cleanup decision. New edge capacity now needs clean rebuild
   planning; do not describe the current state as serving production traffic.
@@ -326,22 +339,30 @@ Use these docs for detail:
 
 ## Current Production Snapshot
 
-This snapshot reflects documented project state as of 2026-05-26. Refresh live
+This snapshot reflects documented project state as of 2026-05-27. Refresh live
 AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
 
-- Current production service status: accepted outage. AWS Singapore
-  `prod-edge-a` and `prod-edge-b` are stopped.
-- Current DNS records are unchanged but stale for active service:
-  `sub.globalcirclecat.com -> 13.215.156.159` and
+- Current subscription-distribution status: Aliyun promotion executed for
+  `sub.globalcirclecat.com`; edge data-plane service is still not activated.
+- Current DNS records:
+  `sub.globalcirclecat.com -> 47.251.178.125` and
   `ss-sg.globalcirclecat.com -> 13.215.156.159`.
+- `sub.globalcirclecat.com` serves the Aliyun public subscription boundary over
+  HTTP/HTTPS with `/api/health` returning 200, public Admin/root returning 404,
+  and no-token subscription refresh returning 401. Public Admin is not exposed.
+- `ss-sg.globalcirclecat.com` remains on the old AWS stopped address by design;
+  edge traffic activation was not approved in the promotion gate.
+- AWS Singapore `prod-edge-a` and `prod-edge-b` are stopped under accepted
+  outage.
 - Current stopped primary instance: `i-0b7791340d3fedff5`; security group
   retained: `sg-0379ece0b3d305c43`.
 - Current stopped secondary instance: `i-0ad8676ee113d14cb`; security group
   retained: `sg-06682c36aa03834f7`.
 - The stopped instances have no Elastic IP associations after stop; rollback by
   start may require DNS/config updates if AWS assigns new public IPv4 addresses.
-- HTTPS and public subscription endpoints on the stopped AWS nodes are expected
-  to time out until new capacity or rollback is approved.
+- HTTPS and public subscription endpoints on the stopped AWS nodes are not the
+  current subscription-distribution authority after Aliyun promotion; edge
+  traffic still needs clean rebuild or separate rollback-start approval.
 - The active opaque artifact canary exists for controlled operator validation.
   The full import URL is stored only in a local `C:\tmp\...` file and must not
   be pasted, committed, logged, or written into docs.
@@ -359,6 +380,12 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   `docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md`.
   It stopped `prod-edge-a` and `prod-edge-b`, retained security groups, left
   DNS unchanged, did not terminate instances, and did not mutate Aliyun.
+- The approved Aliyun subscription-distribution promotion is recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-production-subscription-distribution-promotion.md`.
+  It changed only `sub.globalcirclecat.com`, opened durable Aliyun 80/443,
+  issued HTTPS for the subscription boundary, verified public health/Admin
+  blocking/no-token and authorized-smoke behavior, left `ss-sg` unchanged, did
+  not activate edge traffic, and recorded an Aliyun `aegis.service` follow-up.
 - The latest channel canary server selection inventory is recorded in
   `docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md`.
   It recommends a clean provider-neutral `channel-lab-a` target and Hysteria2
@@ -449,7 +476,8 @@ operator approval, validation, and rollback path exist:
   and
   `docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md`.
   It is not staging, not production, and not deploy approval.
-- Aliyun private state-copy validation or production-control promotion. The
+- Aliyun state-preserving source copy remains blocked unless the operator
+  rejects clean-start and approves a separate source-rescue path. The
   current Aliyun candidate-preparation record is
   `docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md`.
   The latest private state-copy preflight record is
@@ -474,17 +502,24 @@ operator approval, validation, and rollback path exist:
   it passed after candidate runtime refresh and private metadata-only
   validation. The latest provider-firewall hardening execution record is
   `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-execution.md`;
-  provider-level public 80/443/3456/18080 remain closed. The HP
+  provider-level public 80/443/3456/18080 were closed before promotion. The HP
   management-source follow-up is
   `docs/production-replacement-records/2026-05-27-aliyun-hp-management-source-firewall-execution.md`;
   HP now has scoped provider-firewall access for SSH and the existing wg-home
   UDP lab path, but the wg-home logical handshake did not refresh. A
   public-boundary dry run passed and was cleaned up in
   `docs/production-replacement-records/2026-05-27-aliyun-public-boundary-dry-run-execution.md`.
-  DNS promotion remains a separate A-tier gate, and durable 80/443 exposure
-  should be re-opened only as part of an approved promotion or repeat dry run.
-- Clean fallback `sub-control-a` candidate provisioning, state-copy validation,
-  public-boundary validation, or promotion.
+  The exact-phrase production subscription-distribution promotion is now
+  recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-production-subscription-distribution-promotion.md`;
+  durable Aliyun 80/443 and `sub.globalcirclecat.com` are active for the
+  subscription boundary, public Admin remains blocked, `ss-sg` remains
+  unchanged, edge traffic is not activated, and the Aliyun `aegis.service`
+  follow-up remains open.
+- Clean fallback `sub-control-a` candidate provisioning now remains only a
+  fallback if the current Aliyun path is rejected; state-preserving copy,
+  public-boundary rerun, or additional promotion work still needs separate
+  A-tier approval.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
   `prod-edge-a` / `prod-edge-b` closes during key exchange from the current
   operator environment. See
@@ -601,25 +636,30 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   `/tmp/proxy-gateway-ci-*.tar` archives; the post-cleanup recheck found CI
   workspace, GitHub CLI config, git credentials, npm/cache residue, and CI
   archives absent.
-- A private candidate proxy-gateway runtime is now active on loopback only, and
-  candidate Nginx is active on loopback only.
+- The Aliyun proxy-gateway runtime remains private on app port 3456, while
+  Nginx now exposes only the approved public subscription boundary on 80/443
+  for `sub.globalcirclecat.com`.
 - WireGuard `wg-home` is active on UDP 51820 and must be explicitly accepted,
   scoped, or removed during any future production hardening.
-- UFW is active with default deny incoming / allow outgoing and only OpenSSH
-  plus existing `wg-home` UDP 51820 allowed inbound.
-- The candidate app listens on `127.0.0.1:3456`; candidate Nginx listens on
-  `127.0.0.1:18080`; no edge proxy listener was opened.
-- HP-side external validation found public 3456, 18080, 80, and 443 closed and
-  SSH 22 open.
-- No DNS, user traffic, production authority, production SQLite copy, artifact
-  copy, edge traffic, AWS, public Admin, WireGuard, tenant, or cutover mutation
-  was performed.
+- UFW is active with default deny incoming / allow outgoing; OpenSSH, existing
+  `wg-home` UDP 51820, and approved public 80/443 are allowed inbound.
+- The candidate app listens on `127.0.0.1:3456`; private Nginx still has a
+  loopback path, and public Nginx now serves the approved subscription boundary
+  on 80/443. No edge proxy listener was opened.
+- Post-promotion validation found public 80/443 serving only the approved
+  subscription boundary, while public 3456 and 18080 remain closed or timed
+  out.
+- The promotion mutated only the approved Aliyun public subscription boundary
+  and `sub.globalcirclecat.com` DNS record. No `ss-sg` change, edge traffic,
+  AWS, public Admin, WireGuard, historical state copy, customer data copy, or
+  unrelated node mutation was performed.
 - Aliyun private state-copy preflight confirms candidate app health, loopback
   Nginx health, UFW deny-incoming posture, and candidate SQLite
   `integrity_check: ok`.
-- The same preflight confirms AliDNS still points `sub.globalcirclecat.com` and
-  `ss-sg.globalcirclecat.com` to `13.215.156.159`, and HP-side public checks do
-  not observe Aliyun candidate public exposure on 80/443/3456/18080.
+- The same preflight historically confirmed AliDNS still pointed
+  `sub.globalcirclecat.com` and `ss-sg.globalcirclecat.com` to
+  `13.215.156.159`, and HP-side public checks did not observe Aliyun candidate
+  public exposure on 80/443/3456/18080 before promotion.
 - Private state-copy validation is still blocked because prod-edge-a source
   internal SSH inspection timed out during banner exchange; source SQLite
   integrity and fresh source backup are not yet verified.
@@ -633,6 +673,7 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   also found Aliyun provider firewall rules remain too broad, including public
   allow rules for 80/443 and broad TCP/UDP ranges, while host UFW currently
   blocks most public paths except SSH and the existing wg-home lab UDP path.
+  This is now historical pre-promotion evidence.
 - Aliyun Gate B source-state planning now recommends a clean-start Aliyun
   control plane unless the operator explicitly requires historical subscription
   state preservation. If historical state is required, prefer a separate
@@ -647,15 +688,14 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   Historical AWS state copy is no longer the default dependency for the MVP,
   but remains available only through a separate state-preserving source rescue
   path if the operator later requires continuity.
-- The clean-start repo package now provides protected operator-safe readiness
-  and private rendering dry-run metadata in repository code. It does not perform
-  Aliyun runtime initialization, state copy, public listener exposure, provider
-  firewall mutation, DNS change, edge rebuild, or production promotion.
-- Standalone A-tier execution gate runbooks now exist for clean-start private
-  validation and provider-firewall hardening. They define approval phrases,
-  fresh read-only preflight requirements, allowed/forbidden actions, validation
-  evidence, rollback, and not-performed boundaries, but do not execute Aliyun,
-  DNS, firewall, AWS, state-copy, public-listener, or traffic mutation.
+- Clean-start private validation, provider-firewall hardening, HP
+  management-source follow-up, public-boundary dry run, and production
+  subscription-distribution promotion now each have execution records. The
+  latest promotion record proves `sub.globalcirclecat.com` on Aliyun, public
+  Admin blocked, no-token subscription rejection, one authorized smoke refresh,
+  disabled smoke state, and unchanged edge DNS. The remaining work is
+  observation/Aegis follow-up, clean edge rebuild or rollback-start decisions,
+  broader artifact issuance, and legacy query-token retirement.
 
 Latest Aliyun user-management / subscription-distribution decision:
 
@@ -669,22 +709,19 @@ Latest Aliyun user-management / subscription-distribution decision:
   authority without a later integration gate.
 - On 2026-05-26, the operator approved stopping AWS Singapore `prod-edge-a` and
   `prod-edge-b` with accepted service outage. Both instances are stopped.
-- Authoritative AliDNS still points `sub.globalcirclecat.com` and
-  `ss-sg.globalcirclecat.com` to `13.215.156.159`, but that AWS instance is now
-  stopped and has no public IP association.
+- Authoritative AliDNS now points `sub.globalcirclecat.com` to the Aliyun
+  subscription boundary and leaves `ss-sg.globalcirclecat.com` on the old AWS
+  stopped address because edge traffic activation was not approved.
 - Latest cleanup preflight:
   `docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md`.
 - The tracked static node config still references `prod-edge-a` and
   `prod-edge-b`, so subscription output/config must be rebuilt before the
   service can be considered healthy again.
-- The next executable gates are separate A-tier approvals for Aliyun
-  clean-start private validation, provider-firewall hardening, clean edge node
-  rebuild planning, or rollback-start approval for the stopped AWS nodes if
-  temporary restore is needed. The first two gates now have standalone runbooks
-  in
-  `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md`
-  and
-  `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`.
+- The next executable gates are separate A-tier approvals for clean edge node
+  rebuild planning, rollback-start approval for stopped AWS nodes if temporary
+  restore is needed, broader artifact issuance, or legacy query-token
+  retirement. Observation and Aliyun `aegis.service` follow-up should run
+  before declaring the promotion fully closed.
 
 Latest A2 preflight:
 
