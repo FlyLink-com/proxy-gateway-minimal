@@ -1131,9 +1131,10 @@ Node drain/stop:
 The next executable gate is:
 
 ```text
-Aliyun promotion Gate A live inventory refresh, prod-edge-a source access /
-source-state planning, clean edge node rebuild planning, or rollback-start
-planning for stopped AWS Singapore nodes if temporary restore is needed.
+Aliyun Gate B source access / source-state planning, provider-firewall
+hardening planning before any public-boundary dry run, clean edge node rebuild
+planning, or rollback-start planning for stopped AWS Singapore nodes if
+temporary restore is needed.
 ```
 
 Do not move DNS, promote production authority, expose public Admin, start edge

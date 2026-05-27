@@ -328,6 +328,8 @@ operator approval, validation, and rollback path exist:
   `docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md`.
   The Package 5 promotion runbook readiness record is
   `docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md`.
+  The latest Gate A live inventory is
+  `docs/production-replacement-records/2026-05-27-aliyun-gate-a-live-inventory.md`.
 - Clean fallback `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
@@ -422,6 +424,7 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - `docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md`
 - `docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md`
 - `docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md`
+- `docs/production-replacement-records/2026-05-27-aliyun-gate-a-live-inventory.md`
 - The current Aliyun SWAS host is reachable through SSH alias `miyao`.
 - It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
   `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
@@ -456,9 +459,17 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - Follow-up source internal inspection confirmed prod-edge-a EC2 health and
   production public endpoint health, but SSM inventory is empty and SSH TCP/22
   closes before banner/auth. Source command execution remains blocked.
-- The next promotion gate is Aliyun Gate A live inventory refresh, followed by
-  source access / source-state planning, separate remediation approval if
-  mutation is needed, and then Aliyun private state-copy validation approval.
+- Aliyun Gate A live inventory on 2026-05-27 found the candidate app and
+  loopback Nginx healthy, candidate SQLite `integrity_check: ok`, HP-side
+  public checks still not observing Aliyun 80/443/3456/18080 exposure, and
+  AliDNS still pointing subscription domains to the stopped AWS address. It
+  also found Aliyun provider firewall rules remain too broad, including public
+  allow rules for 80/443 and broad TCP/UDP ranges, while host UFW currently
+  blocks most public paths except SSH and the existing wg-home lab UDP path.
+- The next promotion gate is Gate B source access / source-state planning plus
+  a separate provider-firewall hardening plan before any public-boundary dry
+  run, followed by separate remediation approval if mutation is needed, and
+  then Aliyun private state-copy validation approval.
 
 Latest Aliyun user-management / subscription-distribution decision:
 
@@ -480,9 +491,9 @@ Latest Aliyun user-management / subscription-distribution decision:
 - The tracked static node config still references `prod-edge-a` and
   `prod-edge-b`, so subscription output/config must be rebuilt before the
   service can be considered healthy again.
-- The next executable gate is Aliyun Gate A live inventory refresh, clean edge
-  node rebuild planning, source access / source-state planning, or a
-  rollback-start approval for the stopped AWS nodes.
+- The next executable gate is Aliyun Gate B source access / source-state
+  planning, provider-firewall hardening planning, clean edge node rebuild
+  planning, or a rollback-start approval for the stopped AWS nodes.
 
 Latest A2 preflight:
 
