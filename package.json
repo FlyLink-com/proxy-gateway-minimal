@@ -65,6 +65,7 @@
     "channel:runtime-inventory-summary": "node scripts/channel-runtime-inventory-summary.mjs",
     "channel:runtime-registry": "node scripts/channel-runtime-registry.mjs",
     "channel:system-decision-flow": "node scripts/channel-system-decision-flow.mjs",
+    "platform:access-inventory-summary": "node scripts/access-model-inventory-summary.mjs",
     "project-state:check": "node scripts/check-project-state.mjs",
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",
