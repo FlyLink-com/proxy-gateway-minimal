@@ -330,6 +330,8 @@ operator approval, validation, and rollback path exist:
   `docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md`.
   The latest Gate A live inventory is
   `docs/production-replacement-records/2026-05-27-aliyun-gate-a-live-inventory.md`.
+  The latest Gate B source-state and provider-firewall planning record is
+  `docs/production-replacement-records/2026-05-27-aliyun-gate-b-source-firewall-plan.md`.
 - Clean fallback `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
@@ -425,6 +427,7 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - `docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md`
 - `docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md`
 - `docs/production-replacement-records/2026-05-27-aliyun-gate-a-live-inventory.md`
+- `docs/production-replacement-records/2026-05-27-aliyun-gate-b-source-firewall-plan.md`
 - The current Aliyun SWAS host is reachable through SSH alias `miyao`.
 - It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
   `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
@@ -466,10 +469,13 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   also found Aliyun provider firewall rules remain too broad, including public
   allow rules for 80/443 and broad TCP/UDP ranges, while host UFW currently
   blocks most public paths except SSH and the existing wg-home lab UDP path.
-- The next promotion gate is Gate B source access / source-state planning plus
-  a separate provider-firewall hardening plan before any public-boundary dry
-  run, followed by separate remediation approval if mutation is needed, and
-  then Aliyun private state-copy validation approval.
+- Aliyun Gate B source-state planning now recommends a clean-start Aliyun
+  control plane unless the operator explicitly requires historical subscription
+  state preservation. If historical state is required, prefer a separate
+  source-state rescue planning path before relying on SSH-first remediation; if
+  temporary service restoration is required, use a separate AWS rollback-start
+  preflight. Provider-firewall hardening remains a separate prerequisite before
+  any public-boundary dry run.
 
 Latest Aliyun user-management / subscription-distribution decision:
 
@@ -491,9 +497,9 @@ Latest Aliyun user-management / subscription-distribution decision:
 - The tracked static node config still references `prod-edge-a` and
   `prod-edge-b`, so subscription output/config must be rebuilt before the
   service can be considered healthy again.
-- The next executable gate is Aliyun Gate B source access / source-state
-  planning, provider-firewall hardening planning, clean edge node rebuild
-  planning, or a rollback-start approval for the stopped AWS nodes.
+- The next executable gate is Aliyun Gate B source-state decision approval,
+  provider-firewall hardening approval, clean edge node rebuild planning, or a
+  rollback-start approval for the stopped AWS nodes.
 
 Latest A2 preflight:
 
