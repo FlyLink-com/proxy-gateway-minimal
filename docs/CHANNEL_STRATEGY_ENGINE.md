@@ -134,6 +134,14 @@ subscription material, endpoints, credentials, raw errors, or notes. Bundle
 reports remain repository evidence only; they do not create measurements or
 activate runtime nodes.
 
+`buildChannelMeasurementInvestigationReport(...)` can consume a safe bundle
+report and classify the observed hold pattern into operator-review labels such
+as `sustained_tail_latency`, `isolated_tail_spike`,
+`reliability_failure`, or `insufficient_evidence`. The investigation report
+adds a safe `rolloutRecommendation` and `nextAction`, but it remains advisory:
+it does not run probes, mutate configs, deploy runtime protocols, change DNS,
+or approve broader rollout.
+
 Redacted historical bundle fixtures may live under
 `docs/channel-measurement-bundles/` when they only contain aggregate
 measurement evidence. These fixtures are useful for regression testing the

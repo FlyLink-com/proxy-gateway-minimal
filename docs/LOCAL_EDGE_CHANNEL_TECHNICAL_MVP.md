@@ -494,6 +494,19 @@ To assess a local benchmark summary:
 npm run channel:extended-assessment -- <path-to-local-summary.json>
 ```
 
+To classify a safe measurement bundle report into a follow-up investigation
+summary:
+
+```bash
+npm run channel:measurement-investigation -- <path-to-bundle-report.json>
+```
+
+The investigation report identifies whether a hold is driven by sustained tail
+latency, isolated tail spikes, reliability failures, or insufficient evidence.
+It gives an advisory next action only; it does not run probes, contact edge
+nodes, mutate runtime config, change subscription output, or approve any
+Risk A rollout.
+
 To create a safe editable fixture from a local dry-run summary:
 
 ```bash
