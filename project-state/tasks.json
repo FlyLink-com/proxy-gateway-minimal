@@ -515,7 +515,7 @@
     {
       "id": "B14-admin-aliyun-gate-review-surface",
       "risk": "B",
-      "status": "completed-in-current-branch",
+      "status": "completed-in-pr-186",
       "lane": "subscription-control-plane",
       "title": "Add Admin Overview surface for Aliyun gate review",
       "goal": "Let operators review the protected Aliyun gate decision packet and record provider-firewall gate evidence as booleans without exposing A-tier execution controls.",
@@ -556,7 +556,7 @@
     {
       "id": "C4-tuic-comparison-canary-plan",
       "risk": "C",
-      "status": "completed-in-current-branch",
+      "status": "completed-in-pr-174",
       "lane": "edge-data-plane",
       "title": "Define TUIC as the next measured channel candidate after held Hysteria2",
       "goal": "Record the docs-only comparison plan that makes TUIC the primary next measured candidate and keeps VLESS/XUDP as the secondary comparison path without authorizing runtime canary execution.",
