@@ -4,20 +4,21 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "../app.mjs";
 import { createPlatformAccountEntitlementShell } from "../services/platform/account-entitlement-shell.mjs";
+import { createPlatformAliyunGateEvidenceShell } from "../services/platform/aliyun-gate-evidence-shell.mjs";
 import { createPlatformLeadReviewQueue } from "../services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "../services/platform/subscription-access-shell.mjs";
 import { listen } from "./helpers/listen.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 
-function fakeState({ leadQueue, accountShell, accessShell, proxyConfig, aliyunGateEvidence }) {
+function fakeState({ leadQueue, accountShell, accessShell, proxyConfig, aliyunGateEvidence, aliyunGateEvidenceShell }) {
   return {
     rootDir: ROOT,
     host: "127.0.0.1",
     ports: { console: 3456, socks: 1080, httpProxy: 18180 },
     consoleToken: "secret",
     proxyConfig: proxyConfig || { servers: [], pingHosts: [], nginx: { host: "127.0.0.1", ports: [] } },
-    platform: { leadQueue, accountShell, accessShell, aliyunGateEvidence },
+    platform: { leadQueue, accountShell, accessShell, aliyunGateEvidence, aliyunGateEvidenceShell },
     services: {
       ssLocal: {
         start: async () => ({ ok: true }),
@@ -254,6 +255,123 @@ test("admin platform Aliyun gate packet route is protected and redacts firewall 
     assert.equal(serialized.includes("operator-home-secret-label"), false);
     assert.equal(serialized.includes("wg-home-secret-scope-label"), false);
     assert.equal(serialized.includes("token=secret"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin platform Aliyun gate evidence route records provider-firewall evidence for the gate packet", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  accessShell.issueDynamicEntry("acct_1", "ent_1", {
+    entryRef: "entry_ref_secret",
+    artifactRef: "artifact_ref_secret",
+    rawEntryUrl: "https://portal-secret.example/use?token=dynamic-secret"
+  });
+  const proxyConfig = {
+    servers: [
+      {
+        name: "clean-edge-a",
+        host: "edge-secret.example",
+        port: 443,
+        type: "ss",
+        cipher: "aes-256-gcm",
+        password: "node-password-secret",
+        qualityClass: "stable"
+      }
+    ],
+    pingHosts: [],
+    nginx: { host: "127.0.0.1", ports: [] }
+  };
+  const aliyunGateEvidenceShell = createPlatformAliyunGateEvidenceShell({
+    nowFn: () => "2026-05-27T15:00:00.000Z"
+  });
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell,
+    proxyConfig,
+    aliyunGateEvidenceShell
+  })));
+  try {
+    const unauthenticated = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence`);
+    assert.equal(unauthenticated.status, 401);
+
+    const created = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence/provider-firewall`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        hasRollbackSnapshot: true,
+        managementSource: "operator-home-secret-label",
+        wgHomeDecision: "wg-home-secret-scope-label",
+        rawRules: ["ALLOW 203.0.113.99/32 udp 51820 token=secret"],
+        note: "private note with customer@example.com"
+      })
+    });
+    assert.equal(created.status, 201);
+    const createdBody = await created.json();
+    assert.equal(createdBody.evidence.providerFirewall.status, "ready_for_gate_packet");
+    assert.equal(createdBody.evidence.providerFirewall.hasRollbackSnapshot, true);
+    assert.equal(createdBody.evidence.providerFirewall.hasManagementSourceDecision, true);
+    assert.equal(createdBody.evidence.providerFirewall.hasWgHomeDecision, true);
+    assert.equal(createdBody.evidence.providerFirewall.rawRulesProvided, true);
+    assert.equal(createdBody.evidence.providerFirewall.rawRulesEchoed, false);
+
+    const packet = await fetch(`${baseUrl}/api/admin/platform/aliyun-gates`, {
+      headers: authHeaders()
+    });
+    assert.equal(packet.status, 200);
+    const packetBody = await packet.json();
+    const firewallGate = packetBody.aliyunGates.gates.find((gate) => gate.id === "aliyun_provider_firewall_hardening");
+    assert.equal(firewallGate.status, "ready_for_operator_approval");
+    assert.deepEqual(firewallGate.blockers, []);
+
+    const listed = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence`, {
+      headers: authHeaders()
+    });
+    assert.equal(listed.status, 200);
+    const serialized = JSON.stringify({
+      created: createdBody,
+      listed: await listed.json(),
+      packet: packetBody
+    });
+    assert.equal(serialized.includes("edge-secret.example"), false);
+    assert.equal(serialized.includes("node-password-secret"), false);
+    assert.equal(serialized.includes("portal-secret.example"), false);
+    assert.equal(serialized.includes("dynamic-secret"), false);
+    assert.equal(serialized.includes("entry_ref_secret"), false);
+    assert.equal(serialized.includes("artifact_ref_secret"), false);
+    assert.equal(serialized.includes("203.0.113.99"), false);
+    assert.equal(serialized.includes("operator-home-secret-label"), false);
+    assert.equal(serialized.includes("wg-home-secret-scope-label"), false);
+    assert.equal(serialized.includes("customer@example.com"), false);
+    assert.equal(serialized.includes("token=secret"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin platform Aliyun gate evidence route fails closed when evidence shell is unavailable", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence/provider-firewall`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ hasRollbackSnapshot: true })
+    });
+
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error, "validation_error");
   } finally {
     server.close();
   }

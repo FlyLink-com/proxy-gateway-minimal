@@ -11,6 +11,7 @@ import { createSqliteSubscriptionStore } from "./services/subscriptions/reposito
 import { createSubscriptionCore } from "./services/subscriptions/core.mjs";
 import { DEFAULT_ADMIN_ALLOWED_CIDRS } from "./services/ip-address.mjs";
 import { createPlatformAccountEntitlementShell } from "./services/platform/account-entitlement-shell.mjs";
+import { createPlatformAliyunGateEvidenceShell } from "./services/platform/aliyun-gate-evidence-shell.mjs";
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "./services/platform/subscription-access-shell.mjs";
 import { spawn } from "node:child_process";
@@ -66,6 +67,7 @@ export function createRuntimeState(options = {}) {
   const platformAccessShell = options.platformAccessShell || createPlatformSubscriptionAccessShell({
     accountShell: platformAccountShell
   });
+  const platformAliyunGateEvidenceShell = options.platformAliyunGateEvidenceShell || createPlatformAliyunGateEvidenceShell();
   let closed = false;
 
   function close() {
@@ -197,7 +199,8 @@ export function createRuntimeState(options = {}) {
     platform: {
       leadQueue: platformLeadQueue,
       accountShell: platformAccountShell,
-      accessShell: platformAccessShell
+      accessShell: platformAccessShell,
+      aliyunGateEvidenceShell: platformAliyunGateEvidenceShell
     },
     security: {
       adminAllowedCidrs,

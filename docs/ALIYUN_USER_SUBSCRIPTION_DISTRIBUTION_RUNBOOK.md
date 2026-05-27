@@ -256,6 +256,24 @@ Aliyun gate decision packet: implemented in repository only
   - no Aliyun deployment, firewall mutation, public listener, DNS, SQLite
     persistence, state copy, AWS mutation, user traffic, edge traffic, or
     production authority is activated by this repository package
+Aliyun gate evidence shell: implemented in repository only
+  - `server/services/platform/aliyun-gate-evidence-shell.mjs` records
+    operator-provided provider-firewall gate evidence in memory for decision
+    support
+  - protected Admin routes:
+    `/api/admin/platform/aliyun-gate-evidence`
+    `/api/admin/platform/aliyun-gate-evidence/provider-firewall`
+  - evidence summaries expose status and booleans only, such as whether a
+    rollback snapshot, management-source decision, wg-home decision, raw rules,
+    or private note were provided
+  - the gate decision packet can consume boolean internal evidence to remove
+    provider-firewall blockers without retaining or echoing firewall raw rules,
+    management-source labels, wg-home decision text, private notes, raw portal
+    URLs, artifact references, subscription URLs, node hosts, node credentials,
+    tokens, customer emails, or organization names
+  - no Aliyun deployment, firewall mutation, UFW change, public listener, DNS,
+    SQLite persistence, state copy, AWS mutation, user traffic, edge traffic,
+    or production authority is activated by this repository package
 public registration/auth model: not approved
 public payment flow: not approved
 runtime promotion to Aliyun: not approved

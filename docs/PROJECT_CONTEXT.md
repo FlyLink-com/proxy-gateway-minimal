@@ -161,6 +161,19 @@ Current architecture priorities:
   is not Aliyun deployment, firewall mutation, public listener exposure, DNS,
   state copy, AWS mutation, user traffic, edge traffic, or production
   authority.
+- Platform Aliyun Gate Evidence Shell: repository-only operator evidence
+  support lives in `server/services/platform/aliyun-gate-evidence-shell.mjs`
+  with protected Admin routes `/api/admin/platform/aliyun-gate-evidence` and
+  `/api/admin/platform/aliyun-gate-evidence/provider-firewall`. It records
+  in-memory provider-firewall gate evidence for decision support and exposes
+  only status/boolean summaries. It lets the gate decision packet consume
+  boolean internal evidence without retaining or echoing firewall raw rules,
+  management-source labels, wg-home decision text, private notes, raw portal URLs, artifact
+  references, subscription URLs, node hosts, node credentials, tokens, customer
+  emails, or organization names. It is not Aliyun deployment, firewall
+  mutation, UFW change, public listener exposure, DNS, SQLite persistence,
+  state copy, AWS mutation, user traffic, edge traffic, or production
+  authority.
 - Aliyun Promotion Runbook / Package 5: the repository-only promotion gate
   model is documented in `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
   and recorded in
@@ -183,9 +196,10 @@ Current architecture priorities:
   and
   `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`.
   The protected `/api/admin/platform/aliyun-gates` packet can now show which
-  next gates are ready for operator approval and which remain blocked. Runtime
-  initialization, public-boundary dry run, DNS promotion, edge rebuild, and
-  rollback-start remain separate A-tier gates.
+  next gates are ready for operator approval and which remain blocked, and the
+  protected gate-evidence shell can record operator-provided provider-firewall
+  evidence for that packet. Runtime initialization, public-boundary dry run,
+  DNS promotion, edge rebuild, and rollback-start remain separate A-tier gates.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a

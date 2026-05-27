@@ -484,6 +484,58 @@ clean-start readiness and optional provider-firewall evidence into a protected
 Admin API packet at `/api/admin/platform/aliyun-gates`. It is an
 execution-before-decision aid, not a deployment mechanism or approval record.
 
+### Package 8: Aliyun Gate Evidence Shell
+
+**Risk:** B repo-only; A for any live provider-firewall mutation, Aliyun
+runtime validation, public-boundary dry run, DNS promotion, or production
+authority transfer.
+
+**Primary unit:** Subscription Control Platform.
+
+**Goal:** Let operators record redacted gate evidence in the protected Admin API
+so the gate decision packet can become actionable without performing the A-tier
+mutation itself.
+
+**Files likely touched:**
+
+```text
+server/services/platform/*.mjs
+server/routes/admin-platform.mjs
+server/state.mjs
+server/tests/*.test.mjs
+docs/PROJECT_CONTEXT.md
+project-state/*.json
+```
+
+**Acceptance:**
+
+```text
+provider-firewall evidence can be recorded through a protected Admin route
+gate evidence summaries expose booleans and status only
+the gate decision packet can consume boolean internal evidence without
+retaining or echoing raw rules, management-source labels, wg-home decision text, notes, tokens,
+subscription URLs, customer data, node hosts, or credentials
+incomplete evidence fails closed
+no Aliyun runtime, provider firewall, DNS, public listener, state copy, AWS,
+user traffic, or edge traffic is mutated by the repo PR
+```
+
+**Repository anchors after Package 8 implementation:**
+
+```text
+server/services/platform/aliyun-gate-evidence-shell.mjs
+server/routes/admin-platform.mjs
+server/state.mjs
+server/tests/platform-aliyun-gate-evidence-shell.test.mjs
+server/tests/platform-access-routes.test.mjs
+docs/PROJECT_CONTEXT.md
+project-state/current.json
+```
+
+The Package 8 implementation is repository-only. It records operator-provided
+evidence for decision support and keeps execution authority in the separate
+A-tier runbooks.
+
 ## Validation Policy
 
 ```text
@@ -544,7 +596,8 @@ Ready PRs must contain the complete loop for their approved scope.
    executing production mutation.
 6. Complete: build the clean-start control-plane repo implementation package.
 7. Complete: add the protected Aliyun gate decision packet for execution-before-decision review.
-8. Next A-tier: request Aliyun clean-start private validation and provider
+8. Complete: add the protected Aliyun gate evidence shell for operator-recorded gate evidence.
+9. Next A-tier: request Aliyun clean-start private validation and provider
    firewall hardening as separate gates.
 ```
 
