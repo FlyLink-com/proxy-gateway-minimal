@@ -232,7 +232,37 @@ Current architecture priorities:
   `docs/production-replacement-records/2026-05-27-aliyun-repo-mvp-closeout.md`
   and records that repository contracts, protected Admin review surfaces, gate
   policy metadata, and validation boundaries are ready for the next exact-phrase
-  A-tier decision gate.
+  A-tier decision gate. The exact-phrase clean-start private validation
+  attempt is recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-execution.md`;
+  it refreshed the loopback-only Aliyun candidate runtime to current `master`,
+  initialized candidate-only in-memory validation state, and passed private
+  clean-start rendering metadata checks. No DNS, public listener, public Admin,
+  provider firewall, AWS, historical state-copy, edge traffic, user traffic, or
+  production authority transfer was performed. The provider-firewall hardening
+  execution record is
+  `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-execution.md`;
+  it removed broad provider inbound rules and left only current operator
+  management `/32` access for SSH and the existing wg-home UDP lab path. Public
+  80/443/3456/18080 remain closed, AliDNS is unchanged, and no public-boundary
+  dry run, DNS promotion, user traffic, edge traffic, AWS mutation, or
+  production authority transfer was performed. The HP management-source
+  follow-up is recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-hp-management-source-firewall-execution.md`;
+  it added HP public `/32` as a separate provider-firewall management source
+  for SSH and existing wg-home UDP, corrected a temporary broad-rule creation
+  issue in the same execution, verified HP TCP/22 reachability and UDP/51820
+  arrival at Aliyun, and still performed no DNS, public listener, public Admin,
+  state-copy, user traffic, edge traffic, AWS mutation, or production authority
+  transfer. The HP wg-home logical handshake remained stale and is a separate
+  operator-lab follow-up if needed. The public-boundary dry run is recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-public-boundary-dry-run-execution.md`;
+  it temporarily opened HP-scoped 80/443, validated that Nginx can expose
+  `/api/health` while keeping Admin and root paths blocked and 3456/18080
+  private, then removed the temporary provider rules, UFW rules, Nginx config,
+  and temporary self-signed certificate. Final public 80/443/3456/18080 are
+  closed again, AliDNS is unchanged, and no user traffic, state-copy, AWS
+  mutation, or production authority transfer was performed.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host is now prepared as a
@@ -439,6 +469,20 @@ operator approval, validation, and rollback path exist:
   `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md`
   and
   `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`.
+  The latest clean-start private validation execution attempt is
+  `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-execution.md`;
+  it passed after candidate runtime refresh and private metadata-only
+  validation. The latest provider-firewall hardening execution record is
+  `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-execution.md`;
+  provider-level public 80/443/3456/18080 remain closed. The HP
+  management-source follow-up is
+  `docs/production-replacement-records/2026-05-27-aliyun-hp-management-source-firewall-execution.md`;
+  HP now has scoped provider-firewall access for SSH and the existing wg-home
+  UDP lab path, but the wg-home logical handshake did not refresh. A
+  public-boundary dry run passed and was cleaned up in
+  `docs/production-replacement-records/2026-05-27-aliyun-public-boundary-dry-run-execution.md`.
+  DNS promotion remains a separate A-tier gate, and durable 80/443 exposure
+  should be re-opened only as part of an approved promotion or repeat dry run.
 - Clean fallback `sub-control-a` candidate provisioning, state-copy validation,
   public-boundary validation, or promotion.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
