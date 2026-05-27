@@ -1262,6 +1262,44 @@
       ]
     },
     {
+      "id": "B37-channel-subscription-activation-record-template-api",
+      "risk": "B",
+      "status": "completed-in-pr-246",
+      "lane": "edge-data-plane",
+      "title": "Add protected channel subscription activation record template API",
+      "goal": "Expose safe activation-flow fixture to execution-record template conversion through a protected Admin platform route without granting execution authority.",
+      "allowedFiles": [
+        "server/routes/admin-platform.mjs",
+        "server/tests/platform-access-routes.test.mjs",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "generate Clash or Mihomo YAML",
+        "change real subscription output",
+        "mutate production",
+        "query or contact live edge nodes",
+        "deploy runtimes",
+        "submit approval phrases",
+        "echo or store approval text",
+        "add execution routes or execution controls",
+        "add public routes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, firewall, provider, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, or subscription-output state",
+        "write secrets, raw hosts, raw IPs, raw ports, raw URLs, raw logs, credentials, raw subscription URLs, SQLite rows, customer data, or exact management-source values",
+        "treat the protected API response as subscription-output activation approval or execution evidence"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/platform-access-routes.test.mjs server/tests/channel-subscription-activation-record-template.test.mjs server/tests/channel-subscription-activation-flow-fixture.test.mjs server/tests/channel-subscription-activation-flow.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "B12-aliyun-gate-decision-packet",
       "risk": "B",
       "status": "completed-in-pr-181",

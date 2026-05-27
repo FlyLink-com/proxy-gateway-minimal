@@ -919,6 +919,14 @@ simplification queue is closed:
   store approval text, generate YAML, submit approvals, expose execution
   routes, change subscription output, contact edge nodes, deploy runtime, move
   traffic, or activate production.
+- `B37-channel-subscription-activation-record-template-api` - completed in the
+  Channel Subscription Activation Record Template API work; the protected Admin
+  platform route can now turn a safe activation-flow fixture into the same
+  Markdown execution-record skeleton for operator review. The route accepts
+  safe fixture input only, returns safety metadata, and does not expose approval
+  submission, execution controls, YAML generation, subscription-output
+  mutation, edge-node contact, runtime deployment, traffic movement, or
+  production activation.
 - `B28-channel-lab-target-decision` - completed in the Channel Lab Target
   Decision work; the protected Admin platform route and Admin Overview can now
   convert safe target inventory packets into an advisory next target gate after
