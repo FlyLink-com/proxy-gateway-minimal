@@ -308,7 +308,16 @@ Current architecture priorities:
   it confirms the subscription boundary remains healthy, public Admin remains
   blocked, 3456/18080 remain externally closed from HP, SQLite integrity and
   safe aggregates are ok, and `aegis.service` is still failed due to leftover
-  Aegis process state. No Aegis repair mutation has been performed.
+  Aegis process state. The exact-phrase Aegis repair execution is recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-execution.md`;
+  it attempted `reset-failed`, `start`, and Aegis-only process cleanup, but
+  the stuck Aegis/AliYunDun processes could not be terminated within the gate
+  and `aegis.service` remains failed. The repair stopped safely: subscription
+  health remained 200, public Admin remained 404, no-token refresh remained
+  401, DNS stayed unchanged, Nginx/ufw/proxy-gateway/certbot stayed active,
+  SQLite integrity stayed ok, 3456/18080 stayed externally closed from HP, and
+  no reinstall, disablement, reboot, DNS, firewall, Nginx, proxy-gateway,
+  AWS, tenant, artifact, or edge mutation was performed.
 - Clean Edge Node Rebuild Gate: the next clean edge data-plane rebuild gate is
   defined in
   `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md`,
@@ -489,6 +498,15 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   SQLite integrity and safe aggregate counts are ok, and `aegis.service`
   remains failed with leftover Aegis process evidence. It does not execute
   repair mutation and still requires the exact Aegis repair approval phrase.
+- The Aegis repair execution is recorded in
+  `docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-execution.md`.
+  Exact approval was received, `reset-failed` and `start` were attempted, and
+  Aegis-only process cleanup was attempted. The repair failed and stopped
+  safely because the stuck Aegis/AliYunDun processes could not be terminated
+  within this gate. `aegis.service` remains failed, but the subscription
+  boundary, DNS, Nginx, UFW, proxy-gateway, SQLite integrity, and private-port
+  posture remained safe and unchanged. Broader vendor-agent repair, package
+  reinstall, Aegis disablement, or host reboot remains unapproved.
 - The clean edge node rebuild runbook is recorded in
   `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md`.
   It defines the exact approval phrase, clean edge host/bootstrap/private
