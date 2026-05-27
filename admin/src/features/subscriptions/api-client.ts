@@ -12,6 +12,8 @@ import type {
   ChannelSubscriptionActivationFlowInput,
   ChannelSubscriptionActivationHandoff,
   ChannelSubscriptionActivationHandoffInput,
+  ChannelSubscriptionActivationRecordTemplate,
+  ChannelSubscriptionActivationRecordTemplateInput,
   ChannelSubscriptionActivationReadiness,
   ChannelSubscriptionActivationReadinessInput,
   ChannelSubscriptionOutputDraft,
@@ -253,6 +255,18 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
           }
         )
       ).channelSubscriptionActivationFlow,
+    reviewChannelSubscriptionActivationRecordTemplate: async (
+      input: ChannelSubscriptionActivationRecordTemplateInput
+    ) =>
+      (
+        await request<{ channelSubscriptionActivationRecordTemplate: ChannelSubscriptionActivationRecordTemplate }>(
+          "/api/admin/platform/channel-subscription-activation-record-template",
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).channelSubscriptionActivationRecordTemplate,
     reviewChannelLabTargetDecision: async (input: ChannelLabTargetDecisionInput) =>
       (
         await request<{ channelLabTargetDecision: ChannelLabTargetDecision }>(

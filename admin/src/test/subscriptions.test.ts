@@ -16,6 +16,8 @@ import type {
   ChannelSubscriptionActivationFlowInput,
   ChannelSubscriptionActivationHandoff,
   ChannelSubscriptionActivationHandoffInput,
+  ChannelSubscriptionActivationRecordTemplate,
+  ChannelSubscriptionActivationRecordTemplateInput,
   ChannelSubscriptionActivationReadiness,
   ChannelSubscriptionActivationReadinessInput,
   ChannelSubscriptionOutputDraft,
@@ -343,6 +345,35 @@ describe("admin API client", () => {
     expect(flow.gate.subscriptionOutputExecutionRoute).toBeNull();
     expect(flow.safety.noSubscriptionOutputMutation).toBe(true);
   });
+
+  test("reviews channel subscription activation record templates through the protected platform endpoint", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      channelSubscriptionActivationRecordTemplate: channelSubscriptionActivationRecordTemplate()
+    }));
+    const client = createAdminApiClient({
+      baseUrl: "",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    const template = await client.reviewChannelSubscriptionActivationRecordTemplate(
+      channelSubscriptionActivationRecordTemplateInput()
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/channel-subscription-activation-record-template",
+      expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
+    );
+    const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionActivationRecordTemplateInput());
+    expect(String(reviewCall[1].body)).not.toMatch(/secret\.example|token=|https?:\/\/|\"host\"|\"port\"/i);
+    expect(template.mode).toBe("channel-subscription-activation-record-template");
+    expect(template.record.suggestedPath).toMatch(/channel-subscription-output-activation/);
+    expect(template.readiness.executionAuthority).toBe("not_granted");
+    expect(template.safety.templateOnly).toBe(true);
+    expect(template.safety.noSubscriptionOutputMutation).toBe(true);
+  });
 });
 
 describe("admin session", () => {
@@ -431,6 +462,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
     reviewChannelRuntimeExecutionHandoff: async () => channelRuntimeExecutionHandoff(),
     reviewChannelSubscriptionActivationFlow: async () => channelSubscriptionActivationFlow(),
+    reviewChannelSubscriptionActivationRecordTemplate: async () => channelSubscriptionActivationRecordTemplate(),
     reviewChannelSubscriptionActivationHandoff: async () => channelSubscriptionActivationHandoff(),
     reviewChannelSubscriptionActivationReadiness: async () => channelSubscriptionActivationReadiness(),
     reviewChannelSubscriptionOutputDraft: async () => channelSubscriptionOutputDraft(),
@@ -796,6 +828,16 @@ function channelSubscriptionActivationFlowInput(): ChannelSubscriptionActivation
   return channelRuntimeEvidenceBridgeInput();
 }
 
+function channelSubscriptionActivationRecordTemplateInput(): ChannelSubscriptionActivationRecordTemplateInput {
+  return {
+    activationFlowFixture: {
+      schemaVersion: "channel-subscription-activation-flow-fixture/v1",
+      generatedAt: "2026-05-28T10:05:00.000Z",
+      activationFlow: channelSubscriptionActivationFlow()
+    }
+  };
+}
+
 function channelSubscriptionActivationReadiness(): ChannelSubscriptionActivationReadiness {
   return {
     ok: true,
@@ -977,6 +1019,50 @@ function channelSubscriptionActivationFlow(): ChannelSubscriptionActivationFlow 
     safety: {
       advisoryOnly: true,
       summaryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      noSubscriptionOutputMutation: true,
+      yamlNotGenerated: true,
+      requiresSeparateRiskAApproval: true,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls", "yaml"]
+    }
+  };
+}
+
+function channelSubscriptionActivationRecordTemplate(): ChannelSubscriptionActivationRecordTemplate {
+  return {
+    ok: true,
+    mode: "channel-subscription-activation-record-template",
+    generatedAt: "2026-05-28T10:06:00.000Z",
+    source: {
+      fixtureSchemaVersion: "channel-subscription-activation-flow-fixture/v1",
+      fixtureGeneratedAt: "2026-05-28T10:05:00.000Z",
+      sourceGeneratedAt: "2026-05-28T10:04:00.000Z",
+      flowStatus: "ready_for_a_tier_subscription_output_activation_request",
+      requiredNextAction: "request_risk_a_subscription_output_activation_approval"
+    },
+    readiness: {
+      approvalRequestReady: true,
+      executionAuthority: "not_granted",
+      blockers: []
+    },
+    record: {
+      title: "Channel Subscription Output Activation Execution Record",
+      suggestedPath: "docs/production-replacement-records/2026-05-28-channel-subscription-output-activation.md",
+      markdown: [
+        "# Channel Subscription Output Activation Execution Record",
+        "",
+        "## Approval Evidence",
+        "",
+        "## Validation Evidence"
+      ].join("\n")
+    },
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
+      templateOnly: true,
       noRuntimeMutation: true,
       noProductionMutation: true,
       noApprovalSubmission: true,
@@ -1941,6 +2027,73 @@ describe("overview and nodes pages", () => {
     expect(within(flowRegion).getByText(/No subscription output execution route/i)).not.toBeNull();
     expect(within(flowRegion).getByText(/YAML not generated/i)).not.toBeNull();
     expect(within(flowRegion).queryByText(/secret\.example|token=|subscriptionUrl|approvalPhrase/i)).toBeNull();
+  });
+
+  test("renders channel subscription activation record templates without execution controls", async () => {
+    const reviewChannelSubscriptionActivationRecordTemplate = vi.fn(async () =>
+      channelSubscriptionActivationRecordTemplate()
+    );
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewChannelSubscriptionActivationRecordTemplate })
+    }));
+
+    expect(await screen.findByText("Channel subscription activation record template")).not.toBeNull();
+    const templateRegion = screen.getByRole("region", {
+      name: "Channel subscription activation record template"
+    });
+    fireEvent.change(screen.getByLabelText(/safe channel subscription activation flow fixture/i), {
+      target: { value: JSON.stringify(channelSubscriptionActivationRecordTemplateInput()) }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review activation record template/i }));
+
+    await waitFor(() => {
+      expect(reviewChannelSubscriptionActivationRecordTemplate).toHaveBeenCalledWith(
+        channelSubscriptionActivationRecordTemplateInput()
+      );
+    });
+    expect(await screen.findByText("channel-subscription-activation-record-template")).not.toBeNull();
+    expect(within(templateRegion).getByText("not_granted")).not.toBeNull();
+    expect(
+      within(templateRegion).getAllByText(/Channel Subscription Output Activation Execution Record/i).length
+    ).toBeGreaterThan(0);
+    expect(within(templateRegion).getByText(/Approval Evidence/i)).not.toBeNull();
+    expect(within(templateRegion).getByText(/Validation Evidence/i)).not.toBeNull();
+    expect(within(templateRegion).getAllByText(/Template only/i).length).toBeGreaterThan(0);
+    expect(within(templateRegion).getByText(/No approval submission/i)).not.toBeNull();
+    expect(within(templateRegion).getByText(/No subscription output mutation/i)).not.toBeNull();
+    expect(within(templateRegion).getByText(/YAML not generated/i)).not.toBeNull();
+    expect(within(templateRegion).queryByRole("button", { name: /^execute/i })).toBeNull();
+    expect(within(templateRegion).queryByRole("button", { name: /^activate/i })).toBeNull();
+    expect(within(templateRegion).queryByText(/secret\.example|token=|https?:\/\/|approvalPhrase/i)).toBeNull();
+  });
+
+  test("blocks unsafe channel subscription activation record template fixtures before calling the protected review API", async () => {
+    const reviewChannelSubscriptionActivationRecordTemplate = vi.fn(async () =>
+      channelSubscriptionActivationRecordTemplate()
+    );
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewChannelSubscriptionActivationRecordTemplate })
+    }));
+
+    expect(await screen.findByText("Channel subscription activation record template")).not.toBeNull();
+    fireEvent.change(screen.getByLabelText(/safe channel subscription activation flow fixture/i), {
+      target: {
+        value: JSON.stringify({
+          ...channelSubscriptionActivationRecordTemplateInput(),
+          rawSubscriptionUrl: "https://sub.example/sub/clash.yaml?token=secret"
+        })
+      }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review activation record template/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Safe channel subscription activation flow fixture contains forbidden runtime details.")
+      ).not.toBeNull();
+    });
+    expect(reviewChannelSubscriptionActivationRecordTemplate).not.toHaveBeenCalled();
   });
 
   test("renders channel lab target decision without execution controls or approval text", async () => {

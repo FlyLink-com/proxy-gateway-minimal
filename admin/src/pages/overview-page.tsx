@@ -15,6 +15,8 @@ import type {
   ChannelSubscriptionActivationFlowInput,
   ChannelSubscriptionActivationHandoff,
   ChannelSubscriptionActivationHandoffInput,
+  ChannelSubscriptionActivationRecordTemplate,
+  ChannelSubscriptionActivationRecordTemplateInput,
   ChannelSubscriptionActivationReadiness,
   ChannelSubscriptionActivationReadinessInput,
   ChannelSubscriptionOutputDraft,
@@ -101,6 +103,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
       <ChannelSubscriptionActivationReadinessPanel apiClient={apiClient} />
       <ChannelSubscriptionActivationHandoffPanel apiClient={apiClient} />
       <ChannelSubscriptionActivationFlowPanel apiClient={apiClient} />
+      <ChannelSubscriptionActivationRecordTemplatePanel apiClient={apiClient} />
       <ChannelLabTargetDecisionPanel apiClient={apiClient} />
       <CleanEdgeReadinessReviewPanel apiClient={apiClient} />
       <AliyunGateReviewPanel apiClient={apiClient} />
@@ -185,6 +188,21 @@ function parseChannelSubscriptionActivationFlowInput(value: string): ChannelSubs
     throw new Error("Safe channel subscription activation flow packet contains forbidden runtime details.");
   }
   return parsed as ChannelSubscriptionActivationFlowInput;
+}
+
+function parseChannelSubscriptionActivationRecordTemplateInput(
+  value: string
+): ChannelSubscriptionActivationRecordTemplateInput {
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Safe channel subscription activation flow fixture must be a JSON object.");
+  }
+  try {
+    assertSafeChannelActivationRecordTemplateEvidence(parsed);
+  } catch {
+    throw new Error("Safe channel subscription activation flow fixture contains forbidden runtime details.");
+  }
+  return parsed as ChannelSubscriptionActivationRecordTemplateInput;
 }
 
 function parseChannelLabTargetDecisionInput(value: string): ChannelLabTargetDecisionInput {
@@ -278,6 +296,30 @@ function assertSafeChannelSystemEvidence(value: unknown): void {
       throw new Error("Safe channel evidence packet contains forbidden runtime details.");
     }
     assertSafeChannelSystemEvidence(nestedValue);
+  }
+}
+
+function assertSafeChannelActivationRecordTemplateEvidence(value: unknown): void {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      assertSafeChannelActivationRecordTemplateEvidence(item);
+    }
+    return;
+  }
+  if (!value || typeof value !== "object") {
+    if (typeof value === "string" && hasForbiddenChannelSystemValue(value)) {
+      throw new Error("Safe channel activation record template fixture contains forbidden runtime details.");
+    }
+    return;
+  }
+  for (const [key, nestedValue] of Object.entries(value)) {
+    if (key === "omittedFields") {
+      continue;
+    }
+    if (CHANNEL_SYSTEM_FORBIDDEN_EVIDENCE_KEYS.has(key)) {
+      throw new Error("Safe channel activation record template fixture contains forbidden runtime details.");
+    }
+    assertSafeChannelActivationRecordTemplateEvidence(nestedValue);
   }
 }
 
@@ -1022,6 +1064,108 @@ function ChannelSubscriptionActivationFlowPanel({ apiClient }: { apiClient: Admi
           </div>
           {flow.blockers.length ? (
             <div className="alert alert-error">{flow.blockers.join(", ")}</div>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ChannelSubscriptionActivationRecordTemplatePanel({ apiClient }: { apiClient: AdminApiClient }) {
+  const [packetText, setPacketText] = useState("");
+  const [template, setTemplate] = useState<ChannelSubscriptionActivationRecordTemplate | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewing(true);
+    setError("");
+    try {
+      const input = parseChannelSubscriptionActivationRecordTemplateInput(packetText);
+      const nextTemplate = await apiClient.reviewChannelSubscriptionActivationRecordTemplate(input);
+      setTemplate(nextTemplate);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+      setTemplate(null);
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  return (
+    <section className="gate-review-card" aria-labelledby="channel-subscription-activation-record-template-heading">
+      <div className="page-heading">
+        <div>
+          <h2 id="channel-subscription-activation-record-template-heading">
+            Channel subscription activation record template
+          </h2>
+          <p className="muted">
+            Protected review surface for turning safe activation-flow fixtures into execution-record skeletons.
+          </p>
+        </div>
+      </div>
+
+      <div className="alert">
+        This panel generates a record template only; it does not submit approvals, generate YAML, expose execution
+        routes, or change subscription output.
+      </div>
+
+      {error ? <div className="alert alert-error">{error}</div> : null}
+
+      <form className="channel-review-form" onSubmit={handleReviewSubmit}>
+        <label htmlFor="channel-subscription-activation-record-template-fixture">
+          Safe channel subscription activation flow fixture
+        </label>
+        <textarea
+          id="channel-subscription-activation-record-template-fixture"
+          value={packetText}
+          onChange={(event) => setPacketText(event.target.value)}
+          placeholder='{"activationFlowFixture":{"schemaVersion":"channel-subscription-activation-flow-fixture/v1","activationFlow":{}}}'
+          rows={8}
+        />
+        <button className="primary-button" type="submit" disabled={reviewing}>
+          {reviewing ? "Reviewing..." : "Review activation record template"}
+        </button>
+      </form>
+
+      {template ? (
+        <>
+          <div className="metric-grid">
+            <Metric label="Template mode" value={template.mode} />
+            <Metric label="Flow status" value={template.source.flowStatus} />
+            <Metric label="Required next action" value={template.source.requiredNextAction} />
+            <Metric label="Execution authority" value={template.readiness.executionAuthority} />
+            <Metric label="Approval ready" value={template.readiness.approvalRequestReady ? "Yes" : "No"} />
+            <Metric label="Suggested path" value={template.record.suggestedPath} />
+          </div>
+          <div className="gate-boundary">
+            <strong>{template.record.title}</strong>
+            <ul>
+              <li>{template.safety.templateOnly ? "Template only" : "Template-only flag missing"}</li>
+              <li>
+                {template.safety.noSubscriptionOutputMutation
+                  ? "No subscription output mutation"
+                  : "Subscription output mutation flag missing"}
+              </li>
+              <li>{template.safety.yamlNotGenerated ? "YAML not generated" : "YAML generation flag missing"}</li>
+              <li>{template.safety.noRuntimeMutation ? "No runtime mutation" : "Runtime mutation flag missing"}</li>
+              <li>{template.safety.noTrafficMovement ? "No traffic movement" : "Traffic movement flag missing"}</li>
+              <li>
+                {template.safety.noApprovalSubmission
+                  ? "No approval submission"
+                  : "Approval submission flag missing"}
+              </li>
+              <li>
+                {template.safety.requiresSeparateRiskAApproval
+                  ? "Separate Risk A approval required"
+                  : "Risk A approval boundary missing"}
+              </li>
+            </ul>
+            <pre>{template.record.markdown}</pre>
+          </div>
+          {template.readiness.blockers.length ? (
+            <div className="alert alert-error">{template.readiness.blockers.join(", ")}</div>
           ) : null}
         </>
       ) : null}

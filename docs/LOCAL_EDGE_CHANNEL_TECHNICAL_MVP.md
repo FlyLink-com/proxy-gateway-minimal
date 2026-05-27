@@ -658,10 +658,10 @@ move traffic, or activate production.
 
 The protected Admin platform route
 `POST /api/admin/platform/channel-subscription-activation-record-template`
-exposes the same template layer to operator review surfaces. It accepts only
-safe activation-flow fixture material and returns a Markdown skeleton plus
-safety metadata; it does not expose approval submission or subscription-output
-execution controls.
+and its Admin Overview panel expose the same template layer to operator review
+surfaces. It accepts only safe activation-flow fixture material and returns a
+Markdown skeleton plus safety metadata; it does not expose approval submission
+or subscription-output execution controls.
 
 The protected Admin platform route
 `POST /api/admin/platform/channel-lab-target-decision` and its Admin Overview

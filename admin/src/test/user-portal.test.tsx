@@ -11,6 +11,7 @@ import type {
   ChannelRuntimeGateWorkbench,
   ChannelSubscriptionActivationFlow,
   ChannelSubscriptionActivationHandoff,
+  ChannelSubscriptionActivationRecordTemplate,
   ChannelSubscriptionActivationReadiness,
   ChannelSubscriptionOutputDraft,
   ChannelSystemDecisionFlow,
@@ -85,6 +86,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
     reviewChannelRuntimeExecutionHandoff: async () => channelRuntimeExecutionHandoff(),
     reviewChannelSubscriptionActivationFlow: async () => channelSubscriptionActivationFlow(),
+    reviewChannelSubscriptionActivationRecordTemplate: async () => channelSubscriptionActivationRecordTemplate(),
     reviewChannelSubscriptionActivationHandoff: async () => channelSubscriptionActivationHandoff(),
     reviewChannelSubscriptionOutputDraft: async () => channelSubscriptionOutputDraft(),
     reviewChannelSubscriptionActivationReadiness: async () => channelSubscriptionActivationReadiness(),
@@ -538,6 +540,44 @@ function channelSubscriptionActivationFlow(): ChannelSubscriptionActivationFlow 
     safety: {
       advisoryOnly: true,
       summaryOnly: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      noSubscriptionOutputMutation: true,
+      yamlNotGenerated: true,
+      requiresSeparateRiskAApproval: true,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls", "yaml"]
+    }
+  };
+}
+
+function channelSubscriptionActivationRecordTemplate(): ChannelSubscriptionActivationRecordTemplate {
+  return {
+    ok: true,
+    mode: "channel-subscription-activation-record-template",
+    generatedAt: "2026-05-27T20:04:58.000Z",
+    source: {
+      fixtureSchemaVersion: "channel-subscription-activation-flow-fixture/v1",
+      fixtureGeneratedAt: "2026-05-27T20:04:57.000Z",
+      sourceGeneratedAt: "2026-05-27T20:04:55.000Z",
+      flowStatus: "blocked_before_a_tier_subscription_output_activation_request",
+      requiredNextAction: "resolve_subscription_output_activation_blockers"
+    },
+    readiness: {
+      approvalRequestReady: false,
+      executionAuthority: "not_granted",
+      blockers: ["baseline_pool_missing", "canary_pool_missing"]
+    },
+    record: {
+      title: "Channel Subscription Output Activation Execution Record",
+      suggestedPath: "docs/production-replacement-records/2026-05-28-channel-subscription-output-activation.md",
+      markdown: "# Channel Subscription Output Activation Execution Record\n\n## Approval Evidence\n\n## Validation Evidence"
+    },
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
+      templateOnly: true,
       noRuntimeMutation: true,
       noProductionMutation: true,
       noApprovalSubmission: true,
