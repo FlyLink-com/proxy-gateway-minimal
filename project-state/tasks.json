@@ -739,7 +739,7 @@
     {
       "id": "C7-aliyun-repo-mvp-closeout",
       "risk": "C",
-      "status": "completed-in-current-branch",
+      "status": "completed-in-pr-194",
       "lane": "subscription-control-plane",
       "title": "Close out Aliyun repo-only MVP phase before exact-phrase A-tier handoff",
       "goal": "Record that the Aliyun Subscription Control Platform B/C repository implementation path is complete and that remaining work is exact-phrase A-tier execution only.",
