@@ -335,7 +335,13 @@ Current architecture priorities:
   vantage, public Admin is blocked, no-token refresh returns 401, Aliyun
   3456/18080/18388 are not externally reachable from that vantage, the old AWS
   edge address is not serving, `prod-edge-a/b` remain stopped without public IP
-  association, and no clean edge target has been selected or provisioned.
+  association, and no clean edge target has been selected or provisioned. The
+  execution handoff packet is recorded in
+  `docs/production-replacement-records/2026-05-27-clean-edge-rebuild-execution-handoff.md`;
+  it recommends `prod-edge-c` as the first clean rebuild logical identity and
+  consolidates the approval phrase, start checklist, stop conditions, execution
+  envelope, execution-record target, and not-performed boundaries for a future
+  Production Operations Agent.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
   moved off the current Aliyun server, and that host now serves the approved
@@ -535,7 +541,11 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   It excludes proxy-contaminated local Windows DNS/TCP checks, uses AliDNS and
   Aliyun remote-vantage evidence, confirms `sub` on Aliyun, `ss-sg` on the old
   stopped AWS address, private Aliyun app ports closed externally, stopped AWS
-  nodes without public IP association, and no selected clean edge target.
+  nodes without public IP association, and no selected clean edge target. The
+  execution handoff packet is recorded in
+  `docs/production-replacement-records/2026-05-27-clean-edge-rebuild-execution-handoff.md`;
+  it remains docs-only and does not provision, assign, bootstrap, inject
+  secrets, start services, change DNS, or change subscription output.
 - The opaque artifact issuance and legacy query-token retirement runbook is
   recorded in
   `docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md`.
@@ -931,8 +941,9 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   vendor-agent repair unapproved. The remaining work is clean edge rebuild
   execution approval, rollback-start decisions, broader artifact issuance, and
   legacy query-token retirement. The clean edge rebuild runbook, execution
-  template, and read-only preflight now exist, but no clean edge host has been
-  provisioned, bootstrapped, or activated. The opaque artifact issuance and legacy
+  template, read-only preflight, and execution handoff now exist, but no clean
+  edge host has been provisioned, bootstrapped, or activated. The opaque
+  artifact issuance and legacy
   query-token retirement runbook now exists and deliberately separates artifact
   issuance from legacy-token retirement; neither gate has been executed.
 
