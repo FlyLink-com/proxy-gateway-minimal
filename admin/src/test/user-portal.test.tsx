@@ -48,6 +48,20 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
       subscriptionUrl: "https://sub.example.test/import/temp"
     }),
     listNodes: async () => [],
+    getAliyunGates: async () => ({
+      type: "aliyun_gate_decision_packet",
+      status: "blocked",
+      generatedAt: "2026-05-27T00:00:00.000Z",
+      redacted: true,
+      sourceDocs: [],
+      notAuthorized: [],
+      gates: []
+    }),
+    getAliyunGateEvidence: async () => null,
+    recordProviderFirewallEvidence: async () => ({
+      type: "aliyun_gate_evidence_summary",
+      providerFirewall: null
+    }),
     overview: async () => ({
       ok: true,
       total: 0,

@@ -1,6 +1,9 @@
 import type {
+  AliyunGateDecisionPacket,
+  AliyunGateEvidenceSummary,
   CreateSubscriptionInput,
   CreateSubscriptionResult,
+  ProviderFirewallEvidenceInput,
   RenewSubscriptionInput,
   ResetTokenResult,
   SubscriptionNode,
@@ -125,7 +128,22 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
         method: "POST"
       }),
     listNodes: async () => (await request<{ items: SubscriptionNode[] }>("/api/admin/nodes")).items,
-    overview: async () => request<SubscriptionOverview>("/api/admin/overview")
+    overview: async () => request<SubscriptionOverview>("/api/admin/overview"),
+    getAliyunGates: async () =>
+      (await request<{ aliyunGates: AliyunGateDecisionPacket }>("/api/admin/platform/aliyun-gates")).aliyunGates,
+    getAliyunGateEvidence: async () =>
+      (await request<{ evidence: AliyunGateEvidenceSummary | null }>("/api/admin/platform/aliyun-gate-evidence"))
+        .evidence,
+    recordProviderFirewallEvidence: async (input: ProviderFirewallEvidenceInput) =>
+      (
+        await request<{ evidence: AliyunGateEvidenceSummary }>(
+          "/api/admin/platform/aliyun-gate-evidence/provider-firewall",
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).evidence
   };
 }
 
