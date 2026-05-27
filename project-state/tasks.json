@@ -1290,7 +1290,7 @@
     {
       "id": "C8-technical-mvp-baseline-and-tuic-inventory-gate",
       "risk": "C",
-      "status": "completed-in-current-docs-update",
+      "status": "completed-in-pr-203",
       "lane": "edge-data-plane",
       "title": "Align technical MVP baseline and add TUIC runtime inventory gate handoff",
       "goal": "Update the technical MVP baseline from stale prod-edge serving language to the current Aliyun subscription boundary / edge-pending state, and create the repo-only handoff for TUIC Stage 0 read-only inventory without authorizing runtime mutation.",
