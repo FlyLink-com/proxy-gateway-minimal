@@ -1,0 +1,66 @@
+{
+  "mode": "tuic-canary-activation-request-packet",
+  "generatedAt": "2026-05-28T19:10:00.000+08:00",
+  "targetLabel": "channel-lab-b",
+  "protocol": "tuic",
+  "scope": "one controlled operator access only",
+  "executionAuthority": "not_granted",
+  "approvalPhraseRequired": "Approve canary-only TUIC subscription-output activation for channel-lab-b on one controlled operator access. No all-user rollout.",
+  "prerequisites": {
+    "operatorDeviceMeasurement": "ready_for_operator_decision",
+    "aliyunHostInternalEvidence": "available_via_cloud_assistant_read_only_inventory",
+    "providerFirewallEvidence": "available_read_only",
+    "syntheticConfigReview": "ready_for_production_module_branch_review",
+    "controlledAccessMechanism": "ready_for_exact_activation_approval_review"
+  },
+  "activationTimeFreshChecks": [
+    "aliyun_public_health_returns_200",
+    "aliyun_public_admin_remains_404",
+    "aliyun_public_no_token_subscription_remains_401",
+    "channel_lab_b_tuic_runtime_health_is_refreshed_read_only",
+    "rollback_previous_output_state_is_recorded",
+    "controlled_scope_remains_one_operator_access"
+  ],
+  "hardStops": [
+    "short_confirmation_only",
+    "scope_not_exactly_one_controlled_operator_access",
+    "fresh_aliyun_public_boundary_check_fails",
+    "fresh_channel_lab_b_runtime_health_check_fails",
+    "rollback_previous_output_state_missing",
+    "stable_default_output_would_change",
+    "raw_hosts_ports_urls_credentials_tokens_yaml_or_customer_data_would_be_recorded",
+    "public_admin_exposure_changes"
+  ],
+  "notAuthorizedByThisPacket": [
+    "production_subscription_output_mutation",
+    "config_proxy_servers_json_change",
+    "yaml_generation_or_recording",
+    "subscription_url_generation_or_recording",
+    "aliyun_runtime_mutation",
+    "provider_firewall_mutation",
+    "host_firewall_mutation",
+    "dns_change",
+    "nginx_mutation_or_reload",
+    "systemd_restart",
+    "sqlite_row_mutation",
+    "tenant_or_artifact_mutation",
+    "channel_lab_b_runtime_mutation",
+    "channel_lab_b_cleanup",
+    "all_user_rollout",
+    "production_authority_transfer"
+  ],
+  "safety": {
+    "advisoryOnly": true,
+    "summaryOnly": true,
+    "noHosts": true,
+    "noPorts": true,
+    "noUrls": true,
+    "noCredentials": true,
+    "noTokens": true,
+    "noSubscriptionUrls": true,
+    "noYaml": true,
+    "noRuntimeMutation": true,
+    "noProductionMutation": true,
+    "requiresSeparateRiskAApproval": true
+  }
+}

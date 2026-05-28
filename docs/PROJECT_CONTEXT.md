@@ -829,6 +829,17 @@ operator approval, validation, and rollback path exist:
   production mechanism, does not change `config/proxy-servers.json`, and does
   not mutate subscription output, Aliyun, DNS, Nginx, systemd, channel-lab-b,
   traffic, or rollout scope.
+- The TUIC controlled-access activation request packet is recorded in
+  `docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-request.md`.
+  It adds a summary-only request artifact under
+  `docs/channel-activation-dry-runs/2026-05-28-channel-lab-b-tuic-subscription-output/activation-request-packet.json`
+  and consolidates the ready evidence, activation-time fresh checks, hard
+  stops, and exact approval phrase required before any one-controlled-access
+  TUIC canary activation. Execution authority is still `not_granted`; short
+  confirmations such as `同意` only authorize repo-only planning or review,
+  not subscription-output mutation. It does not mutate config, subscription
+  output, Aliyun, DNS, Nginx, systemd, channel-lab-b, traffic, or rollout
+  scope.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See

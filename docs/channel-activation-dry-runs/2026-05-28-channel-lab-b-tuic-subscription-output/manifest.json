@@ -9,14 +9,16 @@
     "canaryEvidence": "canary-evidence.json",
     "currentProxyConfig": "config/proxy-servers.json",
     "reviewOnlyProxyConfig": "proxy-servers-tuic-canary-review.json",
-    "controlledAccessMechanism": "controlled-access-mechanism.json"
+    "controlledAccessMechanism": "controlled-access-mechanism.json",
+    "activationRequestPacket": "activation-request-packet.json"
   },
   "expectedOutputFiles": [
     "activation-package-current-config.json",
     "production-module-current-config.json",
     "activation-package-review-config.json",
     "production-module-review-config.json",
-    "controlled-access-mechanism.json"
+    "controlled-access-mechanism.json",
+    "activation-request-packet.json"
   ],
   "result": {
     "currentConfig": {
@@ -39,6 +41,12 @@
       "executionAuthority": "not_granted",
       "scope": "one controlled operator access only",
       "hostInternalEvidence": "available_via_aliyun_cloud_assistant_read_only_inventory"
+    },
+    "activationRequestPacket": {
+      "status": "ready_for_exact_approval_phrase",
+      "executionAuthority": "not_granted",
+      "scope": "one controlled operator access only",
+      "requiresFreshChecksAtActivation": true
     }
   },
   "safety": {
