@@ -875,6 +875,18 @@ operator approval, validation, and rollback path exist:
   issuance, or production authority transfer was performed. The next gate is
   operator-device import/refresh validation and observation, then a separate
   retain / rollback / broader rollout decision.
+- The exact-approved CLI preproduction subscription issuance is recorded in
+  `docs/production-replacement-records/2026-05-28-cli-preproduction-subscription-issuance.md`.
+  It created 3 active preproduction tenants and 3 active opaque artifacts bound
+  to `channel-lab-b-tuic`, wrote raw handoff material only to a remote 0600
+  operator handoff file outside the repository, validated 3/3 artifact
+  refreshes with TUIC output, confirmed public health/Admin/no-token behavior
+  stayed safe, and found no raw artifact hits in known Nginx/app logs or the
+  proxy-gateway candidate journal. No all-user rollout, DNS, Nginx, firewall,
+  public Admin, payment activation, legacy query-token retirement, AWS
+  mutation, edge traffic, or raw subscription material recording in
+  repo/docs/PR/chat was performed. The next gate is operator-side import/use
+  validation and 1h/24h/72h observation before increasing quantity.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See

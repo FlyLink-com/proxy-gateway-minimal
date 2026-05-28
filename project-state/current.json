@@ -82,7 +82,8 @@
     "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-request.md",
     "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-stopped.md",
     "docs/production-replacement-records/2026-05-28-tuic-controlled-operator-access-creation.md",
-    "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation.md"
+    "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation.md",
+    "docs/production-replacement-records/2026-05-28-cli-preproduction-subscription-issuance.md"
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
@@ -198,7 +199,8 @@
     "TUIC controlled-access activation request packet recorded after operator agreement: ready evidence, activation-time fresh checks, hard stops, and the exact approval phrase are consolidated for the later one-controlled-access canary decision; execution authority remains not_granted, short confirmations are insufficient for mutation, and no config, subscription-output, Aliyun, DNS, Nginx, systemd, channel-lab-b, traffic, all-user rollout, or authority mutation was performed",
     "Exact-approved TUIC controlled-access activation attempt stopped before mutation: public boundary, Aliyun host summary, and channel-lab-b runtime health were refreshed successfully, but Aliyun had no active controlled operator access, active artifact, or unexpired unused temporary link to bind; no config, subscription-output, systemd, Nginx, DNS, firewall, SQLite row, channel-lab-b, traffic, all-user rollout, or authority mutation was performed",
     "Controlled operator access creation completed after exact approval: one active controlled operator access and active opaque artifact now exist on Aliyun, previous output state is stable prod-edge-a, controlled refresh returns 200 with stable SS output only, and no TUIC binding, config, DNS, Nginx, systemd, firewall, channel-lab-b, all-user rollout, or authority mutation was performed",
-    "Exact-approved TUIC canary-only subscription-output activation completed: one active controlled operator access now binds to channel-lab-b-tuic and the controlled opaque artifact refresh returns TUIC output only; stable default output remains unchanged and no all-user rollout, DNS, Nginx config/reload, firewall change, public Admin exposure, channel-lab-b cleanup, legacy query-token retirement, broader artifact issuance, or production authority transfer was performed"
+    "Exact-approved TUIC canary-only subscription-output activation completed: one active controlled operator access now binds to channel-lab-b-tuic and the controlled opaque artifact refresh returns TUIC output only; stable default output remains unchanged and no all-user rollout, DNS, Nginx config/reload, firewall change, public Admin exposure, channel-lab-b cleanup, legacy query-token retirement, broader artifact issuance, or production authority transfer was performed",
+    "CLI preproduction subscription issuance completed after exact approval: 3 active preproduction tenants and 3 active opaque artifacts were created on Aliyun, bound to channel-lab-b-tuic, with raw handoff material stored only in a remote 0600 operator handoff file outside the repository; 3/3 artifact refreshes returned TUIC output, public health/Admin/no-token behavior stayed safe, and no all-user rollout, DNS, Nginx, firewall, public Admin, payment activation, legacy query-token retirement, AWS mutation, edge traffic, or raw subscription material recording in repo/docs/PR/chat was performed"
   ],
   "activeGoal": {
     "id": "aliyun-subscription-control-platform-mvp",
