@@ -726,6 +726,17 @@ operator approval, validation, and rollback path exist:
   generated and retained only on the remote host. No DNS, Nginx, production
   config, subscription output, controlled subscription batch, operator-device
   traffic, production authority transfer, or all-user rollout was performed.
+- The approved controlled TUIC subscription batch and operator-device canary is
+  recorded in
+  `docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-operator-device-canary.md`.
+  Local sensitive TUIC YAML was generated outside the repository, standalone
+  Mihomo listened only on `127.0.0.1:29380`, and the short canary completed
+  20/20 HTTP 204 samples through `channel-lab-b` with failed samples 0, p50
+  0.8287s, p95 0.8371s, max 2.1476s, and Mihomo log error count 0. The
+  temporary Mihomo process was stopped after validation. No production
+  subscription-output change, public subscription URL generation, DNS, Nginx,
+  production config, system proxy, TUN, all-user rollout, or production
+  authority transfer was performed.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See
