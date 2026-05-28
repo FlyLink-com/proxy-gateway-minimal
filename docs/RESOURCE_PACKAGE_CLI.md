@@ -7,11 +7,30 @@ package is an operator-safe delivery summary for one customer/account access
 grant plus optional channel activation evidence. It is the preferred CLI-first
 unit for manual registration, subscription access delivery, and audit review.
 
+The repository also provides a controlled-open CLI that executes the safe
+in-memory sequence from lead input to account, entitlement, access grant, and
+resource package summary. It is for operator preparation only; it does not
+persist state or contact production.
+
 This document does not authorize production, DNS, Nginx, systemd, cloud,
 firewall, provider, node, runtime, SQLite, tenant, artifact, subscription URL,
 or customer-data mutation.
 
 ## Command
+
+Controlled open flow:
+
+```powershell
+npm run platform:controlled-open -- <controlled-open-input.json>
+```
+
+Direct script form:
+
+```powershell
+node scripts/platform-controlled-open.mjs <controlled-open-input.json>
+```
+
+Standalone resource package summary:
 
 ```powershell
 npm run platform:resource-package -- <resource-package-input.json>
@@ -23,22 +42,33 @@ Direct script form:
 node scripts/platform-resource-package.mjs <resource-package-input.json>
 ```
 
-The command prints JSON to stdout. It is summary-only and does not write files,
-submit approvals, generate subscription YAML, contact edge nodes, deploy
+Both commands print JSON to stdout. They are summary-only and do not write
+files, submit approvals, generate subscription YAML, contact edge nodes, deploy
 runtimes, mutate subscription output, or move traffic.
 
 ## Input Shape
 
-The input is operator-provided JSON with account, entitlement, access grant, and
-optional channel activation package summaries. Raw private references may be
-present in input because the operator owns the source material, but they are not
-returned in output.
+For `platform:controlled-open`, the input is operator-provided JSON with:
+
+- `lead`: organization, email, direction, stage, and message facts
+- `account`: account status and display name overrides
+- `entitlement`: plan, status, validity, and quota
+- `accessGrant`: dynamic entry and/or artifact references
+- `activationPackage`: optional channel activation evidence summary
+
+For `platform:resource-package`, the input is operator-provided JSON with
+already prepared account, entitlement, access grant, and optional channel
+activation package summaries.
+
+Raw private references may be present in input because the operator owns the
+source material, but they are not returned in output.
 
 ## Output Boundary
 
 The output intentionally returns only safe metadata:
 
 - package id and hashed account, customer, operator, entitlement, and access references
+- controlled-open flow booleans when the full flow command is used
 - entitlement status, plan, quota, validity, and usability
 - access status and whether a dynamic entry or artifact exists
 - optional channel activation status, protocol counts, and approval readiness
@@ -69,6 +99,10 @@ The output must not include:
 - access grant is issued
 - access grant has a dynamic entry or artifact reference
 - optional activation package is ready if supplied
+
+For `platform:controlled-open`, it also means the in-memory lead review,
+account provisioning, entitlement creation, and access issuance steps all
+completed inside the repository helper.
 
 `blocked_before_operator_delivery` means the package is not suitable for
 delivery. Check `blockers` for reason codes such as:

@@ -147,13 +147,19 @@ Current architecture priorities:
   account, entitlement, subscription access grant, and optional channel
   activation package summaries into an operator-safe resource package through
   `server/services/platform/resource-package.mjs` and
-  `scripts/platform-resource-package.mjs`. It returns only safe delivery
-  metadata, hashed customer/operator references, blockers, next action, and
-  safety flags. It does not expose organization names, customer emails, raw
+  `scripts/platform-resource-package.mjs`. Repository-only controlled-open
+  tooling can also run the in-memory lead -> account -> entitlement -> access
+  grant -> resource package sequence through
+  `server/services/platform/controlled-open-flow.mjs` and
+  `scripts/platform-controlled-open.mjs`. These commands return only safe
+  delivery metadata, hashed customer/operator references, flow booleans,
+  blockers, next action, and safety flags. They do not expose organization
+  names, customer emails, raw
   portal URLs, artifact references, subscription URLs, tokens, credentials,
   node hosts, raw ports, YAML, approval phrases, public routes, approval
   submission, execution controls, SQLite persistence, Aliyun deployment, DNS,
-  production storage, user traffic, edge traffic, or production authority.
+  production storage, payment activation, user traffic, edge traffic, or
+  production authority.
 - Platform Clean-Start Package: repository-only clean-start readiness support
   lives in `server/services/platform/clean-start-control-plane.mjs` and the
   protected Admin route `/api/admin/platform/clean-start`. It summarizes
