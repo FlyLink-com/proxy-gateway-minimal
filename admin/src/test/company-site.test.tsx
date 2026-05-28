@@ -1,9 +1,24 @@
-import { afterEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { App } from "../App";
 
 const contactEmail = "hello@globalcirclecat.com";
+
+function setBrowserLanguage(language: string) {
+  Object.defineProperty(window.navigator, "language", {
+    configurable: true,
+    value: language
+  });
+  Object.defineProperty(window.navigator, "languages", {
+    configurable: true,
+    value: [language]
+  });
+}
+
+beforeEach(() => {
+  setBrowserLanguage("zh-CN");
+});
 
 afterEach(() => {
   cleanup();
@@ -147,7 +162,7 @@ describe("company site route", () => {
 
     const { container } = render(createElement(App));
     const linkTargets = [
-      ["GlobalCircle AI home", "top"],
+      ["GlobalCircle AI 首页", "top"],
       ["能力", "capabilities"],
       ["场景", "scenarios"],
       ["合作", "delivery"],
@@ -170,5 +185,20 @@ describe("company site route", () => {
       expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
       expect(window.location.hash).toBe("#/site");
     });
+  });
+
+  test("switches public site copy and document metadata for English browsers", () => {
+    setBrowserLanguage("en-US");
+    window.location.hash = "#/site";
+
+    const { container } = render(createElement(App));
+
+    expect(document.documentElement.lang).toBe("en");
+    expect(document.title).toBe("GlobalCircle AI - Agent R&D and Growth Automation");
+    expect(screen.getByText(/turn AI R&D, growth automation/)).not.toBeNull();
+    expect(screen.getByRole("link", { name: /Request Trial Access/ })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Register with Telegram QR" })).not.toBeNull();
+    expect(screen.getByLabelText("Company or Organization")).not.toBeNull();
+    expect(container.textContent).not.toMatch(/极客型团队|合作方向|扫码进入 Telegram 后|公司或机构/);
   });
 });
