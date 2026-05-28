@@ -27,6 +27,7 @@ export { buildChannelRuntimeRegistry } from "./server/services/channel-runtime-r
 export { buildChannelSubscriptionActivationFlow } from "./server/services/channel-subscription-activation-flow.mjs";
 export { buildChannelSubscriptionActivationPackage } from "./server/services/channel-subscription-activation-package.mjs";
 export { buildChannelSubscriptionActivationRecordTemplate } from "./server/services/channel-subscription-activation-record-template.mjs";
+export { buildChannelProductionModule } from "./server/services/channel-production-module.mjs";
 export { buildPlatformResourcePackage } from "./server/services/platform/resource-package.mjs";
 export {
   CHANNEL_SUBSCRIPTION_ACTIVATION_FLOW_FIXTURE_SCHEMA_VERSION,

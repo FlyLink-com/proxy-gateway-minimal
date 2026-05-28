@@ -1005,6 +1005,15 @@ simplification queue is closed:
   raw URLs, credentials, approval phrases, execution controls, subscription
   output mutation, edge-node contact, runtime deployment, traffic movement, or
   production activation.
+- `B44-channel-production-module` - completed in the Channel Production Module
+  work; repository-local helpers and CLI scripts can now combine a safe
+  subscription activation package with a redacted operator-device canary summary
+  into production-module branch review metadata. The module can mark a clean
+  TUIC short canary as ready for production-module branch review, but it still
+  sets production activation authority to not granted and does not return YAML,
+  expose hosts/ports/URLs/credentials/tokens, submit approvals, change
+  subscription output, contact edge nodes, deploy runtime, move traffic, or
+  activate production.
 - `B28-channel-lab-target-decision` - completed in the Channel Lab Target
   Decision work; the protected Admin platform route and Admin Overview can now
   convert safe target inventory packets into an advisory next target gate after

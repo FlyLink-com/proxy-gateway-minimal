@@ -69,6 +69,7 @@
     "channel:subscription-activation-fixture": "node scripts/channel-subscription-activation-flow-fixture.mjs",
     "channel:subscription-activation-replay": "node scripts/channel-subscription-activation-flow-replay.mjs",
     "channel:subscription-activation-package": "node scripts/channel-subscription-activation-package.mjs",
+    "channel:production-module": "node scripts/channel-production-module.mjs",
     "channel:subscription-activation-record-template": "node scripts/channel-subscription-activation-record-template.mjs",
     "channel:subscription-render-proof": "node scripts/channel-subscription-render-proof.mjs",
     "platform:resource-package": "node scripts/platform-resource-package.mjs",
