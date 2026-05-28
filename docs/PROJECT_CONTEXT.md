@@ -743,6 +743,16 @@ operator approval, validation, and rollback path exist:
   subscription-output change, public subscription URL generation, DNS, Nginx,
   production config, system proxy, TUN, all-user rollout, or production
   authority transfer was performed.
+- The read-only Aliyun / TUIC subscription-output integration inventory is
+  recorded in
+  `docs/production-replacement-records/2026-05-28-aliyun-tuic-subscription-output-integration-inventory.md`.
+  It confirmed the Aliyun public subscription boundary still returns
+  health=200, public Admin=404, no-token subscription=401, and root=404 when
+  addressed directly as the Aliyun subscription boundary. It also found that
+  host-internal Aliyun inventory is currently blocked by SSH session closure
+  and that public 3456/18080 posture is inconclusive because TCP connects but
+  HTTP `/api/health` times out. No subscription-output activation, DNS, Nginx,
+  runtime, firewall, config, traffic, or authority mutation was performed.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See
