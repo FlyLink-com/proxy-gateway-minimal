@@ -73,7 +73,8 @@
     "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-operator-device-canary.md",
     "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-extended-measurement.md",
     "docs/production-replacement-records/2026-05-28-aliyun-tuic-subscription-output-integration-inventory.md",
-    "docs/production-replacement-records/2026-05-28-aliyun-tuic-host-provider-inventory.md"
+    "docs/production-replacement-records/2026-05-28-aliyun-tuic-host-provider-inventory.md",
+    "docs/production-replacement-records/2026-05-28-tuic-subscription-output-canary-planning.md"
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
@@ -180,7 +181,8 @@
     "channel-lab-b controlled TUIC subscription batch and operator-device canary executed after exact approval: local sensitive YAML was generated outside the repository, standalone Mihomo completed 20/20 short HTTP samples through TUIC, and production subscription output, DNS, production config, all-user rollout, and production authority transfer remain unchanged",
     "channel-lab-b TUIC extended measurement executed after exact approval: standalone Mihomo -> TUIC completed three 60-sample operator-device windows with 180/180 successes, no timeouts, no local Mihomo error-like lines, and repository bundle/investigation reports classify it as ready for operator decision; production subscription output, DNS, production config, all-user rollout, and production authority transfer remain unchanged",
     "Aliyun / TUIC subscription-output integration read-only inventory recorded after the TUIC production-module package entered master: Aliyun public subscription boundary remained behaviorally correct, but Aliyun host-internal inventory is blocked by SSH session closure and public 3456/18080 posture is inconclusive because TCP connects while HTTP health times out; no subscription-output activation, DNS, Nginx, runtime, firewall, config, traffic, or authority mutation was performed",
-    "Aliyun / TUIC host-provider follow-up inventory completed after exact approval: SWAS provider identity and provider-firewall posture were confirmed read-only, 80/443 are the public subscription-boundary ports, 3456/18080 have no provider allow rule and are closed_or_timeout from HP, but host-internal service/SQLite/Nginx inventory remains blocked over SSH; no Cloud Assistant command invocation, runtime, firewall, DNS, Nginx, config, subscription-output, traffic, or authority mutation was performed"
+    "Aliyun / TUIC host-provider follow-up inventory completed after exact approval: SWAS provider identity and provider-firewall posture were confirmed read-only, 80/443 are the public subscription-boundary ports, 3456/18080 have no provider allow rule and are closed_or_timeout from HP, but host-internal service/SQLite/Nginx inventory remains blocked over SSH; no Cloud Assistant command invocation, runtime, firewall, DNS, Nginx, config, subscription-output, traffic, or authority mutation was performed",
+    "Canary-only TUIC subscription-output activation planning recorded after exact approval: channel-lab-b TUIC has enough operator-device evidence to plan a one-controlled-access canary gate, but activation authority remains not granted; host-internal evidence or an explicit canary-only waiver, repository-only dry-run package, and a separate exact activation approval are still required before any subscription-output mutation"
   ],
   "activeGoal": {
     "id": "aliyun-subscription-control-platform-mvp",
@@ -275,13 +277,13 @@
     },
     {
       "id": "channel-canary-server-selection",
-      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; channel-lab-a Hysteria2 extended measurement has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. A clean AWS ap-northeast-1 channel-lab-b server exists, has Mihomo TUIC v5 active on UDP/443, passed a short controlled operator-device standalone Mihomo canary, and completed extended TUIC measurement with 180/180 successful samples, no timeouts, and ready_for_operator_decision status. Decision-pack comparison, DNS, production config, all-user rollout, subscription-output activation planning, cleanup, and production authority transfer remain separately gated. VLESS/XUDP is secondary.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-extended-measurement.md"
+      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; channel-lab-a Hysteria2 extended measurement has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. A clean AWS ap-northeast-1 channel-lab-b server exists, has Mihomo TUIC v5 active on UDP/443, passed short and extended controlled operator-device canaries, and now has a canary-only subscription-output activation planning record. DNS, production config, all-user rollout, actual subscription-output activation, cleanup, and production authority transfer remain separately gated. VLESS/XUDP is secondary.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-28-tuic-subscription-output-canary-planning.md"
     },
     {
       "id": "aliyun-tuic-integration-inventory-blocked",
-      "summary": "Aliyun / TUIC host-provider follow-up inventory confirmed the public subscription boundary and provider firewall posture: 80/443 are public, 3456/18080 are not provider-open and are closed_or_timeout from HP, but host-internal service/SQLite/Nginx inventory remains blocked over SSH. Subscription-output activation remains blocked before host-internal evidence, extended TUIC measurement if required, and a separate A-tier activation gate.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-28-aliyun-tuic-host-provider-inventory.md"
+      "summary": "Aliyun / TUIC host-provider follow-up inventory confirmed the public subscription boundary and provider firewall posture: 80/443 are public, 3456/18080 are not provider-open and are closed_or_timeout from HP, but host-internal service/SQLite/Nginx inventory remains blocked over SSH. Canary-only activation planning exists, but subscription-output activation remains blocked before host-internal evidence or an explicit canary-only waiver, a repository dry-run package, rollback readiness, and a separate exact A-tier activation gate.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-28-tuic-subscription-output-canary-planning.md"
     },
     {
       "id": "aliyun-control-local-ci-rebuild",
@@ -310,8 +312,8 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Decide whether Aliyun host-internal inventory should proceed through SSH access remediation or a separate Cloud Assistant read-only command gate; provider firewall now confirms 80/443 public, 3456/18080 not provider-open, and HP confirms 3456/18080 closed_or_timeout",
-    "Prepare an operator decision on channel-lab-b TUIC: the extended measurement is ready_for_operator_decision, but canary-only subscription-output activation planning, DNS, production config, all-user rollout, cleanup, and production authority transfer remain separately gated",
+    "Decide whether Aliyun host-internal inventory should proceed through SSH access remediation, a separate Cloud Assistant read-only command gate, or an explicit canary-only waiver before any TUIC subscription-output activation",
+    "Review docs/production-replacement-records/2026-05-28-tuic-subscription-output-canary-planning.md, then request the dry-run package approval phrase if the operator wants canary-only TUIC subscription-output activation preparation without production mutation",
     "Request the exact Aliyun Aegis service repair approval phrase from docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md if the operator wants process cleanup and service restart; otherwise leave it as a tracked host security-agent follow-up",
     "Keep public Admin blocked and keep edge traffic activation out of scope until a separate exact approval and execution record exists",
     "Use docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-preflight.md plus the exact approval phrase from docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md if the operator wants clean edge host provisioning/bootstrap/private validation; otherwise leave edge data-plane pending",
@@ -319,7 +321,7 @@
     "Request the exact broader opaque artifact issuance approval phrase from docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md if the operator wants to issue approved-tenant artifacts on Aliyun; do not combine this with legacy query-token retirement",
     "Request the exact legacy query-token retirement approval phrase from docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md only after broader artifact issuance and observation; route removal remains a future separate compatibility gate",
     "Investigate HP wg-home logical handshake only if the tunnel path is required; provider UDP/51820 now reaches Aliyun from HP",
-    "TUIC runtime inventory and comparison canary approval path after held Hysteria2 measurement, or VLESS/XUDP secondary comparison if TUIC is rejected",
+    "Request the separate exact canary-only TUIC subscription-output activation approval phrase only after the dry-run package, host-internal evidence or waiver, rollback readiness, and controlled access scope are recorded",
     "channel-lab-a Hysteria2 latency investigation, GUI import evidence, or cleanup decision",
     "Review docs/production-replacement-records/2026-05-27-clean-edge-rebuild-execution-handoff.md and request the exact clean edge node rebuild execution approval phrase if the operator wants host provisioning/bootstrap/private validation",
     "Use docs/production-replacement-records/2026-05-27-post-226-clean-edge-live-check.md as the latest read-only live-check source before any exact-approved clean edge execution",
