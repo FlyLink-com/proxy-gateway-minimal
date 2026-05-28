@@ -67,7 +67,8 @@
     "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
     "docs/VALIDATION_BASELINE.md",
     "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md",
-    "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-execution.md"
+    "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-execution.md",
+    "docs/production-replacement-records/2026-05-28-channel-lab-b-creation.md"
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
@@ -263,8 +264,8 @@
     },
     {
       "id": "channel-canary-server-selection",
-      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance exists, Hysteria2 v2.9.2 is active, short operator-device and Mihomo canaries passed, and extended operator-device measurement completed. The extended bundle has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. TUIC is now the documented next measured comparison candidate, and its Stage 0 read-only inventory gate handoff is ready but not executed. VLESS/XUDP is secondary, and GUI import evidence, DNS, production config, subscription output, broader rollout, runtime comparison, and cleanup remain gated.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-extended-measurement.md"
+      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance exists, Hysteria2 v2.9.2 is active, short operator-device and Mihomo canaries passed, and extended operator-device measurement completed. The extended bundle has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. TUIC is now the documented next measured comparison candidate; a clean AWS ap-northeast-1 channel-lab-b server exists for TUIC controlled subscription batch canary work, but TUIC runtime deployment, subscription batch generation, traffic, DNS, production config, and rollout remain separately gated. VLESS/XUDP is secondary, and GUI import evidence, DNS, production config, subscription output, broader rollout, runtime comparison, and cleanup remain gated.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-28-channel-lab-b-creation.md"
     },
     {
       "id": "aliyun-control-local-ci-rebuild",
@@ -293,7 +294,7 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Decide whether to request a fresh channel-lab-b TUIC comparison candidate or a separate channel-lab-a access/port/cleanup planning gate after docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-execution.md; do not deploy TUIC on channel-lab-a yet",
+    "Request the exact channel-lab-b TUIC runtime deployment approval phrase if the operator wants to install TUIC on the new AWS Japan canary server; do not generate subscription batch material or run traffic until the runtime deployment record passes validation",
     "Request the exact Aliyun Aegis service repair approval phrase from docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md if the operator wants process cleanup and service restart; otherwise leave it as a tracked host security-agent follow-up",
     "Keep public Admin blocked and keep edge traffic activation out of scope until a separate exact approval and execution record exists",
     "Use docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-preflight.md plus the exact approval phrase from docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md if the operator wants clean edge host provisioning/bootstrap/private validation; otherwise leave edge data-plane pending",
