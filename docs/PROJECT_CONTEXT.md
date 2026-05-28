@@ -753,6 +753,16 @@ operator approval, validation, and rollback path exist:
   and that public 3456/18080 posture is inconclusive because TCP connects but
   HTTP `/api/health` times out. No subscription-output activation, DNS, Nginx,
   runtime, firewall, config, traffic, or authority mutation was performed.
+- The approved Aliyun host/provider follow-up inventory is recorded in
+  `docs/production-replacement-records/2026-05-28-aliyun-tuic-host-provider-inventory.md`.
+  It confirmed SWAS provider identity and firewall posture read-only: 80/443
+  are the public subscription-boundary ports, 22 and 51820 are scoped to
+  management/lab sources, and 3456/18080 have no provider allow rule and are
+  closed_or_timeout from the HP external vantage. Host-internal inventory still
+  cannot run over SSH because the session times out during banner exchange.
+  Cloud Assistant is available but was not invoked in this gate. No runtime,
+  firewall, DNS, Nginx, config, subscription-output, traffic, or authority
+  mutation was performed.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See

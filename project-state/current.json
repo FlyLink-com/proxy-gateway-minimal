@@ -71,7 +71,8 @@
     "docs/production-replacement-records/2026-05-28-channel-lab-b-creation.md",
     "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-runtime.md",
     "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-operator-device-canary.md",
-    "docs/production-replacement-records/2026-05-28-aliyun-tuic-subscription-output-integration-inventory.md"
+    "docs/production-replacement-records/2026-05-28-aliyun-tuic-subscription-output-integration-inventory.md",
+    "docs/production-replacement-records/2026-05-28-aliyun-tuic-host-provider-inventory.md"
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
@@ -176,7 +177,8 @@
     "TUIC Stage 0 read-only inventory execution verified channel-lab-a AWS identity and network posture but blocked before runtime deployment because SSH timed out before banner/auth, SSM is unavailable, Hysteria2 owns the documented UDP/443 canary role, and a separate port/cleanup/access plan or fresh channel-lab-b gate is required",
     "channel-lab-b TUIC runtime deployment executed after exact approval: Mihomo TUIC v5 is active on UDP/443 on AWS ap-northeast-1, but controlled subscription batch generation, operator-device traffic, subscription output, DNS, production config, all-user rollout, and production authority transfer remain separately gated",
     "channel-lab-b controlled TUIC subscription batch and operator-device canary executed after exact approval: local sensitive YAML was generated outside the repository, standalone Mihomo completed 20/20 short HTTP samples through TUIC, and production subscription output, DNS, production config, all-user rollout, and production authority transfer remain unchanged",
-    "Aliyun / TUIC subscription-output integration read-only inventory recorded after the TUIC production-module package entered master: Aliyun public subscription boundary remained behaviorally correct, but Aliyun host-internal inventory is blocked by SSH session closure and public 3456/18080 posture is inconclusive because TCP connects while HTTP health times out; no subscription-output activation, DNS, Nginx, runtime, firewall, config, traffic, or authority mutation was performed"
+    "Aliyun / TUIC subscription-output integration read-only inventory recorded after the TUIC production-module package entered master: Aliyun public subscription boundary remained behaviorally correct, but Aliyun host-internal inventory is blocked by SSH session closure and public 3456/18080 posture is inconclusive because TCP connects while HTTP health times out; no subscription-output activation, DNS, Nginx, runtime, firewall, config, traffic, or authority mutation was performed",
+    "Aliyun / TUIC host-provider follow-up inventory completed after exact approval: SWAS provider identity and provider-firewall posture were confirmed read-only, 80/443 are the public subscription-boundary ports, 3456/18080 have no provider allow rule and are closed_or_timeout from HP, but host-internal service/SQLite/Nginx inventory remains blocked over SSH; no Cloud Assistant command invocation, runtime, firewall, DNS, Nginx, config, subscription-output, traffic, or authority mutation was performed"
   ],
   "activeGoal": {
     "id": "aliyun-subscription-control-platform-mvp",
@@ -276,8 +278,8 @@
     },
     {
       "id": "aliyun-tuic-integration-inventory-blocked",
-      "summary": "Aliyun / TUIC subscription-output integration inventory confirmed the public subscription boundary remains behaviorally correct, but host-internal Aliyun inventory is blocked by SSH session closure and public 3456/18080 posture is inconclusive because TCP connects while HTTP health times out. Subscription-output activation remains blocked before a fresh host/provider inventory and separate A-tier activation gate.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-28-aliyun-tuic-subscription-output-integration-inventory.md"
+      "summary": "Aliyun / TUIC host-provider follow-up inventory confirmed the public subscription boundary and provider firewall posture: 80/443 are public, 3456/18080 are not provider-open and are closed_or_timeout from HP, but host-internal service/SQLite/Nginx inventory remains blocked over SSH. Subscription-output activation remains blocked before host-internal evidence, extended TUIC measurement if required, and a separate A-tier activation gate.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-28-aliyun-tuic-host-provider-inventory.md"
     },
     {
       "id": "aliyun-control-local-ci-rebuild",
@@ -306,7 +308,7 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Request the exact Aliyun host-internal and provider-firewall read-only inventory approval phrase before any TUIC subscription-output activation planning; current integration inventory is blocked by SSH session closure and inconclusive 3456/18080 public-port posture",
+    "Decide whether Aliyun host-internal inventory should proceed through SSH access remediation or a separate Cloud Assistant read-only command gate; provider firewall now confirms 80/443 public, 3456/18080 not provider-open, and HP confirms 3456/18080 closed_or_timeout",
     "Request the exact extended channel-lab-b TUIC measurement approval phrase if the operator wants comparable multi-window data; otherwise decide whether to keep or clean up channel-lab-b. Do not perform all-user rollout, DNS change, production config change, subscription-output change, or production authority transfer",
     "Request the exact Aliyun Aegis service repair approval phrase from docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md if the operator wants process cleanup and service restart; otherwise leave it as a tracked host security-agent follow-up",
     "Keep public Admin blocked and keep edge traffic activation out of scope until a separate exact approval and execution record exists",
