@@ -711,6 +711,32 @@ operator approval, validation, and rollback path exist:
   blocked. The record recommends a fresh `channel-lab-b` TUIC comparison gate
   unless the operator separately approves `channel-lab-a` access remediation,
   second-port planning, or Hysteria2 cleanup planning.
+- The approved `channel-lab-b` creation is recorded in
+  `docs/production-replacement-records/2026-05-28-channel-lab-b-creation.md`.
+  It created an AWS ap-northeast-1 clean TUIC canary instance
+  `i-068f3cebec06ad0c0` with security group `sg-0a70e5f1bbd42576b`, SSH
+  restricted to the operator `/32`, and UDP/443 reserved for a future TUIC
+  controlled subscription batch canary. The instance is running, AWS status
+  checks are ok, and SSH base OS validation succeeded.
+- The approved `channel-lab-b` TUIC runtime deployment is recorded in
+  `docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-runtime.md`.
+  Mihomo Meta v1.19.25 is installed as `mihomo-tuic.service`, the TUIC v5
+  listener is active on UDP/443, config test passed, service status is active,
+  and `NRestarts` was 0 during validation. TUIC UUID/password material was
+  generated and retained only on the remote host. No DNS, Nginx, production
+  config, subscription output, controlled subscription batch, operator-device
+  traffic, production authority transfer, or all-user rollout was performed.
+- The approved controlled TUIC subscription batch and operator-device canary is
+  recorded in
+  `docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-operator-device-canary.md`.
+  Local sensitive TUIC YAML was generated outside the repository, standalone
+  Mihomo listened only on `127.0.0.1:29380`, and the short canary completed
+  20/20 HTTP 204 samples through `channel-lab-b` with failed samples 0, p50
+  0.8287s, p95 0.8371s, max 2.1476s, and Mihomo log error count 0. The
+  temporary Mihomo process was stopped after validation. No production
+  subscription-output change, public subscription URL generation, DNS, Nginx,
+  production config, system proxy, TUN, all-user rollout, or production
+  authority transfer was performed.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See
