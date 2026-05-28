@@ -840,6 +840,16 @@ operator approval, validation, and rollback path exist:
   not subscription-output mutation. It does not mutate config, subscription
   output, Aliyun, DNS, Nginx, systemd, channel-lab-b, traffic, or rollout
   scope.
+- The exact-approved TUIC controlled-access activation attempt is recorded in
+  `docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-stopped.md`.
+  It refreshed the public subscription boundary, Aliyun host-internal summary,
+  and channel-lab-b runtime health, then stopped before mutation because Aliyun
+  had no active controlled operator access, active artifact, or unexpired
+  unused temporary link to bind. No runtime config, subscription-output,
+  systemd, Nginx, DNS, firewall, SQLite row, channel-lab-b, traffic, all-user
+  rollout, or authority mutation was performed. The next retry must explicitly
+  cover creating/issuing or identifying one controlled operator access before
+  activation can continue.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See
