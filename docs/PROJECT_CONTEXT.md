@@ -850,6 +850,17 @@ operator approval, validation, and rollback path exist:
   rollout, or authority mutation was performed. The next retry must explicitly
   cover creating/issuing or identifying one controlled operator access before
   activation can continue.
+- The exact-approved controlled operator access creation is recorded in
+  `docs/production-replacement-records/2026-05-28-tuic-controlled-operator-access-creation.md`.
+  It created one active controlled operator access and one active opaque
+  artifact on Aliyun, stored the visible-once handoff material outside the
+  repository, and validated that the artifact refresh still returns the stable
+  SS output only. The previous output state is `prod-edge-a`; TUIC binding was
+  not performed, channel-lab-b TUIC is not in the Aliyun runtime config, and no
+  DNS, Nginx, firewall, systemd, channel-lab-b, all-user rollout, or authority
+  mutation was performed. The next retry may use the exact canary-only TUIC
+  subscription-output activation phrase again, with fresh checks and rollback
+  evidence.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See
