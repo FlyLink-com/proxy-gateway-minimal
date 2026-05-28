@@ -7,7 +7,7 @@ import {
   LockKeyhole,
   Megaphone
 } from "lucide-react";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, type MouseEvent, useState } from "react";
 
 const capabilities = [
   {
@@ -83,6 +83,13 @@ const workflowNodes = [
 ];
 
 const contactEmail = "hello@globalcirclecat.com";
+const telegramRegistrationHref = "https://t.me/gcaltd0528_bot?start=public_landing";
+const telegramRegistrationSteps = [
+  "扫码打开客户 Bot",
+  "私聊绑定 Telegram 身份",
+  "后台审核并发放权限",
+  "机器人内查看订阅面板"
+];
 
 function readFormValue(formData: FormData, name: string) {
   return String(formData.get(name) ?? "").trim();
@@ -120,6 +127,11 @@ export function CompanySitePage() {
     }
   }
 
+  function handleTelegramOnboardingClick(event: MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
+    document.getElementById("telegram-onboarding")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   return (
     <main className="company-site-shell">
       <header className="company-site-header">
@@ -132,7 +144,12 @@ export function CompanySitePage() {
           <a href="#scenarios">场景</a>
           <a href="#delivery">合作</a>
           <a href="#contact">联系</a>
-          <a className="company-site-workbench-link" href="#contact" aria-label="开发者工作台申请访问">
+          <a
+            className="company-site-workbench-link"
+            href="#telegram-onboarding"
+            aria-label="开发者工作台申请访问"
+            onClick={handleTelegramOnboardingClick}
+          >
             <LockKeyhole aria-hidden="true" />
             开发者工作台
           </a>
@@ -147,7 +164,7 @@ export function CompanySitePage() {
             前沿产品研究，构建可落地的智能体、API 沙盒与自动化工作流。
           </p>
           <div className="company-site-actions">
-            <a className="company-site-primary" href="#contact">
+            <a className="company-site-primary" href="#telegram-onboarding" onClick={handleTelegramOnboardingClick}>
               获取 API 密钥（限时免费）
               <ArrowRight aria-hidden="true" />
             </a>
@@ -266,13 +283,60 @@ export function CompanySitePage() {
         </ol>
       </section>
 
+      <section className="company-site-telegram-entry" id="telegram-onboarding">
+        <div className="company-site-telegram-copy">
+          <Bot aria-hidden="true" />
+          <span>Registration</span>
+          <h2>Telegram 扫码注册</h2>
+          <p>
+            公开官网暂时只提供扫码入口。用户扫码后在机器人私聊完成绑定，
+            后台再通过受控授权和订阅分发为用户生成自己的面板与订阅入口。
+          </p>
+          <div className="company-site-telegram-actions">
+            <a
+              className="company-site-primary"
+              href={telegramRegistrationHref}
+              target="_blank"
+              rel="noreferrer noopener"
+            >
+              扫码进入 Telegram 注册
+              <ArrowRight aria-hidden="true" />
+            </a>
+            <span>@gcaltd0528_bot</span>
+          </div>
+        </div>
+        <div className="company-site-telegram-panel">
+          <a
+            className="company-site-qr-link"
+            href={telegramRegistrationHref}
+            target="_blank"
+            rel="noreferrer noopener"
+            aria-label="Telegram 注册二维码占位"
+          >
+            <span className="company-site-qr-pattern" aria-hidden="true">
+              {Array.from({ length: 49 }, (_, index) => (
+                <i key={index} />
+              ))}
+            </span>
+          </a>
+          <ol className="company-site-telegram-steps">
+            {telegramRegistrationSteps.map((step, index) => (
+              <li key={step}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
       <section className="company-site-contact" id="contact">
         <div className="company-site-contact-copy">
           <Building2 aria-hidden="true" />
           <h2>联系我们</h2>
           <p>
             留下合作方向、投放目标或前沿产品研究需求，表单会进入公开站点 lead intake。
-            已有客户请按交付说明进入工作台；公开官网不承载客户数据。
+            用户注册优先走 Telegram 扫码入口；公开官网不承载客户数据。
           </p>
           <span className="company-site-email">
             {contactEmail}

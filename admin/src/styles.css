@@ -869,6 +869,155 @@ textarea {
   font-size: 12px;
 }
 
+.company-site-telegram-entry {
+  margin: 24px clamp(20px, 5vw, 72px) 0;
+  padding: 34px;
+  display: grid;
+  grid-template-columns: minmax(0, 0.95fr) minmax(340px, 0.86fr);
+  gap: 28px;
+  align-items: center;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 88% 12%, rgba(37, 99, 235, 0.16), transparent 34%),
+    linear-gradient(135deg, #ffffff, #eef7ff);
+  color: #0f172a;
+}
+
+.company-site-telegram-copy {
+  display: grid;
+  gap: 12px;
+  max-width: 700px;
+}
+
+.company-site-telegram-copy > svg {
+  width: 30px;
+  height: 30px;
+  color: #2563eb;
+}
+
+.company-site-telegram-copy > span {
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.company-site-telegram-copy h2 {
+  margin: 0;
+  font-size: clamp(28px, 4vw, 46px);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+.company-site-telegram-copy p {
+  margin: 0;
+  max-width: 640px;
+  color: #475569;
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.company-site-telegram-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.company-site-telegram-actions > span {
+  color: #334155;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.company-site-telegram-panel {
+  display: grid;
+  grid-template-columns: 176px minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.company-site-qr-link {
+  min-height: 176px;
+  border: 1px solid rgba(37, 99, 235, 0.2);
+  border-radius: 10px;
+  background: #ffffff;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  text-decoration: none;
+  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.08);
+}
+
+.company-site-qr-pattern {
+  width: 126px;
+  height: 126px;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+}
+
+.company-site-qr-pattern i {
+  border-radius: 3px;
+  background: #0f172a;
+}
+
+.company-site-qr-pattern i:nth-child(2n),
+.company-site-qr-pattern i:nth-child(5n),
+.company-site-qr-pattern i:nth-child(7n + 3) {
+  background: #dbeafe;
+}
+
+.company-site-qr-pattern i:nth-child(1),
+.company-site-qr-pattern i:nth-child(2),
+.company-site-qr-pattern i:nth-child(3),
+.company-site-qr-pattern i:nth-child(8),
+.company-site-qr-pattern i:nth-child(10),
+.company-site-qr-pattern i:nth-child(15),
+.company-site-qr-pattern i:nth-child(16),
+.company-site-qr-pattern i:nth-child(17),
+.company-site-qr-pattern i:nth-child(33),
+.company-site-qr-pattern i:nth-child(34),
+.company-site-qr-pattern i:nth-child(35),
+.company-site-qr-pattern i:nth-child(40),
+.company-site-qr-pattern i:nth-child(42),
+.company-site-qr-pattern i:nth-child(47),
+.company-site-qr-pattern i:nth-child(48),
+.company-site-qr-pattern i:nth-child(49) {
+  background: #0f172a;
+}
+
+.company-site-telegram-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.company-site-telegram-steps li {
+  min-height: 82px;
+  display: grid;
+  gap: 6px;
+  align-content: center;
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.82);
+  color: #1e293b;
+  padding: 14px;
+  font-weight: 800;
+}
+
+.company-site-telegram-steps li span {
+  color: #2563eb;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .company-site-contact {
   margin-top: 72px;
   margin-bottom: 72px;
@@ -2081,6 +2230,7 @@ th {
 
   .company-site-hero,
   .company-site-band,
+  .company-site-telegram-entry,
   .company-site-capabilities,
   .company-site-effect-layout,
   .company-site-direction-list {
@@ -2102,6 +2252,10 @@ th {
   .company-site-contact {
     align-items: flex-start;
     grid-template-columns: 1fr;
+  }
+
+  .company-site-telegram-panel {
+    grid-template-columns: 176px minmax(0, 1fr);
   }
 
   .portal-use-shell,
@@ -2216,12 +2370,22 @@ th {
 
   .company-site-band,
   .company-site-contact,
+  .company-site-telegram-entry,
   .company-site-product-effect {
     padding: 24px;
   }
 
   .company-site-scenario-grid {
     grid-template-columns: 1fr;
+  }
+
+  .company-site-telegram-panel,
+  .company-site-telegram-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-qr-link {
+    min-height: 156px;
   }
 
   .site-effect-flow {

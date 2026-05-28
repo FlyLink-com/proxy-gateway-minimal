@@ -124,4 +124,37 @@ describe("company site route", () => {
       /control plane|data plane|WireGuard|Server Edge|Local Edge|Channel Manager|订阅接入|专属入口|导入客户端/
     );
   });
+
+  test("routes public registration to Telegram QR onboarding instead of the portal", () => {
+    window.location.hash = "#/site";
+
+    const { container } = render(createElement(App));
+
+    expect(screen.getByRole("heading", { name: "Telegram 扫码注册" })).not.toBeNull();
+    expect(screen.getByLabelText("Telegram 注册二维码占位")).not.toBeNull();
+    expect(screen.getByText(/用户扫码后在机器人私聊完成绑定/)).not.toBeNull();
+
+    const telegramLink = screen.getByRole("link", { name: /扫码进入 Telegram 注册/ });
+    expect(telegramLink.getAttribute("href")).toBe("https://t.me/gcaltd0528_bot?start=public_landing");
+    expect(telegramLink.getAttribute("target")).toBe("_blank");
+    expect(telegramLink.getAttribute("rel")).toContain("noopener");
+
+    expect(container.innerHTML).not.toMatch(/#\/portal|\/use|subscriptionUrl|token=|artifactRef/);
+  });
+
+  test("keeps the site hash route when scrolling to Telegram onboarding", () => {
+    window.location.hash = "#/site";
+
+    const { container } = render(createElement(App));
+    const onboardingSection = container.querySelector("#telegram-onboarding") as HTMLElement & {
+      scrollIntoView: (options?: ScrollIntoViewOptions) => void;
+    };
+    const scrollIntoView = vi.fn();
+    onboardingSection.scrollIntoView = scrollIntoView;
+
+    fireEvent.click(screen.getByRole("link", { name: /获取 API 密钥/ }));
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    expect(window.location.hash).toBe("#/site");
+  });
 });
