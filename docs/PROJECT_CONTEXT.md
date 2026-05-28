@@ -797,6 +797,18 @@ operator approval, validation, and rollback path exist:
   subscription-output mutation, production YAML generation, DNS, Nginx,
   runtime, firewall, config, traffic, all-user rollout, or authority mutation
   was performed.
+- The approved canary-only TUIC subscription-output config review is recorded
+  in
+  `docs/production-replacement-records/2026-05-28-tuic-subscription-output-config-review.md`.
+  It adds a synthetic, non-deployable review-only proxy config fixture under
+  `docs/channel-activation-dry-runs/2026-05-28-channel-lab-b-tuic-subscription-output/`.
+  The same activation package and production-module tooling becomes
+  review-ready against that fixture, proving the TUIC canary config shape is
+  compatible with repository tooling. The current runtime config remains
+  unchanged and blocked. No `config/proxy-servers.json` change, production
+  deployment, subscription-output mutation, production YAML generation, DNS,
+  Nginx, runtime, firewall, traffic, all-user rollout, or authority mutation
+  was performed.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See

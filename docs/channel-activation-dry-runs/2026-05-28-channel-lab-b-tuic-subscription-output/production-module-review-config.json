@@ -1,0 +1,70 @@
+{
+  "ok": true,
+  "mode": "channel-production-module",
+  "generatedAt": "2026-05-28T09:54:24.507Z",
+  "status": "ready_for_production_module_branch_review",
+  "blockers": [],
+  "productionModule": {
+    "candidateName": "channel-lab-b-tuic",
+    "protocol": "tuic",
+    "targetLabel": "channel-lab-b",
+    "shortCanaryPassed": true,
+    "activationPackageReady": true,
+    "productionActivationReady": false,
+    "sampleSummary": {
+      "sampleCount": 180,
+      "successCount": 180,
+      "failedCount": 0,
+      "p50TotalSec": 0.825,
+      "p95TotalSec": 0.848,
+      "maxTotalSec": 1.243,
+      "logErrorCount": 0
+    },
+    "packageProtocolCounts": {
+      "ss": 1,
+      "tuic": 1
+    }
+  },
+  "nextGate": {
+    "risk": "A",
+    "gate": "risk_a_subscription_output_activation_or_extended_measurement",
+    "requiredNextAction": "review_production_module_branch_then_request_extended_measurement_or_subscription_output_activation_approval",
+    "approvalRequired": true,
+    "exactApprovalRequired": true,
+    "executionAuthority": "not_granted",
+    "approvalSubmissionRoute": null,
+    "executionRoute": null,
+    "executesGate": false,
+    "productionBranchSuggested": true,
+    "runbook": "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md"
+  },
+  "source": {
+    "activationPackageMode": "channel-subscription-activation-package",
+    "activationPackageStatus": "ready_for_risk_a_subscription_output_activation_request",
+    "canaryEvidenceMode": "operator-device-channel-canary-summary"
+  },
+  "safety": {
+    "advisoryOnly": true,
+    "summaryOnly": true,
+    "productionModuleOnly": true,
+    "noRuntimeMutation": true,
+    "noProductionMutation": true,
+    "noApprovalSubmission": true,
+    "noTrafficMovement": true,
+    "noSubscriptionOutputMutation": true,
+    "yamlReturned": false,
+    "yamlNotReturned": true,
+    "credentialsReturned": false,
+    "requiresSeparateRiskAApproval": true,
+    "omittedFields": [
+      "hosts",
+      "ports",
+      "urls",
+      "credentials",
+      "rawLogs",
+      "tokens",
+      "subscriptionUrls",
+      "yaml"
+    ]
+  }
+}
