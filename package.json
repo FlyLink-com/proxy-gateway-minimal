@@ -87,6 +87,8 @@
     "daemon": "node daemon.mjs",
     "admin:dev": "npm run dev --prefix admin",
     "admin:build": "npm run build --prefix admin",
+    "admin:site:build": "npm run build:site --prefix admin",
+    "admin:site:verify": "npm run verify:site-build --prefix admin",
     "admin:test": "npm run test --prefix admin"
   },
   "dependencies": {

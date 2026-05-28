@@ -14,3 +14,4 @@ docs/superpowers/plans/*.tmp
 .vs/
 admin/dist/
 handoff/
+admin/dist-site/
