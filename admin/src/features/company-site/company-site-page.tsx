@@ -9,7 +9,6 @@ import {
 import { type FormEvent, type MouseEvent, useEffect, useState } from "react";
 
 const contactEmail = "hello@globalcirclecat.com";
-const telegramPromotionHref = "https://t.me/gcaltd0528_bot";
 
 const siteCopy = {
   zh: {
@@ -21,8 +20,7 @@ const siteCopy = {
       capabilities: "能力",
       scenarios: "场景",
       delivery: "合作",
-      contact: "联系",
-      telegramPromotion: "Telegram 推广"
+      contact: "联系"
     },
     hero: {
       title: "GlobalCircle AI",
@@ -114,7 +112,7 @@ const siteCopy = {
     },
     contact: {
       title: "联系我们",
-      body: "留下合作方向、投放目标或前沿产品研究需求，我们会把信息同步到自动化诊断流程。公开官网只负责公开咨询与合作线索，Telegram 仅作为推广触达链接。"
+      body: "留下合作方向、投放目标或前沿产品研究需求，我们会把信息同步到自动化诊断流程。公开官网只负责公开咨询与合作线索。"
     },
     form: {
       organization: "公司或机构",
@@ -143,8 +141,7 @@ const siteCopy = {
       capabilities: "Capabilities",
       scenarios: "Use Cases",
       delivery: "Engagement",
-      contact: "Contact",
-      telegramPromotion: "Telegram Promotion"
+      contact: "Contact"
     },
     hero: {
       title: "GlobalCircle AI",
@@ -236,7 +233,7 @@ const siteCopy = {
     },
     contact: {
       title: "Contact Us",
-      body: "Share your partnership direction, campaign goals, or frontier product research needs. We will route the information into an automated diagnosis flow. The public site handles consultation and partnership leads; Telegram is only a promotion link."
+      body: "Share your partnership direction, campaign goals, or frontier product research needs. We will route the information into an automated diagnosis flow. The public site handles consultation and partnership leads."
     },
     form: {
       organization: "Company or Organization",
@@ -393,15 +390,6 @@ export function CompanySitePage() {
           </a>
           <a href="#contact" onClick={(event) => handleSiteAnchorClick(event, "contact")}>
             {copy.nav.contact}
-          </a>
-          <a
-            className="company-site-promotion-link"
-            href={telegramPromotionHref}
-            target="_blank"
-            rel="noreferrer noopener"
-          >
-            <Megaphone aria-hidden="true" />
-            {copy.nav.telegramPromotion}
           </a>
         </nav>
       </header>

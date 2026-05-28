@@ -34,7 +34,6 @@ describe("company site route", () => {
 
     expect(screen.getByRole("heading", { name: "GlobalCircle AI" })).not.toBeNull();
     expect(screen.getByRole("link", { name: /申请试用名额/ })).not.toBeNull();
-    expect(screen.getByRole("link", { name: /Telegram 推广/ })).not.toBeNull();
     expect(screen.getByText(/让复杂技术转化为可执行的运营结果/)).not.toBeNull();
     expect(screen.queryByRole("heading", { name: "Log in" })).toBeNull();
     expect(screen.queryByLabelText("邮箱")).toBeNull();
@@ -46,6 +45,8 @@ describe("company site route", () => {
     expect(container.innerHTML).not.toMatch(
       /login-after-entry|subscriptionUrl|token=|entryRef|artifactRef|access-grants|#\/portal|\/use/
     );
+    expect(container.textContent).not.toMatch(/Telegram|TG|注册入口|扫码注册|扫码进入/);
+    expect(container.innerHTML).not.toMatch(/t\.me|gcaltd0528|telegram/i);
 
     const exposedPortalLinks = Array.from(container.querySelectorAll("a"))
       .map((link) => link.getAttribute("href") ?? "")
@@ -140,19 +141,18 @@ describe("company site route", () => {
     );
   });
 
-  test("keeps Telegram as a promotion-only external link instead of registration onboarding", () => {
+  test("does not embed Telegram registration or promotion on the public site", () => {
     window.location.hash = "#/site";
 
     const { container } = render(createElement(App));
 
-    const telegramLink = screen.getByRole("link", { name: /Telegram 推广/ });
-    expect(telegramLink.getAttribute("href")).toBe("https://t.me/gcaltd0528_bot");
-    expect(telegramLink.getAttribute("target")).toBe("_blank");
-    expect(telegramLink.getAttribute("rel")).toContain("noopener");
-
+    expect(screen.queryByRole("link", { name: /Telegram 推广/ })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Telegram 扫码注册" })).toBeNull();
     expect(screen.queryByLabelText("Telegram 注册二维码占位")).toBeNull();
-    expect(container.textContent).not.toMatch(/扫码进入 Telegram 后|获取后续服务入口|用户注册优先走 Telegram|Public registration starts from Telegram/);
+    expect(container.textContent).not.toMatch(
+      /Telegram|TG|注册入口|扫码进入 Telegram 后|获取后续服务入口|用户注册优先走 Telegram|Public registration starts from Telegram/
+    );
+    expect(container.innerHTML).not.toMatch(/t\.me|gcaltd0528|telegram/i);
     expect(container.innerHTML).not.toMatch(/#\/portal|\/use|subscriptionUrl|token=|artifactRef/);
   });
 
@@ -199,9 +199,10 @@ describe("company site route", () => {
     expect(document.title).toBe("GlobalCircle AI - Agent R&D and Growth Automation");
     expect(screen.getByText(/turn AI R&D, growth automation/)).not.toBeNull();
     expect(screen.getByRole("link", { name: /Request Trial Access/ })).not.toBeNull();
-    expect(screen.getByRole("link", { name: /Telegram Promotion/ })).not.toBeNull();
+    expect(screen.queryByRole("link", { name: /Telegram Promotion/ })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Register with Telegram QR" })).toBeNull();
     expect(screen.getByLabelText("Company or Organization")).not.toBeNull();
-    expect(container.textContent).not.toMatch(/极客型团队|合作方向|扫码进入 Telegram 后|公司或机构/);
+    expect(container.textContent).not.toMatch(/Telegram|TG|极客型团队|合作方向|扫码进入 Telegram 后|公司或机构/);
+    expect(container.innerHTML).not.toMatch(/t\.me|gcaltd0528|telegram/i);
   });
 });
