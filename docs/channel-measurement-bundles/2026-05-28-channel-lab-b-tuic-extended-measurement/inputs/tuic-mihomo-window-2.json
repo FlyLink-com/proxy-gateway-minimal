@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "mode": "local-benchmark-summary",
+  "generatedAt": "2026-05-28T06:49:01.5502405Z",
+  "source": "operator-device-extended-measurement",
+  "windowId": "tuic-mihomo-window-2",
+  "probes": [
+    {
+      "name": "channel-lab-b-tuic-mihomo-import",
+      "protocol": "tuic",
+      "role": "candidate",
+      "qualityClass": "extended-mihomo-import",
+      "sampleCount": 60,
+      "successRate": 1.0,
+      "timeoutCount": 0,
+      "latencyMs": {
+        "connect": {
+          "p50": 0.6,
+          "p95": 1.1,
+          "p99": 24.9
+        },
+        "ttfb": {
+          "p50": 820.2,
+          "p95": 835.8,
+          "p99": 863.0
+        },
+        "duration": {
+          "p50": 820.2,
+          "p95": 835.8,
+          "p99": 863.0,
+          "max": 863.0
+        }
+      }
+    }
+  ]
+}

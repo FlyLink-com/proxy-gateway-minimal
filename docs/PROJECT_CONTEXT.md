@@ -743,6 +743,15 @@ operator approval, validation, and rollback path exist:
   subscription-output change, public subscription URL generation, DNS, Nginx,
   production config, system proxy, TUN, all-user rollout, or production
   authority transfer was performed.
+- The approved `channel-lab-b` TUIC extended measurement is recorded in
+  `docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-extended-measurement.md`.
+  The standalone Mihomo -> TUIC path completed three 60-sample windows with
+  180/180 successful samples, no timeouts, and no error-like local Mihomo log
+  lines. The repository-safe bundle and investigation reports classify the
+  candidate as ready for operator decision / prepare Risk A canary gate. No
+  subscription-output change, DNS, Nginx, production config, all-user rollout,
+  system proxy, TUN, runtime reconfiguration, or production authority transfer
+  was performed.
 - The read-only Aliyun / TUIC subscription-output integration inventory is
   recorded in
   `docs/production-replacement-records/2026-05-28-aliyun-tuic-subscription-output-integration-inventory.md`.

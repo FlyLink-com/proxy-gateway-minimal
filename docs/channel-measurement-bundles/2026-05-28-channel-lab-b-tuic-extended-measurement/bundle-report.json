@@ -1,0 +1,49 @@
+{
+  "ok": true,
+  "mode": "channel-measurement-bundle-report",
+  "generatedAt": "2026-05-28T06:49:52.9551553Z",
+  "sourceGeneratedAt": "2026-05-28T06:49:52.9551553Z",
+  "runId": "2026-05-28-channel-lab-b-tuic-extended-measurement",
+  "candidateSet": "channel-lab-b-tuic-extended-measurement",
+  "windowCount": 3,
+  "windowIds": [
+    "tuic-mihomo-window-1",
+    "tuic-mihomo-window-2",
+    "tuic-mihomo-window-3"
+  ],
+  "extendedReport": {
+    "ok": true,
+    "mode": "channel-extended-measurement-report",
+    "generatedAt": "2026-05-28T06:49:52.9551553Z",
+    "windowCount": 3,
+    "thresholds": {
+      "minimumWindows": 2,
+      "minimumSamples": 60,
+      "minimumSuccessRate": 0.98,
+      "maximumTimeoutRate": 0.01,
+      "maximumP95DurationMs": 1200,
+      "maximumP99DurationMs": 1800
+    },
+    "probeCount": 1,
+    "readyCount": 1,
+    "needsExtendedMeasurementCount": 0,
+    "holdCount": 0,
+    "probes": [
+      {
+        "name": "channel-lab-b-tuic-mihomo-import",
+        "protocol": "tuic",
+        "role": "candidate",
+        "qualityClass": "extended-mihomo-import",
+        "windowCount": 3,
+        "readyWindowCount": 3,
+        "needsExtendedMeasurementWindowCount": 0,
+        "holdWindowCount": 0,
+        "totalSampleCount": 180,
+        "readiness": "ready_for_decision",
+        "reasonCodes": [
+          "extended_measurement_ready"
+        ]
+      }
+    ]
+  }
+}

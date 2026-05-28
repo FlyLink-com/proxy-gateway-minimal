@@ -18,6 +18,12 @@ windows for the direct Hysteria2 client path and three 60-sample windows for
 the standalone Mihomo path. Its generated bundle report is evidence for
 operator review; it is not rollout approval.
 
+The `2026-05-28-channel-lab-b-tuic-extended-measurement` bundle captures the
+approved operator-device extended measurement for the standalone Mihomo -> TUIC
+path. It contains three 60-sample windows and aggregate-only reports. Its
+generated bundle and investigation reports are evidence for operator review;
+they are not subscription-output activation approval.
+
 Use `npm run channel:measurement-investigation -- <bundle-report.json>` to
 turn a safe bundle report into a repository-local investigation summary. The
 investigation report classifies hold patterns such as sustained tail latency or
