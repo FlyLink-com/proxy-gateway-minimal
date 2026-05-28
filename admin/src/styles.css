@@ -256,13 +256,6 @@ textarea {
   --site-scene-scale: 1.1;
 }
 
-.company-site-shell[data-active-section="telegram-onboarding"] {
-  --site-scene-x: 5vw;
-  --site-scene-y: -14vh;
-  --site-scene-tilt: -2deg;
-  --site-scene-scale: 1.12;
-}
-
 .company-site-shell[data-active-section="contact"] {
   --site-scene-x: -4vw;
   --site-scene-y: -18vh;
@@ -360,19 +353,23 @@ textarea {
   color: #ffffff;
 }
 
-.company-site-nav .company-site-workbench-link {
+.company-site-promotion-link {
   min-height: 36px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  margin-left: 6px;
   border: 1px solid rgba(125, 211, 252, 0.3);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.08);
   color: #f8fafc;
+  text-decoration: none;
 }
 
-.company-site-workbench-link svg {
+.company-site-nav .company-site-promotion-link {
+  margin-left: 6px;
+}
+
+.company-site-promotion-link svg {
   width: 16px;
   height: 16px;
 }
@@ -693,8 +690,7 @@ textarea {
   color: #0f172a;
 }
 
-.company-site-contact h2,
-.company-site-telegram-copy h2 {
+.company-site-contact h2 {
   color: #ffffff;
 }
 
@@ -955,7 +951,6 @@ textarea {
 .company-site-shell[data-active-section="scenarios"] .company-site-product-effect,
 .company-site-shell[data-active-section="api-proof"] .company-site-product-effect,
 .company-site-shell[data-active-section="delivery"] .company-site-band,
-.company-site-shell[data-active-section="telegram-onboarding"] .company-site-telegram-entry,
 .company-site-shell[data-active-section="contact"] .company-site-contact {
   transform: translate3d(0, -4px, 0) scale(1.002);
 }
@@ -1035,155 +1030,6 @@ textarea {
 .company-site-steps li span {
   color: #0f766e;
   font-size: 12px;
-}
-
-.company-site-telegram-entry {
-  margin: 24px clamp(20px, 5vw, 72px) 0;
-  padding: 34px;
-  display: grid;
-  grid-template-columns: minmax(0, 0.95fr) minmax(340px, 0.86fr);
-  gap: 28px;
-  align-items: center;
-  border: 1px solid rgba(96, 165, 250, 0.18);
-  border-radius: 12px;
-  background:
-    radial-gradient(circle at 88% 12%, rgba(96, 165, 250, 0.18), transparent 34%),
-    linear-gradient(135deg, #0b1220, #111827);
-  color: #f8fafc;
-}
-
-.company-site-telegram-copy {
-  display: grid;
-  gap: 12px;
-  max-width: 700px;
-}
-
-.company-site-telegram-copy > svg {
-  width: 30px;
-  height: 30px;
-  color: #60a5fa;
-}
-
-.company-site-telegram-copy > span {
-  color: #93c5fd;
-  font-size: 13px;
-  font-weight: 900;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.company-site-telegram-copy h2 {
-  margin: 0;
-  font-size: clamp(28px, 4vw, 46px);
-  line-height: 1.08;
-  letter-spacing: 0;
-}
-
-.company-site-telegram-copy p {
-  margin: 0;
-  max-width: 640px;
-  color: #d1d5db;
-  font-size: 17px;
-  line-height: 1.7;
-}
-
-.company-site-telegram-actions {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 8px;
-}
-
-.company-site-telegram-actions > span {
-  color: #bfdbfe;
-  font-weight: 800;
-  overflow-wrap: anywhere;
-}
-
-.company-site-telegram-panel {
-  display: grid;
-  grid-template-columns: 176px minmax(0, 1fr);
-  gap: 18px;
-  align-items: stretch;
-}
-
-.company-site-qr-link {
-  min-height: 176px;
-  border: 1px solid rgba(96, 165, 250, 0.24);
-  border-radius: 10px;
-  background: #ffffff;
-  display: grid;
-  place-items: center;
-  padding: 18px;
-  text-decoration: none;
-  box-shadow: 0 16px 42px rgba(2, 6, 23, 0.26);
-}
-
-.company-site-qr-pattern {
-  width: 126px;
-  height: 126px;
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 4px;
-}
-
-.company-site-qr-pattern i {
-  border-radius: 3px;
-  background: #0f172a;
-}
-
-.company-site-qr-pattern i:nth-child(2n),
-.company-site-qr-pattern i:nth-child(5n),
-.company-site-qr-pattern i:nth-child(7n + 3) {
-  background: #dbeafe;
-}
-
-.company-site-qr-pattern i:nth-child(1),
-.company-site-qr-pattern i:nth-child(2),
-.company-site-qr-pattern i:nth-child(3),
-.company-site-qr-pattern i:nth-child(8),
-.company-site-qr-pattern i:nth-child(10),
-.company-site-qr-pattern i:nth-child(15),
-.company-site-qr-pattern i:nth-child(16),
-.company-site-qr-pattern i:nth-child(17),
-.company-site-qr-pattern i:nth-child(33),
-.company-site-qr-pattern i:nth-child(34),
-.company-site-qr-pattern i:nth-child(35),
-.company-site-qr-pattern i:nth-child(40),
-.company-site-qr-pattern i:nth-child(42),
-.company-site-qr-pattern i:nth-child(47),
-.company-site-qr-pattern i:nth-child(48),
-.company-site-qr-pattern i:nth-child(49) {
-  background: #0f172a;
-}
-
-.company-site-telegram-steps {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.company-site-telegram-steps li {
-  min-height: 82px;
-  display: grid;
-  gap: 6px;
-  align-content: center;
-  border: 1px solid rgba(96, 165, 250, 0.18);
-  border-radius: 9px;
-  background: rgba(15, 23, 42, 0.66);
-  color: #f8fafc;
-  padding: 14px;
-  font-weight: 800;
-}
-
-.company-site-telegram-steps li span {
-  color: #93c5fd;
-  font-size: 12px;
-  font-weight: 900;
 }
 
 .company-site-contact {
@@ -2398,7 +2244,6 @@ th {
 
   .company-site-hero,
   .company-site-band,
-  .company-site-telegram-entry,
   .company-site-capabilities,
   .company-site-effect-layout,
   .company-site-direction-list {
@@ -2420,10 +2265,6 @@ th {
   .company-site-contact {
     align-items: flex-start;
     grid-template-columns: 1fr;
-  }
-
-  .company-site-telegram-panel {
-    grid-template-columns: 176px minmax(0, 1fr);
   }
 
   .portal-use-shell,
@@ -2538,22 +2379,12 @@ th {
 
   .company-site-band,
   .company-site-contact,
-  .company-site-telegram-entry,
   .company-site-product-effect {
     padding: 24px;
   }
 
   .company-site-scenario-grid {
     grid-template-columns: 1fr;
-  }
-
-  .company-site-telegram-panel,
-  .company-site-telegram-steps {
-    grid-template-columns: 1fr;
-  }
-
-  .company-site-qr-link {
-    min-height: 156px;
   }
 
   .site-effect-flow {
@@ -2630,7 +2461,6 @@ th {
   .company-site-shell[data-active-section="scenarios"] .company-site-product-effect,
   .company-site-shell[data-active-section="api-proof"] .company-site-product-effect,
   .company-site-shell[data-active-section="delivery"] .company-site-band,
-  .company-site-shell[data-active-section="telegram-onboarding"] .company-site-telegram-entry,
   .company-site-shell[data-active-section="contact"] .company-site-contact,
   .company-site-card:hover,
   .company-site-scenario-card:hover,

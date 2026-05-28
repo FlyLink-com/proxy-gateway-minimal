@@ -4,13 +4,12 @@ import {
   Building2,
   CheckCircle2,
   FlaskConical,
-  LockKeyhole,
   Megaphone
 } from "lucide-react";
 import { type FormEvent, type MouseEvent, useEffect, useState } from "react";
 
 const contactEmail = "hello@globalcirclecat.com";
-const telegramRegistrationHref = "https://t.me/gcaltd0528_bot?start=public_landing";
+const telegramPromotionHref = "https://t.me/gcaltd0528_bot";
 
 const siteCopy = {
   zh: {
@@ -23,7 +22,7 @@ const siteCopy = {
       scenarios: "场景",
       delivery: "合作",
       contact: "联系",
-      registration: "注册入口"
+      telegramPromotion: "Telegram 推广"
     },
     hero: {
       title: "GlobalCircle AI",
@@ -113,17 +112,9 @@ const siteCopy = {
       body: "不直接堆功能，也不空谈概念。每次合作先定义目标、样品和指标，再决定是否进入更大规模的投放、运营自动化或产品研究。",
       steps: ["问题诊断", "样品验证", "投放测试", "运营复盘"]
     },
-    telegram: {
-      kicker: "注册入口",
-      title: "Telegram 扫码注册",
-      body: "扫码进入 Telegram 后，可以快速完成联系确认并获取后续服务入口。我们会根据需求阶段安排诊断、试用或合作跟进。",
-      cta: "扫码进入 Telegram",
-      qrAria: "Telegram 注册二维码占位",
-      steps: ["扫码开启咨询", "确认联系方式", "获得服务入口", "接收后续服务"]
-    },
     contact: {
       title: "联系我们",
-      body: "留下合作方向、投放目标或前沿产品研究需求，我们会把信息同步到自动化诊断流程。用户注册优先走 Telegram 扫码入口；公开官网只负责公开咨询与合作线索。"
+      body: "留下合作方向、投放目标或前沿产品研究需求，我们会把信息同步到自动化诊断流程。公开官网只负责公开咨询与合作线索，Telegram 仅作为推广触达链接。"
     },
     form: {
       organization: "公司或机构",
@@ -153,7 +144,7 @@ const siteCopy = {
       scenarios: "Use Cases",
       delivery: "Engagement",
       contact: "Contact",
-      registration: "Register"
+      telegramPromotion: "Telegram Promotion"
     },
     hero: {
       title: "GlobalCircle AI",
@@ -243,17 +234,9 @@ const siteCopy = {
       body: "We do not stack features or sell abstract concepts. Each engagement starts with goals, prototypes, and metrics before moving into broader ads, automation, or product research.",
       steps: ["Diagnosis", "Prototype", "Campaign Test", "Review"]
     },
-    telegram: {
-      kicker: "Registration",
-      title: "Register with Telegram QR",
-      body: "After entering Telegram, users can confirm contact details and receive the next service entry. We arrange diagnosis, trial access, or partnership follow-up based on the current stage.",
-      cta: "Open Telegram",
-      qrAria: "Telegram registration QR placeholder",
-      steps: ["Start Chat", "Confirm Contact", "Receive Entry", "Follow-up Service"]
-    },
     contact: {
       title: "Contact Us",
-      body: "Share your partnership direction, campaign goals, or frontier product research needs. We will route the information into an automated diagnosis flow. Public registration starts from Telegram; the public site only handles consultation and partnership leads."
+      body: "Share your partnership direction, campaign goals, or frontier product research needs. We will route the information into an automated diagnosis flow. The public site handles consultation and partnership leads; Telegram is only a promotion link."
     },
     form: {
       organization: "Company or Organization",
@@ -282,7 +265,6 @@ const companySiteSectionIds = [
   "scenarios",
   "api-proof",
   "delivery",
-  "telegram-onboarding",
   "contact"
 ] as const;
 
@@ -413,13 +395,13 @@ export function CompanySitePage() {
             {copy.nav.contact}
           </a>
           <a
-            className="company-site-workbench-link"
-            href="#telegram-onboarding"
-            aria-label={copy.nav.registration}
-            onClick={(event) => handleSiteAnchorClick(event, "telegram-onboarding")}
+            className="company-site-promotion-link"
+            href={telegramPromotionHref}
+            target="_blank"
+            rel="noreferrer noopener"
           >
-            <LockKeyhole aria-hidden="true" />
-            {copy.nav.registration}
+            <Megaphone aria-hidden="true" />
+            {copy.nav.telegramPromotion}
           </a>
         </nav>
       </header>
@@ -431,8 +413,8 @@ export function CompanySitePage() {
           <div className="company-site-actions">
             <a
               className="company-site-primary"
-              href="#telegram-onboarding"
-              onClick={(event) => handleSiteAnchorClick(event, "telegram-onboarding")}
+              href="#contact"
+              onClick={(event) => handleSiteAnchorClick(event, "contact")}
             >
               {copy.hero.primary}
               <ArrowRight aria-hidden="true" />
@@ -548,50 +530,6 @@ export function CompanySitePage() {
             </li>
           ))}
         </ol>
-      </section>
-
-      <section className="company-site-telegram-entry" id="telegram-onboarding">
-        <div className="company-site-telegram-copy">
-          <Bot aria-hidden="true" />
-          <span>{copy.telegram.kicker}</span>
-          <h2>{copy.telegram.title}</h2>
-          <p>{copy.telegram.body}</p>
-          <div className="company-site-telegram-actions">
-            <a
-              className="company-site-primary"
-              href={telegramRegistrationHref}
-              target="_blank"
-              rel="noreferrer noopener"
-            >
-              {copy.telegram.cta}
-              <ArrowRight aria-hidden="true" />
-            </a>
-            <span>@gcaltd0528_bot</span>
-          </div>
-        </div>
-        <div className="company-site-telegram-panel">
-          <a
-            className="company-site-qr-link"
-            href={telegramRegistrationHref}
-            target="_blank"
-            rel="noreferrer noopener"
-            aria-label={copy.telegram.qrAria}
-          >
-            <span className="company-site-qr-pattern" aria-hidden="true">
-              {Array.from({ length: 49 }, (_, index) => (
-                <i key={index} />
-              ))}
-            </span>
-          </a>
-          <ol className="company-site-telegram-steps">
-            {copy.telegram.steps.map((step, index) => (
-              <li key={step}>
-                <span>{String(index + 1).padStart(2, "0")}</span>
-                {step}
-              </li>
-            ))}
-          </ol>
-        </div>
       </section>
 
       <section className="company-site-contact" id="contact">
