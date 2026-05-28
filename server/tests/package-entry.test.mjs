@@ -19,6 +19,7 @@ import {
   buildChannelSubscriptionActivationFlow,
   buildChannelSubscriptionActivationPackage,
   buildChannelSubscriptionActivationRecordTemplate,
+  buildChannelProductionModule,
   buildPlatformResourcePackage,
   CHANNEL_SUBSCRIPTION_ACTIVATION_FLOW_FIXTURE_SCHEMA_VERSION,
   createChannelSubscriptionActivationFlowFixture,
@@ -83,6 +84,7 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof buildChannelSubscriptionActivationFlow, "function");
   assert.equal(typeof buildChannelSubscriptionActivationPackage, "function");
   assert.equal(typeof buildChannelSubscriptionActivationRecordTemplate, "function");
+  assert.equal(typeof buildChannelProductionModule, "function");
   assert.equal(typeof buildPlatformResourcePackage, "function");
   assert.equal(typeof CHANNEL_SUBSCRIPTION_ACTIVATION_FLOW_FIXTURE_SCHEMA_VERSION, "string");
   assert.equal(typeof createChannelSubscriptionActivationFlowFixture, "function");

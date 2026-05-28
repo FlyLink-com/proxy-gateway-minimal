@@ -861,6 +861,19 @@ only safe activation-package metadata. It intentionally does not return YAML,
 record Markdown, host/port details, credentials, tokens, subscription URLs, or
 approval phrase text.
 
+The repository-local production module is the next review artifact after a
+candidate has passed controlled operator-device canary validation:
+
+```bash
+npm run channel:production-module -- <path-to-activation-package.json> <path-to-canary-evidence.json>
+```
+
+It combines a safe activation package with a redacted canary summary and returns
+only production-module branch readiness metadata. It is intentionally branch
+review material only: it does not grant production activation authority, return
+YAML, expose host/port details, expose credentials, submit approvals, mutate
+subscription output, contact edge nodes, move traffic, or activate production.
+
 ### Stage 1: Repository-Only Agent Channel Harness
 
 ```text

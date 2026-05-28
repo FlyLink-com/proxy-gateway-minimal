@@ -1507,6 +1507,48 @@
       ]
     },
     {
+      "id": "B44-channel-production-module",
+      "risk": "B",
+      "status": "completed-in-production-branch",
+      "lane": "edge-data-plane",
+      "title": "Add channel production module branch package tooling",
+      "goal": "Combine a safe activation package and redacted operator-device canary evidence into production-module branch review metadata without granting production activation authority.",
+      "allowedFiles": [
+        "server/services/channel-production-module.mjs",
+        "server/tests/channel-production-module.test.mjs",
+        "server/tests/package-entry.test.mjs",
+        "scripts/channel-production-module.mjs",
+        "package.json",
+        "index.mjs",
+        "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
+        "docs/README.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "return or display Clash or Mihomo YAML",
+        "return raw hosts, raw IPs, raw ports, raw URLs, credentials, tokens, raw logs, raw subscription URLs, SQLite rows, or customer data",
+        "submit approval phrases",
+        "echo or store approval text",
+        "add execution routes or execution controls",
+        "add public routes",
+        "change real subscription output",
+        "mutate production",
+        "query or contact live edge nodes",
+        "deploy runtimes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, firewall, provider, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, or subscription-output state",
+        "treat production-module output as subscription-output activation approval or execution evidence"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/channel-production-module.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "B43-platform-resource-package-cli",
       "risk": "B",
       "status": "completed-in-pr-252",
