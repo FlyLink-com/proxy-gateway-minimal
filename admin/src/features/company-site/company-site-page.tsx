@@ -11,35 +11,35 @@ import { type FormEvent, type MouseEvent, useState } from "react";
 
 const capabilities = [
   {
-    title: "Agent Studio",
-    description: "把业务流程拆成可验证的智能体原型，先跑通闭环，再进入交付和运营。"
+    title: "智能体方案设计",
+    description: "把获客、跟进、内容和复盘拆成清晰流程，先做可验证样品，再进入交付。"
   },
   {
-    title: "API Sandbox",
-    description: "为开发者和内部团队提供可试验的接口沙盒，快速验证模型、工具和自动化链路。"
+    title: "产品样品验证",
+    description: "用小范围试点验证真实业务场景，帮助团队判断是否值得继续投入。"
   },
   {
-    title: "私有知识接入",
-    description: "围绕企业资料、产品文档和运营素材建立受控知识接入，保持边界清晰。"
+    title: "企业资料整理",
+    description: "把产品资料、投放素材和运营记录整理成可复用的内部知识资产。"
   },
   {
     title: "运营自动化",
-    description: "把线索收集、内容生产、客户跟进和复盘指标沉淀成可复用工作流。"
+    description: "让线索分层、通知提醒、内容生成和效果复盘形成稳定执行节奏。"
   }
 ];
 
 const cooperationDirections = [
   {
     title: "主流媒体广告投放",
-    description: "面向搜索、信息流、社交平台和内容平台的获客链路设计，重点关注线索质量和可追踪转化。"
+    description: "面向搜索、信息流、社交平台和内容平台设计获客链路，重点关注线索质量和转化效率。"
   },
   {
     title: "前沿产品研究",
-    description: "围绕 AI Agent、自动化工作流、API 沙盒和新型交互产品做快速验证与样品交付。"
+    description: "围绕 AI Agent、自动化工作流和新型交互产品做快速验证与样品交付。"
   },
   {
     title: "多域名投放落地页",
-    description: "域名池只承载公开获客、广告测试和品牌触达；客户工作台入口按交付说明单独提供。"
+    description: "用独立域名承载公开获客、广告测试和品牌触达，客户入口按交付节奏单独提供。"
   }
 ];
 
@@ -76,19 +76,19 @@ const collaborationSteps = [
 ];
 
 const workflowNodes = [
-  "接收 Webhook",
-  "大模型提炼",
-  "发送企业微信",
-  "记录线索状态"
+  "提交需求",
+  "智能分层",
+  "专人跟进",
+  "复盘优化"
 ];
 
 const contactEmail = "hello@globalcirclecat.com";
 const telegramRegistrationHref = "https://t.me/gcaltd0528_bot?start=public_landing";
 const telegramRegistrationSteps = [
-  "扫码打开客户 Bot",
-  "私聊绑定 Telegram 身份",
-  "后台审核并发放权限",
-  "机器人内查看订阅面板"
+  "扫码开启咨询",
+  "确认联系方式",
+  "获得服务入口",
+  "接收后续服务"
 ];
 
 function readFormValue(formData: FormData, name: string) {
@@ -118,7 +118,7 @@ export function CompanySitePage() {
         body: JSON.stringify(payload)
       });
       if (!response.ok) {
-        throw new Error("Lead intake failed");
+        throw new Error("Public lead intake failed");
       }
       form.reset();
       setLeadStatus("success");
@@ -160,11 +160,11 @@ export function CompanySitePage() {
           <a
             className="company-site-workbench-link"
             href="#telegram-onboarding"
-            aria-label="开发者工作台申请访问"
+            aria-label="注册入口"
             onClick={(event) => handleSiteAnchorClick(event, "telegram-onboarding")}
           >
             <LockKeyhole aria-hidden="true" />
-            开发者工作台
+            注册入口
           </a>
         </nav>
       </header>
@@ -173,8 +173,8 @@ export function CompanySitePage() {
         <div className="company-site-hero-copy">
           <h1>GlobalCircle AI</h1>
           <p>
-            AI Agent 研发与运营自动化实验室。面向主流媒体广告投放、增长运营和
-            前沿产品研究，构建可落地的智能体、API 沙盒与自动化工作流。
+            面向广告投放、私域运营和前沿产品团队，提供 AI 研发、增长自动化与
+            业务流程样品验证，让复杂技术转化为可执行的运营结果。
           </p>
           <div className="company-site-actions">
             <a
@@ -182,7 +182,7 @@ export function CompanySitePage() {
               href="#telegram-onboarding"
               onClick={(event) => handleSiteAnchorClick(event, "telegram-onboarding")}
             >
-              获取 API 密钥（限时免费）
+              申请试用名额
               <ArrowRight aria-hidden="true" />
             </a>
             <a
@@ -190,7 +190,7 @@ export function CompanySitePage() {
               href="#api-proof"
               onClick={(event) => handleSiteAnchorClick(event, "api-proof")}
             >
-              查看 API 示例
+              查看服务流程
             </a>
           </div>
         </div>
@@ -199,10 +199,10 @@ export function CompanySitePage() {
           <div className="site-orbit site-orbit-a" />
           <div className="site-orbit site-orbit-b" />
           <div className="site-terminal-card site-api-console">
-            <span>API Sandbox 示例</span>
-            <code>{`curl -X POST https://api.globalcirclecat.com/v1/sandbox/run`}</code>
-            <code>{`{ "intent": "media_lead_triage" }`}</code>
-            <code>{`{ "next_action": "send_wecom_summary" }`}</code>
+            <span>增长实验样板</span>
+            <strong>线索进入后自动归类</strong>
+            <p>识别投放来源、客户意图和优先级</p>
+            <p>同步提醒负责人，并沉淀复盘记录</p>
           </div>
           <div className="site-signal-card site-signal-card-main">
             <Bot aria-hidden="true" />
@@ -244,7 +244,7 @@ export function CompanySitePage() {
           <h2>从研发探索到广告投放和运营增长</h2>
           <p>
             我们更适合做技术向、探索向的增长合作：一边研究前沿产品形态，
-            一边把广告投放、线索收集、内容生产和客户运营变成可衡量的系统。
+            一边把广告投放、线索收集、内容生产和客户运营变成可衡量的业务流程。
           </p>
           <div className="company-site-direction-list">
             {cooperationDirections.map((direction) => (
@@ -263,7 +263,7 @@ export function CompanySitePage() {
         <div className="company-site-effect-layout">
           <div className="site-effect-flow company-site-workflow" aria-label="运营自动化工作流示意" id="api-proof">
             <div className="company-site-workflow-header">
-              <span>workflow.demo</span>
+              <span>service flow</span>
               <strong>从线索进入到自动跟进</strong>
             </div>
             {workflowNodes.map((node, index) => (
@@ -310,8 +310,8 @@ export function CompanySitePage() {
           <span>Registration</span>
           <h2>Telegram 扫码注册</h2>
           <p>
-            公开官网暂时只提供扫码入口。用户扫码后在机器人私聊完成绑定，
-            后台再通过受控授权和订阅分发为用户生成自己的面板与订阅入口。
+            扫码进入 Telegram 后，可以快速完成联系确认并获取后续服务入口。
+            我们会根据需求阶段安排诊断、试用或合作跟进。
           </p>
           <div className="company-site-telegram-actions">
             <a
@@ -320,7 +320,7 @@ export function CompanySitePage() {
               target="_blank"
               rel="noreferrer noopener"
             >
-              扫码进入 Telegram 注册
+              扫码进入 Telegram
               <ArrowRight aria-hidden="true" />
             </a>
             <span>@gcaltd0528_bot</span>
@@ -356,8 +356,8 @@ export function CompanySitePage() {
           <Building2 aria-hidden="true" />
           <h2>联系我们</h2>
           <p>
-            留下合作方向、投放目标或前沿产品研究需求，表单会进入公开站点 lead intake。
-            用户注册优先走 Telegram 扫码入口；公开官网不承载客户数据。
+            留下合作方向、投放目标或前沿产品研究需求，我们会把信息同步到自动化诊断流程。
+            用户注册优先走 Telegram 扫码入口；公开官网只负责公开咨询与合作线索。
           </p>
           <span className="company-site-email">
             {contactEmail}
@@ -378,8 +378,8 @@ export function CompanySitePage() {
               <option value="" disabled>
                 选择最接近的需求
               </option>
-              <option value="获取 API 密钥">获取 API 密钥</option>
-              <option value="预约自动化诊断">预约自动化诊断</option>
+              <option value="申请试用名额">申请试用名额</option>
+              <option value="预约增长诊断">预约增长诊断</option>
               <option value="主流媒体广告投放">主流媒体广告投放</option>
               <option value="前沿产品研究">前沿产品研究</option>
             </select>
@@ -393,7 +393,7 @@ export function CompanySitePage() {
             <textarea
               name="message"
               rows={4}
-              placeholder="说明 AI Agent、API 沙盒、广告投放、自动化工作流或前沿产品研究方向"
+              placeholder="说明广告投放、私域运营、自动化流程或前沿产品研究方向"
               required
             />
           </label>
@@ -408,7 +408,7 @@ export function CompanySitePage() {
             </p>
           ) : null}
           <button className="company-site-primary" type="submit" disabled={leadStatus === "submitting"}>
-            {leadStatus === "submitting" ? "提交中" : "提交自动化诊断"}
+            {leadStatus === "submitting" ? "提交中" : "提交合作需求"}
             <ArrowRight aria-hidden="true" />
           </button>
         </form>

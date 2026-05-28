@@ -249,7 +249,7 @@ textarea {
   border-radius: 8px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #23d18b, #7dd3fc);
+  background: linear-gradient(135deg, #2dd4bf, #60a5fa);
   color: #071110;
   font-weight: 800;
 }
@@ -351,8 +351,8 @@ textarea {
 
 .company-site-primary {
   border: 0;
-  background: #23d18b;
-  color: #071110;
+  background: #14b8a6;
+  color: #f8fafc;
   cursor: pointer;
   transition:
     background 160ms ease,
@@ -361,8 +361,8 @@ textarea {
 }
 
 .company-site-primary:hover {
-  background: #7dd3fc;
-  box-shadow: 0 12px 30px rgba(35, 209, 139, 0.24);
+  background: #0f766e;
+  box-shadow: 0 12px 30px rgba(20, 184, 166, 0.22);
   transform: translateY(-1px);
 }
 
@@ -395,9 +395,15 @@ textarea {
   border-radius: 16px;
   position: relative;
   overflow: hidden;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: center;
+  gap: 16px;
+  padding: 42px;
   background:
-    linear-gradient(145deg, rgba(5, 10, 18, 0.98), rgba(16, 24, 40, 0.94)),
-    repeating-linear-gradient(90deg, rgba(125, 211, 252, 0.04) 0 1px, transparent 1px 52px),
+    radial-gradient(circle at 78% 18%, rgba(45, 212, 191, 0.16), transparent 30%),
+    linear-gradient(145deg, rgba(8, 13, 23, 0.98), rgba(17, 24, 39, 0.94)),
+    repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.035) 0 1px, transparent 1px 52px),
     #0b1220;
   border: 1px solid rgba(125, 211, 252, 0.18);
   box-shadow: 0 24px 70px rgba(15, 23, 42, 0.22);
@@ -443,8 +449,10 @@ textarea {
 }
 
 .site-signal-card {
-  position: absolute;
-  width: min(230px, calc(100% - 48px));
+  position: relative;
+  z-index: 1;
+  width: auto;
+  min-height: 132px;
   border: 1px solid rgba(226, 232, 240, 0.2);
   border-radius: 12px;
   padding: 18px;
@@ -461,13 +469,13 @@ textarea {
 
 .site-signal-card:hover {
   background: rgba(15, 23, 42, 0.88);
-  border-color: rgba(94, 234, 212, 0.48);
+  border-color: rgba(96, 165, 250, 0.42);
 }
 
 .site-signal-card svg {
   width: 26px;
   height: 26px;
-  color: #5eead4;
+  color: #60a5fa;
 }
 
 .site-signal-card span {
@@ -481,53 +489,61 @@ textarea {
 }
 
 .site-signal-card-main {
-  top: 58px;
-  left: 42px;
+  top: auto;
+  left: auto;
 }
 
 .site-signal-card-sub {
-  top: 190px;
-  right: 42px;
+  top: auto;
+  right: auto;
   animation-delay: -2s;
 }
 
 .site-signal-card-edge {
-  bottom: 54px;
-  left: 106px;
+  bottom: auto;
+  left: auto;
   animation-delay: -4s;
 }
 
 .site-terminal-card {
-  position: absolute;
-  right: 58px;
-  bottom: 46px;
-  width: min(270px, calc(100% - 48px));
-  padding: 16px;
+  position: relative;
+  z-index: 1;
+  right: auto;
+  bottom: auto;
+  width: auto;
+  min-height: 132px;
+  padding: 18px;
   display: grid;
   gap: 8px;
-  border: 1px solid rgba(125, 211, 252, 0.28);
+  border: 1px solid rgba(96, 165, 250, 0.24);
   border-radius: 12px;
-  background: rgba(2, 6, 23, 0.72);
+  background: rgba(15, 23, 42, 0.78);
   box-shadow: 0 18px 40px rgba(2, 6, 23, 0.28);
 }
 
 .site-api-console {
-  width: min(360px, calc(100% - 48px));
+  width: auto;
 }
 
 .site-terminal-card span {
-  color: #7dd3fc;
+  color: #93c5fd;
   font-size: 12px;
   font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
-.site-terminal-card code {
-  color: #d9f99d;
-  font-family: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
-  font-size: 13px;
-  line-height: 1.4;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+.site-terminal-card strong {
+  color: #f8fafc;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.site-terminal-card p {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .company-site-section,
@@ -549,7 +565,7 @@ textarea {
 
 .company-site-section-heading span,
 .company-site-band span {
-  color: #23d18b;
+  color: #0f766e;
   font-weight: 800;
   font-size: 13px;
   text-transform: uppercase;
@@ -587,7 +603,7 @@ textarea {
 
 .company-site-card:hover,
 .company-site-scenario-card:hover {
-  border-color: rgba(35, 209, 139, 0.34);
+  border-color: rgba(20, 184, 166, 0.32);
   box-shadow: 0 18px 46px rgba(15, 23, 42, 0.16);
   transform: translateY(-3px);
 }
@@ -595,7 +611,7 @@ textarea {
 .company-site-card svg {
   width: 26px;
   height: 26px;
-  color: #23d18b;
+  color: #2dd4bf;
 }
 
 .company-site-card h3 {
@@ -726,7 +742,7 @@ textarea {
 }
 
 .company-site-workflow-header span {
-  color: #7dd3fc;
+  color: #93c5fd;
   font-size: 12px;
   font-weight: 900;
 }
@@ -758,7 +774,7 @@ textarea {
 }
 
 .site-effect-step span {
-  color: #7dd3fc;
+  color: #93c5fd;
   font-size: 12px;
   font-weight: 900;
 }
@@ -876,12 +892,12 @@ textarea {
   grid-template-columns: minmax(0, 0.95fr) minmax(340px, 0.86fr);
   gap: 28px;
   align-items: center;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.18);
   border-radius: 12px;
   background:
-    radial-gradient(circle at 88% 12%, rgba(37, 99, 235, 0.16), transparent 34%),
-    linear-gradient(135deg, #ffffff, #eef7ff);
-  color: #0f172a;
+    radial-gradient(circle at 88% 12%, rgba(96, 165, 250, 0.18), transparent 34%),
+    linear-gradient(135deg, #0b1220, #111827);
+  color: #f8fafc;
 }
 
 .company-site-telegram-copy {
@@ -893,11 +909,11 @@ textarea {
 .company-site-telegram-copy > svg {
   width: 30px;
   height: 30px;
-  color: #2563eb;
+  color: #60a5fa;
 }
 
 .company-site-telegram-copy > span {
-  color: #2563eb;
+  color: #93c5fd;
   font-size: 13px;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -914,7 +930,7 @@ textarea {
 .company-site-telegram-copy p {
   margin: 0;
   max-width: 640px;
-  color: #475569;
+  color: #cbd5e1;
   font-size: 17px;
   line-height: 1.7;
 }
@@ -928,7 +944,7 @@ textarea {
 }
 
 .company-site-telegram-actions > span {
-  color: #334155;
+  color: #bfdbfe;
   font-weight: 800;
   overflow-wrap: anywhere;
 }
@@ -942,14 +958,14 @@ textarea {
 
 .company-site-qr-link {
   min-height: 176px;
-  border: 1px solid rgba(37, 99, 235, 0.2);
+  border: 1px solid rgba(96, 165, 250, 0.24);
   border-radius: 10px;
   background: #ffffff;
   display: grid;
   place-items: center;
   padding: 18px;
   text-decoration: none;
-  box-shadow: 0 16px 42px rgba(15, 23, 42, 0.08);
+  box-shadow: 0 16px 42px rgba(2, 6, 23, 0.26);
 }
 
 .company-site-qr-pattern {
@@ -1004,16 +1020,16 @@ textarea {
   display: grid;
   gap: 6px;
   align-content: center;
-  border: 1px solid rgba(37, 99, 235, 0.14);
+  border: 1px solid rgba(96, 165, 250, 0.18);
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.82);
-  color: #1e293b;
+  background: rgba(15, 23, 42, 0.66);
+  color: #f8fafc;
   padding: 14px;
   font-weight: 800;
 }
 
 .company-site-telegram-steps li span {
-  color: #2563eb;
+  color: #93c5fd;
   font-size: 12px;
   font-weight: 900;
 }

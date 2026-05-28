@@ -18,14 +18,14 @@ describe("company site route", () => {
     const { container } = render(createElement(App));
 
     expect(screen.getByRole("heading", { name: "GlobalCircle AI" })).not.toBeNull();
-    expect(screen.getByRole("link", { name: /获取 API 密钥/ })).not.toBeNull();
-    expect(screen.getByRole("link", { name: /开发者工作台/ })).not.toBeNull();
-    expect(screen.getByText(/AI Agent 研发与运营自动化实验室/)).not.toBeNull();
+    expect(screen.getByRole("link", { name: /申请试用名额/ })).not.toBeNull();
+    expect(screen.getByRole("link", { name: /注册入口/ })).not.toBeNull();
+    expect(screen.getByText(/让复杂技术转化为可执行的运营结果/)).not.toBeNull();
     expect(screen.queryByRole("heading", { name: "Log in" })).toBeNull();
     expect(screen.queryByLabelText("邮箱")).toBeNull();
     expect(screen.queryByLabelText("密码")).toBeNull();
     expect(container.textContent).not.toMatch(
-      /Public Site|Brand only|Operator issued|Controlled|Admin API|YAML|官网只承载|control plane|data plane|WireGuard|Server Edge|Local Edge|Channel Manager|订阅接入|专属入口|导入客户端|开通流程|动态入口/
+      /Public Site|Brand only|Operator issued|Controlled|Admin API|YAML|官网只承载|control plane|data plane|WireGuard|Server Edge|Local Edge|Channel Manager|订阅接入|专属入口|导入客户端|开通流程|动态入口|curl -X POST|Webhook|lead intake|后台再通过|受控授权/
     );
     expect(container.innerHTML).not.toMatch(/mailto:|gccltd\.co@outlook\.com/);
     expect(container.innerHTML).not.toMatch(
@@ -59,10 +59,10 @@ describe("company site route", () => {
 
     fireEvent.change(screen.getByLabelText("公司或机构"), { target: { value: "Acme Research" } });
     fireEvent.change(screen.getByLabelText("工作邮箱"), { target: { value: "ops@example.com" } });
-    fireEvent.change(screen.getByLabelText("合作方向"), { target: { value: "预约自动化诊断" } });
+    fireEvent.change(screen.getByLabelText("合作方向"), { target: { value: "预约增长诊断" } });
     fireEvent.change(screen.getByLabelText("预算或阶段"), { target: { value: "试点预算已确定" } });
     fireEvent.change(screen.getByLabelText("需求说明"), { target: { value: "需要把投放线索接入 AI 复盘流程。" } });
-    fireEvent.click(screen.getByRole("button", { name: /提交自动化诊断/ }));
+    fireEvent.click(screen.getByRole("button", { name: /提交合作需求/ }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
     expect(fetchMock).toHaveBeenCalledWith(
@@ -84,9 +84,9 @@ describe("company site route", () => {
 
     fireEvent.change(screen.getByLabelText("公司或机构"), { target: { value: "Acme Research" } });
     fireEvent.change(screen.getByLabelText("工作邮箱"), { target: { value: "ops@example.com" } });
-    fireEvent.change(screen.getByLabelText("合作方向"), { target: { value: "获取 API 密钥" } });
+    fireEvent.change(screen.getByLabelText("合作方向"), { target: { value: "申请试用名额" } });
     fireEvent.change(screen.getByLabelText("需求说明"), { target: { value: "需要 API 试用。" } });
-    fireEvent.click(screen.getByRole("button", { name: /提交自动化诊断/ }));
+    fireEvent.click(screen.getByRole("button", { name: /提交合作需求/ }));
 
     expect((await screen.findByRole("alert")).textContent).toContain("提交失败");
   });
@@ -97,18 +97,18 @@ describe("company site route", () => {
     const { container } = render(createElement(App));
 
     expect(screen.getByRole("heading", { name: "从研发探索到广告投放和运营增长" })).not.toBeNull();
-    ["Agent Studio", "API Sandbox", "私有知识接入", "运营自动化"].forEach((capability) => {
+    ["智能体方案设计", "产品样品验证", "企业资料整理", "运营自动化"].forEach((capability) => {
       expect(screen.getByText(capability)).not.toBeNull();
     });
     ["主流媒体广告投放", "前沿产品研究"].forEach((direction) => {
       expect(screen.getAllByText(direction).length).toBeGreaterThan(0);
     });
     expect(screen.getByText("多域名投放落地页")).not.toBeNull();
-    expect(screen.getByText(/域名池只承载公开获客/)).not.toBeNull();
-    expect(screen.getByText("API Sandbox 示例")).not.toBeNull();
-    expect(screen.getByText(/curl -X POST/)).not.toBeNull();
-    expect(screen.getByText(/"next_action"/)).not.toBeNull();
-    ["接收 Webhook", "大模型提炼", "发送企业微信"].forEach((node) => {
+    expect(screen.getByText(/用独立域名承载公开获客/)).not.toBeNull();
+    expect(screen.getByText("增长实验样板")).not.toBeNull();
+    expect(screen.getByText("线索进入后自动归类")).not.toBeNull();
+    expect(screen.getByText(/识别投放来源、客户意图和优先级/)).not.toBeNull();
+    ["提交需求", "智能分层", "专人跟进"].forEach((node) => {
       expect(screen.getByText(node)).not.toBeNull();
     });
     ["广告投放线索分流", "私域用户运营", "企业知识助手", "内容生产工作流"].forEach((scenario) => {
@@ -132,9 +132,9 @@ describe("company site route", () => {
 
     expect(screen.getByRole("heading", { name: "Telegram 扫码注册" })).not.toBeNull();
     expect(screen.getByLabelText("Telegram 注册二维码占位")).not.toBeNull();
-    expect(screen.getByText(/用户扫码后在机器人私聊完成绑定/)).not.toBeNull();
+    expect(screen.getByText(/可以快速完成联系确认并获取后续服务入口/)).not.toBeNull();
 
-    const telegramLink = screen.getByRole("link", { name: /扫码进入 Telegram 注册/ });
+    const telegramLink = screen.getByRole("link", { name: /扫码进入 Telegram/ });
     expect(telegramLink.getAttribute("href")).toBe("https://t.me/gcaltd0528_bot?start=public_landing");
     expect(telegramLink.getAttribute("target")).toBe("_blank");
     expect(telegramLink.getAttribute("rel")).toContain("noopener");
@@ -152,9 +152,9 @@ describe("company site route", () => {
       ["场景", "scenarios"],
       ["合作", "delivery"],
       ["联系", "contact"],
-      ["开发者工作台申请访问", "telegram-onboarding"],
-      ["获取 API 密钥（限时免费）", "telegram-onboarding"],
-      ["查看 API 示例", "api-proof"]
+      ["注册入口", "telegram-onboarding"],
+      ["申请试用名额", "telegram-onboarding"],
+      ["查看服务流程", "api-proof"]
     ] as const;
 
     linkTargets.forEach(([linkName, sectionId]) => {
