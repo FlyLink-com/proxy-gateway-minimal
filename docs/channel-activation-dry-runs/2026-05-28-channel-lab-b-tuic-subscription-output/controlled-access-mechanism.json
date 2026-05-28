@@ -1,0 +1,77 @@
+{
+  "mode": "tuic-controlled-access-activation-mechanism",
+  "generatedAt": "2026-05-28T18:20:00.000+08:00",
+  "targetLabel": "channel-lab-b",
+  "protocol": "tuic",
+  "scope": "one controlled operator access only",
+  "executionAuthority": "not_granted",
+  "candidate": {
+    "name": "channel-lab-b-tuic",
+    "protocol": "tuic",
+    "pool": "canary",
+    "runtimeEvidence": "ready_for_operator_decision",
+    "hostInternalEvidence": "available_via_aliyun_cloud_assistant_read_only_inventory"
+  },
+  "baseline": {
+    "name": "prod-edge-a",
+    "protocol": "ss",
+    "pool": "baseline",
+    "stableUsersChanged": false
+  },
+  "activationMechanism": {
+    "step1": "prepare_real_controlled_access_config_change_under_separate_exact_approval",
+    "step2": "keep_default_stable_output_unchanged",
+    "step3": "bind_only_one_controlled_operator_access_to_channel_lab_b_tuic",
+    "step4": "render_or_refresh_only_that_controlled_access",
+    "step5": "validate_import_refresh_and_short_client_probe",
+    "step6": "observe_and_record_redacted_aggregate_results"
+  },
+  "rollbackMechanism": {
+    "step1": "remove_channel_lab_b_tuic_from_the_controlled_access",
+    "step2": "restore_previous_controlled_access_output",
+    "step3": "disable_or_revoke_only_test_access_material_if_created",
+    "step4": "confirm_public_subscription_boundary_health_admin_block_and_no_token_block",
+    "step5": "confirm_default_stable_output_was_not_changed"
+  },
+  "requiredBeforeActivation": [
+    "exact_canary_activation_approval_phrase",
+    "real_controlled_access_scope_without_secrets_or_urls",
+    "real_config_or_equivalent_activation_mechanism_review",
+    "rollback_evidence",
+    "fresh_aliyun_public_boundary_check",
+    "fresh_channel_lab_b_runtime_health_check"
+  ],
+  "hardStops": [
+    "scope_exceeds_one_controlled_access",
+    "real_config_review_exposes_hosts_ports_urls_credentials_tokens_yaml_or_customer_data",
+    "rollback_requires_stable_user_impact",
+    "aliyun_public_admin_exposure_changes",
+    "channel_lab_b_runtime_health_cannot_be_refreshed_read_only"
+  ],
+  "notAuthorized": [
+    "production_subscription_output_mutation",
+    "all_user_rollout",
+    "dns_change",
+    "nginx_mutation_or_reload",
+    "aliyun_runtime_mutation",
+    "provider_firewall_mutation",
+    "systemd_restart",
+    "channel_lab_b_runtime_mutation",
+    "channel_lab_b_cleanup",
+    "production_authority_transfer"
+  ],
+  "safety": {
+    "advisoryOnly": true,
+    "summaryOnly": true,
+    "noHosts": true,
+    "noPorts": true,
+    "noUrls": true,
+    "noCredentials": true,
+    "noTokens": true,
+    "noSubscriptionUrls": true,
+    "noYaml": true,
+    "noRuntimeMutation": true,
+    "noProductionMutation": true,
+    "requiresSeparateRiskAApproval": true
+  }
+}

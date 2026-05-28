@@ -819,6 +819,16 @@ operator approval, validation, and rollback path exist:
   deployment, subscription-output mutation, production YAML generation, DNS,
   Nginx, runtime, firewall, traffic, all-user rollout, or authority mutation
   was performed.
+- The TUIC controlled-access activation mechanism review is recorded in
+  `docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-mechanism.md`.
+  It adds a summary-only mechanism artifact under
+  `docs/channel-activation-dry-runs/2026-05-28-channel-lab-b-tuic-subscription-output/controlled-access-mechanism.json`
+  and fixes the next executable shape: one controlled operator access only,
+  default stable output unchanged, rollback evidence required, and execution
+  authority still `not_granted`. It does not choose or execute the real
+  production mechanism, does not change `config/proxy-servers.json`, and does
+  not mutate subscription output, Aliyun, DNS, Nginx, systemd, channel-lab-b,
+  traffic, or rollout scope.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See
