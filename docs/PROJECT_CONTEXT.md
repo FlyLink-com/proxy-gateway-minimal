@@ -154,6 +154,15 @@ Current architecture priorities:
   node hosts, raw ports, YAML, approval phrases, public routes, approval
   submission, execution controls, SQLite persistence, Aliyun deployment, DNS,
   production storage, user traffic, edge traffic, or production authority.
+- Telegram Delivery Adapter: repository-only customer-owned Telegram Bot
+  delivery design lives in `docs/TELEGRAM_DELIVERY_ADAPTER.md`. It defines the
+  intended group/channel promotion -> public landing-page QR -> customer-owned
+  bot -> Telegram identity binding -> operator-granted entitlement ->
+  subscription artifact delivery path, plus future payment boundaries. It does
+  not store or verify real bot tokens, set webhooks, expose public routes,
+  collect payment, deliver real subscription URLs, issue production artifacts,
+  expose public Admin, mutate Aliyun/AWS/DNS/Nginx/systemd/firewall/nodes, or
+  transfer production authority.
 - Platform Clean-Start Package: repository-only clean-start readiness support
   lives in `server/services/platform/clean-start-control-plane.mjs` and the
   protected Admin route `/api/admin/platform/clean-start`. It summarizes

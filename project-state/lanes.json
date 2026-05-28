@@ -25,7 +25,8 @@
         "docs/DOMAIN_UNIT_BOUNDARIES.md",
         "docs/units/PRODUCT_BUSINESS_UNIT.md",
         "docs/PROJECT_OPERATING_MODEL.md",
-        "docs/PROJECT_SIMPLIFICATION_MAP.md"
+        "docs/PROJECT_SIMPLIFICATION_MAP.md",
+        "docs/TELEGRAM_DELIVERY_ADAPTER.md"
       ],
       "primaryCodeAreas": [],
       "nonGoals": [
@@ -43,7 +44,8 @@
       "purpose": "Separate package, validity, quota, renewal, and customer commercial status decisions from subscription rendering and node capacity.",
       "primaryDocs": [
         "docs/DOMAIN_UNIT_BOUNDARIES.md",
-        "docs/units/COMMERCIAL_ENTITLEMENT_UNIT.md"
+        "docs/units/COMMERCIAL_ENTITLEMENT_UNIT.md",
+        "docs/TELEGRAM_DELIVERY_ADAPTER.md"
       ],
       "primaryCodeAreas": [],
       "nonGoals": [
@@ -66,7 +68,8 @@
         "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
         "docs/SUBSCRIPTION_V2_REPLACEMENT.md",
         "docs/SUBSCRIPTION_DEVICE_SCOPED_OPAQUE_URLS.md",
-        "docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md"
+        "docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md",
+        "docs/TELEGRAM_DELIVERY_ADAPTER.md"
       ],
       "primaryCodeAreas": [
         "server/services/subscriptions/*",

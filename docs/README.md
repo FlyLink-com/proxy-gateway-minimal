@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-05-27, Asia/Shanghai.
+Last updated: 2026-05-28, Asia/Shanghai.
 
 Use this file as the first navigation point for project documentation. It
 classifies current source-of-truth docs, active runbooks, execution records,
@@ -39,6 +39,7 @@ actions by itself.
 | `docs/PROJECT_CONTROL_PLANE.md` | Lightweight project control-plane model explaining how `project-state/*.json` complements docs for current state, lanes, tasks, and future consistency checks. | Active coordination model; no runtime or production authority. | Read before relying on structured project-state files or adding project-state tooling. |
 | `docs/MULTI_AGENT_OPERATING_MODEL.md` | Multi-agent collaboration model covering global lead ownership, subagent roles, the two heavyweight specialist owners for Subscription Control Platform and Channel Technical MVP work, task packets, parallelization rules, verification, and no-secrets boundaries. | Active operating model; no execution authority. | Read before splitting work across multiple agents, verifying global lead versus specialist ownership, or dispatching independent review/implementation tracks. |
 | `docs/RESOURCE_PACKAGE_CLI.md` | CLI-first resource package model for summarizing account, entitlement, access grant, and optional channel activation evidence into an operator-safe delivery package. | Active repository tooling contract; no execution authority. | Read before using natural-language/agent-assisted registration, subscription delivery preparation, or resource-package audit flows. |
+| `docs/TELEGRAM_DELIVERY_ADAPTER.md` | Customer-owned Telegram Bot delivery adapter design for group promotion, landing-page QR onboarding, Telegram identity binding, operator-granted entitlement delivery, and later payment boundaries. | Active repository-only delivery adapter design; no token, webhook, payment, subscription delivery, Aliyun runtime, DNS, node, or production authority. | Read before designing Telegram bot registration, QR onboarding, bot command surfaces, bot-token storage, or Telegram-based subscription delivery. |
 | `docs/VALIDATION_BASELINE.md` | Current validation command matrix and PR completion gate by risk tier and touched surface. | Active validation entrypoint; not historical pass-count archive and not deploy approval. | Read before choosing which checks to run for a PR. |
 | `docs/CI_MANUAL_VALIDATION.md` | Manual CI validation host workflow; target direction is local Linux manual CI, with historical Aliyun manual CI facts retained until the transition is validated. | Active runbook, not staging or deploy approval. | Read before using a manual validation host for repo-level CI evidence. |
 | `docs/stage-reports/2026-05-27-pr-169-173.md` | PR cadence report for merged PRs #169-#173. | Stage report; no production or runtime authority. | Read for the five-PR checkpoint covering Aliyun promotion gates, channel investigation/comparison tooling, Gate A inventory, and Gate B source/firewall planning. |
