@@ -861,6 +861,20 @@ operator approval, validation, and rollback path exist:
   mutation was performed. The next retry may use the exact canary-only TUIC
   subscription-output activation phrase again, with fresh checks and rollback
   evidence.
+- The exact-approved canary-only TUIC subscription-output activation is
+  recorded in
+  `docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation.md`.
+  It added `channel-lab-b-tuic` as one Aliyun runtime canary candidate, stored
+  TUIC material only in the protected Aliyun environment file, restarted only
+  `proxy-gateway-candidate.service`, and rebound exactly one active controlled
+  operator access from stable `prod-edge-a` output to `channel-lab-b-tuic`.
+  The controlled opaque artifact refresh now returns 200 with TUIC output only.
+  Default/stable output for broader users remains unchanged. No all-user
+  rollout, DNS, Nginx config/reload, firewall change, public Admin exposure,
+  channel-lab-b cleanup, legacy query-token retirement, broader artifact
+  issuance, or production authority transfer was performed. The next gate is
+  operator-device import/refresh validation and observation, then a separate
+  retain / rollback / broader rollout decision.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See

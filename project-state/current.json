@@ -81,7 +81,8 @@
     "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-mechanism.md",
     "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-request.md",
     "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-stopped.md",
-    "docs/production-replacement-records/2026-05-28-tuic-controlled-operator-access-creation.md"
+    "docs/production-replacement-records/2026-05-28-tuic-controlled-operator-access-creation.md",
+    "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation.md"
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
@@ -196,7 +197,8 @@
     "TUIC controlled-access activation mechanism review recorded after operator agreement: the next executable shape is one controlled operator access only, default stable output unchanged, rollback evidence required, and execution authority not_granted; no config/proxy-servers.json change, production deployment, YAML, subscription-output mutation, DNS, Nginx, runtime, firewall, traffic, all-user rollout, or authority mutation was performed",
     "TUIC controlled-access activation request packet recorded after operator agreement: ready evidence, activation-time fresh checks, hard stops, and the exact approval phrase are consolidated for the later one-controlled-access canary decision; execution authority remains not_granted, short confirmations are insufficient for mutation, and no config, subscription-output, Aliyun, DNS, Nginx, systemd, channel-lab-b, traffic, all-user rollout, or authority mutation was performed",
     "Exact-approved TUIC controlled-access activation attempt stopped before mutation: public boundary, Aliyun host summary, and channel-lab-b runtime health were refreshed successfully, but Aliyun had no active controlled operator access, active artifact, or unexpired unused temporary link to bind; no config, subscription-output, systemd, Nginx, DNS, firewall, SQLite row, channel-lab-b, traffic, all-user rollout, or authority mutation was performed",
-    "Controlled operator access creation completed after exact approval: one active controlled operator access and active opaque artifact now exist on Aliyun, previous output state is stable prod-edge-a, controlled refresh returns 200 with stable SS output only, and no TUIC binding, config, DNS, Nginx, systemd, firewall, channel-lab-b, all-user rollout, or authority mutation was performed"
+    "Controlled operator access creation completed after exact approval: one active controlled operator access and active opaque artifact now exist on Aliyun, previous output state is stable prod-edge-a, controlled refresh returns 200 with stable SS output only, and no TUIC binding, config, DNS, Nginx, systemd, firewall, channel-lab-b, all-user rollout, or authority mutation was performed",
+    "Exact-approved TUIC canary-only subscription-output activation completed: one active controlled operator access now binds to channel-lab-b-tuic and the controlled opaque artifact refresh returns TUIC output only; stable default output remains unchanged and no all-user rollout, DNS, Nginx config/reload, firewall change, public Admin exposure, channel-lab-b cleanup, legacy query-token retirement, broader artifact issuance, or production authority transfer was performed"
   ],
   "activeGoal": {
     "id": "aliyun-subscription-control-platform-mvp",
@@ -291,13 +293,13 @@
     },
     {
       "id": "channel-canary-server-selection",
-      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; channel-lab-a Hysteria2 extended measurement has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. A clean AWS ap-northeast-1 channel-lab-b server exists, has Mihomo TUIC v5 active on UDP/443, passed short and extended controlled operator-device canaries, has a canary-only subscription-output config review record, controlled-access activation mechanism review, and exact activation request packet. The first exact-approved activation attempt stopped before mutation because Aliyun had no active controlled operator access or active artifact to bind; a later exact-approved gate created one active controlled operator access and active artifact on stable prod-edge-a output. TUIC binding, DNS, production config, all-user rollout, actual subscription-output activation, cleanup, and production authority transfer remain separately gated. VLESS/XUDP is secondary.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-28-tuic-controlled-operator-access-creation.md"
+      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; channel-lab-a Hysteria2 extended measurement has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. A clean AWS ap-northeast-1 channel-lab-b server exists, has Mihomo TUIC v5 active on UDP/443, passed short and extended controlled operator-device canaries, and now powers exactly one controlled operator-access TUIC subscription-output canary through Aliyun. DNS, production authority transfer, all-user rollout, channel-lab-b cleanup, and broader rollout remain separately gated. VLESS/XUDP is secondary.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation.md"
     },
     {
-      "id": "aliyun-tuic-integration-inventory-ready-for-controlled-config-decision",
-      "summary": "Aliyun / TUIC integration inventory now has provider-firewall and Cloud Assistant host-internal evidence: 80/443 are public, 3456/18080 are not provider-open and are closed_or_timeout from HP, proxy-gateway-candidate and Nginx are active, loopback health returns HTTP 200, candidate SQLite integrity is ok, nginx -t passes, and $request_uri count is 0. One active controlled operator access and active opaque artifact now exist on stable prod-edge-a output; channel-lab-b-tuic is still absent from Aliyun runtime config, so the next gate is a fresh exact-approved canary-only TUIC activation retry with rollback evidence.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-28-tuic-controlled-operator-access-creation.md"
+      "id": "aliyun-tuic-controlled-access-activation-observation",
+      "summary": "Aliyun / TUIC integration progressed through exact-approved one-controlled-access activation: proxy-gateway-candidate and Nginx are active, loopback health is 200, SQLite integrity is ok, runtime config has two stable nodes plus one channel-lab-b-tuic canary, and the single active controlled opaque artifact is bound to TUIC output only. Next work is operator-device import/refresh validation, observation, and a separate retain/rollback/broader-rollout decision; DNS, Nginx, firewall, public Admin, channel-lab-b cleanup, legacy query-token retirement, broader artifact issuance, all-user rollout, and authority transfer remain unapproved.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation.md"
     },
     {
       "id": "aliyun-control-local-ci-rebuild",
@@ -326,7 +328,8 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Review docs/production-replacement-records/2026-05-28-tuic-controlled-operator-access-creation.md; if continuing, provide the exact activation phrase again: Approve canary-only TUIC subscription-output activation for channel-lab-b on one controlled operator access. No all-user rollout.",
+    "Validate the controlled TUIC opaque artifact on the operator device, observe refresh/proxy behavior, and then decide retain, rollback, or broader rollout under a separate exact approval.",
+    "Do not broaden TUIC subscription-output, change DNS, reload Nginx, mutate firewall, expose public Admin, clean channel-lab-b, retire legacy query-token access, or issue broader artifacts without a new Risk A gate and execution record.",
     "Request the exact Aliyun Aegis service repair approval phrase from docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md if the operator wants process cleanup and service restart; otherwise leave it as a tracked host security-agent follow-up",
     "Keep public Admin blocked and keep edge traffic activation out of scope until a separate exact approval and execution record exists",
     "Use docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-preflight.md plus the exact approval phrase from docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md if the operator wants clean edge host provisioning/bootstrap/private validation; otherwise leave edge data-plane pending",
