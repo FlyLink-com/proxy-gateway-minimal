@@ -1468,7 +1468,7 @@
     {
       "id": "B42-channel-subscription-activation-package-ui",
       "risk": "B",
-      "status": "completed-in-pr-252",
+      "status": "completed-in-pr-253",
       "lane": "edge-data-plane",
       "title": "Add Admin Overview channel subscription activation package panel",
       "goal": "Expose safe activation package review in Admin Overview by submitting safe activation-flow fixtures to the protected package API and rendering package readiness metadata without granting execution authority.",
@@ -1502,6 +1502,53 @@
         "git diff --check origin/master...HEAD",
         "npm run admin:test",
         "npm run admin:build",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "B43-platform-resource-package-cli",
+      "risk": "B",
+      "status": "completed-in-pr-252",
+      "lane": "subscription-control-plane",
+      "title": "Add CLI-first platform resource package summary",
+      "goal": "Combine account, entitlement, subscription access grant, and optional channel activation package summaries into one operator-safe resource package without expanding public UI or granting execution authority.",
+      "allowedFiles": [
+        "server/services/platform/resource-package.mjs",
+        "server/tests/platform-resource-package.test.mjs",
+        "server/tests/package-entry.test.mjs",
+        "server/tests/platform-access-routes.test.mjs",
+        "scripts/platform-resource-package.mjs",
+        "package.json",
+        "index.mjs",
+        "docs/RESOURCE_PACKAGE_CLI.md",
+        "docs/README.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "return customer organization names or emails",
+        "return raw portal URLs",
+        "return raw artifact references",
+        "return subscription URLs",
+        "return generated YAML",
+        "return credentials, tokens, hosts, or raw ports",
+        "submit approval phrases",
+        "echo or store approval text",
+        "add execution routes or execution controls",
+        "add public routes",
+        "change real subscription output",
+        "mutate production",
+        "query or contact live edge nodes",
+        "deploy runtimes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, firewall, provider, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, SQLite, or subscription-output state",
+        "treat resource package output as production activation approval or execution evidence"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/platform-resource-package.test.mjs server/tests/package-entry.test.mjs",
         "npm test",
         "npm run project-state:check"
       ]

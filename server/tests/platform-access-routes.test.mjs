@@ -1435,9 +1435,9 @@ test("admin platform channel subscription activation record template route is pr
     );
     assert.equal(body.channelSubscriptionActivationRecordTemplate.readiness.approvalRequestReady, true);
     assert.equal(body.channelSubscriptionActivationRecordTemplate.readiness.executionAuthority, "not_granted");
-    assert.equal(
+    assert.match(
       body.channelSubscriptionActivationRecordTemplate.record.suggestedPath,
-      "docs/production-replacement-records/2026-05-27-channel-subscription-output-activation.md"
+      /^docs\/production-replacement-records\/\d{4}-\d{2}-\d{2}-channel-subscription-output-activation\.md$/
     );
     assert.match(
       body.channelSubscriptionActivationRecordTemplate.record.markdown,
