@@ -1,0 +1,14 @@
+{
+  "mode": "operator-device-channel-canary-summary",
+  "candidateName": "channel-lab-b-tuic",
+  "protocol": "tuic",
+  "targetLabel": "channel-lab-b",
+  "sampleCount": 180,
+  "successCount": 180,
+  "failedCount": 0,
+  "p50TotalSec": 0.825,
+  "p95TotalSec": 0.848,
+  "maxTotalSec": 1.243,
+  "logErrorCount": 0,
+  "runtimeActive": true
+}

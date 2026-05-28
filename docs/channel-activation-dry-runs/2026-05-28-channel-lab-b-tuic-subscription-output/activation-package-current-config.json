@@ -1,0 +1,75 @@
+{
+  "ok": true,
+  "mode": "channel-subscription-activation-package",
+  "generatedAt": "2026-05-28T07:29:19.899Z",
+  "status": "blocked_before_risk_a_subscription_output_activation_request",
+  "blockers": [
+    "missing_subscription_output_config"
+  ],
+  "package": {
+    "renderProofReady": false,
+    "recordTemplateReady": true,
+    "approvalRequestReady": false,
+    "executionAuthority": "not_granted",
+    "requiredNextAction": "fix_channel_subscription_activation_package_before_approval_request"
+  },
+  "renderProof": {
+    "status": "blocked_before_subscription_render_proof",
+    "internalYamlRenderCompleted": false,
+    "yamlReturned": false,
+    "renderedProxyCount": 0,
+    "protocolCounts": {},
+    "baseline": [],
+    "canary": []
+  },
+  "recordTemplate": {
+    "mode": "channel-subscription-activation-record-template",
+    "title": "Channel Subscription Output Activation Execution Record",
+    "suggestedPath": "docs/production-replacement-records/2026-05-28-channel-subscription-output-activation.md",
+    "markdownReturned": false,
+    "approvalRequestReady": true,
+    "executionAuthority": "not_granted",
+    "blockers": []
+  },
+  "gate": {
+    "risk": "A",
+    "gate": "risk_a_subscription_output_activation",
+    "approvalRequestReady": false,
+    "exactApprovalRequired": true,
+    "executionAuthority": "not_granted",
+    "approvalSubmissionRoute": null,
+    "subscriptionOutputExecutionRoute": null,
+    "executesGate": false
+  },
+  "source": {
+    "fixtureGeneratedAt": "2026-05-28T07:40:00.000Z",
+    "sourceGeneratedAt": "2026-05-28T07:40:00.000Z",
+    "fixtureSchemaVersion": "channel-subscription-activation-flow-fixture/v1"
+  },
+  "safety": {
+    "advisoryOnly": true,
+    "summaryOnly": true,
+    "packageOnly": true,
+    "renderProofRequired": true,
+    "noRuntimeMutation": true,
+    "noProductionMutation": true,
+    "noApprovalSubmission": true,
+    "noTrafficMovement": true,
+    "noSubscriptionOutputMutation": true,
+    "yamlReturned": false,
+    "yamlNotReturned": true,
+    "recordMarkdownReturned": false,
+    "requiresSeparateRiskAApproval": true,
+    "omittedFields": [
+      "hosts",
+      "ports",
+      "urls",
+      "credentials",
+      "rawLogs",
+      "tokens",
+      "subscriptionUrls",
+      "yaml",
+      "recordMarkdown"
+    ]
+  }
+}

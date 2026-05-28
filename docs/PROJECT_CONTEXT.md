@@ -782,6 +782,21 @@ operator approval, validation, and rollback path exist:
   separate exact activation approval. No subscription-output mutation, DNS,
   Nginx, runtime, firewall, config, traffic, all-user rollout, or authority
   mutation was performed.
+- The approved canary-only TUIC subscription-output dry-run package is recorded
+  in
+  `docs/production-replacement-records/2026-05-28-tuic-subscription-output-dry-run-package.md`.
+  The dry-run bundle lives under
+  `docs/channel-activation-dry-runs/2026-05-28-channel-lab-b-tuic-subscription-output/`.
+  The activation-flow fixture was ready for an A-tier request, but the
+  activation package against current repository config was blocked with
+  `missing_subscription_output_config`, and the production-module package was
+  blocked with `activation_package_not_ready` and
+  `candidate_missing_from_activation_package`. This means TUIC measurement is
+  sufficient for planning, but the current repository subscription-output
+  config does not yet contain the `channel-lab-b` TUIC canary candidate. No
+  subscription-output mutation, production YAML generation, DNS, Nginx,
+  runtime, firewall, config, traffic, all-user rollout, or authority mutation
+  was performed.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See

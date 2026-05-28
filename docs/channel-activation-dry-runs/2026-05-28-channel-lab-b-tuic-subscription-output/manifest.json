@@ -1,0 +1,24 @@
+{
+  "mode": "tuic-subscription-output-dry-run-package",
+  "generatedAt": "2026-05-28T15:40:00.000+08:00",
+  "targetLabel": "channel-lab-b",
+  "protocol": "tuic",
+  "scope": "canary-only dry-run, no production mutation",
+  "inputs": {
+    "activationFlowFixture": "activation-flow-fixture.json",
+    "canaryEvidence": "canary-evidence.json",
+    "proxyConfig": "config/proxy-servers.json"
+  },
+  "expectedOutputFiles": [
+    "activation-package-current-config.json",
+    "production-module-current-config.json"
+  ],
+  "safety": {
+    "noProductionMutation": true,
+    "noSubscriptionOutputMutation": true,
+    "noRuntimeMutation": true,
+    "noTrafficMovement": true,
+    "yamlNotReturned": true,
+    "secretsNotRecorded": true
+  }
+}
