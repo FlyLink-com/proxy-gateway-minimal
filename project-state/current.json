@@ -74,6 +74,7 @@
     "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-extended-measurement.md",
     "docs/production-replacement-records/2026-05-28-aliyun-tuic-subscription-output-integration-inventory.md",
     "docs/production-replacement-records/2026-05-28-aliyun-tuic-host-provider-inventory.md",
+    "docs/production-replacement-records/2026-05-28-aliyun-cloud-assistant-tuic-host-inventory.md",
     "docs/production-replacement-records/2026-05-28-tuic-subscription-output-canary-planning.md",
     "docs/production-replacement-records/2026-05-28-tuic-subscription-output-dry-run-package.md",
     "docs/production-replacement-records/2026-05-28-tuic-subscription-output-config-review.md"
@@ -184,7 +185,8 @@
     "channel-lab-b TUIC extended measurement executed after exact approval: standalone Mihomo -> TUIC completed three 60-sample operator-device windows with 180/180 successes, no timeouts, no local Mihomo error-like lines, and repository bundle/investigation reports classify it as ready for operator decision; production subscription output, DNS, production config, all-user rollout, and production authority transfer remain unchanged",
     "Aliyun / TUIC subscription-output integration read-only inventory recorded after the TUIC production-module package entered master: Aliyun public subscription boundary remained behaviorally correct, but Aliyun host-internal inventory is blocked by SSH session closure and public 3456/18080 posture is inconclusive because TCP connects while HTTP health times out; no subscription-output activation, DNS, Nginx, runtime, firewall, config, traffic, or authority mutation was performed",
     "Aliyun / TUIC host-provider follow-up inventory completed after exact approval: SWAS provider identity and provider-firewall posture were confirmed read-only, 80/443 are the public subscription-boundary ports, 3456/18080 have no provider allow rule and are closed_or_timeout from HP, but host-internal service/SQLite/Nginx inventory remains blocked over SSH; no Cloud Assistant command invocation, runtime, firewall, DNS, Nginx, config, subscription-output, traffic, or authority mutation was performed",
-    "Canary-only TUIC subscription-output activation planning recorded after exact approval: channel-lab-b TUIC has enough operator-device evidence to plan a one-controlled-access canary gate, but activation authority remains not granted; host-internal evidence or an explicit canary-only waiver, repository-only dry-run package, and a separate exact activation approval are still required before any subscription-output mutation",
+    "Aliyun Cloud Assistant read-only host inventory completed after exact approval: proxy-gateway-candidate and Nginx are active, loopback app and Nginx health return HTTP 200, candidate SQLite integrity is ok, nginx -t passes, $request_uri count is 0, and no runtime, firewall, DNS, Nginx reload, systemd restart, config, subscription-output, SQLite row, traffic, or authority mutation was performed",
+    "Canary-only TUIC subscription-output activation planning recorded after exact approval: channel-lab-b TUIC has enough operator-device evidence to plan a one-controlled-access canary gate, but activation authority remains not granted; Cloud Assistant host-internal evidence is now available, while a real controlled-access config/activation mechanism, rollback evidence, and a separate exact activation approval are still required before any subscription-output mutation",
     "Canary-only TUIC subscription-output dry-run package executed after exact approval: the activation-flow fixture is ready, but the package against current repository config is blocked by missing_subscription_output_config and the production module is blocked by activation_package_not_ready plus candidate_missing_from_activation_package; no production YAML, subscription-output mutation, DNS, Nginx, runtime, firewall, config, traffic, all-user rollout, or authority mutation was performed",
     "Canary-only TUIC subscription-output config review branch executed after exact approval: a synthetic non-deployable review config fixture makes the activation package ready_for_risk_a_subscription_output_activation_request and production module ready_for_production_module_branch_review while current runtime config remains unchanged and blocked; no config/proxy-servers.json change, production deployment, YAML, subscription-output mutation, DNS, Nginx, runtime, firewall, traffic, all-user rollout, or authority mutation was performed"
   ],
@@ -285,9 +287,9 @@
       "sourceDoc": "docs/production-replacement-records/2026-05-28-tuic-subscription-output-config-review.md"
     },
     {
-      "id": "aliyun-tuic-integration-inventory-blocked",
-      "summary": "Aliyun / TUIC host-provider follow-up inventory confirmed the public subscription boundary and provider firewall posture: 80/443 are public, 3456/18080 are not provider-open and are closed_or_timeout from HP, but host-internal service/SQLite/Nginx inventory remains blocked over SSH. Canary-only planning, dry-run, and config review records exist, but subscription-output activation remains blocked before host-internal evidence or an explicit canary-only waiver, replacement of the synthetic review fixture with a separately approved real controlled-access activation mechanism, rollback readiness, and a separate exact A-tier activation gate.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-28-tuic-subscription-output-config-review.md"
+      "id": "aliyun-tuic-integration-inventory-ready-for-controlled-config-decision",
+      "summary": "Aliyun / TUIC integration inventory now has provider-firewall and Cloud Assistant host-internal evidence: 80/443 are public, 3456/18080 are not provider-open and are closed_or_timeout from HP, proxy-gateway-candidate and Nginx are active, loopback health returns HTTP 200, candidate SQLite integrity is ok, nginx -t passes, and $request_uri count is 0. Subscription-output activation remains blocked before replacement of the synthetic review fixture with a separately approved real controlled-access activation mechanism, rollback readiness, and a separate exact A-tier activation gate.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-28-aliyun-cloud-assistant-tuic-host-inventory.md"
     },
     {
       "id": "aliyun-control-local-ci-rebuild",
@@ -316,8 +318,7 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Decide whether Aliyun host-internal inventory should proceed through SSH access remediation, a separate Cloud Assistant read-only command gate, or an explicit canary-only waiver before any TUIC subscription-output activation",
-    "Review docs/production-replacement-records/2026-05-28-tuic-subscription-output-config-review.md; if continuing, decide whether to replace the synthetic review fixture with a separately approved real one-controlled-access canary activation mechanism",
+    "Review docs/production-replacement-records/2026-05-28-aliyun-cloud-assistant-tuic-host-inventory.md and docs/production-replacement-records/2026-05-28-tuic-subscription-output-config-review.md; if continuing, decide whether to replace the synthetic review fixture with a separately approved real one-controlled-access canary activation mechanism",
     "Request the exact Aliyun Aegis service repair approval phrase from docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md if the operator wants process cleanup and service restart; otherwise leave it as a tracked host security-agent follow-up",
     "Keep public Admin blocked and keep edge traffic activation out of scope until a separate exact approval and execution record exists",
     "Use docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-preflight.md plus the exact approval phrase from docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md if the operator wants clean edge host provisioning/bootstrap/private validation; otherwise leave edge data-plane pending",
@@ -325,7 +326,7 @@
     "Request the exact broader opaque artifact issuance approval phrase from docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md if the operator wants to issue approved-tenant artifacts on Aliyun; do not combine this with legacy query-token retirement",
     "Request the exact legacy query-token retirement approval phrase from docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md only after broader artifact issuance and observation; route removal remains a future separate compatibility gate",
     "Investigate HP wg-home logical handshake only if the tunnel path is required; provider UDP/51820 now reaches Aliyun from HP",
-    "Request the separate exact canary-only TUIC subscription-output activation approval phrase only after the dry-run package, host-internal evidence or waiver, rollback readiness, and controlled access scope are recorded",
+    "Request the separate exact canary-only TUIC subscription-output activation approval phrase only after the dry-run package, real controlled-access mechanism, rollback readiness, and controlled access scope are recorded",
     "channel-lab-a Hysteria2 latency investigation, GUI import evidence, or cleanup decision",
     "Review docs/production-replacement-records/2026-05-27-clean-edge-rebuild-execution-handoff.md and request the exact clean edge node rebuild execution approval phrase if the operator wants host provisioning/bootstrap/private validation",
     "Use docs/production-replacement-records/2026-05-27-post-226-clean-edge-live-check.md as the latest read-only live-check source before any exact-approved clean edge execution",

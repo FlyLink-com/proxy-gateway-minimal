@@ -772,14 +772,24 @@ operator approval, validation, and rollback path exist:
   Cloud Assistant is available but was not invoked in this gate. No runtime,
   firewall, DNS, Nginx, config, subscription-output, traffic, or authority
   mutation was performed.
+- The approved Aliyun Cloud Assistant read-only host inventory is recorded in
+  `docs/production-replacement-records/2026-05-28-aliyun-cloud-assistant-tuic-host-inventory.md`.
+  It resolved the Aliyun host-internal evidence gap for TUIC
+  subscription-output planning without SSH: `proxy-gateway-candidate` and
+  Nginx are active, loopback app and loopback Nginx health return HTTP 200,
+  candidate SQLite integrity is ok, `nginx -t` passes, `$request_uri` count is
+  0, and host-internal listeners/resources were summarized. No runtime,
+  firewall, DNS, Nginx reload, systemd restart, config, subscription-output,
+  SQLite row, traffic, or authority mutation was performed.
 - The approved canary-only TUIC subscription-output activation planning record
   is
   `docs/production-replacement-records/2026-05-28-tuic-subscription-output-canary-planning.md`.
   It records that `channel-lab-b` TUIC has enough operator-device evidence to
   plan a one-controlled-access canary gate, but activation authority is still
-  not granted. The next safe path is Aliyun host-internal evidence or an
-  explicit canary-only waiver, then a repository-only dry-run package, then a
-  separate exact activation approval. No subscription-output mutation, DNS,
+  not granted. The host-internal evidence gap is now resolved through Cloud
+  Assistant read-only inventory; the next safe path is a real controlled-access
+  config/activation mechanism, rollback evidence, then a separate exact
+  activation approval. No subscription-output mutation, DNS,
   Nginx, runtime, firewall, config, traffic, all-user rollout, or authority
   mutation was performed.
 - The approved canary-only TUIC subscription-output dry-run package is recorded
