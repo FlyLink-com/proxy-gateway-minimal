@@ -127,28 +127,41 @@ export function CompanySitePage() {
     }
   }
 
-  function handleTelegramOnboardingClick(event: MouseEvent<HTMLAnchorElement>) {
+  function handleSiteAnchorClick(event: MouseEvent<HTMLAnchorElement>, sectionId: string) {
     event.preventDefault();
-    document.getElementById("telegram-onboarding")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
     <main className="company-site-shell">
       <header className="company-site-header">
-        <a className="company-site-brand" href="#top" aria-label="GlobalCircle AI home">
+        <a
+          className="company-site-brand"
+          href="#top"
+          aria-label="GlobalCircle AI home"
+          onClick={(event) => handleSiteAnchorClick(event, "top")}
+        >
           <span>GC</span>
           <strong>GlobalCircle AI</strong>
         </a>
         <nav className="company-site-nav" aria-label="公司官网导航">
-          <a href="#capabilities">能力</a>
-          <a href="#scenarios">场景</a>
-          <a href="#delivery">合作</a>
-          <a href="#contact">联系</a>
+          <a href="#capabilities" onClick={(event) => handleSiteAnchorClick(event, "capabilities")}>
+            能力
+          </a>
+          <a href="#scenarios" onClick={(event) => handleSiteAnchorClick(event, "scenarios")}>
+            场景
+          </a>
+          <a href="#delivery" onClick={(event) => handleSiteAnchorClick(event, "delivery")}>
+            合作
+          </a>
+          <a href="#contact" onClick={(event) => handleSiteAnchorClick(event, "contact")}>
+            联系
+          </a>
           <a
             className="company-site-workbench-link"
             href="#telegram-onboarding"
             aria-label="开发者工作台申请访问"
-            onClick={handleTelegramOnboardingClick}
+            onClick={(event) => handleSiteAnchorClick(event, "telegram-onboarding")}
           >
             <LockKeyhole aria-hidden="true" />
             开发者工作台
@@ -164,11 +177,19 @@ export function CompanySitePage() {
             前沿产品研究，构建可落地的智能体、API 沙盒与自动化工作流。
           </p>
           <div className="company-site-actions">
-            <a className="company-site-primary" href="#telegram-onboarding" onClick={handleTelegramOnboardingClick}>
+            <a
+              className="company-site-primary"
+              href="#telegram-onboarding"
+              onClick={(event) => handleSiteAnchorClick(event, "telegram-onboarding")}
+            >
               获取 API 密钥（限时免费）
               <ArrowRight aria-hidden="true" />
             </a>
-            <a className="company-site-secondary" href="#api-proof">
+            <a
+              className="company-site-secondary"
+              href="#api-proof"
+              onClick={(event) => handleSiteAnchorClick(event, "api-proof")}
+            >
               查看 API 示例
             </a>
           </div>

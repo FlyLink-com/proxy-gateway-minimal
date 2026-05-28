@@ -142,19 +142,33 @@ describe("company site route", () => {
     expect(container.innerHTML).not.toMatch(/#\/portal|\/use|subscriptionUrl|token=|artifactRef/);
   });
 
-  test("keeps the site hash route when scrolling to Telegram onboarding", () => {
+  test("keeps the site hash route when scrolling through public site navigation", () => {
     window.location.hash = "#/site";
 
     const { container } = render(createElement(App));
-    const onboardingSection = container.querySelector("#telegram-onboarding") as HTMLElement & {
-      scrollIntoView: (options?: ScrollIntoViewOptions) => void;
-    };
-    const scrollIntoView = vi.fn();
-    onboardingSection.scrollIntoView = scrollIntoView;
+    const linkTargets = [
+      ["GlobalCircle AI home", "top"],
+      ["能力", "capabilities"],
+      ["场景", "scenarios"],
+      ["合作", "delivery"],
+      ["联系", "contact"],
+      ["开发者工作台申请访问", "telegram-onboarding"],
+      ["获取 API 密钥（限时免费）", "telegram-onboarding"],
+      ["查看 API 示例", "api-proof"]
+    ] as const;
 
-    fireEvent.click(screen.getByRole("link", { name: /获取 API 密钥/ }));
+    linkTargets.forEach(([linkName, sectionId]) => {
+      const section = container.querySelector(`#${sectionId}`) as HTMLElement & {
+        scrollIntoView: (options?: ScrollIntoViewOptions) => void;
+      };
+      const scrollIntoView = vi.fn();
+      section.scrollIntoView = scrollIntoView;
+      window.location.hash = "#/site";
 
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
-    expect(window.location.hash).toBe("#/site");
+      fireEvent.click(screen.getByRole("link", { name: linkName }));
+
+      expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+      expect(window.location.hash).toBe("#/site");
+    });
   });
 });
