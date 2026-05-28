@@ -717,9 +717,15 @@ operator approval, validation, and rollback path exist:
   `i-068f3cebec06ad0c0` with security group `sg-0a70e5f1bbd42576b`, SSH
   restricted to the operator `/32`, and UDP/443 reserved for a future TUIC
   controlled subscription batch canary. The instance is running, AWS status
-  checks are ok, and SSH base OS validation succeeded. No TUIC runtime, DNS,
-  Nginx, production config, subscription output, controlled subscription
-  batch, production authority transfer, or traffic canary was performed.
+  checks are ok, and SSH base OS validation succeeded.
+- The approved `channel-lab-b` TUIC runtime deployment is recorded in
+  `docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-runtime.md`.
+  Mihomo Meta v1.19.25 is installed as `mihomo-tuic.service`, the TUIC v5
+  listener is active on UDP/443, config test passed, service status is active,
+  and `NRestarts` was 0 during validation. TUIC UUID/password material was
+  generated and retained only on the remote host. No DNS, Nginx, production
+  config, subscription output, controlled subscription batch, operator-device
+  traffic, production authority transfer, or all-user rollout was performed.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See

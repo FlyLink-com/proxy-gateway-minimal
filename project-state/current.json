@@ -68,7 +68,8 @@
     "docs/VALIDATION_BASELINE.md",
     "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md",
     "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-execution.md",
-    "docs/production-replacement-records/2026-05-28-channel-lab-b-creation.md"
+    "docs/production-replacement-records/2026-05-28-channel-lab-b-creation.md",
+    "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-runtime.md"
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
@@ -168,8 +169,9 @@
     "Local Edge Agent as loopback-only client adapter prototype",
     "Server Edge Mesh as private operator/edge management path",
     "Project Control Plane with machine-readable state files",
-    "TUIC runtime inventory gate handoff as the next exact-phrase Stage 0 read-only inventory path after the held Hysteria2 measurement, without TUIC deployment, port exposure, subscription output change, operator-device traffic, or cleanup mutation",
-    "TUIC Stage 0 read-only inventory execution verified channel-lab-a AWS identity and network posture but blocked before runtime deployment because SSH timed out before banner/auth, SSM is unavailable, Hysteria2 owns the documented UDP/443 canary role, and a separate port/cleanup/access plan or fresh channel-lab-b gate is required"
+    "TUIC runtime inventory gate handoff as the exact-phrase Stage 0 read-only inventory path after the held Hysteria2 measurement, without TUIC deployment authority by itself, subscription output change, operator-device traffic, or cleanup mutation",
+    "TUIC Stage 0 read-only inventory execution verified channel-lab-a AWS identity and network posture but blocked before runtime deployment because SSH timed out before banner/auth, SSM is unavailable, Hysteria2 owns the documented UDP/443 canary role, and a separate port/cleanup/access plan or fresh channel-lab-b gate is required",
+    "channel-lab-b TUIC runtime deployment executed after exact approval: Mihomo TUIC v5 is active on UDP/443 on AWS ap-northeast-1, but controlled subscription batch generation, operator-device traffic, subscription output, DNS, production config, all-user rollout, and production authority transfer remain separately gated"
   ],
   "activeGoal": {
     "id": "aliyun-subscription-control-platform-mvp",
@@ -264,8 +266,8 @@
     },
     {
       "id": "channel-canary-server-selection",
-      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance exists, Hysteria2 v2.9.2 is active, short operator-device and Mihomo canaries passed, and extended operator-device measurement completed. The extended bundle has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. TUIC is now the documented next measured comparison candidate; a clean AWS ap-northeast-1 channel-lab-b server exists for TUIC controlled subscription batch canary work, but TUIC runtime deployment, subscription batch generation, traffic, DNS, production config, and rollout remain separately gated. VLESS/XUDP is secondary, and GUI import evidence, DNS, production config, subscription output, broader rollout, runtime comparison, and cleanup remain gated.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-28-channel-lab-b-creation.md"
+      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance exists, Hysteria2 v2.9.2 is active, short operator-device and Mihomo canaries passed, and extended operator-device measurement completed. The extended bundle has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. TUIC is now the documented next measured comparison candidate; a clean AWS ap-northeast-1 channel-lab-b server exists and has Mihomo TUIC v5 active on UDP/443 after exact approval, but subscription batch generation, operator-device traffic, DNS, production config, all-user rollout, runtime comparison, cleanup, and production authority transfer remain separately gated. VLESS/XUDP is secondary, and GUI import evidence, DNS, production config, subscription output, broader rollout, runtime comparison, and cleanup remain gated.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-runtime.md"
     },
     {
       "id": "aliyun-control-local-ci-rebuild",
@@ -294,7 +296,7 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Request the exact channel-lab-b TUIC runtime deployment approval phrase if the operator wants to install TUIC on the new AWS Japan canary server; do not generate subscription batch material or run traffic until the runtime deployment record passes validation",
+    "Request the exact controlled TUIC subscription batch generation and operator-device canary approval phrase for channel-lab-b if the operator wants to generate client material and run measured TUIC traffic; do not perform all-user rollout, DNS change, production config change, or production authority transfer",
     "Request the exact Aliyun Aegis service repair approval phrase from docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md if the operator wants process cleanup and service restart; otherwise leave it as a tracked host security-agent follow-up",
     "Keep public Admin blocked and keep edge traffic activation out of scope until a separate exact approval and execution record exists",
     "Use docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-preflight.md plus the exact approval phrase from docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md if the operator wants clean edge host provisioning/bootstrap/private validation; otherwise leave edge data-plane pending",
