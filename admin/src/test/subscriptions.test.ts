@@ -16,6 +16,7 @@ import type {
   ChannelSubscriptionActivationFlowInput,
   ChannelSubscriptionActivationHandoff,
   ChannelSubscriptionActivationHandoffInput,
+  ChannelSubscriptionActivationPackage,
   ChannelSubscriptionActivationRecordTemplate,
   ChannelSubscriptionActivationRecordTemplateInput,
   ChannelSubscriptionActivationReadiness,
@@ -374,6 +375,35 @@ describe("admin API client", () => {
     expect(template.safety.templateOnly).toBe(true);
     expect(template.safety.noSubscriptionOutputMutation).toBe(true);
   });
+
+  test("reviews channel subscription activation packages through the protected platform endpoint", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      channelSubscriptionActivationPackage: channelSubscriptionActivationPackage()
+    }));
+    const client = createAdminApiClient({
+      baseUrl: "",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    const activationPackage = await client.reviewChannelSubscriptionActivationPackage(
+      channelSubscriptionActivationPackageInput()
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/channel-subscription-activation-package",
+      expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
+    );
+    const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionActivationPackageInput());
+    expect(String(reviewCall[1].body)).not.toMatch(/secret\.example|token=|https?:\/\/|\"host\"|\"port\"/i);
+    expect(activationPackage.mode).toBe("channel-subscription-activation-package");
+    expect(activationPackage.package.approvalRequestReady).toBe(true);
+    expect(activationPackage.renderProof.yamlReturned).toBe(false);
+    expect(activationPackage.recordTemplate.markdownReturned).toBe(false);
+    expect(activationPackage.gate.executesGate).toBe(false);
+  });
 });
 
 describe("admin session", () => {
@@ -462,6 +492,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelRuntimeGate: async () => channelRuntimeGateWorkbench(),
     reviewChannelRuntimeExecutionHandoff: async () => channelRuntimeExecutionHandoff(),
     reviewChannelSubscriptionActivationFlow: async () => channelSubscriptionActivationFlow(),
+    reviewChannelSubscriptionActivationPackage: async () => channelSubscriptionActivationPackage(),
     reviewChannelSubscriptionActivationRecordTemplate: async () => channelSubscriptionActivationRecordTemplate(),
     reviewChannelSubscriptionActivationHandoff: async () => channelSubscriptionActivationHandoff(),
     reviewChannelSubscriptionActivationReadiness: async () => channelSubscriptionActivationReadiness(),
@@ -838,6 +869,10 @@ function channelSubscriptionActivationRecordTemplateInput(): ChannelSubscription
   };
 }
 
+function channelSubscriptionActivationPackageInput(): ChannelSubscriptionActivationRecordTemplateInput {
+  return channelSubscriptionActivationRecordTemplateInput();
+}
+
 function channelSubscriptionActivationReadiness(): ChannelSubscriptionActivationReadiness {
   return {
     ok: true,
@@ -1071,6 +1106,73 @@ function channelSubscriptionActivationRecordTemplate(): ChannelSubscriptionActiv
       yamlNotGenerated: true,
       requiresSeparateRiskAApproval: true,
       omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls", "yaml"]
+    }
+  };
+}
+
+function channelSubscriptionActivationPackage(): ChannelSubscriptionActivationPackage {
+  return {
+    ok: true,
+    mode: "channel-subscription-activation-package",
+    generatedAt: "2026-05-28T10:07:00.000Z",
+    status: "ready_for_risk_a_subscription_output_activation_request",
+    blockers: [],
+    package: {
+      renderProofReady: true,
+      recordTemplateReady: true,
+      approvalRequestReady: true,
+      executionAuthority: "not_granted",
+      requiredNextAction: "request_risk_a_subscription_output_activation_approval"
+    },
+    renderProof: {
+      status: "render_proof_ready_for_subscription_output_activation_request",
+      internalYamlRenderCompleted: true,
+      yamlReturned: false,
+      renderedProxyCount: 2,
+      generatedYamlBytes: 512,
+      protocolCounts: { ss: 1, tuic: 1 },
+      baseline: [{ name: "ss-baseline", protocol: "ss" }],
+      canary: [{ name: "tuic-lab", protocol: "tuic" }]
+    },
+    recordTemplate: {
+      mode: "channel-subscription-activation-record-template",
+      title: "Channel Subscription Output Activation Execution Record",
+      suggestedPath: "docs/production-replacement-records/2026-05-28-channel-subscription-output-activation.md",
+      markdownReturned: false,
+      approvalRequestReady: true,
+      executionAuthority: "not_granted",
+      blockers: []
+    },
+    gate: {
+      risk: "A",
+      gate: "risk_a_subscription_output_activation",
+      approvalRequestReady: true,
+      exactApprovalRequired: true,
+      executionAuthority: "not_granted",
+      approvalSubmissionRoute: null,
+      subscriptionOutputExecutionRoute: null,
+      executesGate: false
+    },
+    source: {
+      fixtureGeneratedAt: "2026-05-28T10:05:00.000Z",
+      sourceGeneratedAt: "2026-05-28T10:04:00.000Z",
+      fixtureSchemaVersion: "channel-subscription-activation-flow-fixture/v1"
+    },
+    safety: {
+      advisoryOnly: true,
+      summaryOnly: true,
+      packageOnly: true,
+      renderProofRequired: true,
+      noRuntimeMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      noTrafficMovement: true,
+      noSubscriptionOutputMutation: true,
+      yamlReturned: false,
+      yamlNotReturned: true,
+      recordMarkdownReturned: false,
+      requiresSeparateRiskAApproval: true,
+      omittedFields: ["hosts", "ports", "urls", "credentials", "rawLogs", "tokens", "subscriptionUrls", "yaml", "recordMarkdown"]
     }
   };
 }
@@ -2094,6 +2196,40 @@ describe("overview and nodes pages", () => {
       ).not.toBeNull();
     });
     expect(reviewChannelSubscriptionActivationRecordTemplate).not.toHaveBeenCalled();
+  });
+
+  test("renders channel subscription activation packages without YAML, record Markdown, or execution controls", async () => {
+    const reviewChannelSubscriptionActivationPackage = vi.fn(async () => channelSubscriptionActivationPackage());
+
+    render(createElement(OverviewPage, {
+      apiClient: adminClient({ reviewChannelSubscriptionActivationPackage } as unknown as Partial<AdminApiClient>)
+    }));
+
+    expect(await screen.findByText("Channel subscription activation package")).not.toBeNull();
+    const packageRegion = screen.getByRole("region", { name: "Channel subscription activation package" });
+    fireEvent.change(screen.getByLabelText(/safe channel subscription activation package fixture/i), {
+      target: { value: JSON.stringify(channelSubscriptionActivationPackageInput()) }
+    });
+    fireEvent.click(screen.getByRole("button", { name: /review activation package/i }));
+
+    await waitFor(() => {
+      expect(reviewChannelSubscriptionActivationPackage).toHaveBeenCalledWith(
+        channelSubscriptionActivationPackageInput()
+      );
+    });
+    expect(await screen.findByText("channel-subscription-activation-package")).not.toBeNull();
+    expect(within(packageRegion).getByText("ready_for_risk_a_subscription_output_activation_request")).not.toBeNull();
+    expect(within(packageRegion).getByText("request_risk_a_subscription_output_activation_approval")).not.toBeNull();
+    expect(within(packageRegion).getByText("not_granted")).not.toBeNull();
+    expect(within(packageRegion).getByText(/Render proof ready/i)).not.toBeNull();
+    expect(within(packageRegion).getByText(/Record template ready/i)).not.toBeNull();
+    expect(within(packageRegion).getByText(/YAML not returned/i)).not.toBeNull();
+    expect(within(packageRegion).getByText(/Record Markdown not returned/i)).not.toBeNull();
+    expect(within(packageRegion).getByText(/No approval submission route/i)).not.toBeNull();
+    expect(within(packageRegion).getByText(/No subscription output execution route/i)).not.toBeNull();
+    expect(within(packageRegion).queryByRole("button", { name: /^execute/i })).toBeNull();
+    expect(within(packageRegion).queryByRole("button", { name: /^activate/i })).toBeNull();
+    expect(within(packageRegion).queryByText(/secret\.example|token=|https?:\/\/|approvalPhrase|# Channel Subscription/i)).toBeNull();
   });
 
   test("renders channel lab target decision without execution controls or approval text", async () => {

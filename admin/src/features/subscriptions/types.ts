@@ -178,6 +178,8 @@ export type ChannelSubscriptionActivationRecordTemplateInput = {
   activationFlowFixture: unknown;
 };
 
+export type ChannelSubscriptionActivationPackageInput = ChannelSubscriptionActivationRecordTemplateInput;
+
 export type ChannelLabTargetDecisionInput = {
   generatedAt?: string;
   inventory: unknown;
@@ -608,6 +610,71 @@ export type ChannelSubscriptionActivationRecordTemplate = {
     noTrafficMovement: boolean;
     noSubscriptionOutputMutation: boolean;
     yamlNotGenerated: boolean;
+    requiresSeparateRiskAApproval: boolean;
+    omittedFields: string[];
+  };
+};
+
+export type ChannelSubscriptionActivationPackage = {
+  ok: boolean;
+  mode: "channel-subscription-activation-package";
+  generatedAt: string;
+  status: string;
+  blockers: string[];
+  package: {
+    renderProofReady: boolean;
+    recordTemplateReady: boolean;
+    approvalRequestReady: boolean;
+    executionAuthority: string;
+    requiredNextAction: string;
+  };
+  renderProof: {
+    status: string;
+    internalYamlRenderCompleted: boolean;
+    yamlReturned: boolean;
+    renderedProxyCount: number;
+    generatedYamlBytes?: number;
+    protocolCounts: Record<string, number>;
+    baseline: Array<Record<string, unknown>>;
+    canary: Array<Record<string, unknown>>;
+  };
+  recordTemplate: {
+    mode: string;
+    title: string;
+    suggestedPath: string;
+    markdownReturned: boolean;
+    approvalRequestReady: boolean;
+    executionAuthority: string;
+    blockers: string[];
+  };
+  gate: {
+    risk: "A" | string;
+    gate: string;
+    approvalRequestReady: boolean;
+    exactApprovalRequired: boolean;
+    executionAuthority: string;
+    approvalSubmissionRoute: string | null;
+    subscriptionOutputExecutionRoute: string | null;
+    executesGate: boolean;
+  };
+  source: {
+    fixtureGeneratedAt: string;
+    sourceGeneratedAt: string;
+    fixtureSchemaVersion: string;
+  };
+  safety: {
+    advisoryOnly: boolean;
+    summaryOnly: boolean;
+    packageOnly: boolean;
+    renderProofRequired: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+    noApprovalSubmission: boolean;
+    noTrafficMovement: boolean;
+    noSubscriptionOutputMutation: boolean;
+    yamlReturned: boolean;
+    yamlNotReturned: boolean;
+    recordMarkdownReturned: boolean;
     requiresSeparateRiskAApproval: boolean;
     omittedFields: string[];
   };

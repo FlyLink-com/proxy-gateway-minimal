@@ -397,6 +397,14 @@ not expose public access, return YAML or record Markdown, add execution
 controls, change subscription output, contact edge nodes, deploy runtimes, move
 traffic, or activate production.
 
+Admin Overview can now submit the same safe fixture to that protected route and
+render the package readiness metadata for operator review. The UI shows package
+status, render-proof readiness, record-template readiness, approval-request
+readiness, rendered proxy count, protocol counts, and no-mutation safety flags.
+It still does not display YAML, record Markdown, raw hosts, raw ports, raw
+URLs, credentials, approval phrases, execution controls, or subscription-output
+activation controls.
+
 `buildChannelLabTargetDecision(...)` is the repository-local target decision
 layer after a read-only runtime inventory finds that the current lab target is
 not directly deployable. It accepts only a safe target inventory packet, then

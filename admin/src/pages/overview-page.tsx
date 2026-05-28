@@ -15,6 +15,8 @@ import type {
   ChannelSubscriptionActivationFlowInput,
   ChannelSubscriptionActivationHandoff,
   ChannelSubscriptionActivationHandoffInput,
+  ChannelSubscriptionActivationPackage,
+  ChannelSubscriptionActivationPackageInput,
   ChannelSubscriptionActivationRecordTemplate,
   ChannelSubscriptionActivationRecordTemplateInput,
   ChannelSubscriptionActivationReadiness,
@@ -104,6 +106,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
       <ChannelSubscriptionActivationHandoffPanel apiClient={apiClient} />
       <ChannelSubscriptionActivationFlowPanel apiClient={apiClient} />
       <ChannelSubscriptionActivationRecordTemplatePanel apiClient={apiClient} />
+      <ChannelSubscriptionActivationPackagePanel apiClient={apiClient} />
       <ChannelLabTargetDecisionPanel apiClient={apiClient} />
       <CleanEdgeReadinessReviewPanel apiClient={apiClient} />
       <AliyunGateReviewPanel apiClient={apiClient} />
@@ -203,6 +206,19 @@ function parseChannelSubscriptionActivationRecordTemplateInput(
     throw new Error("Safe channel subscription activation flow fixture contains forbidden runtime details.");
   }
   return parsed as ChannelSubscriptionActivationRecordTemplateInput;
+}
+
+function parseChannelSubscriptionActivationPackageInput(value: string): ChannelSubscriptionActivationPackageInput {
+  const parsed = JSON.parse(value) as unknown;
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Safe channel subscription activation package fixture must be a JSON object.");
+  }
+  try {
+    assertSafeChannelActivationRecordTemplateEvidence(parsed);
+  } catch {
+    throw new Error("Safe channel subscription activation package fixture contains forbidden runtime details.");
+  }
+  return parsed as ChannelSubscriptionActivationPackageInput;
 }
 
 function parseChannelLabTargetDecisionInput(value: string): ChannelLabTargetDecisionInput {
@@ -1166,6 +1182,131 @@ function ChannelSubscriptionActivationRecordTemplatePanel({ apiClient }: { apiCl
           </div>
           {template.readiness.blockers.length ? (
             <div className="alert alert-error">{template.readiness.blockers.join(", ")}</div>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ChannelSubscriptionActivationPackagePanel({ apiClient }: { apiClient: AdminApiClient }) {
+  const [packetText, setPacketText] = useState("");
+  const [activationPackage, setActivationPackage] = useState<ChannelSubscriptionActivationPackage | null>(null);
+  const [reviewing, setReviewing] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleReviewSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setReviewing(true);
+    setError("");
+    try {
+      const input = parseChannelSubscriptionActivationPackageInput(packetText);
+      const nextPackage = await apiClient.reviewChannelSubscriptionActivationPackage(input);
+      setActivationPackage(nextPackage);
+    } catch (requestError) {
+      setError(errorMessage(requestError));
+      setActivationPackage(null);
+    } finally {
+      setReviewing(false);
+    }
+  }
+
+  const protocolSummary = activationPackage
+    ? Object.entries(activationPackage.renderProof.protocolCounts)
+      .map(([protocol, count]) => `${protocol}:${count}`)
+      .join(", ") || "none"
+    : "none";
+
+  return (
+    <section className="gate-review-card" aria-labelledby="channel-subscription-activation-package-heading">
+      <div className="page-heading">
+        <div>
+          <h2 id="channel-subscription-activation-package-heading">
+            Channel subscription activation package
+          </h2>
+          <p className="muted">
+            Protected package review that combines render proof and execution-record template readiness.
+          </p>
+        </div>
+      </div>
+
+      <div className="alert">
+        This package is review-only; it does not return YAML, return record Markdown, submit approvals, expose
+        execution routes, or change subscription output.
+      </div>
+
+      {error ? <div className="alert alert-error">{error}</div> : null}
+
+      <form className="channel-review-form" onSubmit={handleReviewSubmit}>
+        <label htmlFor="channel-subscription-activation-package-fixture">
+          Safe channel subscription activation package fixture
+        </label>
+        <textarea
+          id="channel-subscription-activation-package-fixture"
+          value={packetText}
+          onChange={(event) => setPacketText(event.target.value)}
+          placeholder='{"activationFlowFixture":{"schemaVersion":"channel-subscription-activation-flow-fixture/v1","activationFlow":{}}}'
+          rows={8}
+        />
+        <button className="primary-button" type="submit" disabled={reviewing}>
+          {reviewing ? "Reviewing..." : "Review activation package"}
+        </button>
+      </form>
+
+      {activationPackage ? (
+        <>
+          <div className="metric-grid">
+            <Metric label="Package mode" value={activationPackage.mode} />
+            <Metric label="Package status" value={activationPackage.status} />
+            <Metric label="Required next action" value={activationPackage.package.requiredNextAction} />
+            <Metric label="Execution authority" value={activationPackage.package.executionAuthority} />
+            <Metric label="Rendered proxies" value={activationPackage.renderProof.renderedProxyCount} />
+            <Metric label="Protocols" value={protocolSummary} />
+          </div>
+          <div className="gate-boundary">
+            <strong>Activation package boundary</strong>
+            <ul>
+              <li>
+                {activationPackage.package.renderProofReady
+                  ? "Render proof ready"
+                  : "Render proof not ready"}
+              </li>
+              <li>
+                {activationPackage.package.recordTemplateReady
+                  ? "Record template ready"
+                  : "Record template not ready"}
+              </li>
+              <li>
+                {activationPackage.package.approvalRequestReady
+                  ? "Approval request ready"
+                  : "Approval request blocked"}
+              </li>
+              <li>{activationPackage.safety.yamlNotReturned ? "YAML not returned" : "YAML return flag missing"}</li>
+              <li>
+                {!activationPackage.safety.recordMarkdownReturned
+                  ? "Record Markdown not returned"
+                  : "Record Markdown returned"}
+              </li>
+              <li>
+                {activationPackage.safety.noSubscriptionOutputMutation
+                  ? "No subscription output mutation"
+                  : "Subscription output mutation flag missing"}
+              </li>
+              <li>
+                {activationPackage.gate.approvalSubmissionRoute === null
+                  ? "No approval submission route"
+                  : "Approval submission route exposed"}
+              </li>
+              <li>
+                {activationPackage.gate.subscriptionOutputExecutionRoute === null
+                  ? "No subscription output execution route"
+                  : "Subscription output execution route exposed"}
+              </li>
+              <li>{!activationPackage.gate.executesGate ? "No gate execution control" : "Gate execution exposed"}</li>
+            </ul>
+          </div>
+          {activationPackage.blockers.length ? (
+            <div className="alert alert-error">{activationPackage.blockers.join(", ")}</div>
           ) : null}
         </>
       ) : null}

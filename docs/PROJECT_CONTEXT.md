@@ -959,6 +959,15 @@ simplification queue is closed:
   Markdown, submit approval, expose execution controls, change subscription
   output, contact edge nodes, deploy runtime, move traffic, or activate
   production.
+- `B42-channel-subscription-activation-package-ui` - completed in the Channel
+  Subscription Activation Package UI work; Admin Overview can now submit safe
+  activation-flow fixtures to the protected package route and render package
+  status, render-proof readiness, record-template readiness, approval-request
+  readiness, protocol counts, and no-mutation safety flags. The panel is
+  review-only and does not display YAML, record Markdown, raw hosts, raw ports,
+  raw URLs, credentials, approval phrases, execution controls, subscription
+  output mutation, edge-node contact, runtime deployment, traffic movement, or
+  production activation.
 - `B28-channel-lab-target-decision` - completed in the Channel Lab Target
   Decision work; the protected Admin platform route and Admin Overview can now
   convert safe target inventory packets into an advisory next target gate after

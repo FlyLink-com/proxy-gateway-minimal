@@ -1466,6 +1466,47 @@
       ]
     },
     {
+      "id": "B42-channel-subscription-activation-package-ui",
+      "risk": "B",
+      "status": "completed-in-pr-252",
+      "lane": "edge-data-plane",
+      "title": "Add Admin Overview channel subscription activation package panel",
+      "goal": "Expose safe activation package review in Admin Overview by submitting safe activation-flow fixtures to the protected package API and rendering package readiness metadata without granting execution authority.",
+      "allowedFiles": [
+        "admin/src/features/subscriptions/api-client.ts",
+        "admin/src/features/subscriptions/types.ts",
+        "admin/src/pages/overview-page.tsx",
+        "admin/src/test/subscriptions.test.ts",
+        "docs/CHANNEL_STRATEGY_ENGINE.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "return or display Clash or Mihomo YAML",
+        "return or display execution-record Markdown",
+        "change real subscription output",
+        "mutate production",
+        "query or contact live edge nodes",
+        "deploy runtimes",
+        "submit approval phrases",
+        "echo or store approval text",
+        "add execution routes or execution controls",
+        "add public routes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, firewall, provider, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, or subscription-output state",
+        "write secrets, raw hosts, raw IPs, raw ports, raw URLs, raw logs, credentials, raw subscription URLs, SQLite rows, customer data, or exact management-source values",
+        "treat Admin Overview package output as subscription-output activation approval or execution evidence"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm run admin:test",
+        "npm run admin:build",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
       "id": "B12-aliyun-gate-decision-packet",
       "risk": "B",
       "status": "completed-in-pr-181",
