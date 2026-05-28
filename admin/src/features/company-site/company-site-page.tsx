@@ -276,6 +276,15 @@ const siteCopy = {
 } as const;
 
 type SiteLocale = keyof typeof siteCopy;
+const companySiteSectionIds = [
+  "top",
+  "capabilities",
+  "scenarios",
+  "api-proof",
+  "delivery",
+  "telegram-onboarding",
+  "contact"
+] as const;
 
 function getPreferredCompanySiteLocale(): SiteLocale {
   if (typeof window !== "undefined") {
@@ -300,6 +309,7 @@ function readFormValue(formData: FormData, name: string) {
 
 export function CompanySitePage() {
   const [leadStatus, setLeadStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
+  const [activeSection, setActiveSection] = useState<(typeof companySiteSectionIds)[number]>("top");
   const locale = getPreferredCompanySiteLocale();
   const copy = siteCopy[locale];
 
@@ -307,6 +317,37 @@ export function CompanySitePage() {
     document.documentElement.lang = copy.htmlLang;
     document.title = copy.documentTitle;
   }, [copy.documentTitle, copy.htmlLang]);
+
+  useEffect(() => {
+    if (typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visibleEntry = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((left, right) => right.intersectionRatio - left.intersectionRatio)[0];
+
+        if (visibleEntry?.target.id && companySiteSectionIds.includes(visibleEntry.target.id as typeof activeSection)) {
+          setActiveSection(visibleEntry.target.id as typeof activeSection);
+        }
+      },
+      {
+        rootMargin: "-18% 0px -46% 0px",
+        threshold: [0.35, 0.55, 0.75]
+      }
+    );
+
+    companySiteSectionIds.forEach((sectionId) => {
+      const section = document.getElementById(sectionId);
+      if (section) {
+        observer.observe(section);
+      }
+    });
+
+    return () => observer.disconnect();
+  }, []);
 
   async function handleLeadSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -340,11 +381,14 @@ export function CompanySitePage() {
 
   function handleSiteAnchorClick(event: MouseEvent<HTMLAnchorElement>, sectionId: string) {
     event.preventDefault();
+    if (companySiteSectionIds.includes(sectionId as typeof activeSection)) {
+      setActiveSection(sectionId as typeof activeSection);
+    }
     document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   return (
-    <main className="company-site-shell">
+    <main className="company-site-shell" data-active-section={activeSection}>
       <header className="company-site-header">
         <a
           className="company-site-brand"

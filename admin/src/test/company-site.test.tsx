@@ -161,6 +161,9 @@ describe("company site route", () => {
     window.location.hash = "#/site";
 
     const { container } = render(createElement(App));
+    const siteShell = container.querySelector(".company-site-shell");
+    expect(siteShell?.getAttribute("data-active-section")).toBe("top");
+
     const linkTargets = [
       ["GlobalCircle AI 首页", "top"],
       ["能力", "capabilities"],
@@ -184,6 +187,7 @@ describe("company site route", () => {
 
       expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
       expect(window.location.hash).toBe("#/site");
+      expect(siteShell?.getAttribute("data-active-section")).toBe(sectionId);
     });
   });
 
