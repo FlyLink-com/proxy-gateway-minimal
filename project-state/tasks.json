@@ -7,6 +7,7 @@
   "sourceDocs": [
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/PROJECT_CONTROL_PLANE.md",
+    "docs/CLI_GATE_CONTRACT.md",
     "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
     "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
     "docs/CHANNEL_CANARY_SERVER_SELECTION.md",
@@ -1549,6 +1550,53 @@
       "validation": [
         "git diff --check origin/master...HEAD",
         "node --test server/tests/platform-resource-package.test.mjs server/tests/package-entry.test.mjs",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "B44-cli-gate-contract",
+      "risk": "B",
+      "status": "completed-in-pr-254",
+      "lane": "validation-ci",
+      "title": "Add closed CLI gate contract for operator and customer command surfaces",
+      "goal": "Define a closed command manifest and local gate evaluator that includes the existing resource-package CLI while preventing shell passthrough, customer access to operator commands, sensitive input echo, and A-tier execution authority.",
+      "allowedFiles": [
+        "server/services/cli-gate-contract.mjs",
+        "server/tests/cli-gate-contract.test.mjs",
+        "server/tests/package-entry.test.mjs",
+        "server/tests/platform-access-routes.test.mjs",
+        "scripts/cli-gate-contract.mjs",
+        "package.json",
+        "index.mjs",
+        "README.md",
+        "docs/CLI_GATE_CONTRACT.md",
+        "docs/README.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "add arbitrary shell passthrough",
+        "submit approval phrases",
+        "echo or store approval text",
+        "add execution routes or execution controls",
+        "add public routes",
+        "expose public Admin",
+        "activate a public customer portal or web terminal",
+        "issue production customer AK/SK credentials",
+        "change real subscription output",
+        "mutate production",
+        "query or contact live edge nodes",
+        "deploy runtimes",
+        "change DNS, Nginx, systemd, AWS, Aliyun, security groups, firewall, provider, node, or runtime config",
+        "move traffic",
+        "change production tenant, artifact, SQLite, or subscription-output state",
+        "write secrets, raw hosts, raw IPs, raw ports, raw URLs, raw logs, credentials, raw subscription URLs, SQLite rows, customer data, or exact management-source values",
+        "treat CLI gate evaluation as production activation approval or execution evidence"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "node --test server/tests/cli-gate-contract.test.mjs server/tests/package-entry.test.mjs server/tests/platform-access-routes.test.mjs",
         "npm test",
         "npm run project-state:check"
       ]

@@ -4,9 +4,11 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION,
+  CLI_GATE_CONTRACT_SCHEMA_VERSION,
   assessChannelExtendedMeasurement,
   buildAccessModelInventorySummary,
   buildCleanEdgeReadinessSummary,
+  buildCliCommandManifest,
   buildChannelCandidateReport,
   buildChannelDecisionPack,
   buildChannelLabTargetDecision,
@@ -36,6 +38,7 @@ import {
   createChannelBenchmarkFixtureFromPlan,
   generateClashSubscription,
   normalizeChannelBenchmarkFixture,
+  evaluateCliGateRequest,
   runChannelBenchmarkPlan,
   scoreChannelBenchmarkSummary,
   summarizeChannelBenchmarkResults,
@@ -103,6 +106,9 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof scoreChannelBenchmarkSummary, "function");
   assert.equal(typeof summarizeChannelBenchmarkResults, "function");
   assert.equal(typeof startProxyGateway, "function");
+  assert.equal(typeof CLI_GATE_CONTRACT_SCHEMA_VERSION, "string");
+  assert.equal(typeof buildCliCommandManifest, "function");
+  assert.equal(typeof evaluateCliGateRequest, "function");
 });
 
 test("startProxyGateway starts and stops an embedded app", async () => {

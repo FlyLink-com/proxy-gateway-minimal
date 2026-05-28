@@ -8,6 +8,12 @@ export {
   publicProxyConfig
 } from "./server/services/config.mjs";
 export { createCommandRunner, runCommand } from "./server/services/command.mjs";
+export {
+  CLI_GATE_CONTRACT_SCHEMA_VERSION,
+  buildCliCommandManifest,
+  evaluateCliGateRequest,
+  listCliGateCommandSpecs
+} from "./server/services/cli-gate-contract.mjs";
 export { createHttpProxyService } from "./server/services/http-proxy.mjs";
 export { createSsLocalService } from "./server/services/ss-local.mjs";
 export {

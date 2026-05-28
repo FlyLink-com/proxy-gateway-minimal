@@ -154,6 +154,19 @@ Current architecture priorities:
   node hosts, raw ports, YAML, approval phrases, public routes, approval
   submission, execution controls, SQLite persistence, Aliyun deployment, DNS,
   production storage, user traffic, edge traffic, or production authority.
+- CLI Gate Contract: repository-only local tooling now defines a closed command
+  manifest and gate evaluator through `server/services/cli-gate-contract.mjs`
+  and `scripts/cli-gate-contract.mjs`. It registers the current
+  `platform.resource-package` path plus operator handoff and customer-skeleton
+  command families, defaults to dry-run, rejects unknown commands and sensitive
+  input fields without echoing submitted values, blocks customer access to
+  operator-only commands, and keeps A-tier commands handoff-only with execution
+  authority `not_granted`. It is the shared core for future operator CLI,
+  protected Admin review, customer CLI, web-terminal, and agent-dialog surfaces;
+  it is not shell passthrough, approval submission, public Admin, public
+  customer portal, AK/SK issuance, production mutation, edge traffic,
+  subscription-output activation, tenant/artifact mutation, DNS, Nginx,
+  systemd, firewall, cloud, node, or runtime execution.
 - Platform Clean-Start Package: repository-only clean-start readiness support
   lives in `server/services/platform/clean-start-control-plane.mjs` and the
   protected Admin route `/api/admin/platform/clean-start`. It summarizes
@@ -979,6 +992,27 @@ simplification queue is closed:
   raw URLs, credentials, approval phrases, execution controls, subscription
   output mutation, edge-node contact, runtime deployment, traffic movement, or
   production activation.
+- `B43-platform-resource-package-cli` - completed in the Platform Resource
+  Package CLI work; repository-local tooling can combine safe account,
+  entitlement, subscription-access grant, and optional channel activation
+  package summaries into an operator-safe resource package for CLI-first
+  registration and delivery preparation. It does not return customer names,
+  emails, raw portal URLs, artifact references, subscription URLs, tokens,
+  credentials, node hosts, raw ports, YAML, approval phrases, public routes,
+  approval submission, execution controls, production storage, user traffic,
+  edge traffic, or production authority.
+- `B44-cli-gate-contract` - completed in the CLI Gate Contract work; the repo
+  now has a closed command manifest and local gate evaluator for operator CLI,
+  protected Admin review, and future customer CLI / web terminal / agent dialog
+  surfaces. The gate registers `platform.resource-package`, operator handoff
+  commands, and customer skeleton commands; it defaults to dry-run, rejects
+  unknown commands and sensitive input fields, blocks customer access to
+  operator-only commands, and keeps A-tier commands handoff-only with execution
+  authority `not_granted`. It does not add shell passthrough, public routes,
+  approval submission, execution controls, public Admin, customer portal,
+  AK/SK issuance, subscription-output activation, edge-node contact, runtime
+  deployment, traffic movement, production mutation, or tenant/artifact
+  mutation.
 - `B28-channel-lab-target-decision` - completed in the Channel Lab Target
   Decision work; the protected Admin platform route and Admin Overview can now
   convert safe target inventory packets into an advisory next target gate after

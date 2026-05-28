@@ -116,6 +116,15 @@ const handle = await startProxyGateway({
 
 可执行命令名为 `proxy-gateway`。通过 GitHub 私有仓库安装时，需要本机 GitHub 凭据有仓库访问权限。
 
+## CLI Gate Contract
+
+`npm run cli:gate-contract -- manifest` 输出受控 CLI 命令注册表；
+`npm run cli:gate-contract -- evaluate <request.json>` 对结构化命令请求做
+本地门禁评估。该 gate contract 已把 `platform:resource-package` 纳入 closed
+manifest，默认 dry-run、禁止 shell passthrough、拒绝 token/secret/订阅 URL
+等敏感输入，并把 A 档命令收敛为 handoff / approval-readiness，不授予执行权。
+详细边界见 `docs/CLI_GATE_CONTRACT.md`。
+
 ## Admin Console Shell
 
 The subscription admin shell lives in `admin/`. It is a Vite React app for the operator workflow on top of the real subscription admin APIs.
