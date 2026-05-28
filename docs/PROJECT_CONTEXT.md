@@ -160,6 +160,20 @@ Current architecture priorities:
   submission, execution controls, SQLite persistence, Aliyun deployment, DNS,
   production storage, payment activation, user traffic, edge traffic, or
   production authority.
+- Platform Self-Service Registration CLI: repository-only local tooling can
+  summarize future customer-side registration, payment status, entitlement
+  hints, access-reference readiness, and auto-provision decisions through
+  `server/services/platform/self-service-registration-flow.mjs` and
+  `scripts/platform-self-service-registration.mjs`. It can call the
+  controlled-open helper only when payment is verified, auto-provision policy
+  is enabled, and an operator-controlled access reference exists. It returns
+  only hashed registration/customer/payment/package references, blockers,
+  required next action, portal posture, and safety flags. It does not expose
+  organization names, customer emails, raw payment references, portal URLs,
+  artifact references, subscription URLs, tokens, credentials, YAML, public
+  login sessions, payment capture, provider calls, SQLite persistence, Aliyun
+  deployment, DNS, production storage, user traffic, edge traffic, or
+  production authority.
 - Platform Clean-Start Package: repository-only clean-start readiness support
   lives in `server/services/platform/clean-start-control-plane.mjs` and the
   protected Admin route `/api/admin/platform/clean-start`. It summarizes
