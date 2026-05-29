@@ -40,6 +40,18 @@ Refer to `scripts/issuance-input.example.json` for the required format.
   "expiresAt": "2026-06-04T00:00:00.000Z",
   "nodeId": "channel-lab-b-tuic",
   "note": "preproduction-canary",
+  "control": {
+    "accountId": "acct_operator_safe_example",
+    "ownerRef": "cust_operator_safe_hashref",
+    "entitlementId": "ent_operator_safe_example",
+    "plan": "pilot",
+    "requestId": "iss_operator_safe_example_001",
+    "requestedByRef": "operator_local_hashref",
+    "purpose": "preproduction-canary",
+    "maxArtifacts": 1,
+    "maxDevices": 1,
+    "trafficLimitBytes": 0
+  },
   "artifact": {
     "create": true
   }
@@ -51,13 +63,15 @@ Refer to `scripts/issuance-input.example.json` for the required format.
 Run the issuance CLI. This command requires mandatory flags to mutate production data.
 
 ```powershell
-npm run platform:issue-subscription -- --execute-production-mutation --approval-ref "PR-265" --db-path ".proxy-gateway/subscriptions.sqlite" --public-base-url "https://your-public-url.com" --handoff-file "handoff/user-A-delivery.txt" handoff/batch-1-input.json
+npm run platform:issue-subscription -- --execute-production-mutation --approval-ref "PR-265" --db-path ".proxy-gateway/subscriptions.sqlite" --control-db-path ".proxy-gateway/subscription-control.sqlite" --public-base-url "https://your-public-url.com" --handoff-file "handoff/user-A-delivery.txt" handoff/batch-1-input.json
 ```
 
 **Flag Requirements:**
 - `--execute-production-mutation`: Mandatory for real execution. Omitting this triggers a dry-run.
 - `--approval-ref`: The PR or approval ticket number.
 - `--db-path`: The explicit path to the SQLite database.
+- `--control-db-path`: The explicit path to the subscription-control business
+  ledger database. Real issuance is forbidden without it.
 - `--public-base-url`: Must be `https://` (unless `--allow-local-test` is used).
 - `--handoff-file`: The exact operator-only `0600` path where the visible-once handoff material will be written. Prefer a path outside the repository; repo-local `handoff/` is allowed only because it is gitignored.
 
@@ -67,13 +81,19 @@ The script will print a safe JSON summary to `stdout` containing hashed `tenantR
 
 ### Step 2.5: Database Verification
 
-Verify the database state using safe queries. **DO NOT** use `SELECT *`.
+Verify both databases using safe aggregate queries. **DO NOT** use `SELECT *`.
 
 ```powershell
-# Check total tenants and status overview
+# Check technical subscription runtime state
 $dbPath = ".proxy-gateway/subscriptions.sqlite"
 sqlite3 $dbPath "SELECT status, count(*) FROM subscription_tenants GROUP BY status;"
 sqlite3 $dbPath "SELECT status, count(*) FROM subscription_artifacts GROUP BY status;"
+
+# Check business-control state
+$controlDbPath = ".proxy-gateway/subscription-control.sqlite"
+sqlite3 $controlDbPath "SELECT status, count(*) FROM platform_issuance_requests GROUP BY status;"
+sqlite3 $controlDbPath "SELECT status, count(*) FROM platform_issued_subscription_links GROUP BY status;"
+sqlite3 $controlDbPath "SELECT metric, sum(amount) FROM platform_quota_counters GROUP BY metric;"
 ```
 
 ## 3. Revocation / Rollback Procedure

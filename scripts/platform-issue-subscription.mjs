@@ -13,6 +13,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createRuntimeState } from "../server/state.mjs";
+import { createSqliteSubscriptionControlStore } from "../server/services/platform/subscription-control-db.mjs";
 
 const args = process.argv.slice(2);
 
@@ -24,6 +25,7 @@ let executeProductionMutation = false;
 let allowLocalTest = false;
 let approvalRef = "";
 let dbPath = "";
+let controlDbPath = "";
 let publicBaseUrl = "";
 let handoffFile = "";
 let inputFile = "";
@@ -38,6 +40,8 @@ for (let i = 0; i < args.length; i++) {
     approvalRef = args[++i];
   } else if (arg === "--db-path") {
     dbPath = args[++i];
+  } else if (arg === "--control-db-path") {
+    controlDbPath = args[++i];
   } else if (arg === "--public-base-url") {
     publicBaseUrl = args[++i];
   } else if (arg === "--handoff-file") {
@@ -58,13 +62,14 @@ try {
       ok: true,
       mode: "dry-run",
       message: "Dry-run mode. No database mutation occurred.",
-      requirements: "Provide --execute-production-mutation, --approval-ref, --db-path, --public-base-url, --handoff-file to execute."
+      requirements: "Provide --execute-production-mutation, --approval-ref, --db-path, --control-db-path, --public-base-url, --handoff-file to execute."
     }, null, 2) + "\n");
     process.exit(0);
   }
 
   if (!approvalRef) throw new Error("--approval-ref is mandatory for execution.");
   if (!dbPath) throw new Error("--db-path is mandatory for execution. Implicit default paths are forbidden.");
+  if (!controlDbPath) throw new Error("--control-db-path is mandatory for execution. Business control records are required.");
   if (!publicBaseUrl) throw new Error("--public-base-url is mandatory for execution.");
   if (!handoffFile) throw new Error("--handoff-file is mandatory for execution.");
 
@@ -81,8 +86,76 @@ try {
     throw new Error("artifact.create must be true. Production issuance must deliver opaque artifacts, not legacy query-token URLs.");
   }
 
+  const control = input.control || {};
+  const requiredControlFields = [
+    "accountId",
+    "ownerRef",
+    "entitlementId",
+    "requestId",
+    "requestedByRef",
+    "purpose"
+  ];
+  for (const field of requiredControlFields) {
+    if (!String(control[field] || "").trim()) {
+      throw new Error(`control.${field} is mandatory for real issuance.`);
+    }
+  }
+
   let state;
+  let controlStore;
   try {
+    const now = new Date().toISOString();
+    controlStore = createSqliteSubscriptionControlStore({
+      dbPath: resolve(controlDbPath)
+    });
+
+    if (!controlStore.getAccount(control.accountId)) {
+      controlStore.createAccount({
+        id: control.accountId,
+        ownerRef: control.ownerRef,
+        status: control.accountStatus || "active",
+        createdAt: now,
+        updatedAt: now,
+        metadata: {
+          source: "platform-issue-subscription",
+          approvalRef
+        }
+      });
+    }
+
+    if (!controlStore.getEntitlement(control.entitlementId)) {
+      controlStore.createEntitlement({
+        id: control.entitlementId,
+        accountId: control.accountId,
+        plan: control.plan || "pilot",
+        status: control.entitlementStatus || "active",
+        validFrom: control.validFrom || now,
+        validUntil: input.expiresAt,
+        maxArtifacts: control.maxArtifacts ?? 1,
+        maxDevices: control.maxDevices ?? 1,
+        trafficLimitBytes: control.trafficLimitBytes ?? 0,
+        createdAt: now,
+        updatedAt: now
+      });
+    }
+
+    controlStore.createIssuanceRequest({
+      id: control.requestId,
+      accountId: control.accountId,
+      entitlementId: control.entitlementId,
+      approvalRef,
+      status: "planned",
+      quantity: 1,
+      nodeId: input.nodeId,
+      purpose: control.purpose,
+      requestedByRef: control.requestedByRef,
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        cli: "platform:issue-subscription"
+      }
+    });
+
     state = createRuntimeState({
       subscriptionDbPath: resolve(dbPath),
       env: { ...process.env, PUBLIC_SUBSCRIPTION_BASE_URL: publicBaseUrl }
@@ -100,6 +173,42 @@ try {
 
     // 2. Create Artifact
     const artifactResult = core.createSubscriptionArtifact(tenantResult.tenant.id);
+    const tenantRef = safeRef("tenant", tenantResult.tenant.id);
+    const artifactRef = safeRef("artifact", artifactResult.artifact.id);
+    const issuedAt = new Date().toISOString();
+
+    controlStore.linkIssuedSubscription({
+      id: `${control.requestId}_link_1`,
+      requestId: control.requestId,
+      tenantRef,
+      artifactRef,
+      status: "active",
+      createdAt: issuedAt,
+      updatedAt: issuedAt
+    });
+    controlStore.setIssuanceRequestStatus(control.requestId, {
+      status: "issued",
+      updatedAt: issuedAt
+    });
+    controlStore.upsertQuotaCounter({
+      accountId: control.accountId,
+      entitlementId: control.entitlementId,
+      metric: "artifact_issuance",
+      period: issuedAt.slice(0, 7),
+      amount: 1,
+      updatedAt: issuedAt
+    });
+    controlStore.recordAuditEvent({
+      id: `${control.requestId}_audit_issued`,
+      entityType: "issuance_request",
+      entityRef: control.requestId,
+      action: "issued",
+      actorRef: control.requestedByRef,
+      createdAt: issuedAt,
+      metadata: {
+        source: "platform:issue-subscription"
+      }
+    });
 
     // 3. Write Raw Secrets to Handoff File ONLY
     const handoffContent = {
@@ -107,7 +216,7 @@ try {
       tenantId: tenantResult.tenant.id,
       artifactId: artifactResult.artifact.id,
       subscriptionUrl: artifactResult.subscriptionUrl,
-      issuedAt: new Date().toISOString()
+      issuedAt
     };
 
     const resolvedHandoffFile = resolve(handoffFile);
@@ -118,13 +227,16 @@ try {
     const summary = {
       ok: true,
       mode: "platform-issue-subscription",
-      tenantRef: safeRef("tenant", tenantResult.tenant.id),
-      artifactRef: safeRef("artifact", artifactResult.artifact.id),
+      accountRef: safeRef("account", control.accountId),
+      issuanceRequestRef: control.requestId,
+      tenantRef,
+      artifactRef,
       nodeId: tenantResult.tenant.nodeId,
       expiresAt: tenantResult.tenant.expiresAt,
       handoffWritten: true,
       rawUrlReturned: false,
       dbMutated: true,
+      controlDbMutated: true,
       approvalRef
     };
 
@@ -132,6 +244,7 @@ try {
 
   } finally {
     state?.close();
+    controlStore?.close();
   }
 
 } catch (error) {

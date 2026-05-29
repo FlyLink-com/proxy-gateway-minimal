@@ -3,6 +3,18 @@
   "expiresAt": "2026-06-04T00:00:00.000Z",
   "nodeId": "channel-lab-b-tuic",
   "note": "preproduction-canary",
+  "control": {
+    "accountId": "acct_operator_safe_example",
+    "ownerRef": "cust_operator_safe_hashref",
+    "entitlementId": "ent_operator_safe_example",
+    "plan": "pilot",
+    "requestId": "iss_operator_safe_example_001",
+    "requestedByRef": "operator_local_hashref",
+    "purpose": "preproduction-canary",
+    "maxArtifacts": 1,
+    "maxDevices": 1,
+    "trafficLimitBytes": 0
+  },
   "artifact": {
     "create": true
   }
