@@ -11,6 +11,7 @@ import { CompanySitePage } from "./features/company-site/company-site-page";
 import { UserPortalPage } from "./features/user-portal/user-portal-page";
 import { NodesPage } from "./pages/nodes-page";
 import { OverviewPage } from "./pages/overview-page";
+import { ProvisioningPage } from "./pages/provisioning-page";
 
 type AppRoute = "admin" | "portal" | "site";
 
@@ -85,6 +86,8 @@ function renderPage(
   switch (activePage) {
     case "overview":
       return <OverviewPage apiClient={apiClient} />;
+    case "provisioning":
+      return <ProvisioningPage apiClient={apiClient} />;
     case "subscriptions":
       return <SubscriptionsPage search={search} apiClient={apiClient} />;
     case "nodes":

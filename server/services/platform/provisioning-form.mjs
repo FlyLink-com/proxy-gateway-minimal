@@ -19,6 +19,32 @@ function safeIso(value) {
   return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
+function normalizeFormFacts(input) {
+  return {
+    approvalRef: text(input.approvalRef),
+    operator: "operator-local",
+    customer: {
+      label: text(input.customerLabel),
+      email: text(input.customerEmail),
+      channel: text(input.customerChannel) || "manual-intake"
+    },
+    subscription: {
+      displayName: text(input.subscriptionLabel),
+      plan: text(input.plan) || "pilot",
+      expiresAt: safeIso(input.expiresAt),
+      nodeId: text(input.nodeId),
+      note: text(input.note),
+      quantity: 1
+    },
+    handoff: {
+      delivery: "operator_visible_once"
+    },
+    artifact: {
+      create: true
+    }
+  };
+}
+
 function buildBlockers(input) {
   const subscription = input.subscription || {};
   const artifact = input.artifact || {};
@@ -69,18 +95,19 @@ function safetyFlags() {
 }
 
 export function buildProvisioningFormPackage(input = {}) {
-  const subscription = input.subscription || {};
-  const blockers = buildBlockers(input);
+  const formInput = normalizeFormFacts(input);
+  const subscription = formInput.subscription;
+  const blockers = buildBlockers(formInput);
   const ok = blockers.length === 0;
   const customerRef = hashRef(
     "cust",
-    input.customer?.email,
-    input.customer?.label,
-    input.customer?.channel
+    formInput.customer.email,
+    formInput.customer.label,
+    formInput.customer.channel
   );
-  const approvalRef = text(input.approvalRef);
-  const expiresAt = safeIso(subscription.expiresAt);
-  const plan = text(subscription.plan) || "pilot";
+  const approvalRef = formInput.approvalRef;
+  const expiresAt = subscription.expiresAt;
+  const plan = subscription.plan;
   const nodeId = text(subscription.nodeId);
   const displayName = text(subscription.displayName) || "operator-safe label";
   const note = text(subscription.note);
@@ -94,9 +121,9 @@ export function buildProvisioningFormPackage(input = {}) {
     customerRef,
     form: {
       source: "operator_provisioning_form",
-      operatorRef: hashRef("operator", input.operator || "operator"),
+      operatorRef: hashRef("operator", formInput.operator),
       plan,
-      handoffDelivery: text(input.handoff?.delivery) || "operator_visible_once",
+      handoffDelivery: formInput.handoff.delivery,
       rawCustomerDataReturned: false
     },
     issuanceInput: ok ? {

@@ -139,10 +139,15 @@ Current architecture priorities:
 - Operator Provisioning Form Contract: repository-only form-adapter tooling
   turns reviewed operator form facts into a safe issuance input preview through
   `server/services/platform/provisioning-form.mjs` and
-  `scripts/platform-provisioning-form.mjs`. It does not expose raw customer
-  data, subscription URLs, handoff material, SQLite rows, public Admin,
-  approval submission, Aliyun deployment, DNS, production storage, payment
-  activation, user traffic, edge traffic, or production authority. See
+  `scripts/platform-provisioning-form.mjs`. The protected local Admin
+  Provisioning page and `/api/admin/platform/provisioning-form/preview` route
+  can review the same contract from flat operator form fields. The Admin page
+  does not construct downstream issuance policy; the service layer owns
+  quantity, artifact creation, handoff posture, blocker generation, and safe
+  CLI input construction. It does not expose
+  raw customer data, subscription URLs, handoff material, SQLite rows, public
+  Admin, approval submission, Aliyun deployment, DNS, production storage,
+  payment activation, user traffic, edge traffic, or production authority. See
   `docs/OPERATOR_PROVISIONING_FORM_CONTRACT.md`.
 - Platform Domain Contract: repository-only platform lead, account,
   entitlement, and subscription-access grant shapes live under

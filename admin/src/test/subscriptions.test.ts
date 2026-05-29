@@ -32,6 +32,7 @@ import type {
 } from "../features/subscriptions/types";
 import { NodesPage } from "../pages/nodes-page";
 import { OverviewPage } from "../pages/overview-page";
+import { ProvisioningPage } from "../pages/provisioning-page";
 
 afterEach(() => {
   cleanup();
@@ -96,6 +97,47 @@ describe("admin API client", () => {
       "/api/admin/subscriptions",
       expect.objectContaining({ headers: expect.any(Headers) })
     );
+  });
+
+  test("previews operator provisioning forms through the protected platform route", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse({
+        provisioningForm: {
+          status: "ready_for_cli_dry_run",
+          issuanceInput: { nodeId: "channel-lab-b-tuic" },
+          execution: { dbMutationAuthorized: false },
+          safety: { noProductionMutation: true }
+        }
+      })
+    );
+    const client = createAdminApiClient({
+      baseUrl: "",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+    const input = {
+      approvalRef: "PR-265",
+      customerLabel: "Customer Alpha",
+      customerEmail: "owner@sensitive.example",
+      customerChannel: "manual-intake",
+      subscriptionLabel: "customer-alpha-preproduction",
+      expiresAt: "2026-06-04",
+      nodeId: "channel-lab-b-tuic"
+    };
+
+    const preview = await client.previewProvisioningForm(input);
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/provisioning-form/preview",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify(input),
+        headers: expect.any(Headers)
+      })
+    );
+    expect(preview.status).toBe("ready_for_cli_dry_run");
+    expect(preview.execution.dbMutationAuthorized).toBe(false);
+    expect(preview.safety.noProductionMutation).toBe(true);
   });
 
   test("loads and records Aliyun gate review data without raw firewall details", async () => {
@@ -499,7 +541,60 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelSubscriptionOutputDraft: async () => channelSubscriptionOutputDraft(),
     reviewChannelLabTargetDecision: async () => channelLabTargetDecision(),
     reviewCleanEdgeReadiness: async () => cleanEdgeReadinessSummary(),
+    previewProvisioningForm: async () => provisioningFormPreview(),
     ...overrides
+  };
+}
+
+function provisioningFormPreview() {
+  return {
+    ok: true,
+    mode: "platform-provisioning-form" as const,
+    status: "ready_for_cli_dry_run",
+    blockers: [],
+    approvalRef: "PR-265",
+    customerRef: "cust_safehash",
+    form: {
+      source: "operator_provisioning_form",
+      operatorRef: "operator_safehash",
+      plan: "pilot",
+      handoffDelivery: "operator_visible_once",
+      rawCustomerDataReturned: false
+    },
+    issuanceInput: {
+      displayName: "customer-alpha-preproduction",
+      expiresAt: "2026-06-04T00:00:00.000Z",
+      nodeId: "channel-lab-b-tuic",
+      note: "preproduction-canary",
+      artifact: {
+        create: true as const
+      }
+    },
+    execution: {
+      command: "platform:issue-subscription",
+      nextAction: "run_cli_dry_run_then_request_risk_a_approval",
+      requiresRiskAApproval: true,
+      dbMutationAuthorized: false,
+      publicAdminRequired: false
+    },
+    audit: {
+      recordType: "operator_provisioning_form_summary",
+      approvalRef: "PR-265",
+      customerRef: "cust_safehash",
+      evidenceKinds: ["operator_form_facts", "issuance_input_preview", "risk_a_execution_required"]
+    },
+    safety: {
+      summaryOnly: true,
+      formAdapterOnly: true,
+      noSubscriptionUrl: true,
+      noRawCustomerData: true,
+      noSecrets: true,
+      noDbMutation: true,
+      noProductionMutation: true,
+      noApprovalSubmission: true,
+      requiresSeparateRiskAApprovalForIssuance: true,
+      omittedFields: ["customer.email", "subscriptionUrl", "tokens"]
+    }
   };
 }
 
@@ -1596,6 +1691,54 @@ describe("subscription page", () => {
     expect(await screen.findByText("Temporary link for real-user")).not.toBeNull();
     expect(screen.getByText("temp-url")).not.toBeNull();
     expect(listTenants).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("provisioning page", () => {
+  test("submits operator form facts for safe preview without execution controls", async () => {
+    const previewProvisioningForm = vi.fn(async () => provisioningFormPreview());
+
+    render(createElement(ProvisioningPage, {
+      apiClient: adminClient({ previewProvisioningForm } as unknown as Partial<AdminApiClient>)
+    }));
+
+    fireEvent.change(screen.getByLabelText(/approval reference/i), { target: { value: "PR-265" } });
+    fireEvent.change(screen.getByLabelText(/customer label/i), { target: { value: "Customer Alpha" } });
+    fireEvent.change(screen.getByLabelText(/customer email/i), { target: { value: "owner@sensitive.example" } });
+    fireEvent.change(screen.getByLabelText(/customer channel/i), { target: { value: "manual-intake" } });
+    fireEvent.change(screen.getByLabelText(/subscription label/i), {
+      target: { value: "customer-alpha-preproduction" }
+    });
+    fireEvent.change(screen.getByLabelText(/plan/i), { target: { value: "pilot" } });
+    fireEvent.change(screen.getByLabelText(/expires at/i), { target: { value: "2026-06-04" } });
+    fireEvent.change(screen.getByLabelText(/target node/i), { target: { value: "channel-lab-b-tuic" } });
+    fireEvent.change(screen.getByLabelText(/operator note/i), { target: { value: "preproduction-canary" } });
+
+    fireEvent.click(screen.getByRole("button", { name: /generate safe preview/i }));
+
+    await waitFor(() => {
+      expect(previewProvisioningForm).toHaveBeenCalledWith({
+        approvalRef: "PR-265",
+        customerLabel: "Customer Alpha",
+        customerEmail: "owner@sensitive.example",
+        customerChannel: "manual-intake",
+        subscriptionLabel: "customer-alpha-preproduction",
+        plan: "pilot",
+        expiresAt: "2026-06-04",
+        nodeId: "channel-lab-b-tuic",
+        note: "preproduction-canary"
+      });
+    });
+
+    const previewRegion = await screen.findByRole("region", { name: /safe issuance preview/i });
+    expect(within(previewRegion).getByText("ready_for_cli_dry_run")).not.toBeNull();
+    expect(within(previewRegion).getByText("run_cli_dry_run_then_request_risk_a_approval")).not.toBeNull();
+    expect(within(previewRegion).getByText(/platform:issue-subscription/i)).not.toBeNull();
+    expect(within(previewRegion).getByText(/No production mutation/i)).not.toBeNull();
+    expect(within(previewRegion).getByText(/No database mutation/i)).not.toBeNull();
+    expect(within(previewRegion).queryByText(/owner@sensitive\.example|manual-intake|Customer Alpha|token=/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /^execute/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^issue/i })).toBeNull();
   });
 });
 

@@ -42,6 +42,68 @@ export type TempLinkResult = {
   subscriptionUrl: string;
 };
 
+export type ProvisioningFormInput = {
+  approvalRef: string;
+  customerLabel: string;
+  customerEmail: string;
+  customerChannel: string;
+  subscriptionLabel: string;
+  plan?: string;
+  expiresAt: string;
+  nodeId: string;
+  note?: string;
+};
+
+export type ProvisioningFormPreview = {
+  ok: boolean;
+  mode: "platform-provisioning-form";
+  status: string;
+  blockers: string[];
+  approvalRef: string;
+  customerRef: string;
+  form: {
+    source: string;
+    operatorRef: string;
+    plan: string;
+    handoffDelivery: string;
+    rawCustomerDataReturned: boolean;
+  };
+  issuanceInput: {
+    displayName: string;
+    expiresAt: string;
+    nodeId: string;
+    note: string;
+    artifact: {
+      create: true;
+    };
+  } | null;
+  execution: {
+    command: string;
+    nextAction: string;
+    requiresRiskAApproval: boolean;
+    dbMutationAuthorized: boolean;
+    publicAdminRequired: boolean;
+  };
+  audit: {
+    recordType: string;
+    approvalRef: string;
+    customerRef: string;
+    evidenceKinds: string[];
+  };
+  safety: {
+    summaryOnly: boolean;
+    formAdapterOnly: boolean;
+    noSubscriptionUrl: boolean;
+    noRawCustomerData: boolean;
+    noSecrets: boolean;
+    noDbMutation: boolean;
+    noProductionMutation: boolean;
+    noApprovalSubmission: boolean;
+    requiresSeparateRiskAApprovalForIssuance: boolean;
+    omittedFields: string[];
+  };
+};
+
 export type SubscriptionNode = {
   id: string;
   name: string;
