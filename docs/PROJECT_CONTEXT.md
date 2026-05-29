@@ -96,6 +96,15 @@ stable subscription/import experience
 ```
 
 - **Simplification & Core Focus**: The active priority is strictly converged on core subscription production delivery: **"能生产、能发放、能审计、能撤回"** (PR #258, CLI production SOP, controlled subscription issuance, canary rollout, edge rebuild, and traffic accounting/quota/abuse control). Unrelated marketing decoration (WebGL/3D transits, CSS animations), Telegram client integrations/panels, personal job-application materials, un-productized video/ad drafts, non-CLI Admin UI polishing, topological narrative bloating, multicharacter sketch frameworks, and brand-positioning narratives are explicitly deprioritized, archived, or removed from the execution path. See `docs/PROJECT_SIMPLIFICATION_MAP.md`.
+- **Aliyun-First Workspace Boundary**: current business design and runtime
+  planning are anchored on the Aliyun subscription-control platform. Local
+  machines and local checkouts are development, validation, operator-lab,
+  handoff, and archive surfaces only; they are not business runtime, not
+  production authority, and not the source for current production facts. Old
+  local drafts, personal/job materials, media/ad sketches, Telegram embedding
+  drafts, and stale topology/design notes should be archived outside the main
+  repository path unless an approved task explicitly promotes them back into a
+  current product lane.
 
 Current architecture priorities:
 
