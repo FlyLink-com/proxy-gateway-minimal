@@ -126,6 +126,14 @@ Current architecture priorities:
   files, and execution records. Public Admin is not a product surface, and any
   production mutation remains Risk A even when wrapped by a CLI. See
   `docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md`.
+- Operator Provisioning Form Contract: repository-only form-adapter tooling
+  turns reviewed operator form facts into a safe issuance input preview through
+  `server/services/platform/provisioning-form.mjs` and
+  `scripts/platform-provisioning-form.mjs`. It does not expose raw customer
+  data, subscription URLs, handoff material, SQLite rows, public Admin,
+  approval submission, Aliyun deployment, DNS, production storage, payment
+  activation, user traffic, edge traffic, or production authority. See
+  `docs/OPERATOR_PROVISIONING_FORM_CONTRACT.md`.
 - Platform Domain Contract: repository-only platform lead, account,
   entitlement, and subscription-access grant shapes live under
   `server/services/platform/control-plane-contract.mjs`. They provide

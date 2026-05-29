@@ -17,7 +17,19 @@ This document serves as the Standard Operating Procedure (SOP) for issuing and r
 
 Use this flow to convert a lead into a provisioned account, entitlement, and access grant.
 
-### Step 2.1: Prepare Input
+### Step 2.1: Prepare Operator Form Facts
+
+For subscription issuance preparation, prefer the operator provisioning form
+contract before any execution path. It turns reviewed form facts into a safe
+issuance input preview and still performs no database mutation:
+
+```powershell
+npm run platform:provisioning-form -- scripts/provisioning-form-input.example.json
+```
+
+See `docs/OPERATOR_PROVISIONING_FORM_CONTRACT.md`.
+
+### Step 2.2: Prepare Controlled-Open Input
 
 Create a JSON input file representing the batch or individual user. Store this locally (e.g. `handoff/batch-1-input.json`).
 Refer to `scripts/mock-controlled-open-input.example.json` for the required format.
@@ -46,7 +58,7 @@ Refer to `scripts/mock-controlled-open-input.example.json` for the required form
 }
 ```
 
-### Step 2.2: Execute CLI Tool
+### Step 2.3: Execute CLI Tool
 
 Run the controlled-open CLI. The output will be a safe metadata package.
 
@@ -54,12 +66,12 @@ Run the controlled-open CLI. The output will be a safe metadata package.
 npm run platform:controlled-open -- handoff/batch-1-input.json > handoff/batch-1-output.json
 ```
 
-### Step 2.3: Generate Handoff File
+### Step 2.4: Generate Handoff File
 
 From the raw internal execution (which handles the secret generation), save the actual subscription URL or artifact string into a dedicated file strictly for user handoff.
 Ensure it is saved as `handoff/user-A-delivery.txt`. Do NOT display the content in the terminal.
 
-### Step 2.4: Database Verification
+### Step 2.5: Database Verification
 
 Verify the database state using safe queries. **DO NOT** use `SELECT *`.
 

@@ -1,0 +1,23 @@
+{
+  "approvalRef": "approval-or-pr-reference",
+  "operator": "operator-local",
+  "customer": {
+    "label": "operator-visible customer label",
+    "email": "customer@example.com",
+    "channel": "manual-intake"
+  },
+  "subscription": {
+    "displayName": "customer-alpha-preproduction",
+    "plan": "pilot",
+    "expiresAt": "2026-06-04T00:00:00.000Z",
+    "nodeId": "channel-lab-b-tuic",
+    "note": "preproduction-canary",
+    "quantity": 1
+  },
+  "handoff": {
+    "delivery": "operator_visible_once"
+  },
+  "artifact": {
+    "create": true
+  }
+}

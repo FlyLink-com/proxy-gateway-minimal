@@ -59,6 +59,9 @@ CLI tools:
   npm run platform:*
   npm run channel:*
 
+Operator form adapters:
+  reviewed form facts -> safe CLI input preview
+
 Operator-only handoff files:
   0600 / current-user-only material outside the repository
 
@@ -125,6 +128,8 @@ operator-issued or agent-assisted resource delivery:
 ```text
 lead or customer request
   -> operator review
+  -> provisioning form facts
+  -> safe CLI input preview
   -> entitlement / access decision
   -> CLI-generated safe resource package
   -> visible-once out-of-band handoff
