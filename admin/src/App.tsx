@@ -9,6 +9,7 @@ import { ConnectionPanel } from "./features/subscriptions/connection-panel";
 import { SubscriptionsPage } from "./features/subscriptions/subscriptions-page";
 import { CompanySitePage } from "./features/company-site/company-site-page";
 import { UserPortalPage } from "./features/user-portal/user-portal-page";
+import { createLocalUserPortalClient } from "./features/user-portal/user-portal-client";
 import { NodesPage } from "./pages/nodes-page";
 import { OverviewPage } from "./pages/overview-page";
 import { ProvisioningPage } from "./pages/provisioning-page";
@@ -31,6 +32,7 @@ export function App() {
     () => createAdminApiClient(adminSession),
     [adminSession.baseUrl, adminSession.consoleToken]
   );
+  const userPortalClient = useMemo(() => createLocalUserPortalClient(), []);
 
   useEffect(() => {
     function syncRoute() {
@@ -60,7 +62,7 @@ export function App() {
   }
 
   if (route === "portal") {
-    return <UserPortalPage apiClient={apiClient} onBackToAdmin={openAdmin} />;
+    return <UserPortalPage portalClient={userPortalClient} onBackToAdmin={openAdmin} />;
   }
 
   return (

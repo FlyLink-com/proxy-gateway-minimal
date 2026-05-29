@@ -1,6 +1,6 @@
 # Aliyun User Management / Subscription Distribution Runbook
 
-Last updated: 2026-05-27, Asia/Shanghai.
+Last updated: 2026-05-29, Asia/Shanghai.
 
 > Status:
 > - Type: Active architecture and Risk A runbook
@@ -202,6 +202,11 @@ customer-facing user portal MVP shell: implemented in repository only
   - current UI reference: EqualDCDN /use-style auth card plus user dashboard
   - includes login/signup shell, package selection, subscription link boxes,
     backup-link placeholder, app downloads, usage steps, and safety checklist
+  - user portal business access is now wrapped by `UserPortalClient` instead of
+    calling Admin subscription APIs directly
+  - default local portal client returns safe request metadata only; it does not
+    write SQLite, call Admin APIs, activate payment, expose public Admin, or
+    return subscription URLs unless an injected test/demo client does so
 static company site preview: implemented in repository only
   - official site content is brand/business/cooperation explanation only
   - current positioning: geek-style AI / automation research company surface

@@ -14,13 +14,16 @@ import {
   User,
   Wifi
 } from "lucide-react";
-import type { AdminApiClient } from "../subscriptions/api-client";
-import type { SubscriptionTenant } from "../subscriptions/types";
 import { copyText } from "../../lib/clipboard";
 import { cn } from "../../lib/utils";
+import type {
+  PortalClientId,
+  PortalPlanId,
+  PortalSession,
+  PortalSubscriptionRequest,
+  UserPortalClient
+} from "./user-portal-client";
 
-type PortalPlanId = "starter" | "professional" | "team";
-type PortalClientId = "clash" | "mihomo" | "karing";
 type AuthMode = "login" | "signup";
 type PortalView = "dashboard" | "subscription" | "use" | "check" | "support" | "profile";
 
@@ -33,9 +36,7 @@ type PortalPlan = {
 };
 
 type CreatedSubscription = {
-  tenant: SubscriptionTenant;
-  subscriptionUrl: string;
-  clientTarget: PortalClientId;
+  request: PortalSubscriptionRequest;
 };
 
 const plans: PortalPlan[] = [
@@ -160,12 +161,6 @@ const checklist = {
   ]
 };
 
-function expiresAtFromDays(days: number) {
-  const date = new Date();
-  date.setDate(date.getDate() + days);
-  return date.toISOString();
-}
-
 function selectedPlanLabel(planId: PortalPlanId) {
   return plans.find((plan) => plan.id === planId)?.label ?? "Professional";
 }
@@ -181,13 +176,14 @@ function displayNameFromEmail(email: string) {
 }
 
 export function UserPortalPage({
-  apiClient
+  portalClient
 }: {
-  apiClient: AdminApiClient;
+  portalClient: UserPortalClient;
   onBackToAdmin?: () => void;
 }) {
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [authenticated, setAuthenticated] = useState(false);
+  const [portalSession, setPortalSession] = useState<PortalSession | null>(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
@@ -197,6 +193,7 @@ export function UserPortalPage({
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [durationDays, setDurationDays] = useState("30");
+  const [authError, setAuthError] = useState("");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<CreatedSubscription | null>(null);
@@ -208,13 +205,25 @@ export function UserPortalPage({
   );
 
   const userEmail = email.trim() || authEmail.trim();
-  const userDisplayName = displayName.trim() || displayNameFromEmail(userEmail);
+  const userDisplayName = displayName.trim() || portalSession?.displayName || displayNameFromEmail(userEmail);
 
-  function submitAuth(event: FormEvent<HTMLFormElement>) {
+  async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setEmail((current) => current || authEmail.trim());
-    setDisplayName((current) => current || displayNameFromEmail(authEmail));
-    setAuthenticated(true);
+    setAuthError("");
+    try {
+      const session = await portalClient.authenticate({
+        mode: authMode,
+        email: authEmail,
+        password: authPassword,
+        verificationCode
+      });
+      setPortalSession(session);
+      setEmail((current) => current || authEmail.trim());
+      setDisplayName((current) => current || session.displayName);
+      setAuthenticated(true);
+    } catch (requestError) {
+      setAuthError(errorMessage(requestError));
+    }
   }
 
   async function submitSubscription(event: FormEvent<HTMLFormElement>) {
@@ -223,15 +232,16 @@ export function UserPortalPage({
     setError("");
     setCopied("");
     try {
-      const result = await apiClient.createTenant({
+      const result = await portalClient.requestSubscription({
+        userRef: portalSession?.userRef ?? "",
         displayName: userDisplayName,
-        expiresAt: expiresAtFromDays(Number(durationDays)),
-        note: `portal plan=${selectedPlan}; client=${clientTarget}; email=${userEmail}; source=use-dashboard`
+        email: userEmail,
+        planId: selectedPlan,
+        clientTarget,
+        durationDays: Number(durationDays)
       });
       setCreated({
-        tenant: result.tenant,
-        subscriptionUrl: result.subscriptionUrl,
-        clientTarget
+        request: result
       });
       setActiveView("use");
     } catch (requestError) {
@@ -292,6 +302,8 @@ export function UserPortalPage({
                 </div>
               </>
             ) : null}
+
+            {authError ? <div className="alert alert-error">{authError}</div> : null}
 
             <button className="portal-auth-submit" type="submit">
               {authMode === "login" ? "登录" : "注册"}
@@ -392,18 +404,25 @@ export function UserPortalPage({
 }
 
 function renderDashboard(created: CreatedSubscription | null, selectedPlan: PortalPlanId) {
+  const isPendingReview = created?.request.status === "ready_for_operator_review";
   return (
     <div className="portal-dashboard-grid">
       <section className="portal-use-card portal-package-card">
         <div>
           <span className="portal-card-label">套餐状态</span>
           <h2>{created ? selectedPlanLabel(selectedPlan) : "未购买套餐"}</h2>
-          <p>{created ? "订阅已生成，可进入开始使用复制链接。" : "请选择适合的套餐后生成订阅。"}</p>
+          <p>
+            {isPendingReview
+              ? "订阅申请已提交，等待运营授权。"
+              : created
+                ? "订阅已生成，可进入开始使用复制链接。"
+                : "请选择适合的套餐后生成订阅。"}
+          </p>
         </div>
         <div className="portal-traffic-meter">
-          <span style={{ width: created ? "68%" : "8%" }} />
+          <span style={{ width: created ? (isPendingReview ? "28%" : "68%") : "8%" }} />
         </div>
-        <small>{created ? "本期流量正常" : "暂无会员"}</small>
+        <small>{isPendingReview ? "等待运营授权" : created ? "本期流量正常" : "暂无会员"}</small>
       </section>
 
       <section className="portal-use-card">
@@ -551,23 +570,31 @@ function UseInstructions({
   created: CreatedSubscription | null;
   copySubscriptionUrl: (value: string, label: string) => Promise<void>;
 }) {
-  const subscriptionUrl = created?.subscriptionUrl ?? "";
+  const subscriptionUrl = created?.request.subscriptionUrl ?? "";
+  const isPendingReview = created?.request.status === "ready_for_operator_review";
   return (
     <section className="portal-use-stack" role="region" aria-label="开始使用">
       <div className="portal-use-card">
         <span className="portal-card-label">使用说明</span>
-        <h2>下载对应设备的应用，复制订阅链接到应用</h2>
+        <h2>{isPendingReview ? "订阅申请已提交，等待运营授权" : "下载对应设备的应用，复制订阅链接到应用"}</h2>
+        {isPendingReview ? (
+          <p className="muted">
+            当前用户门户只提交用户侧申请，不直接调用 Admin API 创建订阅。运营侧授权后再通过受控交付提供订阅入口。
+          </p>
+        ) : null}
         <div className="portal-link-list">
           <LinkBox
             copied={copied === "primary"}
             label="订阅链接"
             value={subscriptionUrl}
+            emptyText={isPendingReview ? "运营授权完成后将显示订阅链接。" : undefined}
             onCopy={() => copySubscriptionUrl(subscriptionUrl, "primary")}
           />
           <LinkBox
             copied={copied === "backup"}
             label="国内备用订阅链接"
             value={subscriptionUrl}
+            emptyText={isPendingReview ? "运营授权完成后将显示备用入口。" : undefined}
             note="备用分发域接入前，暂由同一受控订阅产物提供。"
             onCopy={() => copySubscriptionUrl(subscriptionUrl, "backup")}
           />
@@ -630,12 +657,14 @@ function UseInstructions({
 
 function LinkBox({
   copied,
+  emptyText,
   label,
   note,
   onCopy,
   value
 }: {
   copied: boolean;
+  emptyText?: string;
   label: string;
   note?: string;
   onCopy: () => Promise<void>;
@@ -647,7 +676,7 @@ function LinkBox({
         <h3>{label}</h3>
         {note ? <small>{note}</small> : null}
       </div>
-      {value ? <code>{value}</code> : <p className="muted">请先在订阅管理中生成订阅。</p>}
+      {value ? <code>{value}</code> : <p className="muted">{emptyText ?? "请先在订阅管理中生成订阅。"}</p>}
       <button className="portal-copy-button" type="button" onClick={onCopy} disabled={!value}>
         <Copy aria-hidden="true" />
         {copied ? "已复制" : "复制"}
@@ -725,11 +754,11 @@ function ProfilePanel({
         </div>
         <div>
           <dt>套餐</dt>
-          <dd>{created ? created.tenant.displayName : "暂无会员"}</dd>
+          <dd>{created ? selectedPlanLabel(created.request.planId) : "暂无会员"}</dd>
         </div>
         <div>
           <dt>订阅状态</dt>
-          <dd>{created ? "active" : "pending"}</dd>
+          <dd>{created ? created.request.status : "pending"}</dd>
         </div>
       </dl>
       <div className="portal-profile-module-grid">
