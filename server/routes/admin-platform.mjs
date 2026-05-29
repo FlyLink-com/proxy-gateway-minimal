@@ -13,6 +13,7 @@ import { buildChannelSystemDecisionFlow } from "../services/channel-system-decis
 import { buildCleanEdgeReadinessSummary } from "../services/clean-edge-readiness-summary.mjs";
 import { createCleanStartControlPlanePackage } from "../services/platform/clean-start-control-plane.mjs";
 import { createAliyunGateDecisionPacket } from "../services/platform/aliyun-gate-decision-packet.mjs";
+import { buildProvisioningFormPackage } from "../services/platform/provisioning-form.mjs";
 
 function sendError(res, error) {
   if (error.code === "validation_error") {
@@ -325,6 +326,16 @@ export function adminPlatformRoutes(state) {
       });
     } catch {
       sendError(res, cleanEdgeReadinessSummaryValidationError());
+    }
+  });
+
+  router.post("/api/admin/platform/provisioning-form/preview", (req, res) => {
+    try {
+      res.json({
+        provisioningForm: buildProvisioningFormPackage(req.body ?? {})
+      });
+    } catch (error) {
+      sendError(res, error);
     }
   });
 

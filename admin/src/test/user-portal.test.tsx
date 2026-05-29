@@ -94,6 +94,55 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelSubscriptionActivationReadiness: async () => channelSubscriptionActivationReadiness(),
     reviewChannelLabTargetDecision: async () => channelLabTargetDecision(),
     reviewCleanEdgeReadiness: async () => cleanEdgeReadinessSummary(),
+    previewProvisioningForm: async () => ({
+      ok: true,
+      mode: "platform-provisioning-form",
+      status: "ready_for_cli_dry_run",
+      blockers: [],
+      approvalRef: "PR-265",
+      customerRef: "cust_portal",
+      form: {
+        source: "operator_provisioning_form",
+        operatorRef: "operator_portal",
+        plan: "pilot",
+        handoffDelivery: "operator_visible_once",
+        rawCustomerDataReturned: false
+      },
+      issuanceInput: {
+        displayName: "portal-user",
+        expiresAt: "2026-06-26T00:00:00.000Z",
+        nodeId: "channel-lab-b-tuic",
+        note: "portal preview",
+        artifact: {
+          create: true
+        }
+      },
+      execution: {
+        command: "platform:issue-subscription",
+        nextAction: "run_cli_dry_run_then_request_risk_a_approval",
+        requiresRiskAApproval: true,
+        dbMutationAuthorized: false,
+        publicAdminRequired: false
+      },
+      audit: {
+        recordType: "operator_provisioning_form_summary",
+        approvalRef: "PR-265",
+        customerRef: "cust_portal",
+        evidenceKinds: ["operator_form_facts", "issuance_input_preview", "risk_a_execution_required"]
+      },
+      safety: {
+        summaryOnly: true,
+        formAdapterOnly: true,
+        noSubscriptionUrl: true,
+        noRawCustomerData: true,
+        noSecrets: true,
+        noDbMutation: true,
+        noProductionMutation: true,
+        noApprovalSubmission: true,
+        requiresSeparateRiskAApprovalForIssuance: true,
+        omittedFields: ["customer.email", "subscriptionUrl", "tokens"]
+      }
+    }),
     overview: async () => ({
       ok: true,
       total: 0,

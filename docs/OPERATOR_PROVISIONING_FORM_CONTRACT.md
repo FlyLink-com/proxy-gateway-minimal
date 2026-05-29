@@ -25,8 +25,10 @@ operator form facts
 ```
 
 The form layer exists to reduce operator mistakes around customer identity,
-plan, expiry, node selection, approval reference, and handoff posture. It must
-not become a public write surface.
+plan, expiry, node selection, and approval reference. It submits only form
+facts; the service layer owns handoff posture, artifact creation policy,
+quantity policy, blocker generation, and CLI issuance input construction. It
+must not become a public write surface.
 
 ## Inputs
 
@@ -36,13 +38,17 @@ The input shape is intentionally small. See
 Required facts:
 
 - `approvalRef`: approval or PR reference for the intended issuance gate.
-- `customer.label`, `customer.email`, `customer.channel`: form-only customer
+- `customerLabel`, `customerEmail`, `customerChannel`: form-only customer
   facts used only to derive a hashed customer reference.
-- `subscription.displayName`: operator-safe subscription label.
-- `subscription.expiresAt`: ISO timestamp.
-- `subscription.nodeId`: explicit target node, such as `channel-lab-b-tuic`.
-- `subscription.quantity`: must be `1` for this contract.
-- `artifact.create`: must be `true`; opaque artifact issuance is mandatory.
+- `subscriptionLabel`: operator-safe subscription label.
+- `expiresAt`: date or ISO timestamp normalized by the service layer.
+- `nodeId`: explicit target node, such as `channel-lab-b-tuic`.
+- `plan` and `note`: optional operator facts.
+
+The form input must not contain execution controls such as `quantity`,
+`artifact`, `handoff`, database path, handoff path, approval phrase, or execute
+flags. Current service policy enforces quantity `1`, artifact creation `true`,
+and handoff delivery `operator_visible_once` when it builds the safe preview.
 
 ## Output
 
@@ -73,14 +79,29 @@ npm run platform:provisioning-form -- scripts/provisioning-form-input.example.js
 This command prints only safe JSON. It does not write to SQLite and does not
 create a handoff file.
 
+## Local Admin Preview Surface
+
+The same contract can be reviewed from the protected local Admin `Provisioning`
+page through:
+
+```text
+POST /api/admin/platform/provisioning-form/preview
+```
+
+This route returns the same safe preview shape as the CLI adapter. It is
+protected by the Admin API boundary, does not write SQLite rows, does not create
+handoff files, does not submit approvals, does not expose public Admin, and does
+not execute subscription issuance. The Admin page posts only form facts; it does
+not construct downstream issuance policy fields.
+
 ## Validation
 
 Repository implementation must cover:
 
 - valid form facts produce `status: ready_for_cli_dry_run`;
 - missing approval reference, invalid expiry, or missing node fails closed;
-- `quantity` other than `1` fails closed;
-- `artifact.create !== true` fails closed;
+- client-submitted `quantity`, `artifact`, or `handoff` fields cannot override
+  service-layer policy;
 - CLI stdout omits raw customer data, URLs, tokens, and credentials.
 
 Risk classification:

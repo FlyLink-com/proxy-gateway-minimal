@@ -11,26 +11,14 @@ const { buildProvisioningFormPackage } = provisioningFormModule;
 function baseForm(overrides = {}) {
   return {
     approvalRef: "PR-263",
-    operator: "operator-local",
-    customer: {
-      label: "Customer Alpha",
-      email: "owner@sensitive.example",
-      channel: "private-referral"
-    },
-    subscription: {
-      displayName: "alpha-preproduction-canary",
-      plan: "pilot",
-      expiresAt: "2026-06-04T00:00:00.000Z",
-      nodeId: "channel-lab-b-tuic",
-      note: "preproduction-canary",
-      quantity: 1
-    },
-    handoff: {
-      delivery: "operator_visible_once"
-    },
-    artifact: {
-      create: true
-    },
+    customerLabel: "Customer Alpha",
+    customerEmail: "owner@sensitive.example",
+    customerChannel: "private-referral",
+    subscriptionLabel: "alpha-preproduction-canary",
+    plan: "pilot",
+    expiresAt: "2026-06-04",
+    nodeId: "channel-lab-b-tuic",
+    note: "preproduction-canary",
     ...overrides
   };
 }
@@ -79,11 +67,8 @@ test("platform provisioning form converts operator facts into issuance input wit
 test("platform provisioning form fails closed for missing gate facts", () => {
   const result = buildProvisioningFormPackage(baseForm({
     approvalRef: "",
-    subscription: {
-      ...baseForm().subscription,
-      nodeId: "",
-      expiresAt: "not-a-date"
-    }
+    nodeId: "",
+    expiresAt: "not-a-date"
   }));
 
   assert.equal(result.ok, false);
@@ -97,24 +82,22 @@ test("platform provisioning form fails closed for missing gate facts", () => {
   assert.equal(result.safety.noDbMutation, true);
 });
 
-test("platform provisioning form requires opaque artifact creation and single quantity", () => {
+test("platform provisioning form ignores client-submitted execution controls", () => {
   const result = buildProvisioningFormPackage(baseForm({
-    subscription: {
-      ...baseForm().subscription,
-      quantity: 2
-    },
+    quantity: 2,
     artifact: {
       create: false
+    },
+    handoff: {
+      delivery: "public"
     }
   }));
 
-  assert.equal(result.ok, false);
-  assert.equal(result.status, "blocked_before_cli_input");
-  assert.deepEqual(result.blockers, [
-    "subscription_quantity_must_be_one",
-    "opaque_artifact_required"
-  ]);
-  assert.equal(result.issuanceInput, null);
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "ready_for_cli_dry_run");
+  assert.deepEqual(result.blockers, []);
+  assert.deepEqual(result.issuanceInput.artifact, { create: true });
+  assert.equal(result.form.handoffDelivery, "operator_visible_once");
 });
 
 test("platform provisioning form CLI prints safe JSON", () => {

@@ -1765,6 +1765,68 @@ test("admin platform clean edge readiness route is protected and redacts unsafe 
   }
 });
 
+test("admin platform provisioning form preview route is protected and returns safe issuance preview", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell
+  })));
+  const formInput = {
+    approvalRef: "PR-265",
+    customerLabel: "Customer Alpha",
+    customerEmail: "owner@sensitive.example",
+    customerChannel: "manual-intake",
+    subscriptionLabel: "customer-alpha-preproduction",
+    plan: "pilot",
+    expiresAt: "2026-06-04",
+    nodeId: "channel-lab-b-tuic",
+    note: "preproduction-canary",
+    quantity: 99,
+    artifact: {
+      create: false
+    },
+    handoff: {
+      delivery: "public"
+    }
+  };
+
+  try {
+    const unauthenticated = await fetch(`${baseUrl}/api/admin/platform/provisioning-form/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(formInput)
+    });
+    assert.equal(unauthenticated.status, 401);
+
+    const response = await fetch(`${baseUrl}/api/admin/platform/provisioning-form/preview`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(formInput)
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.provisioningForm.status, "ready_for_cli_dry_run");
+    assert.equal(body.provisioningForm.issuanceInput.nodeId, "channel-lab-b-tuic");
+    assert.equal(body.provisioningForm.issuanceInput.expiresAt, "2026-06-04T00:00:00.000Z");
+    assert.equal(body.provisioningForm.issuanceInput.artifact.create, true);
+    assert.equal(body.provisioningForm.form.handoffDelivery, "operator_visible_once");
+    assert.equal(body.provisioningForm.execution.dbMutationAuthorized, false);
+    assert.equal(body.provisioningForm.safety.noProductionMutation, true);
+
+    const serialized = JSON.stringify(body);
+    assert.equal(serialized.includes("Customer Alpha"), false);
+    assert.equal(serialized.includes("owner@sensitive.example"), false);
+    assert.equal(serialized.includes("manual-intake"), false);
+    assert.equal(serialized.includes("token="), false);
+  } finally {
+    server.close();
+  }
+});
+
 test("admin platform channel system decision route rejects unsafe runtime evidence without echoing it", async () => {
   const { leadQueue, accountShell, accessShell } = createPlatformState();
   const { server, baseUrl } = await listen(createApp(fakeState({

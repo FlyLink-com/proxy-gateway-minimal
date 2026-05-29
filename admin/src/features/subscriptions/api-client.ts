@@ -26,6 +26,8 @@ import type {
   CleanEdgeReadinessSummary,
   CreateSubscriptionInput,
   CreateSubscriptionResult,
+  ProvisioningFormInput,
+  ProvisioningFormPreview,
   ProviderFirewallEvidenceInput,
   RenewSubscriptionInput,
   ResetTokenResult,
@@ -152,6 +154,16 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
       }),
     listNodes: async () => (await request<{ items: SubscriptionNode[] }>("/api/admin/nodes")).items,
     overview: async () => request<SubscriptionOverview>("/api/admin/overview"),
+    previewProvisioningForm: async (input: ProvisioningFormInput) =>
+      (
+        await request<{ provisioningForm: ProvisioningFormPreview }>(
+          "/api/admin/platform/provisioning-form/preview",
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).provisioningForm,
     getAliyunGates: async () =>
       (await request<{ aliyunGates: AliyunGateDecisionPacket }>("/api/admin/platform/aliyun-gates")).aliyunGates,
     getAliyunGateEvidence: async () =>
