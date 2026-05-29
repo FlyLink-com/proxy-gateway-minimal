@@ -691,7 +691,12 @@ Do not do these unless a separate approved task explicitly changes direction:
   2. *Telegram Integration*: TG registration scan entries hardcoded on public brand site, TG Bot Mini App, user panels, or TG group automation.
   3. *Personal Job Materials*: Resumes, portfolios, job-seeking maps, and company targeting lists.
   4. *Un-productized Media/Ad Drafts*: Video-channel plans, media scripts, or content drafts.
-  5. *Admin UI Aesthetic Polishing*: Color schemes, layouts, non-CLI console mock-ups, or decorative widgets (since the platform is CLI-first; public Admin is not a product surface).
+  5. *Legacy Admin UI Work*: Color schemes, layouts, non-CLI console mock-ups,
+     decorative widgets, or incremental productization of the old `admin/`
+     bundle. The old Admin UI is archived as a local protected reference/testing
+     surface only; future user/operator/admin surfaces should be rebuilt from
+     current Aliyun-first and CLI-first boundaries. See
+     `docs/ADMIN_UI_LEGACY_ARCHIVE.md`.
   6. *Documentation Over-Packaging*: Excessive high-level narrative bloating, over-lengthy closeouts, redundant topological diagrams, or slogan-like stage reports.
   7. *Speculative Futuristic Architecture*: Multi-agent cards, futuristic protocol roadmaps, or un-gated conceptual structures.
   8. *Brand Packaging*: AI company positionings, branding landing pages, API sandbox marketing, and generic site stories.
