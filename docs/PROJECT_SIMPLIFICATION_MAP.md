@@ -66,6 +66,21 @@ Clash/Mihomo
   remains the client router and UI until deliberately replaced
 ```
 
+Workspace authority rule:
+
+```text
+Aliyun:
+  current business workspace for public site, lead intake, subscription
+  distribution, operator-controlled issuance, and production records
+
+GitHub master:
+  code and durable project-history authority after PR merge
+
+Local machines / local checkouts:
+  development, validation, HP/manual CI, operator handoff, and archived backup
+  material only; not business runtime and not current production authority
+```
+
 Subscription URLs, opaque artifacts, node config, and edge mesh work are
 supporting mechanisms. They should not become competing products.
 
@@ -665,6 +680,12 @@ Do not do these unless a separate approved task explicitly changes direction:
   to the record is enough
 - do not record raw secrets, subscription URLs, tokens, passwords, private keys,
   customer data, or unredacted production credentials
+- do not treat local machines, local checkouts, old WorkBuddy/OneDrive shells,
+  or desktop archives as the current business workspace; they are archive,
+  development, validation, or operator-lab surfaces only
+- do not keep personal/job materials, video/ad drafts, Telegram embedding
+  drafts, or stale local planning notes in the main repository unless a
+  separate approved task promotes them into an active product lane
 - **do not allow unrelated or decorational work to block mainline execution**: Keep these explicitly deprioritized and outside the repository:
   1. *Website Visual Decoration*: 3D/WebGL transits, complex CSS animations, card shadows, particle backgrounds, and SEO polishing.
   2. *Telegram Integration*: TG registration scan entries hardcoded on public brand site, TG Bot Mini App, user panels, or TG group automation.
