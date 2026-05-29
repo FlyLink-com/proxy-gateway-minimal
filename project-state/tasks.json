@@ -2100,7 +2100,7 @@
     {
       "id": "A4-non-aliyun-hp-node-retirement",
       "risk": "A",
-      "status": "blocked-after-singapore-prod-edge-stop-termination-and-rebuild-require-approval",
+      "status": "completed-in-pr-258",
       "lane": "edge-data-plane",
       "title": "Drain and retire non-Aliyun / non-HP nodes",
       "goal": "Close all nodes outside Aliyun and HP only after Aliyun production subscription distribution is promoted, DNS and subscription output no longer require AWS nodes, and rollback dependencies are explicitly accepted.",

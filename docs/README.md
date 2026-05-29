@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-05-28, Asia/Shanghai.
+Last updated: 2026-05-29, Asia/Shanghai.
 
 Use this file as the first navigation point for project documentation. It
 classifies current source-of-truth docs, active runbooks, execution records,

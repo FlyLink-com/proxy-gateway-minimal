@@ -1,8 +1,8 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-05-28",
+  "lastUpdated": "2026-05-29",
   "timezone": "Asia/Shanghai",
-  "status": "active-snapshot-aliyun-subscription-promoted-edge-blocked",
+  "status": "active-snapshot-aliyun-subscription-promoted-edge-terminated",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
   "sourceDocs": [
     "docs/PROJECT_CONTEXT.md",
@@ -84,7 +84,8 @@
     "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-stopped.md",
     "docs/production-replacement-records/2026-05-28-tuic-controlled-operator-access-creation.md",
     "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation.md",
-    "docs/production-replacement-records/2026-05-28-cli-preproduction-subscription-issuance.md"
+    "docs/production-replacement-records/2026-05-28-cli-preproduction-subscription-issuance.md",
+    "docs/production-replacement-records/2026-05-29-singapore-prod-edge-termination.md"
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
@@ -107,6 +108,7 @@
     "measured validation and operations"
   ],
   "activeDirections": [
+    "Mainline focus strictly converged on core subscription production delivery: '能生产、能发放、能审计、能撤回'; all visual, marketing, Telegram bot, video-channel drafts, and speculative decorational sketches are retired and deprioritized",
     "Goal-driven execution: Aliyun Subscription Control Platform MVP has moved from repo-only B/C support into exact-phrase Risk A promotion records; public Admin, edge activation, AWS rollback-start, historical state copy, broader artifact issuance, and legacy query-token retirement remain separate gates",
     "Operator CLI Platform Boundary exists as the product/ops boundary for keeping public routes small and explicit while administrative workflows move to operator CLI tools, local/private console review, visible-once handoff files, and execution records; public Admin is not a product surface and production mutation remains Risk A even when wrapped by CLI",
     "Aliyun platform domain contract exists as repo-only lead/account/entitlement/subscription-access grant normalization with operator-safe summaries",
@@ -144,7 +146,7 @@
     "Domain Unit Boundaries for product business, commercial entitlement, subscription access, nodes, validation, operator lab, and production ops",
     "Aliyun user-management / subscription-distribution platform as the near-term production-control target",
     "HP local Linux as manual CI and operator lab only",
-    "AWS Singapore prod-edge-a/b stopped with accepted outage; clean edge rebuild is now required before restored service",
+    "AWS Singapore prod-edge-a/b stopped nodes are permanently terminated and security groups deleted after Aliyun controlled opaque access successfully binds to TUIC and preproduction CLI artifacts resolve TUIC; rollback by starting is waived and legacy blue remains preserved intact",
     "Subscription Control / Edge Split",
     "Aliyun current server as private loopback-only subscription control-plane candidate after CI cleanup",
     "Local Linux manual CI as the target validation host",
@@ -229,7 +231,7 @@
   },
   "productionSnapshot": {
     "requiresLiveVerification": true,
-    "serviceStatus": "aliyun-subscription-distribution-promoted-edge-data-plane-pending",
+    "serviceStatus": "aliyun-subscription-distribution-promoted-edge-data-plane-terminated",
     "currentPrimarySlot": "aliyun-subscription-distribution-boundary",
     "currentPrimaryPublicIp": "47.251.178.125",
     "aliyunCandidateInstanceId": "3e9253d3fb044463b876edacf6af8784",
@@ -238,13 +240,13 @@
     "httpsGatewayEnabled": true,
     "forcedHttpRedirect": false,
     "primaryInstanceId": "i-0b7791340d3fedff5",
-    "primaryInstanceState": "stopped",
-    "primarySecurityGroupId": "sg-0379ece0b3d305c43",
-    "iterationSecondarySlot": "prod-edge-b-stopped",
+    "primaryInstanceState": "terminated",
+    "primarySecurityGroupId": null,
+    "iterationSecondarySlot": "prod-edge-b-terminated",
     "iterationSecondaryCarrierIp": null,
     "iterationSecondaryInstanceId": "i-0ad8676ee113d14cb",
-    "iterationSecondaryInstanceState": "stopped",
-    "iterationSecondarySecurityGroupId": "sg-06682c36aa03834f7",
+    "iterationSecondaryInstanceState": "terminated",
+    "iterationSecondarySecurityGroupId": null,
     "legacyBlueState": "stopped-for-review-not-terminated",
     "legacyBlueInstanceId": "i-004ab1c6c71d06bca",
     "legacyBlueSecurityGroupId": "sg-04a165ec77f430ee8",
@@ -252,7 +254,7 @@
     "notes": [
       "sub.globalcirclecat.com now points to the Aliyun candidate public IP and serves the approved public subscription boundary on 80/443 with public Admin blocked.",
       "ss-sg.globalcirclecat.com still points at the old 13.215.156.159 address by design; edge traffic activation is not approved.",
-      "Stopped instances have no Elastic IP association; rollback by starting may require DNS/config updates if AWS assigns new public IP addresses.",
+      "AWS Singapore instances and security groups are physically terminated and deleted; rollback by starting is waived.",
       "Aliyun aegis.service failed during certbot installation and read-only follow-up found Aegis processes still present; proxy-gateway-candidate, nginx, ufw, and certbot.timer are active.",
       "Do not terminate legacy blue or delete any security group without separate Risk A approval.",
       "Do not trust this snapshot for mutation; verify AWS, DNS, Nginx, systemd, endpoint, and SQLite state live."
@@ -316,9 +318,9 @@
       "sourceDoc": "docs/production-replacement-records/2026-05-27-aliyun-production-subscription-distribution-promotion.md"
     },
     {
-      "id": "non-aliyun-hp-node-retirement-blocked",
-      "summary": "AWS Singapore prod-edge-a and prod-edge-b were stopped with accepted outage. DNS and tracked config still reference the old AWS addresses, termination/security-group cleanup remains unapproved, and clean edge rebuild or rollback-start now requires separate Risk A gates.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md"
+      "id": "non-aliyun-hp-node-retirement-executed",
+      "summary": "AWS Singapore prod-edge-a and prod-edge-b instances are permanently terminated, and their associated security groups sg-0379ece0b3d305c43 and sg-06682c36aa03834f7 have been deleted. Legacy blue remains safely preserved in its stopped state. Rollback by starting the instances is waived.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-29-singapore-prod-edge-termination.md"
     },
     {
       "id": "technical-mvp-track-separated",

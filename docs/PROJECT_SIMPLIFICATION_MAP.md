@@ -665,6 +665,15 @@ Do not do these unless a separate approved task explicitly changes direction:
   to the record is enough
 - do not record raw secrets, subscription URLs, tokens, passwords, private keys,
   customer data, or unredacted production credentials
+- **do not allow unrelated or decorational work to block mainline execution**: Keep these explicitly deprioritized and outside the repository:
+  1. *Website Visual Decoration*: 3D/WebGL transits, complex CSS animations, card shadows, particle backgrounds, and SEO polishing.
+  2. *Telegram Integration*: TG registration scan entries hardcoded on public brand site, TG Bot Mini App, user panels, or TG group automation.
+  3. *Personal Job Materials*: Resumes, portfolios, job-seeking maps, and company targeting lists.
+  4. *Un-productized Media/Ad Drafts*: Video-channel plans, media scripts, or content drafts.
+  5. *Admin UI Aesthetic Polishing*: Color schemes, layouts, non-CLI console mock-ups, or decorative widgets (since the platform is CLI-first; public Admin is not a product surface).
+  6. *Documentation Over-Packaging*: Excessive high-level narrative bloating, over-lengthy closeouts, redundant topological diagrams, or slogan-like stage reports.
+  7. *Speculative Futuristic Architecture*: Multi-agent cards, futuristic protocol roadmaps, or un-gated conceptual structures.
+  8. *Brand Packaging*: AI company positionings, branding landing pages, API sandbox marketing, and generic site stories.
 
 ## Completion Criteria For Simplification Work
 
