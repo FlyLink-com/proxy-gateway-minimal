@@ -31,45 +31,39 @@ See `docs/OPERATOR_PROVISIONING_FORM_CONTRACT.md`.
 
 ### Step 2.2: Prepare Controlled-Open Input
 
-Create a JSON input file representing the batch or individual user. Store this locally (e.g. `handoff/batch-1-input.json`).
-Refer to `scripts/mock-controlled-open-input.example.json` for the required format.
+Create a JSON input file for the real issuance. Store this locally (e.g. `handoff/batch-1-input.json`).
+Refer to `scripts/issuance-input.example.json` for the required format.
 
 ```json
 {
-  "lead": {
-    "organization": "Example Corp",
-    "email": "demo@example.com",
-    "direction": "inbound",
-    "stage": "approved",
-    "message": "Approved test user for small batch rollout."
-  },
-  "account": { "status": "active" },
-  "entitlement": {
-    "status": "active",
-    "plan": "premium",
-    "validUntil": "2026-06-30T00:00:00.000Z"
-  },
-  "accessGrant": {
-    "entryRef": "entry-dynamic-a1",
-    "artifactRef": "artifact-premium-a1",
-    "visibleOnce": true
-  },
-  "operator": { "requestedBy": "operator-cli" }
+  "displayName": "operator-safe label",
+  "expiresAt": "2026-06-04T00:00:00.000Z",
+  "nodeId": "channel-lab-b-tuic",
+  "note": "preproduction-canary",
+  "artifact": {
+    "create": true
+  }
 }
 ```
 
-### Step 2.3: Execute CLI Tool
+### Step 2.3: Execute Issuance CLI (A-tier)
 
-Run the controlled-open CLI. The output will be a safe metadata package.
+Run the issuance CLI. This command requires mandatory flags to mutate production data.
 
 ```powershell
-npm run platform:controlled-open -- handoff/batch-1-input.json > handoff/batch-1-output.json
+npm run platform:issue-subscription -- --execute-production-mutation --approval-ref "PR-265" --db-path ".proxy-gateway/subscriptions.sqlite" --public-base-url "https://your-public-url.com" --handoff-file "handoff/user-A-delivery.txt" handoff/batch-1-input.json
 ```
 
-### Step 2.4: Generate Handoff File
+**Flag Requirements:**
+- `--execute-production-mutation`: Mandatory for real execution. Omitting this triggers a dry-run.
+- `--approval-ref`: The PR or approval ticket number.
+- `--db-path`: The explicit path to the SQLite database.
+- `--public-base-url`: Must be `https://` (unless `--allow-local-test` is used).
+- `--handoff-file`: The exact operator-only `0600` path where the visible-once handoff material will be written. Prefer a path outside the repository; repo-local `handoff/` is allowed only because it is gitignored.
 
-From the raw internal execution (which handles the secret generation), save the actual subscription URL or artifact string into a dedicated file strictly for user handoff.
-Ensure it is saved as `handoff/user-A-delivery.txt`. Do NOT display the content in the terminal.
+### Step 2.4: Handoff and Output
+
+The script will print a safe JSON summary to `stdout` containing hashed `tenantRef` and `artifactRef` values only. The raw opaque artifact `subscriptionUrl` will strictly be written to the specified `--handoff-file`. Do NOT paste the handoff file contents into the terminal or chat.
 
 ### Step 2.5: Database Verification
 
@@ -77,8 +71,9 @@ Verify the database state using safe queries. **DO NOT** use `SELECT *`.
 
 ```powershell
 # Check total tenants and status overview
-sqlite3 data/proxy.db "SELECT status, count(*) FROM subscription_tenants GROUP BY status;"
-sqlite3 data/proxy.db "SELECT status, count(*) FROM subscription_artifacts GROUP BY status;"
+$dbPath = ".proxy-gateway/subscriptions.sqlite"
+sqlite3 $dbPath "SELECT status, count(*) FROM subscription_tenants GROUP BY status;"
+sqlite3 $dbPath "SELECT status, count(*) FROM subscription_artifacts GROUP BY status;"
 ```
 
 ## 3. Revocation / Rollback Procedure
@@ -102,15 +97,22 @@ subscription state and therefore requires a separate exact-phrase A-tier
 approval or an explicitly authorized production operation record.
 
 After that approval, use the existing approved runbook or authorized operator
-tooling to perform the following changes. The SQL below is an implementation
-shape, not approval to run it.
+tooling to perform the following changes. The required programmatic rollback
+actions against the `subscriptions.core` API are:
 
+1. `disableTenant(tenantId)`: Sets the tenant status to disabled.
+2. `revokeSubscriptionArtifact(artifactId)`: Marks the artifact as revoked.
+
+If executing manually via SQL (implementation shape only, not execution authority):
 1. Set the tenant status to `disabled`.
    ```sql
    UPDATE subscription_tenants SET status = 'disabled' WHERE id = '<tenant-id>';
    ```
 2. Mark associated active opaque artifacts as `revoked` with a revocation
    timestamp.
+   ```sql
+   UPDATE subscription_artifacts SET status = 'revoked', updated_at = CURRENT_TIMESTAMP WHERE id = '<artifact-id>';
+   ```
 3. Re-check public refresh behavior through the approved validation command.
 4. Reload Nginx only if a separate Nginx/static-output gate explicitly requires
    it.

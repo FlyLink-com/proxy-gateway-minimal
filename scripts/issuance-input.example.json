@@ -1,0 +1,9 @@
+{
+  "displayName": "operator-safe label",
+  "expiresAt": "2026-06-04T00:00:00.000Z",
+  "nodeId": "channel-lab-b-tuic",
+  "note": "preproduction-canary",
+  "artifact": {
+    "create": true
+  }
+}
