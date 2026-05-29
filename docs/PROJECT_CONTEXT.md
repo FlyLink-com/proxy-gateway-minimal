@@ -138,6 +138,15 @@ Current architecture priorities:
   The flow remains operator-controlled after intake: public self-service
   account creation, payment, automatic entitlement issuance, and customer
   portal automation are not activated.
+- User Portal Business Boundary: the repository user portal shell now depends
+  on a dedicated `UserPortalClient` abstraction under
+  `admin/src/features/user-portal/user-portal-client.ts` instead of directly
+  calling Admin subscription APIs. The default local portal client is safe by
+  default: it can authenticate a preview session and submit a subscription
+  request summary, but it returns no subscription URL, performs no Admin API
+  call, writes no SQLite rows, activates no payment, exposes no public Admin,
+  and creates no production subscription. A future real user API remains
+  separate product work and must preserve user-scoped authorization.
 - Operator CLI Platform Boundary: the platform product direction is
   CLI-first for operators. Public routes stay small and explicit, while
   administrative workflows are handled through operator CLI tools,
