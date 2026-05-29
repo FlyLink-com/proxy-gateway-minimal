@@ -1,0 +1,30 @@
+{
+  "lead": {
+    "organization": "Example Corp",
+    "email": "demo@example.com",
+    "direction": "inbound",
+    "stage": "approved",
+    "message": "Approved test user for small batch rollout."
+  },
+  "account": {
+    "status": "active",
+    "displayName": "Example User"
+  },
+  "entitlement": {
+    "status": "active",
+    "plan": "premium",
+    "quota": {
+      "bandwidthGb": 100,
+      "devices": 3
+    },
+    "validUntil": "2026-06-29T00:00:00.000Z"
+  },
+  "accessGrant": {
+    "entryRef": "entry-dynamic-a1",
+    "artifactRef": "artifact-premium-a1",
+    "visibleOnce": true
+  },
+  "operator": {
+    "requestedBy": "operator-cli"
+  }
+}
