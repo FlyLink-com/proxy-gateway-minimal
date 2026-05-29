@@ -9,6 +9,7 @@
     "docs/DOMAIN_UNIT_BOUNDARIES.md",
     "docs/units/README.md",
     "docs/PROJECT_OPERATING_MODEL.md",
+    "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md",
     "docs/RESOURCE_PACKAGE_CLI.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/PROJECT_TOPOLOGY.md",
@@ -107,6 +108,7 @@
   ],
   "activeDirections": [
     "Goal-driven execution: Aliyun Subscription Control Platform MVP has moved from repo-only B/C support into exact-phrase Risk A promotion records; public Admin, edge activation, AWS rollback-start, historical state copy, broader artifact issuance, and legacy query-token retirement remain separate gates",
+    "Operator CLI Platform Boundary exists as the product/ops boundary for keeping public routes small and explicit while administrative workflows move to operator CLI tools, local/private console review, visible-once handoff files, and execution records; public Admin is not a product surface and production mutation remains Risk A even when wrapped by CLI",
     "Aliyun platform domain contract exists as repo-only lead/account/entitlement/subscription-access grant normalization with operator-safe summaries",
     "Aliyun platform lead review queue exists as repo-only public lead intake to protected operator-safe review summaries without CRM, Webhook, email automation, Aliyun deployment, DNS, production storage, or user traffic",
     "Aliyun platform account and entitlement shell exists as repo-only in-memory lead-to-account conversion and entitlement summaries without billing, payment collection, SQLite persistence, Aliyun deployment, DNS, production storage, or user traffic",

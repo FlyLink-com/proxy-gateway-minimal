@@ -117,6 +117,13 @@ Current architecture priorities:
   The public site uses a repository-only `/api/public/leads` intake endpoint
   for validated contact submissions; no external Webhook/CRM/email automation,
   DNS, or production deployment is implied by that route.
+- Operator CLI Platform Boundary: the platform product direction is
+  CLI-first for operators. Public routes stay small and explicit, while
+  administrative workflows are handled through operator CLI tools,
+  local/private console review surfaces, visible-once out-of-band handoff
+  files, and execution records. Public Admin is not a product surface, and any
+  production mutation remains Risk A even when wrapped by a CLI. See
+  `docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md`.
 - Platform Domain Contract: repository-only platform lead, account,
   entitlement, and subscription-access grant shapes live under
   `server/services/platform/control-plane-contract.mjs`. They provide

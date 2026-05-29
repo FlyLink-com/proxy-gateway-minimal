@@ -157,10 +157,11 @@ Do not expose this admin shell through the public Nginx gateway. Public producti
 
 本项目采用轻量级人工门禁编排，而不是 Kubernetes、Docker Compose、Terraform 或自动 CD。
 
-- Windows 本地 checkout 负责开发、测试、Admin UI 运营入口和 SSH tunnel 操作。
+- Windows 本地 checkout 负责开发、测试、operator CLI、local/private console
+  review 和 SSH tunnel 操作。
 - GitHub `master` 是稳定集成基线，功能和运维变更通过 `codex/*`、`feat/*`、`ops/*` 或 docs 分支进入 PR。
 - GitHub Actions CI 负责仓库级验证：`npm test`、`npm run admin:test` 和 `npm run admin:build`。当 GitHub-hosted runner 受 billing/spending-limit blocker 影响时，目标是使用本地 Linux 手动 CI；历史 Aliyun 手动 CI 记录保留，但生产订阅控制面候选不应继续承担常规 CI。
-- 注册、授权、订阅访问发放和通道激活准备优先采用 CLI-first 资源包模型。`npm run platform:resource-package -- <input.json>` 会生成 operator-safe 交付摘要，Admin UI 只保留 review/evidence 面，不承担复杂执行按钮。
+- 注册、授权、订阅访问发放和通道激活准备优先采用 CLI-first 资源包模型。`npm run platform:resource-package -- <input.json>` 会生成 operator-safe 交付摘要。平台不把公网 Admin 作为产品面，公共边界只暴露明确批准的站点、健康检查、线索和订阅刷新接口；管理员能力收敛到 operator CLI、local/private console review、0600/当前用户可读 handoff 文件和执行记录。Admin UI 只保留 review/evidence 面，不承担复杂执行按钮。边界见 `docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md`。
 - Staging 不自动创建。任何 AWS staging mutation 前必须先执行 `docs/STAGING_PROVISIONING.md` 的 dry-run checklist，并获得明确 operator approval。
 - Production 不自动部署。生产变更必须保留 `.env`、SQLite、node config 和 Nginx public admin blocking，并按 `docs/DEPLOYMENT_FLOW.md` 验证。
 - 当前生产仍以已记录的线上事实为准；目标重建方向是 Aliyun 承担订阅控制面，本地 Linux 承担手动 CI，干净服务器承担转发 edge/data-plane。实际迁移必须走 A 档 runbook。
