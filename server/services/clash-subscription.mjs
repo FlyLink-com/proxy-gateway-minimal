@@ -18,6 +18,25 @@ function bool(value) {
   return value === true || value === "true";
 }
 
+const GROUP_TEST_URL = "https://www.gstatic.com/generate_204";
+const DEFAULT_PROVIDER_NAME = "globalcircle-pool";
+const DEFAULT_PROVIDER_PATH = "./providers/globalcircle-pool.yaml";
+const DEFAULT_PROVIDER_FETCH_INTERVAL = 3600;
+const DEFAULT_PROVIDER_HEALTH_INTERVAL = 300;
+const INACTIVE_PROVIDER_STATUSES = new Set([
+  "disabled",
+  "maintenance",
+  "draining",
+  "drained",
+  "degraded",
+  "held",
+  "hold",
+  "hold-for-investigation",
+  "inactive",
+  "offline",
+  "retired"
+]);
+
 function normalizeProtocol(server) {
   const raw = text(server.protocol || server.clashType || server.type || "ss").toLowerCase();
   if (raw === "ss" || raw === "shadowsocks" || raw === "shadowsocks-libev" || raw === "shadowsocks-rust") {
@@ -168,6 +187,55 @@ function clashServers(proxyConfig) {
     .map(clashProxy);
 }
 
+function isActiveProviderServer(server) {
+  if (
+    server.enabled === false ||
+    server.active === false ||
+    bool(server.disabled) ||
+    bool(server.maintenance)
+  ) {
+    return false;
+  }
+  const status = metadataToken(server.status || server.lifecycleStatus || server.nodeStatus || "active");
+  return !INACTIVE_PROVIDER_STATUSES.has(status);
+}
+
+function clashProviderServers(proxyConfig) {
+  return (proxyConfig.servers || [])
+    .filter((server) => isActiveProviderServer(server))
+    .filter((server) => server.host && server.port)
+    .map(clashProxy);
+}
+
+function requireProviderUrl(value) {
+  const normalized = text(value);
+  if (!normalized) {
+    throw new Error("providerUrl is required for Clash provider-mode subscription");
+  }
+  return normalized;
+}
+
+function providerText(value, fallback) {
+  const normalized = text(value);
+  return normalized || fallback;
+}
+
+function providerOptions(options = {}) {
+  return {
+    name: providerText(options.providerName, DEFAULT_PROVIDER_NAME),
+    url: requireProviderUrl(options.providerUrl),
+    path: providerText(options.providerPath, DEFAULT_PROVIDER_PATH),
+    interval: Number.isInteger(Number(options.providerInterval))
+      ? Number(options.providerInterval)
+      : DEFAULT_PROVIDER_FETCH_INTERVAL,
+    healthCheckUrl: providerText(options.healthCheckUrl, GROUP_TEST_URL),
+    healthCheckInterval: Number.isInteger(Number(options.healthCheckInterval))
+      ? Number(options.healthCheckInterval)
+      : DEFAULT_PROVIDER_HEALTH_INTERVAL,
+    healthCheckLazy: options.healthCheckLazy === undefined ? true : bool(options.healthCheckLazy)
+  };
+}
+
 function pushOptionalText(lines, key, value) {
   if (value) {
     lines.push(`    ${key}: ${yamlQuote(value)}`);
@@ -217,6 +285,23 @@ function pushProxyGroup(lines, { name, type, servers, tolerance }) {
   }
 
   return true;
+}
+
+function pushProviderGroup(lines, { name, type, providerName, tolerance }) {
+  lines.push(
+    `  - name: ${name}`,
+    `    type: ${type}`,
+    `    url: ${yamlQuote(GROUP_TEST_URL)}`,
+    "    interval: 300",
+    "    lazy: true"
+  );
+  if (tolerance !== undefined) {
+    lines.push(`    tolerance: ${tolerance}`);
+  }
+  lines.push(
+    "    use:",
+    `      - ${yamlQuote(providerName)}`
+  );
 }
 
 function qualityGroupServers(servers, qualityClasses) {
@@ -282,6 +367,65 @@ function pushProxy(lines, server) {
   pushOptionalText(lines, "network", server.network);
   pushOptionalText(lines, "flow", server.flow);
   pushOptionalText(lines, "client-fingerprint", server.clientFingerprint);
+}
+
+export function generateClashProxyProvider(proxyConfig) {
+  const servers = clashProviderServers(proxyConfig);
+  const lines = ["proxies:"];
+
+  for (const server of servers) {
+    pushProxy(lines, server);
+  }
+
+  lines.push("");
+  return lines.join("\n");
+}
+
+export function generateClashProviderSubscription(proxyConfig, options = {}) {
+  const provider = providerOptions(options);
+  const lines = [
+    "mixed-port: 7897",
+    "allow-lan: false",
+    "mode: global",
+    "proxy-providers:",
+    `  ${yamlQuote(provider.name)}:`,
+    "    type: http",
+    `    url: ${yamlQuote(provider.url)}`,
+    `    path: ${yamlQuote(provider.path)}`,
+    `    interval: ${provider.interval}`,
+    "    health-check:",
+    "      enable: true",
+    `      url: ${yamlQuote(provider.healthCheckUrl)}`,
+    `      interval: ${provider.healthCheckInterval}`,
+    `      lazy: ${provider.healthCheckLazy ? "true" : "false"}`,
+    "proxy-groups:"
+  ];
+
+  pushProviderGroup(lines, { name: "AUTO", type: "url-test", providerName: provider.name });
+  pushProviderGroup(lines, {
+    name: "WEAK-NETWORK",
+    type: "url-test",
+    providerName: provider.name,
+    tolerance: 50
+  });
+  pushProviderGroup(lines, { name: "FALLBACK", type: "fallback", providerName: provider.name });
+
+  lines.push(
+    "  - name: GLOBAL",
+    "    type: select",
+    "    proxies:",
+    "      - AUTO",
+    "      - WEAK-NETWORK",
+    "      - FALLBACK",
+    "      - DIRECT",
+    "    use:",
+    `      - ${yamlQuote(provider.name)}`,
+    "rules:",
+    "  - MATCH,GLOBAL",
+    ""
+  );
+
+  return lines.join("\n");
 }
 
 export function generateClashSubscription(proxyConfig) {

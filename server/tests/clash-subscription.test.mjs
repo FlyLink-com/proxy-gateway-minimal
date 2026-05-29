@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createApp } from "../app.mjs";
-import { generateClashSubscription, subscriptionSummary } from "../services/clash-subscription.mjs";
+import {
+  generateClashProviderSubscription,
+  generateClashProxyProvider,
+  generateClashSubscription,
+  subscriptionSummary
+} from "../services/clash-subscription.mjs";
 import { listen } from "./helpers/listen.mjs";
 
 function sampleConfig() {
@@ -263,6 +268,119 @@ test("generateClashSubscription emits long-haul quality groups without leaking m
   );
   assert.match(yaml, /name: GLOBAL\n    type: select\n    proxies:\n      - AUTO\n      - WEAK-NETWORK\n      - STABLE\n      - FALLBACK/);
   assert.doesNotMatch(yaml, /qualityClass|weak-network|channelRole|baseline|candidate/);
+});
+
+test("generateClashProviderSubscription emits an auto-updating provider profile without inline secrets", () => {
+  const yaml = generateClashProviderSubscription(sampleConfig(), {
+    providerName: "globalcircle-pool",
+    providerUrl: "https://sub.example.test/sub/p/globalcircle-pool.yaml",
+    providerPath: "./providers/globalcircle-pool.yaml"
+  });
+
+  assert.match(yaml, /mixed-port: 7897/);
+  assert.match(yaml, /mode: global/);
+  assert.match(yaml, /proxy-providers:\n  "globalcircle-pool":\n    type: http/);
+  assert.match(yaml, /url: "https:\/\/sub\.example\.test\/sub\/p\/globalcircle-pool\.yaml"/);
+  assert.match(yaml, /path: "\.\/providers\/globalcircle-pool\.yaml"/);
+  assert.match(yaml, /interval: 3600/);
+  assert.match(
+    yaml,
+    /health-check:\n      enable: true\n      url: "https:\/\/www\.gstatic\.com\/generate_204"\n      interval: 300\n      lazy: true/
+  );
+  assert.match(
+    yaml,
+    /name: AUTO\n    type: url-test\n    url: "https:\/\/www\.gstatic\.com\/generate_204"\n    interval: 300\n    lazy: true\n    use:\n      - "globalcircle-pool"/
+  );
+  assert.match(
+    yaml,
+    /name: FALLBACK\n    type: fallback\n    url: "https:\/\/www\.gstatic\.com\/generate_204"\n    interval: 300\n    lazy: true\n    use:\n      - "globalcircle-pool"/
+  );
+  assert.match(
+    yaml,
+    /name: GLOBAL\n    type: select\n    proxies:\n      - AUTO\n      - WEAK-NETWORK\n      - FALLBACK\n      - DIRECT\n    use:\n      - "globalcircle-pool"/
+  );
+  assert.doesNotMatch(yaml, /proxies:\n  - name:/);
+  assert.doesNotMatch(yaml, /pw:with#chars|secondary-secret/);
+});
+
+test("generateClashProviderSubscription quotes provider names used as YAML keys", () => {
+  const yaml = generateClashProviderSubscription(sampleConfig(), {
+    providerName: "globalcircle:pool # edge",
+    providerUrl: "https://sub.example.test/sub/p/globalcircle-pool.yaml"
+  });
+
+  assert.match(yaml, /proxy-providers:\n  "globalcircle:pool # edge":\n    type: http/);
+  assert.match(yaml, /use:\n      - "globalcircle:pool # edge"/);
+});
+
+test("generateClashProviderSubscription requires an explicit provider URL", () => {
+  assert.throws(
+    () =>
+      generateClashProviderSubscription(sampleConfig(), {
+        providerName: "globalcircle-pool"
+      }),
+    /providerUrl is required/
+  );
+});
+
+test("generateClashProxyProvider emits only active provider nodes", () => {
+  const yaml = generateClashProxyProvider({
+    servers: [
+      {
+        name: "active-tuic",
+        host: "tuic.example.test",
+        port: 10443,
+        protocol: "tuic",
+        uuid: "33333333-3333-4333-8333-333333333333",
+        password: "active-tuic-secret"
+      },
+      {
+        name: "held-hysteria2",
+        host: "hy2.example.test",
+        port: 443,
+        protocol: "hysteria2",
+        password: "held-hy2-secret",
+        status: "hold_for_investigation"
+      },
+      {
+        name: "maintenance-hysteria2",
+        host: "maintenance.example.test",
+        port: 443,
+        protocol: "hysteria2",
+        password: "maintenance-secret",
+        maintenance: true
+      },
+      {
+        name: "disabled-tuic",
+        host: "disabled.example.test",
+        port: 10443,
+        protocol: "tuic",
+        uuid: "44444444-4444-4444-8444-444444444444",
+        password: "disabled-secret",
+        disabled: true
+      },
+      {
+        name: "retired-ss",
+        host: "retired.example.test",
+        port: 18388,
+        protocol: "ss",
+        method: "aes-256-gcm",
+        password: "retired-secret",
+        status: "retired"
+      }
+    ]
+  });
+
+  assert.match(yaml, /proxies:/);
+  assert.match(yaml, /name: "active-tuic"/);
+  assert.match(yaml, /type: tuic/);
+  assert.match(yaml, /server: "tuic\.example\.test"/);
+  assert.match(yaml, /password: "active-tuic-secret"/);
+  assert.doesNotMatch(
+    yaml,
+    /held-hysteria2|held-hy2-secret|maintenance-hysteria2|maintenance-secret|disabled-tuic|disabled-secret|retired-ss|retired-secret/
+  );
+  assert.doesNotMatch(yaml, /status|hold_for_investigation|maintenance|disabled|retired/);
 });
 
 test("generateClashSubscription rejects unsupported protocol instead of silently emitting it", () => {

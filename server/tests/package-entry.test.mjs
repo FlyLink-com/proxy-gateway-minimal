@@ -35,6 +35,8 @@ import {
   createApp,
   createRuntimeState,
   createChannelBenchmarkFixtureFromPlan,
+  generateClashProviderSubscription,
+  generateClashProxyProvider,
   generateClashSubscription,
   normalizeChannelBenchmarkFixture,
   runChannelBenchmarkPlan,
@@ -98,6 +100,8 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof buildChannelExtendedMeasurementReport, "function");
   assert.equal(typeof buildChannelMeasurementBundleReport, "function");
   assert.equal(typeof createChannelBenchmarkFixtureFromPlan, "function");
+  assert.equal(typeof generateClashProviderSubscription, "function");
+  assert.equal(typeof generateClashProxyProvider, "function");
   assert.equal(typeof generateClashSubscription, "function");
   assert.equal(typeof CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION, "string");
   assert.equal(typeof normalizeChannelBenchmarkFixture, "function");
