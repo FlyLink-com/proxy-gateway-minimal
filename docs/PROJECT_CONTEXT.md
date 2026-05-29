@@ -158,6 +158,14 @@ Current architecture priorities:
   Admin, approval submission, Aliyun deployment, DNS, production storage,
   payment activation, user traffic, edge traffic, or production authority. See
   `docs/OPERATOR_PROVISIONING_FORM_CONTRACT.md`.
+- Legacy Admin UI Archive: the existing `admin/` application is archived as a
+  local protected reference/testing surface only. It is no longer the future
+  product UI, user portal, or operator-console design baseline. Future UI work
+  should be rebuilt around the Aliyun-first, CLI-first, public-site/portal
+  split, operator provisioning form contract, resource-package handoff, and
+  role/permission boundaries instead of polishing the old Overview-heavy Admin
+  information architecture. No Admin code was moved or deleted by the archive
+  decision. See `docs/ADMIN_UI_LEGACY_ARCHIVE.md`.
 - Platform Domain Contract: repository-only platform lead, account,
   entitlement, and subscription-access grant shapes live under
   `server/services/platform/control-plane-contract.mjs`. They provide
