@@ -1,0 +1,60 @@
+{
+  "mode": "tuic-subscription-output-dry-run-package",
+  "generatedAt": "2026-05-28T15:40:00.000+08:00",
+  "targetLabel": "channel-lab-b",
+  "protocol": "tuic",
+  "scope": "canary-only dry-run, no production mutation",
+  "inputs": {
+    "activationFlowFixture": "activation-flow-fixture.json",
+    "canaryEvidence": "canary-evidence.json",
+    "currentProxyConfig": "config/proxy-servers.json",
+    "reviewOnlyProxyConfig": "proxy-servers-tuic-canary-review.json",
+    "controlledAccessMechanism": "controlled-access-mechanism.json",
+    "activationRequestPacket": "activation-request-packet.json"
+  },
+  "expectedOutputFiles": [
+    "activation-package-current-config.json",
+    "production-module-current-config.json",
+    "activation-package-review-config.json",
+    "production-module-review-config.json",
+    "controlled-access-mechanism.json",
+    "activation-request-packet.json"
+  ],
+  "result": {
+    "currentConfig": {
+      "activationPackageStatus": "blocked_before_risk_a_subscription_output_activation_request",
+      "productionModuleStatus": "blocked_before_production_module_branch_review",
+      "blockers": [
+        "missing_subscription_output_config",
+        "activation_package_not_ready",
+        "candidate_missing_from_activation_package"
+      ]
+    },
+    "reviewOnlyConfig": {
+      "notDeployable": true,
+      "activationPackageStatus": "ready_for_risk_a_subscription_output_activation_request",
+      "productionModuleStatus": "ready_for_production_module_branch_review",
+      "executionAuthority": "not_granted"
+    },
+    "controlledAccessMechanism": {
+      "status": "ready_for_exact_activation_approval_review",
+      "executionAuthority": "not_granted",
+      "scope": "one controlled operator access only",
+      "hostInternalEvidence": "available_via_aliyun_cloud_assistant_read_only_inventory"
+    },
+    "activationRequestPacket": {
+      "status": "ready_for_exact_approval_phrase",
+      "executionAuthority": "not_granted",
+      "scope": "one controlled operator access only",
+      "requiresFreshChecksAtActivation": true
+    }
+  },
+  "safety": {
+    "noProductionMutation": true,
+    "noSubscriptionOutputMutation": true,
+    "noRuntimeMutation": true,
+    "noTrafficMovement": true,
+    "yamlNotReturned": true,
+    "secretsNotRecorded": true
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "mode": "channel-measurement-bundle",
+  "generatedAt": "2026-05-28T06:49:52.9551553Z",
+  "runId": "2026-05-28-channel-lab-b-tuic-extended-measurement",
+  "candidateSet": "channel-lab-b-tuic-extended-measurement",
+  "windows": [
+    {
+      "id": "tuic-mihomo-window-1",
+      "summaryFile": "inputs/tuic-mihomo-window-1.json"
+    },
+    {
+      "id": "tuic-mihomo-window-2",
+      "summaryFile": "inputs/tuic-mihomo-window-2.json"
+    },
+    {
+      "id": "tuic-mihomo-window-3",
+      "summaryFile": "inputs/tuic-mihomo-window-3.json"
+    }
+  ]
+}

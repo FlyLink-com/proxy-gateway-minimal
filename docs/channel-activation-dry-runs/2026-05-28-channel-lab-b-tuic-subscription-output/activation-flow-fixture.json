@@ -1,0 +1,202 @@
+{
+  "schemaVersion": "channel-subscription-activation-flow-fixture/v1",
+  "generatedAt": "2026-05-28T07:40:00.000Z",
+  "sourceGeneratedAt": "2026-05-28T07:40:00.000Z",
+  "activationFlow": {
+    "ok": true,
+    "mode": "channel-subscription-activation-flow",
+    "generatedAt": "2026-05-28T07:40:00.000Z",
+    "sourceGeneratedAt": "2026-05-28T07:40:00.000Z",
+    "flowStatus": "ready_for_a_tier_subscription_output_activation_request",
+    "requiredNextAction": "request_risk_a_subscription_output_activation_approval",
+    "blockers": [],
+    "stages": {
+      "runtimeEvidenceBridge": {
+        "mode": "channel-runtime-evidence-bridge",
+        "status": "reviewed"
+      },
+      "subscriptionOutputDraft": {
+        "mode": "channel-subscription-output-draft",
+        "status": "draft_ready_for_activation_review"
+      },
+      "activationReadiness": {
+        "mode": "channel-subscription-activation-readiness",
+        "status": "ready_for_subscription_output_activation_request"
+      },
+      "activationHandoff": {
+        "mode": "channel-subscription-activation-handoff-packet",
+        "status": "ready_for_operator_approval_request"
+      }
+    },
+    "gate": {
+      "risk": "A",
+      "gate": "risk_a_subscription_output_activation",
+      "approvalRequestReady": true,
+      "exactApprovalRequired": true,
+      "executionAuthority": "not_granted",
+      "approvalTextIncluded": false,
+      "approvalSubmissionRoute": null,
+      "subscriptionOutputExecutionRoute": null,
+      "executesGate": false,
+      "runbook": "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md"
+    },
+    "outputs": {
+      "activationHandoff": {
+        "ok": true,
+        "mode": "channel-subscription-activation-handoff-packet",
+        "generatedAt": "2026-05-28T07:40:00.000Z",
+        "sourceGeneratedAt": "2026-05-28T07:40:00.000Z",
+        "handoff": {
+          "status": "ready_for_operator_approval_request",
+          "requiredNextAction": "request_risk_a_subscription_output_activation_approval",
+          "executionAuthority": "not_granted",
+          "blockers": [],
+          "counts": {
+            "baselinePool": 1,
+            "canaryPool": 1,
+            "privatePool": 0,
+            "blockedPool": 0
+          },
+          "nextGate": {
+            "risk": "A",
+            "gate": "risk_a_subscription_output_activation",
+            "approvalRequestReady": true,
+            "exactApprovalRequired": true,
+            "approvalTextIncluded": false,
+            "approvalSubmissionRoute": null,
+            "subscriptionOutputExecutionRoute": null,
+            "executesGate": false,
+            "runbook": "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md"
+          }
+        },
+        "checklists": {
+          "preflight": [
+            "confirm_channel_subscription_activation_readiness",
+            "refresh_runtime_evidence_before_activation_request",
+            "confirm_baseline_and_canary_pools_match_handoff_packet",
+            "prepare_dated_subscription_output_activation_record"
+          ],
+          "validation": [
+            "record_subscription_output_activation_validation",
+            "record_controlled_import_refresh_result",
+            "record_no_unapproved_traffic_moved",
+            "record_legacy_output_compatibility_decision"
+          ],
+          "rollback": [
+            "prepare_subscription_output_revert_plan",
+            "record_previous_subscription_output_config",
+            "record_runtime_cleanup_or_retain_decision",
+            "record_dns_and_gateway_unchanged"
+          ]
+        },
+        "candidates": {
+          "baseline": [
+            {
+              "name": "prod-edge-a",
+              "protocol": "ss",
+              "qualityClass": "stable",
+              "qualityTier": "baseline",
+              "channelScore": 90,
+              "reasonCodes": [
+                "stable_baseline_reference"
+              ]
+            }
+          ],
+          "canary": [
+            {
+              "name": "channel-lab-b-tuic",
+              "protocol": "tuic",
+              "qualityClass": "weak-network",
+              "qualityTier": "healthy",
+              "channelScore": 98,
+              "targetLabel": "channel-lab-b",
+              "lifecycleStatus": "runtime_deployed",
+              "nextGate": "subscription_output_activation_approval",
+              "reasonCodes": [
+                "extended_measurement_ready",
+                "candidate_requires_canary"
+              ]
+            }
+          ],
+          "private": [],
+          "blocked": []
+        },
+        "source": {
+          "readinessMode": "channel-subscription-activation-readiness",
+          "readinessStatus": "ready_for_subscription_output_activation_request",
+          "draftMode": "channel-subscription-output-draft",
+          "bridgeMode": "channel-runtime-evidence-bridge",
+          "systemMode": "channel-system-decision-flow",
+          "runtimeRegistryMode": "channel-runtime-registry",
+          "runtimeGatePacketMode": "channel-runtime-gate-packet"
+        },
+        "safety": {
+          "advisoryOnly": true,
+          "summaryOnly": true,
+          "noRuntimeMutation": true,
+          "noProductionMutation": true,
+          "noApprovalSubmission": true,
+          "noTrafficMovement": true,
+          "noSubscriptionOutputMutation": true,
+          "yamlNotGenerated": true,
+          "requiresSeparateRiskAApproval": true,
+          "approvalTextIncluded": false,
+          "omittedFields": [
+            "hosts",
+            "ports",
+            "urls",
+            "credentials",
+            "rawLogs",
+            "tokens",
+            "subscriptionUrls",
+            "yaml"
+          ]
+        }
+      }
+    },
+    "safety": {
+      "advisoryOnly": true,
+      "summaryOnly": true,
+      "noRuntimeMutation": true,
+      "noProductionMutation": true,
+      "noApprovalSubmission": true,
+      "noTrafficMovement": true,
+      "noSubscriptionOutputMutation": true,
+      "yamlNotGenerated": true,
+      "requiresSeparateRiskAApproval": true,
+      "omittedFields": [
+        "hosts",
+        "ports",
+        "urls",
+        "credentials",
+        "rawLogs",
+        "tokens",
+        "subscriptionUrls",
+        "yaml"
+      ]
+    }
+  },
+  "safety": {
+    "advisoryOnly": true,
+    "summaryOnly": true,
+    "fixtureOnly": true,
+    "replayOnly": false,
+    "noRuntimeMutation": true,
+    "noProductionMutation": true,
+    "noApprovalSubmission": true,
+    "noTrafficMovement": true,
+    "noSubscriptionOutputMutation": true,
+    "yamlNotGenerated": true,
+    "requiresSeparateRiskAApproval": true,
+    "omittedFields": [
+      "hosts",
+      "ports",
+      "urls",
+      "credentials",
+      "rawLogs",
+      "tokens",
+      "subscriptionUrls",
+      "yaml"
+    ]
+  }
+}

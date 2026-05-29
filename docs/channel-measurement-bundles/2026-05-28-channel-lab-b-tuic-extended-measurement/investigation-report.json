@@ -1,0 +1,42 @@
+{
+  "ok": true,
+  "mode": "channel-measurement-investigation-report",
+  "generatedAt": "2026-05-28T06:50:49.735Z",
+  "sourceGeneratedAt": "2026-05-28T06:49:52.9551553Z",
+  "runId": "2026-05-28-channel-lab-b-tuic-extended-measurement",
+  "candidateSet": "channel-lab-b-tuic-extended-measurement",
+  "overallStatus": "ready_for_operator_decision",
+  "totalSampleCount": 180,
+  "summary": {
+    "probeCount": 1,
+    "readyCount": 1,
+    "needsExtendedMeasurementCount": 0,
+    "holdCount": 0,
+    "holdReasonCodes": []
+  },
+  "decision": {
+    "rolloutRecommendation": "operator_decision_required",
+    "nextAction": "prepare_risk_a_canary_gate",
+    "productionImpact": "none",
+    "requiresRiskAForRuntime": true
+  },
+  "probes": [
+    {
+      "name": "channel-lab-b-tuic-mihomo-import",
+      "protocol": "tuic",
+      "role": "candidate",
+      "qualityClass": "extended-mihomo-import",
+      "windowCount": 3,
+      "readyWindowCount": 3,
+      "needsExtendedMeasurementWindowCount": 0,
+      "holdWindowCount": 0,
+      "totalSampleCount": 180,
+      "readiness": "ready_for_decision",
+      "issuePattern": "ready_evidence",
+      "investigationPriority": "none",
+      "reasonCodes": [
+        "extended_measurement_ready"
+      ]
+    }
+  ]
+}

@@ -1,14 +1,15 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-05-28",
+  "lastUpdated": "2026-05-29",
   "timezone": "Asia/Shanghai",
-  "status": "active-snapshot-aliyun-subscription-promoted-edge-blocked",
+  "status": "active-snapshot-aliyun-subscription-promoted-edge-terminated",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
   "sourceDocs": [
     "docs/PROJECT_CONTEXT.md",
     "docs/DOMAIN_UNIT_BOUNDARIES.md",
     "docs/units/README.md",
     "docs/PROJECT_OPERATING_MODEL.md",
+    "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md",
     "docs/RESOURCE_PACKAGE_CLI.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/PROJECT_TOPOLOGY.md",
@@ -70,7 +71,21 @@
     "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-execution.md",
     "docs/production-replacement-records/2026-05-28-channel-lab-b-creation.md",
     "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-runtime.md",
-    "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-operator-device-canary.md"
+    "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-operator-device-canary.md",
+    "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-extended-measurement.md",
+    "docs/production-replacement-records/2026-05-28-aliyun-tuic-subscription-output-integration-inventory.md",
+    "docs/production-replacement-records/2026-05-28-aliyun-tuic-host-provider-inventory.md",
+    "docs/production-replacement-records/2026-05-28-aliyun-cloud-assistant-tuic-host-inventory.md",
+    "docs/production-replacement-records/2026-05-28-tuic-subscription-output-canary-planning.md",
+    "docs/production-replacement-records/2026-05-28-tuic-subscription-output-dry-run-package.md",
+    "docs/production-replacement-records/2026-05-28-tuic-subscription-output-config-review.md",
+    "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-mechanism.md",
+    "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-request.md",
+    "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-stopped.md",
+    "docs/production-replacement-records/2026-05-28-tuic-controlled-operator-access-creation.md",
+    "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation.md",
+    "docs/production-replacement-records/2026-05-28-cli-preproduction-subscription-issuance.md",
+    "docs/production-replacement-records/2026-05-29-singapore-prod-edge-termination.md"
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
@@ -93,7 +108,9 @@
     "measured validation and operations"
   ],
   "activeDirections": [
+    "Mainline focus strictly converged on core subscription production delivery: '能生产、能发放、能审计、能撤回'; all visual, marketing, Telegram bot, video-channel drafts, and speculative decorational sketches are retired and deprioritized",
     "Goal-driven execution: Aliyun Subscription Control Platform MVP has moved from repo-only B/C support into exact-phrase Risk A promotion records; public Admin, edge activation, AWS rollback-start, historical state copy, broader artifact issuance, and legacy query-token retirement remain separate gates",
+    "Operator CLI Platform Boundary exists as the product/ops boundary for keeping public routes small and explicit while administrative workflows move to operator CLI tools, local/private console review, visible-once handoff files, and execution records; public Admin is not a product surface and production mutation remains Risk A even when wrapped by CLI",
     "Aliyun platform domain contract exists as repo-only lead/account/entitlement/subscription-access grant normalization with operator-safe summaries",
     "Aliyun platform lead review queue exists as repo-only public lead intake to protected operator-safe review summaries without CRM, Webhook, email automation, Aliyun deployment, DNS, production storage, or user traffic",
     "Aliyun platform account and entitlement shell exists as repo-only in-memory lead-to-account conversion and entitlement summaries without billing, payment collection, SQLite persistence, Aliyun deployment, DNS, production storage, or user traffic",
@@ -129,7 +146,7 @@
     "Domain Unit Boundaries for product business, commercial entitlement, subscription access, nodes, validation, operator lab, and production ops",
     "Aliyun user-management / subscription-distribution platform as the near-term production-control target",
     "HP local Linux as manual CI and operator lab only",
-    "AWS Singapore prod-edge-a/b stopped with accepted outage; clean edge rebuild is now required before restored service",
+    "AWS Singapore prod-edge-a/b stopped nodes are permanently terminated and security groups deleted after Aliyun controlled opaque access successfully binds to TUIC and preproduction CLI artifacts resolve TUIC; rollback by starting is waived and legacy blue remains preserved intact",
     "Subscription Control / Edge Split",
     "Aliyun current server as private loopback-only subscription control-plane candidate after CI cleanup",
     "Local Linux manual CI as the target validation host",
@@ -174,7 +191,20 @@
     "TUIC runtime inventory gate handoff as the exact-phrase Stage 0 read-only inventory path after the held Hysteria2 measurement, without TUIC deployment authority by itself, subscription output change, operator-device traffic, or cleanup mutation",
     "TUIC Stage 0 read-only inventory execution verified channel-lab-a AWS identity and network posture but blocked before runtime deployment because SSH timed out before banner/auth, SSM is unavailable, Hysteria2 owns the documented UDP/443 canary role, and a separate port/cleanup/access plan or fresh channel-lab-b gate is required",
     "channel-lab-b TUIC runtime deployment executed after exact approval: Mihomo TUIC v5 is active on UDP/443 on AWS ap-northeast-1, but controlled subscription batch generation, operator-device traffic, subscription output, DNS, production config, all-user rollout, and production authority transfer remain separately gated",
-    "channel-lab-b controlled TUIC subscription batch and operator-device canary executed after exact approval: local sensitive YAML was generated outside the repository, standalone Mihomo completed 20/20 short HTTP samples through TUIC, and production subscription output, DNS, production config, all-user rollout, and production authority transfer remain unchanged"
+    "channel-lab-b controlled TUIC subscription batch and operator-device canary executed after exact approval: local sensitive YAML was generated outside the repository, standalone Mihomo completed 20/20 short HTTP samples through TUIC, and production subscription output, DNS, production config, all-user rollout, and production authority transfer remain unchanged",
+    "channel-lab-b TUIC extended measurement executed after exact approval: standalone Mihomo -> TUIC completed three 60-sample operator-device windows with 180/180 successes, no timeouts, no local Mihomo error-like lines, and repository bundle/investigation reports classify it as ready for operator decision; production subscription output, DNS, production config, all-user rollout, and production authority transfer remain unchanged",
+    "Aliyun / TUIC subscription-output integration read-only inventory recorded after the TUIC production-module package entered master: Aliyun public subscription boundary remained behaviorally correct, but Aliyun host-internal inventory is blocked by SSH session closure and public 3456/18080 posture is inconclusive because TCP connects while HTTP health times out; no subscription-output activation, DNS, Nginx, runtime, firewall, config, traffic, or authority mutation was performed",
+    "Aliyun / TUIC host-provider follow-up inventory completed after exact approval: SWAS provider identity and provider-firewall posture were confirmed read-only, 80/443 are the public subscription-boundary ports, 3456/18080 have no provider allow rule and are closed_or_timeout from HP, but host-internal service/SQLite/Nginx inventory remains blocked over SSH; no Cloud Assistant command invocation, runtime, firewall, DNS, Nginx, config, subscription-output, traffic, or authority mutation was performed",
+    "Aliyun Cloud Assistant read-only host inventory completed after exact approval: proxy-gateway-candidate and Nginx are active, loopback app and Nginx health return HTTP 200, candidate SQLite integrity is ok, nginx -t passes, $request_uri count is 0, and no runtime, firewall, DNS, Nginx reload, systemd restart, config, subscription-output, SQLite row, traffic, or authority mutation was performed",
+    "Canary-only TUIC subscription-output activation planning recorded after exact approval: channel-lab-b TUIC has enough operator-device evidence to plan a one-controlled-access canary gate, but activation authority remains not granted; Cloud Assistant host-internal evidence is now available, while a real controlled-access config/activation mechanism, rollback evidence, and a separate exact activation approval are still required before any subscription-output mutation",
+    "Canary-only TUIC subscription-output dry-run package executed after exact approval: the activation-flow fixture is ready, but the package against current repository config is blocked by missing_subscription_output_config and the production module is blocked by activation_package_not_ready plus candidate_missing_from_activation_package; no production YAML, subscription-output mutation, DNS, Nginx, runtime, firewall, config, traffic, all-user rollout, or authority mutation was performed",
+    "Canary-only TUIC subscription-output config review branch executed after exact approval: a synthetic non-deployable review config fixture makes the activation package ready_for_risk_a_subscription_output_activation_request and production module ready_for_production_module_branch_review while current runtime config remains unchanged and blocked; no config/proxy-servers.json change, production deployment, YAML, subscription-output mutation, DNS, Nginx, runtime, firewall, traffic, all-user rollout, or authority mutation was performed",
+    "TUIC controlled-access activation mechanism review recorded after operator agreement: the next executable shape is one controlled operator access only, default stable output unchanged, rollback evidence required, and execution authority not_granted; no config/proxy-servers.json change, production deployment, YAML, subscription-output mutation, DNS, Nginx, runtime, firewall, traffic, all-user rollout, or authority mutation was performed",
+    "TUIC controlled-access activation request packet recorded after operator agreement: ready evidence, activation-time fresh checks, hard stops, and the exact approval phrase are consolidated for the later one-controlled-access canary decision; execution authority remains not_granted, short confirmations are insufficient for mutation, and no config, subscription-output, Aliyun, DNS, Nginx, systemd, channel-lab-b, traffic, all-user rollout, or authority mutation was performed",
+    "Exact-approved TUIC controlled-access activation attempt stopped before mutation: public boundary, Aliyun host summary, and channel-lab-b runtime health were refreshed successfully, but Aliyun had no active controlled operator access, active artifact, or unexpired unused temporary link to bind; no config, subscription-output, systemd, Nginx, DNS, firewall, SQLite row, channel-lab-b, traffic, all-user rollout, or authority mutation was performed",
+    "Controlled operator access creation completed after exact approval: one active controlled operator access and active opaque artifact now exist on Aliyun, previous output state is stable prod-edge-a, controlled refresh returns 200 with stable SS output only, and no TUIC binding, config, DNS, Nginx, systemd, firewall, channel-lab-b, all-user rollout, or authority mutation was performed",
+    "Exact-approved TUIC canary-only subscription-output activation completed: one active controlled operator access now binds to channel-lab-b-tuic and the controlled opaque artifact refresh returns TUIC output only; stable default output remains unchanged and no all-user rollout, DNS, Nginx config/reload, firewall change, public Admin exposure, channel-lab-b cleanup, legacy query-token retirement, broader artifact issuance, or production authority transfer was performed",
+    "CLI preproduction subscription issuance completed after exact approval: 3 active preproduction tenants and 3 active opaque artifacts were created on Aliyun, bound to channel-lab-b-tuic, with raw handoff material stored only in a remote 0600 operator handoff file outside the repository; 3/3 artifact refreshes returned TUIC output, public health/Admin/no-token behavior stayed safe, and no all-user rollout, DNS, Nginx, firewall, public Admin, payment activation, legacy query-token retirement, AWS mutation, edge traffic, or raw subscription material recording in repo/docs/PR/chat was performed"
   ],
   "activeGoal": {
     "id": "aliyun-subscription-control-platform-mvp",
@@ -201,7 +231,7 @@
   },
   "productionSnapshot": {
     "requiresLiveVerification": true,
-    "serviceStatus": "aliyun-subscription-distribution-promoted-edge-data-plane-pending",
+    "serviceStatus": "aliyun-subscription-distribution-promoted-edge-data-plane-terminated",
     "currentPrimarySlot": "aliyun-subscription-distribution-boundary",
     "currentPrimaryPublicIp": "47.251.178.125",
     "aliyunCandidateInstanceId": "3e9253d3fb044463b876edacf6af8784",
@@ -210,13 +240,13 @@
     "httpsGatewayEnabled": true,
     "forcedHttpRedirect": false,
     "primaryInstanceId": "i-0b7791340d3fedff5",
-    "primaryInstanceState": "stopped",
-    "primarySecurityGroupId": "sg-0379ece0b3d305c43",
-    "iterationSecondarySlot": "prod-edge-b-stopped",
+    "primaryInstanceState": "terminated",
+    "primarySecurityGroupId": null,
+    "iterationSecondarySlot": "prod-edge-b-terminated",
     "iterationSecondaryCarrierIp": null,
     "iterationSecondaryInstanceId": "i-0ad8676ee113d14cb",
-    "iterationSecondaryInstanceState": "stopped",
-    "iterationSecondarySecurityGroupId": "sg-06682c36aa03834f7",
+    "iterationSecondaryInstanceState": "terminated",
+    "iterationSecondarySecurityGroupId": null,
     "legacyBlueState": "stopped-for-review-not-terminated",
     "legacyBlueInstanceId": "i-004ab1c6c71d06bca",
     "legacyBlueSecurityGroupId": "sg-04a165ec77f430ee8",
@@ -224,7 +254,7 @@
     "notes": [
       "sub.globalcirclecat.com now points to the Aliyun candidate public IP and serves the approved public subscription boundary on 80/443 with public Admin blocked.",
       "ss-sg.globalcirclecat.com still points at the old 13.215.156.159 address by design; edge traffic activation is not approved.",
-      "Stopped instances have no Elastic IP association; rollback by starting may require DNS/config updates if AWS assigns new public IP addresses.",
+      "AWS Singapore instances and security groups are physically terminated and deleted; rollback by starting is waived.",
       "Aliyun aegis.service failed during certbot installation and read-only follow-up found Aegis processes still present; proxy-gateway-candidate, nginx, ufw, and certbot.timer are active.",
       "Do not terminate legacy blue or delete any security group without separate Risk A approval.",
       "Do not trust this snapshot for mutation; verify AWS, DNS, Nginx, systemd, endpoint, and SQLite state live."
@@ -269,8 +299,13 @@
     },
     {
       "id": "channel-canary-server-selection",
-      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; an AWS ap-southeast-1 clean canary instance exists, Hysteria2 v2.9.2 is active, short operator-device and Mihomo canaries passed, and extended operator-device measurement completed. The extended bundle has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. TUIC is now the documented next measured comparison candidate; a clean AWS ap-northeast-1 channel-lab-b server exists, has Mihomo TUIC v5 active on UDP/443, and passed a short controlled operator-device standalone Mihomo canary with 20/20 successful samples. Extended TUIC measurement, decision-pack comparison, DNS, production config, all-user rollout, subscription-output planning, cleanup, and production authority transfer remain separately gated. VLESS/XUDP is secondary, and GUI import evidence, DNS, production config, subscription output, broader rollout, runtime comparison, and cleanup remain gated.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-operator-device-canary.md"
+      "summary": "Read-only selection inventory recommended clean channel-lab-a and Hysteria2 as the first runtime canary direction; channel-lab-a Hysteria2 extended measurement has sufficient sample volume but is hold_for_investigation because direct Hysteria2 exceeded p95/p99 thresholds and Mihomo had one p99 spike. A clean AWS ap-northeast-1 channel-lab-b server exists, has Mihomo TUIC v5 active on UDP/443, passed short and extended controlled operator-device canaries, and now powers exactly one controlled operator-access TUIC subscription-output canary through Aliyun. DNS, production authority transfer, all-user rollout, channel-lab-b cleanup, and broader rollout remain separately gated. VLESS/XUDP is secondary.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation.md"
+    },
+    {
+      "id": "aliyun-tuic-controlled-access-activation-observation",
+      "summary": "Aliyun / TUIC integration progressed through exact-approved one-controlled-access activation: proxy-gateway-candidate and Nginx are active, loopback health is 200, SQLite integrity is ok, runtime config has two stable nodes plus one channel-lab-b-tuic canary, and the single active controlled opaque artifact is bound to TUIC output only. Next work is operator-device import/refresh validation, observation, and a separate retain/rollback/broader-rollout decision; DNS, Nginx, firewall, public Admin, channel-lab-b cleanup, legacy query-token retirement, broader artifact issuance, all-user rollout, and authority transfer remain unapproved.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation.md"
     },
     {
       "id": "aliyun-control-local-ci-rebuild",
@@ -283,9 +318,9 @@
       "sourceDoc": "docs/production-replacement-records/2026-05-27-aliyun-production-subscription-distribution-promotion.md"
     },
     {
-      "id": "non-aliyun-hp-node-retirement-blocked",
-      "summary": "AWS Singapore prod-edge-a and prod-edge-b were stopped with accepted outage. DNS and tracked config still reference the old AWS addresses, termination/security-group cleanup remains unapproved, and clean edge rebuild or rollback-start now requires separate Risk A gates.",
-      "sourceDoc": "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md"
+      "id": "non-aliyun-hp-node-retirement-executed",
+      "summary": "AWS Singapore prod-edge-a and prod-edge-b instances are permanently terminated, and their associated security groups sg-0379ece0b3d305c43 and sg-06682c36aa03834f7 have been deleted. Legacy blue remains safely preserved in its stopped state. Rollback by starting the instances is waived.",
+      "sourceDoc": "docs/production-replacement-records/2026-05-29-singapore-prod-edge-termination.md"
     },
     {
       "id": "technical-mvp-track-separated",
@@ -299,7 +334,8 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Request the exact extended channel-lab-b TUIC measurement approval phrase if the operator wants comparable multi-window data; otherwise decide whether to keep or clean up channel-lab-b. Do not perform all-user rollout, DNS change, production config change, subscription-output change, or production authority transfer",
+    "Validate the controlled TUIC opaque artifact on the operator device, observe refresh/proxy behavior, and then decide retain, rollback, or broader rollout under a separate exact approval.",
+    "Do not broaden TUIC subscription-output, change DNS, reload Nginx, mutate firewall, expose public Admin, clean channel-lab-b, retire legacy query-token access, or issue broader artifacts without a new Risk A gate and execution record.",
     "Request the exact Aliyun Aegis service repair approval phrase from docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md if the operator wants process cleanup and service restart; otherwise leave it as a tracked host security-agent follow-up",
     "Keep public Admin blocked and keep edge traffic activation out of scope until a separate exact approval and execution record exists",
     "Use docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-preflight.md plus the exact approval phrase from docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md if the operator wants clean edge host provisioning/bootstrap/private validation; otherwise leave edge data-plane pending",
@@ -307,7 +343,7 @@
     "Request the exact broader opaque artifact issuance approval phrase from docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md if the operator wants to issue approved-tenant artifacts on Aliyun; do not combine this with legacy query-token retirement",
     "Request the exact legacy query-token retirement approval phrase from docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md only after broader artifact issuance and observation; route removal remains a future separate compatibility gate",
     "Investigate HP wg-home logical handshake only if the tunnel path is required; provider UDP/51820 now reaches Aliyun from HP",
-    "TUIC runtime inventory and comparison canary approval path after held Hysteria2 measurement, or VLESS/XUDP secondary comparison if TUIC is rejected",
+    "Do not retry TUIC subscription-output activation without first reviewing the controlled access creation record, refreshing public/Aliyun/channel-lab-b checks, and recording rollback previous-output state for the one controlled access.",
     "channel-lab-a Hysteria2 latency investigation, GUI import evidence, or cleanup decision",
     "Review docs/production-replacement-records/2026-05-27-clean-edge-rebuild-execution-handoff.md and request the exact clean edge node rebuild execution approval phrase if the operator wants host provisioning/bootstrap/private validation",
     "Use docs/production-replacement-records/2026-05-27-post-226-clean-edge-live-check.md as the latest read-only live-check source before any exact-approved clean edge execution",

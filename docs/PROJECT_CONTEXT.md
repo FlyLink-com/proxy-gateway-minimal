@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-05-28, Asia/Shanghai.
+Last updated: 2026-05-29, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -95,6 +95,8 @@ stable subscription/import experience
   -> measured validation and operations
 ```
 
+- **Simplification & Core Focus**: The active priority is strictly converged on core subscription production delivery: **"能生产、能发放、能审计、能撤回"** (PR #258, CLI production SOP, controlled subscription issuance, canary rollout, edge rebuild, and traffic accounting/quota/abuse control). Unrelated marketing decoration (WebGL/3D transits, CSS animations), Telegram client integrations/panels, personal job-application materials, un-productized video/ad drafts, non-CLI Admin UI polishing, topological narrative bloating, multicharacter sketch frameworks, and brand-positioning narratives are explicitly deprioritized, archived, or removed from the execution path. See `docs/PROJECT_SIMPLIFICATION_MAP.md`.
+
 Current architecture priorities:
 
 - Active Goal: `docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md`
@@ -117,6 +119,13 @@ Current architecture priorities:
   The public site uses a repository-only `/api/public/leads` intake endpoint
   for validated contact submissions; no external Webhook/CRM/email automation,
   DNS, or production deployment is implied by that route.
+- Operator CLI Platform Boundary: the platform product direction is
+  CLI-first for operators. Public routes stay small and explicit, while
+  administrative workflows are handled through operator CLI tools,
+  local/private console review surfaces, visible-once out-of-band handoff
+  files, and execution records. Public Admin is not a product surface, and any
+  production mutation remains Risk A even when wrapped by a CLI. See
+  `docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md`.
 - Platform Domain Contract: repository-only platform lead, account,
   entitlement, and subscription-access grant shapes live under
   `server/services/platform/control-plane-contract.mjs`. They provide
@@ -743,6 +752,150 @@ operator approval, validation, and rollback path exist:
   subscription-output change, public subscription URL generation, DNS, Nginx,
   production config, system proxy, TUN, all-user rollout, or production
   authority transfer was performed.
+- The approved `channel-lab-b` TUIC extended measurement is recorded in
+  `docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-extended-measurement.md`.
+  The standalone Mihomo -> TUIC path completed three 60-sample windows with
+  180/180 successful samples, no timeouts, and no error-like local Mihomo log
+  lines. The repository-safe bundle and investigation reports classify the
+  candidate as ready for operator decision / prepare Risk A canary gate. No
+  subscription-output change, DNS, Nginx, production config, all-user rollout,
+  system proxy, TUN, runtime reconfiguration, or production authority transfer
+  was performed.
+- The read-only Aliyun / TUIC subscription-output integration inventory is
+  recorded in
+  `docs/production-replacement-records/2026-05-28-aliyun-tuic-subscription-output-integration-inventory.md`.
+  It confirmed the Aliyun public subscription boundary still returns
+  health=200, public Admin=404, no-token subscription=401, and root=404 when
+  addressed directly as the Aliyun subscription boundary. It also found that
+  host-internal Aliyun inventory is currently blocked by SSH session closure
+  and that public 3456/18080 posture is inconclusive because TCP connects but
+  HTTP `/api/health` times out. No subscription-output activation, DNS, Nginx,
+  runtime, firewall, config, traffic, or authority mutation was performed.
+- The approved Aliyun host/provider follow-up inventory is recorded in
+  `docs/production-replacement-records/2026-05-28-aliyun-tuic-host-provider-inventory.md`.
+  It confirmed SWAS provider identity and firewall posture read-only: 80/443
+  are the public subscription-boundary ports, 22 and 51820 are scoped to
+  management/lab sources, and 3456/18080 have no provider allow rule and are
+  closed_or_timeout from the HP external vantage. Host-internal inventory still
+  cannot run over SSH because the session times out during banner exchange.
+  Cloud Assistant is available but was not invoked in this gate. No runtime,
+  firewall, DNS, Nginx, config, subscription-output, traffic, or authority
+  mutation was performed.
+- The approved Aliyun Cloud Assistant read-only host inventory is recorded in
+  `docs/production-replacement-records/2026-05-28-aliyun-cloud-assistant-tuic-host-inventory.md`.
+  It resolved the Aliyun host-internal evidence gap for TUIC
+  subscription-output planning without SSH: `proxy-gateway-candidate` and
+  Nginx are active, loopback app and loopback Nginx health return HTTP 200,
+  candidate SQLite integrity is ok, `nginx -t` passes, `$request_uri` count is
+  0, and host-internal listeners/resources were summarized. No runtime,
+  firewall, DNS, Nginx reload, systemd restart, config, subscription-output,
+  SQLite row, traffic, or authority mutation was performed.
+- The approved canary-only TUIC subscription-output activation planning record
+  is
+  `docs/production-replacement-records/2026-05-28-tuic-subscription-output-canary-planning.md`.
+  It records that `channel-lab-b` TUIC has enough operator-device evidence to
+  plan a one-controlled-access canary gate, but activation authority is still
+  not granted. The host-internal evidence gap is now resolved through Cloud
+  Assistant read-only inventory; the next safe path is a real controlled-access
+  config/activation mechanism, rollback evidence, then a separate exact
+  activation approval. No subscription-output mutation, DNS,
+  Nginx, runtime, firewall, config, traffic, all-user rollout, or authority
+  mutation was performed.
+- The approved canary-only TUIC subscription-output dry-run package is recorded
+  in
+  `docs/production-replacement-records/2026-05-28-tuic-subscription-output-dry-run-package.md`.
+  The dry-run bundle lives under
+  `docs/channel-activation-dry-runs/2026-05-28-channel-lab-b-tuic-subscription-output/`.
+  The activation-flow fixture was ready for an A-tier request, but the
+  activation package against current repository config was blocked with
+  `missing_subscription_output_config`, and the production-module package was
+  blocked with `activation_package_not_ready` and
+  `candidate_missing_from_activation_package`. This means TUIC measurement is
+  sufficient for planning, but the current repository subscription-output
+  config does not yet contain the `channel-lab-b` TUIC canary candidate. No
+  subscription-output mutation, production YAML generation, DNS, Nginx,
+  runtime, firewall, config, traffic, all-user rollout, or authority mutation
+  was performed.
+- The approved canary-only TUIC subscription-output config review is recorded
+  in
+  `docs/production-replacement-records/2026-05-28-tuic-subscription-output-config-review.md`.
+  It adds a synthetic, non-deployable review-only proxy config fixture under
+  `docs/channel-activation-dry-runs/2026-05-28-channel-lab-b-tuic-subscription-output/`.
+  The same activation package and production-module tooling becomes
+  review-ready against that fixture, proving the TUIC canary config shape is
+  compatible with repository tooling. The current runtime config remains
+  unchanged and blocked. No `config/proxy-servers.json` change, production
+  deployment, subscription-output mutation, production YAML generation, DNS,
+  Nginx, runtime, firewall, traffic, all-user rollout, or authority mutation
+  was performed.
+- The TUIC controlled-access activation mechanism review is recorded in
+  `docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-mechanism.md`.
+  It adds a summary-only mechanism artifact under
+  `docs/channel-activation-dry-runs/2026-05-28-channel-lab-b-tuic-subscription-output/controlled-access-mechanism.json`
+  and fixes the next executable shape: one controlled operator access only,
+  default stable output unchanged, rollback evidence required, and execution
+  authority still `not_granted`. It does not choose or execute the real
+  production mechanism, does not change `config/proxy-servers.json`, and does
+  not mutate subscription output, Aliyun, DNS, Nginx, systemd, channel-lab-b,
+  traffic, or rollout scope.
+- The TUIC controlled-access activation request packet is recorded in
+  `docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-request.md`.
+  It adds a summary-only request artifact under
+  `docs/channel-activation-dry-runs/2026-05-28-channel-lab-b-tuic-subscription-output/activation-request-packet.json`
+  and consolidates the ready evidence, activation-time fresh checks, hard
+  stops, and exact approval phrase required before any one-controlled-access
+  TUIC canary activation. Execution authority is still `not_granted`; short
+  confirmations such as `同意` only authorize repo-only planning or review,
+  not subscription-output mutation. It does not mutate config, subscription
+  output, Aliyun, DNS, Nginx, systemd, channel-lab-b, traffic, or rollout
+  scope.
+- The exact-approved TUIC controlled-access activation attempt is recorded in
+  `docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-stopped.md`.
+  It refreshed the public subscription boundary, Aliyun host-internal summary,
+  and channel-lab-b runtime health, then stopped before mutation because Aliyun
+  had no active controlled operator access, active artifact, or unexpired
+  unused temporary link to bind. No runtime config, subscription-output,
+  systemd, Nginx, DNS, firewall, SQLite row, channel-lab-b, traffic, all-user
+  rollout, or authority mutation was performed. The next retry must explicitly
+  cover creating/issuing or identifying one controlled operator access before
+  activation can continue.
+- The exact-approved controlled operator access creation is recorded in
+  `docs/production-replacement-records/2026-05-28-tuic-controlled-operator-access-creation.md`.
+  It created one active controlled operator access and one active opaque
+  artifact on Aliyun, stored the visible-once handoff material outside the
+  repository, and validated that the artifact refresh still returns the stable
+  SS output only. The previous output state is `prod-edge-a`; TUIC binding was
+  not performed, channel-lab-b TUIC is not in the Aliyun runtime config, and no
+  DNS, Nginx, firewall, systemd, channel-lab-b, all-user rollout, or authority
+  mutation was performed. The next retry may use the exact canary-only TUIC
+  subscription-output activation phrase again, with fresh checks and rollback
+  evidence.
+- The exact-approved canary-only TUIC subscription-output activation is
+  recorded in
+  `docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation.md`.
+  It added `channel-lab-b-tuic` as one Aliyun runtime canary candidate, stored
+  TUIC material only in the protected Aliyun environment file, restarted only
+  `proxy-gateway-candidate.service`, and rebound exactly one active controlled
+  operator access from stable `prod-edge-a` output to `channel-lab-b-tuic`.
+  The controlled opaque artifact refresh now returns 200 with TUIC output only.
+  Default/stable output for broader users remains unchanged. No all-user
+  rollout, DNS, Nginx config/reload, firewall change, public Admin exposure,
+  channel-lab-b cleanup, legacy query-token retirement, broader artifact
+  issuance, or production authority transfer was performed. The next gate is
+  operator-device import/refresh validation and observation, then a separate
+  retain / rollback / broader rollout decision.
+- The exact-approved CLI preproduction subscription issuance is recorded in
+  `docs/production-replacement-records/2026-05-28-cli-preproduction-subscription-issuance.md`.
+  It created 3 active preproduction tenants and 3 active opaque artifacts bound
+  to `channel-lab-b-tuic`, wrote raw handoff material only to a remote 0600
+  operator handoff file outside the repository, validated 3/3 artifact
+  refreshes with TUIC output, confirmed public health/Admin/no-token behavior
+  stayed safe, and found no raw artifact hits in known Nginx/app logs or the
+  proxy-gateway candidate journal. No all-user rollout, DNS, Nginx, firewall,
+  public Admin, payment activation, legacy query-token retirement, AWS
+  mutation, edge traffic, or raw subscription material recording in
+  repo/docs/PR/chat was performed. The next gate is operator-side import/use
+  validation and 1h/24h/72h observation before increasing quantity.
 - Physical control-plane / edge data-plane split.
 - Local Linux manual CI is now bootstrapped and validated as an archive-based
   repository validation host. See

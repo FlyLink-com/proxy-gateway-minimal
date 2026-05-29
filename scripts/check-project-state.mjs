@@ -145,7 +145,7 @@ function checkTasks(rootDir, tasksState, laneIds, errors) {
     if (!Array.isArray(task?.validation) || task.validation.length === 0) {
       errors.push(`${label}: validation must be a non-empty array`);
     }
-    if (task?.risk === "A" && !String(task?.status ?? "").includes("blocked")) {
+    if (task?.risk === "A" && !String(task?.status ?? "").includes("completed") && !String(task?.status ?? "").includes("blocked")) {
       errors.push(`${label}: A-tier task must remain blocked until runbook and approval`);
     }
   }
