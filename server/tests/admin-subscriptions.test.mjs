@@ -493,3 +493,79 @@ test("opaque artifact route refreshes V2 Clash YAML without accepting query-toke
     context.close();
   }
 });
+
+test("opaque artifact provider-mode routes split profile and provider YAML", async () => {
+  const context = realSubscriptionContext();
+  const { server, baseUrl } = await listen(createApp(fakeState(context.service)));
+  try {
+    const created = await requestJson(baseUrl, "/api/admin/subscriptions", {
+      method: "POST",
+      body: { displayName: "Customer A", expiresAt: "2026-06-21T00:00:00.000Z" }
+    });
+    assert.equal(created.response.status, 201);
+
+    const artifact = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/artifacts", {
+      method: "POST"
+    });
+    assert.equal(artifact.response.status, 201);
+
+    const artifactPath = new URL(artifact.body.subscriptionUrl).pathname.replace(/\.yaml$/i, "");
+    const profile = await fetch(`${baseUrl}${artifactPath}/profile.yaml`);
+    assert.equal(profile.status, 200);
+    assert.match(profile.headers.get("content-type"), /application\/x-yaml/);
+    const profileYaml = await profile.text();
+    assert.match(profileYaml, /proxy-providers:\n  "globalcircle-pool":\n    type: http/);
+    assert.match(profileYaml, new RegExp(`url: "${baseUrl.replace(/\./g, "\\.")}${artifactPath}/provider\\.yaml"`));
+    assert.match(profileYaml, /use:\n      - "globalcircle-pool"/);
+    assert.doesNotMatch(profileYaml, /shared-secret|other-secret|pgsub_route_visible|tenant_real_1/);
+
+    const provider = await fetch(`${baseUrl}${artifactPath}/provider.yaml`);
+    assert.equal(provider.status, 200);
+    assert.match(provider.headers.get("content-type"), /application\/x-yaml/);
+    const providerYaml = await provider.text();
+    assert.match(providerYaml, /proxies:/);
+    assert.match(providerYaml, /name: "aws-singapore"/);
+    assert.match(providerYaml, /password: "shared-secret"/);
+    assert.match(providerYaml, /name: "aws-tokyo"/);
+    assert.match(providerYaml, /password: "other-secret"/);
+    assert.doesNotMatch(providerYaml, /tenant_real_1|pgsub_route_visible/);
+
+    const missing = await fetch(`${baseUrl}/sub/a/missing-artifact/provider.yaml?token=${RAW_TOKEN}`);
+    assert.equal(missing.status, 404);
+    assert.deepEqual(await missing.json(), { error: "Not found" });
+  } finally {
+    server.close();
+    context.close();
+  }
+});
+
+test("opaque artifact provider profile uses configured public subscription base URL", async () => {
+  const context = realSubscriptionContext();
+  const state = fakeState(context.service);
+  state.subscriptions.publicSubscriptionBaseUrl = "https://configured.example.com";
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    const created = await requestJson(baseUrl, "/api/admin/subscriptions", {
+      method: "POST",
+      body: { displayName: "Customer A", expiresAt: "2026-06-21T00:00:00.000Z" }
+    });
+    assert.equal(created.response.status, 201);
+
+    const artifact = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/artifacts", {
+      method: "POST"
+    });
+    assert.equal(artifact.response.status, 201);
+
+    const artifactPath = new URL(artifact.body.subscriptionUrl).pathname.replace(/\.yaml$/i, "");
+    const profile = await fetch(`${baseUrl}${artifactPath}/profile.yaml`, {
+      headers: { host: "attacker.example.test" }
+    });
+    assert.equal(profile.status, 200);
+    const profileYaml = await profile.text();
+    assert.match(profileYaml, /url: "https:\/\/configured\.example\.com\/sub\/a\/[^"\s]+\/provider\.yaml"/);
+    assert.doesNotMatch(profileYaml, /attacker\.example\.test|shared-secret|other-secret/);
+  } finally {
+    server.close();
+    context.close();
+  }
+});
