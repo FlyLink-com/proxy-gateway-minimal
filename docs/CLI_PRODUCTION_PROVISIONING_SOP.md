@@ -17,7 +17,19 @@ This document serves as the Standard Operating Procedure (SOP) for issuing and r
 
 Use this flow to convert a lead into a provisioned account, entitlement, and access grant.
 
-### Step 2.1: Prepare Input
+### Step 2.1: Prepare Operator Form Facts
+
+For subscription issuance preparation, prefer the operator provisioning form
+contract before any execution path. It turns reviewed form facts into a safe
+issuance input preview and still performs no database mutation:
+
+```powershell
+npm run platform:provisioning-form -- scripts/provisioning-form-input.example.json
+```
+
+See `docs/OPERATOR_PROVISIONING_FORM_CONTRACT.md`.
+
+### Step 2.2: Prepare Controlled-Open Input
 
 Create a JSON input file for the real issuance. Store this locally (e.g. `handoff/batch-1-input.json`).
 Refer to `scripts/issuance-input.example.json` for the required format.
@@ -34,7 +46,7 @@ Refer to `scripts/issuance-input.example.json` for the required format.
 }
 ```
 
-### Step 2.2: Execute Issuance CLI (A-tier)
+### Step 2.3: Execute Issuance CLI (A-tier)
 
 Run the issuance CLI. This command requires mandatory flags to mutate production data.
 
@@ -49,11 +61,11 @@ npm run platform:issue-subscription -- --execute-production-mutation --approval-
 - `--public-base-url`: Must be `https://` (unless `--allow-local-test` is used).
 - `--handoff-file`: The exact operator-only `0600` path where the visible-once handoff material will be written. Prefer a path outside the repository; repo-local `handoff/` is allowed only because it is gitignored.
 
-### Step 2.3: Handoff and Output
+### Step 2.4: Handoff and Output
 
 The script will print a safe JSON summary to `stdout` containing hashed `tenantRef` and `artifactRef` values only. The raw opaque artifact `subscriptionUrl` will strictly be written to the specified `--handoff-file`. Do NOT paste the handoff file contents into the terminal or chat.
 
-### Step 2.4: Database Verification
+### Step 2.5: Database Verification
 
 Verify the database state using safe queries. **DO NOT** use `SELECT *`.
 
