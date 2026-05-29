@@ -116,9 +116,19 @@ Current architecture priorities:
   media advertising, operations growth, and frontier product research. Logged-in
   customer portal entry is a separate operator-issued dynamic entry concept and
   must not be hard-linked from the public site or public campaign landing pages.
-  The public site uses a repository-only `/api/public/leads` intake endpoint
-  for validated contact submissions; no external Webhook/CRM/email automation,
-  DNS, or production deployment is implied by that route.
+  The public site has a dedicated static build boundary at `admin/dist-site`,
+  separate from the normal Admin/Portal bundle. On 2026-05-28, that static
+  bundle was deployed to the Aliyun HTTPS root at
+  `https://sub.globalcirclecat.com/`; see
+  `docs/production-replacement-records/2026-05-28-aliyun-public-company-site-static-deployment.md`.
+  Public lead intake was activated through the Aliyun production Nginx boundary
+  on 2026-05-28; `POST /api/public/leads` now proxies to the local
+  proxy-gateway service and returns 202 for validated company-site submissions.
+  See
+  `docs/production-replacement-records/2026-05-28-aliyun-public-lead-intake-production-activation.md`.
+  The flow remains operator-controlled after intake: public self-service
+  account creation, payment, automatic entitlement issuance, and customer
+  portal automation are not activated.
 - Operator CLI Platform Boundary: the platform product direction is
   CLI-first for operators. Public routes stay small and explicit, while
   administrative workflows are handled through operator CLI tools,
