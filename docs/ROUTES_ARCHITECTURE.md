@@ -187,12 +187,27 @@ subscription service failure:
 The route does not directly decide which nodes a tenant receives. Node
 selection happens inside subscription core / serializer logic.
 
-`GET /sub/a/:artifact` is the repository-level opaque artifact refresh route.
-It does not accept query-token fallback. It resolves a hashed artifact secret
-through subscription core, applies the same tenant expiry/disabled checks, and
-renders YAML from the resulting scoped Subscription V2 proxy config. Unknown
-artifacts return a generic not-found response; revoked or rotated artifacts
-return a gone response.
+`GET /sub/a/:artifact` is the repository-level opaque artifact direct-refresh
+route. It does not accept query-token fallback. It resolves a hashed artifact
+secret through subscription core, applies the same tenant expiry/disabled
+checks, and renders YAML from the resulting scoped Subscription V2 proxy config.
+Unknown artifacts return a generic not-found response; revoked or rotated
+artifacts return a gone response.
+
+Provider-mode artifact routes use the same opaque artifact secret boundary:
+
+```text
+GET /sub/a/:artifact/profile.yaml
+  returns an outer Clash/Mihomo profile with a proxy-provider reference
+
+GET /sub/a/:artifact/provider.yaml
+  returns the proxy-provider node-pool YAML
+```
+
+The provider profile uses the configured public subscription base URL when it
+is present, rather than trusting the request Host header. The provider node-pool
+YAML contains active node connection credentials by design, so production
+exposure remains a separate Risk A Nginx / logging / rollback decision.
 
 ## Subscription V2 Node Selection
 

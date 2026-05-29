@@ -403,7 +403,7 @@ Scope:
   client-side AUTO / WEAK-NETWORK / FALLBACK / GLOBAL groups that reference
   the provider through `use`
   active-node-only provider pool filtering
-  no subscription route activation
+  no subscription route changes in this stage
   no Nginx route activation
   no production config change
 ```
@@ -420,9 +420,41 @@ retired. The provider YAML still contains the active node connection
 credentials required by Clash/Mihomo, so exposing or activating a provider path
 remains separate production access work.
 
-This is a repository capability only. The existing `/sub/clash.yaml` route
-continues to use the direct renderer until a separate A-tier activation creates
-and exposes a provider artifact/path with validation and rollback evidence.
+This renderer stage is a repository capability only. The existing
+`/sub/clash.yaml` route continues to use the direct renderer.
+
+### Stage 1C: Repository-Only Provider Artifact Routes
+
+```text
+Risk: B
+Scope:
+  opaque artifact profile route for provider-mode import
+  opaque artifact provider route for provider node-pool YAML
+  existing direct artifact route remains unchanged
+  provider profile uses configured public subscription base URL when present
+  no Nginx route activation
+  no production deployment
+  no broad artifact issuance
+```
+
+The provider route layer keeps the same opaque artifact secret boundary:
+
+```text
+/sub/a/<artifact>.yaml
+  direct compatibility profile
+
+/sub/a/<artifact>/profile.yaml
+  outer Clash/Mihomo profile with a proxy-provider reference
+
+/sub/a/<artifact>/provider.yaml
+  provider node-pool YAML
+```
+
+The outer profile does not inline node credentials. The provider node-pool YAML
+does contain active node connection credentials because that is the file
+Mihomo fetches to build its runtime node pool. Production exposure of these
+paths remains A-tier work and requires Nginx path redaction, validation, and
+rollback evidence.
 
 Repository-local benchmark result aggregation is available as a code-level
 building block through `summarizeChannelBenchmarkResults(...)`. It consumes
