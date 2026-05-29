@@ -392,6 +392,38 @@ keeps `AUTO`, quality groups, `FALLBACK`, individual nodes, and `DIRECT`
 available. This is still repository-only rendering behavior; it does not deploy
 matching protocol runtimes or activate any production node.
 
+### Stage 1B: Repository-Only Provider-Mode Subscription Renderer
+
+```text
+Risk: B
+Scope:
+  Clash/Mihomo proxy-provider profile renderer
+  separate proxy-provider node-pool YAML renderer
+  provider fetch interval and provider health-check defaults
+  client-side AUTO / WEAK-NETWORK / FALLBACK / GLOBAL groups that reference
+  the provider through `use`
+  active-node-only provider pool filtering
+  no subscription route activation
+  no Nginx route activation
+  no production config change
+```
+
+`generateClashProviderSubscription(...)` can render an outer Clash/Mihomo
+profile that references a remote `proxy-providers` node pool instead of
+inlining node credentials in the import profile. The provider URL must be
+supplied explicitly; missing provider URLs fail closed.
+
+`generateClashProxyProvider(...)` can render the provider node-pool YAML from
+the same configured node model used by the direct renderer. It excludes nodes
+marked as disabled, draining, held / hold-for-investigation, inactive, or
+retired. The provider YAML still contains the active node connection
+credentials required by Clash/Mihomo, so exposing or activating a provider path
+remains separate production access work.
+
+This is a repository capability only. The existing `/sub/clash.yaml` route
+continues to use the direct renderer until a separate A-tier activation creates
+and exposes a provider artifact/path with validation and rollback evidence.
+
 Repository-local benchmark result aggregation is available as a code-level
 building block through `summarizeChannelBenchmarkResults(...)`. It consumes
 already-collected local samples, computes per-probe success rate, timeout count,

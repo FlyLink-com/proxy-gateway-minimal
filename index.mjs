@@ -11,6 +11,8 @@ export { createCommandRunner, runCommand } from "./server/services/command.mjs";
 export { createHttpProxyService } from "./server/services/http-proxy.mjs";
 export { createSsLocalService } from "./server/services/ss-local.mjs";
 export {
+  generateClashProviderSubscription,
+  generateClashProxyProvider,
   generateClashSubscription,
   subscriptionSummary
 } from "./server/services/clash-subscription.mjs";
