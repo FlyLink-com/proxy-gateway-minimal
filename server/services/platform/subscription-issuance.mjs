@@ -4,23 +4,8 @@ function safeRef(prefix, value) {
   return `${prefix}ref_${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
 }
 
-/**
- * executeSubscriptionIssuance orchestrates the creation of a runtime tenant/artifact
- * and the corresponding business control records.
- * 
- * Safety Constraints:
- * - It DOES NOT access filesystem, process.argv, or process.env.
- * - It DOES NOT perform HTTP request/response operations.
- * - `handoffMaterial` contains raw secrets and MUST NOT be leaked to public API responses.
- * - `summary` is safe and contains NO raw URLs, tokens, or email fields.
- */
-export function executeSubscriptionIssuance({ controlStore, runtimeCore, input, approvalRef, now }) {
-  if (!controlStore) throw new Error("controlStore is required");
-  if (!runtimeCore) throw new Error("runtimeCore is required");
+export function validateIssuanceInput(input) {
   if (!input) throw new Error("input is required");
-  if (!approvalRef) throw new Error("approvalRef is required");
-  if (!now) throw new Error("now is required");
-
   if (!String(input.nodeId || "").trim()) {
     throw new Error("nodeId is mandatory for real issuance. Implicit default node assignment is forbidden.");
   }
@@ -42,6 +27,27 @@ export function executeSubscriptionIssuance({ controlStore, runtimeCore, input, 
       throw new Error(`control.${field} is mandatory for real issuance.`);
     }
   }
+  return input;
+}
+
+/**
+ * executeSubscriptionIssuance orchestrates the creation of a runtime tenant/artifact
+ * and the corresponding business control records.
+ *
+ * Safety Constraints:
+ * - It DOES NOT access filesystem, process.argv, or process.env.
+ * - It DOES NOT perform HTTP request/response operations.
+ * - `handoffMaterial` contains raw secrets and MUST NOT be leaked to public API responses.
+ * - `summary` is safe and contains NO raw URLs, tokens, or email fields.
+ */
+export function executeSubscriptionIssuance({ controlStore, runtimeCore, input, approvalRef, now }) {
+  if (!controlStore) throw new Error("controlStore is required");
+  if (!runtimeCore) throw new Error("runtimeCore is required");
+  if (!approvalRef) throw new Error("approvalRef is required");
+  if (!now) throw new Error("now is required");
+
+  validateIssuanceInput(input);
+  const control = input.control;
 
   // Account
   if (!controlStore.getAccount(control.accountId)) {
@@ -158,7 +164,7 @@ export function executeSubscriptionIssuance({ controlStore, runtimeCore, input, 
     artifactRef,
     nodeId: tenantResult.tenant.nodeId,
     expiresAt: tenantResult.tenant.expiresAt,
-    handoffWritten: true,
+    handoffRequired: true,
     rawUrlReturned: false,
     dbMutated: true,
     controlDbMutated: true,

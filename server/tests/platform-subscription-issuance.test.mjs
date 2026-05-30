@@ -102,7 +102,7 @@ test("executeSubscriptionIssuance - success writes runtime tenant/artifact and s
 test("executeSubscriptionIssuance - safety: summary does not contain subscriptionUrl, token, or artifact secret", () => {
   const controlStore = createMockControlStore();
   const runtimeCore = createMockRuntimeCore();
-  
+
   const input = {
     nodeId: "primary_node",
     artifact: { create: true },
@@ -135,7 +135,7 @@ test("executeSubscriptionIssuance - fail-closed: rejects missing nodeId, artifac
   const controlStore = createMockControlStore();
   const runtimeCore = createMockRuntimeCore();
   const now = new Date().toISOString();
-  
+
   const validControl = {
     accountId: "acct_3", ownerRef: "hash", entitlementId: "ent_3",
     requestId: "req_3", requestedByRef: "hash", purpose: "test"

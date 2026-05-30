@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -215,6 +215,8 @@ test("platform issue-subscription requires explicit node and opaque artifact iss
     ]);
     assert.ok(err);
     assert.match(err.stderr || err.message, /nodeId is mandatory/);
+    assert.ok(!existsSync(controlDbPath), "control DB must not be created on invalid input");
+    assert.ok(!existsSync(handoffPath), "handoff file must not be created on invalid input");
   }, inputFixture({ nodeId: "" }));
 
   withTempEnv(({ inputPath, dbPath, controlDbPath, handoffPath }) => {

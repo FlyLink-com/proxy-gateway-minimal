@@ -15,7 +15,7 @@ import { resolve } from "node:path";
 import { createRuntimeState } from "../server/state.mjs";
 import { createSqliteSubscriptionControlStore } from "../server/services/platform/subscription-control-db.mjs";
 
-import { executeSubscriptionIssuance } from "../server/services/platform/subscription-issuance.mjs";
+import { executeSubscriptionIssuance, validateIssuanceInput } from "../server/services/platform/subscription-issuance.mjs";
 
 const args = process.argv.slice(2);
 
@@ -78,6 +78,9 @@ try {
   const inputRaw = readFileSync(resolve(inputFile), "utf-8");
   const input = JSON.parse(inputRaw);
 
+  // Validate input BEFORE opening any databases
+  validateIssuanceInput(input);
+
   let state;
   let controlStore;
   try {
@@ -103,6 +106,7 @@ try {
     const resolvedHandoffFile = resolve(handoffFile);
     writeFileSync(resolvedHandoffFile, JSON.stringify(handoffMaterial, null, 2), { mode: 0o600 });
     chmodSync(resolvedHandoffFile, 0o600);
+    summary.handoffWritten = true;
 
     // Print Safe Summary to Stdout
     process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
