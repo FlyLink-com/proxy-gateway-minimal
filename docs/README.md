@@ -232,9 +232,11 @@ output, or traffic changes.
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
 | `docs/DOMAIN_HTTPS.md` | Earlier domain HTTPS runbook for `sub.globalcirclecat.com`. | Paused; superseded for current execution by the domain abstraction docs unless explicitly re-enabled. | Read only for historical context or if the domain HTTPS plan is explicitly resumed. |
+| `docs/archive/README.md` | Index for historical root-level artifacts moved out of the repository root. | Historical archive index; no execution authority. | Read when tracing why an old root-level artifact was retained but removed from the active root. |
 | `docs/superpowers/specs/*` | Design specs created during feature and ops planning. | Historical design artifacts unless referenced by current docs. | Read for background, not as the default operational source of truth. |
 | `docs/superpowers/plans/*` | Implementation plans created during feature and ops work. | Historical implementation artifacts unless referenced by current docs. | Read for background on why prior work was implemented. |
-| `qa-report.md` | Earlier QA summary for the MVP baseline. | Historical QA reference. | Read for old coverage context, not for current test counts. |
+| `docs/archive/qa-report.md` | Earlier QA summary for the MVP baseline. | Historical QA reference. | Read for old coverage context, not for current test counts. |
+| `docs/archive/root-start.mjs` | Earlier root-level startup helper. | Historical startup reference; superseded by `npm run daemon`, `server/index.mjs`, and `server/start.mjs`. | Read only for root cleanup archaeology, not as a current startup entrypoint. |
 
 ## Reading Order
 
