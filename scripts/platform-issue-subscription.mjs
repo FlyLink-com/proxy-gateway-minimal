@@ -9,7 +9,6 @@
  * Secrets are ONLY written to the specified `--handoff-file`.
  */
 
-import { createHash } from "node:crypto";
 import { chmodSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createRuntimeState } from "../server/state.mjs";
