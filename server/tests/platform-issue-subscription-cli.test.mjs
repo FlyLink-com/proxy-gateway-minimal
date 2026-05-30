@@ -278,7 +278,6 @@ test("platform issue-subscription strictly fails closed without creating runtime
     ]);
     assert.ok(err);
     assert.match(err.stderr || err.message, /nodeId is mandatory/);
-    
     assert.ok(!existsSync(dbPath), "runtime DB must not be created on invalid input");
     assert.ok(!existsSync(controlDbPath), "control DB must not be created on invalid input");
     assert.ok(!existsSync(handoffPath), "handoff file must not be created on invalid input");
