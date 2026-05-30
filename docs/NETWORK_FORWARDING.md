@@ -88,11 +88,33 @@ PAC behavior:
 
 This mode is used when Clash or Mihomo imports the subscription YAML.
 
+### Direct Token Path (Legacy/Direct)
+
 ```text
 Clash or Mihomo
   -> GET /sub/clash.yaml?token=...
-  -> receives Shadowsocks node YAML
-  -> connects directly to the emitted Shadowsocks nodes
+  -> receives direct node YAML
+  -> connects directly to the emitted nodes
+```
+
+### Opaque Artifact Direct Path
+
+```text
+Clash or Mihomo
+  -> GET /sub/a/<artifact>
+  -> receives direct node YAML
+  -> connects directly to the emitted nodes
+```
+
+### Opaque Artifact Provider-Mode Path
+
+```text
+Clash or Mihomo
+  -> GET /sub/a/<artifact>/profile.yaml
+  -> receives outer profile with proxy-provider reference
+  -> fetches GET /sub/a/<artifact>/provider.yaml (background/periodic)
+  -> receives node pool YAML
+  -> connects directly to the emitted nodes
 ```
 
 In this mode `proxy-gateway-minimal` is a subscription generator and access
@@ -101,11 +123,12 @@ YAML.
 
 Implementation notes:
 
-- `server/routes/subscription.mjs` handles `/sub/clash.yaml`.
-- `/sub/clash.yaml` accepts the console token for migration compatibility and
-  tenant or temporary subscription tokens for tenant-scoped subscriptions.
+- `server/routes/subscription.mjs` handles `/sub/clash.yaml` and the `/sub/a/*` artifact routes.
+- `/sub/clash.yaml` accepts the console token or tenant/temporary tokens.
+- Opaque artifact routes (`/sub/a/:artifact`) use a hashed secret boundary.
 - `server/services/clash-subscription.mjs` emits Clash YAML with direct
-  Shadowsocks nodes from `config/proxy-servers.json`.
+  nodes (Shadowsocks, TUIC, Hysteria2, VLESS) from `config/proxy-servers.json`.
+- The provider-mode renderer (`generateClashProviderSubscription`) separates the outer profile from the active credentials (`provider.yaml`).
 - The generated YAML contains the remote server host, port, cipher, and
   password. It does not point Clash/Mihomo at `127.0.0.1:1080` or
   `127.0.0.1:18180`.
