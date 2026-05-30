@@ -167,6 +167,20 @@ Current architecture priorities:
   Admin, approval submission, Aliyun deployment, DNS, production storage,
   payment activation, user traffic, edge traffic, or production authority. See
   `docs/OPERATOR_PROVISIONING_FORM_CONTRACT.md`.
+- Subscription Control Database: repository-only SQLite business-control
+  service now exists under
+  `server/services/platform/subscription-control-db.mjs`. It records safe
+  account refs, entitlements, issuance requests, safe tenant/artifact refs,
+  quota counters, device refs, revocation events, and audit events. It rejects
+  raw customer fields, URLs, tokens, secrets, credentials, raw payloads, and
+  YAML-like inputs. This is the required business ledger for future issuance,
+  portal, quota, abuse-control, revoke, and audit workflows, but this repo
+  change does not migrate Aliyun production SQLite, mutate tenants/artifacts,
+  expose public Admin, activate payment, enforce quota/devices, or retire the
+  legacy query-token route. The real issuance CLI now requires an explicit
+  `--control-db-path` during execution and records safe control rows while
+  keeping raw handoff material outside stdout and repository files. See
+  `docs/SUBSCRIPTION_CONTROL_DATABASE.md`.
 - Legacy Admin UI Archive: the existing `admin/` application is archived as a
   local protected reference/testing surface only. It is no longer the future
   product UI, user portal, or operator-console design baseline. Future UI work
