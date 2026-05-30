@@ -12,8 +12,8 @@ import { listen } from "./helpers/listen.mjs";
 function createTestApp(fixtureDir) {
   mkdirSync(join(fixtureDir, "config"), { recursive: true });
   writeFileSync(join(fixtureDir, "config", "proxy-servers.json"), JSON.stringify({
-    servers: [{ name: "prod-edge-c", host: "1.2.3.4", port: 443, type: "ss", cipher: "aes-256-gcm", password: "test" }], 
-    pingHosts: [], 
+    servers: [{ name: "prod-edge-c", host: "1.2.3.4", port: 443, type: "ss", cipher: "aes-256-gcm", password: "test" }],
+    pingHosts: [],
     nginx: { host: "127.0.0.1", ports: [] }
   }));
   const state = createRuntimeState({
@@ -30,13 +30,14 @@ function createTestApp(fixtureDir) {
 }
 
 function authHeaders(state) {
-  return { 
+  return {
     Authorization: `Bearer ${state.consoleToken}`,
     "Content-Type": "application/json"
   };
 }
 
 const validIssuanceInput = {
+  approvalRef: "PR-operator-approval-001",
   nodeId: "prod-edge-c",
   expiresAt: new Date(Date.now() + 86400000).toISOString(),
   displayName: "Test User",
@@ -55,25 +56,25 @@ test("admin platform issuance preview validates input and returns safe plan with
   const fixtureDir = join(process.cwd(), "test-fixtures", "admin-platform-issuance-api-preview");
   rmSync(fixtureDir, { recursive: true, force: true });
   mkdirSync(fixtureDir, { recursive: true });
-  
+
   const { app, state } = createTestApp(fixtureDir);
   const { server, baseUrl } = await listen(app);
-  
+
   try {
     const res = await fetch(`${baseUrl}/api/admin/platform/subscription-issuance/preview`, {
       method: "POST",
       headers: authHeaders(state),
       body: JSON.stringify(validIssuanceInput)
     });
-    
+
     assert.equal(res.status, 200);
     const body = await res.json();
     const { preview } = body;
     assert.equal(preview.action, "issuance_preview");
-    assert.equal(preview.safety.dbMutated, false);
+    assert.equal(preview.safety.runtimeDbMutated, false);
     assert.equal(preview.safety.controlDbMutated, false);
     assert.equal(preview.requestId, "req_123");
-    
+
     // DB should not have been mutated
     const account = state.platform.controlStore.getAccount("acc_123");
     assert.ok(!account);
@@ -88,32 +89,62 @@ test("admin platform issuance request persists planned request without creating 
   const fixtureDir = join(process.cwd(), "test-fixtures", "admin-platform-issuance-api-request");
   rmSync(fixtureDir, { recursive: true, force: true });
   mkdirSync(fixtureDir, { recursive: true });
-  
+
   const { app, state } = createTestApp(fixtureDir);
   const { server, baseUrl } = await listen(app);
-  
+
   try {
     const res = await fetch(`${baseUrl}/api/admin/platform/subscription-issuance/request`, {
       method: "POST",
       headers: authHeaders(state),
       body: JSON.stringify(validIssuanceInput)
     });
-    
+
     assert.equal(res.status, 201);
     const body = await res.json();
     const { request: reqData } = body;
     assert.equal(reqData.action, "issuance_planned");
-    assert.equal(reqData.safety.dbMutated, false);
+    assert.equal(reqData.safety.runtimeDbMutated, false);
     assert.equal(reqData.safety.controlDbMutated, true);
     assert.equal(reqData.requestId, "req_123");
-    assert.equal(reqData.fulfillmentCommand.includes("--fulfill-request req_123"), true);
-    
+    assert.equal(reqData.fulfillment.required, true);
+    assert.equal(reqData.fulfillment.executor, "operator-cli");
+    assert.equal(reqData.fulfillment.status, "pending_cli_fulfill_request_support");
+    assert.equal(Object.hasOwn(reqData, "fulfillmentCommand"), false);
+
     // Verify DB mutations
     const account = state.platform.controlStore.getAccount("acc_123");
     assert.equal(account.id, "acc_123");
-    
+
     const requestRow = state.platform.controlStore.getIssuanceRequest("req_123");
     assert.equal(requestRow.status, "planned");
+  } finally {
+    server.close();
+    state.close();
+    rmSync(fixtureDir, { recursive: true, force: true });
+  }
+});
+
+test("admin platform issuance request requires explicit approval reference", async () => {
+  const fixtureDir = join(process.cwd(), "test-fixtures", "admin-platform-issuance-api-no-approval");
+  rmSync(fixtureDir, { recursive: true, force: true });
+  mkdirSync(fixtureDir, { recursive: true });
+
+  const { app, state } = createTestApp(fixtureDir);
+  const { server, baseUrl } = await listen(app);
+
+  try {
+    const { approvalRef, ...inputWithoutApproval } = validIssuanceInput;
+    const res = await fetch(`${baseUrl}/api/admin/platform/subscription-issuance/request`, {
+      method: "POST",
+      headers: authHeaders(state),
+      body: JSON.stringify(inputWithoutApproval)
+    });
+
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.equal(body.error, "validation_error");
+    assert.ok(!state.platform.controlStore.getIssuanceRequest("req_123"));
   } finally {
     server.close();
     state.close();
@@ -125,17 +156,17 @@ test("admin platform issuance preview rejects invalid input", async () => {
   const fixtureDir = join(process.cwd(), "test-fixtures", "admin-platform-issuance-api-invalid");
   rmSync(fixtureDir, { recursive: true, force: true });
   mkdirSync(fixtureDir, { recursive: true });
-  
+
   const { app, state } = createTestApp(fixtureDir);
   const { server, baseUrl } = await listen(app);
-  
+
   try {
     const res = await fetch(`${baseUrl}/api/admin/platform/subscription-issuance/preview`, {
       method: "POST",
       headers: authHeaders(state),
       body: JSON.stringify({ nodeId: "" })
     });
-    
+
     assert.equal(res.status, 400);
     const body = await res.json();
     assert.equal(body.error, "validation_error");

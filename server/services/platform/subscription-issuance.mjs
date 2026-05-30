@@ -5,6 +5,12 @@ function safeRef(prefix, value) {
   return `${prefix}ref_${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
 }
 
+function validationError(msg) {
+  const err = new Error(msg);
+  err.code = "validation_error";
+  return err;
+}
+
 function bestEffort(step) {
   try {
     step();
@@ -72,9 +78,7 @@ function runControlFinalization(controlStore, finalize) {
 
 export function validateIssuanceInput(input) {
   function throwError(msg) {
-    const err = new Error(msg);
-    err.code = "validation_error";
-    throw err;
+    throw validationError(msg);
   }
 
   if (!input) throwError("input is required");
@@ -119,7 +123,7 @@ export function previewSubscriptionIssuance({ input }) {
     requestId: control.requestId,
     plan: control.plan || "pilot",
     safety: {
-      dbMutated: false,
+      runtimeDbMutated: false,
       controlDbMutated: false,
       rawUrlReturned: false,
       tenantCreated: false
@@ -133,7 +137,7 @@ export function previewSubscriptionIssuance({ input }) {
  */
 export function planSubscriptionIssuance({ controlStore, input, approvalRef, now }) {
   if (!controlStore) throw new Error("controlStore is required");
-  if (!approvalRef) throw new Error("approvalRef is required");
+  if (!approvalRef) throw validationError("approvalRef is mandatory for planned issuance request.");
   if (!now) throw new Error("now is required");
 
   validateIssuanceInput(input);
@@ -195,9 +199,15 @@ export function planSubscriptionIssuance({ controlStore, input, approvalRef, now
     requestId: control.requestId,
     accountRef: safeRef("account", control.accountId),
     nodeId: input.nodeId,
-    fulfillmentCommand: `node scripts/platform-issue-subscription.mjs --fulfill-request ${control.requestId}`,
+    fulfillment: {
+      required: true,
+      executor: "operator-cli",
+      requestId: control.requestId,
+      status: "pending_cli_fulfill_request_support",
+      nextCapability: "CLI fulfillment by planned request is intentionally out of scope for this API PR."
+    },
     safety: {
-      dbMutated: false,
+      runtimeDbMutated: false,
       controlDbMutated: true,
       rawUrlReturned: false,
       tenantCreated: false

@@ -15,7 +15,6 @@ import { createCleanStartControlPlanePackage } from "../services/platform/clean-
 import { createAliyunGateDecisionPacket } from "../services/platform/aliyun-gate-decision-packet.mjs";
 import { buildProvisioningFormPackage } from "../services/platform/provisioning-form.mjs";
 import { previewSubscriptionIssuance, planSubscriptionIssuance } from "../services/platform/subscription-issuance.mjs";
-import { randomBytes } from "node:crypto";
 
 function sendError(res, error) {
   if (error.code === "validation_error") {
@@ -357,7 +356,7 @@ export function adminPlatformRoutes(state) {
       if (!controlStore) {
         throw new Error("controlStore is not configured");
       }
-      const approvalRef = `http_req_${randomBytes(8).toString("hex")}`;
+      const approvalRef = String(req.body?.approvalRef || req.body?.control?.approvalRef || "").trim();
       res.status(201).json({
         request: planSubscriptionIssuance({
           controlStore,
