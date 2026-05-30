@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -215,6 +215,8 @@ test("platform issue-subscription requires explicit node and opaque artifact iss
     ]);
     assert.ok(err);
     assert.match(err.stderr || err.message, /nodeId is mandatory/);
+    assert.ok(!existsSync(controlDbPath), "control DB must not be created on invalid input");
+    assert.ok(!existsSync(handoffPath), "handoff file must not be created on invalid input");
   }, inputFixture({ nodeId: "" }));
 
   withTempEnv(({ inputPath, dbPath, controlDbPath, handoffPath }) => {
@@ -232,6 +234,21 @@ test("platform issue-subscription requires explicit node and opaque artifact iss
   }, inputFixture({ artifact: { create: false } }));
 });
 
+function withCleanEnv(fn, input = inputFixture()) {
+  const tempDir = mkdtempSync(join(tmpdir(), "platform-issue-subscription-"));
+  try {
+    const dbPath = join(tempDir, "runtime.sqlite");
+    const controlDbPath = join(tempDir, "control.sqlite");
+    const inputPath = join(tempDir, "input.json");
+    const handoffPath = join(tempDir, "handoff.txt");
+    writeFileSync(inputPath, JSON.stringify(input, null, 2));
+
+    return fn({ tempDir, dbPath, controlDbPath, inputPath, handoffPath });
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
 test("platform issue-subscription rejects execution without control facts", () => {
   withTempEnv(({ inputPath, dbPath, controlDbPath, handoffPath }) => {
     const err = runCliThrows([
@@ -246,4 +263,23 @@ test("platform issue-subscription rejects execution without control facts", () =
     assert.ok(err);
     assert.match(err.stderr || err.message, /control\.accountId is mandatory/);
   }, inputFixture({ control: undefined }));
+});
+
+test("platform issue-subscription strictly fails closed without creating runtime or control sqlite on invalid input", () => {
+  withCleanEnv(({ inputPath, dbPath, controlDbPath, handoffPath }) => {
+    const err = runCliThrows([
+      "--execute-production-mutation",
+      "--approval-ref", "PR-123",
+      "--db-path", dbPath,
+      "--control-db-path", controlDbPath,
+      "--public-base-url", "https://example.com",
+      "--handoff-file", handoffPath,
+      inputPath
+    ]);
+    assert.ok(err);
+    assert.match(err.stderr || err.message, /nodeId is mandatory/);
+    assert.ok(!existsSync(dbPath), "runtime DB must not be created on invalid input");
+    assert.ok(!existsSync(controlDbPath), "control DB must not be created on invalid input");
+    assert.ok(!existsSync(handoffPath), "handoff file must not be created on invalid input");
+  }, inputFixture({ nodeId: "" }));
 });
