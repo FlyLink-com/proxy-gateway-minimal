@@ -1,8 +1,14 @@
 # CLI Production Provisioning SOP
 
-Last updated: 2026-05-29, Asia/Shanghai.
+Last updated: 2026-05-31, Asia/Shanghai.
 
 This document serves as the Standard Operating Procedure (SOP) for issuing and revoking user subscriptions via the platform CLI. It guarantees that all subscription handling remains operator-controlled, auditable, and secure.
+
+This SOP is for operators only. It is not the customer portal flow, and the
+user portal must not shell out to or depend on these CLI commands for normal
+self-service actions such as viewing account state or refreshing an allowed
+subscription artifact. CLI and portal adapters share domain services, but they
+remain separate product surfaces.
 
 > [!WARNING]
 > This runbook is considered A-tier when executing against production environments for actual users. Follow the exact approval process before issuing real subscriptions.

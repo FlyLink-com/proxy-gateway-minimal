@@ -1,6 +1,6 @@
 # Operator CLI Platform Boundary
 
-Last updated: 2026-05-28, Asia/Shanghai.
+Last updated: 2026-05-31, Asia/Shanghai.
 
 This document defines the current product boundary for platform operations:
 the production platform exposes only explicitly approved public/customer
@@ -21,6 +21,9 @@ The platform product direction is CLI-first for operators:
   packages, local/private consoles, and execution records.
 - Any future browser console is an operator workstation surface, not a public
   Admin endpoint and not a customer portal.
+- CLI is not the user product surface. User portals must call user-scoped
+  domain services directly and must not shell out to, wrap, or depend on CLI
+  commands for normal self-service flows.
 
 ## Public Interface Allowlist
 
@@ -122,8 +125,8 @@ Preferred evolution:
 
 ## Customer / User Posture
 
-Customers should not need a public Admin surface. The intended delivery model is
-operator-issued or agent-assisted resource delivery:
+Customers should not need a public Admin surface and should not interact with
+CLI tools. The operator delivery model is:
 
 ```text
 lead or customer request
@@ -135,6 +138,20 @@ lead or customer request
   -> visible-once out-of-band handoff
   -> subscription refresh through approved public subscription routes
 ```
+
+The customer portal model is separate:
+
+```text
+portal session
+  -> user-scoped service request
+  -> entitlement / balance / quota / artifact policy
+  -> safe user result
+```
+
+Normal customer self-service, such as viewing account state or refreshing an
+allowed subscription artifact, belongs to the portal/service path, not the CLI
+path. Operator CLI remains for provisioning, override, revoke, audit, emergency
+recovery, and controlled handoff.
 
 Future customer portals or dynamic entries remain separate product work and
 must not be hard-linked from the public company site unless explicitly

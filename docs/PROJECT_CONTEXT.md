@@ -146,11 +146,15 @@ Current architecture priorities:
   request summary, but it returns no subscription URL, performs no Admin API
   call, writes no SQLite rows, activates no payment, exposes no public Admin,
   and creates no production subscription. A future real user API remains
-  separate product work and must preserve user-scoped authorization. The target
-  authentication boundary is operator-issued dynamic entry plus TOTP enrollment
-  and short-lived portal sessions first; Google/OAuth or email magic links are
-  later convenience login/recovery mechanisms and must never become entitlement
-  authority by themselves. See `docs/USER_PORTAL_AUTH_BOUNDARY.md`.
+  separate product work and must preserve user-scoped authorization. Portal is
+  a user-facing adapter over domain services, not a wrapper around operator CLI
+  commands. Normal self-service refresh/status actions should be handled by
+  user-scoped services and policy checks, while CLI remains an operator/ops
+  adapter for provisioning, override, revoke, audit, and emergency handling.
+  The target authentication boundary is operator-issued dynamic entry plus TOTP
+  enrollment and short-lived portal sessions first; Google/OAuth or email magic
+  links are later convenience login/recovery mechanisms and must never become
+  entitlement authority by themselves. See `docs/USER_PORTAL_AUTH_BOUNDARY.md`.
 - User Portal Auth Service: repository-only internal service support now exists
   under `server/services/platform/user-portal-auth.mjs` for issuing dynamic
   portal entries, enrolling TOTP credentials through an injected verifier, and
@@ -173,6 +177,8 @@ Current architecture priorities:
   `0600` handoff file. Running it against production control data remains
   Risk A and still does not issue subscriptions, expose a public portal route,
   activate payment, mutate runtime tenants/artifacts, or migrate Aliyun state.
+  It is not a user-facing workflow and must not be called by the user portal;
+  both CLI and portal adapters should share domain services instead.
 - Operator CLI Platform Boundary: the platform product direction is
   CLI-first for operators. Public routes stay small and explicit, while
   administrative workflows are handled through operator CLI tools,
