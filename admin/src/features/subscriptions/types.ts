@@ -119,8 +119,6 @@ export type PortalAccessRequestSummary = {
   id: string;
   type: "portal_access_request_summary";
   portalUserRef: string;
-  displayName: string;
-  email: string;
   plan: PortalAccessRequestPlan;
   planLabel: string;
   durationDays: number;
@@ -131,13 +129,12 @@ export type PortalAccessRequestSummary = {
   reviewedAt: string | null;
   reviewedByRef: string | null;
   safeReasonCode: string | null;
-  contactComplete: boolean;
   priorTrialState: string;
   entitlementRef: string | null;
   accessGrantRef: string | null;
   safety: {
     noSubscriptionUrl: boolean;
-    noRawContactNote: boolean;
+    noRawCustomerData: boolean;
     noRawHandoffMaterial: boolean;
     noEntitlementCreated: boolean;
     noRuntimeMutation: boolean;

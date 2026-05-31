@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-05-31, Asia/Shanghai.
+Last updated: 2026-06-01, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -147,7 +147,8 @@ Current architecture priorities:
   default: it can authenticate a preview session and submit a subscription
   request summary, but it returns no subscription URL, performs no Admin API
   call, writes no SQLite rows, activates no payment, exposes no public Admin,
-  and creates no production subscription. A future real user API remains
+  collects no phone/Telegram/contact profile fields, and creates no production
+  subscription. A future real user API remains
   separate product work and must preserve user-scoped authorization. Portal is
   a user-facing adapter over domain services, not a wrapper around operator CLI
   commands. Normal self-service refresh/status actions should be handled by
@@ -160,7 +161,9 @@ Current architecture priorities:
 - Admin-Approved Portal Request Queue: repository-only support now lets the
   user portal submit trial/monthly/yearly access requests while keeping every
   business-changing action in the administrator review path. The 7-day trial
-  is request-only and is not automatically issued by the user portal. The
+  is request-only and is not automatically issued by the user portal. Requests
+  are keyed by safe portal user reference, package, and client target rather
+  than customer contact profiles. The
   protected Admin surface can review requests and prepare safe approval
   previews, but production entitlement creation, artifact delivery, public
   portal exposure, payment activation, DNS, Nginx, systemd, firewall, and

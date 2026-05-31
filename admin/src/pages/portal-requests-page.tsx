@@ -73,7 +73,7 @@ export function PortalRequestsPage({ apiClient }: { apiClient: AdminApiClient })
                 <th>Plan</th>
                 <th>Status</th>
                 <th>Duration</th>
-                <th>Contact</th>
+                <th>User ref</th>
               </tr>
             </thead>
             <tbody>
@@ -83,7 +83,7 @@ export function PortalRequestsPage({ apiClient }: { apiClient: AdminApiClient })
                   <td>{item.planLabel}</td>
                   <td>{item.status}</td>
                   <td>{item.durationDays} days</td>
-                  <td>{item.contactComplete ? "complete" : "incomplete"}</td>
+                  <td>{item.portalUserRef}</td>
                 </tr>
               ))}
             </tbody>

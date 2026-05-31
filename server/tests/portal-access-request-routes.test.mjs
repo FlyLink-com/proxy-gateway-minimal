@@ -38,14 +38,7 @@ function authHeaders() {
 function trialBody() {
   return {
     portalUserRef: "user_safe_ref",
-    displayName: "customer",
-    email: "customer@example.com",
-    plan: "trial",
-    contact: {
-      email: "customer@example.com",
-      phone: "+86 138 0013 8000",
-      telegram: "@customer_support"
-    }
+    plan: "trial"
   };
 }
 
@@ -80,6 +73,8 @@ test("enabled portal route creates pending admin review request without subscrip
     assert.equal(body.request.durationDays, 7);
     assert.equal(body.request.status, "pending_admin_review");
     assert.equal(JSON.stringify(body).includes("subscriptionUrl"), false);
+    assert.equal(JSON.stringify(body).includes("customer@example.com"), false);
+    assert.equal(JSON.stringify(body).includes("telegram"), false);
   } finally {
     server.close();
   }

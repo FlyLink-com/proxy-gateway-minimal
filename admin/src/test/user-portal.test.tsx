@@ -7,8 +7,6 @@ import {
   createLocalUserPortalClient,
   type PortalAuthInput,
   type PortalApplySubscriptionInput,
-  type PortalContactInfo,
-  type PortalContactInfoUpdate,
   type PortalRefreshSubscriptionInput,
   type PortalSession,
   type PortalSubscriptionRequest,
@@ -38,19 +36,8 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
     })),
     fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
       userRef: input.userRef,
-      contactInfo: null,
       subscriptionRequest: null,
       historySummary: [],
-      updatedAt: "2026-05-31T00:00:00.000Z",
-      safety: {
-        noAdminApi: true,
-        noPaymentActivation: true,
-        noPublicAdmin: true
-      }
-    })),
-    updateContactInfo: vi.fn(async (input: { userRef: string; contact: PortalContactInfo }): Promise<PortalContactInfoUpdate> => ({
-      userRef: input.userRef,
-      contact: input.contact,
       updatedAt: "2026-05-31T00:00:00.000Z",
       safety: {
         noAdminApi: true,
@@ -135,14 +122,6 @@ async function enterPortal() {
   return screen.findByRole("navigation", { name: "用户中心导航" });
 }
 
-async function fillContactInfo() {
-  fireEvent.click(screen.getByRole("button", { name: "填写联系资料" }));
-  fireEvent.change(screen.getByLabelText("联系手机号"), { target: { value: "+86 138 0013 8000" } });
-  fireEvent.change(screen.getByLabelText("Telegram 账号"), { target: { value: "@customer_support" } });
-  fireEvent.click(screen.getByRole("button", { name: "保存资料" }));
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "填写联系资料" })).toBeNull());
-}
-
 describe("user portal route", () => {
   test("opens a separate customer portal without Admin navigation", async () => {
     render(createElement(App));
@@ -197,20 +176,12 @@ describe("user portal product surface", () => {
 
     await enterPortal();
     fireEvent.click(screen.getByRole("button", { name: /年卡/ }));
-    await fillContactInfo();
     fireEvent.click(screen.getByRole("button", { name: "提交申请" }));
 
     expect((await screen.findAllByText("等待管理员审核")).length).toBeGreaterThan(0);
     expect(client.applyForSubscription).toHaveBeenCalledWith(
       expect.objectContaining({
         userRef: "user_safe_ref",
-        displayName: "customer",
-        email: "customer@example.com",
-        contact: {
-          email: "customer@example.com",
-          phone: "+86 138 0013 8000",
-          telegram: "@customer_support"
-        },
         planId: "yearly",
         clientTarget: "clash",
         requestOnly: true
@@ -229,7 +200,6 @@ describe("user portal product surface", () => {
 
     await enterPortal();
     fireEvent.click(screen.getByRole("button", { name: /7 天试用/ }));
-    await fillContactInfo();
     fireEvent.click(screen.getByRole("button", { name: "提交申请" }));
 
     expect((await screen.findAllByText("等待管理员审核")).length).toBeGreaterThan(0);
@@ -251,13 +221,6 @@ describe("user portal product surface", () => {
 
     const request = await client.applyForSubscription({
       userRef: "user_safe_ref",
-      displayName: "customer",
-      email: "customer@example.com",
-      contact: {
-        email: "customer@example.com",
-        phone: "+86 138 0013 8000",
-        telegram: "@customer_support"
-      },
       planId: "trial",
       clientTarget: "clash",
       requestOnly: true
@@ -269,27 +232,31 @@ describe("user portal product surface", () => {
     expect(request.expiresAt).toBe("待管理员发放");
   });
 
-  test("requires contact details through a popup before package application", async () => {
+  test("does not collect contact details before package application", async () => {
     const client = portalClient();
     render(createElement(UserPortalPage, { portalClient: client }));
 
     await enterPortal();
     fireEvent.click(screen.getByRole("button", { name: "提交申请" }));
 
-    expect(screen.getByText("请先填写授权联系资料。")).not.toBeNull();
-    expect(screen.getByRole("dialog", { name: "填写联系资料" })).not.toBeNull();
-    expect(client.applyForSubscription).not.toHaveBeenCalled();
+    expect(screen.queryByText("请先填写授权联系资料。")).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "填写联系资料" })).toBeNull();
+    expect(screen.queryByLabelText("联系手机号")).toBeNull();
+    expect(screen.queryByLabelText("Telegram 账号")).toBeNull();
+    await waitFor(() => expect(client.applyForSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userRef: "user_safe_ref",
+        planId: "monthly",
+        clientTarget: "clash",
+        requestOnly: true
+      })
+    ));
   });
 
   test("refreshing an active subscription is separate from opening a package", async () => {
     const client = portalClient({
       fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
         userRef: input.userRef,
-        contactInfo: {
-          email: "customer@example.com",
-          phone: "+86 138 0013 8000",
-          telegram: "@customer_support"
-        },
         subscriptionRequest: {
           status: "subscription_ready",
           lifecycle: "active",
@@ -342,11 +309,6 @@ describe("user portal product surface", () => {
     const client = portalClient({
       fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
         userRef: input.userRef,
-        contactInfo: {
-          email: "customer@example.com",
-          phone: "+86 138 0013 8000",
-          telegram: "@customer_support"
-        },
         subscriptionRequest: {
           status: "subscription_ready",
           lifecycle: "active",
@@ -405,11 +367,6 @@ describe("user portal product surface", () => {
     const client = portalClient({
       fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
         userRef: input.userRef,
-        contactInfo: {
-          email: "customer@example.com",
-          phone: "+86 138 0013 8000",
-          telegram: "@customer_support"
-        },
         subscriptionRequest: {
           status: "subscription_ready",
           lifecycle: "active",
@@ -449,11 +406,6 @@ describe("user portal product surface", () => {
     const client = portalClient({
       fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
         userRef: input.userRef,
-        contactInfo: {
-          email: "customer@example.com",
-          phone: "+86 139 0013 9000",
-          telegram: "@existing_user"
-        },
         subscriptionRequest: {
           status: "subscription_ready",
           lifecycle: "active",
@@ -496,11 +448,6 @@ describe("user portal product surface", () => {
     const client = portalClient({
       fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
         userRef: input.userRef,
-        contactInfo: {
-          email: "customer@example.com",
-          phone: "+86 139 0013 9000",
-          telegram: "@existing_user"
-        },
         subscriptionRequest: {
           status: "subscription_ready",
           lifecycle: "active",
@@ -540,11 +487,6 @@ describe("user portal product surface", () => {
     const client = portalClient({
       fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
         userRef: input.userRef,
-        contactInfo: {
-          email: "customer@example.com",
-          phone: "+86 138 0013 8000",
-          telegram: "@customer_support"
-        },
         subscriptionRequest: {
           status: "subscription_ready",
           lifecycle: "active",
@@ -593,7 +535,6 @@ describe("user portal product surface", () => {
     render(createElement(UserPortalPage, { portalClient: client }));
 
     await enterPortal();
-    await fillContactInfo();
     fireEvent.click(screen.getByRole("button", { name: "提交申请" }));
 
     expect((await screen.findAllByText("等待管理员审核")).length).toBeGreaterThan(0);
@@ -606,39 +547,28 @@ describe("user portal product surface", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
 
-    expect(screen.getByText("查看账户基础信息、授权联系资料与历史记录。")).not.toBeNull();
+    expect(screen.getByText("查看账户基础信息与历史记录。")).not.toBeNull();
     expect(screen.getAllByText("月卡 · 等待管理员审核").length).toBeGreaterThan(0);
     expect(screen.getByText("待管理员发放")).not.toBeNull();
-    expect(screen.getByText("已填写邮箱、手机号、Telegram")).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "修改资料" }));
-    expect(screen.getByDisplayValue("+86 138 0013 8000")).not.toBeNull();
-    expect(screen.getByDisplayValue("@customer_support")).not.toBeNull();
+    expect(screen.queryByText("授权联系资料")).toBeNull();
+    expect(screen.queryByRole("button", { name: "修改资料" })).toBeNull();
     expect(screen.getByText(/申请月卡（审核中）/)).not.toBeNull();
     expect(screen.queryByText("2026/06/30 到期")).toBeNull();
     expect(screen.queryByText("月卡 / 年卡套餐，申请开通；生效期内可刷新当前订阅。")).toBeNull();
   });
 
-  test("saving profile contact info persists through the user-scoped client", async () => {
+  test("personal center does not collect profile contact info", async () => {
     const client = portalClient();
     render(createElement(UserPortalPage, { portalClient: client }));
 
     await enterPortal();
     fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
-    fireEvent.click(screen.getByRole("button", { name: "填写资料" }));
-    fireEvent.change(screen.getByLabelText("联系手机号"), { target: { value: "+86 139 0099 0000" } });
-    fireEvent.change(screen.getByLabelText("Telegram 账号"), { target: { value: "@updated_user" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存资料" }));
 
-    await waitFor(() => expect(client.updateContactInfo).toHaveBeenCalledWith({
-      userRef: "user_safe_ref",
-      contact: {
-        email: "customer@example.com",
-        phone: "+86 139 0099 0000",
-        telegram: "@updated_user"
-      }
-    }));
+    expect(screen.queryByRole("button", { name: "填写资料" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "修改资料" })).toBeNull();
+    expect(screen.queryByLabelText("联系手机号")).toBeNull();
+    expect(screen.queryByLabelText("Telegram 账号")).toBeNull();
     expect(screen.queryByRole("dialog", { name: "填写联系资料" })).toBeNull();
-    expect(screen.getByText("已填写邮箱、手机号、Telegram")).not.toBeNull();
   });
 
   test("local preview client preserves server-owned package facts when refreshing", async () => {
@@ -649,13 +579,6 @@ describe("user portal product surface", () => {
 
     const applied = await client.applyForSubscription({
       userRef: "user_safe_ref",
-      displayName: "customer",
-      email: "customer@example.com",
-      contact: {
-        email: "customer@example.com",
-        phone: "+86 138 0013 8000",
-        telegram: "@customer_support"
-      },
       planId: "yearly",
       clientTarget: "clash"
     });

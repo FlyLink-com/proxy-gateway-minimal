@@ -14,14 +14,7 @@ function service() {
 function validTrialInput(overrides = {}) {
   return {
     portalUserRef: "user_safe_ref",
-    displayName: "customer",
-    email: "customer@example.com",
     plan: "trial",
-    contact: {
-      email: "customer@example.com",
-      phone: "+86 138 0013 8000",
-      telegram: "@customer_support"
-    },
     note: "try before monthly",
     ...overrides
   };
@@ -39,6 +32,9 @@ test("portal access request service creates trial requests pending admin review"
   assert.equal(request.nextAction, "admin_review_required");
   assert.equal(request.safety.noSubscriptionUrl, true);
   assert.equal(request.safety.noEntitlementCreated, true);
+  assert.equal("contactComplete" in request, false);
+  assert.equal("email" in request, false);
+  assert.equal("displayName" in request, false);
   assert.equal(JSON.stringify(request).includes("try before monthly"), false);
 });
 
@@ -92,8 +88,8 @@ test("admin review can reject or prepare approval preview without issuing", () =
 
   const rejected = requests.rejectRequest("pareq_1", {
     reviewedByRef: "operator_safe_ref",
-    reasonCode: "contact_unverified"
+    reasonCode: "operator_rejected"
   });
   assert.equal(rejected.status, "rejected");
-  assert.equal(rejected.safeReasonCode, "contact_unverified");
+  assert.equal(rejected.safeReasonCode, "operator_rejected");
 });

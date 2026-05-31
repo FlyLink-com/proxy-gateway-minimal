@@ -18,7 +18,6 @@ import { errorMessage } from "../../lib/errors";
 import { cn } from "../../lib/utils";
 import type {
   PortalClientId,
-  PortalContactInfo,
   PortalHistoryRecord,
   PortalPlanId,
   PortalSession,
@@ -122,12 +121,6 @@ const supportItems = [
   }
 ];
 
-const emptyContactInfo: PortalContactInfo = {
-  email: "",
-  phone: "",
-  telegram: ""
-};
-
 function selectedPlan(planId: PortalPlanId) {
   return plans.find((plan) => plan.id === planId) ?? plans[0];
 }
@@ -174,14 +167,6 @@ function subscriptionCtaLabel(lifecycle: SubscriptionLifecycle, pending: boolean
   return "提交申请";
 }
 
-function isContactInfoComplete(contactInfo: PortalContactInfo) {
-  return Boolean(contactInfo.email.trim() && contactInfo.phone.trim() && contactInfo.telegram.trim());
-}
-
-function contactSummaryLabel(contactInfo: PortalContactInfo) {
-  return isContactInfoComplete(contactInfo) ? "已填写邮箱、手机号、Telegram" : "尚未填写授权联系资料";
-}
-
 function topbarDescription(view: PortalView) {
   switch (view) {
     case "subscription":
@@ -191,7 +176,7 @@ function topbarDescription(view: PortalView) {
     case "support":
       return "处理授权确认、订阅异常和人工支持请求。";
     case "profile":
-      return "查看账户基础信息、授权联系资料与历史记录。";
+      return "查看账户基础信息与历史记录。";
     default:
       return "";
   }
@@ -245,11 +230,7 @@ export function UserPortalPage({
   const [actionError, setActionError] = useState("");
   const [created, setCreated] = useState<CreatedSubscription | null>(null);
   const [copied, setCopied] = useState(false);
-  const [contactInfo, setContactInfo] = useState<PortalContactInfo>(emptyContactInfo);
   const [historySummary, setHistorySummary] = useState<PortalHistoryRecord[]>([]);
-  const [contactModalOpen, setContactModalOpen] = useState(false);
-  const [contactSavePending, setContactSavePending] = useState(false);
-  const [contactError, setContactError] = useState("");
 
   const activePlan = useMemo(() => selectedPlan(selectedPlanId), [selectedPlanId]);
   const userEmail = authEmail.trim();
@@ -272,7 +253,6 @@ export function UserPortalPage({
       });
       const portalState = await portalClient.fetchCurrentState({ userRef: session.userRef });
       setPortalSession(session);
-      setContactInfo(portalState.contactInfo ?? { ...emptyContactInfo, email: authEmail.trim() });
       if (portalState.subscriptionRequest) {
         setCreated({
           request: portalState.subscriptionRequest,
@@ -291,32 +271,10 @@ export function UserPortalPage({
     }
   }
 
-  async function saveContactInfo(nextContactInfo: PortalContactInfo) {
-    setContactError("");
-    setContactSavePending(true);
-    try {
-      const result = await portalClient.updateContactInfo({
-        userRef: portalSession?.userRef ?? "",
-        contact: nextContactInfo
-      });
-      setContactInfo(result.contact);
-      setContactModalOpen(false);
-    } catch (requestError) {
-      setContactError(errorMessage(requestError, "操作失败。"));
-    } finally {
-      setContactSavePending(false);
-    }
-  }
-
   async function submitSubscription(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setActionError("");
     setCopied(false);
-    if (lifecycle !== "active" && !isContactInfoComplete(contactInfo)) {
-      setActionError("请先填写授权联系资料。");
-      setContactModalOpen(true);
-      return;
-    }
     setPending(true);
     try {
       const wasActive = lifecycle === "active";
@@ -329,9 +287,6 @@ export function UserPortalPage({
           })
         : await portalClient.applyForSubscription({
             userRef,
-            displayName: userDisplayName,
-            email: userEmail,
-            contact: contactInfo,
             planId: selectedPlanId,
             clientTarget,
             requestOnly: true
@@ -469,13 +424,11 @@ export function UserPortalPage({
               activePlan={activePlan}
               actionError={actionError}
               clientTarget={clientTarget}
-              contactInfo={contactInfo}
               copied={copied}
               created={created}
               isReady={isReady}
               isWaiting={isWaiting}
               lifecycle={lifecycle}
-              openContactModal={() => setContactModalOpen(true)}
               pending={pending}
               selectedPlanId={selectedPlanId}
               setActiveView={setActiveView}
@@ -491,11 +444,9 @@ export function UserPortalPage({
           {activeView === "profile" ? (
             <ProfilePanel
               created={created}
-              contactInfo={contactInfo}
               currentPlan={currentPlan}
               historySummary={historySummary}
               lifecycle={lifecycle}
-              openContactModal={() => setContactModalOpen(true)}
               registrationDate={registrationDate}
               userEmail={userEmail}
               userRef={portalSession.userRef}
@@ -503,15 +454,6 @@ export function UserPortalPage({
           ) : null}
         </section>
       </main>
-      {contactModalOpen ? (
-        <ContactInfoModal
-          contactError={contactError}
-          contactInfo={contactInfo}
-          onClose={() => setContactModalOpen(false)}
-          pending={contactSavePending}
-          saveContactInfo={saveContactInfo}
-        />
-      ) : null}
     </>
   );
 }
@@ -520,13 +462,11 @@ function SubscriptionManager({
   activePlan,
   actionError,
   clientTarget,
-  contactInfo,
   copied,
   created,
   isReady,
   isWaiting,
   lifecycle,
-  openContactModal,
   pending,
   selectedPlanId,
   setActiveView,
@@ -539,13 +479,11 @@ function SubscriptionManager({
   activePlan: PortalPlan;
   actionError: string;
   clientTarget: PortalClientId;
-  contactInfo: PortalContactInfo;
   copied: boolean;
   created: CreatedSubscription | null;
   isReady: boolean;
   isWaiting: boolean;
   lifecycle: SubscriptionLifecycle;
-  openContactModal: () => void;
   pending: boolean;
   selectedPlanId: PortalPlanId;
   setActiveView: (value: PortalView) => void;
@@ -596,18 +534,6 @@ function SubscriptionManager({
             <li key={item}><CircleCheck aria-hidden="true" /> {item}</li>
           ))}
         </ul>
-
-        {lifecycle !== "active" ? (
-          <div className="portal-contact-summary">
-            <div>
-              <strong>授权联系信息</strong>
-              <span>{contactSummaryLabel(contactInfo)}</span>
-            </div>
-            <button type="button" onClick={openContactModal}>
-              {isContactInfoComplete(contactInfo) ? "修改联系资料" : "填写联系资料"}
-            </button>
-          </div>
-        ) : null}
 
         {planLocked ? (
           <div className="portal-inline-note">
@@ -667,7 +593,7 @@ function SubscriptionManager({
         {isWaiting ? (
           <div className="portal-action-callout">
             <strong>下一步：等待管理员审核</strong>
-            <p>管理员会根据账户 ID <code>{userRef}</code>、联系资料和申请套餐完成审批，审核通过后发放订阅。</p>
+            <p>管理员会根据账户 ID <code>{userRef}</code> 和申请套餐完成审批，审核通过后发放订阅。</p>
             <button type="button" onClick={() => setActiveView("support")}>联系客服支持</button>
           </div>
         ) : null}
@@ -792,21 +718,17 @@ function SupportPanel() {
 
 function ProfilePanel({
   created,
-  contactInfo,
   currentPlan,
   historySummary,
   lifecycle,
-  openContactModal,
   registrationDate,
   userEmail,
   userRef
 }: {
   created: CreatedSubscription | null;
-  contactInfo: PortalContactInfo;
   currentPlan: PortalPlan;
   historySummary: PortalHistoryRecord[];
   lifecycle: SubscriptionLifecycle;
-  openContactModal: () => void;
   registrationDate: string;
   userEmail: string;
   userRef: string;
@@ -818,7 +740,7 @@ function ProfilePanel({
         <div>
           <span className="portal-card-label">个人中心</span>
           <h2>账户与历史记录</h2>
-          <p>这里展示账户事实、授权联系资料和历史消费摘要。</p>
+          <p>这里展示账户事实和历史消费摘要。</p>
         </div>
       </div>
 
@@ -845,19 +767,6 @@ function ProfilePanel({
         </div>
       </dl>
 
-      <div className="portal-profile-contact">
-        <div>
-          <strong>授权联系资料</strong>
-          <p>用于套餐核验、客服回访和后续建表。修改后会保存到用户账户资料。</p>
-        </div>
-        <div className="portal-contact-summary compact">
-          <span>{contactSummaryLabel(contactInfo)}</span>
-          <button type="button" onClick={openContactModal}>
-            {isContactInfoComplete(contactInfo) ? "修改资料" : "填写资料"}
-          </button>
-        </div>
-      </div>
-
       <div className="portal-profile-module-grid">
         <article className="portal-profile-module">
           <History aria-hidden="true" />
@@ -871,85 +780,5 @@ function ProfilePanel({
         </article>
       </div>
     </section>
-  );
-}
-
-function ContactInfoModal({
-  contactError,
-  contactInfo,
-  onClose,
-  pending,
-  saveContactInfo
-}: {
-  contactError: string;
-  contactInfo: PortalContactInfo;
-  onClose: () => void;
-  pending: boolean;
-  saveContactInfo: (contactInfo: PortalContactInfo) => Promise<void>;
-}) {
-  const [draftContactInfo, setDraftContactInfo] = useState(contactInfo);
-
-  function updateDraftContactInfo(field: keyof PortalContactInfo, value: string) {
-    setDraftContactInfo((current) => ({ ...current, [field]: value }));
-  }
-
-  function submitContactInfo(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    void saveContactInfo(draftContactInfo);
-  }
-
-  return (
-    <div className="portal-modal-backdrop" role="presentation">
-      <form
-        className="portal-contact-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="portal-contact-title"
-        onSubmit={submitContactInfo}
-      >
-        <div className="portal-modal-heading">
-          <div>
-            <span className="portal-card-label">授权资料</span>
-            <h2 id="portal-contact-title">填写联系资料</h2>
-            <p>这些信息用于管理员授权核验和后续客服联系。</p>
-          </div>
-          <button type="button" aria-label="关闭联系资料表单" onClick={onClose}>×</button>
-        </div>
-        <div className="portal-form-grid">
-          <label>
-            <span>联系邮箱</span>
-            <input
-              type="email"
-              value={draftContactInfo.email}
-              onChange={(event) => updateDraftContactInfo("email", event.target.value)}
-              required
-            />
-          </label>
-          <label>
-            <span>联系手机号</span>
-            <input
-              value={draftContactInfo.phone}
-              onChange={(event) => updateDraftContactInfo("phone", event.target.value)}
-              placeholder="+86 138 0013 8000"
-              required
-            />
-          </label>
-          <label>
-            <span>Telegram 账号</span>
-            <input
-              value={draftContactInfo.telegram}
-              onChange={(event) => updateDraftContactInfo("telegram", event.target.value)}
-              placeholder="@username"
-              required
-            />
-          </label>
-        </div>
-        {contactError ? <div className="alert alert-error">{contactError}</div> : null}
-        <div className="portal-modal-actions">
-          <button type="button" className="portal-secondary-button" onClick={onClose} disabled={pending}>取消</button>
-          <button type="submit" className="portal-primary-button" disabled={pending}>保存资料</button>
-        </div>
-      </form>
-    </div>
   );
 }

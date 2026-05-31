@@ -27,32 +27,6 @@ function isoNow(nowFn) {
   return date.toISOString();
 }
 
-function safeEmail(value) {
-  const email = text(value, "email").toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    throw platformError("validation_error", "email is invalid");
-  }
-  return email;
-}
-
-function safeTelegram(value) {
-  const normalized = text(value, "telegram");
-  if (/\s/.test(normalized) || normalized.length > 64) {
-    throw platformError("validation_error", "telegram is invalid");
-  }
-  return normalized.startsWith("@") || normalized.startsWith("https://t.me/")
-    ? normalized
-    : `@${normalized}`;
-}
-
-function safePhone(value) {
-  const normalized = text(value, "phone").replace(/\s+/g, " ");
-  if (!/^[+\d][\d ()-]{5,31}$/.test(normalized)) {
-    throw platformError("validation_error", "phone is invalid");
-  }
-  return normalized;
-}
-
 function normalizePlan(plan) {
   const normalized = text(plan, "plan");
   if (!Object.hasOwn(PLANS, normalized)) {
@@ -70,8 +44,6 @@ function summaryFor(record) {
     id: record.id,
     type: "portal_access_request_summary",
     portalUserRef: record.portalUserRef,
-    displayName: record.displayName,
-    email: record.email,
     plan: record.plan,
     planLabel: PLANS[record.plan].label,
     durationDays: record.durationDays,
@@ -82,13 +54,12 @@ function summaryFor(record) {
     reviewedAt: record.reviewedAt,
     reviewedByRef: record.reviewedByRef,
     safeReasonCode: record.safeReasonCode,
-    contactComplete: record.contactComplete,
     priorTrialState: record.priorTrialState,
     entitlementRef: record.entitlementRef,
     accessGrantRef: record.accessGrantRef,
     safety: {
       noSubscriptionUrl: true,
-      noRawContactNote: true,
+      noRawCustomerData: true,
       noRawHandoffMaterial: true,
       noEntitlementCreated: !record.entitlementRef,
       noRuntimeMutation: true,
@@ -128,22 +99,13 @@ export function createPortalAccessRequestService(options = {}) {
         throw platformError("validation_error", "trial request already exists for this account");
       }
       sequence += 1;
-      const contact = input.contact || {};
       const record = {
         id: text(input.requestRef || requestIdFactory?.() || nextRequestId(now, sequence), "requestRef"),
         portalUserRef,
-        displayName: text(input.displayName, "displayName").slice(0, 80),
-        email: safeEmail(input.email),
         plan,
         durationDays: PLANS[plan].durationDays,
         status: "pending_admin_review",
         nextAction: "admin_review_required",
-        contact: {
-          email: safeEmail(contact.email),
-          phone: safePhone(contact.phone),
-          telegram: safeTelegram(contact.telegram)
-        },
-        contactComplete: true,
         noteProvided: Boolean(String(input.note || "").trim()),
         priorTrialState: plan === "trial" ? "none" : "not_applicable",
         submittedAt: now,
@@ -201,7 +163,7 @@ export function createPortalAccessRequestService(options = {}) {
           reviewedByRef
         }),
         issuanceInput: {
-          displayName: request.displayName,
+          displayName: request.portalUserRef,
           expiresInDays: request.durationDays,
           plan: request.plan,
           nodeId,

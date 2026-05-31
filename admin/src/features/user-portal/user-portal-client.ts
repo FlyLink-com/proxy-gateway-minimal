@@ -35,17 +35,8 @@ export type PortalAuthInput = {
   verificationCode?: string;
 };
 
-export type PortalContactInfo = {
-  email: string;
-  phone: string;
-  telegram: string;
-};
-
 export type PortalApplySubscriptionInput = {
   userRef: string;
-  displayName: string;
-  email: string;
-  contact: PortalContactInfo;
   planId: PortalPlanId;
   clientTarget: PortalClientId;
   requestOnly?: boolean;
@@ -81,25 +72,8 @@ export type PortalSubscriptionRequest = {
 
 export type PortalUserState = {
   userRef: string;
-  contactInfo: PortalContactInfo | null;
   subscriptionRequest: PortalSubscriptionRequest | null;
   historySummary?: PortalHistoryRecord[];
-  updatedAt: string;
-  safety: {
-    noAdminApi: true;
-    noPaymentActivation: true;
-    noPublicAdmin: true;
-  };
-};
-
-export type PortalUpdateContactInfoInput = {
-  userRef: string;
-  contact: PortalContactInfo;
-};
-
-export type PortalContactInfoUpdate = {
-  userRef: string;
-  contact: PortalContactInfo;
   updatedAt: string;
   safety: {
     noAdminApi: true;
@@ -111,7 +85,6 @@ export type PortalContactInfoUpdate = {
 export type UserPortalClient = {
   authenticate(input: PortalAuthInput): Promise<PortalSession>;
   fetchCurrentState(input: { userRef: string }): Promise<PortalUserState>;
-  updateContactInfo(input: PortalUpdateContactInfoInput): Promise<PortalContactInfoUpdate>;
   applyForSubscription(input: PortalApplySubscriptionInput): Promise<PortalSubscriptionRequest>;
   refreshSubscription(input: PortalRefreshSubscriptionInput): Promise<PortalSubscriptionRequest>;
 };
@@ -137,23 +110,6 @@ function normalizeDisplayName(displayName: string, email: string) {
   const normalized = displayName.trim().replace(/\s+/g, " ");
   if (normalized) return normalized.slice(0, 80);
   return email.includes("@") ? email.split("@")[0] : "User";
-}
-
-function normalizePhone(phone: string) {
-  const normalized = phone.trim().replace(/\s+/g, " ");
-  if (!/^[+\d][\d ()-]{5,31}$/.test(normalized)) {
-    throw portalError("请输入有效手机号。");
-  }
-  return normalized;
-}
-
-function normalizeTelegram(telegram: string) {
-  const normalized = telegram.trim();
-  if (!normalized || normalized.length > 64 || /\s/.test(normalized)) {
-    throw portalError("请输入 Telegram 账号。");
-  }
-  if (normalized.startsWith("https://t.me/")) return normalized;
-  return normalized.startsWith("@") ? normalized : `@${normalized}`;
 }
 
 function stableRef(prefix: string, value: string) {
@@ -193,7 +149,6 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
   function emptyState(userRef: string): PortalUserState {
     return {
       userRef,
-      contactInfo: null,
       subscriptionRequest: null,
       historySummary: [],
       updatedAt: now().toISOString(),
@@ -254,41 +209,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       return currentState(input.userRef);
     },
 
-    async updateContactInfo(input) {
-      if (!input.userRef.trim()) {
-        throw portalError("用户会话无效。");
-      }
-      const contact: PortalContactInfo = {
-        email: normalizeEmail(input.contact.email),
-        phone: normalizePhone(input.contact.phone),
-        telegram: normalizeTelegram(input.contact.telegram)
-      };
-      const existing = currentState(input.userRef);
-      const updatedAt = now().toISOString();
-      setState(input.userRef, {
-        contactInfo: contact,
-        subscriptionRequest: existing.subscriptionRequest,
-        historySummary: existing.historySummary ?? [],
-        updatedAt
-      });
-      return {
-        userRef: input.userRef,
-        contact,
-        updatedAt,
-        safety: {
-          noAdminApi: true,
-          noPaymentActivation: true,
-          noPublicAdmin: true
-        }
-      };
-    },
-
     async applyForSubscription(input) {
-      const email = normalizeEmail(input.email);
-      const contactEmail = normalizeEmail(input.contact.email);
-      const contactPhone = normalizePhone(input.contact.phone);
-      const contactTelegram = normalizeTelegram(input.contact.telegram);
-      const displayName = normalizeDisplayName(input.displayName, email);
       if (!input.userRef.trim()) {
         throw portalError("用户会话无效。");
       }
@@ -300,14 +221,9 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         "subreq",
         [
           input.userRef,
-          email,
-          displayName,
           input.planId,
           input.clientTarget,
           expiresAt,
-          contactEmail,
-          contactPhone,
-          contactTelegram,
           issuedAt
         ].join("|")
       );
@@ -342,11 +258,6 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         }
       };
       setState(input.userRef, {
-        contactInfo: {
-          email: contactEmail,
-          phone: contactPhone,
-          telegram: contactTelegram
-        },
         subscriptionRequest: request,
         historySummary,
         updatedAt: issuedAt
@@ -406,7 +317,6 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         }
       };
       setState(input.userRef, {
-        contactInfo: existing.contactInfo,
         subscriptionRequest: refreshed,
         historySummary,
         updatedAt: refreshedAt
