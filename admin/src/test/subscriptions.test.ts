@@ -209,7 +209,8 @@ describe("admin API client", () => {
     const items = await client.listPortalAccessRequests();
 
     expect(items[0].plan).toBe("trial");
-    expect(fetcher.mock.calls[0][0]).toBe("http://127.0.0.1:3456/api/admin/platform/portal-access-requests");
+    const firstCall = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(firstCall[0]).toBe("http://127.0.0.1:3456/api/admin/platform/portal-access-requests");
   });
 
   test("previews portal access request approval without returning subscription material", async () => {
@@ -260,7 +261,8 @@ describe("admin API client", () => {
     });
 
     expect(preview.status).toBe("approved_pending_delivery");
-    expect(JSON.stringify(fetcher.mock.calls[0][1]?.body)).not.toMatch(/subscriptionUrl|token=/i);
+    const firstCall = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.stringify(firstCall[1]?.body)).not.toMatch(/subscriptionUrl|token=/i);
   });
 
   test("loads and records Aliyun gate review data without raw firewall details", async () => {
@@ -739,6 +741,23 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelLabTargetDecision: async () => channelLabTargetDecision(),
     reviewCleanEdgeReadiness: async () => cleanEdgeReadinessSummary(),
     previewProvisioningForm: async () => provisioningFormPreview(),
+    listPortalAccessRequests: async () => [],
+    previewPortalAccessRequestApproval: async () => ({
+      ok: true,
+      mode: "portal-access-request-approval-preview" as const,
+      status: "approved_pending_delivery",
+      request: {},
+      issuanceInput: {},
+      approvalRef: "approval_preview",
+      safety: {
+        previewOnly: true,
+        noSubscriptionUrl: true,
+        noRawHandoffMaterial: true,
+        noRuntimeMutation: true,
+        noProductionMutation: true,
+        requiresSeparateIssuanceExecution: true
+      }
+    }),
     ...overrides
   };
 }
