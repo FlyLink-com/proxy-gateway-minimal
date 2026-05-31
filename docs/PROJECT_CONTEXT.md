@@ -32,7 +32,7 @@ Detailed navigation lives in `docs/README.md`. Structured project state lives in
 ## Repository
 
 ```text
-C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
+D:\Projects\proxy-gateway-minimal
 ```
 
 The active code source of truth is GitHub
@@ -41,13 +41,15 @@ The active code source of truth is GitHub
 Do not use these as active code checkouts:
 
 - `C:\Users\g\OneDrive\文档\订阅管理` - legacy empty Codex project shell.
+- `C:\Users\g\Projects\订阅管理\proxy-gateway-minimal` - pre-D-drive
+  migration checkout; do not use as the default working tree.
 - `C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal` -
   historical archaeology only.
 
 Before any repo work:
 
 ```powershell
-cd C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
+cd D:\Projects\proxy-gateway-minimal
 git status --short --branch
 git fetch origin
 ```
@@ -160,7 +162,11 @@ Current architecture priorities:
   but only as an operator-lab surface. Copying builds, creating test SQLite,
   starting a private service, or changing Nginx/systemd/firewall on HP remains
   Risk A and requires exact approval. See
-  `docs/HP_PORTAL_VALIDATION_RUNBOOK.md`.
+  `docs/HP_PORTAL_VALIDATION_RUNBOOK.md`. The latest approved private HP portal
+  validation passed on 2026-05-31 with test-only SQLite and a loopback-only
+  service, then rollback stopped the service and deleted the isolated directory;
+  see
+  `docs/production-replacement-records/2026-05-31-hp-portal-validation-private-execution.md`.
 - User Portal Auth Service: repository-only internal service support now exists
   under `server/services/platform/user-portal-auth.mjs` for issuing dynamic
   portal entries, enrolling TOTP credentials through an injected verifier, and
