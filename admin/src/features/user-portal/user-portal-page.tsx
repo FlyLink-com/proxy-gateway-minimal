@@ -19,6 +19,7 @@ import { cn } from "../../lib/utils";
 import type {
   PortalClientId,
   PortalContactInfo,
+  PortalHistoryRecord,
   PortalPlanId,
   PortalSession,
   PortalSubscriptionRequest,
@@ -40,8 +41,7 @@ type PortalPlan = {
 type CreatedSubscription = {
   request: PortalSubscriptionRequest;
   action: "opening_requested" | "refreshed";
-  previousInvalidated: boolean;
-  createdAt: string;
+  previousInvalidatedAt?: string;
 };
 
 type SubscriptionLifecycle = "none" | "pending" | "active" | "expired";
@@ -212,13 +212,10 @@ function sidebarSubscriptionSummary(
   return `${plan.label} · ${formatDateTime(created.request.expiresAt)} 到期`;
 }
 
-function historyRecord(created: CreatedSubscription | null, lifecycle: SubscriptionLifecycle, fallbackPlanId: PortalPlanId) {
-  if (!created) return "暂无历史记录";
-  const plan = subscriptionPlan(created, fallbackPlanId);
-  const action = created.action === "refreshed" ? "刷新订阅" : `申请${plan.label}`;
-  const status =
-    lifecycle === "pending" ? "审核中" : lifecycle === "active" ? "已授权" : lifecycle === "expired" ? "已过期" : "已记录";
-  return `${formatDateTime(created.createdAt)} - ${action}（${status}）`;
+function historyRecord(historySummary: PortalHistoryRecord[]) {
+  const latest = historySummary[0];
+  if (!latest) return "暂无完成套餐记录";
+  return `${formatDateTime(latest.occurredAt)} - ${latest.label}`;
 }
 
 export function UserPortalPage({
@@ -241,6 +238,7 @@ export function UserPortalPage({
   const [created, setCreated] = useState<CreatedSubscription | null>(null);
   const [copied, setCopied] = useState(false);
   const [contactInfo, setContactInfo] = useState<PortalContactInfo>(emptyContactInfo);
+  const [historySummary, setHistorySummary] = useState<PortalHistoryRecord[]>([]);
   const [contactModalOpen, setContactModalOpen] = useState(false);
   const [contactSavePending, setContactSavePending] = useState(false);
   const [contactError, setContactError] = useState("");
@@ -271,14 +269,14 @@ export function UserPortalPage({
         setCreated({
           request: portalState.subscriptionRequest,
           action: "opening_requested",
-          previousInvalidated: false,
-          createdAt: portalState.updatedAt
+          previousInvalidatedAt: portalState.subscriptionRequest.event?.occurredAt
         });
         setSelectedPlanId(portalState.subscriptionRequest.planId);
         setClientTarget(portalState.subscriptionRequest.clientTarget);
       } else {
         setCreated(null);
       }
+      setHistorySummary(portalState.historySummary ?? []);
       setActiveView("subscription");
     } catch (requestError) {
       setAuthError(errorMessage(requestError, "操作失败。"));
@@ -332,9 +330,9 @@ export function UserPortalPage({
       setCreated({
         request: result,
         action: wasActive ? "refreshed" : "opening_requested",
-        previousInvalidated: wasActive,
-        createdAt: new Date().toISOString()
+        previousInvalidatedAt: result.event?.occurredAt
       });
+      setHistorySummary(result.historySummary ?? historySummary);
     } catch (requestError) {
       setActionError(errorMessage(requestError, "操作失败。"));
     } finally {
@@ -486,6 +484,7 @@ export function UserPortalPage({
               created={created}
               contactInfo={contactInfo}
               currentPlan={currentPlan}
+              historySummary={historySummary}
               lifecycle={lifecycle}
               openContactModal={() => setContactModalOpen(true)}
               registrationDate={registrationDate}
@@ -664,9 +663,9 @@ function SubscriptionManager({
           </div>
         ) : null}
 
-        {created?.previousInvalidated ? (
+        {created?.previousInvalidatedAt ? (
           <div className="portal-event-note">
-            你已于 {formatDateTime(created.createdAt)} 刷新订阅，之前的旧链接已失效。
+            你已于 {formatDateTime(created.previousInvalidatedAt)} 刷新订阅，之前的旧链接已失效。
           </div>
         ) : null}
 
@@ -786,6 +785,7 @@ function ProfilePanel({
   created,
   contactInfo,
   currentPlan,
+  historySummary,
   lifecycle,
   openContactModal,
   registrationDate,
@@ -795,6 +795,7 @@ function ProfilePanel({
   created: CreatedSubscription | null;
   contactInfo: PortalContactInfo;
   currentPlan: PortalPlan;
+  historySummary: PortalHistoryRecord[];
   lifecycle: SubscriptionLifecycle;
   openContactModal: () => void;
   registrationDate: string;
@@ -852,7 +853,7 @@ function ProfilePanel({
         <article className="portal-profile-module">
           <History aria-hidden="true" />
           <strong>历史消费账单</strong>
-          <small>{historyRecord(created, lifecycle, currentPlan.id)}</small>
+          <small>{historyRecord(historySummary)}</small>
         </article>
         <article className="portal-profile-module">
           <CalendarDays aria-hidden="true" />

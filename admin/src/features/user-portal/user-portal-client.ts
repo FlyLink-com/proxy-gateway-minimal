@@ -3,6 +3,17 @@ export type PortalPlanId = "monthly" | "yearly";
 export type PortalClientId = "clash" | "karing";
 export type PortalSubscriptionStatus = "ready_for_operator_review" | "subscription_ready";
 export type PortalSubscriptionLifecycle = "pending" | "active" | "expired";
+export type PortalSubscriptionEvent = {
+  type: "old_link_invalidated";
+  occurredAt: string;
+};
+
+export type PortalHistoryRecord = {
+  recordRef: string;
+  label: string;
+  status: "审核中" | "已授权" | "已刷新" | "已过期";
+  occurredAt: string;
+};
 
 export type PortalSession = {
   status: "authenticated_preview";
@@ -55,6 +66,9 @@ export type PortalSubscriptionRequest = {
   expiresAt: string;
   subscriptionUrl?: string;
   nextAction: "operator_review_required" | "copy_subscription_url";
+  updatedAt?: string;
+  event?: PortalSubscriptionEvent;
+  historySummary?: PortalHistoryRecord[];
   safety: {
     noAdminApi: true;
     noDbMutation: true;
@@ -68,6 +82,7 @@ export type PortalUserState = {
   userRef: string;
   contactInfo: PortalContactInfo | null;
   subscriptionRequest: PortalSubscriptionRequest | null;
+  historySummary?: PortalHistoryRecord[];
   updatedAt: string;
   safety: {
     noAdminApi: true;
@@ -162,6 +177,10 @@ function durationDaysForPlan(planId: PortalPlanId) {
   return planId === "yearly" ? 365 : 30;
 }
 
+function planLabel(planId: PortalPlanId) {
+  return planId === "yearly" ? "年卡" : "月卡";
+}
+
 export function createLocalUserPortalClient(options: LocalUserPortalClientOptions = {}): UserPortalClient {
   const now = options.now ?? (() => new Date());
   const states = new Map<string, PortalUserState>();
@@ -171,6 +190,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       userRef,
       contactInfo: null,
       subscriptionRequest: null,
+      historySummary: [],
       updatedAt: now().toISOString(),
       safety: {
         noAdminApi: true,
@@ -243,6 +263,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       setState(input.userRef, {
         contactInfo: contact,
         subscriptionRequest: existing.subscriptionRequest,
+        historySummary: existing.historySummary ?? [],
         updatedAt
       });
       return {
@@ -267,6 +288,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         throw portalError("用户会话无效。");
       }
 
+      const issuedAt = now().toISOString();
       const expiresAt = expiresAtFromDays(now(), durationDaysForPlan(input.planId));
       const requestRef = stableRef(
         "subreq",
@@ -280,10 +302,18 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
           contactEmail,
           contactPhone,
           contactTelegram,
-          now().toISOString()
+          issuedAt
         ].join("|")
       );
       const subscriptionUrl = options.demoSubscriptionUrl?.trim() || undefined;
+      const historySummary: PortalHistoryRecord[] = [
+        {
+          recordRef: stableRef("history", `${requestRef}|open|${issuedAt}`),
+          label: `申请${planLabel(input.planId)}（${subscriptionUrl ? "已授权" : "审核中"}）`,
+          status: subscriptionUrl ? "已授权" : "审核中",
+          occurredAt: issuedAt
+        }
+      ];
 
       const request: PortalSubscriptionRequest = {
         status: subscriptionUrl ? "subscription_ready" : "ready_for_operator_review",
@@ -295,6 +325,8 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         expiresAt,
         subscriptionUrl,
         nextAction: subscriptionUrl ? "copy_subscription_url" : "operator_review_required",
+        updatedAt: issuedAt,
+        historySummary,
         safety: {
           noAdminApi: true,
           noDbMutation: true,
@@ -310,7 +342,8 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
           telegram: contactTelegram
         },
         subscriptionRequest: request,
-        updatedAt: now().toISOString()
+        historySummary,
+        updatedAt: issuedAt
       });
       return request;
     },
@@ -331,6 +364,20 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         throw portalError("当前订阅尚未生效，无法刷新。");
       }
 
+      const refreshedAt = now().toISOString();
+      const event: PortalSubscriptionEvent = {
+        type: "old_link_invalidated",
+        occurredAt: refreshedAt
+      };
+      const historySummary: PortalHistoryRecord[] = [
+        {
+          recordRef: stableRef("history", `${current.requestRef}|refresh|${refreshedAt}`),
+          label: "刷新订阅（已刷新）",
+          status: "已刷新",
+          occurredAt: refreshedAt
+        },
+        ...(existing.historySummary ?? [])
+      ];
       const refreshed: PortalSubscriptionRequest = {
         status: "subscription_ready",
         lifecycle: "active",
@@ -341,6 +388,9 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         expiresAt: current.expiresAt,
         subscriptionUrl,
         nextAction: "copy_subscription_url",
+        updatedAt: refreshedAt,
+        event,
+        historySummary,
         safety: {
           noAdminApi: true,
           noDbMutation: true,
@@ -352,7 +402,8 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       setState(input.userRef, {
         contactInfo: existing.contactInfo,
         subscriptionRequest: refreshed,
-        updatedAt: now().toISOString()
+        historySummary,
+        updatedAt: refreshedAt
       });
       return refreshed;
     }

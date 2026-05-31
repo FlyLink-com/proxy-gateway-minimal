@@ -40,6 +40,7 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
       userRef: input.userRef,
       contactInfo: null,
       subscriptionRequest: null,
+      historySummary: [],
       updatedAt: "2026-05-31T00:00:00.000Z",
       safety: {
         noAdminApi: true,
@@ -67,6 +68,15 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
       expiresAt: input.planId === "yearly" ? "2027-05-31T00:00:00.000Z" : "2026-06-30T00:00:00.000Z",
       subscriptionUrl: "https://sub.example.test/import/visible-once",
       nextAction: "copy_subscription_url",
+      updatedAt: "2026-05-31T00:00:00.000Z",
+      historySummary: [
+        {
+          recordRef: `history_${input.planId}`,
+          label: `申请${input.planId === "yearly" ? "年卡" : "月卡"}（已授权）`,
+          status: "已授权",
+          occurredAt: "2026-05-31T00:00:00.000Z"
+        }
+      ],
       safety: {
         noAdminApi: true,
         noDbMutation: true,
@@ -85,6 +95,19 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
       expiresAt: "2027-05-31T00:00:00.000Z",
       subscriptionUrl: "https://sub.example.test/import/refreshed-visible-once",
       nextAction: "copy_subscription_url",
+      updatedAt: "2026-05-31T00:00:00.000Z",
+      event: {
+        type: "old_link_invalidated",
+        occurredAt: "2026-05-31T00:00:00.000Z"
+      },
+      historySummary: [
+        {
+          recordRef: "history_refresh",
+          label: "刷新订阅（已刷新）",
+          status: "已刷新",
+          occurredAt: "2026-05-31T00:00:00.000Z"
+        }
+      ],
       safety: {
         noAdminApi: true,
         noDbMutation: true,
@@ -227,6 +250,39 @@ describe("user portal product surface", () => {
     expect(screen.queryByText("旧订阅失效")).toBeNull();
   });
 
+  test("renders old-link invalidation only when the portal client returns the event", async () => {
+    const client = portalClient({
+      refreshSubscription: vi.fn(async (input: PortalRefreshSubscriptionInput): Promise<PortalSubscriptionRequest> => ({
+        status: "subscription_ready",
+        lifecycle: "active",
+        requestRef: input.requestRef,
+        userRef: input.userRef,
+        planId: "monthly",
+        clientTarget: input.clientTarget,
+        expiresAt: "2026-06-30T00:00:00.000Z",
+        subscriptionUrl: "https://sub.example.test/import/refreshed-no-event",
+        nextAction: "copy_subscription_url",
+        safety: {
+          noAdminApi: true,
+          noDbMutation: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true,
+          noRawCustomerDataReturned: true
+        }
+      }))
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    await fillContactInfo();
+    fireEvent.click(screen.getByRole("button", { name: "申请开通" }));
+    expect(await screen.findByText("服务生效中")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "刷新当前订阅" }));
+
+    await waitFor(() => expect(client.refreshSubscription).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/之前的旧链接已失效/)).toBeNull();
+  });
+
   test("trusts server-provided lifecycle instead of recalculating expiry from the browser clock", async () => {
     const client = portalClient({
       applyForSubscription: vi.fn(async (input: PortalApplySubscriptionInput): Promise<PortalSubscriptionRequest> => ({
@@ -304,6 +360,50 @@ describe("user portal product surface", () => {
     expect(screen.getByText("https://sub.example.test/import/existing-visible-once")).not.toBeNull();
     expect(screen.getAllByText("年卡").length).toBeGreaterThan(0);
     expect(client.applyForSubscription).not.toHaveBeenCalled();
+  });
+
+  test("does not invent profile history from current subscription state", async () => {
+    const client = portalClient({
+      fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
+        userRef: input.userRef,
+        contactInfo: {
+          email: "customer@example.com",
+          phone: "+86 139 0013 9000",
+          telegram: "@existing_user"
+        },
+        subscriptionRequest: {
+          status: "subscription_ready",
+          lifecycle: "active",
+          requestRef: "subreq_existing_yearly",
+          userRef: input.userRef,
+          planId: "yearly",
+          clientTarget: "karing",
+          expiresAt: "2027-05-31T00:00:00.000Z",
+          subscriptionUrl: "https://sub.example.test/import/existing-visible-once",
+          nextAction: "copy_subscription_url",
+          safety: {
+            noAdminApi: true,
+            noDbMutation: true,
+            noPaymentActivation: true,
+            noPublicAdmin: true,
+            noRawCustomerDataReturned: true
+          }
+        },
+        updatedAt: "2026-06-01T00:00:00.000Z",
+        safety: {
+          noAdminApi: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true
+        }
+      }))
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+
+    expect(screen.getByText("暂无完成套餐记录")).not.toBeNull();
+    expect(screen.queryByText(/申请年卡（已授权）/)).toBeNull();
   });
 
   test("copies a generated subscription only when the portal client returns visible material", async () => {
