@@ -2,6 +2,7 @@ node_modules/
 bin/*.exe
 *.log
 .env
+.env.payment
 .proxy-gateway/
 .worktrees
 .worktrees/
