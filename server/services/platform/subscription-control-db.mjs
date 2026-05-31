@@ -234,6 +234,57 @@ function mapAuditEvent(row) {
   };
 }
 
+function mapPortalEntry(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    entitlementId: row.entitlement_id,
+    tokenHash: row.token_hash,
+    status: row.status,
+    expiresAt: row.expires_at,
+    maxUses: row.max_uses,
+    useCount: row.use_count,
+    issuedByRef: row.issued_by_ref,
+    approvalRef: row.approval_ref,
+    usedAt: row.used_at,
+    revokedAt: row.revoked_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapPortalTotpCredential(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    encryptedTotpSecret: row.encrypted_totp_secret,
+    status: row.status,
+    failureCount: row.failure_count,
+    lockedUntil: row.locked_until,
+    enrolledAt: row.enrolled_at,
+    lastVerifiedAt: row.last_verified_at,
+    revokedAt: row.revoked_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapPortalSession(row) {
+  if (!row) return null;
+  return {
+    sessionRef: row.id,
+    accountId: row.account_id,
+    entryId: row.entry_id,
+    authMethod: row.auth_method,
+    status: row.status,
+    issuedAt: row.issued_at,
+    expiresAt: row.expires_at,
+    revokedAt: row.revoked_at,
+    updatedAt: row.updated_at
+  };
+}
+
 export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) {
   if (!database && !dbPath) {
     throw new Error("dbPath or database is required");
@@ -365,6 +416,65 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
 
     create index if not exists platform_audit_events_entity_ref_idx
       on platform_audit_events(entity_ref);
+
+    create table if not exists platform_portal_entries (
+      id text primary key,
+      account_id text not null references platform_accounts(id) on delete cascade,
+      entitlement_id text not null references platform_entitlements(id) on delete cascade,
+      token_hash text not null unique,
+      status text not null check (status in ('active', 'used', 'revoked', 'expired')),
+      expires_at text not null,
+      max_uses integer not null check (max_uses > 0),
+      use_count integer not null default 0 check (use_count >= 0),
+      issued_by_ref text not null,
+      approval_ref text not null,
+      used_at text,
+      revoked_at text,
+      created_at text not null,
+      updated_at text not null
+    );
+
+    create index if not exists platform_portal_entries_account_id_idx
+      on platform_portal_entries(account_id);
+    create index if not exists platform_portal_entries_token_hash_idx
+      on platform_portal_entries(token_hash);
+    create index if not exists platform_portal_entries_status_idx
+      on platform_portal_entries(status);
+
+    create table if not exists platform_portal_totp_credentials (
+      id text primary key,
+      account_id text not null references platform_accounts(id) on delete cascade,
+      encrypted_totp_secret text not null,
+      status text not null check (status in ('active', 'revoked', 'locked')),
+      failure_count integer not null default 0 check (failure_count >= 0),
+      locked_until text,
+      enrolled_at text not null,
+      last_verified_at text,
+      revoked_at text,
+      updated_at text not null
+    );
+
+    create index if not exists platform_portal_totp_credentials_account_id_idx
+      on platform_portal_totp_credentials(account_id);
+    create index if not exists platform_portal_totp_credentials_status_idx
+      on platform_portal_totp_credentials(status);
+
+    create table if not exists platform_portal_sessions (
+      id text primary key,
+      account_id text not null references platform_accounts(id) on delete cascade,
+      entry_id text references platform_portal_entries(id) on delete set null,
+      auth_method text not null,
+      status text not null check (status in ('active', 'revoked', 'expired')),
+      issued_at text not null,
+      expires_at text not null,
+      revoked_at text,
+      updated_at text not null
+    );
+
+    create index if not exists platform_portal_sessions_account_id_idx
+      on platform_portal_sessions(account_id);
+    create index if not exists platform_portal_sessions_status_idx
+      on platform_portal_sessions(status);
   `);
 
   function createAccount(input) {
@@ -610,6 +720,151 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     return mapAuditEvent(db.prepare("select * from platform_audit_events where id = ?").get(requiredText(id, "id")));
   }
 
+  function createPortalEntry(input) {
+    const record = {
+      id: requiredText(input.id, "id"),
+      accountId: requiredText(input.accountId, "accountId"),
+      entitlementId: requiredText(input.entitlementId, "entitlementId"),
+      tokenHash: requiredText(input.tokenHash, "tokenHash"),
+      status: requiredText(input.status || "active", "status"),
+      expiresAt: isoText(input.expiresAt, "expiresAt"),
+      maxUses: integer(input.maxUses ?? 1, "maxUses", { min: 1 }),
+      useCount: integer(input.useCount ?? 0, "useCount", { min: 0 }),
+      issuedByRef: requiredText(input.issuedByRef, "issuedByRef"),
+      approvalRef: requiredText(input.approvalRef, "approvalRef"),
+      usedAt: optionalIsoText(input.usedAt, "usedAt"),
+      revokedAt: optionalIsoText(input.revokedAt, "revokedAt"),
+      createdAt: isoText(input.createdAt, "createdAt"),
+      updatedAt: isoText(input.updatedAt, "updatedAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_portal_entries (
+        id, account_id, entitlement_id, token_hash, status, expires_at, max_uses,
+        use_count, issued_by_ref, approval_ref, used_at, revoked_at, created_at, updated_at
+      ) values (
+        @id, @accountId, @entitlementId, @tokenHash, @status, @expiresAt, @maxUses,
+        @useCount, @issuedByRef, @approvalRef, @usedAt, @revokedAt, @createdAt, @updatedAt
+      )
+    `), record);
+    return getPortalEntry(record.id);
+  }
+
+  function getPortalEntry(id) {
+    return mapPortalEntry(db.prepare("select * from platform_portal_entries where id = ?").get(requiredText(id, "id")));
+  }
+
+  function findPortalEntryByTokenHash(tokenHash) {
+    return mapPortalEntry(db.prepare("select * from platform_portal_entries where token_hash = ?").get(requiredText(tokenHash, "tokenHash")));
+  }
+
+  function markPortalEntryUsed(id, { usedAt, updatedAt }) {
+    const result = db.prepare(`
+      update platform_portal_entries
+      set status = 'used', use_count = use_count + 1, used_at = ?, updated_at = ?
+      where id = ? and status = 'active'
+    `).run(isoText(usedAt, "usedAt"), isoText(updatedAt, "updatedAt"), requiredText(id, "id"));
+    if (result.changes !== 1) {
+      throw platformError("validation_error", "portal entry is not active");
+    }
+    return getPortalEntry(id);
+  }
+
+  function createPortalTotpCredential(input) {
+    const record = {
+      id: requiredText(input.id, "id"),
+      accountId: requiredText(input.accountId, "accountId"),
+      encryptedTotpSecret: requiredText(input.encryptedTotpSecret, "encryptedTotpSecret"),
+      status: requiredText(input.status || "active", "status"),
+      failureCount: integer(input.failureCount ?? 0, "failureCount", { min: 0 }),
+      lockedUntil: optionalIsoText(input.lockedUntil, "lockedUntil"),
+      enrolledAt: isoText(input.enrolledAt, "enrolledAt"),
+      lastVerifiedAt: optionalIsoText(input.lastVerifiedAt, "lastVerifiedAt"),
+      revokedAt: optionalIsoText(input.revokedAt, "revokedAt"),
+      updatedAt: isoText(input.updatedAt, "updatedAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_portal_totp_credentials (
+        id, account_id, encrypted_totp_secret, status, failure_count, locked_until,
+        enrolled_at, last_verified_at, revoked_at, updated_at
+      ) values (
+        @id, @accountId, @encryptedTotpSecret, @status, @failureCount, @lockedUntil,
+        @enrolledAt, @lastVerifiedAt, @revokedAt, @updatedAt
+      )
+    `), record);
+    return getPortalTotpCredential(record.id);
+  }
+
+  function getPortalTotpCredential(id) {
+    return mapPortalTotpCredential(db.prepare("select * from platform_portal_totp_credentials where id = ?").get(requiredText(id, "id")));
+  }
+
+  function getActivePortalTotpCredential(accountId) {
+    return mapPortalTotpCredential(db.prepare(`
+      select * from platform_portal_totp_credentials
+      where account_id = ? and status = 'active'
+      order by enrolled_at desc, id desc
+      limit 1
+    `).get(requiredText(accountId, "accountId")));
+  }
+
+  function recordPortalTotpVerificationFailure(id, { updatedAt }) {
+    const result = db.prepare(`
+      update platform_portal_totp_credentials
+      set failure_count = failure_count + 1, updated_at = ?
+      where id = ? and status = 'active'
+    `).run(isoText(updatedAt, "updatedAt"), requiredText(id, "id"));
+    if (result.changes !== 1) {
+      throw platformError("not_found", "active portal TOTP credential not found");
+    }
+    return getPortalTotpCredential(id);
+  }
+
+  function markPortalTotpVerified(id, { verifiedAt, updatedAt }) {
+    const result = db.prepare(`
+      update platform_portal_totp_credentials
+      set failure_count = 0, last_verified_at = ?, updated_at = ?
+      where id = ? and status = 'active'
+    `).run(isoText(verifiedAt, "verifiedAt"), isoText(updatedAt, "updatedAt"), requiredText(id, "id"));
+    if (result.changes !== 1) {
+      throw platformError("not_found", "active portal TOTP credential not found");
+    }
+    return getPortalTotpCredential(id);
+  }
+
+  function createPortalSession(input) {
+    const record = {
+      id: requiredText(input.id, "id"),
+      accountId: requiredText(input.accountId, "accountId"),
+      entryId: optionalText(input.entryId),
+      authMethod: requiredText(input.authMethod, "authMethod"),
+      status: requiredText(input.status || "active", "status"),
+      issuedAt: isoText(input.issuedAt, "issuedAt"),
+      expiresAt: isoText(input.expiresAt, "expiresAt"),
+      revokedAt: optionalIsoText(input.revokedAt, "revokedAt"),
+      updatedAt: isoText(input.updatedAt, "updatedAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_portal_sessions (
+        id, account_id, entry_id, auth_method, status, issued_at, expires_at, revoked_at, updated_at
+      ) values (
+        @id, @accountId, @entryId, @authMethod, @status, @issuedAt, @expiresAt, @revokedAt, @updatedAt
+      )
+    `), record);
+    return getPortalSession(record.id);
+  }
+
+  function getPortalSession(id) {
+    return mapPortalSession(db.prepare("select * from platform_portal_sessions where id = ?").get(requiredText(id, "id")));
+  }
+
+  function listPortalSessions({ accountId }) {
+    return db.prepare(`
+      select * from platform_portal_sessions
+      where account_id = ?
+      order by issued_at asc, id asc
+    `).all(requiredText(accountId, "accountId")).map(mapPortalSession);
+  }
+
   function getAccountControlSummary(accountId) {
     const account = getAccount(accountId);
     if (!account) {
@@ -716,6 +971,18 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     getRevocationEvent,
     recordAuditEvent,
     getAuditEvent,
+    createPortalEntry,
+    getPortalEntry,
+    findPortalEntryByTokenHash,
+    markPortalEntryUsed,
+    createPortalTotpCredential,
+    getPortalTotpCredential,
+    getActivePortalTotpCredential,
+    recordPortalTotpVerificationFailure,
+    markPortalTotpVerified,
+    createPortalSession,
+    getPortalSession,
+    listPortalSessions,
     getAccountControlSummary,
     close
   };
