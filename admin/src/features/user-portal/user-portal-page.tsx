@@ -48,6 +48,14 @@ type SubscriptionLifecycle = "none" | "pending" | "active" | "expired";
 
 const plans: PortalPlan[] = [
   {
+    id: "trial",
+    label: "7 天试用",
+    billingCycle: "管理员发放后 7 天",
+    priceLabel: "Trial",
+    description: "先申请试用，审核通过后由管理员发放。",
+    highlights: ["申请制", "管理员审批", "默认每个账户一次"]
+  },
+  {
     id: "monthly",
     label: "月卡",
     billingCycle: "30 天",
@@ -150,7 +158,7 @@ function lifecycleLabel(lifecycle: SubscriptionLifecycle) {
     case "active":
       return "服务生效中";
     case "pending":
-      return "等待授权";
+      return "等待管理员审核";
     case "expired":
       return "已过期";
     default:
@@ -161,9 +169,9 @@ function lifecycleLabel(lifecycle: SubscriptionLifecycle) {
 function subscriptionCtaLabel(lifecycle: SubscriptionLifecycle, pending: boolean) {
   if (pending) return "处理中";
   if (lifecycle === "active") return "刷新当前订阅";
-  if (lifecycle === "pending") return "等待授权中";
-  if (lifecycle === "expired") return "重新申请开通";
-  return "申请开通";
+  if (lifecycle === "pending") return "等待审核中";
+  if (lifecycle === "expired") return "重新提交申请";
+  return "提交申请";
 }
 
 function isContactInfoComplete(contactInfo: PortalContactInfo) {
@@ -177,7 +185,7 @@ function contactSummaryLabel(contactInfo: PortalContactInfo) {
 function topbarDescription(view: PortalView) {
   switch (view) {
     case "subscription":
-      return "月卡 / 年卡套餐，申请开通；生效期内可刷新当前订阅。";
+      return "7 天试用 / 月卡 / 年卡均提交申请，管理员审核发放后才显示订阅。";
     case "use":
       return "查看客户端导入步骤和订阅刷新后的使用方式。";
     case "support":
@@ -195,7 +203,7 @@ function subscriptionPlan(created: CreatedSubscription | null, fallbackPlanId: P
 
 function expiryDisplay(created: CreatedSubscription | null, lifecycle: SubscriptionLifecycle) {
   if (!created) return "无";
-  if (lifecycle === "pending") return "待授权";
+  if (lifecycle === "pending") return "待管理员发放";
   if (lifecycle === "expired") return `${formatDateTime(created.request.expiresAt)}（已过期）`;
   return `${formatDateTime(created.request.expiresAt)} 到期`;
 }
@@ -207,7 +215,7 @@ function sidebarSubscriptionSummary(
 ) {
   if (!created) return "未开通套餐";
   const plan = subscriptionPlan(created, fallbackPlanId);
-  if (lifecycle === "pending") return `${plan.label} · 待授权`;
+  if (lifecycle === "pending") return `${plan.label} · 待审核`;
   if (lifecycle === "expired") return `${plan.label} · 已过期`;
   return `${plan.label} · ${formatDateTime(created.request.expiresAt)} 到期`;
 }
@@ -325,7 +333,8 @@ export function UserPortalPage({
             email: userEmail,
             contact: contactInfo,
             planId: selectedPlanId,
-            clientTarget
+            clientTarget,
+            requestOnly: true
           });
       setCreated({
         request: result,
@@ -554,11 +563,11 @@ function SubscriptionManager({
           <PackageCheck aria-hidden="true" />
           <div>
             <span className="portal-card-label">套餐</span>
-            <h2>{planLocked ? "当前套餐" : "选择月卡或年卡"}</h2>
+            <h2>{planLocked ? "当前套餐" : "选择试用或套餐"}</h2>
             <p>
               {lifecycle === "active"
                 ? "当前套餐已生效。刷新当前订阅只重置链接，不影响原到期时间。"
-                : "当前页面只处理月卡 / 年卡套餐申请和当前订阅刷新。"}
+                : "当前页面只提交试用、月卡、年卡申请；管理员审核通过后发放订阅。"}
             </p>
           </div>
         </div>
@@ -604,7 +613,7 @@ function SubscriptionManager({
           <div className="portal-inline-note">
             {lifecycle === "active"
               ? "套餐生效中，月卡 / 年卡不可在当前周期内直接改选；如需换套餐，请到期后重新申请。"
-              : "申请已提交，授权完成前暂不重复提交套餐申请。"}
+              : "申请已提交，管理员审核完成前暂不重复提交套餐申请。"}
           </div>
         ) : null}
 
@@ -640,25 +649,25 @@ function SubscriptionManager({
               {lifecycle === "active"
                 ? "订阅已生效。可复制链接导入客户端；刷新只重置当前订阅链接。"
                 : lifecycle === "pending"
-                  ? "申请已提交。请按客服支持指引完成外部付款或授权核验。"
+                  ? "申请已提交。管理员审核通过后才会发放试用订阅或正式套餐。"
                   : lifecycle === "expired"
-                    ? "套餐已过期，请重新选择月卡或年卡申请开通。"
-                    : "还没有有效订阅，请先选择套餐并申请开通。"}
+                    ? "套餐已过期，请重新选择试用、月卡或年卡提交申请。"
+                    : "还没有有效订阅，请先选择试用或套餐并提交申请。"}
             </p>
           </div>
         </div>
 
         <div className="portal-state-grid">
-          <StateItem active={lifecycle === "none"} title="无有效订阅" detail="选择月卡或年卡后申请开通。" />
-          <StateItem active={isWaiting} title="等待授权" detail="完成外部付款或授权核验后生效。" />
+          <StateItem active={lifecycle === "none"} title="无有效订阅" detail="选择试用或套餐后提交申请。" />
+          <StateItem active={isWaiting} title="等待管理员审核" detail="管理员审核通过后发放订阅。" />
           <StateItem active={isReady} title="服务生效中" detail="可复制订阅并导入客户端。" />
-          <StateItem active={lifecycle === "expired"} title="已过期" detail="到期后重新申请月卡或年卡。" />
+          <StateItem active={lifecycle === "expired"} title="已过期" detail="到期后重新提交申请。" />
         </div>
 
         {isWaiting ? (
           <div className="portal-action-callout">
-            <strong>下一步：联系客服完成授权</strong>
-            <p>请在客服支持中发送账户 ID <code>{userRef}</code> 和购买套餐，管理员核实后为你开通订阅。</p>
+            <strong>下一步：等待管理员审核</strong>
+            <p>管理员会根据账户 ID <code>{userRef}</code>、联系资料和申请套餐完成审批，审核通过后发放订阅。</p>
             <button type="button" onClick={() => setActiveView("support")}>联系客服支持</button>
           </div>
         ) : null}
@@ -735,8 +744,8 @@ function UseGuide({
       {!created ? (
         <div className="portal-empty-callout">
           <strong>还没有订阅</strong>
-          <span>请先到订阅管理申请月卡或年卡套餐。</span>
-          <button type="button" onClick={() => setActiveView("subscription")}>去申请开通</button>
+          <span>请先到订阅管理提交试用、月卡或年卡申请。</span>
+          <button type="button" onClick={() => setActiveView("subscription")}>去提交申请</button>
         </div>
       ) : null}
 

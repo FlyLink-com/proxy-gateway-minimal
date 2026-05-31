@@ -1,5 +1,5 @@
 export type PortalAuthMode = "login" | "signup";
-export type PortalPlanId = "monthly" | "yearly";
+export type PortalPlanId = "trial" | "monthly" | "yearly";
 export type PortalClientId = "clash" | "karing";
 export type PortalSubscriptionStatus = "ready_for_operator_review" | "subscription_ready";
 export type PortalSubscriptionLifecycle = "pending" | "active" | "expired";
@@ -48,6 +48,7 @@ export type PortalApplySubscriptionInput = {
   contact: PortalContactInfo;
   planId: PortalPlanId;
   clientTarget: PortalClientId;
+  requestOnly?: boolean;
 };
 
 export type PortalRefreshSubscriptionInput = {
@@ -174,11 +175,15 @@ function expiresAtFromDays(now: Date, days: number) {
 }
 
 function durationDaysForPlan(planId: PortalPlanId) {
-  return planId === "yearly" ? 365 : 30;
+  if (planId === "yearly") return 365;
+  if (planId === "trial") return 7;
+  return 30;
 }
 
 function planLabel(planId: PortalPlanId) {
-  return planId === "yearly" ? "年卡" : "月卡";
+  if (planId === "yearly") return "年卡";
+  if (planId === "trial") return "7 天试用";
+  return "月卡";
 }
 
 export function createLocalUserPortalClient(options: LocalUserPortalClientOptions = {}): UserPortalClient {
@@ -289,7 +294,8 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       }
 
       const issuedAt = now().toISOString();
-      const expiresAt = expiresAtFromDays(now(), durationDaysForPlan(input.planId));
+      const requestOnly = input.requestOnly === true || input.planId === "trial";
+      const expiresAt = requestOnly ? "待管理员发放" : expiresAtFromDays(now(), durationDaysForPlan(input.planId));
       const requestRef = stableRef(
         "subreq",
         [
@@ -305,7 +311,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
           issuedAt
         ].join("|")
       );
-      const subscriptionUrl = options.demoSubscriptionUrl?.trim() || undefined;
+      const subscriptionUrl = requestOnly ? undefined : options.demoSubscriptionUrl?.trim() || undefined;
       const historySummary: PortalHistoryRecord[] = [
         {
           recordRef: stableRef("history", `${requestRef}|open|${issuedAt}`),
