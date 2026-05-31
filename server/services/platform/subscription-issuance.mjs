@@ -5,6 +5,12 @@ function safeRef(prefix, value) {
   return `${prefix}ref_${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
 }
 
+function validationError(msg) {
+  const err = new Error(msg);
+  err.code = "validation_error";
+  return err;
+}
+
 function bestEffort(step) {
   try {
     step();
@@ -71,12 +77,16 @@ function runControlFinalization(controlStore, finalize) {
 }
 
 export function validateIssuanceInput(input) {
-  if (!input) throw new Error("input is required");
+  function throwError(msg) {
+    throw validationError(msg);
+  }
+
+  if (!input) throwError("input is required");
   if (!String(input.nodeId || "").trim()) {
-    throw new Error("nodeId is mandatory for real issuance. Implicit default node assignment is forbidden.");
+    throwError("nodeId is mandatory for real issuance. Implicit default node assignment is forbidden.");
   }
   if (input.artifact?.create !== true) {
-    throw new Error("artifact.create must be true. Production issuance must deliver opaque artifacts, not legacy query-token URLs.");
+    throwError("artifact.create must be true. Production issuance must deliver opaque artifacts, not legacy query-token URLs.");
   }
   normalizeNote(input.note);
 
@@ -91,10 +101,118 @@ export function validateIssuanceInput(input) {
   ];
   for (const field of requiredControlFields) {
     if (!String(control[field] || "").trim()) {
-      throw new Error(`control.${field} is mandatory for real issuance.`);
+      throwError(`control.${field} is mandatory for real issuance.`);
     }
   }
   return input;
+}
+
+/**
+ * previewSubscriptionIssuance validates the input and returns an execution plan
+ * without performing any mutation.
+ */
+export function previewSubscriptionIssuance({ input }) {
+  validateIssuanceInput(input);
+  const control = input.control;
+
+  return {
+    ok: true,
+    action: "issuance_preview",
+    nodeId: input.nodeId,
+    accountRef: safeRef("account", control.accountId),
+    requestId: control.requestId,
+    plan: control.plan || "pilot",
+    safety: {
+      runtimeDbMutated: false,
+      controlDbMutated: false,
+      rawUrlReturned: false,
+      tenantCreated: false
+    }
+  };
+}
+
+/**
+ * planSubscriptionIssuance persists the issuance intent into the control database
+ * in a 'planned' state. It DOES NOT create a runtime tenant or artifact.
+ */
+export function planSubscriptionIssuance({ controlStore, input, approvalRef, now }) {
+  if (!controlStore) throw new Error("controlStore is required");
+  if (!approvalRef) throw validationError("approvalRef is mandatory for planned issuance request.");
+  if (!now) throw new Error("now is required");
+
+  validateIssuanceInput(input);
+  const control = input.control;
+
+  // Account
+  if (!controlStore.getAccount(control.accountId)) {
+    controlStore.createAccount({
+      id: control.accountId,
+      ownerRef: control.ownerRef,
+      status: control.accountStatus || "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        source: "platform-plan-subscription",
+        approvalRef
+      }
+    });
+  }
+
+  // Entitlement
+  if (!controlStore.getEntitlement(control.entitlementId)) {
+    controlStore.createEntitlement({
+      id: control.entitlementId,
+      accountId: control.accountId,
+      plan: control.plan || "pilot",
+      status: control.entitlementStatus || "active",
+      validFrom: control.validFrom || now,
+      validUntil: input.expiresAt,
+      maxArtifacts: control.maxArtifacts ?? 1,
+      maxDevices: control.maxDevices ?? 1,
+      trafficLimitBytes: control.trafficLimitBytes ?? 0,
+      createdAt: now,
+      updatedAt: now
+    });
+  }
+
+  // Issuance request
+  controlStore.createIssuanceRequest({
+    id: control.requestId,
+    accountId: control.accountId,
+    entitlementId: control.entitlementId,
+    approvalRef,
+    status: "planned",
+    quantity: 1,
+    nodeId: input.nodeId,
+    purpose: control.purpose,
+    requestedByRef: control.requestedByRef,
+    createdAt: now,
+    updatedAt: now,
+    metadata: {
+      cli: "platform:issue-subscription"
+    }
+  });
+
+  return {
+    ok: true,
+    action: "issuance_planned",
+    requestId: control.requestId,
+    accountRef: safeRef("account", control.accountId),
+    nodeId: input.nodeId,
+    fulfillment: {
+      required: true,
+      executor: "operator-cli",
+      requestId: control.requestId,
+      status: "pending_cli_fulfill_request_support",
+      nextCapability: "CLI fulfillment by planned request is intentionally out of scope for this API PR."
+    },
+    safety: {
+      runtimeDbMutated: false,
+      controlDbMutated: true,
+      rawUrlReturned: false,
+      tenantCreated: false
+    }
+  };
 }
 
 /**
