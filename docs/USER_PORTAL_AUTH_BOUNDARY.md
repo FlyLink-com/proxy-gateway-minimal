@@ -132,6 +132,7 @@ The session can authorize:
 - viewing plan and entitlement status;
 - viewing balance and traffic quota summaries;
 - viewing safe subscription-access metadata;
+- requesting a refresh-ready decision for an existing active issued link;
 - requesting renewal, support, or operator review;
 - copying a subscription URL only when a separate artifact-access policy allows
   it.
@@ -140,10 +141,24 @@ The session must not authorize:
 
 - Admin APIs;
 - production issuance mutation;
+- operator CLI invocation;
 - payment provider mutation;
 - edge/node mutation;
 - DNS, Nginx, firewall, or runtime changes;
 - broader artifact issuance or legacy query-token retirement.
+
+The repository now includes `server/services/platform/user-portal-subscriptions.mjs`
+for local user-scoped subscription summary and refresh-decision behavior. The
+service validates an active portal session, reads only that account's control
+summary, returns safe entitlement/issued-link/quota metadata, and can record an
+audit-only refresh request for an existing active issued link. It does not
+return raw subscription URLs, create runtime tenants or artifacts, call CLI,
+perform issuance, activate payment, or deploy a public portal route.
+
+`server/routes/user-portal.mjs` can expose the matching local adapter endpoints
+only when `state.platform.userPortalAuth`, `state.platform.userPortalSubscriptions`,
+and `state.platform.userPortalRoutesEnabled === true` are provided by the
+caller. The default application state still exposes no portal route.
 
 ## Phase 3: External Identity Providers
 
@@ -236,6 +251,8 @@ Sensitive notes:
 | --- | --- | --- |
 | Repository-only dynamic entry / TOTP / session service and tests | B | No production DB migration execution, no public route, no subscription issuance, no secrets in summaries. |
 | Explicitly-enabled local portal entry/session HTTP adapter | B | Default-off app mounting, no production route, no cookies, no subscription issuance, no raw token or TOTP echo. |
+| Repository-only user subscription summary / refresh decision service and tests | B | Active portal-session scope, safe metadata only, audit-only refresh row, no CLI call, no runtime tenant/artifact mutation, no raw subscription URL. |
+| Explicitly-enabled local portal subscription summary / refresh HTTP adapter | B | Default-off mounting, no production route, no cookies, no Admin API, no subscription issuance, no payment activation, no raw URL echo. |
 | Local user-portal UI prototype using mocked client data | B | No public deployment, no real auth provider, no artifact URL exposure. |
 | Real portal DB migration | A | Migration runbook, backup, rollback, validation. |
 | Public portal DNS / Nginx route | A | Public-boundary runbook, approval, validation, rollback. |
@@ -252,6 +269,9 @@ User portal shell: repository-only / local reference
 Dynamic portal entry: repo-only internal service, operator CLI, and default-off
 local HTTP adapter; no production public route
 TOTP: repo-only internal service; injected verifier only
+User subscription summary / refresh decision: repo-only internal service and
+default-off local HTTP adapter; no raw subscription URL, no CLI invocation, no
+runtime tenant/artifact mutation, no payment activation
 Google/OAuth login: future convenience login only
 Payment-driven entitlement: not active
 Automatic subscription issuance: not active

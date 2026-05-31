@@ -7,6 +7,7 @@ import test from "node:test";
 import { createApp } from "../app.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 import { createUserPortalAuthService } from "../services/platform/user-portal-auth.mjs";
+import { createUserPortalSubscriptionService } from "../services/platform/user-portal-subscriptions.mjs";
 import { listen } from "./helpers/listen.mjs";
 
 const NOW = "2026-05-31T00:00:00.000Z";
@@ -31,6 +32,28 @@ function seedAccountAndEntitlement(store) {
     maxArtifacts: 1,
     maxDevices: 1,
     trafficLimitBytes: 1024,
+    createdAt: NOW,
+    updatedAt: NOW
+  });
+  store.createIssuanceRequest({
+    id: "req_portal_route_1",
+    accountId: "acct_portal_route_1",
+    entitlementId: "ent_portal_route_1",
+    approvalRef: "approval_portal_route_1",
+    status: "issued",
+    quantity: 1,
+    nodeId: "channel-lab-b-tuic",
+    purpose: "preproduction-canary",
+    requestedByRef: "operator_safe_ref",
+    createdAt: NOW,
+    updatedAt: NOW
+  });
+  store.linkIssuedSubscription({
+    id: "link_portal_route_1",
+    requestId: "req_portal_route_1",
+    tenantRef: "tenantref_portal_route_1",
+    artifactRef: "artifactref_portal_route_1",
+    status: "active",
     createdAt: NOW,
     updatedAt: NOW
   });
@@ -87,6 +110,11 @@ function withPortalState(fn) {
       sessionExpiresAtFactory: () => SESSION_EXPIRES,
       totpVerifier: ({ encryptedTotpSecret, code }) => encryptedTotpSecret === "enc:route-totp-secret" && code === "123456"
     });
+    const subscriptions = createUserPortalSubscriptionService({
+      controlStore: store,
+      nowFn: () => NOW,
+      auditRefFactory: () => "audit_portal_route_refresh_1"
+    });
     const issued = auth.issueDynamicEntry({
       accountId: "acct_portal_route_1",
       entitlementId: "ent_portal_route_1",
@@ -97,7 +125,8 @@ function withPortalState(fn) {
     const result = fn({
       store,
       auth,
-      entryToken: issued.handoffMaterial.entryToken
+      entryToken: issued.handoffMaterial.entryToken,
+      subscriptions
     });
     if (result && typeof result.then === "function") {
       shouldCleanup = false;
@@ -172,6 +201,72 @@ test("user portal routes consume dynamic entry and create scoped session without
       assert.equal(serialized.includes("subscriptionUrl"), false);
       assert.equal(serialized.includes("token="), false);
       assert.equal(store.listPortalSessions({ accountId: "acct_portal_route_1" }).length, 1);
+    } finally {
+      server.close();
+    }
+  });
+});
+
+test("user portal subscription routes return scoped summary and refresh decision without console token", async () => {
+  await withPortalState(async ({ store, auth, entryToken, subscriptions }) => {
+    const { server, baseUrl } = await listen(createApp(baseState({
+      userPortalAuth: auth,
+      userPortalSubscriptions: subscriptions,
+      userPortalRoutesEnabled: true
+    })));
+    try {
+      const enrollResponse = await fetch(`${baseUrl}/api/portal/entry/enroll`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entryToken,
+          encryptedTotpSecret: "enc:route-totp-secret"
+        })
+      });
+      assert.equal(enrollResponse.status, 200);
+
+      const sessionResponse = await fetch(`${baseUrl}/api/portal/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: "acct_portal_route_1",
+          code: "123456"
+        })
+      });
+      assert.equal(sessionResponse.status, 200);
+      const sessionBody = await sessionResponse.json();
+
+      const summaryResponse = await fetch(`${baseUrl}/api/portal/subscriptions/summary`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionRef: sessionBody.session.sessionRef
+        })
+      });
+      assert.equal(summaryResponse.status, 200);
+      const summaryBody = await summaryResponse.json();
+      assert.equal(summaryBody.summary.type, "user_portal_subscription_summary");
+      assert.equal(summaryBody.summary.issuedLinks[0].artifactRef, "artifactref_portal_route_1");
+
+      const refreshResponse = await fetch(`${baseUrl}/api/portal/subscriptions/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionRef: sessionBody.session.sessionRef,
+          entitlementId: "ent_portal_route_1"
+        })
+      });
+      assert.equal(refreshResponse.status, 200);
+      const refreshBody = await refreshResponse.json();
+      assert.equal(refreshBody.refresh.action, "portal_subscription_refresh_ready");
+      assert.equal(refreshBody.refresh.refresh.operatorRequired, false);
+      assert.equal(store.getAuditEvent("audit_portal_route_refresh_1").action, "portal_subscription_refresh_requested");
+
+      const serialized = JSON.stringify({ summaryBody, refreshBody }).toLowerCase();
+      assert.equal(serialized.includes("subscriptionurl"), false);
+      assert.equal(serialized.includes("token="), false);
+      assert.equal(serialized.includes("secret"), false);
+      assert.equal(serialized.includes(sessionBody.session.sessionRef.toLowerCase()), false);
     } finally {
       server.close();
     }

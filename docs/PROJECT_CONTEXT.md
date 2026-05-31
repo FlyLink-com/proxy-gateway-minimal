@@ -170,6 +170,18 @@ Current architecture priorities:
   app state exposes no portal route. It returns no subscription URL, performs
   no subscription issuance, creates no runtime tenant/artifact, activates no
   payment, and does not expose Aliyun production portal routing.
+- User Portal Subscription Service/Adapter: repository-only internal service
+  support now exists under
+  `server/services/platform/user-portal-subscriptions.mjs` for user-scoped
+  subscription summaries and refresh-ready decisions from active portal
+  sessions. The guarded local HTTP adapter can expose
+  `/api/portal/subscriptions/summary` and
+  `/api/portal/subscriptions/refresh` only when the portal routes are
+  explicitly enabled and the subscription service is injected. Refresh is a
+  user self-service policy check over existing active issued links, with an
+  audit-only control row; it does not shell out to CLI, create tenants/artifacts,
+  return raw subscription URLs, perform production issuance, activate payment,
+  expose public Admin, or deploy Aliyun portal routing.
 - Operator Portal Entry CLI: repository-only operator CLI support now exists at
   `scripts/platform-issue-portal-entry.mjs` / `npm run
   platform:issue-portal-entry` to create dynamic portal entry rows from an

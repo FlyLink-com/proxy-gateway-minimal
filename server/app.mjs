@@ -17,7 +17,12 @@ import { resolveClientIp } from "./services/ip-address.mjs";
 
 const PUBLIC_PATHS = ["/api/health", "/api/public/leads", "/proxy.pac", "/sub/clash.yaml"];
 const PUBLIC_PATH_PREFIXES = ["/sub/a/"];
-const USER_PORTAL_PUBLIC_PATHS = ["/api/portal/entry/enroll", "/api/portal/session"];
+const USER_PORTAL_PUBLIC_PATHS = [
+  "/api/portal/entry/enroll",
+  "/api/portal/session",
+  "/api/portal/subscriptions/summary",
+  "/api/portal/subscriptions/refresh"
+];
 
 export function createApp(state, options = {}) {
   const app = express();

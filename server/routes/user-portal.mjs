@@ -15,6 +15,7 @@ function sendPortalError(res, error) {
 export function userPortalRoutes(state, options = {}) {
   const router = Router();
   const auth = options.userPortalAuth || state.platform?.userPortalAuth;
+  const subscriptions = options.userPortalSubscriptions || state.platform?.userPortalSubscriptions;
 
   router.post("/api/portal/entry/enroll", (req, res) => {
     try {
@@ -35,6 +36,37 @@ export function userPortalRoutes(state, options = {}) {
         code: req.body?.code
       });
       res.json({ session: session.session });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.post("/api/portal/subscriptions/summary", (req, res) => {
+    try {
+      if (!subscriptions) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      const summary = subscriptions.getSubscriptionSummary({
+        sessionRef: req.body?.sessionRef
+      });
+      res.json({ summary });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.post("/api/portal/subscriptions/refresh", (req, res) => {
+    try {
+      if (!subscriptions) {
+        res.status(404).json({ error: "not_found" });
+        return;
+      }
+      const refresh = subscriptions.requestSubscriptionRefresh({
+        sessionRef: req.body?.sessionRef,
+        entitlementId: req.body?.entitlementId
+      });
+      res.json({ refresh });
     } catch (error) {
       sendPortalError(res, error);
     }
