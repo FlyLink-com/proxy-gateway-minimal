@@ -158,6 +158,14 @@ Current architecture priorities:
   database. It is not exposed as a public route, returns no subscription URL,
   performs no subscription issuance, activates no payment, and does not deploy
   or migrate Aliyun production state.
+- User Portal Entry/Session Adapter: repository-only guarded HTTP adapter
+  support now exists under `server/routes/user-portal.mjs` for local validation
+  of dynamic entry consumption, TOTP enrollment, and short-lived portal session
+  creation. `createApp()` mounts it only when `state.platform.userPortalAuth`
+  is injected and `state.platform.userPortalRoutesEnabled === true`; default
+  app state exposes no portal route. It returns no subscription URL, performs
+  no subscription issuance, creates no runtime tenant/artifact, activates no
+  payment, and does not expose Aliyun production portal routing.
 - Operator Portal Entry CLI: repository-only operator CLI support now exists at
   `scripts/platform-issue-portal-entry.mjs` / `npm run
   platform:issue-portal-entry` to create dynamic portal entry rows from an

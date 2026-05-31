@@ -56,6 +56,15 @@ for issuing dynamic entries, enrolling TOTP credentials, and creating scoped
 portal sessions against the subscription-control database. It is not exposed
 through HTTP and it does not issue subscriptions.
 
+The repository also includes a guarded local HTTP adapter at
+`server/routes/user-portal.mjs`. It is mounted by `createApp()` only when a
+caller explicitly injects `state.platform.userPortalAuth` and sets
+`state.platform.userPortalRoutesEnabled === true`. The default application
+state does not expose these routes. This adapter is for local/repository
+validation of entry consumption and session creation; production exposure,
+Nginx/DNS routing, cookie policy, CSRF posture, and public portal activation
+remain separate Risk A gates.
+
 An operator-only CLI wrapper exists at
 `scripts/platform-issue-portal-entry.mjs` / `npm run
 platform:issue-portal-entry`. It can write a dynamic entry row to the
@@ -200,6 +209,7 @@ Sensitive notes:
 | Work item | Risk | Required boundary |
 | --- | --- | --- |
 | Repository-only dynamic entry / TOTP / session service and tests | B | No production DB migration execution, no public route, no subscription issuance, no secrets in summaries. |
+| Explicitly-enabled local portal entry/session HTTP adapter | B | Default-off app mounting, no production route, no cookies, no subscription issuance, no raw token or TOTP echo. |
 | Local user-portal UI prototype using mocked client data | B | No public deployment, no real auth provider, no artifact URL exposure. |
 | Real portal DB migration | A | Migration runbook, backup, rollback, validation. |
 | Public portal DNS / Nginx route | A | Public-boundary runbook, approval, validation, rollback. |
@@ -213,7 +223,8 @@ Public company site: active on Aliyun root
 Public lead intake: active on Aliyun boundary
 Public Admin: blocked
 User portal shell: repository-only / local reference
-Dynamic portal entry: repo-only internal service and operator CLI; no public route
+Dynamic portal entry: repo-only internal service, operator CLI, and default-off
+local HTTP adapter; no production public route
 TOTP: repo-only internal service; injected verifier only
 Google/OAuth login: future convenience login only
 Payment-driven entitlement: not active
