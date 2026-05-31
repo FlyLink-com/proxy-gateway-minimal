@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { normalizeNote } from "../subscriptions/validation.mjs";
 
 function safeRef(prefix, value) {
   return `${prefix}ref_${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
@@ -12,6 +13,7 @@ export function validateIssuanceInput(input) {
   if (input.artifact?.create !== true) {
     throw new Error("artifact.create must be true. Production issuance must deliver opaque artifacts, not legacy query-token URLs.");
   }
+  normalizeNote(input.note);
 
   const control = input.control || {};
   const requiredControlFields = [
@@ -104,7 +106,7 @@ export function executeSubscriptionIssuance({ controlStore, runtimeCore, input, 
     displayName: input.displayName,
     nodeId: input.nodeId,
     expiresAt: input.expiresAt,
-    note: input.note
+    note: ""
   });
 
   // 2. Create Artifact (Runtime)

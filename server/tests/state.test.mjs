@@ -189,6 +189,7 @@ test("createRuntimeState parses hardening security environment", () => {
       CONSOLE_TOKEN: "secret",
       SS_PASSWORD: "pw",
       ADMIN_ALLOWED_CIDRS: "127.0.0.1/32,10.0.0.0/8",
+      TRUSTED_PROXY_CIDRS: "127.0.0.1/32",
       SUB_RATE_LIMIT_WINDOW_MS: "1000",
       SUB_RATE_LIMIT_MAX: "2",
       SUBSCRIPTION_TEMP_LINK_TTL_MINUTES: "30"
@@ -199,6 +200,7 @@ test("createRuntimeState parses hardening security environment", () => {
 
   try {
     assert.deepEqual(state.security.adminAllowedCidrs, ["127.0.0.1/32", "10.0.0.0/8"]);
+    assert.deepEqual(state.security.trustedProxyCidrs, ["127.0.0.1/32"]);
     assert.deepEqual(state.security.subRateLimit, { windowMs: 1000, max: 2 });
     assert.equal(state.subscriptions.tempLinkTtlMinutes, 30);
   } finally {

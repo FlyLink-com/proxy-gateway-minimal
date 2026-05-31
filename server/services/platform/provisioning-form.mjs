@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { normalizeNote } from "../subscriptions/validation.mjs";
 
 function text(value) {
   return String(value ?? "").trim();
@@ -110,7 +111,7 @@ export function buildProvisioningFormPackage(input = {}) {
   const plan = subscription.plan;
   const nodeId = text(subscription.nodeId);
   const displayName = text(subscription.displayName) || "operator-safe label";
-  const note = text(subscription.note);
+  const note = normalizeNote(subscription.note);
 
   return {
     ok,

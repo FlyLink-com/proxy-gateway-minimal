@@ -7,6 +7,7 @@ import {
   saveAdminSession,
   type AdminSession
 } from "./admin-session";
+import { adminAuthOriginPolicy } from "./api-origin-policy";
 
 type ConnectionPanelProps = {
   session: AdminSession;
@@ -32,6 +33,7 @@ export function ConnectionPanel({
   const [connectionHealth, setConnectionHealth] = useState<ConnectionHealthResult | null>(null);
   const inputSeq = useRef(0);
   const requestSeq = useRef(0);
+  const originPolicy = adminAuthOriginPolicy(baseUrl);
 
   function updateBaseUrl(value: string) {
     inputSeq.current += 1;
@@ -83,6 +85,12 @@ export function ConnectionPanel({
         <p className="muted">Use the same-origin proxy or an SSH tunnel. Public Nginx blocks admin APIs.</p>
       </div>
       <div className="connection-stack">
+        {!originPolicy.trusted ? (
+          <div className="connection-health connection-health-warning" role="status">
+            <strong>Console token will not be sent</strong>
+            <span>{originPolicy.reason}</span>
+          </div>
+        ) : null}
         <div className="connection-grid">
           <label>
             <span>API base URL</span>

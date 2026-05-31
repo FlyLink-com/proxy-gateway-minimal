@@ -29,16 +29,28 @@ test("private and loopback detection covers default admin ranges", () => {
   assert.equal(isPrivateOrLoopbackIp("203.0.113.10"), false);
 });
 
-test("resolveClientIp trusts X-Forwarded-For only from private or loopback peers", () => {
+test("resolveClientIp ignores X-Forwarded-For unless the direct peer is explicitly trusted", () => {
   assert.equal(resolveClientIp(request({
     remoteAddress: "::ffff:127.0.0.1",
     forwardedFor: "198.51.100.10, 10.0.0.5"
-  })), "198.51.100.10");
+  })), "127.0.0.1");
 
   assert.equal(resolveClientIp(request({
     remoteAddress: "203.0.113.20",
     forwardedFor: "198.51.100.10"
-  })), "203.0.113.20");
+  }), { trustedProxyCidrs: ["127.0.0.1/32"] }), "203.0.113.20");
+});
+
+test("resolveClientIp derives the rightmost untrusted forwarded IP from trusted proxy chains", () => {
+  assert.equal(resolveClientIp(request({
+    remoteAddress: "::ffff:127.0.0.1",
+    forwardedFor: "198.51.100.10, 10.0.0.5"
+  }), { trustedProxyCidrs: ["127.0.0.1/32", "10.0.0.0/8"] }), "198.51.100.10");
+
+  assert.equal(resolveClientIp(request({
+    remoteAddress: "10.0.0.9",
+    forwardedFor: "198.51.100.10, 203.0.113.5, 10.0.0.5"
+  }), { trustedProxyCidrs: ["10.0.0.0/8"] }), "203.0.113.5");
 
   assert.equal(resolveClientIp(request({
     remoteAddress: "127.0.0.1:1234",

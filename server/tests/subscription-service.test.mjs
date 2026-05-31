@@ -330,6 +330,21 @@ test("createTenant validation failures throw validation_error", async () => {
     assertCode("validation_error", () => context.service.createTenant({
       displayName: "Customer A",
       expiresAt: "2026-06-21T00:00:00.000Z",
+      note: "customer@example.com"
+    }));
+    assertCode("validation_error", () => context.service.createTenant({
+      displayName: "Customer A",
+      expiresAt: "2026-06-21T00:00:00.000Z",
+      note: "token=raw-secret"
+    }));
+    assertCode("validation_error", () => context.service.createTenant({
+      displayName: "Customer A",
+      expiresAt: "2026-06-21T00:00:00.000Z",
+      note: "https://example.com/sub/a/raw.yaml"
+    }));
+    assertCode("validation_error", () => context.service.createTenant({
+      displayName: "Customer A",
+      expiresAt: "2026-06-21T00:00:00.000Z",
       nodeId: "missing-node"
     }));
   });

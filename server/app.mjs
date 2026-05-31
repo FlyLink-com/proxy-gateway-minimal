@@ -25,8 +25,10 @@ export function createApp(state, options = {}) {
     res.json({ ok: true, ts: Date.now(), authRequired: true });
   });
   app.use(express.static(join(state.rootDir, "public")));
-  const clientIpResolver = options.clientIpResolver || resolveClientIp;
   const security = state.security || {};
+  const clientIpResolver = options.clientIpResolver || ((req) => resolveClientIp(req, {
+    trustedProxyCidrs: security.trustedProxyCidrs
+  }));
   app.use("/api/admin", createAdminAllowlistMiddleware({
     allowedCidrs: security.adminAllowedCidrs,
     resolveClientIpFn: clientIpResolver
