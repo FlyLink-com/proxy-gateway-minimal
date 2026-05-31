@@ -44,6 +44,22 @@ The customer portal has four top-level views:
 | Support | Provide customer support handoff. | Read support options and prepare account/subscription issue context. | Bot automation execution, payment provider operation, Admin mutation. |
 | Profile | Show account facts and contact records. | View account facts, view current package result, edit authorization contact info, view history summary. | Package application or subscription refresh as primary actions. |
 
+## Data Ownership
+
+The portal frontend must not become the source of truth for subscription state.
+It renders facts returned by the user-scoped backend or injected preview client.
+
+| Data | Source of truth | Frontend responsibility | Forbidden frontend behavior |
+| --- | --- | --- | --- |
+| User identity and session | Portal auth/session service | Hold the current session reference and send it with portal calls. | Invent user refs, reuse operator identity, or call Admin APIs. |
+| Contact email, phone, and Telegram account | User-scoped profile/control data | Display and submit edits through `updateContactInfo`. | Keep edits only in React/browser memory. |
+| Package id | Backend package catalog and current subscription record | Send the selected package id before activation. | Send `durationDays`, expiry time, price, quota, or entitlement authority. |
+| Lifecycle state | Backend policy result | Render the returned state and matching copy. | Derive `expired`, `active`, or `pending` from browser time or local flags. |
+| Expiry result | Backend subscription/control data | Display the returned expiry or pending/empty label. | Calculate expiry locally or show a fixed date before approval. |
+| Subscription material | Backend visible-once response or injected demo client | Display and copy only when material is present. | Persist raw URLs in docs, logs, tests, local storage, or chat output. |
+| History summary | Backend read model | Display immutable application/authorization/refresh events. | Treat in-memory UI events as durable history. |
+| Page copy and navigation | Frontend | Render the agreed customer-facing views. | Mix operator diagnostics, node controls, or Admin workbenches into portal pages. |
+
 ## Lifecycle State Machine
 
 Portal copy and buttons must follow one lifecycle model. The lifecycle is
@@ -66,6 +82,22 @@ none
 
 Old-link invalidation is an event, not a lifecycle state. It should appear as an
 inline event note after refresh, not as a permanent navigation/status item.
+
+## State Transitions
+
+All state transitions are owned by the backend/control plane. The frontend only
+requests user actions and refreshes its view from returned state.
+
+| Event | From | To | Owner | Frontend reaction |
+| --- | --- | --- | --- | --- |
+| Login/session restore | Any persisted state | Returned current state | Backend | Call `fetchCurrentState` and render the returned lifecycle, package, contact info, expiry, and history. |
+| Contact info saved | Any logged-in state | Same lifecycle | Backend | Call `updateContactInfo`, then render returned contact facts. |
+| Package application submitted | `none` or `expired` | `pending` | Backend | Lock selected package, hide apply as a repeat action, show support handoff. |
+| Duplicate package application | `pending` | `pending` | Backend | Show existing pending state instead of creating another request. |
+| Operator approval | `pending` | `active` | Operator/backend | Start the package period server-side and return concrete expiry on next state read. |
+| Subscription refresh | `active` | `active` plus old-link-invalidated event | Backend | Show newly returned visible-once material and inline old-link invalidation note. |
+| Package expiry | `active` | `expired` | Backend | Show expired package and allow re-application. |
+| Unsupported portal action | Any | No state change | Backend | Render the returned error without guessing fallback state. |
 
 ## Package Model
 
@@ -102,6 +134,22 @@ Contact info is used for authorization review, support handoff, and future table
 records. It should be editable from Profile through a user-scoped
 `updateContactInfo` call, not held only in browser memory, and reused by the
 next application or support interaction.
+
+## API Contract Matrix
+
+The frontend contract is intentionally small. These names describe the portal
+client boundary; they do not require public production routes in the current
+local preview implementation.
+
+| Method | Intent | Required input | Returns | Mutation | Not allowed |
+| --- | --- | --- | --- | --- | --- |
+| `authenticate` | Establish a portal session from the approved entry/login mechanism. | Login or entry material defined by the auth boundary. | Session reference and safe account identity. | Session only. | Subscription issuance, Admin token use, raw subscription URL return. |
+| `fetchCurrentState` | Hydrate the portal after login or page refresh. | Session/user reference. | Contact facts, lifecycle, package, expiry, history summary, visible-once material if still available by policy. | No subscription mutation. | Client-side state reconstruction or lifecycle guessing. |
+| `updateContactInfo` | Persist authorization contact details. | Session/user reference and contact email, phone, Telegram account. | Updated contact facts and unchanged lifecycle. | User profile/control data only. | Package application, subscription refresh, or raw URL return. |
+| `applyForSubscription` | Request a monthly/yearly package. | Session/user reference, package id, client target, completed contact info. | Request summary and new/current lifecycle. | Create or reuse a pending request. | Client-provided duration, expiry, price, quota, node id, artifact secret, or direct issuance. |
+| `refreshSubscription` | Replace the current active subscription material. | Session/user reference and client target. | New visible-once material summary and old-link invalidation event. | Backend-controlled refresh only when active. | New package application, duration extension, payment capture, or operator override. |
+| `fetchSubscriptionHistory` | Read account history for Profile. | Session/user reference. | Application, approval, refresh, expiry, and support summary rows. | None. | Raw secrets, full database rows, or operator audit dumps. |
+| `requestSupport` | Prepare a support handoff. | Session/user reference, issue category, safe message/context. | Support handoff reference or guidance. | Support record only if implemented. | Bot execution, payment operation, Admin mutation, or subscription issuance. |
 
 ## View Responsibilities
 
@@ -171,6 +219,79 @@ This is the read-mostly account surface for:
 
 It must not carry the primary apply/refresh action copy. Action guidance belongs
 in Subscription Management or Support.
+
+## Rendering Rules
+
+The four views must render the same backend state consistently.
+
+### Global account summary
+
+- `none`: show no active package and no expiry.
+- `pending`: show selected package and `Pending authorization`; do not show a
+  concrete expiry date.
+- `active`: show current package and backend-provided expiry.
+- `expired`: show the expired package result and expired date when returned.
+
+### Subscription Management
+
+- `none`: show package selector, contact completion status, and `Apply`.
+- Missing contact info: open the contact modal before application.
+- `pending`: lock package choice, disable duplicate application, and guide the
+  user to Support.
+- `active`: hide package selector as a primary choice, show current package,
+  expiry, refresh action, and visible-once material only when returned.
+- `expired`: allow package selection and re-application.
+- Refresh success: show an event note that the previous link has been
+  invalidated; do not create a separate lifecycle state for it.
+
+### Use Guide
+
+- Keep instructions static and customer-facing.
+- Do not render node diagnostics, traffic dashboards, Admin evidence, or
+  operator workbench copy.
+
+### Support
+
+- Show the support path for pending authorization and import failures.
+- Telegram may appear only as a support contact direction, not as an embedded
+  portal authority or bot automation flow.
+
+### Profile
+
+- Show account facts, contact facts, lifecycle, package result, expiry result,
+  registration date, and history summary.
+- Allow contact info edits through `updateContactInfo`.
+- Do not show primary apply/refresh buttons here.
+- Empty history must be explicit, for example `No completed package history
+  yet`, instead of showing fake order rows.
+
+## Visible-Once Subscription Material
+
+Visible subscription material is a sensitive output, not ordinary profile data.
+
+- It may appear only when the backend or injected preview client returns it for
+  the current operation.
+- It must not be logged, stored in documentation, copied into tests as a real
+  URL, written to local storage, or printed to chat.
+- Page refresh should rehydrate state through `fetchCurrentState`; if policy no
+  longer allows material display, the UI must show a neutral message and offer
+  the appropriate refresh/support action.
+- Refreshing an active subscription invalidates the previous material by backend
+  policy; the UI only reports the returned event.
+
+## Backend Integration Milestones
+
+The local preview UI should advance toward real backend support in small gates:
+
+| Phase | Scope | Risk | Notes |
+| --- | --- | --- | --- |
+| 0 | Local preview client and page logic. | B | No production route, DB mutation, or real issuance. |
+| 1 | User-scoped current-state read model. | B/A depending on schema and route exposure | Must preserve user authorization and return server-owned lifecycle. |
+| 2 | Contact info persistence. | B/A depending on schema and route exposure | Stores customer contact facts without issuing subscriptions. |
+| 3 | Package application request in `pending`. | B/A depending on persistence target | Creates a reviewable request, not a direct artifact. |
+| 4 | Operator approval to active issuance. | A for production execution | Uses protected operator/CLI/Admin path, not customer direct authority. |
+| 5 | Active subscription refresh. | A for production mutation | Must revoke/expire old material and return only safe visible-once output. |
+| 6 | History and support read models. | B/A depending on data exposure | Must avoid raw secrets and operator-only evidence. |
 
 ## Code Alignment Points
 
