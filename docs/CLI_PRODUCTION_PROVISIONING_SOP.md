@@ -96,11 +96,65 @@ sqlite3 $controlDbPath "SELECT status, count(*) FROM platform_issued_subscriptio
 sqlite3 $controlDbPath "SELECT metric, sum(amount) FROM platform_quota_counters GROUP BY metric;"
 ```
 
-## 3. Revocation / Rollback Procedure
+## 3. Portal Entry Procedure
+
+Use this flow only after the account and entitlement already exist in the
+subscription-control business ledger. It creates a dynamic portal entry token
+for TOTP enrollment or portal binding. It does not issue a subscription,
+activate payment, expose a public portal route, or mutate runtime tenant /
+artifact state.
+
+### Step 3.1: Prepare Portal Entry Input
+
+Create an operator-safe input JSON outside chat and PR bodies. Use
+`scripts/portal-entry-input.example.json` as the shape:
+
+```json
+{
+  "accountId": "acct_operator_safe_example",
+  "entitlementId": "ent_operator_safe_example",
+  "issuedByRef": "operator_local_hashref",
+  "expiresAt": "2026-06-04T00:00:00.000Z",
+  "maxUses": 1
+}
+```
+
+### Step 3.2: Execute Portal Entry CLI
+
+Production execution is A-tier because it mutates the control database and
+creates visible-once handoff material.
+
+```powershell
+npm run platform:issue-portal-entry -- --execute-production-mutation --approval-ref "PR-portal-entry-approval" --control-db-path ".proxy-gateway/subscription-control.sqlite" --handoff-file "handoff/user-A-portal-entry.json" handoff/portal-entry-input.json
+```
+
+**Flag Requirements:**
+
+- `--execute-production-mutation`: mandatory for real execution; omitting it
+  triggers dry-run.
+- `--approval-ref`: approval ticket or gate reference.
+- `--control-db-path`: explicit subscription-control ledger path.
+- `--handoff-file`: operator-only `0600` path for the visible-once entry token.
+
+The command prints only a safe JSON summary to stdout. The raw dynamic portal
+entry token is written only to the handoff file. Do not paste the handoff file
+contents into chat, docs, PRs, logs, or public tickets.
+
+### Step 3.3: Safe Control DB Verification
+
+Use aggregate queries only:
+
+```powershell
+$controlDbPath = ".proxy-gateway/subscription-control.sqlite"
+sqlite3 $controlDbPath "SELECT status, count(*) FROM platform_portal_entries GROUP BY status;"
+sqlite3 $controlDbPath "SELECT count(*) FROM platform_portal_sessions;"
+```
+
+## 4. Revocation / Rollback Procedure
 
 If a subscription was issued in error, or access needs to be revoked, follow these steps.
 
-### Step 3.1: Plan Revocation (Dry Run)
+### Step 4.1: Plan Revocation (Dry Run)
 
 Run the revoke script in plan-only mode to generate a safety summary.
 
@@ -110,7 +164,7 @@ npm run platform:revoke-access -- <tenant-id> --dry-run
 
 Review the dry-run output to ensure you are targeting the correct tenant and artifacts.
 
-### Step 3.2: Execute Revocation (Separate A-tier Approval Required)
+### Step 4.2: Execute Revocation (Separate A-tier Approval Required)
 
 The dry-run output is not execution authority. True revocation mutates
 subscription state and therefore requires a separate exact-phrase A-tier
@@ -137,7 +191,7 @@ If executing manually via SQL (implementation shape only, not execution authorit
 4. Reload Nginx only if a separate Nginx/static-output gate explicitly requires
    it.
 
-## 4. Audit & Record Keeping
+## 5. Audit & Record Keeping
 
 After completion, fill out the `docs/production-replacement-records/TEMPLATE_SUBSCRIPTION_PROVISIONING.md` template.
 Save it as `docs/production-replacement-records/YYYY-MM-DD-batch-provisioning.md` and commit it to the repository.

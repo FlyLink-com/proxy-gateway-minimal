@@ -158,6 +158,13 @@ Current architecture priorities:
   database. It is not exposed as a public route, returns no subscription URL,
   performs no subscription issuance, activates no payment, and does not deploy
   or migrate Aliyun production state.
+- Operator Portal Entry CLI: repository-only operator CLI support now exists at
+  `scripts/platform-issue-portal-entry.mjs` / `npm run
+  platform:issue-portal-entry` to create dynamic portal entry rows from an
+  existing account and entitlement, while writing raw entry tokens only to a
+  `0600` handoff file. Running it against production control data remains
+  Risk A and still does not issue subscriptions, expose a public portal route,
+  activate payment, mutate runtime tenants/artifacts, or migrate Aliyun state.
 - Operator CLI Platform Boundary: the platform product direction is
   CLI-first for operators. Public routes stay small and explicit, while
   administrative workflows are handled through operator CLI tools,
