@@ -171,6 +171,70 @@ test("subscription control store rejects raw secrets and customer data fields", 
   });
 });
 
+test("subscription control store rolls back grouped control writes on failure", () => {
+  withStore((store) => {
+    const now = "2026-05-29T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_tx",
+      ownerRef: "cust_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_tx",
+      accountId: "acct_tx",
+      plan: "pilot",
+      status: "active",
+      validFrom: now,
+      validUntil: "2099-06-04T00:00:00.000Z",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createIssuanceRequest({
+      id: "iss_tx",
+      accountId: "acct_tx",
+      entitlementId: "ent_tx",
+      approvalRef: "approval_tx",
+      status: "planned",
+      quantity: 1,
+      nodeId: "node_tx",
+      purpose: "test",
+      requestedByRef: "operator_safe_ref",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    assert.throws(() => {
+      store.runInTransaction(() => {
+        store.linkIssuedSubscription({
+          id: "link_tx",
+          requestId: "iss_tx",
+          tenantRef: "tenantref_0123456789abcdef",
+          artifactRef: "artifactref_0123456789abcdef",
+          status: "active",
+          createdAt: now,
+          updatedAt: now
+        });
+        store.upsertQuotaCounter({
+          accountId: "acct_tx",
+          entitlementId: "ent_tx",
+          metric: "artifact_issuance",
+          period: "2026-05",
+          amount: 1,
+          updatedAt: now
+        });
+        throw new Error("simulate control finalization failure");
+      });
+    }, /simulate control finalization failure/);
+
+    const summary = store.getAccountControlSummary("acct_tx");
+    assert.equal(summary.issuedLinks.length, 0);
+    assert.equal(summary.quotaCounters.length, 0);
+    assert.equal(summary.issuanceRequests[0].status, "planned");
+  });
+});
+
 test("subscription control store exposes only safe references in serialized summaries", () => {
   withStore((store) => {
     const now = "2026-05-29T00:00:00.000Z";

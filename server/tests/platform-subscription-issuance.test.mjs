@@ -5,7 +5,11 @@ import { executeSubscriptionIssuance } from "../services/platform/subscription-i
 function createMockRuntimeCore() {
   let tenantIdCounter = 1;
   let artifactIdCounter = 1;
+  const disabledTenantIds = [];
+  const revokedArtifactIds = [];
   return {
+    disabledTenantIds,
+    revokedArtifactIds,
     createTenant: (args) => {
       const id = `tenant_${tenantIdCounter++}`;
       createMockRuntimeCore.lastCreateTenantArgs = args;
@@ -29,6 +33,14 @@ function createMockRuntimeCore() {
         },
         subscriptionUrl: `https://example.com/sub/a/${id}_secret_hash`
       };
+    },
+    revokeSubscriptionArtifact: (id) => {
+      revokedArtifactIds.push(id);
+      return { id, status: "revoked" };
+    },
+    disableTenant: (id) => {
+      disabledTenantIds.push(id);
+      return { id, status: "disabled" };
     }
   };
 }
@@ -41,6 +53,7 @@ function createMockControlStore() {
     links: {},
     quotas: {},
     audits: {},
+    revocations: {},
     getAccount: (id) => store.accounts[id],
     createAccount: (data) => { store.accounts[data.id] = data; },
     getEntitlement: (id) => store.entitlements[id],
@@ -49,6 +62,7 @@ function createMockControlStore() {
     setIssuanceRequestStatus: (id, updates) => { Object.assign(store.requests[id], updates); },
     linkIssuedSubscription: (data) => { store.links[data.id] = data; },
     upsertQuotaCounter: (data) => { store.quotas[`${data.accountId}_${data.metric}`] = data; },
+    recordRevocation: (data) => { store.revocations[data.id] = data; },
     recordAuditEvent: (data) => { store.audits[data.id] = data; }
   };
   return store;
@@ -191,4 +205,45 @@ test("executeSubscriptionIssuance - fail-closed: rejects unsafe notes", () => {
       }
     });
   }, /note must not contain sensitive material/);
+});
+
+test("executeSubscriptionIssuance - saga compensates runtime tenant and artifact when control link write fails", () => {
+  const controlStore = createMockControlStore();
+  const runtimeCore = createMockRuntimeCore();
+  const now = "2026-05-31T00:00:00.000Z";
+  const linkFailure = new Error("control link write failed");
+
+  controlStore.linkIssuedSubscription = () => {
+    throw linkFailure;
+  };
+
+  assert.throws(() => {
+    executeSubscriptionIssuance({
+      controlStore,
+      runtimeCore,
+      input: {
+        nodeId: "primary_node",
+        artifact: { create: true },
+        expiresAt: "2026-12-31T23:59:59Z",
+        control: {
+          accountId: "acct_compensate",
+          ownerRef: "owner_hash",
+          entitlementId: "ent_compensate",
+          requestId: "req_compensate",
+          requestedByRef: "op_hash",
+          purpose: "test"
+        }
+      },
+      approvalRef: "approval_compensate",
+      now
+    });
+  }, /issuance failed after runtime mutation; runtime changes were compensated/);
+
+  assert.deepStrictEqual(runtimeCore.revokedArtifactIds, ["artifact_1"]);
+  assert.deepStrictEqual(runtimeCore.disabledTenantIds, ["tenant_1"]);
+  assert.strictEqual(controlStore.requests.req_compensate.status, "failed");
+  assert.strictEqual(Object.keys(controlStore.links).length, 0);
+  assert.strictEqual(Object.keys(controlStore.quotas).length, 0);
+  assert.strictEqual(controlStore.revocations.req_compensate_compensation_revocation.reasonCode, "issuance_compensation");
+  assert.strictEqual(controlStore.audits.req_compensate_audit_failed.action, "issuance_failed_compensated");
 });
