@@ -146,7 +146,11 @@ Current architecture priorities:
   request summary, but it returns no subscription URL, performs no Admin API
   call, writes no SQLite rows, activates no payment, exposes no public Admin,
   and creates no production subscription. A future real user API remains
-  separate product work and must preserve user-scoped authorization.
+  separate product work and must preserve user-scoped authorization. The target
+  authentication boundary is operator-issued dynamic entry plus TOTP enrollment
+  and short-lived portal sessions first; Google/OAuth or email magic links are
+  later convenience login/recovery mechanisms and must never become entitlement
+  authority by themselves. See `docs/USER_PORTAL_AUTH_BOUNDARY.md`.
 - Operator CLI Platform Boundary: the platform product direction is
   CLI-first for operators. Public routes stay small and explicit, while
   administrative workflows are handled through operator CLI tools,
