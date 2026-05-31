@@ -14,6 +14,7 @@ import {
   Wifi
 } from "lucide-react";
 import { copyText } from "../../lib/clipboard";
+import { errorMessage } from "../../lib/errors";
 import { cn } from "../../lib/utils";
 import type {
   PortalClientId,
@@ -124,10 +125,6 @@ const emptyContactInfo: PortalContactInfo = {
 
 function selectedPlan(planId: PortalPlanId) {
   return plans.find((plan) => plan.id === planId) ?? plans[0];
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "操作失败。";
 }
 
 function displayNameFromEmail(email: string) {
@@ -277,7 +274,7 @@ export function UserPortalPage({
       }));
       setActiveView("subscription");
     } catch (requestError) {
-      setAuthError(errorMessage(requestError));
+      setAuthError(errorMessage(requestError, "操作失败。"));
     }
   }
 
@@ -313,7 +310,7 @@ export function UserPortalPage({
         createdAt: new Date().toISOString()
       });
     } catch (requestError) {
-      setActionError(errorMessage(requestError));
+      setActionError(errorMessage(requestError, "操作失败。"));
     } finally {
       setPending(false);
     }

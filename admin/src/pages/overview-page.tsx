@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { MetricCard as Metric } from "../components/metric-card";
 import type { AdminApiClient } from "../features/subscriptions/api-client";
 import type {
   AccessMigrationEvidenceInput,
@@ -30,10 +31,7 @@ import type {
   ProviderFirewallEvidenceInput,
   SubscriptionOverview
 } from "../features/subscriptions/types";
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Failed to load overview.";
-}
+import { errorMessage } from "../lib/errors";
 
 export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
   const [overview, setOverview] = useState<SubscriptionOverview | null>(null);
@@ -50,7 +48,7 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
         if (!cancelled) setOverview(result);
       })
       .catch((requestError: unknown) => {
-        if (!cancelled) setError(errorMessage(requestError));
+        if (!cancelled) setError(errorMessage(requestError, "Failed to load overview."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -110,15 +108,6 @@ export function OverviewPage({ apiClient }: { apiClient: AdminApiClient }) {
       <ChannelLabTargetDecisionPanel apiClient={apiClient} />
       <CleanEdgeReadinessReviewPanel apiClient={apiClient} />
       <AliyunGateReviewPanel apiClient={apiClient} />
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="metric-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   );
 }
@@ -354,7 +343,7 @@ function ChannelSystemReviewPanel({ apiClient }: { apiClient: AdminApiClient }) 
       const nextReview = await apiClient.reviewChannelSystem(input);
       setReview(nextReview);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
       setReview(null);
     } finally {
       setReviewing(false);
@@ -438,7 +427,7 @@ function ChannelRuntimeEvidenceBridgePanel({ apiClient }: { apiClient: AdminApiC
       const nextBridge = await apiClient.reviewChannelRuntimeEvidence(input);
       setBridge(nextBridge);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
       setBridge(null);
     } finally {
       setReviewing(false);
@@ -524,7 +513,7 @@ function ChannelRuntimeGateWorkbenchPanel({ apiClient }: { apiClient: AdminApiCl
       const nextWorkbench = await apiClient.reviewChannelRuntimeGate(input);
       setWorkbench(nextWorkbench);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
       setWorkbench(null);
     } finally {
       setReviewing(false);
@@ -614,7 +603,7 @@ function ChannelRuntimeExecutionHandoffPanel({ apiClient }: { apiClient: AdminAp
       const nextHandoff = await apiClient.reviewChannelRuntimeExecutionHandoff(input);
       setHandoff(nextHandoff);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
       setHandoff(null);
     } finally {
       setReviewing(false);
@@ -704,7 +693,7 @@ function ChannelSubscriptionOutputDraftPanel({ apiClient }: { apiClient: AdminAp
       const nextDraft = await apiClient.reviewChannelSubscriptionOutputDraft(input);
       setDraft(nextDraft);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
       setDraft(null);
     } finally {
       setReviewing(false);
@@ -794,7 +783,7 @@ function ChannelSubscriptionActivationReadinessPanel({ apiClient }: { apiClient:
       const nextReadiness = await apiClient.reviewChannelSubscriptionActivationReadiness(input);
       setReadiness(nextReadiness);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
       setReadiness(null);
     } finally {
       setReviewing(false);
@@ -898,7 +887,7 @@ function ChannelSubscriptionActivationHandoffPanel({ apiClient }: { apiClient: A
       const nextHandoff = await apiClient.reviewChannelSubscriptionActivationHandoff(input);
       setHandoff(nextHandoff);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
       setHandoff(null);
     } finally {
       setReviewing(false);
@@ -1002,7 +991,7 @@ function ChannelSubscriptionActivationFlowPanel({ apiClient }: { apiClient: Admi
       const nextFlow = await apiClient.reviewChannelSubscriptionActivationFlow(input);
       setFlow(nextFlow);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
       setFlow(null);
     } finally {
       setReviewing(false);
@@ -1102,7 +1091,7 @@ function ChannelSubscriptionActivationRecordTemplatePanel({ apiClient }: { apiCl
       const nextTemplate = await apiClient.reviewChannelSubscriptionActivationRecordTemplate(input);
       setTemplate(nextTemplate);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
       setTemplate(null);
     } finally {
       setReviewing(false);
@@ -1204,7 +1193,7 @@ function ChannelSubscriptionActivationPackagePanel({ apiClient }: { apiClient: A
       const nextPackage = await apiClient.reviewChannelSubscriptionActivationPackage(input);
       setActivationPackage(nextPackage);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
       setActivationPackage(null);
     } finally {
       setReviewing(false);
@@ -1329,7 +1318,7 @@ function ChannelLabTargetDecisionPanel({ apiClient }: { apiClient: AdminApiClien
       const nextDecision = await apiClient.reviewChannelLabTargetDecision(input);
       setDecision(nextDecision);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
       setDecision(null);
     } finally {
       setReviewing(false);
@@ -1419,7 +1408,7 @@ function CleanEdgeReadinessReviewPanel({ apiClient }: { apiClient: AdminApiClien
       const nextSummary = await apiClient.reviewCleanEdgeReadiness(input);
       setSummary(nextSummary);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
       setSummary(null);
     } finally {
       setReviewing(false);
@@ -1539,7 +1528,7 @@ function AliyunGateReviewPanel({ apiClient }: { apiClient: AdminApiClient }) {
         }
       })
       .catch((requestError: unknown) => {
-        if (!cancelled) setError(errorMessage(requestError));
+        if (!cancelled) setError(errorMessage(requestError, "Failed to load overview."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -1569,7 +1558,7 @@ function AliyunGateReviewPanel({ apiClient }: { apiClient: AdminApiClient }) {
       await refreshAfterEvidenceRecord();
       setMessage("Provider-firewall evidence recorded.");
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
     } finally {
       setSaving(false);
     }
@@ -1586,7 +1575,7 @@ function AliyunGateReviewPanel({ apiClient }: { apiClient: AdminApiClient }) {
       await refreshAfterEvidenceRecord();
       setMessage("Access-migration evidence recorded.");
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Failed to load overview."));
     } finally {
       setSaving(false);
     }

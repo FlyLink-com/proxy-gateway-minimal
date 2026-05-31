@@ -1,4 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { ModalFrame } from "../../components/modal-frame";
+import { dateInputToIsoUtc } from "../../lib/date-input";
+import { errorMessage } from "../../lib/errors";
 import type { RenewSubscriptionInput, SubscriptionTenant } from "./types";
 
 type RenewSubscriptionDialogProps = {
@@ -30,44 +33,39 @@ export function RenewSubscriptionDialog({
     try {
       await onRenew({
         id: activeTenant.id,
-        expiresAt: new Date(`${expiresAt}T00:00:00.000Z`).toISOString()
+        expiresAt: dateInputToIsoUtc(expiresAt)
       });
       onClose();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Renew subscription failed.");
+      setError(errorMessage(requestError, "Renew subscription failed."));
     } finally {
       setPending(false);
     }
   }
 
   return (
-    <div className="modal-backdrop" role="presentation">
-      <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="renew-subscription-title">
-        <div className="modal-header">
-          <div>
-            <h3 id="renew-subscription-title">Renew subscription</h3>
-            <p className="muted">{activeTenant.displayName}</p>
-          </div>
-          <button className="ghost-button" type="button" onClick={onClose}>Close</button>
+    <ModalFrame
+      titleId="renew-subscription-title"
+      title="Renew subscription"
+      subtitle={activeTenant.displayName}
+      onClose={onClose}
+    >
+      <form className="form-stack" onSubmit={submit}>
+        {error ? <div className="alert alert-error">{error}</div> : null}
+        <label>
+          <span>New expiry date</span>
+          <input
+            type="date"
+            value={expiresAt}
+            onChange={(event) => setExpiresAt(event.target.value)}
+            required
+          />
+        </label>
+        <div className="modal-actions">
+          <button className="ghost-button" type="button" onClick={onClose}>Cancel</button>
+          <button className="primary-button" type="submit" disabled={pending}>{pending ? "Renewing" : "Renew"}</button>
         </div>
-
-        <form className="form-stack" onSubmit={submit}>
-          {error ? <div className="alert alert-error">{error}</div> : null}
-          <label>
-            <span>New expiry date</span>
-            <input
-              type="date"
-              value={expiresAt}
-              onChange={(event) => setExpiresAt(event.target.value)}
-              required
-            />
-          </label>
-          <div className="modal-actions">
-            <button className="ghost-button" type="button" onClick={onClose}>Cancel</button>
-            <button className="primary-button" type="submit" disabled={pending}>{pending ? "Renewing" : "Renew"}</button>
-          </div>
-        </form>
-      </section>
-    </div>
+      </form>
+    </ModalFrame>
   );
 }

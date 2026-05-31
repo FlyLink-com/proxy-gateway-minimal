@@ -1,3 +1,5 @@
+import { ModalFrame } from "../../components/modal-frame";
+
 export type ConfirmActionTone = "danger" | "default";
 
 type ConfirmActionDialogProps = {
@@ -30,30 +32,25 @@ export function ConfirmActionDialog({
   const confirmClassName = tone === "danger" ? "danger-button" : "primary-button";
 
   return (
-    <div className="modal-backdrop" role="presentation">
-      <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="confirm-action-title">
-        <div className="modal-header">
-          <div>
-            <h3 id="confirm-action-title">{title}</h3>
-            <p className="muted">{tenantName}</p>
-          </div>
-          <button className="ghost-button" type="button" onClick={onCancel} disabled={pending}>
-            Close
-          </button>
-        </div>
-
-        <p className="modal-copy">{consequence}</p>
-        {error ? <div className="alert alert-error">{error}</div> : null}
-
-        <div className="modal-actions">
+    <ModalFrame
+      titleId="confirm-action-title"
+      title={title}
+      subtitle={tenantName}
+      onClose={onCancel}
+      closeDisabled={pending}
+      footer={
+        <>
           <button className="ghost-button" type="button" onClick={onCancel} disabled={pending}>
             Cancel
           </button>
           <button className={confirmClassName} type="button" onClick={onConfirm} disabled={pending}>
             {pending ? "Working" : confirmLabel}
           </button>
-        </div>
-      </section>
-    </div>
+        </>
+      }
+    >
+      <p className="modal-copy">{consequence}</p>
+      {error ? <div className="alert alert-error">{error}</div> : null}
+    </ModalFrame>
   );
 }
