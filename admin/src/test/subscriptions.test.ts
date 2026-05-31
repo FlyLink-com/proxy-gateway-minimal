@@ -167,6 +167,101 @@ describe("admin API client", () => {
     expect(preview.safety.noProductionMutation).toBe(true);
   });
 
+  test("lists portal access requests through the protected Admin route", async () => {
+    const fetcher = vi.fn(async () => jsonResponse({
+      items: [{
+        id: "pareq_1",
+        type: "portal_access_request_summary",
+        portalUserRef: "user_safe_ref",
+        displayName: "customer",
+        email: "customer@example.com",
+        plan: "trial",
+        planLabel: "7-day trial",
+        durationDays: 7,
+        status: "pending_admin_review",
+        nextAction: "admin_review_required",
+        submittedAt: "2026-05-31T00:00:00.000Z",
+        updatedAt: "2026-05-31T00:00:00.000Z",
+        reviewedAt: null,
+        reviewedByRef: null,
+        safeReasonCode: null,
+        contactComplete: true,
+        priorTrialState: "none",
+        entitlementRef: null,
+        accessGrantRef: null,
+        safety: {
+          noSubscriptionUrl: true,
+          noRawContactNote: true,
+          noRawHandoffMaterial: true,
+          noEntitlementCreated: true,
+          noRuntimeMutation: true,
+          noProductionMutation: true
+        }
+      }]
+    }));
+    const client = createAdminApiClient({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "secret",
+      fetcher
+    });
+
+    const items = await client.listPortalAccessRequests();
+
+    expect(items[0].plan).toBe("trial");
+    expect(fetcher.mock.calls[0][0]).toBe("http://127.0.0.1:3456/api/admin/platform/portal-access-requests");
+  });
+
+  test("previews portal access request approval without returning subscription material", async () => {
+    const fetcher = vi.fn(async () => jsonResponse({
+      preview: {
+        ok: true,
+        mode: "portal-access-request-approval-preview",
+        status: "approved_pending_delivery",
+        request: { id: "pareq_1", plan: "trial", durationDays: 7, status: "approved_pending_delivery" },
+        issuanceInput: {
+          displayName: "customer",
+          expiresInDays: 7,
+          plan: "trial",
+          nodeId: "channel-lab-b-tuic",
+          note: "portal-access-request:pareq_1",
+          artifact: { create: true },
+          control: {
+            accountId: "user_safe_ref",
+            ownerRef: "user_safe_ref",
+            entitlementId: "ent_pareq_1",
+            requestId: "pareq_1",
+            requestedByRef: "operator_safe_ref",
+            purpose: "portal_access_request",
+            plan: "trial"
+          }
+        },
+        approvalRef: "approval_trial_1",
+        safety: {
+          previewOnly: true,
+          noSubscriptionUrl: true,
+          noRawHandoffMaterial: true,
+          noRuntimeMutation: true,
+          noProductionMutation: true,
+          requiresSeparateIssuanceExecution: true
+        }
+      }
+    }));
+    const client = createAdminApiClient({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "secret",
+      fetcher
+    });
+
+    const preview = await client.previewPortalAccessRequestApproval("pareq_1", {
+      reviewedByRef: "operator_safe_ref",
+      approvalRef: "approval_trial_1",
+      nodeId: "channel-lab-b-tuic"
+    });
+
+    expect(preview.status).toBe("approved_pending_delivery");
+    expect(JSON.stringify(fetcher.mock.calls[0][1]?.body)).not.toMatch(/subscriptionUrl|token=/i);
+  });
+
   test("loads and records Aliyun gate review data without raw firewall details", async () => {
     const fetchMock = vi
       .fn()

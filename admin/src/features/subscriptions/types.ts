@@ -104,6 +104,70 @@ export type ProvisioningFormPreview = {
   };
 };
 
+export type PortalAccessRequestPlan = "trial" | "monthly" | "yearly";
+
+export type PortalAccessRequestStatus =
+  | "pending_admin_review"
+  | "approved_pending_delivery"
+  | "delivered"
+  | "rejected"
+  | "cancelled"
+  | "expired"
+  | "revoked";
+
+export type PortalAccessRequestSummary = {
+  id: string;
+  type: "portal_access_request_summary";
+  portalUserRef: string;
+  displayName: string;
+  email: string;
+  plan: PortalAccessRequestPlan;
+  planLabel: string;
+  durationDays: number;
+  status: PortalAccessRequestStatus;
+  nextAction: string;
+  submittedAt: string;
+  updatedAt: string;
+  reviewedAt: string | null;
+  reviewedByRef: string | null;
+  safeReasonCode: string | null;
+  contactComplete: boolean;
+  priorTrialState: string;
+  entitlementRef: string | null;
+  accessGrantRef: string | null;
+  safety: {
+    noSubscriptionUrl: boolean;
+    noRawContactNote: boolean;
+    noRawHandoffMaterial: boolean;
+    noEntitlementCreated: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+  };
+};
+
+export type PortalAccessApprovalPreviewInput = {
+  reviewedByRef: string;
+  approvalRef: string;
+  nodeId: string;
+};
+
+export type PortalAccessApprovalPreview = {
+  ok: boolean;
+  mode: "portal-access-request-approval-preview";
+  status: "approved_pending_delivery" | string;
+  request: Partial<PortalAccessRequestSummary>;
+  issuanceInput: Record<string, unknown>;
+  approvalRef: string;
+  safety: {
+    previewOnly: boolean;
+    noSubscriptionUrl: boolean;
+    noRawHandoffMaterial: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+    requiresSeparateIssuanceExecution: boolean;
+  };
+};
+
 export type SubscriptionNode = {
   id: string;
   name: string;
