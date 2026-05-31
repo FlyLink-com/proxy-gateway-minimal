@@ -56,6 +56,13 @@ for issuing dynamic entries, enrolling TOTP credentials, and creating scoped
 portal sessions against the subscription-control database. It is not exposed
 through HTTP and it does not issue subscriptions.
 
+An operator-only CLI wrapper exists at
+`scripts/platform-issue-portal-entry.mjs` / `npm run
+platform:issue-portal-entry`. It can write a dynamic entry row to the
+subscription-control database and write visible-once entry material to an
+operator handoff file. Running that command against production data remains
+A-tier; the repository implementation itself grants no production authority.
+
 Required behavior:
 
 - operator-approved account and entitlement exist before issuing an entry;
@@ -206,7 +213,7 @@ Public company site: active on Aliyun root
 Public lead intake: active on Aliyun boundary
 Public Admin: blocked
 User portal shell: repository-only / local reference
-Dynamic portal entry: repo-only internal service; no public route
+Dynamic portal entry: repo-only internal service and operator CLI; no public route
 TOTP: repo-only internal service; injected verifier only
 Google/OAuth login: future convenience login only
 Payment-driven entitlement: not active

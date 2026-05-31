@@ -1,0 +1,7 @@
+{
+  "accountId": "acct_operator_safe_example",
+  "entitlementId": "ent_operator_safe_example",
+  "issuedByRef": "operator_local_hashref",
+  "expiresAt": "2026-06-04T00:00:00.000Z",
+  "maxUses": 1
+}
