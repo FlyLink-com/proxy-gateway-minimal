@@ -571,8 +571,8 @@ describe("admin API client", () => {
 });
 
 describe("portal access request admin page", () => {
-  test("renders trial requests and safe approval preview", async () => {
-    const listPortalAccessRequests = vi.fn(async () => [{
+  function portalRequest(overrides: Partial<Awaited<ReturnType<AdminApiClient["listPortalAccessRequests"]>>[number]> = {}) {
+    return {
       id: "pareq_1",
       type: "portal_access_request_summary" as const,
       portalUserRef: "user_safe_ref",
@@ -596,8 +596,67 @@ describe("portal access request admin page", () => {
         noEntitlementCreated: true,
         noRuntimeMutation: true,
         noProductionMutation: true
-      }
-    }]);
+      },
+      ...overrides
+    };
+  }
+
+  test("renders a safe request management panel with summary and status filtering", async () => {
+    const listPortalAccessRequests = vi.fn(async () => [
+      portalRequest(),
+      portalRequest({
+        id: "pareq_2",
+        portalUserRef: "user_monthly_ref",
+        plan: "monthly" as const,
+        planLabel: "Monthly access",
+        durationDays: 30,
+        status: "approved_pending_delivery" as const,
+        reviewedByRef: "operator_safe_ref",
+        priorTrialState: "used"
+      }),
+      portalRequest({
+        id: "pareq_3",
+        portalUserRef: "user_delivered_ref",
+        plan: "yearly" as const,
+        planLabel: "Yearly access",
+        durationDays: 365,
+        status: "delivered" as const,
+        reviewedByRef: "operator_safe_ref",
+        entitlementRef: "ent_safe_ref",
+        accessGrantRef: "grant_safe_ref"
+      }),
+      portalRequest({
+        id: "pareq_4",
+        portalUserRef: "user_rejected_ref",
+        status: "rejected" as const,
+        safeReasonCode: "duplicate_trial"
+      })
+    ]);
+
+    render(createElement(PortalRequestsPage, {
+      apiClient: adminClient({
+        listPortalAccessRequests
+      } as unknown as Partial<AdminApiClient>)
+    }));
+
+    expect(await screen.findByText("Request management")).not.toBeNull();
+    expect(screen.getByText("Total requests")).not.toBeNull();
+    expect(screen.getAllByText("Pending review").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Approved").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Delivered").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Rejected").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/Contact|Telegram|customer@example\.com|subscriptionUrl|token=/i)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Status filter"), { target: { value: "delivered" } });
+
+    expect(screen.getAllByText("Yearly access").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Monthly access")).toBeNull();
+    expect(screen.getByText("ent_safe_ref")).not.toBeNull();
+    expect(screen.getByText("grant_safe_ref")).not.toBeNull();
+  });
+
+  test("renders trial requests and safe approval preview", async () => {
+    const listPortalAccessRequests = vi.fn(async () => [portalRequest()]);
     const previewPortalAccessRequestApproval = vi.fn(async () => ({
       ok: true,
       mode: "portal-access-request-approval-preview" as const,
@@ -623,8 +682,8 @@ describe("portal access request admin page", () => {
     }));
 
     expect(await screen.findByText("Portal requests")).not.toBeNull();
-    expect(screen.getByText("7-day trial")).not.toBeNull();
-    expect(screen.getByText("pending_admin_review")).not.toBeNull();
+    expect(screen.getAllByText("7-day trial").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("pending_admin_review").length).toBeGreaterThanOrEqual(1);
 
     fireEvent.change(screen.getByLabelText("Approval reference"), { target: { value: "approval_trial_1" } });
     fireEvent.change(screen.getByLabelText("Operator ref"), { target: { value: "operator_safe_ref" } });

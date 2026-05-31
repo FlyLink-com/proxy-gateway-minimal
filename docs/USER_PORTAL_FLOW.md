@@ -59,6 +59,28 @@ It renders facts returned by the user-scoped backend or injected preview client.
 | History summary | Backend read model | Display immutable application/authorization/refresh events. | Treat in-memory UI events as durable history. |
 | Page copy and navigation | Frontend | Render the agreed customer-facing views. | Mix operator diagnostics, node controls, or Admin workbenches into portal pages. |
 
+## Protected Admin Review Surface
+
+The protected Admin portal-request page is the operator-side review companion to
+the user portal. It may show safe request summary metrics, local status filters,
+selected-request detail, and approval preview output. It must not become the
+production issuance authority by itself.
+
+Allowed:
+
+- List portal access request summaries keyed by safe portal user references.
+- Filter by safe request status.
+- Show selected-request metadata such as plan, status, prior trial state,
+  reviewed-by ref, reason code, entitlement ref, and access grant ref.
+- Generate safe approval previews through the protected Admin API.
+
+Not allowed:
+
+- Display customer contact profiles, raw subscription URLs, tokens, artifact
+  material, node credentials, or raw handoff material.
+- Create entitlements, issue artifacts, mutate runtime subscriptions, expose
+  public Admin, activate payment, or perform DNS/Nginx/systemd/firewall changes.
+
 ## Lifecycle State Machine
 
 Portal copy and buttons must follow one lifecycle model. The lifecycle is
