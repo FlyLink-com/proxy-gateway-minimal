@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-05-29",
+  "lastUpdated": "2026-05-31",
   "timezone": "Asia/Shanghai",
   "status": "active-snapshot-aliyun-subscription-promoted-edge-terminated",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
@@ -12,6 +12,7 @@
     "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md",
     "docs/OPERATOR_PROVISIONING_FORM_CONTRACT.md",
     "docs/SUBSCRIPTION_CONTROL_DATABASE.md",
+    "docs/USER_PORTAL_AUTH_BOUNDARY.md",
     "docs/ADMIN_UI_LEGACY_ARCHIVE.md",
     "docs/RESOURCE_PACKAGE_CLI.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
@@ -117,6 +118,7 @@
     "Operator CLI Platform Boundary exists as the product/ops boundary for keeping public routes small and explicit while administrative workflows move to operator CLI tools, local/private console review, visible-once handoff files, and execution records; public Admin is not a product surface and production mutation remains Risk A even when wrapped by CLI",
     "Legacy Admin UI is archived as a local protected reference/testing surface only; future user, operator, and admin product surfaces should be rebuilt from the Aliyun-first, CLI-first, public-site/portal split, provisioning form contract, resource-package handoff, and role/permission boundaries instead of polishing the old Admin bundle",
     "User Portal Business Boundary exists as the customer-facing request boundary: the portal shell now depends on a dedicated UserPortalClient instead of Admin subscription APIs, and the default local client returns request-preview metadata only without Admin API calls, SQLite mutation, payment activation, public Admin, subscription URLs, or production subscription issuance",
+    "User Portal Auth Service exists as repo-only internal service support for dynamic portal entry, TOTP enrollment through an injected verifier, and short-lived portal sessions in the subscription-control database without public routes, subscription issuance, payment activation, Aliyun production migration, or subscription URL exposure",
     "Aliyun platform domain contract exists as repo-only lead/account/entitlement/subscription-access grant normalization with operator-safe summaries",
     "Aliyun platform lead review queue exists as repo-only public lead intake to protected operator-safe review summaries without CRM, Webhook, email automation, Aliyun deployment, DNS, production storage, or user traffic",
     "Aliyun platform account and entitlement shell exists as repo-only in-memory lead-to-account conversion and entitlement summaries without billing, payment collection, SQLite persistence, Aliyun deployment, DNS, production storage, or user traffic",

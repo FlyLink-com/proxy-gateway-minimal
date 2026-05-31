@@ -49,8 +49,12 @@ read/write access to user-portal functions.
 
 ## Phase 1: Operator-Issued Entry + TOTP
 
-Initial implementation should avoid third-party login providers and avoid
-public self-service registration as the source of authority.
+Initial implementation avoids third-party login providers and avoids public
+self-service registration as the source of authority. The repository now has a
+repo-only internal service at `server/services/platform/user-portal-auth.mjs`
+for issuing dynamic entries, enrolling TOTP credentials, and creating scoped
+portal sessions against the subscription-control database. It is not exposed
+through HTTP and it does not issue subscriptions.
 
 Required behavior:
 
@@ -188,7 +192,7 @@ Sensitive notes:
 
 | Work item | Risk | Required boundary |
 | --- | --- | --- |
-| Repository-only contract / tests for dynamic entry and TOTP shapes | B | No production DB migration, no public route, no secrets. |
+| Repository-only dynamic entry / TOTP / session service and tests | B | No production DB migration execution, no public route, no subscription issuance, no secrets in summaries. |
 | Local user-portal UI prototype using mocked client data | B | No public deployment, no real auth provider, no artifact URL exposure. |
 | Real portal DB migration | A | Migration runbook, backup, rollback, validation. |
 | Public portal DNS / Nginx route | A | Public-boundary runbook, approval, validation, rollback. |
@@ -202,8 +206,8 @@ Public company site: active on Aliyun root
 Public lead intake: active on Aliyun boundary
 Public Admin: blocked
 User portal shell: repository-only / local reference
-Dynamic portal entry: design boundary only
-TOTP: design boundary only
+Dynamic portal entry: repo-only internal service; no public route
+TOTP: repo-only internal service; injected verifier only
 Google/OAuth login: future convenience login only
 Payment-driven entitlement: not active
 Automatic subscription issuance: not active

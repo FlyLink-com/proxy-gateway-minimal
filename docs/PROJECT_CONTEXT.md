@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-05-29, Asia/Shanghai.
+Last updated: 2026-05-31, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -151,6 +151,13 @@ Current architecture priorities:
   and short-lived portal sessions first; Google/OAuth or email magic links are
   later convenience login/recovery mechanisms and must never become entitlement
   authority by themselves. See `docs/USER_PORTAL_AUTH_BOUNDARY.md`.
+- User Portal Auth Service: repository-only internal service support now exists
+  under `server/services/platform/user-portal-auth.mjs` for issuing dynamic
+  portal entries, enrolling TOTP credentials through an injected verifier, and
+  creating short-lived portal sessions against the subscription-control
+  database. It is not exposed as a public route, returns no subscription URL,
+  performs no subscription issuance, activates no payment, and does not deploy
+  or migrate Aliyun production state.
 - Operator CLI Platform Boundary: the platform product direction is
   CLI-first for operators. Public routes stay small and explicit, while
   administrative workflows are handled through operator CLI tools,
