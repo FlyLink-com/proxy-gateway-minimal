@@ -33,6 +33,32 @@ Login identity is not subscription authority. A user can authenticate only to a
 portal session; account entitlement, balance, plan status, revocation state, and
 artifact access remain server-side authorization decisions.
 
+## CLI / Portal Separation
+
+CLI and user portal are separate adapters over the same domain services:
+
+```text
+operator CLI
+  -> domain services
+  -> control/runtime state
+
+user portal
+  -> user-scoped portal APIs
+  -> domain services
+  -> control/runtime state
+```
+
+Rules:
+
+- the user portal must not shell out to CLI commands;
+- CLI commands are operator/ops tools, not user-facing product workflows;
+- normal user self-service actions, such as viewing account state or refreshing
+  an allowed subscription artifact, should call user-scoped services directly;
+- operator CLI remains for provisioning, override, revoke, audit, emergency
+  recovery, and controlled handoff;
+- both adapters must share the same authorization, entitlement, quota, audit,
+  and secret-redaction rules at the service layer.
+
 ## Credential Layers
 
 | Layer | Purpose | Storage posture | May expose subscription URL? |
