@@ -690,7 +690,15 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     }
   }
 
+  function runInTransaction(callback) {
+    if (typeof callback !== "function") {
+      throw platformError("validation_error", "transaction callback is required");
+    }
+    return db.transaction(callback)();
+  }
+
   return {
+    runInTransaction,
     createAccount,
     getAccount,
     createEntitlement,

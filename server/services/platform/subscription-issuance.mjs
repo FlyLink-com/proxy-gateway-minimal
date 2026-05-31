@@ -5,6 +5,71 @@ function safeRef(prefix, value) {
   return `${prefix}ref_${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
 }
 
+function bestEffort(step) {
+  try {
+    step();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function compensateRuntimeMutation({ runtimeCore, tenantResult, artifactResult }) {
+  const result = {
+    artifactRevoked: false,
+    tenantDisabled: false
+  };
+
+  if (artifactResult?.artifact?.id && typeof runtimeCore.revokeSubscriptionArtifact === "function") {
+    result.artifactRevoked = bestEffort(() => runtimeCore.revokeSubscriptionArtifact(artifactResult.artifact.id));
+  }
+
+  if (tenantResult?.tenant?.id && typeof runtimeCore.disableTenant === "function") {
+    result.tenantDisabled = bestEffort(() => runtimeCore.disableTenant(tenantResult.tenant.id));
+  }
+
+  return result;
+}
+
+function recordCompensatedFailure({ controlStore, control, tenantRef, artifactRef, issuedAt, compensation }) {
+  bestEffort(() => controlStore.setIssuanceRequestStatus(control.requestId, {
+    status: "failed",
+    updatedAt: issuedAt
+  }));
+
+  if (tenantRef && artifactRef && typeof controlStore.recordRevocation === "function") {
+    bestEffort(() => controlStore.recordRevocation({
+      id: `${control.requestId}_compensation_revocation`,
+      requestId: control.requestId,
+      issuedLinkId: null,
+      tenantRef,
+      artifactRef,
+      reasonCode: "issuance_compensation",
+      revokedByRef: control.requestedByRef,
+      createdAt: issuedAt
+    }));
+  }
+
+  bestEffort(() => controlStore.recordAuditEvent({
+    id: `${control.requestId}_audit_failed`,
+    entityType: "issuance_request",
+    entityRef: control.requestId,
+    action: "issuance_failed_compensated",
+    actorRef: control.requestedByRef,
+    createdAt: issuedAt,
+    metadata: {
+      compensation
+    }
+  }));
+}
+
+function runControlFinalization(controlStore, finalize) {
+  if (typeof controlStore.runInTransaction === "function") {
+    return controlStore.runInTransaction(finalize);
+  }
+  return finalize();
+}
+
 export function validateIssuanceInput(input) {
   if (!input) throw new Error("input is required");
   if (!String(input.nodeId || "").trim()) {
@@ -101,52 +166,72 @@ export function executeSubscriptionIssuance({ controlStore, runtimeCore, input, 
     }
   });
 
-  // 1. Create Tenant (Runtime)
-  const tenantResult = runtimeCore.createTenant({
-    displayName: input.displayName,
-    nodeId: input.nodeId,
-    expiresAt: input.expiresAt,
-    note: ""
-  });
-
-  // 2. Create Artifact (Runtime)
-  const artifactResult = runtimeCore.createSubscriptionArtifact(tenantResult.tenant.id);
-  const tenantRef = safeRef("tenant", tenantResult.tenant.id);
-  const artifactRef = safeRef("artifact", artifactResult.artifact.id);
+  let tenantResult;
+  let artifactResult;
+  let tenantRef;
+  let artifactRef;
   const issuedAt = now;
 
-  controlStore.linkIssuedSubscription({
-    id: `${control.requestId}_link_1`,
-    requestId: control.requestId,
-    tenantRef,
-    artifactRef,
-    status: "active",
-    createdAt: issuedAt,
-    updatedAt: issuedAt
-  });
-  controlStore.setIssuanceRequestStatus(control.requestId, {
-    status: "issued",
-    updatedAt: issuedAt
-  });
-  controlStore.upsertQuotaCounter({
-    accountId: control.accountId,
-    entitlementId: control.entitlementId,
-    metric: "artifact_issuance",
-    period: issuedAt.slice(0, 7),
-    amount: 1,
-    updatedAt: issuedAt
-  });
-  controlStore.recordAuditEvent({
-    id: `${control.requestId}_audit_issued`,
-    entityType: "issuance_request",
-    entityRef: control.requestId,
-    action: "issued",
-    actorRef: control.requestedByRef,
-    createdAt: issuedAt,
-    metadata: {
-      source: "platform:issue-subscription"
+  try {
+    // 1. Create Tenant (Runtime)
+    tenantResult = runtimeCore.createTenant({
+      displayName: input.displayName,
+      nodeId: input.nodeId,
+      expiresAt: input.expiresAt,
+      note: ""
+    });
+
+    // 2. Create Artifact (Runtime)
+    artifactResult = runtimeCore.createSubscriptionArtifact(tenantResult.tenant.id);
+    tenantRef = safeRef("tenant", tenantResult.tenant.id);
+    artifactRef = safeRef("artifact", artifactResult.artifact.id);
+
+    runControlFinalization(controlStore, () => {
+      controlStore.linkIssuedSubscription({
+        id: `${control.requestId}_link_1`,
+        requestId: control.requestId,
+        tenantRef,
+        artifactRef,
+        status: "active",
+        createdAt: issuedAt,
+        updatedAt: issuedAt
+      });
+      controlStore.setIssuanceRequestStatus(control.requestId, {
+        status: "issued",
+        updatedAt: issuedAt
+      });
+      controlStore.upsertQuotaCounter({
+        accountId: control.accountId,
+        entitlementId: control.entitlementId,
+        metric: "artifact_issuance",
+        period: issuedAt.slice(0, 7),
+        amount: 1,
+        updatedAt: issuedAt
+      });
+      controlStore.recordAuditEvent({
+        id: `${control.requestId}_audit_issued`,
+        entityType: "issuance_request",
+        entityRef: control.requestId,
+        action: "issued",
+        actorRef: control.requestedByRef,
+        createdAt: issuedAt,
+        metadata: {
+          source: "platform:issue-subscription"
+        }
+      });
+    });
+  } catch (error) {
+    if (tenantResult?.tenant?.id || artifactResult?.artifact?.id) {
+      const compensation = compensateRuntimeMutation({ runtimeCore, tenantResult, artifactResult });
+      recordCompensatedFailure({ controlStore, control, tenantRef, artifactRef, issuedAt, compensation });
+      const compensatedError = new Error("issuance failed after runtime mutation; runtime changes were compensated");
+      compensatedError.code = "issuance_compensated";
+      compensatedError.cause = error;
+      compensatedError.compensation = compensation;
+      throw compensatedError;
     }
-  });
+    throw error;
+  }
 
   // 3. Prepare separated materials
   const handoffMaterial = {
