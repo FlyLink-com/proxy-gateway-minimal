@@ -147,7 +147,7 @@ describe("user portal route", () => {
   test("opens a separate customer portal without Admin navigation", async () => {
     render(createElement(App));
 
-    expect(screen.getByLabelText("Admin navigation").textContent).not.toContain("Portal");
+    expect(screen.getByLabelText("Admin navigation").textContent).toContain("Portal Requests");
 
     fireEvent.click(screen.getByRole("link", { name: /open user portal/i }));
 

@@ -32,6 +32,7 @@ import type {
 } from "../features/subscriptions/types";
 import { NodesPage } from "../pages/nodes-page";
 import { OverviewPage } from "../pages/overview-page";
+import { PortalRequestsPage } from "../pages/portal-requests-page";
 import { ProvisioningPage } from "../pages/provisioning-page";
 
 afterEach(() => {
@@ -567,6 +568,80 @@ describe("admin API client", () => {
     expect(activationPackage.renderProof.yamlReturned).toBe(false);
     expect(activationPackage.recordTemplate.markdownReturned).toBe(false);
     expect(activationPackage.gate.executesGate).toBe(false);
+  });
+});
+
+describe("portal access request admin page", () => {
+  test("renders trial requests and safe approval preview", async () => {
+    const listPortalAccessRequests = vi.fn(async () => [{
+      id: "pareq_1",
+      type: "portal_access_request_summary" as const,
+      portalUserRef: "user_safe_ref",
+      displayName: "customer",
+      email: "customer@example.com",
+      plan: "trial" as const,
+      planLabel: "7-day trial",
+      durationDays: 7,
+      status: "pending_admin_review" as const,
+      nextAction: "admin_review_required",
+      submittedAt: "2026-05-31T00:00:00.000Z",
+      updatedAt: "2026-05-31T00:00:00.000Z",
+      reviewedAt: null,
+      reviewedByRef: null,
+      safeReasonCode: null,
+      contactComplete: true,
+      priorTrialState: "none",
+      entitlementRef: null,
+      accessGrantRef: null,
+      safety: {
+        noSubscriptionUrl: true,
+        noRawContactNote: true,
+        noRawHandoffMaterial: true,
+        noEntitlementCreated: true,
+        noRuntimeMutation: true,
+        noProductionMutation: true
+      }
+    }]);
+    const previewPortalAccessRequestApproval = vi.fn(async () => ({
+      ok: true,
+      mode: "portal-access-request-approval-preview" as const,
+      status: "approved_pending_delivery",
+      request: { id: "pareq_1", plan: "trial" as const, durationDays: 7, status: "approved_pending_delivery" as const },
+      issuanceInput: { plan: "trial" as const, nodeId: "channel-lab-b-tuic" },
+      approvalRef: "approval_trial_1",
+      safety: {
+        previewOnly: true,
+        noSubscriptionUrl: true,
+        noRawHandoffMaterial: true,
+        noRuntimeMutation: true,
+        noProductionMutation: true,
+        requiresSeparateIssuanceExecution: true
+      }
+    }));
+
+    render(createElement(PortalRequestsPage, {
+      apiClient: adminClient({
+        listPortalAccessRequests,
+        previewPortalAccessRequestApproval
+      } as unknown as Partial<AdminApiClient>)
+    }));
+
+    expect(await screen.findByText("Portal requests")).not.toBeNull();
+    expect(screen.getByText("7-day trial")).not.toBeNull();
+    expect(screen.getByText("pending_admin_review")).not.toBeNull();
+
+    fireEvent.change(screen.getByLabelText("Approval reference"), { target: { value: "approval_trial_1" } });
+    fireEvent.change(screen.getByLabelText("Operator ref"), { target: { value: "operator_safe_ref" } });
+    fireEvent.change(screen.getByLabelText("Target node"), { target: { value: "channel-lab-b-tuic" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate approval preview" }));
+
+    expect(await screen.findByText("approved_pending_delivery")).not.toBeNull();
+    expect(previewPortalAccessRequestApproval).toHaveBeenCalledWith("pareq_1", {
+      approvalRef: "approval_trial_1",
+      reviewedByRef: "operator_safe_ref",
+      nodeId: "channel-lab-b-tuic"
+    });
+    expect(screen.queryByText(/subscriptionUrl|token=/i)).toBeNull();
   });
 });
 
