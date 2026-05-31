@@ -1,6 +1,6 @@
 export type PortalAuthMode = "login" | "signup";
-export type PortalPlanId = "starter" | "professional" | "team";
-export type PortalClientId = "clash" | "mihomo" | "karing";
+export type PortalPlanId = "monthly" | "yearly";
+export type PortalClientId = "clash" | "karing";
 export type PortalSubscriptionStatus = "ready_for_operator_review" | "subscription_ready";
 
 export type PortalSession = {
@@ -8,6 +8,7 @@ export type PortalSession = {
   userRef: string;
   displayName: string;
   authMode: PortalAuthMode;
+  registeredAt: string;
   safety: {
     noAdminApi: true;
     noPublicAuthActivated: true;
@@ -22,10 +23,17 @@ export type PortalAuthInput = {
   verificationCode?: string;
 };
 
+export type PortalContactInfo = {
+  email: string;
+  phone: string;
+  telegram: string;
+};
+
 export type PortalSubscriptionRequestInput = {
   userRef: string;
   displayName: string;
   email: string;
+  contact: PortalContactInfo;
   planId: PortalPlanId;
   clientTarget: PortalClientId;
   durationDays: number;
@@ -77,6 +85,23 @@ function normalizeDisplayName(displayName: string, email: string) {
   return email.includes("@") ? email.split("@")[0] : "User";
 }
 
+function normalizePhone(phone: string) {
+  const normalized = phone.trim().replace(/\s+/g, " ");
+  if (!/^[+\d][\d ()-]{5,31}$/.test(normalized)) {
+    throw portalError("请输入有效手机号。");
+  }
+  return normalized;
+}
+
+function normalizeTelegram(telegram: string) {
+  const normalized = telegram.trim();
+  if (!normalized || normalized.length > 64 || /\s/.test(normalized)) {
+    throw portalError("请输入 Telegram 账号。");
+  }
+  if (normalized.startsWith("https://t.me/")) return normalized;
+  return normalized.startsWith("@") ? normalized : `@${normalized}`;
+}
+
 function stableRef(prefix: string, value: string) {
   let hash = 2166136261;
   for (const char of value) {
@@ -113,6 +138,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         userRef: stableRef("user", email),
         displayName: normalizeDisplayName("", email),
         authMode: input.mode,
+        registeredAt: now().toISOString(),
         safety: {
           noAdminApi: true,
           noPublicAuthActivated: true,
@@ -123,6 +149,9 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
 
     async requestSubscription(input) {
       const email = normalizeEmail(input.email);
+      const contactEmail = normalizeEmail(input.contact.email);
+      const contactPhone = normalizePhone(input.contact.phone);
+      const contactTelegram = normalizeTelegram(input.contact.telegram);
       const displayName = normalizeDisplayName(input.displayName, email);
       if (!input.userRef.trim()) {
         throw portalError("用户会话无效。");
@@ -131,7 +160,18 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       const expiresAt = expiresAtFromDays(now(), input.durationDays);
       const requestRef = stableRef(
         "subreq",
-        `${input.userRef}|${email}|${displayName}|${input.planId}|${input.clientTarget}|${expiresAt}`
+        [
+          input.userRef,
+          email,
+          displayName,
+          input.planId,
+          input.clientTarget,
+          expiresAt,
+          contactEmail,
+          contactPhone,
+          contactTelegram,
+          now().toISOString()
+        ].join("|")
       );
       const subscriptionUrl = options.demoSubscriptionUrl?.trim() || undefined;
 
