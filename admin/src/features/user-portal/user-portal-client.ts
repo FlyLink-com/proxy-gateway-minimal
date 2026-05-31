@@ -1,7 +1,7 @@
 export type PortalAuthMode = "login" | "signup";
 export type PortalPlanId = "starter" | "professional" | "team";
 export type PortalClientId = "clash" | "mihomo" | "karing";
-export type PortalSubscriptionStatus = "ready_for_operator_review" | "subscription_ready";
+export type PortalSubscriptionStatus = "ready_for_operator_review";
 
 export type PortalSession = {
   status: "authenticated_preview";
@@ -38,8 +38,7 @@ export type PortalSubscriptionRequest = {
   planId: PortalPlanId;
   clientTarget: PortalClientId;
   expiresAt: string;
-  subscriptionUrl?: string;
-  nextAction: "operator_review_required" | "copy_subscription_url";
+  nextAction: "operator_review_required";
   safety: {
     noAdminApi: true;
     noDbMutation: true;
@@ -56,7 +55,6 @@ export type UserPortalClient = {
 
 export type LocalUserPortalClientOptions = {
   now?: () => Date;
-  demoSubscriptionUrl?: string;
 };
 
 function portalError(message: string) {
@@ -133,17 +131,14 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         "subreq",
         `${input.userRef}|${email}|${displayName}|${input.planId}|${input.clientTarget}|${expiresAt}`
       );
-      const subscriptionUrl = options.demoSubscriptionUrl?.trim() || undefined;
-
       return {
-        status: subscriptionUrl ? "subscription_ready" : "ready_for_operator_review",
+        status: "ready_for_operator_review",
         requestRef,
         userRef: input.userRef,
         planId: input.planId,
         clientTarget: input.clientTarget,
         expiresAt,
-        subscriptionUrl,
-        nextAction: subscriptionUrl ? "copy_subscription_url" : "operator_review_required",
+        nextAction: "operator_review_required",
         safety: {
           noAdminApi: true,
           noDbMutation: true,

@@ -2,7 +2,6 @@ import { useMemo, useState, type FormEvent } from "react";
 import {
   CircleCheck,
   CircleX,
-  Copy,
   Download,
   FileText,
   HelpCircle,
@@ -14,7 +13,6 @@ import {
   User,
   Wifi
 } from "lucide-react";
-import { copyText } from "../../lib/clipboard";
 import { cn } from "../../lib/utils";
 import type {
   PortalClientId,
@@ -88,38 +86,38 @@ const onboardingGuides = [
   {
     platform: "Windows / macOS",
     app: "Clash Verge Rev",
-    steps: ["复制订阅链接", "Profiles 中粘贴导入", "选择规则模式", "打开系统代理"]
+    steps: ["等待运营授权状态", "在客户端中更新配置", "选择规则模式", "打开系统代理"]
   },
   {
     platform: "iOS / Android",
     app: "FlClash / Karing",
-    steps: ["安装移动端客户端", "从剪贴板导入订阅", "更新配置", "选择延迟较低的节点"]
+    steps: ["安装移动端客户端", "等待受控配置交付", "更新配置", "选择延迟较低的节点"]
   },
   {
     platform: "Linux / Advanced",
     app: "Mihomo Party",
-    steps: ["导入订阅配置", "检查端口和系统代理", "按需开启 TUN", "保留原配置作为回退"]
+    steps: ["导入受控配置", "检查端口和系统代理", "按需开启 TUN", "保留原配置作为回退"]
   }
 ];
 
 const faqItems = [
   {
     question: "更新订阅失败怎么办？",
-    answer: "先复制最新订阅链接重新导入，再检查系统时间、网络代理和客户端版本。"
+    answer: "先确认当前授权状态和配置版本，再检查系统时间、网络代理和客户端版本。"
   },
   {
     question: "为什么有些网站仍显示原 IP？",
     answer: "通常是系统代理未开启、规则未命中、DNS 缓存或浏览器已有连接未重建导致。"
   },
   {
-    question: "换设备后需要重新生成订阅吗？",
-    answer: "当前 MVP 允许复制同一受控订阅；正式设备限制会在阿里云平台侧单独接入。"
+    question: "换设备后需要重新申请授权吗？",
+    answer: "当前 MVP 只展示用户侧申请和状态；正式设备限制会在阿里云平台侧单独接入。"
   }
 ];
 
 const subscriptionStates = [
-  { label: "未购买", description: "选择套餐后由运营侧生成订阅。", activeWhenCreated: false },
-  { label: "已可用", description: "订阅链接已生成，可复制到客户端。", activeWhenCreated: true },
+  { label: "未购买", description: "选择套餐后提交用户侧申请。", activeWhenCreated: false },
+  { label: "待授权", description: "申请已记录，等待运营侧授权和受控交付。", activeWhenCreated: true },
   { label: "即将过期", description: "后续接入续费提醒和到期通知。", activeWhenCreated: false },
   { label: "已过期", description: "后续接入恢复购买和历史记录。", activeWhenCreated: false }
 ];
@@ -138,7 +136,7 @@ const profileModules = [
 
 const usageSteps = [
   "下载对应设备的应用。",
-  "复制订阅链接到应用。",
+  "在用户面板确认授权状态。",
   "代理中选择住宅节点或已分配节点。",
   "进入设置并打开系统代理。",
   "开启规则模式后再访问目标服务。"
@@ -146,7 +144,7 @@ const usageSteps = [
 
 const checklist = {
   recommended: [
-    "保持订阅链接私密，仅在自己的设备中导入。",
+    "保持受控配置私密，仅在自己的设备中导入。",
     "先更新订阅，再判断节点是否异常。",
     "只保留一个系统代理或 VPN 入口。",
     "更换设备前确认旧客户端已停止连接。",
@@ -155,7 +153,7 @@ const checklist = {
   forbidden: [
     "不要使用已经暴露在普通代理下的账号。",
     "关闭其他 VPN，避免本地链路冲突。",
-    "不要共享订阅链接或账号。",
+    "不要共享受控配置或账号。",
     "清理旧代理配置残留后再导入。",
     "出现异常时先更新订阅并重启客户端。"
   ]
@@ -166,7 +164,7 @@ function selectedPlanLabel(planId: PortalPlanId) {
 }
 
 function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "订阅生成失败。";
+  return error instanceof Error ? error.message : "订阅申请提交失败。";
 }
 
 function displayNameFromEmail(email: string) {
@@ -197,7 +195,6 @@ export function UserPortalPage({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
   const [created, setCreated] = useState<CreatedSubscription | null>(null);
-  const [copied, setCopied] = useState("");
 
   const activePlan = useMemo(
     () => plans.find((plan) => plan.id === selectedPlan) ?? plans[1],
@@ -230,7 +227,6 @@ export function UserPortalPage({
     event.preventDefault();
     setPending(true);
     setError("");
-    setCopied("");
     try {
       const result = await portalClient.requestSubscription({
         userRef: portalSession?.userRef ?? "",
@@ -249,12 +245,6 @@ export function UserPortalPage({
     } finally {
       setPending(false);
     }
-  }
-
-  async function copySubscriptionUrl(value: string, label: string) {
-    await copyText(value);
-    setCopied(label);
-    window.setTimeout(() => setCopied(""), 1800);
   }
 
   if (!authenticated) {
@@ -363,7 +353,7 @@ export function UserPortalPage({
             <p>订阅、下载、使用步骤和清单集中在一个用户后台内。</p>
           </div>
           <span className={cn("portal-status-pill", created && "active")}>
-            {created ? "订阅可用" : "待购买套餐"}
+            {created ? "等待授权" : "待选择套餐"}
           </span>
         </header>
 
@@ -388,9 +378,7 @@ export function UserPortalPage({
         ) : null}
         {activeView === "use" ? (
           <UseInstructions
-            copied={copied}
             created={created}
-            copySubscriptionUrl={copySubscriptionUrl}
           />
         ) : null}
         {activeView === "check" ? <Checklist /> : null}
@@ -415,8 +403,8 @@ function renderDashboard(created: CreatedSubscription | null, selectedPlan: Port
             {isPendingReview
               ? "订阅申请已提交，等待运营授权。"
               : created
-                ? "订阅已生成，可进入开始使用复制链接。"
-                : "请选择适合的套餐后生成订阅。"}
+                ? "订阅申请已记录，可在开始使用页查看下一步。"
+                : "请选择适合的套餐后提交申请。"}
           </p>
         </div>
         <div className="portal-traffic-meter">
@@ -493,7 +481,7 @@ function SubscriptionManager({
       <div>
         <span className="portal-card-label">Select a Plan</span>
         <h2>订阅管理</h2>
-        <p>请选择适合您的套餐后生成订阅。当前实现仍由运营后台 API 受控创建，不开放公开支付或真实自助注册。</p>
+        <p>请选择适合您的套餐后提交用户侧申请。当前实现只记录安全请求，不开放公开支付、真实自助发放或订阅链接展示。</p>
       </div>
 
       <div className="portal-plan-list">
@@ -555,48 +543,38 @@ function SubscriptionManager({
       {error ? <div className="alert alert-error">{error}</div> : null}
 
       <button className="portal-primary-button" type="submit" disabled={pending}>
-        {pending ? "生成中" : "生成订阅"}
+        {pending ? "提交中" : "提交订阅申请"}
       </button>
     </form>
   );
 }
 
 function UseInstructions({
-  copied,
   created,
-  copySubscriptionUrl
 }: {
-  copied: string;
   created: CreatedSubscription | null;
-  copySubscriptionUrl: (value: string, label: string) => Promise<void>;
 }) {
-  const subscriptionUrl = created?.request.subscriptionUrl ?? "";
   const isPendingReview = created?.request.status === "ready_for_operator_review";
   return (
     <section className="portal-use-stack" role="region" aria-label="开始使用">
       <div className="portal-use-card">
         <span className="portal-card-label">使用说明</span>
-        <h2>{isPendingReview ? "订阅申请已提交，等待运营授权" : "下载对应设备的应用，复制订阅链接到应用"}</h2>
+        <h2>{isPendingReview ? "订阅申请已提交，等待运营授权" : "下载对应设备的应用，等待授权状态"}</h2>
         {isPendingReview ? (
           <p className="muted">
-            当前用户门户只提交用户侧申请，不直接调用 Admin API 创建订阅。运营侧授权后再通过受控交付提供订阅入口。
+            当前用户门户只提交用户侧申请，不直接调用 Admin API 或 CLI 创建订阅。用户面板只显示安全状态，不直接展示订阅链接。
           </p>
         ) : null}
         <div className="portal-link-list">
-          <LinkBox
-            copied={copied === "primary"}
-            label="订阅链接"
-            value={subscriptionUrl}
-            emptyText={isPendingReview ? "运营授权完成后将显示订阅链接。" : undefined}
-            onCopy={() => copySubscriptionUrl(subscriptionUrl, "primary")}
+          <StatusBox
+            label="授权状态"
+            value={created ? "等待运营授权" : "暂无申请"}
+            note="订阅链接属于受控交付材料，不在本地用户面板原型中展示。"
           />
-          <LinkBox
-            copied={copied === "backup"}
-            label="国内备用订阅链接"
-            value={subscriptionUrl}
-            emptyText={isPendingReview ? "运营授权完成后将显示备用入口。" : undefined}
-            note="备用分发域接入前，暂由同一受控订阅产物提供。"
-            onCopy={() => copySubscriptionUrl(subscriptionUrl, "backup")}
+          <StatusBox
+            label="状态刷新"
+            value={created ? "可刷新申请状态" : "提交申请后可查看状态"}
+            note="真实刷新由用户侧 portal API 接入后启用，不通过 CLI 或 Admin API。"
           />
         </div>
       </div>
@@ -655,19 +633,13 @@ function UseInstructions({
   );
 }
 
-function LinkBox({
-  copied,
-  emptyText,
+function StatusBox({
   label,
   note,
-  onCopy,
   value
 }: {
-  copied: boolean;
-  emptyText?: string;
   label: string;
   note?: string;
-  onCopy: () => Promise<void>;
   value: string;
 }) {
   return (
@@ -676,11 +648,7 @@ function LinkBox({
         <h3>{label}</h3>
         {note ? <small>{note}</small> : null}
       </div>
-      {value ? <code>{value}</code> : <p className="muted">{emptyText ?? "请先在订阅管理中生成订阅。"}</p>}
-      <button className="portal-copy-button" type="button" onClick={onCopy} disabled={!value}>
-        <Copy aria-hidden="true" />
-        {copied ? "已复制" : "复制"}
-      </button>
+      <p className="muted">{value}</p>
     </div>
   );
 }

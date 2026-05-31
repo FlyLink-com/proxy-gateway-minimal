@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { App } from "../App";
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import {
@@ -32,14 +32,13 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
       }
     })),
     requestSubscription: vi.fn(async (input: PortalSubscriptionRequestInput): Promise<PortalSubscriptionRequest> => ({
-      status: "subscription_ready",
+      status: "ready_for_operator_review",
       requestRef: "subreq_safe_ref",
       userRef: input.userRef,
       planId: input.planId,
       clientTarget: input.clientTarget,
       expiresAt: "2026-06-26T00:00:00.000Z",
-      subscriptionUrl: "https://sub.example.test/import/visible-once",
-      nextAction: "copy_subscription_url",
+      nextAction: "operator_review_required",
       safety: {
         noAdminApi: true,
         noDbMutation: true,
@@ -94,11 +93,6 @@ describe("user portal onboarding", () => {
 
   test("requests a subscription through a user-scoped portal client instead of Admin APIs", async () => {
     const client = portalClient();
-    const writeText = vi.fn(async () => undefined);
-    Object.defineProperty(navigator, "clipboard", {
-      configurable: true,
-      value: { writeText }
-    });
 
     render(createElement(UserPortalPage, { portalClient: client }));
 
@@ -113,9 +107,9 @@ describe("user portal onboarding", () => {
     fireEvent.change(screen.getByLabelText("用户邮箱"), { target: { value: "customer@example.com" } });
     fireEvent.change(screen.getByLabelText("显示名称"), { target: { value: "Customer Alpha" } });
     fireEvent.change(screen.getByLabelText("有效期"), { target: { value: "90" } });
-    fireEvent.click(screen.getByRole("button", { name: "生成订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交订阅申请" }));
 
-    expect(await screen.findByText("订阅链接")).not.toBeNull();
+    expect(await screen.findByText("订阅申请已提交，等待运营授权")).not.toBeNull();
     expect(client.requestSubscription).toHaveBeenCalledWith(
       expect.objectContaining({
         userRef: "user_safe_ref",
@@ -126,12 +120,8 @@ describe("user portal onboarding", () => {
         durationDays: 90
       })
     );
-    expect(screen.getAllByText("https://sub.example.test/import/visible-once").length).toBeGreaterThan(0);
-
-    const result = screen.getByRole("region", { name: "开始使用" });
-    fireEvent.click(within(result).getAllByRole("button", { name: "复制" })[0]);
-
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://sub.example.test/import/visible-once"));
+    expect(screen.queryByText(/https:\/\/sub\.example\.test/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "复制" })).toBeNull();
   });
 
   test("local portal client is safe by default and does not return subscription material", async () => {
@@ -156,7 +146,7 @@ describe("user portal onboarding", () => {
     expect(session.userRef).toMatch(/^user_/);
     expect(session).not.toHaveProperty("password");
     expect(request.status).toBe("ready_for_operator_review");
-    expect(request.subscriptionUrl).toBeUndefined();
+    expect("subscriptionUrl" in request).toBe(false);
     expect(request.safety.noAdminApi).toBe(true);
     expect(request.safety.noDbMutation).toBe(true);
   });
@@ -171,11 +161,12 @@ describe("user portal onboarding", () => {
     fireEvent.click(screen.getByRole("button", { name: "订阅管理" }));
     fireEvent.change(screen.getByLabelText("用户邮箱"), { target: { value: "customer@example.com" } });
     fireEvent.change(screen.getByLabelText("显示名称"), { target: { value: "Customer Alpha" } });
-    fireEvent.click(screen.getByRole("button", { name: "生成订阅" }));
+    fireEvent.click(screen.getByRole("button", { name: "提交订阅申请" }));
 
     expect(await screen.findByText("订阅申请已提交，等待运营授权")).not.toBeNull();
-    expect(screen.getByText("运营授权完成后将显示订阅链接。")).not.toBeNull();
-    expect(screen.getAllByRole("button", { name: "复制" }).every((button) => button.hasAttribute("disabled"))).toBe(true);
+    expect(screen.getByText(/用户面板只显示安全状态，不直接展示订阅链接。/)).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "复制" })).toBeNull();
+    expect(screen.queryByText(/subscriptionUrl|token=|https:\/\/sub/i)).toBeNull();
   });
 
   test("renders device onboarding guides and user-facing FAQ", async () => {
@@ -200,8 +191,8 @@ describe("user portal onboarding", () => {
 
     expect(screen.getByText("正确做法")).not.toBeNull();
     expect(screen.getByText("禁止做法")).not.toBeNull();
-    expect(screen.getByText("保持订阅链接私密，仅在自己的设备中导入。")).not.toBeNull();
-    expect(screen.getByText("不要共享订阅链接或账号。")).not.toBeNull();
+    expect(screen.getByText("保持受控配置私密，仅在自己的设备中导入。")).not.toBeNull();
+    expect(screen.getByText("不要共享受控配置或账号。")).not.toBeNull();
   });
 
   test("shows support and profile placeholders without implying live integrations", async () => {
