@@ -2,6 +2,7 @@ export type PortalAuthMode = "login" | "signup";
 export type PortalPlanId = "monthly" | "yearly";
 export type PortalClientId = "clash" | "karing";
 export type PortalSubscriptionStatus = "ready_for_operator_review" | "subscription_ready";
+export type PortalSubscriptionLifecycle = "pending" | "active" | "expired";
 
 export type PortalSession = {
   status: "authenticated_preview";
@@ -29,18 +30,24 @@ export type PortalContactInfo = {
   telegram: string;
 };
 
-export type PortalSubscriptionRequestInput = {
+export type PortalApplySubscriptionInput = {
   userRef: string;
   displayName: string;
   email: string;
   contact: PortalContactInfo;
   planId: PortalPlanId;
   clientTarget: PortalClientId;
-  durationDays: number;
+};
+
+export type PortalRefreshSubscriptionInput = {
+  userRef: string;
+  requestRef: string;
+  clientTarget: PortalClientId;
 };
 
 export type PortalSubscriptionRequest = {
   status: PortalSubscriptionStatus;
+  lifecycle: PortalSubscriptionLifecycle;
   requestRef: string;
   userRef: string;
   planId: PortalPlanId;
@@ -57,9 +64,40 @@ export type PortalSubscriptionRequest = {
   };
 };
 
+export type PortalUserState = {
+  userRef: string;
+  contactInfo: PortalContactInfo | null;
+  subscriptionRequest: PortalSubscriptionRequest | null;
+  updatedAt: string;
+  safety: {
+    noAdminApi: true;
+    noPaymentActivation: true;
+    noPublicAdmin: true;
+  };
+};
+
+export type PortalUpdateContactInfoInput = {
+  userRef: string;
+  contact: PortalContactInfo;
+};
+
+export type PortalContactInfoUpdate = {
+  userRef: string;
+  contact: PortalContactInfo;
+  updatedAt: string;
+  safety: {
+    noAdminApi: true;
+    noPaymentActivation: true;
+    noPublicAdmin: true;
+  };
+};
+
 export type UserPortalClient = {
   authenticate(input: PortalAuthInput): Promise<PortalSession>;
-  requestSubscription(input: PortalSubscriptionRequestInput): Promise<PortalSubscriptionRequest>;
+  fetchCurrentState(input: { userRef: string }): Promise<PortalUserState>;
+  updateContactInfo(input: PortalUpdateContactInfoInput): Promise<PortalContactInfoUpdate>;
+  applyForSubscription(input: PortalApplySubscriptionInput): Promise<PortalSubscriptionRequest>;
+  refreshSubscription(input: PortalRefreshSubscriptionInput): Promise<PortalSubscriptionRequest>;
 };
 
 export type LocalUserPortalClientOptions = {
@@ -120,8 +158,45 @@ function expiresAtFromDays(now: Date, days: number) {
   return date.toISOString();
 }
 
+function durationDaysForPlan(planId: PortalPlanId) {
+  return planId === "yearly" ? 365 : 30;
+}
+
 export function createLocalUserPortalClient(options: LocalUserPortalClientOptions = {}): UserPortalClient {
   const now = options.now ?? (() => new Date());
+  const states = new Map<string, PortalUserState>();
+
+  function emptyState(userRef: string): PortalUserState {
+    return {
+      userRef,
+      contactInfo: null,
+      subscriptionRequest: null,
+      updatedAt: now().toISOString(),
+      safety: {
+        noAdminApi: true,
+        noPaymentActivation: true,
+        noPublicAdmin: true
+      }
+    };
+  }
+
+  function currentState(userRef: string) {
+    return states.get(userRef) ?? emptyState(userRef);
+  }
+
+  function setState(userRef: string, next: Omit<PortalUserState, "userRef" | "safety">) {
+    const state: PortalUserState = {
+      userRef,
+      ...next,
+      safety: {
+        noAdminApi: true,
+        noPaymentActivation: true,
+        noPublicAdmin: true
+      }
+    };
+    states.set(userRef, state);
+    return state;
+  }
 
   return {
     async authenticate(input) {
@@ -147,7 +222,42 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       };
     },
 
-    async requestSubscription(input) {
+    async fetchCurrentState(input) {
+      if (!input.userRef.trim()) {
+        throw portalError("用户会话无效。");
+      }
+      return currentState(input.userRef);
+    },
+
+    async updateContactInfo(input) {
+      if (!input.userRef.trim()) {
+        throw portalError("用户会话无效。");
+      }
+      const contact: PortalContactInfo = {
+        email: normalizeEmail(input.contact.email),
+        phone: normalizePhone(input.contact.phone),
+        telegram: normalizeTelegram(input.contact.telegram)
+      };
+      const existing = currentState(input.userRef);
+      const updatedAt = now().toISOString();
+      setState(input.userRef, {
+        contactInfo: contact,
+        subscriptionRequest: existing.subscriptionRequest,
+        updatedAt
+      });
+      return {
+        userRef: input.userRef,
+        contact,
+        updatedAt,
+        safety: {
+          noAdminApi: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true
+        }
+      };
+    },
+
+    async applyForSubscription(input) {
       const email = normalizeEmail(input.email);
       const contactEmail = normalizeEmail(input.contact.email);
       const contactPhone = normalizePhone(input.contact.phone);
@@ -157,7 +267,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         throw portalError("用户会话无效。");
       }
 
-      const expiresAt = expiresAtFromDays(now(), input.durationDays);
+      const expiresAt = expiresAtFromDays(now(), durationDaysForPlan(input.planId));
       const requestRef = stableRef(
         "subreq",
         [
@@ -175,8 +285,9 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       );
       const subscriptionUrl = options.demoSubscriptionUrl?.trim() || undefined;
 
-      return {
+      const request: PortalSubscriptionRequest = {
         status: subscriptionUrl ? "subscription_ready" : "ready_for_operator_review",
+        lifecycle: subscriptionUrl ? "active" : "pending",
         requestRef,
         userRef: input.userRef,
         planId: input.planId,
@@ -192,6 +303,58 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
           noRawCustomerDataReturned: true
         }
       };
+      setState(input.userRef, {
+        contactInfo: {
+          email: contactEmail,
+          phone: contactPhone,
+          telegram: contactTelegram
+        },
+        subscriptionRequest: request,
+        updatedAt: now().toISOString()
+      });
+      return request;
+    },
+
+    async refreshSubscription(input) {
+      if (!input.userRef.trim() || !input.requestRef.trim()) {
+        throw portalError("用户会话无效。");
+      }
+
+      const existing = currentState(input.userRef);
+      const current = existing.subscriptionRequest;
+      if (!current || current.requestRef !== input.requestRef || current.lifecycle !== "active") {
+        throw portalError("当前订阅尚未生效，无法刷新。");
+      }
+
+      const subscriptionUrl = options.demoSubscriptionUrl?.trim();
+      if (!subscriptionUrl) {
+        throw portalError("当前订阅尚未生效，无法刷新。");
+      }
+
+      const refreshed: PortalSubscriptionRequest = {
+        status: "subscription_ready",
+        lifecycle: "active",
+        requestRef: input.requestRef,
+        userRef: input.userRef,
+        planId: current.planId,
+        clientTarget: input.clientTarget,
+        expiresAt: current.expiresAt,
+        subscriptionUrl,
+        nextAction: "copy_subscription_url",
+        safety: {
+          noAdminApi: true,
+          noDbMutation: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true,
+          noRawCustomerDataReturned: true
+        }
+      };
+      setState(input.userRef, {
+        contactInfo: existing.contactInfo,
+        subscriptionRequest: refreshed,
+        updatedAt: now().toISOString()
+      });
+      return refreshed;
     }
   };
 }

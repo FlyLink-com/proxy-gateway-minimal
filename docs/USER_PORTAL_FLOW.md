@@ -12,9 +12,10 @@ or edge-traffic changes.
 
 ## Boundary
 
-The user portal is a customer-facing package subscription surface. It is not the
-operator CLI, not the protected Admin console, and not a production issuance
-authority by itself.
+The user portal is a customer-facing package subscription surface. It is a thin
+client: the frontend sends user intent and renders server-provided facts. It is
+not the operator CLI, not the protected Admin console, and not a production
+issuance authority by itself.
 
 Current implementation is local/frontend-safe:
 
@@ -25,6 +26,9 @@ Current implementation is local/frontend-safe:
 - No raw subscription URL unless an injected preview client explicitly provides
   demo visible-once material.
 - No CLI shell-out for normal customer flows.
+- No client-side lifecycle judgment from browser clock or local expiry math.
+- No client-provided package duration; package duration belongs to the backend
+  or injected portal client contract.
 
 The user portal may reuse domain concepts and client contracts, but it must not
 depend on operator CLI commands as its normal execution path.
@@ -42,7 +46,9 @@ The customer portal has four top-level views:
 
 ## Lifecycle State Machine
 
-Portal copy and buttons must follow one lifecycle model:
+Portal copy and buttons must follow one lifecycle model. The lifecycle is
+server-authoritative; the frontend must not infer `expired` from `Date.now()` or
+the browser clock.
 
 ```text
 none
@@ -73,6 +79,8 @@ Current package set:
 Rules:
 
 - Before activation, the user may choose monthly or yearly.
+- The frontend sends only the chosen package id (`monthly` or `yearly`), not
+  `durationDays`.
 - During `pending`, package selection is locked and duplicate application is
   blocked.
 - During `active`, package selection is locked; the main action becomes refresh.
@@ -91,8 +99,9 @@ The form is a modal because the subscription page has limited space and should
 stay focused on package selection and subscription state.
 
 Contact info is used for authorization review, support handoff, and future table
-records. It should be editable from Profile and reused by the next application or
-support interaction.
+records. It should be editable from Profile through a user-scoped
+`updateContactInfo` call, not held only in browser memory, and reused by the
+next application or support interaction.
 
 ## View Responsibilities
 
@@ -112,6 +121,17 @@ It must show:
 - Current lifecycle state.
 - Next support action when pending.
 - Current subscription link only when available.
+
+It must keep intent calls separate:
+
+- Read current portal state after login: `fetchCurrentState`.
+- Apply/open package: `applyForSubscription`.
+- Refresh current active subscription: `refreshSubscription`.
+- Persist authorization contact updates: `updateContactInfo`.
+
+These actions must not share an overloaded request method, because opening a new
+package and refreshing an existing subscription have different backend
+authorization semantics.
 
 ### Use Guide
 
@@ -171,9 +191,15 @@ Current frontend anchors:
   - `UserPortalClient`
   - `createLocalUserPortalClient`
   - safe local preview contract
+  - `fetchCurrentState`
+  - `updateContactInfo`
+  - `applyForSubscription`
+  - `refreshSubscription`
 - `admin/src/test/user-portal.test.tsx`
   - page outline checks
+  - login state hydration
   - contact-info modal gating
+  - contact-info persistence
   - package application and refresh behavior
   - profile state consistency
   - safe default local client behavior
