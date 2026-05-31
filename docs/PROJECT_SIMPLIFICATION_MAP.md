@@ -84,6 +84,31 @@ Local machines / local checkouts:
 Subscription URLs, opaque artifacts, node config, and edge mesh work are
 supporting mechanisms. They should not become competing products.
 
+Business model rule:
+
+```text
+Plan-based subscription factory:
+  monthly package / yearly package
+    -> confirmed package / entitlement
+    -> controlled one-time subscription issuance
+    -> user generate / refresh subscription
+    -> previous artifact invalidation on refresh
+    -> validity window, renewal request, expiry, revoke, audit
+    -> lightweight personal center records
+
+Not active product path:
+  recharge wallet
+  balance ledger
+  usage debit
+  payment-provider webhook as subscription authority
+  traffic dashboard / operator metrics as the customer portal
+```
+
+Money collection, if needed, is outside the current subscription factory until
+an operator or separate commercial process confirms an entitlement. The active
+platform consumes confirmed plan facts; it does not make subscription authority
+depend on raw payment events.
+
 ## Simplification Principles
 
 Use these rules when deciding whether to add, keep, archive, or refactor work.
@@ -329,15 +354,16 @@ Simplification target:
 ```text
 Product business:
   user-facing service promise and workflows
-  not billing, node config, or runtime authority
+  not recharge wallet, payment-provider authority, node config, or runtime authority
 
 Commercial entitlement:
   plan / validity / quota / renewal decision source
-  not Clash YAML rendering and not node selection by itself
+  confirmed package facts and validity window
+  not balance ledger, usage debit, Clash YAML rendering, or node selection by itself
 
 Subscription access:
   artifact, token, device bootstrap, and Subscription V2 output boundary
-  not payment collection and not node runtime ownership
+  not payment collection, recharge balance, usage debit, or node runtime ownership
 
 Local Edge Agent:
   product client adapter
@@ -360,7 +386,47 @@ Clash/Mihomo:
   not replaced by Local Edge Agent in V1
 ```
 
+### Hotspot 3A: Recharge Billing Is Not The Product Spine
+
+Known fact:
+
+Recharge, balance, payment-provider webhook, and usage-debit exploration exists
+in the repository, but the current product direction is plan-based subscription
+production and controlled distribution.
+
+Simplification target:
+
+```text
+Keep active:
+  monthly / yearly package entitlement
+  issuance request
+  subscription artifact
+  generate / refresh subscription
+  previous artifact invalidation on refresh
+  validity window
+  renewal / expiry / revoke
+  registration date and historical package/bill summaries
+  support entry with future bot/human handoff
+  audit
+
+Deprioritize / archive:
+  recharge order
+  balance ledger
+  usage debit decision
+  payment provider adapter
+  payment API / AK / SK integration templates
+  customer-facing traffic dashboard
+  Telegram as embedded registration dependency
+```
+
 Suggested follow-up:
+
+- C/B-tier PR: move billing/recharge/payment-provider docs and service modules
+  out of the active path or mark them as historical exploration.
+- B-tier PR: strengthen plan entitlement, renewal, expiry, revoke, and audit
+  flows without introducing wallet/debit/payment-provider dependencies.
+
+Suggested follow-up for the broader product/ops boundary:
 
 - Keep active architecture docs explicit about these non-goals whenever a new
   channel, mesh, relay, or subscription-access idea is introduced.

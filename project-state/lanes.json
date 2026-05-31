@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-05-26",
+  "lastUpdated": "2026-05-31",
   "timezone": "Asia/Shanghai",
   "status": "active",
   "purpose": "Machine-readable active project lanes for agent orientation. This file does not authorize production, cloud, deployment, or secret changes.",
@@ -9,6 +9,7 @@
     "docs/DOMAIN_UNIT_BOUNDARIES.md",
     "docs/units/README.md",
     "docs/PROJECT_OPERATING_MODEL.md",
+    "docs/PLAN_SUBSCRIPTION_FACTORY_BOUNDARY.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/PROJECT_TOPOLOGY.md",
     "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
@@ -20,7 +21,7 @@
       "name": "Product Business",
       "status": "active-boundary",
       "riskBoundary": "C for product docs and acceptance criteria; B for UI/code behavior; A if production access semantics change",
-      "purpose": "Own the user-facing service promise, workflows, and acceptance criteria without owning commercial payment state or node runtime configuration.",
+      "purpose": "Own the user-facing service promise, monthly/yearly package selection, subscription generate/refresh workflow, personal-center records, support handoff, and request/authorization acceptance criteria without owning recharge wallets, traffic dashboards, payment-provider authority, or node runtime configuration.",
       "primaryDocs": [
         "docs/DOMAIN_UNIT_BOUNDARIES.md",
         "docs/units/PRODUCT_BUSINESS_UNIT.md",
@@ -30,6 +31,10 @@
       "primaryCodeAreas": [],
       "nonGoals": [
         "payment collection",
+        "recharge balance",
+        "usage debit",
+        "customer-facing traffic dashboard",
+        "payment-provider webhook authority",
         "node configuration",
         "CI execution",
         "AWS or DNS mutation"
@@ -40,7 +45,7 @@
       "name": "Commercial / Entitlement",
       "status": "planned-boundary",
       "riskBoundary": "C for architecture docs; B/A depends on future integration surface and production access semantics",
-      "purpose": "Separate package, validity, quota, renewal, and customer commercial status decisions from subscription rendering and node capacity.",
+      "purpose": "Separate confirmed plan/package, validity, renewal, expiry, and customer commercial status decisions from subscription rendering and node capacity.",
       "primaryDocs": [
         "docs/DOMAIN_UNIT_BOUNDARIES.md",
         "docs/units/COMMERCIAL_ENTITLEMENT_UNIT.md"
@@ -49,6 +54,10 @@
       "nonGoals": [
         "Subscription V2 YAML rendering",
         "opaque artifact authority",
+        "recharge wallet",
+        "balance ledger",
+        "usage debit",
+        "payment-provider webhook authority",
         "edge-node health",
         "Clash/Mihomo configuration"
       ]

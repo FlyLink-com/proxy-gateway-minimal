@@ -95,7 +95,19 @@ stable subscription/import experience
   -> measured validation and operations
 ```
 
-- **Simplification & Core Focus**: The active priority is strictly converged on core subscription production delivery: **"能生产、能发放、能审计、能撤回"** (PR #258, CLI production SOP, controlled subscription issuance, canary rollout, edge rebuild, and traffic accounting/quota/abuse control). Unrelated marketing decoration (WebGL/3D transits, CSS animations), Telegram client integrations/panels, personal job-application materials, un-productized video/ad drafts, non-CLI Admin UI polishing, topological narrative bloating, multicharacter sketch frameworks, and brand-positioning narratives are explicitly deprioritized, archived, or removed from the execution path. See `docs/PROJECT_SIMPLIFICATION_MAP.md`.
+- **Simplification & Core Focus**: The active priority is strictly converged on core subscription production delivery: **"能生产、能发放、能审计、能撤回"** (PR #258, CLI production SOP, controlled subscription issuance, canary rollout, edge rebuild, and subscription-factory audit/revoke controls). Unrelated marketing decoration (WebGL/3D transits, CSS animations), Telegram client integrations/panels, personal job-application materials, un-productized video/ad drafts, non-CLI Admin UI polishing, recharge/balance/usage-debit billing flows, topological narrative bloating, multicharacter sketch frameworks, and brand-positioning narratives are explicitly deprioritized, archived, or removed from the execution path. See `docs/PROJECT_SIMPLIFICATION_MAP.md`.
+- **Plan Subscription Factory Boundary**: the active business model is
+  plan-based subscription production and one-time controlled distribution, not
+  recharge balance, wallet top-up, usage-debit billing, or payment-provider
+  webhook authority. Payment collection, if any, remains outside the
+  subscription factory until a separate commercial process or operator confirms
+  an entitlement. The platform consumes confirmed plan entitlement facts and
+  then produces, audits, refreshes, expires, renews, or revokes controlled
+  subscription artifacts. User-facing product language should stay simple:
+  monthly package, yearly package, generate subscription, refresh subscription,
+  valid until, renewal, expiry, and personal center records. It should not grow
+  into a traffic dashboard, recharge wallet, or payment-provider cockpit. See
+  `docs/PLAN_SUBSCRIPTION_FACTORY_BOUNDARY.md`.
 - **Aliyun-First Workspace Boundary**: current business design and runtime
   planning are anchored on the Aliyun subscription-control platform. Local
   machines and local checkouts are development, validation, operator-lab,
@@ -136,7 +148,7 @@ Current architecture priorities:
   See
   `docs/production-replacement-records/2026-05-28-aliyun-public-lead-intake-production-activation.md`.
   The flow remains operator-controlled after intake: public self-service
-  account creation, payment, automatic entitlement issuance, and customer
+  account creation, automatic entitlement issuance, and customer
   portal automation are not activated.
 - User Portal Business Boundary: the repository user portal shell now depends
   on a dedicated `UserPortalClient` abstraction under
@@ -151,6 +163,12 @@ Current architecture priorities:
   commands. Normal self-service refresh/status actions should be handled by
   user-scoped services and policy checks, while CLI remains an operator/ops
   adapter for provisioning, override, revoke, audit, and emergency handling.
+  The target portal is not an operations dashboard: subscription management is
+  limited to generating the current subscription, refreshing/replacing it,
+  showing package/validity, and viewing lightweight personal-center facts such
+  as registration date and historical package/bill summaries. Customer support
+  may later reserve Telegram bot assistant handoff and human escalation, but
+  Telegram is not the default registration or portal dependency.
   The target authentication boundary is operator-issued dynamic entry plus TOTP
   enrollment and short-lived portal sessions first; Google/OAuth or email magic
   links are later convenience login/recovery mechanisms and must never become
@@ -236,8 +254,10 @@ Current architecture priorities:
   can convert reviewed leads into in-memory account summaries and create/list
   account entitlement summaries through
   `server/services/platform/account-entitlement-shell.mjs`. Entitlement
-  usability is fail-closed from status and validity windows. This is not
-  billing, payment collection, CRM, SQLite persistence, Aliyun deployment,
+  usability is fail-closed from status and validity windows. This is the
+  commercial decision seam for confirmed plan facts, but not a recharge wallet,
+  traffic-balance ledger, payment-provider callback consumer, payment
+  collection surface, CRM, SQLite persistence, Aliyun deployment,
   production storage, customer portal activation, DNS, or user traffic.
 - Platform Dynamic Entry / Access Grant Shell: repository-only protected Admin
   routes can issue and list in-memory subscription access grant summaries
