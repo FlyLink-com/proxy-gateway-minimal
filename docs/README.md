@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-05-29, Asia/Shanghai.
+Last updated: 2026-05-31, Asia/Shanghai.
 
 Use this file as the first navigation point for project documentation. It
 classifies current source-of-truth docs, active runbooks, execution records,
@@ -83,6 +83,7 @@ Check structured state with `npm run project-state:check`.
 | `docs/ENVIRONMENT_TOPOLOGY.md` | Local checkout, GitHub, branch roles, AWS runtime roles, and current topology. | Active topology reference. | Read before interpreting environment roles or AWS instance identity. |
 | `docs/PROJECT_TOPOLOGY.md` | Current and target topology diagrams for production delivery, Local Edge Agent, private operator lab / HP Relay, server edge mesh, control/delivery/data planes, and work lanes. | Active architecture topology; no execution authority. | Read before aligning product direction, drawing architecture diagrams, or deciding whether work belongs to local agent, operator lab relay, server mesh, subscription delivery, or production ops. |
 | `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md` | Near-term Aliyun user-management / subscription-distribution runbook, HP validation/lab boundary, separate technical MVP track, and controlled non-Aliyun node drain/retirement gates. | Active Risk A runbook; no cleanup, bootstrap, DNS, node stop, termination, or security-group authority by itself. | Read before building Aliyun `sub-control-a`, separating it from PR #129 technical channel work, or retiring non-Aliyun/HP nodes. |
+| `docs/HP_PORTAL_VALIDATION_RUNBOOK.md` | HP private validation runbook for testing the user portal and subscription-control service seams in an Aliyun-like lab without production authority. | Active private-validation runbook; HP mutation remains Risk A and requires exact approval. | Read before copying builds to HP, creating test SQLite data, starting private portal validation services, or recording HP portal validation evidence. |
 | `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` | Target plan for current Aliyun subscription control, local Linux manual CI, and controlled non-Aliyun node drain / retirement. | Active planning document; no execution authority. | Read before moving CI off Aliyun, preparing Aliyun as control plane, or retiring non-Aliyun / non-HP nodes. |
 | `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md` | Target architecture for splitting subscription control-plane authority from edge data-plane capacity. | Active architecture design; no execution authority. | Read before planning control-plane standby, edge-only nodes, edge health registry, or any physical control/edge split. |
 | `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md` | Clean new-server fallback runbook for validating a future `sub-control-a` candidate if the Aliyun control-plane path is rejected. | Active Risk A fallback runbook; explicit approval still required before provisioning or mutation. | Read before creating a new subscription control-plane candidate, restoring production-derived state to it, validating its public boundary, or considering promotion. |

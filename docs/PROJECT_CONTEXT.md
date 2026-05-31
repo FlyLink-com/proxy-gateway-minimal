@@ -155,6 +155,12 @@ Current architecture priorities:
   enrollment and short-lived portal sessions first; Google/OAuth or email magic
   links are later convenience login/recovery mechanisms and must never become
   entitlement authority by themselves. See `docs/USER_PORTAL_AUTH_BOUNDARY.md`.
+- HP Portal Validation Boundary: HP may be used as an Aliyun-like private
+  validation host for the user portal and subscription-control service seams,
+  but only as an operator-lab surface. Copying builds, creating test SQLite,
+  starting a private service, or changing Nginx/systemd/firewall on HP remains
+  Risk A and requires exact approval. See
+  `docs/HP_PORTAL_VALIDATION_RUNBOOK.md`.
 - User Portal Auth Service: repository-only internal service support now exists
   under `server/services/platform/user-portal-auth.mjs` for issuing dynamic
   portal entries, enrolling TOTP credentials through an injected verifier, and
