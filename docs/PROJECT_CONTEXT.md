@@ -157,6 +157,15 @@ Current architecture priorities:
   enrollment and short-lived portal sessions first; Google/OAuth or email magic
   links are later convenience login/recovery mechanisms and must never become
   entitlement authority by themselves. See `docs/USER_PORTAL_AUTH_BOUNDARY.md`.
+- Admin-Approved Portal Request Queue: repository-only support now lets the
+  user portal submit trial/monthly/yearly access requests while keeping every
+  business-changing action in the administrator review path. The 7-day trial
+  is request-only and is not automatically issued by the user portal. The
+  protected Admin surface can review requests and prepare safe approval
+  previews, but production entitlement creation, artifact delivery, public
+  portal exposure, payment activation, DNS, Nginx, systemd, firewall, and
+  runtime mutation remain unapproved without separate gates. See
+  `docs/superpowers/specs/2026-05-31-admin-approved-user-portal-issuance-design.md`.
 - HP Portal Validation Boundary: HP may be used as an Aliyun-like private
   validation host for the user portal and subscription-control service seams,
   but only as an operator-lab surface. Copying builds, creating test SQLite,
