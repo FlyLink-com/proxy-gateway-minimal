@@ -8,6 +8,8 @@ export const DEFAULT_ADMIN_ALLOWED_CIDRS = [
   "192.168.0.0/16"
 ];
 
+export const DEFAULT_TRUSTED_PROXY_CIDRS = [];
+
 export function normalizeIpAddress(value) {
   const ip = String(value || "").trim();
   if (ip.startsWith("::ffff:")) {
@@ -64,19 +66,39 @@ export function isPrivateOrLoopbackIp(value) {
   );
 }
 
-export function resolveClientIp(req) {
-  const directIp = normalizeIpAddress(req.socket?.remoteAddress || "");
-  const forwarded = req.headers?.["x-forwarded-for"];
-  const firstForwarded = Array.isArray(forwarded)
-    ? forwarded[0]
-    : String(forwarded || "").split(",")[0];
-  const forwardedIp = normalizeIpAddress(firstForwarded);
+function forwardedForChain(value) {
+  const rawValues = Array.isArray(value) ? value : [String(value || "")];
+  return rawValues
+    .flatMap((item) => String(item).split(","))
+    .map((item) => normalizeIpAddress(item))
+    .filter((item) => isIP(item));
+}
 
-  if (forwardedIp && isPrivateOrLoopbackIp(directIp)) {
-    return forwardedIp;
+function trustedProxyAllowlist(entries = DEFAULT_TRUSTED_PROXY_CIDRS) {
+  return createIpAllowlist(entries);
+}
+
+export function resolveClientIp(req, { trustedProxyCidrs = DEFAULT_TRUSTED_PROXY_CIDRS } = {}) {
+  const directIp = normalizeIpAddress(req.socket?.remoteAddress || "");
+  const isTrustedProxy = trustedProxyAllowlist(trustedProxyCidrs);
+  if (!isTrustedProxy(directIp)) {
+    return directIp;
   }
 
-  return directIp;
+  const forwarded = req.headers?.["x-forwarded-for"];
+  const chain = forwardedForChain(forwarded);
+  if (chain.length === 0) {
+    return directIp;
+  }
+
+  for (let index = chain.length - 1; index >= 0; index -= 1) {
+    const candidate = chain[index];
+    if (!isTrustedProxy(candidate)) {
+      return candidate;
+    }
+  }
+
+  return chain[0];
 }
 
 export function createIpAllowlist(entries = DEFAULT_ADMIN_ALLOWED_CIDRS) {

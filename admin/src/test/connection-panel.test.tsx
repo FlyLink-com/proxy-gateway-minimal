@@ -73,6 +73,17 @@ describe("connection panel", () => {
     });
   });
 
+  test("warns when the configured API base URL will not receive the console token", () => {
+    render(createElement(ConnectionPanel, {
+      session: { baseUrl: "https://evil.example", consoleToken: "console-secret" },
+      onSave: vi.fn(),
+      checkConnection: vi.fn()
+    }));
+
+    expect(screen.getByText("Console token will not be sent")).not.toBeNull();
+    expect(screen.getByText(/cross-origin API targets/i)).not.toBeNull();
+  });
+
   test("ignores a pending diagnostic result after settings change", async () => {
     const pending = deferredConnectionHealth();
     const checkConnection = vi.fn(() => pending.promise);

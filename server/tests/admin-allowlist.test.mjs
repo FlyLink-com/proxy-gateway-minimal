@@ -61,3 +61,37 @@ test("admin allowlist permits configured private source IP and console auth stil
     server.close();
   }
 });
+
+test("admin allowlist ignores spoofed X-Forwarded-For unless the proxy is trusted", async () => {
+  const app = createApp(state());
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/subscriptions`, {
+      headers: {
+        authorization: "Bearer secret",
+        "x-forwarded-for": "203.0.113.10"
+      }
+    });
+    assert.equal(response.status, 200);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin allowlist uses X-Forwarded-For only for configured trusted proxies", async () => {
+  const nextState = state();
+  nextState.security.trustedProxyCidrs = ["127.0.0.1/32"];
+  const app = createApp(nextState);
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/subscriptions`, {
+      headers: {
+        authorization: "Bearer secret",
+        "x-forwarded-for": "203.0.113.10"
+      }
+    });
+    assert.equal(response.status, 403);
+  } finally {
+    server.close();
+  }
+});

@@ -99,6 +99,33 @@ describe("admin API client", () => {
     );
   });
 
+  test("does not send bearer token to untrusted cross-origin API base URLs", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ items: [] }));
+    const client = createAdminApiClient({
+      baseUrl: "https://evil.example",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    await expect(client.listTenants()).rejects.toThrow(/not sent|not trusted/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("allows bearer token for loopback development API base URLs", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({ items: [] }));
+    const client = createAdminApiClient({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    await client.listTenants();
+
+    const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(firstCall[0]).toBe("http://127.0.0.1:3456/api/admin/subscriptions");
+    expect((firstCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+  });
+
   test("previews operator provisioning forms through the protected platform route", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({

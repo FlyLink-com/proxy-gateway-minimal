@@ -82,6 +82,13 @@ test("platform provisioning form fails closed for missing gate facts", () => {
   assert.equal(result.safety.noDbMutation, true);
 });
 
+test("platform provisioning form rejects unsafe notes before CLI input generation", () => {
+  assert.throws(() => buildProvisioningFormPackage({
+    ...baseForm(),
+    note: "customer@example.com token=secret"
+  }), /note must not contain sensitive material/);
+});
+
 test("platform provisioning form ignores client-submitted execution controls", () => {
   const result = buildProvisioningFormPackage(baseForm({
     quantity: 2,

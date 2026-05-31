@@ -36,6 +36,7 @@ import type {
   SubscriptionTenant,
   TempLinkResult
 } from "./types";
+import { adminAuthOriginPolicy, normalizeBaseUrl } from "./api-origin-policy";
 
 type Fetcher = typeof fetch;
 
@@ -53,12 +54,6 @@ export class AdminApiError extends Error {
     this.name = "AdminApiError";
     this.status = status;
   }
-}
-
-function normalizeBaseUrl(baseUrl: string) {
-  const trimmed = baseUrl.trim();
-  if (!trimmed || trimmed === "/") return "";
-  return trimmed.replace(/\/+$/, "");
 }
 
 function apiUrl(baseUrl: string, path: string) {
@@ -89,6 +84,10 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
   async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     if (!options.consoleToken.trim()) {
       throw new AdminApiError("Console token is required.", 0);
+    }
+    const authPolicy = adminAuthOriginPolicy(baseUrl);
+    if (!authPolicy.trusted) {
+      throw new AdminApiError(authPolicy.reason || "Admin API base URL is not trusted for console token use.", 0);
     }
 
     const headers = new Headers(init.headers);

@@ -9,7 +9,7 @@ import { createCommandRunner } from "./services/command.mjs";
 import { resolveConsoleToken } from "./services/console-token.mjs";
 import { createSqliteSubscriptionStore } from "./services/subscriptions/repository.mjs";
 import { createSubscriptionCore } from "./services/subscriptions/core.mjs";
-import { DEFAULT_ADMIN_ALLOWED_CIDRS } from "./services/ip-address.mjs";
+import { DEFAULT_ADMIN_ALLOWED_CIDRS, DEFAULT_TRUSTED_PROXY_CIDRS } from "./services/ip-address.mjs";
 import { createPlatformAccountEntitlementShell } from "./services/platform/account-entitlement-shell.mjs";
 import { createPlatformAliyunGateEvidenceShell } from "./services/platform/aliyun-gate-evidence-shell.mjs";
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
@@ -50,6 +50,7 @@ export function createRuntimeState(options = {}) {
   const subscriptionDbPath = options.subscriptionDbPath || env.SUBSCRIPTION_DB_PATH || join(rootDir, ".proxy-gateway", "subscriptions.sqlite");
   const publicSubscriptionBaseUrl = String(env.PUBLIC_SUBSCRIPTION_BASE_URL || `http://${host}:${consolePort}`).trim().replace(/\/+$/, "");
   const adminAllowedCidrs = parseCsv(env.ADMIN_ALLOWED_CIDRS, DEFAULT_ADMIN_ALLOWED_CIDRS);
+  const trustedProxyCidrs = parseCsv(env.TRUSTED_PROXY_CIDRS, DEFAULT_TRUSTED_PROXY_CIDRS);
   const tempLinkTtlMinutes = Number.parseInt(env.SUBSCRIPTION_TEMP_LINK_TTL_MINUTES, 10) || 24 * 60;
   const ownsSubscriptionStore = !options.subscriptionStore && !options.subscriptionRepository && !options.subscriptionCore && !options.subscriptionService;
   const subscriptionStore = options.subscriptionStore || options.subscriptionRepository || (
@@ -204,6 +205,7 @@ export function createRuntimeState(options = {}) {
     },
     security: {
       adminAllowedCidrs,
+      trustedProxyCidrs,
       subRateLimit: {
         windowMs: Number.parseInt(env.SUB_RATE_LIMIT_WINDOW_MS, 10) || 60000,
         max: Number.parseInt(env.SUB_RATE_LIMIT_MAX, 10) || 30

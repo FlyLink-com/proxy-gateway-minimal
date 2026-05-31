@@ -70,6 +70,23 @@ describe("connection health diagnostics", () => {
     expect((secondCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
   });
 
+  test("health check does not send the console token to untrusted cross-origin API targets", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(response(200))
+      .mockResolvedValueOnce(response(200));
+
+    const result = await checkAdminConnectionHealth({
+      baseUrl: "https://evil.example",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    expect(result.status).toBe("auth-origin-blocked");
+    expect(result.healthStatus).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "https://evil.example/api/health", { method: "GET" });
+  });
+
   test("overview 401 maps to token-invalid", async () => {
     const fetchMock = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(response(200))
@@ -106,7 +123,7 @@ describe("connection health diagnostics", () => {
       .mockResolvedValueOnce(response(404));
 
     const result = await checkAdminConnectionHealth({
-      baseUrl: "https://gateway.example",
+      baseUrl: "",
       consoleToken: "console-secret",
       fetcher: fetchMock
     });

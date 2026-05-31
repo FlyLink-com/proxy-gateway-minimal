@@ -69,6 +69,17 @@ export function normalizeNote(note = "") {
   if (normalized.length > 500) {
     throw validationError("note must be at most 500 characters");
   }
+  if (
+    /https?:\/\//i.test(normalized) ||
+    /\bwww\./i.test(normalized) ||
+    /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(normalized) ||
+    /\b(token|secret|password|credential|apikey|api_key|private[_-]?key)\s*[:=]/i.test(normalized) ||
+    /\b[A-F0-9]{32,}\b/i.test(normalized) ||
+    /\b[A-Za-z0-9_-]{40,}={0,2}\b/.test(normalized) ||
+    /\b(proxies|proxy-providers|ss|vless|tuic|hysteria2)\s*:/i.test(normalized)
+  ) {
+    throw validationError("note must not contain sensitive material");
+  }
   return normalized;
 }
 

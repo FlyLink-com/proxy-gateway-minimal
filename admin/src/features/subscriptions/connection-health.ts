@@ -1,3 +1,5 @@
+import { adminAuthOriginPolicy, normalizeBaseUrl } from "./api-origin-policy";
+
 type Fetcher = typeof fetch;
 
 export type ConnectionHealthStatus =
@@ -7,6 +9,7 @@ export type ConnectionHealthStatus =
   | "source-blocked"
   | "public-gateway-blocked"
   | "backend-health-unreachable"
+  | "auth-origin-blocked"
   | "network-error";
 
 export type ConnectionHealthResult = {
@@ -22,12 +25,6 @@ export type ConnectionHealthInput = {
   consoleToken: string;
   fetcher?: Fetcher;
 };
-
-function normalizeBaseUrl(baseUrl: string) {
-  const trimmed = baseUrl.trim();
-  if (!trimmed || trimmed === "/") return "";
-  return trimmed.replace(/\/+$/, "");
-}
 
 function apiUrl(baseUrl: string, path: string) {
   return `${normalizeBaseUrl(baseUrl)}${path}`;
@@ -76,6 +73,16 @@ export async function checkAdminConnectionHealth({
       "backend-health-unreachable",
       "Backend health check failed",
       `The backend health endpoint returned HTTP ${healthResponse.status}. Check the API base URL and backend process.`,
+      { healthStatus: healthResponse.status }
+    );
+  }
+
+  const authPolicy = adminAuthOriginPolicy(baseUrl);
+  if (!authPolicy.trusted) {
+    return result(
+      "auth-origin-blocked",
+      "Console token not sent",
+      authPolicy.reason || "Console token is not sent to this API base URL.",
       { healthStatus: healthResponse.status }
     );
   }

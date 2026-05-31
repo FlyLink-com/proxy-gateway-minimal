@@ -8,6 +8,7 @@ function createMockRuntimeCore() {
   return {
     createTenant: (args) => {
       const id = `tenant_${tenantIdCounter++}`;
+      createMockRuntimeCore.lastCreateTenantArgs = args;
       return {
         tenant: {
           id,
@@ -97,6 +98,7 @@ test("executeSubscriptionIssuance - success writes runtime tenant/artifact and s
   assert.ok(handoffMaterial.tenantId);
   assert.ok(handoffMaterial.artifactId);
   assert.ok(handoffMaterial.subscriptionUrl);
+  assert.strictEqual(createMockRuntimeCore.lastCreateTenantArgs.note, "");
 });
 
 test("executeSubscriptionIssuance - safety: summary does not contain subscriptionUrl, token, or artifact secret", () => {
@@ -161,4 +163,32 @@ test("executeSubscriptionIssuance - fail-closed: rejects missing nodeId, artifac
       input: { nodeId: "node", artifact: { create: true }, control: { ...validControl, accountId: "" } }
     });
   }, /control.accountId is mandatory/);
+});
+
+test("executeSubscriptionIssuance - fail-closed: rejects unsafe notes", () => {
+  const controlStore = createMockControlStore();
+  const runtimeCore = createMockRuntimeCore();
+  const now = new Date().toISOString();
+
+  assert.throws(() => {
+    executeSubscriptionIssuance({
+      controlStore,
+      runtimeCore,
+      now,
+      approvalRef: "app_4",
+      input: {
+        nodeId: "node",
+        artifact: { create: true },
+        note: "https://example.com/sub/a/raw.yaml?token=secret",
+        control: {
+          accountId: "acct_4",
+          ownerRef: "hash",
+          entitlementId: "ent_4",
+          requestId: "req_4",
+          requestedByRef: "hash",
+          purpose: "test"
+        }
+      }
+    });
+  }, /note must not contain sensitive material/);
 });
