@@ -12,10 +12,12 @@ import { adminSubscriptionRoutes } from "./routes/admin-subscriptions.mjs";
 import { adminPlatformRoutes } from "./routes/admin-platform.mjs";
 import { subscriptionRoutes } from "./routes/subscription.mjs";
 import { publicLeadRoutes } from "./routes/public-leads.mjs";
+import { userPortalRoutes } from "./routes/user-portal.mjs";
 import { resolveClientIp } from "./services/ip-address.mjs";
 
 const PUBLIC_PATHS = ["/api/health", "/api/public/leads", "/proxy.pac", "/sub/clash.yaml"];
 const PUBLIC_PATH_PREFIXES = ["/sub/a/"];
+const USER_PORTAL_PUBLIC_PATHS = ["/api/portal/entry/enroll", "/api/portal/session"];
 
 export function createApp(state, options = {}) {
   const app = express();
@@ -26,6 +28,7 @@ export function createApp(state, options = {}) {
   });
   app.use(express.static(join(state.rootDir, "public")));
   const security = state.security || {};
+  const userPortalRoutesEnabled = Boolean(state.platform?.userPortalAuth && state.platform?.userPortalRoutesEnabled);
   const clientIpResolver = options.clientIpResolver || ((req) => resolveClientIp(req, {
     trustedProxyCidrs: security.trustedProxyCidrs
   }));
@@ -35,10 +38,13 @@ export function createApp(state, options = {}) {
   }));
   app.use(createAuthMiddleware({
     token: state.consoleToken,
-    publicPaths: PUBLIC_PATHS,
+    publicPaths: userPortalRoutesEnabled ? [...PUBLIC_PATHS, ...USER_PORTAL_PUBLIC_PATHS] : PUBLIC_PATHS,
     publicPathPrefixes: PUBLIC_PATH_PREFIXES
   }));
   app.use(publicLeadRoutes(state));
+  if (userPortalRoutesEnabled) {
+    app.use(userPortalRoutes(state));
+  }
   app.get("/api/status", statusRoutes(state));
   app.use(legacyProxyRoutes(state));
   app.use(systemProxyRoutes(state));
