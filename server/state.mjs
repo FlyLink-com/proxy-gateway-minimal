@@ -15,6 +15,7 @@ import { createPlatformAliyunGateEvidenceShell } from "./services/platform/aliyu
 import { createSqliteSubscriptionControlStore } from "./services/platform/subscription-control-db.mjs";
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "./services/platform/subscription-access-shell.mjs";
+import { createPortalAccessRequestService } from "./services/platform/portal-access-requests.mjs";
 import { spawn } from "node:child_process";
 
 function rootPathFrom(rootDir) {
@@ -70,6 +71,7 @@ export function createRuntimeState(options = {}) {
   const platformAccessShell = options.platformAccessShell || createPlatformSubscriptionAccessShell({
     accountShell: platformAccountShell
   });
+  const platformPortalAccessRequests = options.platformPortalAccessRequests || createPortalAccessRequestService();
   const platformAliyunGateEvidenceShell = options.platformAliyunGateEvidenceShell || createPlatformAliyunGateEvidenceShell();
   const ownsControlStore = !options.platformControlStore;
   const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
@@ -208,6 +210,7 @@ export function createRuntimeState(options = {}) {
       leadQueue: platformLeadQueue,
       accountShell: platformAccountShell,
       accessShell: platformAccessShell,
+      portalAccessRequests: platformPortalAccessRequests,
       aliyunGateEvidenceShell: platformAliyunGateEvidenceShell,
       controlStore: platformControlStore
     },
