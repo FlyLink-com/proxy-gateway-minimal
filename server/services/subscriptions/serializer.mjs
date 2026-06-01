@@ -1,15 +1,8 @@
 import { computeSubscriptionStatus } from "./status.mjs";
-import {
-  defaultSubscriptionEdgeServers,
-  firstSubscriptionEligibleEdgeServer,
-  listEdgeNodes,
-  namedEdgeServers,
-  resolveEdgeServer,
-  subscriptionEligibleEdgeServers
-} from "./edge-inventory.mjs";
+import { createNodeRegistry } from "./node-registry.mjs";
 
 export function namedServers(proxyConfig) {
-  return namedEdgeServers(proxyConfig);
+  return createNodeRegistry({ proxyConfig }).namedServers();
 }
 
 export function firstNamedServer(proxyConfig) {
@@ -21,45 +14,23 @@ export function firstNamedServer(proxyConfig) {
 }
 
 export function firstEligibleNamedServer(proxyConfig) {
-  return firstSubscriptionEligibleEdgeServer(proxyConfig);
+  return createNodeRegistry({ proxyConfig }).firstDefaultSubscriptionServer();
 }
 
 export function resolveNamedServer(proxyConfig, nodeId) {
-  return resolveEdgeServer(proxyConfig, nodeId);
+  return createNodeRegistry({ proxyConfig }).resolveNode(nodeId);
 }
 
 export function resolveEligibleNamedServer(proxyConfig, nodeId) {
-  return resolveEdgeServer(proxyConfig, nodeId, { subscriptionEligibleOnly: true });
+  return createNodeRegistry({ proxyConfig }).resolveAssignableNode(nodeId);
 }
 
 export function cloneProxyConfigForSubscriptionOutput(proxyConfig, nodeId) {
-  const defaultServers = defaultSubscriptionEdgeServers(proxyConfig);
-  const [defaultNode] = defaultServers;
-  const eligibleServers = subscriptionEligibleEdgeServers(proxyConfig);
-  const normalizedNodeId = String(nodeId ?? "").trim();
-  const node = eligibleServers.find((server) => server.name === normalizedNodeId || server.id === normalizedNodeId) || null;
-  if (!node) {
-    return {
-      ...proxyConfig,
-      servers: []
-    };
-  }
-
-  if (defaultNode && node.name === defaultNode.name) {
-    return {
-      ...proxyConfig,
-      servers: defaultServers
-    };
-  }
-
-  return {
-    ...proxyConfig,
-    servers: [node]
-  };
+  return createNodeRegistry({ proxyConfig }).cloneProxyConfigForSubscriptionOutput(nodeId);
 }
 
 export function serializeNode(server) {
-  return listEdgeNodes({ servers: [server] })[0];
+  return createNodeRegistry({ proxyConfig: { servers: [server] } }).listRenderableNodes()[0];
 }
 
 export function createSubscriptionSerializer({ nowFn, expiringDays }) {
