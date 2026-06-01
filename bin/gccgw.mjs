@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
   buildPackageScriptSpawn,
   buildCliHelp,
+  buildGccgwSelfCheckReport,
   redactNetworkStatus,
   runProxyGatewayCli
 } from "../server/services/cli/router.mjs";
@@ -101,6 +103,41 @@ async function runEnvCheck() {
   return summary.every((item) => item.configured && !item.placeholder) ? 0 : 1;
 }
 
+function packageJsonFacts() {
+  try {
+    const packageJson = JSON.parse(readFileSync(resolve(rootDir, "package.json"), "utf8"));
+    return {
+      npmCliScriptConfigured: packageJson?.scripts?.cli === "node bin/gccgw.mjs",
+      packageBinConfigured: packageJson?.bin?.gccgw === "./bin/gccgw.mjs"
+    };
+  } catch {
+    return {
+      npmCliScriptConfigured: false,
+      packageBinConfigured: false
+    };
+  }
+}
+
+function globalGccgwCommandAvailable() {
+  const result = process.platform === "win32"
+    ? spawnSync("where.exe", ["gccgw"], { cwd: rootDir, env: process.env, encoding: "utf8" })
+    : spawnSync("sh", ["-lc", "command -v gccgw >/dev/null 2>&1"], { cwd: rootDir, env: process.env, encoding: "utf8" });
+  return result.status === 0;
+}
+
+async function runSelfCheck() {
+  const facts = packageJsonFacts();
+  const report = buildGccgwSelfCheckReport({
+    nodeVersion: process.version,
+    npmCliScriptConfigured: facts.npmCliScriptConfigured,
+    localBinExists: existsSync(resolve(rootDir, "bin/gccgw.mjs")),
+    packageBinConfigured: facts.packageBinConfigured,
+    globalCommandAvailable: globalGccgwCommandAvailable()
+  });
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  return report.ok ? 0 : 1;
+}
+
 async function startServer() {
   const handle = await startProxyGateway();
   installProcessHandlers(handle);
@@ -143,6 +180,7 @@ try {
     runPackageScript,
     runGitDiffCheck,
     runEnvCheck,
+    runSelfCheck,
     runNetworkStatus,
     startServer,
     confirmRiskAExecution

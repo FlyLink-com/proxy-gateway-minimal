@@ -88,6 +88,7 @@
     "project:architecture": "node bin/gccgw.mjs architecture",
     "project:docs": "node bin/gccgw.mjs docs list",
     "env:check": "node bin/gccgw.mjs env check",
+    "self:check": "node bin/gccgw.mjs self check",
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",
     "agent:local": "node agent/local-edge-agent.mjs",

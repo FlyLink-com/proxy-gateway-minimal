@@ -75,6 +75,7 @@ const SPECIAL_COMMAND_ENTRIES = [
   ["docs command", null, "project", "C", "read-only", "List source docs for one gccgw command"],
   ["docs domain", null, "project", "C", "read-only", "List source docs for one command domain"],
   ["docs list", null, "project", "C", "read-only", "List docs referenced by the gccgw command map"],
+  ["self check", null, "env", "C", "read-only", "Check gccgw bootstrap, local binary, npm script, and PATH availability"],
   ["server start", null, "server", "B", "local-runtime", "Start local gateway server"],
   ["project verify", null, "project", "B", "verify", "Run repository verification"],
   ["env check", null, "env", "C", "read-only", "Check local environment shape"],
@@ -143,6 +144,61 @@ export function buildCliCommandMap({ format = "text" } = {}) {
     ...rows.map((row) => row.join(" | "))
   ];
   return `${lines.join("\n")}\n`;
+}
+
+export function buildGccgwSelfCheckReport({
+  nodeVersion = process.version,
+  npmCliScriptConfigured = false,
+  localBinExists = false,
+  packageBinConfigured = false,
+  globalCommandAvailable = false
+} = {}) {
+  const requiredChecks = {
+    node: {
+      ok: String(nodeVersion || "").trim() !== "",
+      required: true,
+      version: String(nodeVersion || "unknown")
+    },
+    npmScript: {
+      ok: npmCliScriptConfigured === true,
+      required: true,
+      command: "npm run cli --"
+    },
+    localBin: {
+      ok: localBinExists === true,
+      required: true,
+      command: "node bin/gccgw.mjs"
+    },
+    packageBin: {
+      ok: packageBinConfigured === true,
+      required: true,
+      command: "gccgw"
+    }
+  };
+  const optionalChecks = {
+    globalPathCommand: {
+      ok: globalCommandAvailable === true,
+      required: false,
+      command: "gccgw"
+    }
+  };
+  const checks = {
+    ...requiredChecks,
+    ...optionalChecks
+  };
+
+  return {
+    type: "gccgw_self_check",
+    generatedBy: "gccgw self check",
+    ok: Object.values(requiredChecks).every((check) => check.ok === true),
+    checks,
+    guidance: [
+      "From the repository root, use: npm run cli -- <command>",
+      "From the repository root, use: node bin/gccgw.mjs <command>",
+      "To use bare gccgw in a shell, run npm link from the repository root or add the npm-linked bin directory to the shell PATH."
+    ],
+    redacted: true
+  };
 }
 
 const PROJECT_ARCHITECTURE_LAYERS = [
@@ -469,6 +525,7 @@ Usage:
   gccgw docs list [--json]
   gccgw docs domain <domain> [--json]
   gccgw docs command <command> [--json]
+  gccgw self check
   gccgw server start
   gccgw project check
   gccgw project verify [--with-admin]
@@ -493,6 +550,7 @@ Common commands:
   gccgw config validate --profile aliyun-prod
   gccgw docs command platform issue-subscription
   gccgw docs domain platform
+  gccgw self check
   gccgw project check
   gccgw project verify --with-admin
   gccgw env check
@@ -624,6 +682,9 @@ export function resolveCliCommand(argv = []) {
   if (args[0] === "server" && (args[1] === undefined || args[1] === "start")) {
     return { kind: "start-server" };
   }
+  if (args[0] === "self" && args[1] === "check") {
+    return { kind: "self-check" };
+  }
   if (args[0] === "project" && args[1] === "verify") {
     return {
       kind: "project-verify",
@@ -734,6 +795,7 @@ export async function runProxyGatewayCli(argv, {
   runPackageScript,
   runGitDiffCheck,
   runEnvCheck,
+  runSelfCheck,
   runNetworkStatus,
   startServer,
   confirmRiskAExecution,
@@ -801,6 +863,9 @@ export async function runProxyGatewayCli(argv, {
     }
     if (command.kind === "env-check") {
       return await runEnvCheck();
+    }
+    if (command.kind === "self-check") {
+      return await runSelfCheck();
     }
     if (command.kind === "network-status") {
       return await runNetworkStatus();

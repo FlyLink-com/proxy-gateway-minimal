@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   buildCliArchitectureMap,
   buildCliDocsMap,
+  buildGccgwSelfCheckReport,
   buildPackageScriptSpawn,
   buildCliCommandMap,
   buildCliHelp,
@@ -18,6 +19,7 @@ test("gccgw CLI help exposes normalized command groups", () => {
   assert.match(help, /gccgw project check/);
   assert.match(help, /gccgw architecture/);
   assert.match(help, /gccgw docs command/);
+  assert.match(help, /gccgw self check/);
   assert.match(help, /gccgw platform issue-subscription/);
   assert.match(help, /gccgw channel validate/);
   assert.match(help, /gccgw server start/);
@@ -58,13 +60,38 @@ test("gccgw CLI resolves project verify as an aggregate check", () => {
   });
 });
 
-test("gccgw CLI resolves env and ops checks", () => {
+test("gccgw CLI resolves env, self, and ops checks", () => {
   assert.deepEqual(resolveCliCommand(["env", "check"]), {
     kind: "env-check"
+  });
+  assert.deepEqual(resolveCliCommand(["self", "check"]), {
+    kind: "self-check"
   });
   assert.deepEqual(resolveCliCommand(["ops", "network-status"]), {
     kind: "network-status"
   });
+});
+
+test("gccgw self check report keeps global PATH command optional and redacted", () => {
+  const report = buildGccgwSelfCheckReport({
+    nodeVersion: "v24.0.0",
+    npmCliScriptConfigured: true,
+    localBinExists: true,
+    packageBinConfigured: true,
+    globalCommandAvailable: false
+  });
+
+  assert.equal(report.type, "gccgw_self_check");
+  assert.equal(report.ok, true);
+  assert.equal(report.redacted, true);
+  assert.deepEqual(report.checks.globalPathCommand, {
+    ok: false,
+    required: false,
+    command: "gccgw"
+  });
+  assert.ok(report.guidance.some((item) => item.includes("npm run cli --")));
+  assert.ok(report.guidance.some((item) => item.includes("npm link")));
+  assert.doesNotMatch(JSON.stringify(report), /TOKEN|SECRET|PASSWORD|subscriptionUrl|C:\\\\/i);
 });
 
 test("gccgw CLI resolves architecture map as a read-only project command", () => {
@@ -194,6 +221,7 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.ok(names.includes("gccgw architecture"));
   assert.ok(names.includes("gccgw docs list"));
   assert.ok(names.includes("gccgw commands"));
+  assert.ok(names.includes("gccgw self check"));
   assert.ok(names.includes("gccgw project verify"));
   assert.ok(names.includes("gccgw platform issue-subscription"));
   assert.ok(names.includes("gccgw channel validate"));
@@ -220,6 +248,12 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.equal(channelValidate.surface, "operator");
   assert.equal(channelValidate.mode, "dry-run");
   assert.equal(channelValidate.aliasOf, "gccgw channel dry-run");
+
+  const selfCheck = commands.find((command) => command.command === "gccgw self check");
+  assert.equal(selfCheck.domain, "env");
+  assert.equal(selfCheck.riskTier, "C");
+  assert.equal(selfCheck.mode, "read-only");
+  assert.equal(selfCheck.surface, "operator");
 
   const commandMap = buildCliCommandMap({ format: "json" });
   assert.equal(commandMap.type, "gccgw_command_map");
@@ -655,7 +689,7 @@ test("gccgw project verify short-circuits on first failed check", async () => {
   assert.deepEqual(calls, [["git-diff-check"]]);
 });
 
-test("gccgw env check and ops network status use injected check adapters", async () => {
+test("gccgw env check, self check, and ops network status use injected check adapters", async () => {
   const calls = [];
   const envExit = await runProxyGatewayCli(["env", "check"], {
     runEnvCheck: async () => {
@@ -664,6 +698,18 @@ test("gccgw env check and ops network status use injected check adapters", async
     },
     runNodeScript: async () => {
       throw new Error("node script must not run for env check");
+    },
+    startServer: async () => 0,
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+  const selfExit = await runProxyGatewayCli(["self", "check"], {
+    runSelfCheck: async () => {
+      calls.push(["self-check"]);
+      return 0;
+    },
+    runNodeScript: async () => {
+      throw new Error("node script must not run for self check");
     },
     startServer: async () => 0,
     writeStdout: () => {},
@@ -683,9 +729,11 @@ test("gccgw env check and ops network status use injected check adapters", async
   });
 
   assert.equal(envExit, 0);
+  assert.equal(selfExit, 0);
   assert.equal(networkExit, 0);
   assert.deepEqual(calls, [
     ["env-check"],
+    ["self-check"],
     ["network-status"]
   ]);
 });
