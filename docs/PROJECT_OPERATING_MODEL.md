@@ -267,12 +267,14 @@ Use a split only when the risk model requires it, when the operator explicitly
 approves a spec-only / inventory-only gate, or when external mutation must wait
 for a later Risk A approval.
 
-## PR Cadence Reporting
+## Stage Reporting
 
-Every five merged PRs, pause before starting the next lane of work and give the
-operator a concise stage report for that five-PR window.
+There is no fixed "every five merged PRs" reporting rule. Create a stage report
+only when it is useful for handoff or risk control, such as after a production
+gate, a long-running work lane, a major product direction change, or an
+operator request.
 
-The report should include:
+When a stage report is needed, include:
 
 ```text
 PR range and PR numbers
@@ -283,9 +285,9 @@ production, AWS, DNS, Nginx, HTTPS, systemd, tenant, artifact, and cutover impac
 open blockers and recommended next actions
 ```
 
-Do not treat this as a closeout requirement after every small PR. It is a fixed
-cadence report to prevent long-running work from drifting without a
-project-management checkpoint.
+Do not treat stage reporting as a closeout requirement after every small PR.
+Routine PRs should rely on their PR body, validation evidence, and updated
+project-state or docs when those are part of the approved scope.
 
 ## Risk Tiers
 
