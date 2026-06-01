@@ -19,6 +19,11 @@ const DOMAIN_SOURCE_DOCS = {
 
 const NODE_SCRIPT_COMMAND_ENTRIES = [
   ["project check", "scripts/check-project-state.mjs", "project", "C", "read-only", "Validate project-state and repository safety markers"],
+  ["channel validate", "scripts/channel-config-dry-run.mjs", "channel", "B", "dry-run", "Validate channel configuration candidates", undefined, { surface: "operator", aliasOf: "gccgw channel dry-run" }],
+  ["channel measure", "scripts/channel-measurement-bundle.mjs", "channel", "C", "report", "Build channel measurement bundle evidence", undefined, { surface: "operator", aliasOf: "gccgw channel measurement-bundle" }],
+  ["channel decide", "scripts/channel-system-decision-flow.mjs", "channel", "C", "report", "Build end-to-end channel decision evidence", undefined, { surface: "operator", aliasOf: "gccgw channel system-decision-flow" }],
+  ["channel package", "scripts/channel-subscription-activation-package.mjs", "channel", "C", "gate-preview", "Build subscription activation package preview", undefined, { surface: "operator", aliasOf: "gccgw channel subscription-activation-package" }],
+  ["channel record", "scripts/channel-subscription-activation-record-template.mjs", "channel", "C", "template", "Create subscription activation execution record template", undefined, { surface: "operator", aliasOf: "gccgw channel subscription-activation-record-template" }],
   ["channel dry-run", "scripts/channel-config-dry-run.mjs", "channel", "B", "dry-run", "Validate channel configuration candidates"],
   ["channel benchmark-run", "scripts/channel-benchmark-runner.mjs", "channel", "B", "local-runner", "Run an explicit local benchmark runner"],
   ["channel benchmark-fixture", "scripts/channel-benchmark-fixture.mjs", "channel", "C", "fixture", "Create editable benchmark sample placeholders"],
@@ -88,13 +93,16 @@ function unique(values = []) {
   return [...new Set(values)];
 }
 
-function commandEntry([command, target, domain, riskTier, mode, description, sourceDocs], handler) {
+function commandEntry([command, target, domain, riskTier, mode, description, sourceDocs, metadata = {}], handler) {
+  const surface = metadata.surface || (domain === "channel" ? "advanced" : "operator");
   return {
     command: `gccgw ${command}`,
     domain,
     riskTier,
     mode,
     handler,
+    surface,
+    ...(metadata.aliasOf ? { aliasOf: metadata.aliasOf } : {}),
     ...(target ? { target } : {}),
     ...(riskTier === "A" && mode === "execution-gated" ? { approvalPrompt: "required for --execute-production-mutation" } : {}),
     sourceDocs: unique(sourceDocs || DOMAIN_SOURCE_DOCS[domain] || []),
@@ -468,7 +476,11 @@ Common commands:
   gccgw platform issue-subscription [--dry-run] <input.json>
   gccgw platform issue-portal-entry [--dry-run] <input.json>
   gccgw platform revoke-access <tenant-ref> --dry-run
-  gccgw channel dry-run <config.json>
+  gccgw channel validate <config.json>
+  gccgw channel measure <manifest.json>
+  gccgw channel decide <packet.json>
+  gccgw channel package <fixture.json> [proxy-servers.json]
+  gccgw channel record <fixture.json>
 
 Risk A execution prompt:
   Any A-tier command carrying --execute-production-mutation requires an

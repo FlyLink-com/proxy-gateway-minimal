@@ -19,7 +19,7 @@ test("gccgw CLI help exposes normalized command groups", () => {
   assert.match(help, /gccgw architecture/);
   assert.match(help, /gccgw docs command/);
   assert.match(help, /gccgw platform issue-subscription/);
-  assert.match(help, /gccgw channel dry-run/);
+  assert.match(help, /gccgw channel validate/);
   assert.match(help, /gccgw server start/);
   assert.doesNotMatch(help, /proxy-gateway/);
 });
@@ -98,6 +98,34 @@ test("gccgw CLI resolves docs navigation commands as read-only project commands"
   });
 });
 
+test("gccgw CLI resolves stable channel facade commands to existing pipeline scripts", () => {
+  assert.deepEqual(resolveCliCommand(["channel", "validate", "config.json"]), {
+    kind: "node-script",
+    script: "scripts/channel-config-dry-run.mjs",
+    args: ["config.json"]
+  });
+  assert.deepEqual(resolveCliCommand(["channel", "measure", "manifest.json"]), {
+    kind: "node-script",
+    script: "scripts/channel-measurement-bundle.mjs",
+    args: ["manifest.json"]
+  });
+  assert.deepEqual(resolveCliCommand(["channel", "decide", "packet.json"]), {
+    kind: "node-script",
+    script: "scripts/channel-system-decision-flow.mjs",
+    args: ["packet.json"]
+  });
+  assert.deepEqual(resolveCliCommand(["channel", "package", "fixture.json", "config.json"]), {
+    kind: "node-script",
+    script: "scripts/channel-subscription-activation-package.mjs",
+    args: ["fixture.json", "config.json"]
+  });
+  assert.deepEqual(resolveCliCommand(["channel", "record", "fixture.json"]), {
+    kind: "node-script",
+    script: "scripts/channel-subscription-activation-record-template.mjs",
+    args: ["fixture.json"]
+  });
+});
+
 test("gccgw CLI resolves local project, admin, site, and package scripts", () => {
   assert.deepEqual(resolveCliCommand(["project", "test"]), {
     kind: "package-script",
@@ -134,6 +162,7 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.ok(names.includes("gccgw commands"));
   assert.ok(names.includes("gccgw project verify"));
   assert.ok(names.includes("gccgw platform issue-subscription"));
+  assert.ok(names.includes("gccgw channel validate"));
   assert.ok(names.includes("gccgw channel subscription-render-proof"));
 
   const issueSubscription = commands.find((command) => command.command === "gccgw platform issue-subscription");
@@ -150,7 +179,13 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.equal(revokeAccess.approvalPrompt, undefined);
 
   const renderProof = commands.find((command) => command.command === "gccgw channel subscription-render-proof");
+  assert.equal(renderProof.surface, "advanced");
   assert.ok(renderProof.sourceDocs.includes("docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md"));
+
+  const channelValidate = commands.find((command) => command.command === "gccgw channel validate");
+  assert.equal(channelValidate.surface, "operator");
+  assert.equal(channelValidate.mode, "dry-run");
+  assert.equal(channelValidate.aliasOf, "gccgw channel dry-run");
 
   const commandMap = buildCliCommandMap({ format: "json" });
   assert.equal(commandMap.type, "gccgw_command_map");
