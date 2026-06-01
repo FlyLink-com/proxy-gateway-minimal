@@ -6,10 +6,12 @@ import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
+  buildBackupPreflightReport,
   buildPackageScriptSpawn,
   buildCliHelp,
   buildGccgwSelfCheckReport,
   buildInstallPreflightReport,
+  buildReleaseStatusReport,
   redactNetworkStatus,
   runProxyGatewayCli
 } from "../server/services/cli/router.mjs";
@@ -176,6 +178,52 @@ async function runInstallPreflight(command) {
   return report.ok ? 0 : 1;
 }
 
+async function runBackupPreflight(command) {
+  const report = buildBackupPreflightReport({
+    mode: command.mode,
+    platform: process.platform,
+    files: {
+      backupScript: existsSync(resolve(rootDir, "scripts/backup-subscriptions.sh")),
+      restoreScript: existsSync(resolve(rootDir, "scripts/restore-subscriptions.sh"))
+    },
+    commands: {
+      bash: commandAvailable("bash"),
+      sqlite3: commandAvailable("sqlite3"),
+      systemctl: commandAvailable("systemctl")
+    }
+  });
+  writeReport(report, command.format);
+  return report.ok ? 0 : 1;
+}
+
+function gitFact(args) {
+  const result = spawnSync("git", args, {
+    cwd: rootDir,
+    env: process.env,
+    encoding: "utf8"
+  });
+  if (result.status !== 0) {
+    return "unknown";
+  }
+  return String(result.stdout || "").trim() || "unknown";
+}
+
+async function runReleaseStatus(command) {
+  const report = buildReleaseStatusReport({
+    platform: process.platform,
+    files: {
+      packageJson: existsSync(resolve(rootDir, "package.json")),
+      releaseJson: existsSync(resolve(rootDir, "RELEASE.json"))
+    },
+    git: {
+      branch: gitFact(["branch", "--show-current"]),
+      head: gitFact(["rev-parse", "--short=12", "HEAD"])
+    }
+  });
+  writeReport(report, command.format);
+  return report.ok ? 0 : 1;
+}
+
 function serviceActive(serviceName) {
   if (process.platform !== "linux") {
     return {
@@ -279,6 +327,8 @@ try {
     runEnvCheck,
     runSelfCheck,
     runInstallPreflight,
+    runBackupPreflight,
+    runReleaseStatus,
     runServiceStatus,
     runNetworkStatus,
     startServer,

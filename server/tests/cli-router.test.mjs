@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCliArchitectureMap,
+  buildBackupPlan,
+  buildBackupPreflightReport,
   buildCliDocsMap,
   buildGccgwSelfCheckReport,
   buildInstallPlan,
@@ -9,6 +11,8 @@ import {
   buildPackageScriptSpawn,
   buildCliCommandMap,
   buildCliHelp,
+  buildReleasePlan,
+  buildReleaseStatusReport,
   listCliCommands,
   resolveCliCommand,
   redactNetworkStatus,
@@ -97,6 +101,225 @@ test("gccgw CLI resolves install and service commands without mutating by defaul
     script: "scripts/gccgw-install-bootstrap.mjs",
     args: ["--execute-production-mutation", "--apply"]
   });
+});
+
+test("gccgw CLI exposes business facade commands for node, subscription, backup, and release", () => {
+  const commands = listCliCommands();
+  const commandNames = commands.map((entry) => entry.command);
+
+  assert.ok(commandNames.includes("gccgw node plan"));
+  assert.ok(commandNames.includes("gccgw node preflight"));
+  assert.ok(commandNames.includes("gccgw node bootstrap"));
+  assert.ok(commandNames.includes("gccgw node status"));
+  assert.ok(commandNames.includes("gccgw subscription form"));
+  assert.ok(commandNames.includes("gccgw subscription issue"));
+  assert.ok(commandNames.includes("gccgw subscription portal-entry"));
+  assert.ok(commandNames.includes("gccgw subscription revoke"));
+  assert.ok(commandNames.includes("gccgw backup plan"));
+  assert.ok(commandNames.includes("gccgw backup preflight"));
+  assert.ok(commandNames.includes("gccgw backup restore-preflight"));
+  assert.ok(commandNames.includes("gccgw release plan"));
+  assert.ok(commandNames.includes("gccgw release status"));
+
+  const riskA = commands.filter((entry) => entry.command === "gccgw node bootstrap" || entry.command === "gccgw subscription issue" || entry.command === "gccgw subscription portal-entry");
+  assert.ok(riskA.every((entry) => entry.riskTier === "A" && entry.approvalPrompt));
+});
+
+test("gccgw CLI resolves node and subscription facade commands to existing safe handlers", () => {
+  assert.deepEqual(resolveCliCommand(["node", "plan", "--json"]), {
+    kind: "install-plan",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand(["node", "preflight"]), {
+    kind: "install-preflight",
+    format: "text"
+  });
+  assert.deepEqual(resolveCliCommand(["node", "bootstrap", "--execute-production-mutation", "--apply"]), {
+    kind: "node-script",
+    script: "scripts/gccgw-install-bootstrap.mjs",
+    commandName: "gccgw node bootstrap",
+    args: ["--execute-production-mutation", "--apply"]
+  });
+  assert.deepEqual(resolveCliCommand(["node", "status", "--json"]), {
+    kind: "service-status",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand(["subscription", "form", "facts.json"]), {
+    kind: "node-script",
+    script: "scripts/platform-provisioning-form.mjs",
+    commandName: "gccgw subscription form",
+    args: ["facts.json"]
+  });
+  assert.deepEqual(resolveCliCommand(["subscription", "issue", "--dry-run", "input.json"]), {
+    kind: "node-script",
+    script: "scripts/platform-issue-subscription.mjs",
+    commandName: "gccgw subscription issue",
+    args: ["--dry-run", "input.json"]
+  });
+  assert.deepEqual(resolveCliCommand(["subscription", "portal-entry", "--dry-run", "input.json"]), {
+    kind: "node-script",
+    script: "scripts/platform-issue-portal-entry.mjs",
+    commandName: "gccgw subscription portal-entry",
+    args: ["--dry-run", "input.json"]
+  });
+  assert.deepEqual(resolveCliCommand(["subscription", "revoke", "tenant-ref", "--dry-run"]), {
+    kind: "node-script",
+    script: "scripts/platform-revoke-access.mjs",
+    commandName: "gccgw subscription revoke",
+    args: ["tenant-ref", "--dry-run"]
+  });
+});
+
+test("gccgw CLI resolves backup and release facade commands as read-only internal checks", () => {
+  assert.deepEqual(resolveCliCommand(["backup", "plan"]), {
+    kind: "backup-plan",
+    format: "text"
+  });
+  assert.deepEqual(resolveCliCommand(["backup", "preflight", "--json"]), {
+    kind: "backup-preflight",
+    mode: "backup",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand(["backup", "restore-preflight", "--json"]), {
+    kind: "backup-preflight",
+    mode: "restore",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand(["release", "plan", "--json"]), {
+    kind: "release-plan",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand(["release", "status"]), {
+    kind: "release-status",
+    format: "text"
+  });
+});
+
+test("gccgw backup and release reports stay redacted and non-mutating", () => {
+  const backupPlan = buildBackupPlan({ format: "json" });
+  assert.equal(backupPlan.type, "gccgw_backup_plan");
+  assert.equal(backupPlan.mutationAllowed, false);
+  assert.ok(backupPlan.commands.some((entry) => entry.command === "scripts/backup-subscriptions.sh"));
+  assert.ok(backupPlan.commands.some((entry) => entry.command.includes("restore-subscriptions.sh")));
+  assert.doesNotMatch(JSON.stringify(backupPlan), /TOKEN|SECRET|PASSWORD|subscriptionUrl|C:\\\\/i);
+
+  const backupPreflight = buildBackupPreflightReport({
+    platform: "linux",
+    files: {
+      backupScript: true,
+      restoreScript: true
+    },
+    commands: {
+      bash: true,
+      sqlite3: true,
+      systemctl: false
+    }
+  });
+  assert.equal(backupPreflight.type, "gccgw_backup_preflight");
+  assert.equal(backupPreflight.ok, true);
+  assert.equal(backupPreflight.redacted, true);
+
+  const restorePreflight = buildBackupPreflightReport({
+    mode: "restore",
+    platform: "linux",
+    files: {
+      backupScript: true,
+      restoreScript: true
+    },
+    commands: {
+      bash: true,
+      sqlite3: true,
+      systemctl: true
+    }
+  });
+  assert.equal(restorePreflight.mode, "restore");
+  assert.equal(restorePreflight.ok, true);
+
+  const releasePlan = buildReleasePlan({ format: "json" });
+  assert.equal(releasePlan.type, "gccgw_release_plan");
+  assert.equal(releasePlan.mutationAllowed, false);
+  assert.ok(releasePlan.steps.some((step) => step.name === "package"));
+  assert.doesNotMatch(JSON.stringify(releasePlan), /TOKEN|SECRET|PASSWORD|subscriptionUrl|C:\\\\/i);
+
+  const releaseStatus = buildReleaseStatusReport({
+    files: {
+      packageJson: true,
+      releaseJson: false
+    },
+    git: {
+      head: "abc1234",
+      branch: "feature/test"
+    }
+  });
+  assert.equal(releaseStatus.type, "gccgw_release_status");
+  assert.equal(releaseStatus.redacted, true);
+  assert.equal(releaseStatus.git.head, "abc1234");
+});
+
+test("gccgw subscription and node aliases use their own Risk A approval labels", async () => {
+  const approvals = [];
+  const calls = [];
+  const exitCode = await runProxyGatewayCli([
+    "subscription",
+    "issue",
+    "--execute-production-mutation",
+    "--dry-run",
+    "input.json"
+  ], {
+    confirmRiskAExecution: async (approval) => {
+      approvals.push(approval);
+      return true;
+    },
+    runNodeScript: async (script, args) => {
+      calls.push({ script, args });
+      return 0;
+    },
+    startServer: async () => 0,
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(approvals[0].command, "gccgw subscription issue");
+  assert.deepEqual(calls, [{
+    script: "scripts/platform-issue-subscription.mjs",
+    args: ["--execute-production-mutation", "--dry-run", "input.json"]
+  }]);
+});
+
+test("gccgw backup and release commands run through read-only adapters", async () => {
+  const calls = [];
+  const backupExit = await runProxyGatewayCli(["backup", "preflight", "--json"], {
+    runBackupPreflight: async (command) => {
+      calls.push(["backup-preflight", command.mode, command.format]);
+      return 0;
+    },
+    runNodeScript: async () => {
+      throw new Error("node script must not run for backup preflight");
+    },
+    startServer: async () => 0,
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+  const releaseExit = await runProxyGatewayCli(["release", "status", "--json"], {
+    runReleaseStatus: async (command) => {
+      calls.push(["release-status", command.format]);
+      return 0;
+    },
+    runNodeScript: async () => {
+      throw new Error("node script must not run for release status");
+    },
+    startServer: async () => 0,
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+
+  assert.equal(backupExit, 0);
+  assert.equal(releaseExit, 0);
+  assert.deepEqual(calls, [
+    ["backup-preflight", "backup", "json"],
+    ["release-status", "json"]
+  ]);
 });
 
 test("gccgw self check report keeps global PATH command optional and redacted", () => {

@@ -6,17 +6,21 @@ import {
 
 const DOMAIN_SOURCE_DOCS = {
   admin: ["docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"],
+  backup: ["docs/PRODUCTION_DR.md", "docs/DEPLOYMENT_FLOW.md"],
   channel: ["docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md", "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md"],
   config: ["config/gccgw.config.example.json", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"],
   env: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md"],
   install: ["ops/README.md", "ops/edge-node/README.md"],
+  node: ["ops/README.md", "ops/edge-node/README.md", "docs/PRODUCTION_EDGE_FLEET.md"],
   ops: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md"],
   package: ["docs/RESOURCE_PACKAGE_CLI.md"],
   platform: ["docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md", "docs/CLI_PRODUCTION_PROVISIONING_SOP.md"],
   project: ["docs/PROJECT_CONTEXT.md"],
+  release: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md", "docs/MASTER_ARCHIVE_BOUNDARY.md", "docs/MULTI_ENV_ADAPTER_RUNTIME_MODEL.md"],
   server: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md"],
   service: ["ops/README.md", "ops/edge-node/README.md"],
-  site: ["docs/PROJECT_CONTEXT.md"]
+  site: ["docs/PROJECT_CONTEXT.md"],
+  subscription: ["docs/CLI_PRODUCTION_PROVISIONING_SOP.md", "docs/SUBSCRIPTION_CONTROL_DATABASE.md", "docs/USER_PORTAL_AUTH_BOUNDARY.md"]
 };
 
 const NODE_SCRIPT_COMMAND_ENTRIES = [
@@ -57,7 +61,12 @@ const NODE_SCRIPT_COMMAND_ENTRIES = [
   ["platform revoke-access", "scripts/platform-revoke-access.mjs", "platform", "A", "dry-run-only", "Plan access revocation"],
   ["platform access-inventory-summary", "scripts/access-model-inventory-summary.mjs", "platform", "C", "summary", "Summarize access model inventory"],
   ["platform clean-edge-readiness-summary", "scripts/clean-edge-readiness-summary.mjs", "platform", "C", "gate-preview", "Summarize clean edge readiness"],
-  ["install bootstrap", "scripts/gccgw-install-bootstrap.mjs", "install", "A", "execution-gated", "Apply reviewed edge-node bootstrap materials on a server", ["ops/README.md", "ops/edge-node/README.md"]]
+  ["subscription form", "scripts/platform-provisioning-form.mjs", "subscription", "B", "preview", "Convert operator facts into issuance input", undefined, { surface: "operator", aliasOf: "gccgw platform provisioning-form" }],
+  ["subscription issue", "scripts/platform-issue-subscription.mjs", "subscription", "A", "execution-gated", "Issue a controlled subscription after approval", undefined, { surface: "operator", aliasOf: "gccgw platform issue-subscription" }],
+  ["subscription portal-entry", "scripts/platform-issue-portal-entry.mjs", "subscription", "A", "execution-gated", "Issue a dynamic portal entry after approval", undefined, { surface: "operator", aliasOf: "gccgw platform issue-portal-entry" }],
+  ["subscription revoke", "scripts/platform-revoke-access.mjs", "subscription", "A", "dry-run-only", "Plan access revocation", undefined, { surface: "operator", aliasOf: "gccgw platform revoke-access" }],
+  ["install bootstrap", "scripts/gccgw-install-bootstrap.mjs", "install", "A", "execution-gated", "Apply reviewed edge-node bootstrap materials on a server", ["ops/README.md", "ops/edge-node/README.md"]],
+  ["node bootstrap", "scripts/gccgw-install-bootstrap.mjs", "node", "A", "execution-gated", "Apply reviewed edge-node bootstrap materials on a server", undefined, { surface: "operator", aliasOf: "gccgw install bootstrap" }]
 ];
 
 const PACKAGE_SCRIPT_COMMAND_ENTRIES = [
@@ -80,6 +89,14 @@ const SPECIAL_COMMAND_ENTRIES = [
   ["docs list", null, "project", "C", "read-only", "List docs referenced by the gccgw command map"],
   ["install plan", null, "install", "C", "read-only", "Show the server installation sequence without touching the host"],
   ["install preflight", null, "install", "C", "read-only", "Check server bootstrap prerequisites without mutating the host"],
+  ["node plan", null, "node", "C", "read-only", "Show the node installation sequence without touching the host", undefined, { aliasOf: "gccgw install plan" }],
+  ["node preflight", null, "node", "C", "read-only", "Check node bootstrap prerequisites without mutating the host", undefined, { aliasOf: "gccgw install preflight" }],
+  ["node status", null, "node", "C", "read-only", "Read local node service status without changing runtime state", undefined, { aliasOf: "gccgw service status" }],
+  ["backup plan", null, "backup", "C", "read-only", "Show backup and restore boundaries without touching SQLite"],
+  ["backup preflight", null, "backup", "C", "read-only", "Check backup prerequisites without touching SQLite"],
+  ["backup restore-preflight", null, "backup", "C", "read-only", "Check restore prerequisites without touching SQLite or services"],
+  ["release plan", null, "release", "C", "read-only", "Show release package boundaries without deploying"],
+  ["release status", null, "release", "C", "read-only", "Read local release metadata without deploying"],
   ["self check", null, "env", "C", "read-only", "Check gccgw bootstrap, local binary, npm script, and PATH availability"],
   ["service status", null, "service", "C", "read-only", "Read local service, Nginx, and health status without changing runtime state"],
   ["server start", null, "server", "B", "local-runtime", "Start local gateway server"],
@@ -354,6 +371,147 @@ export function buildInstallPreflightReport({
     ok: Object.values(checks).every((check) => check.required !== true || check.ok === true),
     checks,
     nextCommand: "gccgw install bootstrap --execute-production-mutation --apply",
+    redacted: true
+  };
+}
+
+export function buildBackupPlan({ format = "text" } = {}) {
+  return {
+    type: "gccgw_backup_plan",
+    generatedBy: "gccgw backup plan",
+    riskTier: "C for plan and preflight; A for any restore execution",
+    mutationAllowed: false,
+    purpose: "Describe subscription SQLite backup and restore command boundaries without copying, reading, or printing database contents.",
+    commands: [
+      {
+        command: "scripts/backup-subscriptions.sh",
+        riskTier: "A when executed against production state",
+        boundary: "Creates a SQLite backup on the approved host only; never copy raw database or backup contents into git, chat, docs, or terminal output."
+      },
+      {
+        command: "scripts/restore-subscriptions.sh <verified-backup.sqlite>",
+        riskTier: "A",
+        boundary: "Stops and starts the service and replaces SQLite state; requires separate exact approval, fresh backup, integrity checks, and rollback plan."
+      }
+    ],
+    checks: [
+      "Confirm target host and service role.",
+      "Confirm backup script, restore script, bash, sqlite3, and service manager availability.",
+      "Record only safe metadata such as filename label, mode, size, and integrity result.",
+      "Never print row data, credential material, delivery links, handoff material, or customer data."
+    ],
+    sourceDocs: DOMAIN_SOURCE_DOCS.backup,
+    redacted: true,
+    format
+  };
+}
+
+export function buildBackupPreflightReport({
+  mode = "backup",
+  platform = process.platform,
+  files = {},
+  commands = {}
+} = {}) {
+  const restoreMode = mode === "restore";
+  const checks = {
+    linuxHost: {
+      ok: platform === "linux",
+      required: true,
+      detail: "Backup and restore scripts are Bash/Linux host operations."
+    },
+    backupScript: {
+      ok: files.backupScript === true,
+      required: true,
+      path: "scripts/backup-subscriptions.sh"
+    },
+    restoreScript: {
+      ok: files.restoreScript === true,
+      required: restoreMode,
+      path: "scripts/restore-subscriptions.sh"
+    },
+    bash: {
+      ok: commands.bash === true,
+      required: true,
+      command: "bash"
+    },
+    sqlite3: {
+      ok: commands.sqlite3 === true,
+      required: true,
+      command: "sqlite3"
+    },
+    systemctl: {
+      ok: commands.systemctl === true,
+      required: restoreMode,
+      command: "systemctl"
+    }
+  };
+  return {
+    type: "gccgw_backup_preflight",
+    generatedBy: restoreMode ? "gccgw backup restore-preflight" : "gccgw backup preflight",
+    mode: restoreMode ? "restore" : "backup",
+    ok: Object.values(checks).every((check) => check.required !== true || check.ok === true),
+    mutationAllowed: false,
+    checks,
+    sourceDocs: DOMAIN_SOURCE_DOCS.backup,
+    redacted: true
+  };
+}
+
+export function buildReleasePlan({ format = "text" } = {}) {
+  return {
+    type: "gccgw_release_plan",
+    generatedBy: "gccgw release plan",
+    riskTier: "C for plan and status; A for any server promotion or deploy",
+    mutationAllowed: false,
+    purpose: "Describe the packaged release model without deploying, reloading Nginx, changing systemd, or touching production data.",
+    steps: [
+      {
+        name: "package",
+        command: "gccgw package dry-run",
+        boundary: "Preview package contents only."
+      },
+      {
+        name: "verify",
+        command: "gccgw project verify",
+        boundary: "Run local repository gates before selecting a release candidate."
+      },
+      {
+        name: "server-preflight",
+        command: "gccgw install preflight",
+        boundary: "Read-only host capability check."
+      },
+      {
+        name: "promotion",
+        command: "separate approved deployment gate",
+        boundary: "No deploy, symlink switch, Nginx reload, service restart, DNS, firewall, or state copy is authorized by this plan."
+      }
+    ],
+    sourceDocs: DOMAIN_SOURCE_DOCS.release,
+    redacted: true,
+    format
+  };
+}
+
+export function buildReleaseStatusReport({
+  platform = process.platform,
+  files = {},
+  git = {}
+} = {}) {
+  return {
+    type: "gccgw_release_status",
+    generatedBy: "gccgw release status",
+    ok: files.packageJson === true,
+    platform,
+    files: {
+      packageJson: files.packageJson === true,
+      releaseJson: files.releaseJson === true
+    },
+    git: {
+      branch: String(git.branch || "unknown"),
+      head: String(git.head || "unknown")
+    },
+    mutationAllowed: false,
+    sourceDocs: DOMAIN_SOURCE_DOCS.release,
     redacted: true
   };
 }
@@ -717,6 +875,9 @@ Common commands:
   gccgw docs domain platform
   gccgw install plan
   gccgw install preflight --json
+  gccgw node plan
+  gccgw node preflight --json
+  gccgw node status --json
   gccgw self check
   gccgw service status --json
   gccgw project check
@@ -725,6 +886,15 @@ Common commands:
   gccgw ops network-status
   gccgw site verify
   gccgw package dry-run
+  gccgw release plan
+  gccgw release status --json
+  gccgw backup plan
+  gccgw backup preflight --json
+  gccgw backup restore-preflight --json
+  gccgw subscription form <input.json>
+  gccgw subscription issue [--dry-run] <input.json>
+  gccgw subscription portal-entry [--dry-run] <input.json>
+  gccgw subscription revoke <tenant-ref> --dry-run
   gccgw platform provisioning-form <input.json>
   gccgw platform issue-subscription [--dry-run] <input.json>
   gccgw platform issue-portal-entry [--dry-run] <input.json>
@@ -746,6 +916,11 @@ No-arg compatibility:
 }
 
 function commandMetadataForNodeScript(command) {
+  if (command.commandName) {
+    const wanted = normalizeCommandQuery(command.commandName);
+    const matched = listCliCommands().find((entry) => normalizeCommandQuery(entry.command) === wanted);
+    if (matched) return matched;
+  }
   return listCliCommands().find((entry) => entry.handler === "node-script" && entry.target === command.script);
 }
 
@@ -862,9 +1037,59 @@ export function resolveCliCommand(argv = []) {
       format: args.includes("--json") ? "json" : "text"
     };
   }
+  if (args[0] === "node" && args[1] === "plan") {
+    return {
+      kind: "install-plan",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "node" && args[1] === "preflight") {
+    return {
+      kind: "install-preflight",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
   if (args[0] === "service" && args[1] === "status") {
     return {
       kind: "service-status",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "node" && args[1] === "status") {
+    return {
+      kind: "service-status",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "backup" && args[1] === "plan") {
+    return {
+      kind: "backup-plan",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "backup" && args[1] === "preflight") {
+    return {
+      kind: "backup-preflight",
+      mode: "backup",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "backup" && args[1] === "restore-preflight") {
+    return {
+      kind: "backup-preflight",
+      mode: "restore",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "release" && args[1] === "plan") {
+    return {
+      kind: "release-plan",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "release" && args[1] === "status") {
+    return {
+      kind: "release-status",
       format: args.includes("--json") ? "json" : "text"
     };
   }
@@ -890,6 +1115,7 @@ export function resolveCliCommand(argv = []) {
     return {
       kind: "node-script",
       script,
+      ...(key.startsWith("subscription ") || key.startsWith("node ") ? { commandName: `gccgw ${key}` } : {}),
       args: args.slice(2)
     };
   }
@@ -983,6 +1209,8 @@ export async function runProxyGatewayCli(argv, {
   runEnvCheck,
   runSelfCheck,
   runInstallPreflight,
+  runBackupPreflight,
+  runReleaseStatus,
   runServiceStatus,
   runNetworkStatus,
   startServer,
@@ -1034,6 +1262,16 @@ export async function runProxyGatewayCli(argv, {
       writeStdout(command.format === "json" ? `${JSON.stringify(plan, null, 2)}\n` : plan);
       return 0;
     }
+    if (command.kind === "backup-plan") {
+      const plan = buildBackupPlan({ format: command.format });
+      writeStdout(command.format === "json" ? `${JSON.stringify(plan, null, 2)}\n` : `${JSON.stringify(plan, null, 2)}\n`);
+      return 0;
+    }
+    if (command.kind === "release-plan") {
+      const plan = buildReleasePlan({ format: command.format });
+      writeStdout(command.format === "json" ? `${JSON.stringify(plan, null, 2)}\n` : `${JSON.stringify(plan, null, 2)}\n`);
+      return 0;
+    }
     if (command.kind === "start-server") {
       return await startServer();
     }
@@ -1062,6 +1300,12 @@ export async function runProxyGatewayCli(argv, {
     }
     if (command.kind === "install-preflight") {
       return await runInstallPreflight(command);
+    }
+    if (command.kind === "backup-preflight") {
+      return await runBackupPreflight(command);
+    }
+    if (command.kind === "release-status") {
+      return await runReleaseStatus(command);
     }
     if (command.kind === "service-status") {
       return await runServiceStatus(command);
