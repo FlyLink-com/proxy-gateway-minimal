@@ -56,6 +56,12 @@ in
 `docs/production-replacement-records/2026-06-01-aliyun-server-project-import-readonly-inventory.md`.
 It confirms the live packaged release layout and safe hash/drift facts without
 copying runtime secrets or mutating production.
+The redacted import manifest and drift matrix lives in
+`docs/SERVER_IMPORT_MANIFEST_2026_06_01.md`; it records which live server
+templates already match Git and which package/template drift needs explanation.
+The detailed node registration and pool contract lives in
+`docs/NODE_REGISTRATION_AND_POOL_CONTRACT.md`; it refines the safe multi-node
+schema for node facts, lifecycle, pools, and health summaries.
 
 ## Repository
 
