@@ -111,6 +111,16 @@ One multi-agent model:
 One simplification map:
   this document defines the cleanup backlog and boundaries.
 
+One master/archive boundary:
+  docs/MASTER_ARCHIVE_BOUNDARY.md defines what stays on master, what moves to
+  archive, what must stay out of Git, and how runtime release state should be
+  referenced.
+
+One lightweight operating/development environment:
+  docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md keeps normal work on the local
+  checkout, local backend/UI processes, safe CLI previews, and focused
+  validation instead of cloud-backed routine development.
+
 One project control plane:
   docs/PROJECT_CONTROL_PLANE.md and project-state/*.json provide compact
   machine-readable current state, lanes, and task orientation for agents and
@@ -119,6 +129,14 @@ One project control plane:
 
 Do not add a new long-lived architecture document unless it fits one of the
 active lanes below and has a clear validation or cleanup path.
+
+Do not keep old workspaces, superseded execution packages, stale draft plans, or
+personal/material experiments on the active `master` reading path once their
+useful facts have been indexed and archived.
+
+Do not turn routine development into production operations. Use Aliyun for the
+approved production boundary, not as the default development workspace or CI
+host.
 
 Do not force every state change into prose. If the update is a compact current
 state, lane, task, or validation summary, prefer `project-state/*.json` plus a

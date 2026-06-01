@@ -128,7 +128,9 @@ What it solves:
 
 Required before choosing this option:
 
-- Resume and update `docs/DOMAIN_HTTPS.md`.
+- Resume and update the historical `docs/archive/DOMAIN_HTTPS.md` only if the
+  old AWS Singapore HTTPS plan is explicitly reactivated; otherwise use
+  `docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md`.
 - Decide final public names, for example:
   - subscription base URL host, such as `sub.<domain>`;
   - Shadowsocks node host, such as `ss-node.<domain>` or equivalent.

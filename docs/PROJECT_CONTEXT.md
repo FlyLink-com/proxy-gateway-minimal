@@ -28,6 +28,15 @@ Do not use this file as:
 
 Detailed navigation lives in `docs/README.md`. Structured project state lives in
 `project-state/*.json`; it is a coordination aid, not a runtime control plane.
+The `master`/archive boundary lives in `docs/MASTER_ARCHIVE_BOUNDARY.md`: keep
+`master` focused on current source, active runbooks, compact current state, and
+safe indexes; move or mirror stale drafts, old workspace notes, and superseded
+execution packages outside the active reading path only after they are indexed.
+The lightweight operating/development environment boundary lives in
+`docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md`: default to local checkout,
+local Node/Admin dev processes, safe CLI previews, optional HP/local Linux
+manual validation, and read-only production observation; do not promote Aliyun,
+HP, archive folders, or production runtime state into the routine dev workspace.
 
 ## Repository
 
@@ -77,7 +86,9 @@ approval gate.
 `docs/PROJECT_OPERATING_MODEL.md` defines stage reporting as an on-demand
 handoff and risk-control tool. The former fixed "every five merged PRs" cadence
 is retired. Create stage reports only after a production gate, a long-running
-work lane, a major product direction change, or an operator request.
+work lane, a major product direction change, or an operator request. Historical
+fixed-cadence PR reports are archived under `docs/archive/stage-reports/` and
+must not be used as current state.
 
 ## Current Product Direction
 
@@ -1566,6 +1577,11 @@ High-value entrypoints:
 - `AGENTS.md` - workflow rules and A/B/C risk gates.
 - `docs/PROJECT_OPERATING_MODEL.md` - source-of-truth layers and work lanes.
 - `docs/PROJECT_SIMPLIFICATION_MAP.md` - cleanup map and complexity hotspots.
+- `docs/MASTER_ARCHIVE_BOUNDARY.md` - `master` versus archive boundary for
+  current source, historical evidence, runtime state, and release manifests.
+- `docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md` - minimal local
+  operator/developer environment, safe CLI preview, validation, production
+  observation, and release-mode boundary.
 - `docs/PROJECT_CONTROL_PLANE.md` - structured project-state model.
 - `docs/VALIDATION_BASELINE.md` - current validation command matrix.
 - `project-state/current.json` - compact current-state snapshot.
