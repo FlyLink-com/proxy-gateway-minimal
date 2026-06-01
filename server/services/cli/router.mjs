@@ -37,17 +37,39 @@ function isHelpArg(value) {
   return value === "help" || value === "--help" || value === "-h";
 }
 
+export function buildPackageScriptSpawn(script, platform = process.platform) {
+  if (!/^[A-Za-z0-9:_-]+$/.test(script)) {
+    throw new Error("Unsupported npm script name");
+  }
+  if (platform === "win32") {
+    return {
+      command: "cmd.exe",
+      args: ["/d", "/s", "/c", `npm.cmd run ${script}`]
+    };
+  }
+  return {
+    command: "npm",
+    args: ["run", script]
+  };
+}
+
 export function buildCliHelp() {
   return `proxy-gateway CLI
 
 Usage:
   proxy-gateway server start
   proxy-gateway project check
+  proxy-gateway project verify [--with-admin]
+  proxy-gateway env check
+  proxy-gateway ops network-status
   proxy-gateway platform <command> [...args]
   proxy-gateway channel <command> [...args]
 
 Common commands:
   proxy-gateway project check
+  proxy-gateway project verify --with-admin
+  proxy-gateway env check
+  proxy-gateway ops network-status
   proxy-gateway platform provisioning-form <input.json>
   proxy-gateway platform issue-subscription [--dry-run] <input.json>
   proxy-gateway platform issue-portal-entry [--dry-run] <input.json>
@@ -71,6 +93,18 @@ export function resolveCliCommand(argv = []) {
   if (args[0] === "server" && (args[1] === undefined || args[1] === "start")) {
     return { kind: "start-server" };
   }
+  if (args[0] === "project" && args[1] === "verify") {
+    return {
+      kind: "project-verify",
+      withAdmin: args.includes("--with-admin")
+    };
+  }
+  if (args[0] === "env" && args[1] === "check") {
+    return { kind: "env-check" };
+  }
+  if (args[0] === "ops" && args[1] === "network-status") {
+    return { kind: "network-status" };
+  }
 
   const key = `${args[0] || ""} ${args[1] || ""}`.trim();
   const script = NODE_SCRIPT_COMMANDS.get(key);
@@ -85,8 +119,83 @@ export function resolveCliCommand(argv = []) {
   throw new Error(`Unknown proxy-gateway command: ${args.join(" ")}`);
 }
 
+function safeIssue(issue) {
+  return {
+    code: String(issue?.code || "unknown"),
+    severity: String(issue?.severity || "unknown")
+  };
+}
+
+function safePort(port) {
+  return {
+    port: Number(port?.port) || 0,
+    listening: port?.listening === true,
+    process: port?.process ? String(port.process) : null
+  };
+}
+
+export function redactNetworkStatus(status) {
+  const ports = {};
+  for (const [name, value] of Object.entries(status?.ports || {})) {
+    ports[name] = safePort(value);
+  }
+
+  return {
+    ok: status?.ok === true,
+    action: String(status?.action || "status"),
+    generatedAt: String(status?.generatedAt || ""),
+    summary: {
+      consoleListening: status?.summary?.consoleListening === true,
+      socksListening: status?.summary?.socksListening === true,
+      httpProxyListening: status?.summary?.httpProxyListening === true,
+      systemProxyTargetOk: status?.summary?.systemProxyTargetOk === true,
+      envProxyTargetOk: status?.summary?.envProxyTargetOk === true,
+      winHttpTargetOk: status?.summary?.winHttpTargetOk === true,
+      clashPotentialConflict: status?.summary?.clashPotentialConflict === true,
+      autostartEnabled: status?.summary?.autostartEnabled === true
+    },
+    ports,
+    issues: (status?.issues || []).map(safeIssue),
+    actions: (status?.actions || []).map((action) => String(action)),
+    redacted: true
+  };
+}
+
+async function runStep(step) {
+  const code = await step();
+  return code === 0 ? 0 : code || 1;
+}
+
+async function runProjectVerify({ withAdmin }, {
+  runGitDiffCheck,
+  runNodeScript,
+  runPackageScript
+}) {
+  const steps = [
+    () => runGitDiffCheck(),
+    () => runNodeScript("scripts/check-project-state.mjs", []),
+    () => runPackageScript("test")
+  ];
+  if (withAdmin) {
+    steps.push(
+      () => runPackageScript("admin:test"),
+      () => runPackageScript("admin:build")
+    );
+  }
+
+  for (const step of steps) {
+    const code = await runStep(step);
+    if (code !== 0) return code;
+  }
+  return 0;
+}
+
 export async function runProxyGatewayCli(argv, {
   runNodeScript,
+  runPackageScript,
+  runGitDiffCheck,
+  runEnvCheck,
+  runNetworkStatus,
   startServer,
   writeStdout = (text) => process.stdout.write(text),
   writeStderr = (text) => process.stderr.write(text)
@@ -102,6 +211,15 @@ export async function runProxyGatewayCli(argv, {
     }
     if (command.kind === "node-script") {
       return await runNodeScript(command.script, command.args);
+    }
+    if (command.kind === "project-verify") {
+      return await runProjectVerify(command, { runGitDiffCheck, runNodeScript, runPackageScript });
+    }
+    if (command.kind === "env-check") {
+      return await runEnvCheck();
+    }
+    if (command.kind === "network-status") {
+      return await runNetworkStatus();
     }
     throw new Error(`Unsupported proxy-gateway command kind: ${command.kind}`);
   } catch (error) {
