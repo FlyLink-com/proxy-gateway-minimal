@@ -164,12 +164,13 @@ Current architecture priorities:
   is request-only and is not automatically issued by the user portal. Requests
   are keyed by safe portal user reference, package, and client target rather
   than customer contact profiles. The
-  protected Admin surface can review requests through a safe management panel
-  with status summary cards, local status filtering, selected-request detail,
-  and approval preview generation, but production entitlement creation,
-  artifact delivery, public portal exposure, payment activation, DNS, Nginx,
-  systemd, firewall, and runtime mutation remain unapproved without separate
-  gates. See
+  protected Admin surface can review requests through a business-readable
+  operations panel with translated status labels, status summary cards, local
+  status filtering, selected-request detail, and approval preview generation.
+  Backend status enums and raw preview JSON remain implementation details, not
+  the primary operator surface. Production entitlement creation, artifact
+  delivery, public portal exposure, payment activation, DNS, Nginx, systemd,
+  firewall, and runtime mutation remain unapproved without separate gates. See
   `docs/superpowers/specs/2026-05-31-admin-approved-user-portal-issuance-design.md`.
 - HP Portal Validation Boundary: HP may be used as an Aliyun-like private
   validation host for the user portal and subscription-control service seams,

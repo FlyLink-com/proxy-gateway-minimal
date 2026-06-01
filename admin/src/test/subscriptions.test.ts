@@ -601,7 +601,7 @@ describe("portal access request admin page", () => {
     };
   }
 
-  test("renders a safe request management panel with summary and status filtering", async () => {
+  test("renders a business-readable request operations console with summary and status filtering", async () => {
     const listPortalAccessRequests = vi.fn(async () => [
       portalRequest(),
       portalRequest({
@@ -639,15 +639,17 @@ describe("portal access request admin page", () => {
       } as unknown as Partial<AdminApiClient>)
     }));
 
-    expect(await screen.findByText("Request management")).not.toBeNull();
-    expect(screen.getByText("Total requests")).not.toBeNull();
-    expect(screen.getAllByText("Pending review").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Approved").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Delivered").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Rejected").length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryByText(/Contact|Telegram|customer@example\.com|subscriptionUrl|token=/i)).toBeNull();
+    expect(await screen.findByText("订阅申请运营台")).not.toBeNull();
+    expect(screen.getByText("全部申请")).not.toBeNull();
+    expect(screen.getAllByText("待审核").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("待发放").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("已发放").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("已拒绝").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("申请队列")).not.toBeNull();
+    expect(screen.getByText("申请详情")).not.toBeNull();
+    expect(screen.queryByText(/pending_admin_review|approved_pending_delivery|Contact|Telegram|customer@example\.com|subscriptionUrl|token=/i)).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Status filter"), { target: { value: "delivered" } });
+    fireEvent.change(screen.getByLabelText("状态筛选"), { target: { value: "delivered" } });
 
     expect(screen.getAllByText("Yearly access").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Monthly access")).toBeNull();
@@ -681,22 +683,23 @@ describe("portal access request admin page", () => {
       } as unknown as Partial<AdminApiClient>)
     }));
 
-    expect(await screen.findByText("Portal requests")).not.toBeNull();
+    expect(await screen.findByText("订阅申请运营台")).not.toBeNull();
     expect(screen.getAllByText("7-day trial").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("pending_admin_review").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("待审核").length).toBeGreaterThanOrEqual(1);
 
-    fireEvent.change(screen.getByLabelText("Approval reference"), { target: { value: "approval_trial_1" } });
-    fireEvent.change(screen.getByLabelText("Operator ref"), { target: { value: "operator_safe_ref" } });
-    fireEvent.change(screen.getByLabelText("Target node"), { target: { value: "channel-lab-b-tuic" } });
-    fireEvent.click(screen.getByRole("button", { name: "Generate approval preview" }));
+    fireEvent.change(screen.getByLabelText("审批编号"), { target: { value: "approval_trial_1" } });
+    fireEvent.change(screen.getByLabelText("操作员"), { target: { value: "operator_safe_ref" } });
+    fireEvent.change(screen.getByLabelText("目标通道节点"), { target: { value: "channel-lab-b-tuic" } });
+    fireEvent.click(screen.getByRole("button", { name: "生成发放预览" }));
 
-    expect(await screen.findByText("approved_pending_delivery")).not.toBeNull();
+    expect(await screen.findByText("发放预览结果")).not.toBeNull();
+    expect(screen.getAllByText("待发放").length).toBeGreaterThanOrEqual(1);
     expect(previewPortalAccessRequestApproval).toHaveBeenCalledWith("pareq_1", {
       approvalRef: "approval_trial_1",
       reviewedByRef: "operator_safe_ref",
       nodeId: "channel-lab-b-tuic"
     });
-    expect(screen.queryByText(/subscriptionUrl|token=/i)).toBeNull();
+    expect(screen.queryByText(/approved_pending_delivery|subscriptionUrl|token=/i)).toBeNull();
   });
 });
 

@@ -64,7 +64,9 @@ It renders facts returned by the user-scoped backend or injected preview client.
 The protected Admin portal-request page is the operator-side review companion to
 the user portal. It may show safe request summary metrics, local status filters,
 selected-request detail, and approval preview output. It must not become the
-production issuance authority by itself.
+production issuance authority by itself. The operator-facing UI should translate
+backend request states into business labels and summarize approval preview facts
+without making raw enums or raw JSON the primary operating surface.
 
 Allowed:
 
@@ -73,6 +75,8 @@ Allowed:
 - Show selected-request metadata such as plan, status, prior trial state,
   reviewed-by ref, reason code, entitlement ref, and access grant ref.
 - Generate safe approval previews through the protected Admin API.
+- Keep backend status enums, raw response payloads, and implementation details
+  behind business-readable labels and summaries.
 
 Not allowed:
 
