@@ -98,6 +98,40 @@ test("gccgw CLI resolves docs navigation commands as read-only project commands"
   });
 });
 
+test("gccgw CLI resolves command-scoped help before dispatching scripts", async () => {
+  assert.deepEqual(resolveCliCommand(["channel", "validate", "--help"]), {
+    kind: "command-help",
+    query: "channel validate"
+  });
+  assert.deepEqual(resolveCliCommand(["platform", "issue-subscription", "--help"]), {
+    kind: "command-help",
+    query: "platform issue-subscription"
+  });
+
+  let stdout = "";
+  const exitCode = await runProxyGatewayCli(["channel", "validate", "--help"], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for command-scoped help");
+    },
+    runPackageScript: async () => {
+      throw new Error("package script must not run for command-scoped help");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for command-scoped help");
+    },
+    writeStdout: (value) => {
+      stdout += value;
+    },
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  assert.match(stdout, /gccgw channel validate/);
+  assert.match(stdout, /Risk: B/);
+  assert.match(stdout, /Alias of: gccgw channel dry-run/);
+  assert.match(stdout, /Docs:/);
+});
+
 test("gccgw CLI resolves stable channel facade commands to existing pipeline scripts", () => {
   assert.deepEqual(resolveCliCommand(["channel", "validate", "config.json"]), {
     kind: "node-script",

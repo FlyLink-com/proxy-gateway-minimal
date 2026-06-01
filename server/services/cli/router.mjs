@@ -386,6 +386,33 @@ export function buildCliDocsMap({ mode = "list", query, format = "text" } = {}) 
   return `${lines.join("\n")}\n`;
 }
 
+function buildCommandHelp({ query }) {
+  const wantedCommand = normalizeCommandQuery(query);
+  const command = listCliCommands().find((entry) => normalizeCommandQuery(entry.command) === wantedCommand);
+  if (!command) {
+    throw new Error(`No gccgw command found for help: ${wantedCommand || "(missing)"}`);
+  }
+  const lines = [
+    command.command,
+    "",
+    command.description,
+    "",
+    `Domain: ${command.domain}`,
+    `Risk: ${command.riskTier}`,
+    `Mode: ${command.mode}`,
+    `Surface: ${command.surface}`,
+    ...(command.aliasOf ? [`Alias of: ${command.aliasOf}`] : []),
+    ...(command.approvalPrompt ? [`Approval prompt: ${command.approvalPrompt}`] : []),
+    ...(command.target ? [`Target: ${command.target}`] : []),
+    `Docs: ${command.sourceDocs.join(", ")}`
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+function hasRegisteredCommand(key) {
+  return NODE_SCRIPT_COMMANDS.has(key) || PACKAGE_SCRIPT_COMMANDS.has(key);
+}
+
 function isHelpArg(value) {
   return value === "help" || value === "--help" || value === "-h";
 }
@@ -587,6 +614,13 @@ export function resolveCliCommand(argv = []) {
     }
     throw new Error(`Unknown gccgw docs command: ${mode}`);
   }
+  const commandKey = `${args[0] || ""} ${args[1] || ""}`.trim();
+  if (hasRegisteredCommand(commandKey) && args.slice(2).some(isHelpArg)) {
+    return {
+      kind: "command-help",
+      query: commandKey
+    };
+  }
   if (args[0] === "server" && (args[1] === undefined || args[1] === "start")) {
     return { kind: "start-server" };
   }
@@ -739,6 +773,10 @@ export async function runProxyGatewayCli(argv, {
     if (command.kind === "docs-map") {
       const docsMap = buildCliDocsMap(command);
       writeStdout(command.format === "json" ? `${JSON.stringify(docsMap, null, 2)}\n` : docsMap);
+      return 0;
+    }
+    if (command.kind === "command-help") {
+      writeStdout(buildCommandHelp(command));
       return 0;
     }
     if (command.kind === "start-server") {
