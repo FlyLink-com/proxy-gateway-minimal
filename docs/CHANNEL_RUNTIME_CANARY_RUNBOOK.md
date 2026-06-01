@@ -1,6 +1,6 @@
 # Channel Runtime Canary Runbook
 
-Last updated: 2026-05-27, Asia/Shanghai.
+Last updated: 2026-06-01, Asia/Shanghai.
 
 > Status:
 > - Type: Active Risk A runbook and implementation gate
@@ -132,6 +132,19 @@ subscription control-plane promotion
 cutover
 ```
 
+## Not Performed Boundary
+
+Unless a later execution record has exact A-tier approval and records matching
+validation evidence, this runbook has not performed:
+
+```text
+runtime deployment
+node, DNS, Nginx, systemd, security-group, or production-config mutation
+tenant, artifact, subscription-output, or SQLite mutation
+operator-device or all-user traffic migration
+promotion or cutover
+```
+
 ## Required Inputs
 
 Every execution record must name these inputs before any mutation:
@@ -156,6 +169,25 @@ expected cleanup action:
 Do not paste protocol credentials, tokens, artifact URLs, subscription URLs,
 private keys, `.env` content, SQLite content, raw access logs, or customer data
 into the execution record.
+
+## Preflight Check
+
+Every execution must complete `Stage 0: Read-Only Inventory` before any runtime,
+host, firewall, config, tenant, artifact, subscription-output, or traffic
+mutation. The preflight record is required to state:
+
+```text
+Risk: A / read-only
+Mutation: none
+Target identity: verified
+Current services/listeners: verified
+Current public behavior: verified
+Secrets/customer data: not printed or copied into Git
+Rollback owner and cleanup action: named
+```
+
+If any Stage 0 fact is stale, missing, or inconsistent with the target approval
+phrase, stop before mutation and refresh the read-only inventory.
 
 ## Stage 0: Read-Only Inventory
 

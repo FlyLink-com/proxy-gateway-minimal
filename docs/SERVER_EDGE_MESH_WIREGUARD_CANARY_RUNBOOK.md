@@ -1,6 +1,6 @@
 # Server Edge Mesh WireGuard Canary Runbook
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-06-01, Asia/Shanghai.
 
 > Status:
 > - Type: Active Risk A runbook
@@ -64,6 +64,25 @@ It is not an opaque artifact migration runbook.
 It is not a Clash/Mihomo client configuration runbook.
 It is not a user VPN or customer traffic migration runbook.
 ```
+
+## Preflight Check
+
+Every execution must complete `Stage 0: Fresh Read-Only Preflight` immediately
+before any WireGuard installation, key generation, security-group change,
+firewall change, service change, route change, config mutation, or validation
+traffic. The preflight record is required to state:
+
+```text
+Risk: A / read-only
+Mutation: none
+Target instance ids, IPs, security groups, and VPC/subnet facts: verified
+Current service health and public non-regression baseline: verified
+Secrets/private keys/customer data: not printed or copied into Git
+Rollback owner and cleanup action: named
+```
+
+If any preflight fact is stale, missing, or inconsistent with the approval
+phrase, stop before mutation.
 
 ## Current Preflight Facts
 
@@ -182,6 +201,19 @@ production config/proxy-servers.json changes
 tenant assignment changes
 subscription YAML output changes
 legacy query-token retirement
+```
+
+## Not Performed Boundary
+
+Unless a later execution record has exact A-tier approval and records matching
+validation evidence, this runbook has not performed:
+
+```text
+WireGuard installation or key generation
+security-group, firewall, service, route, DNS, Nginx, HTTPS, config, or tenant mutation
+subscription-output change
+customer traffic migration
+prod-edge-c membership, database replication, failover, promotion, or cutover
 ```
 
 ## Stage 0: Fresh Read-Only Preflight

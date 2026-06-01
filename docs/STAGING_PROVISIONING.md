@@ -1,6 +1,6 @@
 # Staging Provisioning Runbook
 
-Last updated: 2026-05-23, Asia/Shanghai.
+Last updated: 2026-06-01, Asia/Shanghai.
 
 This runbook turns the staging target decision into an operator checklist. It
 documents how to create, deploy, verify, stop, and destroy a clean staging AWS
@@ -27,6 +27,20 @@ Out of scope:
 - Copying production `.env`, subscription URLs, tenant tokens, or SQLite data.
 - Exposing the admin UI or admin API publicly.
 - Docker, Terraform, Ansible, or automatic CD.
+
+## Not Performed Boundary
+
+Unless a later staging execution record has exact approval and records matching
+validation evidence, this runbook has not performed:
+
+```text
+AWS staging instance or security-group creation
+AWS start, stop, terminate, tag, firewall, or listener mutation
+deployment to a staging host
+staging .env, SQLite, node password, or subscription-token generation
+public gateway or Shadowsocks validation traffic
+cleanup, stop, destroy, or teardown
+```
 
 ## Safety Gates
 
@@ -57,6 +71,26 @@ Create a new clean staging instance
 The alternative approval for rebuilding the stopped historical node is recorded
 in `docs/STAGING_TARGET_DECISION.md`; it is not covered by this clean-instance
 runbook.
+
+## Preflight Check
+
+Every staging execution must complete the `Dry-Run Checklist` before any AWS
+resource creation, deployment, security-group change, listener exposure,
+service start, validation traffic, cleanup, stop, or destroy action. The
+preflight record is required to state:
+
+```text
+Risk: A / read-only until explicit staging approval
+Mutation: none
+Candidate SHA and validation evidence: recorded
+Read-only AWS inventory and production-exclusion checks: verified
+Staging-only secret/data plan: recorded
+Secrets/customer data: not printed or copied into Git
+Cleanup/teardown owner: named
+```
+
+If any preflight fact is stale, missing, or inconsistent with the staging
+approval phrase, stop before mutation and refresh the dry-run evidence.
 
 ## Resource Plan
 
@@ -587,6 +621,13 @@ Passing staging does not deploy production. Before production promotion:
 - Preserve production `.env`, production SQLite data, production node config, and
   Nginx public admin blocking.
 - Require explicit operator approval for production deployment.
+
+## Rollback / Cleanup
+
+Staging rollback means stopping or destroying only the approved staging
+instance and its staging security group. It does not authorize production
+rollback, production service restart, production data restore, or reuse of the
+historical stopped node.
 
 ## Stop Or Destroy Staging
 
