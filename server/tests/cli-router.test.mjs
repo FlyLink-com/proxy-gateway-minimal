@@ -4,6 +4,8 @@ import {
   buildCliArchitectureMap,
   buildCliDocsMap,
   buildGccgwSelfCheckReport,
+  buildInstallPlan,
+  buildInstallPreflightReport,
   buildPackageScriptSpawn,
   buildCliCommandMap,
   buildCliHelp,
@@ -20,6 +22,7 @@ test("gccgw CLI help exposes normalized command groups", () => {
   assert.match(help, /gccgw architecture/);
   assert.match(help, /gccgw docs command/);
   assert.match(help, /gccgw self check/);
+  assert.match(help, /gccgw install plan/);
   assert.match(help, /gccgw platform issue-subscription/);
   assert.match(help, /gccgw channel validate/);
   assert.match(help, /gccgw server start/);
@@ -72,6 +75,30 @@ test("gccgw CLI resolves env, self, and ops checks", () => {
   });
 });
 
+test("gccgw CLI resolves install and service commands without mutating by default", () => {
+  assert.deepEqual(resolveCliCommand(["install", "plan"]), {
+    kind: "install-plan",
+    format: "text"
+  });
+  assert.deepEqual(resolveCliCommand(["install", "plan", "--json"]), {
+    kind: "install-plan",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand(["install", "preflight", "--json"]), {
+    kind: "install-preflight",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand(["service", "status", "--json"]), {
+    kind: "service-status",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand(["install", "bootstrap", "--execute-production-mutation", "--apply"]), {
+    kind: "node-script",
+    script: "scripts/gccgw-install-bootstrap.mjs",
+    args: ["--execute-production-mutation", "--apply"]
+  });
+});
+
 test("gccgw self check report keeps global PATH command optional and redacted", () => {
   const report = buildGccgwSelfCheckReport({
     nodeVersion: "v24.0.0",
@@ -92,6 +119,43 @@ test("gccgw self check report keeps global PATH command optional and redacted", 
   assert.ok(report.guidance.some((item) => item.includes("npm run cli --")));
   assert.ok(report.guidance.some((item) => item.includes("npm link")));
   assert.doesNotMatch(JSON.stringify(report), /TOKEN|SECRET|PASSWORD|subscriptionUrl|C:\\\\/i);
+});
+
+test("gccgw install plan and preflight reports are redacted and explicit about mutation gates", () => {
+  const plan = buildInstallPlan({ format: "json" });
+
+  assert.equal(plan.type, "gccgw_install_plan");
+  assert.equal(plan.riskTier, "A for bootstrap execution");
+  assert.ok(plan.commands.some((command) => command.command === "gccgw install bootstrap --execute-production-mutation --apply"));
+  assert.doesNotMatch(JSON.stringify(plan), /TOKEN|SECRET|PASSWORD|subscriptionUrl|C:\\\\/i);
+
+  const preflight = buildInstallPreflightReport({
+    platform: "linux",
+    files: {
+      packageJson: true,
+      bootstrap: true,
+      consoleUnit: true,
+      ssUnit: true,
+      nginxTemplate: true,
+      envTemplate: true
+    },
+    commands: {
+      node: true,
+      npm: true,
+      git: true,
+      bash: true,
+      systemctl: true,
+      nginx: true
+    },
+    isRoot: false
+  });
+
+  assert.equal(preflight.type, "gccgw_install_preflight");
+  assert.equal(preflight.ok, true);
+  assert.equal(preflight.redacted, true);
+  assert.equal(preflight.checks.rootForBootstrap.ok, false);
+  assert.equal(preflight.checks.rootForBootstrap.required, false);
+  assert.doesNotMatch(JSON.stringify(preflight), /TOKEN|SECRET|PASSWORD|subscriptionUrl|C:\\\\/i);
 });
 
 test("gccgw CLI resolves architecture map as a read-only project command", () => {
@@ -133,6 +197,10 @@ test("gccgw CLI resolves command-scoped help before dispatching scripts", async 
   assert.deepEqual(resolveCliCommand(["platform", "issue-subscription", "--help"]), {
     kind: "command-help",
     query: "platform issue-subscription"
+  });
+  assert.deepEqual(resolveCliCommand(["install", "plan", "--help"]), {
+    kind: "command-help",
+    query: "install plan"
   });
 
   let stdout = "";
@@ -222,6 +290,10 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.ok(names.includes("gccgw docs list"));
   assert.ok(names.includes("gccgw commands"));
   assert.ok(names.includes("gccgw self check"));
+  assert.ok(names.includes("gccgw install plan"));
+  assert.ok(names.includes("gccgw install preflight"));
+  assert.ok(names.includes("gccgw install bootstrap"));
+  assert.ok(names.includes("gccgw service status"));
   assert.ok(names.includes("gccgw project verify"));
   assert.ok(names.includes("gccgw platform issue-subscription"));
   assert.ok(names.includes("gccgw channel validate"));
@@ -254,6 +326,18 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.equal(selfCheck.riskTier, "C");
   assert.equal(selfCheck.mode, "read-only");
   assert.equal(selfCheck.surface, "operator");
+
+  const installBootstrap = commands.find((command) => command.command === "gccgw install bootstrap");
+  assert.equal(installBootstrap.domain, "install");
+  assert.equal(installBootstrap.riskTier, "A");
+  assert.equal(installBootstrap.mode, "execution-gated");
+  assert.equal(installBootstrap.approvalPrompt, "required for --execute-production-mutation");
+  assert.ok(installBootstrap.sourceDocs.includes("ops/edge-node/README.md"));
+
+  const serviceStatus = commands.find((command) => command.command === "gccgw service status");
+  assert.equal(serviceStatus.domain, "service");
+  assert.equal(serviceStatus.riskTier, "C");
+  assert.equal(serviceStatus.mode, "read-only");
 
   const commandMap = buildCliCommandMap({ format: "json" });
   assert.equal(commandMap.type, "gccgw_command_map");
@@ -689,7 +773,7 @@ test("gccgw project verify short-circuits on first failed check", async () => {
   assert.deepEqual(calls, [["git-diff-check"]]);
 });
 
-test("gccgw env check, self check, and ops network status use injected check adapters", async () => {
+test("gccgw env check, install checks, service status, self check, and ops network status use injected adapters", async () => {
   const calls = [];
   const envExit = await runProxyGatewayCli(["env", "check"], {
     runEnvCheck: async () => {
@@ -715,6 +799,30 @@ test("gccgw env check, self check, and ops network status use injected check ada
     writeStdout: () => {},
     writeStderr: () => {}
   });
+  const installPreflightExit = await runProxyGatewayCli(["install", "preflight"], {
+    runInstallPreflight: async (command) => {
+      calls.push(["install-preflight", command.format]);
+      return 0;
+    },
+    runNodeScript: async () => {
+      throw new Error("node script must not run for install preflight");
+    },
+    startServer: async () => 0,
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+  const serviceStatusExit = await runProxyGatewayCli(["service", "status", "--json"], {
+    runServiceStatus: async (command) => {
+      calls.push(["service-status", command.format]);
+      return 0;
+    },
+    runNodeScript: async () => {
+      throw new Error("node script must not run for service status");
+    },
+    startServer: async () => 0,
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
   const networkExit = await runProxyGatewayCli(["ops", "network-status"], {
     runNetworkStatus: async () => {
       calls.push(["network-status"]);
@@ -730,10 +838,14 @@ test("gccgw env check, self check, and ops network status use injected check ada
 
   assert.equal(envExit, 0);
   assert.equal(selfExit, 0);
+  assert.equal(installPreflightExit, 0);
+  assert.equal(serviceStatusExit, 0);
   assert.equal(networkExit, 0);
   assert.deepEqual(calls, [
     ["env-check"],
     ["self-check"],
+    ["install-preflight", "text"],
+    ["service-status", "json"],
     ["network-status"]
   ]);
 });

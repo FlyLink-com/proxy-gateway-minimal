@@ -9,11 +9,13 @@ const DOMAIN_SOURCE_DOCS = {
   channel: ["docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md", "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md"],
   config: ["config/gccgw.config.example.json", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"],
   env: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md"],
+  install: ["ops/README.md", "ops/edge-node/README.md"],
   ops: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md"],
   package: ["docs/RESOURCE_PACKAGE_CLI.md"],
   platform: ["docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md", "docs/CLI_PRODUCTION_PROVISIONING_SOP.md"],
   project: ["docs/PROJECT_CONTEXT.md"],
   server: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md"],
+  service: ["ops/README.md", "ops/edge-node/README.md"],
   site: ["docs/PROJECT_CONTEXT.md"]
 };
 
@@ -54,7 +56,8 @@ const NODE_SCRIPT_COMMAND_ENTRIES = [
   ["platform resource-package", "scripts/platform-resource-package.mjs", "platform", "B", "package", "Build operator delivery package", ["docs/RESOURCE_PACKAGE_CLI.md", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"]],
   ["platform revoke-access", "scripts/platform-revoke-access.mjs", "platform", "A", "dry-run-only", "Plan access revocation"],
   ["platform access-inventory-summary", "scripts/access-model-inventory-summary.mjs", "platform", "C", "summary", "Summarize access model inventory"],
-  ["platform clean-edge-readiness-summary", "scripts/clean-edge-readiness-summary.mjs", "platform", "C", "gate-preview", "Summarize clean edge readiness"]
+  ["platform clean-edge-readiness-summary", "scripts/clean-edge-readiness-summary.mjs", "platform", "C", "gate-preview", "Summarize clean edge readiness"],
+  ["install bootstrap", "scripts/gccgw-install-bootstrap.mjs", "install", "A", "execution-gated", "Apply reviewed edge-node bootstrap materials on a server", ["ops/README.md", "ops/edge-node/README.md"]]
 ];
 
 const PACKAGE_SCRIPT_COMMAND_ENTRIES = [
@@ -75,7 +78,10 @@ const SPECIAL_COMMAND_ENTRIES = [
   ["docs command", null, "project", "C", "read-only", "List source docs for one gccgw command"],
   ["docs domain", null, "project", "C", "read-only", "List source docs for one command domain"],
   ["docs list", null, "project", "C", "read-only", "List docs referenced by the gccgw command map"],
+  ["install plan", null, "install", "C", "read-only", "Show the server installation sequence without touching the host"],
+  ["install preflight", null, "install", "C", "read-only", "Check server bootstrap prerequisites without mutating the host"],
   ["self check", null, "env", "C", "read-only", "Check gccgw bootstrap, local binary, npm script, and PATH availability"],
+  ["service status", null, "service", "C", "read-only", "Read local service, Nginx, and health status without changing runtime state"],
   ["server start", null, "server", "B", "local-runtime", "Start local gateway server"],
   ["project verify", null, "project", "B", "verify", "Run repository verification"],
   ["env check", null, "env", "C", "read-only", "Check local environment shape"],
@@ -197,6 +203,157 @@ export function buildGccgwSelfCheckReport({
       "From the repository root, use: node bin/gccgw.mjs <command>",
       "To use bare gccgw in a shell, run npm link from the repository root or add the npm-linked bin directory to the shell PATH."
     ],
+    redacted: true
+  };
+}
+
+const INSTALL_PLAN_STEPS = [
+  {
+    step: "clone-or-place-checkout",
+    riskTier: "C",
+    command: "git clone <repo-url> /opt/proxy-gateway-minimal",
+    boundary: "Source checkout only; no sensitive values, SQLite, service start, DNS, or Nginx mutation implied."
+  },
+  {
+    step: "install-cli",
+    riskTier: "B",
+    command: "npm ci && npm link && gccgw self check",
+    boundary: "Installs project dependencies and registers the local npm CLI on the host."
+  },
+  {
+    step: "preflight",
+    riskTier: "C",
+    command: "gccgw install preflight --json",
+    boundary: "Read-only host shape check."
+  },
+  {
+    step: "bootstrap",
+    riskTier: "A",
+    command: "gccgw install bootstrap --execute-production-mutation --apply",
+    boundary: "Applies reviewed systemd/Nginx/bootstrap materials only after the interactive Risk A prompt."
+  },
+  {
+    step: "operator-data",
+    riskTier: "A",
+    command: "install approved .env, SQLite backup, and node config by separate runbook",
+    boundary: "Not performed by install plan/preflight/bootstrap; sensitive values and data remain separately gated."
+  },
+  {
+    step: "status",
+    riskTier: "C",
+    command: "gccgw service status --json",
+    boundary: "Read-only systemd/Nginx/health posture check."
+  }
+];
+
+export function buildInstallPlan({ format = "text" } = {}) {
+  const plan = {
+    type: "gccgw_install_plan",
+    generatedBy: "gccgw install plan",
+    riskTier: "A for bootstrap execution",
+    productionAuthority: false,
+    commands: INSTALL_PLAN_STEPS,
+    forbiddenByDefault: [
+      "No .env value copy",
+      "No SQLite copy or restore",
+      "No service start or restart",
+      "No DNS, firewall, cloud, or public Nginx boundary mutation",
+      "No real subscription issuance"
+    ],
+    redacted: true
+  };
+
+  if (format === "json") {
+    return plan;
+  }
+
+  const lines = [
+    "gccgw install plan",
+    "",
+    "This is a read-only plan. It does not install, deploy, start services, copy secrets, restore SQLite, mutate DNS, or issue subscriptions.",
+    "",
+    "Step | Risk | Command | Boundary",
+    "--- | --- | --- | ---",
+    ...plan.commands.map((step) => [
+      step.step,
+      step.riskTier,
+      step.command,
+      step.boundary
+    ].join(" | ")),
+    "",
+    "Forbidden by default:",
+    ...plan.forbiddenByDefault.map((item) => `- ${item}`)
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+export function buildInstallPreflightReport({
+  platform = process.platform,
+  files = {},
+  commands = {},
+  isRoot = false
+} = {}) {
+  const checks = {
+    linuxHost: {
+      ok: platform === "linux",
+      required: true
+    },
+    packageJson: {
+      ok: files.packageJson === true,
+      required: true
+    },
+    bootstrapScript: {
+      ok: files.bootstrap === true,
+      required: true
+    },
+    systemdTemplates: {
+      ok: files.consoleUnit === true && files.ssUnit === true,
+      required: true
+    },
+    nginxTemplate: {
+      ok: files.nginxTemplate === true,
+      required: true
+    },
+    envTemplate: {
+      ok: files.envTemplate === true,
+      required: true
+    },
+    node: {
+      ok: commands.node === true,
+      required: true
+    },
+    npm: {
+      ok: commands.npm === true,
+      required: true
+    },
+    git: {
+      ok: commands.git === true,
+      required: true
+    },
+    bash: {
+      ok: commands.bash === true,
+      required: true
+    },
+    systemctl: {
+      ok: commands.systemctl === true,
+      required: false
+    },
+    nginx: {
+      ok: commands.nginx === true,
+      required: false
+    },
+    rootForBootstrap: {
+      ok: isRoot === true,
+      required: false
+    }
+  };
+
+  return {
+    type: "gccgw_install_preflight",
+    generatedBy: "gccgw install preflight",
+    ok: Object.values(checks).every((check) => check.required !== true || check.ok === true),
+    checks,
+    nextCommand: "gccgw install bootstrap --execute-production-mutation --apply",
     redacted: true
   };
 }
@@ -469,6 +626,10 @@ function hasRegisteredCommand(key) {
   return NODE_SCRIPT_COMMANDS.has(key) || PACKAGE_SCRIPT_COMMANDS.has(key);
 }
 
+function hasKnownCommand(key) {
+  return hasRegisteredCommand(key) || SPECIAL_COMMAND_ENTRIES.some(([command]) => command === key);
+}
+
 function isHelpArg(value) {
   return value === "help" || value === "--help" || value === "-h";
 }
@@ -525,7 +686,11 @@ Usage:
   gccgw docs list [--json]
   gccgw docs domain <domain> [--json]
   gccgw docs command <command> [--json]
+  gccgw install plan [--json]
+  gccgw install preflight [--json]
+  gccgw install bootstrap --execute-production-mutation --apply
   gccgw self check
+  gccgw service status [--json]
   gccgw server start
   gccgw project check
   gccgw project verify [--with-admin]
@@ -550,7 +715,10 @@ Common commands:
   gccgw config validate --profile aliyun-prod
   gccgw docs command platform issue-subscription
   gccgw docs domain platform
+  gccgw install plan
+  gccgw install preflight --json
   gccgw self check
+  gccgw service status --json
   gccgw project check
   gccgw project verify --with-admin
   gccgw env check
@@ -673,7 +841,7 @@ export function resolveCliCommand(argv = []) {
     throw new Error(`Unknown gccgw docs command: ${mode}`);
   }
   const commandKey = `${args[0] || ""} ${args[1] || ""}`.trim();
-  if (hasRegisteredCommand(commandKey) && args.slice(2).some(isHelpArg)) {
+  if (hasKnownCommand(commandKey) && args.slice(2).some(isHelpArg)) {
     return {
       kind: "command-help",
       query: commandKey
@@ -681,6 +849,24 @@ export function resolveCliCommand(argv = []) {
   }
   if (args[0] === "server" && (args[1] === undefined || args[1] === "start")) {
     return { kind: "start-server" };
+  }
+  if (args[0] === "install" && args[1] === "plan") {
+    return {
+      kind: "install-plan",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "install" && args[1] === "preflight") {
+    return {
+      kind: "install-preflight",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "service" && args[1] === "status") {
+    return {
+      kind: "service-status",
+      format: args.includes("--json") ? "json" : "text"
+    };
   }
   if (args[0] === "self" && args[1] === "check") {
     return { kind: "self-check" };
@@ -796,6 +982,8 @@ export async function runProxyGatewayCli(argv, {
   runGitDiffCheck,
   runEnvCheck,
   runSelfCheck,
+  runInstallPreflight,
+  runServiceStatus,
   runNetworkStatus,
   startServer,
   confirmRiskAExecution,
@@ -841,6 +1029,11 @@ export async function runProxyGatewayCli(argv, {
       writeStdout(buildCommandHelp(command));
       return 0;
     }
+    if (command.kind === "install-plan") {
+      const plan = buildInstallPlan({ format: command.format });
+      writeStdout(command.format === "json" ? `${JSON.stringify(plan, null, 2)}\n` : plan);
+      return 0;
+    }
     if (command.kind === "start-server") {
       return await startServer();
     }
@@ -866,6 +1059,12 @@ export async function runProxyGatewayCli(argv, {
     }
     if (command.kind === "self-check") {
       return await runSelfCheck();
+    }
+    if (command.kind === "install-preflight") {
+      return await runInstallPreflight(command);
+    }
+    if (command.kind === "service-status") {
+      return await runServiceStatus(command);
     }
     if (command.kind === "network-status") {
       return await runNetworkStatus();

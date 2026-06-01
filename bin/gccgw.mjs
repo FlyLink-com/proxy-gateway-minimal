@@ -9,6 +9,7 @@ import {
   buildPackageScriptSpawn,
   buildCliHelp,
   buildGccgwSelfCheckReport,
+  buildInstallPreflightReport,
   redactNetworkStatus,
   runProxyGatewayCli
 } from "../server/services/cli/router.mjs";
@@ -119,9 +120,13 @@ function packageJsonFacts() {
 }
 
 function globalGccgwCommandAvailable() {
+  return commandAvailable("gccgw");
+}
+
+function commandAvailable(command) {
   const result = process.platform === "win32"
-    ? spawnSync("where.exe", ["gccgw"], { cwd: rootDir, env: process.env, encoding: "utf8" })
-    : spawnSync("sh", ["-lc", "command -v gccgw >/dev/null 2>&1"], { cwd: rootDir, env: process.env, encoding: "utf8" });
+    ? spawnSync("where.exe", [command], { cwd: rootDir, env: process.env, encoding: "utf8" })
+    : spawnSync("sh", ["-lc", `command -v ${command} >/dev/null 2>&1`], { cwd: rootDir, env: process.env, encoding: "utf8" });
   return result.status === 0;
 }
 
@@ -135,6 +140,98 @@ async function runSelfCheck() {
     globalCommandAvailable: globalGccgwCommandAvailable()
   });
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  return report.ok ? 0 : 1;
+}
+
+function writeReport(report, format) {
+  if (format === "json") {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    return;
+  }
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+}
+
+async function runInstallPreflight(command) {
+  const report = buildInstallPreflightReport({
+    platform: process.platform,
+    files: {
+      packageJson: existsSync(resolve(rootDir, "package.json")),
+      bootstrap: existsSync(resolve(rootDir, "ops/edge-node/bootstrap.sh")),
+      consoleUnit: existsSync(resolve(rootDir, "ops/edge-node/systemd/proxy-gateway-console.service")),
+      ssUnit: existsSync(resolve(rootDir, "ops/edge-node/systemd/proxy-gateway-ss.service")),
+      nginxTemplate: existsSync(resolve(rootDir, "ops/edge-node/nginx/proxy-gateway-public.conf")),
+      envTemplate: existsSync(resolve(rootDir, "ops/edge-node/templates/env.example"))
+    },
+    commands: {
+      node: commandAvailable("node"),
+      npm: commandAvailable("npm"),
+      git: commandAvailable("git"),
+      bash: commandAvailable("bash"),
+      systemctl: commandAvailable("systemctl"),
+      nginx: commandAvailable("nginx")
+    },
+    isRoot: typeof process.getuid === "function" && process.getuid() === 0
+  });
+  writeReport(report, command.format);
+  return report.ok ? 0 : 1;
+}
+
+function serviceActive(serviceName) {
+  if (process.platform !== "linux") {
+    return {
+      supported: false,
+      active: false
+    };
+  }
+  const result = spawnSync("systemctl", ["is-active", serviceName], {
+    cwd: rootDir,
+    env: process.env,
+    encoding: "utf8"
+  });
+  return {
+    supported: true,
+    active: result.status === 0
+  };
+}
+
+function commandStatus(command, args) {
+  if (process.platform !== "linux") {
+    return {
+      supported: false,
+      ok: false
+    };
+  }
+  const result = spawnSync(command, args, {
+    cwd: rootDir,
+    env: process.env,
+    encoding: "utf8"
+  });
+  return {
+    supported: true,
+    ok: result.status === 0
+  };
+}
+
+async function runServiceStatus(command) {
+  const report = {
+    type: "gccgw_service_status",
+    generatedBy: "gccgw service status",
+    ok: false,
+    platform: process.platform,
+    services: {
+      console: serviceActive("proxy-gateway-console.service"),
+      shadowsocks: serviceActive("proxy-gateway-ss.service"),
+      nginx: serviceActive("nginx.service")
+    },
+    checks: {
+      nginxConfig: commandStatus("nginx", ["-t"]),
+      localHealth: commandStatus("curl", ["-fsS", "http://127.0.0.1:3456/api/health"])
+    },
+    redacted: true
+  };
+  report.ok = Object.values(report.services).every((service) => service.supported && service.active)
+    && Object.values(report.checks).every((check) => check.supported && check.ok);
+  writeReport(report, command.format);
   return report.ok ? 0 : 1;
 }
 
@@ -181,6 +278,8 @@ try {
     runGitDiffCheck,
     runEnvCheck,
     runSelfCheck,
+    runInstallPreflight,
+    runServiceStatus,
     runNetworkStatus,
     startServer,
     confirmRiskAExecution
