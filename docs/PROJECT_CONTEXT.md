@@ -37,6 +37,11 @@ The lightweight operating/development environment boundary lives in
 local Node/Admin dev processes, safe CLI previews, optional HP/local Linux
 manual validation, and read-only production observation; do not promote Aliyun,
 HP, archive folders, or production runtime state into the routine dev workspace.
+The server project import boundary lives in
+`docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
+repository with the live server through read-only, redacted inventory; never
+copy `.env`, SQLite, handoff files, raw logs, subscription URLs, tokens,
+credentials, or customer data into Git.
 
 ## Repository
 
@@ -1582,6 +1587,8 @@ High-value entrypoints:
 - `docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md` - minimal local
   operator/developer environment, safe CLI preview, validation, production
   observation, and release-mode boundary.
+- `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md` - redacted live-server project import
+  boundary before deeper code/function refactoring.
 - `docs/PROJECT_CONTROL_PLANE.md` - structured project-state model.
 - `docs/VALIDATION_BASELINE.md` - current validation command matrix.
 - `project-state/current.json` - compact current-state snapshot.
