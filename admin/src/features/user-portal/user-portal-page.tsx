@@ -1,23 +1,24 @@
 import { useMemo, useState, type FormEvent } from "react";
 import {
+  CalendarDays,
   CircleCheck,
-  CircleX,
   Copy,
-  Download,
-  FileText,
-  HelpCircle,
-  LayoutDashboard,
-  ListChecks,
+  Headphones,
+  History,
+  LifeBuoy,
   PackageCheck,
   ReceiptText,
+  RefreshCw,
   ShieldCheck,
   User,
   Wifi
 } from "lucide-react";
 import { copyText } from "../../lib/clipboard";
+import { errorMessage } from "../../lib/errors";
 import { cn } from "../../lib/utils";
 import type {
   PortalClientId,
+  PortalHistoryRecord,
   PortalPlanId,
   PortalSession,
   PortalSubscriptionRequest,
@@ -25,154 +26,189 @@ import type {
 } from "./user-portal-client";
 
 type AuthMode = "login" | "signup";
-type PortalView = "dashboard" | "subscription" | "use" | "check" | "support" | "profile";
+type PortalView = "subscription" | "use" | "support" | "profile";
 
 type PortalPlan = {
   id: PortalPlanId;
   label: string;
-  price: string;
+  billingCycle: string;
+  priceLabel: string;
   description: string;
-  quota: string;
+  highlights: string[];
 };
 
 type CreatedSubscription = {
   request: PortalSubscriptionRequest;
+  action: "opening_requested" | "refreshed";
+  previousInvalidatedAt?: string;
 };
+
+type SubscriptionLifecycle = "none" | "pending" | "active" | "expired";
 
 const plans: PortalPlan[] = [
   {
-    id: "starter",
-    label: "Starter",
-    price: "Trial",
-    description: "单用户试用入口，由运营侧审核后生成一个受控订阅。",
-    quota: "1 profile"
+    id: "trial",
+    label: "7 天试用",
+    billingCycle: "管理员发放后 7 天",
+    priceLabel: "Trial",
+    description: "先申请试用，审核通过后由管理员发放。",
+    highlights: ["申请制", "管理员审批", "默认每个账户一次"]
   },
   {
-    id: "professional",
-    label: "Professional",
-    price: "Standard",
-    description: "默认个人套餐，适合稳定日常订阅刷新和客户端导入。",
-    quota: "3 profiles"
+    id: "monthly",
+    label: "月卡",
+    billingCycle: "30 天",
+    priceLabel: "Monthly",
+    description: "适合先开通体验，按月管理订阅有效期。",
+    highlights: ["一个受控订阅", "有效期 30 天", "可刷新替换旧订阅"]
   },
   {
-    id: "team",
-    label: "Team",
-    price: "Managed",
-    description: "团队或商务客户入口，生命周期变更需要运营侧确认。",
-    quota: "10 profiles"
+    id: "yearly",
+    label: "年卡",
+    billingCycle: "365 天",
+    priceLabel: "Yearly",
+    description: "适合长期使用，减少频繁续期开通成本。",
+    highlights: ["一个受控订阅", "有效期 365 天", "可刷新替换旧订阅"]
   }
 ];
 
 const clientTargets: Array<{ id: PortalClientId; label: string }> = [
-  { id: "clash", label: "Clash" },
-  { id: "mihomo", label: "Mihomo" },
+  { id: "clash", label: "Clash / Mihomo" },
   { id: "karing", label: "Karing" }
 ];
 
-const navItems: Array<{ id: PortalView; label: string; icon: typeof LayoutDashboard }> = [
-  { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+const navItems: Array<{ id: PortalView; label: string; icon: typeof ReceiptText }> = [
   { id: "subscription", label: "订阅管理", icon: ReceiptText },
-  { id: "use", label: "开始使用", icon: Wifi },
-  { id: "check", label: "安全清单", icon: ListChecks },
-  { id: "support", label: "客服支持", icon: HelpCircle },
+  { id: "use", label: "使用教程", icon: Wifi },
+  { id: "support", label: "客服支持", icon: Headphones },
   { id: "profile", label: "个人中心", icon: User }
 ];
 
-const appDownloads = [
-  { label: "Clash Verge Rev", platform: "Windows / macOS", note: "推荐桌面客户端" },
-  { label: "FlClash", platform: "iOS / Android", note: "移动端导入入口" },
-  { label: "Mihomo Party", platform: "Linux / Advanced", note: "高级客户端" }
-];
-
-const onboardingGuides = [
-  {
-    platform: "Windows / macOS",
-    app: "Clash Verge Rev",
-    steps: ["复制订阅链接", "Profiles 中粘贴导入", "选择规则模式", "打开系统代理"]
-  },
-  {
-    platform: "iOS / Android",
-    app: "FlClash / Karing",
-    steps: ["安装移动端客户端", "从剪贴板导入订阅", "更新配置", "选择延迟较低的节点"]
-  },
-  {
-    platform: "Linux / Advanced",
-    app: "Mihomo Party",
-    steps: ["导入订阅配置", "检查端口和系统代理", "按需开启 TUN", "保留原配置作为回退"]
-  }
-];
-
-const faqItems = [
-  {
-    question: "更新订阅失败怎么办？",
-    answer: "先复制最新订阅链接重新导入，再检查系统时间、网络代理和客户端版本。"
-  },
-  {
-    question: "为什么有些网站仍显示原 IP？",
-    answer: "通常是系统代理未开启、规则未命中、DNS 缓存或浏览器已有连接未重建导致。"
-  },
-  {
-    question: "换设备后需要重新生成订阅吗？",
-    answer: "当前 MVP 允许复制同一受控订阅；正式设备限制会在阿里云平台侧单独接入。"
-  }
-];
-
-const subscriptionStates = [
-  { label: "未购买", description: "选择套餐后由运营侧生成订阅。", activeWhenCreated: false },
-  { label: "已可用", description: "订阅链接已生成，可复制到客户端。", activeWhenCreated: true },
-  { label: "即将过期", description: "后续接入续费提醒和到期通知。", activeWhenCreated: false },
-  { label: "已过期", description: "后续接入恢复购买和历史记录。", activeWhenCreated: false }
-];
-
-const supportChannels = [
-  { title: "工单系统", status: "待接入", detail: "提交客户端、系统版本、错误截图和订阅导入状态。" },
-  { title: "邮箱支持", status: "待配置", detail: "用于订单、账号和长期问题追踪，不在仓库写入真实地址。" },
-  { title: "即时消息", status: "待配置", detail: "用于紧急联络和状态通知，不在 MVP 中接入外部客服。" }
-];
-
-const profileModules = [
-  { title: "设备管理", detail: "后续展示已导入订阅的设备和最近活跃时间。" },
-  { title: "账单记录", detail: "后续展示套餐、续费、退款和开票状态。" },
-  { title: "账号安全", detail: "后续接入密码、二次验证和登录会话管理。" }
-];
-
 const usageSteps = [
-  "下载对应设备的应用。",
-  "复制订阅链接到应用。",
-  "代理中选择住宅节点或已分配节点。",
-  "进入设置并打开系统代理。",
-  "开启规则模式后再访问目标服务。"
+  {
+    title: "下载客户端",
+    detail: "Windows / macOS 推荐 Clash Verge Rev；移动端使用支持订阅导入的客户端。"
+  },
+  {
+    title: "复制订阅",
+    detail: "订阅生成后复制链接。刷新订阅后请重新复制新链接，旧订阅会失效。"
+  },
+  {
+    title: "导入配置",
+    detail: "在客户端中选择从 URL 导入或订阅导入，粘贴链接后保存。"
+  },
+  {
+    title: "开始使用",
+    detail: "更新订阅，选择节点或规则模式，再打开系统代理。"
+  }
 ];
 
-const checklist = {
-  recommended: [
-    "保持订阅链接私密，仅在自己的设备中导入。",
-    "先更新订阅，再判断节点是否异常。",
-    "只保留一个系统代理或 VPN 入口。",
-    "更换设备前确认旧客户端已停止连接。",
-    "遇到问题时保留客户端、系统版本和错误截图。"
-  ],
-  forbidden: [
-    "不要使用已经暴露在普通代理下的账号。",
-    "关闭其他 VPN，避免本地链路冲突。",
-    "不要共享订阅链接或账号。",
-    "清理旧代理配置残留后再导入。",
-    "出现异常时先更新订阅并重启客户端。"
-  ]
-};
+const supportItems = [
+  {
+    title: "在线客服",
+    status: "预留",
+    detail: "后续可接入 Telegram 机器人助手，由机器人收集问题并转人工处理。"
+  },
+  {
+    title: "人工支持",
+    status: "预留",
+    detail: "用于订单、订阅刷新失败、客户端导入失败等需要人工判断的问题。"
+  },
+  {
+    title: "问题材料",
+    status: "建议",
+    detail: "联系支持时保留客户端名称、系统版本、错误截图和最近一次刷新时间。"
+  }
+];
 
-function selectedPlanLabel(planId: PortalPlanId) {
-  return plans.find((plan) => plan.id === planId)?.label ?? "Professional";
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "订阅生成失败。";
+function selectedPlan(planId: PortalPlanId) {
+  return plans.find((plan) => plan.id === planId) ?? plans[0];
 }
 
 function displayNameFromEmail(email: string) {
   const normalized = email.trim();
   if (!normalized) return "User";
   return normalized.includes("@") ? normalized.split("@")[0] : normalized;
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
+
+function resolveLifecycle(created: CreatedSubscription | null): SubscriptionLifecycle {
+  if (!created) return "none";
+  return created.request.lifecycle;
+}
+
+function lifecycleLabel(lifecycle: SubscriptionLifecycle) {
+  switch (lifecycle) {
+    case "active":
+      return "服务生效中";
+    case "pending":
+      return "等待管理员审核";
+    case "expired":
+      return "已过期";
+    default:
+      return "未开通";
+  }
+}
+
+function subscriptionCtaLabel(lifecycle: SubscriptionLifecycle, pending: boolean) {
+  if (pending) return "处理中";
+  if (lifecycle === "active") return "刷新当前订阅";
+  if (lifecycle === "pending") return "等待审核中";
+  if (lifecycle === "expired") return "重新提交申请";
+  return "提交申请";
+}
+
+function topbarDescription(view: PortalView) {
+  switch (view) {
+    case "subscription":
+      return "7 天试用 / 月卡 / 年卡均提交申请，管理员审核发放后才显示订阅。";
+    case "use":
+      return "查看客户端导入步骤和订阅刷新后的使用方式。";
+    case "support":
+      return "处理授权确认、订阅异常和人工支持请求。";
+    case "profile":
+      return "查看账户基础信息与历史记录。";
+    default:
+      return "";
+  }
+}
+
+function subscriptionPlan(created: CreatedSubscription | null, fallbackPlanId: PortalPlanId) {
+  return selectedPlan(created?.request.planId ?? fallbackPlanId);
+}
+
+function expiryDisplay(created: CreatedSubscription | null, lifecycle: SubscriptionLifecycle) {
+  if (!created) return "无";
+  if (lifecycle === "pending") return "待管理员发放";
+  if (lifecycle === "expired") return `${formatDateTime(created.request.expiresAt)}（已过期）`;
+  return `${formatDateTime(created.request.expiresAt)} 到期`;
+}
+
+function sidebarSubscriptionSummary(
+  created: CreatedSubscription | null,
+  lifecycle: SubscriptionLifecycle,
+  fallbackPlanId: PortalPlanId
+) {
+  if (!created) return "未开通套餐";
+  const plan = subscriptionPlan(created, fallbackPlanId);
+  if (lifecycle === "pending") return `${plan.label} · 待审核`;
+  if (lifecycle === "expired") return `${plan.label} · 已过期`;
+  return `${plan.label} · ${formatDateTime(created.request.expiresAt)} 到期`;
+}
+
+function historyRecord(historySummary: PortalHistoryRecord[]) {
+  const latest = historySummary[0];
+  if (!latest) return "暂无完成套餐记录";
+  return `${formatDateTime(latest.occurredAt)} - ${latest.label}`;
 }
 
 export function UserPortalPage({
@@ -182,30 +218,28 @@ export function UserPortalPage({
   onBackToAdmin?: () => void;
 }) {
   const [authMode, setAuthMode] = useState<AuthMode>("login");
-  const [authenticated, setAuthenticated] = useState(false);
   const [portalSession, setPortalSession] = useState<PortalSession | null>(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [verificationCode, setVerificationCode] = useState("");
-  const [activeView, setActiveView] = useState<PortalView>("dashboard");
-  const [selectedPlan, setSelectedPlan] = useState<PortalPlanId>("professional");
+  const [activeView, setActiveView] = useState<PortalView>("subscription");
+  const [selectedPlanId, setSelectedPlanId] = useState<PortalPlanId>("monthly");
   const [clientTarget, setClientTarget] = useState<PortalClientId>("clash");
-  const [email, setEmail] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [durationDays, setDurationDays] = useState("30");
   const [authError, setAuthError] = useState("");
   const [pending, setPending] = useState(false);
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
   const [created, setCreated] = useState<CreatedSubscription | null>(null);
-  const [copied, setCopied] = useState("");
+  const [copied, setCopied] = useState(false);
+  const [historySummary, setHistorySummary] = useState<PortalHistoryRecord[]>([]);
 
-  const activePlan = useMemo(
-    () => plans.find((plan) => plan.id === selectedPlan) ?? plans[1],
-    [selectedPlan]
-  );
-
-  const userEmail = email.trim() || authEmail.trim();
-  const userDisplayName = displayName.trim() || portalSession?.displayName || displayNameFromEmail(userEmail);
+  const activePlan = useMemo(() => selectedPlan(selectedPlanId), [selectedPlanId]);
+  const userEmail = authEmail.trim();
+  const userDisplayName = portalSession?.displayName ?? displayNameFromEmail(userEmail);
+  const registrationDate = portalSession?.registeredAt ?? new Date("2026-05-31T00:00:00.000Z").toISOString();
+  const lifecycle = resolveLifecycle(created);
+  const isReady = lifecycle === "active";
+  const isWaiting = lifecycle === "pending";
+  const currentPlan = subscriptionPlan(created, selectedPlanId);
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -217,53 +251,73 @@ export function UserPortalPage({
         password: authPassword,
         verificationCode
       });
+      const portalState = await portalClient.fetchCurrentState({ userRef: session.userRef });
       setPortalSession(session);
-      setEmail((current) => current || authEmail.trim());
-      setDisplayName((current) => current || session.displayName);
-      setAuthenticated(true);
+      if (portalState.subscriptionRequest) {
+        setCreated({
+          request: portalState.subscriptionRequest,
+          action: "opening_requested",
+          previousInvalidatedAt: portalState.subscriptionRequest.event?.occurredAt
+        });
+        setSelectedPlanId(portalState.subscriptionRequest.planId);
+        setClientTarget(portalState.subscriptionRequest.clientTarget);
+      } else {
+        setCreated(null);
+      }
+      setHistorySummary(portalState.historySummary ?? []);
+      setActiveView("subscription");
     } catch (requestError) {
-      setAuthError(errorMessage(requestError));
+      setAuthError(errorMessage(requestError, "操作失败。"));
     }
   }
 
   async function submitSubscription(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setActionError("");
+    setCopied(false);
     setPending(true);
-    setError("");
-    setCopied("");
     try {
-      const result = await portalClient.requestSubscription({
-        userRef: portalSession?.userRef ?? "",
-        displayName: userDisplayName,
-        email: userEmail,
-        planId: selectedPlan,
-        clientTarget,
-        durationDays: Number(durationDays)
-      });
+      const wasActive = lifecycle === "active";
+      const userRef = portalSession?.userRef ?? "";
+      const result = wasActive && created
+        ? await portalClient.refreshSubscription({
+            userRef,
+            requestRef: created.request.requestRef,
+            clientTarget
+          })
+        : await portalClient.applyForSubscription({
+            userRef,
+            planId: selectedPlanId,
+            clientTarget,
+            requestOnly: true
+          });
       setCreated({
-        request: result
+        request: result,
+        action: wasActive ? "refreshed" : "opening_requested",
+        previousInvalidatedAt: result.event?.occurredAt
       });
-      setActiveView("use");
+      setHistorySummary(result.historySummary ?? historySummary);
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setActionError(errorMessage(requestError, "操作失败。"));
     } finally {
       setPending(false);
     }
   }
 
-  async function copySubscriptionUrl(value: string, label: string) {
-    await copyText(value);
-    setCopied(label);
-    window.setTimeout(() => setCopied(""), 1800);
+  async function copySubscriptionUrl() {
+    if (!created?.request.subscriptionUrl) return;
+    await copyText(created.request.subscriptionUrl);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1800);
   }
 
-  if (!authenticated) {
+  if (!portalSession) {
     return (
       <main className="portal-auth-shell">
         <section className="portal-auth-card" aria-label="用户登录">
           <div className="portal-auth-header">
-            <h1>{authMode === "login" ? "Log in" : "Sign up"}</h1>
-            <p>{authMode === "login" ? "欢迎回来，请登录您的账户" : "创建新账户，开始使用我们的服务"}</p>
+            <h1>{authMode === "login" ? "登录" : "注册"}</h1>
+            <p>{authMode === "login" ? "登录后管理你的套餐和订阅。" : "用邮箱创建账户，进入订阅管理。"}</p>
           </div>
 
           <form className="portal-auth-form" onSubmit={submitAuth}>
@@ -324,392 +378,314 @@ export function UserPortalPage({
     );
   }
 
-  const currentTitle = navItems.find((item) => item.id === activeView)?.label ?? "Dashboard";
-  const statusLabel = created ? selectedPlanLabel(selectedPlan) : "暂无会员";
-
   return (
-    <main className="portal-use-shell">
-      <aside className="portal-use-sidebar">
-        <div className="portal-user-card">
-          <span className="portal-avatar">{userDisplayName.charAt(0).toUpperCase()}</span>
-          <div>
-            <strong>{userDisplayName}</strong>
-            <small>{statusLabel}</small>
-          </div>
-        </div>
-
-        <nav className="portal-use-nav" aria-label="用户中心导航">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                className={cn("portal-use-nav-item", activeView === item.id && "active")}
-                onClick={() => setActiveView(item.id)}
-              >
-                <Icon aria-hidden="true" />
-                <span>{item.label}</span>
-              </button>
-            );
-          })}
-        </nav>
-      </aside>
-
-      <section className="portal-use-main">
-        <header className="portal-use-topbar">
-          <div>
-            <h1>{currentTitle}</h1>
-            <p>订阅、下载、使用步骤和清单集中在一个用户后台内。</p>
-          </div>
-          <span className={cn("portal-status-pill", created && "active")}>
-            {created ? "订阅可用" : "待购买套餐"}
-          </span>
-        </header>
-
-        {activeView === "dashboard" ? renderDashboard(created, selectedPlan) : null}
-        {activeView === "subscription" ? (
-          <SubscriptionManager
-            activePlan={activePlan}
-            clientTarget={clientTarget}
-            durationDays={durationDays}
-            email={email}
-            error={error}
-            pending={pending}
-            selectedPlan={selectedPlan}
-            setClientTarget={setClientTarget}
-            setDurationDays={setDurationDays}
-            setEmail={setEmail}
-            setDisplayName={setDisplayName}
-            setSelectedPlan={setSelectedPlan}
-            submitSubscription={submitSubscription}
-            displayName={displayName}
-          />
-        ) : null}
-        {activeView === "use" ? (
-          <UseInstructions
-            copied={copied}
-            created={created}
-            copySubscriptionUrl={copySubscriptionUrl}
-          />
-        ) : null}
-        {activeView === "check" ? <Checklist /> : null}
-        {activeView === "support" ? <SupportPanel /> : null}
-        {activeView === "profile" ? (
-          <ProfilePanel email={userEmail} displayName={userDisplayName} created={created} />
-        ) : null}
-      </section>
-    </main>
-  );
-}
-
-function renderDashboard(created: CreatedSubscription | null, selectedPlan: PortalPlanId) {
-  const isPendingReview = created?.request.status === "ready_for_operator_review";
-  return (
-    <div className="portal-dashboard-grid">
-      <section className="portal-use-card portal-package-card">
-        <div>
-          <span className="portal-card-label">套餐状态</span>
-          <h2>{created ? selectedPlanLabel(selectedPlan) : "未购买套餐"}</h2>
-          <p>
-            {isPendingReview
-              ? "订阅申请已提交，等待运营授权。"
-              : created
-                ? "订阅已生成，可进入开始使用复制链接。"
-                : "请选择适合的套餐后生成订阅。"}
-          </p>
-        </div>
-        <div className="portal-traffic-meter">
-          <span style={{ width: created ? (isPendingReview ? "28%" : "68%") : "8%" }} />
-        </div>
-        <small>{isPendingReview ? "等待运营授权" : created ? "本期流量正常" : "暂无会员"}</small>
-      </section>
-
-      <section className="portal-use-card">
-        <span className="portal-card-label">快捷入口</span>
-        <div className="portal-quick-grid">
-          <span><PackageCheck aria-hidden="true" /> 购买套餐</span>
-          <span><Wifi aria-hidden="true" /> 开始使用</span>
-          <span><ListChecks aria-hidden="true" /> 使用清单</span>
-          <span><User aria-hidden="true" /> 个人中心</span>
-        </div>
-      </section>
-
-      <section className="portal-use-card">
-        <span className="portal-card-label">订阅状态</span>
-        <div className="portal-state-grid">
-          {subscriptionStates.map((state) => (
-            <div
-              className={cn(
-                "portal-state-item",
-                created === null && state.label === "未购买" && "active",
-                created !== null && state.activeWhenCreated && "active"
-              )}
-              key={state.label}
-            >
-              <strong>{state.label}</strong>
-              <small>{state.description}</small>
+    <>
+      <main className="portal-use-shell">
+        <aside className="portal-use-sidebar">
+          <div className="portal-user-card">
+            <span className="portal-avatar">{userDisplayName.charAt(0).toUpperCase()}</span>
+            <div>
+              <strong>{userDisplayName}</strong>
+              <small>{sidebarSubscriptionSummary(created, lifecycle, selectedPlanId)}</small>
             </div>
-          ))}
-        </div>
-      </section>
-    </div>
+          </div>
+
+          <nav className="portal-use-nav" aria-label="用户中心导航">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={cn("portal-use-nav-item", activeView === item.id && "active")}
+                  onClick={() => setActiveView(item.id)}
+                >
+                  <Icon aria-hidden="true" />
+                  <span>{item.label}</span>
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <section className="portal-use-main">
+          <header className="portal-use-topbar">
+            <div>
+              <h1>{navItems.find((item) => item.id === activeView)?.label}</h1>
+              <p>{topbarDescription(activeView)}</p>
+            </div>
+            <span className={cn("portal-status-pill", created && "active")}>
+              {lifecycleLabel(lifecycle)}
+            </span>
+          </header>
+
+          {activeView === "subscription" ? (
+            <SubscriptionManager
+              activePlan={activePlan}
+              actionError={actionError}
+              clientTarget={clientTarget}
+              copied={copied}
+              created={created}
+              isReady={isReady}
+              isWaiting={isWaiting}
+              lifecycle={lifecycle}
+              pending={pending}
+              selectedPlanId={selectedPlanId}
+              setActiveView={setActiveView}
+              setClientTarget={setClientTarget}
+              setSelectedPlanId={setSelectedPlanId}
+              submitSubscription={submitSubscription}
+              copySubscriptionUrl={copySubscriptionUrl}
+              userRef={portalSession.userRef}
+            />
+          ) : null}
+          {activeView === "use" ? <UseGuide created={created} setActiveView={setActiveView} /> : null}
+          {activeView === "support" ? <SupportPanel /> : null}
+          {activeView === "profile" ? (
+            <ProfilePanel
+              created={created}
+              currentPlan={currentPlan}
+              historySummary={historySummary}
+              lifecycle={lifecycle}
+              registrationDate={registrationDate}
+              userEmail={userEmail}
+              userRef={portalSession.userRef}
+            />
+          ) : null}
+        </section>
+      </main>
+    </>
   );
 }
 
 function SubscriptionManager({
   activePlan,
+  actionError,
   clientTarget,
-  displayName,
-  durationDays,
-  email,
-  error,
-  pending,
-  selectedPlan,
-  setClientTarget,
-  setDisplayName,
-  setDurationDays,
-  setEmail,
-  setSelectedPlan,
-  submitSubscription
-}: {
-  activePlan: PortalPlan;
-  clientTarget: PortalClientId;
-  displayName: string;
-  durationDays: string;
-  email: string;
-  error: string;
-  pending: boolean;
-  selectedPlan: PortalPlanId;
-  setClientTarget: (value: PortalClientId) => void;
-  setDisplayName: (value: string) => void;
-  setDurationDays: (value: string) => void;
-  setEmail: (value: string) => void;
-  setSelectedPlan: (value: PortalPlanId) => void;
-  submitSubscription: (event: FormEvent<HTMLFormElement>) => void;
-}) {
-  return (
-    <form className="portal-use-card portal-subscription-form" onSubmit={submitSubscription}>
-      <div>
-        <span className="portal-card-label">Select a Plan</span>
-        <h2>订阅管理</h2>
-        <p>请选择适合您的套餐后生成订阅。当前实现仍由运营后台 API 受控创建，不开放公开支付或真实自助注册。</p>
-      </div>
-
-      <div className="portal-plan-list">
-        {plans.map((plan) => (
-          <button
-            key={plan.id}
-            type="button"
-            className={cn("portal-plan-row", selectedPlan === plan.id && "active")}
-            onClick={() => setSelectedPlan(plan.id)}
-            aria-pressed={selectedPlan === plan.id}
-          >
-            <span>
-              <strong>{plan.label}</strong>
-              <small>{plan.description}</small>
-            </span>
-            <b>{plan.price}</b>
-          </button>
-        ))}
-      </div>
-
-      <p className="portal-plan-note">{activePlan.quota}</p>
-
-      <div className="portal-form-grid">
-        <label>
-          <span>用户邮箱</span>
-          <input
-            type="email"
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-            required
-          />
-        </label>
-        <label>
-          <span>显示名称</span>
-          <input
-            value={displayName}
-            onChange={(event) => setDisplayName(event.target.value)}
-            required
-          />
-        </label>
-        <label>
-          <span>有效期</span>
-          <select value={durationDays} onChange={(event) => setDurationDays(event.target.value)}>
-            <option value="30">30 天</option>
-            <option value="90">90 天</option>
-            <option value="365">365 天</option>
-          </select>
-        </label>
-        <label>
-          <span>客户端</span>
-          <select value={clientTarget} onChange={(event) => setClientTarget(event.target.value as PortalClientId)}>
-            {clientTargets.map((target) => (
-              <option key={target.id} value={target.id}>{target.label}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-
-      {error ? <div className="alert alert-error">{error}</div> : null}
-
-      <button className="portal-primary-button" type="submit" disabled={pending}>
-        {pending ? "生成中" : "生成订阅"}
-      </button>
-    </form>
-  );
-}
-
-function UseInstructions({
   copied,
   created,
-  copySubscriptionUrl
+  isReady,
+  isWaiting,
+  lifecycle,
+  pending,
+  selectedPlanId,
+  setActiveView,
+  setClientTarget,
+  setSelectedPlanId,
+  submitSubscription,
+  copySubscriptionUrl,
+  userRef
 }: {
-  copied: string;
-  created: CreatedSubscription | null;
-  copySubscriptionUrl: (value: string, label: string) => Promise<void>;
-}) {
-  const subscriptionUrl = created?.request.subscriptionUrl ?? "";
-  const isPendingReview = created?.request.status === "ready_for_operator_review";
-  return (
-    <section className="portal-use-stack" role="region" aria-label="开始使用">
-      <div className="portal-use-card">
-        <span className="portal-card-label">使用说明</span>
-        <h2>{isPendingReview ? "订阅申请已提交，等待运营授权" : "下载对应设备的应用，复制订阅链接到应用"}</h2>
-        {isPendingReview ? (
-          <p className="muted">
-            当前用户门户只提交用户侧申请，不直接调用 Admin API 创建订阅。运营侧授权后再通过受控交付提供订阅入口。
-          </p>
-        ) : null}
-        <div className="portal-link-list">
-          <LinkBox
-            copied={copied === "primary"}
-            label="订阅链接"
-            value={subscriptionUrl}
-            emptyText={isPendingReview ? "运营授权完成后将显示订阅链接。" : undefined}
-            onCopy={() => copySubscriptionUrl(subscriptionUrl, "primary")}
-          />
-          <LinkBox
-            copied={copied === "backup"}
-            label="国内备用订阅链接"
-            value={subscriptionUrl}
-            emptyText={isPendingReview ? "运营授权完成后将显示备用入口。" : undefined}
-            note="备用分发域接入前，暂由同一受控订阅产物提供。"
-            onCopy={() => copySubscriptionUrl(subscriptionUrl, "backup")}
-          />
-        </div>
-      </div>
-
-      <div className="portal-use-card">
-        <span className="portal-card-label">应用下载</span>
-        <div className="portal-download-grid">
-          {appDownloads.map((item) => (
-            <a key={item.label} className="portal-download-item" href="#download">
-              <Download aria-hidden="true" />
-              <span>{item.label}</span>
-              <small>{item.platform} · {item.note}</small>
-            </a>
-          ))}
-        </div>
-      </div>
-
-      <div className="portal-use-card">
-        <span className="portal-card-label">订阅导入指南</span>
-        <div className="portal-guide-grid">
-          {onboardingGuides.map((guide) => (
-            <section className="portal-guide-item" key={guide.platform}>
-              <h3>{guide.platform}</h3>
-              <p>{guide.app}</p>
-              <ol>
-                {guide.steps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-            </section>
-          ))}
-        </div>
-      </div>
-
-      <div className="portal-use-card">
-        <span className="portal-card-label">使用步骤</span>
-        <ol className="portal-step-list">
-          {usageSteps.map((step) => (
-            <li key={step}>{step}</li>
-          ))}
-        </ol>
-      </div>
-
-      <div className="portal-use-card">
-        <span className="portal-card-label">常见问题</span>
-        <div className="portal-faq-list">
-          {faqItems.map((item) => (
-            <details className="portal-faq-item" key={item.question} open>
-              <summary>{item.question}</summary>
-              <p>{item.answer}</p>
-            </details>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function LinkBox({
-  copied,
-  emptyText,
-  label,
-  note,
-  onCopy,
-  value
-}: {
+  activePlan: PortalPlan;
+  actionError: string;
+  clientTarget: PortalClientId;
   copied: boolean;
-  emptyText?: string;
-  label: string;
-  note?: string;
-  onCopy: () => Promise<void>;
-  value: string;
+  created: CreatedSubscription | null;
+  isReady: boolean;
+  isWaiting: boolean;
+  lifecycle: SubscriptionLifecycle;
+  pending: boolean;
+  selectedPlanId: PortalPlanId;
+  setActiveView: (value: PortalView) => void;
+  setClientTarget: (value: PortalClientId) => void;
+  setSelectedPlanId: (value: PortalPlanId) => void;
+  submitSubscription: (event: FormEvent<HTMLFormElement>) => void;
+  copySubscriptionUrl: () => Promise<void>;
+  userRef: string;
 }) {
-  return (
-    <div className="portal-link-box">
-      <div>
-        <h3>{label}</h3>
-        {note ? <small>{note}</small> : null}
-      </div>
-      {value ? <code>{value}</code> : <p className="muted">{emptyText ?? "请先在订阅管理中生成订阅。"}</p>}
-      <button className="portal-copy-button" type="button" onClick={onCopy} disabled={!value}>
-        <Copy aria-hidden="true" />
-        {copied ? "已复制" : "复制"}
-      </button>
-    </div>
-  );
-}
-
-function Checklist() {
+  const planLocked = lifecycle === "active" || lifecycle === "pending";
   return (
     <div className="portal-use-stack">
-      <ChecklistSection title="正确做法" items={checklist.recommended} tone="good" />
-      <ChecklistSection title="禁止做法" items={checklist.forbidden} tone="bad" />
+      <form className="portal-use-card portal-subscription-form" onSubmit={submitSubscription}>
+        <div className="portal-section-heading">
+          <PackageCheck aria-hidden="true" />
+          <div>
+            <span className="portal-card-label">套餐</span>
+            <h2>{planLocked ? "当前套餐" : "选择试用或套餐"}</h2>
+            <p>
+              {lifecycle === "active"
+                ? "当前套餐已生效。刷新当前订阅只重置链接，不影响原到期时间。"
+                : "当前页面只提交试用、月卡、年卡申请；管理员审核通过后发放订阅。"}
+            </p>
+          </div>
+        </div>
+
+        <div className="portal-plan-list compact">
+          {plans.map((plan) => (
+            <button
+              key={plan.id}
+              type="button"
+              className={cn("portal-plan-row", selectedPlanId === plan.id && "active")}
+              onClick={() => setSelectedPlanId(plan.id)}
+              aria-pressed={selectedPlanId === plan.id}
+              disabled={planLocked}
+            >
+              <span>
+                <strong>{plan.label}</strong>
+                <small>{plan.description}</small>
+              </span>
+              <b>{plan.priceLabel}</b>
+            </button>
+          ))}
+        </div>
+
+        <ul className="portal-plan-highlights">
+          {activePlan.highlights.map((item) => (
+            <li key={item}><CircleCheck aria-hidden="true" /> {item}</li>
+          ))}
+        </ul>
+
+        {planLocked ? (
+          <div className="portal-inline-note">
+            {lifecycle === "active"
+              ? "套餐生效中，月卡 / 年卡不可在当前周期内直接改选；如需换套餐，请到期后重新申请。"
+              : "申请已提交，管理员审核完成前暂不重复提交套餐申请。"}
+          </div>
+        ) : null}
+
+        <div className="portal-form-grid narrow">
+          <label>
+            <span>客户端偏好</span>
+            <select value={clientTarget} onChange={(event) => setClientTarget(event.target.value as PortalClientId)}>
+              {clientTargets.map((target) => (
+                <option key={target.id} value={target.id}>{target.label}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span>有效期</span>
+            <input value={activePlan.billingCycle} readOnly />
+          </label>
+        </div>
+
+        {actionError ? <div className="alert alert-error">{actionError}</div> : null}
+
+        <button className="portal-primary-button" type="submit" disabled={pending || isWaiting}>
+          {subscriptionCtaLabel(lifecycle, pending)}
+        </button>
+      </form>
+
+      <section className="portal-use-card" aria-label="订阅状态">
+        <div className="portal-section-heading">
+          <RefreshCw aria-hidden="true" />
+          <div>
+            <span className="portal-card-label">订阅</span>
+            <h2>{lifecycleLabel(lifecycle)}</h2>
+            <p>
+              {lifecycle === "active"
+                ? "订阅已生效。可复制链接导入客户端；刷新只重置当前订阅链接。"
+                : lifecycle === "pending"
+                  ? "申请已提交。管理员审核通过后才会发放试用订阅或正式套餐。"
+                  : lifecycle === "expired"
+                    ? "套餐已过期，请重新选择试用、月卡或年卡提交申请。"
+                    : "还没有有效订阅，请先选择试用或套餐并提交申请。"}
+            </p>
+          </div>
+        </div>
+
+        <div className="portal-state-grid">
+          <StateItem active={lifecycle === "none"} title="无有效订阅" detail="选择试用或套餐后提交申请。" />
+          <StateItem active={isWaiting} title="等待管理员审核" detail="管理员审核通过后发放订阅。" />
+          <StateItem active={isReady} title="服务生效中" detail="可复制订阅并导入客户端。" />
+          <StateItem active={lifecycle === "expired"} title="已过期" detail="到期后重新提交申请。" />
+        </div>
+
+        {isWaiting ? (
+          <div className="portal-action-callout">
+            <strong>下一步：等待管理员审核</strong>
+            <p>管理员会根据账户 ID <code>{userRef}</code> 和申请套餐完成审批，审核通过后发放订阅。</p>
+            <button type="button" onClick={() => setActiveView("support")}>联系客服支持</button>
+          </div>
+        ) : null}
+
+        {created?.previousInvalidatedAt ? (
+          <div className="portal-event-note">
+            你已于 {formatDateTime(created.previousInvalidatedAt)} 刷新订阅，之前的旧链接已失效。
+          </div>
+        ) : null}
+
+        <div className="portal-link-list">
+          <div className="portal-link-box">
+            <h3>当前订阅</h3>
+            {isReady && created ? (
+              <dl className="portal-subscription-meta">
+                <div>
+                  <dt>套餐</dt>
+                  <dd>{activePlan.label}</dd>
+                </div>
+                <div>
+                  <dt>到期时间</dt>
+                  <dd>{formatDateTime(created.request.expiresAt)}</dd>
+                </div>
+              </dl>
+            ) : null}
+            <code>{created?.request.subscriptionUrl ?? "授权完成后显示订阅链接"}</code>
+            <button
+              className="portal-copy-button"
+              type="button"
+              disabled={!created?.request.subscriptionUrl}
+              onClick={copySubscriptionUrl}
+            >
+              <Copy aria-hidden="true" />
+              {copied ? "已复制" : "复制"}
+            </button>
+          </div>
+        </div>
+
+        <button className="portal-secondary-button" type="button" onClick={() => setActiveView("use")}>
+          查看导入教程
+        </button>
+      </section>
     </div>
   );
 }
 
-function ChecklistSection({ title, items, tone }: { title: string; items: string[]; tone: "good" | "bad" }) {
-  const Icon = tone === "bad" ? CircleX : CircleCheck;
+function StateItem({ active, detail, title }: { active: boolean; detail: string; title: string }) {
+  return (
+    <div className={cn("portal-state-item", active && "active")}>
+      <strong>{title}</strong>
+      <small>{detail}</small>
+    </div>
+  );
+}
+
+function UseGuide({
+  created,
+  setActiveView
+}: {
+  created: CreatedSubscription | null;
+  setActiveView: (value: PortalView) => void;
+}) {
   return (
     <section className="portal-use-card">
       <div className="portal-section-heading">
-        {tone === "bad" ? <CircleX aria-hidden="true" /> : <ShieldCheck aria-hidden="true" />}
-        <h2>{title}</h2>
+        <Wifi aria-hidden="true" />
+        <div>
+          <span className="portal-card-label">使用教程</span>
+          <h2>复制订阅并导入客户端</h2>
+          <p>这个页面只解释用户操作，不展示后台节点、流量图或运维指标。</p>
+        </div>
       </div>
-      <div className="portal-check-list">
-        {items.map((item) => (
-          <div className={cn("portal-check-item", tone)} key={item}>
-            <span>{item}</span>
-            <Icon aria-hidden="true" />
-          </div>
+
+      {!created ? (
+        <div className="portal-empty-callout">
+          <strong>还没有订阅</strong>
+          <span>请先到订阅管理提交试用、月卡或年卡申请。</span>
+          <button type="button" onClick={() => setActiveView("subscription")}>去提交申请</button>
+        </div>
+      ) : null}
+
+      <ol className="portal-guide-list">
+        {usageSteps.map((step, index) => (
+          <li key={step.title}>
+            <span>{index + 1}</span>
+            <div>
+              <strong>{step.title}</strong>
+              <p>{step.detail}</p>
+            </div>
+          </li>
         ))}
-      </div>
+      </ol>
     </section>
   );
 }
@@ -717,17 +693,23 @@ function ChecklistSection({ title, items, tone }: { title: string; items: string
 function SupportPanel() {
   return (
     <section className="portal-use-card">
-      <span className="portal-card-label">客服支持</span>
-      <h2>提交问题前先完成清单排查</h2>
-      <p>当前 MVP 不接入在线客服系统，只保留面向用户的支持入口形态。真实支持渠道、工单和通知后续在阿里云平台侧接入。</p>
+      <div className="portal-section-heading">
+        <LifeBuoy aria-hidden="true" />
+        <div>
+          <span className="portal-card-label">支持</span>
+          <h2>客服支持入口</h2>
+          <p>当前仅保留支持入口，后期可接 Telegram 机器人助手和人工客服。</p>
+        </div>
+      </div>
+
       <div className="portal-support-grid">
-        {supportChannels.map((channel) => (
-          <div className="portal-support-card" key={channel.title}>
-            <FileText aria-hidden="true" />
-            <strong>{channel.title}</strong>
-            <small>{channel.status}</small>
-            <p>{channel.detail}</p>
-          </div>
+        {supportItems.map((item) => (
+          <article className="portal-support-card" key={item.title}>
+            <ShieldCheck aria-hidden="true" />
+            <strong>{item.title}</strong>
+            <small>{item.status}</small>
+            <p>{item.detail}</p>
+          </article>
         ))}
       </div>
     </section>
@@ -736,38 +718,66 @@ function SupportPanel() {
 
 function ProfilePanel({
   created,
-  displayName,
-  email
+  currentPlan,
+  historySummary,
+  lifecycle,
+  registrationDate,
+  userEmail,
+  userRef
 }: {
   created: CreatedSubscription | null;
-  displayName: string;
-  email: string;
+  currentPlan: PortalPlan;
+  historySummary: PortalHistoryRecord[];
+  lifecycle: SubscriptionLifecycle;
+  registrationDate: string;
+  userEmail: string;
+  userRef: string;
 }) {
   return (
     <section className="portal-use-card">
-      <span className="portal-card-label">个人中心</span>
-      <h2>{displayName}</h2>
+      <div className="portal-section-heading">
+        <User aria-hidden="true" />
+        <div>
+          <span className="portal-card-label">个人中心</span>
+          <h2>账户与历史记录</h2>
+          <p>这里展示账户事实和历史消费摘要。</p>
+        </div>
+      </div>
+
       <dl className="portal-profile-list">
         <div>
           <dt>邮箱</dt>
-          <dd>{email || "未填写"}</dd>
+          <dd>{userEmail}</dd>
         </div>
         <div>
-          <dt>套餐</dt>
-          <dd>{created ? selectedPlanLabel(created.request.planId) : "暂无会员"}</dd>
+          <dt>用户编号</dt>
+          <dd>{userRef}</dd>
         </div>
         <div>
-          <dt>订阅状态</dt>
-          <dd>{created ? created.request.status : "pending"}</dd>
+          <dt>注册日期</dt>
+          <dd>{formatDateTime(registrationDate)}</dd>
+        </div>
+        <div>
+          <dt>当前套餐</dt>
+          <dd>{created ? `${currentPlan.label} · ${lifecycleLabel(lifecycle)}` : "未开通"}</dd>
+        </div>
+        <div>
+          <dt>到期时间</dt>
+          <dd>{expiryDisplay(created, lifecycle)}</dd>
         </div>
       </dl>
+
       <div className="portal-profile-module-grid">
-        {profileModules.map((module) => (
-          <div className="portal-profile-module" key={module.title}>
-            <strong>{module.title}</strong>
-            <small>{module.detail}</small>
-          </div>
-        ))}
+        <article className="portal-profile-module">
+          <History aria-hidden="true" />
+          <strong>历史消费账单</strong>
+          <small>{historyRecord(historySummary)}</small>
+        </article>
+        <article className="portal-profile-module">
+          <CalendarDays aria-hidden="true" />
+          <strong>注册日期</strong>
+          <small>{formatDateTime(registrationDate)}</small>
+        </article>
       </div>
     </section>
   );

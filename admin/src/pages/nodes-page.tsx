@@ -1,10 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AdminApiClient } from "../features/subscriptions/api-client";
 import type { SubscriptionNode } from "../features/subscriptions/types";
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Failed to load nodes.";
-}
+import { errorMessage } from "../lib/errors";
 
 export function NodesPage({ apiClient }: { apiClient: AdminApiClient }) {
   const [nodes, setNodes] = useState<SubscriptionNode[]>([]);
@@ -21,7 +18,7 @@ export function NodesPage({ apiClient }: { apiClient: AdminApiClient }) {
         if (!cancelled) setNodes(result);
       })
       .catch((requestError: unknown) => {
-        if (!cancelled) setError(errorMessage(requestError));
+        if (!cancelled) setError(errorMessage(requestError, "Failed to load nodes."));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);

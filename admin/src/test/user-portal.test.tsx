@@ -6,9 +6,11 @@ import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import {
   createLocalUserPortalClient,
   type PortalAuthInput,
+  type PortalApplySubscriptionInput,
+  type PortalRefreshSubscriptionInput,
   type PortalSession,
   type PortalSubscriptionRequest,
-  type PortalSubscriptionRequestInput,
+  type PortalUserState,
   type UserPortalClient
 } from "../features/user-portal/user-portal-client";
 
@@ -25,21 +27,82 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
       userRef: "user_safe_ref",
       displayName: input.email.split("@")[0],
       authMode: input.mode,
+      registeredAt: "2026-05-31T00:00:00.000Z",
       safety: {
         noAdminApi: true,
         noPublicAuthActivated: true,
         noRawPasswordReturned: true
       }
     })),
-    requestSubscription: vi.fn(async (input: PortalSubscriptionRequestInput): Promise<PortalSubscriptionRequest> => ({
-      status: "subscription_ready",
-      requestRef: "subreq_safe_ref",
+    fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
       userRef: input.userRef,
-      planId: input.planId,
+      subscriptionRequest: null,
+      historySummary: [],
+      updatedAt: "2026-05-31T00:00:00.000Z",
+      safety: {
+        noAdminApi: true,
+        noPaymentActivation: true,
+        noPublicAdmin: true
+      }
+    })),
+    applyForSubscription: vi.fn(async (input: PortalApplySubscriptionInput): Promise<PortalSubscriptionRequest> => {
+      const requestOnly = input.requestOnly === true;
+      const planLabel = input.planId === "yearly" ? "年卡" : input.planId === "trial" ? "7 天试用" : "月卡";
+      return {
+        status: requestOnly ? "ready_for_operator_review" : "subscription_ready",
+        lifecycle: requestOnly ? "pending" : "active",
+        requestRef: `subreq_${input.planId}`,
+        userRef: input.userRef,
+        planId: input.planId,
+        clientTarget: input.clientTarget,
+        expiresAt: requestOnly
+          ? "待管理员发放"
+          : input.planId === "yearly"
+            ? "2027-05-31T00:00:00.000Z"
+            : "2026-06-30T00:00:00.000Z",
+        subscriptionUrl: requestOnly ? undefined : "https://sub.example.test/import/visible-once",
+        nextAction: requestOnly ? "operator_review_required" : "copy_subscription_url",
+        updatedAt: "2026-05-31T00:00:00.000Z",
+        historySummary: [
+          {
+            recordRef: `history_${input.planId}`,
+            label: `申请${planLabel}（${requestOnly ? "审核中" : "已授权"}）`,
+            status: requestOnly ? "审核中" : "已授权",
+            occurredAt: "2026-05-31T00:00:00.000Z"
+          }
+        ],
+        safety: {
+          noAdminApi: true,
+          noDbMutation: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true,
+          noRawCustomerDataReturned: true
+        }
+      };
+    }),
+    refreshSubscription: vi.fn(async (input: PortalRefreshSubscriptionInput): Promise<PortalSubscriptionRequest> => ({
+      status: "subscription_ready",
+      lifecycle: "active",
+      requestRef: input.requestRef,
+      userRef: input.userRef,
+      planId: "yearly",
       clientTarget: input.clientTarget,
-      expiresAt: "2026-06-26T00:00:00.000Z",
-      subscriptionUrl: "https://sub.example.test/import/visible-once",
+      expiresAt: "2027-05-31T00:00:00.000Z",
+      subscriptionUrl: "https://sub.example.test/import/refreshed-visible-once",
       nextAction: "copy_subscription_url",
+      updatedAt: "2026-05-31T00:00:00.000Z",
+      event: {
+        type: "old_link_invalidated",
+        occurredAt: "2026-05-31T00:00:00.000Z"
+      },
+      historySummary: [
+        {
+          recordRef: "history_refresh",
+          label: "刷新订阅（已刷新）",
+          status: "已刷新",
+          occurredAt: "2026-05-31T00:00:00.000Z"
+        }
+      ],
       safety: {
         noAdminApi: true,
         noDbMutation: true,
@@ -52,7 +115,7 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
   };
 }
 
-async function enterPortalDashboard() {
+async function enterPortal() {
   fireEvent.change(screen.getByLabelText("邮箱"), { target: { value: "customer@example.com" } });
   fireEvent.change(screen.getByLabelText("密码"), { target: { value: "correct horse battery staple" } });
   fireEvent.click(screen.getByRole("button", { name: "登录" }));
@@ -63,12 +126,12 @@ describe("user portal route", () => {
   test("opens a separate customer portal without Admin navigation", async () => {
     render(createElement(App));
 
-    expect(screen.getByLabelText("Admin navigation").textContent).not.toContain("Portal");
+    expect(screen.getByLabelText("Admin navigation").textContent).toContain("Portal Requests");
 
     fireEvent.click(screen.getByRole("link", { name: /open user portal/i }));
 
-    expect(await screen.findByRole("heading", { name: "Log in" })).not.toBeNull();
-    expect(screen.getByText("欢迎回来，请登录您的账户")).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "登录" })).not.toBeNull();
+    expect(screen.getByText("登录后管理你的套餐和订阅。")).not.toBeNull();
     expect(screen.getByLabelText("邮箱")).not.toBeNull();
     expect(screen.getByLabelText("密码")).not.toBeNull();
     expect(screen.getByRole("button", { name: "登录" })).not.toBeNull();
@@ -77,23 +140,379 @@ describe("user portal route", () => {
   });
 });
 
-describe("user portal onboarding", () => {
-  test("switches between login and signup states before entering the dashboard preview", async () => {
+describe("user portal product surface", () => {
+  test("switches between login and signup states before entering subscription management", async () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
     fireEvent.click(screen.getByRole("button", { name: "立即注册" }));
 
-    expect(screen.getByRole("heading", { name: "Sign up" })).not.toBeNull();
-    expect(screen.getByText("创建新账户，开始使用我们的服务")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "注册" })).not.toBeNull();
+    expect(screen.getByText("用邮箱创建账户，进入订阅管理。")).not.toBeNull();
     expect(screen.getByLabelText("验证码")).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "返回登录" }));
 
-    expect(screen.getByRole("heading", { name: "Log in" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "登录" })).not.toBeNull();
   });
 
-  test("requests a subscription through a user-scoped portal client instead of Admin APIs", async () => {
+  test("defaults to a simple subscription page rather than a dashboard", async () => {
+    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+
+    const portalNav = await enterPortal();
+
+    expect(within(portalNav).getByText("订阅管理")).not.toBeNull();
+    expect(within(portalNav).getByText("使用教程")).not.toBeNull();
+    expect(within(portalNav).getByText("客服支持")).not.toBeNull();
+    expect(within(portalNav).getByText("个人中心")).not.toBeNull();
+    expect(within(portalNav).queryByText("Dashboard")).toBeNull();
+    expect(screen.getByRole("heading", { name: "订阅管理" })).not.toBeNull();
+    expect(screen.queryByText("流量仪表盘")).toBeNull();
+    expect(screen.queryByText("安全清单")).toBeNull();
+  });
+
+  test("submits yearly opening requests for administrator review through the user-scoped client", async () => {
     const client = portalClient();
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: /年卡/ }));
+    fireEvent.click(screen.getByRole("button", { name: "提交申请" }));
+
+    expect((await screen.findAllByText("等待管理员审核")).length).toBeGreaterThan(0);
+    expect(client.applyForSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userRef: "user_safe_ref",
+        planId: "yearly",
+        clientTarget: "clash",
+        requestOnly: true
+      })
+    );
+    expect(client.applyForSubscription).not.toHaveBeenCalledWith(expect.objectContaining({ durationDays: expect.anything() }));
+    expect(screen.getByText("授权完成后显示订阅链接")).not.toBeNull();
+    expect(screen.queryByText("https://sub.example.test/import/visible-once")).toBeNull();
+    expect(screen.getAllByText("年卡").length).toBeGreaterThan(0);
+    expect(screen.getByText("年卡 · 待审核")).not.toBeNull();
+  });
+
+  test("submits a 7 day trial as an administrator-reviewed request", async () => {
+    const client = portalClient();
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: /7 天试用/ }));
+    fireEvent.click(screen.getByRole("button", { name: "提交申请" }));
+
+    expect((await screen.findAllByText("等待管理员审核")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/管理员审核通过后才会发放试用订阅/)).not.toBeNull();
+    expect(client.applyForSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planId: "trial",
+        requestOnly: true
+      })
+    );
+    expect(screen.getByText("授权完成后显示订阅链接")).not.toBeNull();
+  });
+
+  test("local portal client never returns a trial subscription URL before admin delivery", async () => {
+    const client = createLocalUserPortalClient({
+      now: () => new Date("2026-05-31T00:00:00.000Z"),
+      demoSubscriptionUrl: "https://sub.example.test/import/should-not-be-used-for-trial"
+    });
+
+    const request = await client.applyForSubscription({
+      userRef: "user_safe_ref",
+      planId: "trial",
+      clientTarget: "clash",
+      requestOnly: true
+    });
+
+    expect(request.lifecycle).toBe("pending");
+    expect(request.status).toBe("ready_for_operator_review");
+    expect(request.subscriptionUrl).toBeUndefined();
+    expect(request.expiresAt).toBe("待管理员发放");
+  });
+
+  test("does not collect contact details before package application", async () => {
+    const client = portalClient();
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: "提交申请" }));
+
+    expect(screen.queryByText("请先填写授权联系资料。")).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "填写联系资料" })).toBeNull();
+    expect(screen.queryByLabelText("联系手机号")).toBeNull();
+    expect(screen.queryByLabelText("Telegram 账号")).toBeNull();
+    await waitFor(() => expect(client.applyForSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({
+        userRef: "user_safe_ref",
+        planId: "monthly",
+        clientTarget: "clash",
+        requestOnly: true
+      })
+    ));
+  });
+
+  test("refreshing an active subscription is separate from opening a package", async () => {
+    const client = portalClient({
+      fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
+        userRef: input.userRef,
+        subscriptionRequest: {
+          status: "subscription_ready",
+          lifecycle: "active",
+          requestRef: "subreq_existing_monthly",
+          userRef: input.userRef,
+          planId: "monthly",
+          clientTarget: "clash",
+          expiresAt: "2026-06-30T00:00:00.000Z",
+          subscriptionUrl: "https://sub.example.test/import/existing-visible-once",
+          nextAction: "copy_subscription_url",
+          safety: {
+            noAdminApi: true,
+            noDbMutation: true,
+            noPaymentActivation: true,
+            noPublicAdmin: true,
+            noRawCustomerDataReturned: true
+          }
+        },
+        updatedAt: "2026-05-31T00:00:00.000Z",
+        safety: {
+          noAdminApi: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true
+        }
+      }))
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    expect((await screen.findAllByText("服务生效中")).length).toBeGreaterThan(0);
+
+    expect(screen.getByRole("button", { name: "刷新当前订阅" })).not.toBeNull();
+    expect(screen.getByText(/刷新当前订阅只重置链接，不影响原到期时间/)).not.toBeNull();
+    expect(screen.getByRole("button", { name: /月卡/ }).hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "刷新当前订阅" }));
+
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
+    await waitFor(() => expect(client.refreshSubscription).toHaveBeenCalledWith({
+      userRef: "user_safe_ref",
+      requestRef: "subreq_existing_monthly",
+      clientTarget: "clash"
+    }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "刷新当前订阅" })).not.toBeNull());
+    expect(screen.getByText(/之前的旧链接已失效/)).not.toBeNull();
+    expect(screen.queryByText("旧订阅失效")).toBeNull();
+  });
+
+  test("renders old-link invalidation only when the portal client returns the event", async () => {
+    const client = portalClient({
+      fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
+        userRef: input.userRef,
+        subscriptionRequest: {
+          status: "subscription_ready",
+          lifecycle: "active",
+          requestRef: "subreq_existing_monthly",
+          userRef: input.userRef,
+          planId: "monthly",
+          clientTarget: "clash",
+          expiresAt: "2026-06-30T00:00:00.000Z",
+          subscriptionUrl: "https://sub.example.test/import/existing-visible-once",
+          nextAction: "copy_subscription_url",
+          safety: {
+            noAdminApi: true,
+            noDbMutation: true,
+            noPaymentActivation: true,
+            noPublicAdmin: true,
+            noRawCustomerDataReturned: true
+          }
+        },
+        updatedAt: "2026-05-31T00:00:00.000Z",
+        safety: {
+          noAdminApi: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true
+        }
+      })),
+      refreshSubscription: vi.fn(async (input: PortalRefreshSubscriptionInput): Promise<PortalSubscriptionRequest> => ({
+        status: "subscription_ready",
+        lifecycle: "active",
+        requestRef: input.requestRef,
+        userRef: input.userRef,
+        planId: "monthly",
+        clientTarget: input.clientTarget,
+        expiresAt: "2026-06-30T00:00:00.000Z",
+        subscriptionUrl: "https://sub.example.test/import/refreshed-no-event",
+        nextAction: "copy_subscription_url",
+        safety: {
+          noAdminApi: true,
+          noDbMutation: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true,
+          noRawCustomerDataReturned: true
+        }
+      }))
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    expect((await screen.findAllByText("服务生效中")).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "刷新当前订阅" }));
+
+    await waitFor(() => expect(client.refreshSubscription).toHaveBeenCalledTimes(1));
+    expect(screen.queryByText(/之前的旧链接已失效/)).toBeNull();
+  });
+
+  test("trusts server-provided lifecycle instead of recalculating expiry from the browser clock", async () => {
+    const client = portalClient({
+      fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
+        userRef: input.userRef,
+        subscriptionRequest: {
+          status: "subscription_ready",
+          lifecycle: "active",
+          requestRef: "subreq_server_authoritative_active",
+          userRef: input.userRef,
+          planId: "monthly",
+          clientTarget: "clash",
+          expiresAt: "2000-01-01T00:00:00.000Z",
+          subscriptionUrl: "https://sub.example.test/import/server-authoritative",
+          nextAction: "copy_subscription_url",
+          safety: {
+            noAdminApi: true,
+            noDbMutation: true,
+            noPaymentActivation: true,
+            noPublicAdmin: true,
+            noRawCustomerDataReturned: true
+          }
+        },
+        updatedAt: "2026-05-31T00:00:00.000Z",
+        safety: {
+          noAdminApi: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true
+        }
+      }))
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+
+    expect((await screen.findAllByText("服务生效中")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "刷新当前订阅" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "重新提交申请" })).toBeNull();
+  });
+
+  test("hydrates existing active subscription state after authentication", async () => {
+    const client = portalClient({
+      fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
+        userRef: input.userRef,
+        subscriptionRequest: {
+          status: "subscription_ready",
+          lifecycle: "active",
+          requestRef: "subreq_existing_yearly",
+          userRef: input.userRef,
+          planId: "yearly",
+          clientTarget: "karing",
+          expiresAt: "2027-05-31T00:00:00.000Z",
+          subscriptionUrl: "https://sub.example.test/import/existing-visible-once",
+          nextAction: "copy_subscription_url",
+          safety: {
+            noAdminApi: true,
+            noDbMutation: true,
+            noPaymentActivation: true,
+            noPublicAdmin: true,
+            noRawCustomerDataReturned: true
+          }
+        },
+        updatedAt: "2026-06-01T00:00:00.000Z",
+        safety: {
+          noAdminApi: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true
+        }
+      }))
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+
+    expect(client.fetchCurrentState).toHaveBeenCalledWith({ userRef: "user_safe_ref" });
+    expect((await screen.findAllByText("服务生效中")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "刷新当前订阅" })).not.toBeNull();
+    expect(screen.getByText("https://sub.example.test/import/existing-visible-once")).not.toBeNull();
+    expect(screen.getAllByText("年卡").length).toBeGreaterThan(0);
+    expect(client.applyForSubscription).not.toHaveBeenCalled();
+  });
+
+  test("does not invent profile history from current subscription state", async () => {
+    const client = portalClient({
+      fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
+        userRef: input.userRef,
+        subscriptionRequest: {
+          status: "subscription_ready",
+          lifecycle: "active",
+          requestRef: "subreq_existing_yearly",
+          userRef: input.userRef,
+          planId: "yearly",
+          clientTarget: "karing",
+          expiresAt: "2027-05-31T00:00:00.000Z",
+          subscriptionUrl: "https://sub.example.test/import/existing-visible-once",
+          nextAction: "copy_subscription_url",
+          safety: {
+            noAdminApi: true,
+            noDbMutation: true,
+            noPaymentActivation: true,
+            noPublicAdmin: true,
+            noRawCustomerDataReturned: true
+          }
+        },
+        updatedAt: "2026-06-01T00:00:00.000Z",
+        safety: {
+          noAdminApi: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true
+        }
+      }))
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+
+    expect(screen.getByText("暂无完成套餐记录")).not.toBeNull();
+    expect(screen.queryByText(/申请年卡（已授权）/)).toBeNull();
+  });
+
+  test("copies a generated subscription only when the portal client returns visible material", async () => {
+    const client = portalClient({
+      fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
+        userRef: input.userRef,
+        subscriptionRequest: {
+          status: "subscription_ready",
+          lifecycle: "active",
+          requestRef: "subreq_existing_monthly",
+          userRef: input.userRef,
+          planId: "monthly",
+          clientTarget: "clash",
+          expiresAt: "2026-06-30T00:00:00.000Z",
+          subscriptionUrl: "https://sub.example.test/import/visible-once",
+          nextAction: "copy_subscription_url",
+          safety: {
+            noAdminApi: true,
+            noDbMutation: true,
+            noPaymentActivation: true,
+            noPublicAdmin: true,
+            noRawCustomerDataReturned: true
+          }
+        },
+        updatedAt: "2026-05-31T00:00:00.000Z",
+        safety: {
+          noAdminApi: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true
+        }
+      }))
+    });
     const writeText = vi.fn(async () => undefined);
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
@@ -102,122 +521,97 @@ describe("user portal onboarding", () => {
 
     render(createElement(UserPortalPage, { portalClient: client }));
 
-    const portalNav = await enterPortalDashboard();
-    expect(within(portalNav).getByText("Dashboard")).not.toBeNull();
-    expect(within(portalNav).getByText("订阅管理")).not.toBeNull();
-    expect(within(portalNav).getByText("开始使用")).not.toBeNull();
-    expect(within(portalNav).getByText("安全清单")).not.toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "订阅管理" }));
-    fireEvent.click(screen.getByRole("button", { name: /Professional/ }));
-    fireEvent.change(screen.getByLabelText("用户邮箱"), { target: { value: "customer@example.com" } });
-    fireEvent.change(screen.getByLabelText("显示名称"), { target: { value: "Customer Alpha" } });
-    fireEvent.change(screen.getByLabelText("有效期"), { target: { value: "90" } });
-    fireEvent.click(screen.getByRole("button", { name: "生成订阅" }));
-
-    expect(await screen.findByText("订阅链接")).not.toBeNull();
-    expect(client.requestSubscription).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userRef: "user_safe_ref",
-        displayName: "Customer Alpha",
-        email: "customer@example.com",
-        planId: "professional",
-        clientTarget: "clash",
-        durationDays: 90
-      })
-    );
-    expect(screen.getAllByText("https://sub.example.test/import/visible-once").length).toBeGreaterThan(0);
-
-    const result = screen.getByRole("region", { name: "开始使用" });
-    fireEvent.click(within(result).getAllByRole("button", { name: "复制" })[0]);
+    await enterPortal();
+    expect((await screen.findAllByText("服务生效中")).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "复制" }));
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://sub.example.test/import/visible-once"));
   });
 
-  test("local portal client is safe by default and does not return subscription material", async () => {
+  test("default local portal client is safe by default and exposes no subscription link", async () => {
     const client = createLocalUserPortalClient({
-      now: () => new Date("2026-05-29T00:00:00.000Z")
-    });
-
-    const session = await client.authenticate({
-      mode: "login",
-      email: "customer@example.com",
-      password: "correct horse battery staple"
-    });
-    const request = await client.requestSubscription({
-      userRef: session.userRef,
-      displayName: "Customer Alpha",
-      email: "customer@example.com",
-      planId: "professional",
-      clientTarget: "clash",
-      durationDays: 30
-    });
-
-    expect(session.userRef).toMatch(/^user_/);
-    expect(session).not.toHaveProperty("password");
-    expect(request.status).toBe("ready_for_operator_review");
-    expect(request.subscriptionUrl).toBeUndefined();
-    expect(request.safety.noAdminApi).toBe(true);
-    expect(request.safety.noDbMutation).toBe(true);
-  });
-
-  test("default local portal UI submits requests without exposing subscription links", async () => {
-    const client = createLocalUserPortalClient({
-      now: () => new Date("2026-05-29T00:00:00.000Z")
+      now: () => new Date("2026-05-31T00:00:00.000Z")
     });
     render(createElement(UserPortalPage, { portalClient: client }));
 
-    await enterPortalDashboard();
-    fireEvent.click(screen.getByRole("button", { name: "订阅管理" }));
-    fireEvent.change(screen.getByLabelText("用户邮箱"), { target: { value: "customer@example.com" } });
-    fireEvent.change(screen.getByLabelText("显示名称"), { target: { value: "Customer Alpha" } });
-    fireEvent.click(screen.getByRole("button", { name: "生成订阅" }));
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: "提交申请" }));
 
-    expect(await screen.findByText("订阅申请已提交，等待运营授权")).not.toBeNull();
-    expect(screen.getByText("运营授权完成后将显示订阅链接。")).not.toBeNull();
-    expect(screen.getAllByRole("button", { name: "复制" }).every((button) => button.hasAttribute("disabled"))).toBe(true);
-  });
-
-  test("renders device onboarding guides and user-facing FAQ", async () => {
-    render(createElement(UserPortalPage, { portalClient: portalClient() }));
-
-    await enterPortalDashboard();
-    fireEvent.click(screen.getByRole("button", { name: "开始使用" }));
-
-    expect(screen.getByText("订阅导入指南")).not.toBeNull();
-    expect(screen.getByText("Windows / macOS")).not.toBeNull();
-    expect(screen.getByText("iOS / Android")).not.toBeNull();
-    expect(screen.getByText("常见问题")).not.toBeNull();
-    expect(screen.getByText("更新订阅失败怎么办？")).not.toBeNull();
-    expect(screen.getByText("为什么有些网站仍显示原 IP？")).not.toBeNull();
-  });
-
-  test("separates recommended and forbidden safety actions", async () => {
-    render(createElement(UserPortalPage, { portalClient: portalClient() }));
-
-    await enterPortalDashboard();
-    fireEvent.click(screen.getByRole("button", { name: "安全清单" }));
-
-    expect(screen.getByText("正确做法")).not.toBeNull();
-    expect(screen.getByText("禁止做法")).not.toBeNull();
-    expect(screen.getByText("保持订阅链接私密，仅在自己的设备中导入。")).not.toBeNull();
-    expect(screen.getByText("不要共享订阅链接或账号。")).not.toBeNull();
-  });
-
-  test("shows support and profile placeholders without implying live integrations", async () => {
-    render(createElement(UserPortalPage, { portalClient: portalClient() }));
-
-    await enterPortalDashboard();
-    fireEvent.click(screen.getByRole("button", { name: "客服支持" }));
-
-    expect(screen.getByText("工单系统")).not.toBeNull();
-    expect(screen.getByText("邮箱支持")).not.toBeNull();
-    expect(screen.getByText("即时消息")).not.toBeNull();
+    expect((await screen.findAllByText("等待管理员审核")).length).toBeGreaterThan(0);
+    expect(screen.getByText("下一步：等待管理员审核")).not.toBeNull();
+    expect(screen.getByText(/账户 ID/)).not.toBeNull();
+    expect(screen.getByRole("button", { name: "联系客服支持" })).not.toBeNull();
+    expect(screen.getByText("授权完成后显示订阅链接")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "复制" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "等待审核中" }).hasAttribute("disabled")).toBe(true);
 
     fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
 
-    expect(screen.getByText("设备管理")).not.toBeNull();
-    expect(screen.getByText("账单记录")).not.toBeNull();
-    expect(screen.getByText("账号安全")).not.toBeNull();
+    expect(screen.getByText("查看账户基础信息与历史记录。")).not.toBeNull();
+    expect(screen.getAllByText("月卡 · 等待管理员审核").length).toBeGreaterThan(0);
+    expect(screen.getByText("待管理员发放")).not.toBeNull();
+    expect(screen.queryByText("授权联系资料")).toBeNull();
+    expect(screen.queryByRole("button", { name: "修改资料" })).toBeNull();
+    expect(screen.getByText(/申请月卡（审核中）/)).not.toBeNull();
+    expect(screen.queryByText("2026/06/30 到期")).toBeNull();
+    expect(screen.queryByText("月卡 / 年卡套餐，申请开通；生效期内可刷新当前订阅。")).toBeNull();
+  });
+
+  test("personal center does not collect profile contact info", async () => {
+    const client = portalClient();
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+
+    expect(screen.queryByRole("button", { name: "填写资料" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "修改资料" })).toBeNull();
+    expect(screen.queryByLabelText("联系手机号")).toBeNull();
+    expect(screen.queryByLabelText("Telegram 账号")).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "填写联系资料" })).toBeNull();
+  });
+
+  test("local preview client preserves server-owned package facts when refreshing", async () => {
+    const client = createLocalUserPortalClient({
+      now: () => new Date("2026-05-31T00:00:00.000Z"),
+      demoSubscriptionUrl: "https://sub.example.test/import/local-visible-once"
+    });
+
+    const applied = await client.applyForSubscription({
+      userRef: "user_safe_ref",
+      planId: "yearly",
+      clientTarget: "clash"
+    });
+    const refreshed = await client.refreshSubscription({
+      userRef: "user_safe_ref",
+      requestRef: applied.requestRef,
+      clientTarget: "karing"
+    });
+
+    expect(refreshed.lifecycle).toBe("active");
+    expect(refreshed.planId).toBe("yearly");
+    expect(refreshed.expiresAt).toBe(applied.expiresAt);
+    expect(refreshed.clientTarget).toBe("karing");
+  });
+
+  test("renders usage guide, support handoff, and personal center without payment or dashboard language", async () => {
+    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: "使用教程" }));
+    expect(screen.getByText("下载客户端")).not.toBeNull();
+    expect(screen.getByText("复制订阅")).not.toBeNull();
+    expect(screen.getByText("导入配置")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "客服支持" }));
+    expect(screen.getAllByText(/Telegram 机器人助手/).length).toBeGreaterThan(0);
+    expect(screen.getByText("人工支持")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "个人中心" }));
+    expect(screen.getAllByText("注册日期").length).toBeGreaterThan(0);
+    expect(screen.getByText("历史消费账单")).not.toBeNull();
+    expect(screen.queryByText("充值")).toBeNull();
+    expect(screen.queryByText("余额")).toBeNull();
+    expect(screen.queryByText("扣费")).toBeNull();
   });
 });

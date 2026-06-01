@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-05-31, Asia/Shanghai.
+Last updated: 2026-06-01, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -32,7 +32,7 @@ Detailed navigation lives in `docs/README.md`. Structured project state lives in
 ## Repository
 
 ```text
-C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
+D:\Projects\proxy-gateway-minimal
 ```
 
 The active code source of truth is GitHub
@@ -41,13 +41,15 @@ The active code source of truth is GitHub
 Do not use these as active code checkouts:
 
 - `C:\Users\g\OneDrive\文档\订阅管理` - legacy empty Codex project shell.
+- `C:\Users\g\Projects\订阅管理\proxy-gateway-minimal` - pre-D-drive
+  migration checkout; do not use as the default working tree.
 - `C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal` -
   historical archaeology only.
 
 Before any repo work:
 
 ```powershell
-cd C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
+cd D:\Projects\proxy-gateway-minimal
 git status --short --branch
 git fetch origin
 ```
@@ -145,7 +147,8 @@ Current architecture priorities:
   default: it can authenticate a preview session and submit a subscription
   request summary, but it returns no subscription URL, performs no Admin API
   call, writes no SQLite rows, activates no payment, exposes no public Admin,
-  and creates no production subscription. A future real user API remains
+  collects no phone/Telegram/contact profile fields, and creates no production
+  subscription. A future real user API remains
   separate product work and must preserve user-scoped authorization. Portal is
   a user-facing adapter over domain services, not a wrapper around operator CLI
   commands. Normal self-service refresh/status actions should be handled by
@@ -155,6 +158,30 @@ Current architecture priorities:
   enrollment and short-lived portal sessions first; Google/OAuth or email magic
   links are later convenience login/recovery mechanisms and must never become
   entitlement authority by themselves. See `docs/USER_PORTAL_AUTH_BOUNDARY.md`.
+- Admin-Approved Portal Request Queue: repository-only support now lets the
+  user portal submit trial/monthly/yearly access requests while keeping every
+  business-changing action in the administrator review path. The 7-day trial
+  is request-only and is not automatically issued by the user portal. Requests
+  are keyed by safe portal user reference, package, and client target rather
+  than customer contact profiles. The
+  protected Admin surface can review requests through a business-readable
+  operations panel with translated status labels, status summary cards, local
+  status filtering, selected-request detail, and approval preview generation.
+  Backend status enums and raw preview JSON remain implementation details, not
+  the primary operator surface. Production entitlement creation, artifact
+  delivery, public portal exposure, payment activation, DNS, Nginx, systemd,
+  firewall, and runtime mutation remain unapproved without separate gates. See
+  `docs/superpowers/specs/2026-05-31-admin-approved-user-portal-issuance-design.md`.
+- HP Portal Validation Boundary: HP may be used as an Aliyun-like private
+  validation host for the user portal and subscription-control service seams,
+  but only as an operator-lab surface. Copying builds, creating test SQLite,
+  starting a private service, or changing Nginx/systemd/firewall on HP remains
+  Risk A and requires exact approval. See
+  `docs/HP_PORTAL_VALIDATION_RUNBOOK.md`. The latest approved private HP portal
+  validation passed on 2026-05-31 with test-only SQLite and a loopback-only
+  service, then rollback stopped the service and deleted the isolated directory;
+  see
+  `docs/production-replacement-records/2026-05-31-hp-portal-validation-private-execution.md`.
 - User Portal Auth Service: repository-only internal service support now exists
   under `server/services/platform/user-portal-auth.mjs` for issuing dynamic
   portal entries, enrolling TOTP credentials through an injected verifier, and

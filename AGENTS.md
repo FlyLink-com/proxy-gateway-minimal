@@ -7,7 +7,7 @@
 - 对密钥、token、订阅链接、账号凭证和服务器敏感输出，只说明存在和位置，不在回复中复述原文。
 - Windows 本机任务优先使用 PowerShell；涉及 Unicode 输出时注意编码问题。
 - 不要在根目录或无明确项目上下文时加载过多技能、插件或外部服务；按当前项目和任务需要最小化启用对应能力。
-- 订阅管理项目的固定本地仓库路径是 `C:\Users\g\Projects\订阅管理\proxy-gateway-minimal`；不要把 `C:\Users\g\OneDrive\文档\订阅管理` 当作真实代码仓库。
+- 订阅管理项目的固定本地仓库路径是 `D:\Projects\proxy-gateway-minimal`；`C:\Users\g\Projects\订阅管理\proxy-gateway-minimal` 是迁移前旧 checkout，不作为后续默认工作区；不要把 `C:\Users\g\OneDrive\文档\订阅管理` 当作真实代码仓库。
 - 对 `proxy-gateway-minimal` 继续工作前，先读取 `docs/PROJECT_CONTEXT.md` 并核对 `git status --short --branch`。
 - 项目发布或收尾前必须运行对应验证命令，并在回复中说明实际通过/失败结果。
 

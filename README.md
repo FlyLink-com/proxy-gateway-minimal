@@ -88,6 +88,14 @@ npm run cli
 
 首次启动时会在 `.proxy-gateway/console-token` 持久化 Token，后续重启复用。
 
+用户门户路由默认不挂载。只有在应用状态中显式设置
+`state.platform.userPortalRoutesEnabled === true`，并注入
+`userPortalAuth` 或 `portalAccessRequests` 服务时，用户侧
+`/api/portal/entry/enroll`、`/api/portal/session`、
+`/api/portal/access-requests` 和 `/api/portal/access-requests/current` 才会进入
+公共白名单。门户流程和安全边界见 `docs/USER_PORTAL_FLOW.md` 和
+`docs/USER_PORTAL_AUTH_BOUNDARY.md`。
+
 ## 作为模块使用
 
 项目现在提供 npm 模块入口和 CLI：
@@ -167,6 +175,10 @@ Do not expose this admin shell through the public Nginx gateway. Public producti
 - 当前生产仍以已记录的线上事实为准；目标重建方向是 Aliyun 承担订阅控制面，本地 Linux 承担手动 CI，干净服务器承担转发 edge/data-plane。实际迁移必须走 A 档 runbook。
 
 详细流程入口以 `docs/README.md` 为准；该索引会指向当前状态文档、活跃 runbook、执行记录和历史设计文档。
+
+## 用户门户 / 套餐申请
+
+用户门户是套餐申请和订阅状态查看的用户侧适配器，不是公网 Admin，也不是自动发放 authority。当前本地实现可以提交试用、月付和年付申请摘要；所有业务变更仍进入管理员审核路径，由受保护的“订阅申请运营台”做状态复核和安全发放预览。生产启用用户门户路由、接入真实 `userPortalAuth`、创建权益或发放订阅材料都属于单独门禁，不由 README 或本地预览授权。
 
 ## Clash/Mihomo 订阅
 

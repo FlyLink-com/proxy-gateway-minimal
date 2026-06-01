@@ -114,6 +114,14 @@ http://127.0.0.1:3456/
 
 The first start creates `.proxy-gateway/console-token` and reuses it on later starts unless `CONSOLE_TOKEN` is provided.
 
+User portal routes are not mounted by default. They become public app-level
+routes only when `state.platform.userPortalRoutesEnabled === true` and the app
+is injected with `userPortalAuth` or `portalAccessRequests` services. The
+user-facing `/api/portal/entry/enroll`, `/api/portal/session`,
+`/api/portal/access-requests`, and `/api/portal/access-requests/current` paths
+are intentionally gated this way. See `docs/USER_PORTAL_FLOW.md` and
+`docs/USER_PORTAL_AUTH_BOUNDARY.md` for the portal flow and safety boundary.
+
 ## Admin Console Shell
 
 The operator Admin Console Shell lives in `admin/` and is a Vite React app on top of the real `/api/admin/*` backend APIs.
@@ -148,6 +156,17 @@ The project uses lightweight human-gated orchestration:
 - Production is not deployed automatically.
 
 Manual CI validation is not staging, not production approval, not a self-hosted runner, and not deploy approval.
+
+## User Portal / Package Requests
+
+The user portal is a customer-side adapter for package requests and subscription
+status review. It is not public Admin and is not an automatic issuance
+authority. The current local implementation can submit trial, monthly, and
+yearly request summaries; all business-changing actions still terminate in the
+administrator review path, where the protected portal-request operations panel
+can review status and generate safe delivery previews. Production portal route
+activation, real `userPortalAuth` integration, entitlement creation, and
+subscription material delivery require separate gates.
 
 ## Subscription Admin Core
 

@@ -13,6 +13,7 @@
     "docs/OPERATOR_PROVISIONING_FORM_CONTRACT.md",
     "docs/SUBSCRIPTION_CONTROL_DATABASE.md",
     "docs/USER_PORTAL_AUTH_BOUNDARY.md",
+    "docs/USER_PORTAL_FLOW.md",
     "docs/ADMIN_UI_LEGACY_ARCHIVE.md",
     "docs/RESOURCE_PACKAGE_CLI.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
@@ -94,8 +95,8 @@
   "repo": {
     "name": "proxy-gateway-minimal",
     "github": "gaoyi1020-web/proxy-gateway-minimal",
-    "localPath": "C:\\Users\\g\\Projects\\订阅管理\\proxy-gateway-minimal",
-    "legacyShellPathWarning": "Do not use C:\\Users\\g\\OneDrive\\文档\\订阅管理 as the real code repo."
+    "localPath": "D:\\Projects\\proxy-gateway-minimal",
+    "legacyShellPathWarning": "Do not use C:\\Users\\g\\OneDrive\\文档\\订阅管理 or C:\\Users\\g\\Projects\\订阅管理\\proxy-gateway-minimal as the real code repo."
   },
   "branchContext": {
     "stableBaseline": "master",

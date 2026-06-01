@@ -17,7 +17,12 @@ import { resolveClientIp } from "./services/ip-address.mjs";
 
 const PUBLIC_PATHS = ["/api/health", "/api/public/leads", "/proxy.pac", "/sub/clash.yaml"];
 const PUBLIC_PATH_PREFIXES = ["/sub/a/"];
-const USER_PORTAL_PUBLIC_PATHS = ["/api/portal/entry/enroll", "/api/portal/session"];
+const USER_PORTAL_PUBLIC_PATHS = [
+  "/api/portal/entry/enroll",
+  "/api/portal/session",
+  "/api/portal/access-requests",
+  "/api/portal/access-requests/current"
+];
 
 export function createApp(state, options = {}) {
   const app = express();
@@ -28,7 +33,10 @@ export function createApp(state, options = {}) {
   });
   app.use(express.static(join(state.rootDir, "public")));
   const security = state.security || {};
-  const userPortalRoutesEnabled = Boolean(state.platform?.userPortalAuth && state.platform?.userPortalRoutesEnabled);
+  const userPortalRoutesEnabled = Boolean(
+    state.platform?.userPortalRoutesEnabled
+    && (state.platform?.userPortalAuth || state.platform?.portalAccessRequests)
+  );
   const clientIpResolver = options.clientIpResolver || ((req) => resolveClientIp(req, {
     trustedProxyCidrs: security.trustedProxyCidrs
   }));
@@ -52,7 +60,12 @@ export function createApp(state, options = {}) {
   if (state.subscriptions?.core || state.subscriptions?.service) {
     app.use(adminSubscriptionRoutes(state));
   }
-  if (state.platform?.leadQueue || state.platform?.accountShell || state.platform?.accessShell) {
+  if (
+    state.platform?.leadQueue
+    || state.platform?.accountShell
+    || state.platform?.accessShell
+    || state.platform?.portalAccessRequests
+  ) {
     app.use(adminPlatformRoutes(state));
   }
   app.use("/sub", createRateLimitMiddleware({

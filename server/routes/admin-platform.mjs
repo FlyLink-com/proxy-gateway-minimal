@@ -119,6 +119,7 @@ export function adminPlatformRoutes(state) {
   const aliyunGateEvidence = state.platform?.aliyunGateEvidence || {};
   const aliyunGateEvidenceShell = state.platform?.aliyunGateEvidenceShell;
   const controlStore = state.platform?.controlStore;
+  const portalAccessRequests = state.platform?.portalAccessRequests;
 
   function buildCleanStartPackage() {
     return createCleanStartControlPlanePackage({
@@ -466,6 +467,61 @@ export function adminPlatformRoutes(state) {
           accountId: req.query.accountId,
           entitlementId: req.query.entitlementId
         })
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/platform/portal-access-requests", (req, res) => {
+    try {
+      if (!portalAccessRequests) {
+        throw new Error("portalAccessRequests is not configured");
+      }
+      res.json({
+        items: portalAccessRequests.listRequests({
+          status: req.query.status,
+          portalUserRef: req.query.portalUserRef
+        })
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/portal-access-requests/:requestRef/reject", (req, res) => {
+    try {
+      if (!portalAccessRequests) {
+        throw new Error("portalAccessRequests is not configured");
+      }
+      res.json({
+        request: portalAccessRequests.rejectRequest(req.params.requestRef, req.body ?? {})
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/portal-access-requests/:requestRef/approve-preview", (req, res) => {
+    try {
+      if (!portalAccessRequests) {
+        throw new Error("portalAccessRequests is not configured");
+      }
+      res.json({
+        preview: portalAccessRequests.previewApproval(req.params.requestRef, req.body ?? {})
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/portal-access-requests/:requestRef/mark-delivered", (req, res) => {
+    try {
+      if (!portalAccessRequests) {
+        throw new Error("portalAccessRequests is not configured");
+      }
+      res.json({
+        request: portalAccessRequests.markDelivered(req.params.requestRef, req.body ?? {})
       });
     } catch (error) {
       sendError(res, error);

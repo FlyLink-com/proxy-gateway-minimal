@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, Copy, Link, MoreHorizontal, RotateCcw, ShieldCheck, ShieldOff } from "lucide-react";
+import { MetricCard as Metric } from "../../components/metric-card";
 import { StatusBadge } from "../../components/status-badge";
 import { copyText } from "../../lib/clipboard";
+import { errorMessage } from "../../lib/errors";
 import type { AdminApiClient } from "./api-client";
 import type { SubscriptionTenant } from "./types";
 import { ConfirmActionDialog } from "./confirm-action-dialog";
@@ -24,10 +26,6 @@ function formatLastUsed(value: string | null) {
     dateStyle: "short",
     timeStyle: "short"
   }).format(new Date(value));
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Admin API request failed.";
 }
 
 export function SubscriptionsPage({
@@ -57,7 +55,7 @@ export function SubscriptionsPage({
     try {
       setRows(await apiClient.listTenants());
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Admin API request failed."));
     } finally {
       setLoading(false);
     }
@@ -109,7 +107,7 @@ export function SubscriptionsPage({
       setVisibleOnce({ title: `Temporary link for ${target.displayName}`, url: result.subscriptionUrl });
       await refreshRows();
     } catch (requestError) {
-      setConfirmError(errorMessage(requestError));
+      setConfirmError(errorMessage(requestError, "Admin API request failed."));
     } finally {
       setConfirmPending(false);
     }
@@ -141,7 +139,7 @@ export function SubscriptionsPage({
       setActionNotice(`Enabled ${row.displayName}.`);
       await refreshRows();
     } catch (requestError) {
-      setActionError(errorMessage(requestError));
+      setActionError(errorMessage(requestError, "Admin API request failed."));
     }
   }
 
@@ -157,7 +155,7 @@ export function SubscriptionsPage({
       setActionNotice(`Disabled ${target.displayName}.`);
       await refreshRows();
     } catch (requestError) {
-      setConfirmError(errorMessage(requestError));
+      setConfirmError(errorMessage(requestError, "Admin API request failed."));
     } finally {
       setConfirmPending(false);
     }
@@ -323,15 +321,6 @@ export function SubscriptionsPage({
         }}
         onReset={(id) => apiClient.resetToken(id)}
       />
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="metric-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
     </div>
   );
 }

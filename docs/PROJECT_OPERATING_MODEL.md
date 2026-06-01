@@ -1,6 +1,6 @@
 # Project Operating Model
 
-Last updated: 2026-05-26, Asia/Shanghai.
+Last updated: 2026-05-31, Asia/Shanghai.
 
 > Status:
 > - Type: Active operating model
@@ -107,7 +107,7 @@ Active code and docs live in:
 
 ```text
 GitHub: gaoyi1020-web/proxy-gateway-minimal
-Local:  C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
+Local:  D:\Projects\proxy-gateway-minimal
 ```
 
 Use `docs/PROJECT_CONTEXT.md` for current handoff state and

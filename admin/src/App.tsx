@@ -12,6 +12,7 @@ import { UserPortalPage } from "./features/user-portal/user-portal-page";
 import { createLocalUserPortalClient } from "./features/user-portal/user-portal-client";
 import { NodesPage } from "./pages/nodes-page";
 import { OverviewPage } from "./pages/overview-page";
+import { PortalRequestsPage } from "./pages/portal-requests-page";
 import { ProvisioningPage } from "./pages/provisioning-page";
 
 type AppRoute = "admin" | "portal" | "site";
@@ -88,6 +89,8 @@ function renderPage(
   switch (activePage) {
     case "overview":
       return <OverviewPage apiClient={apiClient} />;
+    case "portalRequests":
+      return <PortalRequestsPage apiClient={apiClient} />;
     case "provisioning":
       return <ProvisioningPage apiClient={apiClient} />;
     case "subscriptions":

@@ -15,6 +15,7 @@ function sendPortalError(res, error) {
 export function userPortalRoutes(state, options = {}) {
   const router = Router();
   const auth = options.userPortalAuth || state.platform?.userPortalAuth;
+  const accessRequests = options.portalAccessRequests || state.platform?.portalAccessRequests;
 
   router.post("/api/portal/entry/enroll", (req, res) => {
     try {
@@ -35,6 +36,35 @@ export function userPortalRoutes(state, options = {}) {
         code: req.body?.code
       });
       res.json({ session: session.session });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.post("/api/portal/access-requests", (req, res) => {
+    try {
+      if (!accessRequests) {
+        const error = new Error("portal access request service is not configured");
+        error.code = "validation_error";
+        throw error;
+      }
+      res.status(201).json({
+        request: accessRequests.submitRequest(req.body ?? {})
+      });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.get("/api/portal/access-requests/current", (req, res) => {
+    try {
+      if (!accessRequests) {
+        const error = new Error("portal access request service is not configured");
+        error.code = "validation_error";
+        throw error;
+      }
+      const portalUserRef = String(req.query.portalUserRef || "").trim();
+      res.json({ items: accessRequests.listRequests({ portalUserRef }) });
     } catch (error) {
       sendPortalError(res, error);
     }

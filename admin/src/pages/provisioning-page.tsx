@@ -1,16 +1,9 @@
 import { useState, type FormEvent } from "react";
+import { MetricCard as Metric } from "../components/metric-card";
 import type { AdminApiClient } from "../features/subscriptions/api-client";
 import type { ProvisioningFormInput, ProvisioningFormPreview } from "../features/subscriptions/types";
-
-function nextWeekIsoDate() {
-  const date = new Date();
-  date.setDate(date.getDate() + 7);
-  return date.toISOString().slice(0, 10);
-}
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Provisioning preview failed.";
-}
+import { isoDateFromOffsetDays } from "../lib/date-input";
+import { errorMessage } from "../lib/errors";
 
 export function ProvisioningPage({ apiClient }: { apiClient: AdminApiClient }) {
   const [approvalRef, setApprovalRef] = useState("");
@@ -19,7 +12,7 @@ export function ProvisioningPage({ apiClient }: { apiClient: AdminApiClient }) {
   const [customerChannel, setCustomerChannel] = useState("manual-intake");
   const [displayName, setDisplayName] = useState("");
   const [plan, setPlan] = useState("pilot");
-  const [expiresAt, setExpiresAt] = useState(nextWeekIsoDate());
+  const [expiresAt, setExpiresAt] = useState(isoDateFromOffsetDays(7));
   const [nodeId, setNodeId] = useState("channel-lab-b-tuic");
   const [note, setNote] = useState("preproduction-canary");
   const [preview, setPreview] = useState<ProvisioningFormPreview | null>(null);
@@ -47,7 +40,7 @@ export function ProvisioningPage({ apiClient }: { apiClient: AdminApiClient }) {
     try {
       setPreview(await apiClient.previewProvisioningForm(input));
     } catch (requestError) {
-      setError(errorMessage(requestError));
+      setError(errorMessage(requestError, "Provisioning preview failed."));
     } finally {
       setPending(false);
     }
@@ -185,14 +178,5 @@ function SafePreview({ preview }: { preview: ProvisioningFormPreview }) {
         </pre>
       ) : null}
     </section>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="metric-card">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
   );
 }

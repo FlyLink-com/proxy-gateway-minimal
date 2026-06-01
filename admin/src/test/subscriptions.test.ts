@@ -32,6 +32,7 @@ import type {
 } from "../features/subscriptions/types";
 import { NodesPage } from "../pages/nodes-page";
 import { OverviewPage } from "../pages/overview-page";
+import { PortalRequestsPage } from "../pages/portal-requests-page";
 import { ProvisioningPage } from "../pages/provisioning-page";
 
 afterEach(() => {
@@ -165,6 +166,100 @@ describe("admin API client", () => {
     expect(preview.status).toBe("ready_for_cli_dry_run");
     expect(preview.execution.dbMutationAuthorized).toBe(false);
     expect(preview.safety.noProductionMutation).toBe(true);
+  });
+
+  test("lists portal access requests through the protected Admin route", async () => {
+    const fetcher = vi.fn(async () => jsonResponse({
+      items: [{
+        id: "pareq_1",
+        type: "portal_access_request_summary",
+        portalUserRef: "user_safe_ref",
+        plan: "trial",
+        planLabel: "7-day trial",
+        durationDays: 7,
+        status: "pending_admin_review",
+        nextAction: "admin_review_required",
+        submittedAt: "2026-05-31T00:00:00.000Z",
+        updatedAt: "2026-05-31T00:00:00.000Z",
+        reviewedAt: null,
+        reviewedByRef: null,
+        safeReasonCode: null,
+        priorTrialState: "none",
+        entitlementRef: null,
+        accessGrantRef: null,
+        safety: {
+          noSubscriptionUrl: true,
+          noRawCustomerData: true,
+          noRawHandoffMaterial: true,
+          noEntitlementCreated: true,
+          noRuntimeMutation: true,
+          noProductionMutation: true
+        }
+      }]
+    }));
+    const client = createAdminApiClient({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "secret",
+      fetcher
+    });
+
+    const items = await client.listPortalAccessRequests();
+
+    expect(items[0].plan).toBe("trial");
+    const firstCall = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(firstCall[0]).toBe("http://127.0.0.1:3456/api/admin/platform/portal-access-requests");
+  });
+
+  test("previews portal access request approval without returning subscription material", async () => {
+    const fetcher = vi.fn(async () => jsonResponse({
+      preview: {
+        ok: true,
+        mode: "portal-access-request-approval-preview",
+        status: "approved_pending_delivery",
+        request: { id: "pareq_1", plan: "trial", durationDays: 7, status: "approved_pending_delivery" },
+        issuanceInput: {
+          displayName: "customer",
+          expiresInDays: 7,
+          plan: "trial",
+          nodeId: "channel-lab-b-tuic",
+          note: "portal-access-request:pareq_1",
+          artifact: { create: true },
+          control: {
+            accountId: "user_safe_ref",
+            ownerRef: "user_safe_ref",
+            entitlementId: "ent_pareq_1",
+            requestId: "pareq_1",
+            requestedByRef: "operator_safe_ref",
+            purpose: "portal_access_request",
+            plan: "trial"
+          }
+        },
+        approvalRef: "approval_trial_1",
+        safety: {
+          previewOnly: true,
+          noSubscriptionUrl: true,
+          noRawHandoffMaterial: true,
+          noRuntimeMutation: true,
+          noProductionMutation: true,
+          requiresSeparateIssuanceExecution: true
+        }
+      }
+    }));
+    const client = createAdminApiClient({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "secret",
+      fetcher
+    });
+
+    const preview = await client.previewPortalAccessRequestApproval("pareq_1", {
+      reviewedByRef: "operator_safe_ref",
+      approvalRef: "approval_trial_1",
+      nodeId: "channel-lab-b-tuic"
+    });
+
+    expect(preview.status).toBe("approved_pending_delivery");
+    const firstCall = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.stringify(firstCall[1]?.body)).not.toMatch(/subscriptionUrl|token=/i);
   });
 
   test("loads and records Aliyun gate review data without raw firewall details", async () => {
@@ -475,6 +570,139 @@ describe("admin API client", () => {
   });
 });
 
+describe("portal access request admin page", () => {
+  function portalRequest(overrides: Partial<Awaited<ReturnType<AdminApiClient["listPortalAccessRequests"]>>[number]> = {}) {
+    return {
+      id: "pareq_1",
+      type: "portal_access_request_summary" as const,
+      portalUserRef: "user_safe_ref",
+      plan: "trial" as const,
+      planLabel: "7-day trial",
+      durationDays: 7,
+      status: "pending_admin_review" as const,
+      nextAction: "admin_review_required",
+      submittedAt: "2026-05-31T00:00:00.000Z",
+      updatedAt: "2026-05-31T00:00:00.000Z",
+      reviewedAt: null,
+      reviewedByRef: null,
+      safeReasonCode: null,
+      priorTrialState: "none",
+      entitlementRef: null,
+      accessGrantRef: null,
+      safety: {
+        noSubscriptionUrl: true,
+        noRawCustomerData: true,
+        noRawHandoffMaterial: true,
+        noEntitlementCreated: true,
+        noRuntimeMutation: true,
+        noProductionMutation: true
+      },
+      ...overrides
+    };
+  }
+
+  test("renders a business-readable request operations console with summary and status filtering", async () => {
+    const listPortalAccessRequests = vi.fn(async () => [
+      portalRequest(),
+      portalRequest({
+        id: "pareq_2",
+        portalUserRef: "user_monthly_ref",
+        plan: "monthly" as const,
+        planLabel: "Monthly access",
+        durationDays: 30,
+        status: "approved_pending_delivery" as const,
+        reviewedByRef: "operator_safe_ref",
+        priorTrialState: "used"
+      }),
+      portalRequest({
+        id: "pareq_3",
+        portalUserRef: "user_delivered_ref",
+        plan: "yearly" as const,
+        planLabel: "Yearly access",
+        durationDays: 365,
+        status: "delivered" as const,
+        reviewedByRef: "operator_safe_ref",
+        entitlementRef: "ent_safe_ref",
+        accessGrantRef: "grant_safe_ref"
+      }),
+      portalRequest({
+        id: "pareq_4",
+        portalUserRef: "user_rejected_ref",
+        status: "rejected" as const,
+        safeReasonCode: "duplicate_trial"
+      })
+    ]);
+
+    render(createElement(PortalRequestsPage, {
+      apiClient: adminClient({
+        listPortalAccessRequests
+      } as unknown as Partial<AdminApiClient>)
+    }));
+
+    expect(await screen.findByText("订阅申请运营台")).not.toBeNull();
+    expect(screen.getByText("全部申请")).not.toBeNull();
+    expect(screen.getAllByText("待审核").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("待发放").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("已发放").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("已拒绝").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("申请队列")).not.toBeNull();
+    expect(screen.getByText("申请详情")).not.toBeNull();
+    expect(screen.queryByText(/pending_admin_review|approved_pending_delivery|Contact|Telegram|customer@example\.com|subscriptionUrl|token=/i)).toBeNull();
+
+    fireEvent.change(screen.getByLabelText("状态筛选"), { target: { value: "delivered" } });
+
+    expect(screen.getAllByText("Yearly access").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Monthly access")).toBeNull();
+    expect(screen.getByText("ent_safe_ref")).not.toBeNull();
+    expect(screen.getByText("grant_safe_ref")).not.toBeNull();
+  });
+
+  test("renders trial requests and safe approval preview", async () => {
+    const listPortalAccessRequests = vi.fn(async () => [portalRequest()]);
+    const previewPortalAccessRequestApproval = vi.fn(async () => ({
+      ok: true,
+      mode: "portal-access-request-approval-preview" as const,
+      status: "approved_pending_delivery",
+      request: { id: "pareq_1", plan: "trial" as const, durationDays: 7, status: "approved_pending_delivery" as const },
+      issuanceInput: { plan: "trial" as const, nodeId: "channel-lab-b-tuic" },
+      approvalRef: "approval_trial_1",
+      safety: {
+        previewOnly: true,
+        noSubscriptionUrl: true,
+        noRawHandoffMaterial: true,
+        noRuntimeMutation: true,
+        noProductionMutation: true,
+        requiresSeparateIssuanceExecution: true
+      }
+    }));
+
+    render(createElement(PortalRequestsPage, {
+      apiClient: adminClient({
+        listPortalAccessRequests,
+        previewPortalAccessRequestApproval
+      } as unknown as Partial<AdminApiClient>)
+    }));
+
+    expect(await screen.findByText("订阅申请运营台")).not.toBeNull();
+    expect(screen.getAllByText("7-day trial").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("待审核").length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.change(screen.getByLabelText("审批编号"), { target: { value: "approval_trial_1" } });
+    fireEvent.change(screen.getByLabelText("操作员"), { target: { value: "operator_safe_ref" } });
+    fireEvent.change(screen.getByLabelText("目标通道节点"), { target: { value: "channel-lab-b-tuic" } });
+    fireEvent.click(screen.getByRole("button", { name: "生成发放预览" }));
+
+    expect(await screen.findByText("发放预览结果")).not.toBeNull();
+    expect(screen.getAllByText("待发放").length).toBeGreaterThanOrEqual(1);
+    expect(previewPortalAccessRequestApproval).toHaveBeenCalledWith("pareq_1", {
+      approvalRef: "approval_trial_1",
+      reviewedByRef: "operator_safe_ref",
+      nodeId: "channel-lab-b-tuic"
+    });
+    expect(screen.queryByText(/approved_pending_delivery|subscriptionUrl|token=/i)).toBeNull();
+  });
+});
+
 describe("admin session", () => {
   test("persists local API base URL and console token in session storage", () => {
     sessionStorage.clear();
@@ -569,6 +797,23 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelLabTargetDecision: async () => channelLabTargetDecision(),
     reviewCleanEdgeReadiness: async () => cleanEdgeReadinessSummary(),
     previewProvisioningForm: async () => provisioningFormPreview(),
+    listPortalAccessRequests: async () => [],
+    previewPortalAccessRequestApproval: async () => ({
+      ok: true,
+      mode: "portal-access-request-approval-preview" as const,
+      status: "approved_pending_delivery",
+      request: {},
+      issuanceInput: {},
+      approvalRef: "approval_preview",
+      safety: {
+        previewOnly: true,
+        noSubscriptionUrl: true,
+        noRawHandoffMaterial: true,
+        noRuntimeMutation: true,
+        noProductionMutation: true,
+        requiresSeparateIssuanceExecution: true
+      }
+    }),
     ...overrides
   };
 }

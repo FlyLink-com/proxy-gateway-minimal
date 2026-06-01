@@ -1,6 +1,6 @@
 # Environment Topology
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-05-31, Asia/Shanghai.
 
 This document defines the operating map for the subscription management project. Use it to avoid mixing local Codex projects, historical repository copies, GitHub branches, and AWS runtime directories.
 
@@ -11,7 +11,7 @@ The source of truth for code is:
 ```text
 GitHub: gaoyi1020-web/proxy-gateway-minimal
 Default branch: master
-Local active checkout: C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
+Local active checkout: D:\Projects\proxy-gateway-minimal
 ```
 
 `master` is the integrated stable baseline. Development starts from `master` on a task branch and returns to `master` through a pull request.
@@ -20,15 +20,16 @@ Local active checkout: C:\Users\g\Projects\订阅管理\proxy-gateway-minimal
 
 | Path | Role | Policy |
 | --- | --- | --- |
-| `C:\Users\g\Projects\订阅管理\proxy-gateway-minimal` | Active local checkout | Use for all ongoing Codex and local development. |
+| `D:\Projects\proxy-gateway-minimal` | Active local checkout | Use for all ongoing Codex and local development. |
+| `C:\Users\g\Projects\订阅管理\proxy-gateway-minimal` | Pre-D-drive migration checkout | Do not use as the default working tree. Keep only for history lookup until archived. |
 | `C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal` | Historical original checkout | Do not develop here. Keep only for history lookup until archived. |
 | `C:\Users\g\OneDrive\文档\订阅管理` | Empty legacy Codex project shell | Do not use as a code repository. It has no commits and no project code. |
 
 Before changing the project, verify:
 
 ```powershell
-git -C C:\Users\g\Projects\订阅管理\proxy-gateway-minimal status --short --branch
-git -C C:\Users\g\Projects\订阅管理\proxy-gateway-minimal rev-parse HEAD
+git -C D:\Projects\proxy-gateway-minimal status --short --branch
+git -C D:\Projects\proxy-gateway-minimal rev-parse HEAD
 ```
 
 ## Branch Model

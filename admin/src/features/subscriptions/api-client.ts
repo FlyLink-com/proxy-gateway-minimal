@@ -26,6 +26,9 @@ import type {
   CleanEdgeReadinessSummary,
   CreateSubscriptionInput,
   CreateSubscriptionResult,
+  PortalAccessApprovalPreview,
+  PortalAccessApprovalPreviewInput,
+  PortalAccessRequestSummary,
   ProvisioningFormInput,
   ProvisioningFormPreview,
   ProviderFirewallEvidenceInput,
@@ -163,6 +166,27 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
           }
         )
       ).provisioningForm,
+    listPortalAccessRequests: async (status?: string) => {
+      const query = status ? `?status=${encodeURIComponent(status)}` : "";
+      return (
+        await request<{ items: PortalAccessRequestSummary[] }>(
+          `/api/admin/platform/portal-access-requests${query}`
+        )
+      ).items;
+    },
+    previewPortalAccessRequestApproval: async (
+      requestRef: string,
+      input: PortalAccessApprovalPreviewInput
+    ) =>
+      (
+        await request<{ preview: PortalAccessApprovalPreview }>(
+          `/api/admin/platform/portal-access-requests/${encodeURIComponent(requestRef)}/approve-preview`,
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).preview,
     getAliyunGates: async () =>
       (await request<{ aliyunGates: AliyunGateDecisionPacket }>("/api/admin/platform/aliyun-gates")).aliyunGates,
     getAliyunGateEvidence: async () =>
