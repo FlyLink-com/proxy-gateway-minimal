@@ -42,6 +42,11 @@ The server project import boundary lives in
 repository with the live server through read-only, redacted inventory; never
 copy `.env`, SQLite, handoff files, raw logs, subscription URLs, tokens,
 credentials, or customer data into Git.
+The first approved Aliyun server project import read-only inventory is recorded
+in
+`docs/production-replacement-records/2026-06-01-aliyun-server-project-import-readonly-inventory.md`.
+It confirms the live packaged release layout and safe hash/drift facts without
+copying runtime secrets or mutating production.
 
 ## Repository
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-05-31",
+  "lastUpdated": "2026-06-01",
   "timezone": "Asia/Shanghai",
   "status": "active-snapshot-aliyun-subscription-promoted-edge-terminated",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
@@ -90,7 +90,8 @@
     "docs/production-replacement-records/2026-05-28-tuic-controlled-operator-access-creation.md",
     "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation.md",
     "docs/production-replacement-records/2026-05-28-cli-preproduction-subscription-issuance.md",
-    "docs/production-replacement-records/2026-05-29-singapore-prod-edge-termination.md"
+    "docs/production-replacement-records/2026-05-29-singapore-prod-edge-termination.md",
+    "docs/production-replacement-records/2026-06-01-aliyun-server-project-import-readonly-inventory.md"
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
@@ -115,6 +116,7 @@
   "activeDirections": [
     "Mainline focus strictly converged on core subscription production delivery: '能生产、能发放、能审计、能撤回'; all visual, marketing, Telegram bot, video-channel drafts, and speculative decorational sketches are retired and deprioritized",
     "Aliyun is the current business workspace for public site, lead intake, subscription distribution, operator-controlled issuance, and production records; local machines and local checkouts are development, validation, HP/manual CI, operator handoff, and archive surfaces only, not business runtime or production authority",
+    "Aliyun server project import read-only inventory completed after exact approval: live runtime is a packaged release under /opt/proxy-gateway-minimal-candidate, service templates and Nginx public-boundary template match local hashes, package-lock matches local, package.json/.env.example drift remains import-planning work, and no .env, SQLite, logs, handoff, subscription URL, token, customer data, file mutation, service restart, Nginx reload, DNS, firewall, or deploy action was performed",
     "Goal-driven execution: Aliyun Subscription Control Platform MVP has moved from repo-only B/C support into exact-phrase Risk A promotion records; public Admin, edge activation, AWS rollback-start, historical state copy, broader artifact issuance, and legacy query-token retirement remain separate gates",
     "Operator CLI Platform Boundary exists as the product/ops boundary for keeping public routes small and explicit while administrative workflows move to operator CLI tools, local/private console review, visible-once handoff files, and execution records; public Admin is not a product surface and production mutation remains Risk A even when wrapped by CLI",
     "CLI and user portal are separate adapters over shared domain services: CLI is operator/ops tooling for provisioning, override, revoke, audit, emergency recovery, and controlled handoff, while portal is a user-facing service/API surface for user-scoped self-service; portal must not shell out to or depend on CLI commands for normal customer flows",
