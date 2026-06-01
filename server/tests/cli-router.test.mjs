@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildPackageScriptSpawn,
+  buildCliCommandMap,
   buildCliHelp,
+  listCliCommands,
   resolveCliCommand,
   redactNetworkStatus,
   runProxyGatewayCli
@@ -86,6 +88,48 @@ test("gccgw CLI resolves local project, admin, site, and package scripts", () =>
     kind: "package-script",
     script: "pack:dry-run"
   });
+});
+
+test("gccgw CLI exposes a structured command map for editor surfaces", async () => {
+  const commands = listCliCommands();
+  const names = commands.map((command) => command.command);
+
+  assert.ok(names.includes("gccgw commands"));
+  assert.ok(names.includes("gccgw project verify"));
+  assert.ok(names.includes("gccgw platform issue-subscription"));
+  assert.ok(names.includes("gccgw channel subscription-render-proof"));
+
+  const issueSubscription = commands.find((command) => command.command === "gccgw platform issue-subscription");
+  assert.equal(issueSubscription.domain, "platform");
+  assert.equal(issueSubscription.riskTier, "A");
+  assert.equal(issueSubscription.mode, "execution-gated");
+
+  const commandMap = buildCliCommandMap({ format: "json" });
+  assert.equal(commandMap.type, "gccgw_command_map");
+  assert.equal(commandMap.commands.length, commands.length);
+  assert.doesNotMatch(JSON.stringify(commandMap), /subscriptionUrl|token|secret|password/i);
+
+  let stdout = "";
+  const exitCode = await runProxyGatewayCli(["commands", "--json"], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for command map");
+    },
+    runPackageScript: async () => {
+      throw new Error("package script must not run for command map");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for command map");
+    },
+    writeStdout: (text) => {
+      stdout += text;
+    },
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  const parsed = JSON.parse(stdout);
+  assert.equal(parsed.type, "gccgw_command_map");
+  assert.ok(parsed.commands.some((command) => command.command === "gccgw site verify"));
 });
 
 test("gccgw CLI reports unknown commands with the current CLI name", async () => {

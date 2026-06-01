@@ -1,46 +1,108 @@
-const NODE_SCRIPT_COMMANDS = new Map([
-  ["project check", "scripts/check-project-state.mjs"],
-  ["channel dry-run", "scripts/channel-config-dry-run.mjs"],
-  ["channel benchmark-run", "scripts/channel-benchmark-runner.mjs"],
-  ["channel benchmark-fixture", "scripts/channel-benchmark-fixture.mjs"],
-  ["channel benchmark-summary", "scripts/channel-benchmark-summary.mjs"],
-  ["channel benchmark-score", "scripts/channel-benchmark-score.mjs"],
-  ["channel candidate-report", "scripts/channel-candidate-report.mjs"],
-  ["channel candidate-comparison", "scripts/channel-candidate-comparison.mjs"],
-  ["channel decision-pack", "scripts/channel-decision-pack.mjs"],
-  ["channel extended-assessment", "scripts/channel-extended-assessment.mjs"],
-  ["channel extended-report", "scripts/channel-extended-report.mjs"],
-  ["channel measurement-bundle", "scripts/channel-measurement-bundle.mjs"],
-  ["channel measurement-investigation", "scripts/channel-measurement-investigation.mjs"],
-  ["channel runtime-gate-packet", "scripts/channel-runtime-gate-packet.mjs"],
-  ["channel runtime-evidence-bridge", "scripts/channel-runtime-evidence-bridge.mjs"],
-  ["channel runtime-inventory-summary", "scripts/channel-runtime-inventory-summary.mjs"],
-  ["channel runtime-registry", "scripts/channel-runtime-registry.mjs"],
-  ["channel system-decision-flow", "scripts/channel-system-decision-flow.mjs"],
-  ["channel subscription-activation-fixture", "scripts/channel-subscription-activation-flow-fixture.mjs"],
-  ["channel subscription-activation-replay", "scripts/channel-subscription-activation-flow-replay.mjs"],
-  ["channel subscription-activation-package", "scripts/channel-subscription-activation-package.mjs"],
-  ["channel production-module", "scripts/channel-production-module.mjs"],
-  ["channel subscription-activation-record-template", "scripts/channel-subscription-activation-record-template.mjs"],
-  ["channel subscription-render-proof", "scripts/channel-subscription-render-proof.mjs"],
-  ["platform controlled-open", "scripts/platform-controlled-open.mjs"],
-  ["platform provisioning-form", "scripts/platform-provisioning-form.mjs"],
-  ["platform issue-subscription", "scripts/platform-issue-subscription.mjs"],
-  ["platform issue-portal-entry", "scripts/platform-issue-portal-entry.mjs"],
-  ["platform resource-package", "scripts/platform-resource-package.mjs"],
-  ["platform revoke-access", "scripts/platform-revoke-access.mjs"],
-  ["platform access-inventory-summary", "scripts/access-model-inventory-summary.mjs"],
-  ["platform clean-edge-readiness-summary", "scripts/clean-edge-readiness-summary.mjs"]
-]);
+const NODE_SCRIPT_COMMAND_ENTRIES = [
+  ["project check", "scripts/check-project-state.mjs", "project", "C", "read-only", "Validate project-state and repository safety markers"],
+  ["channel dry-run", "scripts/channel-config-dry-run.mjs", "channel", "B", "dry-run", "Validate channel configuration candidates"],
+  ["channel benchmark-run", "scripts/channel-benchmark-runner.mjs", "channel", "B", "local-runner", "Run an explicit local benchmark runner"],
+  ["channel benchmark-fixture", "scripts/channel-benchmark-fixture.mjs", "channel", "C", "fixture", "Create editable benchmark sample placeholders"],
+  ["channel benchmark-summary", "scripts/channel-benchmark-summary.mjs", "channel", "C", "summary", "Summarize benchmark samples"],
+  ["channel benchmark-score", "scripts/channel-benchmark-score.mjs", "channel", "C", "summary", "Score benchmark readiness"],
+  ["channel candidate-report", "scripts/channel-candidate-report.mjs", "channel", "C", "report", "Build candidate recommendation evidence"],
+  ["channel candidate-comparison", "scripts/channel-candidate-comparison.mjs", "channel", "C", "report", "Plan protocol comparison candidates"],
+  ["channel decision-pack", "scripts/channel-decision-pack.mjs", "channel", "C", "report", "Build operator decision evidence"],
+  ["channel extended-assessment", "scripts/channel-extended-assessment.mjs", "channel", "C", "report", "Assess extended measurement readiness"],
+  ["channel extended-report", "scripts/channel-extended-report.mjs", "channel", "C", "report", "Aggregate extended measurement windows"],
+  ["channel measurement-bundle", "scripts/channel-measurement-bundle.mjs", "channel", "C", "report", "Build measurement bundle evidence"],
+  ["channel measurement-investigation", "scripts/channel-measurement-investigation.mjs", "channel", "C", "report", "Summarize measurement investigation evidence"],
+  ["channel runtime-gate-packet", "scripts/channel-runtime-gate-packet.mjs", "channel", "C", "gate-preview", "Build runtime gate packet"],
+  ["channel runtime-evidence-bridge", "scripts/channel-runtime-evidence-bridge.mjs", "channel", "C", "gate-preview", "Bridge runtime evidence into readiness state"],
+  ["channel runtime-inventory-summary", "scripts/channel-runtime-inventory-summary.mjs", "channel", "C", "summary", "Summarize runtime inventory"],
+  ["channel runtime-registry", "scripts/channel-runtime-registry.mjs", "channel", "C", "summary", "Build channel runtime registry state"],
+  ["channel system-decision-flow", "scripts/channel-system-decision-flow.mjs", "channel", "C", "report", "Build end-to-end channel decision flow"],
+  ["channel subscription-activation-fixture", "scripts/channel-subscription-activation-flow-fixture.mjs", "channel", "C", "fixture", "Create activation flow fixture"],
+  ["channel subscription-activation-replay", "scripts/channel-subscription-activation-flow-replay.mjs", "channel", "C", "replay", "Replay activation flow fixture"],
+  ["channel subscription-activation-package", "scripts/channel-subscription-activation-package.mjs", "channel", "C", "gate-preview", "Build activation package preview"],
+  ["channel production-module", "scripts/channel-production-module.mjs", "channel", "C", "gate-preview", "Prepare production module evidence"],
+  ["channel subscription-activation-record-template", "scripts/channel-subscription-activation-record-template.mjs", "channel", "C", "template", "Create activation record template"],
+  ["channel subscription-render-proof", "scripts/channel-subscription-render-proof.mjs", "channel", "C", "render-proof", "Produce subscription render proof"],
+  ["platform controlled-open", "scripts/platform-controlled-open.mjs", "platform", "B", "dry-run", "Build controlled-open delivery plan"],
+  ["platform provisioning-form", "scripts/platform-provisioning-form.mjs", "platform", "B", "preview", "Convert operator facts into issuance input"],
+  ["platform issue-subscription", "scripts/platform-issue-subscription.mjs", "platform", "A", "execution-gated", "Issue a controlled subscription after approval"],
+  ["platform issue-portal-entry", "scripts/platform-issue-portal-entry.mjs", "platform", "A", "execution-gated", "Issue a dynamic portal entry after approval"],
+  ["platform resource-package", "scripts/platform-resource-package.mjs", "platform", "B", "package", "Build operator delivery package"],
+  ["platform revoke-access", "scripts/platform-revoke-access.mjs", "platform", "A", "dry-run-only", "Plan access revocation"],
+  ["platform access-inventory-summary", "scripts/access-model-inventory-summary.mjs", "platform", "C", "summary", "Summarize access model inventory"],
+  ["platform clean-edge-readiness-summary", "scripts/clean-edge-readiness-summary.mjs", "platform", "C", "gate-preview", "Summarize clean edge readiness"]
+];
 
-const PACKAGE_SCRIPT_COMMANDS = new Map([
-  ["project test", "test"],
-  ["admin test", "admin:test"],
-  ["admin build", "admin:build"],
-  ["site build", "admin:site:build"],
-  ["site verify", "admin:site:verify"],
-  ["package dry-run", "pack:dry-run"]
-]);
+const PACKAGE_SCRIPT_COMMAND_ENTRIES = [
+  ["project test", "test", "project", "B", "test", "Run server test suite"],
+  ["admin test", "admin:test", "admin", "B", "test", "Run admin UI tests"],
+  ["admin build", "admin:build", "admin", "B", "build", "Build admin UI"],
+  ["site build", "admin:site:build", "site", "B", "build", "Build public site"],
+  ["site verify", "admin:site:verify", "site", "B", "verify", "Verify public site build"],
+  ["package dry-run", "pack:dry-run", "package", "C", "dry-run", "Preview npm package contents"]
+];
+
+const SPECIAL_COMMAND_ENTRIES = [
+  ["commands", null, "project", "C", "read-only", "List registered gccgw commands"],
+  ["server start", null, "server", "B", "local-runtime", "Start local gateway server"],
+  ["project verify", null, "project", "B", "verify", "Run repository verification"],
+  ["env check", null, "env", "C", "read-only", "Check local environment shape"],
+  ["ops network-status", null, "ops", "C", "read-only", "Print redacted local network status"]
+];
+
+const NODE_SCRIPT_COMMANDS = new Map(
+  NODE_SCRIPT_COMMAND_ENTRIES.map(([command, script]) => [command, script])
+);
+
+const PACKAGE_SCRIPT_COMMANDS = new Map(
+  PACKAGE_SCRIPT_COMMAND_ENTRIES.map(([command, script]) => [command, script])
+);
+
+function commandEntry([command, target, domain, riskTier, mode, description], handler) {
+  return {
+    command: `gccgw ${command}`,
+    domain,
+    riskTier,
+    mode,
+    handler,
+    ...(target ? { target } : {}),
+    description
+  };
+}
+
+export function listCliCommands() {
+  return [
+    ...SPECIAL_COMMAND_ENTRIES.map((entry) => commandEntry(entry, "internal")),
+    ...NODE_SCRIPT_COMMAND_ENTRIES.map((entry) => commandEntry(entry, "node-script")),
+    ...PACKAGE_SCRIPT_COMMAND_ENTRIES.map((entry) => commandEntry(entry, "package-script"))
+  ].sort((a, b) => a.domain.localeCompare(b.domain) || a.command.localeCompare(b.command));
+}
+
+export function buildCliCommandMap({ format = "text" } = {}) {
+  const commands = listCliCommands();
+  if (format === "json") {
+    return {
+      type: "gccgw_command_map",
+      generatedBy: "gccgw commands",
+      commands
+    };
+  }
+  const rows = commands.map((command) => [
+    command.command,
+    command.domain,
+    command.riskTier,
+    command.mode,
+    command.description
+  ]);
+  const lines = [
+    "gccgw command map",
+    "",
+    "Command | Domain | Risk | Mode | Description",
+    "--- | --- | --- | --- | ---",
+    ...rows.map((row) => row.join(" | "))
+  ];
+  return `${lines.join("\n")}\n`;
+}
 
 function isHelpArg(value) {
   return value === "help" || value === "--help" || value === "-h";
@@ -66,6 +128,7 @@ export function buildCliHelp() {
   return `gccgw CLI
 
 Usage:
+  gccgw commands [--json]
   gccgw server start
   gccgw project check
   gccgw project verify [--with-admin]
@@ -81,6 +144,8 @@ Usage:
   gccgw channel <command> [...args]
 
 Common commands:
+  gccgw commands
+  gccgw commands --json
   gccgw project check
   gccgw project verify --with-admin
   gccgw env check
@@ -106,6 +171,12 @@ export function resolveCliCommand(argv = []) {
   }
   if (isHelpArg(args[0])) {
     return { kind: "help" };
+  }
+  if (args[0] === "commands") {
+    return {
+      kind: "command-map",
+      format: args.includes("--json") ? "json" : "text"
+    };
   }
   if (args[0] === "server" && (args[1] === undefined || args[1] === "start")) {
     return { kind: "start-server" };
@@ -229,6 +300,11 @@ export async function runProxyGatewayCli(argv, {
     const command = resolveCliCommand(argv);
     if (command.kind === "help") {
       writeStdout(buildCliHelp());
+      return 0;
+    }
+    if (command.kind === "command-map") {
+      const commandMap = buildCliCommandMap({ format: command.format });
+      writeStdout(command.format === "json" ? `${JSON.stringify(commandMap, null, 2)}\n` : commandMap);
       return 0;
     }
     if (command.kind === "start-server") {
