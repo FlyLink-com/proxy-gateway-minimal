@@ -42,11 +42,12 @@ It did not allow:
 ```text
 repository: D:\Projects\proxy-gateway-minimal
 branch: docs/master-archive-boundary
-head: 2cd324e
+head: a06d021
 ```
 
-Unrelated local documentation edits were present before validation and were not
-included in the HP deployment archive.
+This pass validated the latest branch head after `gccgw` command-surface
+consolidation, source-doc navigation, and runbook preflight-boundary hardening.
+No unrelated local file was included in the HP deployment archive.
 
 ## HP Setup
 
@@ -68,7 +69,7 @@ The isolated validation directory was:
 Before cleanup or deletion, the resolved path was verified with `readlink -m`
 and matched the exact isolated directory above.
 
-The current commit was copied to HP with `git archive`, extracted under
+The current branch head was copied to HP with `git archive`, extracted under
 `repo/`, and installed from repository lockfiles:
 
 ```text
