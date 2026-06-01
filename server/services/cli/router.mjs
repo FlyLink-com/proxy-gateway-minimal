@@ -54,30 +54,30 @@ export function buildPackageScriptSpawn(script, platform = process.platform) {
 }
 
 export function buildCliHelp() {
-  return `proxy-gateway CLI
+  return `gccgw CLI
 
 Usage:
-  proxy-gateway server start
-  proxy-gateway project check
-  proxy-gateway project verify [--with-admin]
-  proxy-gateway env check
-  proxy-gateway ops network-status
-  proxy-gateway platform <command> [...args]
-  proxy-gateway channel <command> [...args]
+  gccgw server start
+  gccgw project check
+  gccgw project verify [--with-admin]
+  gccgw env check
+  gccgw ops network-status
+  gccgw platform <command> [...args]
+  gccgw channel <command> [...args]
 
 Common commands:
-  proxy-gateway project check
-  proxy-gateway project verify --with-admin
-  proxy-gateway env check
-  proxy-gateway ops network-status
-  proxy-gateway platform provisioning-form <input.json>
-  proxy-gateway platform issue-subscription [--dry-run] <input.json>
-  proxy-gateway platform issue-portal-entry [--dry-run] <input.json>
-  proxy-gateway platform revoke-access <tenant-ref> --dry-run
-  proxy-gateway channel dry-run <config.json>
+  gccgw project check
+  gccgw project verify --with-admin
+  gccgw env check
+  gccgw ops network-status
+  gccgw platform provisioning-form <input.json>
+  gccgw platform issue-subscription [--dry-run] <input.json>
+  gccgw platform issue-portal-entry [--dry-run] <input.json>
+  gccgw platform revoke-access <tenant-ref> --dry-run
+  gccgw channel dry-run <config.json>
 
 No-arg compatibility:
-  proxy-gateway
+  gccgw
     Starts the local proxy gateway server.
 `;
 }
@@ -116,7 +116,7 @@ export function resolveCliCommand(argv = []) {
     };
   }
 
-  throw new Error(`Unknown proxy-gateway command: ${args.join(" ")}`);
+  throw new Error(`Unknown gccgw command: ${args.join(" ")}`);
 }
 
 function safeIssue(issue) {
@@ -221,7 +221,7 @@ export async function runProxyGatewayCli(argv, {
     if (command.kind === "network-status") {
       return await runNetworkStatus();
     }
-    throw new Error(`Unsupported proxy-gateway command kind: ${command.kind}`);
+    throw new Error(`Unsupported gccgw command kind: ${command.kind}`);
   } catch (error) {
     writeStderr(`${error.message}\n`);
     return 1;

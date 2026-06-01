@@ -8,16 +8,17 @@ import {
   runProxyGatewayCli
 } from "../services/cli/router.mjs";
 
-test("proxy-gateway CLI help exposes normalized command groups", () => {
+test("gccgw CLI help exposes normalized command groups", () => {
   const help = buildCliHelp();
 
-  assert.match(help, /proxy-gateway project check/);
-  assert.match(help, /proxy-gateway platform issue-subscription/);
-  assert.match(help, /proxy-gateway channel dry-run/);
-  assert.match(help, /proxy-gateway server start/);
+  assert.match(help, /gccgw project check/);
+  assert.match(help, /gccgw platform issue-subscription/);
+  assert.match(help, /gccgw channel dry-run/);
+  assert.match(help, /gccgw server start/);
+  assert.doesNotMatch(help, /proxy-gateway/);
 });
 
-test("proxy-gateway CLI resolves project checks to the project-state checker", () => {
+test("gccgw CLI resolves project checks to the project-state checker", () => {
   assert.deepEqual(resolveCliCommand(["project", "check"]), {
     kind: "node-script",
     script: "scripts/check-project-state.mjs",
@@ -25,7 +26,7 @@ test("proxy-gateway CLI resolves project checks to the project-state checker", (
   });
 });
 
-test("proxy-gateway CLI builds Windows-safe npm script spawn commands", () => {
+test("gccgw CLI builds Windows-safe npm script spawn commands", () => {
   assert.deepEqual(buildPackageScriptSpawn("test", "win32"), {
     command: "cmd.exe",
     args: ["/d", "/s", "/c", "npm.cmd run test"]
@@ -40,7 +41,7 @@ test("proxy-gateway CLI builds Windows-safe npm script spawn commands", () => {
   );
 });
 
-test("proxy-gateway CLI resolves project verify as an aggregate check", () => {
+test("gccgw CLI resolves project verify as an aggregate check", () => {
   assert.deepEqual(resolveCliCommand(["project", "verify"]), {
     kind: "project-verify",
     withAdmin: false
@@ -51,7 +52,7 @@ test("proxy-gateway CLI resolves project verify as an aggregate check", () => {
   });
 });
 
-test("proxy-gateway CLI resolves env and ops checks", () => {
+test("gccgw CLI resolves env and ops checks", () => {
   assert.deepEqual(resolveCliCommand(["env", "check"]), {
     kind: "env-check"
   });
@@ -60,7 +61,23 @@ test("proxy-gateway CLI resolves env and ops checks", () => {
   });
 });
 
-test("proxy-gateway network status redacts raw proxy targets", () => {
+test("gccgw CLI reports unknown commands with the current CLI name", async () => {
+  let stderr = "";
+  const exitCode = await runProxyGatewayCli(["--helpnpm", "run", "cli", "--", "--help"], {
+    runNodeScript: async () => 0,
+    startServer: async () => 0,
+    writeStdout: () => {},
+    writeStderr: (text) => {
+      stderr += text;
+    }
+  });
+
+  assert.equal(exitCode, 1);
+  assert.match(stderr, /Unknown gccgw command: --helpnpm run cli -- --help/);
+  assert.doesNotMatch(stderr, /proxy-gateway/);
+});
+
+test("gccgw network status redacts raw proxy targets", () => {
   const redacted = redactNetworkStatus({
     ok: true,
     action: "status",
@@ -129,7 +146,7 @@ test("proxy-gateway network status redacts raw proxy targets", () => {
   assert.doesNotMatch(JSON.stringify(redacted), /sensitive|secret|user:pass|proxy\.pac|raw target/i);
 });
 
-test("proxy-gateway CLI keeps execution-gated platform commands behind the existing scripts", () => {
+test("gccgw CLI keeps execution-gated platform commands behind the existing scripts", () => {
   assert.deepEqual(resolveCliCommand([
     "platform",
     "issue-subscription",
@@ -142,7 +159,7 @@ test("proxy-gateway CLI keeps execution-gated platform commands behind the exist
   });
 });
 
-test("proxy-gateway CLI runs through injected adapters without mutating runtime state", async () => {
+test("gccgw CLI runs through injected adapters without mutating runtime state", async () => {
   const calls = [];
   const exitCode = await runProxyGatewayCli(["platform", "revoke-access", "tenant_ref", "--dry-run"], {
     runNodeScript: async (script, args) => {
@@ -163,7 +180,7 @@ test("proxy-gateway CLI runs through injected adapters without mutating runtime 
   }]);
 });
 
-test("proxy-gateway project verify runs repository checks in order and keeps admin optional", async () => {
+test("gccgw project verify runs repository checks in order and keeps admin optional", async () => {
   const calls = [];
   const exitCode = await runProxyGatewayCli(["project", "verify", "--with-admin"], {
     runGitDiffCheck: async () => {
@@ -201,7 +218,7 @@ test("proxy-gateway project verify runs repository checks in order and keeps adm
   ]);
 });
 
-test("proxy-gateway project verify short-circuits on first failed check", async () => {
+test("gccgw project verify short-circuits on first failed check", async () => {
   const calls = [];
   const exitCode = await runProxyGatewayCli(["project", "verify"], {
     runGitDiffCheck: async () => {
@@ -225,7 +242,7 @@ test("proxy-gateway project verify short-circuits on first failed check", async 
   assert.deepEqual(calls, [["git-diff-check"]]);
 });
 
-test("proxy-gateway env check and ops network status use injected check adapters", async () => {
+test("gccgw env check and ops network status use injected check adapters", async () => {
   const calls = [];
   const envExit = await runProxyGatewayCli(["env", "check"], {
     runEnvCheck: async () => {
@@ -260,7 +277,7 @@ test("proxy-gateway env check and ops network status use injected check adapters
   ]);
 });
 
-test("proxy-gateway CLI preserves no-arg server start compatibility", async () => {
+test("gccgw CLI preserves no-arg server start compatibility", async () => {
   const calls = [];
   const exitCode = await runProxyGatewayCli([], {
     runNodeScript: async () => {
