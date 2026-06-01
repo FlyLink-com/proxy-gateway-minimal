@@ -95,8 +95,8 @@
   "repo": {
     "name": "proxy-gateway-minimal",
     "github": "gaoyi1020-web/proxy-gateway-minimal",
-    "localPath": "C:\\Users\\g\\Projects\\订阅管理\\proxy-gateway-minimal",
-    "legacyShellPathWarning": "Do not use C:\\Users\\g\\OneDrive\\文档\\订阅管理 as the real code repo."
+    "localPath": "D:\\Projects\\proxy-gateway-minimal",
+    "legacyShellPathWarning": "Do not use C:\\Users\\g\\OneDrive\\文档\\订阅管理 or C:\\Users\\g\\Projects\\订阅管理\\proxy-gateway-minimal as the real code repo."
   },
   "branchContext": {
     "stableBaseline": "master",
