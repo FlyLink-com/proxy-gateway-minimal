@@ -41,6 +41,11 @@ The multi-environment adapter runtime model lives in
 `docs/MULTI_ENV_ADAPTER_RUNTIME_MODEL.md`: keep one modular monolith, push shared
 business rules into domain services, and make CLI, User Portal, Operator/Admin,
 Public Site, HP, and Aliyun runtime wiring thin adapters instead of forks.
+The control/data-plane interconnect contract lives in
+`docs/CONTROL_DATA_PLANE_INTERCONNECT_CONTRACT.md`: subscription control and
+multi-node data-plane capacity are separate sub-systems connected by DNS
+pointers, safe node facts, health/measurement facts, node pools, and
+subscription-output rendering; neither side should own the other's authority.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never
