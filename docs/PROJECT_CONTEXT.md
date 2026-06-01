@@ -37,6 +37,10 @@ The lightweight operating/development environment boundary lives in
 local Node/Admin dev processes, safe CLI previews, optional HP/local Linux
 manual validation, and read-only production observation; do not promote Aliyun,
 HP, archive folders, or production runtime state into the routine dev workspace.
+The multi-environment adapter runtime model lives in
+`docs/MULTI_ENV_ADAPTER_RUNTIME_MODEL.md`: keep one modular monolith, push shared
+business rules into domain services, and make CLI, User Portal, Operator/Admin,
+Public Site, HP, and Aliyun runtime wiring thin adapters instead of forks.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never

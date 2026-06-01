@@ -17,6 +17,7 @@
     "docs/ADMIN_UI_LEGACY_ARCHIVE.md",
     "docs/RESOURCE_PACKAGE_CLI.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
+    "docs/MULTI_ENV_ADAPTER_RUNTIME_MODEL.md",
     "docs/PROJECT_TOPOLOGY.md",
     "docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md",
     "docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md",
@@ -116,6 +117,7 @@
   "activeDirections": [
     "Mainline focus strictly converged on core subscription production delivery: '能生产、能发放、能审计、能撤回'; all visual, marketing, Telegram bot, video-channel drafts, and speculative decorational sketches are retired and deprioritized",
     "Aliyun is the current business workspace for public site, lead intake, subscription distribution, operator-controlled issuance, and production records; local machines and local checkouts are development, validation, HP/manual CI, operator handoff, and archive surfaces only, not business runtime or production authority",
+    "One-codebase multi-environment adapter runtime model is now the architecture boundary: local, HP, Aliyun, future edge/channel labs, CLI, User Portal, Operator/Admin, and Public Site should share domain services and differ only through thin adapters, environment wiring, templates, paths, and exact A-tier gates",
     "Aliyun server project import read-only inventory completed after exact approval: live runtime is a packaged release under /opt/proxy-gateway-minimal-candidate, service templates and Nginx public-boundary template match local hashes, package-lock matches local, package.json/.env.example drift remains import-planning work, and no .env, SQLite, logs, handoff, subscription URL, token, customer data, file mutation, service restart, Nginx reload, DNS, firewall, or deploy action was performed",
     "Goal-driven execution: Aliyun Subscription Control Platform MVP has moved from repo-only B/C support into exact-phrase Risk A promotion records; public Admin, edge activation, AWS rollback-start, historical state copy, broader artifact issuance, and legacy query-token retirement remain separate gates",
     "Operator CLI Platform Boundary exists as the product/ops boundary for keeping public routes small and explicit while administrative workflows move to operator CLI tools, local/private console review, visible-once handoff files, and execution records; public Admin is not a product surface and production mutation remains Risk A even when wrapped by CLI",
