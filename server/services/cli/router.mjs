@@ -57,6 +57,9 @@ const PACKAGE_SCRIPT_COMMAND_ENTRIES = [
 const SPECIAL_COMMAND_ENTRIES = [
   ["architecture", null, "project", "C", "read-only", "Print the flattened project architecture map", ["docs/PROJECT_CONTEXT.md", "docs/ROUTES_ARCHITECTURE.md", "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"]],
   ["commands", null, "project", "C", "read-only", "List registered gccgw commands"],
+  ["docs command", null, "project", "C", "read-only", "List source docs for one gccgw command"],
+  ["docs domain", null, "project", "C", "read-only", "List source docs for one command domain"],
+  ["docs list", null, "project", "C", "read-only", "List docs referenced by the gccgw command map"],
   ["server start", null, "server", "B", "local-runtime", "Start local gateway server"],
   ["project verify", null, "project", "B", "verify", "Run repository verification"],
   ["env check", null, "env", "C", "read-only", "Check local environment shape"],
@@ -273,6 +276,97 @@ export function buildCliArchitectureMap({ format = "text" } = {}) {
   return `${lines.join("\n")}\n`;
 }
 
+function normalizeCommandQuery(value = "") {
+  return String(value).replace(/^gccgw\s+/, "").trim().replace(/\s+/g, " ");
+}
+
+function commandsForDocsMode({ mode = "list", query } = {}) {
+  const commands = listCliCommands();
+  if (mode === "list") {
+    return commands;
+  }
+  if (mode === "domain") {
+    const wantedDomain = String(query || "").trim();
+    const matched = commands.filter((command) => command.domain === wantedDomain);
+    if (matched.length === 0) {
+      throw new Error(`No gccgw docs found for domain: ${wantedDomain || "(missing)"}`);
+    }
+    return matched;
+  }
+  if (mode === "command") {
+    const wantedCommand = normalizeCommandQuery(query);
+    const matched = commands.filter((command) => normalizeCommandQuery(command.command) === wantedCommand);
+    if (matched.length === 0) {
+      throw new Error(`No gccgw docs found for command: ${wantedCommand || "(missing)"}`);
+    }
+    return matched;
+  }
+  throw new Error(`Unsupported docs mode: ${mode}`);
+}
+
+function docsIndexForCommands(commands) {
+  const docs = new Map();
+  for (const command of commands) {
+    for (const path of command.sourceDocs || []) {
+      const current = docs.get(path) || {
+        path,
+        domains: new Set(),
+        commands: new Set(),
+        riskTiers: new Set(),
+        modes: new Set()
+      };
+      current.domains.add(command.domain);
+      current.commands.add(command.command);
+      current.riskTiers.add(command.riskTier);
+      current.modes.add(command.mode);
+      docs.set(path, current);
+    }
+  }
+  return [...docs.values()]
+    .map((doc) => ({
+      path: doc.path,
+      domains: [...doc.domains].sort(),
+      commands: [...doc.commands].sort(),
+      riskTiers: [...doc.riskTiers].sort(),
+      modes: [...doc.modes].sort()
+    }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+}
+
+export function buildCliDocsMap({ mode = "list", query, format = "text" } = {}) {
+  const commands = commandsForDocsMode({ mode, query });
+  const documents = docsIndexForCommands(commands);
+  const docsMap = {
+    type: "gccgw_docs_map",
+    generatedBy: "gccgw docs",
+    mode,
+    ...(query ? { query } : {}),
+    documents,
+    commands
+  };
+
+  if (format === "json") {
+    return docsMap;
+  }
+
+  const lines = [
+    "gccgw docs map",
+    "",
+    `Mode: ${mode}${query ? ` (${query})` : ""}`,
+    "",
+    "Document | Domains | Risks | Modes | Commands",
+    "--- | --- | --- | --- | ---",
+    ...documents.map((doc) => [
+      doc.path,
+      doc.domains.join(", "),
+      doc.riskTiers.join(", "),
+      doc.modes.join(", "),
+      doc.commands.join(", ")
+    ].join(" | "))
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
 function isHelpArg(value) {
   return value === "help" || value === "--help" || value === "-h";
 }
@@ -299,6 +393,9 @@ export function buildCliHelp() {
 Usage:
   gccgw commands [--json]
   gccgw architecture [--json]
+  gccgw docs list [--json]
+  gccgw docs domain <domain> [--json]
+  gccgw docs command <command> [--json]
   gccgw server start
   gccgw project check
   gccgw project verify [--with-admin]
@@ -318,6 +415,8 @@ Common commands:
   gccgw commands --json
   gccgw architecture
   gccgw architecture --json
+  gccgw docs command platform issue-subscription
+  gccgw docs domain platform
   gccgw project check
   gccgw project verify --with-admin
   gccgw env check
@@ -355,6 +454,30 @@ export function resolveCliCommand(argv = []) {
       kind: "architecture-map",
       format: args.includes("--json") ? "json" : "text"
     };
+  }
+  if (args[0] === "docs") {
+    const mode = args[1] || "list";
+    const format = args.includes("--json") ? "json" : "text";
+    if (mode === "list") {
+      return { kind: "docs-map", mode, format };
+    }
+    if (mode === "domain") {
+      return {
+        kind: "docs-map",
+        mode,
+        query: args.find((arg, index) => index > 1 && arg !== "--json"),
+        format
+      };
+    }
+    if (mode === "command") {
+      return {
+        kind: "docs-map",
+        mode,
+        query: args.slice(2).filter((arg) => arg !== "--json").join(" "),
+        format
+      };
+    }
+    throw new Error(`Unknown gccgw docs command: ${mode}`);
   }
   if (args[0] === "server" && (args[1] === undefined || args[1] === "start")) {
     return { kind: "start-server" };
@@ -488,6 +611,11 @@ export async function runProxyGatewayCli(argv, {
     if (command.kind === "architecture-map") {
       const architectureMap = buildCliArchitectureMap({ format: command.format });
       writeStdout(command.format === "json" ? `${JSON.stringify(architectureMap, null, 2)}\n` : architectureMap);
+      return 0;
+    }
+    if (command.kind === "docs-map") {
+      const docsMap = buildCliDocsMap(command);
+      writeStdout(command.format === "json" ? `${JSON.stringify(docsMap, null, 2)}\n` : docsMap);
       return 0;
     }
     if (command.kind === "start-server") {

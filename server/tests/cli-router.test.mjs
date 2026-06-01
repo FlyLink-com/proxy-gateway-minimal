@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCliArchitectureMap,
+  buildCliDocsMap,
   buildPackageScriptSpawn,
   buildCliCommandMap,
   buildCliHelp,
@@ -16,6 +17,7 @@ test("gccgw CLI help exposes normalized command groups", () => {
 
   assert.match(help, /gccgw project check/);
   assert.match(help, /gccgw architecture/);
+  assert.match(help, /gccgw docs command/);
   assert.match(help, /gccgw platform issue-subscription/);
   assert.match(help, /gccgw channel dry-run/);
   assert.match(help, /gccgw server start/);
@@ -76,6 +78,26 @@ test("gccgw CLI resolves architecture map as a read-only project command", () =>
   });
 });
 
+test("gccgw CLI resolves docs navigation commands as read-only project commands", () => {
+  assert.deepEqual(resolveCliCommand(["docs", "list"]), {
+    kind: "docs-map",
+    mode: "list",
+    format: "text"
+  });
+  assert.deepEqual(resolveCliCommand(["docs", "domain", "platform", "--json"]), {
+    kind: "docs-map",
+    mode: "domain",
+    query: "platform",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand(["docs", "command", "platform", "issue-subscription", "--json"]), {
+    kind: "docs-map",
+    mode: "command",
+    query: "platform issue-subscription",
+    format: "json"
+  });
+});
+
 test("gccgw CLI resolves local project, admin, site, and package scripts", () => {
   assert.deepEqual(resolveCliCommand(["project", "test"]), {
     kind: "package-script",
@@ -108,6 +130,7 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   const names = commands.map((command) => command.command);
 
   assert.ok(names.includes("gccgw architecture"));
+  assert.ok(names.includes("gccgw docs list"));
   assert.ok(names.includes("gccgw commands"));
   assert.ok(names.includes("gccgw project verify"));
   assert.ok(names.includes("gccgw platform issue-subscription"));
@@ -149,6 +172,57 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   const parsed = JSON.parse(stdout);
   assert.equal(parsed.type, "gccgw_command_map");
   assert.ok(parsed.commands.some((command) => command.command === "gccgw site verify"));
+});
+
+test("gccgw CLI exposes source docs by command and domain for project navigation", async () => {
+  const commandDocs = buildCliDocsMap({
+    mode: "command",
+    query: "platform issue-subscription",
+    format: "json"
+  });
+  assert.equal(commandDocs.type, "gccgw_docs_map");
+  assert.equal(commandDocs.mode, "command");
+  assert.equal(commandDocs.commands.length, 1);
+  assert.equal(commandDocs.commands[0].command, "gccgw platform issue-subscription");
+  assert.ok(commandDocs.documents.some((doc) => doc.path === "docs/CLI_PRODUCTION_PROVISIONING_SOP.md"));
+  assert.ok(commandDocs.documents.some((doc) => doc.path === "docs/SUBSCRIPTION_CONTROL_DATABASE.md"));
+  assert.doesNotMatch(JSON.stringify(commandDocs), /subscriptionUrl|token|secret|password/i);
+
+  const platformDocs = buildCliDocsMap({
+    mode: "domain",
+    query: "platform",
+    format: "json"
+  });
+  assert.equal(platformDocs.mode, "domain");
+  assert.ok(platformDocs.commands.length > 1);
+  assert.ok(platformDocs.documents.some((doc) => doc.path === "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"));
+
+  const text = buildCliDocsMap({ mode: "list" });
+  assert.match(text, /gccgw docs map/);
+  assert.match(text, /docs\/PROJECT_CONTEXT\.md/);
+  assert.match(text, /gccgw platform issue-subscription/);
+
+  let stdout = "";
+  const exitCode = await runProxyGatewayCli(["docs", "command", "platform", "issue-subscription", "--json"], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for docs map");
+    },
+    runPackageScript: async () => {
+      throw new Error("package script must not run for docs map");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for docs map");
+    },
+    writeStdout: (value) => {
+      stdout += value;
+    },
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  const parsed = JSON.parse(stdout);
+  assert.equal(parsed.type, "gccgw_docs_map");
+  assert.equal(parsed.commands[0].command, "gccgw platform issue-subscription");
 });
 
 test("gccgw CLI exposes a flattened architecture map for project editor surfaces", async () => {
