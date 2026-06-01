@@ -55,6 +55,7 @@ const PACKAGE_SCRIPT_COMMAND_ENTRIES = [
 ];
 
 const SPECIAL_COMMAND_ENTRIES = [
+  ["architecture", null, "project", "C", "read-only", "Print the flattened project architecture map", ["docs/PROJECT_CONTEXT.md", "docs/ROUTES_ARCHITECTURE.md", "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"]],
   ["commands", null, "project", "C", "read-only", "List registered gccgw commands"],
   ["server start", null, "server", "B", "local-runtime", "Start local gateway server"],
   ["project verify", null, "project", "B", "verify", "Run repository verification"],
@@ -122,6 +123,156 @@ export function buildCliCommandMap({ format = "text" } = {}) {
   return `${lines.join("\n")}\n`;
 }
 
+const PROJECT_ARCHITECTURE_LAYERS = [
+  {
+    layer: "adapter",
+    purpose: "Accept commands or HTTP/UI requests and enforce entry-boundary rules.",
+    modules: [
+      "bin/gccgw.mjs",
+      "scripts/*.mjs",
+      "server/routes/*.mjs",
+      "admin/src/*"
+    ],
+    rule: "Adapters parse input, authenticate, gate, and call services; they must not own business state transitions."
+  },
+  {
+    layer: "service",
+    purpose: "Own the business functions behind subscription control, portal access, channel evidence, and local gateway behavior.",
+    modules: [
+      "server/services/platform/*.mjs",
+      "server/services/subscriptions/*.mjs",
+      "server/services/channel-*.mjs",
+      "server/services/*.mjs"
+    ],
+    rule: "Services are the source of business behavior and should be callable from CLI, HTTP, or tests without depending on a specific presentation shell."
+  },
+  {
+    layer: "storage",
+    purpose: "Persist runtime and control-plane facts.",
+    modules: [
+      "server/state.mjs",
+      "server/services/platform/subscription-control-db.mjs",
+      "server/services/subscriptions/repository.mjs",
+      "config/*.json"
+    ],
+    rule: "SQLite and config writes must go through explicit service functions or execution-gated scripts."
+  },
+  {
+    layer: "output",
+    purpose: "Return safe summaries, public site assets, subscription YAML, resource packages, and operator handoff material.",
+    modules: [
+      "server/routes/subscription.mjs",
+      "server/services/subscriptions/serializer.mjs",
+      "server/services/platform/resource-package.mjs",
+      "handoff/ (gitignored)"
+    ],
+    rule: "Raw subscription URLs, bearer material, and customer data must not be printed to stdout, chat, docs, or git-tracked files."
+  },
+  {
+    layer: "gate",
+    purpose: "Separate read-only checks, dry-runs, local builds, and production mutations.",
+    modules: [
+      "gccgw command map",
+      "docs/*RUNBOOK*.md",
+      "project-state/current.json",
+      "project-state/tasks.json"
+    ],
+    rule: "C-tier is read-only/docs, B-tier is local code/test/build, and A-tier requires explicit approval plus rollback discipline."
+  }
+];
+
+const PROJECT_ARCHITECTURE_FLOWS = [
+  {
+    name: "Controlled subscription issuance",
+    path: [
+      "gccgw platform issue-subscription",
+      "scripts/platform-issue-subscription.mjs",
+      "executeSubscriptionIssuance(...)",
+      "subscription-control DB + runtime subscription store",
+      "0600 handoff file + safe summary"
+    ],
+    riskTier: "A",
+    boundary: "Execution-gated; no raw subscription material in stdout or git."
+  },
+  {
+    name: "User portal access",
+    path: [
+      "portal entry / session",
+      "server/routes/user-portal.mjs",
+      "platform user portal services",
+      "subscription-control DB",
+      "safe portal state"
+    ],
+    riskTier: "B/A by endpoint",
+    boundary: "User-facing routes must render server-owned lifecycle state, not client-computed subscription authority."
+  },
+  {
+    name: "Public subscription rendering",
+    path: [
+      "subscription client",
+      "server/routes/subscription.mjs",
+      "subscription-route-resolver + core",
+      "node registry + serializer",
+      "Clash/Mihomo YAML"
+    ],
+    riskTier: "A for public boundary changes",
+    boundary: "Public routes expose only approved subscription surfaces; Admin stays blocked publicly."
+  },
+  {
+    name: "Channel technical MVP",
+    path: [
+      "gccgw channel ...",
+      "scripts/channel-*.mjs",
+      "server/services/channel-*.mjs",
+      "benchmark / readiness / gate evidence",
+      "operator decision packet"
+    ],
+    riskTier: "C/B unless runtime mutation is separately approved",
+    boundary: "Channel tools produce evidence and previews; they do not activate production traffic by themselves."
+  }
+];
+
+export function buildCliArchitectureMap({ format = "text" } = {}) {
+  const architecture = {
+    type: "gccgw_architecture_map",
+    generatedBy: "gccgw architecture",
+    principle: "Flatten code into adapters, services, storage, outputs, and gates while preserving runtime structure.",
+    layers: PROJECT_ARCHITECTURE_LAYERS,
+    flows: PROJECT_ARCHITECTURE_FLOWS
+  };
+
+  if (format === "json") {
+    return architecture;
+  }
+
+  const lines = [
+    "gccgw architecture map",
+    "",
+    architecture.principle,
+    "",
+    "Layers",
+    "Layer | Purpose | Modules | Rule",
+    "--- | --- | --- | ---",
+    ...architecture.layers.map((layer) => [
+      layer.layer,
+      layer.purpose,
+      layer.modules.join(", "),
+      layer.rule
+    ].join(" | ")),
+    "",
+    "Flows",
+    "Name | Risk | Path | Boundary",
+    "--- | --- | --- | ---",
+    ...architecture.flows.map((flow) => [
+      flow.name,
+      flow.riskTier,
+      flow.path.join(" -> "),
+      flow.boundary
+    ].join(" | "))
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
 function isHelpArg(value) {
   return value === "help" || value === "--help" || value === "-h";
 }
@@ -147,6 +298,7 @@ export function buildCliHelp() {
 
 Usage:
   gccgw commands [--json]
+  gccgw architecture [--json]
   gccgw server start
   gccgw project check
   gccgw project verify [--with-admin]
@@ -164,6 +316,8 @@ Usage:
 Common commands:
   gccgw commands
   gccgw commands --json
+  gccgw architecture
+  gccgw architecture --json
   gccgw project check
   gccgw project verify --with-admin
   gccgw env check
@@ -193,6 +347,12 @@ export function resolveCliCommand(argv = []) {
   if (args[0] === "commands") {
     return {
       kind: "command-map",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "architecture") {
+    return {
+      kind: "architecture-map",
       format: args.includes("--json") ? "json" : "text"
     };
   }
@@ -323,6 +483,11 @@ export async function runProxyGatewayCli(argv, {
     if (command.kind === "command-map") {
       const commandMap = buildCliCommandMap({ format: command.format });
       writeStdout(command.format === "json" ? `${JSON.stringify(commandMap, null, 2)}\n` : commandMap);
+      return 0;
+    }
+    if (command.kind === "architecture-map") {
+      const architectureMap = buildCliArchitectureMap({ format: command.format });
+      writeStdout(command.format === "json" ? `${JSON.stringify(architectureMap, null, 2)}\n` : architectureMap);
       return 0;
     }
     if (command.kind === "start-server") {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildCliArchitectureMap,
   buildPackageScriptSpawn,
   buildCliCommandMap,
   buildCliHelp,
@@ -14,6 +15,7 @@ test("gccgw CLI help exposes normalized command groups", () => {
   const help = buildCliHelp();
 
   assert.match(help, /gccgw project check/);
+  assert.match(help, /gccgw architecture/);
   assert.match(help, /gccgw platform issue-subscription/);
   assert.match(help, /gccgw channel dry-run/);
   assert.match(help, /gccgw server start/);
@@ -63,6 +65,17 @@ test("gccgw CLI resolves env and ops checks", () => {
   });
 });
 
+test("gccgw CLI resolves architecture map as a read-only project command", () => {
+  assert.deepEqual(resolveCliCommand(["architecture"]), {
+    kind: "architecture-map",
+    format: "text"
+  });
+  assert.deepEqual(resolveCliCommand(["architecture", "--json"]), {
+    kind: "architecture-map",
+    format: "json"
+  });
+});
+
 test("gccgw CLI resolves local project, admin, site, and package scripts", () => {
   assert.deepEqual(resolveCliCommand(["project", "test"]), {
     kind: "package-script",
@@ -94,6 +107,7 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   const commands = listCliCommands();
   const names = commands.map((command) => command.command);
 
+  assert.ok(names.includes("gccgw architecture"));
   assert.ok(names.includes("gccgw commands"));
   assert.ok(names.includes("gccgw project verify"));
   assert.ok(names.includes("gccgw platform issue-subscription"));
@@ -135,6 +149,46 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   const parsed = JSON.parse(stdout);
   assert.equal(parsed.type, "gccgw_command_map");
   assert.ok(parsed.commands.some((command) => command.command === "gccgw site verify"));
+});
+
+test("gccgw CLI exposes a flattened architecture map for project editor surfaces", async () => {
+  const architecture = buildCliArchitectureMap({ format: "json" });
+
+  assert.equal(architecture.type, "gccgw_architecture_map");
+  assert.equal(architecture.generatedBy, "gccgw architecture");
+  assert.ok(architecture.layers.some((layer) => layer.layer === "adapter"));
+  assert.ok(architecture.layers.some((layer) => layer.layer === "service"));
+  assert.ok(architecture.layers.some((layer) => layer.layer === "storage"));
+  assert.ok(architecture.layers.some((layer) => layer.layer === "output"));
+  assert.ok(architecture.layers.some((layer) => layer.layer === "gate"));
+  assert.ok(architecture.flows.some((flow) => flow.name === "Controlled subscription issuance"));
+  assert.doesNotMatch(JSON.stringify(architecture), /subscriptionUrl|token|secret|password/i);
+
+  const text = buildCliArchitectureMap();
+  assert.match(text, /gccgw architecture map/);
+  assert.match(text, /adapter/);
+  assert.match(text, /executeSubscriptionIssuance/);
+
+  let stdout = "";
+  const exitCode = await runProxyGatewayCli(["architecture", "--json"], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for architecture map");
+    },
+    runPackageScript: async () => {
+      throw new Error("package script must not run for architecture map");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for architecture map");
+    },
+    writeStdout: (value) => {
+      stdout += value;
+    },
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  const parsed = JSON.parse(stdout);
+  assert.equal(parsed.type, "gccgw_architecture_map");
 });
 
 test("gccgw CLI reports unknown commands with the current CLI name", async () => {

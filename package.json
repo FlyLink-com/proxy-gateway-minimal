@@ -85,6 +85,7 @@
     "project-state:check": "node bin/gccgw.mjs project check",
     "project:verify": "node bin/gccgw.mjs project verify",
     "project:verify:admin": "node bin/gccgw.mjs project verify --with-admin",
+    "project:architecture": "node bin/gccgw.mjs architecture",
     "env:check": "node bin/gccgw.mjs env check",
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",
