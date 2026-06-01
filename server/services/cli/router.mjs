@@ -1,3 +1,15 @@
+const DOMAIN_SOURCE_DOCS = {
+  admin: ["docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"],
+  channel: ["docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md", "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md"],
+  env: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md"],
+  ops: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md"],
+  package: ["docs/RESOURCE_PACKAGE_CLI.md"],
+  platform: ["docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md", "docs/CLI_PRODUCTION_PROVISIONING_SOP.md"],
+  project: ["docs/PROJECT_CONTEXT.md"],
+  server: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md"],
+  site: ["docs/PROJECT_CONTEXT.md"]
+};
+
 const NODE_SCRIPT_COMMAND_ENTRIES = [
   ["project check", "scripts/check-project-state.mjs", "project", "C", "read-only", "Validate project-state and repository safety markers"],
   ["channel dry-run", "scripts/channel-config-dry-run.mjs", "channel", "B", "dry-run", "Validate channel configuration candidates"],
@@ -25,9 +37,9 @@ const NODE_SCRIPT_COMMAND_ENTRIES = [
   ["channel subscription-render-proof", "scripts/channel-subscription-render-proof.mjs", "channel", "C", "render-proof", "Produce subscription render proof"],
   ["platform controlled-open", "scripts/platform-controlled-open.mjs", "platform", "B", "dry-run", "Build controlled-open delivery plan"],
   ["platform provisioning-form", "scripts/platform-provisioning-form.mjs", "platform", "B", "preview", "Convert operator facts into issuance input"],
-  ["platform issue-subscription", "scripts/platform-issue-subscription.mjs", "platform", "A", "execution-gated", "Issue a controlled subscription after approval"],
-  ["platform issue-portal-entry", "scripts/platform-issue-portal-entry.mjs", "platform", "A", "execution-gated", "Issue a dynamic portal entry after approval"],
-  ["platform resource-package", "scripts/platform-resource-package.mjs", "platform", "B", "package", "Build operator delivery package"],
+  ["platform issue-subscription", "scripts/platform-issue-subscription.mjs", "platform", "A", "execution-gated", "Issue a controlled subscription after approval", ["docs/CLI_PRODUCTION_PROVISIONING_SOP.md", "docs/SUBSCRIPTION_CONTROL_DATABASE.md", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"]],
+  ["platform issue-portal-entry", "scripts/platform-issue-portal-entry.mjs", "platform", "A", "execution-gated", "Issue a dynamic portal entry after approval", ["docs/USER_PORTAL_AUTH_BOUNDARY.md", "docs/CLI_PRODUCTION_PROVISIONING_SOP.md", "docs/SUBSCRIPTION_CONTROL_DATABASE.md"]],
+  ["platform resource-package", "scripts/platform-resource-package.mjs", "platform", "B", "package", "Build operator delivery package", ["docs/RESOURCE_PACKAGE_CLI.md", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"]],
   ["platform revoke-access", "scripts/platform-revoke-access.mjs", "platform", "A", "dry-run-only", "Plan access revocation"],
   ["platform access-inventory-summary", "scripts/access-model-inventory-summary.mjs", "platform", "C", "summary", "Summarize access model inventory"],
   ["platform clean-edge-readiness-summary", "scripts/clean-edge-readiness-summary.mjs", "platform", "C", "gate-preview", "Summarize clean edge readiness"]
@@ -58,7 +70,11 @@ const PACKAGE_SCRIPT_COMMANDS = new Map(
   PACKAGE_SCRIPT_COMMAND_ENTRIES.map(([command, script]) => [command, script])
 );
 
-function commandEntry([command, target, domain, riskTier, mode, description], handler) {
+function unique(values = []) {
+  return [...new Set(values)];
+}
+
+function commandEntry([command, target, domain, riskTier, mode, description, sourceDocs], handler) {
   return {
     command: `gccgw ${command}`,
     domain,
@@ -66,6 +82,7 @@ function commandEntry([command, target, domain, riskTier, mode, description], ha
     mode,
     handler,
     ...(target ? { target } : {}),
+    sourceDocs: unique(sourceDocs || DOMAIN_SOURCE_DOCS[domain] || []),
     description
   };
 }
@@ -92,13 +109,14 @@ export function buildCliCommandMap({ format = "text" } = {}) {
     command.domain,
     command.riskTier,
     command.mode,
+    command.sourceDocs.join(", "),
     command.description
   ]);
   const lines = [
     "gccgw command map",
     "",
-    "Command | Domain | Risk | Mode | Description",
-    "--- | --- | --- | --- | ---",
+    "Command | Domain | Risk | Mode | Docs | Description",
+    "--- | --- | --- | --- | --- | ---",
     ...rows.map((row) => row.join(" | "))
   ];
   return `${lines.join("\n")}\n`;

@@ -103,6 +103,11 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.equal(issueSubscription.domain, "platform");
   assert.equal(issueSubscription.riskTier, "A");
   assert.equal(issueSubscription.mode, "execution-gated");
+  assert.ok(issueSubscription.sourceDocs.includes("docs/CLI_PRODUCTION_PROVISIONING_SOP.md"));
+  assert.ok(issueSubscription.sourceDocs.includes("docs/SUBSCRIPTION_CONTROL_DATABASE.md"));
+
+  const renderProof = commands.find((command) => command.command === "gccgw channel subscription-render-proof");
+  assert.ok(renderProof.sourceDocs.includes("docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md"));
 
   const commandMap = buildCliCommandMap({ format: "json" });
   assert.equal(commandMap.type, "gccgw_command_map");
