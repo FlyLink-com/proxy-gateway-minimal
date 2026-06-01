@@ -1,6 +1,13 @@
+import {
+  buildGccgwConfigList,
+  buildGccgwConfigShow,
+  buildGccgwConfigValidation
+} from "./config.mjs";
+
 const DOMAIN_SOURCE_DOCS = {
   admin: ["docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"],
   channel: ["docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md", "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md"],
+  config: ["config/gccgw.config.example.json", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"],
   env: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md"],
   ops: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md"],
   package: ["docs/RESOURCE_PACKAGE_CLI.md"],
@@ -57,6 +64,9 @@ const PACKAGE_SCRIPT_COMMAND_ENTRIES = [
 const SPECIAL_COMMAND_ENTRIES = [
   ["architecture", null, "project", "C", "read-only", "Print the flattened project architecture map", ["docs/PROJECT_CONTEXT.md", "docs/ROUTES_ARCHITECTURE.md", "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"]],
   ["commands", null, "project", "C", "read-only", "List registered gccgw commands"],
+  ["config list", null, "config", "C", "read-only", "List configured gccgw profiles without printing raw values"],
+  ["config show", null, "config", "C", "read-only", "Show one redacted gccgw profile"],
+  ["config validate", null, "config", "C", "read-only", "Validate gccgw profile shape without printing raw values"],
   ["docs command", null, "project", "C", "read-only", "List source docs for one gccgw command"],
   ["docs domain", null, "project", "C", "read-only", "List source docs for one command domain"],
   ["docs list", null, "project", "C", "read-only", "List docs referenced by the gccgw command map"],
@@ -372,6 +382,30 @@ function isHelpArg(value) {
   return value === "help" || value === "--help" || value === "-h";
 }
 
+function optionValue(args, name) {
+  const index = args.indexOf(name);
+  if (index === -1) {
+    return undefined;
+  }
+  return args[index + 1];
+}
+
+function positionalArgs(args, startIndex = 0) {
+  const result = [];
+  for (let index = startIndex; index < args.length; index += 1) {
+    const value = args[index];
+    if (value === "--json") {
+      continue;
+    }
+    if (value === "--config" || value === "--profile") {
+      index += 1;
+      continue;
+    }
+    result.push(value);
+  }
+  return result;
+}
+
 export function buildPackageScriptSpawn(script, platform = process.platform) {
   if (!/^[A-Za-z0-9:_-]+$/.test(script)) {
     throw new Error("Unsupported npm script name");
@@ -394,6 +428,9 @@ export function buildCliHelp() {
 Usage:
   gccgw commands [--json]
   gccgw architecture [--json]
+  gccgw config list [--json] [--config <path>]
+  gccgw config show <profile> [--json] [--config <path>]
+  gccgw config validate [--profile <profile>] [--json] [--config <path>]
   gccgw docs list [--json]
   gccgw docs domain <domain> [--json]
   gccgw docs command <command> [--json]
@@ -416,6 +453,9 @@ Common commands:
   gccgw commands --json
   gccgw architecture
   gccgw architecture --json
+  gccgw config list
+  gccgw config show local
+  gccgw config validate --profile aliyun-prod
   gccgw docs command platform issue-subscription
   gccgw docs domain platform
   gccgw project check
@@ -477,6 +517,33 @@ export function resolveCliCommand(argv = []) {
       kind: "command-map",
       format: args.includes("--json") ? "json" : "text"
     };
+  }
+  if (args[0] === "config") {
+    const mode = args[1] || "list";
+    const format = args.includes("--json") ? "json" : "text";
+    const configPath = optionValue(args, "--config");
+    if (mode === "list") {
+      return { kind: "config-map", mode, format, configPath };
+    }
+    if (mode === "show") {
+      return {
+        kind: "config-map",
+        mode,
+        profile: positionalArgs(args, 2)[0],
+        format,
+        configPath
+      };
+    }
+    if (mode === "validate") {
+      return {
+        kind: "config-map",
+        mode,
+        profile: optionValue(args, "--profile") || positionalArgs(args, 2)[0],
+        format,
+        configPath
+      };
+    }
+    throw new Error(`Unknown gccgw config command: ${mode}`);
   }
   if (args[0] === "architecture") {
     return {
@@ -637,6 +704,20 @@ export async function runProxyGatewayCli(argv, {
       const commandMap = buildCliCommandMap({ format: command.format });
       writeStdout(command.format === "json" ? `${JSON.stringify(commandMap, null, 2)}\n` : commandMap);
       return 0;
+    }
+    if (command.kind === "config-map") {
+      let configMap;
+      if (command.mode === "list") {
+        configMap = buildGccgwConfigList(command);
+      } else if (command.mode === "show") {
+        configMap = buildGccgwConfigShow(command);
+      } else if (command.mode === "validate") {
+        configMap = buildGccgwConfigValidation(command);
+      } else {
+        throw new Error(`Unsupported gccgw config mode: ${command.mode}`);
+      }
+      writeStdout(command.format === "json" ? `${JSON.stringify(configMap, null, 2)}\n` : configMap);
+      return configMap.ok === false ? 1 : 0;
     }
     if (command.kind === "architecture-map") {
       const architectureMap = buildCliArchitectureMap({ format: command.format });
