@@ -140,8 +140,14 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.equal(issueSubscription.domain, "platform");
   assert.equal(issueSubscription.riskTier, "A");
   assert.equal(issueSubscription.mode, "execution-gated");
+  assert.equal(issueSubscription.approvalPrompt, "required for --execute-production-mutation");
   assert.ok(issueSubscription.sourceDocs.includes("docs/CLI_PRODUCTION_PROVISIONING_SOP.md"));
   assert.ok(issueSubscription.sourceDocs.includes("docs/SUBSCRIPTION_CONTROL_DATABASE.md"));
+
+  const revokeAccess = commands.find((command) => command.command === "gccgw platform revoke-access");
+  assert.equal(revokeAccess.riskTier, "A");
+  assert.equal(revokeAccess.mode, "dry-run-only");
+  assert.equal(revokeAccess.approvalPrompt, undefined);
 
   const renderProof = commands.find((command) => command.command === "gccgw channel subscription-render-proof");
   assert.ok(renderProof.sourceDocs.includes("docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md"));
@@ -361,6 +367,119 @@ test("gccgw CLI keeps execution-gated platform commands behind the existing scri
     script: "scripts/platform-issue-subscription.mjs",
     args: ["--dry-run", "input.json"]
   });
+});
+
+test("gccgw CLI blocks A-tier execution when approval prompt is rejected", async () => {
+  let nodeScriptCalled = false;
+  let stderr = "";
+  const exitCode = await runProxyGatewayCli([
+    "platform",
+    "issue-subscription",
+    "--execute-production-mutation",
+    "input.json"
+  ], {
+    confirmRiskAExecution: async (approval) => {
+      assert.equal(approval.command, "gccgw platform issue-subscription");
+      assert.equal(approval.riskTier, "A");
+      assert.equal(approval.mode, "execution-gated");
+      return false;
+    },
+    runNodeScript: async () => {
+      nodeScriptCalled = true;
+      return 0;
+    },
+    startServer: async () => 0,
+    writeStdout: () => {},
+    writeStderr: (value) => {
+      stderr += value;
+    }
+  });
+
+  assert.equal(exitCode, 1);
+  assert.equal(nodeScriptCalled, false);
+  assert.match(stderr, /Risk A approval prompt rejected/);
+});
+
+test("gccgw CLI runs A-tier execution only after approval prompt accepts", async () => {
+  const calls = [];
+  const exitCode = await runProxyGatewayCli([
+    "platform",
+    "issue-portal-entry",
+    "--execute-production-mutation",
+    "input.json"
+  ], {
+    confirmRiskAExecution: async (approval) => {
+      calls.push(["prompt", approval.command, approval.riskTier, approval.mode]);
+      return true;
+    },
+    runNodeScript: async (script, args) => {
+      calls.push(["node-script", script, args]);
+      return 0;
+    },
+    startServer: async () => 0,
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(calls, [
+    ["prompt", "gccgw platform issue-portal-entry", "A", "execution-gated"],
+    ["node-script", "scripts/platform-issue-portal-entry.mjs", ["--execute-production-mutation", "input.json"]]
+  ]);
+});
+
+test("gccgw CLI does not prompt for A-tier dry-run paths", async () => {
+  const calls = [];
+  const exitCode = await runProxyGatewayCli([
+    "platform",
+    "issue-subscription",
+    "--dry-run",
+    "input.json"
+  ], {
+    confirmRiskAExecution: async () => {
+      throw new Error("approval prompt must not run for dry-run");
+    },
+    runNodeScript: async (script, args) => {
+      calls.push({ script, args });
+      return 0;
+    },
+    startServer: async () => 0,
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(calls, [{
+    script: "scripts/platform-issue-subscription.mjs",
+    args: ["--dry-run", "input.json"]
+  }]);
+});
+
+test("gccgw CLI does not prompt for dry-run-only A-tier commands", async () => {
+  const calls = [];
+  const exitCode = await runProxyGatewayCli([
+    "platform",
+    "revoke-access",
+    "tenant-a",
+    "--execute-production-mutation"
+  ], {
+    confirmRiskAExecution: async () => {
+      throw new Error("approval prompt must not run for dry-run-only commands");
+    },
+    runNodeScript: async (script, args) => {
+      calls.push({ script, args });
+      return 1;
+    },
+    startServer: async () => 0,
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 1);
+  assert.deepEqual(calls, [{
+    script: "scripts/platform-revoke-access.mjs",
+    args: ["tenant-a", "--execute-production-mutation"]
+  }]);
 });
 
 test("gccgw CLI runs package-script commands through the package adapter", async () => {

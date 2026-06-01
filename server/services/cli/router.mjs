@@ -86,6 +86,7 @@ function commandEntry([command, target, domain, riskTier, mode, description, sou
     mode,
     handler,
     ...(target ? { target } : {}),
+    ...(riskTier === "A" && mode === "execution-gated" ? { approvalPrompt: "required for --execute-production-mutation" } : {}),
     sourceDocs: unique(sourceDocs || DOMAIN_SOURCE_DOCS[domain] || []),
     description
   };
@@ -429,10 +430,38 @@ Common commands:
   gccgw platform revoke-access <tenant-ref> --dry-run
   gccgw channel dry-run <config.json>
 
+Risk A execution prompt:
+  Any A-tier command carrying --execute-production-mutation requires an
+  interactive approval prompt before dispatching the underlying script.
+
 No-arg compatibility:
   gccgw
     Starts the local proxy gateway server.
 `;
+}
+
+function commandMetadataForNodeScript(command) {
+  return listCliCommands().find((entry) => entry.handler === "node-script" && entry.target === command.script);
+}
+
+function requiresRiskAExecutionPrompt(command) {
+  const metadata = commandMetadataForNodeScript(command);
+  if (metadata?.riskTier !== "A") {
+    return null;
+  }
+  if (metadata.mode !== "execution-gated") {
+    return null;
+  }
+  if (!command.args.includes("--execute-production-mutation")) {
+    return null;
+  }
+  return {
+    command: metadata.command,
+    riskTier: metadata.riskTier,
+    mode: metadata.mode,
+    sourceDocs: metadata.sourceDocs,
+    description: metadata.description
+  };
 }
 
 export function resolveCliCommand(argv = []) {
@@ -594,6 +623,7 @@ export async function runProxyGatewayCli(argv, {
   runEnvCheck,
   runNetworkStatus,
   startServer,
+  confirmRiskAExecution,
   writeStdout = (text) => process.stdout.write(text),
   writeStderr = (text) => process.stderr.write(text)
 }) {
@@ -622,6 +652,14 @@ export async function runProxyGatewayCli(argv, {
       return await startServer();
     }
     if (command.kind === "node-script") {
+      const approval = requiresRiskAExecutionPrompt(command);
+      if (approval) {
+        const accepted = await confirmRiskAExecution?.(approval);
+        if (!accepted) {
+          writeStderr("Risk A approval prompt rejected; execution stopped before script dispatch.\n");
+          return 1;
+        }
+      }
       return await runNodeScript(command.script, command.args);
     }
     if (command.kind === "package-script") {

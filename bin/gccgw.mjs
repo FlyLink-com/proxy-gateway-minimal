@@ -2,6 +2,7 @@
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
   buildPackageScriptSpawn,
@@ -106,6 +107,36 @@ async function startServer() {
   return 0;
 }
 
+async function confirmRiskAExecution(approval) {
+  const phrase = `EXECUTE ${approval.command}`;
+  process.stderr.write([
+    "",
+    "Risk A execution approval required.",
+    `Command: ${approval.command}`,
+    `Mode: ${approval.mode}`,
+    `Docs: ${approval.sourceDocs.join(", ")}`,
+    "This prompt appears before the underlying script is dispatched.",
+    `Type exactly: ${phrase}`,
+    ""
+  ].join("\n"));
+
+  if (!process.stdin.isTTY) {
+    process.stderr.write("Non-interactive stdin; refusing Risk A execution.\n");
+    return false;
+  }
+
+  const readline = createInterface({
+    input: process.stdin,
+    output: process.stderr
+  });
+  try {
+    const answer = await readline.question("> ");
+    return answer.trim() === phrase;
+  } finally {
+    readline.close();
+  }
+}
+
 try {
   const exitCode = await runProxyGatewayCli(process.argv.slice(2), {
     runNodeScript,
@@ -113,7 +144,8 @@ try {
     runGitDiffCheck,
     runEnvCheck,
     runNetworkStatus,
-    startServer
+    startServer,
+    confirmRiskAExecution
   });
   if (Number.isInteger(exitCode)) {
     process.exitCode = exitCode;
