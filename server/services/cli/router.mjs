@@ -33,6 +33,15 @@ const NODE_SCRIPT_COMMANDS = new Map([
   ["platform clean-edge-readiness-summary", "scripts/clean-edge-readiness-summary.mjs"]
 ]);
 
+const PACKAGE_SCRIPT_COMMANDS = new Map([
+  ["project test", "test"],
+  ["admin test", "admin:test"],
+  ["admin build", "admin:build"],
+  ["site build", "admin:site:build"],
+  ["site verify", "admin:site:verify"],
+  ["package dry-run", "pack:dry-run"]
+]);
+
 function isHelpArg(value) {
   return value === "help" || value === "--help" || value === "-h";
 }
@@ -62,6 +71,12 @@ Usage:
   gccgw project verify [--with-admin]
   gccgw env check
   gccgw ops network-status
+  gccgw project test
+  gccgw admin test
+  gccgw admin build
+  gccgw site build
+  gccgw site verify
+  gccgw package dry-run
   gccgw platform <command> [...args]
   gccgw channel <command> [...args]
 
@@ -70,6 +85,8 @@ Common commands:
   gccgw project verify --with-admin
   gccgw env check
   gccgw ops network-status
+  gccgw site verify
+  gccgw package dry-run
   gccgw platform provisioning-form <input.json>
   gccgw platform issue-subscription [--dry-run] <input.json>
   gccgw platform issue-portal-entry [--dry-run] <input.json>
@@ -113,6 +130,14 @@ export function resolveCliCommand(argv = []) {
       kind: "node-script",
       script,
       args: args.slice(2)
+    };
+  }
+
+  const packageScript = PACKAGE_SCRIPT_COMMANDS.get(key);
+  if (packageScript) {
+    return {
+      kind: "package-script",
+      script: packageScript
     };
   }
 
@@ -211,6 +236,9 @@ export async function runProxyGatewayCli(argv, {
     }
     if (command.kind === "node-script") {
       return await runNodeScript(command.script, command.args);
+    }
+    if (command.kind === "package-script") {
+      return await runPackageScript(command.script);
     }
     if (command.kind === "project-verify") {
       return await runProjectVerify(command, { runGitDiffCheck, runNodeScript, runPackageScript });

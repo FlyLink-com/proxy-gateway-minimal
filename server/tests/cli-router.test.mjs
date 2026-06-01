@@ -61,6 +61,33 @@ test("gccgw CLI resolves env and ops checks", () => {
   });
 });
 
+test("gccgw CLI resolves local project, admin, site, and package scripts", () => {
+  assert.deepEqual(resolveCliCommand(["project", "test"]), {
+    kind: "package-script",
+    script: "test"
+  });
+  assert.deepEqual(resolveCliCommand(["admin", "test"]), {
+    kind: "package-script",
+    script: "admin:test"
+  });
+  assert.deepEqual(resolveCliCommand(["admin", "build"]), {
+    kind: "package-script",
+    script: "admin:build"
+  });
+  assert.deepEqual(resolveCliCommand(["site", "build"]), {
+    kind: "package-script",
+    script: "admin:site:build"
+  });
+  assert.deepEqual(resolveCliCommand(["site", "verify"]), {
+    kind: "package-script",
+    script: "admin:site:verify"
+  });
+  assert.deepEqual(resolveCliCommand(["package", "dry-run"]), {
+    kind: "package-script",
+    script: "pack:dry-run"
+  });
+});
+
 test("gccgw CLI reports unknown commands with the current CLI name", async () => {
   let stderr = "";
   const exitCode = await runProxyGatewayCli(["--helpnpm", "run", "cli", "--", "--help"], {
@@ -157,6 +184,27 @@ test("gccgw CLI keeps execution-gated platform commands behind the existing scri
     script: "scripts/platform-issue-subscription.mjs",
     args: ["--dry-run", "input.json"]
   });
+});
+
+test("gccgw CLI runs package-script commands through the package adapter", async () => {
+  const calls = [];
+  const exitCode = await runProxyGatewayCli(["site", "verify"], {
+    runPackageScript: async (script) => {
+      calls.push(script);
+      return 0;
+    },
+    runNodeScript: async () => {
+      throw new Error("node script must not run for package script aliases");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for package script aliases");
+    },
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(calls, ["admin:site:verify"]);
 });
 
 test("gccgw CLI runs through injected adapters without mutating runtime state", async () => {
