@@ -26,6 +26,8 @@ test(".env.example documents the production subscription runtime settings", () =
     "CONSOLE_TOKEN",
     "SS_PASSWORD",
     "SUBSCRIPTION_DB_PATH",
+    "SUBSCRIPTION_CONTROL_DB_PATH",
+    "HANDOFF_DIR",
     "PUBLIC_SUBSCRIPTION_BASE_URL",
     "ADMIN_ALLOWED_CIDRS",
     "SUB_RATE_LIMIT_WINDOW_MS",

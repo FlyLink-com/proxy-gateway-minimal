@@ -8,6 +8,10 @@ It is a template contract only. It does not authorize production deployment,
 DNS, Nginx, systemd, firewall, cloud, SQLite, customer-data, credential,
 subscription-output, or traffic changes.
 
+For the broader question of which surface owns each setting, read
+`docs/CONFIGURATION_OWNERSHIP_MATRIX.md`. This document only defines the safe
+Git package shape.
+
 ## Package Shape
 
 Use one directory per candidate deployment package:
@@ -34,15 +38,19 @@ facts, not secrets or runtime data.
 | dry-run | B | Build a redacted deployment summary and planned runtime wiring. | None |
 | apply | A | Write approved host files, restore approved data, start or reload services. | Separate exact approval required |
 
-Current inspect command:
+Current package commands:
 
 ```bash
 gccgw package inspect deployments/production-template --json
+gccgw package import deployments/production-template --dry-run --json
 ```
 
-`gccgw package inspect` operates only on the C phase. Future
-`gccgw package import --dry-run` tooling should operate only on the B phase.
-Any `--apply` path remains Risk A.
+`gccgw package inspect` operates only on the C phase. `gccgw package import
+--dry-run` operates only on the B phase and returns a redacted plan for
+environment requirements, public-boundary checks, plan registration, and node
+slot wiring. It does not write files, read real environment values, copy
+SQLite, reload services, issue subscriptions, or mutate hosts. Any `--apply`
+path remains Risk A.
 
 ## Required Files
 

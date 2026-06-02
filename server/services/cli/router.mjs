@@ -87,7 +87,9 @@ const SPECIAL_COMMAND_ENTRIES = [
   ["docs command", null, "project", "C", "read-only", "List source docs for one gccgw command"],
   ["docs domain", null, "project", "C", "read-only", "List source docs for one command domain"],
   ["docs list", null, "project", "C", "read-only", "List docs referenced by the gccgw command map"],
+  ["package import", null, "package", "B", "dry-run", "Build a redacted production input package import plan without mutating the host"],
   ["package inspect", null, "package", "C", "read-only", "Inspect a redacted production input package without importing it"],
+  ["install configure", null, "install", "B", "dry-run", "Build a redacted install configuration plan without writing host files"],
   ["install plan", null, "install", "C", "read-only", "Show the server installation sequence without touching the host"],
   ["install preflight", null, "install", "C", "read-only", "Check server bootstrap prerequisites without mutating the host"],
   ["node plan", null, "node", "C", "read-only", "Show the node installation sequence without touching the host", undefined, { aliasOf: "gccgw install plan" }],
@@ -247,8 +249,8 @@ const INSTALL_PLAN_STEPS = [
   {
     step: "bootstrap",
     riskTier: "A",
-    command: "gccgw install bootstrap --execute-production-mutation --apply",
-    boundary: "Applies reviewed systemd/Nginx/bootstrap materials only after the interactive Risk A prompt."
+    command: "gccgw install bootstrap --config-plan <reviewed-install-configure-plan.json> --execute-production-mutation --apply",
+    boundary: "Applies reviewed systemd/Nginx/bootstrap materials only after the interactive Risk A prompt and a reviewed install configure plan."
   },
   {
     step: "operator-data",
@@ -487,6 +489,137 @@ export function buildPackageInspectReport({
   };
 }
 
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function parseSafePackageJson(files, path) {
+  return parsePackageJsonFile(files, path).parsed || {};
+}
+
+function summarizePlans(plans = {}) {
+  return safeArray(plans.plans).map((plan) => ({
+    id: plan.id,
+    durationDays: Number.isFinite(plan.durationDays) ? plan.durationDays : null
+  }));
+}
+
+function summarizeNodeSlots(nodes = {}) {
+  return safeArray(nodes.slots).map((slot) => ({
+    id: slot.id,
+    pool: slot.pool,
+    protocols: safeArray(slot.protocols),
+    subscriptionEligible: slot.subscriptionEligible === true,
+    hostRefPresent: typeof slot.hostRef === "string" && slot.hostRef.length > 0,
+    credentialRefCount: safeArray(slot.credentialRefs).length
+  }));
+}
+
+function countPublicBoundaryRoutes(publicBoundary = {}) {
+  return safeArray(publicBoundary.expectedRoutes).length;
+}
+
+export function buildPackageImportDryRunReport({
+  packageName = "unknown",
+  files = {}
+} = {}) {
+  const inspect = buildPackageInspectReport({ packageName, files });
+  const manifest = parseSafePackageJson(files, "package-manifest.json");
+  const topology = parseSafePackageJson(files, "topology.json");
+  const publicBoundary = parseSafePackageJson(files, "public-boundary.json");
+  const plans = parseSafePackageJson(files, "plans.json");
+  const nodes = parseSafePackageJson(files, "nodes.json");
+  const requiredEnv = parseSafePackageJson(files, "env.required.json");
+  const subscriptionPlans = summarizePlans(plans);
+  const nodeSlots = summarizeNodeSlots(nodes);
+  const blockers = [];
+
+  if (!inspect.ok) {
+    blockers.push({
+      code: "package_inspection_failed",
+      detail: "Run gccgw package inspect and resolve required package checks before dry-run import."
+    });
+  }
+  if (!safeArray(manifest.importPhases).some((phase) => phase.name === "dry-run" && phase.riskTier === "B" && phase.mutation === false)) {
+    blockers.push({
+      code: "dry_run_phase_missing",
+      detail: "The package manifest must declare a non-mutating B-tier dry-run phase."
+    });
+  }
+  if (topology.operatorAccess?.publicAdmin === true) {
+    blockers.push({
+      code: "public_admin_exposure_requested",
+      detail: "Public Admin exposure is outside the package import dry-run boundary."
+    });
+  }
+
+  const plannedOperations = [
+    {
+      id: "inspect-package",
+      riskTier: "C",
+      mutation: false,
+      summary: "Reuse package inspection checks before any import planning."
+    },
+    {
+      id: "prepare-env-requirements",
+      riskTier: "B",
+      mutation: false,
+      summary: "Summarize required runtime environment names and storage classes without values.",
+      requiredRuntimeEnvCount: safeArray(requiredEnv.runtime).length,
+      optionalIntegrationCount: safeArray(requiredEnv.optionalIntegrations).length
+    },
+    {
+      id: "prepare-public-boundary-plan",
+      riskTier: "B",
+      mutation: false,
+      summary: "Prepare public route expectations for later host validation.",
+      expectedRouteCount: countPublicBoundaryRoutes(publicBoundary)
+    },
+    {
+      id: "prepare-package-products",
+      riskTier: "B",
+      mutation: false,
+      summary: "Prepare package subscription plan ids and durations.",
+      planCount: subscriptionPlans.length
+    },
+    {
+      id: "prepare-node-slots",
+      riskTier: "B",
+      mutation: false,
+      summary: "Prepare node slot ids, pools, protocols, and reference counts without endpoints or credentials.",
+      slotCount: nodeSlots.length
+    }
+  ];
+
+  return {
+    type: "gccgw_package_import_dry_run",
+    generatedBy: "gccgw package import --dry-run",
+    ok: blockers.length === 0,
+    packageName: String(packageName || "unknown"),
+    riskTier: "B",
+    mutation: false,
+    productionAuthority: false,
+    packageKind: manifest.metadata?.packageKind || "unknown",
+    environment: manifest.metadata?.environment || "unknown",
+    controlPlane: {
+      publicRouteCount: safeArray(topology.controlPlane?.publicRoutes).length,
+      protectedRouteCount: safeArray(topology.controlPlane?.protectedRoutes).length,
+      publicAdmin: topology.operatorAccess?.publicAdmin === true
+    },
+    subscriptionPlans,
+    nodeSlots,
+    plannedOperations,
+    blockers,
+    nextGate: {
+      command: "gccgw package import <package-dir> --execute-production-mutation --apply",
+      riskTier: "A",
+      requiresSeparateExactApproval: true,
+      mutation: true
+    },
+    redacted: true
+  };
+}
+
 export function buildInstallPlan({ format = "text" } = {}) {
   const plan = {
     type: "gccgw_install_plan",
@@ -526,6 +659,179 @@ export function buildInstallPlan({ format = "text" } = {}) {
     ...plan.forbiddenByDefault.map((item) => `- ${item}`)
   ];
   return `${lines.join("\n")}\n`;
+}
+
+function isAbsoluteInstallDir(value) {
+  return /^\/[^/]/.test(value) || /^[A-Za-z]:[\\/]/.test(value);
+}
+
+function normalizeInstallDir(value) {
+  return String(value || "").trim().replace(/[\\/]+$/, "");
+}
+
+function pathJoin(base, suffix) {
+  const separator = base.includes("\\") ? "\\" : "/";
+  return `${base}${separator}${suffix.replace(/\//g, separator)}`;
+}
+
+function loopbackHostname(hostname) {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+}
+
+function parsePublicBaseUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) {
+    return { raw, url: null, issue: "public_base_url_required" };
+  }
+  try {
+    const url = new URL(raw);
+    const https = url.protocol === "https:";
+    const loopback = url.protocol === "http:" && loopbackHostname(url.hostname);
+    if (!https && !loopback) {
+      return { raw, url, issue: "public_base_url_must_be_https_or_loopback" };
+    }
+    return { raw, url, issue: null };
+  } catch {
+    return { raw, url: null, issue: "public_base_url_invalid" };
+  }
+}
+
+function parseConsolePort(value) {
+  const raw = value === undefined ? "3456" : String(value).trim();
+  const port = Number(raw);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    return { port: null, issue: "console_port_invalid" };
+  }
+  return { port, issue: null };
+}
+
+function blocker(code, message) {
+  return { code, severity: "blocker", message };
+}
+
+export function buildInstallConfigurePlan({
+  domain,
+  installDir = "/opt/proxy-gateway-minimal",
+  managementSource,
+  consolePort,
+  targetRole = "subscription-control"
+} = {}) {
+  const blockers = [];
+  const normalizedInstallDir = normalizeInstallDir(installDir);
+  const baseUrl = parsePublicBaseUrl(domain);
+  const parsedPort = parseConsolePort(consolePort);
+  const adminAllowedCidrs = String(managementSource || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  if (baseUrl.issue) {
+    blockers.push(blocker(baseUrl.issue, "Provide an HTTPS public base URL, or an HTTP loopback URL for private validation."));
+  }
+  if (!isAbsoluteInstallDir(normalizedInstallDir)) {
+    blockers.push(blocker("install_dir_must_be_absolute", "Provide an absolute install directory so derived paths cannot escape the deployment root."));
+  }
+  if (adminAllowedCidrs.length === 0) {
+    blockers.push(blocker("management_source_required", "Provide at least one operator management source CIDR."));
+  }
+  if (parsedPort.issue) {
+    blockers.push(blocker(parsedPort.issue, "Provide a numeric console port between 1 and 65535."));
+  }
+
+  const safeInstallDir = isAbsoluteInstallDir(normalizedInstallDir)
+    ? normalizedInstallDir
+    : "/opt/proxy-gateway-minimal";
+  const derivedPaths = {
+    runtimeDbPath: pathJoin(safeInstallDir, ".proxy-gateway/subscriptions.sqlite"),
+    controlDbPath: pathJoin(safeInstallDir, ".proxy-gateway/subscription-control.sqlite"),
+    handoffDir: pathJoin(safeInstallDir, "handoff"),
+    envSkeletonPath: pathJoin(safeInstallDir, ".env"),
+    serviceWorkingDirectory: safeInstallDir
+  };
+
+  return {
+    type: "gccgw_install_configure_plan",
+    generatedBy: "gccgw install configure --dry-run",
+    ok: blockers.length === 0,
+    riskTier: "B",
+    mutation: false,
+    productionAuthority: false,
+    install: {
+      installDir: normalizedInstallDir || null,
+      targetRole: String(targetRole || "subscription-control"),
+      consolePort: parsedPort.port
+    },
+    publicBaseUrl: {
+      configured: Boolean(baseUrl.url),
+      https: baseUrl.url?.protocol === "https:",
+      loopback: Boolean(baseUrl.url && loopbackHostname(baseUrl.url.hostname)),
+      host: baseUrl.url?.hostname || null
+    },
+    management: {
+      adminAllowedCidrs,
+      trustedProxyCidrs: []
+    },
+    derivedPaths,
+    envSkeleton: [
+      { name: "NODE_ENV", valueKind: "literal", valuePreview: "production", secret: false },
+      { name: "CONSOLE_PORT", valueKind: "literal", valuePreview: String(parsedPort.port || ""), secret: false },
+      { name: "PUBLIC_SUBSCRIPTION_BASE_URL", valueKind: "operator-input", configured: Boolean(baseUrl.url), secret: false },
+      { name: "ADMIN_ALLOWED_CIDRS", valueKind: "operator-input", configured: adminAllowedCidrs.length > 0, secret: false },
+      { name: "SUBSCRIPTION_DB_PATH", valueKind: "derived-path", pathRef: "runtimeDbPath", secret: false },
+      { name: "SUBSCRIPTION_CONTROL_DB_PATH", valueKind: "derived-path", pathRef: "controlDbPath", secret: false },
+      { name: "HANDOFF_DIR", valueKind: "derived-path", pathRef: "handoffDir", secret: false },
+      { name: "CONSOLE_TOKEN", valueKind: "secret-required", secret: true },
+      { name: "SS_PASSWORD", valueKind: "secret-required", secret: true },
+      { name: "TRUSTED_PROXY_CIDRS", valueKind: "optional", secret: false },
+      { name: "SUB_RATE_LIMIT_WINDOW_MS", valueKind: "default", valuePreview: "60000", secret: false },
+      { name: "SUB_RATE_LIMIT_MAX", valueKind: "default", valuePreview: "30", secret: false },
+      { name: "SUBSCRIPTION_TEMP_LINK_TTL_MINUTES", valueKind: "default", valuePreview: "1440", secret: false }
+    ],
+    plannedOperations: [
+      { id: "validate-install-facts", mutation: false },
+      { id: "derive-db-and-handoff-paths", mutation: false },
+      { id: "render-redacted-env-skeleton", mutation: false },
+      { id: "prepare-next-bootstrap-gate", mutation: false }
+    ],
+    blockers,
+    nextGate: {
+      command: "gccgw install bootstrap --config-plan <reviewed-install-configure-plan.json> --execute-production-mutation --apply",
+      riskTier: "A",
+      requiresSeparateExactApproval: true,
+      mutation: true
+    },
+    redacted: true
+  };
+}
+
+export function validateInstallConfigurePlanEnvelope(plan) {
+  const blockers = [];
+  if (!plan || typeof plan !== "object") {
+    blockers.push(blocker("configure_plan_missing", "Provide a parsed gccgw install configure plan."));
+    return { ok: false, blockers };
+  }
+  if (plan.type !== "gccgw_install_configure_plan") {
+    blockers.push(blocker("configure_plan_type_invalid", "Configure plan must be generated by gccgw install configure --dry-run."));
+  }
+  if (plan.ok !== true || (Array.isArray(plan.blockers) && plan.blockers.length > 0)) {
+    blockers.push(blocker("configure_plan_not_ok", "Configure plan must be ok and blocker-free before bootstrap."));
+  }
+  if (plan.redacted !== true) {
+    blockers.push(blocker("configure_plan_must_be_redacted", "Configure plan must be redacted before bootstrap."));
+  }
+  if (plan.mutation !== false) {
+    blockers.push(blocker("configure_plan_must_be_non_mutating", "Configure plan must be a non-mutating dry-run artifact."));
+  }
+  if (plan.productionAuthority !== false) {
+    blockers.push(blocker("configure_plan_must_not_grant_production_authority", "Configure plan must not grant production authority."));
+  }
+  if (!plan.derivedPaths?.envSkeletonPath || !plan.derivedPaths?.runtimeDbPath || !plan.derivedPaths?.controlDbPath) {
+    blockers.push(blocker("configure_plan_missing_derived_paths", "Configure plan must include derived env and database paths."));
+  }
+  return {
+    ok: blockers.length === 0,
+    blockers
+  };
 }
 
 export function buildInstallPreflightReport({
@@ -594,7 +900,7 @@ export function buildInstallPreflightReport({
     generatedBy: "gccgw install preflight",
     ok: Object.values(checks).every((check) => check.required !== true || check.ok === true),
     checks,
-    nextCommand: "gccgw install bootstrap --execute-production-mutation --apply",
+    nextCommand: "gccgw install bootstrap --config-plan <reviewed-install-configure-plan.json> --execute-production-mutation --apply",
     redacted: true
   };
 }
@@ -1068,9 +1374,10 @@ Usage:
   gccgw docs list [--json]
   gccgw docs domain <domain> [--json]
   gccgw docs command <command> [--json]
+  gccgw install configure --dry-run --domain <url> --install-dir <path> --management-source <cidr> [--json]
   gccgw install plan [--json]
   gccgw install preflight [--json]
-  gccgw install bootstrap --execute-production-mutation --apply
+  gccgw install bootstrap --config-plan <reviewed-install-configure-plan.json> --execute-production-mutation --apply
   gccgw self check
   gccgw service status [--json]
   gccgw server start
@@ -1097,6 +1404,7 @@ Common commands:
   gccgw config validate --profile aliyun-prod
   gccgw docs command platform issue-subscription
   gccgw docs domain platform
+  gccgw install configure --dry-run --domain https://sub.example.com --install-dir /opt/gccgw --management-source 203.0.113.10/32 --json
   gccgw install plan
   gccgw install preflight --json
   gccgw node plan
@@ -1246,6 +1554,17 @@ export function resolveCliCommand(argv = []) {
       format: args.includes("--json") ? "json" : "text"
     };
   }
+  if (args[0] === "package" && args[1] === "import") {
+    const packageDir = positionalArgs(args, 2)[0];
+    if (args.includes("--dry-run")) {
+      return {
+        kind: "package-import-dry-run",
+        packageDir,
+        format: args.includes("--json") ? "json" : "text"
+      };
+    }
+    throw new Error("gccgw package import currently supports --dry-run only. Apply remains Risk A and is not implemented here.");
+  }
   const commandKey = `${args[0] || ""} ${args[1] || ""}`.trim();
   if (hasKnownCommand(commandKey) && args.slice(2).some(isHelpArg)) {
     return {
@@ -1255,6 +1574,21 @@ export function resolveCliCommand(argv = []) {
   }
   if (args[0] === "server" && (args[1] === undefined || args[1] === "start")) {
     return { kind: "start-server" };
+  }
+  if (args[0] === "install" && args[1] === "configure") {
+    if (!args.includes("--dry-run")) {
+      throw new Error("gccgw install configure currently supports --dry-run only.");
+    }
+    return {
+      kind: "install-configure",
+      format: args.includes("--json") ? "json" : "text",
+      dryRun: true,
+      domain: optionValue(args, "--domain") || optionValue(args, "--public-base-url"),
+      installDir: optionValue(args, "--install-dir"),
+      managementSource: optionValue(args, "--management-source"),
+      consolePort: optionValue(args, "--console-port"),
+      targetRole: optionValue(args, "--target-role")
+    };
   }
   if (args[0] === "install" && args[1] === "plan") {
     return {
@@ -1444,7 +1778,9 @@ export async function runProxyGatewayCli(argv, {
   runReleaseStatus,
   runServiceStatus,
   runNetworkStatus,
+  runPackageImportDryRun,
   runPackageInspect,
+  runInstallConfigure,
   startServer,
   confirmRiskAExecution,
   writeStdout = (text) => process.stdout.write(text),
@@ -1487,6 +1823,12 @@ export async function runProxyGatewayCli(argv, {
     }
     if (command.kind === "package-inspect") {
       return await runPackageInspect(command);
+    }
+    if (command.kind === "package-import-dry-run") {
+      return await runPackageImportDryRun(command);
+    }
+    if (command.kind === "install-configure") {
+      return await runInstallConfigure(command);
     }
     if (command.kind === "command-help") {
       writeStdout(buildCommandHelp(command));
