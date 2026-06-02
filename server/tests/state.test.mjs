@@ -134,6 +134,32 @@ test("createRuntimeState respects PUBLIC_SUBSCRIPTION_BASE_URL override", () => 
   }
 });
 
+test("createRuntimeState uses SUBSCRIPTION_CONTROL_DB_PATH for the business control store", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-control-db-"));
+  const configuredControlPath = join(dir, "configured", "subscription-control.sqlite");
+  const defaultControlPath = join(dir, ".proxy-gateway", "control.sqlite");
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_CONTROL_DB_PATH: configuredControlPath
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(existsSync(configuredControlPath), true);
+    assert.equal(existsSync(defaultControlPath), false);
+  } finally {
+    state?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("createRuntimeState closes only owned subscription repositories", () => {
   let closeCount = 0;
   const repository = fakeSubscriptionStore({

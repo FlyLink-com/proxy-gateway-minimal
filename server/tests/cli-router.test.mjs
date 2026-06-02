@@ -9,6 +9,7 @@ import {
   buildInstallConfigurePlan,
   buildInstallPlan,
   buildInstallPreflightReport,
+  validateInstallConfigurePlanEnvelope,
   buildPackageImportDryRunReport,
   buildPackageInspectReport,
   buildPackageScriptSpawn,
@@ -298,8 +299,8 @@ test("gccgw install configure derives paths and keeps secrets out of the plan", 
   assert.equal(report.install.consolePort, 3456);
   assert.equal(report.publicBaseUrl.https, true);
   assert.equal(report.management.adminAllowedCidrs[0], "203.0.113.10/32");
-  assert.equal(report.derivedPaths.runtimeDbPath, "/opt/gccgw/data/subscriptions.sqlite");
-  assert.equal(report.derivedPaths.controlDbPath, "/opt/gccgw/data/subscription-control.sqlite");
+  assert.equal(report.derivedPaths.runtimeDbPath, "/opt/gccgw/.proxy-gateway/subscriptions.sqlite");
+  assert.equal(report.derivedPaths.controlDbPath, "/opt/gccgw/.proxy-gateway/subscription-control.sqlite");
   assert.equal(report.derivedPaths.handoffDir, "/opt/gccgw/handoff");
   assert.equal(report.derivedPaths.envSkeletonPath, "/opt/gccgw/.env");
   assert.equal(report.envSkeleton.some((entry) => entry.name === "SUBSCRIPTION_CONTROL_DB_PATH"), true);
@@ -723,7 +724,7 @@ test("gccgw install plan and preflight reports are redacted and explicit about m
 
   assert.equal(plan.type, "gccgw_install_plan");
   assert.equal(plan.riskTier, "A for bootstrap execution");
-  assert.ok(plan.commands.some((command) => command.command === "gccgw install bootstrap --execute-production-mutation --apply"));
+  assert.ok(plan.commands.some((command) => command.command === "gccgw install bootstrap --config-plan <reviewed-install-configure-plan.json> --execute-production-mutation --apply"));
   assert.doesNotMatch(JSON.stringify(plan), /TOKEN|SECRET|PASSWORD|subscriptionUrl|C:\\\\/i);
 
   const preflight = buildInstallPreflightReport({
@@ -753,6 +754,31 @@ test("gccgw install plan and preflight reports are redacted and explicit about m
   assert.equal(preflight.checks.rootForBootstrap.ok, false);
   assert.equal(preflight.checks.rootForBootstrap.required, false);
   assert.doesNotMatch(JSON.stringify(preflight), /TOKEN|SECRET|PASSWORD|subscriptionUrl|C:\\\\/i);
+});
+
+test("gccgw install configure plan validates before bootstrap gates", () => {
+  const validPlan = buildInstallConfigurePlan({
+    domain: "https://sub.example.invalid",
+    installDir: "/opt/gccgw",
+    managementSource: "203.0.113.10/32"
+  });
+  const valid = validateInstallConfigurePlanEnvelope(validPlan);
+
+  assert.equal(valid.ok, true);
+  assert.deepEqual(valid.blockers, []);
+
+  const unsafe = validateInstallConfigurePlanEnvelope({
+    ...validPlan,
+    ok: false,
+    redacted: false,
+    mutation: true,
+    blockers: [{ code: "unsafe", severity: "blocker" }]
+  });
+
+  assert.equal(unsafe.ok, false);
+  assert.equal(unsafe.blockers.some((blocker) => blocker.code === "configure_plan_not_ok"), true);
+  assert.equal(unsafe.blockers.some((blocker) => blocker.code === "configure_plan_must_be_redacted"), true);
+  assert.equal(unsafe.blockers.some((blocker) => blocker.code === "configure_plan_must_be_non_mutating"), true);
 });
 
 test("gccgw CLI resolves architecture map as a read-only project command", () => {

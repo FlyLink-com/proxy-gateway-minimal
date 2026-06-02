@@ -102,6 +102,8 @@ async function runEnvCheck() {
     "CONSOLE_TOKEN",
     "SS_PASSWORD",
     "SUBSCRIPTION_DB_PATH",
+    "SUBSCRIPTION_CONTROL_DB_PATH",
+    "HANDOFF_DIR",
     "PUBLIC_SUBSCRIPTION_BASE_URL"
   ];
   const summary = required.map((name) => {

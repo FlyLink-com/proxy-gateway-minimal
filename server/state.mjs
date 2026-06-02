@@ -50,7 +50,10 @@ export function createRuntimeState(options = {}) {
     env
   });
   const subscriptionDbPath = options.subscriptionDbPath || env.SUBSCRIPTION_DB_PATH || join(rootDir, ".proxy-gateway", "subscriptions.sqlite");
-  const controlDbPath = options.controlDbPath || env.CONTROL_DB_PATH || join(rootDir, ".proxy-gateway", "control.sqlite");
+  const controlDbPath = options.controlDbPath
+    || env.SUBSCRIPTION_CONTROL_DB_PATH
+    || env.CONTROL_DB_PATH
+    || join(rootDir, ".proxy-gateway", "control.sqlite");
   const publicSubscriptionBaseUrl = String(env.PUBLIC_SUBSCRIPTION_BASE_URL || `http://${host}:${consolePort}`).trim().replace(/\/+$/, "");
   const adminAllowedCidrs = parseCsv(env.ADMIN_ALLOWED_CIDRS, DEFAULT_ADMIN_ALLOWED_CIDRS);
   const trustedProxyCidrs = parseCsv(env.TRUSTED_PROXY_CIDRS, DEFAULT_TRUSTED_PROXY_CIDRS);
