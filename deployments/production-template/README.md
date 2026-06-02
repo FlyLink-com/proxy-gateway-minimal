@@ -49,7 +49,7 @@ The complete import contract is defined in:
 docs/PRODUCTION_INPUT_PACKAGE_FORMAT.md
 ```
 
-Use `package-manifest.json` as the first file for future inspect/import
+Use `package-manifest.json` as the first file for inspect/import dry-run
 tooling. It is a redacted manifest only; it does not contain customer facts,
 secrets, SQLite data, generated subscription YAML, runtime logs, or handoff
 material.
@@ -59,6 +59,7 @@ material.
 ```text
 fill non-secret production input package
 -> gccgw package inspect deployments/production-template --json
+-> gccgw package import deployments/production-template --dry-run --json
 -> gccgw release status
 -> gccgw install preflight on the target host
 -> Risk A approval

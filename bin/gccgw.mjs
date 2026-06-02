@@ -11,6 +11,7 @@ import {
   buildCliHelp,
   buildGccgwSelfCheckReport,
   buildInstallPreflightReport,
+  buildPackageImportDryRunReport,
   buildPackageInspectReport,
   buildReleaseStatusReport,
   redactNetworkStatus,
@@ -171,14 +172,42 @@ function pathInsideRoot(targetPath) {
 }
 
 async function runPackageInspect(command) {
+  const files = readPackageInputFiles(command, "package inspect");
+  if (!files) return 1;
+
+  const report = buildPackageInspectReport({
+    packageName: packageNameFromDir(command.packageDir),
+    files
+  });
+  writeReport(report, command.format);
+  return report.ok ? 0 : 1;
+}
+
+async function runPackageImportDryRun(command) {
+  const files = readPackageInputFiles(command, "package import --dry-run");
+  if (!files) return 1;
+
+  const report = buildPackageImportDryRunReport({
+    packageName: packageNameFromDir(command.packageDir),
+    files
+  });
+  writeReport(report, command.format);
+  return report.ok ? 0 : 1;
+}
+
+function packageNameFromDir(packageDir) {
+  return packageDir?.split(/[\\/]/).filter(Boolean).at(-1) || "unknown";
+}
+
+function readPackageInputFiles(command, label) {
   if (!command.packageDir) {
-    process.stderr.write("package inspect requires a package directory\n");
-    return 1;
+    process.stderr.write(`${label} requires a package directory\n`);
+    return null;
   }
   const packageRoot = resolve(rootDir, command.packageDir);
   if (!pathInsideRoot(packageRoot)) {
-    process.stderr.write("package inspect only accepts package directories inside the repository\n");
-    return 1;
+    process.stderr.write(`${label} only accepts package directories inside the repository\n`);
+    return null;
   }
 
   const files = {};
@@ -189,13 +218,7 @@ async function runPackageInspect(command) {
     }
     files[file] = readFileSync(filePath, "utf8");
   }
-
-  const report = buildPackageInspectReport({
-    packageName: command.packageDir.split(/[\\/]/).filter(Boolean).at(-1) || "unknown",
-    files
-  });
-  writeReport(report, command.format);
-  return report.ok ? 0 : 1;
+  return files;
 }
 
 async function runInstallPreflight(command) {
@@ -376,6 +399,7 @@ try {
     runReleaseStatus,
     runServiceStatus,
     runNetworkStatus,
+    runPackageImportDryRun,
     runPackageInspect,
     startServer,
     confirmRiskAExecution

@@ -87,6 +87,7 @@ const SPECIAL_COMMAND_ENTRIES = [
   ["docs command", null, "project", "C", "read-only", "List source docs for one gccgw command"],
   ["docs domain", null, "project", "C", "read-only", "List source docs for one command domain"],
   ["docs list", null, "project", "C", "read-only", "List docs referenced by the gccgw command map"],
+  ["package import", null, "package", "B", "dry-run", "Build a redacted production input package import plan without mutating the host"],
   ["package inspect", null, "package", "C", "read-only", "Inspect a redacted production input package without importing it"],
   ["install plan", null, "install", "C", "read-only", "Show the server installation sequence without touching the host"],
   ["install preflight", null, "install", "C", "read-only", "Check server bootstrap prerequisites without mutating the host"],
@@ -483,6 +484,137 @@ export function buildPackageInspectReport({
       riskTier: phase.riskTier,
       mutation: phase.mutation === true
     })),
+    redacted: true
+  };
+}
+
+function safeArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function parseSafePackageJson(files, path) {
+  return parsePackageJsonFile(files, path).parsed || {};
+}
+
+function summarizePlans(plans = {}) {
+  return safeArray(plans.plans).map((plan) => ({
+    id: plan.id,
+    durationDays: Number.isFinite(plan.durationDays) ? plan.durationDays : null
+  }));
+}
+
+function summarizeNodeSlots(nodes = {}) {
+  return safeArray(nodes.slots).map((slot) => ({
+    id: slot.id,
+    pool: slot.pool,
+    protocols: safeArray(slot.protocols),
+    subscriptionEligible: slot.subscriptionEligible === true,
+    hostRefPresent: typeof slot.hostRef === "string" && slot.hostRef.length > 0,
+    credentialRefCount: safeArray(slot.credentialRefs).length
+  }));
+}
+
+function countPublicBoundaryRoutes(publicBoundary = {}) {
+  return safeArray(publicBoundary.expectedRoutes).length;
+}
+
+export function buildPackageImportDryRunReport({
+  packageName = "unknown",
+  files = {}
+} = {}) {
+  const inspect = buildPackageInspectReport({ packageName, files });
+  const manifest = parseSafePackageJson(files, "package-manifest.json");
+  const topology = parseSafePackageJson(files, "topology.json");
+  const publicBoundary = parseSafePackageJson(files, "public-boundary.json");
+  const plans = parseSafePackageJson(files, "plans.json");
+  const nodes = parseSafePackageJson(files, "nodes.json");
+  const requiredEnv = parseSafePackageJson(files, "env.required.json");
+  const subscriptionPlans = summarizePlans(plans);
+  const nodeSlots = summarizeNodeSlots(nodes);
+  const blockers = [];
+
+  if (!inspect.ok) {
+    blockers.push({
+      code: "package_inspection_failed",
+      detail: "Run gccgw package inspect and resolve required package checks before dry-run import."
+    });
+  }
+  if (!safeArray(manifest.importPhases).some((phase) => phase.name === "dry-run" && phase.riskTier === "B" && phase.mutation === false)) {
+    blockers.push({
+      code: "dry_run_phase_missing",
+      detail: "The package manifest must declare a non-mutating B-tier dry-run phase."
+    });
+  }
+  if (topology.operatorAccess?.publicAdmin === true) {
+    blockers.push({
+      code: "public_admin_exposure_requested",
+      detail: "Public Admin exposure is outside the package import dry-run boundary."
+    });
+  }
+
+  const plannedOperations = [
+    {
+      id: "inspect-package",
+      riskTier: "C",
+      mutation: false,
+      summary: "Reuse package inspection checks before any import planning."
+    },
+    {
+      id: "prepare-env-requirements",
+      riskTier: "B",
+      mutation: false,
+      summary: "Summarize required runtime environment names and storage classes without values.",
+      requiredRuntimeEnvCount: safeArray(requiredEnv.runtime).length,
+      optionalIntegrationCount: safeArray(requiredEnv.optionalIntegrations).length
+    },
+    {
+      id: "prepare-public-boundary-plan",
+      riskTier: "B",
+      mutation: false,
+      summary: "Prepare public route expectations for later host validation.",
+      expectedRouteCount: countPublicBoundaryRoutes(publicBoundary)
+    },
+    {
+      id: "prepare-package-products",
+      riskTier: "B",
+      mutation: false,
+      summary: "Prepare package subscription plan ids and durations.",
+      planCount: subscriptionPlans.length
+    },
+    {
+      id: "prepare-node-slots",
+      riskTier: "B",
+      mutation: false,
+      summary: "Prepare node slot ids, pools, protocols, and reference counts without endpoints or credentials.",
+      slotCount: nodeSlots.length
+    }
+  ];
+
+  return {
+    type: "gccgw_package_import_dry_run",
+    generatedBy: "gccgw package import --dry-run",
+    ok: blockers.length === 0,
+    packageName: String(packageName || "unknown"),
+    riskTier: "B",
+    mutation: false,
+    productionAuthority: false,
+    packageKind: manifest.metadata?.packageKind || "unknown",
+    environment: manifest.metadata?.environment || "unknown",
+    controlPlane: {
+      publicRouteCount: safeArray(topology.controlPlane?.publicRoutes).length,
+      protectedRouteCount: safeArray(topology.controlPlane?.protectedRoutes).length,
+      publicAdmin: topology.operatorAccess?.publicAdmin === true
+    },
+    subscriptionPlans,
+    nodeSlots,
+    plannedOperations,
+    blockers,
+    nextGate: {
+      command: "gccgw package import <package-dir> --execute-production-mutation --apply",
+      riskTier: "A",
+      requiresSeparateExactApproval: true,
+      mutation: true
+    },
     redacted: true
   };
 }
@@ -1246,6 +1378,17 @@ export function resolveCliCommand(argv = []) {
       format: args.includes("--json") ? "json" : "text"
     };
   }
+  if (args[0] === "package" && args[1] === "import") {
+    const packageDir = positionalArgs(args, 2)[0];
+    if (args.includes("--dry-run")) {
+      return {
+        kind: "package-import-dry-run",
+        packageDir,
+        format: args.includes("--json") ? "json" : "text"
+      };
+    }
+    throw new Error("gccgw package import currently supports --dry-run only. Apply remains Risk A and is not implemented here.");
+  }
   const commandKey = `${args[0] || ""} ${args[1] || ""}`.trim();
   if (hasKnownCommand(commandKey) && args.slice(2).some(isHelpArg)) {
     return {
@@ -1444,6 +1587,7 @@ export async function runProxyGatewayCli(argv, {
   runReleaseStatus,
   runServiceStatus,
   runNetworkStatus,
+  runPackageImportDryRun,
   runPackageInspect,
   startServer,
   confirmRiskAExecution,
@@ -1487,6 +1631,9 @@ export async function runProxyGatewayCli(argv, {
     }
     if (command.kind === "package-inspect") {
       return await runPackageInspect(command);
+    }
+    if (command.kind === "package-import-dry-run") {
+      return await runPackageImportDryRun(command);
     }
     if (command.kind === "command-help") {
       writeStdout(buildCommandHelp(command));

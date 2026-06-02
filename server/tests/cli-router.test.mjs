@@ -8,6 +8,7 @@ import {
   buildGccgwSelfCheckReport,
   buildInstallPlan,
   buildInstallPreflightReport,
+  buildPackageImportDryRunReport,
   buildPackageInspectReport,
   buildPackageScriptSpawn,
   buildCliCommandMap,
@@ -283,6 +284,11 @@ function productionPackageFiles(overrides = {}) {
         initialRequestStatus: "pending",
         customerFieldsInPackage: false
       },
+      importPhases: [
+        { name: "inspect", riskTier: "C", mutation: false },
+        { name: "dry-run", riskTier: "B", mutation: false },
+        { name: "apply", riskTier: "A", mutation: true }
+      ],
       hardStops: ["no raw subscription URLs"]
     },
     "topology.json": {
@@ -416,6 +422,102 @@ test("gccgw CLI resolves package inspect as a read-only package command", async 
   assert.equal(exitCode, 0);
   assert.deepEqual(called, {
     kind: "package-inspect",
+    packageDir: "deployments/production-template",
+    format: "json"
+  });
+});
+
+test("gccgw package import dry-run builds a redacted B-tier import plan", () => {
+  const report = buildPackageImportDryRunReport({
+    packageName: "production-template",
+    files: productionPackageFiles()
+  });
+
+  assert.equal(report.type, "gccgw_package_import_dry_run");
+  assert.equal(report.ok, true);
+  assert.equal(report.riskTier, "B");
+  assert.equal(report.mutation, false);
+  assert.equal(report.productionAuthority, false);
+  assert.equal(report.nextGate.riskTier, "A");
+  assert.equal(report.plannedOperations.every((operation) => operation.mutation === false), true);
+  assert.deepEqual(report.subscriptionPlans.map((plan) => plan.id), ["monthly", "annual"]);
+  assert.deepEqual(report.nodeSlots.map((slot) => slot.id), ["prod-edge-a"]);
+  assert.doesNotMatch(JSON.stringify(report), /subscriptionUrl|artifactSecret|CONSOLE_TOKEN|SS_PASSWORD|owner@example|do-not-store-this/i);
+});
+
+test("gccgw package import dry-run fails closed when inspect checks fail", () => {
+  const report = buildPackageImportDryRunReport({
+    packageName: "unsafe-template",
+    files: productionPackageFiles({
+      "package-manifest.json": {
+        ...productionPackageFiles()["package-manifest.json"],
+        registrationPolicy: {
+          customerFieldsInPackage: true,
+          customerEmail: "owner@example.com"
+        }
+      }
+    })
+  });
+
+  assert.equal(report.ok, false);
+  assert.equal(report.blockers.some((blocker) => blocker.code === "package_inspection_failed"), true);
+  assert.doesNotMatch(JSON.stringify(report), /owner@example/i);
+});
+
+test("gccgw package import dry-run blocks public admin exposure plans", () => {
+  const safeFiles = productionPackageFiles();
+  const report = buildPackageImportDryRunReport({
+    packageName: "public-admin-template",
+    files: productionPackageFiles({
+      "topology.json": {
+        ...safeFiles["topology.json"],
+        operatorAccess: { publicAdmin: true }
+      }
+    })
+  });
+
+  assert.equal(report.ok, false);
+  assert.equal(report.blockers.some((blocker) => blocker.code === "public_admin_exposure_requested"), true);
+});
+
+test("gccgw CLI resolves package import dry-run without execution authority", async () => {
+  assert.deepEqual(resolveCliCommand(["package", "import", "deployments/production-template", "--dry-run", "--json"]), {
+    kind: "package-import-dry-run",
+    packageDir: "deployments/production-template",
+    format: "json"
+  });
+
+  const commands = listCliCommands();
+  const importCommand = commands.find((command) => command.command === "gccgw package import");
+  assert.equal(importCommand.riskTier, "B");
+  assert.equal(importCommand.mode, "dry-run");
+  assert.ok(importCommand.sourceDocs.includes("docs/PRODUCTION_INPUT_PACKAGE_FORMAT.md"));
+
+  let called = null;
+  const exitCode = await runProxyGatewayCli(["package", "import", "deployments/production-template", "--dry-run", "--json"], {
+    runPackageImportDryRun: async (command) => {
+      called = command;
+      return 0;
+    },
+    runPackageInspect: async () => {
+      throw new Error("inspect adapter must not run for import dry-run");
+    },
+    runNodeScript: async () => {
+      throw new Error("node script must not run for package import dry-run");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for package import dry-run");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for package import dry-run");
+    },
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(called, {
+    kind: "package-import-dry-run",
     packageDir: "deployments/production-template",
     format: "json"
   });

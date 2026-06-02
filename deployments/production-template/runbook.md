@@ -44,6 +44,8 @@ stores, or operator-only handoff material.
 Run locally before asking for a deployment gate:
 
 ```bash
+gccgw package inspect deployments/production-template --json
+gccgw package import deployments/production-template --dry-run --json
 gccgw release status --json
 gccgw commands --json
 gccgw docs domain release
