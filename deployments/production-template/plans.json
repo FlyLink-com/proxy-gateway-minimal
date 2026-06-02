@@ -1,0 +1,33 @@
+{
+  "schema": "gccgw.subscriptionPlans.v1",
+  "metadata": {
+    "name": "simple-package-plans",
+    "billingModel": "package-subscription",
+    "secretsInGit": false
+  },
+  "plans": [
+    {
+      "id": "monthly",
+      "label": "Monthly package",
+      "durationDays": 30,
+      "renewal": "manual-or-payment-provider-confirmed",
+      "trafficPolicyRef": "operator-defined",
+      "defaultNodePool": "stable"
+    },
+    {
+      "id": "annual",
+      "label": "Annual package",
+      "durationDays": 365,
+      "renewal": "manual-or-payment-provider-confirmed",
+      "trafficPolicyRef": "operator-defined",
+      "defaultNodePool": "stable"
+    }
+  ],
+  "rules": {
+    "purchaseCreatesNewEntitlement": true,
+    "refreshRotatesArtifact": true,
+    "oldArtifactAfterRefresh": "revoked-or-rotated",
+    "paymentProvider": "external-or-later-integration",
+    "storedPaymentSecretsInGit": false
+  }
+}

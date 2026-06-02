@@ -8,6 +8,7 @@ import {
   buildGccgwSelfCheckReport,
   buildInstallPlan,
   buildInstallPreflightReport,
+  buildPackageInspectReport,
   buildPackageScriptSpawn,
   buildCliCommandMap,
   buildCliHelp,
@@ -254,6 +255,170 @@ test("gccgw backup and release reports stay redacted and non-mutating", () => {
   assert.equal(releaseStatus.type, "gccgw_release_status");
   assert.equal(releaseStatus.redacted, true);
   assert.equal(releaseStatus.git.head, "abc1234");
+});
+
+function productionPackageFiles(overrides = {}) {
+  return {
+    "package-manifest.json": {
+      schema: "gccgw.productionInputPackage.v1",
+      metadata: {
+        name: "production-template",
+        packageKind: "full-project-package",
+        environment: "production",
+        secretsInGit: false,
+        customerDataInGit: false,
+        runtimeDataInGit: false
+      },
+      components: [
+        { id: "topology", path: "topology.json", schema: "gccgw.productionTopology.v1", required: true },
+        { id: "publicBoundary", path: "public-boundary.json", schema: "gccgw.publicBoundary.v1", required: true },
+        { id: "plans", path: "plans.json", schema: "gccgw.subscriptionPlans.v1", required: true },
+        { id: "nodes", path: "nodes.json", schema: "gccgw.productionNodes.v1", required: true },
+        { id: "requiredEnvironment", path: "env.required.json", schema: "gccgw.requiredEnvironment.v1", required: true },
+        { id: "runbook", path: "runbook.md", schema: "markdown.runbook", required: true }
+      ],
+      registrationPolicy: {
+        model: "operator-approved-package-subscription",
+        availablePlanRefs: ["monthly", "annual"],
+        initialRequestStatus: "pending",
+        customerFieldsInPackage: false
+      },
+      hardStops: ["no raw subscription URLs"]
+    },
+    "topology.json": {
+      schema: "gccgw.productionTopology.v1",
+      metadata: { name: "production-template", secretsInGit: false },
+      controlPlane: {
+        publicBaseUrl: "https://control.example.invalid",
+        publicRoutes: ["/api/health", "/sub/a/*"],
+        protectedRoutes: ["/api/admin/*"],
+        databaseRefs: {
+          runtime: "env:SUBSCRIPTION_DB_PATH",
+          control: "env:SUBSCRIPTION_CONTROL_DB_PATH"
+        }
+      },
+      dataPlane: { defaultPool: "stable", nodeConfigSource: "config/proxy-servers.json" },
+      operatorAccess: { publicAdmin: false }
+    },
+    "public-boundary.json": {
+      schema: "gccgw.publicBoundary.v1",
+      metadata: { name: "production-public-boundary", secretsInGit: false },
+      expectedRoutes: []
+    },
+    "plans.json": {
+      schema: "gccgw.subscriptionPlans.v1",
+      metadata: { name: "simple-package-plans", secretsInGit: false },
+      plans: [
+        { id: "monthly", durationDays: 30 },
+        { id: "annual", durationDays: 365 }
+      ]
+    },
+    "nodes.json": {
+      schema: "gccgw.productionNodes.v1",
+      metadata: { name: "production-node-slots", secretsInGit: false },
+      slots: [
+        {
+          id: "prod-edge-a",
+          pool: "stable",
+          hostRef: "runtime:PROD_EDGE_A_HOST",
+          credentialRefs: ["env:SS_PASSWORD"],
+          subscriptionEligible: true
+        }
+      ]
+    },
+    "env.required.json": {
+      schema: "gccgw.requiredEnvironment.v1",
+      metadata: { name: "production-required-env", secretsInGit: false },
+      runtime: [
+        { name: "CONSOLE_TOKEN", required: true, secret: true, storage: "protected-host-env" },
+        { name: "PUBLIC_SUBSCRIPTION_BASE_URL", required: true, secret: false }
+      ]
+    },
+    "runbook.md": "# Runbook\n",
+    ...overrides
+  };
+}
+
+test("gccgw package inspect validates a non-secret production input package", () => {
+  const report = buildPackageInspectReport({
+    packageName: "production-template",
+    files: productionPackageFiles()
+  });
+
+  assert.equal(report.type, "gccgw_package_inspect");
+  assert.equal(report.ok, true);
+  assert.equal(report.packageName, "production-template");
+  assert.equal(report.components.every((component) => component.present && component.schemaOk), true);
+  assert.equal(report.checks.noForbiddenFields.ok, true);
+  assert.equal(report.checks.registrationPolicyNoCustomerFields.ok, true);
+  assert.doesNotMatch(JSON.stringify(report), /subscriptionUrl|token|secret|password|owner@example/i);
+});
+
+test("gccgw package inspect fails closed for customer fields and raw env values", () => {
+  const report = buildPackageInspectReport({
+    packageName: "unsafe-template",
+    files: productionPackageFiles({
+      "package-manifest.json": {
+        ...productionPackageFiles()["package-manifest.json"],
+        registrationPolicy: {
+          customerFieldsInPackage: true,
+          customerEmail: "owner@example.com"
+        }
+      },
+      "env.required.json": {
+        ...productionPackageFiles()["env.required.json"],
+        runtime: [
+          { name: "CONSOLE_TOKEN", value: "do-not-store-this", secret: true }
+        ]
+      }
+    })
+  });
+
+  assert.equal(report.ok, false);
+  assert.equal(report.checks.registrationPolicyNoCustomerFields.ok, false);
+  assert.ok(report.forbiddenFindings.some((finding) => finding.code === "customer_data_field"));
+  assert.ok(report.forbiddenFindings.some((finding) => finding.code === "raw_env_value"));
+  assert.doesNotMatch(JSON.stringify(report), /owner@example|do-not-store-this/i);
+});
+
+test("gccgw CLI resolves package inspect as a read-only package command", async () => {
+  assert.deepEqual(resolveCliCommand(["package", "inspect", "deployments/production-template", "--json"]), {
+    kind: "package-inspect",
+    packageDir: "deployments/production-template",
+    format: "json"
+  });
+
+  const commands = listCliCommands();
+  const inspectCommand = commands.find((command) => command.command === "gccgw package inspect");
+  assert.equal(inspectCommand.riskTier, "C");
+  assert.equal(inspectCommand.mode, "read-only");
+  assert.ok(inspectCommand.sourceDocs.includes("docs/PRODUCTION_INPUT_PACKAGE_FORMAT.md"));
+
+  let called = null;
+  const exitCode = await runProxyGatewayCli(["package", "inspect", "deployments/production-template", "--json"], {
+    runPackageInspect: async (command) => {
+      called = command;
+      return 0;
+    },
+    runNodeScript: async () => {
+      throw new Error("node script must not run for package inspect");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for package inspect");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for package inspect");
+    },
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(called, {
+    kind: "package-inspect",
+    packageDir: "deployments/production-template",
+    format: "json"
+  });
 });
 
 test("gccgw subscription and node aliases use their own Risk A approval labels", async () => {

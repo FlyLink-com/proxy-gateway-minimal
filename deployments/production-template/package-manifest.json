@@ -1,0 +1,92 @@
+{
+  "schema": "gccgw.productionInputPackage.v1",
+  "metadata": {
+    "name": "production-template",
+    "packageKind": "full-project-package",
+    "environment": "production",
+    "authority": "template-only",
+    "secretsInGit": false,
+    "customerDataInGit": false,
+    "runtimeDataInGit": false
+  },
+  "components": [
+    {
+      "id": "topology",
+      "path": "topology.json",
+      "schema": "gccgw.productionTopology.v1",
+      "required": true
+    },
+    {
+      "id": "publicBoundary",
+      "path": "public-boundary.json",
+      "schema": "gccgw.publicBoundary.v1",
+      "required": true
+    },
+    {
+      "id": "plans",
+      "path": "plans.json",
+      "schema": "gccgw.subscriptionPlans.v1",
+      "required": true
+    },
+    {
+      "id": "nodes",
+      "path": "nodes.json",
+      "schema": "gccgw.productionNodes.v1",
+      "required": true
+    },
+    {
+      "id": "requiredEnvironment",
+      "path": "env.required.json",
+      "schema": "gccgw.requiredEnvironment.v1",
+      "required": true
+    },
+    {
+      "id": "runbook",
+      "path": "runbook.md",
+      "schema": "markdown.runbook",
+      "required": true
+    }
+  ],
+  "importPhases": [
+    {
+      "name": "inspect",
+      "riskTier": "C",
+      "mutation": false,
+      "intendedCommand": "gccgw package inspect <package-dir>"
+    },
+    {
+      "name": "dry-run",
+      "riskTier": "B",
+      "mutation": false,
+      "intendedCommand": "gccgw package import <package-dir> --dry-run"
+    },
+    {
+      "name": "apply",
+      "riskTier": "A",
+      "mutation": true,
+      "intendedCommand": "gccgw package import <package-dir> --execute-production-mutation --apply",
+      "approval": "separate exact approval required"
+    }
+  ],
+  "registrationPolicy": {
+    "model": "operator-approved-package-subscription",
+    "publicSelfRegistration": "not-authorized-by-this-template",
+    "availablePlanRefs": ["monthly", "annual"],
+    "initialRequestStatus": "pending",
+    "subscriptionDelivery": "opaque-artifact-or-dynamic-entry-after-approval",
+    "customerFieldsInPackage": false
+  },
+  "hardStops": [
+    "no raw subscription URLs",
+    "no raw artifact secrets",
+    "no console tokens",
+    "no payment tokens or provider AK/SK",
+    "no cloud credentials",
+    "no private keys",
+    "no SQLite files or row dumps",
+    "no customer email, phone, Telegram, or real name",
+    "no generated client YAML",
+    "no logs or handoff files"
+  ],
+  "redacted": true
+}

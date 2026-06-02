@@ -1,0 +1,54 @@
+{
+  "schema": "gccgw.publicBoundary.v1",
+  "metadata": {
+    "name": "production-public-boundary",
+    "secretsInGit": false
+  },
+  "expectedRoutes": [
+    {
+      "path": "/",
+      "method": "GET",
+      "expected": "public-site-or-404",
+      "notes": "Company site may be served here when explicitly deployed."
+    },
+    {
+      "path": "/api/health",
+      "method": "GET",
+      "expected": 200,
+      "public": true
+    },
+    {
+      "path": "/api/public/leads",
+      "method": "POST",
+      "expected": "validated-public-lead-intake",
+      "public": true
+    },
+    {
+      "path": "/api/admin/subscriptions",
+      "method": "GET",
+      "expected": 404,
+      "public": false,
+      "notes": "Public Admin must stay blocked by Nginx/public boundary."
+    },
+    {
+      "path": "/sub/clash.yaml",
+      "method": "GET",
+      "expectedWithoutCredential": 401,
+      "public": true
+    },
+    {
+      "path": "/sub/a/<opaque-artifact>",
+      "method": "GET",
+      "expectedWithValidArtifact": 200,
+      "public": true,
+      "notes": "Do not record raw artifact URLs in docs, PRs, chat, or logs."
+    }
+  ],
+  "forbiddenPublicSurfaces": [
+    "/api/admin/*",
+    "/api/platform/*",
+    "/api/internal/*",
+    "/debug/*"
+  ],
+  "nginxMutationAuthority": "separate-risk-a-approval"
+}

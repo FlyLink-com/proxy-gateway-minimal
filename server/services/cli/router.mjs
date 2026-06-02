@@ -13,7 +13,7 @@ const DOMAIN_SOURCE_DOCS = {
   install: ["ops/README.md", "ops/edge-node/README.md"],
   node: ["ops/README.md", "ops/edge-node/README.md", "docs/PRODUCTION_EDGE_FLEET.md"],
   ops: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md"],
-  package: ["docs/RESOURCE_PACKAGE_CLI.md"],
+  package: ["docs/RESOURCE_PACKAGE_CLI.md", "docs/PACKAGE_BOUNDARY.md", "docs/PRODUCTION_INPUT_PACKAGE_FORMAT.md"],
   platform: ["docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md", "docs/CLI_PRODUCTION_PROVISIONING_SOP.md"],
   project: ["docs/PROJECT_CONTEXT.md"],
   release: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md", "docs/MASTER_ARCHIVE_BOUNDARY.md", "docs/MULTI_ENV_ADAPTER_RUNTIME_MODEL.md"],
@@ -87,6 +87,7 @@ const SPECIAL_COMMAND_ENTRIES = [
   ["docs command", null, "project", "C", "read-only", "List source docs for one gccgw command"],
   ["docs domain", null, "project", "C", "read-only", "List source docs for one command domain"],
   ["docs list", null, "project", "C", "read-only", "List docs referenced by the gccgw command map"],
+  ["package inspect", null, "package", "C", "read-only", "Inspect a redacted production input package without importing it"],
   ["install plan", null, "install", "C", "read-only", "Show the server installation sequence without touching the host"],
   ["install preflight", null, "install", "C", "read-only", "Check server bootstrap prerequisites without mutating the host"],
   ["node plan", null, "node", "C", "read-only", "Show the node installation sequence without touching the host", undefined, { aliasOf: "gccgw install plan" }],
@@ -262,6 +263,229 @@ const INSTALL_PLAN_STEPS = [
     boundary: "Read-only systemd/Nginx/health posture check."
   }
 ];
+
+const PRODUCTION_INPUT_COMPONENTS = [
+  { id: "topology", path: "topology.json", schema: "gccgw.productionTopology.v1" },
+  { id: "publicBoundary", path: "public-boundary.json", schema: "gccgw.publicBoundary.v1" },
+  { id: "plans", path: "plans.json", schema: "gccgw.subscriptionPlans.v1" },
+  { id: "nodes", path: "nodes.json", schema: "gccgw.productionNodes.v1" },
+  { id: "requiredEnvironment", path: "env.required.json", schema: "gccgw.requiredEnvironment.v1" },
+  { id: "runbook", path: "runbook.md", schema: "markdown.runbook" }
+];
+
+function parsePackageJsonFile(files, path) {
+  const value = files?.[path];
+  if (value === undefined || value === null) {
+    return { present: false, parsed: null, parseOk: false };
+  }
+  if (typeof value === "string") {
+    try {
+      return { present: true, parsed: JSON.parse(value), parseOk: true };
+    } catch {
+      return { present: true, parsed: null, parseOk: false };
+    }
+  }
+  return { present: true, parsed: value, parseOk: true };
+}
+
+function packageFilePresent(files, path) {
+  return files?.[path] !== undefined && files?.[path] !== null;
+}
+
+function findForbiddenPackageFields(value, path = []) {
+  if (Array.isArray(value)) {
+    return value.flatMap((item, index) => findForbiddenPackageFields(item, [...path, String(index)]));
+  }
+  if (!value || typeof value !== "object") {
+    if (typeof value === "string" && /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value)) {
+      return [{ code: "customer_data_field", path: path.join(".") }];
+    }
+    return [];
+  }
+
+  const findings = [];
+  for (const [key, child] of Object.entries(value)) {
+    const nextPath = [...path, key];
+    const joined = nextPath.join(".");
+    const lowerKey = key.toLowerCase();
+    const allowedPolicyKey = joined === "metadata.customerDataInGit"
+      || joined === "registrationPolicy.customerFieldsInPackage";
+
+    if (!allowedPolicyKey && /(customer|email|phone|telegram|realname)/i.test(key)) {
+      findings.push({ code: "customer_data_field", path: joined });
+    }
+    if (/(subscriptionurl|artifactsecret|consoletoken|paymenttoken|accesskey|secretaccesskey|privatekey|sqlite|generatedyaml|handoff)/i.test(lowerKey)) {
+      findings.push({ code: "forbidden_runtime_field", path: joined });
+    }
+    if (key === "value") {
+      findings.push({ code: "raw_env_value", path: joined });
+    }
+    findings.push(...findForbiddenPackageFields(child, nextPath));
+  }
+  return findings;
+}
+
+function refLooksSafe(value, allowedPrefixes) {
+  return typeof value === "string" && allowedPrefixes.some((prefix) => value.startsWith(prefix));
+}
+
+function nodeRefsSafe(nodes = {}) {
+  const slots = Array.isArray(nodes.slots) ? nodes.slots : [];
+  return slots.every((slot) => {
+    const hostOk = refLooksSafe(slot.hostRef, ["runtime:", "env:", "protected-runtime:", "protected-env:"]);
+    const credentialRefs = Array.isArray(slot.credentialRefs) ? slot.credentialRefs : [];
+    const credentialsOk = credentialRefs.every((ref) => refLooksSafe(ref, [
+      "env:",
+      "protected-env:",
+      "protected-file:",
+      "runtime:"
+    ]));
+    return hostOk && credentialsOk;
+  });
+}
+
+function envValuesAbsent(requiredEnv = {}) {
+  const groups = [
+    ...(Array.isArray(requiredEnv.runtime) ? requiredEnv.runtime : []),
+    ...(Array.isArray(requiredEnv.optionalIntegrations) ? requiredEnv.optionalIntegrations : [])
+  ];
+  return groups.every((entry) => !Object.hasOwn(entry, "value"));
+}
+
+function jsonMetadataSafe(parsedFiles = []) {
+  return parsedFiles.every((file) => {
+    const metadata = file?.metadata || {};
+    if (Object.hasOwn(metadata, "secretsInGit") && metadata.secretsInGit !== false) {
+      return false;
+    }
+    if (Object.hasOwn(metadata, "customerDataInGit") && metadata.customerDataInGit !== false) {
+      return false;
+    }
+    if (Object.hasOwn(metadata, "runtimeDataInGit") && metadata.runtimeDataInGit !== false) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function uniqueFindings(findings) {
+  const seen = new Set();
+  return findings.filter((finding) => {
+    const key = `${finding.code}:${finding.path}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function buildPackageInspectReport({
+  packageName = "unknown",
+  files = {}
+} = {}) {
+  const manifestFile = parsePackageJsonFile(files, "package-manifest.json");
+  const manifest = manifestFile.parsed || {};
+  const declaredComponents = Array.isArray(manifest.components) ? manifest.components : [];
+  const declaredByPath = new Map(declaredComponents.map((component) => [component.path, component]));
+
+  const components = [
+    {
+      id: "manifest",
+      path: "package-manifest.json",
+      present: manifestFile.present,
+      schemaOk: manifestFile.parseOk && manifest.schema === "gccgw.productionInputPackage.v1",
+      required: true
+    },
+    ...PRODUCTION_INPUT_COMPONENTS.map((expected) => {
+      const parsed = expected.schema === "markdown.runbook"
+        ? { present: packageFilePresent(files, expected.path), parseOk: packageFilePresent(files, expected.path), parsed: null }
+        : parsePackageJsonFile(files, expected.path);
+      const declared = declaredByPath.get(expected.path);
+      return {
+        id: expected.id,
+        path: expected.path,
+        present: parsed.present,
+        schemaOk: expected.schema === "markdown.runbook"
+          ? parsed.present
+          : parsed.parseOk && parsed.parsed?.schema === expected.schema,
+        declared: declared !== undefined,
+        required: true
+      };
+    })
+  ];
+
+  const topology = parsePackageJsonFile(files, "topology.json").parsed || {};
+  const plans = parsePackageJsonFile(files, "plans.json").parsed || {};
+  const nodes = parsePackageJsonFile(files, "nodes.json").parsed || {};
+  const requiredEnv = parsePackageJsonFile(files, "env.required.json").parsed || {};
+  const jsonObjects = [
+    manifest,
+    topology,
+    parsePackageJsonFile(files, "public-boundary.json").parsed || {},
+    plans,
+    nodes,
+    requiredEnv
+  ];
+  const forbiddenFindings = uniqueFindings(jsonObjects.flatMap((item) => findForbiddenPackageFields(item)));
+  const planIds = new Set((Array.isArray(plans.plans) ? plans.plans : []).map((plan) => plan.id));
+  const registrationPlanRefs = Array.isArray(manifest.registrationPolicy?.availablePlanRefs)
+    ? manifest.registrationPolicy.availablePlanRefs
+    : [];
+
+  const checks = {
+    manifestPresent: {
+      ok: manifestFile.present && manifestFile.parseOk,
+      required: true
+    },
+    requiredComponentsPresent: {
+      ok: components.every((component) => component.present === true && component.declared !== false),
+      required: true
+    },
+    componentSchemas: {
+      ok: components.every((component) => component.schemaOk === true),
+      required: true
+    },
+    metadataFlagsSafe: {
+      ok: jsonMetadataSafe(jsonObjects),
+      required: true
+    },
+    noForbiddenFields: {
+      ok: forbiddenFindings.length === 0,
+      required: true
+    },
+    registrationPolicyNoCustomerFields: {
+      ok: manifest.registrationPolicy?.customerFieldsInPackage === false,
+      required: true
+    },
+    registrationPlanRefsKnown: {
+      ok: registrationPlanRefs.every((planRef) => planIds.has(planRef)),
+      required: true
+    },
+    nodeRefsSafe: {
+      ok: nodeRefsSafe(nodes),
+      required: true
+    },
+    envValuesAbsent: {
+      ok: envValuesAbsent(requiredEnv),
+      required: true
+    }
+  };
+
+  return {
+    type: "gccgw_package_inspect",
+    generatedBy: "gccgw package inspect",
+    ok: Object.values(checks).every((check) => check.required !== true || check.ok === true),
+    packageName: String(packageName || "unknown"),
+    components,
+    checks,
+    forbiddenFindings,
+    importPhases: (Array.isArray(manifest.importPhases) ? manifest.importPhases : []).map((phase) => ({
+      name: phase.name,
+      riskTier: phase.riskTier,
+      mutation: phase.mutation === true
+    })),
+    redacted: true
+  };
+}
 
 export function buildInstallPlan({ format = "text" } = {}) {
   const plan = {
@@ -1015,6 +1239,13 @@ export function resolveCliCommand(argv = []) {
     }
     throw new Error(`Unknown gccgw docs command: ${mode}`);
   }
+  if (args[0] === "package" && args[1] === "inspect") {
+    return {
+      kind: "package-inspect",
+      packageDir: positionalArgs(args, 2)[0],
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
   const commandKey = `${args[0] || ""} ${args[1] || ""}`.trim();
   if (hasKnownCommand(commandKey) && args.slice(2).some(isHelpArg)) {
     return {
@@ -1213,6 +1444,7 @@ export async function runProxyGatewayCli(argv, {
   runReleaseStatus,
   runServiceStatus,
   runNetworkStatus,
+  runPackageInspect,
   startServer,
   confirmRiskAExecution,
   writeStdout = (text) => process.stdout.write(text),
@@ -1252,6 +1484,9 @@ export async function runProxyGatewayCli(argv, {
       const docsMap = buildCliDocsMap(command);
       writeStdout(command.format === "json" ? `${JSON.stringify(docsMap, null, 2)}\n` : docsMap);
       return 0;
+    }
+    if (command.kind === "package-inspect") {
+      return await runPackageInspect(command);
     }
     if (command.kind === "command-help") {
       writeStdout(buildCommandHelp(command));

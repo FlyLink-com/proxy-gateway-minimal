@@ -11,6 +11,7 @@ import {
   buildCliHelp,
   buildGccgwSelfCheckReport,
   buildInstallPreflightReport,
+  buildPackageInspectReport,
   buildReleaseStatusReport,
   redactNetworkStatus,
   runProxyGatewayCli
@@ -18,6 +19,15 @@ import {
 import { installProcessHandlers, startProxyGateway } from "../server/start.mjs";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const PACKAGE_INSPECT_FILES = [
+  "package-manifest.json",
+  "topology.json",
+  "public-boundary.json",
+  "plans.json",
+  "nodes.json",
+  "env.required.json",
+  "runbook.md"
+];
 
 async function runNodeScript(script, args) {
   const result = spawnSync(process.execPath, [resolve(rootDir, script), ...args], {
@@ -151,6 +161,41 @@ function writeReport(report, format) {
     return;
   }
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+}
+
+function pathInsideRoot(targetPath) {
+  const relativePath = targetPath.startsWith(rootDir)
+    ? targetPath.slice(rootDir.length)
+    : "";
+  return relativePath === "" || /^[\\/]/.test(relativePath);
+}
+
+async function runPackageInspect(command) {
+  if (!command.packageDir) {
+    process.stderr.write("package inspect requires a package directory\n");
+    return 1;
+  }
+  const packageRoot = resolve(rootDir, command.packageDir);
+  if (!pathInsideRoot(packageRoot)) {
+    process.stderr.write("package inspect only accepts package directories inside the repository\n");
+    return 1;
+  }
+
+  const files = {};
+  for (const file of PACKAGE_INSPECT_FILES) {
+    const filePath = resolve(packageRoot, file);
+    if (!pathInsideRoot(filePath) || !existsSync(filePath)) {
+      continue;
+    }
+    files[file] = readFileSync(filePath, "utf8");
+  }
+
+  const report = buildPackageInspectReport({
+    packageName: command.packageDir.split(/[\\/]/).filter(Boolean).at(-1) || "unknown",
+    files
+  });
+  writeReport(report, command.format);
+  return report.ok ? 0 : 1;
 }
 
 async function runInstallPreflight(command) {
@@ -331,6 +376,7 @@ try {
     runReleaseStatus,
     runServiceStatus,
     runNetworkStatus,
+    runPackageInspect,
     startServer,
     confirmRiskAExecution
   });
