@@ -6,6 +6,7 @@ import {
   buildBackupPreflightReport,
   buildCliDocsMap,
   buildGccgwSelfCheckReport,
+  buildInstallConfigurePlan,
   buildInstallPlan,
   buildInstallPreflightReport,
   buildPackageImportDryRunReport,
@@ -82,6 +83,27 @@ test("gccgw CLI resolves env, self, and ops checks", () => {
 });
 
 test("gccgw CLI resolves install and service commands without mutating by default", () => {
+  assert.deepEqual(resolveCliCommand([
+    "install",
+    "configure",
+    "--dry-run",
+    "--domain",
+    "https://sub.example.invalid",
+    "--install-dir",
+    "/opt/gccgw",
+    "--management-source",
+    "203.0.113.10/32",
+    "--json"
+  ]), {
+    kind: "install-configure",
+    format: "json",
+    dryRun: true,
+    domain: "https://sub.example.invalid",
+    installDir: "/opt/gccgw",
+    managementSource: "203.0.113.10/32",
+    consolePort: undefined,
+    targetRole: undefined
+  });
   assert.deepEqual(resolveCliCommand(["install", "plan"]), {
     kind: "install-plan",
     format: "text"
@@ -256,6 +278,47 @@ test("gccgw backup and release reports stay redacted and non-mutating", () => {
   assert.equal(releaseStatus.type, "gccgw_release_status");
   assert.equal(releaseStatus.redacted, true);
   assert.equal(releaseStatus.git.head, "abc1234");
+});
+
+test("gccgw install configure derives paths and keeps secrets out of the plan", () => {
+  const report = buildInstallConfigurePlan({
+    domain: "https://sub.example.invalid",
+    installDir: "/opt/gccgw",
+    managementSource: "203.0.113.10/32",
+    consolePort: "3456",
+    targetRole: "aliyun-subscription-control"
+  });
+
+  assert.equal(report.type, "gccgw_install_configure_plan");
+  assert.equal(report.ok, true);
+  assert.equal(report.riskTier, "B");
+  assert.equal(report.mutation, false);
+  assert.equal(report.productionAuthority, false);
+  assert.equal(report.install.installDir, "/opt/gccgw");
+  assert.equal(report.install.consolePort, 3456);
+  assert.equal(report.publicBaseUrl.https, true);
+  assert.equal(report.management.adminAllowedCidrs[0], "203.0.113.10/32");
+  assert.equal(report.derivedPaths.runtimeDbPath, "/opt/gccgw/data/subscriptions.sqlite");
+  assert.equal(report.derivedPaths.controlDbPath, "/opt/gccgw/data/subscription-control.sqlite");
+  assert.equal(report.derivedPaths.handoffDir, "/opt/gccgw/handoff");
+  assert.equal(report.derivedPaths.envSkeletonPath, "/opt/gccgw/.env");
+  assert.equal(report.envSkeleton.some((entry) => entry.name === "SUBSCRIPTION_CONTROL_DB_PATH"), true);
+  assert.doesNotMatch(JSON.stringify(report), /replace_with|CONSOLE_TOKEN=.*|SS_PASSWORD=.*|tokenValue|passwordValue/i);
+});
+
+test("gccgw install configure fails closed for unsafe install facts", () => {
+  const report = buildInstallConfigurePlan({
+    domain: "http://sub.example.invalid",
+    installDir: "../outside",
+    managementSource: "",
+    consolePort: "not-a-port"
+  });
+
+  assert.equal(report.ok, false);
+  assert.equal(report.blockers.some((blocker) => blocker.code === "public_base_url_must_be_https_or_loopback"), true);
+  assert.equal(report.blockers.some((blocker) => blocker.code === "install_dir_must_be_absolute"), true);
+  assert.equal(report.blockers.some((blocker) => blocker.code === "management_source_required"), true);
+  assert.equal(report.blockers.some((blocker) => blocker.code === "console_port_invalid"), true);
 });
 
 function productionPackageFiles(overrides = {}) {
@@ -478,6 +541,50 @@ test("gccgw package import dry-run blocks public admin exposure plans", () => {
 
   assert.equal(report.ok, false);
   assert.equal(report.blockers.some((blocker) => blocker.code === "public_admin_exposure_requested"), true);
+});
+
+test("gccgw CLI runs install configure through a non-mutating adapter", async () => {
+  let called = null;
+  const exitCode = await runProxyGatewayCli([
+    "install",
+    "configure",
+    "--dry-run",
+    "--domain",
+    "https://sub.example.invalid",
+    "--install-dir",
+    "/opt/gccgw",
+    "--management-source",
+    "203.0.113.10/32",
+    "--json"
+  ], {
+    runInstallConfigure: async (command) => {
+      called = command;
+      return 0;
+    },
+    runNodeScript: async () => {
+      throw new Error("node script must not run for install configure");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for install configure");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for install configure");
+    },
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(called, {
+    kind: "install-configure",
+    format: "json",
+    dryRun: true,
+    domain: "https://sub.example.invalid",
+    installDir: "/opt/gccgw",
+    managementSource: "203.0.113.10/32",
+    consolePort: undefined,
+    targetRole: undefined
+  });
 });
 
 test("gccgw CLI resolves package import dry-run without execution authority", async () => {

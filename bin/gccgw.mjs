@@ -10,6 +10,7 @@ import {
   buildPackageScriptSpawn,
   buildCliHelp,
   buildGccgwSelfCheckReport,
+  buildInstallConfigurePlan,
   buildInstallPreflightReport,
   buildPackageImportDryRunReport,
   buildPackageInspectReport,
@@ -190,6 +191,18 @@ async function runPackageImportDryRun(command) {
   const report = buildPackageImportDryRunReport({
     packageName: packageNameFromDir(command.packageDir),
     files
+  });
+  writeReport(report, command.format);
+  return report.ok ? 0 : 1;
+}
+
+async function runInstallConfigure(command) {
+  const report = buildInstallConfigurePlan({
+    domain: command.domain,
+    installDir: command.installDir,
+    managementSource: command.managementSource,
+    consolePort: command.consolePort,
+    targetRole: command.targetRole
   });
   writeReport(report, command.format);
   return report.ok ? 0 : 1;
@@ -401,6 +414,7 @@ try {
     runNetworkStatus,
     runPackageImportDryRun,
     runPackageInspect,
+    runInstallConfigure,
     startServer,
     confirmRiskAExecution
   });

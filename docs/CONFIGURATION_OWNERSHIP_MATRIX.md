@@ -179,7 +179,7 @@ handoff files
 Keep future work on these rails:
 
 ```text
-1. Add gccgw install configure for local/private install facts.
+1. Use `gccgw install configure --dry-run` for local/private install facts.
 2. Generate default DB paths from the install directory.
 3. Add Admin Web settings for packages, rate limits, and safe node metadata.
 4. Add preview-only Nginx/systemd panels before any apply path.
