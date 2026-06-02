@@ -9,9 +9,12 @@ subscription-output, or traffic changes.
 
 ## Core Rule
 
-Do not treat all configuration as one file.
+Do not treat all configuration as one Git file. Runtime values converge in the
+target-host `.env`; Git JSON files describe only non-secret structure, policy,
+and required env names.
 
 ```text
+target-host .env = runtime fill surface for deploy/install closure
 gccgw = installer, validator, and gated execution shell
 Admin Web = business settings and safe system status review
 User Portal = customer subscription lifecycle only
@@ -24,8 +27,8 @@ Git templates/docs = non-secret intent, schemas, and package shape
 
 | Configuration area | Examples | Owner surface | Storage | Git allowed | Browser editable | Risk gate | Rollback model |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Install identity | target role, install directory, service port, domain/base URL | `gccgw install configure` or local install wizard | generated host config / protected env skeleton | template only | local/private install UI allowed | B for plan, A for apply | restore previous generated config or delete isolated install dir |
-| Database paths | runtime subscription DB, business control DB | `gccgw` installer | derived from install directory by default | path examples only | view/override in operator UI only | B for local/lab, A for production write/migration | stop service, restore previous DB path/config and backup |
+| Install identity | target role, install directory, service port, domain/base URL | `gccgw install configure` or local install wizard | target-host `.env` plus generated host config | template only | local/private install UI allowed | B for plan, A for apply | restore previous generated config or delete isolated install dir |
+| Database paths | runtime subscription DB, business control DB | `gccgw` installer | target-host `.env`, derived from install directory by default | path examples only | view/override in operator UI only | B for local/lab, A for production write/migration | stop service, restore previous DB path/config and backup |
 | Secrets | console token, SS password, payment webhook secret, protocol credentials, private cert material | operator / secret injection flow | protected host env, protected files, handoff | no | no raw values; status only | A in production | rotate secret and restore previous protected env if safe |
 | Management source | `ADMIN_ALLOWED_CIDRS`, trusted operator source, loopback/private admin access | `gccgw` installer plus operator security review | protected env / host config | examples only | operator UI may edit with preview | A for production boundary | restore prior allowlist and validate admin/public boundary |
 | Trusted proxy source | `TRUSTED_PROXY_CIDRS`, proxy IPs whose forwarded headers are trusted | operator security review | protected env / host config | examples only | operator UI may edit with preview | A for production boundary | restore prior trusted proxy list |
@@ -179,9 +182,10 @@ handoff files
 Keep future work on these rails:
 
 ```text
-1. Use `gccgw install configure --dry-run` for local/private install facts.
-2. Generate default DB paths from the install directory.
-3. Add Admin Web settings for packages, rate limits, and safe node metadata.
-4. Add preview-only Nginx/systemd panels before any apply path.
-5. Keep apply paths behind separate Risk A approval.
+1. Treat `.env.example` as the runtime key checklist.
+2. Use `gccgw install configure --dry-run` to derive and review `.env` skeleton values.
+3. Generate default DB paths from the install directory.
+4. Add Admin Web settings for packages, rate limits, and safe node metadata only after the `.env` boundary is stable.
+5. Add preview-only Nginx/systemd panels before any apply path.
+6. Keep apply paths behind separate Risk A approval.
 ```

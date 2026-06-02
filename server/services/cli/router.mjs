@@ -81,6 +81,7 @@ const PACKAGE_SCRIPT_COMMAND_ENTRIES = [
 
 const SPECIAL_COMMAND_ENTRIES = [
   ["architecture", null, "project", "C", "read-only", "Print the flattened project architecture map", ["docs/PROJECT_CONTEXT.md", "docs/ROUTES_ARCHITECTURE.md", "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"]],
+  ["capabilities", null, "project", "C", "read-only", "List project capabilities grouped by operator workflow", ["docs/PROJECT_CONTEXT.md", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"]],
   ["commands", null, "project", "C", "read-only", "List registered gccgw commands"],
   ["config list", null, "config", "C", "read-only", "List configured gccgw profiles without printing raw values"],
   ["config show", null, "config", "C", "read-only", "Show one redacted gccgw profile"],
@@ -174,6 +175,155 @@ export function buildCliCommandMap({ format = "text" } = {}) {
     "Command | Domain | Risk | Mode | Docs | Description",
     "--- | --- | --- | --- | --- | ---",
     ...rows.map((row) => row.join(" | "))
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+const RISK_TIER_RANK = {
+  C: 1,
+  B: 2,
+  A: 3
+};
+
+const CAPABILITY_GROUPS = [
+  {
+    id: "project",
+    title: "Project Verification And Navigation",
+    purpose: "Inspect the repository, command map, architecture map, docs map, and local bootstrap shape.",
+    domains: ["project", "env"],
+    commands: ["gccgw architecture", "gccgw capabilities", "gccgw commands", "gccgw docs list", "gccgw docs domain", "gccgw docs command"]
+  },
+  {
+    id: "install",
+    title: "Install And Host Bootstrap",
+    purpose: "Plan, preflight, configure, and execute reviewed host bootstrap materials.",
+    domains: ["install", "server", "service"]
+  },
+  {
+    id: "node",
+    title: "Production Node Fleet",
+    purpose: "Inspect, validate, register, disable, and bootstrap edge node slots without exposing runtime endpoints.",
+    domains: ["node"]
+  },
+  {
+    id: "package",
+    title: "Production Input Package",
+    purpose: "Inspect, import, and apply reviewed deployment packages through dry-run and A-tier gates.",
+    domains: ["package"]
+  },
+  {
+    id: "subscription",
+    title: "Subscription Factory",
+    purpose: "Prepare, issue, hand off, and revoke controlled subscription and portal-entry materials.",
+    domains: ["subscription"],
+    commands: [
+      "gccgw platform controlled-open",
+      "gccgw platform provisioning-form",
+      "gccgw platform issue-subscription",
+      "gccgw platform issue-portal-entry",
+      "gccgw platform resource-package",
+      "gccgw platform revoke-access"
+    ]
+  },
+  {
+    id: "channel",
+    title: "Channel Technical MVP",
+    purpose: "Validate, measure, decide, package, and record channel runtime evidence.",
+    domains: ["channel"]
+  },
+  {
+    id: "config",
+    title: "Local Configuration Profiles",
+    purpose: "List, show, and validate redacted local gccgw configuration profiles.",
+    domains: ["config"]
+  },
+  {
+    id: "site-admin",
+    title: "Site And Admin Build",
+    purpose: "Build and test the public site and private admin surfaces from the same repository.",
+    domains: ["site", "admin"]
+  },
+  {
+    id: "operations",
+    title: "Operations, Backup, And Release",
+    purpose: "Inspect operational status, backup boundaries, release metadata, and redacted network status.",
+    domains: ["ops", "backup", "release"]
+  }
+];
+
+function uniqueSorted(values = []) {
+  return unique(values).sort((a, b) => a.localeCompare(b));
+}
+
+function highestRiskTier(commands) {
+  return commands.reduce((highest, command) => {
+    const currentRank = RISK_TIER_RANK[command.riskTier] || 0;
+    const highestRank = RISK_TIER_RANK[highest] || 0;
+    return currentRank > highestRank ? command.riskTier : highest;
+  }, "C");
+}
+
+function commandSummary(command) {
+  return {
+    command: command.command,
+    domain: command.domain,
+    riskTier: command.riskTier,
+    mode: command.mode,
+    handler: command.handler,
+    surface: command.surface,
+    ...(command.aliasOf ? { aliasOf: command.aliasOf } : {}),
+    ...(command.approvalPrompt ? { approvalPrompt: command.approvalPrompt } : {}),
+    description: command.description
+  };
+}
+
+function commandsForCapability(group, commands) {
+  const explicitCommands = new Set(group.commands || []);
+  const domains = new Set(group.domains || []);
+  return commands.filter((command) => domains.has(command.domain) || explicitCommands.has(command.command));
+}
+
+export function buildCliCapabilityRegistry({ format = "text" } = {}) {
+  const commands = listCliCommands();
+  const capabilities = CAPABILITY_GROUPS
+    .map((group) => {
+      const matchedCommands = commandsForCapability(group, commands);
+      return {
+        id: group.id,
+        title: group.title,
+        purpose: group.purpose,
+        highestRiskTier: highestRiskTier(matchedCommands),
+        modes: uniqueSorted(matchedCommands.map((command) => command.mode)),
+        sourceDocs: uniqueSorted(matchedCommands.flatMap((command) => command.sourceDocs || [])),
+        commands: matchedCommands.map(commandSummary)
+      };
+    })
+    .filter((capability) => capability.commands.length > 0);
+
+  const registry = {
+    type: "gccgw_capability_registry",
+    generatedBy: "gccgw capabilities",
+    principle: "Group the flat command map into operator workflows while keeping command risk, mode, and docs visible.",
+    redacted: true,
+    capabilities
+  };
+
+  if (format === "json") {
+    return registry;
+  }
+
+  const lines = [
+    "gccgw capability registry",
+    "",
+    "Capability | Highest Risk | Modes | Commands | Docs",
+    "--- | --- | --- | --- | ---",
+    ...capabilities.map((capability) => [
+      `${capability.id}: ${capability.title}`,
+      capability.highestRiskTier,
+      capability.modes.join(", "),
+      capability.commands.map((command) => command.command).join(", "),
+      capability.sourceDocs.join(", ")
+    ].join(" | "))
   ];
   return `${lines.join("\n")}\n`;
 }
@@ -1720,6 +1870,7 @@ export function buildCliHelp() {
 
 Usage:
   gccgw commands [--json]
+  gccgw capabilities [--json]
   gccgw architecture [--json]
   gccgw config list [--json] [--config <path>]
   gccgw config show <profile> [--json] [--config <path>]
@@ -1757,6 +1908,8 @@ Usage:
 Common commands:
   gccgw commands
   gccgw commands --json
+  gccgw capabilities
+  gccgw capabilities --json
   gccgw architecture
   gccgw architecture --json
   gccgw config list
@@ -1856,6 +2009,12 @@ export function resolveCliCommand(argv = []) {
   if (args[0] === "commands") {
     return {
       kind: "command-map",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "capabilities") {
+    return {
+      kind: "capability-registry",
       format: args.includes("--json") ? "json" : "text"
     };
   }
@@ -2214,6 +2373,11 @@ export async function runProxyGatewayCli(argv, {
     if (command.kind === "command-map") {
       const commandMap = buildCliCommandMap({ format: command.format });
       writeStdout(command.format === "json" ? `${JSON.stringify(commandMap, null, 2)}\n` : commandMap);
+      return 0;
+    }
+    if (command.kind === "capability-registry") {
+      const capabilityRegistry = buildCliCapabilityRegistry({ format: command.format });
+      writeStdout(command.format === "json" ? `${JSON.stringify(capabilityRegistry, null, 2)}\n` : capabilityRegistry);
       return 0;
     }
     if (command.kind === "config-map") {

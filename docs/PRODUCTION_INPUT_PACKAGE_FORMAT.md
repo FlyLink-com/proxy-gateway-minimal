@@ -18,6 +18,7 @@ Use one directory per candidate deployment package:
 
 ```text
 deployments/<package-name>/
+  OPERATOR_NOTEPAD.md        # optional human checklist, not imported
   package-manifest.json
   topology.json
   public-boundary.json
@@ -29,6 +30,14 @@ deployments/<package-name>/
 
 The package is safe to keep in Git only when it contains references and policy
 facts, not secrets or runtime data.
+
+`OPERATOR_NOTEPAD.md` is an optional human checklist. It may summarize the
+deployment intent in a notepad-like form, but `gccgw` imports only the JSON
+files declared by `package-manifest.json`.
+
+Runtime values converge in the target host `.env`. The JSON package declares
+which `.env` names are required and how they relate to topology, nodes, public
+boundary, and plans; it must not store the actual values.
 
 ## Import Phases
 
@@ -144,8 +153,8 @@ private keys, passwords, UUIDs, subscription URLs, or artifact secrets.
 
 ### `env.required.json`
 
-Defines the names and storage locations of required environment variables.
-Secret values are never filled here.
+Defines the names and storage locations of required target-host `.env`
+variables. Secret values are never filled here.
 
 ### `runbook.md`
 

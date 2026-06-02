@@ -22,6 +22,7 @@ test("environment foundation files are tracked in the repository", () => {
 test(".env.example documents the production subscription runtime settings", () => {
   const envExample = readText(".env.example");
   for (const key of [
+    "NODE_ENV",
     "CONSOLE_PORT",
     "CONSOLE_TOKEN",
     "SS_PASSWORD",
@@ -30,12 +31,37 @@ test(".env.example documents the production subscription runtime settings", () =
     "HANDOFF_DIR",
     "PUBLIC_SUBSCRIPTION_BASE_URL",
     "ADMIN_ALLOWED_CIDRS",
+    "TRUSTED_PROXY_CIDRS",
     "SUB_RATE_LIMIT_WINDOW_MS",
     "SUB_RATE_LIMIT_MAX",
     "SUBSCRIPTION_TEMP_LINK_TTL_MINUTES"
   ]) {
     assert.match(envExample, new RegExp(`^${key}=`, "m"), `${key} should be documented`);
   }
+});
+
+test("edge-node env template stays aligned with the root runtime env closure", () => {
+  const rootEnv = readText(".env.example");
+  const edgeEnv = readText("ops/edge-node/templates/env.example");
+  for (const key of [
+    "NODE_ENV",
+    "CONSOLE_PORT",
+    "CONSOLE_TOKEN",
+    "SS_PASSWORD",
+    "SUBSCRIPTION_DB_PATH",
+    "SUBSCRIPTION_CONTROL_DB_PATH",
+    "HANDOFF_DIR",
+    "PUBLIC_SUBSCRIPTION_BASE_URL",
+    "ADMIN_ALLOWED_CIDRS",
+    "TRUSTED_PROXY_CIDRS",
+    "SUB_RATE_LIMIT_WINDOW_MS",
+    "SUB_RATE_LIMIT_MAX",
+    "SUBSCRIPTION_TEMP_LINK_TTL_MINUTES"
+  ]) {
+    assert.match(rootEnv, new RegExp(`^${key}=`, "m"), `${key} should exist in root .env.example`);
+    assert.match(edgeEnv, new RegExp(`^${key}=`, "m"), `${key} should exist in edge env template`);
+  }
+  assert.doesNotMatch(rootEnv, /^PUBLIC_SUBSCRIPTION_BASE_URL=http:\/\/\d+\.\d+\.\d+\.\d+/m);
 });
 
 test("systemd unit templates pin the app to loopback and restart on failure", () => {

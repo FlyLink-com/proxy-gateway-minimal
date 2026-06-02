@@ -4,6 +4,7 @@ import {
   buildCliArchitectureMap,
   buildBackupPlan,
   buildBackupPreflightReport,
+  buildCliCapabilityRegistry,
   buildCliDocsMap,
   buildGccgwSelfCheckReport,
   buildInstallConfigurePlan,
@@ -1365,6 +1366,55 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   const parsed = JSON.parse(stdout);
   assert.equal(parsed.type, "gccgw_command_map");
   assert.ok(parsed.commands.some((command) => command.command === "gccgw site verify"));
+});
+
+test("gccgw CLI exposes a capability registry grouped by operator workflow", async () => {
+  const registry = buildCliCapabilityRegistry({ format: "json" });
+  const capabilityIds = registry.capabilities.map((capability) => capability.id);
+
+  assert.equal(registry.type, "gccgw_capability_registry");
+  assert.equal(registry.generatedBy, "gccgw capabilities");
+  assert.equal(registry.redacted, true);
+  assert.ok(capabilityIds.includes("install"));
+  assert.ok(capabilityIds.includes("node"));
+  assert.ok(capabilityIds.includes("subscription"));
+
+  const subscription = registry.capabilities.find((capability) => capability.id === "subscription");
+  assert.equal(subscription.highestRiskTier, "A");
+  assert.ok(subscription.modes.includes("execution-gated"));
+  assert.ok(subscription.sourceDocs.includes("docs/CLI_PRODUCTION_PROVISIONING_SOP.md"));
+  assert.ok(subscription.commands.some((command) => command.command === "gccgw subscription issue"));
+  assert.ok(subscription.commands.some((command) => command.command === "gccgw platform issue-subscription"));
+  assert.doesNotMatch(JSON.stringify(registry), /subscriptionUrl|token|secret|password/i);
+
+  assert.deepEqual(resolveCliCommand(["capabilities"]), {
+    kind: "capability-registry",
+    format: "text"
+  });
+  assert.deepEqual(resolveCliCommand(["capabilities", "--json"]), {
+    kind: "capability-registry",
+    format: "json"
+  });
+
+  let stdout = "";
+  const exitCode = await runProxyGatewayCli(["capabilities", "--json"], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for capability registry");
+    },
+    runPackageScript: async () => {
+      throw new Error("package script must not run for capability registry");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for capability registry");
+    },
+    writeStdout: (value) => {
+      stdout += value;
+    },
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(JSON.parse(stdout).type, "gccgw_capability_registry");
 });
 
 test("gccgw CLI exposes source docs by command and domain for project navigation", async () => {
