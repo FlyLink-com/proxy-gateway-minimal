@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-06-01, Asia/Shanghai.
+Last updated: 2026-06-02, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -62,6 +62,14 @@ templates already match Git and which package/template drift needs explanation.
 The detailed node registration and pool contract lives in
 `docs/NODE_REGISTRATION_AND_POOL_CONTRACT.md`; it refines the safe multi-node
 schema for node facts, lifecycle, pools, and health summaries.
+The first approved two-region disposable Ubuntu `gccgw` package deployment-flow
+validation is recorded in
+`docs/production-replacement-records/2026-06-02-aws-disposable-tokyo-korea-gccgw-validation.md`.
+It proves repeatable per-host package initialization and loopback/private
+subscription-boundary checks on Tokyo and Korea temporary AWS hosts, followed by
+full resource cleanup. It does not prove centralized multi-node registration,
+DNS cutover, public business-port exposure, production traffic, or real
+subscription issuance.
 
 ## Repository
 
