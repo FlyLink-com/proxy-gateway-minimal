@@ -8,6 +8,10 @@ It is a template contract only. It does not authorize production deployment,
 DNS, Nginx, systemd, firewall, cloud, SQLite, customer-data, credential,
 subscription-output, or traffic changes.
 
+For the broader question of which surface owns each setting, read
+`docs/CONFIGURATION_OWNERSHIP_MATRIX.md`. This document only defines the safe
+Git package shape.
+
 ## Package Shape
 
 Use one directory per candidate deployment package:
