@@ -50,7 +50,8 @@ docs/PRODUCTION_INPUT_PACKAGE_FORMAT.md
 ```
 
 Use `package-manifest.json` as the first file for inspect/import dry-run
-tooling. It is a redacted manifest only; it does not contain customer facts,
+tooling, then use the reviewed import/configure plans for the gated apply
+step. It is a redacted manifest only; it does not contain customer facts,
 secrets, SQLite data, generated subscription YAML, runtime logs, or handoff
 material.
 
@@ -63,7 +64,8 @@ fill non-secret production input package
 -> gccgw release status
 -> gccgw install preflight on the target host
 -> Risk A approval
--> bootstrap / runtime env injection / validation
+-> gccgw package apply with reviewed import/configure plans
+-> bootstrap / secret env injection / validation by separate gate
 -> subscription canary
 -> retain, rollback, or broader rollout decision
 ```

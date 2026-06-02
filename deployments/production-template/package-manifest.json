@@ -64,7 +64,7 @@
       "name": "apply",
       "riskTier": "A",
       "mutation": true,
-      "intendedCommand": "gccgw package import <package-dir> --execute-production-mutation --apply",
+      "intendedCommand": "gccgw package apply <package-dir> --import-plan <reviewed-package-import-plan.json> --config-plan <reviewed-install-configure-plan.json> --execute-production-mutation --apply",
       "approval": "separate exact approval required"
     }
   ],

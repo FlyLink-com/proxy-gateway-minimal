@@ -9,7 +9,9 @@ import {
   buildInstallConfigurePlan,
   buildInstallPlan,
   buildInstallPreflightReport,
+  buildPackageApplyPlan,
   validateInstallConfigurePlanEnvelope,
+  validatePackageApplyPlanEnvelope,
   buildPackageImportDryRunReport,
   buildPackageInspectReport,
   buildPackageScriptSpawn,
@@ -132,6 +134,10 @@ test("gccgw CLI exposes business facade commands for node, subscription, backup,
   const commands = listCliCommands();
   const commandNames = commands.map((entry) => entry.command);
 
+  assert.ok(commandNames.includes("gccgw node inspect"));
+  assert.ok(commandNames.includes("gccgw node validate"));
+  assert.ok(commandNames.includes("gccgw node register"));
+  assert.ok(commandNames.includes("gccgw node disable"));
   assert.ok(commandNames.includes("gccgw node plan"));
   assert.ok(commandNames.includes("gccgw node preflight"));
   assert.ok(commandNames.includes("gccgw node bootstrap"));
@@ -151,6 +157,44 @@ test("gccgw CLI exposes business facade commands for node, subscription, backup,
 });
 
 test("gccgw CLI resolves node and subscription facade commands to existing safe handlers", () => {
+  assert.deepEqual(resolveCliCommand(["node", "inspect", "--config", "config/proxy-servers.json", "--json"]), {
+    kind: "node-inspect",
+    configPath: "config/proxy-servers.json",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand([
+    "node",
+    "validate",
+    "--package",
+    "deployments/production-template",
+    "--config",
+    "config/proxy-servers.json",
+    "--json"
+  ]), {
+    kind: "node-validate",
+    packageDir: "deployments/production-template",
+    configPath: "config/proxy-servers.json",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand(["node", "register", "--dry-run", "node-facts.json", "--json"]), {
+    kind: "node-register-dry-run",
+    inputPath: "node-facts.json",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand([
+    "node",
+    "disable",
+    "--dry-run",
+    "prod-edge-a",
+    "--reason",
+    "maintenance",
+    "--json"
+  ]), {
+    kind: "node-disable-dry-run",
+    nodeId: "prod-edge-a",
+    reason: "maintenance",
+    format: "json"
+  });
   assert.deepEqual(resolveCliCommand(["node", "plan", "--json"]), {
     kind: "install-plan",
     format: "json"
@@ -544,6 +588,264 @@ test("gccgw package import dry-run blocks public admin exposure plans", () => {
   assert.equal(report.blockers.some((blocker) => blocker.code === "public_admin_exposure_requested"), true);
 });
 
+test("gccgw node inspect returns safe node summaries without endpoints or credentials", async () => {
+  const stdout = [];
+  const exitCode = await runProxyGatewayCli(["node", "inspect", "--config", "config/proxy-servers.json", "--json"], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for node inspect");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for node inspect");
+    },
+    runGitDiffCheck: async () => 0,
+    runEnvCheck: async () => 0,
+    runSelfCheck: async () => 0,
+    runInstallPreflight: async () => 0,
+    runBackupPreflight: async () => 0,
+    runReleaseStatus: async () => 0,
+    runServiceStatus: async () => 0,
+    runNetworkStatus: async () => 0,
+    runPackageImportDryRun: async () => 0,
+    runPackageApply: async () => 0,
+    runPackageInspect: async () => 0,
+    runInstallConfigure: async () => 0,
+    startServer: async () => 0,
+    confirmRiskAExecution: async () => false,
+    readJsonFile: (path) => {
+      assert.equal(path, "config/proxy-servers.json");
+      return {
+        servers: [
+          {
+            id: "prod-edge-a",
+            name: "prod-edge-a",
+            role: "primary",
+            region: "Tokyo",
+            host: "198.51.100.20",
+            port: 18388,
+            method: "aes-256-gcm",
+            password: "do-not-print"
+          }
+        ]
+      };
+    },
+    writeStdout: (text) => stdout.push(text),
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  const report = JSON.parse(stdout.join(""));
+  assert.equal(report.type, "gccgw_node_inspect");
+  assert.equal(report.ok, true);
+  assert.deepEqual(report.nodes[0], {
+    id: "prod-edge-a",
+    name: "prod-edge-a",
+    role: "primary",
+    region: "Tokyo",
+    channelPool: "stable",
+    strategyPriority: 0,
+    canaryWeight: 0,
+    credentialMode: "shared-node",
+    status: "online",
+    maintenance: false,
+    subscriptionEligible: true,
+    reason: ""
+  });
+  assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|18388|aes-256-gcm|do-not-print/);
+});
+
+test("gccgw node validate compares package slots to runtime config without leaking endpoints", async () => {
+  const stdout = [];
+  const exitCode = await runProxyGatewayCli([
+    "node",
+    "validate",
+    "--package",
+    "deployments/production-template",
+    "--config",
+    "config/proxy-servers.json",
+    "--json"
+  ], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for node validate");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for node validate");
+    },
+    runGitDiffCheck: async () => 0,
+    runEnvCheck: async () => 0,
+    runSelfCheck: async () => 0,
+    runInstallPreflight: async () => 0,
+    runBackupPreflight: async () => 0,
+    runReleaseStatus: async () => 0,
+    runServiceStatus: async () => 0,
+    runNetworkStatus: async () => 0,
+    runPackageImportDryRun: async () => 0,
+    runPackageApply: async () => 0,
+    runPackageInspect: async () => 0,
+    runInstallConfigure: async () => 0,
+    startServer: async () => 0,
+    confirmRiskAExecution: async () => false,
+    readJsonFile: (path) => {
+      if (path === "config/proxy-servers.json") {
+        return {
+          servers: [
+            { id: "prod-edge-a", name: "prod-edge-a", host: "198.51.100.20", port: 18388, password: "secret-a" },
+            { id: "prod-edge-b", name: "prod-edge-b", host: "198.51.100.21", port: 18388, password: "secret-b" }
+          ]
+        };
+      }
+      if (path === "deployments/production-template/nodes.json") {
+        return {
+          slots: [
+            { id: "prod-edge-a", pool: "stable", subscriptionEligible: true, hostRef: "runtime:PROD_EDGE_A_HOST", credentialRefs: ["env:SS_PASSWORD"] },
+            { id: "prod-edge-b", pool: "stable", subscriptionEligible: true, hostRef: "runtime:PROD_EDGE_B_HOST", credentialRefs: ["env:SS_PASSWORD"] },
+            { id: "prod-edge-c", pool: "recovery", subscriptionEligible: false, hostRef: "runtime:PROD_EDGE_C_HOST", credentialRefs: ["env:SS_PASSWORD"] }
+          ]
+        };
+      }
+      throw new Error(`unexpected read: ${path}`);
+    },
+    writeStdout: (text) => stdout.push(text),
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  const report = JSON.parse(stdout.join(""));
+  assert.equal(report.type, "gccgw_node_validate");
+  assert.equal(report.ok, true);
+  assert.deepEqual(report.summary, {
+    packageSlotCount: 3,
+    runtimeNodeCount: 2,
+    eligiblePackageSlotCount: 2,
+    missingEligibleRuntimeNodeCount: 0
+  });
+  assert.deepEqual(report.missingEligibleRuntimeNodes, []);
+  assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|18388|secret/);
+});
+
+test("gccgw node register and disable remain dry-run only and reject unsafe node facts", async () => {
+  const registerStdout = [];
+  const unsafeRegisterCode = await runProxyGatewayCli(["node", "register", "--dry-run", "node-facts.json", "--json"], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for node register");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for node register");
+    },
+    runGitDiffCheck: async () => 0,
+    runEnvCheck: async () => 0,
+    runSelfCheck: async () => 0,
+    runInstallPreflight: async () => 0,
+    runBackupPreflight: async () => 0,
+    runReleaseStatus: async () => 0,
+    runServiceStatus: async () => 0,
+    runNetworkStatus: async () => 0,
+    runPackageImportDryRun: async () => 0,
+    runPackageApply: async () => 0,
+    runPackageInspect: async () => 0,
+    runInstallConfigure: async () => 0,
+    startServer: async () => 0,
+    confirmRiskAExecution: async () => false,
+    readJsonFile: () => ({
+      id: "prod-edge-jp",
+      pool: "stable",
+      host: "198.51.100.30",
+      credentialRefs: ["env:SS_PASSWORD"]
+    }),
+    writeStdout: (text) => registerStdout.push(text),
+    writeStderr: () => {}
+  });
+
+  assert.equal(unsafeRegisterCode, 1);
+  const unsafeReport = JSON.parse(registerStdout.join(""));
+  assert.equal(unsafeReport.ok, false);
+  assert.equal(unsafeReport.blockers[0].code, "raw_runtime_field_present");
+  assert.doesNotMatch(JSON.stringify(unsafeReport), /198\.51\.100|SS_PASSWORD/);
+
+  const disableStdout = [];
+  const disableCode = await runProxyGatewayCli(["node", "disable", "--dry-run", "prod-edge-a", "--reason", "maintenance", "--json"], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for node disable");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for node disable");
+    },
+    runGitDiffCheck: async () => 0,
+    runEnvCheck: async () => 0,
+    runSelfCheck: async () => 0,
+    runInstallPreflight: async () => 0,
+    runBackupPreflight: async () => 0,
+    runReleaseStatus: async () => 0,
+    runServiceStatus: async () => 0,
+    runNetworkStatus: async () => 0,
+    runPackageImportDryRun: async () => 0,
+    runPackageApply: async () => 0,
+    runPackageInspect: async () => 0,
+    runInstallConfigure: async () => 0,
+    startServer: async () => 0,
+    confirmRiskAExecution: async () => false,
+    readJsonFile: () => {
+      throw new Error("disable dry-run must not read config by default");
+    },
+    writeStdout: (text) => disableStdout.push(text),
+    writeStderr: () => {}
+  });
+
+  assert.equal(disableCode, 0);
+  const disableReport = JSON.parse(disableStdout.join(""));
+  assert.equal(disableReport.type, "gccgw_node_disable_dry_run");
+  assert.equal(disableReport.ok, true);
+  assert.equal(disableReport.mutation, false);
+  assert.deepEqual(disableReport.plannedOperations.map((operation) => operation.id), [
+    "mark-node-disabled",
+    "validate-subscription-output",
+    "record-operator-evidence"
+  ]);
+});
+
+test("gccgw package apply plan validates reviewed import and configure plans before mutation", () => {
+  const importPlan = buildPackageImportDryRunReport({
+    packageName: "production-template",
+    files: productionPackageFiles()
+  });
+  const configurePlan = buildInstallConfigurePlan({
+    domain: "https://sub.example.invalid",
+    installDir: "/opt/proxy-gateway-minimal",
+    managementSource: "203.0.113.10/32"
+  });
+
+  const plan = buildPackageApplyPlan({
+    packageName: "production-template",
+    importPlan,
+    configurePlan
+  });
+
+  assert.equal(plan.type, "gccgw_package_apply_plan");
+  assert.equal(plan.ok, true);
+  assert.equal(plan.riskTier, "A");
+  assert.equal(plan.mutation, true);
+  assert.equal(plan.productionAuthority, false);
+  assert.deepEqual(plan.materialTargets, {
+    envSkeletonPath: "/opt/proxy-gateway-minimal/.env",
+    runtimeDbPath: "/opt/proxy-gateway-minimal/.proxy-gateway/subscriptions.sqlite",
+    controlDbPath: "/opt/proxy-gateway-minimal/.proxy-gateway/subscription-control.sqlite",
+    handoffDir: "/opt/proxy-gateway-minimal/handoff"
+  });
+  assert.ok(plan.plannedOperations.some((operation) => operation.id === "initialize-runtime-sqlite"));
+  assert.ok(plan.plannedOperations.some((operation) => operation.id === "initialize-control-sqlite"));
+  assert.ok(plan.plannedOperations.every((operation) => operation.requiresReviewedPlan === true));
+  assert.doesNotMatch(JSON.stringify(plan), /subscriptionUrl|artifactSecret|CONSOLE_TOKEN|SS_PASSWORD|owner@example|do-not-store-this/i);
+
+  const validation = validatePackageApplyPlanEnvelope(plan);
+  assert.equal(validation.ok, true);
+
+  const unsafe = validatePackageApplyPlanEnvelope({
+    ...plan,
+    redacted: false
+  });
+  assert.equal(unsafe.ok, false);
+  assert.equal(unsafe.blockers.some((blocker) => blocker.code === "package_apply_plan_must_be_redacted"), true);
+});
+
 test("gccgw CLI runs install configure through a non-mutating adapter", async () => {
   let called = null;
   const exitCode = await runProxyGatewayCli([
@@ -627,6 +929,81 @@ test("gccgw CLI resolves package import dry-run without execution authority", as
   assert.deepEqual(called, {
     kind: "package-import-dry-run",
     packageDir: "deployments/production-template",
+    format: "json"
+  });
+});
+
+test("gccgw CLI resolves package apply behind Risk A gate", async () => {
+  assert.deepEqual(resolveCliCommand([
+    "package",
+    "apply",
+    "deployments/production-template",
+    "--import-plan",
+    "reviewed-import-plan.json",
+    "--config-plan",
+    "reviewed-install-configure-plan.json",
+    "--execute-production-mutation",
+    "--apply"
+  ]), {
+    kind: "package-apply",
+    commandName: "gccgw package apply",
+    packageDir: "deployments/production-template",
+    importPlanPath: "reviewed-import-plan.json",
+    configPlanPath: "reviewed-install-configure-plan.json",
+    executeProductionMutation: true,
+    apply: true,
+    format: "text"
+  });
+
+  const commands = listCliCommands();
+  const applyCommand = commands.find((command) => command.command === "gccgw package apply");
+  assert.equal(applyCommand.riskTier, "A");
+  assert.equal(applyCommand.mode, "execution-gated");
+  assert.ok(applyCommand.approvalPrompt);
+
+  let called = null;
+  const exitCode = await runProxyGatewayCli([
+    "package",
+    "apply",
+    "deployments/production-template",
+    "--import-plan",
+    "reviewed-import-plan.json",
+    "--config-plan",
+    "reviewed-install-configure-plan.json",
+    "--execute-production-mutation",
+    "--apply",
+    "--json"
+  ], {
+    confirmRiskAExecution: async () => true,
+    runPackageApply: async (command) => {
+      called = command;
+      return 0;
+    },
+    runPackageImportDryRun: async () => {
+      throw new Error("dry-run adapter must not run for package apply");
+    },
+    runNodeScript: async () => {
+      throw new Error("node script must not run for package apply");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for package apply");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for package apply");
+    },
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(called, {
+    kind: "package-apply",
+    commandName: "gccgw package apply",
+    packageDir: "deployments/production-template",
+    importPlanPath: "reviewed-import-plan.json",
+    configPlanPath: "reviewed-install-configure-plan.json",
+    executeProductionMutation: true,
+    apply: true,
     format: "json"
   });
 });

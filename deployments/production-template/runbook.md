@@ -46,6 +46,11 @@ Run locally before asking for a deployment gate:
 ```bash
 gccgw package inspect deployments/production-template --json
 gccgw package import deployments/production-template --dry-run --json
+gccgw install configure --dry-run \
+  --domain https://sub.example.com \
+  --install-dir /opt/proxy-gateway-minimal \
+  --management-source 203.0.113.10/32 \
+  --json
 gccgw release status --json
 gccgw commands --json
 gccgw docs domain release
@@ -73,6 +78,25 @@ gccgw install preflight ok: true before bootstrap
 
 `nginx` and root checks may remain false until the target host is prepared for
 an actual bootstrap gate. Do not treat that as deployment approval.
+
+## Package Apply Gate
+
+After the B-tier import dry-run and install configure plans have been reviewed,
+the bounded A-tier package apply command is:
+
+```bash
+gccgw package apply deployments/production-template \
+  --import-plan reviewed-package-import-plan.json \
+  --config-plan reviewed-install-configure-plan.json \
+  --execute-production-mutation \
+  --apply
+```
+
+This command is Linux-target only. It prepares reviewed local host material:
+a redacted `.env` skeleton, package metadata, runtime/control SQLite files, and
+the handoff directory. It does not reload Nginx, install or start systemd
+services, change firewall rules, mutate DNS, issue real subscriptions, or
+write customer data.
 
 ## Execution Gate Shape
 
