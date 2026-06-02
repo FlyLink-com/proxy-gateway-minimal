@@ -3,6 +3,7 @@ import {
   buildGccgwConfigShow,
   buildGccgwConfigValidation
 } from "./config.mjs";
+import { createNodeRegistry } from "../subscriptions/node-registry.mjs";
 
 const DOMAIN_SOURCE_DOCS = {
   admin: ["docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"],
@@ -93,6 +94,10 @@ const SPECIAL_COMMAND_ENTRIES = [
   ["install configure", null, "install", "B", "dry-run", "Build a redacted install configuration plan without writing host files"],
   ["install plan", null, "install", "C", "read-only", "Show the server installation sequence without touching the host"],
   ["install preflight", null, "install", "C", "read-only", "Check server bootstrap prerequisites without mutating the host"],
+  ["node inspect", null, "node", "C", "read-only", "Inspect safe node registry facts without printing endpoints or credentials"],
+  ["node validate", null, "node", "C", "read-only", "Validate runtime node registry facts against the production input package"],
+  ["node register", null, "node", "B", "dry-run", "Plan safe node registration without mutating runtime or subscription output"],
+  ["node disable", null, "node", "B", "dry-run", "Plan node disablement without mutating runtime or subscription output"],
   ["node plan", null, "node", "C", "read-only", "Show the node installation sequence without touching the host", undefined, { aliasOf: "gccgw install plan" }],
   ["node preflight", null, "node", "C", "read-only", "Check node bootstrap prerequisites without mutating the host", undefined, { aliasOf: "gccgw install preflight" }],
   ["node status", null, "node", "C", "read-only", "Read local node service status without changing runtime state", undefined, { aliasOf: "gccgw service status" }],
@@ -617,6 +622,223 @@ export function buildPackageImportDryRunReport({
       requiresSeparateExactApproval: true,
       mutation: true
     },
+    redacted: true
+  };
+}
+
+function summarizeSafeNodes(proxyConfig) {
+  return createNodeRegistry({ proxyConfig }).listSafeNodes();
+}
+
+export function buildNodeInspectReport({
+  proxyConfig = {},
+  configPath = "config/proxy-servers.json"
+} = {}) {
+  const nodes = summarizeSafeNodes(proxyConfig);
+  return {
+    type: "gccgw_node_inspect",
+    generatedBy: "gccgw node inspect",
+    ok: true,
+    configPath,
+    nodeCount: nodes.length,
+    nodes,
+    mutation: false,
+    productionAuthority: false,
+    redacted: true
+  };
+}
+
+function summarizePackageSlots(nodesPackage = {}) {
+  return safeArray(nodesPackage.slots).map((slot) => ({
+    id: String(slot.id || ""),
+    role: String(slot.role || ""),
+    pool: String(slot.pool || ""),
+    protocols: safeArray(slot.protocols).map((protocol) => String(protocol)),
+    subscriptionEligible: slot.subscriptionEligible === true,
+    hostRefPresent: typeof slot.hostRef === "string" && slot.hostRef.length > 0,
+    credentialRefCount: safeArray(slot.credentialRefs).length,
+    bootstrapAuthority: String(slot.bootstrapAuthority || "")
+  }));
+}
+
+export function buildNodeValidateReport({
+  proxyConfig = {},
+  nodesPackage = {},
+  configPath = "config/proxy-servers.json",
+  packageDir = "deployments/production-template"
+} = {}) {
+  const runtimeNodes = summarizeSafeNodes(proxyConfig);
+  const packageSlots = summarizePackageSlots(nodesPackage);
+  const runtimeIds = new Set(runtimeNodes.flatMap((node) => [node.id, node.name].filter(Boolean)));
+  const eligibleSlots = packageSlots.filter((slot) => slot.subscriptionEligible);
+  const missingEligibleRuntimeNodes = eligibleSlots
+    .filter((slot) => !runtimeIds.has(slot.id))
+    .map((slot) => ({
+      id: slot.id,
+      pool: slot.pool
+    }));
+  const runtimeNodesWithoutPackageSlot = runtimeNodes
+    .filter((node) => !packageSlots.some((slot) => slot.id === node.id || slot.id === node.name))
+    .map((node) => ({
+      id: node.id,
+      name: node.name,
+      channelPool: node.channelPool
+    }));
+  const blockers = [];
+  if (missingEligibleRuntimeNodes.length > 0) {
+    blockers.push(blocker(
+      "eligible_package_slot_missing_runtime_node",
+      "Every subscription-eligible package slot must have a matching runtime node id before stable output can be trusted."
+    ));
+  }
+
+  return {
+    type: "gccgw_node_validate",
+    generatedBy: "gccgw node validate",
+    ok: blockers.length === 0,
+    configPath,
+    packageDir,
+    summary: {
+      packageSlotCount: packageSlots.length,
+      runtimeNodeCount: runtimeNodes.length,
+      eligiblePackageSlotCount: eligibleSlots.length,
+      missingEligibleRuntimeNodeCount: missingEligibleRuntimeNodes.length
+    },
+    packageSlots,
+    runtimeNodes,
+    missingEligibleRuntimeNodes,
+    runtimeNodesWithoutPackageSlot,
+    blockers,
+    mutation: false,
+    productionAuthority: false,
+    redacted: true
+  };
+}
+
+const RAW_NODE_FACT_FIELDS = new Set([
+  "host",
+  "port",
+  "password",
+  "token",
+  "secret",
+  "subscriptionUrl",
+  "url",
+  "privateKey",
+  "uuid"
+]);
+
+function containsRawNodeField(value) {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  if (Array.isArray(value)) {
+    return value.some(containsRawNodeField);
+  }
+  return Object.entries(value).some(([key, child]) => RAW_NODE_FACT_FIELDS.has(key) || containsRawNodeField(child));
+}
+
+function safeNodeRegistrationSummary(nodeFacts = {}) {
+  return {
+    id: String(nodeFacts.id || ""),
+    role: String(nodeFacts.role || ""),
+    pool: String(nodeFacts.pool || nodeFacts.channelPool || ""),
+    protocols: safeArray(nodeFacts.protocols).map((protocol) => String(protocol)),
+    provider: String(nodeFacts.provider || ""),
+    region: String(nodeFacts.region || ""),
+    endpointRefPresent: typeof nodeFacts.endpointRef === "string" && nodeFacts.endpointRef.length > 0,
+    hostRefPresent: typeof nodeFacts.hostRef === "string" && nodeFacts.hostRef.length > 0,
+    portRefPresent: typeof nodeFacts.portRef === "string" && nodeFacts.portRef.length > 0,
+    credentialRefCount: safeArray(nodeFacts.credentialRefs).length,
+    subscriptionEligible: nodeFacts.subscriptionEligible === true,
+    lifecycle: String(nodeFacts.lifecycle || nodeFacts.status || "")
+  };
+}
+
+export function buildNodeRegisterDryRunPlan({
+  nodeFacts = {},
+  inputPath = ""
+} = {}) {
+  const blockers = [];
+  if (containsRawNodeField(nodeFacts)) {
+    blockers.push(blocker(
+      "raw_runtime_field_present",
+      "Node registration input must use endpointRef/hostRef, portRef, and credentialRefs instead of raw runtime values."
+    ));
+  }
+  if (!nodeFacts.id) {
+    blockers.push(blocker("node_id_required", "Node registration input must include id."));
+  }
+  if (!nodeFacts.endpointRef && !nodeFacts.hostRef) {
+    blockers.push(blocker("endpoint_ref_required", "Node registration input must include endpointRef or hostRef."));
+  }
+  if (!nodeFacts.portRef) {
+    blockers.push(blocker("port_ref_required", "Node registration input must include portRef."));
+  }
+
+  return {
+    type: "gccgw_node_register_dry_run",
+    generatedBy: "gccgw node register --dry-run",
+    ok: blockers.length === 0,
+    inputPath,
+    node: safeNodeRegistrationSummary(nodeFacts),
+    plannedOperations: [
+      {
+        id: "record-safe-node-facts",
+        mutation: false,
+        summary: "Prepare safe node facts for operator review without writing runtime config."
+      },
+      {
+        id: "validate-node-pool-policy",
+        mutation: false,
+        summary: "Validate pool and subscription eligibility before any later A-tier activation."
+      },
+      {
+        id: "prepare-render-policy-review",
+        mutation: false,
+        summary: "Prepare subscription-output review without adding the node to live output."
+      }
+    ],
+    blockers,
+    mutation: false,
+    productionAuthority: false,
+    redacted: true
+  };
+}
+
+export function buildNodeDisableDryRunPlan({
+  nodeId = "",
+  reason = ""
+} = {}) {
+  const blockers = [];
+  if (!String(nodeId || "").trim()) {
+    blockers.push(blocker("node_id_required", "Node disable dry-run requires a node id."));
+  }
+  return {
+    type: "gccgw_node_disable_dry_run",
+    generatedBy: "gccgw node disable --dry-run",
+    ok: blockers.length === 0,
+    nodeRef: String(nodeId || ""),
+    reason: String(reason || ""),
+    plannedOperations: [
+      {
+        id: "mark-node-disabled",
+        mutation: false,
+        summary: "Plan status change to disabled without writing runtime config."
+      },
+      {
+        id: "validate-subscription-output",
+        mutation: false,
+        summary: "Plan a follow-up render validation so disabled nodes do not appear in default output."
+      },
+      {
+        id: "record-operator-evidence",
+        mutation: false,
+        summary: "Plan an execution record before any A-tier runtime mutation."
+      }
+    ],
+    blockers,
+    mutation: false,
+    productionAuthority: false,
     redacted: true
   };
 }
@@ -1465,10 +1687,10 @@ function positionalArgs(args, startIndex = 0) {
   const result = [];
   for (let index = startIndex; index < args.length; index += 1) {
     const value = args[index];
-    if (value === "--json") {
+    if (value === "--json" || value === "--dry-run" || value === "--execute-production-mutation" || value === "--apply") {
       continue;
     }
-    if (value === "--config" || value === "--profile") {
+    if (value === "--config" || value === "--profile" || value === "--package" || value === "--reason") {
       index += 1;
       continue;
     }
@@ -1508,6 +1730,10 @@ Usage:
   gccgw install configure --dry-run --domain <url> --install-dir <path> --management-source <cidr> [--json]
   gccgw install plan [--json]
   gccgw install preflight [--json]
+  gccgw node inspect [--config <proxy-servers.json>] [--json]
+  gccgw node validate [--package <package-dir>] [--config <proxy-servers.json>] [--json]
+  gccgw node register --dry-run <safe-node-facts.json> [--json]
+  gccgw node disable --dry-run <node-id> [--reason <text>] [--json]
   gccgw install bootstrap --config-plan <reviewed-install-configure-plan.json> --execute-production-mutation --apply
   gccgw package inspect <package-dir> [--json]
   gccgw package import <package-dir> --dry-run [--json]
@@ -1544,6 +1770,10 @@ Common commands:
   gccgw package inspect deployments/production-template --json
   gccgw package import deployments/production-template --dry-run --json
   gccgw package apply deployments/production-template --import-plan reviewed-package-import-plan.json --config-plan reviewed-install-configure-plan.json --execute-production-mutation --apply
+  gccgw node inspect --json
+  gccgw node validate --package deployments/production-template --json
+  gccgw node register --dry-run safe-node-facts.json --json
+  gccgw node disable --dry-run prod-edge-a --reason maintenance --json
   gccgw node plan
   gccgw node preflight --json
   gccgw node status --json
@@ -1753,6 +1983,42 @@ export function resolveCliCommand(argv = []) {
       format: args.includes("--json") ? "json" : "text"
     };
   }
+  if (args[0] === "node" && args[1] === "inspect") {
+    return {
+      kind: "node-inspect",
+      configPath: optionValue(args, "--config") || "config/proxy-servers.json",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "node" && args[1] === "validate") {
+    return {
+      kind: "node-validate",
+      packageDir: optionValue(args, "--package") || "deployments/production-template",
+      configPath: optionValue(args, "--config") || "config/proxy-servers.json",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "node" && args[1] === "register") {
+    if (!args.includes("--dry-run")) {
+      throw new Error("gccgw node register supports --dry-run only. Runtime activation requires a separate Risk A gate.");
+    }
+    return {
+      kind: "node-register-dry-run",
+      inputPath: positionalArgs(args, 2)[0],
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "node" && args[1] === "disable") {
+    if (!args.includes("--dry-run")) {
+      throw new Error("gccgw node disable supports --dry-run only. Runtime mutation requires a separate Risk A gate.");
+    }
+    return {
+      kind: "node-disable-dry-run",
+      nodeId: positionalArgs(args, 2)[0],
+      reason: optionValue(args, "--reason") || "",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
   if (args[0] === "node" && args[1] === "plan") {
     return {
       kind: "install-plan",
@@ -1933,6 +2199,7 @@ export async function runProxyGatewayCli(argv, {
   runPackageApply,
   runPackageInspect,
   runInstallConfigure,
+  readJsonFile,
   startServer,
   confirmRiskAExecution,
   writeStdout = (text) => process.stdout.write(text),
@@ -1992,6 +2259,40 @@ export async function runProxyGatewayCli(argv, {
     }
     if (command.kind === "install-configure") {
       return await runInstallConfigure(command);
+    }
+    if (command.kind === "node-inspect") {
+      const report = buildNodeInspectReport({
+        proxyConfig: readJsonFile(command.configPath),
+        configPath: command.configPath
+      });
+      writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
+      return report.ok ? 0 : 1;
+    }
+    if (command.kind === "node-validate") {
+      const report = buildNodeValidateReport({
+        proxyConfig: readJsonFile(command.configPath),
+        nodesPackage: readJsonFile(`${command.packageDir}/nodes.json`),
+        configPath: command.configPath,
+        packageDir: command.packageDir
+      });
+      writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
+      return report.ok ? 0 : 1;
+    }
+    if (command.kind === "node-register-dry-run") {
+      const report = buildNodeRegisterDryRunPlan({
+        nodeFacts: command.inputPath ? readJsonFile(command.inputPath) : {},
+        inputPath: command.inputPath
+      });
+      writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
+      return report.ok ? 0 : 1;
+    }
+    if (command.kind === "node-disable-dry-run") {
+      const report = buildNodeDisableDryRunPlan({
+        nodeId: command.nodeId,
+        reason: command.reason
+      });
+      writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
+      return report.ok ? 0 : 1;
     }
     if (command.kind === "command-help") {
       writeStdout(buildCommandHelp(command));

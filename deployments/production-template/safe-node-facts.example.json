@@ -1,0 +1,15 @@
+{
+  "schema": "gccgw.safeNodeFacts.v1",
+  "id": "prod-edge-jp",
+  "role": "stable-candidate",
+  "pool": "stable",
+  "protocols": ["ss"],
+  "provider": "operator-selected",
+  "region": "ap-northeast-1",
+  "endpointRef": "runtime:PROD_EDGE_JP_HOST",
+  "hostRef": "runtime:PROD_EDGE_JP_HOST",
+  "portRef": "runtime:PROD_EDGE_JP_PORT",
+  "credentialRefs": ["env:SS_PASSWORD"],
+  "subscriptionEligible": false,
+  "lifecycle": "planned"
+}

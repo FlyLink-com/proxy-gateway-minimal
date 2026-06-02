@@ -2,7 +2,7 @@
 import "dotenv/config";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 import {
@@ -171,10 +171,8 @@ function writeReport(report, format) {
 }
 
 function pathInsideRoot(targetPath) {
-  const relativePath = targetPath.startsWith(rootDir)
-    ? targetPath.slice(rootDir.length)
-    : "";
-  return relativePath === "" || /^[\\/]/.test(relativePath);
+  const relativePath = relative(rootDir, targetPath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !isAbsolute(relativePath));
 }
 
 async function runPackageInspect(command) {
@@ -208,6 +206,17 @@ function readJsonPlanFile(planPath, label) {
   const resolved = resolve(rootDir, planPath);
   if (!pathInsideRoot(resolved)) {
     throw new Error(`${label} must be inside the repository`);
+  }
+  return JSON.parse(readFileSync(resolved, "utf8"));
+}
+
+function readJsonFileInsideRoot(inputPath) {
+  if (!inputPath) {
+    throw new Error("JSON input path is required");
+  }
+  const resolved = resolve(rootDir, inputPath);
+  if (!pathInsideRoot(resolved)) {
+    throw new Error("JSON input path must be inside the repository");
   }
   return JSON.parse(readFileSync(resolved, "utf8"));
 }
@@ -553,6 +562,7 @@ try {
     runPackageApply,
     runPackageInspect,
     runInstallConfigure,
+    readJsonFile: readJsonFileInsideRoot,
     startServer,
     confirmRiskAExecution
   });
