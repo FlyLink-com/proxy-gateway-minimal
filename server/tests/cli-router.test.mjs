@@ -9,7 +9,9 @@ import {
   buildInstallConfigurePlan,
   buildInstallPlan,
   buildInstallPreflightReport,
+  buildPackageApplyPlan,
   validateInstallConfigurePlanEnvelope,
+  validatePackageApplyPlanEnvelope,
   buildPackageImportDryRunReport,
   buildPackageInspectReport,
   buildPackageScriptSpawn,
@@ -544,6 +546,50 @@ test("gccgw package import dry-run blocks public admin exposure plans", () => {
   assert.equal(report.blockers.some((blocker) => blocker.code === "public_admin_exposure_requested"), true);
 });
 
+test("gccgw package apply plan validates reviewed import and configure plans before mutation", () => {
+  const importPlan = buildPackageImportDryRunReport({
+    packageName: "production-template",
+    files: productionPackageFiles()
+  });
+  const configurePlan = buildInstallConfigurePlan({
+    domain: "https://sub.example.invalid",
+    installDir: "/opt/proxy-gateway-minimal",
+    managementSource: "203.0.113.10/32"
+  });
+
+  const plan = buildPackageApplyPlan({
+    packageName: "production-template",
+    importPlan,
+    configurePlan
+  });
+
+  assert.equal(plan.type, "gccgw_package_apply_plan");
+  assert.equal(plan.ok, true);
+  assert.equal(plan.riskTier, "A");
+  assert.equal(plan.mutation, true);
+  assert.equal(plan.productionAuthority, false);
+  assert.deepEqual(plan.materialTargets, {
+    envSkeletonPath: "/opt/proxy-gateway-minimal/.env",
+    runtimeDbPath: "/opt/proxy-gateway-minimal/.proxy-gateway/subscriptions.sqlite",
+    controlDbPath: "/opt/proxy-gateway-minimal/.proxy-gateway/subscription-control.sqlite",
+    handoffDir: "/opt/proxy-gateway-minimal/handoff"
+  });
+  assert.ok(plan.plannedOperations.some((operation) => operation.id === "initialize-runtime-sqlite"));
+  assert.ok(plan.plannedOperations.some((operation) => operation.id === "initialize-control-sqlite"));
+  assert.ok(plan.plannedOperations.every((operation) => operation.requiresReviewedPlan === true));
+  assert.doesNotMatch(JSON.stringify(plan), /subscriptionUrl|artifactSecret|CONSOLE_TOKEN|SS_PASSWORD|owner@example|do-not-store-this/i);
+
+  const validation = validatePackageApplyPlanEnvelope(plan);
+  assert.equal(validation.ok, true);
+
+  const unsafe = validatePackageApplyPlanEnvelope({
+    ...plan,
+    redacted: false
+  });
+  assert.equal(unsafe.ok, false);
+  assert.equal(unsafe.blockers.some((blocker) => blocker.code === "package_apply_plan_must_be_redacted"), true);
+});
+
 test("gccgw CLI runs install configure through a non-mutating adapter", async () => {
   let called = null;
   const exitCode = await runProxyGatewayCli([
@@ -627,6 +673,81 @@ test("gccgw CLI resolves package import dry-run without execution authority", as
   assert.deepEqual(called, {
     kind: "package-import-dry-run",
     packageDir: "deployments/production-template",
+    format: "json"
+  });
+});
+
+test("gccgw CLI resolves package apply behind Risk A gate", async () => {
+  assert.deepEqual(resolveCliCommand([
+    "package",
+    "apply",
+    "deployments/production-template",
+    "--import-plan",
+    "reviewed-import-plan.json",
+    "--config-plan",
+    "reviewed-install-configure-plan.json",
+    "--execute-production-mutation",
+    "--apply"
+  ]), {
+    kind: "package-apply",
+    commandName: "gccgw package apply",
+    packageDir: "deployments/production-template",
+    importPlanPath: "reviewed-import-plan.json",
+    configPlanPath: "reviewed-install-configure-plan.json",
+    executeProductionMutation: true,
+    apply: true,
+    format: "text"
+  });
+
+  const commands = listCliCommands();
+  const applyCommand = commands.find((command) => command.command === "gccgw package apply");
+  assert.equal(applyCommand.riskTier, "A");
+  assert.equal(applyCommand.mode, "execution-gated");
+  assert.ok(applyCommand.approvalPrompt);
+
+  let called = null;
+  const exitCode = await runProxyGatewayCli([
+    "package",
+    "apply",
+    "deployments/production-template",
+    "--import-plan",
+    "reviewed-import-plan.json",
+    "--config-plan",
+    "reviewed-install-configure-plan.json",
+    "--execute-production-mutation",
+    "--apply",
+    "--json"
+  ], {
+    confirmRiskAExecution: async () => true,
+    runPackageApply: async (command) => {
+      called = command;
+      return 0;
+    },
+    runPackageImportDryRun: async () => {
+      throw new Error("dry-run adapter must not run for package apply");
+    },
+    runNodeScript: async () => {
+      throw new Error("node script must not run for package apply");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for package apply");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for package apply");
+    },
+    writeStdout: () => {},
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(called, {
+    kind: "package-apply",
+    commandName: "gccgw package apply",
+    packageDir: "deployments/production-template",
+    importPlanPath: "reviewed-import-plan.json",
+    configPlanPath: "reviewed-install-configure-plan.json",
+    executeProductionMutation: true,
+    apply: true,
     format: "json"
   });
 });

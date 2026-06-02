@@ -43,14 +43,26 @@ Current package commands:
 ```bash
 gccgw package inspect deployments/production-template --json
 gccgw package import deployments/production-template --dry-run --json
+gccgw package apply deployments/production-template \
+  --import-plan reviewed-package-import-plan.json \
+  --config-plan reviewed-install-configure-plan.json \
+  --execute-production-mutation \
+  --apply
 ```
 
 `gccgw package inspect` operates only on the C phase. `gccgw package import
 --dry-run` operates only on the B phase and returns a redacted plan for
 environment requirements, public-boundary checks, plan registration, and node
 slot wiring. It does not write files, read real environment values, copy
-SQLite, reload services, issue subscriptions, or mutate hosts. Any `--apply`
-path remains Risk A.
+SQLite, reload services, issue subscriptions, or mutate hosts.
+
+`gccgw package apply` is the A phase. It requires separately reviewed import
+and install-configuration plans plus `--execute-production-mutation --apply`.
+It is intended for a Linux target host only. Its bounded writes are limited to
+the reviewed `.env` skeleton, package metadata, runtime/control SQLite
+initialization, and handoff directory preparation. It still does not grant DNS,
+Nginx, systemd, firewall, public-traffic, customer-data, or real subscription
+issuance authority.
 
 ## Required Files
 
@@ -186,11 +198,12 @@ Recommended operator order:
 3. Check topology and public-boundary consistency.
 4. Check plan ids and node pool references.
 5. Run gccgw install preflight on target host.
-6. Request separate Risk A approval for bootstrap or data import.
-7. Apply host bootstrap only after approval.
-8. Inject approved env, SQLite, and node runtime data outside Git.
-9. Run service status and loopback validation.
-10. Start canary issuance or rollback by separate gate.
+6. Build and review the install configuration plan.
+7. Request separate Risk A approval for package apply and bootstrap.
+8. Run `gccgw package apply` only after approval on the Linux target host.
+9. Inject approved secret env values and node runtime data outside Git.
+10. Run service status and loopback validation.
+11. Start canary issuance or rollback by separate gate.
 ```
 
 ## Minimal Valid Package
