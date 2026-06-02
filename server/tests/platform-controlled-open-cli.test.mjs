@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -102,6 +102,16 @@ test("platform controlled-open CLI prints safe JSON without customer secrets", (
       /Sensitive Customer|owner@sensitive|secret-entry|raw-token|artifact:\/\/secret|https?:\/\//i
     );
   });
+});
+
+test("platform controlled-open tracked example stays compatible with the contract", () => {
+  const payload = JSON.parse(readFileSync(new URL("../../scripts/mock-controlled-open-input.example.json", import.meta.url), "utf8"));
+  const result = buildPlatformControlledOpenPackage(payload);
+
+  assert.equal(result.mode, "platform-controlled-open");
+  assert.equal(result.status, "ready_for_operator_delivery");
+  assert.equal(result.package.plan, "pilot");
+  assert.equal(result.safety.noProductionMutation, true);
 });
 
 test("platform controlled-open fails closed without an access reference", () => {

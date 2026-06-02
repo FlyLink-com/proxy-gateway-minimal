@@ -172,6 +172,8 @@ Do not expose this admin shell through the public Nginx gateway. Public producti
 - 注册、授权、订阅访问发放和通道激活准备优先采用 CLI-first 资源包模型。`npm run platform:resource-package -- <input.json>` 会生成 operator-safe 交付摘要。平台不把公网 Admin 作为产品面，公共边界只暴露明确批准的站点、健康检查、线索和订阅刷新接口；管理员能力收敛到 operator CLI、local/private console review、0600/当前用户可读 handoff 文件和执行记录。Admin UI 只保留 review/evidence 面，不承担复杂执行按钮。边界见 `docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md`。
 - Staging 不自动创建。任何 AWS staging mutation 前必须先执行 `docs/STAGING_PROVISIONING.md` 的 dry-run checklist，并获得明确 operator approval。
 - Production 不自动部署。生产变更必须保留 `.env`、SQLite、node config 和 Nginx public admin blocking，并按 `docs/DEPLOYMENT_FLOW.md` 验证。
+- 生产输入数据包先用 `deployments/production-template/` 填非敏感拓扑、节点、公共边界、套餐和 env 必填项；真实密钥、SQLite、客户数据和订阅材料仍只允许进入受保护 runtime/handoff，不进 Git。
+- 项目包边界按 `docs/PACKAGE_BOUNDARY.md` 收敛为两条线：完整项目包负责订阅控制/发放/审计/gccgw，节点包负责 edge host bootstrap/systemd/Nginx/protocol runtime。
 - 当前生产仍以已记录的线上事实为准；目标重建方向是 Aliyun 承担订阅控制面，本地 Linux 承担手动 CI，干净服务器承担转发 edge/data-plane。实际迁移必须走 A 档 runbook。
 
 详细流程入口以 `docs/README.md` 为准；该索引会指向当前状态文档、活跃 runbook、执行记录和历史设计文档。

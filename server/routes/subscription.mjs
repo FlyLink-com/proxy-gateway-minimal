@@ -5,78 +5,47 @@ import {
   generateClashSubscription,
   subscriptionSummary
 } from "../services/clash-subscription.mjs";
-
-function bearerToken(req) {
-  const authorization = req.get("authorization") || "";
-  const match = /^Bearer\s+(.+)$/i.exec(authorization);
-  return match ? match[1] : "";
-}
-
-function trimTrailingSlash(value) {
-  return String(value || "").replace(/\/+$/, "");
-}
-
-function publicBaseUrl(req, state) {
-  const configured = trimTrailingSlash(state.subscriptions?.publicSubscriptionBaseUrl);
-  if (configured) {
-    return configured;
-  }
-  return `${req.protocol}://${req.get("host")}`;
-}
-
-function artifactSecret(value) {
-  return String(value || "").replace(/\.yaml$/i, "").trim();
-}
-
-async function resolveArtifact(req, res, state) {
-  const core = state.subscriptions?.core || state.subscriptions?.service;
-  if (!core?.resolveSubscriptionArtifact) {
-    res.status(404).json({ error: "Not found" });
-    return null;
-  }
-
-  const rawArtifact = artifactSecret(req.params.artifact);
-  if (!rawArtifact) {
-    res.status(404).json({ error: "Not found" });
-    return null;
-  }
-
-  let result;
-  try {
-    result = await core.resolveSubscriptionArtifact(rawArtifact, {
-      ip: req.ip || req.socket?.remoteAddress || "",
-      userAgent: req.get("user-agent") || ""
-    });
-  } catch {
-    res.status(500).json({ error: "internal_error" });
-    return null;
-  }
-
-  if (!result.ok) {
-    res.status(result.status).json({ error: result.error });
-    return null;
-  }
-
-  return { rawArtifact, result };
-}
+import {
+  bearerToken,
+  createSubscriptionRouteResolver,
+  publicBaseUrl
+} from "../services/subscriptions/subscription-route-resolver.mjs";
 
 export function subscriptionRoutes(state) {
   const router = Router();
+  const resolver = createSubscriptionRouteResolver(state);
+
+  async function resolveArtifact(req, res) {
+    const resolved = await resolver.resolveArtifact({
+      artifact: req.params.artifact,
+      ip: req.ip || req.socket?.remoteAddress || "",
+      userAgent: req.get("user-agent") || ""
+    });
+    if (!resolved.ok) {
+      res.status(resolved.status).json({ error: resolved.error });
+      return null;
+    }
+    return resolved;
+  }
 
   router.get("/sub/a/:artifact/profile.yaml", async (req, res) => {
-    const resolved = await resolveArtifact(req, res, state);
+    const resolved = await resolveArtifact(req, res);
     if (!resolved) {
       return;
     }
 
-    const providerUrl = `${publicBaseUrl(req, state)}/sub/a/${encodeURIComponent(resolved.rawArtifact)}/provider.yaml`;
+    const providerUrl = `${publicBaseUrl({
+      configuredBaseUrl: state.subscriptions?.publicSubscriptionBaseUrl,
+      protocol: req.protocol,
+      host: req.get("host")
+    })}/sub/a/${encodeURIComponent(resolved.rawArtifact)}/provider.yaml`;
     res
       .type("application/x-yaml; charset=utf-8")
       .send(generateClashProviderSubscription(resolved.result.proxyConfig, { providerUrl }));
   });
 
   router.get("/sub/a/:artifact/provider.yaml", async (req, res) => {
-    const resolved = await resolveArtifact(req, res, state);
+    const resolved = await resolveArtifact(req, res);
     if (!resolved) {
       return;
     }
@@ -87,7 +56,7 @@ export function subscriptionRoutes(state) {
   });
 
   router.get("/sub/a/:artifact", async (req, res) => {
-    const resolved = await resolveArtifact(req, res, state);
+    const resolved = await resolveArtifact(req, res);
     if (!resolved) {
       return;
     }
@@ -99,7 +68,7 @@ export function subscriptionRoutes(state) {
 
   router.get("/sub/clash.yaml", async (req, res) => {
     const token = typeof req.query.token === "string" ? req.query.token : "";
-    const bearer = bearerToken(req);
+    const bearer = bearerToken(req.get("authorization") || "");
 
     if (token === state.consoleToken || bearer === state.consoleToken) {
       res
@@ -113,20 +82,7 @@ export function subscriptionRoutes(state) {
       return;
     }
 
-    const core = state.subscriptions?.core || state.subscriptions?.service;
-    if (!core) {
-      res.status(401).json({ error: "Unauthorized" });
-      return;
-    }
-
-    let result;
-    try {
-      result = await core.resolveSubscriptionToken(token);
-    } catch {
-      res.status(500).json({ error: "internal_error" });
-      return;
-    }
-
+    const result = await resolver.resolveToken(token);
     if (!result.ok) {
       res.status(result.status).json({ error: result.error });
       return;
@@ -134,7 +90,7 @@ export function subscriptionRoutes(state) {
 
     res
       .type("application/x-yaml; charset=utf-8")
-      .send(generateClashSubscription(result.proxyConfig));
+      .send(generateClashSubscription(result.result.proxyConfig));
   });
 
   router.get("/api/subscription/status", (_req, res) => {

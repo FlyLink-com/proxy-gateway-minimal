@@ -1,6 +1,6 @@
 # Aliyun User Management / Subscription Distribution Runbook
 
-Last updated: 2026-05-29, Asia/Shanghai.
+Last updated: 2026-06-01, Asia/Shanghai.
 
 > Status:
 > - Type: Active architecture and Risk A runbook
@@ -15,6 +15,40 @@ Last updated: 2026-05-29, Asia/Shanghai.
 >   user-management and subscription-distribution platform, HP remains
 >   validation/operator lab, and non-Aliyun nodes enter a separate controlled
 >   retirement queue
+
+## Preflight Check
+
+Every execution gate that touches Aliyun, HP, AWS, DNS, Nginx, systemd,
+firewall, security-group, SQLite, secrets, artifacts, tenants, node output,
+traffic, stop, termination, or cutover must first complete a fresh read-only
+preflight in its execution record. The preflight record is required to state:
+
+```text
+Risk: A / read-only
+Mutation: none
+Relevant live inventory gate: completed
+Current production/public boundary behavior: verified
+Current service, database, backup, and node-output posture: verified as applicable
+Secrets/customer data: not printed or copied into Git
+Rollback or exit owner: named
+```
+
+If the planned action depends on a stale, missing, or inconsistent inventory
+fact, stop before mutation and refresh the read-only evidence.
+
+## Not Performed Boundary
+
+Unless a later execution record has exact A-tier approval and records matching
+validation evidence, this runbook has not performed:
+
+```text
+Aliyun cleanup, bootstrap, deploy, DNS, Nginx, systemd, firewall, or security-group mutation
+production SQLite, secret, tenant, artifact, or node-output mutation
+production authority transfer
+HP deployment or validation-host mutation
+AWS node stop, termination, security-group deletion, or lifecycle change
+traffic migration, promotion, or cutover
+```
 
 ## Business Decision
 

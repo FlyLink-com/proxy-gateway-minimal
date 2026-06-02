@@ -7,7 +7,7 @@
 > - Production impact: None unless separately approved
 > - Source of truth for: Blue-green production replacement gates
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-06-01, Asia/Shanghai.
 
 This runbook defines the blue-green production replacement model for the
 current single-node AWS production service. It is a planning and execution gate
@@ -92,6 +92,40 @@ Production/AWS impact: yes
 
 The runbook itself may be edited as docs-only work, but executing it is
 production work.
+
+## Not Performed Boundary
+
+Unless a later replacement execution record has exact A-tier approval and
+records matching validation evidence, this runbook has not performed:
+
+```text
+green candidate creation
+AWS instance, security-group, IP, DNS, Nginx, systemd, or service mutation
+production .env, token, SQLite, subscription URL, customer-data, or node-config copy
+production deployment
+traffic migration, promotion, or cutover
+blue stop, reboot, resize, termination, or rollback-start
+```
+
+## Preflight Check
+
+Every replacement action must complete fresh read-only blue inventory and
+candidate/cutover planning evidence before any AWS, host, DNS, service,
+production-secret, SQLite, node-config, deployment, or traffic mutation. The
+preflight record is required to state:
+
+```text
+Risk: A / read-only
+Mutation: none
+Blue instance, public IP/EIP posture, and security group: verified
+Current public endpoint, service, database, and backup posture: verified
+Green candidate plan, secret/data handling plan, and rollback plan: recorded
+Secrets/customer data: not printed or copied into Git
+Selected approval gate and owner: named
+```
+
+If any preflight fact is stale, missing, or inconsistent with the selected
+approval gate, stop before creating or mutating replacement resources.
 
 ## Pre-Execution Gates
 

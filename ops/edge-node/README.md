@@ -63,8 +63,24 @@ Forbidden in this directory:
 
 ## Bootstrap Boundary
 
-`bootstrap.sh` is fail-closed by default. It only mutates a host when invoked
-with:
+`bootstrap.sh` is fail-closed by default. The `gccgw install bootstrap` wrapper
+requires a reviewed `gccgw install configure --dry-run` plan before it reaches
+the host mutation path:
+
+```bash
+gccgw install configure --dry-run \
+  --domain https://sub.example.com \
+  --install-dir /opt/proxy-gateway-minimal \
+  --management-source 203.0.113.10/32 \
+  --json > reviewed-install-configure-plan.json
+
+gccgw install bootstrap \
+  --config-plan reviewed-install-configure-plan.json \
+  --execute-production-mutation \
+  --apply
+```
+
+The underlying shell script still only mutates a host when invoked with:
 
 ```bash
 sudo bash ops/edge-node/bootstrap.sh --apply
@@ -85,14 +101,15 @@ action:
 ```text
 1. Create or assign a clean host under an approved execution record.
 2. Place the reviewed repository checkout at /opt/proxy-gateway-minimal.
-3. Run bootstrap.sh --apply.
-4. Create /opt/proxy-gateway-minimal/.env from templates/env.example.
-5. Create /etc/proxy-gateway/ss-server.json from templates/ss-server.json.example.
-6. Create config/proxy-servers.json from templates/proxy-servers.json.example if this node will generate subscription YAML.
-7. Inject approved production secrets without recording them in Git, PRs, docs, or chat.
-8. Restore an approved SQLite backup and run pragma integrity_check.
-9. Validate local health, public boundary, Nginx config, systemd state, and Shadowsocks reachability.
-10. Request a separate cutover or standby-promotion approval if needed.
+3. Generate and review `gccgw install configure --dry-run` output.
+4. Run `gccgw install bootstrap --config-plan <reviewed-plan.json> --execute-production-mutation --apply`.
+5. Create /opt/proxy-gateway-minimal/.env from templates/env.example.
+6. Create /etc/proxy-gateway/ss-server.json from templates/ss-server.json.example.
+7. Create config/proxy-servers.json from templates/proxy-servers.json.example if this node will generate subscription YAML.
+8. Inject approved production secrets without recording them in Git, PRs, docs, or chat.
+9. Restore an approved SQLite backup and run pragma integrity_check.
+10. Validate local health, public boundary, Nginx config, systemd state, and Shadowsocks reachability.
+11. Request a separate cutover or standby-promotion approval if needed.
 ```
 
 ## Validation Checklist

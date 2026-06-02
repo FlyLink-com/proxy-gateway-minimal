@@ -1,6 +1,6 @@
 # HP Portal Validation Runbook
 
-Last updated: 2026-05-31, Asia/Shanghai.
+Last updated: 2026-06-01, Asia/Shanghai.
 
 > Status:
 > - Type: private validation runbook
@@ -71,6 +71,19 @@ This runbook does not allow:
 - Legacy query-token retirement.
 - Traffic accounting or quota enforcement mutation.
 
+## Not Performed Boundary
+
+Unless a later execution record has exact A-tier approval and records matching
+validation evidence, this runbook has not performed:
+
+```text
+HP host mutation, deployment, process start, or port exposure
+Nginx, systemd, firewall, DNS, Aliyun, AWS, or production-boundary mutation
+production SQLite/customer-data copy, migration, or write
+real tenant, artifact, subscription URL, payment, or entitlement issuance
+edge traffic activation or legacy query-token retirement
+```
+
 ## Risk Boundary
 
 | Activity | Risk | Approval |
@@ -83,6 +96,25 @@ This runbook does not allow:
 | Starting a loopback/private test service on HP | A | Exact approval required |
 | Changing HP Nginx/systemd/firewall | A | Separate exact approval required |
 | Any production or Aliyun mutation | A | Separate production approval required |
+
+## Preflight Check
+
+Every HP validation execution must complete `Read-Only Inventory` before any
+copy, package install, test database creation, process start, listener exposure,
+or host mutation. The preflight record is required to state:
+
+```text
+Risk: A / read-only
+Mutation: none
+HP host identity and toolchain: verified
+Current listeners and disk capacity: verified
+Validation target and isolated directory: named
+Secrets/customer data: not printed or copied into Git
+Rollback cleanup action: named
+```
+
+If any preflight fact is stale, missing, or inconsistent with the approval
+phrase, stop before HP setup mutation.
 
 ## Read-Only Inventory
 

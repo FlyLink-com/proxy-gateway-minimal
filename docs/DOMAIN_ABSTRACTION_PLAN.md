@@ -33,7 +33,9 @@ Known cutover blockers:
 - The tracked `PUBLIC_SUBSCRIPTION_BASE_URL` example remains IP-pinned.
 - The tracked `config/proxy-servers.json` host, `pingHosts`, and `nginx.host`
   remain IP-pinned.
-- `docs/DOMAIN_HTTPS.md` exists, but the domain HTTPS plan remains paused.
+- `docs/archive/DOMAIN_HTTPS.md` exists as a historical paused AWS Singapore
+  HTTPS runbook, but current domain execution is governed by this plan and
+  `docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md`.
 - Green candidate creation and production cutover are not approved.
 
 ## Recommendation

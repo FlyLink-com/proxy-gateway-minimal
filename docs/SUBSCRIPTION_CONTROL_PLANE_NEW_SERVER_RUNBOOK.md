@@ -1,6 +1,6 @@
 # Subscription Control Plane New Server Runbook
 
-Last updated: 2026-05-26, Asia/Shanghai.
+Last updated: 2026-06-01, Asia/Shanghai.
 
 > Status:
 > - Type: Active Risk A runbook
@@ -66,6 +66,20 @@ WireGuard setup
 Server Edge Mesh membership
 Local Edge Agent production transport
 customer traffic over the new server
+```
+
+## Not Performed Boundary
+
+Unless a later execution record has exact A-tier approval and records matching
+validation evidence, this runbook has not performed:
+
+```text
+cloud provisioning
+DNS, Nginx, HTTPS, systemd, security-group, or firewall mutation
+production secret, SQLite, tenant, artifact, or subscription-output movement
+production authority transfer
+customer traffic routing
+promotion, cutover, or edge-node lifecycle changes
 ```
 
 ## Target Role
@@ -150,6 +164,26 @@ Sensitive values must be described by location and verification result only.
 Do not paste raw tokens, subscription URLs, private keys, passwords, `.env`
 content, SQLite rows, customer data, or generated subscription YAML into chat,
 docs, PRs, or CI logs.
+
+## Preflight Check
+
+Every execution must complete a fresh read-only preflight before any cloud,
+host, DNS, Nginx, HTTPS, systemd, runtime-config, SQLite, secret, artifact,
+tenant, security-group, or lifecycle mutation. The preflight record is required
+to state:
+
+```text
+Risk: A / read-only
+Mutation: none
+Current production DNS and endpoint behavior: verified
+Current production service, DB path, backup timestamp, and Nginx boundary: verified
+Candidate commit and validation evidence: recorded
+Secrets/customer data: not printed or copied into Git
+Rollback/disposal owner: named
+```
+
+If any preflight fact is stale, missing, or inconsistent with the approval
+phrase, stop before provisioning or mutation.
 
 ## Candidate Provisioning Scope
 

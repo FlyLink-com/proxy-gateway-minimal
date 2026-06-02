@@ -7,7 +7,7 @@
 > - Production impact: None unless separately approved
 > - Source of truth for: Single-node production disaster recovery gates
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-06-01, Asia/Shanghai.
 
 This runbook documents how to reason about and recover the current production
 service when the single AWS production node is degraded. It is a recovery
@@ -30,6 +30,20 @@ Runtime path: /opt/proxy-gateway-minimal
 All production-changing actions remain Risk A work. They require an explicit
 operator approval, read-only inventory, a recovery plan, validation evidence,
 and a rollback or exit plan before mutation.
+
+## Not Performed Boundary
+
+Unless a later incident execution record has exact A-tier approval and records
+matching validation evidence, this runbook has not performed:
+
+```text
+AWS instance, security-group, or IP mutation
+production deployment or service restart
+Nginx, systemd, ss-server, .env, SQLite, or node-config mutation
+production secret, subscription URL, SQLite, or customer-data copy
+backup restore
+replacement, failover, promotion, or cutover
+```
 
 ## Current Single Points Of Failure
 
@@ -79,6 +93,26 @@ Do not perform these actions without a specific approved Risk A runbook:
   self-hosted runner.
 - Do not expose the Admin UI or Admin API publicly.
 - Do not open `3456`, `18180`, or `1080` to the public internet.
+
+## Preflight Check
+
+Every incident response path must complete `Read-Only AWS Inventory` and the
+relevant endpoint/database backup checks before any AWS, host, service, Nginx,
+systemd, SQLite, runtime-config, secret, restore, replacement, or traffic
+mutation. The preflight record is required to state:
+
+```text
+Risk: A / read-only
+Mutation: none
+Production instance, public IP/EIP posture, and security group: verified
+Endpoint/service/database health: verified
+Backup path and latest backup timestamp: verified before restore or mutation
+Secrets/customer data: not printed or copied into Git
+Recovery approval, rollback, and exit owner: named
+```
+
+If any preflight fact is stale, missing, or inconsistent with the incident
+approval, stop before mutation and refresh the read-only evidence.
 
 ## Read-Only AWS Inventory
 

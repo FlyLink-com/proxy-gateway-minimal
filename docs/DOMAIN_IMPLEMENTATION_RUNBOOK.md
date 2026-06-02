@@ -7,7 +7,7 @@
 > - Production impact: None unless separately approved
 > - Source of truth for: DNS/domain implementation gates and rollback commands
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-06-01, Asia/Shanghai.
 
 This runbook converts `docs/DOMAIN_ABSTRACTION_PLAN.md` into execution gates,
 commands, validation, and rollback steps. It is still documentation only until
@@ -84,6 +84,39 @@ Stop and do not proceed if any of these are true:
 - A production config backup cannot be created.
 - A fresh SQLite backup is required for the selected stage but cannot be made.
 - The operator has not provided the required approval phrase for the stage.
+
+## Not Performed Boundary
+
+Unless a later execution record has exact A-tier approval and records matching
+validation evidence, this runbook has not performed:
+
+```text
+DNS record mutation
+Nginx, HTTPS, production .env, or production node-config mutation
+green candidate creation
+service restart
+subscription base URL or Shadowsocks node host migration
+traffic migration or cutover
+```
+
+## Preflight Check
+
+Every execution must complete `Stage 0: Read-Only Preflight` before any DNS,
+Nginx, HTTPS, production config, green candidate, service, runtime, client, or
+traffic mutation. The preflight record is required to state:
+
+```text
+Risk: A / read-only
+Mutation: none
+Current AWS target identity and public IP/EIP posture: verified
+Current AliDNS and public HTTP behavior: verified
+Current Nginx/log redaction posture: verified
+Secrets/customer data: not printed or copied into Git
+Rollback owner and selected approval gate: named
+```
+
+If any Stage 0 fact is stale, missing, or inconsistent with the selected
+approval gate, stop before mutation and refresh the read-only preflight.
 
 ## Stage 0: Read-Only Preflight
 

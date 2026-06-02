@@ -1,0 +1,50 @@
+{
+  "type": "gccgw_config",
+  "profiles": {
+    "local": {
+      "environment": "local",
+      "riskTier": "B",
+      "publicBaseUrl": "http://127.0.0.1:45132",
+      "execution": {
+        "allowProductionMutation": false,
+        "approvalRequired": false
+      },
+      "files": {
+        "envFile": ".env",
+        "runtimeDbPath": "data/runtime.local.sqlite",
+        "controlDbPath": "data/control.local.sqlite",
+        "handoffDir": "handoff/local"
+      }
+    },
+    "hp-private": {
+      "environment": "hp-private",
+      "riskTier": "B",
+      "publicBaseUrl": "http://127.0.0.1:45132",
+      "execution": {
+        "allowProductionMutation": false,
+        "approvalRequired": true
+      },
+      "files": {
+        "envFile": ".env.hp-private",
+        "runtimeDbPath": "data/runtime.hp-private.sqlite",
+        "controlDbPath": "data/control.hp-private.sqlite",
+        "handoffDir": "handoff/hp-private"
+      }
+    },
+    "aliyun-prod": {
+      "environment": "aliyun-prod",
+      "riskTier": "A",
+      "publicBaseUrl": "https://example.invalid",
+      "execution": {
+        "allowProductionMutation": true,
+        "approvalRequired": true
+      },
+      "files": {
+        "envFile": ".env.aliyun-prod",
+        "runtimeDbPath": "data/runtime.aliyun-prod.sqlite",
+        "controlDbPath": "data/control.aliyun-prod.sqlite",
+        "handoffDir": "handoff/aliyun-prod"
+      }
+    }
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "schema": "gccgw.productionNodes.v1",
+  "metadata": {
+    "name": "production-node-slots",
+    "secretsInGit": false
+  },
+  "slots": [
+    {
+      "id": "prod-edge-a",
+      "role": "stable-primary",
+      "pool": "stable",
+      "protocols": ["ss"],
+      "provider": "operator-selected",
+      "hostRef": "runtime:PROD_EDGE_A_HOST",
+      "credentialRefs": ["env:SS_PASSWORD"],
+      "subscriptionEligible": true,
+      "bootstrapAuthority": "separate-risk-a-approval"
+    },
+    {
+      "id": "prod-edge-b",
+      "role": "stable-secondary",
+      "pool": "stable",
+      "protocols": ["ss"],
+      "provider": "operator-selected",
+      "hostRef": "runtime:PROD_EDGE_B_HOST",
+      "credentialRefs": ["env:SS_PASSWORD"],
+      "subscriptionEligible": true,
+      "bootstrapAuthority": "separate-risk-a-approval"
+    },
+    {
+      "id": "prod-edge-c",
+      "role": "recovery-or-new-stable-candidate",
+      "pool": "recovery",
+      "protocols": ["ss"],
+      "provider": "operator-selected",
+      "hostRef": "runtime:PROD_EDGE_C_HOST",
+      "credentialRefs": ["env:SS_PASSWORD"],
+      "subscriptionEligible": false,
+      "bootstrapAuthority": "separate-risk-a-approval"
+    },
+    {
+      "id": "channel-lab-b-tuic",
+      "role": "controlled-canary",
+      "pool": "canary",
+      "protocols": ["tuic"],
+      "provider": "operator-selected",
+      "hostRef": "protected-runtime:CHANNEL_LAB_B_TUIC_HOST",
+      "credentialRefs": [
+        "protected-env:CHANNEL_LAB_B_TUIC_UUID",
+        "protected-env:CHANNEL_LAB_B_TUIC_PASSWORD",
+        "protected-file:CHANNEL_LAB_B_TUIC_CERT"
+      ],
+      "subscriptionEligible": false,
+      "bootstrapAuthority": "separate-risk-a-approval"
+    }
+  ],
+  "promotionRules": {
+    "canaryToStableRequires": [
+      "fresh runtime health",
+      "operator-device validation",
+      "subscription output canary evidence",
+      "rollback evidence",
+      "separate exact approval"
+    ],
+    "defaultOutputMayUsePools": ["stable"],
+    "controlledAccessMayUsePools": ["stable", "canary", "recovery"]
+  }
+}

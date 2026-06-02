@@ -3,6 +3,11 @@ bin/*.exe
 *.log
 .env
 .env.payment
+.env.local
+.env.hp-private
+.env.aliyun-prod
+config/gccgw.config.json
+data/
 .proxy-gateway/
 .worktrees
 .worktrees/

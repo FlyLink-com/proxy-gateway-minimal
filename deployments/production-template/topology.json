@@ -1,0 +1,42 @@
+{
+  "schema": "gccgw.productionTopology.v1",
+  "metadata": {
+    "name": "production-template",
+    "environment": "production",
+    "authority": "template-only",
+    "secretsInGit": false
+  },
+  "controlPlane": {
+    "id": "aliyun-subscription-control",
+    "role": "subscription-control-plane",
+    "provider": "aliyun-like",
+    "runtimePath": "/opt/proxy-gateway-minimal",
+    "publicBaseUrl": "https://control.example.invalid",
+    "publicRoutes": [
+      "/",
+      "/api/health",
+      "/api/public/leads",
+      "/sub/clash.yaml",
+      "/sub/a/*"
+    ],
+    "protectedRoutes": [
+      "/api/admin/*",
+      "/api/platform/*"
+    ],
+    "databaseRefs": {
+      "runtime": "env:SUBSCRIPTION_DB_PATH",
+      "control": "env:SUBSCRIPTION_CONTROL_DB_PATH"
+    }
+  },
+  "dataPlane": {
+    "defaultPool": "stable",
+    "canaryPool": "canary",
+    "recoveryPool": "recovery",
+    "nodeConfigSource": "config/proxy-servers.json generated from approved runtime facts"
+  },
+  "operatorAccess": {
+    "sshSource": "operator-approved-management-source-only",
+    "adminAccess": "loopback-or-private-only",
+    "publicAdmin": false
+  }
+}

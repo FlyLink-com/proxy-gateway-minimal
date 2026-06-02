@@ -28,6 +28,40 @@ Do not use this file as:
 
 Detailed navigation lives in `docs/README.md`. Structured project state lives in
 `project-state/*.json`; it is a coordination aid, not a runtime control plane.
+The `master`/archive boundary lives in `docs/MASTER_ARCHIVE_BOUNDARY.md`: keep
+`master` focused on current source, active runbooks, compact current state, and
+safe indexes; move or mirror stale drafts, old workspace notes, and superseded
+execution packages outside the active reading path only after they are indexed.
+The lightweight operating/development environment boundary lives in
+`docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md`: default to local checkout,
+local Node/Admin dev processes, safe CLI previews, optional HP/local Linux
+manual validation, and read-only production observation; do not promote Aliyun,
+HP, archive folders, or production runtime state into the routine dev workspace.
+The multi-environment adapter runtime model lives in
+`docs/MULTI_ENV_ADAPTER_RUNTIME_MODEL.md`: keep one modular monolith, push shared
+business rules into domain services, and make CLI, User Portal, Operator/Admin,
+Public Site, HP, and Aliyun runtime wiring thin adapters instead of forks.
+The control/data-plane interconnect contract lives in
+`docs/CONTROL_DATA_PLANE_INTERCONNECT_CONTRACT.md`: subscription control and
+multi-node data-plane capacity are separate sub-systems connected by DNS
+pointers, safe node facts, health/measurement facts, node pools, and
+subscription-output rendering; neither side should own the other's authority.
+The server project import boundary lives in
+`docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
+repository with the live server through read-only, redacted inventory; never
+copy `.env`, SQLite, handoff files, raw logs, subscription URLs, tokens,
+credentials, or customer data into Git.
+The first approved Aliyun server project import read-only inventory is recorded
+in
+`docs/production-replacement-records/2026-06-01-aliyun-server-project-import-readonly-inventory.md`.
+It confirms the live packaged release layout and safe hash/drift facts without
+copying runtime secrets or mutating production.
+The redacted import manifest and drift matrix lives in
+`docs/SERVER_IMPORT_MANIFEST_2026_06_01.md`; it records which live server
+templates already match Git and which package/template drift needs explanation.
+The detailed node registration and pool contract lives in
+`docs/NODE_REGISTRATION_AND_POOL_CONTRACT.md`; it refines the safe multi-node
+schema for node facts, lifecycle, pools, and health summaries.
 
 ## Repository
 
@@ -77,7 +111,9 @@ approval gate.
 `docs/PROJECT_OPERATING_MODEL.md` defines stage reporting as an on-demand
 handoff and risk-control tool. The former fixed "every five merged PRs" cadence
 is retired. Create stage reports only after a production gate, a long-running
-work lane, a major product direction change, or an operator request.
+work lane, a major product direction change, or an operator request. Historical
+fixed-cadence PR reports are archived under `docs/archive/stage-reports/` and
+must not be used as current state.
 
 ## Current Product Direction
 
@@ -172,10 +208,13 @@ Current architecture priorities:
   starting a private service, or changing Nginx/systemd/firewall on HP remains
   Risk A and requires exact approval. See
   `docs/HP_PORTAL_VALIDATION_RUNBOOK.md`. The latest approved private HP portal
-  validation passed on 2026-05-31 with test-only SQLite and a loopback-only
-  service, then rollback stopped the service and deleted the isolated directory;
+  validation passed again on 2026-06-01 with test-only SQLite and a
+  loopback-only service on the current `gccgw` branch, proving portal shell,
+  access-request, TOTP enrollment, and session seams while runtime
+  tenant/artifact counts stayed zero; rollback stopped the service and deleted
+  the isolated directory;
   see
-  `docs/production-replacement-records/2026-05-31-hp-portal-validation-private-execution.md`.
+  `docs/production-replacement-records/2026-06-01-hp-portal-validation-private-execution.md`.
 - User Portal Auth Service: repository-only internal service support now exists
   under `server/services/platform/user-portal-auth.mjs` for issuing dynamic
   portal entries, enrolling TOTP credentials through an injected verifier, and
@@ -1566,6 +1605,13 @@ High-value entrypoints:
 - `AGENTS.md` - workflow rules and A/B/C risk gates.
 - `docs/PROJECT_OPERATING_MODEL.md` - source-of-truth layers and work lanes.
 - `docs/PROJECT_SIMPLIFICATION_MAP.md` - cleanup map and complexity hotspots.
+- `docs/MASTER_ARCHIVE_BOUNDARY.md` - `master` versus archive boundary for
+  current source, historical evidence, runtime state, and release manifests.
+- `docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md` - minimal local
+  operator/developer environment, safe CLI preview, validation, production
+  observation, and release-mode boundary.
+- `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md` - redacted live-server project import
+  boundary before deeper code/function refactoring.
 - `docs/PROJECT_CONTROL_PLANE.md` - structured project-state model.
 - `docs/VALIDATION_BASELINE.md` - current validation command matrix.
 - `project-state/current.json` - compact current-state snapshot.
