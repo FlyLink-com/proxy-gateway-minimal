@@ -70,6 +70,16 @@ subscription-boundary checks on Tokyo and Korea temporary AWS hosts, followed by
 full resource cleanup. It does not prove centralized multi-node registration,
 DNS cutover, public business-port exposure, production traffic, or real
 subscription issuance.
+The first exact-approved Tokyo/Korea production-candidate private validation is
+recorded in
+`docs/production-replacement-records/2026-06-02-aws-production-candidate-tokyo-korea-private-validation.md`.
+It proves current `master` can be deployed from a git bundle onto fresh Ubuntu
+candidate hosts in both regions, run `gccgw` node/install/package read-only and
+dry-run checks, pass loopback-only private health and subscription-boundary
+checks, and complete full tests before all temporary AWS and local key material
+is cleaned up. It does not authorize public business ports, DNS routing, durable
+node registration, production traffic, production SQLite access, or real
+subscription issuance.
 
 ## Repository
 
