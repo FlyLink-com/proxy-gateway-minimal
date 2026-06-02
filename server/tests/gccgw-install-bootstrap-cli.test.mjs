@@ -82,6 +82,10 @@ test("gccgw install bootstrap reaches host gate after a valid configure plan", (
     }
   }));
 
+  const expectedHostGate = process.platform === "linux"
+    ? /bootstrap\.sh must run as root via sudo/
+    : /install bootstrap can only run on a Linux server host/;
+
   assert.throws(
     () => execFileSync(process.execPath, [
       "scripts/gccgw-install-bootstrap.mjs",
@@ -94,6 +98,6 @@ test("gccgw install bootstrap reaches host gate after a valid configure plan", (
       encoding: "utf8",
       stdio: "pipe"
     }),
-    /install bootstrap can only run on a Linux server host/
+    expectedHostGate
   );
 });
