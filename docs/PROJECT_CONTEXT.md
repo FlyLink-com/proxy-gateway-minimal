@@ -70,6 +70,23 @@ subscription-boundary checks on Tokyo and Korea temporary AWS hosts, followed by
 full resource cleanup. It does not prove centralized multi-node registration,
 DNS cutover, public business-port exposure, production traffic, or real
 subscription issuance.
+The approved Aliyun runtime-upgrade read-only preflight inventory is recorded
+in
+`docs/production-replacement-records/2026-06-02-aliyun-upgrade-preflight-inventory.md`.
+It confirms current public/private boundary posture, live release metadata,
+candidate `b781f3d` release posture, service/listener/SQLite/backup metadata,
+and no Aliyun mutation. The next mutation gate remains blocked until exact
+Risk A approval; do not package the dirty working tree, replace the
+documentation management-source placeholder with the real CIDR, and explicitly
+accept or handle the existing loopback `127.0.0.1:35435` listener and failed
+`aegis.service` state as separate pre-existing observations.
+The first exact-approved Aliyun runtime-upgrade attempt is recorded in
+`docs/production-replacement-records/2026-06-02-aliyun-candidate-runtime-upgrade-blocked.md`.
+It uploaded the exact `b781f3d` archive to `/tmp` but intentionally stopped
+before creating the new release, running `npm ci`, switching `current`, or
+restarting the service because the preserved systemd entry expects a live-only
+`candidate-start.mjs` shim that is not present in the exact Git archive. Current
+Aliyun runtime remains on `da33de295cb0`.
 
 ## Repository
 
