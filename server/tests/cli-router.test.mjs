@@ -11,6 +11,7 @@ import {
   buildPackageScriptSpawn,
   buildCliCommandMap,
   buildCliHelp,
+  buildServiceStatusReport,
   buildReleasePlan,
   buildReleaseStatusReport,
   listCliCommands,
@@ -101,6 +102,28 @@ test("gccgw CLI resolves install and service commands without mutating by defaul
     script: "scripts/gccgw-install-bootstrap.mjs",
     args: ["--execute-production-mutation", "--apply"]
   });
+  assert.deepEqual(resolveCliCommand([
+    "install",
+    "bootstrap",
+    "--execute-production-mutation",
+    "--apply",
+    "--remove-default-nginx-site"
+  ]), {
+    kind: "node-script",
+    script: "scripts/gccgw-install-bootstrap.mjs",
+    args: ["--execute-production-mutation", "--apply", "--remove-default-nginx-site"]
+  });
+  assert.deepEqual(resolveCliCommand([
+    "install",
+    "validate-loopback",
+    "--execute-production-mutation",
+    "--synthetic",
+    "--json"
+  ]), {
+    kind: "node-script",
+    script: "scripts/gccgw-install-validate-loopback.mjs",
+    args: ["--execute-production-mutation", "--synthetic", "--json"]
+  });
 });
 
 test("gccgw CLI exposes business facade commands for node, subscription, backup, and release", () => {
@@ -110,6 +133,7 @@ test("gccgw CLI exposes business facade commands for node, subscription, backup,
   assert.ok(commandNames.includes("gccgw node plan"));
   assert.ok(commandNames.includes("gccgw node preflight"));
   assert.ok(commandNames.includes("gccgw node bootstrap"));
+  assert.ok(commandNames.includes("gccgw node validate-loopback"));
   assert.ok(commandNames.includes("gccgw node status"));
   assert.ok(commandNames.includes("gccgw subscription form"));
   assert.ok(commandNames.includes("gccgw subscription issue"));
@@ -349,11 +373,13 @@ test("gccgw install plan and preflight reports are redacted and explicit about m
 
   assert.equal(plan.type, "gccgw_install_plan");
   assert.equal(plan.riskTier, "A for bootstrap execution");
-  assert.ok(plan.commands.some((command) => command.command === "gccgw install bootstrap --execute-production-mutation --apply"));
+  assert.ok(plan.commands.some((command) => command.command.includes("gccgw install bootstrap --execute-production-mutation --apply")));
+  assert.ok(plan.commands.some((command) => command.command === "gccgw install validate-loopback --execute-production-mutation --synthetic --json"));
   assert.doesNotMatch(JSON.stringify(plan), /TOKEN|SECRET|PASSWORD|subscriptionUrl|C:\\\\/i);
 
   const preflight = buildInstallPreflightReport({
     platform: "linux",
+    osRelease: "ID=ubuntu\nID_LIKE=debian\n",
     files: {
       packageJson: true,
       bootstrap: true,
@@ -367,6 +393,7 @@ test("gccgw install plan and preflight reports are redacted and explicit about m
       npm: true,
       git: true,
       bash: true,
+      aptGet: true,
       systemctl: true,
       nginx: true
     },
@@ -376,9 +403,74 @@ test("gccgw install plan and preflight reports are redacted and explicit about m
   assert.equal(preflight.type, "gccgw_install_preflight");
   assert.equal(preflight.ok, true);
   assert.equal(preflight.redacted, true);
+  assert.equal(preflight.checks.debianLikeHost.ok, true);
+  assert.equal(preflight.checks.aptGet.ok, true);
   assert.equal(preflight.checks.rootForBootstrap.ok, false);
   assert.equal(preflight.checks.rootForBootstrap.required, false);
   assert.doesNotMatch(JSON.stringify(preflight), /TOKEN|SECRET|PASSWORD|subscriptionUrl|C:\\\\/i);
+});
+
+test("gccgw install preflight reports unsupported distro and default Nginx site remediation", () => {
+  const preflight = buildInstallPreflightReport({
+    platform: "linux",
+    osRelease: "ID=amzn\nID_LIKE=fedora\n",
+    files: {
+      packageJson: true,
+      bootstrap: true,
+      consoleUnit: true,
+      ssUnit: true,
+      nginxTemplate: true,
+      envTemplate: true,
+      nginxDefaultSiteEnabled: true
+    },
+    commands: {
+      node: true,
+      npm: true,
+      git: true,
+      bash: true,
+      aptGet: false,
+      systemctl: true,
+      nginx: true
+    },
+    isRoot: true
+  });
+
+  assert.equal(preflight.ok, false);
+  assert.equal(preflight.checks.debianLikeHost.ok, false);
+  assert.equal(preflight.checks.aptGet.ok, false);
+  assert.equal(preflight.checks.nginxDefaultSiteDisabled.ok, false);
+  assert.match(preflight.checks.nginxDefaultSiteDisabled.remediation, /--remove-default-nginx-site/);
+  assert.match(preflight.nextCommand, /--remove-default-nginx-site/);
+  assert.doesNotMatch(JSON.stringify(preflight), /TOKEN|SECRET|PASSWORD|subscriptionUrl|C:\\\\/i);
+});
+
+test("gccgw service status treats non-root nginx config permission as actionable warning", () => {
+  const report = buildServiceStatusReport({
+    platform: "linux",
+    services: {
+      console: { supported: true, active: true },
+      shadowsocks: { supported: true, active: true },
+      nginx: { supported: true, active: true }
+    },
+    checks: {
+      nginxConfig: {
+        supported: true,
+        ok: false,
+        status: "permission_required",
+        requiresRoot: true
+      },
+      localHealth: {
+        supported: true,
+        ok: true
+      }
+    }
+  });
+
+  assert.equal(report.ok, true);
+  assert.equal(report.checks.nginxConfig.status, "permission_required");
+  assert.equal(report.checks.nginxConfig.requiresRoot, true);
+  assert.equal(report.warnings.some((warning) => warning.code === "nginx_config_requires_root"), true);
+  assert.doesNotMatch(JSON.stringify(report), /TOKEN|SECRET|PASSWORD|subscriptionUrl|C:\\\\/i);
 });
 
 test("gccgw CLI resolves architecture map as a read-only project command", () => {
@@ -516,6 +608,7 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.ok(names.includes("gccgw install plan"));
   assert.ok(names.includes("gccgw install preflight"));
   assert.ok(names.includes("gccgw install bootstrap"));
+  assert.ok(names.includes("gccgw install validate-loopback"));
   assert.ok(names.includes("gccgw service status"));
   assert.ok(names.includes("gccgw project verify"));
   assert.ok(names.includes("gccgw platform issue-subscription"));

@@ -14,7 +14,13 @@ if (!args.includes("--apply")) {
   process.exit(1);
 }
 
-const unsupported = args.filter((arg) => !["--execute-production-mutation", "--apply"].includes(arg));
+const removeDefaultNginxSite = args.includes("--remove-default-nginx-site");
+
+const unsupported = args.filter((arg) => ![
+  "--execute-production-mutation",
+  "--apply",
+  "--remove-default-nginx-site"
+].includes(arg));
 if (unsupported.length > 0) {
   console.error("unsupported install bootstrap argument");
   process.exit(1);
@@ -28,7 +34,10 @@ if (process.platform !== "linux") {
 const scriptPath = resolve("ops/edge-node/bootstrap.sh");
 const result = spawnSync("bash", [scriptPath, "--apply"], {
   cwd: process.cwd(),
-  env: process.env,
+  env: {
+    ...process.env,
+    ...(removeDefaultNginxSite ? { REMOVE_DEFAULT_NGINX_SITE: "true" } : {})
+  },
   stdio: "inherit"
 });
 

@@ -11,6 +11,7 @@ import {
   buildCliHelp,
   buildGccgwSelfCheckReport,
   buildInstallPreflightReport,
+  buildServiceStatusReport,
   buildReleaseStatusReport,
   redactNetworkStatus,
   runProxyGatewayCli
@@ -156,19 +157,24 @@ function writeReport(report, format) {
 async function runInstallPreflight(command) {
   const report = buildInstallPreflightReport({
     platform: process.platform,
+    osRelease: process.platform === "linux" && existsSync("/etc/os-release")
+      ? readFileSync("/etc/os-release", "utf8")
+      : "",
     files: {
       packageJson: existsSync(resolve(rootDir, "package.json")),
       bootstrap: existsSync(resolve(rootDir, "ops/edge-node/bootstrap.sh")),
       consoleUnit: existsSync(resolve(rootDir, "ops/edge-node/systemd/proxy-gateway-console.service")),
       ssUnit: existsSync(resolve(rootDir, "ops/edge-node/systemd/proxy-gateway-ss.service")),
       nginxTemplate: existsSync(resolve(rootDir, "ops/edge-node/nginx/proxy-gateway-public.conf")),
-      envTemplate: existsSync(resolve(rootDir, "ops/edge-node/templates/env.example"))
+      envTemplate: existsSync(resolve(rootDir, "ops/edge-node/templates/env.example")),
+      nginxDefaultSiteEnabled: process.platform === "linux" && existsSync("/etc/nginx/sites-enabled/default")
     },
     commands: {
       node: commandAvailable("node"),
       npm: commandAvailable("npm"),
       git: commandAvailable("git"),
       bash: commandAvailable("bash"),
+      aptGet: commandAvailable("apt-get"),
       systemctl: commandAvailable("systemctl"),
       nginx: commandAvailable("nginx")
     },
@@ -254,17 +260,23 @@ function commandStatus(command, args) {
     env: process.env,
     encoding: "utf8"
   });
+  const output = `${result.stderr || ""}\n${result.stdout || ""}`;
+  const permissionRequired = result.status !== 0
+    && command === "nginx"
+    && args.includes("-t")
+    && /permission denied|\/run\/nginx\.pid|open\(\)\s+"\/run\/nginx\.pid"/i.test(output);
   return {
     supported: true,
-    ok: result.status === 0
+    ok: result.status === 0,
+    ...(permissionRequired ? {
+      status: "permission_required",
+      requiresRoot: true
+    } : {})
   };
 }
 
 async function runServiceStatus(command) {
-  const report = {
-    type: "gccgw_service_status",
-    generatedBy: "gccgw service status",
-    ok: false,
+  const report = buildServiceStatusReport({
     platform: process.platform,
     services: {
       console: serviceActive("proxy-gateway-console.service"),
@@ -274,11 +286,8 @@ async function runServiceStatus(command) {
     checks: {
       nginxConfig: commandStatus("nginx", ["-t"]),
       localHealth: commandStatus("curl", ["-fsS", "http://127.0.0.1:3456/api/health"])
-    },
-    redacted: true
-  };
-  report.ok = Object.values(report.services).every((service) => service.supported && service.active)
-    && Object.values(report.checks).every((check) => check.supported && check.ok);
+    }
+  });
   writeReport(report, command.format);
   return report.ok ? 0 : 1;
 }

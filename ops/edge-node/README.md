@@ -70,6 +70,21 @@ with:
 sudo bash ops/edge-node/bootstrap.sh --apply
 ```
 
+The preferred operator entrypoint is the `gccgw` wrapper:
+
+```bash
+gccgw install preflight --json
+sudo gccgw install bootstrap --execute-production-mutation --apply
+```
+
+On a fresh Ubuntu host where `/etc/nginx/sites-enabled/default` is still
+present, pass the explicit removal flag to avoid a duplicate `default_server`
+on port 80:
+
+```bash
+sudo gccgw install bootstrap --execute-production-mutation --apply --remove-default-nginx-site
+```
+
 It prepares OS/runtime dependencies, service templates, Nginx templates, and
 application dependencies. It does not start services, restore SQLite, copy
 secrets, change DNS, or cut traffic over.
@@ -85,14 +100,18 @@ action:
 ```text
 1. Create or assign a clean host under an approved execution record.
 2. Place the reviewed repository checkout at /opt/proxy-gateway-minimal.
-3. Run bootstrap.sh --apply.
-4. Create /opt/proxy-gateway-minimal/.env from templates/env.example.
-5. Create /etc/proxy-gateway/ss-server.json from templates/ss-server.json.example.
-6. Create config/proxy-servers.json from templates/proxy-servers.json.example if this node will generate subscription YAML.
-7. Inject approved production secrets without recording them in Git, PRs, docs, or chat.
-8. Restore an approved SQLite backup and run pragma integrity_check.
-9. Validate local health, public boundary, Nginx config, systemd state, and Shadowsocks reachability.
-10. Request a separate cutover or standby-promotion approval if needed.
+3. Run `gccgw install preflight --json`.
+4. Run `sudo gccgw install bootstrap --execute-production-mutation --apply`.
+5. On fresh Ubuntu hosts with the default Nginx site enabled, add `--remove-default-nginx-site`.
+6. Optionally run disposable synthetic validation on a non-production host:
+   `sudo gccgw install validate-loopback --execute-production-mutation --synthetic --json`.
+7. Create /opt/proxy-gateway-minimal/.env from templates/env.example.
+8. Create /etc/proxy-gateway/ss-server.json from templates/ss-server.json.example.
+9. Create config/proxy-servers.json from templates/proxy-servers.json.example if this node will generate subscription YAML.
+10. Inject approved production secrets without recording them in Git, PRs, docs, or chat.
+11. Restore an approved SQLite backup and run pragma integrity_check.
+12. Validate local health, public boundary, Nginx config, systemd state, and Shadowsocks reachability.
+13. Request a separate cutover or standby-promotion approval if needed.
 ```
 
 ## Validation Checklist
@@ -101,6 +120,7 @@ After secrets and SQLite are approved and installed:
 
 ```bash
 sudo nginx -t
+sudo gccgw service status --json
 systemctl is-active proxy-gateway-console.service proxy-gateway-ss.service nginx
 systemctl show proxy-gateway-console.service proxy-gateway-ss.service nginx \
   --property=ActiveState,SubState,Result,ExecMainStatus,NRestarts \
@@ -120,6 +140,10 @@ Expected public behavior:
 /sub/clash.yaml without token -> 401
 / -> 404
 ```
+
+`gccgw service status --json` can be run without root for a quick service and
+health check. If the Nginx config check reports `permission_required`, rerun it
+with `sudo` so `nginx -t` can read the runtime pid file.
 
 Inspect process command lines, `ss -lntup`, and journal output locally and
 redact sensitive values before recording incident notes. Do not paste raw

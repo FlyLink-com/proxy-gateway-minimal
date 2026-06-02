@@ -23,3 +23,25 @@ test("gccgw install bootstrap script refuses execution without apply flag", () =
     /--apply is required/
   );
 });
+
+test("gccgw install validate-loopback refuses execution without explicit mutation flag", () => {
+  assert.throws(
+    () => execFileSync(process.execPath, ["scripts/gccgw-install-validate-loopback.mjs", "--synthetic"], {
+      cwd: new URL("../../", import.meta.url),
+      encoding: "utf8",
+      stdio: "pipe"
+    }),
+    /--execute-production-mutation is required/
+  );
+});
+
+test("gccgw install validate-loopback refuses non-synthetic validation", () => {
+  assert.throws(
+    () => execFileSync(process.execPath, ["scripts/gccgw-install-validate-loopback.mjs", "--execute-production-mutation"], {
+      cwd: new URL("../../", import.meta.url),
+      encoding: "utf8",
+      stdio: "pipe"
+    }),
+    /--synthetic is required/
+  );
+});

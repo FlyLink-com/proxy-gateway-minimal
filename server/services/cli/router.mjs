@@ -66,7 +66,9 @@ const NODE_SCRIPT_COMMAND_ENTRIES = [
   ["subscription portal-entry", "scripts/platform-issue-portal-entry.mjs", "subscription", "A", "execution-gated", "Issue a dynamic portal entry after approval", undefined, { surface: "operator", aliasOf: "gccgw platform issue-portal-entry" }],
   ["subscription revoke", "scripts/platform-revoke-access.mjs", "subscription", "A", "dry-run-only", "Plan access revocation", undefined, { surface: "operator", aliasOf: "gccgw platform revoke-access" }],
   ["install bootstrap", "scripts/gccgw-install-bootstrap.mjs", "install", "A", "execution-gated", "Apply reviewed edge-node bootstrap materials on a server", ["ops/README.md", "ops/edge-node/README.md"]],
-  ["node bootstrap", "scripts/gccgw-install-bootstrap.mjs", "node", "A", "execution-gated", "Apply reviewed edge-node bootstrap materials on a server", undefined, { surface: "operator", aliasOf: "gccgw install bootstrap" }]
+  ["install validate-loopback", "scripts/gccgw-install-validate-loopback.mjs", "install", "A", "execution-gated", "Run disposable synthetic loopback deployment validation on a server", ["ops/README.md", "ops/edge-node/README.md"]],
+  ["node bootstrap", "scripts/gccgw-install-bootstrap.mjs", "node", "A", "execution-gated", "Apply reviewed edge-node bootstrap materials on a server", undefined, { surface: "operator", aliasOf: "gccgw install bootstrap" }],
+  ["node validate-loopback", "scripts/gccgw-install-validate-loopback.mjs", "node", "A", "execution-gated", "Run disposable synthetic loopback deployment validation on a server", undefined, { surface: "operator", aliasOf: "gccgw install validate-loopback" }]
 ];
 
 const PACKAGE_SCRIPT_COMMAND_ENTRIES = [
@@ -246,8 +248,8 @@ const INSTALL_PLAN_STEPS = [
   {
     step: "bootstrap",
     riskTier: "A",
-    command: "gccgw install bootstrap --execute-production-mutation --apply",
-    boundary: "Applies reviewed systemd/Nginx/bootstrap materials only after the interactive Risk A prompt."
+    command: "gccgw install bootstrap --execute-production-mutation --apply [--remove-default-nginx-site]",
+    boundary: "Applies reviewed systemd/Nginx/bootstrap materials only after the interactive Risk A prompt. Use --remove-default-nginx-site on fresh Ubuntu hosts with the default Nginx site enabled."
   },
   {
     step: "operator-data",
@@ -260,6 +262,12 @@ const INSTALL_PLAN_STEPS = [
     riskTier: "C",
     command: "gccgw service status --json",
     boundary: "Read-only systemd/Nginx/health posture check."
+  },
+  {
+    step: "synthetic-loopback-validation",
+    riskTier: "A",
+    command: "gccgw install validate-loopback --execute-production-mutation --synthetic --json",
+    boundary: "Creates only synthetic .env/SQLite/artifact material and starts local services on an approved disposable host; no real subscription issuance or public exposure."
   }
 ];
 
@@ -306,14 +314,24 @@ export function buildInstallPlan({ format = "text" } = {}) {
 
 export function buildInstallPreflightReport({
   platform = process.platform,
+  osRelease = "",
   files = {},
   commands = {},
   isRoot = false
 } = {}) {
+  const releaseText = String(osRelease || "").toLowerCase();
+  const debianLikeHost = /(^|\n)id=(debian|ubuntu)(\n|$)/.test(releaseText)
+    || /(^|\n)id_like=.*\bdebian\b/.test(releaseText);
+  const nginxDefaultSiteEnabled = files.nginxDefaultSiteEnabled === true;
   const checks = {
     linuxHost: {
       ok: platform === "linux",
       required: true
+    },
+    debianLikeHost: {
+      ok: platform !== "linux" ? false : debianLikeHost,
+      required: true,
+      detail: "Current bootstrap.sh uses apt-get and supports Debian/Ubuntu-like hosts."
     },
     packageJson: {
       ok: files.packageJson === true,
@@ -351,6 +369,11 @@ export function buildInstallPreflightReport({
       ok: commands.bash === true,
       required: true
     },
+    aptGet: {
+      ok: commands.aptGet === true,
+      required: true,
+      command: "apt-get"
+    },
     systemctl: {
       ok: commands.systemctl === true,
       required: false
@@ -358,6 +381,12 @@ export function buildInstallPreflightReport({
     nginx: {
       ok: commands.nginx === true,
       required: false
+    },
+    nginxDefaultSiteDisabled: {
+      ok: nginxDefaultSiteEnabled !== true,
+      required: false,
+      path: "/etc/nginx/sites-enabled/default",
+      remediation: "On fresh Ubuntu hosts, pass --remove-default-nginx-site to gccgw install bootstrap to avoid duplicate default_server on port 80."
     },
     rootForBootstrap: {
       ok: isRoot === true,
@@ -370,9 +399,44 @@ export function buildInstallPreflightReport({
     generatedBy: "gccgw install preflight",
     ok: Object.values(checks).every((check) => check.required !== true || check.ok === true),
     checks,
-    nextCommand: "gccgw install bootstrap --execute-production-mutation --apply",
+    nextCommand: `gccgw install bootstrap --execute-production-mutation --apply${nginxDefaultSiteEnabled ? " --remove-default-nginx-site" : ""}`,
     redacted: true
   };
+}
+
+function checkSatisfied(check) {
+  return check?.supported === true && (
+    check.ok === true || check.status === "permission_required"
+  );
+}
+
+export function buildServiceStatusReport({
+  platform = process.platform,
+  services = {},
+  checks = {}
+} = {}) {
+  const warnings = [];
+  if (checks.nginxConfig?.status === "permission_required") {
+    warnings.push({
+      code: "nginx_config_requires_root",
+      severity: "warning",
+      message: "Run sudo gccgw service status --json for a full nginx -t check."
+    });
+  }
+
+  const report = {
+    type: "gccgw_service_status",
+    generatedBy: "gccgw service status",
+    ok: false,
+    platform,
+    services,
+    checks,
+    warnings,
+    redacted: true
+  };
+  report.ok = Object.values(report.services).every((service) => service.supported && service.active)
+    && Object.values(report.checks).every((check) => checkSatisfied(check));
+  return report;
 }
 
 export function buildBackupPlan({ format = "text" } = {}) {
@@ -846,7 +910,8 @@ Usage:
   gccgw docs command <command> [--json]
   gccgw install plan [--json]
   gccgw install preflight [--json]
-  gccgw install bootstrap --execute-production-mutation --apply
+  gccgw install bootstrap --execute-production-mutation --apply [--remove-default-nginx-site]
+  gccgw install validate-loopback --execute-production-mutation --synthetic [--cleanup] [--json]
   gccgw self check
   gccgw service status [--json]
   gccgw server start
