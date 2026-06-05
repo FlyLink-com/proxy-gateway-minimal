@@ -61,6 +61,21 @@ function edgeLifecycleService() {
   };
 }
 
+function edgeCredentialIssuer() {
+  const calls = [];
+  return {
+    calls,
+    ensureCredentialForOrder(order) {
+      calls.push(order);
+      return {
+        edgeChannelRef: "channel-aliyun-a-tuic",
+        edgeCredentialRef: `edgecred_${order.id}`,
+        edgeMaterialDigest: `sha256:digest_${order.id}`
+      };
+    }
+  };
+}
+
 test("portal access request service creates 7-day trial requests pending admin review", () => {
   const requests = service();
   const request = requests.submitRequest(validTrialInput());
@@ -209,6 +224,77 @@ test("delivery records the generated subscription expiry without leaking raw mat
   assert.equal(delivered.accessGrantRef, "grant_safe_ref");
   assert.equal(JSON.stringify(delivered).includes("subscriptionUrl"), false);
   assert.equal(delivered.safety.noEntitlementCreated, false);
+});
+
+test("delivery can issue a protected edge credential and expose only safe lifecycle order facts", () => {
+  const issuer = edgeCredentialIssuer();
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_edge_delivery_1",
+    edgeCredentialIssuer: issuer
+  });
+  requests.submitRequest(validTrialInput());
+
+  const delivered = requests.markDelivered("pareq_edge_delivery_1", {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_safe_ref",
+    accessGrantRef: "grant_safe_ref",
+    expiresAt: "2026-06-07T00:00:00.000Z"
+  });
+
+  assert.equal(delivered.edgeCredentialRef, undefined);
+  assert.equal(delivered.edgeMaterialDigest, undefined);
+  assert.equal(issuer.calls.length, 1);
+  assert.deepEqual(requests.listEdgeCredentialOrders(), [
+    {
+      id: "pareq_edge_delivery_1",
+      portalUserRef: "user_safe_ref",
+      plan: "trial",
+      clientTarget: "clash",
+      durationDays: 7,
+      quantity: 1,
+      status: "delivered",
+      submittedAt: NOW,
+      updatedAt: NOW,
+      expiresAt: "2026-06-07T00:00:00.000Z",
+      validUntil: "2026-06-07T00:00:00.000Z",
+      entitlementRef: "ent_safe_ref",
+      accessGrantRef: "grant_safe_ref",
+      edgeChannelRef: "channel-aliyun-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_edge_delivery_1",
+      edgeMaterialDigest: "sha256:digest_pareq_edge_delivery_1"
+    }
+  ]);
+  assert.doesNotMatch(JSON.stringify(requests.listEdgeCredentialOrders()), /subscriptionUrl|tenant_runtime|artifact_runtime|password|uuid/i);
+});
+
+test("edge lifecycle mutation updates portal safety flags", () => {
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_edge_mutation_1",
+    edgeCredentialIssuer: edgeCredentialIssuer(),
+    edgeLifecycleService: {
+      reconcileOrderLifecycle() {
+        return {
+          ok: true,
+          mutation: true,
+          redacted: true
+        };
+      }
+    }
+  });
+  requests.submitRequest(validTrialInput());
+
+  const delivered = requests.markDelivered("pareq_edge_mutation_1", {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_safe_ref",
+    accessGrantRef: "grant_safe_ref",
+    expiresAt: "2026-06-07T00:00:00.000Z"
+  });
+
+  assert.equal(delivered.safety.noRuntimeMutation, false);
+  assert.equal(delivered.safety.noProductionMutation, false);
+  assert.doesNotMatch(JSON.stringify(delivered), /uuid|password/i);
 });
 
 test("refresh replaces material for an already-delivered order and keeps expiry", () => {

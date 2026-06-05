@@ -107,8 +107,8 @@ function summaryFor(record) {
       noRawCustomerData: true,
       noRawHandoffMaterial: true,
       noEntitlementCreated: !record.entitlementRef,
-      noRuntimeMutation: true,
-      noProductionMutation: true
+      noRuntimeMutation: record.edgeLifecycleMutation !== true,
+      noProductionMutation: record.edgeLifecycleMutation !== true
     }
   };
 }
@@ -127,7 +127,10 @@ function edgeOrderSummaryFor(record) {
     expiresAt: record.expiresAt,
     validUntil: record.validUntil,
     entitlementRef: record.entitlementRef,
-    accessGrantRef: record.accessGrantRef
+    accessGrantRef: record.accessGrantRef,
+    edgeChannelRef: record.edgeChannelRef,
+    edgeCredentialRef: record.edgeCredentialRef,
+    edgeMaterialDigest: record.edgeMaterialDigest
   };
 }
 
@@ -136,6 +139,7 @@ export function createPortalAccessRequestService(options = {}) {
   const requestIdFactory = options.requestIdFactory;
   const runtimeCore = options.runtimeCore;
   const edgeLifecycleService = options.edgeLifecycleService;
+  const edgeCredentialIssuer = options.edgeCredentialIssuer;
   const requests = new Map();
   let sequence = 0;
 
@@ -169,6 +173,26 @@ export function createPortalAccessRequestService(options = {}) {
       throw platformError("edge_lifecycle_failed", "edge lifecycle reconciliation failed");
     }
     return result;
+  }
+
+  function recordEdgeLifecycleResult(request, result) {
+    if (result?.mutation === true) {
+      request.edgeLifecycleMutation = true;
+    }
+  }
+
+  function attachEdgeCredential(request) {
+    if (!edgeCredentialIssuer) {
+      return null;
+    }
+    if (typeof edgeCredentialIssuer.ensureCredentialForOrder !== "function") {
+      throw platformError("validation_error", "edge credential issuer is not configured");
+    }
+    const credential = edgeCredentialIssuer.ensureCredentialForOrder(edgeOrderSummaryFor(request));
+    request.edgeChannelRef = text(credential.edgeChannelRef, "edgeChannelRef");
+    request.edgeCredentialRef = text(credential.edgeCredentialRef, "edgeCredentialRef");
+    request.edgeMaterialDigest = text(credential.edgeMaterialDigest, "edgeMaterialDigest");
+    return credential;
   }
 
   function getOwnedDeliveredRecord(input = {}) {
@@ -236,6 +260,15 @@ export function createPortalAccessRequestService(options = {}) {
         .filter((request) => !portalUserRef || request.portalUserRef === portalUserRef)
         .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
         .map(summaryFor);
+    },
+
+    listEdgeCredentialOrders(filters = {}) {
+      const status = String(filters.status || "").trim();
+      return [...requests.values()]
+        .filter((request) => !status || request.status === status)
+        .filter((request) => request.edgeCredentialRef && request.edgeMaterialDigest)
+        .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
+        .map(edgeOrderSummaryFor);
     },
 
     getRequest(id) {
@@ -324,6 +357,9 @@ export function createPortalAccessRequestService(options = {}) {
       request.subscriptionUrl = optionalText(input.subscriptionUrl);
       request.event = null;
       request.updatedAt = now;
+      if (attachEdgeCredential(request)) {
+        recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_delivered", request));
+      }
       return summaryFor(request);
     },
 
@@ -344,7 +380,7 @@ export function createPortalAccessRequestService(options = {}) {
         occurredAt: now
       };
       request.updatedAt = now;
-      notifyEdgeLifecycle("order_refreshed", request);
+      recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_refreshed", request));
       return summaryFor(request);
     },
 
@@ -364,7 +400,7 @@ export function createPortalAccessRequestService(options = {}) {
       request.subscriptionUrl = null;
       request.event = null;
       request.updatedAt = now;
-      notifyEdgeLifecycle("order_disabled", request);
+      recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_disabled", request));
       return summaryFor(request);
     }
   };

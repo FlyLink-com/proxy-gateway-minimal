@@ -16,6 +16,9 @@ import { createSqliteSubscriptionControlStore } from "./services/platform/subscr
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "./services/platform/subscription-access-shell.mjs";
 import { createPortalAccessRequestService } from "./services/platform/portal-access-requests.mjs";
+import { createFileBackedEdgeCredentialMaterialStore } from "./services/edge/credential-material-store.mjs";
+import { createOrderEdgeCredentialIssuer } from "./services/edge/order-credential-issuer.mjs";
+import { createOrderCredentialLifecycleService } from "./services/edge/order-credential-lifecycle.mjs";
 import { spawn } from "node:child_process";
 
 function rootPathFrom(rootDir) {
@@ -31,6 +34,20 @@ function parseCsv(value, fallback) {
     .map((item) => item.trim())
     .filter(Boolean);
   return items.length > 0 ? items : fallback;
+}
+
+function envFlag(value) {
+  return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
+}
+
+function optionalEnvText(value) {
+  return String(value || "").trim();
+}
+
+function runtimeValidationError(message) {
+  const error = new Error(message);
+  error.code = "validation_error";
+  return error;
 }
 
 export function createRuntimeState(options = {}) {
@@ -74,10 +91,52 @@ export function createRuntimeState(options = {}) {
   const platformAccessShell = options.platformAccessShell || createPlatformSubscriptionAccessShell({
     accountShell: platformAccountShell
   });
-  const platformPortalAccessRequests = options.platformPortalAccessRequests || createPortalAccessRequestService();
-  const platformAliyunGateEvidenceShell = options.platformAliyunGateEvidenceShell || createPlatformAliyunGateEvidenceShell();
   const ownsControlStore = !options.platformControlStore;
   const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
+  const edgeLifecycleEnabled = envFlag(env.USER_PORTAL_EDGE_LIFECYCLE_ENABLED || env.EDGE_CREDENTIAL_LIFECYCLE_ENABLED);
+  const edgeChannelRef = optionalEnvText(env.USER_PORTAL_EDGE_CHANNEL_REF || env.EDGE_CREDENTIAL_CHANNEL_REF);
+  let edgeCredentialMaterialStore = options.edgeCredentialMaterialStore || null;
+  let edgeCredentialIssuer = options.edgeCredentialIssuer || null;
+  let edgeLifecycleService = options.edgeLifecycleService || null;
+  let platformPortalAccessRequests;
+
+  if (edgeLifecycleEnabled) {
+    if (!edgeChannelRef) {
+      throw runtimeValidationError("USER_PORTAL_EDGE_CHANNEL_REF is required when edge lifecycle is enabled");
+    }
+    if (!edgeCredentialMaterialStore) {
+      const materialPath = optionalEnvText(env.EDGE_CREDENTIAL_MATERIAL_PATH || env.USER_PORTAL_EDGE_MATERIAL_PATH);
+      if (!materialPath) {
+        throw runtimeValidationError("EDGE_CREDENTIAL_MATERIAL_PATH is required when edge lifecycle is enabled");
+      }
+      edgeCredentialMaterialStore = createFileBackedEdgeCredentialMaterialStore({
+        filePath: materialPath
+      });
+    }
+    edgeCredentialIssuer = edgeCredentialIssuer || createOrderEdgeCredentialIssuer({
+      channelRef: edgeChannelRef,
+      materialStore: edgeCredentialMaterialStore
+    });
+    edgeLifecycleService = edgeLifecycleService || createOrderCredentialLifecycleService({
+      channelRef: edgeChannelRef,
+      listOrders: () => platformPortalAccessRequests?.listEdgeCredentialOrders?.() || [],
+      listCurrentCredentials: () => (
+        typeof options.edgeCurrentCredentialSummaries === "function"
+          ? options.edgeCurrentCredentialSummaries()
+          : options.edgeCurrentCredentialSummaries || []
+      ),
+      executeProductionMutation: envFlag(env.EDGE_CREDENTIAL_LIFECYCLE_EXECUTE_PRODUCTION_MUTATION),
+      runtimeAdapter: options.edgeRuntimeAdapter || null,
+      receiptStore: platformControlStore
+    });
+  }
+
+  platformPortalAccessRequests = options.platformPortalAccessRequests || createPortalAccessRequestService({
+    runtimeCore: subscriptionCore,
+    edgeCredentialIssuer,
+    edgeLifecycleService
+  });
+  const platformAliyunGateEvidenceShell = options.platformAliyunGateEvidenceShell || createPlatformAliyunGateEvidenceShell();
   let closed = false;
 
   function close() {
@@ -215,7 +274,10 @@ export function createRuntimeState(options = {}) {
       accessShell: platformAccessShell,
       portalAccessRequests: platformPortalAccessRequests,
       aliyunGateEvidenceShell: platformAliyunGateEvidenceShell,
-      controlStore: platformControlStore
+      controlStore: platformControlStore,
+      edgeCredentialMaterialStore,
+      edgeCredentialIssuer,
+      edgeLifecycleService
     },
     security: {
       adminAllowedCidrs,

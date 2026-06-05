@@ -233,3 +233,48 @@ test("createRuntimeState parses hardening security environment", () => {
     state.close();
   }
 });
+
+test("createRuntimeState wires env-gated edge credential lifecycle services", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-edge-wiring-"));
+  const materialPath = join(dir, "protected", "edge-material.json");
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
+        USER_PORTAL_EDGE_CHANNEL_REF: "channel-aliyun-a-tuic",
+        EDGE_CREDENTIAL_MATERIAL_PATH: materialPath
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      autoStartHttpProxy: false
+    });
+
+    const request = state.platform.portalAccessRequests.submitRequest({
+      portalUserRef: "portal_user_state_001",
+      plan: "trial"
+    });
+    state.platform.portalAccessRequests.markDelivered(request.id, {
+      reviewedByRef: "operator_safe_ref",
+      entitlementRef: "ent_state_ref",
+      accessGrantRef: "grant_state_ref",
+      expiresAt: "2026-07-05T00:00:00.000Z"
+    });
+
+    const edgeOrders = state.platform.portalAccessRequests.listEdgeCredentialOrders();
+    assert.equal(edgeOrders.length, 1);
+    assert.equal(edgeOrders[0].edgeChannelRef, "channel-aliyun-a-tuic");
+    assert.equal(edgeOrders[0].edgeCredentialRef, `edgecred_${request.id}`);
+    assert.match(edgeOrders[0].edgeMaterialDigest, /^sha256:/);
+    assert.equal(existsSync(materialPath), true);
+    assert.equal(typeof state.platform.edgeLifecycleService.reconcileOrderLifecycle, "function");
+    assert.doesNotMatch(JSON.stringify(state.platform.edgeCredentialMaterialStore.listCredentialMaterialSummaries()), /uuid|password/i);
+  } finally {
+    state?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
