@@ -19,6 +19,7 @@ import { createPortalAccessRequestService } from "./services/platform/portal-acc
 import { createFileBackedEdgeCredentialMaterialStore } from "./services/edge/credential-material-store.mjs";
 import { createOrderEdgeCredentialIssuer } from "./services/edge/order-credential-issuer.mjs";
 import { createOrderCredentialLifecycleService } from "./services/edge/order-credential-lifecycle.mjs";
+import { createMihomoTuicHostRuntimeAdapter } from "./services/edge/mihomo-tuic-host-runtime-adapter.mjs";
 import { spawn } from "node:child_process";
 
 function rootPathFrom(rootDir) {
@@ -98,6 +99,7 @@ export function createRuntimeState(options = {}) {
   let edgeCredentialMaterialStore = options.edgeCredentialMaterialStore || null;
   let edgeCredentialIssuer = options.edgeCredentialIssuer || null;
   let edgeLifecycleService = options.edgeLifecycleService || null;
+  let edgeRuntimeAdapter = options.edgeRuntimeAdapter || null;
   let platformPortalAccessRequests;
 
   if (edgeLifecycleEnabled) {
@@ -117,6 +119,27 @@ export function createRuntimeState(options = {}) {
       channelRef: edgeChannelRef,
       materialStore: edgeCredentialMaterialStore
     });
+    const edgeRuntimeAdapterName = optionalEnvText(env.EDGE_CREDENTIAL_RUNTIME_ADAPTER || env.USER_PORTAL_EDGE_RUNTIME_ADAPTER);
+    if (!edgeRuntimeAdapter && edgeRuntimeAdapterName === "mihomo-tuic-explicit-restart") {
+      edgeRuntimeAdapter = createMihomoTuicHostRuntimeAdapter({
+        activeConfigPath: env.EDGE_MIHOMO_ACTIVE_CONFIG_PATH,
+        candidateConfigPath: env.EDGE_MIHOMO_CANDIDATE_CONFIG_PATH,
+        backupDir: env.EDGE_MIHOMO_BACKUP_DIR,
+        serviceName: optionalEnvText(env.EDGE_MIHOMO_SERVICE_NAME) || "mihomo-tuic.service",
+        mihomoBinary: optionalEnvText(env.EDGE_MIHOMO_BINARY) || "mihomo",
+        listener: {
+          name: edgeChannelRef,
+          port: env.EDGE_MIHOMO_TUIC_PORT || 443,
+          listen: optionalEnvText(env.EDGE_MIHOMO_TUIC_LISTEN) || "0.0.0.0",
+          certificate: env.EDGE_MIHOMO_TUIC_CERTIFICATE_PATH,
+          privateKey: env.EDGE_MIHOMO_TUIC_PRIVATE_KEY_PATH,
+          congestionController: optionalEnvText(env.EDGE_MIHOMO_TUIC_CONGESTION_CONTROLLER) || "bbr",
+          alpn: parseCsv(env.EDGE_MIHOMO_TUIC_ALPN, ["h3"])
+        },
+        resolveCredentialMaterial: (credentialRef) => edgeCredentialMaterialStore.resolveCredentialMaterial(credentialRef),
+        commandRunner: options.edgeRuntimeCommandRunner
+      });
+    }
     edgeLifecycleService = edgeLifecycleService || createOrderCredentialLifecycleService({
       channelRef: edgeChannelRef,
       listOrders: () => platformPortalAccessRequests?.listEdgeCredentialOrders?.() || [],
@@ -126,7 +149,7 @@ export function createRuntimeState(options = {}) {
           : options.edgeCurrentCredentialSummaries || []
       ),
       executeProductionMutation: envFlag(env.EDGE_CREDENTIAL_LIFECYCLE_EXECUTE_PRODUCTION_MUTATION),
-      runtimeAdapter: options.edgeRuntimeAdapter || null,
+      runtimeAdapter: edgeRuntimeAdapter,
       receiptStore: platformControlStore
     });
   }
@@ -277,7 +300,8 @@ export function createRuntimeState(options = {}) {
       controlStore: platformControlStore,
       edgeCredentialMaterialStore,
       edgeCredentialIssuer,
-      edgeLifecycleService
+      edgeLifecycleService,
+      edgeRuntimeAdapter
     },
     security: {
       adminAllowedCidrs,

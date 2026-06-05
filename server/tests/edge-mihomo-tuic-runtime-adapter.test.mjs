@@ -62,6 +62,15 @@ test("Mihomo TUIC adapter writes candidate config and activates after validation
   let candidateConfig = "";
   const adapter = createMihomoTuicExplicitRestartAdapter({
     serviceName: "mihomo-tuic.service",
+    listenerName: "channel-aliyun-a-tuic",
+    listener: {
+      port: 443,
+      listen: "0.0.0.0",
+      certificate: "/etc/mihomo/server.crt",
+      privateKey: "/etc/mihomo/server.key",
+      congestionController: "bbr",
+      alpn: ["h3"]
+    },
     resolveCredentialMaterial: (credentialRef) => materialFor(credentialRef),
     writeCandidateConfig: (content) => {
       calls.push("writeCandidateConfig");
@@ -114,16 +123,16 @@ test("Mihomo TUIC adapter writes candidate config and activates after validation
     "validateService",
     "validateListener"
   ]);
-  const parsedCandidate = JSON.parse(candidateConfig);
-  assert.equal(parsedCandidate.channelRef, "channel-aliyun-a-tuic");
-  assert.equal(parsedCandidate.desiredStateRef, "desired_state_aliyun_001");
-  assert.deepEqual(parsedCandidate.users.map((user) => user.name), [
-    "order_ref_new",
-    "order_ref_rotate",
-    "order_ref_same"
-  ]);
-  assert.equal(parsedCandidate.users[0].uuid, "order_ref_new_uuid");
-  assert.equal(parsedCandidate.users[0].password, "order_ref_new_password");
+  assert.match(candidateConfig, /^# managed-by: gccgw-edge-credential-reconciliation/m);
+  assert.match(candidateConfig, /^listeners:/m);
+  assert.match(candidateConfig, /type: tuic/);
+  assert.match(candidateConfig, /port: 443/);
+  assert.match(candidateConfig, /certificate: "\/etc\/mihomo\/server\.crt"/);
+  assert.match(candidateConfig, /private-key: "\/etc\/mihomo\/server\.key"/);
+  assert.match(candidateConfig, /users:/);
+  assert.match(candidateConfig, /"order_ref_new_uuid": "order_ref_new_password"/);
+  assert.match(candidateConfig, /"order_ref_rotate_uuid": "order_ref_rotate_password"/);
+  assert.match(candidateConfig, /"order_ref_same_uuid": "order_ref_same_password"/);
   assert.doesNotMatch(JSON.stringify(report), /order_ref_new_password|order_ref_rotate_password|order_ref_same_password/);
 });
 

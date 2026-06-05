@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -273,6 +273,74 @@ test("createRuntimeState wires env-gated edge credential lifecycle services", ()
     assert.equal(existsSync(materialPath), true);
     assert.equal(typeof state.platform.edgeLifecycleService.reconcileOrderLifecycle, "function");
     assert.doesNotMatch(JSON.stringify(state.platform.edgeCredentialMaterialStore.listCredentialMaterialSummaries()), /uuid|password/i);
+  } finally {
+    state?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("createRuntimeState wires env-gated Mihomo TUIC host adapter for edge lifecycle apply", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-edge-host-wiring-"));
+  const materialPath = join(dir, "protected", "edge-material.json");
+  const activeConfigPath = join(dir, "mihomo", "config.yaml");
+  const candidateConfigPath = join(dir, "mihomo", "config.candidate.yaml");
+  const backupDir = join(dir, "mihomo", "backups");
+  const commandCalls = [];
+  let state;
+
+  try {
+    mkdirSync(join(dir, "mihomo"), { recursive: true });
+    writeFileSync(activeConfigPath, "listeners: []\n", { mode: 0o600 });
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
+        USER_PORTAL_EDGE_CHANNEL_REF: "channel-aliyun-a-tuic",
+        EDGE_CREDENTIAL_MATERIAL_PATH: materialPath,
+        EDGE_CREDENTIAL_LIFECYCLE_EXECUTE_PRODUCTION_MUTATION: "true",
+        EDGE_CREDENTIAL_RUNTIME_ADAPTER: "mihomo-tuic-explicit-restart",
+        EDGE_MIHOMO_ACTIVE_CONFIG_PATH: activeConfigPath,
+        EDGE_MIHOMO_CANDIDATE_CONFIG_PATH: candidateConfigPath,
+        EDGE_MIHOMO_BACKUP_DIR: backupDir,
+        EDGE_MIHOMO_TUIC_CERTIFICATE_PATH: "/etc/mihomo/server.crt",
+        EDGE_MIHOMO_TUIC_PRIVATE_KEY_PATH: "/etc/mihomo/server.key"
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      edgeRuntimeCommandRunner(command, args) {
+        commandCalls.push([command, ...args]);
+        if (command === "mihomo") return { exitCode: 0 };
+        if (command === "systemctl" && args[0] === "restart") return { exitCode: 0 };
+        if (command === "systemctl" && args[0] === "is-active") return { exitCode: 0 };
+        if (command === "ss") return { exitCode: 0, stdout: "udp UNCONN 0 0 0.0.0.0:443 0.0.0.0:*" };
+        return { exitCode: 1 };
+      },
+      autoStartHttpProxy: false
+    });
+
+    const request = state.platform.portalAccessRequests.submitRequest({
+      portalUserRef: "portal_user_state_host_001",
+      plan: "trial"
+    });
+    const delivered = state.platform.portalAccessRequests.markDelivered(request.id, {
+      reviewedByRef: "operator_safe_ref",
+      entitlementRef: "ent_state_host_ref",
+      accessGrantRef: "grant_state_host_ref",
+      expiresAt: "2026-07-05T00:00:00.000Z"
+    });
+
+    assert.equal(delivered.safety.noRuntimeMutation, false);
+    assert.equal(delivered.safety.noProductionMutation, false);
+    assert.deepEqual(commandCalls.map((call) => call[0]), ["mihomo", "systemctl", "systemctl", "ss"]);
+    const activeConfig = readFileSync(activeConfigPath, "utf8");
+    assert.match(activeConfig, /^listeners:/m);
+    assert.match(activeConfig, /type: tuic/);
+    assert.match(activeConfig, /users:/);
+    assert.equal(existsSync(candidateConfigPath), true);
+    assert.equal(existsSync(backupDir), true);
+    assert.doesNotMatch(JSON.stringify(delivered), /uuid|password|server\.key|config\.candidate|backups/i);
   } finally {
     state?.close();
     rmSync(dir, { recursive: true, force: true });

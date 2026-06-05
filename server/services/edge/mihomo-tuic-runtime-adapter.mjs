@@ -21,6 +21,20 @@ function safeExitCode(value) {
   return Number.isInteger(value) ? value : 1;
 }
 
+function numberOrDefault(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function yamlScalar(value) {
+  const raw = text(value);
+  return `"${raw
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\r/g, "\\r")
+    .replace(/\n/g, "\\n")}"`;
+}
+
 function desiredRuntimeActions(actions = []) {
   return Array.isArray(actions)
     ? actions.filter((action) => ["add", "rotate", "unchanged"].includes(action?.action))
@@ -43,23 +57,52 @@ function resolveRuntimeUsers(actions, resolveCredentialMaterial) {
     if (!uuid || !password) {
       return null;
     }
-    users.push({
-      name: credentialRef,
-      uuid,
-      password
-    });
+    users.push({ credentialRef, uuid, password });
   }
   return users;
 }
 
-function buildManagedUsersConfig(payload, users) {
-  return JSON.stringify({
-    managedBy: "gccgw-edge-credential-reconciliation",
-    runtime: payload.runtime,
-    channelRef: payload.channelRef,
-    desiredStateRef: payload.desiredStateRef,
-    users
-  }, null, 2);
+function buildManagedUsersConfig(payload, users, listener = {}) {
+  const listenerName = text(listener.name) || payload.channelRef;
+  const port = numberOrDefault(listener.port, 443);
+  const listen = text(listener.listen) || "0.0.0.0";
+  const certificate = text(listener.certificate);
+  const privateKey = text(listener.privateKey);
+  const congestionController = text(listener.congestionController);
+  const alpn = Array.isArray(listener.alpn) && listener.alpn.length > 0
+    ? listener.alpn.map(text).filter(Boolean)
+    : ["h3"];
+  const lines = [
+    "# managed-by: gccgw-edge-credential-reconciliation",
+    `# channel-ref: ${payload.channelRef}`,
+    `# desired-state-ref: ${payload.desiredStateRef}`,
+    "listeners:",
+    `  - name: ${yamlScalar(listenerName)}`,
+    "    type: tuic",
+    `    port: ${port}`,
+    `    listen: ${yamlScalar(listen)}`,
+    "    users:"
+  ];
+
+  for (const user of users) {
+    lines.push(`      ${yamlScalar(user.uuid)}: ${yamlScalar(user.password)}`);
+  }
+  if (certificate) {
+    lines.push(`    certificate: ${yamlScalar(certificate)}`);
+  }
+  if (privateKey) {
+    lines.push(`    private-key: ${yamlScalar(privateKey)}`);
+  }
+  if (congestionController) {
+    lines.push(`    congestion-controller: ${yamlScalar(congestionController)}`);
+  }
+  if (alpn.length > 0) {
+    lines.push("    alpn:");
+    for (const item of alpn) {
+      lines.push(`      - ${yamlScalar(item)}`);
+    }
+  }
+  return `${lines.join("\n")}\n`;
 }
 
 function failedReceipt({ serviceName, mutation = false, exitCode = null } = {}) {
@@ -77,6 +120,8 @@ function failedReceipt({ serviceName, mutation = false, exitCode = null } = {}) 
 
 export function createMihomoTuicExplicitRestartAdapter({
   serviceName = "mihomo-tuic.service",
+  listenerName,
+  listener,
   resolveCredentialMaterial,
   writeCandidateConfig,
   runConfigTest,
@@ -88,6 +133,10 @@ export function createMihomoTuicExplicitRestartAdapter({
   now = () => new Date()
 } = {}) {
   const safeServiceName = safeRef(serviceName, "mihomo-tuic.service");
+  const runtimeListener = {
+    ...(listener && typeof listener === "object" ? listener : {}),
+    ...(listenerName ? { name: listenerName } : {})
+  };
 
   return {
     applyCredentialReconciliation(payload = {}) {
@@ -101,7 +150,7 @@ export function createMihomoTuicExplicitRestartAdapter({
         return failedReceipt({ serviceName: safeServiceName });
       }
 
-      const candidateConfig = buildManagedUsersConfig(payload, users);
+      const candidateConfig = buildManagedUsersConfig(payload, users, runtimeListener);
       if (typeof writeCandidateConfig !== "function" || typeof runConfigTest !== "function") {
         return failedReceipt({ serviceName: safeServiceName });
       }
