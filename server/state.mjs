@@ -63,8 +63,12 @@ export function createRuntimeState(options = {}) {
     tokenStorePath: options.consoleTokenStorePath,
     tokenFactory: options.tokenFactory
   });
+  const proxyConfigPath = options.proxyConfigPath
+    || env.SUBSCRIPTION_PROXY_CONFIG_PATH
+    || env.PROXY_SERVERS_CONFIG_PATH
+    || join(rootDir, "config", "proxy-servers.json");
   const proxyConfig = loadProxyConfig({
-    configPath: join(rootDir, "config", "proxy-servers.json"),
+    configPath: proxyConfigPath,
     env
   });
   const subscriptionDbPath = options.subscriptionDbPath || env.SUBSCRIPTION_DB_PATH || join(rootDir, ".proxy-gateway", "subscriptions.sqlite");

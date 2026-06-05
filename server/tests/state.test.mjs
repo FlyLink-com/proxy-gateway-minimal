@@ -134,6 +134,66 @@ test("createRuntimeState respects PUBLIC_SUBSCRIPTION_BASE_URL override", () => 
   }
 });
 
+test("createRuntimeState uses SUBSCRIPTION_PROXY_CONFIG_PATH for protected node config", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-protected-proxy-config-"));
+  const proxyConfigPath = join(dir, "protected", "proxy-servers.json");
+  let state;
+
+  try {
+    mkdirSync(join(dir, "protected"), { recursive: true });
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_aliyun_a_tuic",
+          name: "channel-aliyun-a-tuic",
+          physicalNodeRef: "aliyun-control-a",
+          protocol: "tuic",
+          type: "tuic",
+          host: "edge.example.test",
+          port: 443,
+          uuid: "${ALIYUN_TUIC_UUID}",
+          password: "${ALIYUN_TUIC_PASSWORD}",
+          channelPool: "stable",
+          channelRole: "stable",
+          status: "online",
+          subscriptionEligible: true,
+          stableProtocolApproved: true,
+          stableProtocolApprovalRef: "aliyun-local-tuic-explicit-restart",
+          credentialMode: "per-order",
+          credentialLifecycle: {
+            addCredential: true,
+            disableCredential: true,
+            rotateCredential: true,
+            restart: true
+          }
+        }
+      ]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        ALIYUN_TUIC_UUID: "11111111-1111-4111-8111-111111111111",
+        ALIYUN_TUIC_PASSWORD: "synthetic-tuic-password"
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      autoStartHttpProxy: false
+    });
+
+    const nodes = state.subscriptions.core.listNodes();
+    assert.equal(nodes.length, 1);
+    assert.equal(nodes[0].name, "channel-aliyun-a-tuic");
+    assert.equal(nodes[0].credentialMode, "per-order");
+    assert.equal(nodes[0].physicalNodeRef, "aliyun-control-a");
+  } finally {
+    state?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("createRuntimeState uses SUBSCRIPTION_CONTROL_DB_PATH for the business control store", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-control-db-"));
   const configuredControlPath = join(dir, "configured", "subscription-control.sqlite");
