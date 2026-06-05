@@ -262,3 +262,254 @@ test("subscription control store exposes only safe references in serialized summ
     assert.doesNotMatch(serialized, /subscriptionUrl|artifactSecret|token|password|credential/i);
   });
 });
+
+test("subscription control store persists portal password credential summaries safely", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_auth_1",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const credential = store.createPortalPasswordCredential({
+      id: "pwd_cred_1",
+      accountId: "acct_auth_1",
+      passwordHash: "scrypt$v=1$N=32768$r=8$p=1$saltref$hashref",
+      status: "active",
+      mustRotate: true,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    assert.equal(credential.id, "pwd_cred_1");
+    assert.equal(credential.accountId, "acct_auth_1");
+    assert.equal(credential.mustRotate, true);
+    assert.equal(store.getActivePortalPasswordCredential("acct_auth_1").id, "pwd_cred_1");
+
+    const serialized = JSON.stringify(store.getAccountControlSummary("acct_auth_1"));
+    assert.doesNotMatch(serialized, /passwordHash|scrypt\$v=1|saltref|hashref|credential/i);
+  });
+});
+
+test("subscription control store records redacted edge apply receipts", () => {
+  withStore((store) => {
+    const now = "2026-06-05T00:00:00.000Z";
+
+    const receipt = store.recordEdgeApplyReceipt({
+      id: "edge_receipt_001",
+      channelRef: "channel-aliyun-a-tuic",
+      desiredStateRef: "desired_state_orders_001",
+      status: "applied",
+      actionCounts: {
+        add: 1,
+        revoke: 1,
+        rotate: 0,
+        unchanged: 2
+      },
+      configTestOk: true,
+      serviceActive: true,
+      listenerUdp443: true,
+      backupRef: "backup_aliyun_001",
+      appliedAt: now,
+      createdAt: now
+    });
+
+    assert.equal(receipt.id, "edge_receipt_001");
+    assert.equal(receipt.channelRef, "channel-aliyun-a-tuic");
+    assert.equal(receipt.status, "applied");
+    assert.deepEqual(receipt.actionCounts, {
+      add: 1,
+      revoke: 1,
+      rotate: 0,
+      unchanged: 2
+    });
+    assert.equal(receipt.configTestOk, true);
+    assert.equal(receipt.serviceActive, true);
+    assert.equal(receipt.listenerUdp443, true);
+
+    const receipts = store.listEdgeApplyReceipts({
+      channelRef: "channel-aliyun-a-tuic"
+    });
+    assert.equal(receipts.length, 1);
+    assert.equal(receipts[0].desiredStateRef, "desired_state_orders_001");
+    assert.doesNotMatch(JSON.stringify(receipts), /password|rawConfig|subscriptionUrl|uuid|token/i);
+  });
+});
+
+test("subscription control store rejects unsafe edge apply receipt material", () => {
+  withStore((store) => {
+    assert.throws(() => store.recordEdgeApplyReceipt({
+      id: "edge_receipt_bad",
+      channelRef: "channel-aliyun-a-tuic",
+      desiredStateRef: "desired_state_bad",
+      status: "applied",
+      actionCounts: {
+        add: 1
+      },
+      rawConfig: "users:\n- password: unsafe",
+      createdAt: "2026-06-05T00:00:00.000Z"
+    }), /unsafe field is not allowed/);
+  });
+});
+
+test("subscription control store tracks portal password verification state", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_auth_2",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createPortalPasswordCredential({
+      id: "pwd_cred_2",
+      accountId: "acct_auth_2",
+      passwordHash: "scrypt$v=1$N=32768$r=8$p=1$saltref$hashref",
+      status: "active",
+      mustRotate: false,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const failed = store.recordPortalPasswordVerificationFailure("pwd_cred_2", {
+      updatedAt: "2026-06-03T00:01:00.000Z"
+    });
+    assert.equal(failed.failureCount, 1);
+    assert.equal(failed.status, "active");
+
+    const locked = store.recordPortalPasswordVerificationFailure("pwd_cred_2", {
+      updatedAt: "2026-06-03T00:02:00.000Z",
+      lockedUntil: "2026-06-03T00:12:00.000Z"
+    });
+    assert.equal(locked.failureCount, 2);
+    assert.equal(locked.status, "locked");
+    assert.equal(locked.lockedUntil, "2026-06-03T00:12:00.000Z");
+
+    const verified = store.markPortalPasswordVerified("pwd_cred_2", {
+      verifiedAt: "2026-06-03T00:13:00.000Z",
+      updatedAt: "2026-06-03T00:13:00.000Z"
+    });
+    assert.equal(verified.failureCount, 0);
+    assert.equal(verified.status, "active");
+    assert.equal(verified.lockedUntil, null);
+    assert.equal(verified.lastVerifiedAt, "2026-06-03T00:13:00.000Z");
+  });
+});
+
+test("subscription control store persists portal passkey credentials without public summary leakage", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_passkey_1",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const credential = store.createPortalPasskeyCredential({
+      id: "passkey_cred_1",
+      accountId: "acct_passkey_1",
+      credentialId: "webauthn-credential-id",
+      credentialIdHash: "credhash_abcdef",
+      publicKeyJwk: { kty: "EC", crv: "P-256", x: "safe-x", y: "safe-y" },
+      signCount: 7,
+      transports: ["usb", "internal"],
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    assert.equal(credential.id, "passkey_cred_1");
+    assert.equal(credential.signCount, 7);
+    assert.deepEqual(credential.transports, ["usb", "internal"]);
+    assert.equal(store.getPortalPasskeyCredentialByCredentialId("webauthn-credential-id").id, "passkey_cred_1");
+    assert.equal(store.listActivePortalPasskeyCredentials("acct_passkey_1").length, 1);
+
+    const verified = store.markPortalPasskeyVerified("passkey_cred_1", {
+      verifiedAt: "2026-06-03T00:01:00.000Z",
+      signCount: 8,
+      updatedAt: "2026-06-03T00:01:00.000Z"
+    });
+    assert.equal(verified.signCount, 8);
+    assert.equal(verified.lastVerifiedAt, "2026-06-03T00:01:00.000Z");
+
+    const serialized = JSON.stringify(store.getAccountControlSummary("acct_passkey_1"));
+    assert.doesNotMatch(serialized, /webauthn-credential-id|credhash_abcdef|publicKeyJwk|safe-x|safe-y|credential/i);
+  });
+});
+
+test("subscription control store consumes portal second-factor challenges once", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_factor_1",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const challenge = store.createPortalSecondFactorChallenge({
+      id: "mfa_challenge_1",
+      accountId: "acct_factor_1",
+      challengeHash: "challengehash_abcdef",
+      allowedFactors: ["totp", "passkey"],
+      status: "active",
+      expiresAt: "2026-06-03T00:05:00.000Z",
+      createdAt: now,
+      updatedAt: now
+    });
+    assert.equal(challenge.status, "active");
+    assert.deepEqual(challenge.allowedFactors, ["totp", "passkey"]);
+
+    const failed = store.recordPortalSecondFactorChallengeFailure("mfa_challenge_1", {
+      updatedAt: "2026-06-03T00:01:00.000Z"
+    });
+    assert.equal(failed.failureCount, 1);
+
+    const used = store.markPortalSecondFactorChallengeUsed("mfa_challenge_1", {
+      usedAt: "2026-06-03T00:02:00.000Z",
+      updatedAt: "2026-06-03T00:02:00.000Z"
+    });
+    assert.equal(used.status, "used");
+    assert.throws(() => store.markPortalSecondFactorChallengeUsed("mfa_challenge_1", {
+      usedAt: "2026-06-03T00:03:00.000Z",
+      updatedAt: "2026-06-03T00:03:00.000Z"
+    }), /portal second-factor challenge is not active/);
+  });
+});
+
+test("subscription control store rolls back grouped portal credential writes", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_auth_tx",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    assert.throws(() => {
+      store.runInTransaction(() => {
+        store.createPortalPasswordCredential({
+          id: "pwd_cred_tx",
+          accountId: "acct_auth_tx",
+          passwordHash: "scrypt$v=1$N=32768$r=8$p=1$saltref$hashref",
+          status: "active",
+          mustRotate: true,
+          createdAt: now,
+          updatedAt: now
+        });
+        throw new Error("simulate portal credential failure");
+      });
+    }, /simulate portal credential failure/);
+
+    assert.equal(store.getActivePortalPasswordCredential("acct_auth_tx"), null);
+  });
+});
