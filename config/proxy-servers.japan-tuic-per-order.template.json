@@ -1,0 +1,40 @@
+{
+  "reviewedRuntimeTemplate": true,
+  "templatePurpose": "Japan TUIC per-order lifecycle metadata. Replace non-sensitive endpoint placeholders and provide sensitive values from protected runtime storage before deployment.",
+  "servers": [
+    {
+      "id": "channel-lab-b-tuic",
+      "name": "channel-lab-b-tuic",
+      "protocol": "tuic",
+      "host": "${TUIC_HOST}",
+      "port": 443,
+      "uuid": "${TUIC_UUID}",
+      "password": "${TUIC_PASSWORD}",
+      "udpRelayMode": "native",
+      "congestionController": "bbr",
+      "sni": "${TUIC_SNI}",
+      "alpn": ["h3"],
+      "channelPool": "stable",
+      "pool": "stable",
+      "status": "online",
+      "disabled": false,
+      "maintenance": false,
+      "subscriptionEligible": true,
+      "strategyPriority": 10,
+      "stableProtocolApproved": true,
+      "stableProtocolApprovalRef": "japan-tuic-per-order-explicit-restart",
+      "credentialMode": "per-order",
+      "credentialLifecycle": {
+        "addCredential": true,
+        "disableCredential": true,
+        "rotateCredential": true,
+        "restart": true
+      }
+    }
+  ],
+  "pingHosts": [],
+  "nginx": {
+    "host": "",
+    "ports": []
+  }
+}

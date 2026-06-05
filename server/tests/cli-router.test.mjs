@@ -135,8 +135,14 @@ test("gccgw CLI exposes business facade commands for node, subscription, backup,
   const commands = listCliCommands();
   const commandNames = commands.map((entry) => entry.command);
 
+  assert.ok(commandNames.includes("gccgw edge tuic-credentials plan"));
+  assert.ok(commandNames.includes("gccgw edge tuic-credentials apply"));
+  assert.ok(commandNames.includes("gccgw edge credentials reconcile-plan"));
+  assert.ok(commandNames.includes("gccgw edge credentials apply"));
   assert.ok(commandNames.includes("gccgw node inspect"));
   assert.ok(commandNames.includes("gccgw node validate"));
+  assert.ok(commandNames.includes("gccgw node policy-check"));
+  assert.ok(commandNames.includes("gccgw node data-plane-lifecycle-policy"));
   assert.ok(commandNames.includes("gccgw node register"));
   assert.ok(commandNames.includes("gccgw node disable"));
   assert.ok(commandNames.includes("gccgw node plan"));
@@ -155,6 +161,303 @@ test("gccgw CLI exposes business facade commands for node, subscription, backup,
 
   const riskA = commands.filter((entry) => entry.command === "gccgw node bootstrap" || entry.command === "gccgw subscription issue" || entry.command === "gccgw subscription portal-entry");
   assert.ok(riskA.every((entry) => entry.riskTier === "A" && entry.approvalPrompt));
+});
+
+test("gccgw edge tuic-credentials commands stay redacted and gated", async () => {
+  assert.deepEqual(resolveCliCommand([
+    "edge",
+    "tuic-credentials",
+    "plan",
+    "--input",
+    "desired-state.json",
+    "--json"
+  ]), {
+    kind: "edge-tuic-credentials-plan",
+    inputPath: "desired-state.json",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand([
+    "edge",
+    "tuic-credentials",
+    "apply",
+    "--input",
+    "desired-state.json",
+    "--execute-production-mutation",
+    "--json"
+  ]), {
+    kind: "edge-tuic-credentials-apply",
+    commandName: "gccgw edge tuic-credentials apply",
+    inputPath: "desired-state.json",
+    executeProductionMutation: true,
+    format: "json"
+  });
+
+  const stdout = [];
+  const exitCode = await runProxyGatewayCli([
+    "edge",
+    "tuic-credentials",
+    "plan",
+    "--input",
+    "desired-state.json",
+    "--json"
+  ], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for TUIC credential plan");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for TUIC credential plan");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for TUIC credential plan");
+    },
+    readJsonFile: (path) => {
+      assert.equal(path, "desired-state.json");
+      return {
+        node: "channel-lab-b-tuic",
+        runtime: "mihomo-tuic",
+        actions: [
+          {
+            action: "add",
+            credentialRef: "order_ref_add",
+            expiresAt: "2026-07-05T00:00:00.000Z"
+          }
+        ]
+      };
+    },
+    writeStdout: (text) => stdout.push(text),
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  const report = JSON.parse(stdout.join(""));
+  assert.equal(report.type, "gccgw_edge_tuic_credential_lifecycle_plan");
+  assert.equal(report.ok, true);
+  assert.equal(report.redacted, true);
+  assert.doesNotMatch(JSON.stringify(report), /password|token|subscriptionUrl|rawConfig|sqliteRow/i);
+
+  const applyStdout = [];
+  const blockedApplyCode = await runProxyGatewayCli([
+    "edge",
+    "tuic-credentials",
+    "apply",
+    "--input",
+    "desired-state.json",
+    "--json"
+  ], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for TUIC credential apply");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for TUIC credential apply");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for TUIC credential apply");
+    },
+    confirmRiskAExecution: async () => {
+      throw new Error("approval prompt must not run when execution flag is absent");
+    },
+    readJsonFile: () => ({
+      node: "channel-lab-b-tuic",
+      runtime: "mihomo-tuic",
+      actions: [
+        {
+          action: "disable",
+          credentialRef: "order_ref_expired",
+          reason: "order_expired"
+        }
+      ]
+    }),
+    writeStdout: (text) => applyStdout.push(text),
+    writeStderr: () => {}
+  });
+
+  assert.equal(blockedApplyCode, 1);
+  const blockedApply = JSON.parse(applyStdout.join(""));
+  assert.equal(blockedApply.type, "gccgw_edge_tuic_credential_lifecycle_apply_plan");
+  assert.equal(blockedApply.ok, false);
+  assert.ok(blockedApply.blockers.some((blocker) => blocker.code === "execute_production_mutation_required"));
+  assert.equal(blockedApply.redacted, true);
+
+  const approvedApplyStdout = [];
+  const approvals = [];
+  const approvedApplyCode = await runProxyGatewayCli([
+    "edge",
+    "tuic-credentials",
+    "apply",
+    "--input",
+    "desired-state.json",
+    "--execute-production-mutation",
+    "--json"
+  ], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for TUIC credential apply");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for TUIC credential apply");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for TUIC credential apply");
+    },
+    confirmRiskAExecution: async (approval) => {
+      approvals.push(approval);
+      return true;
+    },
+    readJsonFile: () => ({
+      node: "channel-lab-b-tuic",
+      runtime: "mihomo-tuic",
+      actions: [
+        {
+          action: "rotate",
+          credentialRef: "order_ref_rotate",
+          nextCredentialRef: "order_ref_rotate_next"
+        }
+      ]
+    }),
+    writeStdout: (text) => approvedApplyStdout.push(text),
+    writeStderr: () => {}
+  });
+
+  assert.equal(approvedApplyCode, 1);
+  assert.equal(approvals.length, 1);
+  assert.equal(approvals[0].command, "gccgw edge tuic-credentials apply");
+  const approvedApply = JSON.parse(approvedApplyStdout.join(""));
+  assert.equal(approvedApply.type, "gccgw_edge_tuic_credential_lifecycle_apply_plan");
+  assert.equal(approvedApply.ok, false);
+  assert.ok(approvedApply.blockers.some((blocker) => blocker.code === "runtime_apply_adapter_not_implemented"));
+  assert.equal(approvedApply.redacted, true);
+});
+
+test("gccgw edge credentials reconciliation commands stay redacted and gated", async () => {
+  assert.deepEqual(resolveCliCommand([
+    "edge",
+    "credentials",
+    "reconcile-plan",
+    "--input",
+    "desired-state.json",
+    "--json"
+  ]), {
+    kind: "edge-credentials-reconcile-plan",
+    inputPath: "desired-state.json",
+    format: "json"
+  });
+  assert.deepEqual(resolveCliCommand([
+    "edge",
+    "credentials",
+    "apply",
+    "--input",
+    "desired-state.json",
+    "--execute-production-mutation",
+    "--json"
+  ]), {
+    kind: "edge-credentials-apply",
+    commandName: "gccgw edge credentials apply",
+    inputPath: "desired-state.json",
+    executeProductionMutation: true,
+    format: "json"
+  });
+
+  const desiredState = {
+    channelRef: "channel-aliyun-a-tuic",
+    runtime: "mihomo-tuic",
+    activationSurface: "explicit-restart",
+    desiredStateRef: "desired_state_aliyun_001",
+    desiredCredentials: [
+      {
+        credentialRef: "order_ref_new",
+        orderRef: "order_new",
+        userRef: "portal_user_001",
+        expiresAt: "2026-07-05T00:00:00.000Z",
+        materialDigest: "sha256:new_digest"
+      }
+    ],
+    currentCredentials: []
+  };
+
+  const stdout = [];
+  const exitCode = await runProxyGatewayCli([
+    "edge",
+    "credentials",
+    "reconcile-plan",
+    "--input",
+    "desired-state.json",
+    "--json"
+  ], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for edge credential reconciliation plan");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for edge credential reconciliation plan");
+    },
+    startServer: async () => {
+      throw new Error("server must not start for edge credential reconciliation plan");
+    },
+    readJsonFile: (path) => {
+      assert.equal(path, "desired-state.json");
+      return desiredState;
+    },
+    writeStdout: (text) => stdout.push(text),
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 0);
+  const report = JSON.parse(stdout.join(""));
+  assert.equal(report.type, "gccgw_edge_credential_reconciliation_plan");
+  assert.equal(report.ok, true);
+  assert.equal(report.redacted, true);
+  assert.doesNotMatch(JSON.stringify(report), /new_digest|password|token|subscriptionUrl|rawConfig|sqliteRow/i);
+
+  const applyStdout = [];
+  const blockedApplyCode = await runProxyGatewayCli([
+    "edge",
+    "credentials",
+    "apply",
+    "--input",
+    "desired-state.json",
+    "--json"
+  ], {
+    confirmRiskAExecution: async () => {
+      throw new Error("approval prompt must not run when execution flag is absent");
+    },
+    readJsonFile: () => desiredState,
+    writeStdout: (text) => applyStdout.push(text),
+    writeStderr: () => {}
+  });
+
+  assert.equal(blockedApplyCode, 1);
+  const blockedApply = JSON.parse(applyStdout.join(""));
+  assert.equal(blockedApply.type, "gccgw_edge_credential_reconciliation_apply_plan");
+  assert.equal(blockedApply.ok, false);
+  assert.ok(blockedApply.blockers.some((blocker) => blocker.code === "execute_production_mutation_required"));
+  assert.equal(blockedApply.redacted, true);
+
+  const approvedApplyStdout = [];
+  const approvals = [];
+  const approvedApplyCode = await runProxyGatewayCli([
+    "edge",
+    "credentials",
+    "apply",
+    "--input",
+    "desired-state.json",
+    "--execute-production-mutation",
+    "--json"
+  ], {
+    confirmRiskAExecution: async (approval) => {
+      approvals.push(approval);
+      return true;
+    },
+    readJsonFile: () => desiredState,
+    writeStdout: (text) => approvedApplyStdout.push(text),
+    writeStderr: () => {}
+  });
+
+  assert.equal(approvedApplyCode, 1);
+  assert.equal(approvals.length, 1);
+  assert.equal(approvals[0].command, "gccgw edge credentials apply");
+  const approvedApply = JSON.parse(approvedApplyStdout.join(""));
+  assert.equal(approvedApply.type, "gccgw_edge_credential_reconciliation_apply_plan");
+  assert.equal(approvedApply.ok, false);
+  assert.ok(approvedApply.blockers.some((blocker) => blocker.code === "production_runtime_adapter_required"));
+  assert.equal(approvedApply.redacted, true);
 });
 
 test("gccgw CLI resolves node and subscription facade commands to existing safe handlers", () => {
@@ -643,6 +946,10 @@ test("gccgw node inspect returns safe node summaries without endpoints or creden
     role: "primary",
     region: "Tokyo",
     channelPool: "stable",
+    channelRole: "primary",
+    lifecycle: "active",
+    physicalNodeRef: "",
+    generation: "",
     strategyPriority: 0,
     canaryWeight: 0,
     credentialMode: "shared-node",
@@ -721,6 +1028,129 @@ test("gccgw node validate compares package slots to runtime config without leaki
   });
   assert.deepEqual(report.missingEligibleRuntimeNodes, []);
   assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|18388|secret/);
+});
+
+test("gccgw node policy-check reports stable protocol blockers without leaking endpoints", async () => {
+  assert.deepEqual(resolveCliCommand(["node", "policy-check", "--config", "config/proxy-servers.json", "--json"]), {
+    kind: "node-policy-check",
+    configPath: "config/proxy-servers.json",
+    format: "json"
+  });
+
+  const stdout = [];
+  const exitCode = await runProxyGatewayCli(["node", "policy-check", "--config", "config/proxy-servers.json", "--json"], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for node policy-check");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for node policy-check");
+    },
+    runGitDiffCheck: async () => 0,
+    runEnvCheck: async () => 0,
+    runSelfCheck: async () => 0,
+    runInstallPreflight: async () => 0,
+    runBackupPreflight: async () => 0,
+    runReleaseStatus: async () => 0,
+    runServiceStatus: async () => 0,
+    runNetworkStatus: async () => 0,
+    runPackageImportDryRun: async () => 0,
+    runPackageApply: async () => 0,
+    runPackageInspect: async () => 0,
+    runInstallConfigure: async () => 0,
+    startServer: async () => 0,
+    confirmRiskAExecution: async () => false,
+    readJsonFile: (path) => {
+      assert.equal(path, "config/proxy-servers.json");
+      return {
+        servers: [
+          { id: "stable-a", name: "stable-a", protocol: "ss", channelPool: "stable", host: "198.51.100.10", port: 18388, password: "ss-secret" },
+          { id: "tuic-a", name: "tuic-a", protocol: "tuic", channelPool: "stable", host: "198.51.100.11", port: 443, password: "tuic-secret" }
+        ]
+      };
+    },
+    writeStdout: (text) => stdout.push(text),
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 1);
+  const report = JSON.parse(stdout.join(""));
+  assert.equal(report.type, "gccgw_stable_pool_protocol_policy");
+  assert.equal(report.ok, false);
+  assert.equal(report.blockers[0].code, "udp_quic_protocol_in_stable_pool");
+  assert.equal(report.mutation, false);
+  assert.equal(report.productionAuthority, false);
+  assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|18388|ss-secret|tuic-secret/);
+});
+
+test("gccgw node data-plane-lifecycle-policy blocks shared credentials without leaking endpoints", async () => {
+  assert.deepEqual(resolveCliCommand([
+    "node",
+    "data-plane-lifecycle-policy",
+    "--config",
+    "config/proxy-servers.json",
+    "--json"
+  ]), {
+    kind: "node-data-plane-lifecycle-policy",
+    configPath: "config/proxy-servers.json",
+    format: "json"
+  });
+
+  const stdout = [];
+  const exitCode = await runProxyGatewayCli([
+    "node",
+    "data-plane-lifecycle-policy",
+    "--config",
+    "config/proxy-servers.json",
+    "--json"
+  ], {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for node data-plane-lifecycle-policy");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for node data-plane-lifecycle-policy");
+    },
+    runGitDiffCheck: async () => 0,
+    runEnvCheck: async () => 0,
+    runSelfCheck: async () => 0,
+    runInstallPreflight: async () => 0,
+    runBackupPreflight: async () => 0,
+    runReleaseStatus: async () => 0,
+    runServiceStatus: async () => 0,
+    runNetworkStatus: async () => 0,
+    runPackageImportDryRun: async () => 0,
+    runPackageApply: async () => 0,
+    runPackageInspect: async () => 0,
+    runInstallConfigure: async () => 0,
+    startServer: async () => 0,
+    confirmRiskAExecution: async () => false,
+    readJsonFile: (path) => {
+      assert.equal(path, "config/proxy-servers.json");
+      return {
+        servers: [
+          {
+            id: "stable-a",
+            name: "stable-a",
+            protocol: "ss",
+            channelPool: "stable",
+            host: "198.51.100.10",
+            port: 18388,
+            password: "ss-secret"
+          }
+        ]
+      };
+    },
+    writeStdout: (text) => stdout.push(text),
+    writeStderr: () => {}
+  });
+
+  assert.equal(exitCode, 1);
+  const report = JSON.parse(stdout.join(""));
+  assert.equal(report.type, "gccgw_data_plane_credential_lifecycle_policy");
+  assert.equal(report.ok, false);
+  assert.equal(report.blockers[0].code, "shared_node_credentials_cannot_force_order_expiry");
+  assert.equal(report.mutation, false);
+  assert.equal(report.productionAuthority, false);
+  assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|18388|ss-secret/);
 });
 
 test("gccgw node register and disable remain dry-run only and reject unsafe node facts", async () => {
@@ -1297,6 +1727,7 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.ok(names.includes("gccgw service status"));
   assert.ok(names.includes("gccgw project verify"));
   assert.ok(names.includes("gccgw platform issue-subscription"));
+  assert.ok(names.includes("gccgw platform issue-portal-initial-account"));
   assert.ok(names.includes("gccgw channel validate"));
   assert.ok(names.includes("gccgw channel subscription-render-proof"));
 
@@ -1307,6 +1738,14 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.equal(issueSubscription.approvalPrompt, "required for --execute-production-mutation");
   assert.ok(issueSubscription.sourceDocs.includes("docs/CLI_PRODUCTION_PROVISIONING_SOP.md"));
   assert.ok(issueSubscription.sourceDocs.includes("docs/SUBSCRIPTION_CONTROL_DATABASE.md"));
+
+  const issueInitialAccount = commands.find((command) => command.command === "gccgw platform issue-portal-initial-account");
+  assert.equal(issueInitialAccount.domain, "platform");
+  assert.equal(issueInitialAccount.riskTier, "A");
+  assert.equal(issueInitialAccount.mode, "execution-gated");
+  assert.equal(issueInitialAccount.approvalPrompt, "required for --execute-production-mutation");
+  assert.ok(issueInitialAccount.sourceDocs.includes("docs/USER_PORTAL_PRODUCTION_AUTH_PLAN.md"));
+  assert.ok(issueInitialAccount.sourceDocs.includes("docs/SUBSCRIPTION_CONTROL_DATABASE.md"));
 
   const revokeAccess = commands.find((command) => command.command === "gccgw platform revoke-access");
   assert.equal(revokeAccess.riskTier, "A");
@@ -1602,6 +2041,16 @@ test("gccgw CLI keeps execution-gated platform commands behind the existing scri
   ]), {
     kind: "node-script",
     script: "scripts/platform-issue-subscription.mjs",
+    args: ["--dry-run", "input.json"]
+  });
+  assert.deepEqual(resolveCliCommand([
+    "platform",
+    "issue-portal-initial-account",
+    "--dry-run",
+    "input.json"
+  ]), {
+    kind: "node-script",
+    script: "scripts/platform-issue-portal-initial-account.mjs",
     args: ["--dry-run", "input.json"]
   });
 });

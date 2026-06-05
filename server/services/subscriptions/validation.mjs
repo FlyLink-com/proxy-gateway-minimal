@@ -1,5 +1,6 @@
 export const DEFAULT_EXPIRING_DAYS = 7;
 export const SHARED_NODE_MODE = "shared-node";
+export const PER_ORDER_CREDENTIAL_MODE = "per-order";
 
 const ISO_DATE_TIME_PATTERN = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
 

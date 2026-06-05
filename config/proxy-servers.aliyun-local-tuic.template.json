@@ -1,0 +1,38 @@
+{
+  "reviewedRuntimeTemplate": true,
+  "templatePurpose": "Aliyun local TUIC logical channel lifecycle metadata. Replace placeholders from protected runtime storage before any production deployment.",
+  "servers": [
+    {
+      "id": "channel_aliyun_a_tuic",
+      "name": "channel-aliyun-a-tuic",
+      "physicalNodeRef": "aliyun-control-a",
+      "displayName": "Aliyun Local TUIC",
+      "region": "aliyun",
+      "provider": "aliyun",
+      "protocol": "tuic",
+      "type": "tuic",
+      "host": "${ALIYUN_TUIC_HOST}",
+      "port": 443,
+      "uuid": "${ALIYUN_TUIC_UUID}",
+      "password": "${ALIYUN_TUIC_PASSWORD}",
+      "sni": "${ALIYUN_TUIC_SNI}",
+      "alpn": [
+        "h3"
+      ],
+      "channelPool": "stable",
+      "channelRole": "stable",
+      "status": "online",
+      "subscriptionEligible": true,
+      "strategyPriority": 5,
+      "stableProtocolApproved": true,
+      "stableProtocolApprovalRef": "aliyun-local-tuic-explicit-restart",
+      "credentialMode": "per-order",
+      "credentialLifecycle": {
+        "addCredential": true,
+        "disableCredential": true,
+        "rotateCredential": true,
+        "restart": true
+      }
+    }
+  ]
+}

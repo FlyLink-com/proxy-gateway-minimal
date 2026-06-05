@@ -1,8 +1,22 @@
-import { SHARED_NODE_MODE } from "./validation.mjs";
+import {
+  PER_ORDER_CREDENTIAL_MODE,
+  SHARED_NODE_MODE
+} from "./validation.mjs";
 
 const DEFAULT_STATUS = "online";
 const DEFAULT_CHANNEL_POOL = "stable";
 const CHANNEL_POOLS = new Set(["stable", "private", "canary", "recovery"]);
+const ACTIVE_LIFECYCLE = "active";
+const BLOCKED_LIFECYCLES = new Set([
+  "deprecated",
+  "disabled",
+  "draining",
+  "maintenance",
+  "offline",
+  "planned",
+  "private-validation",
+  "retired"
+]);
 
 function text(value) {
   return String(value ?? "").trim();
@@ -16,6 +30,25 @@ function bool(value) {
   return value === true || value === "true";
 }
 
+function credentialModeFor(server) {
+  const raw = metadataToken(
+    server.credentialMode ||
+    server.dataPlaneCredentialMode ||
+    server.credential?.mode ||
+    server.credentials?.mode
+  );
+  if (
+    raw === "per-order" ||
+    raw === "per-order-credential" ||
+    raw === "per-user" ||
+    raw === "per-user-credential" ||
+    raw === "dedicated"
+  ) {
+    return PER_ORDER_CREDENTIAL_MODE;
+  }
+  return SHARED_NODE_MODE;
+}
+
 function normalizedStatus(server) {
   const rawStatus = text(server.status).toLowerCase();
   if (bool(server.maintenance) || rawStatus === "maintenance") return "maintenance";
@@ -24,12 +57,31 @@ function normalizedStatus(server) {
   return DEFAULT_STATUS;
 }
 
-function reasonFor(server, status) {
+function lifecycleFor(server, status) {
+  const rawLifecycle = metadataToken(
+    server.lifecycle ||
+    server.nodeLifecycle ||
+    server.channelLifecycle ||
+    server.status
+  );
+  if (rawLifecycle && (rawLifecycle === ACTIVE_LIFECYCLE || BLOCKED_LIFECYCLES.has(rawLifecycle))) {
+    return rawLifecycle;
+  }
+  if (status !== DEFAULT_STATUS) {
+    return status;
+  }
+  return ACTIVE_LIFECYCLE;
+}
+
+function reasonFor(server, status, lifecycle) {
   if (status === "maintenance") {
     return text(server.maintenanceReason || server.reason);
   }
   if (status === "disabled") {
     return text(server.disabledReason || server.reason);
+  }
+  if (lifecycle && lifecycle !== ACTIVE_LIFECYCLE) {
+    return text(server.lifecycleReason || server.reason);
   }
   return text(server.reason);
 }
@@ -78,8 +130,9 @@ function byStrategyPriority(a, b) {
 
 export function normalizeNode(server, index = 0, { includeRuntime = false } = {}) {
   const status = normalizedStatus(server);
+  const lifecycle = lifecycleFor(server, status);
   const maintenance = status === "maintenance";
-  const subscriptionEligible = status === DEFAULT_STATUS && !maintenance;
+  const subscriptionEligible = status === DEFAULT_STATUS && lifecycle === ACTIVE_LIFECYCLE && !maintenance;
   const channelPool = channelPoolFor(server);
   const node = {
     id: server.id || server.name,
@@ -87,13 +140,17 @@ export function normalizeNode(server, index = 0, { includeRuntime = false } = {}
     role: text(server.role),
     region: text(server.region),
     channelPool,
+    channelRole: metadataToken(server.channelRole || server.role),
+    lifecycle,
+    physicalNodeRef: text(server.physicalNodeRef || server.physicalNode || server.nodeRef),
+    generation: text(server.generation || server.nodeGeneration || server.configGeneration),
     strategyPriority: strategyPriorityFor(server, index),
     canaryWeight: canaryWeightFor(server),
-    credentialMode: SHARED_NODE_MODE,
+    credentialMode: credentialModeFor(server),
     status,
     maintenance,
     subscriptionEligible,
-    reason: reasonFor(server, status)
+    reason: reasonFor(server, status, lifecycle)
   };
 
   if (!includeRuntime) {
