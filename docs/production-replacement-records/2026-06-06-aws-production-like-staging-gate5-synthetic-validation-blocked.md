@@ -36,7 +36,6 @@ Mutation performed:
 added temporary SSH ingress: TCP 22 from 63.88.218.78/32
 security group rule id: sgr-0e62ab54b0c2b17df
 ```
-
 Validation after adding the temporary rule:
 
 ```text
@@ -141,4 +140,3 @@ forbidden:
   - SQLite row dump
   - raw env/log/config output
 ```
-

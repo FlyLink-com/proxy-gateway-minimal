@@ -563,6 +563,32 @@ Detailed synthetic validation record:
 
 - `docs/production-replacement-records/2026-06-06-aws-production-like-staging-gate5-synthetic-validation-blocked.md`
 
+Restart-permission validation result recorded on 2026-06-06:
+
+```text
+temporary SSH ingress added and removed: yes
+final SSH source list: 45.76.222.52/32
+permission mechanism: restricted polkit rule
+allowed subject: proxy-gateway-candidate
+allowed unit: mihomo-tuic.service
+allowed verb: restart
+restart as proxy-gateway-candidate: exit 0
+human challenge status: 201
+password login status: 200
+order status: 201
+order record status: delivered
+latest edge receipt: applied, configTest=1, serviceActive=1, listenerUdp443=1
+active config loaded by current Mihomo process: yes
+UDP 443 listener: present
+public /api/health: 200
+public /api/admin/platform/health: 404
+Gate 5 status: restart-permission/loading path validated on AWS staging
+```
+
+Detailed restart-permission record:
+
+- `docs/production-replacement-records/2026-06-06-aws-production-like-staging-gate5-restart-permission-success.md`
+
 - [ ] **Step 1: Validate app service**
 
 Run:
