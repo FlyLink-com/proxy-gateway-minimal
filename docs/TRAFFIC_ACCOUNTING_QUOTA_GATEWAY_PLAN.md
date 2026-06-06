@@ -68,6 +68,38 @@ This plan does not include:
 
 ## Recommended Architecture
 
+### 0. Subscription Output Identity Anchor Review
+
+A redacted review of an external Clash/Mihomo subscription profile on
+2026-06-06 confirmed the important boundary for this project:
+
+- a client profile can carry runtime identity anchors, such as VLESS UUID,
+  TUIC UUID/password, Hysteria2 auth/password, or Shadowsocks password;
+- the profile itself is not a traffic ledger and does not report used bytes;
+- static fields such as node name, host, public key, short ID, SNI, group name,
+  or routing rules are not sufficient quota identities;
+- shared credentials across multiple rendered nodes can still be useful for
+  one order, but shared credentials across different orders would make
+  per-order abuse containment impossible;
+- therefore, every issued order that needs quota enforcement must receive a
+  unique runtime credential mapped to an internal `edgeCredentialRef`.
+
+For this repository, subscription output is only the delivery vehicle for the
+runtime credential. The accounting identity is:
+
+```text
+order/access request
+  -> edgeCredentialRef
+  -> protected runtime credential material
+  -> rendered client profile credential
+  -> runtime usage observation
+  -> ledger sample and rollup
+```
+
+Public, admin, test, and report outputs must never expose the raw runtime
+credential material. They may expose safe refs, digests, counts, and aggregate
+usage numbers only.
+
 ### 1. Durable Usage Ledger
 
 Add a schema-gated usage ledger separate from generic quota counters.
@@ -224,9 +256,13 @@ Status as of 2026-06-06:
   locally using dependency-injected safe snapshots; it accepts only observations
   that explicitly include `edgeCredentialRef` and fails closed for node
   aggregate-only snapshots;
-- live runtime collection, AWS staging proof, production migration, and
-  quota-driven runtime disable/revoke remain unimplemented and blocked behind
-  later gates.
+- AWS staging Gate 6C proved the control-plane usage anchor chain from
+  synthetic order issuance to `edgeCredentialRef`, rendered per-order
+  credential output, and usage ledger rollup without exposing raw runtime
+  material;
+- real runtime traffic collection, production migration, and quota-driven
+  runtime disable/revoke remain unimplemented until a runtime can expose real
+  per-credential usage observations.
 
 ### Phase 1: Repo-Only Schema and Service Tests
 

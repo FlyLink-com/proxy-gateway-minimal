@@ -96,7 +96,14 @@ export function createSubscriptionCore({
   }
 
   function protocolFor(server) {
-    return String(server.protocol || server.clashType || server.type || "ss").trim().toLowerCase();
+    const raw = String(server.protocol || server.clashType || server.type || "ss").trim().toLowerCase();
+    if (raw === "ss" || raw === "shadowsocks" || raw === "shadowsocks-libev" || raw === "shadowsocks-rust") {
+      return "ss";
+    }
+    if (raw === "hysteria2" || raw === "hy2") {
+      return "hysteria2";
+    }
+    return raw;
   }
 
   function credentialModeFor(server) {
@@ -104,7 +111,38 @@ export function createSubscriptionCore({
   }
 
   function requiresTenantCredentialMaterial(server) {
-    return protocolFor(server) === "tuic" && credentialModeFor(server) === "per-order";
+    const credentialMode = credentialModeFor(server).replace(/[\s_]+/g, "-");
+    if (
+      credentialMode !== "per-order" &&
+      credentialMode !== "per-order-credential" &&
+      credentialMode !== "per-user" &&
+      credentialMode !== "per-user-credential" &&
+      credentialMode !== "dedicated"
+    ) {
+      return false;
+    }
+    return new Set(["ss", "vless", "hysteria2", "tuic"]).has(protocolFor(server));
+  }
+
+  function applyCredentialMaterialToServer(server, material) {
+    const protocol = protocolFor(server);
+    if (protocol === "vless") {
+      return {
+        ...server,
+        uuid: material.uuid
+      };
+    }
+    if (protocol === "hysteria2" || protocol === "ss") {
+      return {
+        ...server,
+        password: material.password
+      };
+    }
+    return {
+      ...server,
+      uuid: material.uuid,
+      password: material.password
+    };
   }
 
   function resolveTenantCredentialMaterial(tenantAuth, server) {
@@ -126,18 +164,14 @@ export function createSubscriptionCore({
     return {
       ...scopedProxyConfig,
       servers: (scopedProxyConfig.servers || []).flatMap((server) => {
-        if (protocolFor(server) !== "tuic") {
+        if (!requiresTenantCredentialMaterial(server)) {
           return [server];
         }
         const material = resolveTenantCredentialMaterial(tenantAuth, server);
         if (!material) {
-          return requiresTenantCredentialMaterial(server) ? [] : [server];
+          return [];
         }
-        return [{
-          ...server,
-          uuid: material.uuid,
-          password: material.password
-        }];
+        return [applyCredentialMaterialToServer(server, material)];
       })
     };
   }

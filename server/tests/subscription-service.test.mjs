@@ -181,6 +181,55 @@ function tuicPerOrderProxyConfig() {
   };
 }
 
+function multiProtocolPerOrderProxyConfig() {
+  return {
+    servers: [
+      {
+        id: "channel_vless_a",
+        name: "channel-vless-a",
+        channelPool: "canary",
+        protocol: "vless",
+        type: "vless",
+        credentialMode: "per-order",
+        host: "203.0.113.60",
+        port: 443,
+        uuid: "00000000-0000-4000-8000-000000000001",
+        udp: true,
+        tls: true,
+        network: "tcp",
+        status: "online"
+      },
+      {
+        id: "channel_hy2_a",
+        name: "channel-hy2-a",
+        channelPool: "canary",
+        protocol: "hysteria2",
+        type: "hysteria2",
+        credentialMode: "per-order",
+        host: "203.0.113.61",
+        port: 443,
+        password: "static-hy2-template-password",
+        status: "online"
+      },
+      {
+        id: "channel_ss_a",
+        name: "channel-ss-a",
+        channelPool: "canary",
+        protocol: "ss",
+        type: "ss",
+        credentialMode: "per-order",
+        host: "203.0.113.62",
+        port: 18388,
+        method: "aes-256-gcm",
+        password: "static-ss-template-password",
+        status: "online"
+      }
+    ],
+    pingHosts: ["1.1.1.1"],
+    nginx: { host: "127.0.0.1", ports: [443] }
+  };
+}
+
 function tokenFromRaw(rawToken) {
   return {
     rawToken,
@@ -648,6 +697,69 @@ test("service rejects per-order TUIC artifacts when tenant material is unavailab
   }, {
     proxyConfig: tuicPerOrderProxyConfig()
   });
+});
+
+test("service injects order credentials for non-TUIC per-order subscription protocols", async () => {
+  for (const scenario of [
+    {
+      nodeId: "channel-vless-a",
+      field: "uuid",
+      expected: "33333333-3333-4333-8333-333333333333",
+      staticValue: "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      nodeId: "channel-hy2-a",
+      field: "password",
+      expected: "per-order-hy2-password",
+      staticValue: "static-hy2-template-password"
+    },
+    {
+      nodeId: "channel-ss-a",
+      field: "password",
+      expected: "per-order-ss-password",
+      staticValue: "static-ss-template-password"
+    }
+  ]) {
+    await withService(async (context) => {
+      await createActiveTenant(context, { nodeId: scenario.nodeId });
+      context.service.createSubscriptionArtifact("tenant_1");
+      context.service.bindTenantCredentialMaterial({
+        tenantId: "tenant_1",
+        nodeId: scenario.nodeId,
+        material: {
+          uuid: scenario.expected,
+          password: scenario.expected
+        }
+      });
+
+      const resolved = context.service.resolveSubscriptionArtifact("opaque_device_secret");
+
+      assert.equal(resolved.ok, true);
+      assert.equal(resolved.proxyConfig.servers.length, 1);
+      assert.equal(resolved.proxyConfig.servers[0].name, scenario.nodeId);
+      assert.equal(resolved.proxyConfig.servers[0][scenario.field], scenario.expected);
+      assert.notEqual(resolved.proxyConfig.servers[0][scenario.field], scenario.staticValue);
+    }, {
+      proxyConfig: multiProtocolPerOrderProxyConfig()
+    });
+  }
+});
+
+test("service fails closed for non-TUIC per-order protocols without order material", async () => {
+  for (const nodeId of ["channel-vless-a", "channel-hy2-a", "channel-ss-a"]) {
+    await withService(async (context) => {
+      await createActiveTenant(context, { nodeId });
+      context.service.createSubscriptionArtifact("tenant_1");
+
+      assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret"), {
+        ok: false,
+        status: 403,
+        error: "Subscription node unavailable"
+      });
+    }, {
+      proxyConfig: multiProtocolPerOrderProxyConfig()
+    });
+  }
 });
 
 test("service rejects revoked and rotated opaque artifacts", async () => {
