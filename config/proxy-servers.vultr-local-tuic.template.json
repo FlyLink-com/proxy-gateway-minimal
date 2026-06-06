@@ -1,0 +1,40 @@
+{
+  "reviewedRuntimeTemplate": true,
+  "templatePurpose": "Vultr local TUIC logical channel lifecycle metadata. Replace placeholders from protected runtime storage before any production deployment.",
+  "servers": [
+    {
+      "id": "channel_vultr_a_tuic",
+      "name": "channel-vultr-a-tuic",
+      "physicalNodeRef": "vultr-nrt-a",
+      "displayName": "Vultr Tokyo TUIC",
+      "region": "nrt",
+      "provider": "vultr",
+      "protocol": "tuic",
+      "type": "tuic",
+      "host": "${VULTR_TUIC_HOST}",
+      "port": 443,
+      "uuid": "${VULTR_TUIC_UUID}",
+      "password": "${VULTR_TUIC_PASSWORD}",
+      "udpRelayMode": "native",
+      "congestionController": "bbr",
+      "sni": "${VULTR_TUIC_SNI}",
+      "alpn": [
+        "h3"
+      ],
+      "channelPool": "stable",
+      "channelRole": "stable",
+      "status": "online",
+      "subscriptionEligible": true,
+      "strategyPriority": 5,
+      "stableProtocolApproved": true,
+      "stableProtocolApprovalRef": "vultr-local-tuic-explicit-restart",
+      "credentialMode": "per-order",
+      "credentialLifecycle": {
+        "addCredential": true,
+        "disableCredential": true,
+        "rotateCredential": true,
+        "restart": true
+      }
+    }
+  ]
+}
