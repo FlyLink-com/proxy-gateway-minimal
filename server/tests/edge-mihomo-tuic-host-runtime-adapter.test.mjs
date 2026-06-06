@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import test from "node:test";
 import { buildCredentialReconciliationApplyPlan } from "../services/edge/credential-reconciliation-gateway.mjs";
 import { createMihomoTuicHostRuntimeAdapter } from "../services/edge/mihomo-tuic-host-runtime-adapter.mjs";
@@ -77,7 +77,7 @@ test("Mihomo TUIC host runtime adapter writes candidate, tests config, backs up,
     assert.equal(report.runtimeReceipt.listener.udp443, true);
     assert.match(report.runtimeReceipt.backupRef, /^config\.yaml\./);
     assert.deepEqual(calls, [
-      ["mihomo", "-t", "-f", candidateConfigPath],
+      ["mihomo", "-t", "-d", dirname(candidateConfigPath), "-f", candidateConfigPath],
       ["systemctl", "restart", "mihomo-tuic.service"],
       ["systemctl", "is-active", "--quiet", "mihomo-tuic.service"],
       ["ss", "-H", "-lun", "sport", "=", ":443"]
@@ -192,7 +192,7 @@ test("Mihomo TUIC host runtime adapter stops before backup when config test fail
     assert.equal(report.runtimeReceipt.status, "failed");
     assert.equal(report.runtimeReceipt.mutation, false);
     assert.deepEqual(calls, [
-      ["mihomo", "-t", "-f", candidateConfigPath]
+      ["mihomo", "-t", "-d", dirname(candidateConfigPath), "-f", candidateConfigPath]
     ]);
     assert.equal(existsSync(backupDir), false);
   } finally {

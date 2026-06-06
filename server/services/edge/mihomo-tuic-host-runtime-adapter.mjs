@@ -7,7 +7,7 @@ import {
   renameSync,
   writeFileSync
 } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { createMihomoTuicExplicitRestartAdapter } from "./mihomo-tuic-runtime-adapter.mjs";
 
@@ -118,7 +118,13 @@ export function createMihomoTuicHostRuntimeAdapter({
       return { candidateRef: basename(safeCandidateConfigPath) };
     },
     runConfigTest() {
-      const result = commandRunner(safeMihomoBinary, ["-t", "-f", safeCandidateConfigPath]) || {};
+      const result = commandRunner(safeMihomoBinary, [
+        "-t",
+        "-d",
+        dirname(safeCandidateConfigPath),
+        "-f",
+        safeCandidateConfigPath
+      ]) || {};
       return { exitCode: Number.isInteger(result.exitCode) ? result.exitCode : 1 };
     },
     backupActiveConfig() {
