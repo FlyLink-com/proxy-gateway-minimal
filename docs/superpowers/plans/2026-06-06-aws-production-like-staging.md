@@ -237,7 +237,7 @@ forbidden=Vultr production mutation, Aliyun mutation, DNS mutation, customer dat
 rollback=terminate instance, delete security group/key pair, delete local temporary materials.
 ```
 
-- [ ] **Step 1: Create a temporary key pair or reuse an approved operator public key**
+- [x] **Step 1: Create a temporary key pair or reuse an approved operator public key**
 
 Run only after exact approval:
 
@@ -254,7 +254,7 @@ Expected:
 Temporary or approved public key exists in AWS. Private key is not copied into Git.
 ```
 
-- [ ] **Step 2: Create a staging security group**
+- [x] **Step 2: Create a staging security group**
 
 Run only after exact approval:
 
@@ -271,7 +271,7 @@ Expected:
 Security group exists and has no broad management ingress.
 ```
 
-- [ ] **Step 3: Add only approved ingress**
+- [x] **Step 3: Add only approved ingress**
 
 Run only after exact approval:
 
@@ -288,7 +288,7 @@ Expected:
 Only SSH, HTTP/HTTPS, and UDP 443 are open. Admin/private ports remain closed.
 ```
 
-- [ ] **Step 4: Launch one staging instance**
+- [x] **Step 4: Launch one staging instance**
 
 Run only after exact approval:
 
@@ -307,6 +307,25 @@ Expected:
 
 ```text
 One staging instance reaches running status. No production resource is changed.
+```
+
+Result recorded on 2026-06-06:
+
+```text
+region: ap-northeast-1
+release: bdc95d46ae4d
+ami: ami-091d8d62fdf169cfd
+instance_type: t3.medium
+instance_id: i-08aa4775a099c9a18
+public_ip: 54.248.170.34
+private_ip: 172.31.43.76
+security_group_id: sg-0927469a10053fa98
+key_pair: gccgw-aws-staging-operator-20260606
+root_volume_id: vol-03b1fc39947ff45b5
+root_volume: gp3 30GB, DeleteOnTermination=true
+status_checks: instance ok, system ok
+ssh_validation: passed
+eip: none
 ```
 
 ## Gate 4: Host Bootstrap With Synthetic Runtime Material
