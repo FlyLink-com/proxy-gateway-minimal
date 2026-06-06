@@ -513,6 +513,33 @@ or passkey factor. The code requires `USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESS
 to let a password-only first login create a setup session before the user binds
 an authenticator.
 
+Setup-session env hotfix result recorded on 2026-06-06:
+
+```text
+target: AWS staging host 54.248.170.34 only
+instance_id: i-08aa4775a099c9a18
+release: bdc95d46ae4d
+backup: staging.env.gate5-setup-session-20260606T131433Z
+changed key: USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION=true
+service restarted: proxy-gateway-candidate.service only
+proxy-gateway-candidate.service: active/running, restart count 0
+loopback /api/health: 200
+public /api/health: 200
+public /api/admin/platform/health: 404
+public /api/portal/access-requests/current: 401
+public /api/portal/password/session with empty body: 400
+public /: 404
+instance status: running, instance ok, system ok
+nginx config mutation: not performed
+mihomo config/restart: not performed
+live order creation: not performed
+subscription artifact generation: not performed
+```
+
+Detailed hotfix record:
+
+- `docs/production-replacement-records/2026-06-06-aws-production-like-staging-gate5-setup-session-hotfix.md`
+
 - [ ] **Step 1: Validate app service**
 
 Run:
