@@ -272,6 +272,10 @@ Status as of 2026-06-06:
   ledger-ready delta observations: direct delta/read-and-clear observations pass
   through, cumulative counters require a prior cursor before charging bytes, and
   counter resets fail closed without writing usage;
+- repo-only Hysteria2 usage collector adapter is implemented locally against
+  the official `GET /traffic?clear=1` client-stat model: Hy2 client IDs must be
+  issued as safe `edgeCredentialRef` anchors, and `tx`/`rx` are normalized into
+  upload/download usage observations;
 - real runtime traffic collection, production migration, and quota-driven
   runtime disable/revoke remain unimplemented until a runtime can expose real
   per-credential usage observations and a schema-gated cursor store is approved.
@@ -365,6 +369,26 @@ Scope:
 - no production secrets;
 - run synthetic traffic and verify per-credential usage mapping.
 
+Recommended first runtime:
+
+- Hysteria2, because its traffic stats API exposes a client-ID keyed byte map
+  and supports read-and-clear sampling;
+- TUIC through Mihomo remains a connectivity channel until it can expose
+  per-credential counters instead of node aggregate traffic;
+- Xray/VLESS remains the second candidate for a stable TCP accounting model
+  because its stats API can expose user-level uplink/downlink counters when
+  users are configured with unique accounting identities.
+
+Hy2 staging proof requirements:
+
+- synthetic Hy2 client ID equals a safe internal `edgeCredentialRef`;
+- the traffic stats API is loopback-only and protected by runtime secret
+  material that is never printed or committed;
+- the collector calls clear-mode stats so each sample is a delta observation;
+- one synthetic order records usage without affecting another synthetic order;
+- over-quota result remains a control-plane lifecycle decision, not a direct
+  runtime mutation.
+
 Pass condition:
 
 - one synthetic order produces a non-zero usage rollup tied to its
@@ -423,3 +447,8 @@ The next implementation gate is not another shared calculator. It is either:
 - a schema-gated durable cursor store for cumulative runtimes; or
 - a runtime-specific proof that Hy2, TUIC, VLESS/Xray, or another edge can emit
   per-credential counters suitable for this model.
+
+Current recommendation: run the next AWS staging proof with Hysteria2 first.
+It is the smallest step from the current repo model because its clear-mode
+traffic stats can feed the delta accounting path without adding a durable cursor
+schema.
