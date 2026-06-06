@@ -540,6 +540,29 @@ Detailed hotfix record:
 
 - `docs/production-replacement-records/2026-06-06-aws-production-like-staging-gate5-setup-session-hotfix.md`
 
+Synthetic validation diagnosis recorded on 2026-06-06:
+
+```text
+temporary SSH ingress added: TCP 22 from 63.88.218.78/32
+SSH validation: ok
+public /api/health: 200
+public /api/admin/platform/health: 404
+synthetic account/order data: staging-only
+portal access requests: 2, pending_admin_review:2
+issuance requests: 1, issued:1
+subscription tenants: 1, active:1
+subscription artifacts: 1, active:1
+edge apply receipts: 1, failed:1
+edge failed shape: config_test_ok=true, service_active=true, listener_udp443=true, add_count=1
+active config mtime after Mihomo process start: yes
+root cause: Mihomo explicit restart returned failed, so the running process kept its prior in-memory config
+Gate 5 status: blocked pending a restricted mihomo-tuic.service restart-permission/loading fix
+```
+
+Detailed synthetic validation record:
+
+- `docs/production-replacement-records/2026-06-06-aws-production-like-staging-gate5-synthetic-validation-blocked.md`
+
 - [ ] **Step 1: Validate app service**
 
 Run:
