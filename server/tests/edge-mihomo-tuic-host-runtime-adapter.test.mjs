@@ -92,6 +92,67 @@ test("Mihomo TUIC host runtime adapter writes candidate, tests config, backs up,
   }
 });
 
+test("Mihomo TUIC host runtime adapter retries listener validation after restart", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mihomo-tuic-host-adapter-listener-race-"));
+  const activeConfigPath = join(dir, "config.yaml");
+  const candidateConfigPath = join(dir, "config.candidate.yaml");
+  const backupDir = join(dir, "backups");
+  const calls = [];
+  let listenerChecks = 0;
+
+  try {
+    writeFileSync(activeConfigPath, "listeners: []\n", { mode: 0o600 });
+    const adapter = createMihomoTuicHostRuntimeAdapter({
+      activeConfigPath,
+      candidateConfigPath,
+      backupDir,
+      serviceName: "mihomo-tuic.service",
+      mihomoBinary: "mihomo",
+      listener: {
+        name: "channel-aliyun-a-tuic",
+        port: 443,
+        listen: "0.0.0.0",
+        certificate: "/etc/mihomo/server.crt",
+        privateKey: "/etc/mihomo/server.key",
+        validationAttempts: 2,
+        validationRetryDelayMs: 0
+      },
+      resolveCredentialMaterial: () => ({
+        uuid: "11111111-1111-4111-8111-111111111111",
+        password: "synthetic-host-password"
+      }),
+      commandRunner(command, args) {
+        calls.push([command, ...args]);
+        if (command === "mihomo") return { exitCode: 0 };
+        if (command === "systemctl" && args[0] === "restart") return { exitCode: 0 };
+        if (command === "systemctl" && args[0] === "is-active") return { exitCode: 0 };
+        if (command === "ss") {
+          listenerChecks += 1;
+          return listenerChecks === 1
+            ? { exitCode: 0, stdout: "" }
+            : { exitCode: 0, stdout: "UNCONN 0 0 *:443 *:*" };
+        }
+        return { exitCode: 1 };
+      },
+      now: () => new Date("2026-06-05T11:00:00.000Z")
+    });
+
+    const report = buildCredentialReconciliationApplyPlan({
+      desiredState: desiredState(),
+      inputPath: "runtime:order-lifecycle",
+      executeProductionMutation: true,
+      runtimeAdapter: adapter
+    });
+
+    assert.equal(report.ok, true);
+    assert.equal(report.runtimeReceipt.status, "applied");
+    assert.equal(report.runtimeReceipt.listener.udp443, true);
+    assert.equal(calls.filter(([command]) => command === "ss").length, 2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Mihomo TUIC host runtime adapter stops before backup when config test fails", () => {
   const dir = mkdtempSync(join(tmpdir(), "mihomo-tuic-host-adapter-fail-"));
   const activeConfigPath = join(dir, "config.yaml");

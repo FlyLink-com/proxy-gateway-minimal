@@ -123,7 +123,7 @@ docs/PRODUCTION_EDGE_FLEET.md
 docs/NODE_NAMING.md
 docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md
 docs/SERVER_EDGE_MESH_DESIGN.md
-docs/SERVER_EDGE_MESH_WIREGUARD_CANARY_RUNBOOK.md
+docs/archive/SERVER_EDGE_MESH_WIREGUARD_CANARY_RUNBOOK.md
 docs/LOCAL_EDGE_AGENT_DESIGN.md
 ops/edge-node/*
 ops/nginx/*
@@ -135,11 +135,13 @@ server/tests/subscription-service.test.mjs
 Current documented architecture facts:
 
 ```text
-prod-edge-a is the documented current primary production slot.
-prod-edge-b is documented as the iteration/canary secondary slot.
+prod-edge-a is the documented historical primary production slot; its AWS
+  carrying instance has been terminated.
+prod-edge-b is the documented historical iteration/canary secondary slot; its
+  AWS carrying instance has been terminated.
 future prod-edge-c remains recovery or expansion planning until approved.
-current prod-edge-a is still documented as co-located with subscription
-  control-plane duties.
+Aliyun currently carries the subscription-distribution boundary while clean
+  edge capacity remains separately gated.
 Server Edge Mesh is private health, validation, management, and recovery
   infrastructure first, not user-facing VPN.
 ```

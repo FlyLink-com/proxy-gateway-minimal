@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-06-02, Asia/Shanghai.
+Last updated: 2026-06-03, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -87,6 +87,25 @@ before creating the new release, running `npm ci`, switching `current`, or
 restarting the service because the preserved systemd entry expects a live-only
 `candidate-start.mjs` shim that is not present in the exact Git archive. Current
 Aliyun runtime remains on `da33de295cb0`.
+The second exact-approved Aliyun runtime-upgrade attempt is recorded in
+`docs/production-replacement-records/2026-06-02-aliyun-candidate-runtime-upgrade-rollback.md`.
+It prepared release `3e1c9a79ec85` and ran `npm ci`, then switched `current`
+and restarted only `proxy-gateway-candidate.service`. Active-service validation
+failed, so the gate rolled back to `da33de295cb0` and revalidated public/private
+boundaries. Current Aliyun runtime remains on `da33de295cb0`. The likely next
+blocker is the missing protected control DB path in Aliyun `.env`; a future
+retry requires a separate Risk A gate for non-secret `.env` path addition and
+control SQLite initialization under the service-owned state directory.
+The approved protected control DB path patch and runtime-upgrade retry is
+recorded in
+`docs/production-replacement-records/2026-06-02-aliyun-control-db-path-upgrade-success.md`.
+It added a non-secret `SUBSCRIPTION_CONTROL_DB_PATH` setting to the protected
+host `.env` after creating an on-host `0600` backup, switched `current` to exact
+release `3e1c9a79ec85`, restarted only `proxy-gateway-candidate.service`, and
+validated health, public Admin blocking, no-token subscription rejection,
+subscriptions/control SQLite integrity, candidate-start presence, loopback-only
+18180, and rollback readiness. Current Aliyun runtime is now
+`3e1c9a79ec85`; previous release `da33de295cb0` remains present for rollback.
 
 ## Repository
 
@@ -171,8 +190,8 @@ Current architecture priorities:
   cover the completed clean-start private validation, provider-firewall
   hardening, public-boundary dry run, and production subscription-distribution
   promotion records. It still does not authorize public Admin, edge traffic,
-  AWS rollback-start, historical state copy, broader artifact issuance, or
-  legacy query-token retirement.
+  historical state copy, broader artifact issuance, legacy query-token
+  retirement, or any new edge recovery path.
 - Aliyun User Management / Subscription Distribution: the near-term business
   split is Aliyun for user management/subscription distribution, HP for local CI/operator
   lab, and all other nodes in a controlled drain/retirement queue. See
@@ -198,35 +217,92 @@ Current architecture priorities:
 - User Portal Business Boundary: the repository user portal shell now depends
   on a dedicated `UserPortalClient` abstraction under
   `admin/src/features/user-portal/user-portal-client.ts` instead of directly
-  calling Admin subscription APIs. The default local portal client is safe by
-  default: it can authenticate a preview session and submit a subscription
-  request summary, but it returns no subscription URL, performs no Admin API
-  call, writes no SQLite rows, activates no payment, exposes no public Admin,
-  collects no phone/Telegram/contact profile fields, and creates no production
-  subscription. A future real user API remains
+  calling Admin subscription APIs. The default portal client calls the
+  same-origin guarded `/api/portal/*` adapter for operator-issued entry
+  activation, TOTP authenticator login, current request lookup, and
+  access-request submission. The visible local auth surface now shows one
+  normal account-login form only: account ID, password, and a generated local
+  anti-bot math challenge. That challenge is not an email code or TOTP dynamic
+  credential. `#/portal-preview` now includes a small repository-only batch of
+  issued preview accounts; unknown accounts and wrong passwords fail locally.
+  Initial preview accounts that still require setup show `账户安全初始化`
+  immediately after login and require both authenticator binding and passkey
+  export before the dialog can be completed. Authenticator binding and passkey
+  export also remain in Personal Center security settings after login. In
+  `#/portal-preview`, authenticator setup now uses a local TOTP enrollment
+  preview: it generates an `otpauth://` binding URI, renders a scannable QR code
+  for Google Authenticator-compatible apps, shows a manual key, and marks the
+  factor bound only after a valid 6-digit TOTP code. Passkey export writes a
+  local preview JSON backup package and marks the account factor
+  enabled/exported; it is not a WebAuthn private key export. The local preview
+  client stores enabled authenticator/passkey factors per account in memory; the
+  next password login returns a second-factor challenge and does not create a
+  portal session until an enabled factor verifies. The passkey second-factor
+  preview now requires the exported JSON package content and checks its safe
+  account/passkey refs against the in-memory account record; fixed proof strings
+  or click-only success are not accepted.
+  Operator-issued entry Token activation remains an admin-controlled first-bind
+  boundary, not a normal login-page tab. Email-code login and real mail
+  issuance are no longer part of the product direction; existing local preview
+  and default HTTP email-code stubs remain hidden and fail-closed only for
+  compatibility while that path is retired. The default HTTP password path is
+  also fail-closed until separately approved credential services exist. In the Admin
+  Vite shell, `#/portal` remains the real same-origin HTTP route and
+  `#/portal-preview` is the repository-local browser preview route.
+  The local preview client remains safe by default for tests and demos:
+  it can authenticate a preview session and submit a subscription request
+  summary, but it returns no subscription URL unless explicitly injected with
+  demo material, performs no Admin API call, writes no SQLite rows, activates no
+  payment, exposes no public Admin, collects no phone/Telegram/contact profile
+  fields, creates no production authenticator credential, and creates no
+  production subscription. The current portal subscription surface is an order
+  request system: users submit package duration, quantity, and client target as
+  order/request facts; the portal route does not auto-issue trial material or
+  return subscription URLs from the request step. Refresh, disable, and copy
+  actions are order-row actions only after issued material exists from a later
+  reviewed delivery path; physical delete remains disabled. This does not
+  approve public portal exposure, payment, production mutation, or automatic
+  issuance. The user-facing support surface is now a scoped problem
+  feedback form backed by `/api/portal/support-requests`; it does not introduce
+  Telegram, chatbot, or customer-service workflow design. Public
+  portal exposure remains
   separate product work and must preserve user-scoped authorization. Portal is
   a user-facing adapter over domain services, not a wrapper around operator CLI
-  commands. Normal self-service refresh/status actions should be handled by
+  commands. Normal customer order/status actions should be handled by
   user-scoped services and policy checks, while CLI remains an operator/ops
   adapter for provisioning, override, revoke, audit, and emergency handling.
   The target authentication boundary is operator-issued dynamic entry plus TOTP
-  enrollment and short-lived portal sessions first; Google/OAuth or email magic
-  links are later convenience login/recovery mechanisms and must never become
-  entitlement authority by themselves. See `docs/USER_PORTAL_AUTH_BOUNDARY.md`.
-- Admin-Approved Portal Request Queue: repository-only support now lets the
-  user portal submit trial/monthly/yearly access requests while keeping every
-  business-changing action in the administrator review path. The 7-day trial
-  is request-only and is not automatically issued by the user portal. Requests
-  are keyed by safe portal user reference, package, and client target rather
-  than customer contact profiles. The
+  enrollment and short-lived portal sessions first. Google/OAuth may remain a
+  later convenience login/recovery mechanism, but email-code delivery and email
+  magic links are retired product paths and must not be treated as backlog. See
+  `docs/USER_PORTAL_AUTH_BOUNDARY.md`. The backend human-verification design
+  for replacing frontend-only anti-bot math prompts with server-issued,
+  expiring, one-time challenges lives in
+  `docs/USER_PORTAL_HUMAN_CHALLENGE_DESIGN.md`; it does not authorize provider
+  CAPTCHA secrets, production DB migration, public portal exposure, or
+  subscription issuance.
+- User Portal Subscription Policy: repository-only support now lets the user
+  portal submit subscription orders/access requests for administrator or later
+  order-management handling. The customer-facing request step creates an order
+  record only: no entitlement, runtime tenant, issued link, visible-once
+  material, payment activation, or automatic trial/monthly/yearly issuance is
+  created by the portal request route. Refresh, copy, and disable remain
+  order-row operations for already-issued records, and physical delete is not
+  exposed. Requests are keyed by safe portal user reference, package duration,
+  quantity, and client target rather than customer contact profiles.
+  The
   protected Admin surface can review requests through a business-readable
   operations panel with translated status labels, status summary cards, local
   status filtering, selected-request detail, and approval preview generation.
   Backend status enums and raw preview JSON remain implementation details, not
   the primary operator surface. Production entitlement creation, artifact
   delivery, public portal exposure, payment activation, DNS, Nginx, systemd,
-  firewall, and runtime mutation remain unapproved without separate gates. See
-  `docs/superpowers/specs/2026-05-31-admin-approved-user-portal-issuance-design.md`.
+  firewall, and any production runtime mutation remain unapproved without
+  separate gates. The local user portal panel closeout is recorded in
+  `docs/production-replacement-records/2026-06-04-user-portal-local-panel-closeout.md`;
+  it closes the current repository-local UI slice without authorizing
+  production exposure or automatic issuance. See
+  `docs/archive/superpowers/specs/2026-05-31-admin-approved-user-portal-issuance-design.md`.
 - HP Portal Validation Boundary: HP may be used as an Aliyun-like private
   validation host for the user portal and subscription-control service seams,
   but only as an operator-lab surface. Copying builds, creating test SQLite,
@@ -248,13 +324,20 @@ Current architecture priorities:
   performs no subscription issuance, activates no payment, and does not deploy
   or migrate Aliyun production state.
 - User Portal Entry/Session Adapter: repository-only guarded HTTP adapter
-  support now exists under `server/routes/user-portal.mjs` for local validation
-  of dynamic entry consumption, TOTP enrollment, and short-lived portal session
-  creation. `createApp()` mounts it only when `state.platform.userPortalAuth`
-  is injected and `state.platform.userPortalRoutesEnabled === true`; default
-  app state exposes no portal route. It returns no subscription URL, performs
-  no subscription issuance, creates no runtime tenant/artifact, activates no
-  payment, and does not expose Aliyun production portal routing.
+  support now exists under `server/routes/user-portal.mjs` for dynamic entry
+  consumption, TOTP enrollment, short-lived portal session creation, and
+  access-request submission. The Admin/Portal frontend now uses an HTTP portal
+  client for this seam instead of a fake email/password registration flow; the
+  email-code client contract is hidden and fail-closed as a retired
+  compatibility stub, and the password-login tab is a local contract that
+  remains HTTP fail-closed.
+  Browser-only preview login is isolated to `#/portal-preview` and does not
+  call `/api/portal/*`.
+  `createApp()` mounts the routes only when `state.platform.userPortalAuth`,
+  `state.platform.portalAccessRequests`, or portal support services are injected and
+  `state.platform.userPortalRoutesEnabled === true`; default app state exposes
+  no portal route. The portal request route creates order/access-request facts
+  only and does not return visible-once subscription material.
 - Operator Portal Entry CLI: repository-only operator CLI support now exists at
   `scripts/platform-issue-portal-entry.mjs` / `npm run
   platform:issue-portal-entry` to create dynamic portal entry rows from an
@@ -530,18 +613,19 @@ Current architecture priorities:
   with a matching execution template in
   `docs/production-replacement-records/templates/clean-edge-node-rebuild-execution-template.md`.
   It treats the rebuilt edge host as replaceable data-plane capacity, not as
-  the current Aliyun control-plane host, HP, or a rollback-start of the stopped
-  AWS nodes. It requires an exact approval phrase before clean host
+  the current Aliyun control-plane host, HP, or a restart of the retired AWS
+  nodes. It requires an exact approval phrase before clean host
   provisioning/bootstrap/private validation and explicitly keeps DNS,
-  subscription output, user traffic, public Admin, AWS rollback-start,
-  stopped-node termination, and security-group deletion out of scope. A fresh
+  subscription output, user traffic, public Admin, AWS lifecycle recovery,
+  node termination, and security-group deletion out of scope. A fresh
   read-only preflight is recorded in
   `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-preflight.md`;
   it confirms the Aliyun subscription boundary is healthy from a remote
   vantage, public Admin is blocked, no-token refresh returns 401, Aliyun
-  3456/18080/18388 are not externally reachable from that vantage, the old AWS
-  edge address is not serving, `prod-edge-a/b` remain stopped without public IP
-  association, and no clean edge target has been selected or provisioned. The
+  3456/18080/18388 are not externally reachable from that vantage, and no
+  clean edge target has been selected or provisioned. This preflight predates
+  the later Singapore termination record, so use it only as historical
+  pre-termination evidence. The
   execution handoff packet is recorded in
   `docs/production-replacement-records/2026-05-27-clean-edge-rebuild-execution-handoff.md`;
   it recommends `prod-edge-c` as the first clean rebuild logical identity and
@@ -560,9 +644,10 @@ Current architecture priorities:
   moved off the current Aliyun server, and that host now serves the approved
   public subscription-distribution boundary while keeping the app private,
   Admin blocked, and edge data-plane activation out of scope.
-- Edge Data Plane: AWS Singapore `prod-edge-a/b` have been stopped under an
-  accepted-outage cleanup decision. New edge capacity now needs clean rebuild
-  planning; do not describe the current state as serving production traffic.
+- Edge Data Plane: AWS Singapore `prod-edge-a/b` were stopped under an
+  accepted-outage cleanup decision and later permanently terminated with their
+  security groups deleted. New edge capacity now needs clean rebuild planning;
+  do not describe the current state as serving production traffic.
 - Validation / CI: move manual CI toward a local Linux validation host so the
   future production subscription control plane does not also run repository
   validation workloads.
@@ -684,7 +769,7 @@ Use these docs for detail:
 
 ## Current Production Snapshot
 
-This snapshot reflects documented project state as of 2026-05-27. Refresh live
+This snapshot reflects documented project state as of 2026-06-02. Refresh live
 AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
 
 - Current subscription-distribution status: Aliyun promotion executed for
@@ -695,27 +780,24 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
 - `sub.globalcirclecat.com` serves the Aliyun public subscription boundary over
   HTTP/HTTPS with `/api/health` returning 200, public Admin/root returning 404,
   and no-token subscription refresh returning 401. Public Admin is not exposed.
-- `ss-sg.globalcirclecat.com` remains on the old AWS stopped address by design;
+- `ss-sg.globalcirclecat.com` remains on the old AWS address by design;
   edge traffic activation was not approved in the promotion gate.
-- AWS Singapore `prod-edge-a` and `prod-edge-b` are stopped under accepted
-  outage.
-- Current stopped primary instance: `i-0b7791340d3fedff5`; security group
-  retained: `sg-0379ece0b3d305c43`.
-- Current stopped secondary instance: `i-0ad8676ee113d14cb`; security group
-  retained: `sg-06682c36aa03834f7`.
-- The stopped instances have no Elastic IP associations after stop; rollback by
-  start may require DNS/config updates if AWS assigns new public IPv4 addresses.
-- HTTPS and public subscription endpoints on the stopped AWS nodes are not the
+- AWS Singapore `prod-edge-a` and `prod-edge-b` are permanently terminated
+  under the 2026-05-29 cleanup record; their associated security groups were
+  deleted, and rollback by starting those instances is waived.
+- Legacy blue remains stopped for controlled review and was not terminated.
+- HTTPS and public subscription endpoints on the retired AWS nodes are not the
   current subscription-distribution authority after Aliyun promotion; edge
-  traffic still needs clean rebuild or separate rollback-start approval.
+  traffic still needs clean rebuild or a separately approved new recovery path.
 - The active opaque artifact canary exists for controlled operator validation.
   The full import URL is stored only in a local `C:\tmp\...` file and must not
   be pasted, committed, logged, or written into docs.
 - Legacy `/sub/clash.yaml?token=...` support still exists until a separate
   A-tier retirement plan is approved.
 - Subscription V2 tracked config still references `prod-edge-a` and
-  `prod-edge-b`, but those carrying instances are stopped under the accepted
-  outage decision.
+  `prod-edge-b`, but those carrying instances are terminated; subscription
+  output/config must be rebuilt before edge delivery can be considered
+  healthy.
 - The latest non-Aliyun node cleanup preflight is recorded in
   `docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md`.
   It refreshed AWS, AliDNS, public endpoint, and repository-reference evidence
@@ -725,6 +807,11 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   `docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md`.
   It stopped `prod-edge-a` and `prod-edge-b`, retained security groups, left
   DNS unchanged, did not terminate instances, and did not mutate Aliyun.
+- The approved Singapore termination cleanup is recorded in
+  `docs/production-replacement-records/2026-05-29-singapore-prod-edge-termination.md`.
+  It permanently terminated `prod-edge-a` and `prod-edge-b`, deleted their
+  associated security groups, preserved legacy blue, left DNS unchanged, and
+  waived rollback by starting those instances.
 - The approved Aliyun subscription-distribution promotion is recorded in
   `docs/production-replacement-records/2026-05-27-aliyun-production-subscription-distribution-promotion.md`.
   It changed only `sub.globalcirclecat.com`, opened durable Aliyun 80/443,
@@ -765,7 +852,7 @@ AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
   It defines the exact approval phrase, clean edge host/bootstrap/private
   validation scope, rollback/stop posture, hard stops, and next gates. It does
   not execute cloud provisioning, DNS changes, subscription-output changes,
-  user traffic, public Admin exposure, AWS rollback-start, stopped-node
+  user traffic, public Admin exposure, AWS lifecycle recovery, node
   termination, or security-group deletion. It also keeps the current Aliyun
   subscription-control host and HP out of the edge-node role. The matching
   read-only preflight is recorded in
@@ -1462,8 +1549,9 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   control plane unless the operator explicitly requires historical subscription
   state preservation. If historical state is required, prefer a separate
   source-state rescue planning path before relying on SSH-first remediation; if
-  temporary service restoration is required, use a separate AWS rollback-start
-  preflight. Provider-firewall hardening remains a separate prerequisite before
+  temporary service restoration is required, use a separately approved recovery
+  path because the former prod-edge-a/prod-edge-b carrying instances were
+  terminated. Provider-firewall hardening remains a separate prerequisite before
   any public-boundary dry run.
 - Aliyun clean-start control-plane planning now makes clean-start the active
   default for the next repo-only package. New accounts, entitlements,
@@ -1501,19 +1589,21 @@ Latest Aliyun user-management / subscription-distribution decision:
   benchmark, and manager work and must not be coupled to Aliyun production
   authority without a later integration gate.
 - On 2026-05-26, the operator approved stopping AWS Singapore `prod-edge-a` and
-  `prod-edge-b` with accepted service outage. Both instances are stopped.
+  `prod-edge-b` with accepted service outage. On 2026-05-29, both instances
+  were permanently terminated and their security groups were deleted under a
+  separate exact approval.
 - Authoritative AliDNS now points `sub.globalcirclecat.com` to the Aliyun
   subscription boundary and leaves `ss-sg.globalcirclecat.com` on the old AWS
   stopped address because edge traffic activation was not approved.
 - Latest cleanup preflight:
   `docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md`.
 - The tracked static node config still references `prod-edge-a` and
-  `prod-edge-b`, so subscription output/config must be rebuilt before the
-  service can be considered healthy again.
+  `prod-edge-b`, so subscription output/config must be rebuilt before edge
+  delivery can be considered healthy again.
 - The next executable gates are separate A-tier approvals for Aliyun
   `aegis.service` repair if desired, clean edge node rebuild execution,
-  rollback-start approval for stopped AWS nodes if temporary restore is needed,
-  broader artifact issuance, or legacy query-token retirement. Aegis repair
+  a new recovery path if temporary edge restore is needed, broader artifact
+  issuance, or legacy query-token retirement. Aegis repair
   must use the exact approval phrase from
   `docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md`;
   clean edge rebuild must use the exact approval phrase from
@@ -1575,17 +1665,16 @@ Admin UI:
 npm run admin:dev
 ```
 
-To connect local Admin UI to current prod-edge-a backend, open an SSH tunnel:
+Use local dev against a local backend unless an A-tier runbook explicitly
+approves private production observation. The former prod-edge-a SSH tunnel is
+not a current access path because the Singapore prod-edge-a/prod-edge-b
+carrying instances were terminated.
 
-```powershell
-ssh -i "$env:USERPROFILE\.ssh\proxy-gateway-aws-sg-20260521.pem" -L 3456:127.0.0.1:3456 ubuntu@13.215.156.159
-```
-
-Then use:
+For local Vite dev proxy, use:
 
 ```text
 API base URL: leave blank in Vite dev mode so same-origin /api requests use the dev proxy
-Console token: production CONSOLE_TOKEN from /opt/proxy-gateway-minimal/.env
+Console token: local or explicitly approved target CONSOLE_TOKEN from the target .env location
 ```
 
 Do not set the browser UI API base URL directly to `http://127.0.0.1:3456`
@@ -1610,6 +1699,9 @@ $env:HTTP_PROXY=$null; $env:HTTPS_PROXY=$null; $env:ALL_PROXY=$null
 $env:http_proxy=$null; $env:https_proxy=$null; $env:all_proxy=$null
 aws ec2 describe-instances --region ap-southeast-1 --filters Name=ip-address,Values=13.215.156.159 --query "Reservations[].Instances[].{InstanceId:InstanceId,State:State.Name,PublicIp:PublicIpAddress,Type:InstanceType,LaunchTime:LaunchTime,Name:Tags[?Key=='Name']|[0].Value,Purpose:Tags[?Key=='Purpose']|[0].Value,Project:Tags[?Key=='Project']|[0].Value,SecurityGroups:SecurityGroups[*].GroupId}" --output table
 ```
+
+The `13.215.156.159` query is now historical AWS verification only; do not
+treat that address as an active backend.
 
 Safe AliDNS refresh pattern:
 
@@ -1680,8 +1772,8 @@ the current handoff:
 - Environment foundation added systemd templates, Nginx gateway template,
   SQLite backup/restore scripts, `.env.example` expansion, and ops docs.
 
-For detailed historical specs/plans, use `docs/superpowers/README.md` and the
-corresponding files under `docs/superpowers/`.
+For detailed historical specs/plans, use `docs/archive/superpowers/README.md`
+and the corresponding files under `docs/archive/superpowers/`.
 
 ## Guardrails
 

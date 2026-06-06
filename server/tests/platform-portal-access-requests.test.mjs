@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createPortalAccessRequestService } from "../services/platform/portal-access-requests.mjs";
+import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 
 const NOW = "2026-05-31T00:00:00.000Z";
 
@@ -26,6 +30,24 @@ function lifecycleRuntimeCore() {
   const calls = [];
   return {
     calls,
+    createTenant(input) {
+      calls.push(["createTenant", input]);
+      return {
+        tenant: {
+          id: "tenant_runtime_auto_1",
+          nodeId: input.nodeId,
+          expiresAt: input.expiresAt
+        },
+        subscriptionUrl: "https://sub.example.test/legacy-token-url-not-used"
+      };
+    },
+    createSubscriptionArtifact(id) {
+      calls.push(["createSubscriptionArtifact", id]);
+      return {
+        artifact: { id: "artifact_runtime_auto_1", tenantId: id, status: "active" },
+        subscriptionUrl: "https://sub.example.test/sub/a/auto-visible-once.yaml"
+      };
+    },
     rotateSubscriptionArtifact(id) {
       calls.push(["rotateSubscriptionArtifact", id]);
       return {
@@ -41,6 +63,58 @@ function lifecycleRuntimeCore() {
     disableTenant(id) {
       calls.push(["disableTenant", id]);
       return { id, status: "disabled" };
+    }
+  };
+}
+
+function controlStore() {
+  const calls = [];
+  const accounts = new Map();
+  const entitlements = new Map();
+  const issuanceRequests = new Map();
+  return {
+    calls,
+    getAccount(id) {
+      return accounts.get(id) ?? null;
+    },
+    createAccount(input) {
+      calls.push(["createAccount", input.id]);
+      accounts.set(input.id, input);
+      return input;
+    },
+    getEntitlement(id) {
+      return entitlements.get(id) ?? null;
+    },
+    createEntitlement(input) {
+      calls.push(["createEntitlement", input.id]);
+      entitlements.set(input.id, input);
+      return input;
+    },
+    createIssuanceRequest(input) {
+      calls.push(["createIssuanceRequest", input.id]);
+      issuanceRequests.set(input.id, input);
+      return input;
+    },
+    linkIssuedSubscription(input) {
+      calls.push(["linkIssuedSubscription", input.requestId]);
+      return input;
+    },
+    setIssuanceRequestStatus(id, input) {
+      calls.push(["setIssuanceRequestStatus", id, input.status]);
+      const current = issuanceRequests.get(id);
+      if (current) issuanceRequests.set(id, { ...current, ...input });
+      return issuanceRequests.get(id) ?? null;
+    },
+    upsertQuotaCounter(input) {
+      calls.push(["upsertQuotaCounter", input.accountId, input.metric, input.period, input.amount]);
+      return input;
+    },
+    recordAuditEvent(input) {
+      calls.push(["recordAuditEvent", input.entityRef, input.action]);
+      return input;
+    },
+    runInTransaction(callback) {
+      return callback();
     }
   };
 }
@@ -74,6 +148,20 @@ function edgeCredentialIssuer() {
       };
     }
   };
+}
+
+function withControlStore(fn) {
+  const tempDir = mkdtempSync(join(tmpdir(), "portal-access-requests-"));
+  let store;
+  try {
+    store = createSqliteSubscriptionControlStore({
+      dbPath: join(tempDir, "control.sqlite")
+    });
+    return fn(store);
+  } finally {
+    store?.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
 }
 
 test("portal access request service creates 7-day trial requests pending admin review", () => {
@@ -110,6 +198,42 @@ test("portal access request service accepts monthly and yearly with fixed durati
   assert.equal(yearly.durationDays, 365);
 });
 
+test("portal access request service auto-delivers 7-day orders when auto issuance is enabled", () => {
+  const runtimeCore = lifecycleRuntimeCore();
+  const control = controlStore();
+  const edgeLifecycle = edgeLifecycleService();
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_auto_7d_1",
+    runtimeCore,
+    controlStore: control,
+    edgeCredentialIssuer: edgeCredentialIssuer(),
+    edgeLifecycleService: edgeLifecycle,
+    autoIssuance: {
+      enabled: true,
+      nodeId: "channel-aliyun-a-tuic",
+      reviewedByRef: "portal_auto_issuer"
+    }
+  });
+
+  const request = requests.submitRequest(validTrialInput());
+
+  assert.equal(request.status, "delivered");
+  assert.equal(request.nextAction, "user_can_use_access");
+  assert.equal(request.plan, "trial");
+  assert.equal(request.durationDays, 7);
+  assert.equal(request.expiresAt, "2026-06-07T00:00:00.000Z");
+  assert.equal(request.subscriptionUrl, "https://sub.example.test/sub/a/auto-visible-once.yaml");
+  assert.equal(request.safety.noSubscriptionUrl, false);
+  assert.equal(request.safety.noEntitlementCreated, false);
+  assert.equal(runtimeCore.calls[0][0], "createTenant");
+  assert.equal(runtimeCore.calls[0][1].nodeId, "channel-aliyun-a-tuic");
+  assert.equal(runtimeCore.calls[0][1].expiresAt, "2026-06-07T00:00:00.000Z");
+  assert.equal(runtimeCore.calls[1][0], "createSubscriptionArtifact");
+  assert.deepEqual(edgeLifecycle.calls.map((call) => call.reason), ["order_delivered"]);
+  assert.doesNotMatch(JSON.stringify(request), /uuid|password|edgecred|digest|tenant_runtime_auto_1|artifact_runtime_auto_1/i);
+});
+
 test("portal access request service records order quantity and client target", () => {
   const request = createPortalAccessRequestService({
     nowFn: () => NOW,
@@ -122,6 +246,38 @@ test("portal access request service records order quantity and client target", (
 
   assert.equal(request.clientTarget, "karing");
   assert.equal(request.quantity, 3);
+});
+
+test("portal access request service reads persisted orders after service restart", () => {
+  withControlStore((store) => {
+    const firstInstance = createPortalAccessRequestService({
+      nowFn: () => NOW,
+      requestIdFactory: () => "pareq_durable_restart_1",
+      controlStore: store
+    });
+
+    firstInstance.submitRequest(validTrialInput({
+      plan: "monthly",
+      clientTarget: "karing",
+      quantity: 2
+    }));
+
+    const secondInstance = createPortalAccessRequestService({
+      nowFn: () => "2026-05-31T00:01:00.000Z",
+      controlStore: store
+    });
+
+    const listed = secondInstance.listRequests({
+      portalUserRef: "user_safe_ref"
+    });
+
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].id, "pareq_durable_restart_1");
+    assert.equal(listed[0].plan, "monthly");
+    assert.equal(listed[0].clientTarget, "karing");
+    assert.equal(listed[0].quantity, 2);
+    assert.equal(store.listPortalAccessRequests({ portalUserRef: "user_safe_ref" }).length, 1);
+  });
 });
 
 test("portal access request service validates order quantity and client target", () => {
@@ -266,6 +422,60 @@ test("delivery can issue a protected edge credential and expose only safe lifecy
     }
   ]);
   assert.doesNotMatch(JSON.stringify(requests.listEdgeCredentialOrders()), /subscriptionUrl|tenant_runtime|artifact_runtime|password|uuid/i);
+});
+
+test("delivery binds protected per-order edge material to the issued tenant without leaking it", () => {
+  const runtimeCore = lifecycleRuntimeCore();
+  const issuer = {
+    calls: [],
+    ensureCredentialForOrder(order) {
+      this.calls.push(order);
+      return {
+        edgeChannelRef: "channel-aliyun-a-tuic",
+        edgeCredentialRef: `edgecred_${order.id}`,
+        edgeMaterialDigest: `sha256:digest_${order.id}`,
+        edgeCredentialMaterial: {
+          uuid: "11111111-1111-4111-8111-111111111111",
+          password: "per-order-tuic-password"
+        }
+      };
+    }
+  };
+  runtimeCore.bindTenantCredentialMaterial = (input) => {
+    runtimeCore.calls.push(["bindTenantCredentialMaterial", input]);
+    return { ok: true };
+  };
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_edge_bind_1",
+    runtimeCore,
+    edgeCredentialIssuer: issuer
+  });
+  requests.submitRequest(validTrialInput());
+
+  const delivered = requests.markDelivered("pareq_edge_bind_1", {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_safe_ref",
+    accessGrantRef: "grant_safe_ref",
+    tenantId: "tenant_runtime_bind_1",
+    artifactId: "artifact_runtime_bind_1",
+    subscriptionUrl: "https://sub.example.test/import/bind-visible-once",
+    expiresAt: "2026-06-07T00:00:00.000Z"
+  });
+
+  assert.deepEqual(runtimeCore.calls, [
+    ["bindTenantCredentialMaterial", {
+      tenantId: "tenant_runtime_bind_1",
+      nodeId: "channel-aliyun-a-tuic",
+      credentialRef: "edgecred_pareq_edge_bind_1",
+      material: {
+        uuid: "11111111-1111-4111-8111-111111111111",
+        password: "per-order-tuic-password"
+      }
+    }]
+  ]);
+  assert.equal(delivered.edgeCredentialRef, undefined);
+  assert.doesNotMatch(JSON.stringify(delivered), /11111111-1111-4111-8111-111111111111|per-order-tuic-password|edgecred_pareq_edge_bind_1/i);
 });
 
 test("edge lifecycle mutation updates portal safety flags", () => {

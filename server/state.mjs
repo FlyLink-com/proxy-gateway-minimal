@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { resolve, join } from "node:path";
 import { createSsLocalService } from "./services/ss-local.mjs";
@@ -16,6 +17,11 @@ import { createSqliteSubscriptionControlStore } from "./services/platform/subscr
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "./services/platform/subscription-access-shell.mjs";
 import { createPortalAccessRequestService } from "./services/platform/portal-access-requests.mjs";
+import { createPortalSupportRequestService } from "./services/platform/portal-support-requests.mjs";
+import { createPortalHumanChallengeService } from "./services/platform/portal-human-challenge.mjs";
+import { createPortalPasswordCredentialService } from "./services/platform/portal-password-credentials.mjs";
+import { createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
+import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
 import { createFileBackedEdgeCredentialMaterialStore } from "./services/edge/credential-material-store.mjs";
 import { createOrderEdgeCredentialIssuer } from "./services/edge/order-credential-issuer.mjs";
 import { createOrderCredentialLifecycleService } from "./services/edge/order-credential-lifecycle.mjs";
@@ -45,10 +51,98 @@ function optionalEnvText(value) {
   return String(value || "").trim();
 }
 
+function optionalEnvPositiveInteger(value) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function runtimeValidationError(message) {
   const error = new Error(message);
   error.code = "validation_error";
   return error;
+}
+
+function edgeCredentialRefForRequestId(requestId) {
+  const normalized = String(requestId || "").trim();
+  return normalized ? `edgecred_${normalized}` : "";
+}
+
+function controlSafeRef(prefix, value) {
+  const normalized = String(value || "").trim();
+  return normalized
+    ? `${prefix}ref_${createHash("sha256").update(normalized).digest("hex").slice(0, 16)}`
+    : "";
+}
+
+function durableEdgeCredentialOrders({ controlStore, materialStore, nodeId } = {}) {
+  if (
+    !controlStore
+    || typeof controlStore.listIssuedSubscriptionBindings !== "function"
+    || !materialStore
+    || typeof materialStore.getCredentialMaterialSummary !== "function"
+  ) {
+    return [];
+  }
+  return controlStore.listIssuedSubscriptionBindings({ nodeId })
+    .map((binding) => {
+      const edgeCredentialRef = edgeCredentialRefForRequestId(binding.requestId);
+      if (!edgeCredentialRef) {
+        return null;
+      }
+      const materialSummary = materialStore.getCredentialMaterialSummary(edgeCredentialRef);
+      if (!materialSummary) {
+        return null;
+      }
+      return {
+        id: binding.requestId,
+        portalUserRef: binding.accountId,
+        status: "issued",
+        expiresAt: binding.validUntil,
+        validUntil: binding.validUntil,
+        edgeChannelRef: binding.nodeId,
+        edgeCredentialRef: materialSummary.credentialRef,
+        edgeMaterialDigest: materialSummary.materialDigest
+      };
+    })
+    .filter(Boolean);
+}
+
+function mergeEdgeCredentialOrders(...orderLists) {
+  const byRef = new Map();
+  for (const order of orderLists.flat()) {
+    const orderRef = String(order?.id || order?.requestRef || "").trim();
+    if (orderRef) {
+      byRef.set(orderRef, order);
+    }
+  }
+  return [...byRef.values()].sort((a, b) =>
+    String(a.id || a.requestRef).localeCompare(String(b.id || b.requestRef))
+  );
+}
+
+function resolveTenantCredentialMaterialFromStores({ controlStore, materialStore, tenantId, nodeId } = {}) {
+  if (
+    !controlStore
+    || typeof controlStore.findIssuedSubscriptionBindingByTenantRef !== "function"
+    || !materialStore
+    || typeof materialStore.resolveCredentialMaterial !== "function"
+  ) {
+    return null;
+  }
+  const tenantRefs = [
+    String(tenantId || "").trim(),
+    controlSafeRef("tenant", tenantId)
+  ].filter(Boolean);
+  let binding = null;
+  for (const tenantRef of tenantRefs) {
+    binding = controlStore.findIssuedSubscriptionBindingByTenantRef(tenantRef);
+    if (binding) break;
+  }
+  if (!binding || String(binding.nodeId || "") !== String(nodeId || "")) {
+    return null;
+  }
+  const edgeCredentialRef = edgeCredentialRefForRequestId(binding.requestId);
+  return edgeCredentialRef ? materialStore.resolveCredentialMaterial(edgeCredentialRef) : null;
 }
 
 export function createRuntimeState(options = {}) {
@@ -84,23 +178,30 @@ export function createRuntimeState(options = {}) {
   const subscriptionStore = options.subscriptionStore || options.subscriptionRepository || (
     ownsSubscriptionStore ? createSqliteSubscriptionStore({ dbPath: subscriptionDbPath }) : null
   );
+  const ownsControlStore = !options.platformControlStore;
+  const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
+  let edgeCredentialMaterialStore = options.edgeCredentialMaterialStore || null;
   const subscriptionCore = options.subscriptionCore || options.subscriptionService || createSubscriptionCore({
     store: subscriptionStore,
     proxyConfig,
     publicSubscriptionBaseUrl,
     expiringDays: Number.parseInt(env.SUBSCRIPTION_EXPIRING_DAYS, 10) || 7,
-    tempLinkTtlMinutes
+    tempLinkTtlMinutes,
+    tenantCredentialMaterialResolver: ({ tenantId, nodeId }) => resolveTenantCredentialMaterialFromStores({
+      controlStore: platformControlStore,
+      materialStore: edgeCredentialMaterialStore,
+      tenantId,
+      nodeId
+    })
   });
   const platformLeadQueue = options.platformLeadQueue || createPlatformLeadReviewQueue();
   const platformAccountShell = options.platformAccountShell || createPlatformAccountEntitlementShell();
   const platformAccessShell = options.platformAccessShell || createPlatformSubscriptionAccessShell({
     accountShell: platformAccountShell
   });
-  const ownsControlStore = !options.platformControlStore;
-  const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
+  const userPortalRoutesEnabled = envFlag(env.USER_PORTAL_ROUTES_ENABLED);
   const edgeLifecycleEnabled = envFlag(env.USER_PORTAL_EDGE_LIFECYCLE_ENABLED || env.EDGE_CREDENTIAL_LIFECYCLE_ENABLED);
   const edgeChannelRef = optionalEnvText(env.USER_PORTAL_EDGE_CHANNEL_REF || env.EDGE_CREDENTIAL_CHANNEL_REF);
-  let edgeCredentialMaterialStore = options.edgeCredentialMaterialStore || null;
   let edgeCredentialIssuer = options.edgeCredentialIssuer || null;
   let edgeLifecycleService = options.edgeLifecycleService || null;
   let edgeRuntimeAdapter = options.edgeRuntimeAdapter || null;
@@ -146,7 +247,14 @@ export function createRuntimeState(options = {}) {
     }
     edgeLifecycleService = edgeLifecycleService || createOrderCredentialLifecycleService({
       channelRef: edgeChannelRef,
-      listOrders: () => platformPortalAccessRequests?.listEdgeCredentialOrders?.() || [],
+      listOrders: () => mergeEdgeCredentialOrders(
+        durableEdgeCredentialOrders({
+          controlStore: platformControlStore,
+          materialStore: edgeCredentialMaterialStore,
+          nodeId: edgeChannelRef
+        }),
+        platformPortalAccessRequests?.listEdgeCredentialOrders?.() || []
+      ),
       listCurrentCredentials: () => (
         typeof options.edgeCurrentCredentialSummaries === "function"
           ? options.edgeCurrentCredentialSummaries()
@@ -160,9 +268,43 @@ export function createRuntimeState(options = {}) {
 
   platformPortalAccessRequests = options.platformPortalAccessRequests || createPortalAccessRequestService({
     runtimeCore: subscriptionCore,
+    controlStore: platformControlStore,
     edgeCredentialIssuer,
-    edgeLifecycleService
+    edgeLifecycleService,
+    autoIssuance: {
+      enabled: envFlag(env.USER_PORTAL_AUTO_ISSUANCE_ENABLED),
+      nodeId: optionalEnvText(env.USER_PORTAL_AUTO_ISSUANCE_NODE_ID),
+      reviewedByRef: optionalEnvText(env.USER_PORTAL_AUTO_ISSUANCE_REVIEWED_BY_REF) || "portal_auto_issuer",
+      monthlyLimits: {
+        trial: optionalEnvPositiveInteger(env.USER_PORTAL_AUTO_ISSUANCE_7D_MONTHLY_LIMIT),
+        monthly: optionalEnvPositiveInteger(env.USER_PORTAL_AUTO_ISSUANCE_30D_MONTHLY_LIMIT)
+      }
+    }
   });
+  const platformPortalSupportRequests = options.platformPortalSupportRequests || createPortalSupportRequestService();
+  const platformPortalHumanChallenges = options.platformPortalHumanChallenges || (
+    userPortalRoutesEnabled ? createPortalHumanChallengeService({
+      nowFn: options.userPortalNowFn
+    }) : null
+  );
+  const platformPortalPasswordCredentialService = options.platformPortalPasswordCredentialService || (
+    userPortalRoutesEnabled ? createPortalPasswordCredentialService({
+      controlStore: platformControlStore,
+      nowFn: options.userPortalNowFn
+    }) : null
+  );
+  const platformPortalTotpVerifier = options.userPortalTotpVerifier || createPortalTotpVerifier({
+    nowFn: options.userPortalNowFn
+  });
+  const platformUserPortalAuth = options.platformUserPortalAuth || (
+    userPortalRoutesEnabled ? createUserPortalAuthService({
+      controlStore: platformControlStore,
+      nowFn: options.userPortalNowFn,
+      totpVerifier: platformPortalTotpVerifier,
+      passwordCredentialService: platformPortalPasswordCredentialService,
+      allowPasswordOnlySessionForSetup: envFlag(env.USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION)
+    }) : null
+  );
   const platformAliyunGateEvidenceShell = options.platformAliyunGateEvidenceShell || createPlatformAliyunGateEvidenceShell();
   let closed = false;
 
@@ -299,7 +441,12 @@ export function createRuntimeState(options = {}) {
       leadQueue: platformLeadQueue,
       accountShell: platformAccountShell,
       accessShell: platformAccessShell,
+      userPortalRoutesEnabled,
+      userPortalAuth: platformUserPortalAuth,
+      portalHumanChallenges: platformPortalHumanChallenges,
+      portalPasswordCredentialService: platformPortalPasswordCredentialService,
       portalAccessRequests: platformPortalAccessRequests,
+      portalSupportRequests: platformPortalSupportRequests,
       aliyunGateEvidenceShell: platformAliyunGateEvidenceShell,
       controlStore: platformControlStore,
       edgeCredentialMaterialStore,

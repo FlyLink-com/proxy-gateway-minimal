@@ -41,6 +41,21 @@ function positivePort(value, fallback = 443) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function positiveInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function nonNegativeInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function sleepMs(ms) {
+  if (ms <= 0) return;
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
 function defaultCommandRunner(command, args = []) {
   const result = spawnSync(command, args, {
     encoding: "utf8",
@@ -83,6 +98,8 @@ export function createMihomoTuicHostRuntimeAdapter({
   const safeServiceName = safeRef(serviceName, "mihomo-tuic.service");
   const safeMihomoBinary = requiredText(mihomoBinary, "mihomoBinary");
   const port = positivePort(listener.port, 443);
+  const listenerValidationAttempts = positiveInteger(listener.validationAttempts, 5);
+  const listenerValidationRetryDelayMs = nonNegativeInteger(listener.validationRetryDelayMs, 100);
 
   return createMihomoTuicExplicitRestartAdapter({
     serviceName: safeServiceName,
@@ -130,7 +147,16 @@ export function createMihomoTuicHostRuntimeAdapter({
       return { active: result.exitCode === 0 };
     },
     validateListener() {
-      const result = commandRunner("ss", ["-H", "-lun", "sport", "=", `:${port}`]) || {};
+      let result = {};
+      for (let attempt = 1; attempt <= listenerValidationAttempts; attempt += 1) {
+        result = commandRunner("ss", ["-H", "-lun", "sport", "=", `:${port}`]) || {};
+        if (result.exitCode === 0 && text(result.stdout).includes(`:${port}`)) {
+          return { udp443: true };
+        }
+        if (attempt < listenerValidationAttempts) {
+          sleepMs(listenerValidationRetryDelayMs);
+        }
+      }
       return {
         udp443: result.exitCode === 0 && text(result.stdout).includes(`:${port}`)
       };

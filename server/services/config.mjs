@@ -16,8 +16,20 @@ const SENSITIVE_CONFIG_KEYS = new Set([
   "obfs-password"
 ]);
 
+const RUNTIME_PLACEHOLDER_CONFIG_KEYS = new Set([
+  ...SENSITIVE_CONFIG_KEYS,
+  "host",
+  "sni",
+  "servername",
+  "serverName"
+].map((key) => String(key).toLowerCase()));
+
 function isSensitiveConfigKey(key = "") {
   return SENSITIVE_CONFIG_KEYS.has(String(key).toLowerCase());
+}
+
+function isRuntimePlaceholderConfigKey(key = "") {
+  return RUNTIME_PLACEHOLDER_CONFIG_KEYS.has(String(key).toLowerCase());
 }
 
 function envPlaceholderName(value) {
@@ -106,8 +118,8 @@ export function validateProxyConfig(config) {
   return config;
 }
 
-function replaceSecretPlaceholders(value, env, key) {
-  if (isSensitiveConfigKey(key) && typeof value === "string") {
+function replaceRuntimePlaceholders(value, env, key) {
+  if (isRuntimePlaceholderConfigKey(key) && typeof value === "string") {
     const envName = envPlaceholderName(value);
     if (envName) {
       return env[envName] ?? "";
@@ -115,14 +127,14 @@ function replaceSecretPlaceholders(value, env, key) {
   }
 
   if (Array.isArray(value)) {
-    return value.map((item) => replaceSecretPlaceholders(item, env));
+    return value.map((item) => replaceRuntimePlaceholders(item, env));
   }
 
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value).map(([key, item]) => [
         key,
-        replaceSecretPlaceholders(item, env, key)
+        replaceRuntimePlaceholders(item, env, key)
       ])
     );
   }
@@ -148,7 +160,7 @@ function stripSensitiveConfigKeys(value) {
 
 export function loadProxyConfig({ configPath, env = process.env }) {
   const raw = readFileSync(pathFrom(configPath), "utf8");
-  return validateProxyConfig(replaceSecretPlaceholders(JSON.parse(raw), env));
+  return validateProxyConfig(replaceRuntimePlaceholders(JSON.parse(raw), env));
 }
 
 export function publicProxyConfig(config) {

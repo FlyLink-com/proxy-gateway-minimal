@@ -157,6 +157,30 @@ function channelStrategyProxyConfig() {
   };
 }
 
+function tuicPerOrderProxyConfig() {
+  return {
+    servers: [
+      {
+        id: "channel_aliyun_a_tuic",
+        name: "channel-aliyun-a-tuic",
+        role: "edge",
+        region: "Aliyun",
+        channelPool: "stable",
+        protocol: "tuic",
+        type: "tuic",
+        credentialMode: "per-order",
+        host: "203.0.113.50",
+        port: 443,
+        uuid: "00000000-0000-4000-8000-000000000000",
+        password: "static-template-password",
+        status: "online"
+      }
+    ],
+    pingHosts: ["1.1.1.1"],
+    nginx: { host: "127.0.0.1", ports: [443] }
+  };
+}
+
 function tokenFromRaw(rawToken) {
   return {
     rawToken,
@@ -553,6 +577,76 @@ test("service creates visible-once opaque artifacts and resolves them to V2 outp
     assert.equal(resolved.tenant.id, "tenant_1");
     assert.equal(resolved.proxyConfig.servers.length, 2);
     assert.equal(context.repository.listArtifactsByTenant("tenant_1")[0].refreshCount, 1);
+  });
+});
+
+test("service resolves per-order TUIC artifacts with tenant-bound credential material", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context, { nodeId: "channel-aliyun-a-tuic" });
+    context.service.createSubscriptionArtifact("tenant_1");
+
+    context.service.bindTenantCredentialMaterial({
+      tenantId: "tenant_1",
+      nodeId: "channel-aliyun-a-tuic",
+      material: {
+        uuid: "11111111-1111-4111-8111-111111111111",
+        password: "per-order-tuic-password"
+      }
+    });
+
+    const resolved = context.service.resolveSubscriptionArtifact("opaque_device_secret");
+
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.proxyConfig.servers.length, 1);
+    assert.equal(resolved.proxyConfig.servers[0].name, "channel-aliyun-a-tuic");
+    assert.equal(resolved.proxyConfig.servers[0].uuid, "11111111-1111-4111-8111-111111111111");
+    assert.equal(resolved.proxyConfig.servers[0].password, "per-order-tuic-password");
+  }, {
+    proxyConfig: tuicPerOrderProxyConfig()
+  });
+});
+
+test("service resolves per-order TUIC artifacts from durable credential resolver", async () => {
+  const resolverCalls = [];
+  await withService(async (context) => {
+    await createActiveTenant(context, { nodeId: "channel-aliyun-a-tuic" });
+    context.service.createSubscriptionArtifact("tenant_1");
+
+    const resolved = context.service.resolveSubscriptionArtifact("opaque_device_secret");
+
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.proxyConfig.servers.length, 1);
+    assert.equal(resolved.proxyConfig.servers[0].name, "channel-aliyun-a-tuic");
+    assert.equal(resolved.proxyConfig.servers[0].uuid, "22222222-2222-4222-8222-222222222222");
+    assert.equal(resolved.proxyConfig.servers[0].password, "durable-per-order-password");
+    assert.deepEqual(resolverCalls, [{
+      tenantId: "tenant_1",
+      nodeId: "channel-aliyun-a-tuic"
+    }]);
+  }, {
+    proxyConfig: tuicPerOrderProxyConfig(),
+    tenantCredentialMaterialResolver({ tenantId, nodeId }) {
+      resolverCalls.push({ tenantId, nodeId });
+      return {
+        uuid: "22222222-2222-4222-8222-222222222222",
+        password: "durable-per-order-password"
+      };
+    }
+  });
+});
+
+test("service rejects per-order TUIC artifacts when tenant material is unavailable", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context, { nodeId: "channel-aliyun-a-tuic" });
+    context.service.createSubscriptionArtifact("tenant_1");
+
+    assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret"), {
+      ok: false,
+      status: 403,
+      error: "Subscription node unavailable"
+    });
+  }, {
+    proxyConfig: tuicPerOrderProxyConfig()
   });
 });
 

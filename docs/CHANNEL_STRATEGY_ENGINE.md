@@ -55,6 +55,64 @@ equal or absent, repository config order is the tiebreaker.
 This means private, canary, and recovery nodes can exist in tracked config
 without being emitted to every default subscription refresh.
 
+## Stable Pool Protocol Posture
+
+The stable pool is not a "newest protocol wins" pool. It favors compatibility,
+predictable failure modes, and rollback simplicity over peak throughput.
+
+Default stable output should use conservative TCP-based capacity unless a later
+Risk A gate proves a different protocol class under production-like conditions.
+The current posture is:
+
+```text
+stable default baseline:
+  SS / TCP
+
+stable candidate path:
+  VLESS over TCP/TLS/H2, after repository and runtime validation
+
+canary / private / high-speed path:
+  TUIC
+  Hysteria2
+  HTTP/3 / QUIC-style UDP candidates
+  VLESS / XUDP before promotion
+```
+
+HTTP/3 is a useful comparison target, but it is not an automatic replacement
+for HTTP/2 in stable output. HTTP/3 depends on QUIC over UDP, so it inherits
+the same public-network UDP posture risks as TUIC and Hysteria2: provider
+firewall behavior, operator/client UDP reachability, QoS, tail latency, and
+server CPU pressure must be measured before promotion.
+
+HTTP/2 remains the preferred HTTP-family stable candidate over HTTP/3 because
+it stays on TCP/TLS and has a simpler compatibility profile for default user
+subscriptions.
+
+VLESS / XUDP is the next useful comparison path for a stable-candidate review.
+The reason is not that it is ready for default output; the reason is that it can
+test VLESS identity and client compatibility while keeping a TCP/TLS/H2-style
+base path separate from UDP forwarding behavior. XUDP behavior must remain
+canary-scoped until measured and reviewed.
+
+Use the read-only policy check before any stable-pool rollout or portal
+auto-issuance switch:
+
+```powershell
+gccgw node policy-check --config config/proxy-servers.json --json
+```
+
+Interpretation:
+
+```text
+ok=true:
+  stable pool has no UDP/QUIC-style default-output blocker
+
+ok=false:
+  do not broaden default output
+  restore conservative TCP stable capacity or move the candidate to
+    canary/private/recovery before promotion
+```
+
 ## Operator Override
 
 Explicit operator node assignment remains a maintenance and canary control.

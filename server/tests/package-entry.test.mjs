@@ -39,6 +39,8 @@ import {
   generateClashProviderSubscription,
   generateClashProxyProvider,
   generateClashSubscription,
+  generateMihomoProviderTemplate,
+  generateMihomoRenderTemplate,
   normalizeChannelBenchmarkFixture,
   runChannelBenchmarkPlan,
   scoreChannelBenchmarkSummary,
@@ -104,6 +106,8 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof generateClashProviderSubscription, "function");
   assert.equal(typeof generateClashProxyProvider, "function");
   assert.equal(typeof generateClashSubscription, "function");
+  assert.equal(typeof generateMihomoProviderTemplate, "function");
+  assert.equal(typeof generateMihomoRenderTemplate, "function");
   assert.equal(typeof CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION, "string");
   assert.equal(typeof normalizeChannelBenchmarkFixture, "function");
   assert.equal(typeof runChannelBenchmarkPlan, "function");

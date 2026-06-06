@@ -141,6 +141,16 @@ function sqliteRun(statement, input) {
   }
 }
 
+function ensureTableColumns(db, tableName, columns) {
+  const existing = new Set(db.prepare(`pragma table_info(${tableName})`).all().map((column) => column.name));
+  for (const column of columns) {
+    if (!existing.has(column.name)) {
+      db.exec(`alter table ${tableName} add column ${column.definition}`);
+      existing.add(column.name);
+    }
+  }
+}
+
 function mapAccount(row) {
   if (!row) return null;
   return {
@@ -201,6 +211,28 @@ function mapIssuedLink(row) {
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+function mapIssuedSubscriptionBinding(row) {
+  if (!row) return null;
+  return {
+    id: row.link_id,
+    linkId: row.link_id,
+    requestId: row.request_id,
+    accountId: row.account_id,
+    entitlementId: row.entitlement_id,
+    tenantRef: row.tenant_ref,
+    artifactRef: row.artifact_ref,
+    status: row.link_status,
+    requestStatus: row.request_status,
+    entitlementStatus: row.entitlement_status,
+    nodeId: row.node_id,
+    plan: row.plan,
+    validFrom: row.valid_from,
+    validUntil: row.valid_until,
+    createdAt: row.link_created_at,
+    updatedAt: row.link_updated_at
   };
 }
 
@@ -276,6 +308,40 @@ function mapEdgeApplyReceipt(row) {
     rollbackRef: row.rollback_ref,
     appliedAt: row.applied_at,
     createdAt: row.created_at
+  };
+}
+
+function mapPortalAccessRequest(row) {
+  if (!row) return null;
+  const event = parseJsonObject(row.event_json);
+  return {
+    id: row.id,
+    portalUserRef: row.portal_user_ref,
+    plan: row.plan,
+    clientTarget: row.client_target,
+    durationDays: row.duration_days,
+    quantity: row.quantity,
+    status: row.status,
+    nextAction: row.next_action,
+    noteProvided: row.note_provided === 1,
+    priorTrialState: row.prior_trial_state,
+    submittedAt: row.submitted_at,
+    updatedAt: row.updated_at,
+    reviewedAt: row.reviewed_at,
+    reviewedByRef: row.reviewed_by_ref,
+    safeReasonCode: row.safe_reason_code,
+    expiresAt: row.expires_at,
+    validUntil: row.valid_until,
+    entitlementRef: row.entitlement_ref,
+    accessGrantRef: row.access_grant_ref,
+    tenantId: row.tenant_id,
+    artifactId: row.artifact_id,
+    subscriptionUrl: row.subscription_url,
+    edgeChannelRef: row.edge_channel_ref,
+    edgeCredentialRef: row.edge_credential_ref,
+    edgeMaterialDigest: row.edge_material_digest,
+    edgeLifecycleMutation: row.edge_lifecycle_mutation === 1,
+    event: Object.keys(event).length > 0 ? event : null
   };
 }
 
@@ -536,6 +602,50 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     create index if not exists platform_edge_apply_receipts_desired_state_idx
       on platform_edge_apply_receipts(desired_state_ref);
 
+    create table if not exists platform_portal_access_requests (
+      id text primary key,
+      portal_user_ref text not null,
+      plan text not null check (plan in ('trial', 'monthly', 'yearly')),
+      client_target text not null check (client_target in ('clash', 'karing')),
+      duration_days integer not null check (duration_days > 0),
+      quantity integer not null check (quantity > 0),
+      status text not null check (status in (
+        'pending_admin_review',
+        'approved_pending_delivery',
+        'delivered',
+        'issued',
+        'rejected',
+        'disabled'
+      )),
+      next_action text not null,
+      note_provided integer not null default 0 check (note_provided in (0, 1)),
+      prior_trial_state text not null,
+      submitted_at text not null,
+      updated_at text not null,
+      reviewed_at text,
+      reviewed_by_ref text,
+      safe_reason_code text,
+      expires_at text,
+      valid_until text,
+      entitlement_ref text,
+      access_grant_ref text,
+      tenant_id text,
+      artifact_id text,
+      subscription_url text,
+      edge_channel_ref text,
+      edge_credential_ref text,
+      edge_material_digest text,
+      edge_lifecycle_mutation integer not null default 0 check (edge_lifecycle_mutation in (0, 1)),
+      event_json text not null default '{}'
+    );
+
+    create index if not exists platform_portal_access_requests_user_idx
+      on platform_portal_access_requests(portal_user_ref, submitted_at);
+    create index if not exists platform_portal_access_requests_status_idx
+      on platform_portal_access_requests(status);
+    create index if not exists platform_portal_access_requests_plan_idx
+      on platform_portal_access_requests(plan);
+
     create table if not exists platform_portal_entries (
       id text primary key,
       account_id text not null references platform_accounts(id) on delete cascade,
@@ -652,6 +762,23 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     create index if not exists platform_portal_sessions_status_idx
       on platform_portal_sessions(status);
   `);
+
+  ensureTableColumns(db, "platform_portal_access_requests", [
+    { name: "client_target", definition: "client_target text not null default 'clash'" },
+    { name: "duration_days", definition: "duration_days integer not null default 30" },
+    { name: "quantity", definition: "quantity integer not null default 1" },
+    { name: "note_provided", definition: "note_provided integer not null default 0" },
+    { name: "expires_at", definition: "expires_at text" },
+    { name: "valid_until", definition: "valid_until text" },
+    { name: "tenant_id", definition: "tenant_id text" },
+    { name: "artifact_id", definition: "artifact_id text" },
+    { name: "subscription_url", definition: "subscription_url text" },
+    { name: "edge_channel_ref", definition: "edge_channel_ref text" },
+    { name: "edge_credential_ref", definition: "edge_credential_ref text" },
+    { name: "edge_material_digest", definition: "edge_material_digest text" },
+    { name: "edge_lifecycle_mutation", definition: "edge_lifecycle_mutation integer not null default 0" },
+    { name: "event_json", definition: "event_json text not null default '{}'" }
+  ]);
 
   function createAccount(input) {
     assertNoUnsafeFields(input);
@@ -789,6 +916,57 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       throw platformError("not_found", "issued link not found");
     }
     return getIssuedLink(id);
+  }
+
+  function listIssuedSubscriptionBindings(filters = {}) {
+    assertNoUnsafeFields(filters);
+    const clauses = [
+      "l.status = 'active'",
+      "r.status = 'issued'",
+      "e.status = 'active'"
+    ];
+    const params = [];
+    const nodeId = optionalText(filters.nodeId);
+    const tenantRef = optionalText(filters.tenantRef);
+    if (nodeId) {
+      clauses.push("r.node_id = ?");
+      params.push(nodeId);
+    }
+    if (tenantRef) {
+      clauses.push("l.tenant_ref = ?");
+      params.push(tenantRef);
+    }
+
+    return db.prepare(`
+      select
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        r.node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until
+      from platform_issued_subscription_links l
+      join platform_issuance_requests r on r.id = l.request_id
+      join platform_entitlements e on e.id = r.entitlement_id
+      where ${clauses.join(" and ")}
+      order by l.created_at asc, l.id asc
+    `).all(...params).map(mapIssuedSubscriptionBinding);
+  }
+
+  function findIssuedSubscriptionBindingByTenantRef(tenantRef) {
+    const [binding] = listIssuedSubscriptionBindings({
+      tenantRef: requiredText(tenantRef, "tenantRef")
+    }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id));
+    return binding || null;
   }
 
   function upsertQuotaCounter(input) {
@@ -947,6 +1125,116 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       select * from platform_edge_apply_receipts
       order by created_at asc, id asc
     `).all().map(mapEdgeApplyReceipt);
+  }
+
+  function upsertPortalAccessRequest(input) {
+    const record = {
+      id: requiredText(input.id, "id"),
+      portalUserRef: requiredText(input.portalUserRef, "portalUserRef"),
+      plan: requiredText(input.plan, "plan"),
+      clientTarget: requiredText(input.clientTarget || "clash", "clientTarget"),
+      durationDays: integer(input.durationDays, "durationDays", { min: 1 }),
+      quantity: integer(input.quantity ?? 1, "quantity", { min: 1 }),
+      status: requiredText(input.status, "status"),
+      nextAction: requiredText(input.nextAction, "nextAction"),
+      noteProvided: input.noteProvided ? 1 : 0,
+      priorTrialState: requiredText(input.priorTrialState, "priorTrialState"),
+      submittedAt: isoText(input.submittedAt, "submittedAt"),
+      updatedAt: isoText(input.updatedAt, "updatedAt"),
+      reviewedAt: optionalIsoText(input.reviewedAt, "reviewedAt"),
+      reviewedByRef: optionalText(input.reviewedByRef),
+      safeReasonCode: optionalText(input.safeReasonCode),
+      expiresAt: optionalIsoText(input.expiresAt, "expiresAt"),
+      validUntil: optionalIsoText(input.validUntil, "validUntil"),
+      entitlementRef: optionalText(input.entitlementRef),
+      accessGrantRef: optionalText(input.accessGrantRef),
+      tenantId: optionalText(input.tenantId),
+      artifactId: optionalText(input.artifactId),
+      subscriptionUrl: optionalText(input.subscriptionUrl),
+      edgeChannelRef: optionalText(input.edgeChannelRef),
+      edgeCredentialRef: optionalText(input.edgeCredentialRef),
+      edgeMaterialDigest: optionalText(input.edgeMaterialDigest),
+      edgeLifecycleMutation: input.edgeLifecycleMutation ? 1 : 0,
+      eventJson: jsonObject(input.event, "event")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_portal_access_requests (
+        id, portal_user_ref, plan, client_target, duration_days, quantity,
+        status, next_action, note_provided, prior_trial_state, submitted_at,
+        updated_at, reviewed_at, reviewed_by_ref, safe_reason_code, expires_at,
+        valid_until, entitlement_ref, access_grant_ref, tenant_id, artifact_id,
+        subscription_url, edge_channel_ref, edge_credential_ref,
+        edge_material_digest, edge_lifecycle_mutation, event_json
+      ) values (
+        @id, @portalUserRef, @plan, @clientTarget, @durationDays, @quantity,
+        @status, @nextAction, @noteProvided, @priorTrialState, @submittedAt,
+        @updatedAt, @reviewedAt, @reviewedByRef, @safeReasonCode, @expiresAt,
+        @validUntil, @entitlementRef, @accessGrantRef, @tenantId, @artifactId,
+        @subscriptionUrl, @edgeChannelRef, @edgeCredentialRef,
+        @edgeMaterialDigest, @edgeLifecycleMutation, @eventJson
+      )
+      on conflict(id) do update set
+        portal_user_ref = excluded.portal_user_ref,
+        plan = excluded.plan,
+        client_target = excluded.client_target,
+        duration_days = excluded.duration_days,
+        quantity = excluded.quantity,
+        status = excluded.status,
+        next_action = excluded.next_action,
+        note_provided = excluded.note_provided,
+        prior_trial_state = excluded.prior_trial_state,
+        submitted_at = excluded.submitted_at,
+        updated_at = excluded.updated_at,
+        reviewed_at = excluded.reviewed_at,
+        reviewed_by_ref = excluded.reviewed_by_ref,
+        safe_reason_code = excluded.safe_reason_code,
+        expires_at = excluded.expires_at,
+        valid_until = excluded.valid_until,
+        entitlement_ref = excluded.entitlement_ref,
+        access_grant_ref = excluded.access_grant_ref,
+        tenant_id = excluded.tenant_id,
+        artifact_id = excluded.artifact_id,
+        subscription_url = excluded.subscription_url,
+        edge_channel_ref = excluded.edge_channel_ref,
+        edge_credential_ref = excluded.edge_credential_ref,
+        edge_material_digest = excluded.edge_material_digest,
+        edge_lifecycle_mutation = excluded.edge_lifecycle_mutation,
+        event_json = excluded.event_json
+    `), record);
+    return getPortalAccessRequest(record.id);
+  }
+
+  function getPortalAccessRequest(id) {
+    return mapPortalAccessRequest(db.prepare(`
+      select * from platform_portal_access_requests
+      where id = ?
+    `).get(requiredText(id, "id")));
+  }
+
+  function listPortalAccessRequests(filters = {}) {
+    const clauses = [];
+    const params = [];
+    const status = optionalText(filters.status);
+    const portalUserRef = optionalText(filters.portalUserRef);
+    const plan = optionalText(filters.plan);
+    if (status) {
+      clauses.push("status = ?");
+      params.push(status);
+    }
+    if (portalUserRef) {
+      clauses.push("portal_user_ref = ?");
+      params.push(portalUserRef);
+    }
+    if (plan) {
+      clauses.push("plan = ?");
+      params.push(plan);
+    }
+    const where = clauses.length ? `where ${clauses.join(" and ")}` : "";
+    return db.prepare(`
+      select * from platform_portal_access_requests
+      ${where}
+      order by submitted_at asc, id asc
+    `).all(...params).map(mapPortalAccessRequest);
   }
 
   function createPortalEntry(input) {
@@ -1389,6 +1677,8 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     linkIssuedSubscription,
     getIssuedLink,
     setIssuedLinkStatus,
+    listIssuedSubscriptionBindings,
+    findIssuedSubscriptionBindingByTenantRef,
     upsertQuotaCounter,
     bindDevice,
     getDeviceBinding,
@@ -1399,6 +1689,9 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     recordEdgeApplyReceipt,
     getEdgeApplyReceipt,
     listEdgeApplyReceipts,
+    upsertPortalAccessRequest,
+    getPortalAccessRequest,
+    listPortalAccessRequests,
     createPortalEntry,
     getPortalEntry,
     findPortalEntryByTokenHash,

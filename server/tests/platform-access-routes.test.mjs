@@ -468,6 +468,35 @@ test("admin platform Aliyun gate evidence route fails closed when evidence shell
   }
 });
 
+test("admin platform routes do not echo internal error messages", async () => {
+  const { leadQueue, accountShell, accessShell } = createPlatformState();
+  const aliyunGateEvidenceShell = {
+    summary: () => {
+      throw new Error(
+        "gate evidence failed for https://gateway.example.com/sub/clash.yaml?token=pgsub_sensitive password=secret"
+      );
+    }
+  };
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    leadQueue,
+    accountShell,
+    accessShell,
+    aliyunGateEvidenceShell
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence`, {
+      headers: authHeaders()
+    });
+    const body = await response.json();
+
+    assert.equal(response.status, 500);
+    assert.deepEqual(body, { error: "internal_error" });
+    assert.doesNotMatch(JSON.stringify(body), /pgsub_sensitive|password=secret|gateway\.example/);
+  } finally {
+    server.close();
+  }
+});
+
 function channelDryRunSummary() {
   return {
     ok: true,

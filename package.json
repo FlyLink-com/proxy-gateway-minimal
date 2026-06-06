@@ -79,6 +79,7 @@
     "platform:provisioning-form": "node bin/gccgw.mjs platform provisioning-form",
     "platform:issue-subscription": "node bin/gccgw.mjs platform issue-subscription",
     "platform:issue-portal-entry": "node bin/gccgw.mjs platform issue-portal-entry",
+    "platform:issue-portal-initial-account": "node bin/gccgw.mjs platform issue-portal-initial-account",
     "platform:resource-package": "node bin/gccgw.mjs platform resource-package",
     "platform:revoke-access": "node bin/gccgw.mjs platform revoke-access",
     "platform:access-inventory-summary": "node bin/gccgw.mjs platform access-inventory-summary",
@@ -100,6 +101,8 @@
     "daemon": "node daemon.mjs",
     "admin:dev": "npm run dev --prefix admin",
     "admin:build": "npm run build --prefix admin",
+    "admin:portal:build": "npm run build:portal --prefix admin",
+    "admin:portal:verify": "npm run verify:portal-build --prefix admin",
     "admin:site:build": "npm run build:site --prefix admin",
     "admin:site:verify": "npm run verify:site-build --prefix admin",
     "admin:test": "npm run test --prefix admin"

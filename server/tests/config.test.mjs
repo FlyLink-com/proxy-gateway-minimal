@@ -76,6 +76,51 @@ test("loadProxyConfig leaves SS_PASSWORD markers literal outside password fields
   }
 });
 
+test("loadProxyConfig substitutes runtime endpoint placeholders for host and sni", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "proxy-config-"));
+
+  try {
+    const configPath = join(tempDir, "proxy-servers.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          servers: [
+            {
+              name: "tuic-candidate",
+              host: "${TUIC_HOST}",
+              port: 443,
+              protocol: "tuic",
+              uuid: "${TUIC_UUID}",
+              password: "${TUIC_PASSWORD}",
+              sni: "${TUIC_SNI}",
+              note: "literal ${TUIC_HOST} marker"
+            }
+          ]
+        },
+        null,
+        2
+      )
+    );
+
+    const config = loadProxyConfig({
+      configPath,
+      env: {
+        TUIC_HOST: "tuic.example.test",
+        TUIC_UUID: "22222222-2222-4222-8222-222222222222",
+        TUIC_PASSWORD: "tuic-secret",
+        TUIC_SNI: "front.example.test"
+      }
+    });
+
+    assert.equal(config.servers[0].host, "tuic.example.test");
+    assert.equal(config.servers[0].sni, "front.example.test");
+    assert.equal(config.servers[0].note, "literal ${TUIC_HOST} marker");
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("loadProxyConfig supports protocol-specific channel candidate secrets", () => {
   const tempDir = mkdtempSync(join(tmpdir(), "proxy-config-"));
 

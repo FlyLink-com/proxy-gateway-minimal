@@ -112,6 +112,8 @@ test("executeSubscriptionIssuance - success writes runtime tenant/artifact and s
   assert.ok(handoffMaterial.tenantId);
   assert.ok(handoffMaterial.artifactId);
   assert.ok(handoffMaterial.subscriptionUrl);
+  assert.strictEqual(handoffMaterial.expiresAt, input.expiresAt);
+  assert.strictEqual(handoffMaterial.validUntil, input.expiresAt);
   assert.strictEqual(createMockRuntimeCore.lastCreateTenantArgs.note, "");
 });
 

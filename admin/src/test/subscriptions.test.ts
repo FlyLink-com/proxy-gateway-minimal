@@ -127,6 +127,34 @@ describe("admin API client", () => {
     expect((firstCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
   });
 
+  test("does not surface sensitive backend error messages", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        {
+          error: "internal_error",
+          message: "failed for https://gateway.example.com/sub/clash.yaml?token=pgsub_sensitive_token password=secret"
+        },
+        { status: 500 }
+      )
+    );
+    const client = createAdminApiClient({
+      baseUrl: "",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    let thrown: unknown;
+    try {
+      await client.listTenants();
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toBe("Admin API request failed with HTTP 500.");
+    expect((thrown as Error).message).not.toMatch(/pgsub_sensitive_token|password=secret|gateway\.example/);
+  });
+
   test("previews operator provisioning forms through the protected platform route", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
@@ -175,7 +203,7 @@ describe("admin API client", () => {
         type: "portal_access_request_summary",
         portalUserRef: "user_safe_ref",
         plan: "trial",
-        planLabel: "7-day trial",
+        planLabel: "30-day initial trial",
         durationDays: 7,
         status: "pending_admin_review",
         nextAction: "admin_review_required",
@@ -577,7 +605,7 @@ describe("portal access request admin page", () => {
       type: "portal_access_request_summary" as const,
       portalUserRef: "user_safe_ref",
       plan: "trial" as const,
-      planLabel: "7-day trial",
+      planLabel: "30-day initial trial",
       durationDays: 7,
       status: "pending_admin_review" as const,
       nextAction: "admin_review_required",
@@ -684,7 +712,7 @@ describe("portal access request admin page", () => {
     }));
 
     expect(await screen.findByText("订阅申请运营台")).not.toBeNull();
-    expect(screen.getAllByText("7-day trial").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("30-day initial trial").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("待审核").length).toBeGreaterThanOrEqual(1);
 
     fireEvent.change(screen.getByLabelText("审批编号"), { target: { value: "approval_trial_1" } });

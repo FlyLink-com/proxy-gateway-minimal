@@ -9,17 +9,23 @@ import { ConnectionPanel } from "./features/subscriptions/connection-panel";
 import { SubscriptionsPage } from "./features/subscriptions/subscriptions-page";
 import { CompanySitePage } from "./features/company-site/company-site-page";
 import { UserPortalPage } from "./features/user-portal/user-portal-page";
-import { createLocalUserPortalClient } from "./features/user-portal/user-portal-client";
+import {
+  createHttpUserPortalClient,
+  createLocalUserPortalClient
+} from "./features/user-portal/user-portal-client";
 import { NodesPage } from "./pages/nodes-page";
 import { OverviewPage } from "./pages/overview-page";
 import { PortalRequestsPage } from "./pages/portal-requests-page";
 import { ProvisioningPage } from "./pages/provisioning-page";
 
-type AppRoute = "admin" | "portal" | "site";
+type AppRoute = "admin" | "portal" | "portalPreview" | "site";
 
 function routeFromHash(): AppRoute {
   if (window.location.hash === "#/site") {
     return "site";
+  }
+  if (window.location.hash === "#/portal-preview") {
+    return "portalPreview";
   }
   return window.location.hash === "#/portal" ? "portal" : "admin";
 }
@@ -33,7 +39,10 @@ export function App() {
     () => createAdminApiClient(adminSession),
     [adminSession.baseUrl, adminSession.consoleToken]
   );
-  const userPortalClient = useMemo(() => createLocalUserPortalClient(), []);
+  const httpUserPortalClient = useMemo(() => createHttpUserPortalClient(), []);
+  const localUserPortalClient = useMemo(() => createLocalUserPortalClient({
+    demoSubscriptionUrl: "https://sub.example.test/import/local-preview-visible-once"
+  }), []);
 
   useEffect(() => {
     function syncRoute() {
@@ -62,8 +71,13 @@ export function App() {
     return <CompanySitePage />;
   }
 
-  if (route === "portal") {
-    return <UserPortalPage portalClient={userPortalClient} onBackToAdmin={openAdmin} />;
+  if (route === "portal" || route === "portalPreview") {
+    return (
+      <UserPortalPage
+        portalClient={route === "portalPreview" ? localUserPortalClient : httpUserPortalClient}
+        onBackToAdmin={openAdmin}
+      />
+    );
   }
 
   return (

@@ -102,10 +102,12 @@ The existing edge roles remain separate:
 
 ```text
 prod-edge-a:
-  current production co-located host and active primary edge slot
+  historical production primary edge slot; original AWS carrying instance was
+  terminated under the 2026-05-29 cleanup record
 
 prod-edge-b:
-  current iteration/canary secondary edge slot
+  historical iteration/canary secondary edge slot; original AWS carrying
+  instance was terminated under the 2026-05-29 cleanup record
 
 prod-edge-c:
   future recovery / standby edge slot, not created by this runbook
@@ -150,9 +152,9 @@ approved production-ops record path:
 
 ```text
 current production DNS records for sub.globalcirclecat.com and ss-sg.globalcirclecat.com
-current prod-edge-a instance identity, public IP, private IP, and security group
-current prod-edge-b carrying instance identity, public IP, private IP, and security group
-current production service health and public endpoint behavior
+current Aliyun subscription-distribution service health and public endpoint behavior
+current static subscription-output node references and whether they point at retired edge slots
+any newly approved clean edge target identity, public IP, private IP, and security group
 current active production DB path from runtime config, without printing DB content
 current backup location and latest backup timestamp, without copying backup into Git
 current Nginx public boundary behavior
@@ -334,7 +336,8 @@ final backup and restore steps
 Nginx public boundary
 DNS or gateway routing strategy
 edge inventory source
-rollback path to current prod-edge-a co-located authority
+rollback or recovery path after the retired prod-edge-a/prod-edge-b AWS slots
+have been terminated
 client subscription refresh validation
 opaque artifact validation
 operator approval
@@ -436,8 +439,8 @@ docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md:
 docs/CI_MANUAL_VALIDATION.md:
   manual CI fallback; the new server is not the CI host
 
-docs/SERVER_EDGE_MESH_WIREGUARD_CANARY_RUNBOOK.md:
-  private server mesh canary; not part of this candidate by default
+docs/archive/SERVER_EDGE_MESH_WIREGUARD_CANARY_RUNBOOK.md:
+  historical private server mesh canary; not part of this candidate by default
 ```
 
 ## Non-Goals

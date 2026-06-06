@@ -1,3 +1,5 @@
+import { executeSubscriptionIssuance } from "./subscription-issuance.mjs";
+
 const PLANS = {
   trial: { durationDays: 7, label: "7-day trial" },
   monthly: { durationDays: 30, label: "monthly" },
@@ -48,6 +50,15 @@ function expiresAtFromDuration(baseIso, durationDays) {
     throw platformError("validation_error", "base date is invalid");
   }
   return new Date(base.getTime() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function limitNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
+}
+
+function periodFor(iso) {
+  return String(iso || "").slice(0, 7);
 }
 
 function normalizePlan(plan) {
@@ -134,21 +145,93 @@ function edgeOrderSummaryFor(record) {
   };
 }
 
+function cloneRecord(record) {
+  if (!record) return null;
+  return {
+    ...record,
+    event: record.event ? { ...record.event } : null
+  };
+}
+
+function createMemoryPortalAccessRequestStore() {
+  const records = [];
+  return {
+    upsertPortalAccessRequest(record) {
+      const cloned = cloneRecord(record);
+      const index = records.findIndex((item) => item.id === cloned.id);
+      if (index >= 0) {
+        records[index] = cloned;
+      } else {
+        records.push(cloned);
+      }
+      return cloneRecord(cloned);
+    },
+    getPortalAccessRequest(id) {
+      return cloneRecord(records.find((record) => record.id === id));
+    },
+    listPortalAccessRequests(filters = {}) {
+      const status = String(filters.status || "").trim();
+      const portalUserRef = String(filters.portalUserRef || "").trim();
+      const plan = String(filters.plan || "").trim();
+      return records
+        .filter((record) => !status || record.status === status)
+        .filter((record) => !portalUserRef || record.portalUserRef === portalUserRef)
+        .filter((record) => !plan || record.plan === plan)
+        .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
+        .map(cloneRecord);
+    }
+  };
+}
+
+function portalAccessRequestStoreFrom(options, controlStore) {
+  const explicitStore = options.portalAccessRequestStore || options.requestStore;
+  if (explicitStore) {
+    return explicitStore;
+  }
+  if (
+    controlStore
+    && typeof controlStore.upsertPortalAccessRequest === "function"
+    && typeof controlStore.getPortalAccessRequest === "function"
+    && typeof controlStore.listPortalAccessRequests === "function"
+  ) {
+    return controlStore;
+  }
+  return createMemoryPortalAccessRequestStore();
+}
+
 export function createPortalAccessRequestService(options = {}) {
   const nowFn = options.nowFn || (() => new Date());
   const requestIdFactory = options.requestIdFactory;
   const runtimeCore = options.runtimeCore;
+  const controlStore = options.controlStore;
+  const requestStore = portalAccessRequestStoreFrom(options, controlStore);
   const edgeLifecycleService = options.edgeLifecycleService;
   const edgeCredentialIssuer = options.edgeCredentialIssuer;
-  const requests = new Map();
+  const autoIssuance = {
+    enabled: options.autoIssuance?.enabled === true,
+    nodeId: String(options.autoIssuance?.nodeId || "").trim(),
+    reviewedByRef: String(options.autoIssuance?.reviewedByRef || "portal_auto_issuer").trim(),
+    monthlyLimits: {
+      trial: limitNumber(options.autoIssuance?.monthlyLimits?.trial),
+      monthly: limitNumber(options.autoIssuance?.monthlyLimits?.monthly)
+    }
+  };
   let sequence = 0;
 
   function getRecord(id) {
-    const request = requests.get(text(id, "requestRef"));
+    const request = requestStore.getPortalAccessRequest(text(id, "requestRef"));
     if (!request) {
       throw platformError("not_found", "portal access request not found");
     }
     return request;
+  }
+
+  function saveRecord(record) {
+    return requestStore.upsertPortalAccessRequest(record);
+  }
+
+  function listRecords(filters = {}) {
+    return requestStore.listPortalAccessRequests(filters);
   }
 
   function requireRuntimeMethod(method) {
@@ -195,6 +278,23 @@ export function createPortalAccessRequestService(options = {}) {
     return credential;
   }
 
+  function bindTenantCredentialMaterial(request, credential) {
+    if (
+      !credential?.edgeCredentialMaterial ||
+      !request.tenantId ||
+      !runtimeCore ||
+      typeof runtimeCore.bindTenantCredentialMaterial !== "function"
+    ) {
+      return null;
+    }
+    return runtimeCore.bindTenantCredentialMaterial({
+      tenantId: request.tenantId,
+      nodeId: request.edgeChannelRef,
+      credentialRef: request.edgeCredentialRef,
+      material: credential.edgeCredentialMaterial
+    });
+  }
+
   function getOwnedDeliveredRecord(input = {}) {
     const request = getRecord(input.requestRef);
     const portalUserRef = text(input.portalUserRef, "portalUserRef");
@@ -208,10 +308,80 @@ export function createPortalAccessRequestService(options = {}) {
   }
 
   function hasPriorTrial(portalUserRef) {
-    return [...requests.values()].some((request) =>
+    return listRecords({ portalUserRef, plan: "trial" }).some((request) =>
       request.portalUserRef === portalUserRef
       && request.plan === "trial"
     );
+  }
+
+  function assertAutoIssuanceReady() {
+    if (!runtimeCore) {
+      throw platformError("validation_error", "portal auto issuance runtime is not configured");
+    }
+    if (!controlStore) {
+      throw platformError("validation_error", "portal auto issuance control store is not configured");
+    }
+    if (!autoIssuance.nodeId) {
+      throw platformError("validation_error", "portal auto issuance node is not configured");
+    }
+  }
+
+  function assertAutoIssuanceLimit({ id, portalUserRef, plan, submittedAt }) {
+    const limit = autoIssuance.monthlyLimits[plan];
+    if (!limit) return;
+    const period = periodFor(submittedAt);
+    const used = listRecords({ portalUserRef, plan }).filter((request) =>
+      request.id !== id
+      && request.portalUserRef === portalUserRef
+      && request.plan === plan
+      && periodFor(request.submittedAt) === period
+    ).length;
+    if (used >= limit) {
+      throw platformError("validation_error", "portal auto issuance monthly limit exceeded");
+    }
+  }
+
+  function autoDeliver(record) {
+    assertAutoIssuanceReady();
+    assertAutoIssuanceLimit(record);
+    const expiresAt = expiresAtFromDuration(record.submittedAt, record.durationDays);
+    const entitlementRef = `ent_${record.id}`;
+    const accessGrantRef = `grant_${record.id}`;
+    const approvalRef = `auto_${record.id}`;
+    const issued = executeSubscriptionIssuance({
+      controlStore,
+      runtimeCore,
+      approvalRef,
+      now: record.submittedAt,
+      input: {
+        displayName: record.portalUserRef,
+        expiresInDays: record.durationDays,
+        expiresAt,
+        validUntil: expiresAt,
+        plan: record.plan,
+        nodeId: autoIssuance.nodeId,
+        note: `portal-auto-issuance:${record.id}`,
+        artifact: { create: true },
+        control: {
+          accountId: record.portalUserRef,
+          ownerRef: record.portalUserRef,
+          entitlementId: entitlementRef,
+          requestId: record.id,
+          requestedByRef: autoIssuance.reviewedByRef,
+          purpose: "portal_auto_issuance",
+          plan: record.plan
+        }
+      }
+    });
+    return this.markDelivered(record.id, {
+      reviewedByRef: autoIssuance.reviewedByRef,
+      entitlementRef,
+      accessGrantRef,
+      tenantId: issued.handoffMaterial.tenantId,
+      artifactId: issued.handoffMaterial.artifactId,
+      subscriptionUrl: issued.handoffMaterial.subscriptionUrl,
+      expiresAt
+    });
   }
 
   return {
@@ -248,14 +418,17 @@ export function createPortalAccessRequestService(options = {}) {
         subscriptionUrl: null,
         event: null
       };
-      requests.set(record.id, record);
+      saveRecord(record);
+      if (autoIssuance.enabled) {
+        return autoDeliver.call(this, record);
+      }
       return summaryFor(record);
     },
 
     listRequests(filters = {}) {
       const status = String(filters.status || "").trim();
       const portalUserRef = String(filters.portalUserRef || "").trim();
-      return [...requests.values()]
+      return listRecords({ ...filters, status, portalUserRef })
         .filter((request) => !status || request.status === status)
         .filter((request) => !portalUserRef || request.portalUserRef === portalUserRef)
         .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
@@ -264,7 +437,7 @@ export function createPortalAccessRequestService(options = {}) {
 
     listEdgeCredentialOrders(filters = {}) {
       const status = String(filters.status || "").trim();
-      return [...requests.values()]
+      return listRecords({ ...filters, status })
         .filter((request) => !status || request.status === status)
         .filter((request) => request.edgeCredentialRef && request.edgeMaterialDigest)
         .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
@@ -284,7 +457,7 @@ export function createPortalAccessRequestService(options = {}) {
       request.reviewedByRef = text(input.reviewedByRef, "reviewedByRef");
       request.safeReasonCode = text(input.reasonCode, "reasonCode");
       request.updatedAt = now;
-      return summaryFor(request);
+      return summaryFor(saveRecord(request));
     },
 
     previewApproval(id, input = {}) {
@@ -357,10 +530,12 @@ export function createPortalAccessRequestService(options = {}) {
       request.subscriptionUrl = optionalText(input.subscriptionUrl);
       request.event = null;
       request.updatedAt = now;
-      if (attachEdgeCredential(request)) {
+      const credential = attachEdgeCredential(request);
+      if (credential) {
         recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_delivered", request));
+        bindTenantCredentialMaterial(request, credential);
       }
-      return summaryFor(request);
+      return summaryFor(saveRecord(request));
     },
 
     refreshSubscription(input = {}) {
@@ -380,8 +555,10 @@ export function createPortalAccessRequestService(options = {}) {
         occurredAt: now
       };
       request.updatedAt = now;
+      const credential = attachEdgeCredential(request);
       recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_refreshed", request));
-      return summaryFor(request);
+      bindTenantCredentialMaterial(request, credential);
+      return summaryFor(saveRecord(request));
     },
 
     disableSubscription(input = {}) {
@@ -401,7 +578,7 @@ export function createPortalAccessRequestService(options = {}) {
       request.event = null;
       request.updatedAt = now;
       recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_disabled", request));
-      return summaryFor(request);
+      return summaryFor(saveRecord(request));
     }
   };
 }

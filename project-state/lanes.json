@@ -222,7 +222,7 @@
       "purpose": "Plan private edge-to-edge health, management, validation, and recovery paths.",
       "primaryDocs": [
         "docs/SERVER_EDGE_MESH_DESIGN.md",
-        "docs/SERVER_EDGE_MESH_WIREGUARD_CANARY_RUNBOOK.md",
+        "docs/archive/SERVER_EDGE_MESH_WIREGUARD_CANARY_RUNBOOK.md",
         "docs/server-edge-mesh-records/2026-05-25-server-edge-mesh-preflight.md"
       ],
       "primaryCodeAreas": [],

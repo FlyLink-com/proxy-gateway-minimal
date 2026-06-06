@@ -1,6 +1,6 @@
 # Production Edge Fleet Plan
 
-Last updated: 2026-05-26, Asia/Shanghai.
+Last updated: 2026-06-03, Asia/Shanghai.
 
 > Status:
 > - Type: Active planning document
@@ -13,12 +13,14 @@ Last updated: 2026-05-26, Asia/Shanghai.
 ## Purpose
 
 This document defines the provider-neutral production edge data-plane fleet
-model for the proxy gateway. It turns the current primary plus iteration/canary
-capacity into a controlled three-slot plan:
+model for the proxy gateway. The original AWS carrying instances for
+`prod-edge-a` and `prod-edge-b` were permanently terminated on 2026-05-29, so
+the current value of this document is slot planning and clean-edge rebuild
+guidance rather than evidence of active AWS edge capacity:
 
 ```text
-prod-edge-a: current production primary slot
-prod-edge-b: iteration/canary secondary slot
+prod-edge-a: historical production primary slot; carrying instance terminated
+prod-edge-b: historical iteration/canary secondary slot; carrying instance terminated
 prod-edge-c: future third recovery/standby slot
 ```
 
@@ -31,13 +33,13 @@ Latest business decision:
 Aliyun becomes the near-term user-management / subscription-distribution
 platform.
 HP remains local CI and operator lab.
-Non-Aliyun / non-HP nodes move to a controlled drain and retirement queue after
+Non-Aliyun / non-HP nodes moved through controlled drain and retirement after
 Aliyun promotion.
 ```
 
-Therefore this document remains useful for understanding current edge slot
-dependencies and rollback risk, but it is no longer the default plan to keep
-or expand clean edge capacity before the Aliyun platform is promoted. Use
+Therefore this document remains useful for understanding historical edge slot
+dependencies and future clean-edge rebuild planning, but it is not live
+inventory and not proof of active edge capacity. Use
 `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md` for the current
 drain / stop / termination gates.
 
@@ -55,6 +57,10 @@ production `.env`, copy secrets, copy SQLite data, or move traffic.
   manual CI, and non-Aliyun / non-HP nodes drain through controlled retirement.
 - `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`: latest business
   split and node drain / stop / termination gates.
+- `docs/JAPAN_TUIC_PER_ORDER_CREDENTIAL_UPGRADE_RUNBOOK.md`: current
+  production gate for upgrading the Japan TUIC data-plane node to support
+  per-order credential add, disable, rotate, and activation before forced order
+  expiry is claimed.
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`: fallback clean
   new-server gates for a future `sub-control-a` candidate. It is not an edge
   slot and does not create `prod-edge-c`.
@@ -77,16 +83,16 @@ Current durable facts:
 
 ```text
 prod-edge-a target slot:
-  Current role: active production primary edge slot
-  Current traffic: yes
-  Current public traffic host: sub.globalcirclecat.com and ss-sg.globalcirclecat.com point to this slot
-  Current runtime identity: provider-neutral prod-edge-a
+  Current role: historical production primary edge slot
+  Current traffic: no active AWS carrying instance
+  Current public traffic host: none; sub.globalcirclecat.com points to Aliyun
+  Current runtime identity: provider-neutral prod-edge-a slot preserved for rebuild planning
 
 prod-edge-b target slot:
-  Current role: iteration/canary secondary edge slot
-  Current traffic: yes, as a secondary node emitted by Subscription V2
-  Current validation: public boundary, systemd, SQLite integrity, and Shadowsocks TCP reachability passed
-  Current runtime identity: provider-neutral prod-edge-b slot, currently carried by the validated green node
+  Current role: historical iteration/canary secondary edge slot
+  Current traffic: no active AWS carrying instance
+  Current validation: historical only; the carrying instance was terminated
+  Current runtime identity: provider-neutral prod-edge-b slot preserved for rebuild planning
 
 prod-edge-c target slot:
   Current role: future third recovery/standby slot
@@ -95,16 +101,15 @@ prod-edge-c target slot:
   Current GitHub state: repo-only build-material package under ops/edge-node/
 ```
 
-Current `prod-edge-a` is still co-located: it carries both subscription
-control-plane duties and primary edge data-plane duties. The target direction
-is to split those duties over time, but this document only defines the edge
-slots. It does not authorize `sub-control-a` / `sub-control-b` creation,
-database movement, artifact movement, DNS migration, or runtime role changes.
-The preferred future `sub-control-a` path is now the current Aliyun server
-after CI exits and Risk A inventory approves it, governed by
+Aliyun now carries the approved public subscription-distribution boundary.
+The target direction is to keep subscription authority separate from
+replaceable edge capacity. This document only defines edge slots. It does not
+authorize `sub-control-a` / `sub-control-b` creation, database movement,
+artifact movement, DNS migration, clean edge bootstrap, or runtime role changes.
+The preferred subscription-control path is governed by
 `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`. The clean new-server
-control-plane path remains fallback and must not be treated as `prod-edge-c`
-or as customer proxy capacity.
+control-plane path remains fallback and must not be treated as `prod-edge-c` or
+as customer proxy capacity.
 
 The exact cloud provider, instance ID, public IP, and security group mappings
 belong in execution records and restricted operational inventory. They should
@@ -122,10 +127,11 @@ a separate Risk A creation and validation approval.
 
 `prod-edge-a` is the primary production edge slot.
 
-Current co-located responsibilities include:
+Historical co-located responsibilities included:
 
 - Public subscription gateway route through the approved public host.
-- Active Shadowsocks node for current production clients.
+- Shadowsocks node for production clients before Aliyun promotion and later
+  AWS retirement.
 - Loopback Admin/API runtime.
 - SQLite subscription store primary source of truth until another data
   topology is explicitly approved.

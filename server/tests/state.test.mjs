@@ -294,6 +294,124 @@ test("createRuntimeState parses hardening security environment", () => {
   }
 });
 
+test("createRuntimeState wires env-gated user portal password login services", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-auth-wiring-"));
+  const now = "2026-06-06T00:00:00.000Z";
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION: "true"
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      userPortalNowFn: () => now,
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(state.platform.userPortalRoutesEnabled, true);
+    assert.equal(typeof state.platform.portalHumanChallenges.issueChallenge, "function");
+    assert.equal(typeof state.platform.portalPasswordCredentialService.issueInitialPasswordCredential, "function");
+    assert.equal(typeof state.platform.userPortalAuth.verifyPasswordAndMaybeChallenge, "function");
+
+    state.platform.controlStore.createAccount({
+      id: "acct_portal_state_1",
+      ownerRef: "portal_user_state_1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.portalPasswordCredentialService.issueInitialPasswordCredential({
+      accountId: "acct_portal_state_1",
+      plainPassword: "synthetic-password",
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_portal_state_1"
+    });
+
+    const issued = state.platform.portalHumanChallenges.issueChallenge({ scope: "portal_login" });
+    assert.equal(issued.challenge.type, "math");
+
+    const result = state.platform.userPortalAuth.verifyPasswordAndMaybeChallenge({
+      accountId: "acct_portal_state_1",
+      plainPassword: "synthetic-password"
+    });
+    assert.equal(result.session.authMethod, "password");
+    assert.equal(result.session.accountId, "acct_portal_state_1");
+    assert.doesNotMatch(JSON.stringify(result), /synthetic-password|scrypt\$v=1/);
+  } finally {
+    state?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("createRuntimeState verifies TOTP second factor for portal password login", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-totp-wiring-"));
+  const now = "2026-06-06T00:00:00.000Z";
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION: "true"
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      userPortalNowFn: () => now,
+      autoStartHttpProxy: false
+    });
+
+    state.platform.controlStore.createAccount({
+      id: "acct_portal_totp_state_1",
+      ownerRef: "portal_user_totp_state_1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.portalPasswordCredentialService.issueInitialPasswordCredential({
+      accountId: "acct_portal_totp_state_1",
+      plainPassword: "synthetic-password",
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_portal_totp_state_1"
+    });
+    state.platform.controlStore.createPortalTotpCredential({
+      id: "totp_portal_state_1",
+      accountId: "acct_portal_totp_state_1",
+      encryptedTotpSecret: "enc:JBSWY3DPEHPK3PXP",
+      status: "active",
+      failureCount: 0,
+      enrolledAt: now,
+      updatedAt: now
+    });
+
+    const challenge = state.platform.userPortalAuth.verifyPasswordAndMaybeChallenge({
+      accountId: "acct_portal_totp_state_1",
+      plainPassword: "synthetic-password"
+    });
+    assert.equal(challenge.result.status, "second_factor_required");
+    assert.deepEqual(challenge.result.availableFactors, ["totp"]);
+
+    const completed = state.platform.userPortalAuth.completeSecondFactor({
+      challengeRef: challenge.result.challengeRef,
+      factor: "totp",
+      code: "049557"
+    });
+    assert.equal(completed.session.authMethod, "totp");
+    assert.equal(completed.session.accountId, "acct_portal_totp_state_1");
+  } finally {
+    state?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("createRuntimeState wires env-gated edge credential lifecycle services", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-edge-wiring-"));
   const materialPath = join(dir, "protected", "edge-material.json");
@@ -335,6 +453,260 @@ test("createRuntimeState wires env-gated edge credential lifecycle services", ()
     assert.doesNotMatch(JSON.stringify(state.platform.edgeCredentialMaterialStore.listCredentialMaterialSummaries()), /uuid|password/i);
   } finally {
     state?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("createRuntimeState restores persisted edge orders into lifecycle desired state", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-edge-recovery-"));
+  const materialPath = join(dir, "protected", "edge-material.json");
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
+        USER_PORTAL_EDGE_CHANNEL_REF: "channel-aliyun-a-tuic",
+        EDGE_CREDENTIAL_MATERIAL_PATH: materialPath
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      autoStartHttpProxy: false
+    });
+
+    const now = "2026-06-05T00:00:00.000Z";
+    state.platform.controlStore.createAccount({
+      id: "acct_edge_restore",
+      ownerRef: "portal_user_edge_restore",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.controlStore.createEntitlement({
+      id: "ent_edge_restore",
+      accountId: "acct_edge_restore",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-07-05T00:00:00.000Z",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.controlStore.createIssuanceRequest({
+      id: "pareq_edge_restore_001",
+      accountId: "acct_edge_restore",
+      entitlementId: "ent_edge_restore",
+      approvalRef: "approval_edge_restore",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel-aliyun-a-tuic",
+      purpose: "portal_access_request",
+      requestedByRef: "portal_auto_issuer",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.controlStore.linkIssuedSubscription({
+      id: "link_edge_restore_001",
+      requestId: "pareq_edge_restore_001",
+      tenantRef: "tenant_edge_restore_001",
+      artifactRef: "artifact_edge_restore_001",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.edgeCredentialMaterialStore.putCredentialMaterial({
+      credentialRef: "edgecred_pareq_edge_restore_001",
+      materialDigest: "sha256:edge_restore_digest",
+      material: {
+        uuid: "33333333-3333-4333-8333-333333333333",
+        password: "edge-restore-password"
+      }
+    });
+
+    const report = state.platform.edgeLifecycleService.reconcileOrderLifecycle();
+
+    assert.equal(report.ok, true);
+    assert.equal(report.summary.addCount, 1);
+    assert.equal(report.summary.desiredCount, 1);
+    assert.doesNotMatch(JSON.stringify(report), /33333333-3333-4333-8333-333333333333|edge-restore-password/i);
+  } finally {
+    state?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("createRuntimeState wires env-gated portal auto issuance into order submission", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-auto-issuance-"));
+  const proxyConfigPath = join(dir, "protected", "proxy-servers.json");
+  let state;
+
+  try {
+    mkdirSync(join(dir, "protected"), { recursive: true });
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_aliyun_a_tuic",
+          name: "channel-aliyun-a-tuic",
+          physicalNodeRef: "aliyun-control-a",
+          protocol: "tuic",
+          type: "tuic",
+          host: "edge.example.test",
+          port: 443,
+          uuid: "${ALIYUN_TUIC_UUID}",
+          password: "${ALIYUN_TUIC_PASSWORD}",
+          channelPool: "stable",
+          channelRole: "stable",
+          status: "online",
+          subscriptionEligible: true,
+          stableProtocolApproved: true,
+          stableProtocolApprovalRef: "aliyun-local-tuic-explicit-restart",
+          credentialMode: "per-order",
+          credentialLifecycle: {
+            addCredential: true,
+            disableCredential: true,
+            rotateCredential: true,
+            restart: true
+          }
+        }
+      ]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        ALIYUN_TUIC_UUID: "11111111-1111-4111-8111-111111111111",
+        ALIYUN_TUIC_PASSWORD: "synthetic-tuic-password",
+        USER_PORTAL_AUTO_ISSUANCE_ENABLED: "true",
+        USER_PORTAL_AUTO_ISSUANCE_NODE_ID: "channel-aliyun-a-tuic",
+        USER_PORTAL_AUTO_ISSUANCE_7D_MONTHLY_LIMIT: "5000",
+        USER_PORTAL_AUTO_ISSUANCE_30D_MONTHLY_LIMIT: "1000"
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      autoStartHttpProxy: false
+    });
+
+    const request = state.platform.portalAccessRequests.submitRequest({
+      portalUserRef: "portal_user_auto_state_1",
+      plan: "monthly",
+      clientTarget: "clash",
+      quantity: 1
+    });
+
+    assert.equal(request.status, "delivered");
+    assert.equal(request.nextAction, "user_can_use_access");
+    assert.equal(request.durationDays, 30);
+    assert.equal(request.expiresAt?.startsWith("20"), true);
+    assert.equal(typeof request.subscriptionUrl, "string");
+    assert.equal(state.subscriptions.store.listTenants()[0].nodeId, "channel-aliyun-a-tuic");
+    assert.doesNotMatch(JSON.stringify(request), /11111111-1111-4111-8111-111111111111|synthetic-tuic-password/i);
+  } finally {
+    state?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("createRuntimeState resolves auto-issued per-order TUIC artifacts after restart", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-auto-issuance-durable-tuic-"));
+  const proxyConfigPath = join(dir, "protected", "proxy-servers.json");
+  const subscriptionDbPath = join(dir, "subscriptions.sqlite");
+  const controlDbPath = join(dir, "control.sqlite");
+  const materialPath = join(dir, "protected", "edge-material.json");
+  let first;
+  let second;
+
+  try {
+    mkdirSync(join(dir, "protected"), { recursive: true });
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_aliyun_a_tuic",
+          name: "channel-aliyun-a-tuic",
+          physicalNodeRef: "aliyun-control-a",
+          protocol: "tuic",
+          type: "tuic",
+          host: "edge.example.test",
+          port: 443,
+          uuid: "${ALIYUN_TUIC_UUID}",
+          password: "${ALIYUN_TUIC_PASSWORD}",
+          channelPool: "stable",
+          channelRole: "stable",
+          status: "online",
+          subscriptionEligible: true,
+          stableProtocolApproved: true,
+          stableProtocolApprovalRef: "aliyun-local-tuic-explicit-restart",
+          credentialMode: "per-order",
+          credentialLifecycle: {
+            addCredential: true,
+            disableCredential: true,
+            rotateCredential: true,
+            restart: true
+          }
+        }
+      ]
+    }), { mode: 0o600 });
+
+    const env = {
+      CONSOLE_TOKEN: "secret",
+      SS_PASSWORD: "pw",
+      SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+      ALIYUN_TUIC_UUID: "11111111-1111-4111-8111-111111111111",
+      ALIYUN_TUIC_PASSWORD: "synthetic-tuic-password",
+      USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
+      USER_PORTAL_EDGE_CHANNEL_REF: "channel-aliyun-a-tuic",
+      EDGE_CREDENTIAL_MATERIAL_PATH: materialPath,
+      USER_PORTAL_AUTO_ISSUANCE_ENABLED: "true",
+      USER_PORTAL_AUTO_ISSUANCE_NODE_ID: "channel-aliyun-a-tuic",
+      USER_PORTAL_AUTO_ISSUANCE_7D_MONTHLY_LIMIT: "5000",
+      USER_PORTAL_AUTO_ISSUANCE_30D_MONTHLY_LIMIT: "1000"
+    };
+
+    first = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env,
+      subscriptionDbPath,
+      controlDbPath,
+      autoStartHttpProxy: false
+    });
+
+    const request = first.platform.portalAccessRequests.submitRequest({
+      portalUserRef: "portal_user_auto_durable_1",
+      plan: "monthly",
+      clientTarget: "clash",
+      quantity: 1
+    });
+    const artifactSecret = new URL(request.subscriptionUrl).pathname
+      .split("/")
+      .at(-1)
+      .replace(/\.yaml$/, "");
+    first.close();
+    first = null;
+
+    second = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env,
+      subscriptionDbPath,
+      controlDbPath,
+      autoStartHttpProxy: false
+    });
+
+    const resolved = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.proxyConfig.servers.length, 1);
+    assert.equal(resolved.proxyConfig.servers[0].name, "channel-aliyun-a-tuic");
+    assert.notEqual(resolved.proxyConfig.servers[0].uuid, "11111111-1111-4111-8111-111111111111");
+    assert.notEqual(resolved.proxyConfig.servers[0].password, "synthetic-tuic-password");
+    assert.doesNotMatch(JSON.stringify(resolved), /synthetic-tuic-password/i);
+  } finally {
+    first?.close();
+    second?.close();
     rmSync(dir, { recursive: true, force: true });
   }
 });

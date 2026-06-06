@@ -27,7 +27,7 @@ function sendError(res, error) {
     return;
   }
 
-  res.status(500).json({ error: "internal_error", message: error.message });
+  res.status(500).json({ error: "internal_error" });
 }
 
 function requireAliyunGateEvidenceShell(shell) {

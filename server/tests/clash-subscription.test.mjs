@@ -5,6 +5,8 @@ import {
   generateClashProviderSubscription,
   generateClashProxyProvider,
   generateClashSubscription,
+  generateMihomoProviderTemplate,
+  generateMihomoRenderTemplate,
   subscriptionSummary
 } from "../services/clash-subscription.mjs";
 import { listen } from "./helpers/listen.mjs";
@@ -65,8 +67,24 @@ test("generateClashSubscription emits Clash Shadowsocks YAML", () => {
   assert.match(yaml, /server: "198\.51\.100\.10"/);
   assert.match(yaml, /password: "secondary-secret"/);
   assert.match(yaml, /- "aws-singapore-backup"/);
-  assert.match(yaml, /- DIRECT/);
+  assert.doesNotMatch(yaml, /- DIRECT/);
   assert.match(yaml, /- MATCH,GLOBAL/);
+});
+
+test("generateClashSubscription emits safe lifecycle comments when provided", () => {
+  const yaml = generateClashSubscription(sampleConfig(), {
+    lifecycle: {
+      status: "active",
+      expiresAt: "2026-06-21T00:00:00.000Z",
+      validUntil: "2026-06-21T00:00:00.000Z"
+    }
+  });
+
+  assert.match(yaml, /^# globalcircle-subscription-status: "active"/);
+  assert.match(yaml, /# globalcircle-subscription-expires-at: "2026-06-21T00:00:00.000Z"/);
+  assert.match(yaml, /# globalcircle-subscription-valid-until: "2026-06-21T00:00:00.000Z"/);
+  assert.match(yaml, /\nproxies:/);
+  assert.doesNotMatch(yaml, /tenant_|pgsub_|password=/);
 });
 
 test("generateClashSubscription uses configured names as provider-neutral labels", () => {
@@ -297,8 +315,9 @@ test("generateClashProviderSubscription emits an auto-updating provider profile 
   );
   assert.match(
     yaml,
-    /name: GLOBAL\n    type: select\n    proxies:\n      - AUTO\n      - WEAK-NETWORK\n      - FALLBACK\n      - DIRECT\n    use:\n      - "globalcircle-pool"/
+    /name: GLOBAL\n    type: select\n    proxies:\n      - AUTO\n      - WEAK-NETWORK\n      - FALLBACK\n    use:\n      - "globalcircle-pool"/
   );
+  assert.doesNotMatch(yaml, /- DIRECT/);
   assert.doesNotMatch(yaml, /proxies:\n  - name:/);
   assert.doesNotMatch(yaml, /pw:with#chars|secondary-secret/);
 });
@@ -321,6 +340,43 @@ test("generateClashProviderSubscription requires an explicit provider URL", () =
       }),
     /providerUrl is required/
   );
+});
+
+test("generateMihomoRenderTemplate emits a minimal owned inline Mihomo profile", () => {
+  const yaml = generateMihomoRenderTemplate(sampleConfig());
+
+  assert.match(yaml, /mixed-port: 7897/);
+  assert.match(yaml, /mode: rule/);
+  assert.match(yaml, /log-level: warning/);
+  assert.match(yaml, /unified-delay: true/);
+  assert.match(yaml, /tcp-concurrent: true/);
+  assert.match(yaml, /global-client-fingerprint: chrome/);
+  assert.match(yaml, /profile:\n  store-selected: true/);
+  assert.match(yaml, /proxies:\n  - name: "aws-singapore-blue"/);
+  assert.match(yaml, /proxy-groups:/);
+  assert.match(yaml, /name: GLOBAL\n    type: select/);
+  assert.doesNotMatch(yaml, /- DIRECT/);
+  assert.match(yaml, /rules:\n  - MATCH,GLOBAL/);
+  assert.doesNotMatch(yaml, /BaseProvider|FilterHK|rule-providers|authentication|external-controller|external-ui|listeners:/);
+});
+
+test("generateMihomoProviderTemplate emits a minimal provider Mihomo profile without inline secrets", () => {
+  const yaml = generateMihomoProviderTemplate(sampleConfig(), {
+    providerName: "globalcircle-pool",
+    providerUrl: "https://sub.example.test/sub/a/provider.yaml",
+    providerPath: "./providers/globalcircle-pool.yaml"
+  });
+
+  assert.match(yaml, /mode: rule/);
+  assert.match(yaml, /proxy-providers:\n  "globalcircle-pool":\n    type: http/);
+  assert.match(yaml, /path: "\.\/providers\/globalcircle-pool\.yaml"/);
+  assert.match(yaml, /health-check:/);
+  assert.match(yaml, /proxy-groups:/);
+  assert.match(yaml, /use:\n      - "globalcircle-pool"/);
+  assert.doesNotMatch(yaml, /- DIRECT/);
+  assert.match(yaml, /rules:\n  - MATCH,GLOBAL/);
+  assert.doesNotMatch(yaml, /proxies:\n  - name:/);
+  assert.doesNotMatch(yaml, /pw:with#chars|secondary-secret|BaseProvider|FilterHK|authentication|external-controller|listeners:/);
 });
 
 test("generateClashProxyProvider emits only active provider nodes", () => {

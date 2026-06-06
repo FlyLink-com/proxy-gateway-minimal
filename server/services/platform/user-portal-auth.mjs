@@ -41,8 +41,38 @@ function defaultRef(prefix) {
   return `${prefix}_${randomBytes(12).toString("hex")}`;
 }
 
+const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+const DEFAULT_TOTP_ISSUER = "GlobalCircle";
+
 function addSeconds(isoTimestamp, seconds) {
   return new Date(new Date(isoTimestamp).getTime() + seconds * 1000).toISOString();
+}
+
+function randomBase32Secret(byteLength = 20) {
+  const bytes = randomBytes(byteLength);
+  let bits = "";
+  for (const byte of bytes) {
+    bits += byte.toString(2).padStart(8, "0");
+  }
+  let secret = "";
+  for (let offset = 0; offset + 5 <= bits.length; offset += 5) {
+    secret += BASE32_ALPHABET[Number.parseInt(bits.slice(offset, offset + 5), 2)];
+  }
+  return secret;
+}
+
+function createTotpUri({ issuer, accountLabel, secret }) {
+  const safeIssuer = requiredText(issuer, "issuer");
+  const safeAccountLabel = requiredText(accountLabel, "accountLabel");
+  const label = `${safeIssuer}:${safeAccountLabel}`;
+  const params = new URLSearchParams({
+    secret,
+    issuer: safeIssuer,
+    algorithm: "SHA1",
+    digits: "6",
+    period: "30"
+  });
+  return `otpauth://totp/${encodeURIComponent(label)}?${params.toString()}`;
 }
 
 function ensureActiveAccountAndEntitlement({ controlStore, accountId, entitlementId, now }) {
@@ -125,15 +155,72 @@ function safeSessionSummary(session) {
   };
 }
 
+function safeSecondFactorChallenge(challenge) {
+  return {
+    status: "second_factor_required",
+    challengeRef: challenge.id,
+    accountId: challenge.accountId,
+    availableFactors: challenge.allowedFactors,
+    expiresAt: challenge.expiresAt,
+    safety: {
+      noSessionCreated: true,
+      hashReturned: false,
+      rawPasswordReturned: false,
+      rawSubscriptionUrlReturned: false
+    }
+  };
+}
+
+function safeSecurityState({ account, authenticatorBound, passkeyExported }) {
+  const metadata = account?.metadata && typeof account.metadata === "object" ? account.metadata : {};
+  const initialAccount = Boolean(metadata.initialAccount || metadata.requireSecuritySetup);
+  return {
+    authenticatorBound,
+    initialAccount,
+    passkeyEnabled: false,
+    passkeyExported,
+    setupRequired: initialAccount && !authenticatorBound,
+    safety: {
+      noAdminApi: true,
+      noPublicAdmin: true,
+      noRawSecretReturned: true
+    }
+  };
+}
+
+function safeTotpEnrollment(enrollment) {
+  return {
+    enrollmentRef: enrollment.enrollmentRef,
+    issuer: enrollment.issuer,
+    accountLabel: enrollment.accountLabel,
+    manualKey: enrollment.secret,
+    otpauthUri: enrollment.otpauthUri,
+    expiresAt: enrollment.expiresAt,
+    expiresInSeconds: Math.max(0, Math.ceil((new Date(enrollment.expiresAt).getTime() - new Date(enrollment.issuedAt).getTime()) / 1000)),
+    issuedAt: enrollment.issuedAt,
+    safety: {
+      noAdminApi: true,
+      noPublicAdmin: true,
+      noDbMutationBeforeConfirm: true
+    }
+  };
+}
+
 export function createUserPortalAuthService({
   controlStore,
   nowFn = () => new Date().toISOString(),
   entryTokenFactory = defaultEntryTokenFactory,
   entryRefFactory = () => defaultRef("portal_entry"),
   credentialRefFactory = () => defaultRef("portal_totp"),
+  secondFactorChallengeRefFactory = () => defaultRef("portal_mfa"),
   sessionRefFactory = () => defaultRef("portal_session"),
+  totpEnrollmentRefFactory = () => defaultRef("portal_totp_enroll"),
+  totpSecretFactory = () => randomBase32Secret(),
+  totpIssuer = DEFAULT_TOTP_ISSUER,
   sessionExpiresAtFactory,
-  totpVerifier
+  totpVerifier,
+  passwordCredentialService,
+  allowPasswordOnlySessionForSetup = false
 } = {}) {
   if (!controlStore) {
     throw new Error("controlStore is required");
@@ -144,6 +231,149 @@ export function createUserPortalAuthService({
 
   function now() {
     return isoText(nowFn(), "now");
+  }
+
+  function createSession({ accountId, entryId = null, authMethod, issuedAt, expiresAt }) {
+    const session = controlStore.createPortalSession({
+      id: requiredText(sessionRefFactory(), "sessionRef"),
+      accountId,
+      entryId,
+      authMethod,
+      status: "active",
+      issuedAt,
+      expiresAt: isoText(
+        expiresAt || (sessionExpiresAtFactory ? sessionExpiresAtFactory({ accountId, verifiedAt: issuedAt }) : addSeconds(issuedAt, 1800)),
+        "sessionExpiresAt"
+      ),
+      updatedAt: issuedAt
+    });
+    return {
+      session: safeSessionSummary(session)
+    };
+  }
+
+  const pendingTotpEnrollments = new Map();
+
+  function getActiveSessionContext(sessionRef) {
+    const checkedAt = now();
+    const normalizedSessionRef = String(sessionRef ?? "").trim();
+    if (!normalizedSessionRef) {
+      throw portalAuthError("invalid_session", "portal session is required");
+    }
+    const session = controlStore.getPortalSession(normalizedSessionRef);
+    if (!session || session.status !== "active" || session.revokedAt) {
+      throw portalAuthError("invalid_session", "portal session is not active");
+    }
+    if (new Date(session.expiresAt).getTime() <= new Date(checkedAt).getTime()) {
+      throw portalAuthError("invalid_session", "portal session is expired");
+    }
+    const account = controlStore.getAccount(session.accountId);
+    if (!account || account.status !== "active") {
+      throw portalAuthError("invalid_session", "portal account is not active");
+    }
+    return { session, account, checkedAt };
+  }
+
+  function enabledSecondFactors(accountId) {
+    const factors = [];
+    if (controlStore.getActivePortalTotpCredential(accountId)) {
+      factors.push("totp");
+    }
+    if (
+      typeof controlStore.listActivePortalPasskeyCredentials === "function"
+      && controlStore.listActivePortalPasskeyCredentials(accountId).length > 0
+    ) {
+      factors.push("passkey");
+    }
+    return factors;
+  }
+
+  function getSecurityState(input) {
+    const { account } = getActiveSessionContext(input?.sessionRef);
+    return {
+      security: safeSecurityState({
+        account,
+        authenticatorBound: Boolean(controlStore.getActivePortalTotpCredential(account.id)),
+        passkeyExported: false
+      })
+    };
+  }
+
+  function startTotpEnrollment(input) {
+    const { account, checkedAt } = getActiveSessionContext(input?.sessionRef);
+    const enrollmentRef = requiredText(input?.enrollmentRef || totpEnrollmentRefFactory(), "enrollmentRef");
+    const secret = requiredText(totpSecretFactory(), "totpSecret");
+    const expiresAt = addSeconds(checkedAt, 300);
+    const issuer = requiredText(input?.issuer || totpIssuer, "issuer");
+    const accountLabel = requiredText(input?.accountLabel || account.id, "accountLabel");
+    const enrollment = {
+      enrollmentRef,
+      accountId: account.id,
+      issuer,
+      accountLabel,
+      secret,
+      encryptedTotpSecret: `enc:${secret}`,
+      otpauthUri: createTotpUri({ issuer, accountLabel, secret }),
+      issuedAt: checkedAt,
+      expiresAt
+    };
+    pendingTotpEnrollments.set(enrollmentRef, enrollment);
+    return {
+      enrollment: safeTotpEnrollment(enrollment)
+    };
+  }
+
+  function confirmTotpEnrollment(input) {
+    const { account, checkedAt } = getActiveSessionContext(input?.sessionRef);
+    const enrollmentRef = requiredText(input?.enrollmentRef, "enrollmentRef");
+    const enrollment = pendingTotpEnrollments.get(enrollmentRef);
+    if (!enrollment || enrollment.accountId !== account.id) {
+      throw portalAuthError("validation_error", "portal TOTP enrollment is not active");
+    }
+    if (new Date(enrollment.expiresAt).getTime() <= new Date(checkedAt).getTime()) {
+      pendingTotpEnrollments.delete(enrollmentRef);
+      throw portalAuthError("validation_error", "portal TOTP enrollment is expired");
+    }
+    const verified = totpVerifier({
+      encryptedTotpSecret: enrollment.encryptedTotpSecret,
+      code: requiredText(input?.code, "code"),
+      accountId: account.id,
+      credentialRef: enrollmentRef
+    });
+    if (!verified) {
+      throw portalAuthError("validation_error", "TOTP verification failed");
+    }
+    return controlStore.runInTransaction(() => {
+      const credential = controlStore.createPortalTotpCredential({
+        id: requiredText(input?.credentialRef || credentialRefFactory(), "credentialRef"),
+        accountId: account.id,
+        encryptedTotpSecret: enrollment.encryptedTotpSecret,
+        status: "active",
+        failureCount: 0,
+        enrolledAt: checkedAt,
+        updatedAt: checkedAt
+      });
+      if (typeof controlStore.markPortalTotpVerified === "function") {
+        controlStore.markPortalTotpVerified(credential.id, {
+          verifiedAt: checkedAt,
+          updatedAt: checkedAt
+        });
+      }
+      pendingTotpEnrollments.delete(enrollmentRef);
+      return {
+        binding: {
+          status: "bound",
+          accountId: account.id,
+          method: "totp",
+          boundAt: checkedAt,
+          safety: {
+            noAdminApi: true,
+            noPublicAdmin: true,
+            noRawSecretReturned: true
+          }
+        }
+      };
+    });
   }
 
   function issueDynamicEntry(input) {
@@ -239,28 +469,136 @@ export function createUserPortalAuthService({
         verifiedAt,
         updatedAt: verifiedAt
       });
-      const session = controlStore.createPortalSession({
-        id: requiredText(input?.sessionRef || sessionRefFactory(), "sessionRef"),
+      return createSession({
         accountId,
         entryId: input?.entryRef || null,
         authMethod: "totp",
-        status: "active",
         issuedAt: verifiedAt,
-        expiresAt: isoText(
-          input?.expiresAt || (sessionExpiresAtFactory ? sessionExpiresAtFactory({ accountId, verifiedAt }) : addSeconds(verifiedAt, 1800)),
-          "sessionExpiresAt"
-        ),
+        expiresAt: input?.expiresAt
+      });
+    });
+  }
+
+  function verifyPasswordAndMaybeChallenge(input) {
+    const verifiedAt = now();
+    if (!passwordCredentialService) {
+      throw portalAuthError("validation_error", "password credential service is not configured");
+    }
+    const accountId = requiredText(input?.accountId, "accountId");
+    const account = controlStore.getAccount(accountId);
+    if (!account || account.status !== "active") {
+      throw portalAuthError("invalid_login", "invalid_login");
+    }
+    passwordCredentialService.verifyPasswordCredential({
+      accountId,
+      plainPassword: requiredText(input?.plainPassword, "plainPassword"),
+      requestContext: input?.requestContext
+    });
+
+    const availableFactors = enabledSecondFactors(accountId);
+    if (availableFactors.length > 0) {
+      const expiresAt = addSeconds(verifiedAt, 300);
+      const challenge = controlStore.createPortalSecondFactorChallenge({
+        id: requiredText(input?.challengeRef || secondFactorChallengeRefFactory(), "challengeRef"),
+        accountId,
+        challengeHash: `portalmfahash_${createHash("sha256").update(`${accountId}|${verifiedAt}|${availableFactors.join(",")}`).digest("hex")}`,
+        allowedFactors: availableFactors,
+        status: "active",
+        expiresAt,
+        createdAt: verifiedAt,
         updatedAt: verifiedAt
       });
       return {
-        session: safeSessionSummary(session)
+        result: safeSecondFactorChallenge(challenge)
       };
+    }
+
+    if (!allowPasswordOnlySessionForSetup) {
+      throw portalAuthError("validation_error", "second factor is required");
+    }
+    return createSession({
+      accountId,
+      authMethod: "password",
+      issuedAt: verifiedAt,
+      expiresAt: input?.expiresAt
+    });
+  }
+
+  function completeSecondFactor(input) {
+    const verifiedAt = now();
+    const challengeRef = requiredText(input?.challengeRef, "challengeRef");
+    const factor = requiredText(input?.factor, "factor");
+    const challenge = controlStore.getPortalSecondFactorChallenge(challengeRef);
+    if (!challenge || challenge.status !== "active") {
+      throw portalAuthError("validation_error", "portal second-factor challenge is not active");
+    }
+    if (new Date(challenge.expiresAt).getTime() <= new Date(verifiedAt).getTime()) {
+      throw portalAuthError("validation_error", "portal second-factor challenge is expired");
+    }
+    if (!challenge.allowedFactors.includes(factor)) {
+      throw portalAuthError("validation_error", "portal second-factor method is not available");
+    }
+    if (factor !== "totp") {
+      throw portalAuthError("validation_error", "passkey second factor is not configured");
+    }
+
+    const credential = controlStore.getActivePortalTotpCredential(challenge.accountId);
+    if (!credential) {
+      throw portalAuthError("not_found", "active portal TOTP credential not found");
+    }
+    if (credential.lockedUntil && new Date(credential.lockedUntil).getTime() > new Date(verifiedAt).getTime()) {
+      throw portalAuthError("validation_error", "portal TOTP credential is locked");
+    }
+
+    const verified = totpVerifier({
+      encryptedTotpSecret: credential.encryptedTotpSecret,
+      code: requiredText(input?.code, "code"),
+      accountId: challenge.accountId,
+      credentialRef: credential.id
+    });
+    if (!verified) {
+      controlStore.recordPortalTotpVerificationFailure(credential.id, {
+        updatedAt: verifiedAt
+      });
+      controlStore.recordPortalSecondFactorChallengeFailure(challenge.id, {
+        updatedAt: verifiedAt
+      });
+      throw portalAuthError("validation_error", "TOTP verification failed");
+    }
+
+    return controlStore.runInTransaction(() => {
+      controlStore.markPortalTotpVerified(credential.id, {
+        verifiedAt,
+        updatedAt: verifiedAt
+      });
+      controlStore.markPortalSecondFactorChallengeUsed(challenge.id, {
+        usedAt: verifiedAt,
+        updatedAt: verifiedAt
+      });
+      return createSession({
+        accountId: challenge.accountId,
+        authMethod: "totp",
+        issuedAt: verifiedAt,
+        expiresAt: input?.expiresAt
+      });
     });
   }
 
   return {
     issueDynamicEntry,
     enrollTotpCredential,
-    verifyTotpAndCreateSession
+    verifyTotpAndCreateSession,
+    verifyPasswordAndMaybeChallenge,
+    completeSecondFactor,
+    requireSession(input = {}) {
+      const { session, account } = getActiveSessionContext(input.sessionRef);
+      return {
+        sessionRef: session.sessionRef,
+        accountId: account.id
+      };
+    },
+    getSecurityState,
+    startTotpEnrollment,
+    confirmTotpEnrollment
   };
 }

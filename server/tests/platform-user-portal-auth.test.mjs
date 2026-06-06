@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
+import { createPortalPasswordCredentialService } from "../services/platform/portal-password-credentials.mjs";
 import { createUserPortalAuthService } from "../services/platform/user-portal-auth.mjs";
 
 const NOW = "2026-05-31T00:00:00.000Z";
@@ -55,11 +57,25 @@ function createService(store, overrides = {}) {
     entryTokenFactory: () => "portal-entry-raw-secret",
     entryRefFactory: () => "entry_portal_1",
     credentialRefFactory: () => "totp_cred_1",
+    secondFactorChallengeRefFactory: () => "mfa_challenge_1",
     sessionRefFactory: () => "portal_session_1",
     sessionExpiresAtFactory: () => SESSION_EXPIRES,
     totpVerifier: ({ encryptedTotpSecret, code }) => encryptedTotpSecret === "enc:totp-secret" && code === "123456",
     ...overrides
   });
+}
+
+function createPasswordService(store) {
+  return createPortalPasswordCredentialService({
+    controlStore: store,
+    nowFn: () => NOW,
+    saltFactory: () => Buffer.from("0123456789abcdef", "utf8"),
+    credentialRefFactory: () => "pwd_cred_auth_1"
+  });
+}
+
+function buildTestPassword() {
+  return randomUUID();
 }
 
 test("user portal auth issues dynamic entry with hash-only storage and visible-once handoff", () => {
@@ -155,5 +171,90 @@ test("user portal auth rejects reused entries and failed TOTP without creating s
     const credential = store.getActivePortalTotpCredential("acct_portal_1");
     assert.equal(credential.failureCount, 1);
     assert.equal(store.listPortalSessions({ accountId: "acct_portal_1" }).length, 0);
+  });
+});
+
+test("user portal auth creates first-login setup session from password when policy allows no factor", () => {
+  withStore((store) => {
+    const passwordService = createPasswordService(store);
+    const plainPassword = buildTestPassword();
+    passwordService.issueInitialPasswordCredential({
+      accountId: "acct_portal_1",
+      plainPassword,
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_portal_password"
+    });
+    const service = createService(store, {
+      passwordCredentialService: passwordService,
+      allowPasswordOnlySessionForSetup: true
+    });
+
+    const verified = service.verifyPasswordAndMaybeChallenge({
+      accountId: "acct_portal_1",
+      plainPassword
+    });
+    assert.equal(verified.session.sessionRef, "portal_session_1");
+    assert.equal(verified.session.authMethod, "password");
+    assert.equal(verified.session.expiresAt, SESSION_EXPIRES);
+
+    const serialized = JSON.stringify(verified);
+    assert.equal(serialized.includes(plainPassword), false);
+    assert.doesNotMatch(serialized, /passwordHash|scrypt\$v=1/);
+  });
+});
+
+test("user portal auth requires second factor after password when TOTP is enabled", () => {
+  withStore((store) => {
+    const passwordService = createPasswordService(store);
+    const plainPassword = buildTestPassword();
+    passwordService.issueInitialPasswordCredential({
+      accountId: "acct_portal_1",
+      plainPassword,
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_portal_password"
+    });
+    const service = createService(store, {
+      passwordCredentialService: passwordService
+    });
+    const issued = service.issueDynamicEntry({
+      accountId: "acct_portal_1",
+      entitlementId: "ent_portal_1",
+      approvalRef: "approval_portal_1",
+      issuedByRef: "operator_safe_ref",
+      expiresAt: FUTURE
+    });
+    service.enrollTotpCredential({
+      entryToken: issued.handoffMaterial.entryToken,
+      encryptedTotpSecret: "enc:totp-secret"
+    });
+
+    const challenge = service.verifyPasswordAndMaybeChallenge({
+      accountId: "acct_portal_1",
+      plainPassword
+    });
+    assert.equal(challenge.result.status, "second_factor_required");
+    assert.equal(challenge.result.challengeRef, "mfa_challenge_1");
+    assert.deepEqual(challenge.result.availableFactors, ["totp"]);
+    assert.equal(store.listPortalSessions({ accountId: "acct_portal_1" }).length, 0);
+
+    assert.throws(() => service.completeSecondFactor({
+      challengeRef: "mfa_challenge_1",
+      factor: "totp",
+      code: "000000"
+    }), /TOTP verification failed/);
+    assert.equal(store.listPortalSessions({ accountId: "acct_portal_1" }).length, 0);
+
+    const completed = service.completeSecondFactor({
+      challengeRef: "mfa_challenge_1",
+      factor: "totp",
+      code: "123456"
+    });
+    assert.equal(completed.session.sessionRef, "portal_session_1");
+    assert.equal(completed.session.authMethod, "totp");
+    assert.equal(store.getPortalSecondFactorChallenge("mfa_challenge_1").status, "used");
+
+    const serialized = JSON.stringify({ challenge, completed });
+    assert.equal(serialized.includes(plainPassword), false);
+    assert.doesNotMatch(serialized, /passwordHash|scrypt\$v=1|enc:totp-secret|123456/);
   });
 });

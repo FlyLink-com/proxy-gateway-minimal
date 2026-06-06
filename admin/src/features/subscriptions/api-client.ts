@@ -80,6 +80,28 @@ function messageForStatus(status: number) {
   return `Admin API request failed with HTTP ${status}.`;
 }
 
+const SENSITIVE_ERROR_MESSAGE_PATTERN =
+  /(https?:\/\/|\/sub\/a\/|token=|subscriptionUrl|password|secret|credential|api[_-]?key|private[_-]?key|bearer\s+|pgsub_|pgtmp_)/i;
+
+function isSafeErrorMessage(message: string) {
+  const normalized = message.trim();
+  return Boolean(normalized) && normalized.length <= 240 && !SENSITIVE_ERROR_MESSAGE_PATTERN.test(normalized);
+}
+
+function backendErrorMessage(body: unknown, status: number) {
+  if (status >= 500 || !body || typeof body !== "object" || !("message" in body)) {
+    return "";
+  }
+
+  const message = String((body as { message: unknown }).message);
+  return isSafeErrorMessage(message) ? message : "";
+}
+
+function networkErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : "";
+  return isSafeErrorMessage(message) ? message : "Admin API request failed.";
+}
+
 export function createAdminApiClient(options: AdminApiClientOptions) {
   const fetcher = options.fetcher ?? fetch;
   const baseUrl = normalizeBaseUrl(options.baseUrl);
@@ -103,13 +125,12 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
     try {
       response = await fetcher(apiUrl(baseUrl, path), { ...init, headers });
     } catch (error) {
-      throw new AdminApiError(error instanceof Error ? error.message : "Admin API request failed.", 0);
+      throw new AdminApiError(networkErrorMessage(error), 0);
     }
 
     const body = await parseJson(response);
     if (!response.ok) {
-      const backendMessage =
-        body && typeof body === "object" && "message" in body ? String((body as { message: unknown }).message) : "";
+      const backendMessage = backendErrorMessage(body, response.status);
       throw new AdminApiError(backendMessage || messageForStatus(response.status), response.status);
     }
     return body as T;

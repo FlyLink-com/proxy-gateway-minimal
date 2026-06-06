@@ -63,10 +63,14 @@ export function createOrderEdgeCredentialIssuer({
         ? materialStore.getCredentialMaterialSummary(credentialRef)
         : null;
       if (existing) {
+        const existingMaterial = typeof materialStore.resolveCredentialMaterial === "function"
+          ? materialStore.resolveCredentialMaterial(existing.credentialRef)
+          : null;
         return {
           edgeChannelRef: safeChannelRef,
           edgeCredentialRef: existing.credentialRef,
-          edgeMaterialDigest: existing.materialDigest
+          edgeMaterialDigest: existing.materialDigest,
+          ...(existingMaterial ? { edgeCredentialMaterial: existingMaterial } : {})
         };
       }
 
@@ -86,7 +90,8 @@ export function createOrderEdgeCredentialIssuer({
       return {
         edgeChannelRef: safeChannelRef,
         edgeCredentialRef: summary.credentialRef,
-        edgeMaterialDigest: summary.materialDigest
+        edgeMaterialDigest: summary.materialDigest,
+        edgeCredentialMaterial: material
       };
     }
   };

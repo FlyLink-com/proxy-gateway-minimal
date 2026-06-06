@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import Database from "better-sqlite3";
 import {
   createSqliteSubscriptionControlStore
 } from "../services/platform/subscription-control-db.mjs";
@@ -336,6 +337,210 @@ test("subscription control store records redacted edge apply receipts", () => {
     assert.equal(receipts.length, 1);
     assert.equal(receipts[0].desiredStateRef, "desired_state_orders_001");
     assert.doesNotMatch(JSON.stringify(receipts), /password|rawConfig|subscriptionUrl|uuid|token/i);
+  });
+});
+
+test("subscription control store persists portal access request lifecycle", () => {
+  withStore((store) => {
+    const now = "2026-06-06T00:00:00.000Z";
+
+    const created = store.upsertPortalAccessRequest({
+      id: "pareq_store_001",
+      portalUserRef: "portal_user_store_001",
+      plan: "monthly",
+      clientTarget: "clash",
+      durationDays: 30,
+      quantity: 1,
+      status: "pending_admin_review",
+      nextAction: "admin_review_required",
+      noteProvided: false,
+      priorTrialState: "not_applicable",
+      submittedAt: now,
+      updatedAt: now
+    });
+
+    assert.equal(created.id, "pareq_store_001");
+    assert.equal(created.status, "pending_admin_review");
+
+    const delivered = store.upsertPortalAccessRequest({
+      ...created,
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      reviewedByRef: "portal_auto_issuer",
+      reviewedAt: "2026-06-06T00:01:00.000Z",
+      expiresAt: "2026-07-06T00:00:00.000Z",
+      validUntil: "2026-07-06T00:00:00.000Z",
+      entitlementRef: "ent_pareq_store_001",
+      accessGrantRef: "grant_pareq_store_001",
+      tenantId: "tenant_store_001",
+      artifactId: "artifact_store_001",
+      subscriptionUrl: "https://sub.example.test/sub/a/store-visible-once.yaml",
+      edgeChannelRef: "channel-aliyun-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_store_001",
+      edgeMaterialDigest: "sha256:digest_pareq_store_001",
+      updatedAt: "2026-06-06T00:01:00.000Z"
+    });
+
+    assert.equal(delivered.status, "delivered");
+    assert.equal(delivered.validUntil, "2026-07-06T00:00:00.000Z");
+    assert.equal(store.getPortalAccessRequest("pareq_store_001").edgeChannelRef, "channel-aliyun-a-tuic");
+
+    const listed = store.listPortalAccessRequests({
+      portalUserRef: "portal_user_store_001"
+    });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].subscriptionUrl, "https://sub.example.test/sub/a/store-visible-once.yaml");
+    assert.doesNotMatch(JSON.stringify(listed), /password|uuid|rawConfig|token/i);
+  });
+});
+
+test("subscription control store upgrades legacy portal access request schema", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "platform-subscription-control-legacy-"));
+  let db;
+  let store;
+  try {
+    const dbPath = join(tempDir, "control.sqlite");
+    db = new Database(dbPath);
+    db.exec(`
+      create table platform_portal_access_requests (
+        id text primary key,
+        portal_user_ref text not null,
+        plan text not null,
+        client_target text not null default 'clash',
+        duration_days integer not null check (duration_days > 0),
+        quantity integer not null check (quantity > 0),
+        status text not null,
+        next_action text not null,
+        note_provided integer not null default 0 check (note_provided in (0, 1)),
+        prior_trial_state text not null,
+        submitted_at text not null,
+        updated_at text not null,
+        reviewed_at text,
+        reviewed_by_ref text,
+        safe_reason_code text,
+        entitlement_ref text,
+        access_grant_ref text,
+        expires_at text,
+        valid_until text,
+        runtime_mutated integer not null default 0 check (runtime_mutated in (0, 1)),
+        production_mutated integer not null default 0 check (production_mutated in (0, 1)),
+        delivery_link_count integer not null default 0
+      );
+    `);
+    db.close();
+    db = null;
+
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    const saved = store.upsertPortalAccessRequest({
+      id: "pareq_legacy_upgrade_001",
+      portalUserRef: "portal_user_legacy_upgrade",
+      plan: "monthly",
+      clientTarget: "clash",
+      durationDays: 30,
+      quantity: 1,
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      noteProvided: false,
+      priorTrialState: "not_applicable",
+      submittedAt: "2026-06-06T00:00:00.000Z",
+      updatedAt: "2026-06-06T00:01:00.000Z",
+      reviewedAt: "2026-06-06T00:01:00.000Z",
+      reviewedByRef: "portal_auto_issuer",
+      expiresAt: "2026-07-06T00:00:00.000Z",
+      validUntil: "2026-07-06T00:00:00.000Z",
+      entitlementRef: "ent_pareq_legacy_upgrade_001",
+      accessGrantRef: "grant_pareq_legacy_upgrade_001",
+      tenantId: "tenant_legacy_upgrade_001",
+      artifactId: "artifact_legacy_upgrade_001",
+      subscriptionUrl: "https://sub.example.test/sub/a/legacy-upgrade.yaml",
+      edgeChannelRef: "channel-aliyun-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_legacy_upgrade_001",
+      edgeMaterialDigest: "sha256:digest_pareq_legacy_upgrade_001",
+      edgeLifecycleMutation: true,
+      event: { status: "auto_issued" }
+    });
+
+    assert.equal(saved.tenantId, "tenant_legacy_upgrade_001");
+    assert.equal(saved.edgeLifecycleMutation, true);
+    assert.equal(store.getPortalAccessRequest("pareq_legacy_upgrade_001").edgeChannelRef, "channel-aliyun-a-tuic");
+  } finally {
+    db?.close();
+    store?.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("subscription control store lists issued subscription bindings for edge recovery", () => {
+  withStore((store) => {
+    const now = "2026-06-05T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_edge_recovery",
+      ownerRef: "portal_user_edge_recovery",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_edge_recovery",
+      accountId: "acct_edge_recovery",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-07-05T00:00:00.000Z",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createIssuanceRequest({
+      id: "pareq_edge_recovery_001",
+      accountId: "acct_edge_recovery",
+      entitlementId: "ent_edge_recovery",
+      approvalRef: "approval_edge_recovery",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel-aliyun-a-tuic",
+      purpose: "portal_access_request",
+      requestedByRef: "portal_auto_issuer",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.linkIssuedSubscription({
+      id: "link_edge_recovery_001",
+      requestId: "pareq_edge_recovery_001",
+      tenantRef: "tenant_edge_recovery_001",
+      artifactRef: "artifact_edge_recovery_001",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const bindings = store.listIssuedSubscriptionBindings({
+      nodeId: "channel-aliyun-a-tuic"
+    });
+    assert.equal(bindings.length, 1);
+    assert.deepEqual(bindings[0], {
+      id: "link_edge_recovery_001",
+      linkId: "link_edge_recovery_001",
+      requestId: "pareq_edge_recovery_001",
+      accountId: "acct_edge_recovery",
+      entitlementId: "ent_edge_recovery",
+      tenantRef: "tenant_edge_recovery_001",
+      artifactRef: "artifact_edge_recovery_001",
+      status: "active",
+      requestStatus: "issued",
+      entitlementStatus: "active",
+      nodeId: "channel-aliyun-a-tuic",
+      plan: "monthly",
+      validFrom: "2026-06-05T00:00:00.000Z",
+      validUntil: "2026-07-05T00:00:00.000Z",
+      createdAt: "2026-06-05T00:00:00.000Z",
+      updatedAt: "2026-06-05T00:00:00.000Z"
+    });
+
+    assert.equal(
+      store.findIssuedSubscriptionBindingByTenantRef("tenant_edge_recovery_001").requestId,
+      "pareq_edge_recovery_001"
+    );
+    assert.doesNotMatch(JSON.stringify(bindings), /password|token|subscriptionUrl|uuid|rawConfig/i);
   });
 });
 

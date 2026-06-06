@@ -44,7 +44,8 @@ export function createSubscriptionCore({
   tempLinkTtlMinutes = 24 * 60,
   expiringDays = DEFAULT_EXPIRING_DAYS,
   lastUsedWriteIntervalMs = 15 * 60 * 1000,
-  lastUsedWriteCache = new Map()
+  lastUsedWriteCache = new Map(),
+  tenantCredentialMaterialResolver = null
 }) {
   const subscriptionStore = store || repository;
   assertSubscriptionStore(subscriptionStore);
@@ -72,6 +73,73 @@ export function createSubscriptionCore({
   function hashSignal(value) {
     if (!value) return null;
     return createHash("sha256").update(String(value)).digest("hex");
+  }
+
+  const tenantCredentialMaterials = new Map();
+
+  function requiredText(value, field) {
+    const normalized = String(value ?? "").trim();
+    if (!normalized) {
+      throw validationError(`${field} is required`);
+    }
+    return normalized;
+  }
+
+  function normalizeCredentialMaterial(material = {}) {
+    const uuid = requiredText(material.uuid, "material.uuid");
+    const password = requiredText(material.password, "material.password");
+    return { uuid, password };
+  }
+
+  function tenantCredentialKey(tenantId, nodeName) {
+    return `${tenantId}\0${nodeName}`;
+  }
+
+  function protocolFor(server) {
+    return String(server.protocol || server.clashType || server.type || "ss").trim().toLowerCase();
+  }
+
+  function credentialModeFor(server) {
+    return String(server.credentialMode || server.dataPlaneCredentialMode || "").trim().toLowerCase();
+  }
+
+  function requiresTenantCredentialMaterial(server) {
+    return protocolFor(server) === "tuic" && credentialModeFor(server) === "per-order";
+  }
+
+  function resolveTenantCredentialMaterial(tenantAuth, server) {
+    const inMemory = tenantCredentialMaterials.get(tenantCredentialKey(tenantAuth.id, server.name));
+    if (inMemory) {
+      return inMemory;
+    }
+    if (typeof tenantCredentialMaterialResolver !== "function") {
+      return null;
+    }
+    const resolved = tenantCredentialMaterialResolver({
+      tenantId: tenantAuth.id,
+      nodeId: server.name
+    });
+    return resolved ? normalizeCredentialMaterial(resolved) : null;
+  }
+
+  function applyTenantCredentialMaterial(scopedProxyConfig, tenantAuth) {
+    return {
+      ...scopedProxyConfig,
+      servers: (scopedProxyConfig.servers || []).flatMap((server) => {
+        if (protocolFor(server) !== "tuic") {
+          return [server];
+        }
+        const material = resolveTenantCredentialMaterial(tenantAuth, server);
+        if (!material) {
+          return requiresTenantCredentialMaterial(server) ? [] : [server];
+        }
+        return [{
+          ...server,
+          uuid: material.uuid,
+          password: material.password
+        }];
+      })
+    };
   }
 
   function ipPrefix(value) {
@@ -113,7 +181,10 @@ export function createSubscriptionCore({
       return { ok: false, status: 403, error: "Subscription expired" };
     }
 
-    const scopedProxyConfig = cloneProxyConfigForSubscriptionOutput(proxyConfig, tenantAuth.nodeId);
+    const scopedProxyConfig = applyTenantCredentialMaterial(
+      cloneProxyConfigForSubscriptionOutput(proxyConfig, tenantAuth.nodeId),
+      tenantAuth
+    );
     if (scopedProxyConfig.servers.length === 0) {
       return { ok: false, status: 403, error: "Subscription node unavailable" };
     }
@@ -156,6 +227,21 @@ export function createSubscriptionCore({
       throw validationError("nodeId does not match an available node");
     }
     return node;
+  }
+
+  function bindTenantCredentialMaterial(input = {}) {
+    const tenantId = requiredText(input.tenantId, "tenantId");
+    const tenant = subscriptionStore.getTenant(tenantId);
+    if (!tenant) {
+      throw notFoundError(tenantId);
+    }
+    const node = selectTenantNode(input.nodeId);
+    tenantCredentialMaterials.set(tenantCredentialKey(tenantId, node.name), normalizeCredentialMaterial(input.material));
+    return {
+      ok: true,
+      tenantId,
+      nodeId: node.name
+    };
   }
 
   function createTenant(input) {
@@ -464,6 +550,7 @@ export function createSubscriptionCore({
     rotateSubscriptionArtifact,
     resolveSubscriptionToken,
     resolveSubscriptionArtifact,
+    bindTenantCredentialMaterial,
     listNodes,
     nodes,
     overview
