@@ -133,7 +133,7 @@ The management CIDR is available only for the live approval packet and is not co
 - Read: `D:/Projects/proxy-gateway-minimal/config/proxy-servers.vultr-local-tuic.template.json`
 - Read: `D:/Projects/proxy-gateway-minimal/server/tests/vultr-tuic-template.test.mjs`
 
-- [ ] **Step 1: Add a staging-only TUIC template**
+- [x] **Step 1: Add a staging-only TUIC template**
 
 The template must:
 
@@ -146,7 +146,7 @@ The template must:
 - render `udpRelayMode` and `congestionController`;
 - use only environment placeholders for host, UUID, password, and SNI.
 
-- [ ] **Step 2: Add template rendering tests**
+- [x] **Step 2: Add template rendering tests**
 
 Run:
 
@@ -168,7 +168,7 @@ The rendered staging subscription contains a TUIC node, has no unresolved host/S
 - Read: repository source tree.
 - Write locally: `.codex-artifacts/aws-staging/`.
 
-- [ ] **Step 1: Run full local validation before packaging**
+- [x] **Step 1: Run full local validation before packaging**
 
 Run:
 
@@ -188,7 +188,7 @@ Expected:
 All validation passes before any AWS resource work is requested.
 ```
 
-- [ ] **Step 2: Build a redacted deployment archive**
+- [x] **Step 2: Build a redacted deployment archive**
 
 Run:
 
@@ -204,6 +204,16 @@ Expected:
 
 ```text
 Archive exists, hash is recorded in the approval request, and no secrets or runtime DB files are packaged.
+```
+
+Result recorded on 2026-06-06:
+
+```text
+release: bdc95d46ae4d
+artifact: .codex-artifacts/aws-staging/bdc95d46ae4d/proxy-gateway-aws-staging-bdc95d46ae4d.zip
+archive_sha256: 5BC1B1B27EC15A3D0C762AF835A08C28A09B92413C7F23F80743FB9F0D107F92
+artifact_size_bytes: 1690288
+strict runtime-file scan: 0 matches for .env, sqlite/db, pem/key/crt, or log files
 ```
 
 ## Gate 3: Exact AWS Resource Approval
