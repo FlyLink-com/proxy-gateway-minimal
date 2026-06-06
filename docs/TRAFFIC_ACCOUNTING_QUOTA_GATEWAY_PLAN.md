@@ -268,9 +268,13 @@ Status as of 2026-06-06:
   current Mihomo TUIC metrics surface returned aggregate/connection-level usage
   only, so the collector correctly reported `collector_not_supported` with
   `node_aggregate_only` and did not write usage ledger samples;
+- repo-only atomic usage calculation now normalizes runtime counter models into
+  ledger-ready delta observations: direct delta/read-and-clear observations pass
+  through, cumulative counters require a prior cursor before charging bytes, and
+  counter resets fail closed without writing usage;
 - real runtime traffic collection, production migration, and quota-driven
   runtime disable/revoke remain unimplemented until a runtime can expose real
-  per-credential usage observations.
+  per-credential usage observations and a schema-gated cursor store is approved.
 
 ### Phase 1: Repo-Only Schema and Service Tests
 
@@ -311,6 +315,39 @@ Validation:
 
 ```powershell
 node --test server\tests\edge-mihomo-tuic-usage-collector.test.mjs
+npm test
+git diff --check
+```
+
+### Phase 2B: Runtime Usage Atomic Calculator
+
+Risk: B for repo-only pure code, A for any persistent cursor migration or live
+runtime integration.
+
+Scope:
+
+- normalize multiple runtime accounting modes into one ledger input shape keyed
+  by `edgeCredentialRef`;
+- accept already-delta or read-and-clear samples as atomic observations;
+- convert cumulative counters into positive byte deltas only when a prior cursor
+  exists;
+- initialize new cumulative cursors without charging historical bytes;
+- detect counter resets and fail closed without ledger writes;
+- keep raw runtime payloads, credential material, tokens, URLs, and configs out
+  of return values.
+
+Current status:
+
+- repo-only pure calculator and targeted tests are implemented locally;
+- durable cursor storage is intentionally not implemented here because it is a
+  schema/migration gate;
+- live collector integration remains blocked by the runtime capability proof,
+  not by the ledger normalization model.
+
+Validation:
+
+```powershell
+node --test server\tests\edge-runtime-usage-atomic-calculator.test.mjs
 npm test
 git diff --check
 ```
@@ -368,7 +405,21 @@ Production remains blocked until:
 
 ## Decision
 
-Proceed with Phase 1 only after explicit approval.
-
-Do not implement node aggregate quota enforcement. It would create a false
+Continue to reject node aggregate quota enforcement. It would create a false
 sense of safety and could disable the wrong customer order.
+
+The common repo model is now:
+
+```text
+runtime-specific snapshot
+  -> adapter emits safe per-edgeCredentialRef counter
+  -> atomic calculator produces ledger-safe delta
+  -> traffic accounting service records sample and rollup
+  -> quota decision requests lifecycle/reconciliation action
+```
+
+The next implementation gate is not another shared calculator. It is either:
+
+- a schema-gated durable cursor store for cumulative runtimes; or
+- a runtime-specific proof that Hy2, TUIC, VLESS/Xray, or another edge can emit
+  per-credential counters suitable for this model.
