@@ -341,7 +341,7 @@ eip: none
 - `/var/lib/proxy-gateway-candidate/`
 - `/var/backups/gccgw-edge/`
 
-- [ ] **Step 1: Install host packages**
+- [x] **Step 1: Install host packages**
 
 Run over SSH:
 
@@ -356,7 +356,7 @@ Expected:
 Base packages are installed.
 ```
 
-- [ ] **Step 2: Install Node.js 22.x**
+- [x] **Step 2: Install Node.js 22.x**
 
 Run over SSH:
 
@@ -371,7 +371,7 @@ Expected:
 Node.js is within the package.json supported range. If absent, install Node.js 22.x using the repo-approved Linux setup path.
 ```
 
-- [ ] **Step 3: Upload and unpack the approved artifact**
+- [x] **Step 3: Upload and unpack the approved artifact**
 
 Run over SSH:
 
@@ -389,7 +389,7 @@ Expected:
 Release is installed without production env, DB, or secrets.
 ```
 
-- [ ] **Step 4: Create synthetic staging environment**
+- [x] **Step 4: Create synthetic staging environment**
 
 Use operator-protected synthetic values only:
 
@@ -411,7 +411,7 @@ Expected:
 Protected env exists on the host and is not printed. No Vultr production material is used.
 ```
 
-- [ ] **Step 5: Initialize synthetic control DB**
+- [x] **Step 5: Initialize synthetic control DB**
 
 Run over SSH:
 
@@ -428,7 +428,7 @@ Expected:
 Self check and install preflight pass. Synthetic DB paths exist with correct ownership.
 ```
 
-- [ ] **Step 6: Install Mihomo and service units**
+- [x] **Step 6: Install Mihomo and service units**
 
 Run only after service-unit approval:
 
@@ -443,6 +443,37 @@ Expected:
 ```text
 Service units are installed. Services are started only after config-test passes.
 ```
+
+Result recorded on 2026-06-06:
+
+```text
+release: bdc95d46ae4d
+host: 54.248.170.34
+instance_id: i-08aa4775a099c9a18
+artifact_hash: ok
+npm_ci: ok
+self_check: ok
+install_preflight: ok
+node: v22.22.3
+npm: 10.9.8
+proxy-gateway-candidate.service: active/running, restart count 0
+mihomo-tuic.service: active/running, restart count 0
+nginx.service: active/running, restart count 0
+nginx_config_test: ok
+mihomo_config_test: ok
+public /api/health: 200
+public /api/admin/platform/health: 404
+public /api/portal/access-requests/current: 401
+public /: 404
+udp443_listeners: 1
+dns: no mutation
+production material: not used
+live order creation: not performed
+```
+
+Detailed execution record:
+
+- `docs/production-replacement-records/2026-06-06-aws-production-like-staging-host-bootstrap.md`
 
 ## Gate 5: Staging Validation
 
