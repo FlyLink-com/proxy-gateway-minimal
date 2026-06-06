@@ -264,6 +264,10 @@ Status as of 2026-06-06:
   usage snapshot reader and a redacted staging proof script; the reader converts
   supported per-credential runtime entries into existing collector observations
   and fails closed when a runtime exposes only aggregate node counters;
+- AWS staging Gate 7 proved the loopback-only controller boundary but the
+  current Mihomo TUIC metrics surface returned aggregate/connection-level usage
+  only, so the collector correctly reported `collector_not_supported` with
+  `node_aggregate_only` and did not write usage ledger samples;
 - real runtime traffic collection, production migration, and quota-driven
   runtime disable/revoke remain unimplemented until a runtime can expose real
   per-credential usage observations.
