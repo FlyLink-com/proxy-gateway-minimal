@@ -477,6 +477,42 @@ Detailed execution record:
 
 ## Gate 5: Staging Validation
 
+Read-only preflight result recorded on 2026-06-06:
+
+```text
+release: bdc95d46ae4d
+host: 54.248.170.34
+instance_id: i-08aa4775a099c9a18
+repo branch: feat/install-config-wizard
+runtime env file: present
+control DB: present
+subscription DB: present
+portal route keys: present
+auto issuance keys: present
+edge lifecycle keys: present
+edge lifecycle enabled: true
+edge lifecycle execution: true
+edge material file: absent before any synthetic order
+public /api/health: 200
+public /api/admin/platform/health: 404
+public /api/portal/access-requests/current: 401
+public /api/portal/human-challenges: 201
+public /api/portal/password/session with empty body: 400
+public /: 404
+blocker: USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION is absent
+live order creation: not performed
+subscription artifact generation: not performed
+```
+
+Detailed preflight record:
+
+- `docs/production-replacement-records/2026-06-06-aws-production-like-staging-gate5-preflight.md`
+
+The blocker matters because initial synthetic accounts do not yet have a TOTP
+or passkey factor. The code requires `USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION=true`
+to let a password-only first login create a setup session before the user binds
+an authenticator.
+
 - [ ] **Step 1: Validate app service**
 
 Run:
