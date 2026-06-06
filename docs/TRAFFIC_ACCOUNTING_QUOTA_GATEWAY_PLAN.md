@@ -137,7 +137,8 @@ type UsageCollector = {
 - observation timestamps;
 - upload/download byte counts;
 - a safe source ref;
-- a digest for idempotency.
+- enough normalized fields for the control-plane service to derive an
+  idempotency digest.
 
 It must not contain:
 
@@ -219,8 +220,13 @@ Status as of 2026-06-06:
 
 - Phase 1 repo-only usage sample storage, rollups, quota decisions, and
   traffic-aware subscription header backfill are implemented locally;
-- runtime collection, AWS staging proof, production migration, and quota-driven
-  runtime disable/revoke remain unimplemented and blocked behind later gates.
+- Phase 2 repo-only Mihomo TUIC usage collector dry-run adapter is implemented
+  locally using dependency-injected safe snapshots; it accepts only observations
+  that explicitly include `edgeCredentialRef` and fails closed for node
+  aggregate-only snapshots;
+- live runtime collection, AWS staging proof, production migration, and
+  quota-driven runtime disable/revoke remain unimplemented and blocked behind
+  later gates.
 
 ### Phase 1: Repo-Only Schema and Service Tests
 
@@ -249,17 +255,20 @@ Risk: A for staging runtime inspection.
 
 Scope:
 
-- add a Mihomo usage collector adapter with dependency-injected fetch/read
-  functions;
-- add tests with synthetic safe observations;
+- add a Mihomo TUIC usage collector adapter with dependency-injected snapshot
+  read functions;
+- add tests with synthetic safe observations and aggregate-only fail-closed
+  behavior;
+- prove the collector output can be recorded by the traffic accounting service;
 - no live runtime mutation;
 - no raw config or raw log output.
 
 Validation:
 
 ```powershell
-npm test -- --test-name-pattern usage
+node --test server\tests\edge-mihomo-tuic-usage-collector.test.mjs
 npm test
+git diff --check
 ```
 
 ### Phase 3: AWS Staging Proof
