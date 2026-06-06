@@ -215,6 +215,13 @@ If no ledger data exists yet:
 
 ## Implementation Phases
 
+Status as of 2026-06-06:
+
+- Phase 1 repo-only usage sample storage, rollups, quota decisions, and
+  traffic-aware subscription header backfill are implemented locally;
+- runtime collection, AWS staging proof, production migration, and quota-driven
+  runtime disable/revoke remain unimplemented and blocked behind later gates.
+
 ### Phase 1: Repo-Only Schema and Service Tests
 
 Risk: B for local code, A for any later production migration.

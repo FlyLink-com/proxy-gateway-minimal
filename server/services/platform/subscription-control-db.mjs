@@ -248,6 +248,67 @@ function mapQuotaCounter(row) {
   };
 }
 
+function mapUsageBinding(row) {
+  if (!row) return null;
+  return {
+    id: row.link_id,
+    linkId: row.link_id,
+    requestId: row.request_id,
+    accountId: row.account_id,
+    entitlementId: row.entitlement_id,
+    tenantRef: row.tenant_ref,
+    artifactRef: row.artifact_ref,
+    status: row.link_status,
+    requestStatus: row.request_status,
+    entitlementStatus: row.entitlement_status,
+    nodeId: row.node_id,
+    plan: row.plan,
+    validFrom: row.valid_from,
+    validUntil: row.valid_until,
+    trafficLimitBytes: row.traffic_limit_bytes,
+    edgeCredentialRef: row.edge_credential_ref || `edgecred_${row.request_id}`,
+    createdAt: row.link_created_at,
+    updatedAt: row.link_updated_at
+  };
+}
+
+function mapUsageSample(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    sourceRef: row.source_ref,
+    channelRef: row.channel_ref,
+    edgeCredentialRef: row.edge_credential_ref,
+    accountId: row.account_id,
+    entitlementId: row.entitlement_id,
+    requestId: row.request_id,
+    observedAt: row.observed_at,
+    intervalStartedAt: row.interval_started_at,
+    intervalEndedAt: row.interval_ended_at,
+    uploadBytes: row.upload_bytes,
+    downloadBytes: row.download_bytes,
+    totalBytes: row.total_bytes,
+    sampleDigest: row.sample_digest,
+    createdAt: row.created_at
+  };
+}
+
+function mapUsageRollup(row) {
+  if (!row) return null;
+  return {
+    edgeCredentialRef: row.edge_credential_ref,
+    accountId: row.account_id,
+    entitlementId: row.entitlement_id,
+    requestId: row.request_id,
+    channelRef: row.channel_ref,
+    uploadBytes: row.upload_bytes,
+    downloadBytes: row.download_bytes,
+    totalBytes: row.total_bytes,
+    lastObservedAt: row.last_observed_at,
+    updatedAt: row.updated_at
+  };
+}
+
 function mapDeviceBinding(row) {
   if (!row) return null;
   return {
@@ -536,6 +597,47 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       updated_at text not null,
       primary key (account_id, entitlement_id, metric, period)
     );
+
+    create table if not exists platform_usage_samples (
+      id text primary key,
+      source_ref text not null,
+      channel_ref text not null,
+      edge_credential_ref text not null,
+      account_id text not null references platform_accounts(id) on delete cascade,
+      entitlement_id text not null references platform_entitlements(id) on delete cascade,
+      request_id text not null references platform_issuance_requests(id) on delete cascade,
+      observed_at text not null,
+      interval_started_at text not null,
+      interval_ended_at text not null,
+      upload_bytes integer not null default 0 check (upload_bytes >= 0),
+      download_bytes integer not null default 0 check (download_bytes >= 0),
+      total_bytes integer not null default 0 check (total_bytes >= 0),
+      sample_digest text not null unique,
+      created_at text not null
+    );
+
+    create index if not exists platform_usage_samples_edge_credential_idx
+      on platform_usage_samples(edge_credential_ref, observed_at);
+    create index if not exists platform_usage_samples_account_entitlement_idx
+      on platform_usage_samples(account_id, entitlement_id, observed_at);
+
+    create table if not exists platform_usage_rollups (
+      edge_credential_ref text primary key,
+      account_id text not null references platform_accounts(id) on delete cascade,
+      entitlement_id text not null references platform_entitlements(id) on delete cascade,
+      request_id text not null references platform_issuance_requests(id) on delete cascade,
+      channel_ref text not null,
+      upload_bytes integer not null default 0 check (upload_bytes >= 0),
+      download_bytes integer not null default 0 check (download_bytes >= 0),
+      total_bytes integer not null default 0 check (total_bytes >= 0),
+      last_observed_at text not null,
+      updated_at text not null
+    );
+
+    create index if not exists platform_usage_rollups_account_entitlement_idx
+      on platform_usage_rollups(account_id, entitlement_id);
+    create index if not exists platform_usage_rollups_channel_idx
+      on platform_usage_rollups(channel_ref);
 
     create table if not exists platform_device_bindings (
       id text primary key,
@@ -967,6 +1069,176 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       tenantRef: requiredText(tenantRef, "tenantRef")
     }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id));
     return binding || null;
+  }
+
+  function findIssuedSubscriptionBindingByEdgeCredentialRef(edgeCredentialRef) {
+    const safeEdgeCredentialRef = requiredText(edgeCredentialRef, "edgeCredentialRef");
+    return mapUsageBinding(db.prepare(`
+      select
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        r.node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until,
+        e.traffic_limit_bytes,
+        p.edge_credential_ref
+      from platform_issued_subscription_links l
+      join platform_issuance_requests r on r.id = l.request_id
+      join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_portal_access_requests p on p.id = r.id
+      where l.status = 'active'
+        and r.status = 'issued'
+        and e.status = 'active'
+        and coalesce(p.edge_credential_ref, 'edgecred_' || r.id) = ?
+      order by l.created_at desc, l.id desc
+      limit 1
+    `).get(safeEdgeCredentialRef));
+  }
+
+  function findUsageBindingByTenantRef(tenantRef) {
+    return mapUsageBinding(db.prepare(`
+      select
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        r.node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until,
+        e.traffic_limit_bytes,
+        p.edge_credential_ref
+      from platform_issued_subscription_links l
+      join platform_issuance_requests r on r.id = l.request_id
+      join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_portal_access_requests p on p.id = r.id
+      where l.status = 'active'
+        and r.status = 'issued'
+        and e.status = 'active'
+        and l.tenant_ref = ?
+      order by l.created_at desc, l.id desc
+      limit 1
+    `).get(requiredText(tenantRef, "tenantRef")));
+  }
+
+  function getUsageSampleByDigest(sampleDigest) {
+    return mapUsageSample(db.prepare(`
+      select * from platform_usage_samples
+      where sample_digest = ?
+    `).get(requiredText(sampleDigest, "sampleDigest")));
+  }
+
+  function getUsageRollupByEdgeCredentialRef(edgeCredentialRef) {
+    return mapUsageRollup(db.prepare(`
+      select * from platform_usage_rollups
+      where edge_credential_ref = ?
+    `).get(requiredText(edgeCredentialRef, "edgeCredentialRef")));
+  }
+
+  function listUsageSamples(filters = {}) {
+    const clauses = [];
+    const params = [];
+    const edgeCredentialRef = optionalText(filters.edgeCredentialRef);
+    const accountId = optionalText(filters.accountId);
+    const entitlementId = optionalText(filters.entitlementId);
+    if (edgeCredentialRef) {
+      clauses.push("edge_credential_ref = ?");
+      params.push(edgeCredentialRef);
+    }
+    if (accountId) {
+      clauses.push("account_id = ?");
+      params.push(accountId);
+    }
+    if (entitlementId) {
+      clauses.push("entitlement_id = ?");
+      params.push(entitlementId);
+    }
+    const where = clauses.length ? `where ${clauses.join(" and ")}` : "";
+    return db.prepare(`
+      select * from platform_usage_samples
+      ${where}
+      order by observed_at asc, id asc
+    `).all(...params).map(mapUsageSample);
+  }
+
+  function recordUsageSample(input) {
+    const uploadBytes = integer(input.uploadBytes ?? 0, "uploadBytes", { min: 0 });
+    const downloadBytes = integer(input.downloadBytes ?? 0, "downloadBytes", { min: 0 });
+    const totalBytes = integer(input.totalBytes ?? uploadBytes + downloadBytes, "totalBytes", { min: 0 });
+    const record = {
+      id: requiredText(input.id, "id"),
+      sourceRef: requiredText(input.sourceRef, "sourceRef"),
+      channelRef: requiredText(input.channelRef, "channelRef"),
+      edgeCredentialRef: requiredText(input.edgeCredentialRef, "edgeCredentialRef"),
+      accountId: requiredText(input.accountId, "accountId"),
+      entitlementId: requiredText(input.entitlementId, "entitlementId"),
+      requestId: requiredText(input.requestId, "requestId"),
+      observedAt: isoText(input.observedAt, "observedAt"),
+      intervalStartedAt: isoText(input.intervalStartedAt, "intervalStartedAt"),
+      intervalEndedAt: isoText(input.intervalEndedAt, "intervalEndedAt"),
+      uploadBytes,
+      downloadBytes,
+      totalBytes,
+      sampleDigest: requiredText(input.sampleDigest, "sampleDigest"),
+      createdAt: isoText(input.createdAt, "createdAt")
+    };
+    const inserted = db.transaction(() => {
+      const result = db.prepare(`
+        insert or ignore into platform_usage_samples (
+          id, source_ref, channel_ref, edge_credential_ref, account_id,
+          entitlement_id, request_id, observed_at, interval_started_at,
+          interval_ended_at, upload_bytes, download_bytes, total_bytes,
+          sample_digest, created_at
+        ) values (
+          @id, @sourceRef, @channelRef, @edgeCredentialRef, @accountId,
+          @entitlementId, @requestId, @observedAt, @intervalStartedAt,
+          @intervalEndedAt, @uploadBytes, @downloadBytes, @totalBytes,
+          @sampleDigest, @createdAt
+        )
+      `).run(record);
+      if (result.changes === 0) {
+        return false;
+      }
+      sqliteRun(db.prepare(`
+        insert into platform_usage_rollups (
+          edge_credential_ref, account_id, entitlement_id, request_id, channel_ref,
+          upload_bytes, download_bytes, total_bytes, last_observed_at, updated_at
+        ) values (
+          @edgeCredentialRef, @accountId, @entitlementId, @requestId, @channelRef,
+          @uploadBytes, @downloadBytes, @totalBytes, @observedAt, @createdAt
+        )
+        on conflict(edge_credential_ref)
+        do update set
+          upload_bytes = platform_usage_rollups.upload_bytes + excluded.upload_bytes,
+          download_bytes = platform_usage_rollups.download_bytes + excluded.download_bytes,
+          total_bytes = platform_usage_rollups.total_bytes + excluded.total_bytes,
+          last_observed_at = excluded.last_observed_at,
+          updated_at = excluded.updated_at
+      `), record);
+      return true;
+    })();
+    return {
+      inserted,
+      sample: getUsageSampleByDigest(record.sampleDigest),
+      rollup: getUsageRollupByEdgeCredentialRef(record.edgeCredentialRef)
+    };
   }
 
   function upsertQuotaCounter(input) {
@@ -1679,6 +1951,12 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     setIssuedLinkStatus,
     listIssuedSubscriptionBindings,
     findIssuedSubscriptionBindingByTenantRef,
+    findIssuedSubscriptionBindingByEdgeCredentialRef,
+    findUsageBindingByTenantRef,
+    recordUsageSample,
+    getUsageSampleByDigest,
+    getUsageRollupByEdgeCredentialRef,
+    listUsageSamples,
     upsertQuotaCounter,
     bindDevice,
     getDeviceBinding,

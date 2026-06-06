@@ -544,6 +544,128 @@ test("subscription control store lists issued subscription bindings for edge rec
   });
 });
 
+test("subscription control store records idempotent traffic usage samples and rollups", () => {
+  withStore((store) => {
+    const now = "2026-06-06T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_usage_1",
+      ownerRef: "portal_user_usage_1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_usage_1",
+      accountId: "acct_usage_1",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-07-06T00:00:00.000Z",
+      trafficLimitBytes: 1024,
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createIssuanceRequest({
+      id: "pareq_usage_1",
+      accountId: "acct_usage_1",
+      entitlementId: "ent_usage_1",
+      approvalRef: "approval_usage_1",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel-aliyun-a-tuic",
+      purpose: "portal_auto_issuance",
+      requestedByRef: "portal_auto_issuer",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.linkIssuedSubscription({
+      id: "link_usage_1",
+      requestId: "pareq_usage_1",
+      tenantRef: "tenant_usage_1",
+      artifactRef: "artifact_usage_1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.upsertPortalAccessRequest({
+      id: "pareq_usage_1",
+      portalUserRef: "portal_user_usage_1",
+      plan: "monthly",
+      clientTarget: "clash",
+      durationDays: 30,
+      quantity: 1,
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      noteProvided: false,
+      priorTrialState: "not_applicable",
+      submittedAt: now,
+      updatedAt: now,
+      reviewedAt: now,
+      reviewedByRef: "portal_auto_issuer",
+      expiresAt: "2026-07-06T00:00:00.000Z",
+      validUntil: "2026-07-06T00:00:00.000Z",
+      entitlementRef: "ent_usage_1",
+      accessGrantRef: "grant_usage_1",
+      tenantId: "tenant_usage_1",
+      artifactId: "artifact_usage_1",
+      subscriptionUrl: "https://sub.example.test/sub/a/visible-once.yaml",
+      edgeChannelRef: "channel-aliyun-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_usage_1",
+      edgeMaterialDigest: "sha256:digest_usage_1"
+    });
+
+    const binding = store.findIssuedSubscriptionBindingByEdgeCredentialRef("edgecred_pareq_usage_1");
+    assert.equal(binding.requestId, "pareq_usage_1");
+    assert.equal(binding.trafficLimitBytes, 1024);
+    assert.equal(binding.edgeCredentialRef, "edgecred_pareq_usage_1");
+
+    const first = store.recordUsageSample({
+      id: "usage_sample_1",
+      sourceRef: "mihomo_snapshot_1",
+      channelRef: "channel-aliyun-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_usage_1",
+      accountId: "acct_usage_1",
+      entitlementId: "ent_usage_1",
+      requestId: "pareq_usage_1",
+      observedAt: "2026-06-06T00:05:00.000Z",
+      intervalStartedAt: "2026-06-06T00:00:00.000Z",
+      intervalEndedAt: "2026-06-06T00:05:00.000Z",
+      uploadBytes: 100,
+      downloadBytes: 200,
+      sampleDigest: "sha256:usage_sample_digest_1",
+      createdAt: "2026-06-06T00:05:01.000Z"
+    });
+    assert.equal(first.inserted, true);
+    assert.equal(first.sample.totalBytes, 300);
+    assert.equal(first.rollup.totalBytes, 300);
+
+    const duplicate = store.recordUsageSample({
+      id: "usage_sample_1_duplicate",
+      sourceRef: "mihomo_snapshot_1",
+      channelRef: "channel-aliyun-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_usage_1",
+      accountId: "acct_usage_1",
+      entitlementId: "ent_usage_1",
+      requestId: "pareq_usage_1",
+      observedAt: "2026-06-06T00:05:00.000Z",
+      intervalStartedAt: "2026-06-06T00:00:00.000Z",
+      intervalEndedAt: "2026-06-06T00:05:00.000Z",
+      uploadBytes: 100,
+      downloadBytes: 200,
+      sampleDigest: "sha256:usage_sample_digest_1",
+      createdAt: "2026-06-06T00:05:02.000Z"
+    });
+    assert.equal(duplicate.inserted, false);
+    assert.equal(duplicate.sample.id, "usage_sample_1");
+    assert.equal(duplicate.rollup.totalBytes, 300);
+
+    const samples = store.listUsageSamples({ edgeCredentialRef: "edgecred_pareq_usage_1" });
+    assert.equal(samples.length, 1);
+    assert.equal(store.getUsageRollupByEdgeCredentialRef("edgecred_pareq_usage_1").downloadBytes, 200);
+    assert.doesNotMatch(JSON.stringify({ samples, duplicate }), /password|token|subscriptionUrl|rawConfig/i);
+  });
+});
+
 test("subscription control store rejects unsafe edge apply receipt material", () => {
   withStore((store) => {
     assert.throws(() => store.recordEdgeApplyReceipt({

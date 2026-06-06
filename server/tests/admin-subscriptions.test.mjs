@@ -5,6 +5,8 @@ import { createApp } from "../app.mjs";
 import { createSubscriptionRepository } from "../services/subscriptions/repository.mjs";
 import { createSubscriptionService } from "../services/subscriptions/service.mjs";
 import { hashSubscriptionToken } from "../services/subscriptions/tokens.mjs";
+import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
+import { createTrafficAccountingService } from "../services/platform/traffic-accounting.mjs";
 import { listen } from "./helpers/listen.mjs";
 
 const RAW_TOKEN = "pgsub_route_visible_token";
@@ -479,6 +481,120 @@ test("tenant subscription token fetches V2 Clash YAML and disabled tenants are r
     assert.deepEqual(await blocked.json(), { error: "Subscription disabled" });
   } finally {
     server.close();
+    context.close();
+  }
+});
+
+test("tenant subscription headers include traffic rollup from the control store when bound", async () => {
+  const context = realSubscriptionContext();
+  const controlStore = createSqliteSubscriptionControlStore({
+    database: new Database(":memory:")
+  });
+  const now = "2026-06-06T00:00:00.000Z";
+  try {
+    controlStore.createAccount({
+      id: "acct_header_usage_1",
+      ownerRef: "portal_user_header_usage_1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    controlStore.createEntitlement({
+      id: "ent_header_usage_1",
+      accountId: "acct_header_usage_1",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-06-21T00:00:00.000Z",
+      trafficLimitBytes: 4096,
+      createdAt: now,
+      updatedAt: now
+    });
+    controlStore.createIssuanceRequest({
+      id: "pareq_header_usage_1",
+      accountId: "acct_header_usage_1",
+      entitlementId: "ent_header_usage_1",
+      approvalRef: "approval_header_usage_1",
+      status: "issued",
+      quantity: 1,
+      nodeId: "node_sg",
+      purpose: "portal_auto_issuance",
+      requestedByRef: "portal_auto_issuer",
+      createdAt: now,
+      updatedAt: now
+    });
+    controlStore.linkIssuedSubscription({
+      id: "link_header_usage_1",
+      requestId: "pareq_header_usage_1",
+      tenantRef: "tenant_real_1",
+      artifactRef: "artifact_header_usage_1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    controlStore.upsertPortalAccessRequest({
+      id: "pareq_header_usage_1",
+      portalUserRef: "portal_user_header_usage_1",
+      plan: "monthly",
+      clientTarget: "clash",
+      durationDays: 30,
+      quantity: 1,
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      noteProvided: false,
+      priorTrialState: "not_applicable",
+      submittedAt: now,
+      updatedAt: now,
+      reviewedAt: now,
+      reviewedByRef: "portal_auto_issuer",
+      expiresAt: "2026-06-21T00:00:00.000Z",
+      validUntil: "2026-06-21T00:00:00.000Z",
+      entitlementRef: "ent_header_usage_1",
+      accessGrantRef: "grant_header_usage_1",
+      tenantId: "tenant_real_1",
+      artifactId: "artifact_header_usage_1",
+      subscriptionUrl: "https://sub.example.test/sub/a/visible-once.yaml",
+      edgeChannelRef: "node_sg",
+      edgeCredentialRef: "edgecred_pareq_header_usage_1",
+      edgeMaterialDigest: "sha256:digest_header_usage_1"
+    });
+    createTrafficAccountingService({
+      controlStore,
+      nowFn: () => "2026-06-06T00:10:00.000Z",
+      usageSampleRefFactory: () => "usage_sample_header_1"
+    }).recordUsageObservation({
+      sourceRef: "mihomo_snapshot_header_1",
+      channelRef: "node_sg",
+      edgeCredentialRef: "edgecred_pareq_header_usage_1",
+      observedAt: "2026-06-06T00:05:00.000Z",
+      intervalStartedAt: "2026-06-06T00:00:00.000Z",
+      intervalEndedAt: "2026-06-06T00:05:00.000Z",
+      uploadBytes: 1000,
+      downloadBytes: 2000
+    });
+
+    const state = fakeState(context.service);
+    state.platform = { controlStore };
+    const { server, baseUrl } = await listen(createApp(state));
+    try {
+      const created = await requestJson(baseUrl, "/api/admin/subscriptions", {
+        method: "POST",
+        body: { displayName: "Customer A", expiresAt: "2026-06-21T00:00:00.000Z" }
+      });
+      assert.equal(created.response.status, 201);
+
+      const subscription = await fetch(`${baseUrl}/sub/clash.yaml?token=${RAW_TOKEN}`);
+      assert.equal(subscription.status, 200);
+      assert.equal(
+        subscription.headers.get("subscription-userinfo"),
+        `upload=1000; download=2000; total=4096; expire=${Math.floor(Date.parse("2026-06-21T00:00:00.000Z") / 1000)}`
+      );
+      assert.equal(subscription.headers.get("x-subscription-expires-at"), "2026-06-21T00:00:00.000Z");
+    } finally {
+      server.close();
+    }
+  } finally {
+    controlStore.close();
     context.close();
   }
 });
