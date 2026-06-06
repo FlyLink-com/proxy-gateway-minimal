@@ -260,6 +260,10 @@ Status as of 2026-06-06:
   synthetic order issuance to `edgeCredentialRef`, rendered per-order
   credential output, and usage ledger rollup without exposing raw runtime
   material;
+- repo-only Gate 7 preparation added a loopback-only Mihomo external-controller
+  usage snapshot reader and a redacted staging proof script; the reader converts
+  supported per-credential runtime entries into existing collector observations
+  and fails closed when a runtime exposes only aggregate node counters;
 - real runtime traffic collection, production migration, and quota-driven
   runtime disable/revoke remain unimplemented until a runtime can expose real
   per-credential usage observations.
