@@ -138,9 +138,9 @@ export function createHysteria2UsageCollector({
     }
 
     try {
-      const observations = Object.entries(statsMap).map(([clientId, entry]) =>
-        normalizeStatEntry(clientId, entry, snapshot)
-      );
+      const observations = Object.entries(statsMap)
+        .map(([clientId, entry]) => normalizeStatEntry(clientId, entry, snapshot))
+        .filter((observation) => observation.uploadBytes + observation.downloadBytes > 0);
       return {
         ok: true,
         status: "collected",

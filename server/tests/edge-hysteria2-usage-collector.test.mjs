@@ -190,3 +190,126 @@ test("Hysteria2 usage collector observations can be recorded by traffic accounti
     assert.equal(recorded.execution.directRuntimeMutationAllowed, false);
   });
 });
+
+test("Hysteria2 clear-mode collector skips zero-byte client entries before ledger recording", async () => {
+  const collector = createHysteria2UsageCollector({
+    channelRef: "channel-aws-staging-hy2",
+    trafficReader: async () => ({
+      edgecred_hy2_1: { tx: 0, rx: 0 },
+      edgecred_hy2_active: { tx: 1, rx: 2 }
+    }),
+    nowFn: () => "2026-06-06T00:05:00.000Z"
+  });
+
+  const result = await collector.collect({
+    since: "2026-06-06T00:00:00.000Z"
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "collected");
+  assert.deepEqual(result.observations, [
+    {
+      sourceRef: "hysteria2_traffic_stats",
+      channelRef: "channel-aws-staging-hy2",
+      edgeCredentialRef: "edgecred_hy2_active",
+      observedAt: "2026-06-06T00:05:00.000Z",
+      intervalStartedAt: "2026-06-06T00:00:00.000Z",
+      intervalEndedAt: "2026-06-06T00:05:00.000Z",
+      uploadBytes: 1,
+      downloadBytes: 2
+    }
+  ]);
+});
+
+test("Hysteria2 usage accounting is idempotent when the same clear-mode sample is retried", async () => {
+  await withStore(async (store) => {
+    const collector = createHysteria2UsageCollector({
+      channelRef: "channel-aws-staging-hy2",
+      trafficReader: async () => ({
+        edgecred_hy2_1: { tx: 100, rx: 200 }
+      }),
+      nowFn: () => "2026-06-06T00:05:00.000Z"
+    });
+    const accounting = createTrafficAccountingService({
+      controlStore: store,
+      nowFn: () => "2026-06-06T00:10:00.000Z"
+    });
+
+    const collected = await collector.collect({
+      since: "2026-06-06T00:00:00.000Z"
+    });
+    const first = accounting.recordUsageObservation(collected.observations[0]);
+    const retry = accounting.recordUsageObservation(collected.observations[0]);
+
+    assert.equal(first.ok, true);
+    assert.equal(first.sampleInserted, true);
+    assert.equal(retry.ok, true);
+    assert.equal(retry.sampleInserted, false);
+    assert.equal(store.listUsageSamples({ edgeCredentialRef: "edgecred_hy2_1" }).length, 1);
+    assert.equal(store.getUsageRollupByEdgeCredentialRef("edgecred_hy2_1").totalBytes, 300);
+  });
+});
+
+test("Hysteria2 usage accounting fails closed for client IDs without an issued binding", async () => {
+  await withStore(async (store) => {
+    const collector = createHysteria2UsageCollector({
+      channelRef: "channel-aws-staging-hy2",
+      trafficReader: async () => ({
+        edgecred_hy2_unknown: { tx: 100, rx: 200 }
+      }),
+      nowFn: () => "2026-06-06T00:05:00.000Z"
+    });
+    const accounting = createTrafficAccountingService({
+      controlStore: store,
+      nowFn: () => "2026-06-06T00:10:00.000Z"
+    });
+
+    const collected = await collector.collect({
+      since: "2026-06-06T00:00:00.000Z"
+    });
+    const recorded = accounting.recordUsageObservation(collected.observations[0]);
+
+    assert.equal(collected.ok, true);
+    assert.equal(recorded.ok, false);
+    assert.equal(recorded.status, "unresolved_binding");
+    assert.equal(recorded.sampleInserted, false);
+    assert.equal(store.listUsageSamples({ edgeCredentialRef: "edgecred_hy2_unknown" }).length, 0);
+    assert.equal(recorded.execution.directRuntimeMutationAllowed, false);
+  });
+});
+
+test("Hysteria2 usage accounting returns quota-disable decisions without direct runtime mutation", async () => {
+  await withStore(async (store) => {
+    let now = "2026-06-06T00:05:00.000Z";
+    const collector = createHysteria2UsageCollector({
+      channelRef: "channel-aws-staging-hy2",
+      trafficReader: async () => ({
+        edgecred_hy2_1: now === "2026-06-06T00:05:00.000Z"
+          ? { tx: 300, rx: 400 }
+          : { tx: 150, rx: 150 }
+      }),
+      nowFn: () => now
+    });
+    const accounting = createTrafficAccountingService({
+      controlStore: store,
+      nowFn: () => "2026-06-06T00:20:00.000Z"
+    });
+
+    const firstCollected = await collector.collect({
+      since: "2026-06-06T00:00:00.000Z"
+    });
+    const first = accounting.recordUsageObservation(firstCollected.observations[0]);
+    now = "2026-06-06T00:10:00.000Z";
+    const secondCollected = await collector.collect({
+      since: "2026-06-06T00:05:00.000Z"
+    });
+    const second = accounting.recordUsageObservation(secondCollected.observations[0]);
+
+    assert.equal(first.status, "within_quota");
+    assert.equal(second.status, "over_quota_disable_required");
+    assert.equal(second.rollup.totalBytes, 1000);
+    assert.equal(second.execution.directRuntimeMutationAllowed, false);
+    assert.equal(second.execution.subscriptionMutationRequired, true);
+    assert.equal(second.nextAction, "disable_or_revoke_through_controlled_gate");
+  });
+});
