@@ -163,6 +163,7 @@ export function createTrafficAccountingService({
       edgeCredentialRef: normalized.edgeCredentialRef,
       requestId: binding.requestId,
       accountId: binding.accountId,
+      portalUserRef: binding.portalUserRef,
       entitlementId: binding.entitlementId,
       sampleInserted: usage.inserted,
       sample: usage.sample,

@@ -142,6 +142,7 @@ test("traffic accounting records usage by edge credential and returns quota deci
     });
     assert.equal(over.status, "over_quota_disable_required");
     assert.equal(over.rollup.totalBytes, 1000);
+    assert.equal(over.portalUserRef, "portal_user_usage_service_1");
     assert.equal(over.nextAction, "disable_or_revoke_through_controlled_gate");
     assert.equal(over.execution.directRuntimeMutationAllowed, false);
 

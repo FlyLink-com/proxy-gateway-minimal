@@ -267,6 +267,7 @@ function mapUsageBinding(row) {
     validUntil: row.valid_until,
     trafficLimitBytes: row.traffic_limit_bytes,
     edgeCredentialRef: row.edge_credential_ref || `edgecred_${row.request_id}`,
+    portalUserRef: row.portal_user_ref,
     createdAt: row.link_created_at,
     updatedAt: row.link_updated_at
   };
@@ -1091,7 +1092,8 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
         e.valid_from,
         e.valid_until,
         e.traffic_limit_bytes,
-        p.edge_credential_ref
+        p.edge_credential_ref,
+        p.portal_user_ref
       from platform_issued_subscription_links l
       join platform_issuance_requests r on r.id = l.request_id
       join platform_entitlements e on e.id = r.entitlement_id
@@ -1124,7 +1126,8 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
         e.valid_from,
         e.valid_until,
         e.traffic_limit_bytes,
-        p.edge_credential_ref
+        p.edge_credential_ref,
+        p.portal_user_ref
       from platform_issued_subscription_links l
       join platform_issuance_requests r on r.id = l.request_id
       join platform_entitlements e on e.id = r.entitlement_id
