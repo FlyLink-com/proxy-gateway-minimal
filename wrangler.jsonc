@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "proxy-gateway-minimal",
+  "compatibility_date": "2026-06-08",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "admin"
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
+}

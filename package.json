@@ -101,7 +101,9 @@
     "admin:build": "npm run build --prefix admin",
     "admin:site:build": "npm run build:site --prefix admin",
     "admin:site:verify": "npm run verify:site-build --prefix admin",
-    "admin:test": "npm run test --prefix admin"
+    "admin:test": "npm run test --prefix admin",
+    "deploy": "wrangler deploy",
+    "preview": "wrangler dev"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",
@@ -110,5 +112,8 @@
     "node-fetch": "^3.3.2",
     "socks": "^2.8.9",
     "socks-proxy-agent": "^10.0.0"
+  },
+  "devDependencies": {
+    "wrangler": "^4.98.0"
   }
 }
