@@ -108,7 +108,7 @@
     "admin:site:verify": "npm run verify:site-build --prefix admin",
     "cloudflare:site:build": "npm run admin:site:build",
     "cloudflare:site:verify": "npm run admin:site:verify",
-    "cloudflare:site:dry-run": "npx --yes wrangler@4.99.0 deploy --config wrangler.public-site.jsonc --dry-run",
+    "cloudflare:site:dry-run": "npx --yes wrangler@4.99.0 deploy --config wrangler.jsonc --dry-run",
     "cloudflare:site:validate": "npm run cloudflare:site:build && npm run cloudflare:site:verify && npm run cloudflare:site:dry-run",
     "admin:test": "npm run test --prefix admin"
   },

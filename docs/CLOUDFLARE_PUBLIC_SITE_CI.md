@@ -17,7 +17,7 @@ Allowed in this lane:
 - Build the public static site.
 - Verify that the public static bundle does not contain Admin, portal API, or
   subscription API routes.
-- Run a Wrangler dry-run against `wrangler.public-site.jsonc`.
+- Run a Wrangler dry-run against the root `wrangler.jsonc`.
 
 Not allowed in this lane:
 
@@ -49,6 +49,11 @@ adding Wrangler as a root dev dependency. This keeps the backend package's Node
 engine boundary intact while still making the Cloudflare validation
 reproducible.
 
+The repository also keeps `wrangler.public-site.jsonc` as an explicit local
+preview configuration. Cloudflare Workers Builds should use the root
+`wrangler.jsonc` so the default deploy command can discover the static assets
+configuration without dashboard-only path overrides.
+
 ## GitHub CI
 
 The main CI workflow runs the same public-site checks after the Admin build:
@@ -67,7 +72,7 @@ use this boundary:
 
 - Repository root: project root.
 - Build command: `npm ci && npm ci --prefix admin && npm run cloudflare:site:build && npm run cloudflare:site:verify`
-- Deploy command: `npx --yes wrangler@4.99.0 deploy --config wrangler.public-site.jsonc`
+- Deploy command: `npx wrangler deploy` or `npx --yes wrangler@4.99.0 deploy --config wrangler.jsonc`
 - Static output source: `admin/dist-site`.
 
 Deployment still requires a separate approval gate. Store Cloudflare tokens only
