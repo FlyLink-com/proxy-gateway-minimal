@@ -27,6 +27,16 @@ export type PortalSubscriptionEvent = {
   occurredAt: string;
 };
 
+export type PortalSubscriptionUsage = {
+  uploadBytes: number;
+  downloadBytes: number;
+  usedBytes: number;
+  totalBytes: number;
+  usageRatio: number;
+  status: "within_limit" | "over_limit" | "unmetered";
+  updatedAt?: string;
+};
+
 export type PortalHistoryRecord = {
   recordRef: string;
   label: string;
@@ -198,6 +208,7 @@ export type PortalSubscriptionRequest = {
   durationDays?: number;
   quantity?: number;
   subscriptionUrl?: string;
+  usage?: PortalSubscriptionUsage;
   nextAction: "operator_review_required" | "copy_subscription_url" | "subscription_disabled";
   updatedAt?: string;
   event?: PortalSubscriptionEvent;
@@ -542,6 +553,33 @@ export function createLocalPreviewInitialAccounts(count = 5): PortalInitialAccou
   }));
 }
 
+function finiteNumber(value: unknown, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function mapSubscriptionUsage(raw: {
+  uploadBytes?: unknown;
+  downloadBytes?: unknown;
+  usedBytes?: unknown;
+  totalBytes?: unknown;
+  usageRatio?: unknown;
+  status?: unknown;
+  updatedAt?: unknown;
+} | undefined): PortalSubscriptionUsage | undefined {
+  if (!raw) return undefined;
+  const status = raw.status === "over_limit" || raw.status === "unmetered" ? raw.status : "within_limit";
+  return {
+    uploadBytes: Math.max(0, Math.trunc(finiteNumber(raw.uploadBytes))),
+    downloadBytes: Math.max(0, Math.trunc(finiteNumber(raw.downloadBytes))),
+    usedBytes: Math.max(0, Math.trunc(finiteNumber(raw.usedBytes))),
+    totalBytes: Math.max(0, Math.trunc(finiteNumber(raw.totalBytes))),
+    usageRatio: Math.max(0, finiteNumber(raw.usageRatio)),
+    status,
+    ...(typeof raw.updatedAt === "string" && raw.updatedAt.trim() ? { updatedAt: raw.updatedAt } : {})
+  };
+}
+
 function mapAccessRequest(record: {
   id?: string;
   portalUserRef?: string;
@@ -556,6 +594,7 @@ function mapAccessRequest(record: {
   expiresAt?: string;
   validUntil?: string;
   subscriptionUrl?: string;
+  usage?: Parameters<typeof mapSubscriptionUsage>[0];
   event?: PortalSubscriptionEvent;
   entitlementRef?: string | null;
   accessGrantRef?: string | null;
@@ -588,6 +627,7 @@ function mapAccessRequest(record: {
     durationDays: normalizeOrderDurationDays(record.durationDays, durationDaysForPlan(planId)),
     quantity: normalizeOrderQuantity(record.quantity),
     subscriptionUrl: disabled ? undefined : record.subscriptionUrl,
+    usage: mapSubscriptionUsage(record.usage),
     nextAction: disabled ? "subscription_disabled" : subscriptionReady ? "copy_subscription_url" : "operator_review_required",
     updatedAt: record.updatedAt ?? record.submittedAt,
     event: record.event,
@@ -1163,6 +1203,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         durationDays: current.durationDays,
         quantity: current.quantity,
         subscriptionUrl,
+        usage: current.usage,
         nextAction: "copy_subscription_url",
         updatedAt: refreshedAt,
         event,
@@ -1217,6 +1258,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         expiresAt: current.expiresAt,
         durationDays: current.durationDays,
         quantity: current.quantity,
+        usage: current.usage,
         nextAction: "subscription_disabled",
         updatedAt: disabledAt,
         historySummary,

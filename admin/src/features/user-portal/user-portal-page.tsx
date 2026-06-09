@@ -260,6 +260,36 @@ function formatDateTime(value: string) {
   }).format(date);
 }
 
+function formatTrafficBytes(bytes: number) {
+  const safeBytes = Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = safeBytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const formatted = unitIndex === 0 || value >= 10
+    ? Math.round(value).toString()
+    : value.toFixed(1).replace(/\.0$/, "");
+  return `${formatted} ${units[unitIndex]}`;
+}
+
+function trafficUsageLabel(order: PortalOrderRow) {
+  const usage = order.request.usage;
+  if (!usage) return "未采集";
+  if (usage.totalBytes > 0) {
+    return `${formatTrafficBytes(usage.usedBytes)} / ${formatTrafficBytes(usage.totalBytes)}`;
+  }
+  return `${formatTrafficBytes(usage.usedBytes)} / 不限量`;
+}
+
+function trafficUsagePercent(order: PortalOrderRow) {
+  const usage = order.request.usage;
+  if (!usage || usage.totalBytes <= 0) return 0;
+  return Math.max(0, Math.min(100, usage.usageRatio * 100));
+}
+
 function resolveLifecycle(created: CreatedSubscription | null): SubscriptionLifecycle {
   if (!created) return "none";
   return created.request.lifecycle;
@@ -1306,6 +1336,7 @@ function SubscriptionManager({
                   <th>数量</th>
                   <th>客户端</th>
                   <th>状态</th>
+                  <th>流量</th>
                   <th>到期时间</th>
                   <th>操作</th>
                 </tr>
@@ -1323,6 +1354,16 @@ function SubscriptionManager({
                   <td>{order.quantity}</td>
                   <td>{clientTargetLabel(order.clientTarget)}</td>
                   <td><span className={cn("portal-order-status", order.status)}>{orderStatusLabel(order.status)}</span></td>
+                  <td>
+                    <div className="portal-order-usage">
+                      <span>{trafficUsageLabel(order)}</span>
+                      {order.request.usage && order.request.usage.totalBytes > 0 ? (
+                        <div className="portal-traffic-meter" aria-hidden="true">
+                          <span style={{ width: `${trafficUsagePercent(order)}%` }} />
+                        </div>
+                      ) : null}
+                    </div>
+                  </td>
                   <td>{order.status === "pending" ? "待发放" : formatDateTime(order.expiresAt)}</td>
                   <td>
                     <div className="portal-order-actions">

@@ -165,6 +165,145 @@ export type PortalAccessApprovalPreview = {
   };
 };
 
+export type SubscriptionUsageActivityLevel =
+  | "never_seen"
+  | "seen"
+  | "active_recently"
+  | "high_refresh"
+  | "inactive"
+  | "blocked";
+
+export type SubscriptionUsageMonitorFilters = {
+  accountId?: string;
+  plan?: string;
+  nodeId?: string;
+  status?: string;
+  warning?: string;
+  from?: string;
+  to?: string;
+  bucket?: "hour" | "day" | string;
+};
+
+export type SubscriptionUsageMonitorRow = {
+  accountId: string;
+  portalUserRef: string;
+  issuanceRequestId: string;
+  entitlementId: string;
+  plan: string;
+  quantity: number;
+  nodeId: string;
+  tenantRef: string | null;
+  artifactRef: string | null;
+  linkStatus: string;
+  tenantStatus: string;
+  artifactStatus: string;
+  validUntil: string | null;
+  tenantExpiresAt: string | null;
+  lastRefreshAt: string | null;
+  artifactFirstSeenAt: string | null;
+  artifactLastSeenAt: string | null;
+  refreshCount: number;
+  trafficLimitBytes: number;
+  usedBytes: number;
+  uploadBytes: number;
+  downloadBytes: number;
+  usageStatus: "not_collected" | "measured_zero" | "measured";
+  usageMeasured: boolean;
+  lastUsageObservedAt: string | null;
+  channelUsages: Array<{
+    channelRef: string;
+    usedBytes: number;
+    uploadBytes: number;
+    downloadBytes: number;
+    lastObservedAt: string | null;
+  }>;
+  activityLevel: SubscriptionUsageActivityLevel;
+  warnings: string[];
+};
+
+export type SubscriptionUsageTimeseriesPoint = {
+  bucketStart: string;
+  accountId: string;
+  portalUserRef: string;
+  issuanceRequestId: string;
+  plan: string;
+  channelRef: string;
+  uploadBytes: number;
+  downloadBytes: number;
+  usedBytes: number;
+};
+
+export type SubscriptionUsageTimeseries = {
+  type: "subscription_usage_timeseries";
+  range: {
+    from: string | null;
+    to: string | null;
+    bucket: "hour" | "day" | string;
+  };
+  points: SubscriptionUsageTimeseriesPoint[];
+  aggregates: {
+    totalUsedBytes: number;
+    totalUploadBytes: number;
+    totalDownloadBytes: number;
+    pointCount: number;
+    seriesCount: number;
+    byOrder: Record<string, number>;
+    byAccount: Record<string, number>;
+    byChannel: Record<string, number>;
+  };
+  safety: {
+    summaryOnly: boolean;
+    orderScoped: boolean;
+    channelBreakdownIncluded: boolean;
+    rawEdgeCredentialReturned: boolean;
+    rawSubscriptionUrlReturned: boolean;
+    rawSecretReturned: boolean;
+    mutationAllowed: boolean;
+  };
+};
+
+export type SubscriptionUsageMonitor = {
+  type: "subscription_usage_monitor";
+  generatedAt: string;
+  filters: Required<SubscriptionUsageMonitorFilters>;
+  aggregates: {
+    total: number;
+    activeRecently: number;
+    neverSeen: number;
+    highRefresh: number;
+    blocked: number;
+    inactive: number;
+    seen: number;
+    withWarnings: number;
+    byPlan: Record<string, number>;
+    byNode: Record<string, number>;
+    warnings: Record<string, number>;
+    usage: {
+      totalUsedBytes: number;
+      totalUploadBytes: number;
+      totalDownloadBytes: number;
+      measuredOrders: number;
+      unmeasuredOrders: number;
+      zeroUsageOrders: number;
+      overLimitOrders: number;
+      nearLimitOrders: number;
+      byUsageChannel: Record<string, number>;
+    };
+  };
+  items: SubscriptionUsageMonitorRow[];
+  series: SubscriptionUsageTimeseries;
+  safety: {
+    summaryOnly: boolean;
+    realByteUsageMeasured: boolean;
+    orderLevelRows: boolean;
+    channelUsageBreakdownIncluded: boolean;
+    rawSubscriptionUrlReturned: boolean;
+    rawSecretReturned: boolean;
+    rawCustomerNetworkDataReturned: boolean;
+    mutationAllowed: boolean;
+  };
+};
+
 export type SubscriptionNode = {
   id: string;
   name: string;

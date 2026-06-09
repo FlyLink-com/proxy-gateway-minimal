@@ -36,6 +36,8 @@ import type {
   ResetTokenResult,
   SubscriptionNode,
   SubscriptionOverview,
+  SubscriptionUsageMonitor,
+  SubscriptionUsageMonitorFilters,
   SubscriptionTenant,
   TempLinkResult
 } from "./types";
@@ -63,6 +65,21 @@ function apiUrl(baseUrl: string, path: string) {
   return `${normalizeBaseUrl(baseUrl)}${path}`;
 }
 
+function queryString(filters: SubscriptionUsageMonitorFilters) {
+  const params = new URLSearchParams();
+  const entries = Object.entries(filters) as Array<
+    [keyof SubscriptionUsageMonitorFilters, string | undefined]
+  >;
+  for (const [key, value] of entries) {
+    const normalized = value?.trim() ?? "";
+    if (normalized) {
+      params.set(key, normalized);
+    }
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
+}
+
 async function parseJson(response: Response) {
   const text = await response.text();
   if (!text) return null;
@@ -78,28 +95,6 @@ function messageForStatus(status: number) {
   if (status === 403) return "This source is not allowed to use admin APIs.";
   if (status === 404) return "Admin API is not reachable here. Use local backend access or an SSH tunnel.";
   return `Admin API request failed with HTTP ${status}.`;
-}
-
-const SENSITIVE_ERROR_MESSAGE_PATTERN =
-  /(https?:\/\/|\/sub\/a\/|token=|subscriptionUrl|password|secret|credential|api[_-]?key|private[_-]?key|bearer\s+|pgsub_|pgtmp_)/i;
-
-function isSafeErrorMessage(message: string) {
-  const normalized = message.trim();
-  return Boolean(normalized) && normalized.length <= 240 && !SENSITIVE_ERROR_MESSAGE_PATTERN.test(normalized);
-}
-
-function backendErrorMessage(body: unknown, status: number) {
-  if (status >= 500 || !body || typeof body !== "object" || !("message" in body)) {
-    return "";
-  }
-
-  const message = String((body as { message: unknown }).message);
-  return isSafeErrorMessage(message) ? message : "";
-}
-
-function networkErrorMessage(error: unknown) {
-  const message = error instanceof Error ? error.message : "";
-  return isSafeErrorMessage(message) ? message : "Admin API request failed.";
 }
 
 export function createAdminApiClient(options: AdminApiClientOptions) {
@@ -125,13 +120,12 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
     try {
       response = await fetcher(apiUrl(baseUrl, path), { ...init, headers });
     } catch (error) {
-      throw new AdminApiError(networkErrorMessage(error), 0);
+      throw new AdminApiError(error instanceof Error ? error.message : "Admin API request failed.", 0);
     }
 
     const body = await parseJson(response);
     if (!response.ok) {
-      const backendMessage = backendErrorMessage(body, response.status);
-      throw new AdminApiError(backendMessage || messageForStatus(response.status), response.status);
+      throw new AdminApiError(messageForStatus(response.status), response.status);
     }
     return body as T;
   }
@@ -195,6 +189,12 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
         )
       ).items;
     },
+    listSubscriptionUsageMonitor: async (filters: SubscriptionUsageMonitorFilters = {}) =>
+      (
+        await request<{ monitor: SubscriptionUsageMonitor }>(
+          `/api/admin/platform/subscription-usage-monitor${queryString(filters)}`
+        )
+      ).monitor,
     previewPortalAccessRequestApproval: async (
       requestRef: string,
       input: PortalAccessApprovalPreviewInput

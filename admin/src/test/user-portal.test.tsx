@@ -323,9 +323,10 @@ describe("user portal route", () => {
   test("opens a separate customer portal without Admin navigation", async () => {
     render(createElement(App));
 
-    expect(screen.getByLabelText("Admin navigation").textContent).toContain("Portal Requests");
+    expect(screen.getByRole("heading", { name: "连接管理员 API" })).not.toBeNull();
+    expect(screen.queryByLabelText("Admin navigation")).toBeNull();
 
-    fireEvent.click(screen.getByRole("link", { name: /open user portal/i }));
+    fireEvent.click(screen.getByRole("button", { name: "打开用户面板" }));
 
     expect(await screen.findByRole("heading", { name: "账号登录" })).not.toBeNull();
     expect(screen.getByText("使用账户密码登录。可在个人中心开启身份验证器和通行密钥。")).not.toBeNull();
@@ -795,6 +796,15 @@ describe("user portal product surface", () => {
             quantity: 3,
             status: "delivered",
             accessGrantRef: "grant_safe_ref",
+            usage: {
+              uploadBytes: 10,
+              downloadBytes: 20,
+              usedBytes: 30,
+              totalBytes: 100,
+              usageRatio: 0.3,
+              status: "within_limit",
+              updatedAt: "2026-06-02T00:05:00.000Z"
+            },
             submittedAt: "2026-06-02T00:00:00.000Z",
             updatedAt: "2026-06-02T00:00:00.000Z"
           }
@@ -817,6 +827,12 @@ describe("user portal product surface", () => {
     ]);
     expect(requests?.[1].quantity).toBe(3);
     expect(requests?.[1].clientTarget).toBe("karing");
+    expect(requests?.[1].usage).toMatchObject({
+      usedBytes: 30,
+      totalBytes: 100,
+      usageRatio: 0.3,
+      status: "within_limit"
+    });
     expect(state.subscriptionRequest?.requestRef).toBe("pareq_monthly_2");
     expect(state.historySummary?.map((record) => record.recordRef)).toEqual([
       "history_pareq_trial_1",
@@ -1621,6 +1637,15 @@ describe("user portal product surface", () => {
       durationDays: 30,
       quantity: 3,
       subscriptionUrl: "https://sub.example.test/import/existing-visible-once",
+      usage: {
+        uploadBytes: 536870912,
+        downloadBytes: 1073741824,
+        usedBytes: 1610612736,
+        totalBytes: 10737418240,
+        usageRatio: 0.15,
+        status: "within_limit",
+        updatedAt: "2026-06-02T00:10:00.000Z"
+      },
       nextAction: "copy_subscription_url",
       updatedAt: "2026-06-02T00:00:00.000Z",
       safety: {
@@ -1654,6 +1679,8 @@ describe("user portal product surface", () => {
     expect(within(hydratedOrderTable).getByText("30 天")).not.toBeNull();
     expect(within(hydratedOrderTable).getByText("3")).not.toBeNull();
     expect(within(hydratedOrderTable).getByText("Karing")).not.toBeNull();
+    expect(within(hydratedOrderTable).getByText("流量")).not.toBeNull();
+    expect(within(hydratedOrderTable).getByText("1.5 GB / 10 GB")).not.toBeNull();
     expect(screen.getByRole("button", { name: /刷新订单/ })).not.toBeNull();
     expect(client.applyForSubscription).not.toHaveBeenCalled();
   });
