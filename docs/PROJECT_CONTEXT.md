@@ -87,6 +87,11 @@ The first SGP final closeout read-only inventory is recorded in
 It found public portal/sub boundaries healthy and SGP runtime services active,
 but it also found Japan-to-SGP SSH failed, so the protected remote data-plane
 apply path remains blocked before Gate 3.
+The Japan-to-SGP apply identity fix is recorded in
+`docs/production-replacement-records/2026-06-09-sgp-japan-to-sgp-apply-identity-fix.md`.
+It configured Japan's SSH client to use the existing SGP apply identity for
+`45.76.158.201`/`gccgw-sgp-data-plane`; Japan-to-SGP SSH now validates, but Gate
+2 and Gate 3 remain separate production approvals.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never
