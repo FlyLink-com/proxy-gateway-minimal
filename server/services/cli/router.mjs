@@ -16,6 +16,7 @@ import {
   buildTuicCredentialLifecycleApplyPlan,
   buildTuicCredentialLifecyclePlan
 } from "../edge/tuic-credential-lifecycle.mjs";
+import { inspectProductionArtifactBoundary } from "../platform/production-artifact-boundary.mjs";
 
 const DOMAIN_SOURCE_DOCS = {
   admin: ["docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"],
@@ -606,7 +607,16 @@ export function buildPackageInspectReport({
     nodes,
     requiredEnv
   ];
-  const forbiddenFindings = uniqueFindings(jsonObjects.flatMap((item) => findForbiddenPackageFields(item)));
+  const productionBoundary = inspectProductionArtifactBoundary({ paths: Object.keys(files) });
+  const boundaryFindings = productionBoundary.blockers.map((finding) => ({
+    code: "production_artifact_boundary",
+    path: finding.path,
+    detail: finding.reason
+  }));
+  const forbiddenFindings = uniqueFindings([
+    ...jsonObjects.flatMap((item) => findForbiddenPackageFields(item)),
+    ...boundaryFindings
+  ]);
   const planIds = new Set((Array.isArray(plans.plans) ? plans.plans : []).map((plan) => plan.id));
   const registrationPlanRefs = Array.isArray(manifest.registrationPolicy?.availablePlanRefs)
     ? manifest.registrationPolicy.availablePlanRefs
@@ -631,6 +641,10 @@ export function buildPackageInspectReport({
     },
     noForbiddenFields: {
       ok: forbiddenFindings.length === 0,
+      required: true
+    },
+    productionArtifactBoundary: {
+      ok: productionBoundary.ok,
       required: true
     },
     registrationPolicyNoCustomerFields: {
@@ -659,6 +673,11 @@ export function buildPackageInspectReport({
     components,
     checks,
     forbiddenFindings,
+    productionArtifactBoundary: {
+      ok: productionBoundary.ok,
+      blockerCount: productionBoundary.blockers.length,
+      reviewRequiredCount: productionBoundary.reviewRequired.length
+    },
     importPhases: (Array.isArray(manifest.importPhases) ? manifest.importPhases : []).map((phase) => ({
       name: phase.name,
       riskTier: phase.riskTier,

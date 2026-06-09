@@ -799,6 +799,31 @@ test("gccgw package inspect fails closed for customer fields and raw env values"
   assert.doesNotMatch(JSON.stringify(report), /owner@example|do-not-store-this/i);
 });
 
+test("gccgw package inspect fails closed for production artifact boundary residue", () => {
+  const report = buildPackageInspectReport({
+    packageName: "dirty-runtime-export",
+    files: productionPackageFiles({
+      ".codex-runtime/portal-cloudlike-preview.cjs": "local preview",
+      ".worktrees/multi-channel-node-guard/server/app.mjs": "nested source",
+      ".proxy-gateway/console-token": "must-not-echo"
+    })
+  });
+
+  assert.equal(report.ok, false);
+  assert.equal(report.checks.productionArtifactBoundary.ok, false);
+  assert.deepEqual(
+    report.forbiddenFindings
+      .filter((finding) => finding.code === "production_artifact_boundary")
+      .map((finding) => finding.path),
+    [
+      ".codex-runtime/portal-cloudlike-preview.cjs",
+      ".worktrees/multi-channel-node-guard/server/app.mjs",
+      ".proxy-gateway/console-token"
+    ]
+  );
+  assert.doesNotMatch(JSON.stringify(report), /must-not-echo|nested source/i);
+});
+
 test("gccgw CLI resolves package inspect as a read-only package command", async () => {
   assert.deepEqual(resolveCliCommand(["package", "inspect", "deployments/production-template", "--json"]), {
     kind: "package-inspect",

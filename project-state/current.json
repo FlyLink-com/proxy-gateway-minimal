@@ -19,6 +19,7 @@
     "docs/USER_PORTAL_FLOW.md",
     "docs/SUBSCRIPTION_CONTROL_DATABASE.md",
     "docs/production-replacement-records/2026-06-09-vultr-sgp-multichannel-runtime-closeout.md",
+    "docs/production-replacement-records/2026-06-09-github-japan-sgp-runtime-drift-reconciliation.md",
     "docs/superpowers/plans/2026-06-09-historical-residue-closeout.md",
     "docs/DOMAIN_UNIT_BOUNDARIES.md",
     "docs/units/README.md",
@@ -226,6 +227,11 @@
   },
   "activeBlockers": [
     {
+      "id": "production-artifact-boundary-before-next-deploy",
+      "summary": "GitHub, Japan runtime, and Singapore runtime are not identical source baselines. Future Vultr production artifacts must pass the production artifact boundary checker before upload; Singapore runtime files must not be copied back into Git as source.",
+      "sourceDoc": "docs/production-replacement-records/2026-06-09-github-japan-sgp-runtime-drift-reconciliation.md"
+    },
+    {
       "id": "sgp-remote-handoff-apply-productization",
       "summary": "Singapore data-plane runtime can be represented in the Japan control-plane bundle. Repo-only handoff queue listing/archive support is coded, but production remote apply remains a separate reviewed, redacted, validated Risk A mechanism.",
       "sourceDoc": "docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md"
@@ -252,6 +258,7 @@
     }
   ],
   "nextRecommendedQueue": [
+    "Before the next Vultr production deploy, run a clean artifact manifest through the production artifact boundary checker and record source commit plus artifact SHA-256.",
     "Finish repo-only state/docs archive alignment, then run npm run project-state:check and git diff --check.",
     "Package any local adapter/template changes into an explicit Vultr runtime release only after current repo validation is clean.",
     "Run a fresh no-secrets new-order desktop and mobile smoke only under exact production approval; do not create live orders during repo-only validation.",

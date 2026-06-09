@@ -71,6 +71,12 @@ It documents the SGP handoff/runtime apply fix, Hysteria2 config schema
 correction, controlled-domain fake-IP protection, and protected config ownership
 fix without recording raw credentials, subscription URLs, SQLite rows, raw
 config, or raw environment values.
+The latest GitHub/Japan/Singapore runtime drift reconciliation is recorded in
+`docs/production-replacement-records/2026-06-09-github-japan-sgp-runtime-drift-reconciliation.md`.
+It distinguishes source drift, protected runtime config drift, runtime-only
+material, and production-package blockers. Use it before the next Vultr
+production deployment so Singapore runtime residue is not treated as source and
+Japan control-plane config drift is reviewed separately from Git drift.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never
