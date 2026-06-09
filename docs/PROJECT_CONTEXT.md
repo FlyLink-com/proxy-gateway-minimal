@@ -77,6 +77,11 @@ It distinguishes source drift, protected runtime config drift, runtime-only
 material, and production-package blockers. Use it before the next Vultr
 production deployment so Singapore runtime residue is not treated as source and
 Japan control-plane config drift is reviewed separately from Git drift.
+The SGP final production closeout gate is recorded in
+`docs/production-replacement-records/2026-06-09-sgp-final-production-closeout-gate.md`.
+It defines the remaining exact Risk A sequence before Singapore can be marked
+fully closed: read-only inventory, clean Japan control-plane upgrade, protected
+Singapore data-plane apply, and a separately approved new-order smoke.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never
