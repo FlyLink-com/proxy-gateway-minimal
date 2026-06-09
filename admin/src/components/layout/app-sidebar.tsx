@@ -10,10 +10,10 @@ export function AppSidebar({ activePage, onNavigate }: AppSidebarProps) {
   return (
     <aside className="app-sidebar" aria-label="Admin navigation">
       <div className="brand">
-        <div className="brand-mark">PG</div>
+        <div className="brand-mark">GC</div>
         <div>
-          <div className="brand-name">Proxy Gateway</div>
-          <div className="brand-subtitle">Subscription Admin</div>
+          <div className="brand-name">GlobalCircle AI</div>
+          <div className="brand-subtitle">运营管理控制台</div>
         </div>
       </div>
 

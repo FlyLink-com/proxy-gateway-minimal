@@ -6,17 +6,16 @@ import {
   loadAdminSession
 } from "./features/subscriptions/admin-session";
 import { ConnectionPanel } from "./features/subscriptions/connection-panel";
-import { SubscriptionsPage } from "./features/subscriptions/subscriptions-page";
 import { CompanySitePage } from "./features/company-site/company-site-page";
 import { UserPortalPage } from "./features/user-portal/user-portal-page";
 import {
   createHttpUserPortalClient,
   createLocalUserPortalClient
 } from "./features/user-portal/user-portal-client";
-import { NodesPage } from "./pages/nodes-page";
-import { OverviewPage } from "./pages/overview-page";
+import { AdminSetupPage } from "./pages/admin-setup-page";
+import { DashboardPage } from "./pages/dashboard-page";
 import { PortalRequestsPage } from "./pages/portal-requests-page";
-import { ProvisioningPage } from "./pages/provisioning-page";
+import { SubscriptionUsageMonitorPage } from "./pages/subscription-usage-monitor-page";
 
 type AppRoute = "admin" | "portal" | "portalPreview" | "site";
 
@@ -32,13 +31,14 @@ function routeFromHash(): AppRoute {
 
 export function App() {
   const [route, setRoute] = useState<AppRoute>(() => routeFromHash());
-  const [activePage, setActivePage] = useState<AdminPage>("subscriptions");
+  const [activePage, setActivePage] = useState<AdminPage>("dashboard");
   const [search, setSearch] = useState("");
   const [adminSession, setAdminSession] = useState(() => loadAdminSession());
   const apiClient = useMemo(
     () => createAdminApiClient(adminSession),
     [adminSession.baseUrl, adminSession.consoleToken]
   );
+  const adminApiConfigured = adminSession.consoleToken.trim().length > 0;
   const httpUserPortalClient = useMemo(() => createHttpUserPortalClient(), []);
   const localUserPortalClient = useMemo(() => createLocalUserPortalClient({
     demoSubscriptionUrl: "https://sub.example.test/import/local-preview-visible-once"
@@ -80,6 +80,18 @@ export function App() {
     );
   }
 
+  const connectionPanel = <ConnectionPanel session={adminSession} onSave={setAdminSession} />;
+
+  if (!adminApiConfigured) {
+    return (
+      <AdminSetupPage
+        connectionPanel={connectionPanel}
+        onOpenPortal={openPortal}
+        onOpenSite={openSite}
+      />
+    );
+  }
+
   return (
     <AdminLayout
       activePage={activePage}
@@ -88,8 +100,9 @@ export function App() {
       onNavigate={setActivePage}
       onOpenPortal={openPortal}
       onOpenSite={openSite}
+      connectionPanel={connectionPanel}
+      connectionConfigured={adminApiConfigured}
     >
-      <ConnectionPanel session={adminSession} onSave={setAdminSession} />
       {renderPage(activePage, search, apiClient)}
     </AdminLayout>
   );
@@ -101,15 +114,11 @@ function renderPage(
   apiClient: AdminApiClient
 ) {
   switch (activePage) {
-    case "overview":
-      return <OverviewPage apiClient={apiClient} />;
+    case "dashboard":
+      return <DashboardPage apiClient={apiClient} />;
     case "portalRequests":
       return <PortalRequestsPage apiClient={apiClient} />;
-    case "provisioning":
-      return <ProvisioningPage apiClient={apiClient} />;
-    case "subscriptions":
-      return <SubscriptionsPage search={search} apiClient={apiClient} />;
-    case "nodes":
-      return <NodesPage apiClient={apiClient} />;
+    case "usageMonitor":
+      return <SubscriptionUsageMonitorPage apiClient={apiClient} />;
   }
 }

@@ -1,11 +1,9 @@
-import { ClipboardCheck, Gauge, Inbox, Network, Users, type LucideIcon } from "lucide-react";
+import { Activity, Inbox, LayoutDashboard, type LucideIcon } from "lucide-react";
 
 export type AdminPage =
-  | "overview"
+  | "dashboard"
   | "portalRequests"
-  | "provisioning"
-  | "subscriptions"
-  | "nodes";
+  | "usageMonitor";
 
 export type NavItem = {
   id: AdminPage;
@@ -14,17 +12,13 @@ export type NavItem = {
 };
 
 export const navItems: NavItem[] = [
-  { id: "overview", label: "Overview", icon: Gauge },
-  { id: "portalRequests", label: "Portal Requests", icon: Inbox },
-  { id: "provisioning", label: "Provisioning", icon: ClipboardCheck },
-  { id: "subscriptions", label: "Subscriptions", icon: Users },
-  { id: "nodes", label: "Nodes", icon: Network }
+  { id: "dashboard", label: "运营总览", icon: LayoutDashboard },
+  { id: "portalRequests", label: "订单管理", icon: Inbox },
+  { id: "usageMonitor", label: "用量监护", icon: Activity }
 ];
 
 export const pageTitles: Record<AdminPage, string> = {
-  overview: "Overview",
-  portalRequests: "Portal Requests",
-  provisioning: "Provisioning",
-  subscriptions: "Subscriptions",
-  nodes: "Nodes"
+  dashboard: "运营总览",
+  portalRequests: "订单管理",
+  usageMonitor: "用量监护"
 };
