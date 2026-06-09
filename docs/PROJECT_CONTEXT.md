@@ -58,12 +58,13 @@ The branch and service operating model lives in
 `coded`, `tested`, `deployed`, `runtime-validated`, `merged`, and `archived`
 states, map current branches to service lanes, and prevent production runtime
 state from being confused with `master` or local worktree state.
-The current dirty worktree closeout plan lives in
-`docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md`: use it before staging or
-splitting the current `feat/install-config-wizard` worktree, because the branch
-mixes Admin UI, User Portal, control-plane services, edge runtime adapters,
-subscription rendering, usage accounting, project-state, docs, generated
-folders, and test artifacts.
+The current service-lane closeout plan lives in
+`docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md`: use it before staging,
+splitting, merging, or archiving work from the current
+`feat/install-config-wizard` branch. The local dirty worktree snapshot has been
+closed, but the branch remains a broad integration lane that mixes Admin UI,
+User Portal, control-plane services, edge runtime adapters, subscription
+rendering, usage accounting, project-state, docs, and validation artifacts.
 The latest Vultr Japan + Singapore multichannel runtime closeout is recorded in
 `docs/production-replacement-records/2026-06-09-vultr-sgp-multichannel-runtime-closeout.md`.
 It documents the SGP handoff/runtime apply fix, Hysteria2 config schema

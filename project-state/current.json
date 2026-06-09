@@ -119,13 +119,13 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "activePrBranch": "none",
-    "activePr": null,
-    "activePrStatus": "live-check-required-before-work",
+    "activePrBranch": "feat/install-config-wizard",
+    "activePr": 299,
+    "activePrStatus": "draft-closeout-active",
     "activeLocalBranch": "feat/install-config-wizard",
-    "activeLocalBranchStatus": "dirty-service-lane-closeout-in-progress",
+    "activeLocalBranchStatus": "clean-pushed-closeout-pr-active",
     "closeoutPlan": "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
-    "note": "Branch context is an orientation hint only; run git status and gh pr list before new work. The current local branch is being split into service-lane units before staging or merging."
+    "note": "Branch context is an orientation hint only; run git status and gh pr list before new work. PR #299 is the current service-lane closeout draft; remaining work is PR/backlog disposition and focused unit validation, not a dirty local worktree claim."
   },
   "productSpine": [
     "stable subscription/import experience",

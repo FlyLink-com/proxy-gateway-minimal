@@ -10,32 +10,29 @@ Last updated: 2026-06-09, America/Los_Angeles.
 >   production deploy, DNS, Nginx, systemd, firewall, runtime config, schema
 >   migration, account/password generation, subscription issuance, secrets,
 >   tokens, subscription URL output, SQLite row dumps, or customer-data actions
-> - Source of truth for: How to split the current dirty `feat/install-config-wizard`
->   worktree into reviewable service-lane units
+> - Source of truth for: How to finish the current `feat/install-config-wizard`
+>   closeout branch and split remaining service-lane work into reviewable units
 
 ## Current Snapshot
 
-Point-in-time local snapshot from `git status --short --branch` on
-2026-06-09:
+Point-in-time local snapshot from `git status --short --branch` and
+`gh pr list` on 2026-06-09:
 
 ```text
 branch: feat/install-config-wizard
 upstream: origin/feat/install-config-wizard
-divergence: ahead 26
-dirty top-level groups:
-  server: 41
-  docs: 21
-  admin: 20
-  project-state: 3
-  config: 2
-  ops: 2
-  root/package/deployment/generated helpers: remaining files
+working tree: clean
+current PR: #299 [codex] close service-lane worktree
+PR state: draft
 ```
 
-This branch is not ready for one-shot merge. It mixes Admin UI, User Portal,
-control-plane services, edge runtime adapters, subscription rendering, usage
-accounting, project-state, runtime templates, docs, generated folders, and
-test artifacts.
+This branch is still not ready to merge as a one-shot feature branch. The local
+dirty worktree snapshot has been closed out, but the branch remains a large
+integration lane that mixes Admin UI, User Portal, control-plane services, edge
+runtime adapters, subscription rendering, usage accounting, project-state,
+runtime templates, docs, and validation artifacts. The remaining closeout work
+is to choose merge, split, or archive outcomes for each service lane and open PR
+backlog item.
 
 ## Split Units
 
@@ -314,7 +311,8 @@ Rationale:
 
 | PR / branch | Proposed action |
 | --- | --- |
-| PR #298 `cloudflare/workers-autoconfig` | Keep separate. It is public-site/Cloudflare adjacent and should not be mixed with Express/SQLite control-plane runtime work. |
+| PR #299 `feat/install-config-wizard` | Current draft closeout PR. Keep draft until service-lane validation and backlog disposition are explicit. |
+| PR #298 `cloudflare/workers-autoconfig` | Keep separate or close/merge after checking overlap with the root `wrangler.jsonc` Workers Builds fix already carried by PR #299. It is public-site/Cloudflare adjacent and should not be mixed with Express/SQLite control-plane runtime work. |
 | PR #297 `docs/aws-prod-candidate-private-validation` | Decide whether to merge as historical docs-only evidence or close as superseded by later AWS staging records. |
 | PR #294 `codex/gccgw-install-flow-hardening` | Rebase/review only if its install-flow hardening still applies after the current package/runtime changes; otherwise archive. |
 | PR #291, #290, #289, #276, #272 | Treat as stale draft backlog. Compare each against current docs/code, then close as superseded or rebase into a focused unit. |
