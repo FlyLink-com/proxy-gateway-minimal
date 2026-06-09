@@ -1,6 +1,6 @@
 # Historical Stage Reports
 
-Last updated: 2026-06-01, Asia/Shanghai.
+Last updated: 2026-06-08, America/Los_Angeles.
 
 This directory stores fixed-cadence PR stage reports that were moved out of the
 active documentation reading path after fixed "every five merged PRs" reporting
@@ -12,6 +12,8 @@ approval, rollback authority, or runtime configuration.
 
 For current state, read `docs/PROJECT_CONTEXT.md` and verify drift-prone facts
 live. For current validation commands, read `docs/VALIDATION_BASELINE.md`.
+Before re-importing any stage-report fact into active docs or code, read
+`docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md`.
 
 | Report | Historical scope |
 | --- | --- |

@@ -1,6 +1,6 @@
 # Superpowers Archive Index
 
-Last updated: 2026-06-03, Asia/Shanghai.
+Last updated: 2026-06-08, America/Los_Angeles.
 
 This directory stores historical design and implementation artifacts produced
 during earlier planning work. These files are useful for background and
@@ -11,6 +11,7 @@ Use the current documentation index first:
 
 ```text
 docs/README.md
+docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md
 ```
 
 ## Sections

@@ -1,6 +1,6 @@
 # Plans Archive
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-06-08, America/Los_Angeles.
 
 This directory contains historical implementation plans. They are archived
 implementation artifacts, not active task lists by default.
@@ -8,6 +8,8 @@ implementation artifacts, not active task lists by default.
 Read these files when you need background on prior implementation sequencing,
 but verify current behavior against the code, tests, `docs/PROJECT_CONTEXT.md`,
 and active runbooks before making changes.
+Also read `docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md` before re-importing
+any archived plan step into active source, docs, tests, or runtime templates.
 
 ## Plans
 

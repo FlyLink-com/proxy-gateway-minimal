@@ -26,16 +26,50 @@ project / install / node / package / subscription / channel / config / site-admi
 项目已经进入收尾和验收阶段：
 
 - 核心架构是单体 Node/Express 服务 + SQLite 业务状态 + `gccgw` operator CLI。
+- 当前生产设计是一个订阅控制面管理账号、订单、订阅 artifact、凭据生命周期和
+  用量账本；Vultr Japan 与 Singapore 等节点只作为可替换数据面通道容量接入。
 - `.env` 是目标主机运行时配置的收口入口。
 - `deployments/production-template/` 是非敏感生产输入包模板。
 - `deployments/production-template/OPERATOR_NOTEPAD.md` 是人工记事本式检查面，不是机器导入文件。
 - Admin/Web 只作为受保护 review / local operator surface，不是公网 Admin 产品。
 - 用户门户、支付、节点扩容、生产部署、DNS/Nginx/systemd 仍按门禁执行。
-- 历史 Shadowsocks/Clash/Mihomo 订阅保留为兼容路径，不是新用户交付主线。
+- 历史 Shadowsocks 本地代理路径保留为兼容路径；当前新用户交付主线是
+  Clash/Mihomo 订阅文件中的 VLESS Reality、Hysteria2、TUIC 多通道策略。
 
 不要把一次本地测试或 HP 手工 CI 通过理解成 production ready。生产、云、节点、
 Nginx、systemd、DNS、SQLite、真实用户或订阅材料变更仍属于 Risk A，必须走
 runbook、dry-run、明确 approval、验证和 rollback。
+
+## 当前源码与归档边界
+
+当前本地源码入口固定为：
+
+```text
+D:\Projects\proxy-gateway-minimal
+```
+
+继续工作前先读：
+
+```text
+AGENTS.md
+docs/PROJECT_CONTEXT.md
+docs/README.md
+docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md
+```
+
+不要把以下位置当作当前项目：
+
+- `C:\Users\g\OneDrive\文档\订阅管理`
+- `C:\Users\g\Projects\订阅管理\proxy-gateway-minimal`
+- `C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal`
+- `.worktrees/` 下的旧临时工作树
+- `docs/archive/` 下的历史资料
+- `.codex-runtime/`、`.codex-artifacts/`、`.playwright-cli/`、`.tmp-node/`、
+  `test-results/`、`admin/dist*` 等本地生成物
+
+旧 checkout、历史工作树、归档文档和生成输出只能用于对比和考古。要重新采用其中
+的代码或模板，必须先和当前源码 diff，再跑对应验证；涉及生产、节点、账号、订阅、
+支付、DNS、Nginx、systemd、SQLite 或云资源时重新按 Risk A 门禁处理。
 
 ## 快速验证
 

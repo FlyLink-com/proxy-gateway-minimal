@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Restore the default user subscription path to conservative stable TCP capacity while keeping TUIC, Hysteria2, HTTP/3, and VLESS/XUDP behind explicit canary or private assignment gates.
+**Goal:** Restore the default user subscription path to approved stable TCP capacity, now anchored on VLESS Reality/TCP or another explicitly approved TCP runtime. Keep TUIC, Hysteria2, HTTP/3, and VLESS/XUDP behind explicit canary, weak-network, or private assignment gates until they pass their runtime gates. Shadowsocks is legacy-only and must not be restored as the default production channel.
 
 **Architecture:** Keep the existing subscription node registry and renderer as the source of node-pool behavior. Add a repo-only stable-pool protocol policy check, then execute production changes only through A-tier read-only inventory, dry-run, explicit approval, validation, and rollback records.
 
@@ -13,9 +13,9 @@
 ## File Structure
 
 - Create: `server/services/subscriptions/channel-policy.mjs`
-  - Responsibility: build a redacted policy report that flags UDP/QUIC-style nodes in `stable` output and keeps VLESS/XUDP promotion advisory until measured.
+  - Responsibility: build a redacted policy report that flags UDP/QUIC-style nodes in `stable` output, blocks legacy Shadowsocks from default stable output, and keeps VLESS/XUDP promotion advisory until measured.
 - Create: `server/tests/subscription-channel-policy.test.mjs`
-  - Responsibility: prove policy output is redacted, stable SS/TCP passes, TUIC/Hysteria2/HTTP3 stable nodes block, and VLESS/XUDP remains canary-scoped.
+  - Responsibility: prove policy output is redacted, approved VLESS Reality/TCP can pass, legacy Shadowsocks and unapproved TUIC/Hysteria2/HTTP3 stable nodes block, and VLESS/XUDP remains canary-scoped.
 - Modify: `server/services/cli/router.mjs`
   - Responsibility: expose `gccgw node policy-check --json` as a read-only C-tier command.
 - Modify: `server/tests/cli-router.test.mjs`
@@ -46,14 +46,16 @@ function proxyConfig() {
   return {
     servers: [
       {
-        id: "node_stable_ss",
-        name: "stable-ss",
-        protocol: "ss",
+        id: "node_stable_vless_reality_tcp",
+        name: "stable-vless-reality-tcp",
+        protocol: "vless",
         channelPool: "stable",
         host: "198.51.100.10",
-        port: 18388,
-        method: "aes-256-gcm",
-        password: "stable-secret"
+        port: 443,
+        network: "tcp",
+        uuid: "11111111-1111-4111-8111-111111111111",
+        stableProtocolApproved: true,
+        stableProtocolApprovalRef: "vless-reality-tcp-explicit-approval"
       },
       {
         id: "node_stable_tuic",
@@ -91,22 +93,24 @@ test("stable pool protocol policy blocks UDP QUIC style stable nodes without lea
   assert.equal(report.blockers[0].node, "stable-tuic");
   assert.equal(report.blockers[0].protocol, "tuic");
   assert.equal(report.nextAction, "restore_conservative_tcp_stable_capacity_or_move_candidate_to_canary");
-  assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|18388|stable-secret|tuic-secret|11111111|22222222/);
+  assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|tuic-secret|11111111|22222222/);
 });
 
-test("stable pool protocol policy allows conservative stable TCP and keeps XUDP canary scoped", () => {
+test("stable pool protocol policy allows approved VLESS Reality TCP and keeps XUDP canary scoped", () => {
   const report = buildStablePoolProtocolPolicy({
     proxyConfig: {
       servers: [
         {
-          id: "node_stable_ss",
-          name: "stable-ss",
-          protocol: "shadowsocks-libev",
+          id: "node_stable_vless_reality_tcp",
+          name: "stable-vless-reality-tcp",
+          protocol: "vless",
           channelPool: "stable",
           host: "198.51.100.10",
-          port: 18388,
-          method: "aes-256-gcm",
-          password: "stable-secret"
+          port: 443,
+          network: "tcp",
+          uuid: "11111111-1111-4111-8111-111111111111",
+          stableProtocolApproved: true,
+          stableProtocolApprovalRef: "vless-reality-tcp-explicit-approval"
         },
         {
           id: "node_canary_xudp",
@@ -127,7 +131,7 @@ test("stable pool protocol policy allows conservative stable TCP and keeps XUDP 
   assert.deepEqual(report.blockers, []);
   assert.equal(report.warnings[0].code, "xudp_kept_out_of_default_stable_output");
   assert.equal(report.nextAction, "stable_pool_policy_ok");
-  assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|18388|stable-secret|22222222/);
+  assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|11111111|22222222/);
 });
 ```
 

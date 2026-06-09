@@ -1,10 +1,16 @@
 # Production Input Package Template
 
-Last updated: 2026-06-02, Asia/Shanghai.
+Last updated: 2026-06-08, America/Los_Angeles.
 
 This directory defines the non-secret input package required before a real
 production deployment or a production-like staging deployment can be approved.
 It is a template only.
+
+Use this template together with `docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md`.
+Do not copy values, runtime configs, generated release directories, SQLite
+files, or old production package material from historical checkouts or local
+artifacts into this directory. If older material is needed for comparison,
+record only a redacted current-fact summary in an active execution record.
 
 ## Boundary
 

@@ -21,6 +21,9 @@ docs/superpowers/plans/*.tmp
 admin/dist/
 admin/dist-portal/
 /.codex-artifacts/
+/.codex-runtime/
 /.playwright-cli/
+/.tmp-node/
+test-results/
 handoff/
 admin/dist-site/

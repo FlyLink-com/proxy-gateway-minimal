@@ -1,6 +1,6 @@
 # Edge Node Build Materials
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-06-08, America/Los_Angeles.
 
 > Status:
 > - Type: Repo-only build materials
@@ -15,6 +15,12 @@ This directory keeps a provider-neutral recovery build package in Git so a
 third production edge slot can be rebuilt from reviewed materials when both
 active production slots are unavailable or a recovery exercise is explicitly
 approved.
+
+Use `docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md` before replacing these
+materials with files from old checkouts, `.worktrees/`, generated artifacts,
+or previous release packages. This directory may contain generic templates
+only; live runtime material remains protected runtime state and must not be
+copied into Git.
 
 The default target slot is:
 

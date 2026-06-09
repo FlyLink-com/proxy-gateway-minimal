@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-06-03, Asia/Shanghai.
+Last updated: 2026-06-09, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -46,6 +46,30 @@ The control/data-plane interconnect contract lives in
 multi-node data-plane capacity are separate sub-systems connected by DNS
 pointers, safe node facts, health/measurement facts, node pools, and
 subscription-output rendering; neither side should own the other's authority.
+The single-control-plane / multi-data-plane plan lives in
+`docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md`: one control-plane store
+owns accounts, orders, subscription artifacts, credential lifecycle, and usage
+ledger; Vultr, Aliyun, Singapore, and future hosts are data-plane nodes that
+receive per-order runtime credentials and feed usage facts back by
+`edgeCredentialRef`; user-visible node switching belongs in rendered
+subscription proxy groups, not in a separate per-node user panel.
+The branch and service operating model lives in
+`docs/BRANCH_AND_SERVICE_OPERATING_MODEL.md`: use it to distinguish `planned`,
+`coded`, `tested`, `deployed`, `runtime-validated`, `merged`, and `archived`
+states, map current branches to service lanes, and prevent production runtime
+state from being confused with `master` or local worktree state.
+The current dirty worktree closeout plan lives in
+`docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md`: use it before staging or
+splitting the current `feat/install-config-wizard` worktree, because the branch
+mixes Admin UI, User Portal, control-plane services, edge runtime adapters,
+subscription rendering, usage accounting, project-state, docs, generated
+folders, and test artifacts.
+The latest Vultr Japan + Singapore multichannel runtime closeout is recorded in
+`docs/production-replacement-records/2026-06-09-vultr-sgp-multichannel-runtime-closeout.md`.
+It documents the SGP handoff/runtime apply fix, Hysteria2 config schema
+correction, controlled-domain fake-IP protection, and protected config ownership
+fix without recording raw credentials, subscription URLs, SQLite rows, raw
+config, or raw environment values.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never
@@ -171,31 +195,44 @@ stable subscription/import experience
   -> measured validation and operations
 ```
 
+Current documented production direction as of 2026-06-09:
+
+- Vultr Japan is the primary subscription control-plane host for the current
+  production lane.
+- Vultr Japan and Vultr Singapore are data-plane capacity hosts connected by
+  logical channel refs, not separate user/order databases.
+- The production subscription bundle should render the approved six-channel
+  set: `channel-vultr-a-vless-reality-tcp`, `channel-vultr-a-hy2`,
+  `channel-vultr-a-tuic`, `channel-sgp-a-vless-reality-tcp`,
+  `channel-sgp-a-hy2`, and `channel-sgp-a-tuic`.
+- User-visible node switching belongs in rendered subscription proxy groups;
+  account, order, artifact, credential lifecycle, and usage ledger facts stay
+  in the control-plane store.
+- Aliyun records below are historical execution records or fallback context
+  unless a fresh Risk A inventory proves otherwise.
+
 - **Simplification & Core Focus**: The active priority is strictly converged on core subscription production delivery: **"能生产、能发放、能审计、能撤回"** (PR #258, CLI production SOP, controlled subscription issuance, canary rollout, edge rebuild, and traffic accounting/quota/abuse control). Unrelated marketing decoration (WebGL/3D transits, CSS animations), Telegram client integrations/panels, personal job-application materials, un-productized video/ad drafts, non-CLI Admin UI polishing, topological narrative bloating, multicharacter sketch frameworks, and brand-positioning narratives are explicitly deprioritized, archived, or removed from the execution path. See `docs/PROJECT_SIMPLIFICATION_MAP.md`.
-- **Aliyun-First Workspace Boundary**: current business design and runtime
-  planning are anchored on the Aliyun subscription-control platform. Local
-  machines and local checkouts are development, validation, operator-lab,
-  handoff, and archive surfaces only; they are not business runtime, not
-  production authority, and not the source for current production facts. Old
-  local drafts, personal/job materials, media/ad sketches, Telegram embedding
-  drafts, and stale topology/design notes should be archived outside the main
-  repository path unless an approved task explicitly promotes them back into a
-  current product lane.
+- **Historical Aliyun-First Boundary (superseded)**: older records in this
+  file describe an Aliyun-first subscription-control plan. That is no longer
+  the current production authority statement. Treat those sections as
+  historical/fallback context unless a fresh Risk A inventory and approval
+  explicitly promotes Aliyun back into the active control-plane lane. Local
+  machines and local checkouts remain development, validation, operator-lab,
+  handoff, and archive surfaces only; they are not production authority and
+  not a substitute for live inventory.
 
 Current architecture priorities:
 
-- Active Goal: `docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md`
-  is the current goal-driven execution baseline. It started repo-only B/C and
-  HP `ci-full` validation first; subsequent exact-phrase A-tier approvals now
-  cover the completed clean-start private validation, provider-firewall
-  hardening, public-boundary dry run, and production subscription-distribution
-  promotion records. It still does not authorize public Admin, edge traffic,
-  historical state copy, broader artifact issuance, legacy query-token
-  retirement, or any new edge recovery path.
-- Aliyun User Management / Subscription Distribution: the near-term business
-  split is Aliyun for user management/subscription distribution, HP for local CI/operator
-  lab, and all other nodes in a controlled drain/retirement queue. See
-  `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`.
+- Historical Goal: `docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md`
+  remains a useful execution record for earlier Aliyun planning, but it is not
+  the current production-control target. Current production design follows the
+  single-control-plane / multi-data-plane model above. It still does not
+  authorize public Admin, payment, broader artifact issuance outside approved
+  order flows, legacy query-token retirement, or unapproved edge recovery.
+- Aliyun User Management / Subscription Distribution: keep this as a historical
+  runbook/fallback lane. Do not use it to override the current Vultr Japan
+  control-plane and Vultr Japan/Singapore data-plane channel model without a
+  fresh A-tier gate. See `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`.
 - Public Site / Portal Split: the repository now treats the static company site
   as a public brand/cooperation surface for geek-style AI research, mainstream
   media advertising, operations growth, and frontier product research. Logged-in
@@ -245,8 +282,10 @@ Current architecture priorities:
   boundary, not a normal login-page tab. Email-code login and real mail
   issuance are no longer part of the product direction; existing local preview
   and default HTTP email-code stubs remain hidden and fail-closed only for
-  compatibility while that path is retired. The default HTTP password path is
-  also fail-closed until separately approved credential services exist. In the Admin
+  compatibility while that path is retired. Durable HTTP password login,
+  backend human challenges, TOTP enrollment, and TOTP second-factor completion
+  now exist in the repository service layer and must use the control-plane
+  store in production-like runtime. In the Admin
   Vite shell, `#/portal` remains the real same-origin HTTP route and
   `#/portal-preview` is the repository-local browser preview route.
   The local preview client remains safe by default for tests and demos:
@@ -256,13 +295,14 @@ Current architecture priorities:
   payment, exposes no public Admin, collects no phone/Telegram/contact profile
   fields, creates no production authenticator credential, and creates no
   production subscription. The current portal subscription surface is an order
-  request system: users submit package duration, quantity, and client target as
-  order/request facts; the portal route does not auto-issue trial material or
-  return subscription URLs from the request step. Refresh, disable, and copy
-  actions are order-row actions only after issued material exists from a later
-  reviewed delivery path; physical delete remains disabled. This does not
-  approve public portal exposure, payment, production mutation, or automatic
-  issuance. The user-facing support surface is now a scoped problem
+  system: users submit package duration, quantity, and client target as
+  order/request facts. In production-like runtime, automatic issuance is
+  env-gated and must fail closed unless requested channel refs are present in
+  the protected proxy config and the monthly limits/target channel policy are
+  configured. Refresh, disable, and copy actions are order-row actions only
+  after issued material exists; physical delete remains disabled. This does
+  not approve public Admin, payment, or unapproved production mutation. The
+  user-facing support surface is now a scoped problem
   feedback form backed by `/api/portal/support-requests`; it does not introduce
   Telegram, chatbot, or customer-service workflow design. Public
   portal exposure remains
@@ -281,15 +321,15 @@ Current architecture priorities:
   `docs/USER_PORTAL_HUMAN_CHALLENGE_DESIGN.md`; it does not authorize provider
   CAPTCHA secrets, production DB migration, public portal exposure, or
   subscription issuance.
-- User Portal Subscription Policy: repository-only support now lets the user
-  portal submit subscription orders/access requests for administrator or later
-  order-management handling. The customer-facing request step creates an order
-  record only: no entitlement, runtime tenant, issued link, visible-once
-  material, payment activation, or automatic trial/monthly/yearly issuance is
-  created by the portal request route. Refresh, copy, and disable remain
-  order-row operations for already-issued records, and physical delete is not
-  exposed. Requests are keyed by safe portal user reference, package duration,
-  quantity, and client target rather than customer contact profiles.
+- User Portal Subscription Policy: the user portal can submit subscription
+  orders/access requests for order-management handling. In runtime
+  configurations that enable automatic issuance, the request route can deliver
+  issued material through the control-plane order service; in repo-local
+  preview, injected demo material and in-memory state remain preview-only.
+  Refresh, copy, and disable remain order-row operations for already-issued
+  records, and physical delete is not exposed. Requests are keyed by safe portal
+  user reference, package duration, quantity, and client target rather than
+  customer contact profiles.
   The
   protected Admin surface can review requests through a business-readable
   operations panel with translated status labels, status summary cards, local
@@ -652,9 +692,17 @@ Current architecture priorities:
   future production subscription control plane does not also run repository
   validation workloads.
 - Channel Upgrade MVP: prioritize Clash/Mihomo-native subscription rendering
-  for multi-protocol channel candidates. SS remains the baseline; VLESS/XUDP,
-  Hysteria2, and TUIC are renderer-supported candidate families; QUIC/MPTCP stay
-  research items until measured in controlled canaries. The repository channel
+  for multi-protocol channel candidates. Shadowsocks is now legacy-only and must
+  not be restored as the default production channel; VLESS Reality/TCP,
+  Hysteria2, and TUIC are renderer-supported candidate families, with
+  VLESS/XUDP still canary-scoped until measured. QUIC/MPTCP stay research items
+  until measured in controlled canaries. The repository channel
+  support for the Vultr production-node completion lane now persists Hysteria2
+  loopback `trafficStats`, `sniff` rewrite policy, and IPv4-only direct
+  outbound mode through the explicit-restart adapter and multichannel template.
+  This is repo-only support; production still requires a separate A-tier
+  deployment gate before any host config, env, service, or firewall mutation.
+  The repository channel
   strategy engine now separates default `stable` output from `private`,
   `canary`, and `recovery` capacity while preserving explicit operator canary
   assignment as single-node output. Repository measurement scoring can now turn
@@ -727,8 +775,9 @@ Current architecture priorities:
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`; repository renderer/config support
   does not authorize server creation or remote protocol deployment by itself.
   The Technical MVP baseline wording is now aligned with the current Aliyun
-  subscription boundary and stopped AWS edge state: SS remains a comparison and
-  rollback model, not proof of currently serving edge traffic. The next TUIC
+  subscription boundary and stopped AWS edge state: SS remains a legacy
+  compatibility reference only, not a current default production channel and
+  not proof of currently serving edge traffic. The next TUIC
   Stage 0 read-only inventory handoff is
   `docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md`;
   it requires the exact inventory approval phrase before any live inventory and
@@ -769,8 +818,25 @@ Use these docs for detail:
 
 ## Current Production Snapshot
 
-This snapshot reflects documented project state as of 2026-06-02. Refresh live
-AWS, DNS, Nginx, service, endpoint, and SQLite state before A-tier work.
+This snapshot includes the latest documented Vultr/SGP closeout from
+2026-06-09, but remains a documentation handoff only. Refresh live DNS, Nginx,
+service, endpoint, firewall, runtime, and SQLite state before any new A-tier
+work.
+
+- Vultr Japan is the documented current control-plane authority for the
+  `globalcirclecat.cloud` production lane after the June Vultr migration work.
+  Japan owns user portal orders, subscription rendering, credential lifecycle
+  orchestration, and remote data-plane handoff for the current Vultr/SGP lane.
+- Vultr Singapore is documented as a data-plane node connected through Japan
+  control-plane handoff. The current documented production channel bundle
+  includes Vultr and SGP VLESS Reality, Hysteria2, and TUIC logical channels.
+- The 2026-06-09 SGP runtime closeout validated SGP Xray, Hysteria2, and
+  Mihomo/TUIC services active; TCP 8443, UDP 10443, and UDP 443 listeners
+  present; Hysteria2 stats loopback-only; and no public Admin exposure.
+- Subscription rendering must keep controlled GlobalCircle node domains out of
+  fake-IP/TUN self-routing paths for desktop Clash/Mihomo clients.
+- Hysteria2 runtime config must render `outbounds` as named list entries and
+  preserve service-user-readable config ownership when applying credentials.
 
 - Current subscription-distribution status: Aliyun promotion executed for
   `sub.globalcirclecat.com`; edge data-plane service is still not activated.

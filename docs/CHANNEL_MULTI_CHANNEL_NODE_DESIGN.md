@@ -1,6 +1,6 @@
 # Multi-Channel Node Design
 
-Last updated: 2026-06-05, Asia/Shanghai.
+Last updated: 2026-06-08, Asia/Shanghai.
 
 > Status:
 > - Type: Active design contract
@@ -15,6 +15,12 @@ Last updated: 2026-06-05, Asia/Shanghai.
 >   subscription channels, and preventing retired node labels from re-entering
 >   automatic user-portal issuance
 
+For the broader production shape where multiple physical edge nodes share one
+authoritative account/order/subscription/usage control plane, read
+`docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md`. This document focuses on
+logical channel modeling on an edge host; it does not make a node-local portal,
+node-local order database, or node-local customer authority valid.
+
 ## Purpose
 
 The current channel strategy can render multiple protocol records, but the
@@ -28,10 +34,36 @@ logical channel:
   one protocol/listener/config path emitted into a subscription output
 ```
 
-A single physical node may expose multiple logical channels. TUIC, H2/TCP,
-VLESS, Hysteria2, and Shadowsocks should be represented as separate channel
-records when they have separate runtime behavior, listener facts, credentials,
-or rollout status.
+A single physical node may expose multiple logical channels. TUIC, VLESS
+Reality/TCP, Hysteria2, and other approved runtime families should be
+represented as separate channel records when they have separate runtime
+behavior, listener facts, credentials, or rollout status. Shadowsocks is now a
+legacy compatibility family only; it must not be treated as the current default
+production channel.
+
+Repository runtime support now includes explicit-restart credential lifecycle
+adapters for Mihomo TUIC, sing-box Shadowsocks, Xray VLESS Reality/TCP, and
+Hysteria2. This is code support only: a production node still needs a separate
+A-tier gate to prove the matching binary, protected config path, systemd unit,
+listener, config-test behavior, credential material source, firewall posture,
+validation, and rollback readiness before that logical channel can be marked
+eligible for automatic issuance.
+
+For a remote data-plane channel whose runtime lives on a different host from
+the control plane, use `runtimeAdapter: "remote-data-plane-handoff"` instead of
+an explicit-restart host adapter. The handoff adapter writes only a protected,
+redacted desired-state handoff and records a `pending` receipt. Applying that
+handoff to the remote node remains a separate A-tier runtime gate with its own
+backup, config-test, restart, listener validation, and rollback plan.
+
+As of the 2026-06-08 repo-only Vultr production-node completion gate,
+Hysteria2 explicit-restart rendering also persists the weak-network runtime
+policy that previously had to be hand-applied on hosts: loopback-only
+`trafficStats`, `sniff.enable`, `sniff.rewriteDomain`, scoped TCP/UDP sniff
+ports, and IPv4-only direct outbound mode. This repository support does not
+mutate any host by itself; production still needs an approved deploy gate that
+sets the matching protected `EDGE_HYSTERIA2_*` environment and runs config-test,
+restart, listener, subscription-render, and usage-monitor validation.
 
 This design avoids replacing a current TUIC channel with stale historical node
 labels. It also avoids treating an old `online` status as proof that a retired
@@ -47,24 +79,38 @@ physicalNodeRef = edge-current-01
 
 channel-current-tuic:
   protocol = tuic
+  transport = udp
+  listen = 443
   physicalNodeRef = edge-current-01
   pool = canary or explicitly assigned current channel
 
-channel-current-h2-tcp:
+channel-current-vless-reality-tcp:
   protocol = vless
-  network = h2
+  network = tcp
+  transport = tcp
+  listen = 8443
   physicalNodeRef = edge-current-01
   pool = stable-candidate until promoted
 
-channel-current-ss-tcp:
-  protocol = ss
+channel-current-hy2:
+  protocol = hysteria2
+  transport = udp
+  listen = 10443
   physicalNodeRef = edge-current-01
-  pool = stable after approval and validation
+  pool = weak-network or canary until promoted
+  runtimePolicy = sniff + IPv4 outbound + loopback trafficStats
 ```
 
 The subscription renderer still renders channels, not physical hosts. The
 registry and policy layers understand that multiple channel records can belong
 to the same physical node.
+
+When one edge host carries multiple logical channels, runtime listeners must be
+planned as transport-specific tuples. The Vultr template keeps web traffic on
+TCP 80/443 for Nginx, VLESS Reality on TCP 8443, TUIC canary on UDP 443, and
+Hysteria2 weak-network canary on UDP 10443. Do not place VLESS on TCP 443 while
+Nginx owns that port, and do not place Hysteria2 on UDP 443 while TUIC owns the
+canary listener.
 
 ## Required Safe Metadata
 
@@ -76,7 +122,7 @@ account details.
 | --- | --- | --- |
 | `physicalNodeRef` | Yes for production channels | Safe non-secret grouping key for channels on the same physical edge host |
 | `channelId` or `name` | Yes | Unique logical channel identifier emitted or assigned by the control plane |
-| `protocol` | Yes | Runtime family such as `tuic`, `hysteria2`, `vless`, or `ss` |
+| `protocol` | Yes | Runtime family such as `tuic`, `hysteria2`, or `vless`; `ss` is legacy-only |
 | `transport` or `network` | Protocol-specific | Transport such as `tcp`, `h2`, `xudp`, or `quic` when relevant |
 | `pool` or `channelPool` | Yes | `stable`, `private`, `canary`, or `recovery` |
 | `lifecycle` | Yes | `planned`, `private-validation`, `canary`, `active`, `maintenance`, `deprecated`, or `retired` |
@@ -121,14 +167,15 @@ The default posture remains conservative:
 
 ```text
 default stable:
-  TCP-based channels after validation and approval
+  approved TCP-based channels after validation and approval, currently
+  VLESS Reality/TCP or another explicitly approved TCP runtime
 
 current or canary:
   TUIC / QUIC-style channels, explicit assignment, or narrowly approved
   temporary current-channel issuance
 
 comparison candidates:
-  H2/TCP, VLESS/XUDP, Hysteria2, and future protocol variants
+  VLESS/XUDP, Hysteria2, TUIC, and future protocol variants
 ```
 
 TUIC should not be deleted just because it is aggressive. It can remain useful
@@ -253,4 +300,5 @@ This design does not:
 - generate accounts, passwords, tokens, or subscription URLs;
 - change DNS, Nginx, firewall, provider security groups, or payment behavior;
 - implement live health-based automatic traffic steering;
-- make TUIC, Hysteria2, H3, or VLESS/XUDP default stable output by itself.
+- make TUIC, Hysteria2, H3, or VLESS/XUDP default stable output by itself;
+- restore Shadowsocks as default stable output.

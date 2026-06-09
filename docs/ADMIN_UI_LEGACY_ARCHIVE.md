@@ -1,10 +1,17 @@
 # Admin UI Legacy Archive
 
-Last updated: 2026-05-29, Asia/Shanghai.
+Last updated: 2026-06-08, America/Los_Angeles.
 
 This document archives the existing `admin/` application as a legacy local
 protected reference surface. It does not move, delete, deploy, expose, or
 replace any code.
+
+2026-06-08 clarification: this archive decision applies to the old public or
+product Admin direction. It does not authorize public Admin exposure, and it
+does not remove the current private / protected Admin shell from local testing
+or operator-only workflows. Current UI and portal work should still follow
+`docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md`, active service contracts, and
+live validation evidence.
 
 ## Status
 
