@@ -85,6 +85,7 @@
     "platform:access-inventory-summary": "node bin/gccgw.mjs platform access-inventory-summary",
     "platform:clean-edge-readiness-summary": "node bin/gccgw.mjs platform clean-edge-readiness-summary",
     "project-state:check": "node bin/gccgw.mjs project check",
+    "project:handoff-brief": "node bin/gccgw.mjs project handoff-brief",
     "project:verify": "node bin/gccgw.mjs project verify",
     "project:verify:admin": "node bin/gccgw.mjs project verify --with-admin",
     "project:architecture": "node bin/gccgw.mjs architecture",
@@ -106,6 +107,9 @@
     "admin:site:build": "npm run build:site --prefix admin",
     "admin:site:verify": "npm run verify:site-build --prefix admin",
     "admin:test": "npm run test --prefix admin"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.78.0"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

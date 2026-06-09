@@ -1076,7 +1076,10 @@ test("gccgw node policy-check reports stable protocol blockers without leaking e
   const report = JSON.parse(stdout.join(""));
   assert.equal(report.type, "gccgw_stable_pool_protocol_policy");
   assert.equal(report.ok, false);
-  assert.equal(report.blockers[0].code, "udp_quic_protocol_in_stable_pool");
+  assert.deepEqual(report.blockers.map((blocker) => blocker.code), [
+    "legacy_shadowsocks_not_default_stable",
+    "udp_quic_protocol_in_stable_pool"
+  ]);
   assert.equal(report.mutation, false);
   assert.equal(report.productionAuthority, false);
   assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|18388|ss-secret|tuic-secret/);

@@ -39,6 +39,7 @@ const DOMAIN_SOURCE_DOCS = {
 
 const NODE_SCRIPT_COMMAND_ENTRIES = [
   ["project check", "scripts/check-project-state.mjs", "project", "C", "read-only", "Validate project-state and repository safety markers"],
+  ["project handoff-brief", "scripts/project-handoff-brief.mjs", "project", "C", "report", "Generate a structured Claude handoff brief from cached project context", ["docs/PROJECT_CONTEXT.md"]],
   ["channel validate", "scripts/channel-config-dry-run.mjs", "channel", "B", "dry-run", "Validate channel configuration candidates", undefined, { surface: "operator", aliasOf: "gccgw channel dry-run" }],
   ["channel measure", "scripts/channel-measurement-bundle.mjs", "channel", "C", "report", "Build channel measurement bundle evidence", undefined, { surface: "operator", aliasOf: "gccgw channel measurement-bundle" }],
   ["channel decide", "scripts/channel-system-decision-flow.mjs", "channel", "C", "report", "Build end-to-end channel decision evidence", undefined, { surface: "operator", aliasOf: "gccgw channel system-decision-flow" }],
@@ -1927,6 +1928,7 @@ Usage:
   gccgw service status [--json]
   gccgw server start
   gccgw project check
+  gccgw project handoff-brief [--focus <text>] [--json] [--dry-run]
   gccgw project verify [--with-admin]
   gccgw env check
   gccgw ops network-status
