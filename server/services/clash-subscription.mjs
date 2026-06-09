@@ -23,6 +23,11 @@ const DEFAULT_PROVIDER_NAME = "globalcircle-pool";
 const DEFAULT_PROVIDER_PATH = "./providers/globalcircle-pool.yaml";
 const DEFAULT_PROVIDER_FETCH_INTERVAL = 3600;
 const DEFAULT_PROVIDER_HEALTH_INTERVAL = 300;
+const CONTROLLED_NODE_DOMAIN_SUFFIXES = [
+  "globalcirclecat.com",
+  "globalcirclecat.cloud",
+  "globalcirclecat.icu"
+];
 const INACTIVE_PROVIDER_STATUSES = new Set([
   "disabled",
   "maintenance",
@@ -36,6 +41,86 @@ const INACTIVE_PROVIDER_STATUSES = new Set([
   "offline",
   "retired"
 ]);
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function normalizedDomainHost(value) {
+  const normalized = text(value).toLowerCase().replace(/\.$/, "");
+  if (
+    !normalized ||
+    normalized === "localhost" ||
+    normalized.includes(":") ||
+    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalized) ||
+    /[^a-z0-9.-]/.test(normalized) ||
+    normalized.includes("..")
+  ) {
+    return "";
+  }
+  const labels = normalized.split(".");
+  if (labels.length < 2) {
+    return "";
+  }
+  if (labels.some((label) => !label || label.startsWith("-") || label.endsWith("-"))) {
+    return "";
+  }
+  return normalized;
+}
+
+function controlledNodeSuffix(host) {
+  return CONTROLLED_NODE_DOMAIN_SUFFIXES.find((suffix) => host === suffix || host.endsWith(`.${suffix}`)) || "";
+}
+
+function nodeDomainProtection(servers) {
+  const exact = [];
+  const suffixes = [];
+
+  for (const server of servers) {
+    const host = normalizedDomainHost(server.host);
+    if (!host) {
+      continue;
+    }
+    const suffix = controlledNodeSuffix(host);
+    if (!suffix) {
+      continue;
+    }
+    exact.push(host);
+    suffixes.push(suffix);
+  }
+
+  return {
+    exact: unique(exact),
+    suffixes: unique(suffixes)
+  };
+}
+
+function nodeDomainProtectionDnsLines(servers) {
+  const { exact, suffixes } = nodeDomainProtection(servers);
+  const filters = unique([
+    ...suffixes.map((suffix) => `+.${suffix}`),
+    ...exact
+  ]);
+  if (filters.length === 0) {
+    return [];
+  }
+  return [
+    "dns:",
+    "  enable: true",
+    "  enhanced-mode: fake-ip",
+    "  fake-ip-filter-mode: blacklist",
+    "  fake-ip-filter:",
+    ...filters.map((entry) => `    - ${yamlQuote(entry)}`)
+  ];
+}
+
+function nodeDomainProtectionRuleLines(servers) {
+  const { exact, suffixes } = nodeDomainProtection(servers);
+  return [
+    ...exact.map((host) => `  - DOMAIN,${host},DIRECT`),
+    ...suffixes.map((suffix) => `  - DOMAIN-SUFFIX,${suffix},DIRECT`)
+  ];
+}
 
 function normalizeProtocol(server) {
   const raw = text(server.protocol || server.clashType || server.type || "ss").toLowerCase();
@@ -110,6 +195,20 @@ function optionalStringListField(server, ...keys) {
   return [];
 }
 
+function optionalRealityOpts(server) {
+  const source =
+    server.realityOpts ||
+    server["reality-opts"] ||
+    server.realityOptions ||
+    {};
+  const publicKey = optionalTextField(source, "publicKey", "public-key");
+  const shortId = optionalTextField(source, "shortId", "short-id", "shortID");
+  if (!publicKey && !shortId) {
+    return null;
+  }
+  return { publicKey, shortId };
+}
+
 function clashProxy(server, index) {
   const protocol = normalizeProtocol(server);
   const base = {
@@ -139,6 +238,7 @@ function clashProxy(server, index) {
       serverName: optionalTextField(server, "serverName", "servername", "sni"),
       network: optionalTextField(server, "network"),
       flow: optionalTextField(server, "flow"),
+      realityOpts: optionalRealityOpts(server),
       clientFingerprint: optionalTextField(server, "clientFingerprint", "client-fingerprint")
     };
   }
@@ -422,6 +522,15 @@ function pushProxy(lines, server) {
   pushOptionalText(lines, "servername", server.serverName);
   pushOptionalText(lines, "network", server.network);
   pushOptionalText(lines, "flow", server.flow);
+  if (server.realityOpts) {
+    lines.push("    reality-opts:");
+    if (server.realityOpts.publicKey) {
+      lines.push(`      public-key: ${yamlQuote(server.realityOpts.publicKey)}`);
+    }
+    if (server.realityOpts.shortId) {
+      lines.push(`      short-id: ${yamlQuote(server.realityOpts.shortId)}`);
+    }
+  }
   pushOptionalText(lines, "client-fingerprint", server.clientFingerprint);
 }
 
@@ -525,6 +634,7 @@ export function generateMihomoRenderTemplate(proxyConfig, options = {}) {
   const servers = clashServers(proxyConfig);
   const lines = [
     ...mihomoCoreHeader(),
+    ...nodeDomainProtectionDnsLines(servers),
     "proxies:"
   ];
 
@@ -554,6 +664,7 @@ export function generateMihomoRenderTemplate(proxyConfig, options = {}) {
 
   lines.push(
     "rules:",
+    ...nodeDomainProtectionRuleLines(servers),
     "  - MATCH,GLOBAL",
     ""
   );
@@ -611,6 +722,7 @@ export function generateClashSubscription(proxyConfig, options = {}) {
     "mixed-port: 7897",
     "allow-lan: false",
     "mode: global",
+    ...nodeDomainProtectionDnsLines(servers),
     "proxies:"
   ];
 
@@ -659,6 +771,7 @@ export function generateClashSubscription(proxyConfig, options = {}) {
 
   lines.push(
     "rules:",
+    ...nodeDomainProtectionRuleLines(servers),
     "  - MATCH,GLOBAL",
     ""
   );

@@ -4,7 +4,7 @@ import {
   SHARED_NODE_MODE
 } from "./validation.mjs";
 
-const CONSERVATIVE_STABLE_PROTOCOLS = new Set(["ss"]);
+const CONSERVATIVE_STABLE_PROTOCOLS = new Set(["vless"]);
 const UDP_QUIC_STYLE_PROTOCOLS = new Set(["tuic", "hysteria2", "h3", "http3", "http-3", "quic"]);
 
 function text(value) {
@@ -96,6 +96,15 @@ export function buildStablePoolProtocolPolicy({ proxyConfig = {} } = {}) {
       continue;
     }
 
+    if (node.protocol === "ss") {
+      blockers.push(policyFinding("legacy_shadowsocks_not_default_stable", {
+        node: node.name,
+        protocol: node.protocol,
+        channelPool: node.channelPool
+      }));
+      continue;
+    }
+
     if (UDP_QUIC_STYLE_PROTOCOLS.has(node.protocol) && node.stableProtocolApproved) {
       warnings.push(policyFinding("udp_quic_protocol_in_stable_pool_operator_approved", {
         node: node.name,
@@ -108,6 +117,15 @@ export function buildStablePoolProtocolPolicy({ proxyConfig = {} } = {}) {
 
     if (UDP_QUIC_STYLE_PROTOCOLS.has(node.protocol)) {
       blockers.push(policyFinding("udp_quic_protocol_in_stable_pool", {
+        node: node.name,
+        protocol: node.protocol,
+        channelPool: node.channelPool
+      }));
+      continue;
+    }
+
+    if (node.protocol === "vless" && node.packetEncoding === "xudp") {
+      blockers.push(policyFinding("vless_xudp_not_default_stable", {
         node: node.name,
         protocol: node.protocol,
         channelPool: node.channelPool

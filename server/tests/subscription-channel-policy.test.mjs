@@ -50,26 +50,31 @@ test("stable pool protocol policy blocks UDP QUIC style stable nodes without lea
   assert.equal(report.ok, false);
   assert.equal(report.mutation, false);
   assert.equal(report.productionAuthority, false);
-  assert.equal(report.blockers[0].code, "udp_quic_protocol_in_stable_pool");
-  assert.equal(report.blockers[0].node, "stable-tuic");
-  assert.equal(report.blockers[0].protocol, "tuic");
+  assert.deepEqual(report.blockers.map((blocker) => blocker.code), [
+    "legacy_shadowsocks_not_default_stable",
+    "udp_quic_protocol_in_stable_pool"
+  ]);
+  assert.equal(report.blockers[1].node, "stable-tuic");
+  assert.equal(report.blockers[1].protocol, "tuic");
   assert.equal(report.nextAction, "restore_conservative_tcp_stable_capacity_or_move_candidate_to_canary");
   assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|18388|stable-secret|tuic-secret|11111111|22222222/);
 });
 
-test("stable pool protocol policy allows conservative stable TCP and keeps XUDP canary scoped", () => {
+test("stable pool protocol policy allows approved VLESS Reality TCP and keeps XUDP canary scoped", () => {
   const report = buildStablePoolProtocolPolicy({
     proxyConfig: {
       servers: [
         {
-          id: "node_stable_ss",
-          name: "stable-ss",
-          protocol: "shadowsocks-libev",
+          id: "node_stable_vless_reality_tcp",
+          name: "stable-vless-reality-tcp",
+          protocol: "vless",
           channelPool: "stable",
           host: "198.51.100.10",
-          port: 18388,
-          method: "aes-256-gcm",
-          password: "stable-secret"
+          port: 443,
+          network: "tcp",
+          uuid: "11111111-1111-4111-8111-111111111111",
+          stableProtocolApproved: true,
+          stableProtocolApprovalRef: "vless-reality-tcp-explicit-approval"
         },
         {
           id: "node_canary_xudp",
@@ -90,7 +95,37 @@ test("stable pool protocol policy allows conservative stable TCP and keeps XUDP 
   assert.deepEqual(report.blockers, []);
   assert.equal(report.warnings[0].code, "xudp_kept_out_of_default_stable_output");
   assert.equal(report.nextAction, "stable_pool_policy_ok");
-  assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|18388|stable-secret|22222222/);
+  assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|11111111|22222222/);
+});
+
+test("stable pool protocol policy blocks legacy Shadowsocks from default stable output", () => {
+  const report = buildStablePoolProtocolPolicy({
+    proxyConfig: {
+      servers: [
+        {
+          id: "node_stable_ss",
+          name: "stable-ss",
+          protocol: "shadowsocks-libev",
+          channelPool: "stable",
+          host: "198.51.100.10",
+          port: 18388,
+          method: "aes-256-gcm",
+          password: "stable-secret"
+        }
+      ]
+    }
+  });
+
+  assert.equal(report.ok, false);
+  assert.deepEqual(report.blockers, [
+    {
+      code: "legacy_shadowsocks_not_default_stable",
+      node: "stable-ss",
+      protocol: "ss",
+      channelPool: "stable"
+    }
+  ]);
+  assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|18388|stable-secret/);
 });
 
 test("stable pool protocol policy treats HTTP/3 as a QUIC canary protocol", () => {

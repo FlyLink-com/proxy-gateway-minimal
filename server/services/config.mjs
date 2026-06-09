@@ -12,6 +12,8 @@ const SENSITIVE_CONFIG_KEYS = new Set([
   "secret",
   "privatekey",
   "private-key",
+  "serverpassword",
+  "server-password",
   "obfspassword",
   "obfs-password"
 ]);
@@ -19,6 +21,10 @@ const SENSITIVE_CONFIG_KEYS = new Set([
 const RUNTIME_PLACEHOLDER_CONFIG_KEYS = new Set([
   ...SENSITIVE_CONFIG_KEYS,
   "host",
+  "publickey",
+  "public-key",
+  "shortid",
+  "short-id",
   "sni",
   "servername",
   "serverName"

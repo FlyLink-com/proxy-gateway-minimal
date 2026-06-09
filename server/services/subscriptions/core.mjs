@@ -85,10 +85,19 @@ export function createSubscriptionCore({
     return normalized;
   }
 
+  function optionalText(value) {
+    return String(value ?? "").trim();
+  }
+
   function normalizeCredentialMaterial(material = {}) {
     const uuid = requiredText(material.uuid, "material.uuid");
     const password = requiredText(material.password, "material.password");
-    return { uuid, password };
+    const credentialRef = optionalText(material.credentialRef);
+    return {
+      uuid,
+      password,
+      ...(credentialRef ? { credentialRef } : {})
+    };
   }
 
   function tenantCredentialKey(tenantId, nodeName) {
@@ -132,10 +141,20 @@ export function createSubscriptionCore({
         uuid: material.uuid
       };
     }
-    if (protocol === "hysteria2" || protocol === "ss") {
+    if (protocol === "hysteria2") {
+      const credentialRef = optionalText(material.credentialRef);
       return {
         ...server,
-        password: material.password
+        password: credentialRef ? `${credentialRef}:${material.password}` : material.password
+      };
+    }
+    if (protocol === "ss") {
+      const serverPassword = optionalText(server.serverPassword || server["server-password"]);
+      return {
+        ...server,
+        password: serverPassword
+          ? `${serverPassword}:${material.password}`
+          : material.password
       };
     }
     return {
@@ -270,7 +289,11 @@ export function createSubscriptionCore({
       throw notFoundError(tenantId);
     }
     const node = selectTenantNode(input.nodeId);
-    tenantCredentialMaterials.set(tenantCredentialKey(tenantId, node.name), normalizeCredentialMaterial(input.material));
+    const normalizedMaterial = normalizeCredentialMaterial({
+      ...input.material,
+      credentialRef: input.credentialRef || input.material?.credentialRef
+    });
+    tenantCredentialMaterials.set(tenantCredentialKey(tenantId, node.name), normalizedMaterial);
     return {
       ok: true,
       tenantId,

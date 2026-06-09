@@ -5,7 +5,7 @@ import {
 
 const DEFAULT_STATUS = "online";
 const DEFAULT_CHANNEL_POOL = "stable";
-const CHANNEL_POOLS = new Set(["stable", "private", "canary", "recovery"]);
+const CHANNEL_POOLS = new Set(["stable", "private", "canary", "recovery", "weak-network"]);
 const ACTIVE_LIFECYCLE = "active";
 const BLOCKED_LIFECYCLES = new Set([
   "deprecated",
@@ -20,6 +20,14 @@ const BLOCKED_LIFECYCLES = new Set([
 
 function text(value) {
   return String(value ?? "").trim();
+}
+
+function bundleRefFor(server) {
+  return text(
+    server.subscriptionBundleRef ||
+    server.channelBundleRef ||
+    server.bundleRef
+  );
 }
 
 function metadataToken(value) {
@@ -180,6 +188,12 @@ export function createNodeRegistry({ proxyConfig }) {
     .map(({ server, index, node }) => ({ server, index, priority: node.strategyPriority }))
     .sort(byStrategyPriority)
     .map(({ server }) => server);
+  const subscriptionBundleServers = (bundleRef) => namedServers()
+    .map((server, index) => ({ server, index, node: normalizeNode(server, index) }))
+    .filter(({ server, node }) => node.subscriptionEligible && bundleRefFor(server) === bundleRef)
+    .map(({ server, index, node }) => ({ server, index, priority: node.strategyPriority }))
+    .sort(byStrategyPriority)
+    .map(({ server }) => server);
   const firstDefaultSubscriptionServer = () => {
     const [server] = defaultSubscriptionServers();
     if (!server) {
@@ -205,9 +219,24 @@ export function createNodeRegistry({ proxyConfig }) {
     }
 
     if (defaultNode && node.name === defaultNode.name) {
+      const bundleRef = bundleRefFor(node);
+      if (bundleRef) {
+        return {
+          ...proxyConfig,
+          servers: subscriptionBundleServers(bundleRef)
+        };
+      }
       return {
         ...proxyConfig,
         servers: defaultServers
+      };
+    }
+
+    const bundleRef = bundleRefFor(node);
+    if (bundleRef) {
+      return {
+        ...proxyConfig,
+        servers: subscriptionBundleServers(bundleRef)
       };
     }
 
@@ -223,6 +252,7 @@ export function createNodeRegistry({ proxyConfig }) {
     listRenderableNodes,
     subscriptionEligibleServers,
     defaultSubscriptionServers,
+    subscriptionBundleServers,
     firstDefaultSubscriptionServer,
     resolveNode,
     resolveAssignableNode,

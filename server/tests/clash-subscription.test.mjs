@@ -87,6 +87,47 @@ test("generateClashSubscription emits safe lifecycle comments when provided", ()
   assert.doesNotMatch(yaml, /tenant_|pgsub_|password=/);
 });
 
+test("generateClashSubscription protects node domains from fake-ip self-routing", () => {
+  const yaml = generateClashSubscription({
+    servers: [
+      {
+        name: "japan-vless",
+        host: "sub.globalcirclecat.cloud",
+        port: 8443,
+        protocol: "vless",
+        uuid: "11111111-1111-4111-8111-111111111111",
+        udp: true,
+        tls: true,
+        serverName: "www.cloudflare.com",
+        network: "tcp",
+        flow: "xtls-rprx-vision",
+        realityOpts: {
+          publicKey: "synthetic-public-key",
+          shortId: "synthetic-short-id"
+        }
+      },
+      {
+        name: "singapore-hy2",
+        host: "portal.globalcirclecat.icu",
+        port: 10443,
+        protocol: "hysteria2",
+        password: "synthetic-hy2-secret",
+        sni: "globalcirclecat.icu",
+        alpn: ["h3"]
+      }
+    ]
+  });
+
+  assert.match(yaml, /dns:\n  enable: true\n  enhanced-mode: fake-ip/);
+  assert.match(yaml, /fake-ip-filter:\n(?:    - .+\n)+/);
+  assert.match(yaml, /  - "\+\.globalcirclecat\.cloud"/);
+  assert.match(yaml, /  - "\+\.globalcirclecat\.icu"/);
+  assert.match(yaml, /  - "sub\.globalcirclecat\.cloud"/);
+  assert.match(yaml, /  - "portal\.globalcirclecat\.icu"/);
+  assert.match(yaml, /rules:\n  - DOMAIN,sub\.globalcirclecat\.cloud,DIRECT\n  - DOMAIN,portal\.globalcirclecat\.icu,DIRECT\n  - DOMAIN-SUFFIX,globalcirclecat\.cloud,DIRECT\n  - DOMAIN-SUFFIX,globalcirclecat\.icu,DIRECT\n  - MATCH,GLOBAL/);
+  assert.doesNotMatch(yaml, /- DIRECT\n/);
+});
+
 test("generateClashSubscription uses configured names as provider-neutral labels", () => {
   const yaml = generateClashSubscription({
     servers: [
@@ -157,6 +198,38 @@ test("generateClashSubscription emits VLESS XUDP candidate YAML", () => {
   assert.match(yaml, /type: fallback/);
   assert.match(yaml, /- AUTO/);
   assert.match(yaml, /- FALLBACK/);
+});
+
+test("generateClashSubscription emits VLESS Reality TCP fields", () => {
+  const yaml = generateClashSubscription({
+    servers: [
+      {
+        name: "vless-reality-stable",
+        host: "vless.example.test",
+        port: 443,
+        protocol: "vless",
+        uuid: "11111111-1111-4111-8111-111111111111",
+        network: "tcp",
+        udp: true,
+        tls: true,
+        flow: "xtls-rprx-vision",
+        serverName: "www.example.test",
+        realityOpts: {
+          publicKey: "synthetic-public-key",
+          shortId: "synthetic-short-id"
+        },
+        clientFingerprint: "chrome"
+      }
+    ]
+  });
+
+  assert.match(yaml, /name: "vless-reality-stable"/);
+  assert.match(yaml, /type: vless/);
+  assert.match(yaml, /network: "tcp"/);
+  assert.match(yaml, /flow: "xtls-rprx-vision"/);
+  assert.match(yaml, /servername: "www\.example\.test"/);
+  assert.match(yaml, /reality-opts:\n      public-key: "synthetic-public-key"\n      short-id: "synthetic-short-id"/);
+  assert.match(yaml, /client-fingerprint: "chrome"/);
 });
 
 test("generateClashSubscription emits Hysteria2 and TUIC candidate YAML", () => {

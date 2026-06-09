@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
-const ALLOWED_RUNTIMES = new Set(["mihomo-tuic"]);
+const ALLOWED_RUNTIMES = new Set([
+  "mihomo-tuic",
+  "sing-box-ss",
+  "xray-vless-reality",
+  "hysteria2"
+]);
 const ALLOWED_ACTIVATION_SURFACES = new Set(["explicit-restart"]);
 const RUNTIME_RECEIPT_STATUSES = new Set([
   "applied",
@@ -10,6 +15,7 @@ const RUNTIME_RECEIPT_STATUSES = new Set([
   "rolled_back",
   "drift_detected"
 ]);
+const SUCCESS_RUNTIME_RECEIPT_STATUSES = new Set(["applied", "pending"]);
 
 const SENSITIVE_KEYS = new Set([
   "apiKey",
@@ -151,6 +157,15 @@ function sanitizeRuntimeReceipt(receipt = {}) {
     }
   }
 
+  const handoffRef = text(source.handoffRef);
+  if (handoffRef) {
+    if (SAFE_REF_PATTERN.test(handoffRef)) {
+      sanitized.handoffRef = handoffRef;
+    } else {
+      issues.push(blocker("invalid_runtime_handoff_ref", "runtimeReceipt.handoffRef"));
+    }
+  }
+
   if (isPlainObject(source.configTest)) {
     const exitCode = safeInteger(source.configTest.exitCode);
     sanitized.configTest = {
@@ -173,7 +188,8 @@ function sanitizeRuntimeReceipt(receipt = {}) {
 
   if (isPlainObject(source.listener)) {
     sanitized.listener = {
-      udp443: bool(source.listener.udp443)
+      udp443: bool(source.listener.udp443),
+      tcp: bool(source.listener.tcp)
     };
   }
 
@@ -481,12 +497,14 @@ export function buildCredentialReconciliationApplyPlan({
     type: "gccgw_edge_credential_reconciliation_apply_plan",
     generatedBy: "gccgw edge credentials apply",
     mode: "apply",
-    ok: sanitizedRuntimeReceipt.receipt.status === "applied",
+    ok: SUCCESS_RUNTIME_RECEIPT_STATUSES.has(sanitizedRuntimeReceipt.receipt.status),
     blockers,
     runtimeReceipt: sanitizedRuntimeReceipt.receipt,
     nextAction: sanitizedRuntimeReceipt.receipt.status === "applied"
       ? "validate_runtime_state"
-      : "review_runtime_apply_receipt",
+      : sanitizedRuntimeReceipt.receipt.status === "pending"
+        ? "complete_data_plane_handoff"
+        : "review_runtime_apply_receipt",
     mutation: sanitizedRuntimeReceipt.mutation,
     productionAuthority: false,
     redacted: true

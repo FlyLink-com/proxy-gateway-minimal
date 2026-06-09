@@ -21,11 +21,25 @@ function requiredSafeRef(value, field) {
 }
 
 function defaultPasswordFactory() {
-  return randomBytes(24).toString("base64url");
+  return randomBytes(32).toString("base64");
 }
 
 function defaultUuidFactory() {
   return randomUUID();
+}
+
+export function edgeCredentialRefForOrderChannel(orderRef, channelRef, { singleChannel = false } = {}) {
+  const safeOrderRef = requiredSafeRef(orderRef, "orderRef");
+  if (singleChannel) {
+    return `edgecred_${safeOrderRef}`;
+  }
+  const safeChannelRef = requiredSafeRef(channelRef, "channelRef");
+  const fullRef = `edgecred_${safeOrderRef}_${safeChannelRef}`;
+  if (SAFE_REF_PATTERN.test(fullRef)) {
+    return fullRef;
+  }
+  const channelDigest = createHash("sha256").update(safeChannelRef).digest("hex").slice(0, 16);
+  return requiredSafeRef(`edgecred_${safeOrderRef}_${channelDigest}`, "credentialRef");
 }
 
 function materialDigestFor(material) {
@@ -37,62 +51,97 @@ function materialDigestFor(material) {
   return `sha256:${digest}`;
 }
 
+function normalizeChannelRefs({ channelRef, channelRefs } = {}) {
+  const refs = Array.isArray(channelRefs) && channelRefs.length > 0
+    ? channelRefs
+    : [channelRef];
+  const normalized = [];
+  const seen = new Set();
+  for (const ref of refs) {
+    const safeRef = requiredSafeRef(ref, "channelRef");
+    if (!seen.has(safeRef)) {
+      seen.add(safeRef);
+      normalized.push(safeRef);
+    }
+  }
+  return normalized;
+}
+
 export function createOrderEdgeCredentialIssuer({
   channelRef,
+  channelRefs,
   materialStore,
   credentialRefFactory,
   uuidFactory = defaultUuidFactory,
   passwordFactory = defaultPasswordFactory
 } = {}) {
-  const safeChannelRef = requiredSafeRef(channelRef, "channelRef");
+  const safeChannelRefs = normalizeChannelRefs({ channelRef, channelRefs });
+  const [primaryChannelRef] = safeChannelRefs;
   if (!materialStore || typeof materialStore.putCredentialMaterial !== "function") {
     throw issuerError("validation_error", "materialStore is required");
   }
 
-  return {
-    ensureCredentialForOrder(order = {}) {
-      const orderRef = requiredSafeRef(order.id || order.requestRef, "orderRef");
-      const credentialRef = requiredSafeRef(
-        typeof credentialRefFactory === "function"
-          ? credentialRefFactory({ orderRef, order })
-          : `edgecred_${orderRef}`,
-        "credentialRef"
-      );
+  function ensureCredentialForChannel(order = {}, channelRefForOrder, { singleChannelCredentialRef = safeChannelRefs.length === 1 } = {}) {
+    const orderRef = requiredSafeRef(order.id || order.requestRef, "orderRef");
+    const safeChannelRef = requiredSafeRef(channelRefForOrder, "channelRef");
+    const credentialRef = requiredSafeRef(
+      typeof credentialRefFactory === "function"
+        ? credentialRefFactory({ orderRef, order, channelRef: safeChannelRef })
+        : edgeCredentialRefForOrderChannel(orderRef, safeChannelRef, {
+          singleChannel: singleChannelCredentialRef
+        }),
+      "credentialRef"
+    );
 
-      const existing = typeof materialStore.getCredentialMaterialSummary === "function"
-        ? materialStore.getCredentialMaterialSummary(credentialRef)
+    const existing = typeof materialStore.getCredentialMaterialSummary === "function"
+      ? materialStore.getCredentialMaterialSummary(credentialRef)
+      : null;
+    if (existing) {
+      const existingMaterial = typeof materialStore.resolveCredentialMaterial === "function"
+        ? materialStore.resolveCredentialMaterial(existing.credentialRef)
         : null;
-      if (existing) {
-        const existingMaterial = typeof materialStore.resolveCredentialMaterial === "function"
-          ? materialStore.resolveCredentialMaterial(existing.credentialRef)
-          : null;
-        return {
-          edgeChannelRef: safeChannelRef,
-          edgeCredentialRef: existing.credentialRef,
-          edgeMaterialDigest: existing.materialDigest,
-          ...(existingMaterial ? { edgeCredentialMaterial: existingMaterial } : {})
-        };
-      }
-
-      const material = {
-        uuid: text(uuidFactory({ orderRef, order })),
-        password: text(passwordFactory({ orderRef, order }))
-      };
-      if (!material.uuid || !material.password) {
-        throw issuerError("validation_error", "edge credential material is incomplete");
-      }
-      const materialDigest = materialDigestFor(material);
-      const summary = materialStore.putCredentialMaterial({
-        credentialRef,
-        materialDigest,
-        material
-      });
       return {
         edgeChannelRef: safeChannelRef,
-        edgeCredentialRef: summary.credentialRef,
-        edgeMaterialDigest: summary.materialDigest,
-        edgeCredentialMaterial: material
+        edgeCredentialRef: existing.credentialRef,
+        edgeMaterialDigest: existing.materialDigest,
+        ...(existingMaterial ? { edgeCredentialMaterial: existingMaterial } : {})
       };
+    }
+
+    const material = {
+      uuid: text(uuidFactory({ orderRef, order, channelRef: safeChannelRef })),
+      password: text(passwordFactory({ orderRef, order, channelRef: safeChannelRef }))
+    };
+    if (!material.uuid || !material.password) {
+      throw issuerError("validation_error", "edge credential material is incomplete");
+    }
+    const materialDigest = materialDigestFor(material);
+    const summary = materialStore.putCredentialMaterial({
+      credentialRef,
+      materialDigest,
+      material
+    });
+    return {
+      edgeChannelRef: safeChannelRef,
+      edgeCredentialRef: summary.credentialRef,
+      edgeMaterialDigest: summary.materialDigest,
+      edgeCredentialMaterial: material
+    };
+  }
+
+  return {
+    ensureCredentialForOrder(order = {}) {
+      return ensureCredentialForChannel(order, primaryChannelRef);
+    },
+
+    ensureCredentialsForOrder(order = {}) {
+      const orderChannelRefs = Array.isArray(order.channelRefs) && order.channelRefs.length > 0
+        ? normalizeChannelRefs({ channelRefs: order.channelRefs })
+        : safeChannelRefs;
+      const singleChannelCredentialRef = orderChannelRefs.length === 1;
+      return orderChannelRefs.map((safeChannelRef) => ensureCredentialForChannel(order, safeChannelRef, {
+        singleChannelCredentialRef
+      }));
     }
   };
 }

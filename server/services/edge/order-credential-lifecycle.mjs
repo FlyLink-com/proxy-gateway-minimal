@@ -55,6 +55,8 @@ function receiptFromReport({
     configTestOk: runtimeReceipt.configTest?.ok === true,
     serviceActive: runtimeReceipt.service?.active === true,
     listenerUdp443: runtimeReceipt.listener?.udp443 === true,
+    listenerTcp: runtimeReceipt.listener?.tcp === true,
+    ...(runtimeReceipt.handoffRef ? { handoffRef: runtimeReceipt.handoffRef } : {}),
     backupRef: runtimeReceipt.backupRef,
     rollbackRef: runtimeReceipt.rollbackRef,
     appliedAt: runtimeReceipt.appliedAt,
@@ -64,6 +66,7 @@ function receiptFromReport({
 
 export function createOrderCredentialLifecycleService({
   channelRef,
+  runtime = "mihomo-tuic",
   nowFn = () => new Date(),
   listOrders,
   listCurrentCredentials = () => [],
@@ -98,6 +101,7 @@ export function createOrderCredentialLifecycleService({
       const desiredState = buildEdgeCredentialDesiredState({
         channelRef: safeChannelRef,
         desiredStateRef,
+        runtime,
         now: nowIso,
         orders: listOrders(),
         currentCredentials: listCurrentCredentials()
@@ -134,6 +138,51 @@ export function createOrderCredentialLifecycleService({
       }
 
       return report;
+    }
+  };
+}
+
+export function createOrderCredentialLifecycleFanoutService({
+  services = []
+} = {}) {
+  const normalizedServices = services
+    .map((entry) => ({
+      channelRef: safeRef(entry?.channelRef),
+      service: entry?.service
+    }))
+    .filter((entry) => entry.channelRef && entry.service && typeof entry.service.reconcileOrderLifecycle === "function");
+  if (normalizedServices.length === 0) {
+    throw edgeError("validation_error", "at least one lifecycle service is required");
+  }
+
+  return {
+    reconcileOrderLifecycle(input = {}) {
+      const reports = normalizedServices.map(({ channelRef, service }) => ({
+        channelRef,
+        report: service.reconcileOrderLifecycle(input)
+      }));
+      const ok = reports.every(({ report }) => report?.ok !== false);
+      return {
+        type: "gccgw_edge_credential_lifecycle_fanout_report",
+        ok,
+        mode: "fanout",
+        channelRefs: reports.map(({ channelRef }) => channelRef),
+        reports: reports.map(({ channelRef, report }) => ({
+          channelRef,
+          ok: report?.ok !== false,
+          type: report?.type,
+          runtime: report?.runtime,
+          summary: report?.summary,
+          blockers: Array.isArray(report?.blockers) ? report.blockers : [],
+          warnings: Array.isArray(report?.warnings) ? report.warnings : [],
+          mutation: report?.mutation === true,
+          nextAction: report?.nextAction
+        })),
+        mutation: reports.some(({ report }) => report?.mutation === true),
+        productionAuthority: false,
+        redacted: true,
+        nextAction: ok ? "lifecycle_fanout_applied" : "stop_before_runtime_mutation"
+      };
     }
   };
 }

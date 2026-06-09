@@ -22,10 +22,23 @@ import { createPortalHumanChallengeService } from "./services/platform/portal-hu
 import { createPortalPasswordCredentialService } from "./services/platform/portal-password-credentials.mjs";
 import { createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
 import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
+import { createHysteria2UsageCollector } from "./services/edge/hysteria2-usage-collector.mjs";
+import { createRuntimeUsageAccountingService } from "./services/platform/runtime-usage-accounting.mjs";
+import { createTrafficAccountingService } from "./services/platform/traffic-accounting.mjs";
 import { createFileBackedEdgeCredentialMaterialStore } from "./services/edge/credential-material-store.mjs";
-import { createOrderEdgeCredentialIssuer } from "./services/edge/order-credential-issuer.mjs";
-import { createOrderCredentialLifecycleService } from "./services/edge/order-credential-lifecycle.mjs";
+import {
+  createOrderEdgeCredentialIssuer,
+  edgeCredentialRefForOrderChannel
+} from "./services/edge/order-credential-issuer.mjs";
+import {
+  createOrderCredentialLifecycleFanoutService,
+  createOrderCredentialLifecycleService
+} from "./services/edge/order-credential-lifecycle.mjs";
 import { createMihomoTuicHostRuntimeAdapter } from "./services/edge/mihomo-tuic-host-runtime-adapter.mjs";
+import { createSingBoxSsHostRuntimeAdapter } from "./services/edge/sing-box-ss-runtime-adapter.mjs";
+import { createXrayVlessRealityHostRuntimeAdapter } from "./services/edge/xray-vless-reality-runtime-adapter.mjs";
+import { createHysteria2HostRuntimeAdapter } from "./services/edge/hysteria2-runtime-adapter.mjs";
+import { createDataPlaneHandoffRuntimeAdapter } from "./services/edge/data-plane-handoff-runtime-adapter.mjs";
 import { spawn } from "node:child_process";
 
 function rootPathFrom(rootDir) {
@@ -43,7 +56,23 @@ function parseCsv(value, fallback) {
   return items.length > 0 ? items : fallback;
 }
 
-function envFlag(value) {
+function mergeCsvValues(...values) {
+  const merged = [];
+  const seen = new Set();
+  for (const value of values) {
+    for (const item of parseCsv(value, [])) {
+      if (!seen.has(item)) {
+        seen.add(item);
+        merged.push(item);
+      }
+    }
+  }
+  return merged;
+}
+
+function envFlag(value, fallback = false) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return fallback;
   return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
 }
 
@@ -62,9 +91,185 @@ function runtimeValidationError(message) {
   return error;
 }
 
-function edgeCredentialRefForRequestId(requestId) {
+function isLoopbackHostname(hostname) {
+  const normalized = String(hostname || "").trim().toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
+}
+
+function normalizeHysteria2TrafficStatsUrl(value) {
+  const raw = optionalEnvText(value);
+  if (!raw) {
+    throw runtimeValidationError("EDGE_HYSTERIA2_TRAFFIC_STATS_LISTEN is required when usage collection is enabled");
+  }
+  const candidate = raw.includes("://") ? raw : `http://${raw}`;
+  let url;
+  try {
+    url = new URL(candidate);
+  } catch {
+    throw runtimeValidationError("EDGE_HYSTERIA2_TRAFFIC_STATS_LISTEN must be a loopback HTTP address");
+  }
+  if (url.protocol !== "http:" || !isLoopbackHostname(url.hostname)) {
+    throw runtimeValidationError("Hysteria2 traffic stats API must be loopback-only HTTP");
+  }
+  if (!url.pathname || url.pathname === "/") {
+    url.pathname = "/traffic";
+  }
+  return url;
+}
+
+function createHysteria2TrafficStatsReader({
+  listen,
+  secret,
+  fetchFn = globalThis.fetch
+} = {}) {
+  const trafficUrl = normalizeHysteria2TrafficStatsUrl(listen);
+  const statsSecret = optionalEnvText(secret);
+  if (typeof fetchFn !== "function") {
+    throw runtimeValidationError("fetch is required for Hysteria2 traffic stats collection");
+  }
+
+  return async function readHysteria2TrafficStats({ clear } = {}) {
+    const url = new URL(trafficUrl.toString());
+    if (clear === true) {
+      url.searchParams.set("clear", "1");
+    }
+    const headers = {};
+    if (statsSecret) {
+      headers.Authorization = statsSecret;
+    }
+    const response = await fetchFn(url, { headers });
+    if (!response?.ok) {
+      throw runtimeValidationError("Hysteria2 traffic stats API request failed");
+    }
+    return await response.json();
+  };
+}
+
+function proxyServerRef(server = {}) {
+  return optionalEnvText(server.name || server.id || server.ref || server.channelRef);
+}
+
+function proxyServerRefSet(proxyConfig = {}) {
+  return new Set(
+    (Array.isArray(proxyConfig?.servers) ? proxyConfig.servers : [])
+      .map(proxyServerRef)
+      .filter(Boolean)
+  );
+}
+
+function filterConfiguredProxyRefs(refs = [], configuredRefs = new Set()) {
+  const normalizedRefs = Array.isArray(refs) ? refs : parseCsv(refs, []);
+  if (!configuredRefs || configuredRefs.size === 0) {
+    return normalizedRefs;
+  }
+  return normalizedRefs.filter((ref) => configuredRefs.has(ref));
+}
+
+function missingConfiguredProxyRefs(refs = [], configuredRefs = new Set()) {
+  const normalizedRefs = Array.isArray(refs) ? refs : parseCsv(refs, []);
+  if (!configuredRefs || configuredRefs.size === 0) {
+    return [];
+  }
+  const missing = [];
+  const seen = new Set();
+  for (const ref of normalizedRefs) {
+    if (!configuredRefs.has(ref) && !seen.has(ref)) {
+      seen.add(ref);
+      missing.push(ref);
+    }
+  }
+  return missing;
+}
+
+function assertProxyRefsConfigured(label, refs, configuredRefs = new Set()) {
+  const missing = missingConfiguredProxyRefs(refs, configuredRefs);
+  if (missing.length > 0) {
+    throw runtimeValidationError(`${label} contains refs not present in proxy config: ${missing.join(", ")}`);
+  }
+}
+
+function isHysteria2ProxyServer(server = {}) {
+  const protocol = optionalEnvText(server.protocol || server.type).toLowerCase();
+  const runtimeAdapter = optionalEnvText(server.runtimeAdapter).toLowerCase();
+  return protocol === "hysteria2" || protocol === "hy2" || runtimeAdapter.includes("hysteria2");
+}
+
+function runtimeFromProxyServer(server = {}, fallback = "mihomo-tuic") {
+  const protocol = optionalEnvText(server.protocol || server.type).toLowerCase();
+  const runtimeAdapter = optionalEnvText(server.runtimeAdapter).toLowerCase();
+  if (protocol === "hysteria2" || protocol === "hy2" || runtimeAdapter.includes("hysteria2")) {
+    return "hysteria2";
+  }
+  if (protocol === "vless" || runtimeAdapter.includes("vless")) {
+    return "xray-vless-reality";
+  }
+  if (protocol === "ss" || protocol === "shadowsocks" || runtimeAdapter.includes("sing-box-ss")) {
+    return "sing-box-ss";
+  }
+  if (protocol === "tuic" || runtimeAdapter.includes("tuic")) {
+    return "mihomo-tuic";
+  }
+  return fallback;
+}
+
+function createEnvEdgeUsageCollectors({
+  env,
+  proxyConfig,
+  edgeChannelRefs,
+  hysteria2TrafficReader,
+  fetchFn,
+  nowFn
+} = {}) {
+  if (!envFlag(env.EDGE_USAGE_COLLECTOR_ENABLED || env.EDGE_USAGE_ACCOUNTING_ENABLED)) {
+    return [];
+  }
+
+  const configuredServers = Array.isArray(proxyConfig?.servers) ? proxyConfig.servers : [];
+  const allowedChannelRefs = new Set(edgeChannelRefs.map((ref) => optionalEnvText(ref)).filter(Boolean));
+  const hy2ChannelRefs = configuredServers
+    .filter(isHysteria2ProxyServer)
+    .map(proxyServerRef)
+    .filter((channelRef) => channelRef && (allowedChannelRefs.size === 0 || allowedChannelRefs.has(channelRef)));
+  if (hy2ChannelRefs.length === 0) {
+    return [];
+  }
+
+  const trafficReader = typeof hysteria2TrafficReader === "function"
+    ? hysteria2TrafficReader
+    : createHysteria2TrafficStatsReader({
+      listen: env.EDGE_HYSTERIA2_TRAFFIC_STATS_LISTEN,
+      secret: env.EDGE_HYSTERIA2_TRAFFIC_STATS_SECRET,
+      fetchFn
+    });
+
+  return [...new Set(hy2ChannelRefs)].map((channelRef) => ({
+    channelRef,
+    ...createHysteria2UsageCollector({
+      channelRef,
+      trafficReader,
+      nowFn
+    })
+  }));
+}
+
+function edgeCredentialRefForRequestId(requestId, channelRef = "", options = {}) {
   const normalized = String(requestId || "").trim();
-  return normalized ? `edgecred_${normalized}` : "";
+  if (!normalized) return "";
+  if (channelRef) {
+    return edgeCredentialRefForOrderChannel(normalized, channelRef, options);
+  }
+  return edgeCredentialRefForOrderChannel(normalized, "legacy", { singleChannel: true });
+}
+
+function edgeCredentialRefCandidatesForRequestId(requestId, channelRef = "") {
+  const refs = [];
+  const channelCredentialRef = channelRef
+    ? edgeCredentialRefForRequestId(requestId, channelRef, { singleChannel: false })
+    : "";
+  const legacyCredentialRef = edgeCredentialRefForRequestId(requestId);
+  if (channelCredentialRef) refs.push(channelCredentialRef);
+  if (legacyCredentialRef && !refs.includes(legacyCredentialRef)) refs.push(legacyCredentialRef);
+  return refs;
 }
 
 function controlSafeRef(prefix, value) {
@@ -83,13 +288,13 @@ function durableEdgeCredentialOrders({ controlStore, materialStore, nodeId } = {
   ) {
     return [];
   }
-  return controlStore.listIssuedSubscriptionBindings({ nodeId })
+  return controlStore.listIssuedSubscriptionBindings()
     .map((binding) => {
-      const edgeCredentialRef = edgeCredentialRefForRequestId(binding.requestId);
-      if (!edgeCredentialRef) {
-        return null;
-      }
-      const materialSummary = materialStore.getCredentialMaterialSummary(edgeCredentialRef);
+      const credentialRefs = edgeCredentialRefCandidatesForRequestId(binding.requestId, nodeId)
+        .filter((credentialRef) => credentialRef && (!nodeId || credentialRef !== edgeCredentialRefForRequestId(binding.requestId) || binding.nodeId === nodeId));
+      const materialSummary = credentialRefs
+        .map((credentialRef) => materialStore.getCredentialMaterialSummary(credentialRef))
+        .find(Boolean);
       if (!materialSummary) {
         return null;
       }
@@ -99,7 +304,7 @@ function durableEdgeCredentialOrders({ controlStore, materialStore, nodeId } = {
         status: "issued",
         expiresAt: binding.validUntil,
         validUntil: binding.validUntil,
-        edgeChannelRef: binding.nodeId,
+        edgeChannelRef: nodeId || binding.nodeId,
         edgeCredentialRef: materialSummary.credentialRef,
         edgeMaterialDigest: materialSummary.materialDigest
       };
@@ -112,12 +317,34 @@ function mergeEdgeCredentialOrders(...orderLists) {
   for (const order of orderLists.flat()) {
     const orderRef = String(order?.id || order?.requestRef || "").trim();
     if (orderRef) {
-      byRef.set(orderRef, order);
+      const existing = byRef.get(orderRef);
+      if (!existing || edgeCredentialOrderPriority(order) >= edgeCredentialOrderPriority(existing)) {
+        byRef.set(orderRef, order);
+      }
     }
   }
   return [...byRef.values()].sort((a, b) =>
     String(a.id || a.requestRef).localeCompare(String(b.id || b.requestRef))
   );
+}
+
+function edgeCredentialOrderPriority(order = {}) {
+  const orderRef = String(order?.id || order?.requestRef || "").trim();
+  const credentialRef = String(order?.edgeCredentialRef || order?.credentialRef || "").trim();
+  const channelRef = String(order?.edgeChannelRef || order?.channelRef || "").trim();
+  if (!orderRef || !credentialRef) {
+    return 0;
+  }
+  if (
+    channelRef
+    && credentialRef === edgeCredentialRefForRequestId(orderRef, channelRef, { singleChannel: false })
+  ) {
+    return 3;
+  }
+  if (credentialRef === edgeCredentialRefForRequestId(orderRef)) {
+    return 1;
+  }
+  return 2;
 }
 
 function resolveTenantCredentialMaterialFromStores({ controlStore, materialStore, tenantId, nodeId } = {}) {
@@ -138,11 +365,22 @@ function resolveTenantCredentialMaterialFromStores({ controlStore, materialStore
     binding = controlStore.findIssuedSubscriptionBindingByTenantRef(tenantRef);
     if (binding) break;
   }
-  if (!binding || String(binding.nodeId || "") !== String(nodeId || "")) {
+  if (!binding) {
     return null;
   }
-  const edgeCredentialRef = edgeCredentialRefForRequestId(binding.requestId);
-  return edgeCredentialRef ? materialStore.resolveCredentialMaterial(edgeCredentialRef) : null;
+  for (const credentialRef of edgeCredentialRefCandidatesForRequestId(binding.requestId, nodeId)) {
+    if (credentialRef === edgeCredentialRefForRequestId(binding.requestId) && String(binding.nodeId || "") !== String(nodeId || "")) {
+      continue;
+    }
+    const material = materialStore.resolveCredentialMaterial(credentialRef);
+    if (material) {
+      return {
+        ...material,
+        credentialRef
+      };
+    }
+  }
+  return null;
 }
 
 export function createRuntimeState(options = {}) {
@@ -165,6 +403,41 @@ export function createRuntimeState(options = {}) {
     configPath: proxyConfigPath,
     env
   });
+  const userPortalRoutesEnabled = envFlag(env.USER_PORTAL_ROUTES_ENABLED);
+  const configuredServers = Array.isArray(proxyConfig?.servers) ? proxyConfig.servers : [];
+  const configuredProxyRefs = proxyServerRefSet(proxyConfig);
+  const edgeLifecycleEnabled = envFlag(env.USER_PORTAL_EDGE_LIFECYCLE_ENABLED || env.EDGE_CREDENTIAL_LIFECYCLE_ENABLED);
+  const autoIssuanceEnabled = envFlag(env.USER_PORTAL_AUTO_ISSUANCE_ENABLED);
+  const configuredEdgeChannelRef = optionalEnvText(env.USER_PORTAL_EDGE_CHANNEL_REF || env.EDGE_CREDENTIAL_CHANNEL_REF);
+  const requestedEdgeChannelRefs = mergeCsvValues(
+    configuredEdgeChannelRef,
+    env.EDGE_CREDENTIAL_CHANNEL_REFS,
+    env.USER_PORTAL_EDGE_CHANNEL_REFS
+  );
+  if (autoIssuanceEnabled) {
+    assertProxyRefsConfigured(
+      "USER_PORTAL_AUTO_ISSUANCE_CHANNEL_REFS",
+      mergeCsvValues(env.USER_PORTAL_AUTO_ISSUANCE_CHANNEL_REFS || requestedEdgeChannelRefs.join(",")),
+      configuredProxyRefs
+    );
+  }
+  if (edgeLifecycleEnabled) {
+    assertProxyRefsConfigured(
+      "USER_PORTAL_EDGE_CHANNEL_REFS/EDGE_CREDENTIAL_CHANNEL_REFS",
+      requestedEdgeChannelRefs,
+      configuredProxyRefs
+    );
+  }
+  const edgeChannelRefs = filterConfiguredProxyRefs(requestedEdgeChannelRefs, configuredProxyRefs);
+  const edgeChannelRef = (
+    configuredEdgeChannelRef && (!configuredProxyRefs.size || configuredProxyRefs.has(configuredEdgeChannelRef))
+      ? configuredEdgeChannelRef
+      : edgeChannelRefs[0]
+  ) || "";
+  const autoIssuanceChannelRefs = filterConfiguredProxyRefs(
+    mergeCsvValues(edgeChannelRefs.join(","), env.USER_PORTAL_AUTO_ISSUANCE_CHANNEL_REFS),
+    configuredProxyRefs
+  );
   const subscriptionDbPath = options.subscriptionDbPath || env.SUBSCRIPTION_DB_PATH || join(rootDir, ".proxy-gateway", "subscriptions.sqlite");
   const controlDbPath = options.controlDbPath
     || env.SUBSCRIPTION_CONTROL_DB_PATH
@@ -199,12 +472,10 @@ export function createRuntimeState(options = {}) {
   const platformAccessShell = options.platformAccessShell || createPlatformSubscriptionAccessShell({
     accountShell: platformAccountShell
   });
-  const userPortalRoutesEnabled = envFlag(env.USER_PORTAL_ROUTES_ENABLED);
-  const edgeLifecycleEnabled = envFlag(env.USER_PORTAL_EDGE_LIFECYCLE_ENABLED || env.EDGE_CREDENTIAL_LIFECYCLE_ENABLED);
-  const edgeChannelRef = optionalEnvText(env.USER_PORTAL_EDGE_CHANNEL_REF || env.EDGE_CREDENTIAL_CHANNEL_REF);
   let edgeCredentialIssuer = options.edgeCredentialIssuer || null;
   let edgeLifecycleService = options.edgeLifecycleService || null;
   let edgeRuntimeAdapter = options.edgeRuntimeAdapter || null;
+  let edgeRuntime = "mihomo-tuic";
   let platformPortalAccessRequests;
 
   if (edgeLifecycleEnabled) {
@@ -222,48 +493,215 @@ export function createRuntimeState(options = {}) {
     }
     edgeCredentialIssuer = edgeCredentialIssuer || createOrderEdgeCredentialIssuer({
       channelRef: edgeChannelRef,
+      channelRefs: edgeChannelRefs,
       materialStore: edgeCredentialMaterialStore
     });
-    const edgeRuntimeAdapterName = optionalEnvText(env.EDGE_CREDENTIAL_RUNTIME_ADAPTER || env.USER_PORTAL_EDGE_RUNTIME_ADAPTER);
-    if (!edgeRuntimeAdapter && edgeRuntimeAdapterName === "mihomo-tuic-explicit-restart") {
-      edgeRuntimeAdapter = createMihomoTuicHostRuntimeAdapter({
-        activeConfigPath: env.EDGE_MIHOMO_ACTIVE_CONFIG_PATH,
-        candidateConfigPath: env.EDGE_MIHOMO_CANDIDATE_CONFIG_PATH,
-        backupDir: env.EDGE_MIHOMO_BACKUP_DIR,
-        serviceName: optionalEnvText(env.EDGE_MIHOMO_SERVICE_NAME) || "mihomo-tuic.service",
-        mihomoBinary: optionalEnvText(env.EDGE_MIHOMO_BINARY) || "mihomo",
-        listener: {
-          name: edgeChannelRef,
-          port: env.EDGE_MIHOMO_TUIC_PORT || 443,
-          listen: optionalEnvText(env.EDGE_MIHOMO_TUIC_LISTEN) || "0.0.0.0",
-          certificate: env.EDGE_MIHOMO_TUIC_CERTIFICATE_PATH,
-          privateKey: env.EDGE_MIHOMO_TUIC_PRIVATE_KEY_PATH,
-          congestionController: optionalEnvText(env.EDGE_MIHOMO_TUIC_CONGESTION_CONTROLLER) || "bbr",
-          alpn: parseCsv(env.EDGE_MIHOMO_TUIC_ALPN, ["h3"])
-        },
-        resolveCredentialMaterial: (credentialRef) => edgeCredentialMaterialStore.resolveCredentialMaterial(credentialRef),
-        commandRunner: options.edgeRuntimeCommandRunner
+    const defaultEdgeRuntimeAdapterName = optionalEnvText(env.EDGE_CREDENTIAL_RUNTIME_ADAPTER || env.USER_PORTAL_EDGE_RUNTIME_ADAPTER);
+    const serverConfigForChannel = (channelRefForRuntime) => configuredServers.find((server) =>
+      String(server?.name || "").trim() === channelRefForRuntime
+      || String(server?.id || "").trim() === channelRefForRuntime
+    );
+    const adapterNameForChannel = (channelRefForRuntime) =>
+      optionalEnvText(serverConfigForChannel(channelRefForRuntime)?.runtimeAdapter) || defaultEdgeRuntimeAdapterName;
+    const currentCredentialSummariesForChannel = (channelRefForRuntime) => {
+      if (typeof options.edgeCurrentCredentialSummaries === "function") {
+        return options.edgeCurrentCredentialSummaries({ channelRef: channelRefForRuntime });
+      }
+      const summaries = Array.isArray(options.edgeCurrentCredentialSummaries)
+        ? options.edgeCurrentCredentialSummaries
+        : [];
+      return summaries.filter((credential) => {
+        const credentialChannelRef = String(credential?.edgeChannelRef || credential?.channelRef || "").trim();
+        return !credentialChannelRef || credentialChannelRef === channelRefForRuntime;
       });
-    }
-    edgeLifecycleService = edgeLifecycleService || createOrderCredentialLifecycleService({
-      channelRef: edgeChannelRef,
-      listOrders: () => mergeEdgeCredentialOrders(
-        durableEdgeCredentialOrders({
-          controlStore: platformControlStore,
-          materialStore: edgeCredentialMaterialStore,
-          nodeId: edgeChannelRef
-        }),
-        platformPortalAccessRequests?.listEdgeCredentialOrders?.() || []
-      ),
-      listCurrentCredentials: () => (
-        typeof options.edgeCurrentCredentialSummaries === "function"
-          ? options.edgeCurrentCredentialSummaries()
-          : options.edgeCurrentCredentialSummaries || []
-      ),
-      executeProductionMutation: envFlag(env.EDGE_CREDENTIAL_LIFECYCLE_EXECUTE_PRODUCTION_MUTATION),
-      runtimeAdapter: edgeRuntimeAdapter,
-      receiptStore: platformControlStore
+    };
+    const portalEdgeCredentialOrdersForChannel = (channelRefForRuntime) => {
+      const orders = platformPortalAccessRequests?.listEdgeCredentialOrders?.() || [];
+      return orders.filter((order) => {
+        const orderChannelRef = String(order?.edgeChannelRef || order?.channelRef || "").trim();
+        return orderChannelRef === channelRefForRuntime || (!orderChannelRef && edgeChannelRefs.length === 1);
+      });
+    };
+    const createRuntimeAdapterForChannel = (channelRefForRuntime) => {
+      const serverConfig = serverConfigForChannel(channelRefForRuntime) || {};
+      const adapterName = adapterNameForChannel(channelRefForRuntime).toLowerCase();
+      if (options.edgeRuntimeAdapter && (!adapterName || channelRefForRuntime === edgeChannelRef)) {
+        return {
+          runtime: edgeRuntime,
+          runtimeAdapter: options.edgeRuntimeAdapter
+        };
+      }
+      if (adapterName === "remote-data-plane-handoff" || adapterName === "data-plane-handoff") {
+        return {
+          runtime: runtimeFromProxyServer(serverConfig, edgeRuntime),
+          runtimeAdapter: createDataPlaneHandoffRuntimeAdapter({
+            handoffDir: optionalEnvText(env.EDGE_DATA_PLANE_HANDOFF_DIR || env.USER_PORTAL_EDGE_HANDOFF_DIR),
+            nodeRef: optionalEnvText(serverConfig.nodeRef || serverConfig.physicalNodeRef),
+            physicalNodeRef: optionalEnvText(serverConfig.physicalNodeRef || serverConfig.nodeRef)
+          })
+        };
+      }
+      if (adapterName === "mihomo-tuic-explicit-restart") {
+        return {
+          runtime: "mihomo-tuic",
+          runtimeAdapter: createMihomoTuicHostRuntimeAdapter({
+            activeConfigPath: env.EDGE_MIHOMO_ACTIVE_CONFIG_PATH,
+            candidateConfigPath: env.EDGE_MIHOMO_CANDIDATE_CONFIG_PATH,
+            backupDir: env.EDGE_MIHOMO_BACKUP_DIR,
+            serviceName: optionalEnvText(env.EDGE_MIHOMO_SERVICE_NAME) || "mihomo-tuic.service",
+            mihomoBinary: optionalEnvText(env.EDGE_MIHOMO_BINARY) || "mihomo",
+            listener: {
+              name: channelRefForRuntime,
+              port: env.EDGE_MIHOMO_TUIC_PORT || 443,
+              listen: optionalEnvText(env.EDGE_MIHOMO_TUIC_LISTEN) || "0.0.0.0",
+              certificate: env.EDGE_MIHOMO_TUIC_CERTIFICATE_PATH,
+              privateKey: env.EDGE_MIHOMO_TUIC_PRIVATE_KEY_PATH,
+              congestionController: optionalEnvText(env.EDGE_MIHOMO_TUIC_CONGESTION_CONTROLLER) || "bbr",
+              alpn: parseCsv(env.EDGE_MIHOMO_TUIC_ALPN, ["h3"])
+            },
+            resolveCredentialMaterial: (credentialRef) => edgeCredentialMaterialStore.resolveCredentialMaterial(credentialRef),
+            commandRunner: options.edgeRuntimeCommandRunner
+          })
+        };
+      }
+      if (adapterName === "sing-box-ss-explicit-restart") {
+        return {
+          runtime: "sing-box-ss",
+          runtimeAdapter: createSingBoxSsHostRuntimeAdapter({
+            activeConfigPath: env.EDGE_SING_BOX_ACTIVE_CONFIG_PATH,
+            candidateConfigPath: env.EDGE_SING_BOX_CANDIDATE_CONFIG_PATH,
+            backupDir: env.EDGE_SING_BOX_BACKUP_DIR,
+            serviceName: optionalEnvText(env.EDGE_SING_BOX_SERVICE_NAME) || "sing-box-ss.service",
+            singBoxBinary: optionalEnvText(env.EDGE_SING_BOX_BINARY) || "sing-box",
+            listener: {
+              name: channelRefForRuntime,
+              port: env.EDGE_SING_BOX_SS_PORT || 18388,
+              listen: optionalEnvText(env.EDGE_SING_BOX_SS_LISTEN) || "0.0.0.0",
+              method: optionalEnvText(env.EDGE_SING_BOX_SS_METHOD) || "2022-blake3-aes-256-gcm",
+              serverPassword: env.EDGE_SING_BOX_SS_SERVER_PASSWORD,
+              v2rayApiListen: optionalEnvText(env.EDGE_SING_BOX_V2RAY_API_LISTEN),
+              validationAttempts: env.EDGE_SING_BOX_LISTENER_VALIDATION_ATTEMPTS,
+              validationRetryDelayMs: env.EDGE_SING_BOX_LISTENER_VALIDATION_RETRY_DELAY_MS
+            },
+            resolveCredentialMaterial: (credentialRef) => edgeCredentialMaterialStore.resolveCredentialMaterial(credentialRef),
+            commandRunner: options.edgeRuntimeCommandRunner
+          })
+        };
+      }
+      if (adapterName === "xray-vless-reality-explicit-restart") {
+        return {
+          runtime: "xray-vless-reality",
+          runtimeAdapter: createXrayVlessRealityHostRuntimeAdapter({
+            activeConfigPath: env.EDGE_XRAY_ACTIVE_CONFIG_PATH,
+            candidateConfigPath: env.EDGE_XRAY_CANDIDATE_CONFIG_PATH,
+            backupDir: env.EDGE_XRAY_BACKUP_DIR,
+            serviceName: optionalEnvText(env.EDGE_XRAY_SERVICE_NAME) || "xray-vless-reality.service",
+            xrayBinary: optionalEnvText(env.EDGE_XRAY_BINARY) || "xray",
+            listener: {
+              name: channelRefForRuntime,
+              port: env.EDGE_XRAY_VLESS_PORT || 443,
+              listen: optionalEnvText(env.EDGE_XRAY_VLESS_LISTEN) || "0.0.0.0",
+              flow: optionalEnvText(env.EDGE_XRAY_VLESS_FLOW) || "xtls-rprx-vision",
+              dest: env.EDGE_XRAY_VLESS_DEST,
+              serverNames: parseCsv(env.EDGE_XRAY_VLESS_SERVER_NAMES, []),
+              privateKey: env.EDGE_XRAY_VLESS_REALITY_PRIVATE_KEY,
+              shortIds: parseCsv(env.EDGE_XRAY_VLESS_SHORT_IDS, []),
+              xver: env.EDGE_XRAY_VLESS_XVER,
+              validationAttempts: env.EDGE_XRAY_LISTENER_VALIDATION_ATTEMPTS,
+              validationRetryDelayMs: env.EDGE_XRAY_LISTENER_VALIDATION_RETRY_DELAY_MS
+            },
+            resolveCredentialMaterial: (credentialRef) => edgeCredentialMaterialStore.resolveCredentialMaterial(credentialRef),
+            commandRunner: options.edgeRuntimeCommandRunner
+          })
+        };
+      }
+      if (adapterName === "hysteria2-explicit-restart") {
+        return {
+          runtime: "hysteria2",
+          runtimeAdapter: createHysteria2HostRuntimeAdapter({
+            activeConfigPath: env.EDGE_HYSTERIA2_ACTIVE_CONFIG_PATH,
+            candidateConfigPath: env.EDGE_HYSTERIA2_CANDIDATE_CONFIG_PATH,
+            backupDir: env.EDGE_HYSTERIA2_BACKUP_DIR,
+            serviceName: optionalEnvText(env.EDGE_HYSTERIA2_SERVICE_NAME) || "hysteria2.service",
+            hysteriaBinary: optionalEnvText(env.EDGE_HYSTERIA2_BINARY) || "hysteria",
+            listener: {
+              listen: optionalEnvText(env.EDGE_HYSTERIA2_LISTEN) || ":443",
+              certificate: env.EDGE_HYSTERIA2_CERTIFICATE_PATH,
+              privateKey: env.EDGE_HYSTERIA2_PRIVATE_KEY_PATH,
+              trafficStatsListen: optionalEnvText(env.EDGE_HYSTERIA2_TRAFFIC_STATS_LISTEN),
+              trafficStatsSecret: env.EDGE_HYSTERIA2_TRAFFIC_STATS_SECRET,
+              bandwidth: {
+                up: optionalEnvText(env.EDGE_HYSTERIA2_BANDWIDTH_UP),
+                down: optionalEnvText(env.EDGE_HYSTERIA2_BANDWIDTH_DOWN)
+              },
+              ignoreClientBandwidth: optionalEnvText(env.EDGE_HYSTERIA2_IGNORE_CLIENT_BANDWIDTH),
+              congestion: {
+                type: optionalEnvText(env.EDGE_HYSTERIA2_CONGESTION_TYPE),
+                bbrProfile: optionalEnvText(env.EDGE_HYSTERIA2_CONGESTION_BBR_PROFILE)
+              },
+              quic: {
+                initStreamReceiveWindow: optionalEnvPositiveInteger(env.EDGE_HYSTERIA2_QUIC_INIT_STREAM_RECEIVE_WINDOW),
+                maxStreamReceiveWindow: optionalEnvPositiveInteger(env.EDGE_HYSTERIA2_QUIC_MAX_STREAM_RECEIVE_WINDOW),
+                initConnReceiveWindow: optionalEnvPositiveInteger(env.EDGE_HYSTERIA2_QUIC_INIT_CONN_RECEIVE_WINDOW),
+                maxConnReceiveWindow: optionalEnvPositiveInteger(env.EDGE_HYSTERIA2_QUIC_MAX_CONN_RECEIVE_WINDOW),
+                maxIdleTimeout: optionalEnvText(env.EDGE_HYSTERIA2_QUIC_MAX_IDLE_TIMEOUT),
+                maxIncomingStreams: optionalEnvPositiveInteger(env.EDGE_HYSTERIA2_QUIC_MAX_INCOMING_STREAMS),
+                disablePathMTUDiscovery: optionalEnvText(env.EDGE_HYSTERIA2_QUIC_DISABLE_PATH_MTU_DISCOVERY)
+              },
+              udpIdleTimeout: optionalEnvText(env.EDGE_HYSTERIA2_UDP_IDLE_TIMEOUT),
+              sniff: {
+                enabled: envFlag(env.EDGE_HYSTERIA2_SNIFF_ENABLED),
+                rewriteDomain: envFlag(env.EDGE_HYSTERIA2_SNIFF_REWRITE_DOMAIN),
+                tcpPorts: optionalEnvText(env.EDGE_HYSTERIA2_SNIFF_TCP_PORTS),
+                udpPorts: optionalEnvText(env.EDGE_HYSTERIA2_SNIFF_UDP_PORTS)
+              },
+              outbound: {
+                mode: optionalEnvPositiveInteger(env.EDGE_HYSTERIA2_OUTBOUND_MODE)
+              },
+              validationAttempts: env.EDGE_HYSTERIA2_LISTENER_VALIDATION_ATTEMPTS,
+              validationRetryDelayMs: env.EDGE_HYSTERIA2_LISTENER_VALIDATION_RETRY_DELAY_MS
+            },
+            resolveCredentialMaterial: (credentialRef) => edgeCredentialMaterialStore.resolveCredentialMaterial(credentialRef),
+            commandRunner: options.edgeRuntimeCommandRunner
+          })
+        };
+      }
+      return {
+        runtime: edgeRuntime,
+        runtimeAdapter: null
+      };
+    };
+    const lifecycleEntries = edgeChannelRefs.map((channelRefForRuntime) => {
+      const runtimeBinding = createRuntimeAdapterForChannel(channelRefForRuntime);
+      if (channelRefForRuntime === edgeChannelRef) {
+        edgeRuntime = runtimeBinding.runtime;
+        edgeRuntimeAdapter = runtimeBinding.runtimeAdapter;
+      }
+      return {
+        channelRef: channelRefForRuntime,
+        service: createOrderCredentialLifecycleService({
+          channelRef: channelRefForRuntime,
+          runtime: runtimeBinding.runtime,
+          listOrders: () => mergeEdgeCredentialOrders(
+            durableEdgeCredentialOrders({
+              controlStore: platformControlStore,
+              materialStore: edgeCredentialMaterialStore,
+              nodeId: channelRefForRuntime
+            }),
+            portalEdgeCredentialOrdersForChannel(channelRefForRuntime)
+          ),
+          listCurrentCredentials: () => currentCredentialSummariesForChannel(channelRefForRuntime),
+          executeProductionMutation: envFlag(env.EDGE_CREDENTIAL_LIFECYCLE_EXECUTE_PRODUCTION_MUTATION),
+          runtimeAdapter: runtimeBinding.runtimeAdapter,
+          receiptStore: platformControlStore
+        })
+      };
     });
+    edgeLifecycleService = edgeLifecycleService || (
+      lifecycleEntries.length === 1
+        ? lifecycleEntries[0].service
+        : createOrderCredentialLifecycleFanoutService({ services: lifecycleEntries })
+    );
   }
 
   platformPortalAccessRequests = options.platformPortalAccessRequests || createPortalAccessRequestService({
@@ -272,14 +710,16 @@ export function createRuntimeState(options = {}) {
     edgeCredentialIssuer,
     edgeLifecycleService,
     autoIssuance: {
-      enabled: envFlag(env.USER_PORTAL_AUTO_ISSUANCE_ENABLED),
+      enabled: autoIssuanceEnabled,
       nodeId: optionalEnvText(env.USER_PORTAL_AUTO_ISSUANCE_NODE_ID),
+      channelRefs: autoIssuanceChannelRefs,
       reviewedByRef: optionalEnvText(env.USER_PORTAL_AUTO_ISSUANCE_REVIEWED_BY_REF) || "portal_auto_issuer",
       monthlyLimits: {
         trial: optionalEnvPositiveInteger(env.USER_PORTAL_AUTO_ISSUANCE_7D_MONTHLY_LIMIT),
         monthly: optionalEnvPositiveInteger(env.USER_PORTAL_AUTO_ISSUANCE_30D_MONTHLY_LIMIT)
       }
-    }
+    },
+    deferEdgeLifecycle: envFlag(env.EDGE_CREDENTIAL_LIFECYCLE_DEFER_RESPONSE)
   });
   const platformPortalSupportRequests = options.platformPortalSupportRequests || createPortalSupportRequestService();
   const platformPortalHumanChallenges = options.platformPortalHumanChallenges || (
@@ -304,6 +744,28 @@ export function createRuntimeState(options = {}) {
       passwordCredentialService: platformPortalPasswordCredentialService,
       allowPasswordOnlySessionForSetup: envFlag(env.USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION)
     }) : null
+  );
+  const platformTrafficAccounting = options.platformTrafficAccounting || createTrafficAccountingService({
+    controlStore: platformControlStore,
+    nowFn: options.trafficAccountingNowFn
+  });
+  const edgeUsageCollectors = Array.isArray(options.edgeUsageCollectors)
+    ? options.edgeUsageCollectors
+    : createEnvEdgeUsageCollectors({
+      env,
+      proxyConfig,
+      edgeChannelRefs,
+      hysteria2TrafficReader: options.hysteria2TrafficReader,
+      fetchFn: options.edgeUsageFetch,
+      nowFn: options.usageCollectorNowFn
+    });
+  const edgeUsageAccounting = options.edgeUsageAccounting || (
+    edgeUsageCollectors.length > 0
+      ? createRuntimeUsageAccountingService({
+        collectors: edgeUsageCollectors,
+        accounting: platformTrafficAccounting
+      })
+      : null
   );
   const platformAliyunGateEvidenceShell = options.platformAliyunGateEvidenceShell || createPlatformAliyunGateEvidenceShell();
   let closed = false;
@@ -452,7 +914,10 @@ export function createRuntimeState(options = {}) {
       edgeCredentialMaterialStore,
       edgeCredentialIssuer,
       edgeLifecycleService,
-      edgeRuntimeAdapter
+      edgeRuntimeAdapter,
+      trafficAccounting: platformTrafficAccounting,
+      edgeUsageCollectors,
+      edgeUsageAccounting
     },
     security: {
       adminAllowedCidrs,

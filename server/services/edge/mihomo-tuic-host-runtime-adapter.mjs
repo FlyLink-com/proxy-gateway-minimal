@@ -1,10 +1,12 @@
 import {
+  chownSync,
   chmodSync,
   copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
   renameSync,
+  statSync,
   writeFileSync
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -75,9 +77,23 @@ function defaultBackupRef(activeConfigPath, now) {
 }
 
 function writeProtectedFile(filePath, content) {
+  let ownership = null;
+  try {
+    const existing = statSync(filePath);
+    ownership = { uid: existing.uid, gid: existing.gid };
+  } catch {
+    ownership = null;
+  }
   const tmpPath = `${filePath}.${process.pid}.tmp`;
   writeFileSync(tmpPath, content, { mode: 0o600 });
   renameSync(tmpPath, filePath);
+  if (ownership) {
+    try {
+      chownSync(filePath, ownership.uid, ownership.gid);
+    } catch {
+      // Best effort: Windows and some restricted filesystems do not support chown.
+    }
+  }
   chmodSync(filePath, 0o600);
 }
 

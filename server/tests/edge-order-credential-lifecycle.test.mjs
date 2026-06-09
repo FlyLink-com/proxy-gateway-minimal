@@ -124,10 +124,112 @@ test("order credential lifecycle apply records a redacted edge receipt", () => {
     configTestOk: true,
     serviceActive: true,
     listenerUdp443: true,
+    listenerTcp: false,
     backupRef: "backup_aliyun_001",
     rollbackRef: undefined,
     appliedAt: NOW,
     createdAt: NOW
   });
   assert.doesNotMatch(JSON.stringify(report), /uuid|password|subscriptionUrl|rawConfig/i);
+});
+
+test("order credential lifecycle records remote handoff receipts as non-mutating pending work", () => {
+  const receipts = [];
+  const service = createOrderCredentialLifecycleService({
+    channelRef: "channel-sgp-a-hy2",
+    runtime: "hysteria2",
+    nowFn: () => NOW,
+    executeProductionMutation: true,
+    listOrders: () => [
+      activeOrder({
+        edgeChannelRef: "channel-sgp-a-hy2",
+        edgeCredentialRef: "edgecred_sgp_001",
+        edgeMaterialDigest: "digest_sgp_001"
+      })
+    ],
+    listCurrentCredentials: () => [],
+    runtimeAdapter: {
+      applyCredentialReconciliation() {
+        return {
+          status: "pending",
+          mutation: false,
+          handoffRef: "handoff_channel-sgp-a-hy2_001",
+          service: {
+            name: "remote-data-plane-handoff",
+            active: false,
+            restarted: false
+          },
+          listener: {
+            udp443: false
+          },
+          appliedAt: NOW
+        };
+      }
+    },
+    receiptStore: {
+      recordEdgeApplyReceipt(receipt) {
+        receipts.push(receipt);
+        return receipt;
+      }
+    },
+    receiptIdFactory: () => "edge_receipt_sgp_001",
+    desiredStateRefFactory: () => "desired_state_sgp_001"
+  });
+
+  const report = service.reconcileOrderLifecycle({
+    reason: "order_created",
+    order: {
+      id: "pareq_active_001",
+      status: "delivered"
+    }
+  });
+
+  assert.equal(report.ok, true);
+  assert.equal(report.mode, "apply");
+  assert.equal(report.nextAction, "complete_data_plane_handoff");
+  assert.equal(report.mutation, false);
+  assert.equal(receipts.length, 1);
+  assert.deepEqual(receipts[0], {
+    id: "edge_receipt_sgp_001",
+    channelRef: "channel-sgp-a-hy2",
+    desiredStateRef: "desired_state_sgp_001",
+    status: "pending",
+    actionCounts: {
+      add: 1,
+      revoke: 0,
+      rotate: 0,
+      unchanged: 0
+    },
+    configTestOk: false,
+    serviceActive: false,
+    listenerUdp443: false,
+    listenerTcp: false,
+    handoffRef: "handoff_channel-sgp-a-hy2_001",
+    backupRef: undefined,
+    rollbackRef: undefined,
+    appliedAt: NOW,
+    createdAt: NOW
+  });
+  assert.doesNotMatch(JSON.stringify(report), /uuid|password|subscriptionUrl|rawConfig|digest_sgp_001/i);
+});
+
+test("order credential lifecycle can target sing-box SS runtime", () => {
+  const service = createOrderCredentialLifecycleService({
+    channelRef: "channel-vultr-a-ss-tcp",
+    runtime: "sing-box-ss",
+    nowFn: () => NOW,
+    listOrders: () => [
+      activeOrder({
+        edgeChannelRef: "channel-vultr-a-ss-tcp"
+      })
+    ],
+    listCurrentCredentials: () => []
+  });
+
+  const report = service.reconcileOrderLifecycle();
+
+  assert.equal(report.ok, true);
+  assert.equal(report.runtime, "sing-box-ss");
+  assert.equal(report.summary.addCount, 1);
+  assert.equal(report.mutation, false);
 });

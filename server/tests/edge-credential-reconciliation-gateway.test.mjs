@@ -178,7 +178,8 @@ test("reconciliation apply uses an injected runtime adapter and returns a redact
       restarted: true
     },
     listener: {
-      udp443: true
+      udp443: true,
+      tcp: false
     },
     appliedAt: "2026-06-05T10:00:00.000Z"
   });
@@ -192,6 +193,57 @@ test("reconciliation apply uses an injected runtime adapter and returns a redact
     "rotate",
     "unchanged"
   ]);
+  assert.doesNotMatch(JSON.stringify(report), /new_digest|old_digest|rotated_digest|same_digest|expired_digest/i);
+});
+
+test("reconciliation apply accepts a pending remote data-plane handoff without local mutation", () => {
+  const report = buildCredentialReconciliationApplyPlan({
+    desiredState: reconciliationState({
+      channelRef: "channel-sgp-a-hy2",
+      runtime: "hysteria2",
+      desiredStateRef: "desired_state_sgp_001"
+    }),
+    inputPath: "desired-state.json",
+    executeProductionMutation: true,
+    runtimeAdapter: {
+      applyCredentialReconciliation() {
+        return {
+          status: "pending",
+          mutation: false,
+          handoffRef: "handoff_channel-sgp-a-hy2_001",
+          service: {
+            name: "remote-data-plane-handoff",
+            active: false,
+            restarted: false
+          },
+          listener: {
+            udp443: false
+          },
+          appliedAt: "2026-06-05T10:00:00.000Z"
+        };
+      }
+    }
+  });
+
+  assert.equal(report.ok, true);
+  assert.equal(report.runtime, "hysteria2");
+  assert.equal(report.nextAction, "complete_data_plane_handoff");
+  assert.equal(report.mutation, false);
+  assert.deepEqual(report.runtimeReceipt, {
+    status: "pending",
+    mutation: false,
+    handoffRef: "handoff_channel-sgp-a-hy2_001",
+    service: {
+      name: "remote-data-plane-handoff",
+      active: false,
+      restarted: false
+    },
+    listener: {
+      udp443: false,
+      tcp: false
+    },
+    appliedAt: "2026-06-05T10:00:00.000Z"
+  });
   assert.doesNotMatch(JSON.stringify(report), /new_digest|old_digest|rotated_digest|same_digest|expired_digest/i);
 });
 
