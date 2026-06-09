@@ -57,6 +57,22 @@ function limitNumber(value) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
 }
 
+function normalizeChannelRefs(value) {
+  const rawRefs = Array.isArray(value)
+    ? value
+    : String(value || "").split(",");
+  const refs = [];
+  const seen = new Set();
+  for (const rawRef of rawRefs) {
+    const ref = String(rawRef || "").trim();
+    if (ref && !seen.has(ref)) {
+      seen.add(ref);
+      refs.push(ref);
+    }
+  }
+  return refs;
+}
+
 function periodFor(iso) {
   return String(iso || "").slice(0, 7);
 }
@@ -89,8 +105,94 @@ function nextRequestId(now, sequence) {
   return `pareq_${new Date(now).getTime().toString(36)}_${sequence.toString(36)}`;
 }
 
-function summaryFor(record) {
+function nonNegativeInteger(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.trunc(parsed) : 0;
+}
+
+function usageRatio(usedBytes, totalBytes) {
+  if (!totalBytes) return 0;
+  return Number((usedBytes / totalBytes).toFixed(3));
+}
+
+function edgeCredentialRefsFor(record) {
+  const refs = [];
+  const seen = new Set();
+  const pushRef = (value) => {
+    const ref = String(value || "").trim();
+    if (ref && !seen.has(ref)) {
+      seen.add(ref);
+      refs.push(ref);
+    }
+  };
+  if (Array.isArray(record.edgeCredentials)) {
+    for (const credential of record.edgeCredentials) {
+      pushRef(credential?.edgeCredentialRef);
+    }
+  }
+  pushRef(record.edgeCredentialRef);
+  return refs;
+}
+
+function usageSummaryFor(record, controlStore) {
+  if (!controlStore || !record?.id) {
+    return null;
+  }
+  const rollups = [];
+  const seen = new Set();
+  const pushRollup = (rollup) => {
+    if (!rollup?.edgeCredentialRef || seen.has(rollup.edgeCredentialRef)) {
+      return;
+    }
+    seen.add(rollup.edgeCredentialRef);
+    rollups.push(rollup);
+  };
+
+  if (typeof controlStore.listUsageRollupsByRequestId === "function") {
+    for (const rollup of controlStore.listUsageRollupsByRequestId(record.id) || []) {
+      pushRollup(rollup);
+    }
+  }
+  if (rollups.length === 0 && typeof controlStore.getUsageRollupByEdgeCredentialRef === "function") {
+    for (const edgeCredentialRef of edgeCredentialRefsFor(record)) {
+      pushRollup(controlStore.getUsageRollupByEdgeCredentialRef(edgeCredentialRef));
+    }
+  }
+  if (rollups.length === 0) {
+    return null;
+  }
+
+  let trafficLimitBytes = 0;
+  if (typeof controlStore.findIssuedSubscriptionBindingByEdgeCredentialRef === "function") {
+    const refs = rollups.map((rollup) => rollup.edgeCredentialRef);
+    for (const edgeCredentialRef of refs) {
+      const binding = controlStore.findIssuedSubscriptionBindingByEdgeCredentialRef(edgeCredentialRef);
+      trafficLimitBytes = Math.max(trafficLimitBytes, nonNegativeInteger(binding?.trafficLimitBytes));
+    }
+  }
+
+  const uploadBytes = rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.uploadBytes), 0);
+  const downloadBytes = rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.downloadBytes), 0);
+  const usedBytes = rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.totalBytes), 0);
+  const updatedAt = rollups
+    .map((rollup) => rollup.updatedAt || rollup.lastObservedAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1);
+
   return {
+    uploadBytes,
+    downloadBytes,
+    usedBytes,
+    totalBytes: trafficLimitBytes,
+    usageRatio: usageRatio(usedBytes, trafficLimitBytes),
+    status: trafficLimitBytes > 0 && usedBytes >= trafficLimitBytes ? "over_limit" : "within_limit",
+    ...(updatedAt ? { updatedAt } : {})
+  };
+}
+
+function summaryFor(record, usage = null) {
+  const summary = {
     id: record.id,
     type: "portal_access_request_summary",
     portalUserRef: record.portalUserRef,
@@ -122,6 +224,10 @@ function summaryFor(record) {
       noProductionMutation: record.edgeLifecycleMutation !== true
     }
   };
+  if (usage) {
+    summary.usage = usage;
+  }
+  return summary;
 }
 
 function edgeOrderSummaryFor(record) {
@@ -145,10 +251,33 @@ function edgeOrderSummaryFor(record) {
   };
 }
 
+function edgeCredentialOrderSummariesFor(record) {
+  const credentials = Array.isArray(record.edgeCredentials) && record.edgeCredentials.length > 0
+    ? record.edgeCredentials
+    : (
+      record.edgeCredentialRef && record.edgeMaterialDigest
+        ? [{
+          edgeChannelRef: record.edgeChannelRef,
+          edgeCredentialRef: record.edgeCredentialRef,
+          edgeMaterialDigest: record.edgeMaterialDigest
+        }]
+        : []
+    );
+  return credentials.map((credential) => ({
+    ...edgeOrderSummaryFor(record),
+    edgeChannelRef: credential.edgeChannelRef,
+    edgeCredentialRef: credential.edgeCredentialRef,
+    edgeMaterialDigest: credential.edgeMaterialDigest
+  }));
+}
+
 function cloneRecord(record) {
   if (!record) return null;
   return {
     ...record,
+    edgeCredentials: Array.isArray(record.edgeCredentials)
+      ? record.edgeCredentials.map((credential) => ({ ...credential }))
+      : undefined,
     event: record.event ? { ...record.event } : null
   };
 }
@@ -210,12 +339,17 @@ export function createPortalAccessRequestService(options = {}) {
   const autoIssuance = {
     enabled: options.autoIssuance?.enabled === true,
     nodeId: String(options.autoIssuance?.nodeId || "").trim(),
+    channelRefs: normalizeChannelRefs(options.autoIssuance?.channelRefs),
     reviewedByRef: String(options.autoIssuance?.reviewedByRef || "portal_auto_issuer").trim(),
     monthlyLimits: {
       trial: limitNumber(options.autoIssuance?.monthlyLimits?.trial),
       monthly: limitNumber(options.autoIssuance?.monthlyLimits?.monthly)
     }
   };
+  const deferEdgeLifecycle = options.deferEdgeLifecycle === true;
+  const edgeLifecycleScheduler = typeof options.edgeLifecycleScheduler === "function"
+    ? options.edgeLifecycleScheduler
+    : (task) => setImmediate(task);
   let sequence = 0;
 
   function getRecord(id) {
@@ -234,6 +368,10 @@ export function createPortalAccessRequestService(options = {}) {
     return requestStore.listPortalAccessRequests(filters);
   }
 
+  function summarize(record) {
+    return summaryFor(record, usageSummaryFor(record, controlStore));
+  }
+
   function requireRuntimeMethod(method) {
     if (!runtimeCore || typeof runtimeCore[method] !== "function") {
       throw platformError("validation_error", "portal order lifecycle service is not configured");
@@ -241,7 +379,7 @@ export function createPortalAccessRequestService(options = {}) {
     return runtimeCore[method].bind(runtimeCore);
   }
 
-  function notifyEdgeLifecycle(reason, request) {
+  function runEdgeLifecycle(reason, request) {
     if (!edgeLifecycleService) {
       return null;
     }
@@ -258,24 +396,74 @@ export function createPortalAccessRequestService(options = {}) {
     return result;
   }
 
+  function notifyEdgeLifecycle(reason, request) {
+    if (!deferEdgeLifecycle) {
+      return runEdgeLifecycle(reason, request);
+    }
+    if (!edgeLifecycleService) {
+      return null;
+    }
+    edgeLifecycleScheduler(() => {
+      try {
+        const latest = getRecord(request.id);
+        const result = runEdgeLifecycle(reason, latest);
+        recordEdgeLifecycleResult(latest, result);
+        saveRecord(latest);
+      } catch {
+        // Lifecycle failures stay out of the user request path. Operator
+        // validation and receipt checks remain the source of truth.
+      }
+    });
+    return {
+      ok: true,
+      deferred: true,
+      mutation: false,
+      redacted: true,
+      nextAction: "edge_lifecycle_deferred"
+    };
+  }
+
   function recordEdgeLifecycleResult(request, result) {
     if (result?.mutation === true) {
       request.edgeLifecycleMutation = true;
     }
   }
 
-  function attachEdgeCredential(request) {
+  function attachEdgeCredentials(request) {
     if (!edgeCredentialIssuer) {
-      return null;
+      return [];
     }
-    if (typeof edgeCredentialIssuer.ensureCredentialForOrder !== "function") {
+    if (
+      typeof edgeCredentialIssuer.ensureCredentialsForOrder !== "function" &&
+      typeof edgeCredentialIssuer.ensureCredentialForOrder !== "function"
+    ) {
       throw platformError("validation_error", "edge credential issuer is not configured");
     }
-    const credential = edgeCredentialIssuer.ensureCredentialForOrder(edgeOrderSummaryFor(request));
-    request.edgeChannelRef = text(credential.edgeChannelRef, "edgeChannelRef");
-    request.edgeCredentialRef = text(credential.edgeCredentialRef, "edgeCredentialRef");
-    request.edgeMaterialDigest = text(credential.edgeMaterialDigest, "edgeMaterialDigest");
-    return credential;
+    const order = edgeOrderSummaryFor(request);
+    const credentials = typeof edgeCredentialIssuer.ensureCredentialsForOrder === "function"
+      ? edgeCredentialIssuer.ensureCredentialsForOrder({
+        ...order,
+        channelRefs: autoIssuance.channelRefs
+      })
+      : [edgeCredentialIssuer.ensureCredentialForOrder(order)];
+    const normalized = credentials.map((credential) => ({
+      edgeChannelRef: text(credential.edgeChannelRef, "edgeChannelRef"),
+      edgeCredentialRef: text(credential.edgeCredentialRef, "edgeCredentialRef"),
+      edgeMaterialDigest: text(credential.edgeMaterialDigest, "edgeMaterialDigest"),
+      edgeCredentialMaterial: credential.edgeCredentialMaterial
+    }));
+    const [primary] = normalized;
+    if (primary) {
+      request.edgeChannelRef = primary.edgeChannelRef;
+      request.edgeCredentialRef = primary.edgeCredentialRef;
+      request.edgeMaterialDigest = primary.edgeMaterialDigest;
+      request.edgeCredentials = normalized.map((credential) => ({
+        edgeChannelRef: credential.edgeChannelRef,
+        edgeCredentialRef: credential.edgeCredentialRef,
+        edgeMaterialDigest: credential.edgeMaterialDigest
+      }));
+    }
+    return normalized;
   }
 
   function bindTenantCredentialMaterial(request, credential) {
@@ -289,8 +477,8 @@ export function createPortalAccessRequestService(options = {}) {
     }
     return runtimeCore.bindTenantCredentialMaterial({
       tenantId: request.tenantId,
-      nodeId: request.edgeChannelRef,
-      credentialRef: request.edgeCredentialRef,
+      nodeId: credential.edgeChannelRef,
+      credentialRef: credential.edgeCredentialRef,
       material: credential.edgeCredentialMaterial
     });
   }
@@ -422,7 +610,7 @@ export function createPortalAccessRequestService(options = {}) {
       if (autoIssuance.enabled) {
         return autoDeliver.call(this, record);
       }
-      return summaryFor(record);
+      return summarize(record);
     },
 
     listRequests(filters = {}) {
@@ -432,20 +620,22 @@ export function createPortalAccessRequestService(options = {}) {
         .filter((request) => !status || request.status === status)
         .filter((request) => !portalUserRef || request.portalUserRef === portalUserRef)
         .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
-        .map(summaryFor);
+        .map(summarize);
     },
 
     listEdgeCredentialOrders(filters = {}) {
       const status = String(filters.status || "").trim();
       return listRecords({ ...filters, status })
         .filter((request) => !status || request.status === status)
-        .filter((request) => request.edgeCredentialRef && request.edgeMaterialDigest)
-        .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
-        .map(edgeOrderSummaryFor);
+        .flatMap(edgeCredentialOrderSummariesFor)
+        .sort((a, b) =>
+          a.submittedAt.localeCompare(b.submittedAt) ||
+          a.id.localeCompare(b.id)
+        );
     },
 
     getRequest(id) {
-      return summaryFor(getRecord(id));
+      return summarize(getRecord(id));
     },
 
     rejectRequest(id, input = {}) {
@@ -457,7 +647,7 @@ export function createPortalAccessRequestService(options = {}) {
       request.reviewedByRef = text(input.reviewedByRef, "reviewedByRef");
       request.safeReasonCode = text(input.reasonCode, "reasonCode");
       request.updatedAt = now;
-      return summaryFor(saveRecord(request));
+      return summarize(saveRecord(request));
     },
 
     previewApproval(id, input = {}) {
@@ -471,7 +661,7 @@ export function createPortalAccessRequestService(options = {}) {
         ok: true,
         mode: "portal-access-request-approval-preview",
         status: "approved_pending_delivery",
-        request: summaryFor({
+        request: summarize({
           ...request,
           status: "approved_pending_delivery",
           nextAction: "admin_delivery_required",
@@ -530,12 +720,15 @@ export function createPortalAccessRequestService(options = {}) {
       request.subscriptionUrl = optionalText(input.subscriptionUrl);
       request.event = null;
       request.updatedAt = now;
-      const credential = attachEdgeCredential(request);
-      if (credential) {
+      const credentials = attachEdgeCredentials(request);
+      if (credentials.length > 0) {
+        for (const credential of credentials) {
+          bindTenantCredentialMaterial(request, credential);
+        }
+        saveRecord(request);
         recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_delivered", request));
-        bindTenantCredentialMaterial(request, credential);
       }
-      return summaryFor(saveRecord(request));
+      return summarize(saveRecord(request));
     },
 
     refreshSubscription(input = {}) {
@@ -555,10 +748,13 @@ export function createPortalAccessRequestService(options = {}) {
         occurredAt: now
       };
       request.updatedAt = now;
-      const credential = attachEdgeCredential(request);
+      const credentials = attachEdgeCredentials(request);
+      for (const credential of credentials) {
+        bindTenantCredentialMaterial(request, credential);
+      }
+      saveRecord(request);
       recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_refreshed", request));
-      bindTenantCredentialMaterial(request, credential);
-      return summaryFor(saveRecord(request));
+      return summarize(saveRecord(request));
     },
 
     disableSubscription(input = {}) {
@@ -577,8 +773,9 @@ export function createPortalAccessRequestService(options = {}) {
       request.subscriptionUrl = null;
       request.event = null;
       request.updatedAt = now;
+      saveRecord(request);
       recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_disabled", request));
-      return summaryFor(saveRecord(request));
+      return summarize(saveRecord(request));
     }
   };
 }

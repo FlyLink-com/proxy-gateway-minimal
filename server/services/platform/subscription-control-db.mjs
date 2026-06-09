@@ -407,6 +407,15 @@ function mapPortalAccessRequest(row) {
   };
 }
 
+function mapPortalEdgeCredential(row) {
+  if (!row) return null;
+  return {
+    edgeChannelRef: row.edge_channel_ref,
+    edgeCredentialRef: row.edge_credential_ref,
+    edgeMaterialDigest: row.edge_material_digest
+  };
+}
+
 function mapPortalEntry(row) {
   if (!row) return null;
   return {
@@ -749,6 +758,20 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     create index if not exists platform_portal_access_requests_plan_idx
       on platform_portal_access_requests(plan);
 
+    create table if not exists platform_portal_edge_credentials (
+      request_id text not null references platform_portal_access_requests(id) on delete cascade,
+      edge_channel_ref text not null,
+      edge_credential_ref text not null,
+      edge_material_digest text not null,
+      ordinal integer not null default 0 check (ordinal >= 0),
+      primary key (request_id, edge_channel_ref)
+    );
+
+    create unique index if not exists platform_portal_edge_credentials_ref_idx
+      on platform_portal_edge_credentials(edge_credential_ref);
+    create index if not exists platform_portal_edge_credentials_request_idx
+      on platform_portal_edge_credentials(request_id, ordinal);
+
     create table if not exists platform_portal_entries (
       id text primary key,
       account_id text not null references platform_accounts(id) on delete cascade,
@@ -1074,7 +1097,43 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
 
   function findIssuedSubscriptionBindingByEdgeCredentialRef(edgeCredentialRef) {
     const safeEdgeCredentialRef = requiredText(edgeCredentialRef, "edgeCredentialRef");
-    return mapUsageBinding(db.prepare(`
+    const durableCredential = mapUsageBinding(db.prepare(`
+      select
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        c.edge_channel_ref as node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until,
+        e.traffic_limit_bytes,
+        c.edge_credential_ref,
+        p.portal_user_ref
+      from platform_issued_subscription_links l
+      join platform_issuance_requests r on r.id = l.request_id
+      join platform_entitlements e on e.id = r.entitlement_id
+      join platform_portal_edge_credentials c on c.request_id = r.id
+      left join platform_portal_access_requests p on p.id = r.id
+      where l.status = 'active'
+        and r.status = 'issued'
+        and e.status = 'active'
+        and c.edge_credential_ref = ?
+      order by l.created_at desc, c.ordinal asc, l.id desc
+      limit 1
+    `).get(safeEdgeCredentialRef));
+    if (durableCredential) {
+      return durableCredential;
+    }
+
+    const direct = mapUsageBinding(db.prepare(`
       select
         l.id as link_id,
         l.request_id,
@@ -1105,6 +1164,56 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       order by l.created_at desc, l.id desc
       limit 1
     `).get(safeEdgeCredentialRef));
+    if (direct) {
+      return direct;
+    }
+
+    const derivedRows = db.prepare(`
+      select
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        r.node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until,
+        e.traffic_limit_bytes,
+        p.edge_credential_ref,
+        p.portal_user_ref
+      from platform_issued_subscription_links l
+      join platform_issuance_requests r on r.id = l.request_id
+      join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_portal_access_requests p on p.id = r.id
+      where l.status = 'active'
+        and r.status = 'issued'
+        and e.status = 'active'
+      order by l.created_at desc, l.id desc
+    `).all();
+
+    for (const row of derivedRows) {
+      const prefix = `edgecred_${row.request_id}_`;
+      if (!safeEdgeCredentialRef.startsWith(prefix)) {
+        continue;
+      }
+      const channelRef = safeEdgeCredentialRef.slice(prefix.length);
+      if (!channelRef) {
+        continue;
+      }
+      return mapUsageBinding({
+        ...row,
+        node_id: channelRef,
+        edge_credential_ref: safeEdgeCredentialRef
+      });
+    }
+    return null;
   }
 
   function findUsageBindingByTenantRef(tenantRef) {
@@ -1153,6 +1262,14 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       select * from platform_usage_rollups
       where edge_credential_ref = ?
     `).get(requiredText(edgeCredentialRef, "edgeCredentialRef")));
+  }
+
+  function listUsageRollupsByRequestId(requestId) {
+    return db.prepare(`
+      select * from platform_usage_rollups
+      where request_id = ?
+      order by updated_at asc, edge_credential_ref asc
+    `).all(requiredText(requestId, "requestId")).map(mapUsageRollup);
   }
 
   function listUsageSamples(filters = {}) {
@@ -1402,6 +1519,48 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     `).all().map(mapEdgeApplyReceipt);
   }
 
+  function listPortalEdgeCredentials(requestId) {
+    return db.prepare(`
+      select edge_channel_ref, edge_credential_ref, edge_material_digest
+      from platform_portal_edge_credentials
+      where request_id = ?
+      order by ordinal asc, edge_channel_ref asc
+    `).all(requiredText(requestId, "requestId")).map(mapPortalEdgeCredential);
+  }
+
+  function attachPortalEdgeCredentials(record) {
+    if (!record) {
+      return null;
+    }
+    const edgeCredentials = listPortalEdgeCredentials(record.id);
+    return edgeCredentials.length > 0 ? { ...record, edgeCredentials } : record;
+  }
+
+  function normalizePortalEdgeCredentials(input, record) {
+    const rawCredentials = Array.isArray(input.edgeCredentials) ? input.edgeCredentials : [];
+    const seen = new Set();
+    const credentials = [];
+    for (const credential of rawCredentials) {
+      const edgeChannelRef = requiredText(credential?.edgeChannelRef, "edgeChannelRef");
+      const edgeCredentialRef = requiredText(credential?.edgeCredentialRef, "edgeCredentialRef");
+      const edgeMaterialDigest = requiredText(credential?.edgeMaterialDigest, "edgeMaterialDigest");
+      const key = `${edgeChannelRef}\u0000${edgeCredentialRef}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      credentials.push({ edgeChannelRef, edgeCredentialRef, edgeMaterialDigest });
+    }
+    if (credentials.length === 0 && record.edgeChannelRef && record.edgeCredentialRef && record.edgeMaterialDigest) {
+      credentials.push({
+        edgeChannelRef: record.edgeChannelRef,
+        edgeCredentialRef: record.edgeCredentialRef,
+        edgeMaterialDigest: record.edgeMaterialDigest
+      });
+    }
+    return credentials;
+  }
+
   function upsertPortalAccessRequest(input) {
     const record = {
       id: requiredText(input.id, "id"),
@@ -1432,58 +1591,78 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       edgeLifecycleMutation: input.edgeLifecycleMutation ? 1 : 0,
       eventJson: jsonObject(input.event, "event")
     };
-    sqliteRun(db.prepare(`
-      insert into platform_portal_access_requests (
-        id, portal_user_ref, plan, client_target, duration_days, quantity,
-        status, next_action, note_provided, prior_trial_state, submitted_at,
-        updated_at, reviewed_at, reviewed_by_ref, safe_reason_code, expires_at,
-        valid_until, entitlement_ref, access_grant_ref, tenant_id, artifact_id,
-        subscription_url, edge_channel_ref, edge_credential_ref,
-        edge_material_digest, edge_lifecycle_mutation, event_json
-      ) values (
-        @id, @portalUserRef, @plan, @clientTarget, @durationDays, @quantity,
-        @status, @nextAction, @noteProvided, @priorTrialState, @submittedAt,
-        @updatedAt, @reviewedAt, @reviewedByRef, @safeReasonCode, @expiresAt,
-        @validUntil, @entitlementRef, @accessGrantRef, @tenantId, @artifactId,
-        @subscriptionUrl, @edgeChannelRef, @edgeCredentialRef,
-        @edgeMaterialDigest, @edgeLifecycleMutation, @eventJson
-      )
-      on conflict(id) do update set
-        portal_user_ref = excluded.portal_user_ref,
-        plan = excluded.plan,
-        client_target = excluded.client_target,
-        duration_days = excluded.duration_days,
-        quantity = excluded.quantity,
-        status = excluded.status,
-        next_action = excluded.next_action,
-        note_provided = excluded.note_provided,
-        prior_trial_state = excluded.prior_trial_state,
-        submitted_at = excluded.submitted_at,
-        updated_at = excluded.updated_at,
-        reviewed_at = excluded.reviewed_at,
-        reviewed_by_ref = excluded.reviewed_by_ref,
-        safe_reason_code = excluded.safe_reason_code,
-        expires_at = excluded.expires_at,
-        valid_until = excluded.valid_until,
-        entitlement_ref = excluded.entitlement_ref,
-        access_grant_ref = excluded.access_grant_ref,
-        tenant_id = excluded.tenant_id,
-        artifact_id = excluded.artifact_id,
-        subscription_url = excluded.subscription_url,
-        edge_channel_ref = excluded.edge_channel_ref,
-        edge_credential_ref = excluded.edge_credential_ref,
-        edge_material_digest = excluded.edge_material_digest,
-        edge_lifecycle_mutation = excluded.edge_lifecycle_mutation,
-        event_json = excluded.event_json
-    `), record);
+    const edgeCredentials = normalizePortalEdgeCredentials(input, record);
+    db.transaction(() => {
+      sqliteRun(db.prepare(`
+        insert into platform_portal_access_requests (
+          id, portal_user_ref, plan, client_target, duration_days, quantity,
+          status, next_action, note_provided, prior_trial_state, submitted_at,
+          updated_at, reviewed_at, reviewed_by_ref, safe_reason_code, expires_at,
+          valid_until, entitlement_ref, access_grant_ref, tenant_id, artifact_id,
+          subscription_url, edge_channel_ref, edge_credential_ref,
+          edge_material_digest, edge_lifecycle_mutation, event_json
+        ) values (
+          @id, @portalUserRef, @plan, @clientTarget, @durationDays, @quantity,
+          @status, @nextAction, @noteProvided, @priorTrialState, @submittedAt,
+          @updatedAt, @reviewedAt, @reviewedByRef, @safeReasonCode, @expiresAt,
+          @validUntil, @entitlementRef, @accessGrantRef, @tenantId, @artifactId,
+          @subscriptionUrl, @edgeChannelRef, @edgeCredentialRef,
+          @edgeMaterialDigest, @edgeLifecycleMutation, @eventJson
+        )
+        on conflict(id) do update set
+          portal_user_ref = excluded.portal_user_ref,
+          plan = excluded.plan,
+          client_target = excluded.client_target,
+          duration_days = excluded.duration_days,
+          quantity = excluded.quantity,
+          status = excluded.status,
+          next_action = excluded.next_action,
+          note_provided = excluded.note_provided,
+          prior_trial_state = excluded.prior_trial_state,
+          submitted_at = excluded.submitted_at,
+          updated_at = excluded.updated_at,
+          reviewed_at = excluded.reviewed_at,
+          reviewed_by_ref = excluded.reviewed_by_ref,
+          safe_reason_code = excluded.safe_reason_code,
+          expires_at = excluded.expires_at,
+          valid_until = excluded.valid_until,
+          entitlement_ref = excluded.entitlement_ref,
+          access_grant_ref = excluded.access_grant_ref,
+          tenant_id = excluded.tenant_id,
+          artifact_id = excluded.artifact_id,
+          subscription_url = excluded.subscription_url,
+          edge_channel_ref = excluded.edge_channel_ref,
+          edge_credential_ref = excluded.edge_credential_ref,
+          edge_material_digest = excluded.edge_material_digest,
+          edge_lifecycle_mutation = excluded.edge_lifecycle_mutation,
+          event_json = excluded.event_json
+      `), record);
+      db.prepare("delete from platform_portal_edge_credentials where request_id = ?").run(record.id);
+      const insertEdgeCredential = db.prepare(`
+        insert into platform_portal_edge_credentials (
+          request_id, edge_channel_ref, edge_credential_ref, edge_material_digest, ordinal
+        ) values (
+          @requestId, @edgeChannelRef, @edgeCredentialRef, @edgeMaterialDigest, @ordinal
+        )
+      `);
+      edgeCredentials.forEach((credential, ordinal) => {
+        sqliteRun(insertEdgeCredential, {
+          requestId: record.id,
+          edgeChannelRef: credential.edgeChannelRef,
+          edgeCredentialRef: credential.edgeCredentialRef,
+          edgeMaterialDigest: credential.edgeMaterialDigest,
+          ordinal
+        });
+      });
+    })();
     return getPortalAccessRequest(record.id);
   }
 
   function getPortalAccessRequest(id) {
-    return mapPortalAccessRequest(db.prepare(`
+    return attachPortalEdgeCredentials(mapPortalAccessRequest(db.prepare(`
       select * from platform_portal_access_requests
       where id = ?
-    `).get(requiredText(id, "id")));
+    `).get(requiredText(id, "id"))));
   }
 
   function listPortalAccessRequests(filters = {}) {
@@ -1509,7 +1688,7 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       select * from platform_portal_access_requests
       ${where}
       order by submitted_at asc, id asc
-    `).all(...params).map(mapPortalAccessRequest);
+    `).all(...params).map(mapPortalAccessRequest).map(attachPortalEdgeCredentials);
   }
 
   function createPortalEntry(input) {
@@ -1959,6 +2138,7 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     recordUsageSample,
     getUsageSampleByDigest,
     getUsageRollupByEdgeCredentialRef,
+    listUsageRollupsByRequestId,
     listUsageSamples,
     upsertQuotaCounter,
     bindDevice,

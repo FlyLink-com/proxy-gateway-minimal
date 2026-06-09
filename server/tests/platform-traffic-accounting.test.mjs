@@ -151,6 +151,35 @@ test("traffic accounting records usage by edge credential and returns quota deci
   });
 });
 
+test("traffic accounting maps derived multi-channel edge credentials to the issued order", () => {
+  withStore((store) => {
+    const service = createTrafficAccountingService({
+      controlStore: store,
+      nowFn: () => "2026-06-06T00:10:00.000Z",
+      usageSampleRefFactory: () => "usage_sample_service_hy2"
+    });
+
+    const recorded = service.recordUsageObservation({
+      sourceRef: "hy2_stats_snapshot_1",
+      channelRef: "channel-vultr-a-hy2",
+      edgeCredentialRef: "edgecred_pareq_usage_service_1_channel-vultr-a-hy2",
+      observedAt: "2026-06-06T00:05:00.000Z",
+      intervalStartedAt: "2026-06-06T00:00:00.000Z",
+      intervalEndedAt: "2026-06-06T00:05:00.000Z",
+      uploadBytes: 10,
+      downloadBytes: 20
+    });
+
+    assert.equal(recorded.ok, true);
+    assert.equal(recorded.status, "within_quota");
+    assert.equal(recorded.requestId, "pareq_usage_service_1");
+    assert.equal(recorded.channelRef, "channel-vultr-a-hy2");
+    assert.equal(recorded.edgeCredentialRef, "edgecred_pareq_usage_service_1_channel-vultr-a-hy2");
+    assert.equal(recorded.rollup.totalBytes, 30);
+    assert.doesNotMatch(JSON.stringify(recorded), /password|token|subscriptionUrl|rawConfig/i);
+  });
+});
+
 test("traffic accounting fails closed when an edge credential cannot be resolved", () => {
   withStore((store) => {
     const service = createTrafficAccountingService({

@@ -611,13 +611,38 @@ test("subscription control store records idempotent traffic usage samples and ro
       subscriptionUrl: "https://sub.example.test/sub/a/visible-once.yaml",
       edgeChannelRef: "channel-aliyun-a-tuic",
       edgeCredentialRef: "edgecred_pareq_usage_1",
-      edgeMaterialDigest: "sha256:digest_usage_1"
+      edgeMaterialDigest: "sha256:digest_usage_1",
+      edgeCredentials: [
+        {
+          edgeChannelRef: "channel-aliyun-a-tuic",
+          edgeCredentialRef: "edgecred_pareq_usage_1",
+          edgeMaterialDigest: "sha256:digest_usage_1"
+        },
+        {
+          edgeChannelRef: "channel-vultr-a-hy2",
+          edgeCredentialRef: "safe_nonprefix_hy2_ref",
+          edgeMaterialDigest: "sha256:digest_usage_hy2"
+        }
+      ]
     });
 
     const binding = store.findIssuedSubscriptionBindingByEdgeCredentialRef("edgecred_pareq_usage_1");
     assert.equal(binding.requestId, "pareq_usage_1");
     assert.equal(binding.trafficLimitBytes, 1024);
     assert.equal(binding.edgeCredentialRef, "edgecred_pareq_usage_1");
+
+    const channelBinding = store.findIssuedSubscriptionBindingByEdgeCredentialRef(
+      "edgecred_pareq_usage_1_channel-vultr-a-hy2"
+    );
+    assert.equal(channelBinding.requestId, "pareq_usage_1");
+    assert.equal(channelBinding.nodeId, "channel-vultr-a-hy2");
+    assert.equal(channelBinding.edgeCredentialRef, "edgecred_pareq_usage_1_channel-vultr-a-hy2");
+
+    const durableChannelBinding = store.findIssuedSubscriptionBindingByEdgeCredentialRef("safe_nonprefix_hy2_ref");
+    assert.equal(durableChannelBinding.requestId, "pareq_usage_1");
+    assert.equal(durableChannelBinding.nodeId, "channel-vultr-a-hy2");
+    assert.equal(durableChannelBinding.portalUserRef, "portal_user_usage_1");
+    assert.equal(durableChannelBinding.edgeCredentialRef, "safe_nonprefix_hy2_ref");
 
     const first = store.recordUsageSample({
       id: "usage_sample_1",
@@ -662,6 +687,22 @@ test("subscription control store records idempotent traffic usage samples and ro
     const samples = store.listUsageSamples({ edgeCredentialRef: "edgecred_pareq_usage_1" });
     assert.equal(samples.length, 1);
     assert.equal(store.getUsageRollupByEdgeCredentialRef("edgecred_pareq_usage_1").downloadBytes, 200);
+    const rollups = store.listUsageRollupsByRequestId("pareq_usage_1");
+    assert.deepEqual(rollups.map((rollup) => ({
+      requestId: rollup.requestId,
+      channelRef: rollup.channelRef,
+      uploadBytes: rollup.uploadBytes,
+      downloadBytes: rollup.downloadBytes,
+      totalBytes: rollup.totalBytes
+    })), [
+      {
+        requestId: "pareq_usage_1",
+        channelRef: "channel-aliyun-a-tuic",
+        uploadBytes: 100,
+        downloadBytes: 200,
+        totalBytes: 300
+      }
+    ]);
     assert.doesNotMatch(JSON.stringify({ samples, duplicate }), /password|token|subscriptionUrl|rawConfig/i);
   });
 });

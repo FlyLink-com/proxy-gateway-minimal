@@ -15,6 +15,7 @@ import { createCleanStartControlPlanePackage } from "../services/platform/clean-
 import { createAliyunGateDecisionPacket } from "../services/platform/aliyun-gate-decision-packet.mjs";
 import { buildProvisioningFormPackage } from "../services/platform/provisioning-form.mjs";
 import { previewSubscriptionIssuance, planSubscriptionIssuance } from "../services/platform/subscription-issuance.mjs";
+import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
 
 function sendError(res, error) {
   if (error.code === "validation_error") {
@@ -120,6 +121,7 @@ export function adminPlatformRoutes(state) {
   const aliyunGateEvidenceShell = state.platform?.aliyunGateEvidenceShell;
   const controlStore = state.platform?.controlStore;
   const portalAccessRequests = state.platform?.portalAccessRequests;
+  const edgeUsageAccounting = state.platform?.edgeUsageAccounting;
 
   function buildCleanStartPackage() {
     return createCleanStartControlPlanePackage({
@@ -364,6 +366,49 @@ export function adminPlatformRoutes(state) {
           input: req.body ?? {},
           approvalRef,
           now: new Date().toISOString()
+        })
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/platform/subscription-usage-monitor", (req, res) => {
+    try {
+      res.json({
+        monitor: buildSubscriptionUsageMonitor({
+          controlStore,
+          subscriptionCore: state.subscriptions?.core || state.subscriptions?.service,
+          filters: {
+            accountId: req.query.accountId,
+            plan: req.query.plan,
+            nodeId: req.query.nodeId,
+            status: req.query.status,
+            warning: req.query.warning,
+            from: req.query.from,
+            to: req.query.to,
+            bucket: req.query.bucket
+          },
+          now: new Date()
+        })
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/subscription-usage-monitor/collect", async (req, res) => {
+    try {
+      if (!edgeUsageAccounting || typeof edgeUsageAccounting.collectAndRecord !== "function") {
+        const error = new Error("usage accounting collector is not configured");
+        error.code = "validation_error";
+        throw error;
+      }
+      const body = req.body ?? {};
+      res.status(202).json({
+        usageAccounting: await edgeUsageAccounting.collectAndRecord({
+          since: body.since,
+          sinceByChannelRef: body.sinceByChannelRef
         })
       });
     } catch (error) {

@@ -78,6 +78,8 @@ export function createApp(state, options = {}) {
     || state.platform?.accountShell
     || state.platform?.accessShell
     || state.platform?.portalAccessRequests
+    || state.platform?.controlStore
+    || state.platform?.edgeUsageAccounting
   ) {
     app.use(adminPlatformRoutes(state));
   }
