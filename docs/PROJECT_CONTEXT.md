@@ -82,6 +82,11 @@ The SGP final production closeout gate is recorded in
 It defines the remaining exact Risk A sequence before Singapore can be marked
 fully closed: read-only inventory, clean Japan control-plane upgrade, protected
 Singapore data-plane apply, and a separately approved new-order smoke.
+The first SGP final closeout read-only inventory is recorded in
+`docs/production-replacement-records/2026-06-09-sgp-final-closeout-gate1-readonly-inventory.md`.
+It found public portal/sub boundaries healthy and SGP runtime services active,
+but it also found Japan-to-SGP SSH failed, so the protected remote data-plane
+apply path remains blocked before Gate 3.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never
