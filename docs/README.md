@@ -71,6 +71,7 @@ historical reference, and runtime material separated.
 | `docs/RESOURCE_PACKAGE_CLI.md` | CLI-first controlled-open and resource package model for turning operator-provided lead/account/entitlement/access facts into an operator-safe delivery package. | Active repository tooling contract; no execution authority. | Read before using natural-language/agent-assisted registration, subscription delivery preparation, or resource-package audit flows. |
 | `docs/VALIDATION_BASELINE.md` | Current validation command matrix and PR completion gate by risk tier and touched surface. | Active validation entrypoint; not historical pass-count archive and not deploy approval. | Read before choosing which checks to run for a PR. |
 | `docs/CI_MANUAL_VALIDATION.md` | Manual CI validation host workflow; target direction is local Linux manual CI, with historical Aliyun manual CI facts retained until the transition is validated. | Active runbook, not staging or deploy approval. | Read before using a manual validation host for repo-level CI evidence. |
+| `docs/CLOUDFLARE_PUBLIC_SITE_CI.md` | Repository-only Cloudflare public static site CI boundary, pinned Wrangler dry-run command, and non-goals for keeping backend/control-plane/API/runtime work off Cloudflare. | Active CI boundary; no deploy, DNS, Cloudflare account, secret, or production authority. | Read before changing `wrangler.public-site.jsonc`, `admin/dist-site` public-site builds, GitHub public-site CI, or Cloudflare static-site deploy preparation. |
 
 ## Structured Project State
 
