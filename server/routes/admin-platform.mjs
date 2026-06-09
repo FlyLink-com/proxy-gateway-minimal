@@ -122,6 +122,7 @@ export function adminPlatformRoutes(state) {
   const controlStore = state.platform?.controlStore;
   const portalAccessRequests = state.platform?.portalAccessRequests;
   const edgeUsageAccounting = state.platform?.edgeUsageAccounting;
+  const dataPlaneHandoffQueue = state.platform?.dataPlaneHandoffQueue;
 
   function buildCleanStartPackage() {
     return createCleanStartControlPlanePackage({
@@ -411,6 +412,47 @@ export function adminPlatformRoutes(state) {
           sinceByChannelRef: body.sinceByChannelRef
         })
       });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/platform/data-plane-handoff-queue", (req, res) => {
+    try {
+      if (!dataPlaneHandoffQueue || typeof dataPlaneHandoffQueue.listPending !== "function") {
+        const error = new Error("data-plane handoff queue is not configured");
+        error.code = "validation_error";
+        throw error;
+      }
+      res.json({
+        queue: {
+          type: "data_plane_handoff_queue",
+          pending: dataPlaneHandoffQueue.listPending(),
+          safety: {
+            summaryOnly: true,
+            rawCredentialReturned: false,
+            rawRuntimePayloadReturned: false,
+            mutationAllowed: false
+          }
+        }
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/data-plane-handoff-queue/:handoffRef/archive", (req, res) => {
+    try {
+      if (!dataPlaneHandoffQueue || typeof dataPlaneHandoffQueue.archiveApplied !== "function") {
+        const error = new Error("data-plane handoff queue is not configured");
+        error.code = "validation_error";
+        throw error;
+      }
+      const archive = dataPlaneHandoffQueue.archiveApplied({
+        handoffRef: req.params.handoffRef,
+        appliedByRef: req.body?.appliedByRef
+      });
+      res.status(archive.ok ? 202 : 400).json({ archive });
     } catch (error) {
       sendError(res, error);
     }

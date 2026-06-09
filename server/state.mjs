@@ -39,6 +39,7 @@ import { createSingBoxSsHostRuntimeAdapter } from "./services/edge/sing-box-ss-r
 import { createXrayVlessRealityHostRuntimeAdapter } from "./services/edge/xray-vless-reality-runtime-adapter.mjs";
 import { createHysteria2HostRuntimeAdapter } from "./services/edge/hysteria2-runtime-adapter.mjs";
 import { createDataPlaneHandoffRuntimeAdapter } from "./services/edge/data-plane-handoff-runtime-adapter.mjs";
+import { createDataPlaneHandoffQueue } from "./services/edge/data-plane-handoff-queue.mjs";
 import { spawn } from "node:child_process";
 
 function rootPathFrom(rootDir) {
@@ -767,6 +768,15 @@ export function createRuntimeState(options = {}) {
       })
       : null
   );
+  const dataPlaneHandoffDir = optionalEnvText(env.EDGE_DATA_PLANE_HANDOFF_DIR || env.USER_PORTAL_EDGE_HANDOFF_DIR);
+  const dataPlaneHandoffQueue = options.dataPlaneHandoffQueue || (
+    dataPlaneHandoffDir
+      ? createDataPlaneHandoffQueue({
+        handoffDir: dataPlaneHandoffDir,
+        archiveDir: optionalEnvText(env.EDGE_DATA_PLANE_HANDOFF_ARCHIVE_DIR) || undefined
+      })
+      : null
+  );
   const platformAliyunGateEvidenceShell = options.platformAliyunGateEvidenceShell || createPlatformAliyunGateEvidenceShell();
   let closed = false;
 
@@ -917,7 +927,8 @@ export function createRuntimeState(options = {}) {
       edgeRuntimeAdapter,
       trafficAccounting: platformTrafficAccounting,
       edgeUsageCollectors,
-      edgeUsageAccounting
+      edgeUsageAccounting,
+      dataPlaneHandoffQueue
     },
     security: {
       adminAllowedCidrs,

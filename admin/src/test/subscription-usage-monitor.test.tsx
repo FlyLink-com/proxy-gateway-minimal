@@ -22,6 +22,7 @@ describe("subscription usage monitor page", () => {
           issuanceRequestId: "order_demo_1",
           plan: "trial",
           nodeId: "node-alpha",
+          issuedChannels: ["node-alpha", "node-gamma"],
           tenantRef: "tenant-safe-ref",
           artifactRef: "artifact-safe-ref",
           usedBytes: 300,
@@ -129,6 +130,7 @@ describe("subscription usage monitor page", () => {
           issuanceRequestId: "order_demo_1",
           plan: "trial",
           nodeId: "node-alpha",
+          issuedChannels: ["node-alpha", "node-gamma"],
           tenantRef: "tenant-safe-ref",
           artifactRef: "artifact-safe-ref",
           usedBytes: 300,
@@ -214,6 +216,7 @@ describe("subscription usage monitor page", () => {
     expect(firstRowScope.getByText("order_demo_1")).not.toBeNull();
     expect(firstRowScope.getByText("trial / 1")).not.toBeNull();
     expect(firstRowScope.getAllByText("node-alpha").length).toBeGreaterThanOrEqual(2);
+    expect(firstRowScope.getByText("node-gamma")).not.toBeNull();
     expect(firstRowScope.getByText("300 B / 1000 B")).not.toBeNull();
     expect(firstRowScope.getAllByText("300 B").length).toBeGreaterThanOrEqual(1);
     expect(firstRowScope.getByText(/00:54|07:54/)).not.toBeNull();
@@ -488,6 +491,7 @@ function monitorRowFixture(overrides: Partial<SubscriptionUsageMonitorRow> = {})
     plan: "monthly",
     quantity: 1,
     nodeId: "node-alpha",
+    issuedChannels: ["node-alpha"],
     tenantRef: "tenant-demo-ref",
     artifactRef: "artifact-demo-ref",
     linkStatus: "active",

@@ -55,6 +55,7 @@ function seedDeliveredOrder(store, {
   artifactRef,
   edgeCredentialRef,
   channelRef,
+  edgeCredentials,
   plan = "monthly",
   quantity = 1,
   trafficLimitBytes = 0,
@@ -124,7 +125,8 @@ function seedDeliveredOrder(store, {
     subscriptionUrl: "https://sub.example.test/sub/a/visible-once.yaml",
     edgeChannelRef: channelRef,
     edgeCredentialRef,
-    edgeMaterialDigest: `sha256:digest_${requestId}`
+    edgeMaterialDigest: `sha256:digest_${requestId}`,
+    edgeCredentials
   });
 }
 
@@ -372,4 +374,74 @@ test("admin subscription usage monitor collect route fails closed when runtime a
   } finally {
     server.close();
   }
+});
+
+test("admin subscription usage monitor shows all issued channels for multi-channel orders before usage is collected", async () => {
+  await withStore(async (controlStore) => {
+    seedDeliveredOrder(controlStore, {
+      accountId: "acct_usage_monitor_multichannel",
+      portalUserRef: "portal_user_usage_monitor_multichannel",
+      requestId: "pareq_usage_monitor_multichannel",
+      entitlementId: "ent_usage_monitor_multichannel",
+      tenantRef: "tenant_usage_monitor_multichannel",
+      artifactRef: "artifact_usage_monitor_multichannel",
+      edgeCredentialRef: "edgecred_pareq_usage_monitor_multichannel_channel-vultr-a-vless-reality-tcp",
+      channelRef: "channel-vultr-a-vless-reality-tcp",
+      edgeCredentials: [
+        {
+          edgeChannelRef: "channel-vultr-a-vless-reality-tcp",
+          edgeCredentialRef: "edgecred_pareq_usage_monitor_multichannel_channel-vultr-a-vless-reality-tcp",
+          edgeMaterialDigest: "sha256:digest_multichannel_vless"
+        },
+        {
+          edgeChannelRef: "channel-vultr-a-hy2",
+          edgeCredentialRef: "edgecred_pareq_usage_monitor_multichannel_channel-vultr-a-hy2",
+          edgeMaterialDigest: "sha256:digest_multichannel_hy2"
+        },
+        {
+          edgeChannelRef: "channel-sgp-a-hy2",
+          edgeCredentialRef: "edgecred_pareq_usage_monitor_multichannel_channel-sgp-a-hy2",
+          edgeMaterialDigest: "sha256:digest_multichannel_sgp_hy2"
+        }
+      ],
+      trafficLimitBytes: 1000
+    });
+
+    const { server, baseUrl } = await listen(createApp(fakeState({
+      controlStore,
+      portalAccessRequests: { listRequests: () => [] }
+    })));
+    try {
+      const response = await fetch(`${baseUrl}/api/admin/platform/subscription-usage-monitor`, {
+        headers: authHeaders()
+      });
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.monitor.items.length, 1);
+      assert.deepEqual(body.monitor.items[0].issuedChannels, [
+        "channel-vultr-a-vless-reality-tcp",
+        "channel-vultr-a-hy2",
+        "channel-sgp-a-hy2"
+      ]);
+      assert.equal(body.monitor.items[0].usageStatus, "not_collected");
+      assert.deepEqual(body.monitor.items[0].channelUsages, []);
+      assert.deepEqual(body.monitor.aggregates.byNode, {
+        "channel-sgp-a-hy2": 1,
+        "channel-vultr-a-hy2": 1,
+        "channel-vultr-a-vless-reality-tcp": 1
+      });
+
+      const filtered = await fetch(
+        `${baseUrl}/api/admin/platform/subscription-usage-monitor?nodeId=channel-sgp-a-hy2`,
+        { headers: authHeaders() }
+      );
+      assert.equal(filtered.status, 200);
+      const filteredBody = await filtered.json();
+      assert.equal(filteredBody.monitor.items.length, 1);
+      assert.equal(filteredBody.monitor.items[0].issuanceRequestId, "pareq_usage_monitor_multichannel");
+      assert.doesNotMatch(JSON.stringify(filteredBody.monitor), /edgecred_|https?:\/\/|password|token=|bearer|rawConfig/i);
+    } finally {
+      server.close();
+    }
+  });
 });

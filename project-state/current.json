@@ -141,7 +141,7 @@
     "Single-control-plane / multi-data-plane is the active architecture boundary: accounts, orders, artifacts, credential lifecycle, subscription rendering, and usage ledgers stay authoritative in one control store; edge hosts own protocol runtime and traffic capacity only.",
     "Aliyun subscription-distribution records, channel-lab-a/b records, and Japan single-TUIC upgrade records are historical/fallback references. Do not reactivate them as current production authority or automatic issuance targets without a fresh Risk A gate and live verification.",
     "User Portal and Admin/Operator surfaces are adapters over shared domain services. User order creation, lifecycle status, refresh, usage monitor, and support flows must use durable backend state, not frontend Map/demo state.",
-    "Order-owned traffic accounting is an active implementation lane: runtime samples and rollups must map to edgeCredentialRef, order, and user/account for Admin/User Portal display before quota enforcement or auto-disable is enabled.",
+    "Order-owned traffic accounting remains an active implementation lane: Admin usage monitor now shows order-owned issued channels from durable state, but live runtime sample collection, User Portal usage display, quota enforcement, and auto-disable still require separate gates.",
     "Legacy query-token retirement remains a separate Risk A lane after opaque artifact coverage, observation, endpoint compatibility checks, rollback evidence, and exact operator approval.",
     "All production/runtime/cloud changes remain Risk A: DNS, Nginx, provider firewall, systemd restarts, runtime config, live order creation, account/password generation, subscription URL/token/password output, and SQLite row dumps stay out of repo-only work."
   ],
@@ -203,7 +203,7 @@
     "opaqueArtifactCanaryActive": false,
     "legacyQueryTokenRouteStillExists": true,
     "broaderArtifactIssuance": "covered-by-current-portal-order-and-artifact-flow-subject-to-live-verification",
-    "trafficAccounting": "usage-ledger-and-monitor-integration-in-progress; quota auto-disable not enabled by this state file"
+    "trafficAccounting": "usage-ledger-and-admin-monitor-channel-ownership-coded; live collector activation, user-portal usage display, and quota auto-disable not enabled by this state file"
   },
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
@@ -227,7 +227,7 @@
   "activeBlockers": [
     {
       "id": "sgp-remote-handoff-apply-productization",
-      "summary": "Singapore data-plane runtime can be represented in the Japan control-plane bundle, but the remote handoff apply path must be repeatable, reviewed, redacted, and validated before it is treated as a production operating mechanism.",
+      "summary": "Singapore data-plane runtime can be represented in the Japan control-plane bundle. Repo-only handoff queue listing/archive support is coded, but production remote apply remains a separate reviewed, redacted, validated Risk A mechanism.",
       "sourceDoc": "docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md"
     },
     {
@@ -237,7 +237,7 @@
     },
     {
       "id": "order-owned-usage-monitor-closure",
-      "summary": "Usage monitor data must map runtime usage samples to edgeCredentialRef, order, and user/account, then display order-owned usage in Admin/User Portal before quota enforcement or automatic disablement is enabled.",
+      "summary": "Admin usage monitor now maps durable orders to account/user and all issued channels before runtime samples arrive. Live runtime sample ingestion, User Portal usage display, and quota/auto-disable remain separate gated work.",
       "sourceDoc": "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md"
     },
     {
@@ -255,8 +255,8 @@
     "Finish repo-only state/docs archive alignment, then run npm run project-state:check and git diff --check.",
     "Package any local adapter/template changes into an explicit Vultr runtime release only after current repo validation is clean.",
     "Run a fresh no-secrets new-order desktop and mobile smoke only under exact production approval; do not create live orders during repo-only validation.",
-    "Productize the Singapore remote handoff apply command as a repo-only reviewed tool, then use a separate Risk A gate for production apply.",
-    "Close order-owned usage monitor mapping so Admin/User Portal show usage by user/account/order, while keeping quota auto-disable disabled until separately approved.",
+    "Use the protected remote handoff queue/API for reviewed SGP handoff summaries, then use a separate Risk A gate for any production remote apply.",
+    "Continue order-owned usage monitor work by connecting live runtime samples and User Portal usage display, while keeping quota auto-disable disabled until separately approved.",
     "Keep legacy query-token retirement separate from multichannel rollout; do not combine route removal with artifact issuance or runtime changes.",
     "Do not mutate DNS, Nginx, provider firewall, runtime service state, account/passwords, payment, live orders, subscription URLs/tokens/passwords, or SQLite rows without exact approval."
   ],

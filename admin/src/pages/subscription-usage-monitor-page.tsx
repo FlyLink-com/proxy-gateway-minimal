@@ -326,7 +326,7 @@ function MonitorRow({ row }: { row: SubscriptionUsageMonitorRow }) {
       </td>
       <td>{safeValue(row.issuanceRequestId)}</td>
       <td>{safeValue(row.plan)} / {row.quantity || 1}</td>
-      <td>{resourceChannelLabel(row.nodeId)}</td>
+      <td>{issuedChannelList(row)}</td>
       <td>
         <div>{formatTrafficBytes(row)}</div>
       </td>
@@ -627,6 +627,24 @@ function safeValue(value: string | number | null | undefined) {
 function resourceChannelLabel(value: string | null | undefined) {
   if (!value) return "未记录";
   return value;
+}
+
+function issuedChannelList(row: SubscriptionUsageMonitorRow) {
+  const channels = Array.isArray(row.issuedChannels) && row.issuedChannels.length > 0
+    ? row.issuedChannels
+    : (row.nodeId ? [row.nodeId] : []);
+  if (channels.length === 0) {
+    return <span className="muted">未记录</span>;
+  }
+  return (
+    <span className="usage-channel-list">
+      {channels.map((channelRef) => (
+        <span className="usage-channel-chip" key={channelRef}>
+          <span>{resourceChannelLabel(channelRef)}</span>
+        </span>
+      ))}
+    </span>
+  );
 }
 
 function formatTrafficBytes(row: SubscriptionUsageMonitorRow) {

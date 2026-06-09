@@ -192,6 +192,7 @@ export type SubscriptionUsageMonitorRow = {
   plan: string;
   quantity: number;
   nodeId: string;
+  issuedChannels: string[];
   tenantRef: string | null;
   artifactRef: string | null;
   linkStatus: string;

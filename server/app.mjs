@@ -80,6 +80,7 @@ export function createApp(state, options = {}) {
     || state.platform?.portalAccessRequests
     || state.platform?.controlStore
     || state.platform?.edgeUsageAccounting
+    || state.platform?.dataPlaneHandoffQueue
   ) {
     app.use(adminPlatformRoutes(state));
   }

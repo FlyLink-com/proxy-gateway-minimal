@@ -139,7 +139,11 @@ Current execution note:
 - Full UI validation in this closeout pass also passed: `npm run admin:test`
   with 139 passing tests and `npm run admin:build`.
 - Server contract validation in this closeout pass also passed: `npm test` with
-  707 passing tests.
+  711 passing tests.
+- 2026-06-09: The usage monitor UI now renders every issued channel for an
+  order as redacted channel chips instead of collapsing ownership to a single
+  `nodeId`. The corresponding Admin fixture remains fail-soft for older
+  payloads and does not expose edge credential refs or subscription material.
 
 ### Unit 3: User Portal Order Lifecycle UI
 
@@ -175,7 +179,7 @@ Current execution note:
   with 100 passing tests.
 - Full UI validation passed: `npm run admin:test` with 139 passing tests and
   `npm run admin:build`.
-- Server contract validation passed after UI checks: `npm test` with 707 passing
+- Server contract validation passed after UI checks: `npm test` with 711 passing
   tests.
 
 ### Unit 4: Control Plane Order, Credential, And Usage Ledger
@@ -193,7 +197,15 @@ Current execution note:
   server/tests/platform-subscription-usage-monitor.test.mjs
   server/tests/platform-issue-subscription-cli.test.mjs
   server/tests/user-portal-routes.test.mjs` completed with 61 passing tests.
-  Full `npm test` completed with 707 passing server tests.
+  Full `npm test` completed with 711 passing server tests.
+- 2026-06-09: Unit 4 repo-only debt closure added order/channel ownership to
+  the Admin usage-monitor contract. Multi-channel orders now report
+  `issuedChannels` even before live runtime usage has been collected, aggregate
+  channel counts include every issued channel, and filtering can match any
+  issued channel without returning raw edge credential refs or secret material.
+  Focused validation passed:
+  `node --test server\tests\platform-subscription-usage-monitor.test.mjs` with
+  4 passing tests. Full `npm test` completed with 711 passing server tests.
 
 Files / areas:
 - `server/app.mjs`
@@ -256,6 +268,14 @@ Current execution note:
   with 139 passing tests.
 - This unit remains repo-only. Production runtime apply, provider firewall,
   Nginx, DNS, and service restart work stays outside this closeout unit.
+- 2026-06-09: Unit 5 repo-only debt closure added a protected remote
+  data-plane handoff queue service and Admin API. The queue lists pending
+  handoff files as safe summaries, refuses unsafe/mutating payload shapes, and
+  archives only explicitly selected reviewed handoffs. It does not apply
+  runtime config or expose raw credentials, subscription URLs, tokens, raw
+  config, raw logs, environment values, or SQLite rows. Focused validation
+  passed: `node --test server\tests\data-plane-handoff-queue.test.mjs` with
+  3 passing tests.
 
 ### Unit 6: CLI And Project Handoff Helpers
 
@@ -286,7 +306,7 @@ Current execution note:
 - Targeted validation passed:
   `node --test server/tests/cli-router.test.mjs server/tests/project-handoff-brief.test.mjs`
   with 59 passing tests.
-- Full server validation passed with `npm test`: 707 passing tests.
+- Full server validation passed with `npm test`: 711 passing tests.
 - The helper path remains dry-run/redacted by design and does not output
   secrets, tokens, subscription URLs, account credentials, raw logs, raw config,
   raw environment values, or SQLite rows.

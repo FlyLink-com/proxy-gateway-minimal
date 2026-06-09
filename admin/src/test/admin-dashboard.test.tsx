@@ -283,7 +283,7 @@ function usageAggregateFixture(overrides: Partial<SubscriptionUsageMonitor["aggr
 }
 
 function usageRowFixture(overrides: Partial<SubscriptionUsageMonitorRow> = {}): SubscriptionUsageMonitorRow {
-  return {
+  const row: SubscriptionUsageMonitorRow = {
     accountId: "acct_demo",
     portalUserRef: "portal_user_demo",
     issuanceRequestId: "order_demo",
@@ -291,6 +291,7 @@ function usageRowFixture(overrides: Partial<SubscriptionUsageMonitorRow> = {}): 
     plan: "trial",
     quantity: 1,
     nodeId: "channel-lab-b-tuic",
+    issuedChannels: ["channel-lab-b-tuic"],
     tenantRef: "tenant-safe-ref",
     artifactRef: "artifact-safe-ref",
     linkStatus: "active",
@@ -313,5 +314,9 @@ function usageRowFixture(overrides: Partial<SubscriptionUsageMonitorRow> = {}): 
     activityLevel: "seen",
     warnings: [],
     ...overrides
+  };
+  return {
+    ...row,
+    issuedChannels: row.issuedChannels ?? []
   };
 }

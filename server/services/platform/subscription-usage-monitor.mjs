@@ -226,6 +226,7 @@ function rowMatchesFilters(row, filters) {
     const normalizedNode = filters.nodeId.toLowerCase();
     const channelCandidates = [
       row.nodeId,
+      ...(Array.isArray(row.issuedChannels) ? row.issuedChannels : []),
       ...row.channelUsages.map((usage) => usage.channelRef)
     ].map((value) => safeText(value).toLowerCase());
     if (!channelCandidates.some((value) => value.includes(normalizedNode))) {
@@ -256,6 +257,31 @@ function rowMatchesFilters(row, filters) {
 function increment(map, key) {
   const normalized = safeText(key) || "unknown";
   map[normalized] = (map[normalized] || 0) + 1;
+}
+
+function uniqueSafeTexts(values = []) {
+  const seen = new Set();
+  const result = [];
+  for (const value of values) {
+    const normalized = safeText(value);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function issuedChannelsFor({ request = {}, binding = {} } = {}) {
+  const credentialChannels = Array.isArray(request.edgeCredentials)
+    ? request.edgeCredentials.map((credential) => credential?.edgeChannelRef)
+    : [];
+  return uniqueSafeTexts([
+    ...credentialChannels,
+    request.edgeChannelRef,
+    binding?.nodeId
+  ]);
 }
 
 function buildAggregates(items) {
@@ -292,7 +318,12 @@ function buildAggregates(items) {
     if (item.activityLevel === "seen") aggregates.seen += 1;
     if (item.warnings.length > 0) aggregates.withWarnings += 1;
     increment(aggregates.byPlan, item.plan);
-    increment(aggregates.byNode, item.nodeId);
+    const issuedChannels = Array.isArray(item.issuedChannels) && item.issuedChannels.length > 0
+      ? item.issuedChannels
+      : [item.nodeId];
+    for (const channelRef of issuedChannels) {
+      increment(aggregates.byNode, channelRef);
+    }
     aggregates.usage.totalUsedBytes += safeNumber(item.usedBytes);
     aggregates.usage.totalUploadBytes += safeNumber(item.uploadBytes);
     aggregates.usage.totalDownloadBytes += safeNumber(item.downloadBytes);
@@ -454,6 +485,7 @@ function requestRow({ request, binding, controlStore, subscriptionCore, nowMs })
     request.edgeCredentialRef || resolvedBinding.edgeCredentialRef || `edgecred_${request.id}`
   );
   const usage = sumRollups(rollups);
+  const issuedChannels = issuedChannelsFor({ request, binding: resolvedBinding });
   const lastRefreshAt = artifact?.lastSeenAt || usage.lastObservedAt || tenant?.lastUsedAt || null;
   const row = {
     accountId: resolvedBinding.accountId || request.portalUserRef,
@@ -463,6 +495,7 @@ function requestRow({ request, binding, controlStore, subscriptionCore, nowMs })
     plan: request.plan || resolvedBinding.plan || "",
     quantity: safeNumber(request.quantity || resolvedBinding.quantity || 1),
     nodeId: request.edgeChannelRef || resolvedBinding.nodeId || "",
+    issuedChannels,
     tenantRef,
     artifactRef,
     linkStatus: resolvedBinding.status || request.status || "unknown",
