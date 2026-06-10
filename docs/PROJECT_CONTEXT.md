@@ -92,6 +92,11 @@ The Japan-to-SGP apply identity fix is recorded in
 It configured Japan's SSH client to use the existing SGP apply identity for
 `45.76.158.201`/`gccgw-sgp-data-plane`; Japan-to-SGP SSH now validates, but Gate
 2 and Gate 3 remain separate production approvals.
+The SGP Gate 2 Japan control-plane clean artifact upgrade is recorded in
+`docs/production-replacement-records/2026-06-09-sgp-gate2-japan-control-plane-clean-artifact-upgrade.md`.
+It promoted commit `505eed929e7fb7a3aa72b62ff2da92725891d9c5` with rebuilt
+Admin/Portal static assets to the Japan control-plane runtime while preserving
+protected production config; Gate 3 SGP data-plane apply is still separate.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never
