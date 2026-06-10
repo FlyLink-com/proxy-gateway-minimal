@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-06-09",
+  "lastUpdated": "2026-06-10",
   "timezone": "America/Los_Angeles",
   "status": "active-snapshot-vultr-japan-control-plane-sgp-data-plane",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
@@ -26,6 +26,7 @@
     "docs/production-replacement-records/2026-06-09-sgp-gate2-japan-control-plane-clean-artifact-upgrade.md",
     "docs/production-replacement-records/2026-06-09-sgp-gate3-data-plane-apply-preflight-blocked.md",
     "docs/production-replacement-records/2026-06-09-sgp-gate3a-material-registration-approval-packet.md",
+    "docs/production-replacement-records/2026-06-10-sgp-gate3a-material-registration-execution.md",
     "docs/superpowers/plans/2026-06-09-historical-residue-closeout.md",
     "docs/DOMAIN_UNIT_BOUNDARIES.md",
     "docs/units/README.md",
@@ -239,8 +240,8 @@
     },
     {
       "id": "sgp-remote-handoff-apply-productization",
-      "summary": "Singapore data-plane runtime can be represented in the Japan control-plane bundle. Japan-to-SGP SSH apply identity works and Gate 2 Japan clean artifact promotion is complete, but Gate 3 is blocked because the handoff queue is empty and Japan protected env does not resolve SGP credential placeholders.",
-      "sourceDoc": "docs/production-replacement-records/2026-06-09-sgp-gate3-data-plane-apply-preflight-blocked.md"
+      "summary": "Singapore data-plane runtime can be represented in the Japan control-plane bundle. Japan-to-SGP SSH apply identity works, Gate 2 Japan clean artifact promotion is complete, and Gate 3A registered the missing SGP static channel material on Japan. Gate 3 data-plane apply remains separate because handoff consumption, runtime credential reconciliation, and live-order smoke still require exact Risk A gates.",
+      "sourceDoc": "docs/production-replacement-records/2026-06-10-sgp-gate3a-material-registration-execution.md"
     },
     {
       "id": "new-order-six-channel-smoke",
@@ -265,7 +266,7 @@
   ],
   "nextRecommendedQueue": [
     "Before the next Vultr production deploy, follow docs/production-replacement-records/2026-06-09-sgp-final-production-closeout-gate.md: run a clean artifact manifest through the production artifact boundary checker and record source commit plus artifact SHA-256.",
-    "Use docs/production-replacement-records/2026-06-09-sgp-gate3a-material-registration-approval-packet.md for the next exact Risk A approval: register only missing SGP protected env channel material on Japan, then rerun six-channel render proof before Gate 3 apply.",
+    "Use a separate exact Risk A SGP Gate 3 approval to consume reviewed protected handoff items, reconcile SGP runtime credentials, config-test supported runtimes, restart only approved SGP data-plane services after validation, and keep live order creation out of the validation unless separately approved.",
     "Finish repo-only state/docs archive alignment, then run npm run project-state:check and git diff --check.",
     "Package any local adapter/template changes into an explicit Vultr runtime release only after current repo validation is clean.",
     "Run a fresh no-secrets new-order desktop and mobile smoke only under exact production approval; do not create live orders during repo-only validation.",

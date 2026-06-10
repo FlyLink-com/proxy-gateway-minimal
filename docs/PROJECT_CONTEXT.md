@@ -108,6 +108,13 @@ The SGP Gate 3A material registration approval packet is recorded in
 It separates static channel material needed for subscription rendering from
 per-order `edgeCredentialRef` material, and defines the exact Risk A approval
 needed to add only missing SGP protected env keys on Japan.
+The SGP Gate 3A material registration execution is recorded in
+`docs/production-replacement-records/2026-06-10-sgp-gate3a-material-registration-execution.md`.
+It registered only the missing SGP static channel material keys in Japan's
+protected current environment, restarted only the Japan control-plane service,
+and validated a redacted six-channel render proof with `yamlReturned=false`.
+It did not consume handoff items, mutate Singapore runtime, create live orders,
+or complete Gate 3 data-plane apply.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never
