@@ -27,6 +27,7 @@
     "docs/production-replacement-records/2026-06-09-sgp-gate3-data-plane-apply-preflight-blocked.md",
     "docs/production-replacement-records/2026-06-09-sgp-gate3a-material-registration-approval-packet.md",
     "docs/production-replacement-records/2026-06-10-sgp-gate3a-material-registration-execution.md",
+    "docs/production-replacement-records/2026-06-10-sgp-gate3-data-plane-apply-execution.md",
     "docs/superpowers/plans/2026-06-09-historical-residue-closeout.md",
     "docs/DOMAIN_UNIT_BOUNDARIES.md",
     "docs/units/README.md",
@@ -202,7 +203,7 @@
     "notes": [
       "This snapshot is documentation state only; verify live Vultr, DNS, Nginx, systemd, endpoint, and SQLite state before any Risk A action.",
       "The current design keeps order/account/artifact/credential lifecycle authority in the Japan control plane and treats Singapore as runtime capacity only.",
-      "New order smoke, SGP handoff apply, runtime restart, provider firewall, and usage collector activation require separate exact approval and execution records.",
+      "New order smoke, provider firewall changes, usage collector activation, and any future runtime restart require separate exact approval and execution records.",
       "Do not output subscription URLs, tokens, passwords, raw config, raw logs, or SQLite rows in status files or operator reports."
     ]
   },
@@ -240,8 +241,8 @@
     },
     {
       "id": "sgp-remote-handoff-apply-productization",
-      "summary": "Singapore data-plane runtime can be represented in the Japan control-plane bundle. Japan-to-SGP SSH apply identity works, Gate 2 Japan clean artifact promotion is complete, and Gate 3A registered the missing SGP static channel material on Japan. Gate 3 data-plane apply remains separate because handoff consumption, runtime credential reconciliation, and live-order smoke still require exact Risk A gates.",
-      "sourceDoc": "docs/production-replacement-records/2026-06-10-sgp-gate3a-material-registration-execution.md"
+      "summary": "Singapore data-plane runtime can be represented in the Japan control-plane bundle. Japan-to-SGP SSH apply identity works, Gate 2 Japan clean artifact promotion is complete, Gate 3A registered the missing SGP static channel material on Japan, and Gate 3 consumed the reviewed SGP handoff queue to reconcile Singapore VLESS Reality, Hysteria2, and TUIC runtime credentials. Live-order smoke remains a separate exact Risk A gate.",
+      "sourceDoc": "docs/production-replacement-records/2026-06-10-sgp-gate3-data-plane-apply-execution.md"
     },
     {
       "id": "new-order-six-channel-smoke",
@@ -266,11 +267,10 @@
   ],
   "nextRecommendedQueue": [
     "Before the next Vultr production deploy, follow docs/production-replacement-records/2026-06-09-sgp-final-production-closeout-gate.md: run a clean artifact manifest through the production artifact boundary checker and record source commit plus artifact SHA-256.",
-    "Use a separate exact Risk A SGP Gate 3 approval to consume reviewed protected handoff items, reconcile SGP runtime credentials, config-test supported runtimes, restart only approved SGP data-plane services after validation, and keep live order creation out of the validation unless separately approved.",
+    "Run a fresh no-secrets new-order desktop and mobile smoke only under exact production approval; do not create live orders during repo-only validation.",
     "Finish repo-only state/docs archive alignment, then run npm run project-state:check and git diff --check.",
     "Package any local adapter/template changes into an explicit Vultr runtime release only after current repo validation is clean.",
-    "Run a fresh no-secrets new-order desktop and mobile smoke only under exact production approval; do not create live orders during repo-only validation.",
-    "Use the protected remote handoff queue/API for reviewed SGP handoff summaries, then use a separate Risk A gate for any production remote apply.",
+    "Use the protected remote handoff queue/API for future reviewed SGP handoff summaries, then use a separate Risk A gate for any future production remote apply.",
     "Continue order-owned usage monitor work by connecting live runtime samples and User Portal usage display, while keeping quota auto-disable disabled until separately approved.",
     "Keep legacy query-token retirement separate from multichannel rollout; do not combine route removal with artifact issuance or runtime changes.",
     "Do not mutate DNS, Nginx, provider firewall, runtime service state, account/passwords, payment, live orders, subscription URLs/tokens/passwords, or SQLite rows without exact approval."

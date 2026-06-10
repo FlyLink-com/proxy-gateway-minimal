@@ -115,6 +115,15 @@ protected current environment, restarted only the Japan control-plane service,
 and validated a redacted six-channel render proof with `yamlReturned=false`.
 It did not consume handoff items, mutate Singapore runtime, create live orders,
 or complete Gate 3 data-plane apply.
+The SGP Gate 3 data-plane apply execution is recorded in
+`docs/production-replacement-records/2026-06-10-sgp-gate3-data-plane-apply-execution.md`.
+It consumed the reviewed SGP handoff queue through the protected Japan-to-SGP
+apply path, reconciled Singapore VLESS Reality, Hysteria2, and TUIC runtime
+credentials, restarted only the approved Singapore data-plane services after
+validation, archived the pending handoff files, and validated a redacted
+six-channel render proof with `yamlReturned=false`. It did not create live
+orders, mutate DNS/Nginx/provider firewall, expose public Admin, or output
+credential material.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never
