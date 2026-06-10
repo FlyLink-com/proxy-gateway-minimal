@@ -103,6 +103,11 @@ It found Japan-to-SGP SSH and SGP services healthy, but no pending handoff items
 and missing SGP credential placeholder bindings in Japan's protected environment;
 do not mark Gate 3 complete until SGP material is registered through a protected
 handoff path and redacted render proof passes.
+The SGP Gate 3A material registration approval packet is recorded in
+`docs/production-replacement-records/2026-06-09-sgp-gate3a-material-registration-approval-packet.md`.
+It separates static channel material needed for subscription rendering from
+per-order `edgeCredentialRef` material, and defines the exact Risk A approval
+needed to add only missing SGP protected env keys on Japan.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never

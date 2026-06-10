@@ -25,6 +25,7 @@
     "docs/production-replacement-records/2026-06-09-sgp-japan-to-sgp-apply-identity-fix.md",
     "docs/production-replacement-records/2026-06-09-sgp-gate2-japan-control-plane-clean-artifact-upgrade.md",
     "docs/production-replacement-records/2026-06-09-sgp-gate3-data-plane-apply-preflight-blocked.md",
+    "docs/production-replacement-records/2026-06-09-sgp-gate3a-material-registration-approval-packet.md",
     "docs/superpowers/plans/2026-06-09-historical-residue-closeout.md",
     "docs/DOMAIN_UNIT_BOUNDARIES.md",
     "docs/units/README.md",
@@ -264,7 +265,7 @@
   ],
   "nextRecommendedQueue": [
     "Before the next Vultr production deploy, follow docs/production-replacement-records/2026-06-09-sgp-final-production-closeout-gate.md: run a clean artifact manifest through the production artifact boundary checker and record source commit plus artifact SHA-256.",
-    "Prepare a separate Risk A SGP material-registration gate: populate or regenerate SGP credential bindings through protected handoff without printing raw material, then rerun six-channel render proof before Gate 3 apply.",
+    "Use docs/production-replacement-records/2026-06-09-sgp-gate3a-material-registration-approval-packet.md for the next exact Risk A approval: register only missing SGP protected env channel material on Japan, then rerun six-channel render proof before Gate 3 apply.",
     "Finish repo-only state/docs archive alignment, then run npm run project-state:check and git diff --check.",
     "Package any local adapter/template changes into an explicit Vultr runtime release only after current repo validation is clean.",
     "Run a fresh no-secrets new-order desktop and mobile smoke only under exact production approval; do not create live orders during repo-only validation.",
