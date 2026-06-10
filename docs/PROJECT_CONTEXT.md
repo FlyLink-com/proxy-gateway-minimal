@@ -97,6 +97,12 @@ The SGP Gate 2 Japan control-plane clean artifact upgrade is recorded in
 It promoted commit `505eed929e7fb7a3aa72b62ff2da92725891d9c5` with rebuilt
 Admin/Portal static assets to the Japan control-plane runtime while preserving
 protected production config; Gate 3 SGP data-plane apply is still separate.
+The SGP Gate 3 data-plane apply preflight blocker is recorded in
+`docs/production-replacement-records/2026-06-09-sgp-gate3-data-plane-apply-preflight-blocked.md`.
+It found Japan-to-SGP SSH and SGP services healthy, but no pending handoff items
+and missing SGP credential placeholder bindings in Japan's protected environment;
+do not mark Gate 3 complete until SGP material is registered through a protected
+handoff path and redacted render proof passes.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never
