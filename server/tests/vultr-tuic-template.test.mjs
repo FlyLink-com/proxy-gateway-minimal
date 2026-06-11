@@ -54,18 +54,12 @@ test("Vultr multi-channel template follows VLESS Reality, Hy2, and TUIC channel 
       VULTR_HY2_HOST: "edge.example.test",
       VULTR_HY2_PASSWORD: "synthetic-hy2-password",
       VULTR_HY2_SNI: "edge.example.test",
-      SGP_TUIC_HOST: "sgp.example.test",
-      SGP_TUIC_UUID: "33333333-3333-4333-8333-333333333333",
-      SGP_TUIC_PASSWORD: "synthetic-sgp-tuic-password",
-      SGP_TUIC_SNI: "sgp.example.test",
-      SGP_VLESS_REALITY_HOST: "sgp-vless.example.test",
-      SGP_VLESS_REALITY_UUID: "44444444-4444-4444-8444-444444444444",
-      SGP_VLESS_REALITY_SNI: "www.sgp-example.test",
-      SGP_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
-      SGP_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
-      SGP_HY2_HOST: "sgp.example.test",
-      SGP_HY2_PASSWORD: "synthetic-sgp-hy2-password",
-      SGP_HY2_SNI: "sgp.example.test"
+      SGP_TUIC_STATIC_UUID: "33333333-3333-4333-8333-333333333333",
+      SGP_TUIC_STATIC_PASSWORD: "synthetic-sgp-tuic-password",
+      SGP_VLESS_STATIC_UUID: "44444444-4444-4444-8444-444444444444",
+      SGP_XRAY_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
+      SGP_XRAY_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
+      SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-password"
     }
   });
 
@@ -133,12 +127,26 @@ test("Vultr multi-channel template follows VLESS Reality, Hy2, and TUIC channel 
   assert.equal(proxyConfig.servers[3].runtimeAdapter, "remote-data-plane-handoff");
   assert.equal(proxyConfig.servers[3].physicalNodeRef, "vultr-sgp-a");
   assert.equal(proxyConfig.servers[3].subscriptionBundleRef, "vultr-production-a");
+  assert.equal(proxyConfig.servers[3].host, "sub.globalcirclecat.cloud");
+  assert.equal(proxyConfig.servers[3].uuid, "44444444-4444-4444-8444-444444444444");
+  assert.equal(proxyConfig.servers[3].serverName, "www.cloudflare.com");
+  assert.deepEqual(proxyConfig.servers[3].realityOpts, {
+    publicKey: "synthetic-sgp-public-key",
+    shortId: "synthetic-sgp-short-id"
+  });
   assert.equal(proxyConfig.servers[4].name, "channel-sgp-a-hy2");
   assert.equal(proxyConfig.servers[4].runtimeAdapter, "remote-data-plane-handoff");
   assert.equal(proxyConfig.servers[4].port, 10443);
+  assert.equal(proxyConfig.servers[4].host, "sub.globalcirclecat.cloud");
+  assert.equal(proxyConfig.servers[4].password, "synthetic-sgp-hy2-password");
+  assert.equal(proxyConfig.servers[4].sni, "globalcirclecat.cloud");
   assert.equal(proxyConfig.servers[5].name, "channel-sgp-a-tuic");
   assert.equal(proxyConfig.servers[5].runtimeAdapter, "remote-data-plane-handoff");
   assert.equal(proxyConfig.servers[5].port, 443);
+  assert.equal(proxyConfig.servers[5].host, "sub.globalcirclecat.cloud");
+  assert.equal(proxyConfig.servers[5].uuid, "33333333-3333-4333-8333-333333333333");
+  assert.equal(proxyConfig.servers[5].password, "synthetic-sgp-tuic-password");
+  assert.equal(proxyConfig.servers[5].sni, "sub.globalcirclecat.cloud");
 
   const yaml = generateClashSubscription(proxyConfig);
   assert.match(yaml, /name: "channel-vultr-a-vless-reality-tcp"/);
@@ -170,18 +178,12 @@ test("Vultr multi-channel template separates runtime listen tuples from web and 
       VULTR_HY2_HOST: "edge.example.test",
       VULTR_HY2_PASSWORD: "synthetic-hy2-password",
       VULTR_HY2_SNI: "edge.example.test",
-      SGP_TUIC_HOST: "sgp.example.test",
-      SGP_TUIC_UUID: "33333333-3333-4333-8333-333333333333",
-      SGP_TUIC_PASSWORD: "synthetic-sgp-tuic-password",
-      SGP_TUIC_SNI: "sgp.example.test",
-      SGP_VLESS_REALITY_HOST: "sgp-vless.example.test",
-      SGP_VLESS_REALITY_UUID: "44444444-4444-4444-8444-444444444444",
-      SGP_VLESS_REALITY_SNI: "www.sgp-example.test",
-      SGP_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
-      SGP_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
-      SGP_HY2_HOST: "sgp.example.test",
-      SGP_HY2_PASSWORD: "synthetic-sgp-hy2-password",
-      SGP_HY2_SNI: "sgp.example.test"
+      SGP_TUIC_STATIC_UUID: "33333333-3333-4333-8333-333333333333",
+      SGP_TUIC_STATIC_PASSWORD: "synthetic-sgp-tuic-password",
+      SGP_VLESS_STATIC_UUID: "44444444-4444-4444-8444-444444444444",
+      SGP_XRAY_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
+      SGP_XRAY_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
+      SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-password"
     }
   });
 

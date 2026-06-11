@@ -44,18 +44,12 @@ const VULTR_MULTICHANNEL_ENV = {
   VULTR_HY2_HOST: "hy2.example.test",
   VULTR_HY2_PASSWORD: "synthetic-hy2-password",
   VULTR_HY2_SNI: "hy2.example.test",
-  SGP_TUIC_HOST: "sgp-tuic.example.test",
-  SGP_TUIC_UUID: "33333333-3333-4333-8333-333333333333",
-  SGP_TUIC_PASSWORD: "synthetic-sgp-tuic-password",
-  SGP_TUIC_SNI: "sgp-tuic.example.test",
-  SGP_VLESS_REALITY_HOST: "sgp-vless.example.test",
-  SGP_VLESS_REALITY_UUID: "44444444-4444-4444-8444-444444444444",
-  SGP_VLESS_REALITY_SNI: "www.sgp-example.test",
-  SGP_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
-  SGP_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
-  SGP_HY2_HOST: "sgp-hy2.example.test",
-  SGP_HY2_PASSWORD: "synthetic-sgp-hy2-password",
-  SGP_HY2_SNI: "sgp-hy2.example.test"
+  SGP_TUIC_STATIC_UUID: "33333333-3333-4333-8333-333333333333",
+  SGP_TUIC_STATIC_PASSWORD: "synthetic-sgp-tuic-password",
+  SGP_VLESS_STATIC_UUID: "44444444-4444-4444-8444-444444444444",
+  SGP_XRAY_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
+  SGP_XRAY_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
+  SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-password",
 };
 
 function sleepMs(ms) {
@@ -906,13 +900,13 @@ test("createRuntimeState withholds remote data-plane channels until matching app
       type: isHy2 ? "hysteria2" : isTuic ? "tuic" : "vless",
       host: channel.startsWith("channel-sgp-") ? "sgp.example.test" : "jp.example.test",
       port: isHy2 ? 10443 : isTuic ? 443 : 8443,
-      ...(isHy2 ? { password: channel.startsWith("channel-sgp-") ? "${SGP_HY2_PASSWORD}" : "${VULTR_HY2_PASSWORD}" } : {}),
+      ...(isHy2 ? { password: channel.startsWith("channel-sgp-") ? "${SGP_HY2_STATIC_PASSWORD}" : "${VULTR_HY2_PASSWORD}" } : {}),
       ...(isTuic ? {
-        uuid: channel.startsWith("channel-sgp-") ? "${SGP_TUIC_UUID}" : "${VULTR_TUIC_UUID}",
-        password: channel.startsWith("channel-sgp-") ? "${SGP_TUIC_PASSWORD}" : "${VULTR_TUIC_PASSWORD}"
+        uuid: channel.startsWith("channel-sgp-") ? "${SGP_TUIC_STATIC_UUID}" : "${VULTR_TUIC_UUID}",
+        password: channel.startsWith("channel-sgp-") ? "${SGP_TUIC_STATIC_PASSWORD}" : "${VULTR_TUIC_PASSWORD}"
       } : {}),
       ...(!isHy2 && !isTuic ? {
-        uuid: channel.startsWith("channel-sgp-") ? "${SGP_VLESS_REALITY_UUID}" : "${VULTR_VLESS_REALITY_UUID}"
+        uuid: channel.startsWith("channel-sgp-") ? "${SGP_VLESS_STATIC_UUID}" : "${VULTR_VLESS_REALITY_UUID}"
       } : {}),
       ...(channel.startsWith("channel-sgp-") ? { runtimeAdapter: "remote-data-plane-handoff" } : {}),
       credentialMode: "per-order",
@@ -935,10 +929,10 @@ test("createRuntimeState withholds remote data-plane channels until matching app
       VULTR_HY2_PASSWORD: "synthetic-vultr-hy2-template-password",
       VULTR_TUIC_UUID: "22222222-2222-4222-8222-222222222222",
       VULTR_TUIC_PASSWORD: "synthetic-vultr-tuic-template-password",
-      SGP_VLESS_REALITY_UUID: "33333333-3333-4333-8333-333333333333",
-      SGP_HY2_PASSWORD: "synthetic-sgp-hy2-template-password",
-      SGP_TUIC_UUID: "44444444-4444-4444-8444-444444444444",
-      SGP_TUIC_PASSWORD: "synthetic-sgp-tuic-template-password",
+      SGP_VLESS_STATIC_UUID: "33333333-3333-4333-8333-333333333333",
+      SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-template-password",
+      SGP_TUIC_STATIC_UUID: "44444444-4444-4444-8444-444444444444",
+      SGP_TUIC_STATIC_PASSWORD: "synthetic-sgp-tuic-template-password",
       USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
       USER_PORTAL_EDGE_CHANNEL_REF: channels[0],
       USER_PORTAL_EDGE_CHANNEL_REFS: channels.join(","),
@@ -1685,7 +1679,7 @@ test("createRuntimeState writes remote data-plane lifecycle handoff instead of m
           type: "hysteria2",
           host: "sgp.example.test",
           port: 443,
-          password: "${SGP_HY2_PASSWORD}",
+          password: "${SGP_HY2_STATIC_PASSWORD}",
           runtimeAdapter: "remote-data-plane-handoff",
           credentialMode: "per-order",
           status: "online"
@@ -1699,7 +1693,7 @@ test("createRuntimeState writes remote data-plane lifecycle handoff instead of m
         CONSOLE_TOKEN: "secret",
         SS_PASSWORD: "pw",
         SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
-        SGP_HY2_PASSWORD: "synthetic-hy2-template-password",
+        SGP_HY2_STATIC_PASSWORD: "synthetic-hy2-template-password",
         USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
         USER_PORTAL_EDGE_CHANNEL_REF: "channel-sgp-a-hy2",
         USER_PORTAL_EDGE_CHANNEL_REFS: "channel-sgp-a-hy2",
@@ -1768,7 +1762,7 @@ test("createRuntimeState records remote data-plane desired-state notifications f
           type: "hysteria2",
           host: "sgp.example.test",
           port: 10443,
-          password: "${SGP_HY2_PASSWORD}",
+          password: "${SGP_HY2_STATIC_PASSWORD}",
           runtimeAdapter: "remote-data-plane-handoff",
           credentialMode: "per-order",
           status: "online",
@@ -1783,7 +1777,7 @@ test("createRuntimeState records remote data-plane desired-state notifications f
         CONSOLE_TOKEN: "secret",
         SS_PASSWORD: "pw",
         SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
-        SGP_HY2_PASSWORD: "synthetic-hy2-template-password",
+        SGP_HY2_STATIC_PASSWORD: "synthetic-hy2-template-password",
         USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
         USER_PORTAL_EDGE_CHANNEL_REF: "channel-sgp-a-hy2",
         USER_PORTAL_EDGE_CHANNEL_REFS: "channel-sgp-a-hy2",

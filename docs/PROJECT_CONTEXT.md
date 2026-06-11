@@ -203,6 +203,17 @@ those names. Production remains on
 still not migrated. The next gate must register those protected keys or rebuild
 the candidate template to use the approved existing key names, then prove
 candidate temp-start before any production symlink switch.
+The follow-up repo-only SGP template key alignment is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-sgp-template-key-alignment.md`.
+It confirmed Japan already has approved SGP protected material under the
+deployed `005` key names and updated the repository default/Vultr multichannel
+templates plus tests to use those names instead of requiring a second SGP
+material namespace. It also prepared candidate package
+`edge-agent-future-order-runtime-20260611-002-worktree` with recorded SHA-256
+and local boundary checks. Production remains unchanged on
+`edge-agent-production-activation-20260610-005-worktree`; the next Risk A gate
+must use the `002` package to prove zero missing placeholders plus candidate
+temp-start before any production symlink switch or real control DB migration.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the

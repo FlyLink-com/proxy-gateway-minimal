@@ -137,17 +137,17 @@
       "region": "sgp",
       "protocol": "vless",
       "type": "vless",
-      "host": "${SGP_VLESS_REALITY_HOST}",
+      "host": "sub.globalcirclecat.cloud",
       "port": 8443,
-      "uuid": "${SGP_VLESS_REALITY_UUID}",
+      "uuid": "${SGP_VLESS_STATIC_UUID}",
       "network": "tcp",
       "udp": true,
       "tls": true,
       "flow": "xtls-rprx-vision",
-      "serverName": "${SGP_VLESS_REALITY_SNI}",
+      "serverName": "www.cloudflare.com",
       "realityOpts": {
-        "publicKey": "${SGP_VLESS_REALITY_PUBLIC_KEY}",
-        "shortId": "${SGP_VLESS_REALITY_SHORT_ID}"
+        "publicKey": "${SGP_XRAY_VLESS_REALITY_PUBLIC_KEY}",
+        "shortId": "${SGP_XRAY_VLESS_REALITY_SHORT_ID}"
       },
       "clientFingerprint": "chrome",
       "channelPool": "stable",
@@ -176,10 +176,10 @@
       "region": "sgp",
       "protocol": "hysteria2",
       "type": "hysteria2",
-      "host": "${SGP_HY2_HOST}",
+      "host": "sub.globalcirclecat.cloud",
       "port": 10443,
-      "password": "${SGP_HY2_PASSWORD}",
-      "sni": "${SGP_HY2_SNI}",
+      "password": "${SGP_HY2_STATIC_PASSWORD}",
+      "sni": "globalcirclecat.cloud",
       "alpn": [
         "h3"
       ],
@@ -225,11 +225,11 @@
       "region": "sgp",
       "protocol": "tuic",
       "type": "tuic",
-      "host": "${SGP_TUIC_HOST}",
+      "host": "sub.globalcirclecat.cloud",
       "port": 443,
-      "uuid": "${SGP_TUIC_UUID}",
-      "password": "${SGP_TUIC_PASSWORD}",
-      "sni": "${SGP_TUIC_SNI}",
+      "uuid": "${SGP_TUIC_STATIC_UUID}",
+      "password": "${SGP_TUIC_STATIC_PASSWORD}",
+      "sni": "sub.globalcirclecat.cloud",
       "alpn": [
         "h3"
       ],
