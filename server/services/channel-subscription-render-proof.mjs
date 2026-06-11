@@ -88,7 +88,14 @@ function countProtocols(servers) {
   return counts;
 }
 
-function blockedProof({ replay, generatedAt, blockers, missingCandidates = [], protocolMismatches = [] }) {
+function blockedProof({
+  replay,
+  generatedAt,
+  blockers,
+  missingCandidates = [],
+  protocolMismatches = [],
+  remoteDataPlaneBlockers = []
+}) {
   return {
     ok: true,
     mode: "channel-subscription-render-proof",
@@ -99,6 +106,7 @@ function blockedProof({ replay, generatedAt, blockers, missingCandidates = [], p
     blockers,
     missingCandidates,
     protocolMismatches,
+    remoteDataPlaneBlockers,
     renderProof: {
       internalYamlRenderCompleted: false,
       yamlReturned: false,
@@ -149,7 +157,8 @@ function renderSelectedConfig(proxyConfig, selectedServers) {
 export function buildChannelSubscriptionRenderProof({
   fixture,
   proxyConfig,
-  generatedAt = new Date().toISOString()
+  generatedAt = new Date().toISOString(),
+  remoteRenderGate = null
 }) {
   const replay = replayChannelSubscriptionActivationFlowFixture(fixture, { generatedAt });
   assertSafeConfigMetadata(proxyConfig);
@@ -204,6 +213,28 @@ export function buildChannelSubscriptionRenderProof({
       missingCandidates,
       protocolMismatches
     });
+  }
+
+  if (typeof remoteRenderGate === "function") {
+    const gateResult = remoteRenderGate({ servers: selected, now: generatedAt });
+    const remoteDataPlaneBlockers = list(gateResult?.blockers)
+      .map((blocker) => ({
+        channelRef: text(blocker?.channelRef),
+        reasonCode: metadataToken(blocker?.reasonCode || "remote_data_plane_not_ready"),
+        redacted: true
+      }))
+      .filter((blocker) => blocker.channelRef);
+    const allowedCount = list(gateResult?.servers).length;
+    if (remoteDataPlaneBlockers.length > 0 || allowedCount < selected.length) {
+      return blockedProof({
+        replay,
+        generatedAt,
+        blockers: ["remote_data_plane_not_ready"],
+        remoteDataPlaneBlockers: remoteDataPlaneBlockers.length > 0
+          ? remoteDataPlaneBlockers
+          : [{ channelRef: "redacted", reasonCode: "remote-data-plane-filtered-without-reason", redacted: true }]
+      });
+    }
   }
 
   const yaml = renderSelectedConfig(proxyConfig, selected);

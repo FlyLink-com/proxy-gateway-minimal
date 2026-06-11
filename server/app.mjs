@@ -13,6 +13,7 @@ import { adminPlatformRoutes } from "./routes/admin-platform.mjs";
 import { subscriptionRoutes } from "./routes/subscription.mjs";
 import { publicLeadRoutes } from "./routes/public-leads.mjs";
 import { userPortalRoutes } from "./routes/user-portal.mjs";
+import { dataPlaneAgentRoutes } from "./routes/data-plane-agent.mjs";
 import { resolveClientIp } from "./services/ip-address.mjs";
 
 const PUBLIC_PATHS = ["/api/health", "/api/public/leads", "/proxy.pac", "/sub/clash.yaml"];
@@ -50,6 +51,14 @@ export function createApp(state, options = {}) {
       || state.platform?.portalSupportRequests
     )
   );
+  const dataPlaneAgentRoutesEnabled = Boolean(
+    state.platform?.dataPlaneAgentRoutesEnabled
+    && state.platform?.dataPlaneAgentService
+  );
+  const authPublicPaths = [
+    ...PUBLIC_PATHS,
+    ...(userPortalRoutesEnabled ? USER_PORTAL_PUBLIC_PATHS : [])
+  ];
   const clientIpResolver = options.clientIpResolver || ((req) => resolveClientIp(req, {
     trustedProxyCidrs: security.trustedProxyCidrs
   }));
@@ -57,9 +66,12 @@ export function createApp(state, options = {}) {
     allowedCidrs: security.adminAllowedCidrs,
     resolveClientIpFn: clientIpResolver
   }));
+  if (dataPlaneAgentRoutesEnabled) {
+    app.use(dataPlaneAgentRoutes(state));
+  }
   app.use(createAuthMiddleware({
     token: state.consoleToken,
-    publicPaths: userPortalRoutesEnabled ? [...PUBLIC_PATHS, ...USER_PORTAL_PUBLIC_PATHS] : PUBLIC_PATHS,
+    publicPaths: authPublicPaths,
     publicPathPrefixes: PUBLIC_PATH_PREFIXES
   }));
   app.use(publicLeadRoutes(state));

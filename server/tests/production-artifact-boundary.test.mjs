@@ -29,8 +29,10 @@ test("production artifact boundary blocks development residue and sensitive runt
   const report = inspectProductionArtifactBoundary({
     paths: [
       ".worktrees/multi-channel-node-guard/server/app.mjs",
+      ".codex-artifacts/aliyun-local-edge-desired-state.template.json",
       ".codex-runtime/portal-cloudlike-preview.cjs",
       ".claude/settings.local.json",
+      "docs/.claude/settings.local.json",
       ".proxy-gateway/console-token",
       ".env",
       "control.sqlite",
@@ -44,8 +46,10 @@ test("production artifact boundary blocks development residue and sensitive runt
   assert.equal(report.ok, false);
   assert.deepEqual(report.blockers.map((item) => item.path), [
     ".worktrees/multi-channel-node-guard/server/app.mjs",
+    ".codex-artifacts/aliyun-local-edge-desired-state.template.json",
     ".codex-runtime/portal-cloudlike-preview.cjs",
     ".claude/settings.local.json",
+    "docs/.claude/settings.local.json",
     ".proxy-gateway/console-token",
     ".env",
     "control.sqlite",

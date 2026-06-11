@@ -195,6 +195,29 @@ test("channel subscription render proof blocks when fixture candidates are absen
   assert.doesNotMatch(JSON.stringify(proof), /secret\.example|tuic-secret|tuic-token|"host"\s*:|"port"\s*:/i);
 });
 
+test("channel subscription render proof blocks remote data-plane candidates without applied receipt", () => {
+  const config = proxyConfig();
+  config.servers[1].runtimeAdapter = "remote-data-plane-handoff";
+
+  const proof = buildChannelSubscriptionRenderProof({
+    fixture: activationFixture(),
+    proxyConfig: config,
+    remoteRenderGate: ({ servers }) => ({
+      servers: servers.filter((server) => server.name !== "tuic-lab"),
+      blockers: [{ channelRef: "tuic-lab", reasonCode: "missing_applied_receipt", redacted: true }]
+    })
+  });
+
+  assert.equal(proof.status, "blocked_before_subscription_render_proof");
+  assert.equal(proof.renderProof.internalYamlRenderCompleted, false);
+  assert.deepEqual(proof.blockers, ["remote_data_plane_not_ready"]);
+  assert.deepEqual(proof.remoteDataPlaneBlockers, [
+    { channelRef: "tuic-lab", reasonCode: "missing-applied-receipt", redacted: true }
+  ]);
+  assert.equal(proof.safety.yamlNotReturned, true);
+  assert.doesNotMatch(JSON.stringify(proof), /secret\.example|ss-secret|tuic-secret|tuic-token|22222222|"host"\s*:|"port"\s*:|https?:\/\//i);
+});
+
 test("channel subscription render proof rejects unsafe config labels without echoing details", () => {
   const config = proxyConfig();
   config.servers[1].name = "https://tuic.secret.example?token=unsafe";

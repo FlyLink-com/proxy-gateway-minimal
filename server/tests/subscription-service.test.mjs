@@ -7,6 +7,7 @@ import {
   TEMP_SUBSCRIPTION_TOKEN_PREFIX,
   hashSubscriptionToken
 } from "../services/subscriptions/tokens.mjs";
+import { createRemoteRenderGate } from "../services/subscriptions/remote-render-gate.mjs";
 
 const NOW = "2026-05-21T00:00:00.000Z";
 const LATER = "2026-05-21T01:00:00.000Z";
@@ -277,6 +278,64 @@ function multiChannelPerOrderBundleProxyConfig() {
         port: 443,
         uuid: "00000000-0000-4000-8000-000000000011",
         password: "static-tuic-template-password",
+        status: "online"
+      }
+    ],
+    pingHosts: ["1.1.1.1"],
+    nginx: { host: "127.0.0.1", ports: [443] }
+  };
+}
+
+function localAndRemotePerOrderBundleProxyConfig() {
+  return {
+    servers: [
+      ...multiChannelPerOrderBundleProxyConfig().servers,
+      {
+        id: "channel_sgp_vless",
+        name: "channel-sgp-a-vless-reality-tcp",
+        channelPool: "stable",
+        subscriptionBundleRef: "vultr-production-a",
+        protocol: "vless",
+        type: "vless",
+        credentialMode: "per-order",
+        runtimeAdapter: "remote-data-plane-handoff",
+        host: "203.0.113.80",
+        port: 8443,
+        uuid: "00000000-0000-4000-8000-000000000080",
+        udp: true,
+        tls: true,
+        network: "tcp",
+        status: "online"
+      },
+      {
+        id: "channel_sgp_hy2",
+        name: "channel-sgp-a-hy2",
+        channelPool: "canary",
+        qualityClass: "weak-network",
+        subscriptionBundleRef: "vultr-production-a",
+        protocol: "hysteria2",
+        type: "hysteria2",
+        credentialMode: "per-order",
+        runtimeAdapter: "remote-data-plane-handoff",
+        host: "203.0.113.81",
+        port: 10443,
+        password: "static-sgp-hy2-template-password",
+        status: "online"
+      },
+      {
+        id: "channel_sgp_tuic",
+        name: "channel-sgp-a-tuic",
+        channelPool: "canary",
+        qualityClass: "weak-network",
+        subscriptionBundleRef: "vultr-production-a",
+        protocol: "tuic",
+        type: "tuic",
+        credentialMode: "per-order",
+        runtimeAdapter: "remote-data-plane-handoff",
+        host: "203.0.113.82",
+        port: 443,
+        uuid: "00000000-0000-4000-8000-000000000081",
+        password: "static-sgp-tuic-template-password",
         status: "online"
       }
     ],
@@ -912,6 +971,120 @@ test("service renders all channels in a per-order bundle when every channel has 
     assert.equal(resolved.proxyConfig.servers[2].password, "per-order-tuic-password");
   }, {
     proxyConfig: multiChannelPerOrderBundleProxyConfig()
+  });
+});
+
+test("service withholds remote data-plane channels until latest applied receipt and lease are fresh", async () => {
+  const now = "2026-06-10T00:00:00.000Z";
+  const controlStore = {
+    getLatestEdgeDesiredStateForChannel(channelRef) {
+      if (channelRef !== "channel-sgp-a-hy2") return null;
+      return {
+        desiredStateRef: "desired_state_sgp_hy2_001",
+        generation: "gen_sgp_hy2_001",
+        validUntil: "2026-06-10T00:10:00.000Z"
+      };
+    },
+    getLatestEdgeApplyReceiptForChannel(channelRef) {
+      if (channelRef !== "channel-sgp-a-hy2") return null;
+      return {
+        desiredStateRef: "desired_state_sgp_hy2_001",
+        generation: "gen_sgp_hy2_001",
+        status: "applied",
+        configTestOk: true,
+        serviceActive: true,
+        listenerPresent: true,
+        credentialCount: 1,
+        createdAt: "2026-06-10T00:01:00.000Z"
+      };
+    },
+    getActiveEdgeAgentLease({ channelRef }) {
+      if (channelRef !== "channel-sgp-a-hy2") return null;
+      return {
+        leaseRef: "lease_sgp_hy2_001",
+        channelRef,
+        expiresAt: "2026-06-10T00:05:00.000Z"
+      };
+    }
+  };
+
+  await withService(async (context) => {
+    await createActiveTenant(context, { nodeId: "channel-vultr-a-vless-reality-tcp" });
+    context.service.createSubscriptionArtifact("tenant_1");
+
+    for (const nodeId of [
+      "channel-vultr-a-vless-reality-tcp",
+      "channel-vultr-a-hy2",
+      "channel-vultr-a-tuic",
+      "channel-sgp-a-vless-reality-tcp",
+      "channel-sgp-a-hy2",
+      "channel-sgp-a-tuic"
+    ]) {
+      context.service.bindTenantCredentialMaterial({
+        tenantId: "tenant_1",
+        nodeId,
+        material: {
+          uuid: "88888888-8888-4888-8888-888888888888",
+          password: "per-order-password"
+        }
+      });
+    }
+
+    const resolved = context.service.resolveSubscriptionArtifact("opaque_device_secret");
+
+    assert.equal(resolved.ok, true);
+    assert.deepEqual(resolved.proxyConfig.servers.map((server) => server.name), [
+      "channel-vultr-a-vless-reality-tcp",
+      "channel-vultr-a-hy2",
+      "channel-vultr-a-tuic",
+      "channel-sgp-a-hy2"
+    ]);
+  }, {
+    proxyConfig: localAndRemotePerOrderBundleProxyConfig(),
+    nowFn: () => new Date(now),
+    remoteRenderGate: createRemoteRenderGate({
+      controlStore,
+      nowFn: () => new Date(now)
+    })
+  });
+});
+
+test("service fails closed when a subscription bundle contains only remote channels without receipts", async () => {
+  const proxyConfig = {
+    ...localAndRemotePerOrderBundleProxyConfig(),
+    servers: localAndRemotePerOrderBundleProxyConfig().servers
+      .filter((server) => server.name.startsWith("channel-sgp-a-"))
+      .map((server) => ({ ...server, subscriptionBundleRef: "sgp-only" }))
+  };
+
+  await withService(async (context) => {
+    await createActiveTenant(context, { nodeId: "channel-sgp-a-hy2" });
+    context.service.createSubscriptionArtifact("tenant_1");
+    for (const nodeId of ["channel-sgp-a-vless-reality-tcp", "channel-sgp-a-hy2", "channel-sgp-a-tuic"]) {
+      context.service.bindTenantCredentialMaterial({
+        tenantId: "tenant_1",
+        nodeId,
+        material: {
+          uuid: "99999999-9999-4999-8999-999999999999",
+          password: "per-order-password"
+        }
+      });
+    }
+
+    assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret"), {
+      ok: false,
+      status: 403,
+      error: "Subscription node unavailable"
+    });
+  }, {
+    proxyConfig,
+    remoteRenderGate: createRemoteRenderGate({
+      controlStore: {
+        getLatestEdgeDesiredStateForChannel: () => null,
+        getLatestEdgeApplyReceiptForChannel: () => null,
+        getActiveEdgeAgentLease: () => null
+      }
+    })
   });
 });
 

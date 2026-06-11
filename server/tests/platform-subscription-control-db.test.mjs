@@ -340,6 +340,151 @@ test("subscription control store records redacted edge apply receipts", () => {
   });
 });
 
+test("subscription control store records redacted edge desired states idempotently", () => {
+  withStore((store) => {
+    const now = "2026-06-10T00:00:00.000Z";
+    const input = {
+      desiredStateRef: "desired_state_sgp_001",
+      nodeRef: "node-sgp-a",
+      generation: "gen_sgp_001",
+      channelRefs: ["channel-sgp-a-hy2", "channel-sgp-a-tuic"],
+      edgeCredentialRefs: ["edgecred_order_001_hy2", "edgecred_order_001_tuic"],
+      materialDigests: ["sha256:aaaaaaaaaaaaaaaa", "sha256:bbbbbbbbbbbbbbbb"],
+      status: "active",
+      validUntil: "2026-07-10T00:00:00.000Z",
+      createdAt: now,
+      updatedAt: now
+    };
+
+    const created = store.recordEdgeDesiredState(input);
+    const replayed = store.recordEdgeDesiredState({
+      ...input,
+      updatedAt: "2026-06-10T00:01:00.000Z"
+    });
+
+    assert.equal(created.desiredStateRef, "desired_state_sgp_001");
+    assert.equal(replayed.desiredStateRef, "desired_state_sgp_001");
+    assert.equal(replayed.updatedAt, "2026-06-10T00:01:00.000Z");
+    assert.deepEqual(replayed.channelRefs, ["channel-sgp-a-hy2", "channel-sgp-a-tuic"]);
+    assert.equal(replayed.summary.channelCount, 2);
+    assert.equal(replayed.summary.edgeCredentialCount, 2);
+    assert.equal(replayed.summary.digestCount, 2);
+    assert.equal(store.getLatestEdgeDesiredStateForChannel("channel-sgp-a-hy2").generation, "gen_sgp_001");
+    assert.doesNotMatch(JSON.stringify(replayed), /password|rawConfig|subscriptionUrl|privateKey|token/i);
+  });
+});
+
+test("subscription control store rejects unsafe edge desired state material", () => {
+  withStore((store) => {
+    assert.throws(
+      () =>
+        store.recordEdgeDesiredState({
+          desiredStateRef: "desired_state_unsafe",
+          nodeRef: "node-sgp-a",
+          generation: "gen_unsafe",
+          channelRefs: ["channel-sgp-a-hy2"],
+          edgeCredentialRefs: ["edgecred_order_unsafe_hy2"],
+          materialDigests: ["sha256:aaaaaaaaaaaaaaaa"],
+          runtimeMaterial: {
+            password: "raw-material"
+          },
+          validUntil: "2026-07-10T00:00:00.000Z",
+          createdAt: "2026-06-10T00:00:00.000Z",
+          updatedAt: "2026-06-10T00:00:00.000Z"
+        }),
+      (error) => error.code === "validation_error"
+    );
+  });
+});
+
+test("subscription control store acquires and renews edge agent leases", () => {
+  withStore((store) => {
+    const lease = store.acquireEdgeAgentLease({
+      leaseRef: "lease_sgp_hy2_001",
+      agentRef: "agent_sgp_a",
+      nodeRef: "node-sgp-a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: "desired_state_sgp_001",
+      status: "active",
+      acquiredAt: "2026-06-10T00:00:00.000Z",
+      renewedAt: "2026-06-10T00:00:00.000Z",
+      expiresAt: "2026-06-10T00:05:00.000Z"
+    });
+
+    assert.equal(lease.leaseRef, "lease_sgp_hy2_001");
+    assert.equal(lease.status, "active");
+    assert.equal(
+      store.getActiveEdgeAgentLease({
+        channelRef: "channel-sgp-a-hy2",
+        now: "2026-06-10T00:01:00.000Z"
+      }).leaseRef,
+      "lease_sgp_hy2_001"
+    );
+
+    const renewed = store.renewEdgeAgentLease({
+      leaseRef: "lease_sgp_hy2_001",
+      renewedAt: "2026-06-10T00:02:00.000Z",
+      expiresAt: "2026-06-10T00:07:00.000Z"
+    });
+    assert.equal(renewed.renewedAt, "2026-06-10T00:02:00.000Z");
+    assert.equal(renewed.expiresAt, "2026-06-10T00:07:00.000Z");
+    assert.equal(
+      store.getActiveEdgeAgentLease({
+        channelRef: "channel-sgp-a-hy2",
+        now: "2026-06-10T00:08:00.000Z"
+      }),
+      null
+    );
+  });
+});
+
+test("subscription control store returns latest edge apply receipt by channel", () => {
+  withStore((store) => {
+    store.recordEdgeApplyReceipt({
+      id: "edge_receipt_old",
+      channelRef: "channel-sgp-a-hy2",
+      nodeRef: "node-sgp-a",
+      generation: "gen_old",
+      desiredStateRef: "desired_state_old",
+      receiptDigest: "receipt_digest_old",
+      status: "applied",
+      actionCounts: { add: 1, revoke: 0, rotate: 0, unchanged: 0 },
+      configTestOk: true,
+      serviceActive: true,
+      listenerPresent: true,
+      credentialCount: 1,
+      reasonCode: "runtime_applied",
+      appliedAt: "2026-06-10T00:00:00.000Z",
+      createdAt: "2026-06-10T00:00:00.000Z"
+    });
+
+    store.recordEdgeApplyReceipt({
+      id: "edge_receipt_new",
+      channelRef: "channel-sgp-a-hy2",
+      nodeRef: "node-sgp-a",
+      generation: "gen_new",
+      desiredStateRef: "desired_state_new",
+      receiptDigest: "receipt_digest_new",
+      status: "failed",
+      actionCounts: { add: 0, revoke: 0, rotate: 0, unchanged: 0 },
+      configTestOk: false,
+      serviceActive: false,
+      listenerPresent: false,
+      credentialCount: 0,
+      reasonCode: "config_test_failed",
+      createdAt: "2026-06-10T00:03:00.000Z"
+    });
+
+    const latest = store.getLatestEdgeApplyReceiptForChannel("channel-sgp-a-hy2");
+    assert.equal(latest.id, "edge_receipt_new");
+    assert.equal(latest.generation, "gen_new");
+    assert.equal(latest.status, "failed");
+    assert.equal(latest.credentialCount, 0);
+    assert.equal(latest.listenerPresent, false);
+    assert.doesNotMatch(JSON.stringify(latest), /password|rawConfig|subscriptionUrl|privateKey|token/i);
+  });
+});
+
 test("subscription control store persists portal access request lifecycle", () => {
   withStore((store) => {
     const now = "2026-06-06T00:00:00.000Z";
