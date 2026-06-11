@@ -40,6 +40,7 @@ import { createXrayVlessRealityHostRuntimeAdapter } from "./services/edge/xray-v
 import { createHysteria2HostRuntimeAdapter } from "./services/edge/hysteria2-runtime-adapter.mjs";
 import { createDataPlaneHandoffRuntimeAdapter } from "./services/edge/data-plane-handoff-runtime-adapter.mjs";
 import { createDataPlaneHandoffQueue } from "./services/edge/data-plane-handoff-queue.mjs";
+import { createDataPlaneDesiredStateNotifier } from "./services/edge/data-plane-desired-state-notifier.mjs";
 import { createDataPlaneAgentService } from "./services/edge/data-plane-agent-service.mjs";
 import { spawn } from "node:child_process";
 
@@ -548,6 +549,10 @@ export function createRuntimeState(options = {}) {
   let edgeCredentialIssuer = options.edgeCredentialIssuer || null;
   let edgeLifecycleService = options.edgeLifecycleService || null;
   let edgeRuntimeAdapter = options.edgeRuntimeAdapter || null;
+  const edgeDesiredStateNotifier = options.edgeDesiredStateNotifier || createDataPlaneDesiredStateNotifier({
+    controlStore: platformControlStore,
+    servers: configuredServers
+  });
   let edgeRuntime = "mihomo-tuic";
   let platformPortalAccessRequests;
 
@@ -782,6 +787,7 @@ export function createRuntimeState(options = {}) {
     controlStore: platformControlStore,
     edgeCredentialIssuer,
     edgeLifecycleService,
+    edgeDesiredStateNotifier,
     autoIssuance: {
       enabled: autoIssuanceEnabled,
       nodeId: optionalEnvText(env.USER_PORTAL_AUTO_ISSUANCE_NODE_ID),

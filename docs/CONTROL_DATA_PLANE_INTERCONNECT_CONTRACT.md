@@ -1,6 +1,6 @@
 # Control Plane / Data Plane Interconnect Contract
 
-Last updated: 2026-06-01, Asia/Shanghai.
+Last updated: 2026-06-11, Asia/Shanghai.
 
 > Status:
 > - Type: Active architecture contract
@@ -246,6 +246,53 @@ Rules:
 - refreshing an artifact may change the user's current output but must remain
   scoped to that user's authorization.
 
+### Desired-State Pull / Receipt Contract
+
+Source:
+
+```text
+control-plane order and credential ledger
+```
+
+Destination:
+
+```text
+private data-plane agent route
+```
+
+Safe contents:
+
+```text
+nodeRef
+channelRef
+desiredStateRef
+generation
+edgeCredentialRef
+material fingerprint
+status / receipt summary
+timestamps
+```
+
+Not allowed:
+
+```text
+raw passwords
+UUID private material
+private keys
+subscription URLs
+runtime config dumps
+environment values
+logs
+SQLite rows
+customer data
+```
+
+For future orders, the control plane records a safe pending desired-state
+notification for remote data-plane channels. The data-plane agent may pull the
+current desired-state over a private authenticated path, apply it locally, and
+post a redacted receipt. User subscription output must not include that remote
+channel until the current desired-state has a matching applied receipt.
+
 ## Minimal Interface Between Projects
 
 The two projects should connect through this narrow interface:
@@ -255,13 +302,15 @@ data plane -> control plane:
   safe node facts
   safe health facts
   lifecycle/pool recommendation
+  redacted desired-state apply receipts
 
 control plane -> user client:
   authorized subscription output
 
 control plane -> data plane:
-  no direct traffic
+  safe desired-state refs over private authenticated routes
   no customer database authority
+  no direct customer proxy traffic
   only approved runtime config or node-retirement decisions through Risk A gates
 ```
 

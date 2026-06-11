@@ -1749,6 +1749,86 @@ test("createRuntimeState writes remote data-plane lifecycle handoff instead of m
   }
 });
 
+test("createRuntimeState records remote data-plane desired-state notifications for new orders", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-remote-data-plane-notify-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  const materialPath = join(dir, "protected", "edge-material.json");
+  const handoffDir = join(dir, "handoff");
+  let state;
+
+  try {
+    mkdirSync(join(dir, "protected"), { recursive: true });
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_sgp_hy2",
+          name: "channel-sgp-a-hy2",
+          physicalNodeRef: "vultr-sgp-a",
+          protocol: "hysteria2",
+          type: "hysteria2",
+          host: "sgp.example.test",
+          port: 10443,
+          password: "${SGP_HY2_PASSWORD}",
+          runtimeAdapter: "remote-data-plane-handoff",
+          credentialMode: "per-order",
+          status: "online",
+          subscriptionEligible: true
+        }
+      ]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        SGP_HY2_PASSWORD: "synthetic-hy2-template-password",
+        USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
+        USER_PORTAL_EDGE_CHANNEL_REF: "channel-sgp-a-hy2",
+        USER_PORTAL_EDGE_CHANNEL_REFS: "channel-sgp-a-hy2",
+        EDGE_CREDENTIAL_CHANNEL_REFS: "channel-sgp-a-hy2",
+        EDGE_CREDENTIAL_MATERIAL_PATH: materialPath,
+        EDGE_CREDENTIAL_LIFECYCLE_EXECUTE_PRODUCTION_MUTATION: "true",
+        EDGE_DATA_PLANE_HANDOFF_DIR: handoffDir,
+        USER_PORTAL_AUTO_ISSUANCE_ENABLED: "true",
+        USER_PORTAL_AUTO_ISSUANCE_NODE_ID: "channel-sgp-a-hy2",
+        USER_PORTAL_AUTO_ISSUANCE_CHANNEL_REFS: "channel-sgp-a-hy2",
+        USER_PORTAL_AUTO_ISSUANCE_7D_MONTHLY_LIMIT: "5000",
+        USER_PORTAL_AUTO_ISSUANCE_30D_MONTHLY_LIMIT: "1000"
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      autoStartHttpProxy: false
+    });
+
+    const request = state.platform.portalAccessRequests.submitRequest({
+      portalUserRef: "portal_user_sgp_notify_001",
+      plan: "trial",
+      clientTarget: "clash",
+      quantity: 1
+    });
+
+    assert.equal(request.status, "delivered");
+    const notifications = state.platform.controlStore.listEdgeDesiredStateNotifications({
+      nodeRef: "vultr-sgp-a"
+    });
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0].status, "pending");
+    assert.equal(notifications[0].channelRef, "channel-sgp-a-hy2");
+    assert.equal(notifications[0].nodeRef, "vultr-sgp-a");
+    assert.match(notifications[0].desiredStateRef, /^desired_state_channel-sgp-a-hy2_/);
+    assert.equal(notifications[0].reason, "order_delivered");
+    assert.doesNotMatch(
+      JSON.stringify(notifications),
+      /synthetic-hy2-template-password|password|uuid|subscriptionUrl|rawConfig/i
+    );
+  } finally {
+    state?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("createRuntimeState records runtime usage observations into the control ledger", async () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-runtime-usage-ledger-"));
   const proxyConfigPath = join(dir, "proxy-servers.json");

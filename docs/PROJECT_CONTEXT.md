@@ -133,11 +133,13 @@ receipts for SGP VLESS Reality, Hysteria2, and TUIC. It did not create live
 orders, mutate DNS/Nginx/provider firewall, expose public Admin, or output
 credential material. A follow-up gate is still required to publish
 desired-state automatically for future orders.
-Current source now adds a repo-level receipt-backed subscription render guard:
-`remote-data-plane-handoff` channels are withheld from user subscription output
-until the current desired-state has a matching applied receipt from the data
-plane. Deploying and validating that guard in production remains a separate
-Risk A runtime gate.
+Current source now adds repo-level remote data-plane coordination for future
+orders: user order delivery records a safe pending desired-state notification
+for `remote-data-plane-handoff` channels, and the subscription renderer withholds
+those channels until the current desired-state has a matching applied receipt
+from the data plane. The notification table stores safe refs only; applying it
+through the edge agent and validating it in production remains a separate Risk A
+runtime gate.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the

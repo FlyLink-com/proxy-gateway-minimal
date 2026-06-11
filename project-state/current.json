@@ -150,6 +150,7 @@
     "Vultr Japan is the current subscription control-plane authority for the globalcirclecat.cloud production lane; local machines remain development, validation, operator handoff, and archive surfaces only.",
     "Vultr Japan and Vultr Singapore are data-plane capacity hosts. Their VLESS Reality, Hysteria2, and TUIC logical channels should be rendered as one subscription bundle only when the Japan control-plane channel config, runtime handoff, and credential fan-out are aligned.",
     "Single-control-plane / multi-data-plane is the active architecture boundary: accounts, orders, artifacts, credential lifecycle, subscription rendering, and usage ledgers stay authoritative in one control store; edge hosts own protocol runtime and traffic capacity only.",
+    "Remote data-plane future-order coordination is now coded in source: delivered orders record safe pending desired-state notifications for remote channels, and subscription rendering still requires a matching applied receipt before exposing those channels. Production migration, agent apply validation, and live-order smoke remain separate Risk A gates.",
     "Aliyun subscription-distribution records, channel-lab-a/b records, and Japan single-TUIC upgrade records are historical/fallback references. Do not reactivate them as current production authority or automatic issuance targets without a fresh Risk A gate and live verification.",
     "User Portal and Admin/Operator surfaces are adapters over shared domain services. User order creation, lifecycle status, refresh, usage monitor, and support flows must use durable backend state, not frontend Map/demo state.",
     "Order-owned traffic accounting remains an active implementation lane: Admin usage monitor now shows order-owned issued channels from durable state, but live runtime sample collection, User Portal usage display, quota enforcement, and auto-disable still require separate gates.",
@@ -243,7 +244,7 @@
     },
     {
       "id": "sgp-remote-handoff-apply-productization",
-      "summary": "Singapore data-plane runtime can be represented in the Japan control-plane bundle. Japan-to-SGP SSH apply identity works, Gate 2 Japan clean artifact promotion is complete, Gate 3 consumed the reviewed SGP handoff queue, and the 005 edge-agent activation established a private loopback pull/apply/receipt path with fresh applied receipts for existing delivered SGP channel credentials. Live-order smoke and automatic desired-state publication for future orders remain separate exact Risk A gates.",
+      "summary": "Singapore data-plane runtime can be represented in the Japan control-plane bundle. Japan-to-SGP SSH apply identity works, Gate 2 Japan clean artifact promotion is complete, Gate 3 consumed the reviewed SGP handoff queue, and the 005 edge-agent activation established a private loopback pull/apply/receipt path with fresh applied receipts for existing delivered SGP channel credentials. Source now records safe pending desired-state notifications for future orders; production deployment, agent apply validation, and live-order smoke remain separate exact Risk A gates.",
       "sourceDoc": "docs/production-replacement-records/2026-06-11-edge-agent-private-tunnel-production-activation.md"
     },
     {
