@@ -175,6 +175,14 @@ loopback port with temporary DB copies and create
 `platform_edge_desired_state_notifications` in the temporary control DB. The
 real production control DB is still not migrated, and promoting the candidate
 still requires a separate exact Risk A retry gate.
+The runtime/schema retry environment-file blocker is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-runtime-retry-envfile-blocker.md`.
+It proved the restart failure is now a packaging/systemd boundary, not the
+agent-node JSON shape: one service `EnvironmentFile` is bound through the
+`current` release symlink, and the candidate release lacks the corresponding
+release-local env file. Japan was rolled back and remains on
+`edge-agent-production-activation-20260610-005-worktree`; the real production
+control DB is still not migrated.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the

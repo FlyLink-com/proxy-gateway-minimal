@@ -94,8 +94,11 @@ normalization gate corrected the finding:
   `platform_edge_desired_state_notifications` in a temporary control DB.
 
 The original service restart still failed during this gate and was safely
-rolled back. A separately approved retry is required before promoting the
-candidate release.
+rolled back. A separately approved retry later found the concrete systemd
+packaging blocker: one service `EnvironmentFile` is bound through the `current`
+release symlink, and the candidate release does not contain the corresponding
+release-local env file. See
+`2026-06-11-edge-agent-future-order-runtime-retry-envfile-blocker.md`.
 
 ## Current State
 
@@ -108,13 +111,11 @@ candidate release.
 
 ## Next Gate
 
-Do not retry the `001` upgrade until one of these is explicitly approved:
+Do not retry the `001` upgrade until a separate exact Risk A gate fixes the
+systemd `EnvironmentFile` boundary by either materializing the required
+release-local env file into the candidate from protected runtime material or
+moving production env loading fully to stable protected paths outside the
+`current` symlink.
 
-1. A protected-env normalization gate that converts the Japan
-   `EDGE_DATA_PLANE_AGENT_NODES_JSON` material into the JSON array format
-   required by the current source contract, without outputting the value.
-2. A new runtime candidate that preserves compatibility with the existing
-   protected material shape and includes tests proving both accepted shapes.
-
-Either path must include read-only inventory, backups, validation, rollback, and
-the same sensitive-output restrictions as this gate.
+The next gate must include read-only inventory, backups, validation, rollback,
+and the same sensitive-output restrictions as this gate.

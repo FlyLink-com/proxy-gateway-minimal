@@ -34,6 +34,7 @@
     "docs/production-replacement-records/2026-06-11-edge-agent-future-order-runtime-upgrade-approval-packet.md",
     "docs/production-replacement-records/2026-06-11-edge-agent-future-order-runtime-upgrade-rollback.md",
     "docs/production-replacement-records/2026-06-11-edge-agent-protected-env-normalization.md",
+    "docs/production-replacement-records/2026-06-11-edge-agent-future-order-runtime-retry-envfile-blocker.md",
     "docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md",
     "docs/superpowers/plans/2026-06-09-historical-residue-closeout.md",
     "docs/DOMAIN_UNIT_BOUNDARIES.md",
@@ -155,7 +156,7 @@
     "Vultr Japan is the current subscription control-plane authority for the globalcirclecat.cloud production lane; local machines remain development, validation, operator handoff, and archive surfaces only.",
     "Vultr Japan and Vultr Singapore are data-plane capacity hosts. Their VLESS Reality, Hysteria2, and TUIC logical channels should be rendered as one subscription bundle only when the Japan control-plane channel config, runtime handoff, and credential fan-out are aligned.",
     "Single-control-plane / multi-data-plane is the active architecture boundary: accounts, orders, artifacts, credential lifecycle, subscription rendering, and usage ledgers stay authoritative in one control store; edge hosts own protocol runtime and traffic capacity only.",
-    "Remote data-plane future-order coordination is now coded in source: delivered orders record safe pending desired-state notifications for remote channels, and subscription rendering still requires a matching applied receipt before exposing those channels. The first approved runtime/schema upgrade attempt for edge-agent-future-order-runtime-20260611-001 rolled back safely; a later protected-env normalization gate corrected the earlier shell-source diagnostic and proved EDGE_DATA_PLANE_AGENT_NODES_JSON resolves to an array under a systemd-style parser. Production remains on edge-agent-production-activation-20260610-005-worktree, and the real control DB is still not migrated. Retrying production migration, agent apply validation, or live-order smoke requires a separate exact Risk A gate.",
+    "Remote data-plane future-order coordination is now coded in source: delivered orders record safe pending desired-state notifications for remote channels, and subscription rendering still requires a matching applied receipt before exposing those channels. The first approved runtime/schema upgrade attempt for edge-agent-future-order-runtime-20260611-001 rolled back safely; a later protected-env normalization gate corrected the earlier shell-source diagnostic and proved EDGE_DATA_PLANE_AGENT_NODES_JSON resolves to an array under a systemd-style parser. The next retry found the concrete blocker: one systemd EnvironmentFile is bound through current and the candidate release lacks the corresponding release-local env file. Production remains on edge-agent-production-activation-20260610-005-worktree, and the real control DB is still not migrated. Retrying production migration, agent apply validation, or live-order smoke requires a separate exact Risk A gate.",
     "Aliyun subscription-distribution records, channel-lab-a/b records, and Japan single-TUIC upgrade records are historical/fallback references. Do not reactivate them as current production authority or automatic issuance targets without a fresh Risk A gate and live verification.",
     "User Portal and Admin/Operator surfaces are adapters over shared domain services. User order creation, lifecycle status, refresh, usage monitor, and support flows must use durable backend state, not frontend Map/demo state.",
     "Order-owned traffic accounting remains an active implementation lane: Admin usage monitor now shows order-owned issued channels from durable state, but live runtime sample collection, User Portal usage display, quota enforcement, and auto-disable still require separate gates.",
@@ -249,8 +250,8 @@
     },
     {
       "id": "sgp-remote-handoff-apply-productization",
-      "summary": "Singapore data-plane runtime can be represented in the Japan control-plane bundle. Japan-to-SGP SSH apply identity works, Gate 2 Japan clean artifact promotion is complete, Gate 3 consumed the reviewed SGP handoff queue, and the 005 edge-agent activation established a private loopback pull/apply/receipt path with fresh applied receipts for existing delivered SGP channel credentials. Source now records safe pending desired-state notifications for future orders. The protected-env normalization gate proved no env rewrite is needed and the 001 candidate can temp-start with temporary DB copies; a separate Risk A retry is still needed to switch current, restart Japan proxy, and migrate the real production control DB.",
-      "sourceDoc": "docs/production-replacement-records/2026-06-11-edge-agent-protected-env-normalization.md"
+      "summary": "Singapore data-plane runtime can be represented in the Japan control-plane bundle. Japan-to-SGP SSH apply identity works, Gate 2 Japan clean artifact promotion is complete, Gate 3 consumed the reviewed SGP handoff queue, and the 005 edge-agent activation established a private loopback pull/apply/receipt path with fresh applied receipts for existing delivered SGP channel credentials. Source now records safe pending desired-state notifications for future orders. The protected-env normalization gate proved no env rewrite is needed and the 001 candidate can temp-start with temporary DB copies; the retry found the remaining blocker is a current-bound systemd EnvironmentFile missing from the candidate release. A separate Risk A gate is needed to fix that packaging boundary before switching current, restarting Japan proxy, and migrating the real production control DB.",
+      "sourceDoc": "docs/production-replacement-records/2026-06-11-edge-agent-future-order-runtime-retry-envfile-blocker.md"
     },
     {
       "id": "new-order-six-channel-smoke",
@@ -274,7 +275,7 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Before retrying edge-agent-future-order-runtime-20260611-001, use a separate exact Risk A gate to switch current, restart Japan proxy, run the idempotent real control DB migration, and validate boundaries; the protected-env normalization gate found no env rewrite is needed.",
+    "Before retrying edge-agent-future-order-runtime-20260611-001, use a separate exact Risk A gate to fix the current-bound systemd EnvironmentFile boundary by materializing the required release-local env file from protected runtime material or moving production env loading to stable protected paths outside current; then switch current, restart Japan proxy, run the idempotent real control DB migration, and validate boundaries.",
     "Before the next Vultr production deploy, follow docs/production-replacement-records/2026-06-09-sgp-final-production-closeout-gate.md: run a clean artifact manifest through the production artifact boundary checker and record source commit plus artifact SHA-256.",
     "Run a fresh no-secrets new-order desktop and mobile smoke only under exact production approval; do not create live orders during repo-only validation.",
     "Finish repo-only state/docs archive alignment, then run npm run project-state:check and git diff --check.",
