@@ -150,6 +150,15 @@ It found Japan and SGP runtime boundaries healthy, SGP data-plane listeners
 present, and the expected blocker: production control DB does not yet have
 `platform_edge_desired_state_notifications`, so the next gate must be a
 runtime upgrade plus schema migration before any live-order smoke.
+The follow-up runtime/schema upgrade approval packet is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-runtime-upgrade-approval-packet.md`.
+It names source package `edge-agent-future-order-runtime-20260611-001` from
+commit `ff6c35a95b2c72a537c9c995204c88566709fd88`, current production rollback
+release `edge-agent-production-activation-20260610-005-worktree`, and a
+Japan-only runtime upgrade plus idempotent
+`platform_edge_desired_state_notifications` schema migration. It explicitly
+does not authorize live order creation, SGP runtime mutation, DNS/Nginx/provider
+firewall changes, or sensitive output.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the
