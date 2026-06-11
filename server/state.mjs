@@ -401,6 +401,57 @@ function resolveTenantCredentialMaterialFromStores({ controlStore, materialStore
   return null;
 }
 
+function remoteDataPlaneAdapterName(server = {}) {
+  return optionalEnvText(server.runtimeAdapter || server.edgeRuntimeAdapter || server.dataPlaneRuntimeAdapter);
+}
+
+function requiresAppliedRemoteReceipt(server = {}) {
+  return remoteDataPlaneAdapterName(server) === "remote-data-plane-handoff";
+}
+
+function latestMatchingAppliedReceipt({ controlStore, channelRef, desiredStateRef }) {
+  if (!controlStore || typeof controlStore.listEdgeApplyReceipts !== "function") {
+    return null;
+  }
+  return controlStore.listEdgeApplyReceipts({ channelRef })
+    .filter((receipt) =>
+      receipt?.desiredStateRef === desiredStateRef
+      && receipt.status === "applied"
+      && receipt.configTestOk === true
+      && receipt.serviceActive === true
+      && receipt.listenerUdp443 === true
+    )
+    .at(-1) || null;
+}
+
+function createReceiptBackedSubscriptionChannelGate({ controlStore } = {}) {
+  return ({ server }) => {
+    if (!requiresAppliedRemoteReceipt(server)) {
+      return true;
+    }
+    const channelRef = optionalEnvText(server?.name || server?.id);
+    if (
+      !channelRef
+      || !controlStore
+      || typeof controlStore.getLatestEdgeDesiredStateForChannel !== "function"
+    ) {
+      return false;
+    }
+    const desiredState = controlStore.getLatestEdgeDesiredStateForChannel(channelRef, {
+      nodeRef: optionalEnvText(server.physicalNodeRef || server.nodeRef) || channelRef,
+      channelRefs: [channelRef]
+    });
+    if (!desiredState?.desiredStateRef) {
+      return false;
+    }
+    return Boolean(latestMatchingAppliedReceipt({
+      controlStore,
+      channelRef,
+      desiredStateRef: desiredState.desiredStateRef
+    }));
+  };
+}
+
 export function createRuntimeState(options = {}) {
   const rootDir = rootPathFrom(options.rootDir || new URL("..", import.meta.url));
   const env = options.env || process.env;
@@ -484,6 +535,9 @@ export function createRuntimeState(options = {}) {
       materialStore: edgeCredentialMaterialStore,
       tenantId,
       nodeId
+    }),
+    subscriptionChannelGate: createReceiptBackedSubscriptionChannelGate({
+      controlStore: platformControlStore
     })
   });
   const platformLeadQueue = options.platformLeadQueue || createPlatformLeadReviewQueue();
