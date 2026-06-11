@@ -164,14 +164,17 @@ The approved runtime/schema upgrade attempt and rollback is recorded in
 It uploaded, verified, unpacked, and installed dependencies for
 `edge-agent-future-order-runtime-20260611-001`, but the Japan service restart
 failed and was rolled back to
-`edge-agent-production-activation-20260610-005-worktree`. Redacted follow-up
-diagnostics showed the candidate can create
-`platform_edge_desired_state_notifications` in a temporary control DB, but
-startup fails because the protected
-`EDGE_DATA_PLANE_AGENT_NODES_JSON` material is not valid JSON and therefore is
-not in the JSON array shape required by the new runtime contract. Do not retry
-this upgrade until a protected-env normalization gate or a compatibility
-candidate is approved.
+`edge-agent-production-activation-20260610-005-worktree`.
+The protected env normalization gate is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-protected-env-normalization.md`.
+It corrected the earlier shell-source diagnostic: under a systemd-style parser,
+the protected `EDGE_DATA_PLANE_AGENT_NODES_JSON` material already resolves to a
+JSON array, so no env rewrite was needed. It also proved that
+`edge-agent-future-order-runtime-20260611-001` can start on an alternate
+loopback port with temporary DB copies and create
+`platform_edge_desired_state_notifications` in the temporary control DB. The
+real production control DB is still not migrated, and promoting the candidate
+still requires a separate exact Risk A retry gate.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the

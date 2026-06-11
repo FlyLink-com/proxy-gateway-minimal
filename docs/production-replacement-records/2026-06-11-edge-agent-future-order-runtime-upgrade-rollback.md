@@ -74,27 +74,28 @@ Singapore read-only validation after rollback:
 
 ## Root Cause
 
-Follow-up redacted diagnostics ran the candidate release against temporary
-copies of the production control and subscription DBs on an alternate loopback
-port. That diagnostic proved:
+Initial follow-up redacted diagnostics ran the candidate release against
+temporary copies of the production control and subscription DBs on an alternate
+loopback port. That first diagnostic used shell-sourcing to load the service
+EnvironmentFiles. Later evidence showed that shell-sourcing is not a faithful
+model for systemd EnvironmentFile parsing.
 
-- The candidate release directory and dependency install were usable.
-- The candidate can create the new
-  `platform_edge_desired_state_notifications` table in a temporary control DB.
-- The failure is not an `EADDRINUSE`, missing module, syntax, permission, or
-  SQLite migration failure.
-- The startup failure class is runtime validation.
-- The validation family is:
-  `EDGE_DATA_PLANE_AGENT_NODES_JSON must be a JSON array`.
-- A separate redacted type-only check found that
-  `EDGE_DATA_PLANE_AGENT_NODES_JSON` is present but not valid JSON. The next
-  normalization gate must rewrite it from operator-protected runtime material or
-  a reviewed protected handoff into a valid JSON array; this is not a simple
-  "wrap the current object in an array" case.
+That first diagnostic incorrectly classified
+`EDGE_DATA_PLANE_AGENT_NODES_JSON` as invalid JSON. The later protected-env
+normalization gate corrected the finding:
 
-The production protected environment therefore contains an
-`EDGE_DATA_PLANE_AGENT_NODES_JSON` value that the new `001` runtime rejects.
-The protected value itself was not printed, copied, or recorded.
+- The protected EnvironmentFile material already resolves to a JSON array under
+  a systemd-style parser.
+- No protected environment rewrite was needed.
+- The candidate can start successfully on an alternate loopback port when loaded
+  through a root wrapper that reads EnvironmentFiles and drops privileges to
+  `proxy-gateway`.
+- The candidate can create
+  `platform_edge_desired_state_notifications` in a temporary control DB.
+
+The original service restart still failed during this gate and was safely
+rolled back. A separately approved retry is required before promoting the
+candidate release.
 
 ## Current State
 
