@@ -193,6 +193,16 @@ path. The gate rolled back to
 candidate env file, and left the real production control DB unmigrated. The
 next gate is a redacted candidate startup diagnostic after the envfile boundary,
 not another blind production restart.
+The redacted startup diagnostic is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-startup-diagnostic.md`.
+It found the candidate failure is proxy config placeholder resolution for SGP
+static channel material: the candidate expects `SGP_*` keys for Singapore
+VLESS/Hy2/TUIC, but the active protected service environment does not provide
+those names. Production remains on
+`edge-agent-production-activation-20260610-005-worktree`; the real control DB is
+still not migrated. The next gate must register those protected keys or rebuild
+the candidate template to use the approved existing key names, then prove
+candidate temp-start before any production symlink switch.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the
