@@ -221,6 +221,16 @@ Japan protected service environment by key presence only, with zero missing SGP
 placeholders, and rechecked public portal/sub/Admin/internal-agent boundaries.
 It did not upload artifacts, switch release, restart services, run schema
 migration, mutate Singapore runtime, or create live orders.
+The approved `002` runtime/schema production retry is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-002-runtime-schema-production-retry.md`.
+It uploaded and verified the `002` artifact, proved candidate temp-start with
+temporary DB copies and an alternate loopback port, switched Japan current to
+`edge-agent-future-order-runtime-20260611-002-worktree`, restarted only
+`proxy-gateway-candidate.service`, and verified that the real control DB now has
+`platform_edge_desired_state_notifications`. Singapore validation was read-only:
+edge-agent, Xray, Hy2, TUIC, listeners, and loopback stats were healthy. No live
+orders were created and Singapore runtime was not mutated; live-order smoke and
+future-order apply validation still require separate exact Risk A approval.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the
