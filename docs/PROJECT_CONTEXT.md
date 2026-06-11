@@ -231,6 +231,13 @@ temporary DB copies and an alternate loopback port, switched Japan current to
 edge-agent, Xray, Hy2, TUIC, listeners, and loopback stats were healthy. No live
 orders were created and Singapore runtime was not mutated; live-order smoke and
 future-order apply validation still require separate exact Risk A approval.
+The follow-up live-order smoke approval packet is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-live-smoke-approval-packet.md`.
+It authorizes, after exact approval only, one controlled 7-day quantity-1 test
+order to prove the full future-order desired-state -> SGP edge-agent apply ->
+fresh receipt -> subscription render gate. It does not authorize DNS, Nginx,
+provider firewall, account/password generation, payment, broad order creation,
+or sensitive output.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the
