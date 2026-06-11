@@ -159,6 +159,19 @@ Japan-only runtime upgrade plus idempotent
 `platform_edge_desired_state_notifications` schema migration. It explicitly
 does not authorize live order creation, SGP runtime mutation, DNS/Nginx/provider
 firewall changes, or sensitive output.
+The approved runtime/schema upgrade attempt and rollback is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-runtime-upgrade-rollback.md`.
+It uploaded, verified, unpacked, and installed dependencies for
+`edge-agent-future-order-runtime-20260611-001`, but the Japan service restart
+failed and was rolled back to
+`edge-agent-production-activation-20260610-005-worktree`. Redacted follow-up
+diagnostics showed the candidate can create
+`platform_edge_desired_state_notifications` in a temporary control DB, but
+startup fails because the protected
+`EDGE_DATA_PLANE_AGENT_NODES_JSON` material is not valid JSON and therefore is
+not in the JSON array shape required by the new runtime contract. Do not retry
+this upgrade until a protected-env normalization gate or a compatibility
+candidate is approved.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the
