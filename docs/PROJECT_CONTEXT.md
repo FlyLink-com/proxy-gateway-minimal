@@ -183,6 +183,16 @@ agent-node JSON shape: one service `EnvironmentFile` is bound through the
 release-local env file. Japan was rolled back and remains on
 `edge-agent-production-activation-20260610-005-worktree`; the real production
 control DB is still not migrated.
+The approved envfile-boundary fix retry is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-candidate-envfile-fix-runtime-retry-rollback.md`.
+It materialized exactly one missing candidate release-local env file from
+protected server material and verified the candidate no longer missed that file,
+but the candidate still did not remain active under the real systemd service
+path. The gate rolled back to
+`edge-agent-production-activation-20260610-005-worktree`, removed the created
+candidate env file, and left the real production control DB unmigrated. The
+next gate is a redacted candidate startup diagnostic after the envfile boundary,
+not another blind production restart.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the

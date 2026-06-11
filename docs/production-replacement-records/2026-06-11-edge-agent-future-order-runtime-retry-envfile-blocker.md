@@ -110,15 +110,13 @@ EnvironmentFiles through a wrapper and did not exercise the release-local
 
 ## Next Gate
 
-Do not retry the runtime/schema promotion until a separate exact Risk A gate
-handles the systemd EnvironmentFile boundary. Acceptable approaches are:
+A later approved gate materialized the missing release-local env file from
+protected server material and crossed this blocker, but the candidate still did
+not remain active under the real systemd service path. See
+`2026-06-11-edge-agent-candidate-envfile-fix-runtime-retry-rollback.md`.
 
-1. Copy or materialize the required release-local EnvironmentFile into the
-   candidate release from operator-protected runtime material, without outputting
-   values.
-2. Preferably harden the service so production environment material comes only
-   from stable protected paths outside the `current` symlink, then retry the
-   candidate switch.
-
-Either path must include read-only inventory, protected backups, validation,
-rollback, and the same sensitive-output restrictions as this gate.
+Do not retry the runtime/schema promotion until a separate exact Risk A
+diagnostic gate isolates the next startup failure class after the envfile
+boundary is fixed. That gate must include read-only inventory, protected
+backups, validation, rollback, and the same sensitive-output restrictions as
+this gate.
