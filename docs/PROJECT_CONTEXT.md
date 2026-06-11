@@ -214,6 +214,13 @@ and local boundary checks. Production remains unchanged on
 `edge-agent-production-activation-20260610-005-worktree`; the next Risk A gate
 must use the `002` package to prove zero missing placeholders plus candidate
 temp-start before any production symlink switch or real control DB migration.
+The follow-up `002` read-only preflight is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-002-readonly-preflight.md`.
+It validated that the `002` candidate placeholder names all exist in the current
+Japan protected service environment by key presence only, with zero missing SGP
+placeholders, and rechecked public portal/sub/Admin/internal-agent boundaries.
+It did not upload artifacts, switch release, restart services, run schema
+migration, mutate Singapore runtime, or create live orders.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the
