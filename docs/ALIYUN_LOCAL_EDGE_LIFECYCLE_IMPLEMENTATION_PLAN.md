@@ -5,14 +5,20 @@
 > to repo-only code, tests, templates, and dry-run CLI behavior. It does not
 > authorize Aliyun production mutation.
 
-**Goal:** Add repo-only support for an Aliyun local production edge channel with
-credential lifecycle policy and redacted desired-state reconciliation planning.
+> Historical status: this plan belongs to the earlier Aliyun local-edge lane.
+> Current production direction is the Vultr Japan control-plane with Vultr
+> Japan/Singapore data-plane capacity. Use this document only as fallback or
+> comparison evidence unless a fresh Risk A gate reactivates Aliyun.
 
-**Architecture:** The Aliyun control plane remains the business authority for
-orders and expiry. A new reconciliation planner compares desired credentials
-with current managed credentials and emits redacted add, revoke, rotate, and
-unchanged counts. Runtime apply remains fail-closed until a later production
-adapter is implemented and separately approved.
+**Goal:** Record the earlier repo-only support plan for an Aliyun local
+production edge channel with credential lifecycle policy and redacted
+desired-state reconciliation planning.
+
+**Architecture:** In the earlier Aliyun lane, the Aliyun control plane was the
+business authority for orders and expiry. The reusable reconciliation idea is
+now provider-neutral: the current control plane owns order lifecycle facts,
+while runtime apply remains fail-closed until a later production adapter is
+implemented and separately approved.
 
 **Tech Stack:** Node.js ESM, built-in `node:test`, JSON templates, existing
 `gccgw` CLI.

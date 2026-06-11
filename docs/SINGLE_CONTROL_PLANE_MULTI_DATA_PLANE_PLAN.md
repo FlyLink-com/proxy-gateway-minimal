@@ -1,6 +1,6 @@
 # Single Control Plane / Multi Data-Plane Plan
 
-Last updated: 2026-06-08, Asia/Shanghai.
+Last updated: 2026-06-10, America/Los_Angeles.
 
 > Status:
 > - Type: Active architecture and implementation plan
@@ -157,6 +157,31 @@ data, or SQLite rows.
 A `pending` handoff receipt is a successful control-plane lifecycle step, not a
 runtime listener proof. It keeps order creation from failing while preserving
 the separate A-tier gate for applying the handoff on the remote node.
+
+### Edge-Agent Pull / Apply / Receipt Target
+
+Manual remote handoff consumption is acceptable for incident repair and
+explicit A-tier gates, but it is not the steady-state production model.
+
+The target architecture is documented in
+`docs/EDGE_AGENT_PULL_APPLY_RECEIPT_ARCHITECTURE.md`:
+
+```text
+control plane writes node-scoped desired generation
+  -> data-plane agent pulls its own desired generation
+  -> data-plane agent applies local runtime config after config-test
+  -> data-plane agent posts redacted applied/failed receipt
+  -> renderer uses receipt freshness as a remote-channel eligibility gate
+```
+
+Remote channels must not be treated as normally renderable only because
+credential rows or handoff files exist. Normal render eligibility for a remote
+channel requires a fresh applied receipt for the latest desired generation,
+fresh node lease/health, and the usual pool/lifecycle/entitlement policy.
+
+This keeps order creation, credential lifecycle, runtime application, and
+subscription output on one verifiable state machine while preserving the rule
+that data-plane nodes do not own user, order, artifact, or payment authority.
 
 ## Usage Accounting
 

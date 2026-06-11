@@ -3,8 +3,8 @@
 Last updated: 2026-06-03, Asia/Shanghai.
 
 This document defines the customer-portal authentication boundary for the
-Aliyun-first subscription-control platform. It is a repository design contract
-only. It does not deploy a portal, expose a public login endpoint, create DNS or
+current subscription-control platform. It is a repository design contract only.
+It does not deploy a portal, expose a public login endpoint, create DNS or
 Nginx routes, issue real portal entries, migrate SQLite data, activate payment,
 or authorize subscription issuance.
 

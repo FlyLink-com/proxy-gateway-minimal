@@ -29,10 +29,10 @@ The current production state is no longer a serving Shadowsocks edge baseline.
 As of the current project context:
 
 ```text
-Aliyun subscription distribution boundary: promoted
-sub.globalcirclecat.com: served by Aliyun control/subscription boundary
-edge data-plane traffic: pending clean rebuild or separately approved canary
-AWS Singapore prod-edge-a/prod-edge-b: stopped under accepted outage
+Vultr Japan control plane: current documented subscription authority
+Vultr Japan / Singapore: current documented data-plane channel capacity
+Aliyun subscription distribution boundary: historical/fallback reference only
+AWS Singapore prod-edge-a/prod-edge-b: terminated under accepted outage
 tracked SS config: historical comparison input only until edge rebuild
 ```
 
@@ -94,8 +94,8 @@ flowchart LR
   end
 
   subgraph "Production Boundary"
-    Control["Aliyun subscription boundary\ncurrent control/distribution"]
-    EdgePending["edge data-plane\npending clean rebuild"]
+    Control["Vultr Japan control plane\ncurrent documented authority"]
+    EdgePending["Vultr/SGP data-plane\nseparately gated runtime"]
     Canary["channel-lab or clean edge\ncontrolled experiment only"]
   end
 
@@ -962,7 +962,7 @@ Scope:
   channel-lab or explicitly approved clean edge canary only
   one operator device
   explicit rollback
-  no Aliyun control-boundary mutation
+  no control-plane boundary mutation
   no stopped AWS rollback-start mutation
 ```
 
@@ -978,7 +978,7 @@ Scope:
   channel-lab or clean replacement edge canary slot
   operator-device only
   no broad user activation
-  no Aliyun subscription-boundary change
+  no production subscription-boundary change
   no all-user edge activation
 ```
 
@@ -992,7 +992,7 @@ approved target.
 This technical MVP does not:
 
 ```text
-replace current Aliyun subscription boundary
+replace the current production subscription boundary
 activate edge data-plane traffic
 change production DNS
 change production Nginx

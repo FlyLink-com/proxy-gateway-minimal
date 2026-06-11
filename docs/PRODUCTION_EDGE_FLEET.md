@@ -27,7 +27,7 @@ prod-edge-c: future third recovery/standby slot
 This is edge data-plane planning. The target subscription control-plane split
 lives in `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`.
 
-Latest business decision:
+Historical business decision superseded by the current Vultr/SGP lane:
 
 ```text
 Aliyun becomes the near-term user-management / subscription-distribution
@@ -40,8 +40,8 @@ Aliyun promotion.
 Therefore this document remains useful for understanding historical edge slot
 dependencies and future clean-edge rebuild planning, but it is not live
 inventory and not proof of active edge capacity. Use
-`docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md` for the current
-drain / stop / termination gates.
+`docs/PROJECT_CONTEXT.md` and `project-state/current.json` for the current
+Vultr Japan control-plane and Vultr/Singapore data-plane posture.
 
 The plan is documentation-only. It does not rename current runtime nodes,
 change generated subscriptions, create a third node, change DNS, change
@@ -52,13 +52,13 @@ production `.env`, copy secrets, copy SQLite data, or move traffic.
 - `docs/NODE_NAMING.md`: provider-neutral node naming policy.
 - `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`: target split between
   subscription control-plane authority and edge data-plane capacity.
-- `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: current target split where
-  Aliyun becomes the subscription control-plane candidate, local Linux becomes
-  manual CI, and non-Aliyun / non-HP nodes drain through controlled retirement.
-- `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`: latest business
-  split and node drain / stop / termination gates.
-- `docs/JAPAN_TUIC_PER_ORDER_CREDENTIAL_UPGRADE_RUNBOOK.md`: current
-  production gate for upgrading the Japan TUIC data-plane node to support
+- `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: historical/fallback target
+  split for the earlier Aliyun subscription-control candidate.
+- `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`: historical/fallback
+  Aliyun business split and node drain / stop / termination gates.
+- `docs/JAPAN_TUIC_PER_ORDER_CREDENTIAL_UPGRADE_RUNBOOK.md`: historical
+  production gate for upgrading the earlier single Japan TUIC data-plane node
+  to support
   per-order credential add, disable, rotate, and activation before forced order
   expiry is claimed.
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`: fallback clean
@@ -85,7 +85,7 @@ Current durable facts:
 prod-edge-a target slot:
   Current role: historical production primary edge slot
   Current traffic: no active AWS carrying instance
-  Current public traffic host: none; sub.globalcirclecat.com points to Aliyun
+  Current public traffic host: none in this AWS slot; current authority is not AWS
   Current runtime identity: provider-neutral prod-edge-a slot preserved for rebuild planning
 
 prod-edge-b target slot:
@@ -101,15 +101,13 @@ prod-edge-c target slot:
   Current GitHub state: repo-only build-material package under ops/edge-node/
 ```
 
-Aliyun now carries the approved public subscription-distribution boundary.
-The target direction is to keep subscription authority separate from
-replaceable edge capacity. This document only defines edge slots. It does not
-authorize `sub-control-a` / `sub-control-b` creation, database movement,
-artifact movement, DNS migration, clean edge bootstrap, or runtime role changes.
-The preferred subscription-control path is governed by
-`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`. The clean new-server
-control-plane path remains fallback and must not be treated as `prod-edge-c` or
-as customer proxy capacity.
+Aliyun previously carried an approved public subscription-distribution
+boundary, but that lane is now historical/fallback. The current direction keeps
+subscription authority separate from replaceable edge capacity through the
+Vultr Japan control-plane and Vultr/Singapore data-plane model. This document
+only defines historical and future edge slots. It does not authorize database
+movement, artifact movement, DNS migration, clean edge bootstrap, or runtime
+role changes.
 
 The exact cloud provider, instance ID, public IP, and security group mappings
 belong in execution records and restricted operational inventory. They should
@@ -367,7 +365,7 @@ Before runtime work starts, decide:
 
 ## Recommended Next Work
 
-Recommended sequence:
+Historical recommended sequence for the earlier Aliyun lane:
 
 ```text
 1. Promote Aliyun only through the user-management / subscription-distribution
@@ -380,7 +378,7 @@ Recommended sequence:
    window proves no rollback dependency remains.
 ```
 
-For the third-node work, start with docs and repo-only build material
+For any future third-node work, start with docs and repo-only build material
 templates. Do not create a live third node until the build materials, secret
 boundary, data restore process, and validation plan are approved.
 

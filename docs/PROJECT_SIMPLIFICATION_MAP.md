@@ -47,9 +47,9 @@ stable subscription/import experience
 In concrete terms:
 
 ```text
-sub-control-a on the current Aliyun server / future sub-control-b
-  own subscription state, artifacts, Admin, rendering, and operator actions
-  after separate Risk A promotion
+Vultr Japan control plane / future approved standby
+  own subscription state, artifacts, Admin/operator authority, rendering, and
+  operator actions after separate Risk A promotion
 
 prod-edge-a / prod-edge-b / future prod-edge-c
   are clean or clean-rebuilt forwarding nodes that carry edge data-plane
@@ -69,9 +69,12 @@ Clash/Mihomo
 Workspace authority rule:
 
 ```text
+Vultr Japan control plane:
+  current documented business workspace for portal orders, subscription
+  rendering, credential lifecycle orchestration, and production records
+
 Aliyun:
-  current business workspace for public site, lead intake, subscription
-  distribution, operator-controlled issuance, and production records
+  historical/fallback workspace only unless fresh Risk A inventory reactivates it
 
 GitHub master:
   code and durable project-history authority after PR merge
@@ -134,9 +137,9 @@ Do not keep old workspaces, superseded execution packages, stale draft plans, or
 personal/material experiments on the active `master` reading path once their
 useful facts have been indexed and archived.
 
-Do not turn routine development into production operations. Use Aliyun for the
-approved production boundary, not as the default development workspace or CI
-host.
+Do not turn routine development into production operations. Use documented
+production hosts only through their approved Risk A gates, not as default
+development workspaces or CI hosts.
 
 Do not force every state change into prose. If the update is a compact current
 state, lane, task, or validation summary, prefer `project-state/*.json` plus a
@@ -673,9 +676,9 @@ Always Risk A. This changes production access semantics.
 
 Goal:
 
-Move from co-located production toward the current Aliyun server as
-subscription control plane, local Linux as manual CI, and replaceable clean
-edge data-plane nodes.
+Move from co-located production toward one documented subscription control
+plane, local/manual validation where approved, and replaceable clean edge
+data-plane nodes.
 
 Scope:
 
@@ -717,7 +720,7 @@ Do not do these unless a separate approved task explicitly changes direction:
      decorative widgets, or incremental productization of the old `admin/`
      bundle. The old Admin UI is archived as a local protected reference/testing
      surface only; future user/operator/admin surfaces should be rebuilt from
-     current Aliyun-first and CLI-first boundaries. See
+     the current control-plane, CLI-first, and portal/public-site boundaries. See
      `docs/ADMIN_UI_LEGACY_ARCHIVE.md`.
   6. *Documentation Over-Packaging*: Excessive high-level narrative bloating, over-lengthy closeouts, redundant topological diagrams, or slogan-like stage reports.
   7. *Speculative Futuristic Architecture*: Multi-agent cards, futuristic protocol roadmaps, or un-gated conceptual structures.

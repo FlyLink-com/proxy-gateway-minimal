@@ -8,10 +8,12 @@
 **Goal:** Upgrade the Japan TUIC production data-plane node so each portal
 order can receive, expire, disable, and rotate its own TUIC credential.
 
-**Architecture:** Keep Aliyun as the subscription control plane and keep the
-Japan host as replaceable data-plane capacity. The control plane already knows
-subscription expiry and node policy metadata; this plan adds a safe node-side
-credential lifecycle surface before marking `channel-lab-b-tuic` as
+**Architecture:** Historical lane: Aliyun was treated as the subscription
+control plane and the Japan host as replaceable data-plane capacity. Current
+production direction is the Vultr Japan control-plane with Vultr
+Japan/Singapore data-plane capacity; use this runbook only for archaeology or a
+freshly approved reactivation of the earlier single-TUIC path. The reusable
+idea is the node-side credential lifecycle surface before marking a channel as
 `per-order`.
 
 **Tech Stack:** Node.js `gccgw`, Mihomo TUIC v5 runtime, systemd, protected

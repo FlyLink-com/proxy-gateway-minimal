@@ -17,22 +17,23 @@ Last updated: 2026-06-01, Asia/Shanghai.
 
 ## Purpose
 
-The current preferred physical split path is documented in
-`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: move CI to local Linux, then
-evaluate the current Aliyun server as the future production subscription
-control-plane candidate.
+The earlier preferred physical split path evaluated Aliyun as the future
+production subscription control-plane candidate. That path is now
+historical/fallback. Current production direction is documented in
+`docs/PROJECT_CONTEXT.md` and
+`docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md`.
 
-This clean new-server runbook remains active as the fallback path if the
-Aliyun candidate is rejected by inventory, cleanup, security, operational
-ownership, or capacity gates. It is still not the operator lab / HP relay and
-not an edge data-plane server.
+This clean new-server runbook remains active only as a future replacement-host
+candidate path if the current control-plane lane needs a separately approved
+replacement. It is still not the operator lab / HP relay and not an edge
+data-plane server.
 
 The narrow goal is:
 
 ```text
 Create and validate a clean `sub-control-a` candidate server that can become
 the subscription control-plane authority in a later separately approved phase
-when the Aliyun candidate path is not acceptable.
+when the current control-plane lane explicitly chooses a replacement path.
 ```
 
 This runbook is intentionally conservative. It treats the new server as a
@@ -151,8 +152,8 @@ execution record under `docs/production-replacement-records/` or another
 approved production-ops record path:
 
 ```text
-current production DNS records for sub.globalcirclecat.com and ss-sg.globalcirclecat.com
-current Aliyun subscription-distribution service health and public endpoint behavior
+current production DNS records for the active subscription and portal domains
+historical Aliyun subscription-distribution service health only if Aliyun is in scope
 current static subscription-output node references and whether they point at retired edge slots
 any newly approved clean edge target identity, public IP, private IP, and security group
 current active production DB path from runtime config, without printing DB content
@@ -426,11 +427,11 @@ docs/PRODUCTION_EDGE_FLEET.md:
   edge data-plane slots; the new control-plane candidate is not prod-edge-c
 
 docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md:
-  preferred target split for current Aliyun subscription control, local Linux
-  manual CI, and controlled non-Aliyun node drain / retirement
+  historical/fallback target split for earlier Aliyun subscription control,
+  local Linux manual CI, and controlled non-Aliyun node drain / retirement
 
 docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md:
-  latest business split for Aliyun user management / subscription distribution,
+  historical Aliyun user management / subscription distribution,
   HP validation/lab, and non-Aliyun node retirement gates
 
 docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md:

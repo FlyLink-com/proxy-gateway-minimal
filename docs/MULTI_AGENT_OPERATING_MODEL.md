@@ -64,23 +64,23 @@ reviewers.
 Primary mission:
 
 ```text
-build the Aliyun subscription-control platform MVP
+build and maintain the subscription-control platform MVP
 keep subscription state, artifacts, account/entitlement shells, and rendering
   in the control plane
-prepare clean-start authority, private validation, firewall, public-boundary,
-  DNS-promotion, observation, rollback, and cleanup gates
-coordinate Aliyun outward-facing platform preparation without exposing public
-  Admin, dynamic customer entries, or subscription artifacts before approval
+prepare private validation, firewall/public-boundary, observation, rollback,
+  and cleanup gates for the currently approved provider lane
+coordinate outward-facing platform preparation without exposing public Admin,
+  dynamic customer entries, or subscription artifacts before approval
 ```
 
 Owns:
 
 ```text
-Aliyun user-management / subscription-distribution planning
+subscription control-plane planning
 platform lead/account/entitlement/access-grant shells
 opaque artifact and legacy query-token retirement planning
-Aliyun clean-start versus state-preserving source decisions
-provider-firewall and public-boundary runbook preparation
+provider-neutral source-state decisions
+provider-firewall and public-boundary runbook preparation for approved lanes
 public site / portal separation and dynamic-entry delivery boundaries
 ```
 
@@ -98,8 +98,8 @@ Current task boundary:
 
 ```text
 repo-only B/C work can continue under this agent
-Aliyun runtime, DNS, firewall, state-copy, public listener, production authority,
-  or cleanup work remains Risk A and needs separate approval
+provider runtime, DNS, firewall, state-copy, public listener, production
+  authority, or cleanup work remains Risk A and needs separate approval
 ```
 
 ### Channel Technical MVP Agent
@@ -129,7 +129,7 @@ future runtime inventory packets for approved protocol canaries
 Does not own:
 
 ```text
-Aliyun subscription-control authority
+subscription-control authority
 customer/account entitlement policy
 production DNS, Nginx, firewall, systemd, or node mutation
 all-user rollout or subscription output activation

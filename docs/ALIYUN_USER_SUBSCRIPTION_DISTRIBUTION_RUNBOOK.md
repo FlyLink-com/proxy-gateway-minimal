@@ -3,7 +3,7 @@
 Last updated: 2026-06-03, Asia/Shanghai.
 
 > Status:
-> - Type: Active architecture and Risk A runbook
+> - Type: Historical / superseded architecture and Risk A runbook
 > - Risk: C for this document; A for any Aliyun, HP, AWS, DNS, Nginx,
 >   systemd, firewall, security-group, SQLite, secret, artifact, tenant,
 >   node-output, traffic, stop, termination, or cutover mutation
@@ -11,10 +11,10 @@ Last updated: 2026-06-03, Asia/Shanghai.
 >   production authority transfer, node shutdown, termination, or security-group
 >   deletion by itself
 > - Production impact: None
-> - Source of truth for: the near-term business split where Aliyun owns the
->   user-management and subscription-distribution platform, HP remains
->   validation/operator lab, and non-Aliyun nodes enter a separate controlled
->   retirement queue
+> - Source of truth for: earlier Aliyun user-management /
+>   subscription-distribution planning only. This runbook is superseded for
+>   current production authority by the Vultr Japan control-plane and Vultr
+>   Japan/Singapore data-plane lane recorded in `docs/PROJECT_CONTEXT.md`.
 
 ## Preflight Check
 
@@ -52,7 +52,7 @@ traffic migration, promotion, or cutover
 
 ## Business Decision
 
-The near-term infrastructure split is:
+At the time this runbook was written, the near-term infrastructure split was:
 
 ```text
 Aliyun:
@@ -67,10 +67,10 @@ all other nodes:
   drain and retire through separate explicit Risk A gates
 ```
 
-The separate technical MVP branch owns new transport/channel capability work.
-That branch should not be coupled to this management/distribution platform
-until both tracks have their own validation evidence and an explicit
-integration gate.
+That split is no longer the current production-control direction. Keep this
+section as historical execution context only; current transport/channel work
+must be reconciled against the single-control-plane / multi-data-plane lane and
+fresh live evidence before any A-tier mutation.
 
 Current technical MVP branch observed during this runbook creation:
 
@@ -701,15 +701,15 @@ docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-valida
 docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md
 ```
 
-Current planning outcome:
+Historical planning outcome:
 
 ```text
-recommended default: clean-start Aliyun control plane unless the operator
+then-recommended default: clean-start Aliyun control plane unless the operator
 explicitly requires historical subscription state preservation
 
-clean-start is now the active planning default for the next repo-only package:
+clean-start was the active planning default for that repo-only package:
 new accounts, entitlements, subscription-access grants, opaque artifacts, and
-Subscription V2 outputs should be issued from Aliyun clean-start authority
+Subscription V2 outputs would be issued from Aliyun clean-start authority
 after the relevant private validation gates pass
 
 state-preserving fallback: source-state rescue planning, preferably
@@ -1097,7 +1097,7 @@ Goal:
 
 ```text
 Validate Aliyun rendering with approved production-derived state while still
-keeping production authority on the current host.
+keeping production authority on the then-current host.
 ```
 
 Clean-start alternative:

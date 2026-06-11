@@ -10,8 +10,8 @@ desired credential state with a node runtime such as Mihomo TUIC.
 
 The design is intentionally narrow:
 
-- the Aliyun control plane owns order lifecycle, quotas, expiry, revocation,
-  audit, and channel policy;
+- the subscription control plane owns order lifecycle, quotas, expiry,
+  revocation, audit, and channel policy;
 - the edge node owns only local runtime application: read current managed
   credentials, reconcile them to desired state, validate config, activate the
   runtime, and return a redacted receipt;

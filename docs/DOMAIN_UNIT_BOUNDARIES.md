@@ -485,8 +485,8 @@ docs/CI_MANUAL_VALIDATION.md:
   manual CI fallback workflow
 
 docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md:
-  current target split for Aliyun subscription control, local Linux CI, and
-  clean edge nodes
+  historical/fallback target split for earlier Aliyun subscription control,
+  local Linux CI, and clean edge nodes
 ```
 
 If a future design conflicts with this document, update the boundary first or

@@ -1,6 +1,6 @@
 # Control Plane / Data Plane Interconnect Contract
 
-Last updated: 2026-06-01, Asia/Shanghai.
+Last updated: 2026-06-10, America/Los_Angeles.
 
 > Status:
 > - Type: Active architecture contract
@@ -43,6 +43,11 @@ runtime-only edge nodes is
 `docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md`. Use that plan before
 adding a new production node, moving user/order state, wiring per-order
 credential fan-out, or exposing usage by account and order.
+
+The target remote apply model is
+`docs/EDGE_AGENT_PULL_APPLY_RECEIPT_ARCHITECTURE.md`. Use it before replacing
+manual handoff application, adding a node-side agent, or gating subscription
+rendering on remote runtime receipts.
 
 ## Traffic Shape
 
@@ -95,6 +100,26 @@ The control plane may consume redacted node facts:
 Production records and public docs should prefer `endpointRef` and `portRef`
 over raw endpoint values unless an exact Risk A record explicitly allows a
 safe, redacted summary.
+
+For credential lifecycle, the control plane may also consume redacted
+data-plane apply receipts:
+
+```json
+{
+  "nodeRef": "sgp-data-plane-a",
+  "generation": "desired-generation-ref",
+  "channelRef": "channel-sgp-a-hy2",
+  "status": "applied",
+  "configTest": "passed",
+  "serviceActive": true,
+  "listenerPresent": true,
+  "credentialCount": 10,
+  "appliedAt": "2026-06-10T00:00:00.000Z"
+}
+```
+
+Apply receipts prove only redacted runtime application status. They are not
+payment, account, entitlement, or order authority.
 
 ## Forbidden In Node Facts
 
@@ -255,6 +280,8 @@ data plane -> control plane:
   safe node facts
   safe health facts
   lifecycle/pool recommendation
+  redacted desired-generation apply receipts
+  redacted usage samples keyed by edgeCredentialRef
 
 control plane -> user client:
   authorized subscription output
@@ -262,8 +289,14 @@ control plane -> user client:
 control plane -> data plane:
   no direct traffic
   no customer database authority
+  node-scoped desired state over a private authenticated path
   only approved runtime config or node-retirement decisions through Risk A gates
 ```
+
+Remote-channel subscription rendering must fail closed when the latest desired
+generation lacks a fresh applied receipt or the node lease is stale. A pending
+handoff or credential row is not enough to prove the remote runtime can carry
+traffic.
 
 ## Refactor Direction
 

@@ -1995,7 +1995,7 @@
       "status": "completed-in-pr-203",
       "lane": "edge-data-plane",
       "title": "Align technical MVP baseline and add TUIC runtime inventory gate handoff",
-      "goal": "Update the technical MVP baseline from stale prod-edge serving language to the current Aliyun subscription boundary / edge-pending state, and create the repo-only handoff for TUIC Stage 0 read-only inventory without authorizing runtime mutation.",
+      "goal": "Update the technical MVP baseline from stale prod-edge serving language to the then-current Aliyun subscription boundary / edge-pending state, and create the repo-only handoff for TUIC Stage 0 read-only inventory without authorizing runtime mutation. This completed task is historical and not the current production-control authority.",
       "allowedFiles": [
         "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
         "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md",

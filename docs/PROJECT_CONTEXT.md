@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-06-09, Asia/Shanghai.
+Last updated: 2026-06-10, America/Los_Angeles.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -53,6 +53,90 @@ ledger; Vultr, Aliyun, Singapore, and future hosts are data-plane nodes that
 receive per-order runtime credentials and feed usage facts back by
 `edgeCredentialRef`; user-visible node switching belongs in rendered
 subscription proxy groups, not in a separate per-node user panel.
+The edge-agent pull/apply/receipt design lives in
+`docs/EDGE_AGENT_PULL_APPLY_RECEIPT_ARCHITECTURE.md`: remote data-plane nodes
+must pull node-scoped desired state, apply it locally, and post redacted
+receipts before their channels are treated as normally renderable. Manual
+handoff consumption is an incident-repair path, not the target production
+deployment model.
+The next repo-only edge-agent stage is planned in
+`docs/superpowers/plans/2026-06-10-edge-agent-private-routes-and-dry-run-stage2.md`:
+Task 1-4 of the Stage 2 pull/apply/receipt lane are now implemented at the
+repository level: private agent routes, the service facade, node-side dry-run
+agent tests, injected apply/material fail-closed tests, and render-proof
+evidence. Production activation remains a separate Risk A gate because real
+systemd wrapper, runtime adapter wiring, protected material paths, config-test,
+restart, receipt, and rollback are production concerns.
+The Stage 2 repo closeout and future production gate packet is recorded in
+`docs/production-replacement-records/2026-06-10-edge-agent-stage2-repo-closeout-and-production-gate.md`.
+It documents the repo-only private route/service/agent scope, validation
+commands, and future exact-approval requirements without authorizing production
+route exposure, service restart, runtime mutation, live order creation, or
+secret output.
+The first edge-agent production read-only inventory is recorded in
+`docs/production-replacement-records/2026-06-10-edge-agent-production-readonly-inventory.md`.
+It found Japan control-plane health, SGP data-plane service/listener posture,
+Japan-to-SGP SSH, and public Admin/internal boundary checks clean enough to
+prepare a separate exact-approved production gate. It did not deploy an agent,
+change runtime config, restart services, mutate DNS/Nginx/firewall, create live
+orders, or output secrets.
+The edge-agent production activation approval packet is recorded in
+`docs/production-replacement-records/2026-06-10-edge-agent-production-activation-approval-packet.md`.
+It defines the exact Risk A approval shape for activating the Japan/SGP
+pull/apply/receipt loop, including required release/artifact/hash fields,
+allowed scope, forbidden actions, validation, and rollback. It is not a
+deployment authorization and must not be executed with placeholders. The
+reviewed local artifact candidate is now
+`edge-agent-production-activation-20260610-005-worktree`; the earlier `001`
+candidate must not be used because its manifest included local
+generated/assistant residue that the production artifact boundary now rejects,
+the `002` candidate must not be used for activation because the installed SGP
+package lacked `agent/production-edge-agent.mjs`, and the `004` candidate must
+not be used because host runtime adapter dry-run failed with `adapter_invalid`.
+The `005` candidate record is
+`docs/production-replacement-records/2026-06-10-edge-agent-production-activation-005-candidate.md`.
+The Gate 0 production preparation attempt is recorded in
+`docs/production-replacement-records/2026-06-10-edge-agent-gate0-bootstrap-partial.md`:
+SGP now has a protected inactive edge-agent runtime and protected node token
+material for the `002` release. The follow-up business SSH whitelist execution
+is recorded in
+`docs/production-replacement-records/2026-06-10-business-ssh-whitelist-vultr.md`:
+Vultr Japan and Singapore now allow TCP 22 from the Aliyun, Japan, and Singapore
+business server IPs; local SSH to Japan and Singapore and Japan<->Singapore TCP
+22 checks validated. Aliyun-side firewall mutation was not performed because
+the current Aliyun CLI account did not locate the `47.251.178.125` resource, and
+Aliyun SSH remained closed from local, Japan, and Singapore. Japan protected env
+registration for edge-agent Gate 0 was then completed in
+`docs/production-replacement-records/2026-06-10-edge-agent-gate0-japan-env-registration.md`:
+Japan protected env now has the disabled private route flag, SGP node
+registration, and handoff directory configured without printing protected
+values. SGP `gccgw-edge-agent.service` remains inactive, Japan was not
+restarted, and the production pull/apply/receipt loop is still not active.
+The first production activation preflight is recorded in
+`docs/production-replacement-records/2026-06-10-edge-agent-activation-preflight-blocked.md`:
+it stopped before route enablement or service restart because SGP's installed
+agent points at the public subscription domain while `/api/internal/*` remains
+publicly blocked, and the previous CLI wrapper lacked production runtime
+adapter and protected material injection. The repo-only production runner
+contract is now recorded in
+`docs/production-replacement-records/2026-06-10-edge-agent-production-runner-repo-gate.md`:
+`agent/production-edge-agent.mjs` refuses public base URLs, requires private
+transport, protected material, and injected runtime adapters, and remains
+inactive until a separate Risk A production gate installs it and starts the
+SGP agent. The activation readiness recheck is recorded in
+`docs/production-replacement-records/2026-06-10-edge-agent-activation-readiness-recheck.md`:
+Japan protected env registration and basic Japan/Singapore SSH reachability are
+now verified, but SGP `gccgw-edge-agent.service` remains inactive, still points
+at the public subscription domain, and lacks the production runner
+token/material/channel/apply environment wiring. The next gate must install or
+configure private SGP-to-Japan agent transport, update SGP production
+systemd/env wiring, run dry-run/apply receipts, and only then start treating
+fresh Singapore remote channels as normally renderable.
+The latest local activation candidate `005` keeps production runner
+token-file support through `EDGE_DATA_PLANE_AGENT_TOKEN_FILE` and adds a
+non-mutating `dry_run_checked` path for real host runtime adapters, so SGP can
+prove protected material and adapter wiring before controlled apply without raw
+token env output.
 The branch and service operating model lives in
 `docs/BRANCH_AND_SERVICE_OPERATING_MODEL.md`: use it to distinguish `planned`,
 `coded`, `tested`, `deployed`, `runtime-validated`, `merged`, and `archived`
@@ -124,6 +208,13 @@ validation, archived the pending handoff files, and validated a redacted
 six-channel render proof with `yamlReturned=false`. It did not create live
 orders, mutate DNS/Nginx/provider firewall, expose public Admin, or output
 credential material.
+The SGP new-order handoff consumption repair is recorded in
+`docs/production-replacement-records/2026-06-10-sgp-new-order-handoff-consumption-repair.md`.
+It repaired a fresh-order handoff gap after Gate 3 by consuming the latest SGP
+handoff material and validating that the latest order's three SGP runtime
+materials matched the control-plane credential refs. It also confirms the
+remaining architecture debt: new remote data-plane credentials need an
+automatic pull/apply/receipt loop, not recurring manual handoff application.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never
@@ -478,11 +569,12 @@ Current architecture priorities:
 - Legacy Admin UI Archive: the existing `admin/` application is archived as a
   local protected reference/testing surface only. It is no longer the future
   product UI, user portal, or operator-console design baseline. Future UI work
-  should be rebuilt around the Aliyun-first, CLI-first, public-site/portal
-  split, operator provisioning form contract, resource-package handoff, and
-  role/permission boundaries instead of polishing the old Overview-heavy Admin
-  information architecture. No Admin code was moved or deleted by the archive
-  decision. See `docs/ADMIN_UI_LEGACY_ARCHIVE.md`.
+  should be rebuilt around the current single-control-plane / multi-data-plane
+  lane, CLI-first operations, public-site/portal split, operator provisioning
+  form contract, resource-package handoff, and role/permission boundaries
+  instead of polishing the old Overview-heavy Admin information architecture.
+  No Admin code was moved or deleted by the archive decision. See
+  `docs/ADMIN_UI_LEGACY_ARCHIVE.md`.
 - Platform Domain Contract: repository-only platform lead, account,
   entitlement, and subscription-access grant shapes live under
   `server/services/platform/control-plane-contract.mjs`. They provide
@@ -535,34 +627,26 @@ Current architecture priorities:
   organization names. It is not Aliyun deployment, runtime initialization,
   public listener exposure, DNS, provider-firewall hardening, SQLite
   persistence, state copy, user traffic, or production authority.
-- Platform Aliyun Gate Decision Packet: repository-only gate-decision support
-  lives in `server/services/platform/aliyun-gate-decision-packet.mjs` and the
-  protected Admin route `/api/admin/platform/aliyun-gates`. It summarizes the
-  clean-start private validation, provider-firewall hardening,
-  public-boundary dry run, DNS promotion, broader opaque artifact issuance,
-  and legacy query-token retirement gates with explicit approval phrases for
-  the next executable A-tier gates, blockers, source docs, and not-authorized
-  actions. It does not expose firewall raw rules, management source labels, raw
-  portal URLs, artifact references, subscription URLs, node hosts, node
-  credentials, tokens, customer emails, or organization names. It is not Aliyun
-  deployment, firewall mutation, public listener exposure, DNS, state copy, AWS
-  mutation, artifact issuance, legacy query-token retirement, legacy route
-  removal, user traffic, edge traffic, or production authority.
-- Platform Aliyun Gate Evidence Shell: repository-only operator evidence
-  support lives in `server/services/platform/aliyun-gate-evidence-shell.mjs`
-  with protected Admin routes `/api/admin/platform/aliyun-gate-evidence` and
-  `/api/admin/platform/aliyun-gate-evidence/provider-firewall` plus
-  `/api/admin/platform/aliyun-gate-evidence/access-migration`. It records
-  in-memory provider-firewall and access-migration gate evidence for decision
-  support and exposes only status/boolean summaries. It lets the gate decision
-  packet consume boolean internal evidence without retaining or echoing
-  firewall raw rules, management-source labels, wg-home decision text, private
-  notes, raw portal URLs, artifact references, subscription URLs, raw tokens,
-  node hosts, node credentials, customer emails, or organization names. It is
-  not Aliyun deployment, firewall
-  mutation, UFW change, public listener exposure, DNS, SQLite persistence,
-  state copy, AWS mutation, artifact issuance, legacy query-token retirement,
-  user traffic, edge traffic, or production authority.
+- Historical Platform Aliyun Gate Decision Packet: repository-only Aliyun
+  gate-decision support still exists in
+  `server/services/platform/aliyun-gate-decision-packet.mjs` and the protected
+  Admin route `/api/admin/platform/aliyun-gates`, but it is now a historical /
+  fallback Aliyun lane, not the current production-control gate model. It
+  summarizes the earlier clean-start private validation, provider-firewall
+  hardening, public-boundary dry run, DNS promotion, broader opaque artifact
+  issuance, and legacy query-token retirement gates. Do not use it as current
+  production authority unless a fresh Risk A inventory and approval explicitly
+  reactivates Aliyun. A provider-neutral gate model would be a separate B-tier
+  code/API migration with compatibility tests.
+- Historical Platform Aliyun Gate Evidence Shell: repository-only Aliyun
+  operator-evidence support still exists in
+  `server/services/platform/aliyun-gate-evidence-shell.mjs` with protected
+  Admin routes under `/api/admin/platform/aliyun-gate-evidence`, but it records
+  evidence only for the earlier Aliyun gate packet. Treat it as historical /
+  fallback support; it does not authorize Aliyun deployment, firewall mutation,
+  UFW change, public listener exposure, DNS, SQLite persistence, state copy, AWS
+  mutation, artifact issuance, legacy query-token retirement, user traffic,
+  edge traffic, or production authority.
 - Platform Access Model Inventory Summary: repository-only local tooling can
   normalize operator-provided subscription-access inventory facts into a
   redacted preflight summary through
@@ -575,46 +659,26 @@ Current architecture priorities:
   Aliyun runtime inspection, SQLite access, artifact issuance, legacy
   query-token retirement, legacy route removal, DNS, Nginx, firewall, AWS,
   edge traffic, or production authority.
-- Platform Aliyun Gate Review UI: repository-only Admin Overview support can
-  show the protected Aliyun gate decision packet and gate-evidence summary for
-  operator review. It displays exact-phrase fail-closed approval policy
-  metadata for the executable gates without showing approval phrase text. It
-  can record provider-firewall and access-migration evidence only as booleans
-  and does not submit approval phrases or expose A-tier execution buttons. It
-  does not display or submit raw firewall rules, management-source labels,
-  wg-home decision text, notes, raw portal URLs, artifact references,
-  subscription URLs, raw tokens, node hosts, node credentials, customer emails,
-  or organization names. It is not Aliyun deployment, firewall mutation, UFW
-  change, public listener exposure, DNS, SQLite persistence, state copy, AWS
-  mutation, artifact issuance, legacy query-token retirement, user traffic,
-  edge traffic, or production authority.
-- Aliyun Promotion Runbook / Package 5: the repository-only promotion gate
-  model is documented in `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
-  and recorded in
+- Historical Platform Aliyun Gate Review UI: the Admin Overview surface can
+  still show the protected Aliyun gate decision packet and evidence summary,
+  but that UI is historical/fallback review support, not the current
+  production-control lane. It must not be treated as approval submission,
+  A-tier execution, or current control-plane authority.
+- Historical Aliyun Promotion Runbook / Package 5: the earlier repository-only
+  Aliyun promotion gate model is documented in
+  `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md` and recorded in
   `docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md`.
-  It separates repo-only design, live read-only inventory, source-state
-  decision, private state-copy validation, public-boundary dry run, DNS
-  promotion, observation, rollback, and cleanup. It does not authorize Aliyun
-  deployment, DNS changes, state copy, public listener exposure, edge traffic,
-  or production authority transfer.
-- Aliyun Clean-Start Control Plane: the Gate B clean-start recommendation is
-  now captured as the default planning direction in
-  `docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md`.
-  Clean-start means Aliyun is planned as a new subscription-control authority
-  without copying historical AWS SQLite, artifact, legacy query-token, or
-  subscription-output state. The clean-start repo package now exists as
-  protected operator-safe readiness and private rendering dry-run metadata. The
-  next execution gates are separate A-tier approvals for clean-start private
-  validation and provider-firewall hardening, documented in
-  `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md`
-  and
-  `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`.
-  The next-gate handoff packet lives in
-  `docs/production-replacement-records/2026-05-27-aliyun-next-a-tier-execution-packet.md`;
-  it copies the exact approval phrases and evidence targets for the two gates
-  and explicitly says that short confirmations such as `同意`, `继续`, or
-  `开始` do not authorize execution. It is repo-only documentation and does
-  not perform Aliyun, firewall, DNS, runtime, state, or traffic mutation.
+  Keep it for archaeology and rollback reasoning only. Current production
+  direction is the Vultr Japan control plane with Vultr Japan/Singapore
+  data-plane capacity unless a fresh Risk A gate explicitly re-promotes Aliyun.
+- Historical Aliyun Clean-Start Control Plane: the Gate B clean-start
+  recommendation in
+  `docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md`
+  records an earlier planning branch. It is no longer the active default for
+  new accounts, entitlements, subscription-access grants, opaque artifacts, or
+  Subscription V2 outputs. Retain the record as historical/fallback evidence;
+  any future Aliyun reactivation requires fresh inventory, exact approval, and
+  updated current-state docs before execution.
   Execution-record templates for the two next gates live under
   `docs/production-replacement-records/templates/` and must only be copied into
   dated execution records after the matching exact approval phrase is received.
@@ -707,7 +771,7 @@ Current architecture priorities:
   with a matching execution template in
   `docs/production-replacement-records/templates/clean-edge-node-rebuild-execution-template.md`.
   It treats the rebuilt edge host as replaceable data-plane capacity, not as
-  the current Aliyun control-plane host, HP, or a restart of the retired AWS
+  the historical Aliyun control-plane host, HP, or a restart of the retired AWS
   nodes. It requires an exact approval phrase before clean host
   provisioning/bootstrap/private validation and explicitly keeps DNS,
   subscription output, user traffic, public Admin, AWS lifecycle recovery,
@@ -735,9 +799,10 @@ Current architecture priorities:
   approval is still required before any clean edge execution.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
   opaque artifacts, and rendering authoritative in the control plane. CI has
-  moved off the current Aliyun server, and that host now serves the approved
-  public subscription-distribution boundary while keeping the app private,
-  Admin blocked, and edge data-plane activation out of scope.
+  moved off the earlier Aliyun candidate server. That host served the approved
+  historical public subscription-distribution boundary while keeping the app
+  private, Admin blocked, and edge data-plane activation out of scope; it is no
+  longer the current production-control authority statement.
 - Edge Data Plane: AWS Singapore `prod-edge-a/b` were stopped under an
   accepted-outage cleanup decision and later permanently terminated with their
   security groups deleted. New edge capacity now needs clean rebuild planning;
@@ -828,8 +893,8 @@ Current architecture priorities:
   `docs/CHANNEL_CANARY_SERVER_SELECTION.md` and
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`; repository renderer/config support
   does not authorize server creation or remote protocol deployment by itself.
-  The Technical MVP baseline wording is now aligned with the current Aliyun
-  subscription boundary and stopped AWS edge state: SS remains a legacy
+  The Technical MVP baseline wording must stay aligned with the current
+  Vultr/SGP lane and historical AWS/Aliyun edge state: SS remains a legacy
   compatibility reference only, not a current default production channel and
   not proof of currently serving edge traffic. The next TUIC
   Stage 0 read-only inventory handoff is
@@ -892,23 +957,30 @@ work.
 - Hysteria2 runtime config must render `outbounds` as named list entries and
   preserve service-user-readable config ownership when applying credentials.
 
-- Current subscription-distribution status: Aliyun promotion executed for
-  `sub.globalcirclecat.com`; edge data-plane service is still not activated.
-- Current DNS records:
+- Historical Aliyun subscription-distribution status: Aliyun promotion executed
+  for `sub.globalcirclecat.com` in the earlier lane, but that is not the current
+  production-control authority statement. The current documented lane uses
+  `sub.globalcirclecat.cloud` / `portal.globalcirclecat.cloud` and must be
+  live-verified before any A-tier action.
+- Historical Aliyun DNS records in the promotion record included
   `sub.globalcirclecat.com -> 47.251.178.125` and
-  `ss-sg.globalcirclecat.com -> 13.215.156.159`.
-- `sub.globalcirclecat.com` serves the Aliyun public subscription boundary over
-  HTTP/HTTPS with `/api/health` returning 200, public Admin/root returning 404,
-  and no-token subscription refresh returning 401. Public Admin is not exposed.
-- `ss-sg.globalcirclecat.com` remains on the old AWS address by design;
-  edge traffic activation was not approved in the promotion gate.
+  `ss-sg.globalcirclecat.com -> 13.215.156.159`. Treat these as historical
+  evidence unless refreshed by live DNS checks.
+- Historical public-boundary checks showed `sub.globalcirclecat.com` serving the
+  Aliyun public subscription boundary over HTTP/HTTPS with `/api/health`
+  returning 200, public Admin/root returning 404, and no-token subscription
+  refresh returning 401. Do not treat this as the current production gateway
+  without fresh endpoint verification.
+- `ss-sg.globalcirclecat.com` was left on the old AWS address by design in the
+  Aliyun promotion gate; that old split is historical and not a current
+  activation target by itself.
 - AWS Singapore `prod-edge-a` and `prod-edge-b` are permanently terminated
   under the 2026-05-29 cleanup record; their associated security groups were
   deleted, and rollback by starting those instances is waived.
 - Legacy blue remains stopped for controlled review and was not terminated.
-- HTTPS and public subscription endpoints on the retired AWS nodes are not the
-  current subscription-distribution authority after Aliyun promotion; edge
-  traffic still needs clean rebuild or a separately approved new recovery path.
+- HTTPS and public subscription endpoints on the retired AWS nodes are not
+  current authority. Current edge traffic claims must use the Vultr/SGP lane
+  and fresh runtime evidence.
 - The active opaque artifact canary exists for controlled operator validation.
   The full import URL is stored only in a local `C:\tmp\...` file and must not
   be pasted, committed, logged, or written into docs.
@@ -973,8 +1045,8 @@ work.
   validation scope, rollback/stop posture, hard stops, and next gates. It does
   not execute cloud provisioning, DNS changes, subscription-output changes,
   user traffic, public Admin exposure, AWS lifecycle recovery, node
-  termination, or security-group deletion. It also keeps the current Aliyun
-  subscription-control host and HP out of the edge-node role. The matching
+  termination, or security-group deletion. It also keeps historical Aliyun
+  subscription-control context and HP out of the edge-node role. The matching
   read-only preflight is recorded in
   `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-preflight.md`.
   It excludes proxy-contaminated local Windows DNS/TCP checks, uses AliDNS and
@@ -1154,7 +1226,7 @@ operator approval, validation, and rollback path exist:
   It confirmed the Aliyun public subscription boundary still returns
   health=200, public Admin=404, no-token subscription=401, and root=404 when
   addressed directly as the Aliyun subscription boundary. It also found that
-  host-internal Aliyun inventory is currently blocked by SSH session closure
+  host-internal Aliyun inventory was then blocked by SSH session closure
   and that public 3456/18080 posture is inconclusive because TCP connects but
   HTTP `/api/health` times out. No subscription-output activation, DNS, Nginx,
   runtime, firewall, config, traffic, or authority mutation was performed.
@@ -1290,9 +1362,9 @@ operator approval, validation, and rollback path exist:
   and
   `docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md`.
   It is not staging, not production, and not deploy approval.
-- Aliyun state-preserving source copy remains blocked unless the operator
-  rejects clean-start and approves a separate source-rescue path. The
-  current Aliyun candidate-preparation record is
+- Aliyun state-preserving source copy remains historical/fallback and blocked
+  unless the operator explicitly reactivates Aliyun and approves a separate
+  source-rescue path. The Aliyun candidate-preparation record is
   `docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md`.
   The latest private state-copy preflight record is
   `docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md`.
@@ -1330,10 +1402,10 @@ operator approval, validation, and rollback path exist:
   subscription boundary, public Admin remains blocked, `ss-sg` remains
   unchanged, edge traffic is not activated, and the Aliyun `aegis.service`
   follow-up remains open.
-- Clean fallback `sub-control-a` candidate provisioning now remains only a
-  fallback if the current Aliyun path is rejected; state-preserving copy,
-  public-boundary rerun, or additional promotion work still needs separate
-  A-tier approval.
+- Clean replacement control-plane candidate provisioning remains a future
+  fallback only if the current lane explicitly chooses replacement. Any
+  Aliyun state-preserving copy, public-boundary rerun, or promotion work still
+  needs separate A-tier approval and fresh current-state docs.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
   `prod-edge-a` / `prod-edge-b` closes during key exchange from the current
   operator environment. See
@@ -1604,7 +1676,7 @@ Latest local Linux CI candidate inventory:
 - HP manual CI is split into `ci-smoke`, `ci-full`, and `ci-visual`; not every
   PR should trigger every lane.
 
-Latest Aliyun CI cleanup / subscription-control candidate inventory:
+Historical Aliyun CI cleanup / subscription-control candidate inventory:
 
 - `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md`
 - `docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md`
@@ -1618,7 +1690,7 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - `docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md`
 - `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md`
 - `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`
-- The current Aliyun SWAS host is reachable through SSH alias `miyao`.
+- The then-observed Aliyun SWAS host was reachable through SSH alias `miyao`.
 - It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
   `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
 - No active manual-CI workspace, repository archive, GitHub CLI config, or git
@@ -1665,21 +1737,17 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   allow rules for 80/443 and broad TCP/UDP ranges, while host UFW currently
   blocks most public paths except SSH and the existing wg-home lab UDP path.
   This is now historical pre-promotion evidence.
-- Aliyun Gate B source-state planning now recommends a clean-start Aliyun
-  control plane unless the operator explicitly requires historical subscription
-  state preservation. If historical state is required, prefer a separate
-  source-state rescue planning path before relying on SSH-first remediation; if
-  temporary service restoration is required, use a separately approved recovery
-  path because the former prod-edge-a/prod-edge-b carrying instances were
-  terminated. Provider-firewall hardening remains a separate prerequisite before
-  any public-boundary dry run.
-- Aliyun clean-start control-plane planning now makes clean-start the active
-  default for the next repo-only package. New accounts, entitlements,
-  subscription-access grants, opaque artifacts, and Subscription V2 outputs
-  should be issued from Aliyun clean-start authority after private validation.
-  Historical AWS state copy is no longer the default dependency for the MVP,
-  but remains available only through a separate state-preserving source rescue
-  path if the operator later requires continuity.
+- Aliyun Gate B source-state planning historically recommended a clean-start
+  Aliyun control plane unless the operator explicitly required historical
+  subscription state preservation. That recommendation is superseded for the
+  current production lane by the Vultr Japan control plane and Vultr/SGP
+  data-plane model. Use it only as historical/fallback evidence unless a fresh
+  Risk A gate reactivates Aliyun.
+- Aliyun clean-start control-plane planning is no longer the active default for
+  new accounts, entitlements, subscription-access grants, opaque artifacts, or
+  Subscription V2 outputs. Current issuance and rendering work belongs to the
+  single-control-plane / multi-data-plane lane and still requires live
+  verification before production claims.
 - Clean-start private validation, provider-firewall hardening, HP
   management-source follow-up, public-boundary dry run, and production
   subscription-distribution promotion now each have execution records. The
@@ -1698,12 +1766,14 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   query-token retirement runbook now exists and deliberately separates artifact
   issuance from legacy-token retirement; neither gate has been executed.
 
-Latest Aliyun user-management / subscription-distribution decision:
+Historical Aliyun user-management / subscription-distribution decision:
 
 - `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
-- Near-term target: Aliyun becomes the user-management and subscription
+- Earlier near-term target: Aliyun becomes the user-management and subscription
   distribution platform, HP remains local CI/operator lab, and all other nodes
-  are drained and retired through explicit A-tier gates.
+  are drained and retired through explicit A-tier gates. This is superseded for
+  current production direction by the Vultr Japan control-plane and Vultr/SGP
+  data-plane lane.
 - The separate technical MVP branch is PR #129,
   `codex/local-edge-channel-probe-harness`; it owns local edge channel probe,
   benchmark, and manager work and must not be coupled to Aliyun production
@@ -1712,16 +1782,16 @@ Latest Aliyun user-management / subscription-distribution decision:
   `prod-edge-b` with accepted service outage. On 2026-05-29, both instances
   were permanently terminated and their security groups were deleted under a
   separate exact approval.
-- Authoritative AliDNS now points `sub.globalcirclecat.com` to the Aliyun
-  subscription boundary and leaves `ss-sg.globalcirclecat.com` on the old AWS
+- Historical AliDNS evidence pointed `sub.globalcirclecat.com` to the Aliyun
+  subscription boundary and left `ss-sg.globalcirclecat.com` on the old AWS
   stopped address because edge traffic activation was not approved.
 - Latest cleanup preflight:
   `docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md`.
 - The tracked static node config still references `prod-edge-a` and
   `prod-edge-b`, so subscription output/config must be rebuilt before edge
   delivery can be considered healthy again.
-- The next executable gates are separate A-tier approvals for Aliyun
-  `aegis.service` repair if desired, clean edge node rebuild execution,
+- Remaining historical gates are separate A-tier approvals for Aliyun
+  `aegis.service` repair if explicitly reactivated, clean edge node rebuild execution,
   a new recovery path if temporary edge restore is needed, broader artifact
   issuance, or legacy query-token retirement. Aegis repair
   must use the exact approval phrase from

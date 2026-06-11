@@ -140,8 +140,9 @@ prod-edge-a is the documented historical primary production slot; its AWS
 prod-edge-b is the documented historical iteration/canary secondary slot; its
   AWS carrying instance has been terminated.
 future prod-edge-c remains recovery or expansion planning until approved.
-Aliyun currently carries the subscription-distribution boundary while clean
-  edge capacity remains separately gated.
+Current documented production authority is the Vultr Japan control plane with
+  Vultr/Singapore data-plane capacity; Aliyun is historical/fallback unless a
+  fresh Risk A gate reactivates it.
 Server Edge Mesh is private health, validation, management, and recovery
   infrastructure first, not user-facing VPN.
 ```
