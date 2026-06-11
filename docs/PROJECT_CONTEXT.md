@@ -144,6 +144,12 @@ The next production read-only preflight approval packet is recorded in
 `docs/production-replacement-records/2026-06-11-edge-agent-future-order-readonly-preflight-approval-packet.md`.
 It authorizes only redacted inventory after exact approval: no artifact upload,
 schema migration, service restart, runtime apply, or live order creation.
+The approved read-only preflight execution is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-readonly-preflight.md`.
+It found Japan and SGP runtime boundaries healthy, SGP data-plane listeners
+present, and the expected blocker: production control DB does not yet have
+`platform_edge_desired_state_notifications`, so the next gate must be a
+runtime upgrade plus schema migration before any live-order smoke.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the
