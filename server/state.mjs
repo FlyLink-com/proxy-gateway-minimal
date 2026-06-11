@@ -40,6 +40,7 @@ import { createXrayVlessRealityHostRuntimeAdapter } from "./services/edge/xray-v
 import { createHysteria2HostRuntimeAdapter } from "./services/edge/hysteria2-runtime-adapter.mjs";
 import { createDataPlaneHandoffRuntimeAdapter } from "./services/edge/data-plane-handoff-runtime-adapter.mjs";
 import { createDataPlaneHandoffQueue } from "./services/edge/data-plane-handoff-queue.mjs";
+import { createDataPlaneAgentService } from "./services/edge/data-plane-agent-service.mjs";
 import { spawn } from "node:child_process";
 
 function rootPathFrom(rootDir) {
@@ -90,6 +91,22 @@ function runtimeValidationError(message) {
   const error = new Error(message);
   error.code = "validation_error";
   return error;
+}
+
+function parseJsonArrayEnv(value, field) {
+  const raw = optionalEnvText(value);
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      throw new Error("not_array");
+    }
+    return parsed;
+  } catch {
+    throw runtimeValidationError(`${field} must be a JSON array`);
+  }
 }
 
 function isLoopbackHostname(hostname) {
@@ -447,6 +464,7 @@ export function createRuntimeState(options = {}) {
   const publicSubscriptionBaseUrl = String(env.PUBLIC_SUBSCRIPTION_BASE_URL || `http://${host}:${consolePort}`).trim().replace(/\/+$/, "");
   const adminAllowedCidrs = parseCsv(env.ADMIN_ALLOWED_CIDRS, DEFAULT_ADMIN_ALLOWED_CIDRS);
   const trustedProxyCidrs = parseCsv(env.TRUSTED_PROXY_CIDRS, DEFAULT_TRUSTED_PROXY_CIDRS);
+  const dataPlaneAgentRoutesEnabled = envFlag(env.EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED);
   const tempLinkTtlMinutes = Number.parseInt(env.SUBSCRIPTION_TEMP_LINK_TTL_MINUTES, 10) || 24 * 60;
   const ownsSubscriptionStore = !options.subscriptionStore && !options.subscriptionRepository && !options.subscriptionCore && !options.subscriptionService;
   const subscriptionStore = options.subscriptionStore || options.subscriptionRepository || (
@@ -777,6 +795,22 @@ export function createRuntimeState(options = {}) {
       })
       : null
   );
+  const configuredDataPlaneAgentNodes = [
+    ...parseJsonArrayEnv(env.EDGE_DATA_PLANE_AGENT_NODES_JSON, "EDGE_DATA_PLANE_AGENT_NODES_JSON"),
+    ...(optionalEnvText(env.EDGE_DATA_PLANE_AGENT_NODE_REF) ? [{
+      nodeRef: optionalEnvText(env.EDGE_DATA_PLANE_AGENT_NODE_REF),
+      channelRefs: parseCsv(env.EDGE_DATA_PLANE_AGENT_CHANNEL_REFS, []),
+      tokenSha256: optionalEnvText(env.EDGE_DATA_PLANE_AGENT_TOKEN_SHA256 || env.EDGE_DATA_PLANE_AGENT_TOKEN_HASH)
+    }] : [])
+  ];
+  const dataPlaneAgentService = options.dataPlaneAgentService || (
+    dataPlaneAgentRoutesEnabled
+      ? createDataPlaneAgentService({
+        controlStore: platformControlStore,
+        nodes: configuredDataPlaneAgentNodes
+      })
+      : null
+  );
   const platformAliyunGateEvidenceShell = options.platformAliyunGateEvidenceShell || createPlatformAliyunGateEvidenceShell();
   let closed = false;
 
@@ -928,7 +962,9 @@ export function createRuntimeState(options = {}) {
       trafficAccounting: platformTrafficAccounting,
       edgeUsageCollectors,
       edgeUsageAccounting,
-      dataPlaneHandoffQueue
+      dataPlaneHandoffQueue,
+      dataPlaneAgentRoutesEnabled,
+      dataPlaneAgentService
     },
     security: {
       adminAllowedCidrs,

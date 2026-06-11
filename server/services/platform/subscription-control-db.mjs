@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -373,6 +374,25 @@ function mapEdgeApplyReceipt(row) {
   };
 }
 
+function mapEdgeAgentLease(row) {
+  if (!row) return null;
+  return {
+    leaseRef: row.lease_ref,
+    agentRef: row.agent_ref,
+    nodeRef: row.node_ref,
+    channelRef: row.channel_ref,
+    desiredStateRef: row.desired_state_ref,
+    status: row.status,
+    acquiredAt: row.acquired_at,
+    renewedAt: row.renewed_at,
+    expiresAt: row.expires_at
+  };
+}
+
+function sha256(value) {
+  return createHash("sha256").update(String(value)).digest("hex");
+}
+
 function mapPortalAccessRequest(row) {
   if (!row) return null;
   const event = parseJsonObject(row.event_json);
@@ -713,6 +733,23 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       on platform_edge_apply_receipts(channel_ref, created_at);
     create index if not exists platform_edge_apply_receipts_desired_state_idx
       on platform_edge_apply_receipts(desired_state_ref);
+
+    create table if not exists platform_edge_agent_leases (
+      lease_ref text primary key,
+      agent_ref text not null,
+      node_ref text not null,
+      channel_ref text not null,
+      desired_state_ref text,
+      status text not null check (status in ('active', 'released', 'expired')),
+      acquired_at text not null,
+      renewed_at text not null,
+      expires_at text not null
+    );
+
+    create index if not exists platform_edge_agent_leases_channel_idx
+      on platform_edge_agent_leases(channel_ref, renewed_at);
+    create index if not exists platform_edge_agent_leases_node_idx
+      on platform_edge_agent_leases(node_ref, renewed_at);
 
     create table if not exists platform_portal_access_requests (
       id text primary key,
@@ -1466,6 +1503,64 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     return mapAuditEvent(db.prepare("select * from platform_audit_events where id = ?").get(requiredText(id, "id")));
   }
 
+  function getLatestEdgeDesiredStateForChannel(channelRef, filters = {}) {
+    assertNoUnsafeFields(filters);
+    const safeChannelRef = requiredText(channelRef, "channelRef");
+    const nodeRef = requiredText(filters.nodeRef || safeChannelRef, "nodeRef");
+    const rows = db.prepare(`
+      select
+        r.id as request_id,
+        coalesce(r.valid_until, r.expires_at) as valid_until,
+        r.updated_at,
+        c.edge_channel_ref,
+        c.edge_credential_ref,
+        c.edge_material_digest
+      from platform_portal_access_requests r
+      join platform_portal_edge_credentials c on c.request_id = r.id
+      where c.edge_channel_ref = ?
+        and r.status in ('delivered', 'issued')
+      order by c.edge_credential_ref asc, r.updated_at asc, r.id asc
+    `).all(safeChannelRef);
+    const nowMs = Date.now();
+    const activeRows = rows
+      .map((row) => ({
+        ...row,
+        validUntilMs: Date.parse(row.valid_until)
+      }))
+      .filter((row) => row.edge_credential_ref && row.edge_material_digest)
+      .filter((row) => row.valid_until && !Number.isNaN(row.validUntilMs) && row.validUntilMs > nowMs);
+    if (activeRows.length === 0) {
+      return null;
+    }
+    const edgeCredentialRefs = [...new Set(activeRows.map((row) => row.edge_credential_ref))].sort((a, b) => a.localeCompare(b));
+    const materialDigests = activeRows
+      .map((row) => ({
+        channelRef: row.edge_channel_ref,
+        edgeCredentialRef: row.edge_credential_ref,
+        digest: row.edge_material_digest
+      }))
+      .sort((a, b) => a.edgeCredentialRef.localeCompare(b.edgeCredentialRef));
+    const validUntil = new Date(Math.min(...activeRows.map((row) => row.validUntilMs))).toISOString();
+    const fingerprint = sha256(JSON.stringify({
+      nodeRef,
+      channelRef: safeChannelRef,
+      edgeCredentialRefs,
+      materialDigests,
+      validUntil
+    })).slice(0, 24);
+    const generation = `gen_${fingerprint}`;
+    return {
+      desiredStateRef: `desired_state_${safeChannelRef}_${fingerprint}`,
+      nodeRef,
+      generation,
+      channelRefs: [safeChannelRef],
+      edgeCredentialRefs,
+      materialDigests,
+      validUntil,
+      redacted: true
+    };
+  }
+
   function recordEdgeApplyReceipt(input) {
     assertNoUnsafeFields(input);
     const actionCounts = input.actionCounts ?? {};
@@ -1496,6 +1591,21 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
         @rotateCount, @unchangedCount, @configTestOk, @serviceActive,
         @listenerUdp443, @backupRef, @rollbackRef, @appliedAt, @createdAt
       )
+      on conflict(id) do update set
+        channel_ref = excluded.channel_ref,
+        desired_state_ref = excluded.desired_state_ref,
+        status = excluded.status,
+        add_count = excluded.add_count,
+        revoke_count = excluded.revoke_count,
+        rotate_count = excluded.rotate_count,
+        unchanged_count = excluded.unchanged_count,
+        config_test_ok = excluded.config_test_ok,
+        service_active = excluded.service_active,
+        listener_udp443 = excluded.listener_udp443,
+        backup_ref = excluded.backup_ref,
+        rollback_ref = excluded.rollback_ref,
+        applied_at = excluded.applied_at,
+        created_at = excluded.created_at
     `), record);
     return getEdgeApplyReceipt(record.id);
   }
@@ -1517,6 +1627,39 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       select * from platform_edge_apply_receipts
       order by created_at asc, id asc
     `).all().map(mapEdgeApplyReceipt);
+  }
+
+  function acquireEdgeAgentLease(input) {
+    assertNoUnsafeFields(input);
+    const record = {
+      leaseRef: requiredText(input.leaseRef, "leaseRef"),
+      agentRef: requiredText(input.agentRef, "agentRef"),
+      nodeRef: requiredText(input.nodeRef, "nodeRef"),
+      channelRef: requiredText(input.channelRef, "channelRef"),
+      desiredStateRef: optionalText(input.desiredStateRef),
+      status: requiredText(input.status || "active", "status"),
+      acquiredAt: isoText(input.acquiredAt, "acquiredAt"),
+      renewedAt: isoText(input.renewedAt, "renewedAt"),
+      expiresAt: isoText(input.expiresAt, "expiresAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_edge_agent_leases (
+        lease_ref, agent_ref, node_ref, channel_ref, desired_state_ref,
+        status, acquired_at, renewed_at, expires_at
+      ) values (
+        @leaseRef, @agentRef, @nodeRef, @channelRef, @desiredStateRef,
+        @status, @acquiredAt, @renewedAt, @expiresAt
+      )
+      on conflict(lease_ref) do update set
+        agent_ref = excluded.agent_ref,
+        node_ref = excluded.node_ref,
+        channel_ref = excluded.channel_ref,
+        desired_state_ref = excluded.desired_state_ref,
+        status = excluded.status,
+        renewed_at = excluded.renewed_at,
+        expires_at = excluded.expires_at
+    `), record);
+    return mapEdgeAgentLease(db.prepare("select * from platform_edge_agent_leases where lease_ref = ?").get(record.leaseRef));
   }
 
   function listPortalEdgeCredentials(requestId) {
@@ -2147,9 +2290,11 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     getRevocationEvent,
     recordAuditEvent,
     getAuditEvent,
+    getLatestEdgeDesiredStateForChannel,
     recordEdgeApplyReceipt,
     getEdgeApplyReceipt,
     listEdgeApplyReceipts,
+    acquireEdgeAgentLease,
     upsertPortalAccessRequest,
     getPortalAccessRequest,
     listPortalAccessRequests,

@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-06-09, Asia/Shanghai.
+Last updated: 2026-06-11, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -124,6 +124,21 @@ validation, archived the pending handoff files, and validated a redacted
 six-channel render proof with `yamlReturned=false`. It did not create live
 orders, mutate DNS/Nginx/provider firewall, expose public Admin, or output
 credential material.
+The edge-agent private tunnel production activation is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-private-tunnel-production-activation.md`.
+It deployed the `005` edge-agent runtime, created the private SGP loopback
+tunnel to Japan's internal agent route, seeded existing delivered SGP channel
+desired-state, enabled the SGP edge-agent service, and validated fresh applied
+receipts for SGP VLESS Reality, Hysteria2, and TUIC. It did not create live
+orders, mutate DNS/Nginx/provider firewall, expose public Admin, or output
+credential material. A follow-up gate is still required to publish
+desired-state automatically for future orders.
+The User Portal API route hotfix is recorded in
+`docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
+It narrowed the `005` data-plane agent router authentication middleware to the
+internal data-plane agent path prefix so `/api/portal/*` routes are no longer
+intercepted by internal agent auth. It restored `POST /api/portal/human-challenges`
+to HTTP 201 while keeping public Admin and public internal agent routes blocked.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never
