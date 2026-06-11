@@ -32,6 +32,9 @@ The `master`/archive boundary lives in `docs/MASTER_ARCHIVE_BOUNDARY.md`: keep
 `master` focused on current source, active runbooks, compact current state, and
 safe indexes; move or mirror stale drafts, old workspace notes, and superseded
 execution packages outside the active reading path only after they are indexed.
+The GitHub branch/PR archive index lives in `docs/BRANCH_ARCHIVE_INDEX.md`; use
+it before deciding whether open PR branches or remote-only branches are active,
+pending decision, or archive candidates.
 The lightweight operating/development environment boundary lives in
 `docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md`: default to local checkout,
 local Node/Admin dev processes, safe CLI previews, optional HP/local Linux
