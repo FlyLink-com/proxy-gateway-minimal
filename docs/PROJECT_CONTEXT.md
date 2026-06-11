@@ -140,6 +140,10 @@ those channels until the current desired-state has a matching applied receipt
 from the data plane. The notification table stores safe refs only; applying it
 through the edge agent and validating it in production remains a separate Risk A
 runtime gate.
+The next production read-only preflight approval packet is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-readonly-preflight-approval-packet.md`.
+It authorizes only redacted inventory after exact approval: no artifact upload,
+schema migration, service restart, runtime apply, or live order creation.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the
