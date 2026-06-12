@@ -9,6 +9,7 @@ import {
   createDataPlaneAgentService,
   hashDataPlaneAgentToken
 } from "../services/edge/data-plane-agent-service.mjs";
+import { createEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 import { createPortalHumanChallengeService } from "../services/platform/portal-human-challenge.mjs";
 import { listen } from "./helpers/listen.mjs";
 
@@ -63,8 +64,19 @@ function fakeControlStore() {
 
 function state({ routesEnabled = true } = {}) {
   const controlStore = fakeControlStore();
+  const credentialMaterialStore = createEdgeCredentialMaterialStore({
+    records: [{
+      credentialRef: "edgecred_route_hy2",
+      materialDigest: "sha256:aaaaaaaaaaaaaaaa",
+      material: {
+        uuid: "11111111-1111-4111-8111-111111111111",
+        password: "synthetic-route-material"
+      }
+    }]
+  });
   const service = createDataPlaneAgentService({
     controlStore,
+    credentialMaterialStore,
     nodes: [
       {
         nodeRef: "node-sgp-a",
@@ -90,7 +102,8 @@ function state({ routesEnabled = true } = {}) {
       httpProxy: { start: async () => ({ ok: true }), stop: async () => ({ ok: true }), status: () => ({ running: false }) }
     },
     isPortListening: async () => false,
-    _controlStore: controlStore
+    _controlStore: controlStore,
+    _credentialMaterialStore: credentialMaterialStore
   };
 }
 
@@ -257,6 +270,26 @@ test("desired-state route returns node-scoped redacted payload", async () => {
   }
 });
 
+test("desired-state route scopes payload by requested edge credential refs", async () => {
+  const appState = state();
+  const { server, baseUrl } = await listen(createApp(appState));
+  try {
+    const response = await fetch(`${baseUrl}/api/internal/data-plane-agent/desired-state?edgeCredentialRefs=edgecred_route_hy2`, {
+      headers: agentHeaders()
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.desiredStates.length, 1);
+    const [desiredState] = body.desiredStates;
+    assert.match(desiredState.desiredStateRef, /^desired_scoped_/);
+    assert.deepEqual(desiredState.edgeCredentialRefs, ["edgecred_route_hy2"]);
+    assert.equal(body.summaries[0].edgeCredentialCount, 1);
+    assert.doesNotMatch(JSON.stringify(body), /password|privateKey|subscriptionUrl|rawConfig/i);
+  } finally {
+    server.close();
+  }
+});
+
 test("receipt route rejects forbidden material and records valid receipts", async () => {
   const appState = state();
   const { server, baseUrl } = await listen(createApp(appState));
@@ -306,6 +339,65 @@ test("receipt route rejects forbidden material and records valid receipts", asyn
   }
 });
 
+test("material route is authenticated, scoped, and supports summary plus material modes", async () => {
+  const appState = state();
+  const { server, baseUrl } = await listen(createApp(appState));
+  try {
+    const unauthenticated = await fetch(`${baseUrl}/api/internal/data-plane-agent/materials`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        nodeRef: "node-sgp-a",
+        desiredStateRef: "desired_route_001",
+        edgeCredentialRefs: ["edgecred_route_hy2"],
+        mode: "summary"
+      })
+    });
+    assert.equal(unauthenticated.status, 401);
+
+    const summary = await fetch(`${baseUrl}/api/internal/data-plane-agent/materials`, {
+      method: "POST",
+      headers: agentHeaders(),
+      body: JSON.stringify({
+        nodeRef: "node-sgp-a",
+        desiredStateRef: "desired_route_001",
+        edgeCredentialRefs: ["edgecred_route_hy2"],
+        mode: "summary"
+      })
+    });
+    assert.equal(summary.status, 200);
+    const summaryBody = await summary.json();
+    assert.equal(summaryBody.redacted, true);
+    assert.deepEqual(summaryBody.records, [{
+      edgeCredentialRef: "edgecred_route_hy2",
+      materialDigest: "sha256:aaaaaaaaaaaaaaaa",
+      hasMaterial: true
+    }]);
+    assert.doesNotMatch(JSON.stringify(summaryBody), /synthetic-route-material|11111111/i);
+
+    const material = await fetch(`${baseUrl}/api/internal/data-plane-agent/materials`, {
+      method: "POST",
+      headers: agentHeaders(),
+      body: JSON.stringify({
+        nodeRef: "node-sgp-a",
+        desiredStateRef: "desired_route_001",
+        edgeCredentialRefs: ["edgecred_route_hy2"],
+        mode: "material"
+      })
+    });
+    assert.equal(material.status, 200);
+    const materialBody = await material.json();
+    assert.equal(materialBody.sensitive, true);
+    assert.equal(materialBody.records[0].edgeCredentialRef, "edgecred_route_hy2");
+    assert.deepEqual(materialBody.records[0].material, {
+      uuid: "11111111-1111-4111-8111-111111111111",
+      password: "synthetic-route-material"
+    });
+  } finally {
+    server.close();
+  }
+});
+
 test("lease route records heartbeat without opening portal or admin boundaries", async () => {
   const appState = state();
   const { server, baseUrl } = await listen(createApp(appState));
@@ -338,6 +430,7 @@ test("lease route records heartbeat without opening portal or admin boundaries",
 test("runtime-wired agent routes use the durable sqlite control store", async () => {
   const rootDir = mkdtempSync(join(tmpdir(), "data-plane-agent-runtime-"));
   const proxyConfigPath = join(rootDir, "proxy-servers.json");
+  const materialPath = join(rootDir, "protected", "edge-material.json");
   writeFileSync(proxyConfigPath, JSON.stringify({
     servers: [
       {
@@ -360,12 +453,21 @@ test("runtime-wired agent routes use the durable sqlite control store", async ()
       EDGE_DATA_PLANE_AGENT_NODE_REF: "node-sgp-a",
       EDGE_DATA_PLANE_AGENT_CHANNEL_REFS: "channel-sgp-a-hy2",
       EDGE_DATA_PLANE_AGENT_TOKEN_SHA256: hashDataPlaneAgentToken("node-agent-token"),
+      EDGE_CREDENTIAL_MATERIAL_PATH: materialPath,
       SUBSCRIPTION_CONTROL_DB_PATH: join(rootDir, "control.sqlite"),
       SUBSCRIPTION_DB_PATH: join(rootDir, "subscriptions.sqlite")
     },
     autoStartHttpProxy: false
   });
   seedIssuedPortalOrder(appState.platform.controlStore);
+  appState.platform.edgeCredentialMaterialStore.putCredentialMaterial({
+    credentialRef: "edgecred_agent_route_sqlite_hy2",
+    materialDigest: "sha256:aaaaaaaaaaaaaaaa",
+    material: {
+      uuid: "22222222-2222-4222-8222-222222222222",
+      password: "synthetic-runtime-route-material"
+    }
+  });
   const { server, baseUrl } = await listen(createApp(appState));
   try {
     const desiredResponse = await fetch(`${baseUrl}/api/internal/data-plane-agent/desired-state`, {
@@ -377,6 +479,21 @@ test("runtime-wired agent routes use the durable sqlite control store", async ()
     const [desiredState] = desiredBody.desiredStates;
     assert.equal(desiredState.nodeRef, "node-sgp-a");
     assert.deepEqual(desiredState.edgeCredentialRefs, ["edgecred_agent_route_sqlite_hy2"]);
+
+    const materialResponse = await fetch(`${baseUrl}/api/internal/data-plane-agent/materials`, {
+      method: "POST",
+      headers: agentHeaders(),
+      body: JSON.stringify({
+        nodeRef: "node-sgp-a",
+        desiredStateRef: desiredState.desiredStateRef,
+        edgeCredentialRefs: ["edgecred_agent_route_sqlite_hy2"],
+        mode: "summary"
+      })
+    });
+    assert.equal(materialResponse.status, 200);
+    const materialBody = await materialResponse.json();
+    assert.equal(materialBody.records[0].hasMaterial, true);
+    assert.doesNotMatch(JSON.stringify(materialBody), /synthetic-runtime-route-material|22222222/i);
 
     const receiptResponse = await fetch(`${baseUrl}/api/internal/data-plane-agent/receipts`, {
       method: "POST",

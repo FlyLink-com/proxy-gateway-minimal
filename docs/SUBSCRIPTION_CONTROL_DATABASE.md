@@ -77,6 +77,14 @@ They are not runtime config and they are not proof that a channel is active. The
 subscription renderer still requires a matching applied receipt before exposing
 remote data-plane channels to users.
 
+Per-order runtime material is deliberately outside those notification rows.
+The control DB stores desired-state refs and material fingerprints; the
+protected edge credential material store supplies the actual runtime material.
+Data-plane agents may pull that material only through the private authenticated
+agent route, scoped to their own node, the current desired-state ref, requested
+edge credential refs, and exact digest matches. Receipts written back to this DB
+remain redacted and never carry raw runtime material.
+
 ## Safety Boundary
 
 The control database intentionally stores safe references only. It rejects input

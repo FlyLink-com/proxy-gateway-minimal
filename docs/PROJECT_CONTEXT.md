@@ -26,6 +26,32 @@ Do not use this file as:
 - A place to store secrets, tokens, subscription URLs, credentials, SQLite data,
   or customer data.
 
+## Current Architecture View
+
+Use this four-layer view as the current mental model before reading historical
+records:
+
+1. **Adapters:** User Portal, protected Admin/Operator, and CLI surfaces are
+   thin adapters over shared domain services. Public Admin is not a product
+   surface.
+2. **Control Plane:** Vultr Japan owns accounts, orders, subscription artifacts,
+   credential refs, desired-state notifications, render gating, and usage
+   ledger state.
+3. **Interconnect:** Private authenticated data-plane agent routes move only
+   redacted desired-state, node-scoped material batches, leases, and redacted
+   receipts between the control plane and data-plane agents.
+4. **Data Plane:** Vultr Japan and Vultr Singapore provide VLESS Reality,
+   Hysteria2, and TUIC runtime capacity. Singapore channels stay out of
+   rendered subscriptions until matching applied receipts prove the data plane
+   has applied the current desired-state.
+
+Do not derive current architecture from `master` alone, historical Aliyun/AWS
+records, old checkout paths, archive directories, or runtime-only residue.
+`feat/install-config-wizard` / PR #299 is the integration baseline;
+`codex/edge-agent-source-absorption` / draft PR #302 is the current edge-agent
+implementation lane; PR #300 is an overlapping sibling that still needs an
+explicit disposition.
+
 Detailed navigation lives in `docs/README.md`. Structured project state lives in
 `project-state/*.json`; it is a coordination aid, not a runtime control plane.
 The `master`/archive boundary lives in `docs/MASTER_ARCHIVE_BOUNDARY.md`: keep
@@ -58,13 +84,16 @@ The branch and service operating model lives in
 `coded`, `tested`, `deployed`, `runtime-validated`, `merged`, and `archived`
 states, map current branches to service lanes, and prevent production runtime
 state from being confused with `master` or local worktree state.
-The current service-lane closeout plan lives in
-`docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md`: use it before staging,
-splitting, merging, or archiving work from the current
-`feat/install-config-wizard` branch. The local dirty worktree snapshot has been
-closed, but the branch remains a broad integration lane that mixes Admin UI,
-User Portal, control-plane services, edge runtime adapters, subscription
-rendering, usage accounting, project-state, docs, and validation artifacts.
+The service-lane integration closeout plan lives in
+`docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md`. It remains the closeout
+reference for `feat/install-config-wizard` / PR #299, which is the current
+integration baseline rather than the latest implementation worktree. As of
+2026-06-11, the active edge-agent implementation lane is
+`codex/edge-agent-source-absorption` / draft PR #302. PR #300 is an overlapping
+sibling branch from the same integration baseline and requires explicit
+supersede, selective absorption, or merge disposition before either PR is
+merged. Always verify the exact local branch and worktree state with `git
+status`; this document does not assert that a worktree is clean.
 The latest Vultr Japan + Singapore multichannel runtime closeout is recorded in
 `docs/production-replacement-records/2026-06-09-vultr-sgp-multichannel-runtime-closeout.md`.
 It documents the SGP handoff/runtime apply fix, Hysteria2 config schema
@@ -140,6 +169,13 @@ those channels until the current desired-state has a matching applied receipt
 from the data plane. The notification table stores safe refs only; applying it
 through the edge agent and validating it in production remains a separate Risk A
 runtime gate.
+The SGP receipt-required production config hardening is recorded in
+`docs/production-replacement-records/2026-06-11-sgp-receipt-required-config-hardening.md`.
+It updated only Japan's protected proxy config so all three SGP
+`remote-data-plane-handoff` channels explicitly carry `requiresAppliedReceipt:
+true`; Japan and SGP read-only validation passed, and no SGP runtime, DNS,
+Nginx, provider firewall, payment, account, credential, or subscription
+material was mutated.
 The next production read-only preflight approval packet is recorded in
 `docs/production-replacement-records/2026-06-11-edge-agent-future-order-readonly-preflight-approval-packet.md`.
 It authorizes only redacted inventory after exact approval: no artifact upload,
@@ -238,6 +274,37 @@ order to prove the full future-order desired-state -> SGP edge-agent apply ->
 fresh receipt -> subscription render gate. It does not authorize DNS, Nginx,
 provider firewall, account/password generation, payment, broad order creation,
 or sensitive output.
+The follow-up edge-agent source absorption record is
+`docs/production-replacement-records/2026-06-11-edge-agent-source-absorption.md`.
+It adds the repository production data-plane agent, once-only launch wrapper,
+and `gccgw-edge-agent.service` template so future SGP activation packages can
+run the actual pull/apply/receipt loop instead of relying on runtime-only
+placeholders. The deployment approval packet is
+`docs/production-replacement-records/2026-06-11-edge-agent-source-deployment-approval-packet.md`.
+The approved source deployment plus future-order live-smoke execution and
+rollback is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-source-deployment-live-smoke-rollback.md`.
+It deployed the source package and proved the SGP agent can pull desired state,
+but receipt validation failed because SGP could not resolve the protected
+per-order credential material for the desired `edgeCredentialRef` values.
+Japan was rolled back to
+`edge-agent-future-order-runtime-20260611-002-worktree`; SGP agent apply is
+disabled and dry-run mode remains enabled. The next gate is not another blind
+source deployment: it must be a protected credential-material sync design and
+runtime approval.
+The repo-only protected material sync implementation plan is
+`docs/superpowers/plans/2026-06-11-sgp-protected-material-sync.md`. The matching
+production approval packet is
+`docs/production-replacement-records/2026-06-11-edge-agent-protected-material-sync-approval-packet.md`.
+The repo implementation now adds the private authenticated material pull path:
+desired-state and receipts stay redacted, the material route is scoped to node,
+current desired-state, requested credential refs, and digest matches, and the
+production agent merges material into its protected local material store before
+runtime apply. The packaged production activation candidate is
+`edge-agent-protected-material-sync-20260611-001-worktree` with artifact
+`.codex-artifacts/edge-agent-protected-material-sync-20260611-001-worktree/proxy-gateway-edge-agent-protected-material-sync-20260611-001-worktree.zip`;
+production activation remains a separate Risk A gate with the exact approval in
+the packet above.
 The User Portal API route hotfix is recorded in
 `docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
 It narrowed the `005` data-plane agent router authentication middleware to the
@@ -1469,11 +1536,13 @@ operator approval, validation, and rollback path exist:
 - DNS, Nginx, HTTPS redirect behavior, systemd, production runtime config,
   tenant state, or SQLite authority changes.
 
-GitHub-hosted Actions validation is currently blocked by billing,
-spending-limit, or quota constraints. The expected account-quota recovery date
-is 2026-06-01; until then, PR validation uses local and HP manual CI evidence
-per `docs/CI_MANUAL_VALIDATION.md`. Manual CI fallback is documented, but it is
-not staging, not production, and not deployment approval.
+GitHub-hosted Actions must be checked per PR instead of treated as globally
+blocked. PR #299's hosted `Validate` check succeeded on 2026-06-10. PR #300 and
+PR #302 target `feat/install-config-wizard`, while the current workflow is
+scoped to `master`; the absence of hosted `Validate` on those sibling PRs is
+therefore not billing or quota evidence. Use local validation and
+`docs/CI_MANUAL_VALIDATION.md` when a clean fallback is actually needed. Manual
+CI is not staging, production, or deployment approval.
 
 ## Current Work Queue
 

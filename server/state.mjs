@@ -41,7 +41,7 @@ import { createHysteria2HostRuntimeAdapter } from "./services/edge/hysteria2-run
 import { createDataPlaneHandoffRuntimeAdapter } from "./services/edge/data-plane-handoff-runtime-adapter.mjs";
 import { createDataPlaneHandoffQueue } from "./services/edge/data-plane-handoff-queue.mjs";
 import { createDataPlaneDesiredStateNotifier } from "./services/edge/data-plane-desired-state-notifier.mjs";
-import { createDataPlaneAgentService } from "./services/edge/data-plane-agent-service.mjs";
+import { createDataPlaneAgentService, scopedDesiredStateFrom } from "./services/edge/data-plane-agent-service.mjs";
 import { spawn } from "node:child_process";
 
 function rootPathFrom(rootDir) {
@@ -425,8 +425,76 @@ function latestMatchingAppliedReceipt({ controlStore, channelRef, desiredStateRe
     .at(-1) || null;
 }
 
+function portalAccessRequestForTenant({ controlStore, tenantId }) {
+  if (
+    !tenantId
+    || !controlStore
+    || typeof controlStore.getPortalAccessRequest !== "function"
+  ) {
+    return null;
+  }
+  if (typeof controlStore.listPortalAccessRequests === "function") {
+    const requests = [
+      ...controlStore.listPortalAccessRequests({ status: "delivered" }),
+      ...controlStore.listPortalAccessRequests({ status: "issued" })
+    ];
+    const direct = requests.find((request) => optionalEnvText(request?.tenantId) === tenantId);
+    if (direct) {
+      return direct;
+    }
+  }
+  if (typeof controlStore.findIssuedSubscriptionBindingByTenantRef !== "function") {
+    return null;
+  }
+  const binding = controlStore.findIssuedSubscriptionBindingByTenantRef(tenantId);
+  if (!binding?.requestId) {
+    return null;
+  }
+  return controlStore.getPortalAccessRequest(binding.requestId);
+}
+
+function edgeCredentialRefsForTenantChannel({ controlStore, tenantId, channelRef }) {
+  if (!tenantId || !channelRef) {
+    return [];
+  }
+  const request = portalAccessRequestForTenant({ controlStore, tenantId });
+  if (!request) {
+    return [];
+  }
+  const credentials = Array.isArray(request.edgeCredentials) && request.edgeCredentials.length > 0
+    ? request.edgeCredentials
+    : [{
+      edgeChannelRef: request.edgeChannelRef,
+      edgeCredentialRef: request.edgeCredentialRef
+    }];
+  return credentials
+    .filter((credential) => optionalEnvText(credential?.edgeChannelRef) === channelRef)
+    .map((credential) => optionalEnvText(credential?.edgeCredentialRef))
+    .filter(Boolean);
+}
+
+function latestMatchingScopedAppliedReceipt({ controlStore, channelRef, desiredState, tenantId }) {
+  const edgeCredentialRefs = edgeCredentialRefsForTenantChannel({
+    controlStore,
+    tenantId,
+    channelRef
+  });
+  if (edgeCredentialRefs.length === 0) {
+    return null;
+  }
+  const scopedDesiredState = scopedDesiredStateFrom(desiredState, { edgeCredentialRefs });
+  if (!scopedDesiredState?.desiredStateRef || !scopedDesiredState.channelRefs?.includes(channelRef)) {
+    return null;
+  }
+  return latestMatchingAppliedReceipt({
+    controlStore,
+    channelRef,
+    desiredStateRef: scopedDesiredState.desiredStateRef
+  });
+}
+
 function createReceiptBackedSubscriptionChannelGate({ controlStore } = {}) {
-  return ({ server }) => {
+  return ({ server, tenantId }) => {
     if (!requiresAppliedRemoteReceipt(server)) {
       return true;
     }
@@ -449,6 +517,11 @@ function createReceiptBackedSubscriptionChannelGate({ controlStore } = {}) {
       controlStore,
       channelRef,
       desiredStateRef: desiredState.desiredStateRef
+    }) || latestMatchingScopedAppliedReceipt({
+      controlStore,
+      channelRef,
+      desiredState,
+      tenantId
     }));
   };
 }
@@ -855,6 +928,14 @@ export function createRuntimeState(options = {}) {
       })
       : null
   );
+  if (!edgeCredentialMaterialStore && dataPlaneAgentRoutesEnabled) {
+    const materialPath = optionalEnvText(env.EDGE_CREDENTIAL_MATERIAL_PATH || env.USER_PORTAL_EDGE_MATERIAL_PATH);
+    if (materialPath) {
+      edgeCredentialMaterialStore = createFileBackedEdgeCredentialMaterialStore({
+        filePath: materialPath
+      });
+    }
+  }
   const configuredDataPlaneAgentNodes = [
     ...parseJsonArrayEnv(env.EDGE_DATA_PLANE_AGENT_NODES_JSON, "EDGE_DATA_PLANE_AGENT_NODES_JSON"),
     ...(optionalEnvText(env.EDGE_DATA_PLANE_AGENT_NODE_REF) ? [{
@@ -867,7 +948,8 @@ export function createRuntimeState(options = {}) {
     dataPlaneAgentRoutesEnabled
       ? createDataPlaneAgentService({
         controlStore: platformControlStore,
-        nodes: configuredDataPlaneAgentNodes
+        nodes: configuredDataPlaneAgentNodes,
+        credentialMaterialStore: edgeCredentialMaterialStore
       })
       : null
   );

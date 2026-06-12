@@ -4,7 +4,9 @@ import {
   buildRedactedDesiredStateSummary,
   buildSafeAgentErrorPayload,
   validateDataPlaneApplyReceipt,
-  validateDataPlaneDesiredState
+  validateDataPlaneDesiredState,
+  validateDataPlaneMaterialRequest,
+  validateDataPlaneMaterialResponse
 } from "../services/edge/data-plane-agent-protocol.mjs";
 
 const VALID_UNTIL = "2026-07-10T00:00:00.000Z";
@@ -171,4 +173,136 @@ test("safe error payload does not leak raw input values", () => {
   assert.equal(captured.message, "unsafe_agent_payload");
   assert.equal(captured.redacted, true);
   assert.doesNotMatch(JSON.stringify(captured), /raw-token-value|token/i);
+});
+
+test("material request validates node scope, desired state scope, and requested refs", () => {
+  const result = validateDataPlaneMaterialRequest({
+    type: "gccgw_data_plane_material_request",
+    nodeRef: "node-sgp-a",
+    desiredStateRef: "desired_sgp_hy2_001",
+    edgeCredentialRefs: ["edgecred_pareq_safe_hy2"],
+    mode: "material"
+  }, {
+    expectedNodeRef: "node-sgp-a"
+  });
+
+  assert.deepEqual(result, {
+    type: "gccgw_data_plane_material_request",
+    nodeRef: "node-sgp-a",
+    desiredStateRef: "desired_sgp_hy2_001",
+    edgeCredentialRefs: ["edgecred_pareq_safe_hy2"],
+    mode: "material"
+  });
+});
+
+test("material request rejects wrong node, empty refs, and unsafe payloads", () => {
+  assert.throws(
+    () => validateDataPlaneMaterialRequest({
+      nodeRef: "node-other",
+      desiredStateRef: "desired_sgp_hy2_001",
+      edgeCredentialRefs: ["edgecred_pareq_safe_hy2"],
+      mode: "material"
+    }, {
+      expectedNodeRef: "node-sgp-a"
+    }),
+    (error) => error.code === "node_scope_mismatch"
+  );
+
+  assert.throws(
+    () => validateDataPlaneMaterialRequest({
+      nodeRef: "node-sgp-a",
+      desiredStateRef: "desired_sgp_hy2_001",
+      edgeCredentialRefs: [],
+      mode: "material"
+    }, {
+      expectedNodeRef: "node-sgp-a"
+    }),
+    (error) => error.code === "validation_error"
+  );
+
+  assert.throws(
+    () => validateDataPlaneMaterialRequest({
+      nodeRef: "node-sgp-a",
+      desiredStateRef: "desired_sgp_hy2_001",
+      edgeCredentialRefs: ["edgecred_pareq_safe_hy2"],
+      mode: "material",
+      diagnostics: { token: "unsafe" }
+    }, {
+      expectedNodeRef: "node-sgp-a"
+    }),
+    (error) => error.code === "unsafe_agent_payload"
+  );
+});
+
+test("material request rejects unrelated fields even when they contain no sensitive values", () => {
+  assert.throws(
+    () => validateDataPlaneMaterialRequest({
+      nodeRef: "node-sgp-a",
+      desiredStateRef: "desired_sgp_hy2_001",
+      edgeCredentialRefs: ["edgecred_pareq_safe_hy2"],
+      mode: "material",
+      diagnostics: {
+        traceRef: "trace_safe_001"
+      }
+    }, {
+      expectedNodeRef: "node-sgp-a"
+    }),
+    (error) => error.code === "validation_error"
+  );
+});
+
+test("material response validates summary mode as redacted digest presence only", () => {
+  const result = validateDataPlaneMaterialResponse({
+    type: "gccgw_data_plane_material_response",
+    nodeRef: "node-sgp-a",
+    desiredStateRef: "desired_sgp_hy2_001",
+    mode: "summary",
+    records: [{
+      edgeCredentialRef: "edgecred_pareq_safe_hy2",
+      materialDigest: "sha256:aaaaaaaaaaaaaaaa",
+      hasMaterial: true
+    }],
+    redacted: true
+  }, {
+    expectedNodeRef: "node-sgp-a",
+    expectedDesiredStateRef: "desired_sgp_hy2_001"
+  });
+
+  assert.equal(result.mode, "summary");
+  assert.equal(result.redacted, true);
+  assert.deepEqual(result.records, [{
+    edgeCredentialRef: "edgecred_pareq_safe_hy2",
+    materialDigest: "sha256:aaaaaaaaaaaaaaaa",
+    hasMaterial: true
+  }]);
+  assert.doesNotMatch(JSON.stringify(result), /unsafe-uuid|unsafe-password/i);
+});
+
+test("material response validates material mode without redacting the returned record", () => {
+  const result = validateDataPlaneMaterialResponse({
+    type: "gccgw_data_plane_material_response",
+    nodeRef: "node-sgp-a",
+    desiredStateRef: "desired_sgp_hy2_001",
+    mode: "material",
+    records: [{
+      edgeCredentialRef: "edgecred_pareq_safe_hy2",
+      materialDigest: "sha256:aaaaaaaaaaaaaaaa",
+      material: {
+        uuid: "11111111-1111-4111-8111-111111111111",
+        password: "synthetic-hy2-material"
+      }
+    }],
+    sensitive: true
+  }, {
+    expectedNodeRef: "node-sgp-a",
+    expectedDesiredStateRef: "desired_sgp_hy2_001"
+  });
+
+  assert.equal(result.mode, "material");
+  assert.equal(result.sensitive, true);
+  assert.equal(result.records[0].edgeCredentialRef, "edgecred_pareq_safe_hy2");
+  assert.deepEqual(result.records[0].material, {
+    uuid: "11111111-1111-4111-8111-111111111111",
+    password: "synthetic-hy2-material"
+  });
 });

@@ -87,6 +87,14 @@ function assertNoUnsafeFields(value, path = []) {
   }
 }
 
+function listenerReadyFlag(input = {}) {
+  return (
+    input.listenerUdp443 === true
+    || input.listenerTcp === true
+    || input.listenerPresent === true
+  ) ? 1 : 0;
+}
+
 function jsonObject(value, field) {
   if (value == null) {
     return "{}";
@@ -1609,7 +1617,7 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       unchangedCount: integer(actionCounts.unchanged ?? 0, "actionCounts.unchanged", { min: 0 }),
       configTestOk: input.configTestOk === true ? 1 : 0,
       serviceActive: input.serviceActive === true ? 1 : 0,
-      listenerUdp443: input.listenerUdp443 === true ? 1 : 0,
+      listenerUdp443: listenerReadyFlag(input),
       backupRef: optionalText(input.backupRef),
       rollbackRef: optionalText(input.rollbackRef),
       appliedAt: optionalIsoText(input.appliedAt, "appliedAt"),

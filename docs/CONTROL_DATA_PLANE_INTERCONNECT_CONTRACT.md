@@ -293,6 +293,28 @@ current desired-state over a private authenticated path, apply it locally, and
 post a redacted receipt. User subscription output must not include that remote
 channel until the current desired-state has a matching applied receipt.
 
+Remote data-plane channel config must make this render gate explicit with
+`runtimeAdapter: "remote-data-plane-handoff"` and `requiresAppliedReceipt:
+true`. The renderer remains fail-closed for the remote adapter even if an older
+config omits the explicit flag, but current Vultr/Singapore templates must carry
+the flag so review scripts and operators can detect the intended gate without
+inferring it from adapter internals.
+
+Desired-state and receipts remain redacted coordination payloads. They carry
+safe refs, generations, channel refs, and material fingerprints only. Runtime
+material is available through a separate private authenticated material pull
+path scoped to the authenticated node, the current `desiredStateRef`, requested
+`edgeCredentialRef` values, and exact material digest matches. Summary material
+checks may expose only digest presence; material-mode responses are for the
+data-plane agent's protected local material store and must not be logged,
+documented, copied into Git, or returned to operators.
+
+For production smoke validation, the data-plane agent may request an explicit
+subset of `edgeCredentialRef` values. The control plane must derive a distinct
+scoped `desiredStateRef` and generation for that subset. Receipts for scoped
+states prove only that subset was applied; they must not satisfy the full
+aggregate desired-state receipt gate for a channel.
+
 ## Minimal Interface Between Projects
 
 The two projects should connect through this narrow interface:
@@ -309,6 +331,7 @@ control plane -> user client:
 
 control plane -> data plane:
   safe desired-state refs over private authenticated routes
+  private node-scoped material pull by current desired-state digest
   no customer database authority
   no direct customer proxy traffic
   only approved runtime config or node-retirement decisions through Risk A gates

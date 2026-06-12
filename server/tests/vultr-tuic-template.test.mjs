@@ -125,9 +125,10 @@ test("Vultr multi-channel template follows VLESS Reality, Hy2, and TUIC channel 
   assert.deepEqual(canary.alpn, ["h3"]);
   assert.equal(proxyConfig.servers[3].name, "channel-sgp-a-vless-reality-tcp");
   assert.equal(proxyConfig.servers[3].runtimeAdapter, "remote-data-plane-handoff");
+  assert.equal(proxyConfig.servers[3].requiresAppliedReceipt, true);
   assert.equal(proxyConfig.servers[3].physicalNodeRef, "vultr-sgp-a");
   assert.equal(proxyConfig.servers[3].subscriptionBundleRef, "vultr-production-a");
-  assert.equal(proxyConfig.servers[3].host, "sub.globalcirclecat.cloud");
+  assert.equal(proxyConfig.servers[3].host, "portal.globalcirclecat.icu");
   assert.equal(proxyConfig.servers[3].uuid, "44444444-4444-4444-8444-444444444444");
   assert.equal(proxyConfig.servers[3].serverName, "www.cloudflare.com");
   assert.deepEqual(proxyConfig.servers[3].realityOpts, {
@@ -136,17 +137,19 @@ test("Vultr multi-channel template follows VLESS Reality, Hy2, and TUIC channel 
   });
   assert.equal(proxyConfig.servers[4].name, "channel-sgp-a-hy2");
   assert.equal(proxyConfig.servers[4].runtimeAdapter, "remote-data-plane-handoff");
+  assert.equal(proxyConfig.servers[4].requiresAppliedReceipt, true);
   assert.equal(proxyConfig.servers[4].port, 10443);
-  assert.equal(proxyConfig.servers[4].host, "sub.globalcirclecat.cloud");
+  assert.equal(proxyConfig.servers[4].host, "portal.globalcirclecat.icu");
   assert.equal(proxyConfig.servers[4].password, "synthetic-sgp-hy2-password");
-  assert.equal(proxyConfig.servers[4].sni, "globalcirclecat.cloud");
+  assert.equal(proxyConfig.servers[4].sni, "portal.globalcirclecat.icu");
   assert.equal(proxyConfig.servers[5].name, "channel-sgp-a-tuic");
   assert.equal(proxyConfig.servers[5].runtimeAdapter, "remote-data-plane-handoff");
+  assert.equal(proxyConfig.servers[5].requiresAppliedReceipt, true);
   assert.equal(proxyConfig.servers[5].port, 443);
-  assert.equal(proxyConfig.servers[5].host, "sub.globalcirclecat.cloud");
+  assert.equal(proxyConfig.servers[5].host, "portal.globalcirclecat.icu");
   assert.equal(proxyConfig.servers[5].uuid, "33333333-3333-4333-8333-333333333333");
   assert.equal(proxyConfig.servers[5].password, "synthetic-sgp-tuic-password");
-  assert.equal(proxyConfig.servers[5].sni, "sub.globalcirclecat.cloud");
+  assert.equal(proxyConfig.servers[5].sni, "portal.globalcirclecat.icu");
 
   const yaml = generateClashSubscription(proxyConfig);
   assert.match(yaml, /name: "channel-vultr-a-vless-reality-tcp"/);

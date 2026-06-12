@@ -9,6 +9,7 @@
     "./agent/channel-profile": "./agent/channel-profile.mjs",
     "./agent/edge-tunnel": "./agent/edge-tunnel.mjs",
     "./agent/local-edge-agent": "./agent/local-edge-agent.mjs",
+    "./agent/production-edge-agent": "./agent/production-edge-agent.mjs",
     "./agent/socks5-adapter": "./agent/socks5-adapter.mjs",
     "./package.json": "./package.json"
   },
@@ -30,6 +31,7 @@
     "server/routes",
     "server/services",
     "agent",
+    "ops",
     "public",
     "config",
     "scripts",
@@ -98,6 +100,7 @@
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",
     "agent:local": "node agent/local-edge-agent.mjs",
+    "agent:production:once": "node agent/production-edge-agent.mjs",
     "pack:dry-run": "npm pack --dry-run",
     "daemon": "node daemon.mjs",
     "admin:dev": "npm run dev --prefix admin",

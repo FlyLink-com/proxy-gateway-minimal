@@ -13,6 +13,15 @@ function statusFromError(error) {
   if (error?.code === "desired_state_not_found") {
     return 404;
   }
+  if (error?.code === "material_store_unavailable") {
+    return 503;
+  }
+  if (error?.code === "material_not_found" || error?.code === "material_digest_not_found") {
+    return 404;
+  }
+  if (error?.code === "material_digest_mismatch") {
+    return 409;
+  }
   return 400;
 }
 
@@ -22,6 +31,16 @@ function sendAgentError(res, service, error) {
     message: error?.code || "agent_error",
     redacted: true
   });
+}
+
+function queryRefs(value) {
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => queryRefs(item));
+  }
+  return String(value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 export function dataPlaneAgentRoutes(state) {
@@ -41,7 +60,17 @@ export function dataPlaneAgentRoutes(state) {
 
   router.get("/api/internal/data-plane-agent/desired-state", (req, res) => {
     try {
-      res.json(service.getDesiredState(req.dataPlaneAgentIdentity));
+      res.json(service.getDesiredState(req.dataPlaneAgentIdentity, {
+        edgeCredentialRefs: queryRefs(req.query.edgeCredentialRefs)
+      }));
+    } catch (error) {
+      sendAgentError(res, service, error);
+    }
+  });
+
+  router.post("/api/internal/data-plane-agent/materials", (req, res) => {
+    try {
+      res.json(service.getCredentialMaterials(req.dataPlaneAgentIdentity, req.body));
     } catch (error) {
       sendAgentError(res, service, error);
     }

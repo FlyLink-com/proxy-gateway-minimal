@@ -137,7 +137,7 @@
       "region": "sgp",
       "protocol": "vless",
       "type": "vless",
-      "host": "sub.globalcirclecat.cloud",
+      "host": "portal.globalcirclecat.icu",
       "port": 8443,
       "uuid": "${SGP_VLESS_STATIC_UUID}",
       "network": "tcp",
@@ -159,6 +159,7 @@
       "credentialMode": "per-order",
       "stableProtocolApproved": true,
       "runtimeAdapter": "remote-data-plane-handoff",
+      "requiresAppliedReceipt": true,
       "credentialLifecycle": {
         "addCredential": true,
         "disableCredential": true,
@@ -176,10 +177,10 @@
       "region": "sgp",
       "protocol": "hysteria2",
       "type": "hysteria2",
-      "host": "sub.globalcirclecat.cloud",
+      "host": "portal.globalcirclecat.icu",
       "port": 10443,
       "password": "${SGP_HY2_STATIC_PASSWORD}",
-      "sni": "globalcirclecat.cloud",
+      "sni": "portal.globalcirclecat.icu",
       "alpn": [
         "h3"
       ],
@@ -193,6 +194,7 @@
       "strategyPriority": 25,
       "credentialMode": "per-order",
       "runtimeAdapter": "remote-data-plane-handoff",
+      "requiresAppliedReceipt": true,
       "runtimePolicy": {
         "sniff": {
           "enabled": true,
@@ -225,11 +227,11 @@
       "region": "sgp",
       "protocol": "tuic",
       "type": "tuic",
-      "host": "sub.globalcirclecat.cloud",
+      "host": "portal.globalcirclecat.icu",
       "port": 443,
       "uuid": "${SGP_TUIC_STATIC_UUID}",
       "password": "${SGP_TUIC_STATIC_PASSWORD}",
-      "sni": "sub.globalcirclecat.cloud",
+      "sni": "portal.globalcirclecat.icu",
       "alpn": [
         "h3"
       ],
@@ -245,6 +247,7 @@
       "credentialMode": "per-order",
       "stableProtocolApproved": false,
       "runtimeAdapter": "remote-data-plane-handoff",
+      "requiresAppliedReceipt": true,
       "credentialLifecycle": {
         "addCredential": true,
         "disableCredential": true,
@@ -255,7 +258,8 @@
   ],
   "pingHosts": [
     "sub.globalcirclecat.cloud",
-    "portal.globalcirclecat.cloud"
+    "portal.globalcirclecat.cloud",
+    "portal.globalcirclecat.icu"
   ],
   "nginx": {
     "host": "sub.globalcirclecat.cloud",

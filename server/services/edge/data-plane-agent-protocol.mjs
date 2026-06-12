@@ -1,8 +1,13 @@
+import { normalizeCredentialMaterialRecord } from "./credential-material-store.mjs";
+
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,160}$/;
 const DIGEST_PATTERN = /^[A-Za-z0-9._:+/-]{6,256}$/;
 const DESIRED_STATE_TYPE = "gccgw_data_plane_desired_state";
 const APPLY_RECEIPT_TYPE = "gccgw_data_plane_apply_receipt";
+const MATERIAL_REQUEST_TYPE = "gccgw_data_plane_material_request";
+const MATERIAL_RESPONSE_TYPE = "gccgw_data_plane_material_response";
 const RECEIPT_STATUSES = new Set(["applied", "failed", "unchanged", "stale", "rejected"]);
+const MATERIAL_MODES = new Set(["summary", "material"]);
 const FORBIDDEN_KEY_NORMALIZED = new Set([
   "authorization",
   "cookie",
@@ -88,6 +93,22 @@ function assertScope(value, expected, code) {
   }
 }
 
+function assertObject(value, field) {
+  if (!value || Array.isArray(value) || typeof value !== "object") {
+    throw protocolError("validation_error", `${field} is invalid`);
+  }
+  return value;
+}
+
+function assertAllowedKeys(value, allowedKeys, field) {
+  const allowed = new Set(allowedKeys);
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      throw protocolError("validation_error", `${field}.${key} is not allowed`);
+    }
+  }
+}
+
 function assertAllowedChannels(channelRefs, allowedChannelRefs = []) {
   if (!Array.isArray(allowedChannelRefs) || allowedChannelRefs.length === 0) {
     return;
@@ -137,6 +158,110 @@ function normalizeMaterialDigests(value = []) {
   });
 }
 
+function normalizeMaterialMode(value, field) {
+  const mode = text(value);
+  if (!MATERIAL_MODES.has(mode)) {
+    throw protocolError("validation_error", `${field} is invalid`);
+  }
+  return mode;
+}
+
+function normalizeMaterialResponseRecords(value = [], mode) {
+  if (!Array.isArray(value)) {
+    throw protocolError("validation_error", "records must be an array");
+  }
+  return value.map((item, index) => {
+    const record = assertObject(item, `records[${index}]`);
+    if (mode === "summary") {
+      assertAllowedKeys(record, ["edgeCredentialRef", "materialDigest", "hasMaterial"], `records[${index}]`);
+      return {
+        edgeCredentialRef: safeRef(record.edgeCredentialRef, `records[${index}].edgeCredentialRef`),
+        materialDigest: safeDigest(record.materialDigest, `records[${index}].materialDigest`),
+        hasMaterial: normalizeBoolean(record.hasMaterial, `records[${index}].hasMaterial`)
+      };
+    }
+    assertAllowedKeys(record, ["edgeCredentialRef", "materialDigest", "material"], `records[${index}]`);
+    const normalized = normalizeCredentialMaterialRecord({
+      credentialRef: record.edgeCredentialRef,
+      materialDigest: record.materialDigest,
+      material: record.material
+    });
+    return {
+      edgeCredentialRef: normalized.credentialRef,
+      materialDigest: normalized.materialDigest,
+      material: normalized.material
+    };
+  });
+}
+
+export function validateDataPlaneMaterialRequest(input = {}, {
+  expectedNodeRef
+} = {}) {
+  const payload = assertObject(input, "payload");
+  assertNoUnsafeFields(payload);
+  assertAllowedKeys(payload, [
+    "type",
+    "nodeRef",
+    "desiredStateRef",
+    "edgeCredentialRefs",
+    "mode"
+  ], "payload");
+  if (payload.type && payload.type !== MATERIAL_REQUEST_TYPE) {
+    throw protocolError("validation_error", "material-request type is invalid");
+  }
+
+  const nodeRef = safeRef(payload.nodeRef, "nodeRef");
+  assertScope(nodeRef, expectedNodeRef, "node_scope_mismatch");
+  return {
+    type: MATERIAL_REQUEST_TYPE,
+    nodeRef,
+    desiredStateRef: safeRef(payload.desiredStateRef, "desiredStateRef"),
+    edgeCredentialRefs: safeRefs(payload.edgeCredentialRefs, "edgeCredentialRefs"),
+    mode: normalizeMaterialMode(payload.mode, "mode")
+  };
+}
+
+export function validateDataPlaneMaterialResponse(input = {}, {
+  expectedNodeRef,
+  expectedDesiredStateRef
+} = {}) {
+  const payload = assertObject(input, "payload");
+  assertAllowedKeys(payload, [
+    "type",
+    "nodeRef",
+    "desiredStateRef",
+    "mode",
+    "records",
+    "redacted",
+    "sensitive"
+  ], "payload");
+  if (payload?.type && payload.type !== MATERIAL_RESPONSE_TYPE) {
+    throw protocolError("validation_error", "material-response type is invalid");
+  }
+
+  const nodeRef = safeRef(payload.nodeRef, "nodeRef");
+  assertScope(nodeRef, expectedNodeRef, "node_scope_mismatch");
+  const desiredStateRef = safeRef(payload.desiredStateRef, "desiredStateRef");
+  assertScope(desiredStateRef, expectedDesiredStateRef, "desired_state_scope_mismatch");
+  const mode = normalizeMaterialMode(payload.mode, "mode");
+  if (mode === "summary") {
+    if (payload.redacted !== true || "sensitive" in payload) {
+      throw protocolError("validation_error", "summary material response must be redacted");
+    }
+  } else if (payload.sensitive !== true || "redacted" in payload) {
+    throw protocolError("validation_error", "material response must be marked sensitive");
+  }
+
+  return {
+    type: MATERIAL_RESPONSE_TYPE,
+    nodeRef,
+    desiredStateRef,
+    mode,
+    records: normalizeMaterialResponseRecords(payload.records, mode),
+    ...(mode === "summary" ? { redacted: true } : { sensitive: true })
+  };
+}
+
 export function validateDataPlaneDesiredState(input = {}, {
   expectedNodeRef,
   allowedChannelRefs = []
@@ -182,6 +307,7 @@ export function buildRedactedDesiredStateSummary(desiredState = {}) {
 export function validateDataPlaneApplyReceipt(input = {}, {
   expectedNodeRef,
   expectedGeneration,
+  expectedDesiredStateRef,
   allowedChannelRefs = []
 } = {}) {
   assertNoUnsafeFields(input);
@@ -191,6 +317,10 @@ export function validateDataPlaneApplyReceipt(input = {}, {
 
   const nodeRef = safeRef(input.nodeRef, "nodeRef");
   assertScope(nodeRef, expectedNodeRef, "node_scope_mismatch");
+  const desiredStateRef = text(input.desiredStateRef)
+    ? safeRef(input.desiredStateRef, "desiredStateRef")
+    : "";
+  assertScope(desiredStateRef, expectedDesiredStateRef, "desired_state_scope_mismatch");
   const generation = safeRef(input.generation, "generation");
   assertScope(generation, expectedGeneration, "generation_scope_mismatch");
   const channelRef = safeRef(input.channelRef, "channelRef");
@@ -203,6 +333,7 @@ export function validateDataPlaneApplyReceipt(input = {}, {
   return {
     type: APPLY_RECEIPT_TYPE,
     nodeRef,
+    ...(desiredStateRef ? { desiredStateRef } : {}),
     generation,
     channelRef,
     status,

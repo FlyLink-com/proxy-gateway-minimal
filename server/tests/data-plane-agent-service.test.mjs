@@ -7,6 +7,7 @@ import {
   createDataPlaneAgentService,
   hashDataPlaneAgentToken
 } from "../services/edge/data-plane-agent-service.mjs";
+import { createEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 
 const VALID_UNTIL = "2026-07-10T00:00:00.000Z";
@@ -110,6 +111,10 @@ function serviceFor(store, overrides = {}) {
     nowFn: () => NOW,
     ...overrides
   });
+}
+
+function materialStoreFor(records = []) {
+  return createEdgeCredentialMaterialStore({ records });
 }
 
 function withSqliteStore(fn) {
@@ -253,6 +258,217 @@ test("records receipts against latest desired state and never trusts client desi
   assert.equal(store.receipts[0].id, response.receiptId);
   assert.equal(store.receipts[0].generation, "gen_20260610_001");
   assert.equal(store.receipts[0].listenerUdp443, true);
+});
+
+test("returns node-scoped material summaries and material records for current desired state only", () => {
+  const store = fakeControlStore(new Map([
+    ["channel-sgp-a-hy2", desired({ desiredStateRef: "desired_sgp_hy2_001" })]
+  ]));
+  const materialStore = materialStoreFor([
+    {
+      credentialRef: "edgecred_safe_hy2",
+      materialDigest: "sha256:aaaaaaaaaaaaaaaa",
+      material: {
+        uuid: "11111111-1111-4111-8111-111111111111",
+        password: "synthetic-hy2-material"
+      }
+    }
+  ]);
+  const service = serviceFor(store, { credentialMaterialStore: materialStore });
+  const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+
+  const summary = service.getCredentialMaterials(identity, {
+    type: "gccgw_data_plane_material_request",
+    nodeRef: "node-sgp-a",
+    desiredStateRef: "desired_sgp_hy2_001",
+    edgeCredentialRefs: ["edgecred_safe_hy2"],
+    mode: "summary"
+  });
+  assert.equal(summary.mode, "summary");
+  assert.equal(summary.redacted, true);
+  assert.deepEqual(summary.records, [{
+    edgeCredentialRef: "edgecred_safe_hy2",
+    materialDigest: "sha256:aaaaaaaaaaaaaaaa",
+    hasMaterial: true
+  }]);
+  assert.doesNotMatch(JSON.stringify(summary), /synthetic-hy2-material|11111111/i);
+
+  const material = service.getCredentialMaterials(identity, {
+    type: "gccgw_data_plane_material_request",
+    nodeRef: "node-sgp-a",
+    desiredStateRef: "desired_sgp_hy2_001",
+    edgeCredentialRefs: ["edgecred_safe_hy2"],
+    mode: "material"
+  });
+  assert.equal(material.mode, "material");
+  assert.equal(material.sensitive, true);
+  assert.equal(material.records[0].edgeCredentialRef, "edgecred_safe_hy2");
+  assert.deepEqual(material.records[0].material, {
+    uuid: "11111111-1111-4111-8111-111111111111",
+    password: "synthetic-hy2-material"
+  });
+});
+
+test("scopes desired-state, material, and receipts to selected edge credentials for smoke apply", () => {
+  const aggregate = desired({
+    desiredStateRef: "desired_aggregate_sgp_001",
+    generation: "gen_aggregate_001",
+    edgeCredentialRefs: ["edgecred_safe_hy2", "edgecred_safe_tuic"],
+    materialDigests: [
+      {
+        channelRef: "channel-sgp-a-hy2",
+        edgeCredentialRef: "edgecred_safe_hy2",
+        digest: "sha256:aaaaaaaaaaaaaaaa"
+      },
+      {
+        channelRef: "channel-sgp-a-tuic",
+        edgeCredentialRef: "edgecred_safe_tuic",
+        digest: "sha256:bbbbbbbbbbbbbbbb"
+      }
+    ]
+  });
+  const store = fakeControlStore(new Map([
+    ["channel-sgp-a-hy2", aggregate],
+    ["channel-sgp-a-tuic", aggregate]
+  ]));
+  const materialStore = materialStoreFor([
+    {
+      credentialRef: "edgecred_safe_hy2",
+      materialDigest: "sha256:aaaaaaaaaaaaaaaa",
+      material: {
+        uuid: "11111111-1111-4111-8111-111111111111",
+        password: "synthetic-hy2-material"
+      }
+    },
+    {
+      credentialRef: "edgecred_safe_tuic",
+      materialDigest: "sha256:bbbbbbbbbbbbbbbb",
+      material: {
+        uuid: "22222222-2222-4222-8222-222222222222",
+        password: "synthetic-tuic-material"
+      }
+    }
+  ]);
+  const service = serviceFor(store, { credentialMaterialStore: materialStore });
+  const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+
+  const response = service.getDesiredState(identity, {
+    edgeCredentialRefs: ["edgecred_safe_hy2"]
+  });
+
+  assert.equal(response.desiredStates.length, 1);
+  const [scoped] = response.desiredStates;
+  assert.notEqual(scoped.desiredStateRef, aggregate.desiredStateRef);
+  assert.notEqual(scoped.generation, aggregate.generation);
+  assert.match(scoped.desiredStateRef, /^desired_scoped_/);
+  assert.match(scoped.generation, /^gen_scoped_/);
+  assert.deepEqual(scoped.edgeCredentialRefs, ["edgecred_safe_hy2"]);
+  assert.deepEqual(scoped.materialDigests, [{
+    channelRef: "channel-sgp-a-hy2",
+    edgeCredentialRef: "edgecred_safe_hy2",
+    digest: "sha256:aaaaaaaaaaaaaaaa"
+  }]);
+
+  const material = service.getCredentialMaterials(identity, {
+    type: "gccgw_data_plane_material_request",
+    nodeRef: "node-sgp-a",
+    desiredStateRef: scoped.desiredStateRef,
+    edgeCredentialRefs: ["edgecred_safe_hy2"],
+    mode: "material"
+  });
+  assert.equal(material.desiredStateRef, scoped.desiredStateRef);
+  assert.equal(material.records.length, 1);
+  assert.equal(material.records[0].edgeCredentialRef, "edgecred_safe_hy2");
+
+  const receiptResponse = service.recordReceipt(identity, receipt({
+    desiredStateRef: scoped.desiredStateRef,
+    generation: scoped.generation,
+    channelRef: "channel-sgp-a-hy2",
+    credentialCount: 1,
+    materialDigests: ["sha256:aaaaaaaaaaaaaaaa"]
+  }));
+
+  assert.equal(receiptResponse.generation, scoped.generation);
+  assert.equal(store.receipts.length, 1);
+  assert.equal(store.receipts[0].desiredStateRef, scoped.desiredStateRef);
+  assert.equal(store.receipts[0].generation, scoped.generation);
+  assert.equal(store.receipts[0].actionCounts.add, 1);
+});
+
+test("rejects material requests outside node, desired-state, digest, and credential scope", () => {
+  const store = fakeControlStore(new Map([
+    ["channel-sgp-a-hy2", desired({ desiredStateRef: "desired_sgp_hy2_001" })]
+  ]));
+  const materialStore = materialStoreFor([
+    {
+      credentialRef: "edgecred_safe_hy2",
+      materialDigest: "sha256:stale_digest",
+      material: {
+        uuid: "11111111-1111-4111-8111-111111111111",
+        password: "synthetic-hy2-material"
+      }
+    }
+  ]);
+  const service = serviceFor(store, { credentialMaterialStore: materialStore });
+  const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+
+  assert.throws(
+    () => service.getCredentialMaterials(identity, {
+      nodeRef: "node-other",
+      desiredStateRef: "desired_sgp_hy2_001",
+      edgeCredentialRefs: ["edgecred_safe_hy2"],
+      mode: "summary"
+    }),
+    (error) => error.code === "node_scope_mismatch"
+  );
+
+  assert.throws(
+    () => service.getCredentialMaterials(identity, {
+      nodeRef: "node-sgp-a",
+      desiredStateRef: "desired_missing",
+      edgeCredentialRefs: ["edgecred_safe_hy2"],
+      mode: "summary"
+    }),
+    (error) => error.code === "desired_state_not_found"
+  );
+
+  assert.throws(
+    () => service.getCredentialMaterials(identity, {
+      nodeRef: "node-sgp-a",
+      desiredStateRef: "desired_sgp_hy2_001",
+      edgeCredentialRefs: ["edgecred_other"],
+      mode: "summary"
+    }),
+    (error) => error.code === "edge_credential_scope_mismatch"
+  );
+
+  assert.throws(
+    () => service.getCredentialMaterials(identity, {
+      nodeRef: "node-sgp-a",
+      desiredStateRef: "desired_sgp_hy2_001",
+      edgeCredentialRefs: ["edgecred_safe_hy2"],
+      mode: "summary"
+    }),
+    (error) => error.code === "material_digest_mismatch"
+  );
+});
+
+test("material requests fail safely when protected material store is unavailable", () => {
+  const store = fakeControlStore(new Map([
+    ["channel-sgp-a-hy2", desired({ desiredStateRef: "desired_sgp_hy2_001" })]
+  ]));
+  const service = serviceFor(store);
+  const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+
+  assert.throws(
+    () => service.getCredentialMaterials(identity, {
+      nodeRef: "node-sgp-a",
+      desiredStateRef: "desired_sgp_hy2_001",
+      edgeCredentialRefs: ["edgecred_safe_hy2"],
+      mode: "summary"
+    }),
+    (error) => error.code === "material_store_unavailable" && error.statusCode === 503
+  );
 });
 
 test("maps unchanged receipts to DB-safe applied status with unchanged count", () => {

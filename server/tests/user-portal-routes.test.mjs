@@ -420,6 +420,53 @@ test("portal password session route returns second-factor challenge after passwo
   });
 });
 
+test("portal password session route accepts frontend human challenge field aliases", async () => {
+  await withPortalState(async ({ auth, passwordCredentialService, entryToken }) => {
+    const plainPassword = `test-password-${randomUUID()}`;
+    passwordCredentialService.issueInitialPasswordCredential({
+      accountId: "acct_portal_route_1",
+      plainPassword,
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_password_route_alias",
+      mustRotate: true
+    });
+    auth.enrollTotpCredential({
+      entryToken,
+      encryptedTotpSecret: "enc:route-totp-secret"
+    });
+    const humanChallenges = createHumanChallengeService();
+    const { server, baseUrl } = await listen(createApp(baseState({
+      userPortalAuth: auth,
+      portalHumanChallenges: humanChallenges,
+      userPortalRoutesEnabled: true
+    })));
+    try {
+      const challenge = await issueHumanChallenge(baseUrl);
+      const response = await fetch(`${baseUrl}/api/portal/password/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: "acct_portal_route_1",
+          password: plainPassword,
+          humanVerification: {
+            challengeId: challenge.challengeRef,
+            challengeAnswer: "13"
+          }
+        })
+      });
+      assert.equal(response.status, 202);
+      const body = await response.json();
+      assert.equal(body.challenge.status, "second_factor_required");
+      assert.deepEqual(body.challenge.availableFactors, ["totp"]);
+      assert.equal(body.challenge.safety.noSessionCreated, true);
+    } finally {
+      server.close();
+    }
+  }, {
+    withPasswordCredential: true
+  });
+});
+
 test("portal password second-factor route consumes a challenge and returns a scoped session", async () => {
   await withPortalState(async ({ store, auth, passwordCredentialService, entryToken }) => {
     const plainPassword = `test-password-${randomUUID()}`;

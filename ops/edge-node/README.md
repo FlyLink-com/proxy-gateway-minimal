@@ -36,6 +36,7 @@ raw subscription URLs.
 
 ```text
 ops/edge-node/bootstrap.sh
+ops/edge-node/systemd/gccgw-edge-agent.service
 ops/edge-node/systemd/proxy-gateway-console.service
 ops/edge-node/systemd/proxy-gateway-ss.service
 ops/edge-node/nginx/proxy-gateway-public.conf
@@ -114,8 +115,17 @@ action:
 7. Create config/proxy-servers.json from templates/proxy-servers.json.example if this node will generate subscription YAML.
 8. Inject approved production secrets without recording them in Git, PRs, docs, or chat.
 9. Restore an approved SQLite backup and run pragma integrity_check.
-10. Validate local health, public boundary, Nginx config, systemd state, and Shadowsocks reachability.
-11. Request a separate cutover or standby-promotion approval if needed.
+10. Install `gccgw-edge-agent.service` only when a separate data-plane agent
+    activation gate approves the private pull/apply/receipt path. The template
+    is oneshot and defaults to `EDGE_AGENT_DRY_RUN=true`; production apply
+    requires reviewed protected env material and a separate approval.
+    For a one-order smoke gate, set `EDGE_AGENT_EDGE_CREDENTIAL_REFS` in the
+    protected agent environment to the reviewed credential refs for that order;
+    the control plane returns a scoped desired state and the resulting receipt
+    must not be treated as a full-channel aggregate apply receipt.
+11. Validate local health, public boundary, Nginx config, systemd state, edge
+    agent private route behavior, and data-plane listener reachability.
+12. Request a separate cutover or standby-promotion approval if needed.
 ```
 
 ## Validation Checklist
@@ -126,6 +136,9 @@ After secrets and SQLite are approved and installed:
 sudo nginx -t
 systemctl is-active proxy-gateway-console.service proxy-gateway-ss.service nginx
 systemctl show proxy-gateway-console.service proxy-gateway-ss.service nginx \
+  --property=ActiveState,SubState,Result,ExecMainStatus,NRestarts \
+  --no-pager
+systemctl show gccgw-edge-agent.service \
   --property=ActiveState,SubState,Result,ExecMainStatus,NRestarts \
   --no-pager
 curl -fsS http://127.0.0.1:3456/api/health

@@ -942,7 +942,13 @@ test("createRuntimeState withholds remote data-plane channels until matching app
       USER_PORTAL_AUTO_ISSUANCE_NODE_ID: channels[0],
       USER_PORTAL_AUTO_ISSUANCE_CHANNEL_REFS: channels.join(","),
       USER_PORTAL_AUTO_ISSUANCE_7D_MONTHLY_LIMIT: "5000",
-      USER_PORTAL_AUTO_ISSUANCE_30D_MONTHLY_LIMIT: "1000"
+      USER_PORTAL_AUTO_ISSUANCE_30D_MONTHLY_LIMIT: "1000",
+      EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED: "true",
+      EDGE_DATA_PLANE_AGENT_NODES_JSON: JSON.stringify([{
+        nodeRef: "vultr-sgp-a",
+        channelRefs: sgpChannels,
+        tokenSha256: "0".repeat(64)
+      }])
     };
 
     first = createRuntimeState({
@@ -963,6 +969,16 @@ test("createRuntimeState withholds remote data-plane channels until matching app
       .split("/")
       .at(-1)
       .replace(/\.yaml$/, "");
+    const otherRequest = first.platform.portalAccessRequests.submitRequest({
+      portalUserRef: "portal_user_remote_receipt_gate_2",
+      plan: "monthly",
+      clientTarget: "clash",
+      quantity: 1
+    });
+    const otherArtifactSecret = new URL(otherRequest.subscriptionUrl).pathname
+      .split("/")
+      .at(-1)
+      .replace(/\.yaml$/, "");
     first.close();
     first = null;
 
@@ -977,6 +993,9 @@ test("createRuntimeState withholds remote data-plane channels until matching app
     const withoutReceipts = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
     assert.equal(withoutReceipts.ok, true);
     assert.deepEqual(withoutReceipts.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
+    const otherWithoutReceipts = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
+    assert.equal(otherWithoutReceipts.ok, true);
+    assert.deepEqual(otherWithoutReceipts.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
 
     const staleDesired = second.platform.controlStore.getLatestEdgeDesiredStateForChannel(sgpChannels[0], {
       nodeRef: "vultr-sgp-a",
@@ -999,6 +1018,39 @@ test("createRuntimeState withholds remote data-plane channels until matching app
     assert.equal(withStaleReceipt.ok, true);
     assert.deepEqual(withStaleReceipt.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
 
+    const requestEdgeCredentials = second.platform.controlStore.getPortalAccessRequest(request.id).edgeCredentials;
+    const scopedDesiredStates = second.platform.dataPlaneAgentService.getDesiredState({
+      nodeRef: "vultr-sgp-a"
+    }, {
+      edgeCredentialRefs: requestEdgeCredentials.map((credential) => credential.edgeCredentialRef)
+    }).desiredStates;
+    assert.deepEqual(scopedDesiredStates.map((state) => state.channelRefs[0]).sort(), [...sgpChannels].sort());
+    for (const [index, channel] of sgpChannels.entries()) {
+      const scopedDesiredState = scopedDesiredStates.find((state) => state.channelRefs.includes(channel));
+      assert.equal(typeof scopedDesiredState?.desiredStateRef, "string");
+      assert.match(scopedDesiredState.desiredStateRef, /^desired_scoped_/);
+      second.platform.controlStore.recordEdgeApplyReceipt({
+        id: `edge_receipt_scoped_sgp_${index + 1}`,
+        channelRef: channel,
+        desiredStateRef: scopedDesiredState.desiredStateRef,
+        status: "applied",
+        actionCounts: { add: scopedDesiredState.edgeCredentialRefs.length },
+        configTestOk: true,
+        serviceActive: true,
+        listenerUdp443: channel.includes("vless") ? false : true,
+        listenerTcp: channel.includes("vless") ? true : false,
+        appliedAt: `2026-06-11T00:1${index + 1}:00.000Z`,
+        createdAt: `2026-06-11T00:1${index + 1}:00.000Z`
+      });
+    }
+
+    const withScopedReceipts = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+    assert.equal(withScopedReceipts.ok, true);
+    assert.deepEqual(withScopedReceipts.proxyConfig.servers.map((server) => server.name), channels);
+    const otherWithScopedReceipts = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
+    assert.equal(otherWithScopedReceipts.ok, true);
+    assert.deepEqual(otherWithScopedReceipts.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
+
     for (const [index, channel] of sgpChannels.entries()) {
       const desiredState = second.platform.controlStore.getLatestEdgeDesiredStateForChannel(channel, {
         nodeRef: "vultr-sgp-a",
@@ -1013,7 +1065,8 @@ test("createRuntimeState withholds remote data-plane channels until matching app
         actionCounts: { add: desiredState.edgeCredentialRefs.length },
         configTestOk: true,
         serviceActive: true,
-        listenerUdp443: true,
+        listenerUdp443: channel.includes("vless") ? false : true,
+        listenerTcp: channel.includes("vless") ? true : false,
         appliedAt: `2026-06-11T00:0${index + 1}:00.000Z`,
         createdAt: `2026-06-11T00:0${index + 1}:00.000Z`
       });
@@ -1022,6 +1075,9 @@ test("createRuntimeState withholds remote data-plane channels until matching app
     const withFreshReceipts = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
     assert.equal(withFreshReceipts.ok, true);
     assert.deepEqual(withFreshReceipts.proxyConfig.servers.map((server) => server.name), channels);
+    const otherWithFreshReceipts = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
+    assert.equal(otherWithFreshReceipts.ok, true);
+    assert.deepEqual(otherWithFreshReceipts.proxyConfig.servers.map((server) => server.name), channels);
     assert.doesNotMatch(JSON.stringify(withFreshReceipts), /synthetic-sgp-hy2-template-password|synthetic-sgp-tuic-template-password/i);
   } finally {
     first?.close();
