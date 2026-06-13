@@ -198,6 +198,26 @@ The command is a repo-only gate preview. It does not create images, query
 providers, provision hosts, inject protected material, start services, mutate
 DNS, touch SQLite, render subscription YAML, or create live orders.
 
+## Repo-Only First-Boot Packet
+
+After the readiness summary is clean, operators can prepare a separate
+first-boot packet from reviewed references:
+
+```powershell
+node bin/gccgw.mjs node image-first-boot-packet .\node-image-first-boot.safe.json
+```
+
+The input file must use reviewed references such as `nodeRef`, `providerRef`,
+`regionRef`, `roleRef`, `channelRefs`, `imageManifestRef`, and `releaseRef`.
+It may also include boolean evidence that the node registration dry-run,
+private agent route, protected material injection plan, runtime config-test
+plans, and receipt-gated render prerequisites are complete.
+
+The packet is still repo-only. It does not register a node, inject protected
+material, start the edge agent, run Xray/Hysteria2/TUIC, post receipts, mutate
+runtime config, or unlock subscription rendering. Activation and live smoke
+remain separate Risk A approvals.
+
 ## Rollback
 
 Before activation:
