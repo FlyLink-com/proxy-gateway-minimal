@@ -59,10 +59,18 @@ The AWS staging node-image readiness validation is recorded in
 It validates the no-secret image readiness and first-boot packet helper path
 with synthetic safe input only. It did not register a production node, mutate
 DNS/Nginx/firewall, activate traffic, inject protected runtime material, or
-create live orders. The next stage is control-plane closeout: node registry
-ingestion, first-boot registration packet handling, protected material handoff,
+create live orders. The AWS staging control/data-plane integration validation is
+recorded in
+`docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-validation.md`.
+It validates the synthetic control-plane registration, desired-state,
+edge-agent, redacted receipt, receipt-gated rendering, usage/lifecycle, and
+node-image helper path on AWS staging only. It did not promote AWS, touch
+production, create live orders, output subscription material, or mutate DNS,
+Nginx, provider firewall/security groups, Vultr, or Aliyun.
+The next stage remains control-plane closeout: node registry ingestion,
+first-boot registration packet handling, protected material handoff,
 desired-state generation, receipt-gated subscription rendering, operator
-approval, validation, and rollback framing.
+approval, validation, and rollback framing for the production lane.
 That closeout plan is recorded in
 `docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md`; it keeps order issuance as
 a control-plane action and edge-agent pull/apply as a lifecycle reconciliation
@@ -71,6 +79,9 @@ The next approval template is
 `docs/production-replacement-records/2026-06-13-control-plane-node-registration-closeout-approval-packet.md`;
 it must be filled with exact release, artifact, SHA-256, current release, and
 target-node details before any production execution.
+The earlier AWS staging control/data-plane approval packet remains at
+`docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-approval-packet.md`
+for auditability; its matching execution record above is the current evidence.
 
 Detailed navigation lives in `docs/README.md`. Structured project state lives in
 `project-state/*.json`; it is a coordination aid, not a runtime control plane.
