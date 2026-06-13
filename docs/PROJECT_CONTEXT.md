@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-06-11, Asia/Shanghai.
+Last updated: 2026-06-13, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -350,14 +350,14 @@ The first exact-approved Aliyun runtime-upgrade attempt is recorded in
 It uploaded the exact `b781f3d` archive to `/tmp` but intentionally stopped
 before creating the new release, running `npm ci`, switching `current`, or
 restarting the service because the preserved systemd entry expects a live-only
-`candidate-start.mjs` shim that is not present in the exact Git archive. Current
-Aliyun runtime remains on `da33de295cb0`.
+`candidate-start.mjs` shim that is not present in the exact Git archive. At
+that gate, Aliyun runtime remained on `da33de295cb0`.
 The second exact-approved Aliyun runtime-upgrade attempt is recorded in
 `docs/production-replacement-records/2026-06-02-aliyun-candidate-runtime-upgrade-rollback.md`.
 It prepared release `3e1c9a79ec85` and ran `npm ci`, then switched `current`
 and restarted only `proxy-gateway-candidate.service`. Active-service validation
 failed, so the gate rolled back to `da33de295cb0` and revalidated public/private
-boundaries. Current Aliyun runtime remains on `da33de295cb0`. The likely next
+boundaries. At that gate, Aliyun runtime remained on `da33de295cb0`. The likely next
 blocker is the missing protected control DB path in Aliyun `.env`; a future
 retry requires a separate Risk A gate for non-secret `.env` path addition and
 control SQLite initialization under the service-owned state directory.
@@ -369,8 +369,9 @@ host `.env` after creating an on-host `0600` backup, switched `current` to exact
 release `3e1c9a79ec85`, restarted only `proxy-gateway-candidate.service`, and
 validated health, public Admin blocking, no-token subscription rejection,
 subscriptions/control SQLite integrity, candidate-start presence, loopback-only
-18180, and rollback readiness. Current Aliyun runtime is now
-`3e1c9a79ec85`; previous release `da33de295cb0` remains present for rollback.
+18180, and rollback readiness. That execution record's post-validation runtime
+was `3e1c9a79ec85`; previous release `da33de295cb0` remained present for
+rollback.
 
 ## Repository
 
@@ -464,6 +465,11 @@ Current documented production direction as of 2026-06-09:
 
 Current architecture priorities:
 
+- Docs/status baseline: `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md`
+  captures the current Vultr Japan control-plane and Vultr Japan/Singapore
+  data-plane direction plus its no-mutation boundary. It is a C-tier
+  orientation document, not a replacement for the production execution records
+  below and not authority for any runtime change.
 - Historical Goal: `docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md`
   remains a useful execution record for earlier Aliyun planning, but it is not
   the current production-control target. Current production design follows the
@@ -665,7 +671,7 @@ Current architecture priorities:
 - Legacy Admin UI Archive: the existing `admin/` application is archived as a
   local protected reference/testing surface only. It is no longer the future
   product UI, user portal, or operator-console design baseline. Future UI work
-  should be rebuilt around the Aliyun-first, CLI-first, public-site/portal
+  should be rebuilt around the provider-neutral CLI-first, public-site/portal
   split, operator provisioning form contract, resource-package handoff, and
   role/permission boundaries instead of polishing the old Overview-heavy Admin
   information architecture. No Admin code was moved or deleted by the archive
@@ -784,10 +790,10 @@ Current architecture priorities:
   promotion, observation, rollback, and cleanup. It does not authorize Aliyun
   deployment, DNS changes, state copy, public listener exposure, edge traffic,
   or production authority transfer.
-- Aliyun Clean-Start Control Plane: the Gate B clean-start recommendation is
-  now captured as the default planning direction in
+- Historical Aliyun Clean-Start Control Plane: the former Gate B clean-start
+  recommendation is captured in
   `docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md`.
-  Clean-start means Aliyun is planned as a new subscription-control authority
+  Clean-start meant Aliyun was planned as a new subscription-control authority
   without copying historical AWS SQLite, artifact, legacy query-token, or
   subscription-output state. The clean-start repo package now exists as
   protected operator-safe readiness and private rendering dry-run metadata. The
@@ -894,9 +900,9 @@ Current architecture priorities:
   with a matching execution template in
   `docs/production-replacement-records/templates/clean-edge-node-rebuild-execution-template.md`.
   It treats the rebuilt edge host as replaceable data-plane capacity, not as
-  the current Aliyun control-plane host, HP, or a restart of the retired AWS
-  nodes. It requires an exact approval phrase before clean host
-  provisioning/bootstrap/private validation and explicitly keeps DNS,
+  the Aliyun control-plane host described by that historical runbook, HP, or a
+  restart of the retired AWS nodes. It requires an exact approval phrase before
+  clean host provisioning/bootstrap/private validation and explicitly keeps DNS,
   subscription output, user traffic, public Admin, AWS lifecycle recovery,
   node termination, and security-group deletion out of scope. A fresh
   read-only preflight is recorded in
@@ -921,10 +927,10 @@ Current architecture priorities:
   active, `aegis.service` remains failed as a separate follow-up, and exact
   approval is still required before any clean edge execution.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
-  opaque artifacts, and rendering authoritative in the control plane. CI has
-  moved off the current Aliyun server, and that host now serves the approved
-  public subscription-distribution boundary while keeping the app private,
-  Admin blocked, and edge data-plane activation out of scope.
+  opaque artifacts, and rendering authoritative in the Vultr Japan control
+  plane. Treat the former Aliyun subscription-distribution boundary as
+  historical execution evidence; it does not override the current Vultr
+  Japan/Singapore lane without a fresh Risk A inventory and explicit approval.
 - Edge Data Plane: AWS Singapore `prod-edge-a/b` were stopped under an
   accepted-outage cleanup decision and later permanently terminated with their
   security groups deleted. New edge capacity now needs clean rebuild planning;
@@ -1015,10 +1021,10 @@ Current architecture priorities:
   `docs/CHANNEL_CANARY_SERVER_SELECTION.md` and
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`; repository renderer/config support
   does not authorize server creation or remote protocol deployment by itself.
-  The Technical MVP baseline wording is now aligned with the current Aliyun
-  subscription boundary and stopped AWS edge state: SS remains a legacy
-  compatibility reference only, not a current default production channel and
-  not proof of currently serving edge traffic. The next TUIC
+  The Technical MVP baseline wording is now aligned with the current Vultr
+  Japan control-plane and Vultr Japan/Singapore data-plane direction: SS
+  remains a legacy compatibility reference only, not a current default
+  production channel. The historical TUIC
   Stage 0 read-only inventory handoff is
   `docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md`;
   it requires the exact inventory approval phrase before any live inventory and
@@ -1042,6 +1048,7 @@ Current architecture priorities:
 
 Use these docs for detail:
 
+- `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md`
 - `docs/PROJECT_TOPOLOGY.md`
 - `docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md`
 - `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
@@ -1079,23 +1086,24 @@ work.
 - Hysteria2 runtime config must render `outbounds` as named list entries and
   preserve service-user-readable config ownership when applying credentials.
 
-- Current subscription-distribution status: Aliyun promotion executed for
-  `sub.globalcirclecat.com`; edge data-plane service is still not activated.
-- Current DNS records:
+- Historical Aliyun subscription-distribution status: promotion executed for
+  `sub.globalcirclecat.com`; this does not describe the current Vultr lane.
+- Historical DNS records from that execution period:
   `sub.globalcirclecat.com -> 47.251.178.125` and
   `ss-sg.globalcirclecat.com -> 13.215.156.159`.
-- `sub.globalcirclecat.com` serves the Aliyun public subscription boundary over
+- During that historical period, `sub.globalcirclecat.com` served the Aliyun
+  public subscription boundary over
   HTTP/HTTPS with `/api/health` returning 200, public Admin/root returning 404,
   and no-token subscription refresh returning 401. Public Admin is not exposed.
-- `ss-sg.globalcirclecat.com` remains on the old AWS address by design;
+- During that historical period, `ss-sg.globalcirclecat.com` remained on the
+  old AWS address by design;
   edge traffic activation was not approved in the promotion gate.
 - AWS Singapore `prod-edge-a` and `prod-edge-b` are permanently terminated
   under the 2026-05-29 cleanup record; their associated security groups were
   deleted, and rollback by starting those instances is waived.
 - Legacy blue remains stopped for controlled review and was not terminated.
-- HTTPS and public subscription endpoints on the retired AWS nodes are not the
-  current subscription-distribution authority after Aliyun promotion; edge
-  traffic still needs clean rebuild or a separately approved new recovery path.
+- HTTPS and public subscription endpoints on the retired AWS nodes were not the
+  subscription-distribution authority after Aliyun promotion.
 - The active opaque artifact canary exists for controlled operator validation.
   The full import URL is stored only in a local `C:\tmp\...` file and must not
   be pasted, committed, logged, or written into docs.
@@ -1160,9 +1168,9 @@ work.
   validation scope, rollback/stop posture, hard stops, and next gates. It does
   not execute cloud provisioning, DNS changes, subscription-output changes,
   user traffic, public Admin exposure, AWS lifecycle recovery, node
-  termination, or security-group deletion. It also keeps the current Aliyun
-  subscription-control host and HP out of the edge-node role. The matching
-  read-only preflight is recorded in
+  termination, or security-group deletion. It also keeps the Aliyun
+  subscription-control host described by that historical runbook and HP out of
+  the edge-node role. The matching read-only preflight is recorded in
   `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-preflight.md`.
   It excludes proxy-contaminated local Windows DNS/TCP checks, uses AliDNS and
   Aliyun remote-vantage evidence, confirms `sub` on Aliyun, `ss-sg` on the old
@@ -1477,9 +1485,9 @@ operator approval, validation, and rollback path exist:
   and
   `docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md`.
   It is not staging, not production, and not deploy approval.
-- Aliyun state-preserving source copy remains blocked unless the operator
+- Historical Aliyun state-preserving source copy remains blocked unless the operator
   rejects clean-start and approves a separate source-rescue path. The
-  current Aliyun candidate-preparation record is
+  Aliyun candidate-preparation record is
   `docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md`.
   The latest private state-copy preflight record is
   `docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md`.
@@ -1517,10 +1525,9 @@ operator approval, validation, and rollback path exist:
   subscription boundary, public Admin remains blocked, `ss-sg` remains
   unchanged, edge traffic is not activated, and the Aliyun `aegis.service`
   follow-up remains open.
-- Clean fallback `sub-control-a` candidate provisioning now remains only a
-  fallback if the current Aliyun path is rejected; state-preserving copy,
-  public-boundary rerun, or additional promotion work still needs separate
-  A-tier approval.
+- Clean fallback `sub-control-a` candidate provisioning remains a
+  provider-neutral replacement or recovery pattern; state-preserving copy,
+  public-boundary work, or promotion still needs separate A-tier approval.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
   `prod-edge-a` / `prod-edge-b` closes during key exchange from the current
   operator environment. See
@@ -1769,12 +1776,10 @@ The remaining queued items are A-tier and remain blocked:
 - `A1-legacy-query-token-retirement`
 - `A2-physical-control-edge-split`
 
-For A2, the preferred first step is now the role split in
-`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: local Linux manual CI first,
-then Aliyun production-control candidate inventory, then controlled
-non-Aliyun node drain / retirement after Aliyun promotion. Do not start either
-A-tier item without a specific runbook, read-only inventory, operator approval,
-validation plan, and rollback evidence.
+For A2, use `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` and the current
+single-control-plane / multi-data-plane records before selecting a new gate.
+Do not start either A-tier item without a specific runbook, read-only
+inventory, operator approval, validation plan, and rollback evidence.
 
 Latest local Linux CI candidate inventory:
 
@@ -1807,7 +1812,8 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - `docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md`
 - `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md`
 - `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`
-- The current Aliyun SWAS host is reachable through SSH alias `miyao`.
+- The 2026-05-26 Aliyun SWAS inventory recorded SSH access through alias
+  `miyao`.
 - It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
   `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
 - No active manual-CI workspace, repository archive, GitHub CLI config, or git
@@ -1887,12 +1893,12 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   query-token retirement runbook now exists and deliberately separates artifact
   issuance from legacy-token retirement; neither gate has been executed.
 
-Latest Aliyun user-management / subscription-distribution decision:
+Historical Aliyun user-management / subscription-distribution decision:
 
 - `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
-- Near-term target: Aliyun becomes the user-management and subscription
-  distribution platform, HP remains local CI/operator lab, and all other nodes
-  are drained and retired through explicit A-tier gates.
+- Superseded target: Aliyun was formerly planned as the user-management and
+  subscription-distribution platform. The current production direction is
+  Vultr Japan control plane plus Vultr Japan/Singapore data-plane capacity.
 - The separate technical MVP branch is PR #129,
   `codex/local-edge-channel-probe-harness`; it owns local edge channel probe,
   benchmark, and manager work and must not be coupled to Aliyun production
@@ -2047,9 +2053,8 @@ High-value entrypoints:
 - `docs/ENVIRONMENT_TOPOLOGY.md` - repo, GitHub, branch, and AWS role map.
 - `docs/DEPLOYMENT_FLOW.md` - deployment, staging, promotion, rollback flow.
 - `docs/CI_MANUAL_VALIDATION.md` - manual validation host workflow.
-- `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` - target split for current
-  Aliyun production subscription control, local Linux manual CI, and controlled
-  non-Aliyun node drain / retirement.
+- `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` - historical Aliyun/local-CI
+  split and node-retirement plan.
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md` - clean
   `sub-control-a` candidate fallback gates for the future physical split.
 

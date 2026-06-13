@@ -3,24 +3,23 @@
 Last updated: 2026-05-26, Asia/Shanghai.
 
 > Status:
-> - Type: Active architecture and Risk A planning document
+> - Type: Superseded historical planning document
 > - Risk: C for this document; A for any production, cloud, DNS, Nginx,
 >   systemd, SQLite, secret, node, runtime, CI-host, or cutover mutation
 > - Execution authority: Does not authorize production migration, CI-host
 >   mutation, DNS changes, Nginx changes, SQLite movement, secret movement,
 >   edge-node creation, service changes, or cleanup by itself
 > - Production impact: None
-> - Source of truth for: the target rebuild direction where the current Aliyun
->   server becomes the production subscription control plane, a local Linux
->   server becomes manual CI, and non-Aliyun / non-HP nodes are drained through
->   controlled retirement gates
+> - Source of truth for: historical Aliyun-first planning only. The current
+>   docs/status direction is `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md`:
+>   Vultr Japan control plane plus Vultr Japan/Singapore data-plane capacity.
 
 ## Purpose
 
-The project direction is now:
+Historical project direction captured by this superseded plan:
 
 ```text
-current Aliyun server:
+former Aliyun server:
   production subscription control plane
 
 local Linux server:
@@ -31,13 +30,12 @@ clean rebuild servers:
   controlled drain and retirement queue
 ```
 
-This plan replaces the earlier default assumption that a clean new server is
-the preferred first physical subscription-control candidate. After the latest
-business split, the default near-term target is tighter: Aliyun for
-user management/subscription distribution, HP for validation/operator lab, and all
-other nodes drained and retired after explicit A-tier gates. The existing clean
-new-server control-plane runbook remains a fallback if the Aliyun host cannot
-be safely promoted.
+This historical plan previously replaced the earlier default assumption that a
+clean new server was the preferred first physical subscription-control
+candidate. It is no longer the active default; the current direction uses
+Vultr Japan control plane plus Vultr Japan/Singapore data-plane capacity. The
+clean new-server control-plane runbook remains a provider-neutral recovery
+pattern.
 
 This document is planning only. It records the target boundaries and execution
 order so later Risk A work can be performed without mixing CI, production
@@ -61,9 +59,9 @@ sub-control-a:
   does not serve as a general edge traffic node
 ```
 
-The current Aliyun server can be considered for this role only after it is
-removed from the CI lane, cleaned, inventoried, and validated through a separate
-Risk A execution record.
+This historical plan considered the Aliyun server for this role only after it
+was removed from the CI lane, cleaned, inventoried, and validated through a
+separate Risk A execution record. It is no longer the current default.
 
 ### Local Linux Manual CI Host
 
@@ -128,7 +126,7 @@ flowchart LR
   end
 
   subgraph "Subscription Control Plane"
-    Aliyun["sub-control-a\ncurrent Aliyun server after cleanup and approval"]
+    Aliyun["historical sub-control-a candidate\nformer Aliyun server"]
     Nginx["Nginx public boundary"]
     App["proxy-gateway app"]
     Store["SQLite / artifact state"]
@@ -140,8 +138,8 @@ flowchart LR
   end
 
   subgraph "Retirement Queue"
-    A["prod-edge-a\ncurrent AWS dependency"]
-    B["prod-edge-b\ncurrent AWS secondary"]
+    A["prod-edge-a\nhistorical AWS dependency"]
+    B["prod-edge-b\nhistorical AWS secondary"]
     C["historical AWS nodes\nstopped / review"]
   end
 
@@ -151,8 +149,8 @@ flowchart LR
   Nginx --> Aliyun --> App --> Store
   Admin --> App
   App -->|"Subscription / channel policy"| Client
-  Client -.->|"existing traffic until drain"| A
-  Client -.->|"existing secondary until drain"| B
+  Client -.->|"historical traffic until drain"| A
+  Client -.->|"historical secondary until drain"| B
   A -.->|"drain / stop / terminate gates"| C
   B -.->|"drain / stop / terminate gates"| C
   HP -.->|"operator research evidence only"| Aliyun
@@ -239,8 +237,8 @@ cleanup completed
 Goal:
 
 ```text
-Verify whether the current Aliyun server can safely become the production
-subscription control plane after CI is moved away.
+Historical goal: verify whether the Aliyun server could safely become the
+production subscription control plane after CI moved away.
 ```
 
 Required approval phrase before any Aliyun host mutation:
@@ -522,16 +520,15 @@ self-hosted runner registration
 The preferred target is:
 
 ```text
-Use the current Aliyun server as the future production subscription
-control-plane candidate after it exits the CI lane.
+Historical decision only: the Aliyun server was formerly considered as a
+future production subscription control-plane candidate after it exited the CI
+lane. The current direction uses the Vultr Japan control-plane baseline.
 
 Use a local Linux server as manual CI.
 
-Drain and retire non-Aliyun / non-HP nodes after Aliyun promotion and
-observation, unless a later approved technical MVP integration gate requires a
-new edge.
+Historical sequence: drain and retire non-Aliyun / non-HP nodes after Aliyun
+promotion and observation.
 ```
 
-The immediate next execution should be Aliyun private state-copy validation
-approval, not production DNS, not public Admin exposure, not edge traffic, not
-node shutdown, and not Aliyun production promotion.
+Do not resume this sequence without a fresh Aliyun reactivation inventory and
+explicit Risk A approval.
