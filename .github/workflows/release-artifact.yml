@@ -1,0 +1,64 @@
+name: Release Artifact
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Release label. Defaults to the current short SHA.
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-artifact-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package:
+    name: Package source artifact
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Resolve release label
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          release="${{ inputs.release }}"
+          if [ -z "$release" ]; then
+            release="$(git rev-parse --short=12 HEAD)"
+          fi
+          case "$release" in
+            *[!A-Za-z0-9._-]*|'')
+              echo "Invalid release label: $release" >&2
+              exit 1
+              ;;
+          esac
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+      - name: Create source zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .release-artifacts
+          artifact=".release-artifacts/proxy-gateway-${{ steps.release.outputs.release }}.zip"
+          git archive --format=zip --output "$artifact" HEAD
+          sha256sum "$artifact" | tee "$artifact.sha256"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: proxy-gateway-${{ steps.release.outputs.release }}
+          path: |
+            .release-artifacts/proxy-gateway-${{ steps.release.outputs.release }}.zip
+            .release-artifacts/proxy-gateway-${{ steps.release.outputs.release }}.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
