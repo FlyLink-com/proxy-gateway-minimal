@@ -1,6 +1,6 @@
 # Production Edge Fleet Plan
 
-Last updated: 2026-06-03, Asia/Shanghai.
+Last updated: 2026-06-13, Asia/Shanghai.
 
 > Status:
 > - Type: Active planning document
@@ -24,24 +24,31 @@ prod-edge-b: historical iteration/canary secondary slot; carrying instance termi
 prod-edge-c: future third recovery/standby slot
 ```
 
-This is edge data-plane planning. The target subscription control-plane split
-lives in `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`.
+This is edge data-plane planning. The current subscription control-plane split
+is the Vultr Japan control plane plus Vultr Japan / Singapore data-plane lane
+described in `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` and
+`docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md`.
 
-Latest business decision:
+Current status override, 2026-06-13:
 
 ```text
-Aliyun becomes the near-term user-management / subscription-distribution
-platform.
-HP remains local CI and operator lab.
-Non-Aliyun / non-HP nodes moved through controlled drain and retirement after
-Aliyun promotion.
+Vultr Japan is the current production control-plane authority.
+Vultr Japan and Vultr Singapore are the active production data-plane direction.
+Historical Aliyun near-term distribution wording below is no longer current
+production authority.
+Reusable clean-node work follows docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md.
 ```
+
+The AWS staging node-image readiness validation is recorded in
+`docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md`.
+That record validates the no-secret image readiness and first-boot packet helper
+path with synthetic safe input only; it is not production activation and not
+control-plane registration completion.
 
 Therefore this document remains useful for understanding historical edge slot
 dependencies and future clean-edge rebuild planning, but it is not live
-inventory and not proof of active edge capacity. Use
-`docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md` for the current
-drain / stop / termination gates.
+inventory and not proof of active edge capacity. Use the current Vultr
+status/plan docs and node-image runbook before any new edge-node work.
 
 The plan is documentation-only. It does not rename current runtime nodes,
 change generated subscriptions, create a third node, change DNS, change
@@ -52,11 +59,23 @@ production `.env`, copy secrets, copy SQLite data, or move traffic.
 - `docs/NODE_NAMING.md`: provider-neutral node naming policy.
 - `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`: target split between
   subscription control-plane authority and edge data-plane capacity.
+- `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` and
+  `docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md`: current Vultr Japan
+  control-plane plus Vultr Japan / Singapore data-plane production lane.
+- `docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md`: current reusable no-secret
+  machine-image / first-boot registration runbook for new production-capable
+  data-plane nodes.
+- `docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md`: current C-tier closeout
+  plan for turning node-image readiness into control-plane registration,
+  protected material handoff, desired-state generation, and receipt-gated
+  rendering. Execution remains Risk A.
 - `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: current target split where
-  Aliyun becomes the subscription control-plane candidate, local Linux becomes
-  manual CI, and non-Aliyun / non-HP nodes drain through controlled retirement.
+  Aliyun became the subscription control-plane candidate, local Linux became
+  manual CI, and non-Aliyun / non-HP nodes drained through controlled
+  retirement. This is historical unless a fresh Risk A gate reopens Aliyun.
 - `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`: latest business
-  split and node drain / stop / termination gates.
+  split and node drain / stop / termination gates for the historical Aliyun
+  promotion lane.
 - `docs/JAPAN_TUIC_PER_ORDER_CREDENTIAL_UPGRADE_RUNBOOK.md`: current
   production gate for upgrading the Japan TUIC data-plane node to support
   per-order credential add, disable, rotate, and activation before forced order
@@ -101,15 +120,14 @@ prod-edge-c target slot:
   Current GitHub state: repo-only build-material package under ops/edge-node/
 ```
 
-Aliyun now carries the approved public subscription-distribution boundary.
-The target direction is to keep subscription authority separate from
-replaceable edge capacity. This document only defines edge slots. It does not
-authorize `sub-control-a` / `sub-control-b` creation, database movement,
-artifact movement, DNS migration, clean edge bootstrap, or runtime role changes.
-The preferred subscription-control path is governed by
-`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`. The clean new-server
-control-plane path remains fallback and must not be treated as `prod-edge-c` or
-as customer proxy capacity.
+Vultr Japan now carries the documented production control-plane authority for
+the current `globalcirclecat.cloud` lane. The target direction is to keep
+subscription authority separate from replaceable edge capacity. This document
+only defines edge slots. It does not authorize `sub-control-a` / `sub-control-b`
+creation, database movement, artifact movement, DNS migration, clean edge
+bootstrap, or runtime role changes. New reusable node work is governed by
+`docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md` and still requires separate Risk A
+production gates before any real node activation.
 
 The exact cloud provider, instance ID, public IP, and security group mappings
 belong in execution records and restricted operational inventory. They should
@@ -370,14 +388,18 @@ Before runtime work starts, decide:
 Recommended sequence:
 
 ```text
-1. Promote Aliyun only through the user-management / subscription-distribution
-   runbook.
-2. Use this edge fleet plan to identify current AWS node dependencies.
-3. Drain AWS nodes from DNS and generated subscription output after Aliyun
-   promotion.
-4. Stop non-Aliyun / non-HP nodes only after explicit drain/stop approval.
-5. Terminate instances and delete security groups only after the observation
-   window proves no rollback dependency remains.
+1. Use the Vultr Japan / Singapore status and single-control-plane /
+   multi-data-plane plan as the current production orientation.
+2. Use this edge fleet plan only for slot semantics, historical dependency
+   archaeology, and future clean-edge rebuild planning.
+3. Use docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md for reusable no-secret node-image
+   readiness and first-boot registration design.
+4. Treat the 2026-06-13 AWS staging validation record as staging proof only:
+   it does not activate a production node or complete control-plane
+   registration.
+5. Move to a separate Risk A control-plane closeout gate before any production
+   first-boot registration ingestion, protected material handoff, desired-state
+   generation, receipt-gated rendering, DNS, Nginx, firewall, or traffic change.
 ```
 
 For the third-node work, start with docs and repo-only build material

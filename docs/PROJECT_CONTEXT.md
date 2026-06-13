@@ -54,6 +54,24 @@ provisioning runbook`), with open PR count 0; PR #299, PR #302, PR #303, PR
 merge. Run `git status` and `gh pr list` before making any new branch or
 production claim.
 
+The AWS staging node-image readiness validation is recorded in
+`docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md`.
+It validates the no-secret image readiness and first-boot packet helper path
+with synthetic safe input only. It did not register a production node, mutate
+DNS/Nginx/firewall, activate traffic, inject protected runtime material, or
+create live orders. The next stage is control-plane closeout: node registry
+ingestion, first-boot registration packet handling, protected material handoff,
+desired-state generation, receipt-gated subscription rendering, operator
+approval, validation, and rollback framing.
+That closeout plan is recorded in
+`docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md`; it keeps order issuance as
+a control-plane action and edge-agent pull/apply as a lifecycle reconciliation
+path for apply receipts, expiry, disable, rotate, usage, and rollback.
+The next approval template is
+`docs/production-replacement-records/2026-06-13-control-plane-node-registration-closeout-approval-packet.md`;
+it must be filled with exact release, artifact, SHA-256, current release, and
+target-node details before any production execution.
+
 Detailed navigation lives in `docs/README.md`. Structured project state lives in
 `project-state/*.json`; it is a coordination aid, not a runtime control plane.
 The `master`/archive boundary lives in `docs/MASTER_ARCHIVE_BOUNDARY.md`: keep

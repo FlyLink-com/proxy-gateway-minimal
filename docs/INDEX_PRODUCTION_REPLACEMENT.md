@@ -1,5 +1,13 @@
 # Production Replacement Index
 
+## Current Node-Image Readiness Record
+
+| Document | Purpose | Status | When to read |
+| --- | --- | --- | --- |
+| `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md` | AWS staging execution record for validating the no-secret node-image readiness and first-boot packet helper path with synthetic safe input. | Execution record; staging proof only, not production activation and not control-plane registration completion. | Read before claiming production-node image readiness, preparing the next control-plane node-registration gate, or creating image-based data-plane capacity. |
+| `docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md` | Current closeout plan for converting node-image readiness into control-plane node registration, material handoff, desired-state generation, and receipt-gated rendering. | Active C-tier closeout plan; runtime/production activation remains Risk A. | Read before approving the next node-registration, first-boot ingestion, protected material, desired-state, or receipt-gated rendering gate. |
+| `docs/production-replacement-records/2026-06-13-control-plane-node-registration-closeout-approval-packet.md` | Exact-approval template for the next control-plane node-registration closeout gate, including issuance versus lifecycle boundaries, validation, and rollback. | Approval packet only; no execution authority until filled with exact release/artifact/current-release details and approved. | Read before preparing or approving the Risk A control-plane node-registration activation gate. |
+
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
 | `docs/production-replacement-preflight/2026-05-24-blue-green-preflight.md` | Read-only production replacement preflight facts. | Execution record; historical facts for the named date. | Read when checking whether green creation was previously considered ready. |
