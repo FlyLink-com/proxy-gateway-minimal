@@ -32,6 +32,7 @@ Git templates/docs = non-secret intent, schemas, and package shape
 | Secrets | console token, SS password, payment webhook secret, protocol credentials, private cert material | operator / secret injection flow | protected host env, protected files, handoff | no | no raw values; status only | A in production | rotate secret and restore previous protected env if safe |
 | Management source | `ADMIN_ALLOWED_CIDRS`, trusted operator source, loopback/private admin access | `gccgw` installer plus operator security review | protected env / host config | examples only | operator UI may edit with preview | A for production boundary | restore prior allowlist and validate admin/public boundary |
 | Trusted proxy source | `TRUSTED_PROXY_CIDRS`, proxy IPs whose forwarded headers are trusted | operator security review | protected env / host config | examples only | operator UI may edit with preview | A for production boundary | restore prior trusted proxy list |
+| Data-plane agent source | `EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS`, loopback/private agent pull/apply sources | operator security review | protected env / host config | examples only | operator UI may edit with preview | A for production boundary | restore prior allowlist and validate internal-agent boundary |
 | Public boundary | public site, `/api/health`, `/api/public/leads`, `/sub/*`, blocked `/api/admin/*` | package template + operator UI preview | `public-boundary.json`, Nginx plan, runtime config | non-secret intent only | preview/edit expected policy; apply gated | A for Nginx/public mutation | restore previous Nginx config and validate routes |
 | Subscription products | monthly/yearly package ids, durations, default pool, refresh policy | Admin Web | control DB / safe settings table | default template only | yes | B unless schema/prod migration | revert settings row/version |
 | Rate limits | subscription refresh window/max, temp-link TTL | Admin Web | control DB or protected runtime settings | default template only | yes | B for repo/local, A for production runtime change if service reload required | restore previous setting and validate endpoint behavior |
@@ -52,6 +53,7 @@ surfaces. It is not the same as customer access.
 ```text
 ADMIN_ALLOWED_CIDRS = who may reach protected admin/platform routes
 TRUSTED_PROXY_CIDRS = which reverse proxies may supply trusted client IP headers
+EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS = who may reach internal data-plane agent routes
 ```
 
 Examples:

@@ -67,7 +67,9 @@ export function createApp(state, options = {}) {
     resolveClientIpFn: clientIpResolver
   }));
   if (dataPlaneAgentRoutesEnabled) {
-    app.use(dataPlaneAgentRoutes(state));
+    app.use(dataPlaneAgentRoutes(state, {
+      resolveClientIpFn: clientIpResolver
+    }));
   }
   app.use(createAuthMiddleware({
     token: state.consoleToken,

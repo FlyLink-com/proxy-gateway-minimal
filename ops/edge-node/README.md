@@ -116,9 +116,12 @@ action:
 8. Inject approved production secrets without recording them in Git, PRs, docs, or chat.
 9. Restore an approved SQLite backup and run pragma integrity_check.
 10. Install `gccgw-edge-agent.service` only when a separate data-plane agent
-    activation gate approves the private pull/apply/receipt path. The template
-    is oneshot and defaults to `EDGE_AGENT_DRY_RUN=true`; production apply
-    requires reviewed protected env material and a separate approval.
+    activation gate approves the private pull/apply/receipt maintenance path.
+    The service template is oneshot and defaults to `EDGE_AGENT_DRY_RUN=true`;
+    production apply requires reviewed protected env material and a separate
+    approval. Do not use the agent as the order issuance trigger: user orders
+    are issued by the control plane delivery path, while agent pulls are for
+    reconciliation, expiry/rotation handling, and receipt confirmation.
     For a one-order smoke gate, set `EDGE_AGENT_EDGE_CREDENTIAL_REFS` in the
     protected agent environment to the reviewed credential refs for that order;
     the control plane returns a scoped desired state and the resulting receipt

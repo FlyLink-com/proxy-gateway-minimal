@@ -589,6 +589,7 @@ export function createRuntimeState(options = {}) {
   const publicSubscriptionBaseUrl = String(env.PUBLIC_SUBSCRIPTION_BASE_URL || `http://${host}:${consolePort}`).trim().replace(/\/+$/, "");
   const adminAllowedCidrs = parseCsv(env.ADMIN_ALLOWED_CIDRS, DEFAULT_ADMIN_ALLOWED_CIDRS);
   const trustedProxyCidrs = parseCsv(env.TRUSTED_PROXY_CIDRS, DEFAULT_TRUSTED_PROXY_CIDRS);
+  const dataPlaneAgentAllowedCidrs = parseCsv(env.EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS, DEFAULT_ADMIN_ALLOWED_CIDRS);
   const dataPlaneAgentRoutesEnabled = envFlag(env.EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED);
   const tempLinkTtlMinutes = Number.parseInt(env.SUBSCRIPTION_TEMP_LINK_TTL_MINUTES, 10) || 24 * 60;
   const ownsSubscriptionStore = !options.subscriptionStore && !options.subscriptionRepository && !options.subscriptionCore && !options.subscriptionService;
@@ -1111,6 +1112,7 @@ export function createRuntimeState(options = {}) {
     security: {
       adminAllowedCidrs,
       trustedProxyCidrs,
+      dataPlaneAgentAllowedCidrs,
       subRateLimit: {
         windowMs: Number.parseInt(env.SUB_RATE_LIMIT_WINDOW_MS, 10) || 60000,
         max: Number.parseInt(env.SUB_RATE_LIMIT_MAX, 10) || 30

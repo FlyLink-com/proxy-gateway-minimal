@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { DEFAULT_ADMIN_ALLOWED_CIDRS, createIpAllowlist, resolveClientIp } from "../services/ip-address.mjs";
 
 function statusFromError(error) {
   if (Number.isInteger(error?.statusCode)) {
@@ -43,12 +44,22 @@ function queryRefs(value) {
     .filter(Boolean);
 }
 
-export function dataPlaneAgentRoutes(state) {
+export function dataPlaneAgentRoutes(state, {
+  resolveClientIpFn = resolveClientIp
+} = {}) {
   const service = state.platform?.dataPlaneAgentService;
+  const isAllowedSourceIp = createIpAllowlist(
+    state.security?.dataPlaneAgentAllowedCidrs || DEFAULT_ADMIN_ALLOWED_CIDRS
+  );
   const router = Router();
 
   router.use("/api/internal/data-plane-agent", (req, res, next) => {
     try {
+      const clientIp = resolveClientIpFn(req);
+      if (!isAllowedSourceIp(clientIp)) {
+        res.status(403).json({ error: "Forbidden" });
+        return;
+      }
       req.dataPlaneAgentIdentity = service.authenticate({
         authorization: req.headers.authorization
       });

@@ -290,6 +290,22 @@ test("desired-state route scopes payload by requested edge credential refs", asy
   }
 });
 
+test("agent routes reject public source IPs even with a valid node token", async () => {
+  const appState = state();
+  const app = createApp(appState, { clientIpResolver: () => "203.0.113.10" });
+  const { server, baseUrl } = await listen(app);
+  try {
+    const response = await fetch(`${baseUrl}/api/internal/data-plane-agent/desired-state`, {
+      headers: agentHeaders()
+    });
+    assert.equal(response.status, 403);
+    assert.deepEqual(await response.json(), { error: "Forbidden" });
+    assert.equal(appState._controlStore.receipts.length, 0);
+  } finally {
+    server.close();
+  }
+});
+
 test("receipt route rejects forbidden material and records valid receipts", async () => {
   const appState = state();
   const { server, baseUrl } = await listen(createApp(appState));
