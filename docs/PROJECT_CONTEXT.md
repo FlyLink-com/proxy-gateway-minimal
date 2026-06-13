@@ -48,10 +48,10 @@ records:
 Do not derive current architecture from stale historical Aliyun/AWS records, old
 checkout paths, archive directories, runtime-only residue, or `master` alone.
 As of the latest GitHub/mainline closeout, `master` is the follow-on
-development baseline at `935f482` (`Merge pull request #308: Record AWS
-staging control/data-plane validation`), with open PR count 0; PR #299, PR
-#302, PR #303, PR #304, PR #305, PR #306, PR #307, and PR #308 are merged, and
-PR #300 was closed without merge. Run `git status` and `gh pr list` before
+development baseline at `dddd828` (`Add edge node registration ingestion`),
+with open PR count 0; PR #299, PR #302, PR #303, PR #304, PR #305, PR #306,
+PR #307, PR #308, and PR #309 are merged, and PR #300 was closed without
+merge. Run `git status` and `gh pr list` before
 making any new branch or production claim.
 
 The AWS staging node-image readiness validation is recorded in
@@ -121,8 +121,8 @@ The service-lane integration closeout record lives in
 `docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md`. It is now historical closeout
 context for the merged PR #299 / PR #302 integration lane rather than an active
 branch plan. As of the latest GitHub/mainline closeout, `master` is at
-`935f482`, open PR count is 0, and PR #299, PR #302, PR #303, PR #304, PR #305,
-PR #306, PR #307, and PR #308 are merged; PR #300 was closed without merge. Follow-up
+`dddd828`, open PR count is 0, and PR #299, PR #302, PR #303, PR #304, PR #305,
+PR #306, PR #307, PR #308, and PR #309 are merged; PR #300 was closed without merge. Follow-up
 work should branch from clean `master` unless a task explicitly states
 otherwise. Always verify the exact local branch and worktree state with
 `git status`; this document does not assert that a worktree is clean.
@@ -1576,9 +1576,9 @@ operator approval, validation, and rollback path exist:
   tenant state, or SQLite authority changes.
 
 GitHub-hosted Actions must be checked per PR instead of treated as globally
-blocked. As of the latest GitHub/mainline closeout, `master` is at `935f482`,
+blocked. As of the latest GitHub/mainline closeout, `master` is at `dddd828`,
 open PR count is 0, PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR
-#307, and PR #308 are merged, and PR #300 was closed without merge. Use local validation and
+#307, PR #308, and PR #309 are merged, and PR #300 was closed without merge. Use local validation and
 `docs/CI_MANUAL_VALIDATION.md` when a clean fallback is actually needed. Manual
 CI is not staging, production, or deployment approval.
 
