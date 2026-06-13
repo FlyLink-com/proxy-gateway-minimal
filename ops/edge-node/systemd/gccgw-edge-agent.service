@@ -1,0 +1,22 @@
+[Unit]
+Description=GlobalCircle Gateway Edge Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=proxy-gateway
+Group=proxy-gateway
+WorkingDirectory=/opt/proxy-gateway-minimal-candidate/current
+Environment=NODE_ENV=production
+Environment=GCCGW_ROOT=/opt/proxy-gateway-minimal-candidate/current
+Environment=EDGE_AGENT_DRY_RUN=true
+EnvironmentFile=/opt/proxy-gateway-minimal-candidate/protected/edge-agent.env
+ExecStart=/bin/bash scripts/edge-agent-once.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/etc/xray /etc/hysteria /etc/mihomo /var/backups/gccgw-edge /opt/proxy-gateway-minimal-candidate/protected
+
+[Install]
+WantedBy=multi-user.target

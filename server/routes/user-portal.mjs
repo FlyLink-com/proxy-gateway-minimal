@@ -55,9 +55,10 @@ export function userPortalRoutes(state, options = {}) {
       }
       return;
     }
+    const humanVerification = req.body?.humanVerification ?? {};
     humanChallenges.verifyChallenge({
-      challengeRef: req.body?.humanVerification?.challengeRef,
-      answer: req.body?.humanVerification?.answer,
+      challengeRef: humanVerification.challengeRef ?? humanVerification.challengeId,
+      answer: humanVerification.answer ?? humanVerification.challengeAnswer,
       scope,
       requestContext: requestContext(req)
     });

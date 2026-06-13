@@ -1,6 +1,6 @@
 # Single Control Plane / Multi Data-Plane Plan
 
-Last updated: 2026-06-08, Asia/Shanghai.
+Last updated: 2026-06-11, Asia/Shanghai.
 
 > Status:
 > - Type: Active architecture and implementation plan
@@ -157,6 +157,34 @@ data, or SQLite rows.
 A `pending` handoff receipt is a successful control-plane lifecycle step, not a
 runtime listener proof. It keeps order creation from failing while preserving
 the separate A-tier gate for applying the handoff on the remote node.
+
+### Desired-State Notification And Receipt Gate
+
+Repository source now includes the safe control-plane side of the future-order
+flow:
+
+```text
+new portal order
+  -> durable order and per-channel edge credentials
+  -> latest desired-state calculated from the control store
+  -> pending notification recorded for remote-data-plane channels
+  -> data-plane agent pulls/apply through protected server-to-server path
+  -> data-plane posts a redacted applied receipt
+  -> renderer may include the remote channel only after the matching receipt
+```
+
+The notification record is an outbox-style coordination fact. It may store
+`nodeRef`, `channelRef`, `desiredStateRef`, `generation`, `reason`, `status`,
+and timestamps. It must not store raw passwords, UUIDs, private keys,
+subscription URLs, runtime config, logs, environment values, customer data, or
+SQLite rows.
+
+The render guard remains fail-closed: `remote-data-plane-handoff` channels are
+withheld from subscription output until the current desired-state has a matching
+`applied` receipt with config-test, service-active, and listener evidence. A
+repo-level passing test is not production activation; production deployment,
+schema migration, edge-agent apply, service restart, and live-order smoke remain
+separate Risk A gates.
 
 ## Usage Accounting
 

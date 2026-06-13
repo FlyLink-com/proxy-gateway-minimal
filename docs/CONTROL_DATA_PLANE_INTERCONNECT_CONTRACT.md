@@ -1,6 +1,6 @@
 # Control Plane / Data Plane Interconnect Contract
 
-Last updated: 2026-06-01, Asia/Shanghai.
+Last updated: 2026-06-11, Asia/Shanghai.
 
 > Status:
 > - Type: Active architecture contract
@@ -246,6 +246,75 @@ Rules:
 - refreshing an artifact may change the user's current output but must remain
   scoped to that user's authorization.
 
+### Desired-State Pull / Receipt Contract
+
+Source:
+
+```text
+control-plane order and credential ledger
+```
+
+Destination:
+
+```text
+private data-plane agent route
+```
+
+Safe contents:
+
+```text
+nodeRef
+channelRef
+desiredStateRef
+generation
+edgeCredentialRef
+material fingerprint
+status / receipt summary
+timestamps
+```
+
+Not allowed:
+
+```text
+raw passwords
+UUID private material
+private keys
+subscription URLs
+runtime config dumps
+environment values
+logs
+SQLite rows
+customer data
+```
+
+For future orders, the control plane records a safe pending desired-state
+notification for remote data-plane channels. The data-plane agent may pull the
+current desired-state over a private authenticated path, apply it locally, and
+post a redacted receipt. User subscription output must not include that remote
+channel until the current desired-state has a matching applied receipt.
+
+Remote data-plane channel config must make this render gate explicit with
+`runtimeAdapter: "remote-data-plane-handoff"` and `requiresAppliedReceipt:
+true`. The renderer remains fail-closed for the remote adapter even if an older
+config omits the explicit flag, but current Vultr/Singapore templates must carry
+the flag so review scripts and operators can detect the intended gate without
+inferring it from adapter internals.
+
+Desired-state and receipts remain redacted coordination payloads. They carry
+safe refs, generations, channel refs, and material fingerprints only. Runtime
+material is available through a separate private authenticated material pull
+path scoped to the authenticated node, the current `desiredStateRef`, requested
+`edgeCredentialRef` values, and exact material digest matches. Summary material
+checks may expose only digest presence; material-mode responses are for the
+data-plane agent's protected local material store and must not be logged,
+documented, copied into Git, or returned to operators.
+
+For production smoke validation, the data-plane agent may request an explicit
+subset of `edgeCredentialRef` values. The control plane must derive a distinct
+scoped `desiredStateRef` and generation for that subset. Receipts for scoped
+states prove only that subset was applied; they must not satisfy the full
+aggregate desired-state receipt gate for a channel.
+
 ## Minimal Interface Between Projects
 
 The two projects should connect through this narrow interface:
@@ -255,13 +324,16 @@ data plane -> control plane:
   safe node facts
   safe health facts
   lifecycle/pool recommendation
+  redacted desired-state apply receipts
 
 control plane -> user client:
   authorized subscription output
 
 control plane -> data plane:
-  no direct traffic
+  safe desired-state refs over private authenticated routes
+  private node-scoped material pull by current desired-state digest
   no customer database authority
+  no direct customer proxy traffic
   only approved runtime config or node-retirement decisions through Risk A gates
 ```
 

@@ -38,6 +38,15 @@ function countActions(summary = {}) {
   };
 }
 
+function listenerReady(listener = {}) {
+  return (
+    listener.udp443 === true
+    || listener.tcp === true
+    || listener.present === true
+    || listener.listenerPresent === true
+  );
+}
+
 function receiptFromReport({
   report,
   channelRef,
@@ -54,7 +63,7 @@ function receiptFromReport({
     actionCounts: countActions(report.summary),
     configTestOk: runtimeReceipt.configTest?.ok === true,
     serviceActive: runtimeReceipt.service?.active === true,
-    listenerUdp443: runtimeReceipt.listener?.udp443 === true,
+    listenerUdp443: listenerReady(runtimeReceipt.listener),
     listenerTcp: runtimeReceipt.listener?.tcp === true,
     ...(runtimeReceipt.handoffRef ? { handoffRef: runtimeReceipt.handoffRef } : {}),
     backupRef: runtimeReceipt.backupRef,

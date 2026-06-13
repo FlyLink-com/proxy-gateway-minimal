@@ -31,18 +31,12 @@ const VULTR_MULTICHANNEL_ENV = {
   VULTR_HY2_HOST: "hy2.example.test",
   VULTR_HY2_PASSWORD: "synthetic-hy2-password",
   VULTR_HY2_SNI: "hy2.example.test",
-  SGP_TUIC_HOST: "sgp-tuic.example.test",
-  SGP_TUIC_UUID: "33333333-3333-4333-8333-333333333333",
-  SGP_TUIC_PASSWORD: "synthetic-sgp-tuic-password",
-  SGP_TUIC_SNI: "sgp-tuic.example.test",
-  SGP_VLESS_REALITY_HOST: "sgp-vless.example.test",
-  SGP_VLESS_REALITY_UUID: "44444444-4444-4444-8444-444444444444",
-  SGP_VLESS_REALITY_SNI: "www.sgp-example.test",
-  SGP_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
-  SGP_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
-  SGP_HY2_HOST: "sgp-hy2.example.test",
-  SGP_HY2_PASSWORD: "synthetic-sgp-hy2-password",
-  SGP_HY2_SNI: "sgp-hy2.example.test"
+  SGP_TUIC_STATIC_UUID: "33333333-3333-4333-8333-333333333333",
+  SGP_TUIC_STATIC_PASSWORD: "synthetic-sgp-tuic-password",
+  SGP_VLESS_STATIC_UUID: "44444444-4444-4444-8444-444444444444",
+  SGP_XRAY_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
+  SGP_XRAY_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
+  SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-password",
 };
 
 test("default proxy config is the Vultr multi-channel fallback", () => {

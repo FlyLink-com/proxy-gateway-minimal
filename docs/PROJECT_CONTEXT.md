@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-06-09, Asia/Shanghai.
+Last updated: 2026-06-13, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -25,6 +25,32 @@ Do not use this file as:
   verification.
 - A place to store secrets, tokens, subscription URLs, credentials, SQLite data,
   or customer data.
+
+## Current Architecture View
+
+Use this four-layer view as the current mental model before reading historical
+records:
+
+1. **Adapters:** User Portal, protected Admin/Operator, and CLI surfaces are
+   thin adapters over shared domain services. Public Admin is not a product
+   surface.
+2. **Control Plane:** Vultr Japan owns accounts, orders, subscription artifacts,
+   credential refs, desired-state notifications, render gating, and usage
+   ledger state.
+3. **Interconnect:** Private authenticated data-plane agent routes move only
+   redacted desired-state, node-scoped material batches, leases, and redacted
+   receipts between the control plane and data-plane agents.
+4. **Data Plane:** Vultr Japan and Vultr Singapore provide VLESS Reality,
+   Hysteria2, and TUIC runtime capacity. Singapore channels stay out of
+   rendered subscriptions until matching applied receipts prove the data plane
+   has applied the current desired-state.
+
+Do not derive current architecture from `master` alone, historical Aliyun/AWS
+records, old checkout paths, archive directories, or runtime-only residue.
+`feat/install-config-wizard` / PR #299 is the integration baseline;
+`codex/edge-agent-source-absorption` / draft PR #302 is the current edge-agent
+implementation lane; PR #300 is an overlapping sibling that still needs an
+explicit disposition.
 
 Detailed navigation lives in `docs/README.md`. Structured project state lives in
 `project-state/*.json`; it is a coordination aid, not a runtime control plane.
@@ -58,13 +84,16 @@ The branch and service operating model lives in
 `coded`, `tested`, `deployed`, `runtime-validated`, `merged`, and `archived`
 states, map current branches to service lanes, and prevent production runtime
 state from being confused with `master` or local worktree state.
-The current service-lane closeout plan lives in
-`docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md`: use it before staging,
-splitting, merging, or archiving work from the current
-`feat/install-config-wizard` branch. The local dirty worktree snapshot has been
-closed, but the branch remains a broad integration lane that mixes Admin UI,
-User Portal, control-plane services, edge runtime adapters, subscription
-rendering, usage accounting, project-state, docs, and validation artifacts.
+The service-lane integration closeout plan lives in
+`docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md`. It remains the closeout
+reference for `feat/install-config-wizard` / PR #299, which is the current
+integration baseline rather than the latest implementation worktree. As of
+2026-06-11, the active edge-agent implementation lane is
+`codex/edge-agent-source-absorption` / draft PR #302. PR #300 is an overlapping
+sibling branch from the same integration baseline and requires explicit
+supersede, selective absorption, or merge disposition before either PR is
+merged. Always verify the exact local branch and worktree state with `git
+status`; this document does not assert that a worktree is clean.
 The latest Vultr Japan + Singapore multichannel runtime closeout is recorded in
 `docs/production-replacement-records/2026-06-09-vultr-sgp-multichannel-runtime-closeout.md`.
 It documents the SGP handoff/runtime apply fix, Hysteria2 config schema
@@ -124,6 +153,164 @@ validation, archived the pending handoff files, and validated a redacted
 six-channel render proof with `yamlReturned=false`. It did not create live
 orders, mutate DNS/Nginx/provider firewall, expose public Admin, or output
 credential material.
+The edge-agent private tunnel production activation is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-private-tunnel-production-activation.md`.
+It deployed the `005` edge-agent runtime, created the private SGP loopback
+tunnel to Japan's internal agent route, seeded existing delivered SGP channel
+desired-state, enabled the SGP edge-agent service, and validated fresh applied
+receipts for SGP VLESS Reality, Hysteria2, and TUIC. It did not create live
+orders, mutate DNS/Nginx/provider firewall, expose public Admin, or output
+credential material. A follow-up gate is still required to publish
+desired-state automatically for future orders.
+Current source now adds repo-level remote data-plane coordination for future
+orders: user order delivery records a safe pending desired-state notification
+for `remote-data-plane-handoff` channels, and the subscription renderer withholds
+those channels until the current desired-state has a matching applied receipt
+from the data plane. The notification table stores safe refs only; applying it
+through the edge agent and validating it in production remains a separate Risk A
+runtime gate.
+The SGP receipt-required production config hardening is recorded in
+`docs/production-replacement-records/2026-06-11-sgp-receipt-required-config-hardening.md`.
+It updated only Japan's protected proxy config so all three SGP
+`remote-data-plane-handoff` channels explicitly carry `requiresAppliedReceipt:
+true`; Japan and SGP read-only validation passed, and no SGP runtime, DNS,
+Nginx, provider firewall, payment, account, credential, or subscription
+material was mutated.
+The next production read-only preflight approval packet is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-readonly-preflight-approval-packet.md`.
+It authorizes only redacted inventory after exact approval: no artifact upload,
+schema migration, service restart, runtime apply, or live order creation.
+The approved read-only preflight execution is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-readonly-preflight.md`.
+It found Japan and SGP runtime boundaries healthy, SGP data-plane listeners
+present, and the expected blocker: production control DB does not yet have
+`platform_edge_desired_state_notifications`, so the next gate must be a
+runtime upgrade plus schema migration before any live-order smoke.
+The follow-up runtime/schema upgrade approval packet is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-runtime-upgrade-approval-packet.md`.
+It names source package `edge-agent-future-order-runtime-20260611-001` from
+commit `ff6c35a95b2c72a537c9c995204c88566709fd88`, current production rollback
+release `edge-agent-production-activation-20260610-005-worktree`, and a
+Japan-only runtime upgrade plus idempotent
+`platform_edge_desired_state_notifications` schema migration. It explicitly
+does not authorize live order creation, SGP runtime mutation, DNS/Nginx/provider
+firewall changes, or sensitive output.
+The approved runtime/schema upgrade attempt and rollback is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-runtime-upgrade-rollback.md`.
+It uploaded, verified, unpacked, and installed dependencies for
+`edge-agent-future-order-runtime-20260611-001`, but the Japan service restart
+failed and was rolled back to
+`edge-agent-production-activation-20260610-005-worktree`.
+The protected env normalization gate is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-protected-env-normalization.md`.
+It corrected the earlier shell-source diagnostic: under a systemd-style parser,
+the protected `EDGE_DATA_PLANE_AGENT_NODES_JSON` material already resolves to a
+JSON array, so no env rewrite was needed. It also proved that
+`edge-agent-future-order-runtime-20260611-001` can start on an alternate
+loopback port with temporary DB copies and create
+`platform_edge_desired_state_notifications` in the temporary control DB. The
+real production control DB is still not migrated, and promoting the candidate
+still requires a separate exact Risk A retry gate.
+The runtime/schema retry environment-file blocker is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-runtime-retry-envfile-blocker.md`.
+It proved the restart failure is now a packaging/systemd boundary, not the
+agent-node JSON shape: one service `EnvironmentFile` is bound through the
+`current` release symlink, and the candidate release lacks the corresponding
+release-local env file. Japan was rolled back and remains on
+`edge-agent-production-activation-20260610-005-worktree`; the real production
+control DB is still not migrated.
+The approved envfile-boundary fix retry is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-candidate-envfile-fix-runtime-retry-rollback.md`.
+It materialized exactly one missing candidate release-local env file from
+protected server material and verified the candidate no longer missed that file,
+but the candidate still did not remain active under the real systemd service
+path. The gate rolled back to
+`edge-agent-production-activation-20260610-005-worktree`, removed the created
+candidate env file, and left the real production control DB unmigrated. The
+next gate is a redacted candidate startup diagnostic after the envfile boundary,
+not another blind production restart.
+The redacted startup diagnostic is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-startup-diagnostic.md`.
+It found the candidate failure is proxy config placeholder resolution for SGP
+static channel material: the candidate expects `SGP_*` keys for Singapore
+VLESS/Hy2/TUIC, but the active protected service environment does not provide
+those names. Production remains on
+`edge-agent-production-activation-20260610-005-worktree`; the real control DB is
+still not migrated. The next gate must register those protected keys or rebuild
+the candidate template to use the approved existing key names, then prove
+candidate temp-start before any production symlink switch.
+The follow-up repo-only SGP template key alignment is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-sgp-template-key-alignment.md`.
+It confirmed Japan already has approved SGP protected material under the
+deployed `005` key names and updated the repository default/Vultr multichannel
+templates plus tests to use those names instead of requiring a second SGP
+material namespace. It also prepared candidate package
+`edge-agent-future-order-runtime-20260611-002-worktree` with recorded SHA-256
+and local boundary checks. Production remains unchanged on
+`edge-agent-production-activation-20260610-005-worktree`; the next Risk A gate
+must use the `002` package to prove zero missing placeholders plus candidate
+temp-start before any production symlink switch or real control DB migration.
+The follow-up `002` read-only preflight is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-002-readonly-preflight.md`.
+It validated that the `002` candidate placeholder names all exist in the current
+Japan protected service environment by key presence only, with zero missing SGP
+placeholders, and rechecked public portal/sub/Admin/internal-agent boundaries.
+It did not upload artifacts, switch release, restart services, run schema
+migration, mutate Singapore runtime, or create live orders.
+The approved `002` runtime/schema production retry is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-002-runtime-schema-production-retry.md`.
+It uploaded and verified the `002` artifact, proved candidate temp-start with
+temporary DB copies and an alternate loopback port, switched Japan current to
+`edge-agent-future-order-runtime-20260611-002-worktree`, restarted only
+`proxy-gateway-candidate.service`, and verified that the real control DB now has
+`platform_edge_desired_state_notifications`. Singapore validation was read-only:
+edge-agent, Xray, Hy2, TUIC, listeners, and loopback stats were healthy. No live
+orders were created and Singapore runtime was not mutated; live-order smoke and
+future-order apply validation still require separate exact Risk A approval.
+The follow-up live-order smoke approval packet is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-future-order-live-smoke-approval-packet.md`.
+It authorizes, after exact approval only, one controlled 7-day quantity-1 test
+order to prove the full future-order desired-state -> SGP edge-agent apply ->
+fresh receipt -> subscription render gate. It does not authorize DNS, Nginx,
+provider firewall, account/password generation, payment, broad order creation,
+or sensitive output.
+The follow-up edge-agent source absorption record is
+`docs/production-replacement-records/2026-06-11-edge-agent-source-absorption.md`.
+It adds the repository production data-plane agent, once-only launch wrapper,
+and `gccgw-edge-agent.service` template so future SGP activation packages can
+run the actual pull/apply/receipt loop instead of relying on runtime-only
+placeholders. The deployment approval packet is
+`docs/production-replacement-records/2026-06-11-edge-agent-source-deployment-approval-packet.md`.
+The approved source deployment plus future-order live-smoke execution and
+rollback is recorded in
+`docs/production-replacement-records/2026-06-11-edge-agent-source-deployment-live-smoke-rollback.md`.
+It deployed the source package and proved the SGP agent can pull desired state,
+but receipt validation failed because SGP could not resolve the protected
+per-order credential material for the desired `edgeCredentialRef` values.
+Japan was rolled back to
+`edge-agent-future-order-runtime-20260611-002-worktree`; SGP agent apply is
+disabled and dry-run mode remains enabled. The next gate is not another blind
+source deployment: it must be a protected credential-material sync design and
+runtime approval.
+The repo-only protected material sync implementation plan is
+`docs/superpowers/plans/2026-06-11-sgp-protected-material-sync.md`. The matching
+production approval packet is
+`docs/production-replacement-records/2026-06-11-edge-agent-protected-material-sync-approval-packet.md`.
+The repo implementation now adds the private authenticated material pull path:
+desired-state and receipts stay redacted, the material route is scoped to node,
+current desired-state, requested credential refs, and digest matches, and the
+production agent merges material into its protected local material store before
+runtime apply. The packaged production activation candidate is
+`edge-agent-protected-material-sync-20260611-001-worktree` with artifact
+`.codex-artifacts/edge-agent-protected-material-sync-20260611-001-worktree/proxy-gateway-edge-agent-protected-material-sync-20260611-001-worktree.zip`;
+production activation remains a separate Risk A gate with the exact approval in
+the packet above.
+The User Portal API route hotfix is recorded in
+`docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md`.
+It narrowed the `005` data-plane agent router authentication middleware to the
+internal data-plane agent path prefix so `/api/portal/*` routes are no longer
+intercepted by internal agent auth. It restored `POST /api/portal/human-challenges`
+to HTTP 201 while keeping public Admin and public internal agent routes blocked.
 The server project import boundary lives in
 `docs/SERVER_PROJECT_IMPORT_BOUNDARY.md`: before deeper refactoring, compare the
 repository with the live server through read-only, redacted inventory; never
@@ -163,14 +350,14 @@ The first exact-approved Aliyun runtime-upgrade attempt is recorded in
 It uploaded the exact `b781f3d` archive to `/tmp` but intentionally stopped
 before creating the new release, running `npm ci`, switching `current`, or
 restarting the service because the preserved systemd entry expects a live-only
-`candidate-start.mjs` shim that is not present in the exact Git archive. Current
-Aliyun runtime remains on `da33de295cb0`.
+`candidate-start.mjs` shim that is not present in the exact Git archive. At
+that gate, Aliyun runtime remained on `da33de295cb0`.
 The second exact-approved Aliyun runtime-upgrade attempt is recorded in
 `docs/production-replacement-records/2026-06-02-aliyun-candidate-runtime-upgrade-rollback.md`.
 It prepared release `3e1c9a79ec85` and ran `npm ci`, then switched `current`
 and restarted only `proxy-gateway-candidate.service`. Active-service validation
 failed, so the gate rolled back to `da33de295cb0` and revalidated public/private
-boundaries. Current Aliyun runtime remains on `da33de295cb0`. The likely next
+boundaries. At that gate, Aliyun runtime remained on `da33de295cb0`. The likely next
 blocker is the missing protected control DB path in Aliyun `.env`; a future
 retry requires a separate Risk A gate for non-secret `.env` path addition and
 control SQLite initialization under the service-owned state directory.
@@ -182,8 +369,9 @@ host `.env` after creating an on-host `0600` backup, switched `current` to exact
 release `3e1c9a79ec85`, restarted only `proxy-gateway-candidate.service`, and
 validated health, public Admin blocking, no-token subscription rejection,
 subscriptions/control SQLite integrity, candidate-start presence, loopback-only
-18180, and rollback readiness. Current Aliyun runtime is now
-`3e1c9a79ec85`; previous release `da33de295cb0` remains present for rollback.
+18180, and rollback readiness. That execution record's post-validation runtime
+was `3e1c9a79ec85`; previous release `da33de295cb0` remained present for
+rollback.
 
 ## Repository
 
@@ -277,6 +465,11 @@ Current documented production direction as of 2026-06-09:
 
 Current architecture priorities:
 
+- Docs/status baseline: `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md`
+  captures the current Vultr Japan control-plane and Vultr Japan/Singapore
+  data-plane direction plus its no-mutation boundary. It is a C-tier
+  orientation document, not a replacement for the production execution records
+  below and not authority for any runtime change.
 - Historical Goal: `docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md`
   remains a useful execution record for earlier Aliyun planning, but it is not
   the current production-control target. Current production design follows the
@@ -478,7 +671,7 @@ Current architecture priorities:
 - Legacy Admin UI Archive: the existing `admin/` application is archived as a
   local protected reference/testing surface only. It is no longer the future
   product UI, user portal, or operator-console design baseline. Future UI work
-  should be rebuilt around the Aliyun-first, CLI-first, public-site/portal
+  should be rebuilt around the provider-neutral CLI-first, public-site/portal
   split, operator provisioning form contract, resource-package handoff, and
   role/permission boundaries instead of polishing the old Overview-heavy Admin
   information architecture. No Admin code was moved or deleted by the archive
@@ -597,10 +790,10 @@ Current architecture priorities:
   promotion, observation, rollback, and cleanup. It does not authorize Aliyun
   deployment, DNS changes, state copy, public listener exposure, edge traffic,
   or production authority transfer.
-- Aliyun Clean-Start Control Plane: the Gate B clean-start recommendation is
-  now captured as the default planning direction in
+- Historical Aliyun Clean-Start Control Plane: the former Gate B clean-start
+  recommendation is captured in
   `docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md`.
-  Clean-start means Aliyun is planned as a new subscription-control authority
+  Clean-start meant Aliyun was planned as a new subscription-control authority
   without copying historical AWS SQLite, artifact, legacy query-token, or
   subscription-output state. The clean-start repo package now exists as
   protected operator-safe readiness and private rendering dry-run metadata. The
@@ -707,9 +900,9 @@ Current architecture priorities:
   with a matching execution template in
   `docs/production-replacement-records/templates/clean-edge-node-rebuild-execution-template.md`.
   It treats the rebuilt edge host as replaceable data-plane capacity, not as
-  the current Aliyun control-plane host, HP, or a restart of the retired AWS
-  nodes. It requires an exact approval phrase before clean host
-  provisioning/bootstrap/private validation and explicitly keeps DNS,
+  the Aliyun control-plane host described by that historical runbook, HP, or a
+  restart of the retired AWS nodes. It requires an exact approval phrase before
+  clean host provisioning/bootstrap/private validation and explicitly keeps DNS,
   subscription output, user traffic, public Admin, AWS lifecycle recovery,
   node termination, and security-group deletion out of scope. A fresh
   read-only preflight is recorded in
@@ -734,10 +927,10 @@ Current architecture priorities:
   active, `aegis.service` remains failed as a separate follow-up, and exact
   approval is still required before any clean edge execution.
 - Subscription Control / Edge Split: keep subscription state, Admin actions,
-  opaque artifacts, and rendering authoritative in the control plane. CI has
-  moved off the current Aliyun server, and that host now serves the approved
-  public subscription-distribution boundary while keeping the app private,
-  Admin blocked, and edge data-plane activation out of scope.
+  opaque artifacts, and rendering authoritative in the Vultr Japan control
+  plane. Treat the former Aliyun subscription-distribution boundary as
+  historical execution evidence; it does not override the current Vultr
+  Japan/Singapore lane without a fresh Risk A inventory and explicit approval.
 - Edge Data Plane: AWS Singapore `prod-edge-a/b` were stopped under an
   accepted-outage cleanup decision and later permanently terminated with their
   security groups deleted. New edge capacity now needs clean rebuild planning;
@@ -828,10 +1021,10 @@ Current architecture priorities:
   `docs/CHANNEL_CANARY_SERVER_SELECTION.md` and
   `docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md`; repository renderer/config support
   does not authorize server creation or remote protocol deployment by itself.
-  The Technical MVP baseline wording is now aligned with the current Aliyun
-  subscription boundary and stopped AWS edge state: SS remains a legacy
-  compatibility reference only, not a current default production channel and
-  not proof of currently serving edge traffic. The next TUIC
+  The Technical MVP baseline wording is now aligned with the current Vultr
+  Japan control-plane and Vultr Japan/Singapore data-plane direction: SS
+  remains a legacy compatibility reference only, not a current default
+  production channel. The historical TUIC
   Stage 0 read-only inventory handoff is
   `docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md`;
   it requires the exact inventory approval phrase before any live inventory and
@@ -855,6 +1048,7 @@ Current architecture priorities:
 
 Use these docs for detail:
 
+- `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md`
 - `docs/PROJECT_TOPOLOGY.md`
 - `docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md`
 - `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
@@ -892,23 +1086,24 @@ work.
 - Hysteria2 runtime config must render `outbounds` as named list entries and
   preserve service-user-readable config ownership when applying credentials.
 
-- Current subscription-distribution status: Aliyun promotion executed for
-  `sub.globalcirclecat.com`; edge data-plane service is still not activated.
-- Current DNS records:
+- Historical Aliyun subscription-distribution status: promotion executed for
+  `sub.globalcirclecat.com`; this does not describe the current Vultr lane.
+- Historical DNS records from that execution period:
   `sub.globalcirclecat.com -> 47.251.178.125` and
   `ss-sg.globalcirclecat.com -> 13.215.156.159`.
-- `sub.globalcirclecat.com` serves the Aliyun public subscription boundary over
+- During that historical period, `sub.globalcirclecat.com` served the Aliyun
+  public subscription boundary over
   HTTP/HTTPS with `/api/health` returning 200, public Admin/root returning 404,
   and no-token subscription refresh returning 401. Public Admin is not exposed.
-- `ss-sg.globalcirclecat.com` remains on the old AWS address by design;
+- During that historical period, `ss-sg.globalcirclecat.com` remained on the
+  old AWS address by design;
   edge traffic activation was not approved in the promotion gate.
 - AWS Singapore `prod-edge-a` and `prod-edge-b` are permanently terminated
   under the 2026-05-29 cleanup record; their associated security groups were
   deleted, and rollback by starting those instances is waived.
 - Legacy blue remains stopped for controlled review and was not terminated.
-- HTTPS and public subscription endpoints on the retired AWS nodes are not the
-  current subscription-distribution authority after Aliyun promotion; edge
-  traffic still needs clean rebuild or a separately approved new recovery path.
+- HTTPS and public subscription endpoints on the retired AWS nodes were not the
+  subscription-distribution authority after Aliyun promotion.
 - The active opaque artifact canary exists for controlled operator validation.
   The full import URL is stored only in a local `C:\tmp\...` file and must not
   be pasted, committed, logged, or written into docs.
@@ -973,9 +1168,9 @@ work.
   validation scope, rollback/stop posture, hard stops, and next gates. It does
   not execute cloud provisioning, DNS changes, subscription-output changes,
   user traffic, public Admin exposure, AWS lifecycle recovery, node
-  termination, or security-group deletion. It also keeps the current Aliyun
-  subscription-control host and HP out of the edge-node role. The matching
-  read-only preflight is recorded in
+  termination, or security-group deletion. It also keeps the Aliyun
+  subscription-control host described by that historical runbook and HP out of
+  the edge-node role. The matching read-only preflight is recorded in
   `docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-preflight.md`.
   It excludes proxy-contaminated local Windows DNS/TCP checks, uses AliDNS and
   Aliyun remote-vantage evidence, confirms `sub` on Aliyun, `ss-sg` on the old
@@ -1290,9 +1485,9 @@ operator approval, validation, and rollback path exist:
   and
   `docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md`.
   It is not staging, not production, and not deploy approval.
-- Aliyun state-preserving source copy remains blocked unless the operator
+- Historical Aliyun state-preserving source copy remains blocked unless the operator
   rejects clean-start and approves a separate source-rescue path. The
-  current Aliyun candidate-preparation record is
+  Aliyun candidate-preparation record is
   `docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md`.
   The latest private state-copy preflight record is
   `docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md`.
@@ -1330,10 +1525,9 @@ operator approval, validation, and rollback path exist:
   subscription boundary, public Admin remains blocked, `ss-sg` remains
   unchanged, edge traffic is not activated, and the Aliyun `aegis.service`
   follow-up remains open.
-- Clean fallback `sub-control-a` candidate provisioning now remains only a
-  fallback if the current Aliyun path is rejected; state-preserving copy,
-  public-boundary rerun, or additional promotion work still needs separate
-  A-tier approval.
+- Clean fallback `sub-control-a` candidate provisioning remains a
+  provider-neutral replacement or recovery pattern; state-preserving copy,
+  public-boundary work, or promotion still needs separate A-tier approval.
 - A2 host-internal read-only inventory is currently incomplete because SSH to
   `prod-edge-a` / `prod-edge-b` closes during key exchange from the current
   operator environment. See
@@ -1349,11 +1543,13 @@ operator approval, validation, and rollback path exist:
 - DNS, Nginx, HTTPS redirect behavior, systemd, production runtime config,
   tenant state, or SQLite authority changes.
 
-GitHub-hosted Actions validation is currently blocked by billing,
-spending-limit, or quota constraints. The expected account-quota recovery date
-is 2026-06-01; until then, PR validation uses local and HP manual CI evidence
-per `docs/CI_MANUAL_VALIDATION.md`. Manual CI fallback is documented, but it is
-not staging, not production, and not deployment approval.
+GitHub-hosted Actions must be checked per PR instead of treated as globally
+blocked. PR #299's hosted `Validate` check succeeded on 2026-06-10. PR #300 and
+PR #302 target `feat/install-config-wizard`, while the current workflow is
+scoped to `master`; the absence of hosted `Validate` on those sibling PRs is
+therefore not billing or quota evidence. Use local validation and
+`docs/CI_MANUAL_VALIDATION.md` when a clean fallback is actually needed. Manual
+CI is not staging, production, or deployment approval.
 
 ## Current Work Queue
 
@@ -1580,12 +1776,10 @@ The remaining queued items are A-tier and remain blocked:
 - `A1-legacy-query-token-retirement`
 - `A2-physical-control-edge-split`
 
-For A2, the preferred first step is now the role split in
-`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: local Linux manual CI first,
-then Aliyun production-control candidate inventory, then controlled
-non-Aliyun node drain / retirement after Aliyun promotion. Do not start either
-A-tier item without a specific runbook, read-only inventory, operator approval,
-validation plan, and rollback evidence.
+For A2, use `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` and the current
+single-control-plane / multi-data-plane records before selecting a new gate.
+Do not start either A-tier item without a specific runbook, read-only
+inventory, operator approval, validation plan, and rollback evidence.
 
 Latest local Linux CI candidate inventory:
 
@@ -1618,7 +1812,8 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
 - `docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md`
 - `docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md`
 - `docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md`
-- The current Aliyun SWAS host is reachable through SSH alias `miyao`.
+- The 2026-05-26 Aliyun SWAS inventory recorded SSH access through alias
+  `miyao`.
 - It is running Ubuntu 24.04.2 with Node.js `v22.22.2`, npm `10.9.7`, git
   `2.43.0`, 2 CPU, about 2 GiB memory, and 40 GiB disk.
 - No active manual-CI workspace, repository archive, GitHub CLI config, or git
@@ -1698,12 +1893,12 @@ Latest Aliyun CI cleanup / subscription-control candidate inventory:
   query-token retirement runbook now exists and deliberately separates artifact
   issuance from legacy-token retirement; neither gate has been executed.
 
-Latest Aliyun user-management / subscription-distribution decision:
+Historical Aliyun user-management / subscription-distribution decision:
 
 - `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
-- Near-term target: Aliyun becomes the user-management and subscription
-  distribution platform, HP remains local CI/operator lab, and all other nodes
-  are drained and retired through explicit A-tier gates.
+- Superseded target: Aliyun was formerly planned as the user-management and
+  subscription-distribution platform. The current production direction is
+  Vultr Japan control plane plus Vultr Japan/Singapore data-plane capacity.
 - The separate technical MVP branch is PR #129,
   `codex/local-edge-channel-probe-harness`; it owns local edge channel probe,
   benchmark, and manager work and must not be coupled to Aliyun production
@@ -1858,9 +2053,8 @@ High-value entrypoints:
 - `docs/ENVIRONMENT_TOPOLOGY.md` - repo, GitHub, branch, and AWS role map.
 - `docs/DEPLOYMENT_FLOW.md` - deployment, staging, promotion, rollback flow.
 - `docs/CI_MANUAL_VALIDATION.md` - manual validation host workflow.
-- `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` - target split for current
-  Aliyun production subscription control, local Linux manual CI, and controlled
-  non-Aliyun node drain / retirement.
+- `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` - historical Aliyun/local-CI
+  split and node-retirement plan.
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md` - clean
   `sub-control-a` candidate fallback gates for the future physical split.
 

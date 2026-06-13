@@ -219,7 +219,7 @@ describe("subscription usage monitor page", () => {
     expect(firstRowScope.getByText("node-gamma")).not.toBeNull();
     expect(firstRowScope.getByText("300 B / 1000 B")).not.toBeNull();
     expect(firstRowScope.getAllByText("300 B").length).toBeGreaterThanOrEqual(1);
-    expect(firstRowScope.getByText(/00:54|07:54/)).not.toBeNull();
+    expect(firstRowScope.getByText(formatExpectedDateTime("2026-06-05T07:54:00.000Z"))).not.toBeNull();
     expect(firstRowScope.getByText("已采集")).not.toBeNull();
     expect(firstRowScope.getByText("已绑定")).not.toBeNull();
     expect(firstRowScope.getByText("近期活跃")).not.toBeNull();
@@ -516,6 +516,15 @@ function monitorRowFixture(overrides: Partial<SubscriptionUsageMonitorRow> = {})
     warnings: [],
     ...overrides
   };
+}
+
+function formatExpectedDateTime(value: string) {
+  return new Date(value).toLocaleString("zh-CN", {
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
 }
 
 function deferred<T>() {

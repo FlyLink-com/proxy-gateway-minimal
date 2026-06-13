@@ -32,6 +32,7 @@ test(".env.example documents the production subscription runtime settings", () =
     "PUBLIC_SUBSCRIPTION_BASE_URL",
     "ADMIN_ALLOWED_CIDRS",
     "TRUSTED_PROXY_CIDRS",
+    "EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS",
     "SUB_RATE_LIMIT_WINDOW_MS",
     "SUB_RATE_LIMIT_MAX",
     "SUBSCRIPTION_TEMP_LINK_TTL_MINUTES"
@@ -54,6 +55,7 @@ test("edge-node env template stays aligned with the root runtime env closure", (
     "PUBLIC_SUBSCRIPTION_BASE_URL",
     "ADMIN_ALLOWED_CIDRS",
     "TRUSTED_PROXY_CIDRS",
+    "EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS",
     "SUB_RATE_LIMIT_WINDOW_MS",
     "SUB_RATE_LIMIT_MAX",
     "SUBSCRIPTION_TEMP_LINK_TTL_MINUTES"

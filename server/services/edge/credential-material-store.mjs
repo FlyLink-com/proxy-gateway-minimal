@@ -55,6 +55,10 @@ function materialRecordFor(input = {}) {
   };
 }
 
+export function normalizeCredentialMaterialRecord(input = {}) {
+  return materialRecordFor(input);
+}
+
 function summaryFor(record) {
   return {
     credentialRef: record.credentialRef,

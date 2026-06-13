@@ -251,6 +251,19 @@ function edgeOrderSummaryFor(record) {
   };
 }
 
+function edgeNotificationOrderFor(record) {
+  return {
+    ...edgeOrderSummaryFor(record),
+    edgeCredentials: Array.isArray(record.edgeCredentials)
+      ? record.edgeCredentials.map((credential) => ({
+        edgeChannelRef: credential.edgeChannelRef,
+        edgeCredentialRef: credential.edgeCredentialRef,
+        edgeMaterialDigest: credential.edgeMaterialDigest
+      }))
+      : []
+  };
+}
+
 function edgeCredentialOrderSummariesFor(record) {
   const credentials = Array.isArray(record.edgeCredentials) && record.edgeCredentials.length > 0
     ? record.edgeCredentials
@@ -336,6 +349,7 @@ export function createPortalAccessRequestService(options = {}) {
   const requestStore = portalAccessRequestStoreFrom(options, controlStore);
   const edgeLifecycleService = options.edgeLifecycleService;
   const edgeCredentialIssuer = options.edgeCredentialIssuer;
+  const edgeDesiredStateNotifier = options.edgeDesiredStateNotifier;
   const autoIssuance = {
     enabled: options.autoIssuance?.enabled === true,
     nodeId: String(options.autoIssuance?.nodeId || "").trim(),
@@ -421,6 +435,23 @@ export function createPortalAccessRequestService(options = {}) {
       redacted: true,
       nextAction: "edge_lifecycle_deferred"
     };
+  }
+
+  function notifyEdgeDesiredState(reason, request) {
+    if (!edgeDesiredStateNotifier) {
+      return null;
+    }
+    if (typeof edgeDesiredStateNotifier.notifyOrderLifecycle !== "function") {
+      throw platformError("validation_error", "edge desired-state notifier is not configured");
+    }
+    const result = edgeDesiredStateNotifier.notifyOrderLifecycle({
+      reason,
+      order: edgeNotificationOrderFor(request)
+    });
+    if (result?.ok === false) {
+      throw platformError("edge_desired_state_notification_failed", "edge desired-state notification failed");
+    }
+    return result;
   }
 
   function recordEdgeLifecycleResult(request, result) {
@@ -727,6 +758,7 @@ export function createPortalAccessRequestService(options = {}) {
         }
         saveRecord(request);
         recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_delivered", request));
+        notifyEdgeDesiredState("order_delivered", request);
       }
       return summarize(saveRecord(request));
     },
@@ -754,6 +786,7 @@ export function createPortalAccessRequestService(options = {}) {
       }
       saveRecord(request);
       recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_refreshed", request));
+      notifyEdgeDesiredState("order_refreshed", request);
       return summarize(saveRecord(request));
     },
 
@@ -775,6 +808,7 @@ export function createPortalAccessRequestService(options = {}) {
       request.updatedAt = now;
       saveRecord(request);
       recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_disabled", request));
+      notifyEdgeDesiredState("order_disabled", request);
       return summarize(saveRecord(request));
     }
   };
