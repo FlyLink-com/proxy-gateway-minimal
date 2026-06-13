@@ -15,6 +15,9 @@ const UNSAFE_FIELD_PARTS = [
   "yaml",
   "sspassword"
 ];
+const SAFE_CONTROL_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
+const UNSAFE_CONTROL_VALUE_PATTERN =
+  /https?:|token=|secret|credential|password|private|customer|@|\/sub\/clash\.yaml|(?:\d{1,3}\.){3}\d{1,3}|[a-z0-9-]+\.[a-z]{2,}/i;
 
 function platformError(code, message) {
   const error = new Error(message);
@@ -38,6 +41,32 @@ function requiredText(value, field) {
     throw platformError("validation_error", `${field} is required`);
   }
   return normalized;
+}
+
+function safeControlRef(value, field) {
+  const normalized = requiredText(value, field);
+  if (!SAFE_CONTROL_REF_PATTERN.test(normalized) || UNSAFE_CONTROL_VALUE_PATTERN.test(normalized)) {
+    throw platformError("validation_error", `${field} must be a safe control-plane reference`);
+  }
+  return normalized;
+}
+
+function safeControlRefList(value, field) {
+  if (!Array.isArray(value)) {
+    throw platformError("validation_error", `${field} must be an array`);
+  }
+  const result = [];
+  const seen = new Set();
+  for (const item of value) {
+    const ref = safeControlRef(item, field);
+    if (seen.has(ref)) continue;
+    seen.add(ref);
+    result.push(ref);
+  }
+  if (result.length === 0) {
+    throw platformError("validation_error", `${field} must contain at least one item`);
+  }
+  return result;
 }
 
 function optionalText(value) {
@@ -84,6 +113,23 @@ function assertNoUnsafeFields(value, path = []) {
       throw platformError("validation_error", "unsafe field is not allowed in subscription control database input");
     }
     assertNoUnsafeFields(nested, [...path, key]);
+  }
+}
+
+function assertNoUnsafeControlValues(value) {
+  if (value == null) {
+    return;
+  }
+  if (Array.isArray(value)) {
+    value.forEach((item) => assertNoUnsafeControlValues(item));
+    return;
+  }
+  if (typeof value === "object") {
+    Object.values(value).forEach((nested) => assertNoUnsafeControlValues(nested));
+    return;
+  }
+  if (typeof value === "string" && UNSAFE_CONTROL_VALUE_PATTERN.test(value)) {
+    throw platformError("validation_error", "unsafe value is not allowed in edge registered node metadata");
   }
 }
 
@@ -355,6 +401,25 @@ function mapAuditEvent(row) {
     action: row.action,
     actorRef: row.actor_ref,
     createdAt: row.created_at,
+    metadata: parseJsonObject(row.metadata_json)
+  };
+}
+
+function mapEdgeRegisteredNode(row) {
+  if (!row) return null;
+  return {
+    nodeRef: row.node_ref,
+    providerRef: row.provider_ref,
+    regionRef: row.region_ref,
+    roleRef: row.role_ref,
+    channelRefs: parseJsonArray(row.channel_refs_json),
+    imageManifestRef: row.image_manifest_ref,
+    releaseRef: row.release_ref,
+    lifecycle: row.lifecycle,
+    status: row.status,
+    firstBootPacketRef: row.first_boot_packet_ref,
+    registeredAt: row.registered_at,
+    updatedAt: row.updated_at,
     metadata: parseJsonObject(row.metadata_json)
   };
 }
@@ -733,6 +798,27 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
 
     create index if not exists platform_audit_events_entity_ref_idx
       on platform_audit_events(entity_ref);
+
+    create table if not exists platform_edge_registered_nodes (
+      node_ref text primary key,
+      provider_ref text not null,
+      region_ref text not null,
+      role_ref text not null,
+      channel_refs_json text not null default '[]',
+      image_manifest_ref text not null,
+      release_ref text not null,
+      lifecycle text not null,
+      status text not null check (status in ('active', 'inactive', 'disabled', 'maintenance', 'retired')),
+      first_boot_packet_ref text not null,
+      registered_at text not null,
+      updated_at text not null,
+      metadata_json text not null default '{}'
+    );
+
+    create index if not exists platform_edge_registered_nodes_provider_region_idx
+      on platform_edge_registered_nodes(provider_ref, region_ref);
+    create index if not exists platform_edge_registered_nodes_status_idx
+      on platform_edge_registered_nodes(status, updated_at);
 
     create table if not exists platform_edge_apply_receipts (
       id text primary key,
@@ -1543,6 +1629,84 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
 
   function getAuditEvent(id) {
     return mapAuditEvent(db.prepare("select * from platform_audit_events where id = ?").get(requiredText(id, "id")));
+  }
+
+  function upsertEdgeRegisteredNode(input) {
+    assertNoUnsafeFields(input);
+    assertNoUnsafeControlValues(input.metadata);
+    const now = isoText(input.updatedAt || input.registeredAt, "updatedAt");
+    const record = {
+      nodeRef: safeControlRef(input.nodeRef, "nodeRef"),
+      providerRef: safeControlRef(input.providerRef, "providerRef"),
+      regionRef: safeControlRef(input.regionRef, "regionRef"),
+      roleRef: safeControlRef(input.roleRef, "roleRef"),
+      channelRefsJson: jsonArray(safeControlRefList(input.channelRefs, "channelRefs"), "channelRefs"),
+      imageManifestRef: safeControlRef(input.imageManifestRef, "imageManifestRef"),
+      releaseRef: safeControlRef(input.releaseRef, "releaseRef"),
+      lifecycle: safeControlRef(input.lifecycle || "registered", "lifecycle"),
+      status: safeControlRef(input.status || "active", "status"),
+      firstBootPacketRef: safeControlRef(input.firstBootPacketRef, "firstBootPacketRef"),
+      registeredAt: isoText(input.registeredAt || now, "registeredAt"),
+      updatedAt: now,
+      metadataJson: jsonObject(input.metadata, "metadata")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_edge_registered_nodes (
+        node_ref, provider_ref, region_ref, role_ref, channel_refs_json,
+        image_manifest_ref, release_ref, lifecycle, status, first_boot_packet_ref,
+        registered_at, updated_at, metadata_json
+      ) values (
+        @nodeRef, @providerRef, @regionRef, @roleRef, @channelRefsJson,
+        @imageManifestRef, @releaseRef, @lifecycle, @status, @firstBootPacketRef,
+        @registeredAt, @updatedAt, @metadataJson
+      )
+      on conflict(node_ref) do update set
+        provider_ref = excluded.provider_ref,
+        region_ref = excluded.region_ref,
+        role_ref = excluded.role_ref,
+        channel_refs_json = excluded.channel_refs_json,
+        image_manifest_ref = excluded.image_manifest_ref,
+        release_ref = excluded.release_ref,
+        lifecycle = excluded.lifecycle,
+        status = excluded.status,
+        first_boot_packet_ref = excluded.first_boot_packet_ref,
+        updated_at = excluded.updated_at,
+        metadata_json = excluded.metadata_json
+    `), record);
+    return getEdgeRegisteredNode(record.nodeRef);
+  }
+
+  function getEdgeRegisteredNode(nodeRef) {
+    return mapEdgeRegisteredNode(db.prepare(`
+      select * from platform_edge_registered_nodes where node_ref = ?
+    `).get(safeControlRef(nodeRef, "nodeRef")));
+  }
+
+  function listEdgeRegisteredNodes(filters = {}) {
+    assertNoUnsafeFields(filters);
+    const status = optionalText(filters.status);
+    const providerRef = optionalText(filters.providerRef);
+    const regionRef = optionalText(filters.regionRef);
+    const clauses = [];
+    const params = [];
+    if (status) {
+      clauses.push("status = ?");
+      params.push(safeControlRef(status, "status"));
+    }
+    if (providerRef) {
+      clauses.push("provider_ref = ?");
+      params.push(safeControlRef(providerRef, "providerRef"));
+    }
+    if (regionRef) {
+      clauses.push("region_ref = ?");
+      params.push(safeControlRef(regionRef, "regionRef"));
+    }
+    const where = clauses.length > 0 ? `where ${clauses.join(" and ")}` : "";
+    return db.prepare(`
+      select * from platform_edge_registered_nodes
+      ${where}
+      order by registered_at asc, node_ref asc
+    `).all(...params).map(mapEdgeRegisteredNode);
   }
 
   function getLatestEdgeDesiredStateForChannel(channelRef, filters = {}) {
@@ -2399,6 +2563,9 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     getRevocationEvent,
     recordAuditEvent,
     getAuditEvent,
+    upsertEdgeRegisteredNode,
+    getEdgeRegisteredNode,
+    listEdgeRegisteredNodes,
     getLatestEdgeDesiredStateForChannel,
     recordEdgeApplyReceipt,
     getEdgeApplyReceipt,

@@ -48,11 +48,11 @@ records:
 Do not derive current architecture from stale historical Aliyun/AWS records, old
 checkout paths, archive directories, runtime-only residue, or `master` alone.
 As of the latest GitHub/mainline closeout, `master` is the follow-on
-development baseline at `bda0bb8` (`Merge pull request #307: node image
-provisioning runbook`), with open PR count 0; PR #299, PR #302, PR #303, PR
-#304, PR #305, PR #306, and PR #307 are merged, and PR #300 was closed without
-merge. Run `git status` and `gh pr list` before making any new branch or
-production claim.
+development baseline at `935f482` (`Merge pull request #308: Record AWS
+staging control/data-plane validation`), with open PR count 0; PR #299, PR
+#302, PR #303, PR #304, PR #305, PR #306, PR #307, and PR #308 are merged, and
+PR #300 was closed without merge. Run `git status` and `gh pr list` before
+making any new branch or production claim.
 
 The AWS staging node-image readiness validation is recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md`.
@@ -67,10 +67,12 @@ edge-agent, redacted receipt, receipt-gated rendering, usage/lifecycle, and
 node-image helper path on AWS staging only. It did not promote AWS, touch
 production, create live orders, output subscription material, or mutate DNS,
 Nginx, provider firewall/security groups, Vultr, or Aliyun.
-The next stage remains control-plane closeout: node registry ingestion,
-first-boot registration packet handling, protected material handoff,
-desired-state generation, receipt-gated subscription rendering, operator
-approval, validation, and rollback framing for the production lane.
+The next stage remains control-plane closeout. Repo-only source now includes
+first-boot packet registration ingestion and a durable safe-node registration
+table; protected production material handoff, production desired-state
+generation, receipt-gated subscription rendering, operator approval,
+validation, and rollback framing remain separately gated for the production
+lane.
 That closeout plan is recorded in
 `docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md`; it keeps order issuance as
 a control-plane action and edge-agent pull/apply as a lifecycle reconciliation
@@ -119,8 +121,8 @@ The service-lane integration closeout record lives in
 `docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md`. It is now historical closeout
 context for the merged PR #299 / PR #302 integration lane rather than an active
 branch plan. As of the latest GitHub/mainline closeout, `master` is at
-`bda0bb8`, open PR count is 0, and PR #299, PR #302, PR #303, PR #304, PR #305,
-PR #306, and PR #307 are merged; PR #300 was closed without merge. Follow-up
+`935f482`, open PR count is 0, and PR #299, PR #302, PR #303, PR #304, PR #305,
+PR #306, PR #307, and PR #308 are merged; PR #300 was closed without merge. Follow-up
 work should branch from clean `master` unless a task explicitly states
 otherwise. Always verify the exact local branch and worktree state with
 `git status`; this document does not assert that a worktree is clean.
@@ -1574,9 +1576,9 @@ operator approval, validation, and rollback path exist:
   tenant state, or SQLite authority changes.
 
 GitHub-hosted Actions must be checked per PR instead of treated as globally
-blocked. As of the latest GitHub/mainline closeout, `master` is at `bda0bb8`,
-open PR count is 0, PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, and
-PR #307 are merged, and PR #300 was closed without merge. Use local validation and
+blocked. As of the latest GitHub/mainline closeout, `master` is at `935f482`,
+open PR count is 0, PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR
+#307, and PR #308 are merged, and PR #300 was closed without merge. Use local validation and
 `docs/CI_MANUAL_VALIDATION.md` when a clean fallback is actually needed. Manual
 CI is not staging, production, or deployment approval.
 
