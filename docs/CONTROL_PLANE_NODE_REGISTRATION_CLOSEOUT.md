@@ -14,7 +14,10 @@ Last updated: 2026-06-13, Asia/Shanghai.
   material handoff preflight is implemented in
   `server/services/edge/material-handoff-preflight.mjs`; it checks registered
   nodes, current desired-state, and material digest readiness without returning
-  protected material. This is not production activation.
+  protected material. The operator CLI dry-run entry
+  `gccgw edge material-handoff preflight --dry-run` now exposes that check
+  through a read-only control DB adapter and a protected material file reader,
+  while keeping material out of stdout. This is not production activation.
 
 This document closes the design boundary between production-node image readiness
 and control-plane activation. It does not authorize DNS, Nginx, provider
@@ -80,6 +83,9 @@ the control plane's desired runtime state.
    - Repo-only preflight now summarizes readiness by registered node, channel,
      desired-state, credential ref, and digest; missing or mismatched material
      fails closed and output remains redacted.
+   - Repo-only CLI support now runs the same preflight with `--dry-run` only
+     and opens the control DB in read-only mode, so operators can validate
+     handoff readiness before any production material handoff gate.
 
 3. **Desired-state generation**
    - On order issuance, generate credential refs and desired-state

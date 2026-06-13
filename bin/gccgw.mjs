@@ -20,6 +20,9 @@ import {
   runProxyGatewayCli
 } from "../server/services/cli/router.mjs";
 import { installProcessHandlers, startProxyGateway } from "../server/start.mjs";
+import { createFileBackedEdgeCredentialMaterialStore } from "../server/services/edge/credential-material-store.mjs";
+import { buildProtectedMaterialHandoffPreflight } from "../server/services/edge/material-handoff-preflight.mjs";
+import { createReadOnlyMaterialHandoffControlStore } from "../server/services/edge/material-handoff-readonly-control-store.mjs";
 import { createSqliteSubscriptionControlStore } from "../server/services/platform/subscription-control-db.mjs";
 import { createSqliteSubscriptionStore } from "../server/services/subscriptions/repository.mjs";
 
@@ -219,6 +222,32 @@ function readJsonFileInsideRoot(inputPath) {
     throw new Error("JSON input path must be inside the repository");
   }
   return JSON.parse(readFileSync(resolved, "utf8"));
+}
+
+function requiredExistingPath(inputPath, label) {
+  if (!inputPath) {
+    throw new Error(`${label} is required`);
+  }
+  if (!existsSync(inputPath)) {
+    throw new Error(`${label} does not exist`);
+  }
+  return inputPath;
+}
+
+async function runEdgeMaterialHandoffPreflight(command) {
+  const controlDbPath = requiredExistingPath(command.controlDbPath, "--control-db");
+  const materialFilePath = requiredExistingPath(command.materialFilePath, "--material-file");
+  const controlStore = createReadOnlyMaterialHandoffControlStore({ dbPath: controlDbPath });
+  try {
+    const credentialMaterialStore = createFileBackedEdgeCredentialMaterialStore({ filePath: materialFilePath });
+    return buildProtectedMaterialHandoffPreflight({
+      controlStore,
+      credentialMaterialStore,
+      nodeRef: command.nodeRef
+    });
+  } finally {
+    controlStore.close?.();
+  }
 }
 
 function renderEnvSkeleton({ configurePlan, importPlan }) {
@@ -578,6 +607,7 @@ try {
     runPackageApply,
     runPackageInspect,
     runInstallConfigure,
+    runEdgeMaterialHandoffPreflight,
     readJsonFile: readJsonFileInsideRoot,
     startServer,
     confirmRiskAExecution
