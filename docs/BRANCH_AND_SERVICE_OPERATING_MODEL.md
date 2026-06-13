@@ -47,7 +47,7 @@ Do not collapse these labels. In particular, `deployed` is not `merged`, and
 | Branch / lane | Role | Merge posture | Runtime posture |
 | --- | --- | --- | --- |
 | `master` | Accepted integrated baseline. | Only merge validated, reviewable work. | Deployable only after a separate Risk A promotion gate. |
-| `feat/install-config-wizard` | Current large integration/closeout lane. | Draft PR #299 is active; not merge-ready until service-lane validation and backlog disposition are explicit. | Some production artifacts may have been derived from it, but that must be proven by execution records, not assumed. |
+| `master` at `16a1d58` | Follow-on development baseline after PR #299, #302, #303, #304, and #305 merged. | Open PR count is 0 at closeout; start subsequent work from clean `master` unless a task explicitly states otherwise. | Deployable only after a separate Risk A promotion gate. |
 | `codex/<topic>` | Narrow task or feature branch. | Merge or archive after its PR reaches a clear outcome. | No runtime authority by branch name. |
 | `docs/<topic>` | Docs/runbook/status branch. | C-tier merge after docs validation. | No runtime authority. |
 | `release/<target>` or artifact label | Candidate source for one reviewed deployment. | Should point back to a commit and artifact hash. | Runtime authority only after explicit deployment approval and validation. |
@@ -55,21 +55,14 @@ Do not collapse these labels. In particular, `deployed` is not `merged`, and
 
 ## Current Branch Inventory
 
-Point-in-time Git and PR inventory as of 2026-06-09. This table is an
-orientation aid only; refresh it with `git fetch --prune`, `git branch -vv`,
-and `gh pr list` before making merge or production decisions.
+Point-in-time Git and PR inventory as of the latest GitHub/mainline closeout.
+This table is an orientation aid only; refresh it with `git fetch --prune`,
+`git branch -vv`, and `gh pr list` before making merge or production decisions.
 
 | Branch / PR | Observed status | Current interpretation |
 | --- | --- | --- |
-| `master` / `origin/master` | At `8cd649e`, merged PR #296. | Stable baseline for already-accepted package apply gate work. It does not include the latest local Vultr/Singapore lifecycle work unless separately merged. |
-| `feat/install-config-wizard` / PR #299 | Local branch clean and pushed at `d3f39c0`; PR #299 is open as a draft. | Current closeout lane for recent portal/order/lifecycle/usage/multichannel and docs work. Keep draft until split/validation and backlog disposition are explicit. |
-| `codex/portal-order-ledger` | Local worktree observed clean; no active PR in recent list. | Candidate archaeology or merge-review lane. Recheck content before reuse. |
-| `codex/user-portal-aliyun-rc` | Local worktree observed ahead of origin and dirty. | Historical Aliyun/user-portal release-candidate lane; not current production authority without fresh review. |
-| `codex/multi-channel-node-guard` | Local worktree observed clean. | Focused node-policy guard work; compare against newer multichannel implementation before merging or archiving. |
-| `origin/cloudflare/workers-autoconfig` / PR #298 | Open, not draft. | Cloudflare/public-site adjacent work. Check overlap with the root `wrangler.jsonc` Workers Builds fix already carried by PR #299 before merging or closing. |
-| `docs/aws-prod-candidate-private-validation` / PR #297 | Open draft. | Docs-only AWS candidate validation record; not current production state. |
-| `codex/gccgw-install-flow-hardening` / PR #294 | Open draft; behind current `master`. | Older install-flow hardening lane; likely needs rebase/review or archive. |
-| Older draft PRs #291, #290, #289, #276, #272 | Open drafts from older planning/UI/release lanes. | Close, archive, or rebase only after checking whether their content was superseded by current docs/code. |
+| `master` / `origin/master` | At `16a1d58`; open PR count 0; PR #299, #302, #303, #304, and #305 merged. | Follow-on development baseline. Start new work from a clean `master` worktree. |
+| Historical PR backlog | Closed/merged at closeout unless a fresh GitHub inventory proves otherwise. | Do not reopen old branch context as active work without a new branch, current diff, and validation plan. |
 
 ## Service Ownership Map
 

@@ -45,12 +45,13 @@ records:
    rendered subscriptions until matching applied receipts prove the data plane
    has applied the current desired-state.
 
-Do not derive current architecture from `master` alone, historical Aliyun/AWS
-records, old checkout paths, archive directories, or runtime-only residue.
-`feat/install-config-wizard` / PR #299 is the integration baseline;
-`codex/edge-agent-source-absorption` / draft PR #302 is the current edge-agent
-implementation lane; PR #300 is an overlapping sibling that still needs an
-explicit disposition.
+Do not derive current architecture from stale historical Aliyun/AWS records, old
+checkout paths, archive directories, runtime-only residue, or `master` alone.
+As of the latest GitHub/mainline closeout, `master` is the follow-on
+development baseline at `16a1d58` (`Merge PR #305: edge-agent absorption
+tail`), with open PR count 0; PR #299, PR #302, PR #303, PR #304, and PR #305
+are merged, and PR #300 was closed without merge. Run `git status` and `gh pr
+list` before making any new branch or production claim.
 
 Detailed navigation lives in `docs/README.md`. Structured project state lives in
 `project-state/*.json`; it is a coordination aid, not a runtime control plane.
@@ -84,16 +85,15 @@ The branch and service operating model lives in
 `coded`, `tested`, `deployed`, `runtime-validated`, `merged`, and `archived`
 states, map current branches to service lanes, and prevent production runtime
 state from being confused with `master` or local worktree state.
-The service-lane integration closeout plan lives in
-`docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md`. It remains the closeout
-reference for `feat/install-config-wizard` / PR #299, which is the current
-integration baseline rather than the latest implementation worktree. As of
-2026-06-11, the active edge-agent implementation lane is
-`codex/edge-agent-source-absorption` / draft PR #302. PR #300 is an overlapping
-sibling branch from the same integration baseline and requires explicit
-supersede, selective absorption, or merge disposition before either PR is
-merged. Always verify the exact local branch and worktree state with `git
-status`; this document does not assert that a worktree is clean.
+The service-lane integration closeout record lives in
+`docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md`. It is now historical closeout
+context for the merged PR #299 / PR #302 integration lane rather than an active
+branch plan. As of the latest GitHub/mainline closeout, `master` is at
+`16a1d58`, open PR count is 0, and PR #299, PR #302, PR #303, PR #304, and PR
+#305 are merged; PR #300 was closed without merge. Follow-up work should branch
+from clean `master` unless a task explicitly states otherwise. Always verify
+the exact local branch and worktree state with `git status`; this document does
+not assert that a worktree is clean.
 The latest Vultr Japan + Singapore multichannel runtime closeout is recorded in
 `docs/production-replacement-records/2026-06-09-vultr-sgp-multichannel-runtime-closeout.md`.
 It documents the SGP handoff/runtime apply fix, Hysteria2 config schema
@@ -1544,10 +1544,9 @@ operator approval, validation, and rollback path exist:
   tenant state, or SQLite authority changes.
 
 GitHub-hosted Actions must be checked per PR instead of treated as globally
-blocked. PR #299's hosted `Validate` check succeeded on 2026-06-10. PR #300 and
-PR #302 target `feat/install-config-wizard`, while the current workflow is
-scoped to `master`; the absence of hosted `Validate` on those sibling PRs is
-therefore not billing or quota evidence. Use local validation and
+blocked. As of the latest GitHub/mainline closeout, `master` is at `16a1d58`,
+open PR count is 0, PR #299, PR #302, PR #303, PR #304, and PR #305 are merged,
+and PR #300 was closed without merge. Use local validation and
 `docs/CI_MANUAL_VALIDATION.md` when a clean fallback is actually needed. Manual
 CI is not staging, production, or deployment approval.
 

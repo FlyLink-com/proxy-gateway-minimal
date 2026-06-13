@@ -42,10 +42,10 @@
     {
       "id": "C9-current-worktree-service-lane-closeout",
       "risk": "C",
-      "status": "active-in-current-worktree",
+      "status": "completed-in-pr-305",
       "lane": "validation-ci",
       "title": "Split the current dirty worktree into service-lane closeout units",
-      "goal": "Keep generated artifacts, docs/project-state updates, Admin UI, User Portal, control-plane ledger, edge runtime adapters, and CLI/helper changes reviewable instead of merging the dirty branch as one opaque package.",
+      "goal": "Keep generated artifacts, docs/project-state updates, Admin UI, User Portal, control-plane ledger, edge runtime adapters, and CLI/helper changes reviewable instead of merging the dirty branch as one opaque package. This closeout line was merged back to master through PR #305.",
       "allowedFiles": [
         ".gitignore",
         "README.md",

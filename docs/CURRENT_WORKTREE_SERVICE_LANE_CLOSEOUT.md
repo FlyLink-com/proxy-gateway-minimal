@@ -15,24 +15,21 @@ Last updated: 2026-06-09, America/Los_Angeles.
 
 ## Current Snapshot
 
-Point-in-time local snapshot from `git status --short --branch` and
-`gh pr list` on 2026-06-09:
+Point-in-time GitHub/mainline closeout snapshot after PR #305:
 
 ```text
-branch: feat/install-config-wizard
-upstream: origin/feat/install-config-wizard
-working tree: clean
-current PR: #299 [codex] close service-lane worktree
-PR state: draft
+branch: master
+upstream: origin/master
+working tree: clean at closeout
+current PR: none
+PR state: open PR count 0; PR #299, #302, #303, #304, and #305 merged
 ```
 
-This branch is still not ready to merge as a one-shot feature branch. The local
-dirty worktree snapshot has been closed out, but the branch remains a large
-integration lane that mixes Admin UI, User Portal, control-plane services, edge
-runtime adapters, subscription rendering, usage accounting, project-state,
-runtime templates, docs, and validation artifacts. The remaining closeout work
-is to choose merge, split, or archive outcomes for each service lane and open PR
-backlog item.
+This closeout record is now historical. The GitHub/mainline closeout accepted
+`master` at `16a1d58`, open PR count 0, with PR #299, PR #302, PR #303, PR #304,
+and PR #305 merged. Follow-up work should start from a clean `master` worktree
+and use new focused branches for docs repair, usage accounting, quota gates, or
+channel quality tuning.
 
 ## Split Units
 
@@ -331,11 +328,7 @@ Rationale:
 
 | PR / branch | Proposed action |
 | --- | --- |
-| PR #299 `feat/install-config-wizard` | Current draft closeout PR. Keep draft until service-lane validation and backlog disposition are explicit. |
-| PR #298 `cloudflare/workers-autoconfig` | Keep separate or close/merge after checking overlap with the root `wrangler.jsonc` Workers Builds fix already carried by PR #299. It is public-site/Cloudflare adjacent and should not be mixed with Express/SQLite control-plane runtime work. |
-| PR #297 `docs/aws-prod-candidate-private-validation` | Decide whether to merge as historical docs-only evidence or close as superseded by later AWS staging records. |
-| PR #294 `codex/gccgw-install-flow-hardening` | Rebase/review only if its install-flow hardening still applies after the current package/runtime changes; otherwise archive. |
-| PR #291, #290, #289, #276, #272 | Treat as stale draft backlog. Compare each against current docs/code, then close as superseded or rebase into a focused unit. |
+| GitHub/mainline closeout | Done: `master` is at `16a1d58`, open PR count 0, and PR #299, #302, #303, #304, and #305 are merged. |
 | Local `codex/portal-order-ledger` | Inspect before reuse; likely superseded by current order-lifecycle work unless it contains unique tests. |
 | Local `codex/multi-channel-node-guard` | Compare against current node policy and multichannel runtime implementation; merge only unique guard behavior. |
 | Local `codex/user-portal-aliyun-rc` | Treat as historical Aliyun/user-portal lane unless current portal UI work explicitly imports it. |
