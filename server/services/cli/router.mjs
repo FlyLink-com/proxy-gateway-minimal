@@ -78,6 +78,8 @@ const NODE_SCRIPT_COMMAND_ENTRIES = [
   ["platform revoke-access", "scripts/platform-revoke-access.mjs", "platform", "A", "dry-run-only", "Plan access revocation"],
   ["platform access-inventory-summary", "scripts/access-model-inventory-summary.mjs", "platform", "C", "summary", "Summarize access model inventory"],
   ["platform clean-edge-readiness-summary", "scripts/clean-edge-readiness-summary.mjs", "platform", "C", "gate-preview", "Summarize clean edge readiness"],
+  ["node image-readiness-summary", "scripts/node-image-provisioning-readiness-summary.mjs", "node", "C", "gate-preview", "Summarize clean node image readiness", ["docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md"]],
+  ["node image-first-boot-packet", "scripts/node-image-first-boot-packet.mjs", "node", "C", "gate-preview", "Summarize clean node image first-boot packet", ["docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md"]],
   ["subscription form", "scripts/platform-provisioning-form.mjs", "subscription", "B", "preview", "Convert operator facts into issuance input", undefined, { surface: "operator", aliasOf: "gccgw platform provisioning-form" }],
   ["subscription issue", "scripts/platform-issue-subscription.mjs", "subscription", "A", "execution-gated", "Issue a controlled subscription after approval", undefined, { surface: "operator", aliasOf: "gccgw platform issue-subscription" }],
   ["subscription portal-entry", "scripts/platform-issue-portal-entry.mjs", "subscription", "A", "execution-gated", "Issue a dynamic portal entry after approval", undefined, { surface: "operator", aliasOf: "gccgw platform issue-portal-entry" }],

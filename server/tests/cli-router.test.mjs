@@ -48,6 +48,24 @@ test("gccgw CLI resolves project checks to the project-state checker", () => {
   });
 });
 
+test("gccgw CLI resolves node image readiness summaries to the safe gate preview script", () => {
+  assert.deepEqual(resolveCliCommand(["node", "image-readiness-summary", "safe-input.json"]), {
+    kind: "node-script",
+    script: "scripts/node-image-provisioning-readiness-summary.mjs",
+    commandName: "gccgw node image-readiness-summary",
+    args: ["safe-input.json"]
+  });
+});
+
+test("gccgw CLI resolves node image first-boot packets to the safe gate preview script", () => {
+  assert.deepEqual(resolveCliCommand(["node", "image-first-boot-packet", "safe-input.json"]), {
+    kind: "node-script",
+    script: "scripts/node-image-first-boot-packet.mjs",
+    commandName: "gccgw node image-first-boot-packet",
+    args: ["safe-input.json"]
+  });
+});
+
 test("gccgw CLI builds Windows-safe npm script spawn commands", () => {
   assert.deepEqual(buildPackageScriptSpawn("test", "win32"), {
     command: "cmd.exe",
@@ -1752,6 +1770,8 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.ok(names.includes("gccgw install plan"));
   assert.ok(names.includes("gccgw install preflight"));
   assert.ok(names.includes("gccgw install bootstrap"));
+  assert.ok(names.includes("gccgw node image-readiness-summary"));
+  assert.ok(names.includes("gccgw node image-first-boot-packet"));
   assert.ok(names.includes("gccgw service status"));
   assert.ok(names.includes("gccgw project verify"));
   assert.ok(names.includes("gccgw platform issue-subscription"));
@@ -1801,6 +1821,18 @@ test("gccgw CLI exposes a structured command map for editor surfaces", async () 
   assert.equal(installBootstrap.mode, "execution-gated");
   assert.equal(installBootstrap.approvalPrompt, "required for --execute-production-mutation");
   assert.ok(installBootstrap.sourceDocs.includes("ops/edge-node/README.md"));
+
+  const nodeImageReadiness = commands.find((command) => command.command === "gccgw node image-readiness-summary");
+  assert.equal(nodeImageReadiness.domain, "node");
+  assert.equal(nodeImageReadiness.riskTier, "C");
+  assert.equal(nodeImageReadiness.mode, "gate-preview");
+  assert.ok(nodeImageReadiness.sourceDocs.includes("docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md"));
+
+  const nodeImageFirstBoot = commands.find((command) => command.command === "gccgw node image-first-boot-packet");
+  assert.equal(nodeImageFirstBoot.domain, "node");
+  assert.equal(nodeImageFirstBoot.riskTier, "C");
+  assert.equal(nodeImageFirstBoot.mode, "gate-preview");
+  assert.ok(nodeImageFirstBoot.sourceDocs.includes("docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md"));
 
   const serviceStatus = commands.find((command) => command.command === "gccgw service status");
   assert.equal(serviceStatus.domain, "service");
