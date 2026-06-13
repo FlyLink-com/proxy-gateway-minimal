@@ -68,11 +68,12 @@ node-image helper path on AWS staging only. It did not promote AWS, touch
 production, create live orders, output subscription material, or mutate DNS,
 Nginx, provider firewall/security groups, Vultr, or Aliyun.
 The next stage remains control-plane closeout. Repo-only source now includes
-first-boot packet registration ingestion and a durable safe-node registration
-table; protected production material handoff, production desired-state
-generation, receipt-gated subscription rendering, operator approval,
-validation, and rollback framing remain separately gated for the production
-lane.
+first-boot packet registration ingestion, a durable safe-node registration
+table, and a redacted protected-material handoff preflight that checks current
+desired-state material readiness by registered node and digest; protected
+production material handoff, production desired-state generation,
+receipt-gated subscription rendering, operator approval, validation, and
+rollback framing remain separately gated for the production lane.
 That closeout plan is recorded in
 `docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md`; it keeps order issuance as
 a control-plane action and edge-agent pull/apply as a lifecycle reconciliation

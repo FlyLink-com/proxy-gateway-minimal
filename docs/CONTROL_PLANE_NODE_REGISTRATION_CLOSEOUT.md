@@ -10,8 +10,11 @@ Last updated: 2026-06-13, Asia/Shanghai.
 - Scope: control-plane work needed after node-image readiness validation
 - Repo-only progress: first-boot packet to durable node registration ingestion is
   implemented in `server/services/edge/node-registration-ingestion.mjs`, backed
-  by the `platform_edge_registered_nodes` control DB table and tests. This is
-  not production activation.
+  by the `platform_edge_registered_nodes` control DB table and tests. Protected
+  material handoff preflight is implemented in
+  `server/services/edge/material-handoff-preflight.mjs`; it checks registered
+  nodes, current desired-state, and material digest readiness without returning
+  protected material. This is not production activation.
 
 This document closes the design boundary between production-node image readiness
 and control-plane activation. It does not authorize DNS, Nginx, provider
@@ -74,6 +77,9 @@ the control plane's desired runtime state.
    - Verify material presence by digest/key only.
    - Keep material retrieval private, node-scoped, current-desired-state scoped,
      and non-logging.
+   - Repo-only preflight now summarizes readiness by registered node, channel,
+     desired-state, credential ref, and digest; missing or mismatched material
+     fails closed and output remains redacted.
 
 3. **Desired-state generation**
    - On order issuance, generate credential refs and desired-state
@@ -110,7 +116,8 @@ Control-plane closeout is complete only when all of these are true:
 
 - The first-boot packet can be ingested without writing secrets into Git or docs.
 - The node registry records safe node facts and lifecycle/pool eligibility.
-- Protected material lookups resolve by key/digest without outputting values.
+- Protected material lookups and preflight checks resolve by key/digest without
+  outputting values.
 - New order issuance creates desired-state notifications for the registered
   node's eligible channels.
 - The data-plane agent can apply the desired-state and post redacted receipts.
