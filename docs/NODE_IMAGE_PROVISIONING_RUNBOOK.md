@@ -169,6 +169,35 @@ New node validation:
 - no live order is created unless the approval explicitly allows a controlled
   smoke order.
 
+## Repo-Only Readiness Summary
+
+Before requesting any provider or production mutation, operators can convert
+safe, non-secret gate facts into a redacted readiness summary:
+
+```powershell
+node bin/gccgw.mjs node image-readiness-summary .\node-image-readiness.safe.json
+```
+
+The input file must contain only supported boolean gate fields and safe notes.
+It must not contain hostnames, IP addresses, URLs, subscription links, tokens,
+passwords, private keys, provider credentials, SQLite data, customer data, raw
+runtime config, or raw logs. Unsupported or sensitive-looking fields are
+rejected without echoing their values.
+
+The summary can answer:
+
+- whether the no-secret image build preconditions are complete;
+- whether first-boot registration and private control-plane path prerequisites
+  are ready;
+- whether Xray, Hysteria2, TUIC, loopback stats, and public Admin boundaries
+  have planned validation;
+- whether receipt-gated rendering is still enforced;
+- whether activation and live-order smoke require separate approvals.
+
+The command is a repo-only gate preview. It does not create images, query
+providers, provision hosts, inject protected material, start services, mutate
+DNS, touch SQLite, render subscription YAML, or create live orders.
+
 ## Rollback
 
 Before activation:

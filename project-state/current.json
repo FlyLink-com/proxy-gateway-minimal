@@ -148,19 +148,21 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "stableBaselineCommit": "16a1d58",
+    "stableBaselineCommit": "bda0bb8",
     "openPrCount": 0,
     "mergedPrsInCloseout": [
       299,
       302,
       303,
       304,
-      305
+      305,
+      306,
+      307
     ],
     "followOnBaseline": "master",
     "followOnBranchPolicy": "Start subsequent tasks from a clean master worktree unless a task explicitly states another baseline.",
     "closeoutPlan": "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
-    "note": "Branch context was rechecked after GitHub/mainline closeout: master is at 16a1d58, open PR count is 0, PR #299, PR #302, PR #303, PR #304, and PR #305 are merged, and PR #300 was closed without merge. Always verify live Git status before new work."
+    "note": "Branch context was rechecked after GitHub/mainline closeout: master is at bda0bb8, open PR count is 0, PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, and PR #307 are merged, and PR #300 was closed without merge. Always verify live Git status before new work."
   },
   "architectureView": {
     "currentMentalModel": "four-layer-single-control-plane-multi-data-plane",
@@ -189,7 +191,7 @@
       "old checkout paths and archive directories",
       "runtime-only residue copied from production hosts"
     ],
-    "branchAuthority": "master at 16a1d58 is the follow-on development baseline after PR #299, PR #302, PR #303, PR #304, and PR #305 merged; PR #300 is closed without merge; open PR count is 0."
+    "branchAuthority": "master at bda0bb8 is the follow-on development baseline after PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, and PR #307 merged; PR #300 is closed without merge; open PR count is 0."
   },
   "productSpine": [
     "stable subscription/import experience",
@@ -290,7 +292,7 @@
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, validation evidence, and Agent / Task Routing metadata before it is marked Ready, submitted for merge, or reported complete. The routing metadata must name the lead agent, supporting agents if any, primary unit, secondary units, follow-up agent suitability, and recommended next owner. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
-    "githubHostedActions": "GitHub/mainline closeout reports master at 16a1d58, open PR count 0, PR #299, PR #302, PR #303, PR #304, and PR #305 merged, and PR #300 closed without merge. Use local/manual validation when hosted workflows do not run.",
+    "githubHostedActions": "GitHub/mainline closeout reports master at bda0bb8, open PR count 0, PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, and PR #307 merged, and PR #300 closed without merge. Use local/manual validation when hosted workflows do not run.",
     "manualCiFallback": "Use docs/VALIDATION_BASELINE.md and docs/CI_MANUAL_VALIDATION.md for the current manual validation path; historical HP/Aliyun manual CI facts are reference only.",
     "manualCiIsStaging": false,
     "cTierCommand": "git diff --check origin/master...HEAD",
