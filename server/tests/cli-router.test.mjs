@@ -26,6 +26,37 @@ import {
   runProxyGatewayCli
 } from "../services/cli/router.mjs";
 
+function cliAdapters(overrides = {}) {
+  return {
+    runNodeScript: async () => {
+      throw new Error("node script must not run for this CLI test");
+    },
+    runPackageScript: async () => {
+      throw new Error("npm package script must not run for this CLI test");
+    },
+    runGitDiffCheck: async () => 0,
+    runEnvCheck: async () => 0,
+    runSelfCheck: async () => 0,
+    runInstallPreflight: async () => 0,
+    runBackupPreflight: async () => 0,
+    runReleaseStatus: async () => 0,
+    runServiceStatus: async () => 0,
+    runNetworkStatus: async () => 0,
+    runPackageImportDryRun: async () => 0,
+    runPackageApply: async () => 0,
+    runPackageInspect: async () => 0,
+    runInstallConfigure: async () => 0,
+    startServer: async () => 0,
+    confirmRiskAExecution: async () => false,
+    readJsonFile: () => {
+      throw new Error("JSON file reads are not expected for this CLI test");
+    },
+    writeStdout: () => {},
+    writeStderr: () => {},
+    ...overrides
+  };
+}
+
 test("gccgw CLI help exposes normalized command groups", () => {
   const help = buildCliHelp();
 
@@ -1126,6 +1157,99 @@ test("gccgw node policy-check reports stable protocol blockers without leaking e
   assert.equal(report.mutation, false);
   assert.equal(report.productionAuthority, false);
   assert.doesNotMatch(JSON.stringify(report), /198\.51\.100|18388|ss-secret|tuic-secret/);
+});
+
+test("gccgw edge material-handoff preflight is dry-run only", () => {
+  assert.deepEqual(resolveCliCommand([
+    "edge",
+    "material-handoff",
+    "preflight",
+    "--dry-run",
+    "--node-ref",
+    "edge-node-sgp-a",
+    "--control-db",
+    "/opt/gccgw/control.sqlite",
+    "--material-file",
+    "/opt/gccgw/protected-material.json",
+    "--json"
+  ]), {
+    kind: "edge-material-handoff-preflight",
+    nodeRef: "edge-node-sgp-a",
+    controlDbPath: "/opt/gccgw/control.sqlite",
+    materialFilePath: "/opt/gccgw/protected-material.json",
+    format: "json"
+  });
+
+  assert.throws(
+    () => resolveCliCommand([
+      "edge",
+      "material-handoff",
+      "preflight",
+      "--node-ref",
+      "edge-node-sgp-a"
+    ]),
+    /gccgw edge material-handoff preflight supports --dry-run only/
+  );
+});
+
+test("gccgw edge material-handoff preflight prints only redacted readiness", async () => {
+  const stdout = [];
+  const exitCode = await runProxyGatewayCli([
+    "edge",
+    "material-handoff",
+    "preflight",
+    "--dry-run",
+    "--node-ref",
+    "edge-node-sgp-a",
+    "--control-db",
+    "/opt/gccgw/control.sqlite",
+    "--material-file",
+    "/opt/gccgw/protected-material.json",
+    "--json"
+  ], cliAdapters({
+    runEdgeMaterialHandoffPreflight: async (command) => {
+      assert.equal(command.nodeRef, "edge-node-sgp-a");
+      assert.equal(command.controlDbPath, "/opt/gccgw/control.sqlite");
+      assert.equal(command.materialFilePath, "/opt/gccgw/protected-material.json");
+      return {
+        type: "gccgw_protected_material_handoff_preflight",
+        nodeRef: "edge-node-sgp-a",
+        status: "ready",
+        ready: true,
+        redacted: true,
+        channelRefs: ["channel-sgp-a-hy2"],
+        desiredStates: [
+          {
+            channelRef: "channel-sgp-a-hy2",
+            desiredStateRef: "desired_state_channel_sgp_a_hy2",
+            generation: "gen_safe",
+            edgeCredentialCount: 1,
+            materialDigestCount: 1,
+            materialReadyCount: 1,
+            missingMaterialCount: 0,
+            digestMismatchCount: 0
+          }
+        ],
+        totals: {
+          desiredStateCount: 1,
+          edgeCredentialCount: 1,
+          materialReadyCount: 1,
+          missingMaterialCount: 0,
+          digestMismatchCount: 0
+        },
+        blockers: []
+      };
+    },
+    writeStdout: (text) => stdout.push(text)
+  }));
+
+  assert.equal(exitCode, 0);
+  const report = JSON.parse(stdout.join(""));
+  assert.equal(report.type, "gccgw_protected_material_handoff_preflight");
+  assert.equal(report.ready, true);
+  assert.equal(report.redacted, true);
+  assert.equal(report.totals.materialReadyCount, 1);
+  assert.doesNotMatch(JSON.stringify(report), /password|private|secret|uuid|subscriptionUrl/i);
 });
 
 test("gccgw node data-plane-lifecycle-policy blocks shared credentials without leaking endpoints", async () => {

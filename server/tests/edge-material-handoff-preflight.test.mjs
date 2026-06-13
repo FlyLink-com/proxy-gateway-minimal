@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { createEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 import { buildProtectedMaterialHandoffPreflight } from "../services/edge/material-handoff-preflight.mjs";
+import { createReadOnlyMaterialHandoffControlStore } from "../services/edge/material-handoff-readonly-control-store.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 
 const NOW = "2026-06-13T12:00:00.000Z";
@@ -154,6 +155,57 @@ test("material handoff preflight summarizes registered node readiness without pr
       /synthetic-|11111111-1111-4111-8111-111111111111|22222222-2222-4222-8222-222222222222/
     );
   });
+});
+
+test("material handoff preflight can read an existing control DB without opening the mutable store", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "edge-material-handoff-readonly-"));
+  const dbPath = join(tempDir, "control.sqlite");
+  let mutableStore;
+  let readOnlyStore;
+  try {
+    mutableStore = createSqliteSubscriptionControlStore({ dbPath });
+    seedRegisteredNode(mutableStore);
+    seedDeliveredOrder(mutableStore);
+    mutableStore.close();
+    mutableStore = null;
+
+    readOnlyStore = createReadOnlyMaterialHandoffControlStore({ dbPath });
+    const protectedMaterials = materialStore([
+      {
+        credentialRef: "edgecred_material_handoff_hy2",
+        materialDigest: "sha256:aaaaaaaaaaaaaaaa",
+        material: {
+          uuid: "11111111-1111-4111-8111-111111111111",
+          password: "synthetic-hy2-password"
+        }
+      },
+      {
+        credentialRef: "edgecred_material_handoff_tuic",
+        materialDigest: "sha256:bbbbbbbbbbbbbbbb",
+        material: {
+          uuid: "22222222-2222-4222-8222-222222222222",
+          password: "synthetic-tuic-password"
+        }
+      }
+    ]);
+
+    const preflight = buildProtectedMaterialHandoffPreflight({
+      controlStore: readOnlyStore,
+      credentialMaterialStore: protectedMaterials,
+      nodeRef: "edge-node-sgp-a"
+    });
+
+    assert.equal(preflight.ready, true);
+    assert.equal(preflight.totals.materialReadyCount, 2);
+    assert.doesNotMatch(
+      JSON.stringify(preflight),
+      /synthetic-|11111111-1111-4111-8111-111111111111|22222222-2222-4222-8222-222222222222/
+    );
+  } finally {
+    readOnlyStore?.close();
+    mutableStore?.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
 });
 
 test("material handoff preflight fails closed when protected material is missing or mismatched", () => {

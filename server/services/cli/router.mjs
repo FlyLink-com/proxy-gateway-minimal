@@ -116,6 +116,7 @@ const SPECIAL_COMMAND_ENTRIES = [
   ["install preflight", null, "install", "C", "read-only", "Check server bootstrap prerequisites without mutating the host"],
   ["edge credentials reconcile-plan", null, "edge", "B", "dry-run", "Build a redacted edge credential desired-state reconciliation plan", ["docs/EDGE_CREDENTIAL_RECONCILIATION_GATEWAY_DESIGN.md", "docs/ALIYUN_LOCAL_EDGE_LIFECYCLE_IMPLEMENTATION_PLAN.md"]],
   ["edge credentials apply", null, "edge", "A", "execution-gated", "Apply a reviewed edge credential desired-state reconciliation plan on a node", ["docs/EDGE_CREDENTIAL_RECONCILIATION_GATEWAY_DESIGN.md", "docs/PRODUCTION_EDGE_FLEET.md"]],
+  ["edge material-handoff preflight", null, "edge", "B", "dry-run", "Check protected material readiness for a registered data-plane node without printing material", ["docs/CONTROL_DATA_PLANE_INTERCONNECT_CONTRACT.md", "docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md"]],
   ["edge tuic-credentials plan", null, "edge", "B", "dry-run", "Build a redacted TUIC per-order credential lifecycle plan", ["docs/JAPAN_TUIC_PER_ORDER_CREDENTIAL_UPGRADE_RUNBOOK.md", "docs/CHANNEL_MULTI_CHANNEL_NODE_DESIGN.md"]],
   ["edge tuic-credentials apply", null, "edge", "A", "execution-gated", "Apply a reviewed TUIC per-order credential lifecycle plan on a node", ["docs/JAPAN_TUIC_PER_ORDER_CREDENTIAL_UPGRADE_RUNBOOK.md", "docs/PRODUCTION_EDGE_FLEET.md"]],
   ["node inspect", null, "node", "C", "read-only", "Inspect safe node registry facts without printing endpoints or credentials"],
@@ -1934,6 +1935,7 @@ Usage:
   gccgw install preflight [--json]
   gccgw edge credentials reconcile-plan --input <desired-state.json> [--json]
   gccgw edge credentials apply --input <desired-state.json> --execute-production-mutation [--json]
+  gccgw edge material-handoff preflight --dry-run --node-ref <node-ref> --control-db <control.sqlite> --material-file <protected-material.json> [--json]
   gccgw edge tuic-credentials plan --input <desired-state.json> [--json]
   gccgw edge tuic-credentials apply --input <desired-state.json> --execute-production-mutation [--json]
   gccgw node inspect [--config <proxy-servers.json>] [--json]
@@ -1979,6 +1981,7 @@ Common commands:
   gccgw install preflight --json
   gccgw edge credentials reconcile-plan --input desired-state.json --json
   gccgw edge credentials apply --input reviewed-desired-state.json --execute-production-mutation --json
+  gccgw edge material-handoff preflight --dry-run --node-ref edge-node-sgp-a --control-db /opt/gccgw/control.sqlite --material-file /opt/gccgw/protected-material.json --json
   gccgw edge tuic-credentials plan --input desired-state.json --json
   gccgw edge tuic-credentials apply --input reviewed-desired-state.json --execute-production-mutation --json
   gccgw package inspect deployments/production-template --json
@@ -2210,6 +2213,22 @@ export function resolveCliCommand(argv = []) {
       };
     }
     throw new Error(`Unknown gccgw edge credentials command: ${mode || ""}`.trim());
+  }
+  if (args[0] === "edge" && args[1] === "material-handoff") {
+    const mode = args[2];
+    if (mode === "preflight") {
+      if (!args.includes("--dry-run")) {
+        throw new Error("gccgw edge material-handoff preflight supports --dry-run only.");
+      }
+      return {
+        kind: "edge-material-handoff-preflight",
+        nodeRef: optionValue(args, "--node-ref"),
+        controlDbPath: optionValue(args, "--control-db") || optionValue(args, "--control-db-path"),
+        materialFilePath: optionValue(args, "--material-file") || optionValue(args, "--protected-material-file"),
+        format: args.includes("--json") ? "json" : "text"
+      };
+    }
+    throw new Error(`Unknown gccgw edge material-handoff command: ${mode || ""}`.trim());
   }
   const commandKey = `${args[0] || ""} ${args[1] || ""}`.trim();
   if (hasKnownCommand(commandKey) && args.slice(2).some(isHelpArg)) {
@@ -2478,6 +2497,7 @@ export async function runProxyGatewayCli(argv, {
   runPackageApply,
   runPackageInspect,
   runInstallConfigure,
+  runEdgeMaterialHandoffPreflight,
   readJsonFile,
   startServer,
   confirmRiskAExecution,
@@ -2593,6 +2613,14 @@ export async function runProxyGatewayCli(argv, {
       });
       writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
       return report.ok ? 0 : 1;
+    }
+    if (command.kind === "edge-material-handoff-preflight") {
+      if (typeof runEdgeMaterialHandoffPreflight !== "function") {
+        throw new Error("edge material-handoff preflight adapter is unavailable");
+      }
+      const report = await runEdgeMaterialHandoffPreflight(command);
+      writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
+      return report.ready === true ? 0 : 1;
     }
     if (command.kind === "node-inspect") {
       const report = buildNodeInspectReport({
