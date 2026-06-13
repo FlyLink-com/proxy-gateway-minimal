@@ -130,6 +130,7 @@ Check structured state with `npm run project-state:check`.
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
 | `docs/DEPLOYMENT_FLOW.md` | Development, PR, candidate, staging, production promotion, and rollback flow. | Active deployment flow. | Read before deployment, promotion, rollback, or candidate selection work. |
+| `docs/GITHUB_DEPLOYMENT_RUNBOOK.md` | GitHub-owned release artifact, Cloudflare static-site deploy, and production deploy dry-run boundaries. | Active CI/CD runbook; production host mutation remains separately gated. | Read before adding GitHub Actions deployment, Cloudflare publish, or production deploy dry-run/promotion workflows. |
 | `deployments/production-template/README.md` | Non-secret production input package template with `package-manifest.json`, topology, node slots, public boundary, package plans, required env names, and deployment runbook shape. | Active template; no deployment or secret authority. | Read before preparing production/staging deployment inputs or asking for a Risk A bootstrap gate. |
 | `docs/STAGING_PROVISIONING.md` | Clean staging provisioning, dry-run inventory, approval gates, validation, and cleanup. | Active staging runbook. | Read before any staging AWS mutation. |
 | `docs/STAGING_TARGET_DECISION.md` | Decision record for clean staging versus reusing the historical stopped node. | Active decision record. | Read before assigning or reassigning a staging target. |

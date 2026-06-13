@@ -1,0 +1,109 @@
+name: Deploy Cloudflare Site
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Run a dry-run or publish the static site.
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - deploy
+      confirmation:
+        description: Type "deploy cloudflare site" when mode is deploy.
+        required: false
+        type: string
+  push:
+    branches:
+      - master
+    paths:
+      - admin/**
+      - package.json
+      - package-lock.json
+      - wrangler.jsonc
+      - .github/workflows/deploy-cloudflare-site.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cloudflare-site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Build and verify public site
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            admin/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install admin dependencies
+        run: npm ci --prefix admin
+
+      - name: Build public site
+        run: npm run cloudflare:site:build
+
+      - name: Verify public site boundary
+        run: npm run cloudflare:site:verify
+
+      - name: Wrangler dry run
+        run: npm run cloudflare:site:dry-run
+
+  deploy:
+    name: Deploy public site
+    needs: validate
+    runs-on: ubuntu-latest
+    environment: cloudflare-production
+    if: >-
+      (github.event_name == 'workflow_dispatch' &&
+       inputs.mode == 'deploy' &&
+       inputs.confirmation == 'deploy cloudflare site') ||
+      (github.event_name == 'push' &&
+       vars.CLOUDFLARE_SITE_AUTO_DEPLOY == 'true')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            admin/package-lock.json
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Install admin dependencies
+        run: npm ci --prefix admin
+
+      - name: Build public site
+        run: npm run cloudflare:site:build
+
+      - name: Verify public site boundary
+        run: npm run cloudflare:site:verify
+
+      - name: Deploy with Wrangler
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@4.99.0 deploy --config wrangler.jsonc
