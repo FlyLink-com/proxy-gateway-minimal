@@ -1,4 +1,5 @@
 import Database from "better-sqlite3";
+import { createHash } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
@@ -84,6 +85,14 @@ function assertNoUnsafeFields(value, path = []) {
     }
     assertNoUnsafeFields(nested, [...path, key]);
   }
+}
+
+function listenerReadyFlag(input = {}) {
+  return (
+    input.listenerUdp443 === true
+    || input.listenerTcp === true
+    || input.listenerPresent === true
+  ) ? 1 : 0;
 }
 
 function jsonObject(value, field) {
@@ -371,6 +380,40 @@ function mapEdgeApplyReceipt(row) {
     appliedAt: row.applied_at,
     createdAt: row.created_at
   };
+}
+
+function mapEdgeDesiredStateNotification(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    nodeRef: row.node_ref,
+    channelRef: row.channel_ref,
+    desiredStateRef: row.desired_state_ref,
+    generation: row.generation,
+    reason: row.reason,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapEdgeAgentLease(row) {
+  if (!row) return null;
+  return {
+    leaseRef: row.lease_ref,
+    agentRef: row.agent_ref,
+    nodeRef: row.node_ref,
+    channelRef: row.channel_ref,
+    desiredStateRef: row.desired_state_ref,
+    status: row.status,
+    acquiredAt: row.acquired_at,
+    renewedAt: row.renewed_at,
+    expiresAt: row.expires_at
+  };
+}
+
+function sha256(value) {
+  return createHash("sha256").update(String(value)).digest("hex");
 }
 
 function mapPortalAccessRequest(row) {
@@ -713,6 +756,42 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       on platform_edge_apply_receipts(channel_ref, created_at);
     create index if not exists platform_edge_apply_receipts_desired_state_idx
       on platform_edge_apply_receipts(desired_state_ref);
+
+    create table if not exists platform_edge_desired_state_notifications (
+      id text primary key,
+      node_ref text not null,
+      channel_ref text not null,
+      desired_state_ref text not null,
+      generation text not null,
+      reason text not null,
+      status text not null check (status in ('pending', 'acknowledged', 'applied', 'failed')),
+      created_at text not null,
+      updated_at text not null
+    );
+
+    create index if not exists platform_edge_desired_state_notifications_node_idx
+      on platform_edge_desired_state_notifications(node_ref, created_at);
+    create index if not exists platform_edge_desired_state_notifications_channel_idx
+      on platform_edge_desired_state_notifications(channel_ref, created_at);
+    create index if not exists platform_edge_desired_state_notifications_state_idx
+      on platform_edge_desired_state_notifications(desired_state_ref);
+
+    create table if not exists platform_edge_agent_leases (
+      lease_ref text primary key,
+      agent_ref text not null,
+      node_ref text not null,
+      channel_ref text not null,
+      desired_state_ref text,
+      status text not null check (status in ('active', 'released', 'expired')),
+      acquired_at text not null,
+      renewed_at text not null,
+      expires_at text not null
+    );
+
+    create index if not exists platform_edge_agent_leases_channel_idx
+      on platform_edge_agent_leases(channel_ref, renewed_at);
+    create index if not exists platform_edge_agent_leases_node_idx
+      on platform_edge_agent_leases(node_ref, renewed_at);
 
     create table if not exists platform_portal_access_requests (
       id text primary key,
@@ -1466,6 +1545,64 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     return mapAuditEvent(db.prepare("select * from platform_audit_events where id = ?").get(requiredText(id, "id")));
   }
 
+  function getLatestEdgeDesiredStateForChannel(channelRef, filters = {}) {
+    assertNoUnsafeFields(filters);
+    const safeChannelRef = requiredText(channelRef, "channelRef");
+    const nodeRef = requiredText(filters.nodeRef || safeChannelRef, "nodeRef");
+    const rows = db.prepare(`
+      select
+        r.id as request_id,
+        coalesce(r.valid_until, r.expires_at) as valid_until,
+        r.updated_at,
+        c.edge_channel_ref,
+        c.edge_credential_ref,
+        c.edge_material_digest
+      from platform_portal_access_requests r
+      join platform_portal_edge_credentials c on c.request_id = r.id
+      where c.edge_channel_ref = ?
+        and r.status in ('delivered', 'issued')
+      order by c.edge_credential_ref asc, r.updated_at asc, r.id asc
+    `).all(safeChannelRef);
+    const nowMs = Date.now();
+    const activeRows = rows
+      .map((row) => ({
+        ...row,
+        validUntilMs: Date.parse(row.valid_until)
+      }))
+      .filter((row) => row.edge_credential_ref && row.edge_material_digest)
+      .filter((row) => row.valid_until && !Number.isNaN(row.validUntilMs) && row.validUntilMs > nowMs);
+    if (activeRows.length === 0) {
+      return null;
+    }
+    const edgeCredentialRefs = [...new Set(activeRows.map((row) => row.edge_credential_ref))].sort((a, b) => a.localeCompare(b));
+    const materialDigests = activeRows
+      .map((row) => ({
+        channelRef: row.edge_channel_ref,
+        edgeCredentialRef: row.edge_credential_ref,
+        digest: row.edge_material_digest
+      }))
+      .sort((a, b) => a.edgeCredentialRef.localeCompare(b.edgeCredentialRef));
+    const validUntil = new Date(Math.min(...activeRows.map((row) => row.validUntilMs))).toISOString();
+    const fingerprint = sha256(JSON.stringify({
+      nodeRef,
+      channelRef: safeChannelRef,
+      edgeCredentialRefs,
+      materialDigests,
+      validUntil
+    })).slice(0, 24);
+    const generation = `gen_${fingerprint}`;
+    return {
+      desiredStateRef: `desired_state_${safeChannelRef}_${fingerprint}`,
+      nodeRef,
+      generation,
+      channelRefs: [safeChannelRef],
+      edgeCredentialRefs,
+      materialDigests,
+      validUntil,
+      redacted: true
+    };
+  }
+
   function recordEdgeApplyReceipt(input) {
     assertNoUnsafeFields(input);
     const actionCounts = input.actionCounts ?? {};
@@ -1480,7 +1617,7 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       unchangedCount: integer(actionCounts.unchanged ?? 0, "actionCounts.unchanged", { min: 0 }),
       configTestOk: input.configTestOk === true ? 1 : 0,
       serviceActive: input.serviceActive === true ? 1 : 0,
-      listenerUdp443: input.listenerUdp443 === true ? 1 : 0,
+      listenerUdp443: listenerReadyFlag(input),
       backupRef: optionalText(input.backupRef),
       rollbackRef: optionalText(input.rollbackRef),
       appliedAt: optionalIsoText(input.appliedAt, "appliedAt"),
@@ -1496,6 +1633,21 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
         @rotateCount, @unchangedCount, @configTestOk, @serviceActive,
         @listenerUdp443, @backupRef, @rollbackRef, @appliedAt, @createdAt
       )
+      on conflict(id) do update set
+        channel_ref = excluded.channel_ref,
+        desired_state_ref = excluded.desired_state_ref,
+        status = excluded.status,
+        add_count = excluded.add_count,
+        revoke_count = excluded.revoke_count,
+        rotate_count = excluded.rotate_count,
+        unchanged_count = excluded.unchanged_count,
+        config_test_ok = excluded.config_test_ok,
+        service_active = excluded.service_active,
+        listener_udp443 = excluded.listener_udp443,
+        backup_ref = excluded.backup_ref,
+        rollback_ref = excluded.rollback_ref,
+        applied_at = excluded.applied_at,
+        created_at = excluded.created_at
     `), record);
     return getEdgeApplyReceipt(record.id);
   }
@@ -1517,6 +1669,106 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       select * from platform_edge_apply_receipts
       order by created_at asc, id asc
     `).all().map(mapEdgeApplyReceipt);
+  }
+
+  function recordEdgeDesiredStateNotification(input) {
+    assertNoUnsafeFields(input);
+    const now = isoText(input.updatedAt || input.createdAt, "updatedAt");
+    const record = {
+      id: requiredText(input.id, "id"),
+      nodeRef: requiredText(input.nodeRef, "nodeRef"),
+      channelRef: requiredText(input.channelRef, "channelRef"),
+      desiredStateRef: requiredText(input.desiredStateRef, "desiredStateRef"),
+      generation: requiredText(input.generation, "generation"),
+      reason: requiredText(input.reason, "reason"),
+      status: requiredText(input.status || "pending", "status"),
+      createdAt: isoText(input.createdAt || now, "createdAt"),
+      updatedAt: now
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_edge_desired_state_notifications (
+        id, node_ref, channel_ref, desired_state_ref, generation, reason,
+        status, created_at, updated_at
+      ) values (
+        @id, @nodeRef, @channelRef, @desiredStateRef, @generation, @reason,
+        @status, @createdAt, @updatedAt
+      )
+      on conflict(id) do update set
+        node_ref = excluded.node_ref,
+        channel_ref = excluded.channel_ref,
+        desired_state_ref = excluded.desired_state_ref,
+        generation = excluded.generation,
+        reason = excluded.reason,
+        status = excluded.status,
+        updated_at = excluded.updated_at
+    `), record);
+    return getEdgeDesiredStateNotification(record.id);
+  }
+
+  function getEdgeDesiredStateNotification(id) {
+    return mapEdgeDesiredStateNotification(db.prepare(`
+      select * from platform_edge_desired_state_notifications where id = ?
+    `).get(requiredText(id, "id")));
+  }
+
+  function listEdgeDesiredStateNotifications(filters = {}) {
+    assertNoUnsafeFields(filters);
+    const nodeRef = optionalText(filters.nodeRef);
+    const channelRef = optionalText(filters.channelRef);
+    const status = optionalText(filters.status);
+    const clauses = [];
+    const params = [];
+    if (nodeRef) {
+      clauses.push("node_ref = ?");
+      params.push(nodeRef);
+    }
+    if (channelRef) {
+      clauses.push("channel_ref = ?");
+      params.push(channelRef);
+    }
+    if (status) {
+      clauses.push("status = ?");
+      params.push(status);
+    }
+    const where = clauses.length > 0 ? `where ${clauses.join(" and ")}` : "";
+    return db.prepare(`
+      select * from platform_edge_desired_state_notifications
+      ${where}
+      order by created_at asc, id asc
+    `).all(...params).map(mapEdgeDesiredStateNotification);
+  }
+
+  function acquireEdgeAgentLease(input) {
+    assertNoUnsafeFields(input);
+    const record = {
+      leaseRef: requiredText(input.leaseRef, "leaseRef"),
+      agentRef: requiredText(input.agentRef, "agentRef"),
+      nodeRef: requiredText(input.nodeRef, "nodeRef"),
+      channelRef: requiredText(input.channelRef, "channelRef"),
+      desiredStateRef: optionalText(input.desiredStateRef),
+      status: requiredText(input.status || "active", "status"),
+      acquiredAt: isoText(input.acquiredAt, "acquiredAt"),
+      renewedAt: isoText(input.renewedAt, "renewedAt"),
+      expiresAt: isoText(input.expiresAt, "expiresAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_edge_agent_leases (
+        lease_ref, agent_ref, node_ref, channel_ref, desired_state_ref,
+        status, acquired_at, renewed_at, expires_at
+      ) values (
+        @leaseRef, @agentRef, @nodeRef, @channelRef, @desiredStateRef,
+        @status, @acquiredAt, @renewedAt, @expiresAt
+      )
+      on conflict(lease_ref) do update set
+        agent_ref = excluded.agent_ref,
+        node_ref = excluded.node_ref,
+        channel_ref = excluded.channel_ref,
+        desired_state_ref = excluded.desired_state_ref,
+        status = excluded.status,
+        renewed_at = excluded.renewed_at,
+        expires_at = excluded.expires_at
+    `), record);
+    return mapEdgeAgentLease(db.prepare("select * from platform_edge_agent_leases where lease_ref = ?").get(record.leaseRef));
   }
 
   function listPortalEdgeCredentials(requestId) {
@@ -2147,9 +2399,14 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     getRevocationEvent,
     recordAuditEvent,
     getAuditEvent,
+    getLatestEdgeDesiredStateForChannel,
     recordEdgeApplyReceipt,
     getEdgeApplyReceipt,
     listEdgeApplyReceipts,
+    recordEdgeDesiredStateNotification,
+    getEdgeDesiredStateNotification,
+    listEdgeDesiredStateNotifications,
+    acquireEdgeAgentLease,
     upsertPortalAccessRequest,
     getPortalAccessRequest,
     listPortalAccessRequests,

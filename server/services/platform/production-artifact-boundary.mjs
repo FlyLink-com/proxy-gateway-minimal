@@ -6,9 +6,14 @@ const PROTECTED_CONFIG_PATHS = new Set([
 
 const FORBIDDEN_PREFIX_RULES = [
   { prefix: ".worktrees/", reason: "development worktree residue must not be packaged" },
+  { prefix: ".codex-artifacts/", reason: "local generated artifact workspace must not be packaged" },
   { prefix: ".codex-runtime/", reason: "local preview/runtime scratch files must not be packaged" },
   { prefix: ".claude/", reason: "local assistant settings must not be packaged" },
   { prefix: ".proxy-gateway/", reason: "runtime control files must not be packaged" }
+];
+
+const FORBIDDEN_SEGMENT_RULES = [
+  { segment: ".claude", reason: "local assistant settings must not be packaged" }
 ];
 
 const FORBIDDEN_EXACT_RULES = new Map([
@@ -43,6 +48,18 @@ function classifyPath(path) {
         path: normalized,
         severity: "blocker",
         code: "forbidden_prefix",
+        reason: rule.reason
+      };
+    }
+  }
+
+  const segments = normalized.split("/");
+  for (const rule of FORBIDDEN_SEGMENT_RULES) {
+    if (segments.includes(rule.segment)) {
+      return {
+        path: normalized,
+        severity: "blocker",
+        code: "forbidden_segment",
         reason: rule.reason
       };
     }
@@ -131,6 +148,7 @@ export function compareNormalizedText({ left = "", right = "" } = {}) {
 
 export const productionArtifactBoundaryRules = Object.freeze({
   forbiddenPrefixes: FORBIDDEN_PREFIX_RULES.map((rule) => rule.prefix),
+  forbiddenSegments: FORBIDDEN_SEGMENT_RULES.map((rule) => rule.segment),
   forbiddenExactPaths: Array.from(FORBIDDEN_EXACT_RULES.keys()),
   protectedConfigPaths: Array.from(PROTECTED_CONFIG_PATHS)
 });

@@ -5,9 +5,7 @@
 > implementation PRs that execute tasks from this goal. Steps use checkbox
 > (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a repo-only MVP path for Aliyun to become the user-management
-and subscription-distribution control-plane candidate, while HP remains
-`local-ci-a` / operator lab and edge forwarding capacity remains replaceable.
+**Historical Goal:** This superseded plan built a repo-only MVP path for Aliyun to become the user-management and subscription-distribution control-plane candidate. The current docs/status direction is `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md`: Vultr Japan control plane plus Vultr Japan/Singapore data-plane capacity.
 
 **Architecture:** Keep user, entitlement, subscription artifact, and delivery
 state authoritative in the control plane. Keep edge nodes as replaceable
@@ -25,7 +23,7 @@ validation is required.
 
 ```text
 Mode:
-  goal-driven execution
+  historical / superseded goal
 
 Lead agent:
   Codex
@@ -60,8 +58,7 @@ production operations
 ```
 
 The next product goal is to stop treating the subscription platform as a
-single-node proxy server. Aliyun should become the subscription control-plane
-candidate: user records, plan/entitlement state, subscription artifact issuance,
+single-node proxy server. Aliyun was formerly planned as the subscription control-plane candidate: user records, plan/entitlement state, subscription artifact issuance,
 and portal/admin distribution workflows. Clean edge nodes should carry traffic
 later. HP should remain validation and operator-lab capacity.
 

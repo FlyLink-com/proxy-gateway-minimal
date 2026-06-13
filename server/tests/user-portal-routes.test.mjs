@@ -29,18 +29,12 @@ const VULTR_MULTICHANNEL_ENV = {
   VULTR_HY2_HOST: "hy2.example.test",
   VULTR_HY2_PASSWORD: "synthetic-hy2-password",
   VULTR_HY2_SNI: "hy2.example.test",
-  SGP_TUIC_HOST: "sgp-tuic.example.test",
-  SGP_TUIC_UUID: "33333333-3333-4333-8333-333333333333",
-  SGP_TUIC_PASSWORD: "synthetic-sgp-tuic-password",
-  SGP_TUIC_SNI: "sgp-tuic.example.test",
-  SGP_VLESS_REALITY_HOST: "sgp-vless.example.test",
-  SGP_VLESS_REALITY_UUID: "44444444-4444-4444-8444-444444444444",
-  SGP_VLESS_REALITY_SNI: "www.sgp-example.test",
-  SGP_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
-  SGP_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
-  SGP_HY2_HOST: "sgp-hy2.example.test",
-  SGP_HY2_PASSWORD: "synthetic-sgp-hy2-password",
-  SGP_HY2_SNI: "sgp-hy2.example.test"
+  SGP_TUIC_STATIC_UUID: "33333333-3333-4333-8333-333333333333",
+  SGP_TUIC_STATIC_PASSWORD: "synthetic-sgp-tuic-password",
+  SGP_VLESS_STATIC_UUID: "44444444-4444-4444-8444-444444444444",
+  SGP_XRAY_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
+  SGP_XRAY_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
+  SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-password",
 };
 
 function seedAccountAndEntitlement(store) {
@@ -418,6 +412,53 @@ test("portal password session route returns second-factor challenge after passwo
       assert.equal(serialized.includes("scrypt$v=1"), false);
       assert.equal(serialized.includes("enc:route-totp-secret"), false);
       assert.equal(serialized.includes("123456"), false);
+    } finally {
+      server.close();
+    }
+  }, {
+    withPasswordCredential: true
+  });
+});
+
+test("portal password session route accepts frontend human challenge field aliases", async () => {
+  await withPortalState(async ({ auth, passwordCredentialService, entryToken }) => {
+    const plainPassword = `test-password-${randomUUID()}`;
+    passwordCredentialService.issueInitialPasswordCredential({
+      accountId: "acct_portal_route_1",
+      plainPassword,
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_password_route_alias",
+      mustRotate: true
+    });
+    auth.enrollTotpCredential({
+      entryToken,
+      encryptedTotpSecret: "enc:route-totp-secret"
+    });
+    const humanChallenges = createHumanChallengeService();
+    const { server, baseUrl } = await listen(createApp(baseState({
+      userPortalAuth: auth,
+      portalHumanChallenges: humanChallenges,
+      userPortalRoutesEnabled: true
+    })));
+    try {
+      const challenge = await issueHumanChallenge(baseUrl);
+      const response = await fetch(`${baseUrl}/api/portal/password/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: "acct_portal_route_1",
+          password: plainPassword,
+          humanVerification: {
+            challengeId: challenge.challengeRef,
+            challengeAnswer: "13"
+          }
+        })
+      });
+      assert.equal(response.status, 202);
+      const body = await response.json();
+      assert.equal(body.challenge.status, "second_factor_required");
+      assert.deepEqual(body.challenge.availableFactors, ["totp"]);
+      assert.equal(body.challenge.safety.noSessionCreated, true);
     } finally {
       server.close();
     }

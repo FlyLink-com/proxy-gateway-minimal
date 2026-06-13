@@ -340,6 +340,71 @@ test("subscription control store records redacted edge apply receipts", () => {
   });
 });
 
+test("subscription control store persists safe edge desired-state notifications", () => {
+  withStore((store) => {
+    const now = "2026-06-11T00:00:00.000Z";
+
+    const notification = store.recordEdgeDesiredStateNotification({
+      id: "edge_state_notify_001",
+      nodeRef: "vultr-sgp-a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: "desired_state_channel-sgp-a-hy2_001",
+      generation: "gen_001",
+      reason: "order_delivered",
+      status: "pending",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    assert.equal(notification.id, "edge_state_notify_001");
+    assert.equal(notification.nodeRef, "vultr-sgp-a");
+    assert.equal(notification.channelRef, "channel-sgp-a-hy2");
+    assert.equal(notification.status, "pending");
+
+    const updated = store.recordEdgeDesiredStateNotification({
+      id: "edge_state_notify_001",
+      nodeRef: "vultr-sgp-a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: "desired_state_channel-sgp-a-hy2_001",
+      generation: "gen_001",
+      reason: "order_delivered",
+      status: "acknowledged",
+      createdAt: now,
+      updatedAt: "2026-06-11T00:01:00.000Z"
+    });
+
+    assert.equal(updated.status, "acknowledged");
+    assert.equal(updated.createdAt, now);
+    assert.equal(updated.updatedAt, "2026-06-11T00:01:00.000Z");
+
+    const byNode = store.listEdgeDesiredStateNotifications({
+      nodeRef: "vultr-sgp-a"
+    });
+    assert.equal(byNode.length, 1);
+    assert.equal(byNode[0].desiredStateRef, "desired_state_channel-sgp-a-hy2_001");
+
+    const byChannel = store.listEdgeDesiredStateNotifications({
+      channelRef: "channel-sgp-a-hy2",
+      status: "acknowledged"
+    });
+    assert.equal(byChannel.length, 1);
+    assert.doesNotMatch(JSON.stringify(byChannel), /password|rawConfig|subscriptionUrl|uuid|token/i);
+
+    assert.throws(() => store.recordEdgeDesiredStateNotification({
+      id: "edge_state_notify_unsafe",
+      nodeRef: "vultr-sgp-a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: "desired_state_channel-sgp-a-hy2_unsafe",
+      generation: "gen_unsafe",
+      reason: "order_delivered",
+      status: "pending",
+      rawConfig: "users:\n- password: unsafe",
+      createdAt: now,
+      updatedAt: now
+    }), /unsafe field is not allowed/);
+  });
+});
+
 test("subscription control store persists portal access request lifecycle", () => {
   withStore((store) => {
     const now = "2026-06-06T00:00:00.000Z";

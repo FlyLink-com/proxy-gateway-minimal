@@ -1,6 +1,6 @@
 # Subscription Control Database
 
-Last updated: 2026-05-29, Asia/Shanghai.
+Last updated: 2026-06-11, Asia/Shanghai.
 
 This document defines the repository-local business-control database layer for
 subscription operations. It is separate from the existing technical
@@ -57,6 +57,33 @@ and initializes these SQLite tables:
 | `platform_device_bindings` | Device refs bound to safe artifact refs. |
 | `platform_revocation_events` | Revocation facts for issued links. |
 | `platform_audit_events` | Summary-only audit events for lifecycle evidence. |
+| `platform_edge_apply_receipts` | Redacted data-plane apply receipts keyed by channel and desired-state ref. |
+| `platform_edge_desired_state_notifications` | Safe pending/acknowledged/applied/failed coordination facts for remote data-plane desired-state delivery. |
+| `platform_edge_agent_leases` | Loopback/internal agent lease facts for desired-state pulls. |
+
+Remote data-plane notification rows intentionally store only safe refs:
+
+```text
+nodeRef
+channelRef
+desiredStateRef
+generation
+reason
+status
+createdAt / updatedAt
+```
+
+They are not runtime config and they are not proof that a channel is active. The
+subscription renderer still requires a matching applied receipt before exposing
+remote data-plane channels to users.
+
+Per-order runtime material is deliberately outside those notification rows.
+The control DB stores desired-state refs and material fingerprints; the
+protected edge credential material store supplies the actual runtime material.
+Data-plane agents may pull that material only through the private authenticated
+agent route, scoped to their own node, the current desired-state ref, requested
+edge credential refs, and exact digest matches. Receipts written back to this DB
+remain redacted and never carry raw runtime material.
 
 ## Safety Boundary
 

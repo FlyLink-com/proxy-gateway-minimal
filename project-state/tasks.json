@@ -1,10 +1,11 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-06-09",
+  "lastUpdated": "2026-06-13",
   "timezone": "Asia/Shanghai",
   "status": "active-closeout-and-a-tier-blocked",
   "purpose": "Machine-readable backlog for simplification and project-control work. This file does not authorize production mutation.",
   "sourceDocs": [
+    "docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md",
     "docs/PROJECT_CONTEXT.md",
     "docs/README.md",
     "docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md",
@@ -1995,7 +1996,7 @@
       "status": "completed-in-pr-203",
       "lane": "edge-data-plane",
       "title": "Align technical MVP baseline and add TUIC runtime inventory gate handoff",
-      "goal": "Update the technical MVP baseline from stale prod-edge serving language to the current Aliyun subscription boundary / edge-pending state, and create the repo-only handoff for TUIC Stage 0 read-only inventory without authorizing runtime mutation.",
+      "goal": "Update the technical MVP baseline from stale prod-edge/Aliyun serving language to the current Vultr Japan control-plane / Vultr Japan-Singapore data-plane docs/status direction without authorizing runtime mutation.",
       "allowedFiles": [
         "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md",
         "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md",
@@ -2082,8 +2083,9 @@
       "status": "blocked-active-reframed-single-control-plane-multi-data-plane-risk-a",
       "lane": "edge-data-plane",
       "title": "Physically split subscription control plane from edge data plane",
-      "goal": "Keep one authoritative control store on the current control plane while adding replaceable data-plane capacity such as Vultr Japan and Singapore through channel refs, credential fan-out, and remote handoff apply gates.",
+      "goal": "Keep one authoritative control store on Vultr Japan while using Vultr Japan/Singapore as replaceable data-plane capacity through channel refs, credential fan-out, and remote handoff apply gates; historical Aliyun records remain rollback and archaeology evidence only.",
       "allowedFiles": [
+        "docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md",
         "docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md",
         "docs/CONTROL_DATA_PLANE_INTERCONNECT_CONTRACT.md",
         "docs/NODE_REGISTRATION_AND_POOL_CONTRACT.md",
@@ -2112,13 +2114,14 @@
       ]
     },
     {
-      "id": "A3-aliyun-user-subscription-distribution-platform",
+      "id": "A3-vultr-japan-control-data-plane-platform",
       "risk": "A",
       "status": "blocked-historical-fallback-not-current-production-authority",
       "lane": "subscription-control-plane",
-      "title": "Build Aliyun as the user-management and subscription-distribution platform",
-      "goal": "Preserve Aliyun production-distribution work as historical/fallback evidence; do not treat it as current production authority unless a fresh Risk A inventory and approval re-promotes it.",
+      "title": "Maintain the Vultr Japan control-plane direction and preserve the historical Aliyun lane",
+      "goal": "Keep user management, subscription rendering, opaque artifact authority, and private operator control aligned with the Vultr Japan control-plane direction while preserving Aliyun production-distribution work as historical/fallback evidence. Do not reactivate Aliyun or mutate Vultr runtime state without fresh Risk A inventory and explicit approval.",
       "allowedFiles": [
+        "docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md",
         "docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md",
         "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
         "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md",
@@ -2135,6 +2138,7 @@
       ],
       "validation": [
         "historical record review only",
+        "fresh Vultr live inventory before runtime mutation",
         "fresh live inventory before reactivation",
         "separate Risk A approval before any Aliyun runtime, DNS, Nginx, firewall, or state mutation"
       ]

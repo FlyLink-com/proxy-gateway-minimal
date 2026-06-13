@@ -3,7 +3,7 @@
 Last updated: 2026-06-03, Asia/Shanghai.
 
 > Status:
-> - Type: Active architecture and Risk A runbook
+> - Type: Superseded historical Risk A runbook
 > - Risk: C for this document; A for any Aliyun, HP, AWS, DNS, Nginx,
 >   systemd, firewall, security-group, SQLite, secret, artifact, tenant,
 >   node-output, traffic, stop, termination, or cutover mutation
@@ -11,10 +11,9 @@ Last updated: 2026-06-03, Asia/Shanghai.
 >   production authority transfer, node shutdown, termination, or security-group
 >   deletion by itself
 > - Production impact: None
-> - Source of truth for: the near-term business split where Aliyun owns the
->   user-management and subscription-distribution platform, HP remains
->   validation/operator lab, and non-Aliyun nodes enter a separate controlled
->   retirement queue
+> - Source of truth for: historical Aliyun user-management / subscription-
+>   distribution execution traceability only. The current docs/status direction
+>   lives in `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md`.
 
 ## Preflight Check
 
@@ -397,9 +396,9 @@ Stop-only cleanup record:
 docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md
 ```
 
-## Target End State
+## Historical Target End State
 
-Near-term target:
+Historical near-term target:
 
 ```text
 Aliyun:
@@ -701,16 +700,15 @@ docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-valida
 docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md
 ```
 
-Current planning outcome:
+Historical planning outcome, now superseded for current direction:
 
 ```text
-recommended default: clean-start Aliyun control plane unless the operator
-explicitly requires historical subscription state preservation
+historical default: clean-start Aliyun control plane unless the operator explicitly required historical subscription state preservation
 
-clean-start is now the active planning default for the next repo-only package:
-new accounts, entitlements, subscription-access grants, opaque artifacts, and
-Subscription V2 outputs should be issued from Aliyun clean-start authority
-after the relevant private validation gates pass
+historical package direction: new accounts, entitlements,
+subscription-access grants, opaque artifacts, and Subscription V2 outputs were
+planned for Aliyun clean-start authority after the relevant private validation
+gates passed
 
 state-preserving fallback: source-state rescue planning, preferably
 rescue-volume/snapshot based before relying on SSH-first remediation
@@ -1227,7 +1225,7 @@ Subscription output no longer emits AWS edge nodes, or the operator accepts the
 remaining client cache window explicitly
 DNS no longer points subscription or node-host names to AWS nodes
 rollback dependency is documented
-current AWS instance and security-group inventory is refreshed
+then-current AWS instance and security-group inventory is refreshed
 ```
 
 ### Phase 6: AWS Node Stop
@@ -1345,9 +1343,9 @@ Node drain/stop:
   rollback check
 ```
 
-## Current Next Action
+## Historical Next Action At Lane Close
 
-The latest candidate-only execution records show:
+The candidate-only execution records showed:
 
 ```text
 Aliyun clean-start private validation: completed and recorded
@@ -1356,7 +1354,7 @@ Aliyun HP management-source firewall follow-up: completed and recorded
 Aliyun public-boundary dry run: completed, validated, and cleaned up
 ```
 
-Current executable gates are now:
+The executable gates at that point were:
 
 ```text
 clean edge rebuild planning

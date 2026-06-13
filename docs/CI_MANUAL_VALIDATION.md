@@ -7,30 +7,33 @@
 >   production deploy, or self-hosted runner registration
 > - Production impact: None
 > - Source of truth for: manual CI validation host usage and fallback
->   clean-server CI-equivalent validation while GitHub-hosted Actions is blocked
+>   clean-server CI-equivalent validation when hosted validation is unavailable
 
-Last updated: 2026-05-26, Asia/Shanghai.
+Last updated: 2026-06-11, America/Los_Angeles.
 
 This runbook defines the manual CI-equivalent validation path to use when
-GitHub-hosted Actions cannot start because of the current account billing,
-spending-limit, or quota blocker. The current expected account-quota recovery
-date is 2026-06-01; until then, PR validation uses local and HP manual CI
-evidence instead of treating hosted `Validate` startup failures as code
-failures. It is a repository validation procedure only. It is not staging, not
-production deployment, and not approval to mutate cloud resources.
+GitHub-hosted Actions cannot start, the workflow does not target the current PR
+base, or a clean independent environment is required. PR #299's hosted
+`Validate` check succeeded on 2026-06-10, so the earlier global
+billing/spending-limit/quota blocker is no longer current authority. PR #300
+and PR #302 target `feat/install-config-wizard`, while the current workflow is
+scoped to `master`; missing hosted `Validate` checks on those PRs do not by
+themselves indicate a billing failure. This is a repository validation
+procedure only. It is not staging, production deployment, or approval to mutate
+cloud resources.
 
 ## When To Use This
 
 Use this runbook only when all of these are true:
 
-- The GitHub Actions `CI` workflow cannot start on GitHub-hosted runners because
-  of account billing, spending-limit, quota, or runner-start blockers.
+- The hosted workflow did not run, could not start, or does not cover the
+  current PR base.
 - The PR or `master` commit still needs clean-environment validation evidence.
 - Normal local developer-machine validation is not enough for the merge or
   handoff decision.
 
 Do not use this runbook to permanently replace GitHub-hosted CI. After the
-account blocker is resolved, rerun the `CI` workflow on `master` or the target
+workflow becomes applicable or available, rerun `CI` on `master` or the target
 PR and record the hosted result.
 
 ## Default Mode
@@ -115,9 +118,9 @@ runner.
 
 ## HP Local CI Lanes
 
-HP is the approved `local-ci-a` validation host while GitHub-hosted Actions are
-blocked. Treat it as a small manual CI pool with explicit lanes instead of a
-single vague "run CI" bucket:
+HP is the approved historical `local-ci-a` validation host when manual
+clean-environment evidence is required. Treat it as a small manual CI pool with
+explicit lanes instead of a single vague "run CI" bucket:
 
 ```text
 ci-smoke:

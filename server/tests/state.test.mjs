@@ -44,18 +44,12 @@ const VULTR_MULTICHANNEL_ENV = {
   VULTR_HY2_HOST: "hy2.example.test",
   VULTR_HY2_PASSWORD: "synthetic-hy2-password",
   VULTR_HY2_SNI: "hy2.example.test",
-  SGP_TUIC_HOST: "sgp-tuic.example.test",
-  SGP_TUIC_UUID: "33333333-3333-4333-8333-333333333333",
-  SGP_TUIC_PASSWORD: "synthetic-sgp-tuic-password",
-  SGP_TUIC_SNI: "sgp-tuic.example.test",
-  SGP_VLESS_REALITY_HOST: "sgp-vless.example.test",
-  SGP_VLESS_REALITY_UUID: "44444444-4444-4444-8444-444444444444",
-  SGP_VLESS_REALITY_SNI: "www.sgp-example.test",
-  SGP_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
-  SGP_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
-  SGP_HY2_HOST: "sgp-hy2.example.test",
-  SGP_HY2_PASSWORD: "synthetic-sgp-hy2-password",
-  SGP_HY2_SNI: "sgp-hy2.example.test"
+  SGP_TUIC_STATIC_UUID: "33333333-3333-4333-8333-333333333333",
+  SGP_TUIC_STATIC_PASSWORD: "synthetic-sgp-tuic-password",
+  SGP_VLESS_STATIC_UUID: "44444444-4444-4444-8444-444444444444",
+  SGP_XRAY_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
+  SGP_XRAY_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
+  SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-password",
 };
 
 function sleepMs(ms) {
@@ -876,6 +870,222 @@ test("createRuntimeState resolves auto-issued per-order channel bundles after re
   }
 });
 
+test("createRuntimeState withholds remote data-plane channels until matching applied receipts exist", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-remote-receipt-gate-"));
+  const proxyConfigPath = join(dir, "protected", "proxy-servers.json");
+  const subscriptionDbPath = join(dir, "subscriptions.sqlite");
+  const controlDbPath = join(dir, "control.sqlite");
+  const materialPath = join(dir, "protected", "edge-material.json");
+  const channels = [
+    "channel-vultr-a-vless-reality-tcp",
+    "channel-vultr-a-hy2",
+    "channel-vultr-a-tuic",
+    "channel-sgp-a-vless-reality-tcp",
+    "channel-sgp-a-hy2",
+    "channel-sgp-a-tuic"
+  ];
+  const sgpChannels = channels.filter((channel) => channel.startsWith("channel-sgp-"));
+  let first;
+  let second;
+
+  function serverForChannel(channel) {
+    const isHy2 = channel.includes("hy2");
+    const isTuic = channel.includes("tuic");
+    return {
+      id: channel.replaceAll("-", "_"),
+      name: channel,
+      subscriptionBundleRef: "vultr-production-a",
+      physicalNodeRef: channel.startsWith("channel-sgp-") ? "vultr-sgp-a" : "vultr-japan-a",
+      protocol: isHy2 ? "hysteria2" : isTuic ? "tuic" : "vless",
+      type: isHy2 ? "hysteria2" : isTuic ? "tuic" : "vless",
+      host: channel.startsWith("channel-sgp-") ? "sgp.example.test" : "jp.example.test",
+      port: isHy2 ? 10443 : isTuic ? 443 : 8443,
+      ...(isHy2 ? { password: channel.startsWith("channel-sgp-") ? "${SGP_HY2_STATIC_PASSWORD}" : "${VULTR_HY2_PASSWORD}" } : {}),
+      ...(isTuic ? {
+        uuid: channel.startsWith("channel-sgp-") ? "${SGP_TUIC_STATIC_UUID}" : "${VULTR_TUIC_UUID}",
+        password: channel.startsWith("channel-sgp-") ? "${SGP_TUIC_STATIC_PASSWORD}" : "${VULTR_TUIC_PASSWORD}"
+      } : {}),
+      ...(!isHy2 && !isTuic ? {
+        uuid: channel.startsWith("channel-sgp-") ? "${SGP_VLESS_STATIC_UUID}" : "${VULTR_VLESS_REALITY_UUID}"
+      } : {}),
+      ...(channel.startsWith("channel-sgp-") ? { runtimeAdapter: "remote-data-plane-handoff" } : {}),
+      credentialMode: "per-order",
+      status: "online",
+      subscriptionEligible: true
+    };
+  }
+
+  try {
+    mkdirSync(join(dir, "protected"), { recursive: true });
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: channels.map(serverForChannel)
+    }), { mode: 0o600 });
+
+    const env = {
+      CONSOLE_TOKEN: "secret",
+      SS_PASSWORD: "pw",
+      SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+      VULTR_VLESS_REALITY_UUID: "11111111-1111-4111-8111-111111111111",
+      VULTR_HY2_PASSWORD: "synthetic-vultr-hy2-template-password",
+      VULTR_TUIC_UUID: "22222222-2222-4222-8222-222222222222",
+      VULTR_TUIC_PASSWORD: "synthetic-vultr-tuic-template-password",
+      SGP_VLESS_STATIC_UUID: "33333333-3333-4333-8333-333333333333",
+      SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-template-password",
+      SGP_TUIC_STATIC_UUID: "44444444-4444-4444-8444-444444444444",
+      SGP_TUIC_STATIC_PASSWORD: "synthetic-sgp-tuic-template-password",
+      USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
+      USER_PORTAL_EDGE_CHANNEL_REF: channels[0],
+      USER_PORTAL_EDGE_CHANNEL_REFS: channels.join(","),
+      EDGE_CREDENTIAL_CHANNEL_REFS: channels.join(","),
+      EDGE_CREDENTIAL_MATERIAL_PATH: materialPath,
+      USER_PORTAL_AUTO_ISSUANCE_ENABLED: "true",
+      USER_PORTAL_AUTO_ISSUANCE_NODE_ID: channels[0],
+      USER_PORTAL_AUTO_ISSUANCE_CHANNEL_REFS: channels.join(","),
+      USER_PORTAL_AUTO_ISSUANCE_7D_MONTHLY_LIMIT: "5000",
+      USER_PORTAL_AUTO_ISSUANCE_30D_MONTHLY_LIMIT: "1000",
+      EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED: "true",
+      EDGE_DATA_PLANE_AGENT_NODES_JSON: JSON.stringify([{
+        nodeRef: "vultr-sgp-a",
+        channelRefs: sgpChannels,
+        tokenSha256: "0".repeat(64)
+      }])
+    };
+
+    first = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env,
+      subscriptionDbPath,
+      controlDbPath,
+      autoStartHttpProxy: false
+    });
+
+    const request = first.platform.portalAccessRequests.submitRequest({
+      portalUserRef: "portal_user_remote_receipt_gate_1",
+      plan: "monthly",
+      clientTarget: "clash",
+      quantity: 1
+    });
+    const artifactSecret = new URL(request.subscriptionUrl).pathname
+      .split("/")
+      .at(-1)
+      .replace(/\.yaml$/, "");
+    const otherRequest = first.platform.portalAccessRequests.submitRequest({
+      portalUserRef: "portal_user_remote_receipt_gate_2",
+      plan: "monthly",
+      clientTarget: "clash",
+      quantity: 1
+    });
+    const otherArtifactSecret = new URL(otherRequest.subscriptionUrl).pathname
+      .split("/")
+      .at(-1)
+      .replace(/\.yaml$/, "");
+    first.close();
+    first = null;
+
+    second = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env,
+      subscriptionDbPath,
+      controlDbPath,
+      autoStartHttpProxy: false
+    });
+
+    const withoutReceipts = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+    assert.equal(withoutReceipts.ok, true);
+    assert.deepEqual(withoutReceipts.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
+    const otherWithoutReceipts = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
+    assert.equal(otherWithoutReceipts.ok, true);
+    assert.deepEqual(otherWithoutReceipts.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
+
+    const staleDesired = second.platform.controlStore.getLatestEdgeDesiredStateForChannel(sgpChannels[0], {
+      nodeRef: "vultr-sgp-a",
+      channelRefs: [sgpChannels[0]]
+    });
+    second.platform.controlStore.recordEdgeApplyReceipt({
+      id: "edge_receipt_stale_sgp_vless",
+      channelRef: sgpChannels[0],
+      desiredStateRef: `${staleDesired.desiredStateRef}_stale`,
+      status: "applied",
+      actionCounts: { add: staleDesired.edgeCredentialRefs.length },
+      configTestOk: true,
+      serviceActive: true,
+      listenerUdp443: true,
+      appliedAt: "2026-06-11T00:00:00.000Z",
+      createdAt: "2026-06-11T00:00:00.000Z"
+    });
+
+    const withStaleReceipt = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+    assert.equal(withStaleReceipt.ok, true);
+    assert.deepEqual(withStaleReceipt.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
+
+    const requestEdgeCredentials = second.platform.controlStore.getPortalAccessRequest(request.id).edgeCredentials;
+    const scopedDesiredStates = second.platform.dataPlaneAgentService.getDesiredState({
+      nodeRef: "vultr-sgp-a"
+    }, {
+      edgeCredentialRefs: requestEdgeCredentials.map((credential) => credential.edgeCredentialRef)
+    }).desiredStates;
+    assert.deepEqual(scopedDesiredStates.map((state) => state.channelRefs[0]).sort(), [...sgpChannels].sort());
+    for (const [index, channel] of sgpChannels.entries()) {
+      const scopedDesiredState = scopedDesiredStates.find((state) => state.channelRefs.includes(channel));
+      assert.equal(typeof scopedDesiredState?.desiredStateRef, "string");
+      assert.match(scopedDesiredState.desiredStateRef, /^desired_scoped_/);
+      second.platform.controlStore.recordEdgeApplyReceipt({
+        id: `edge_receipt_scoped_sgp_${index + 1}`,
+        channelRef: channel,
+        desiredStateRef: scopedDesiredState.desiredStateRef,
+        status: "applied",
+        actionCounts: { add: scopedDesiredState.edgeCredentialRefs.length },
+        configTestOk: true,
+        serviceActive: true,
+        listenerUdp443: channel.includes("vless") ? false : true,
+        listenerTcp: channel.includes("vless") ? true : false,
+        appliedAt: `2026-06-11T00:1${index + 1}:00.000Z`,
+        createdAt: `2026-06-11T00:1${index + 1}:00.000Z`
+      });
+    }
+
+    const withScopedReceipts = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+    assert.equal(withScopedReceipts.ok, true);
+    assert.deepEqual(withScopedReceipts.proxyConfig.servers.map((server) => server.name), channels);
+    const otherWithScopedReceipts = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
+    assert.equal(otherWithScopedReceipts.ok, true);
+    assert.deepEqual(otherWithScopedReceipts.proxyConfig.servers.map((server) => server.name), channels.slice(0, 3));
+
+    for (const [index, channel] of sgpChannels.entries()) {
+      const desiredState = second.platform.controlStore.getLatestEdgeDesiredStateForChannel(channel, {
+        nodeRef: "vultr-sgp-a",
+        channelRefs: [channel]
+      });
+      assert.equal(typeof desiredState?.desiredStateRef, "string");
+      second.platform.controlStore.recordEdgeApplyReceipt({
+        id: `edge_receipt_matching_sgp_${index + 1}`,
+        channelRef: channel,
+        desiredStateRef: desiredState.desiredStateRef,
+        status: "applied",
+        actionCounts: { add: desiredState.edgeCredentialRefs.length },
+        configTestOk: true,
+        serviceActive: true,
+        listenerUdp443: channel.includes("vless") ? false : true,
+        listenerTcp: channel.includes("vless") ? true : false,
+        appliedAt: `2026-06-11T00:0${index + 1}:00.000Z`,
+        createdAt: `2026-06-11T00:0${index + 1}:00.000Z`
+      });
+    }
+
+    const withFreshReceipts = second.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+    assert.equal(withFreshReceipts.ok, true);
+    assert.deepEqual(withFreshReceipts.proxyConfig.servers.map((server) => server.name), channels);
+    const otherWithFreshReceipts = second.subscriptions.core.resolveSubscriptionArtifact(otherArtifactSecret);
+    assert.equal(otherWithFreshReceipts.ok, true);
+    assert.deepEqual(otherWithFreshReceipts.proxyConfig.servers.map((server) => server.name), channels);
+    assert.doesNotMatch(JSON.stringify(withFreshReceipts), /synthetic-sgp-hy2-template-password|synthetic-sgp-tuic-template-password/i);
+  } finally {
+    first?.close();
+    second?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("createRuntimeState wires env-gated Mihomo TUIC host adapter for edge lifecycle apply", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-edge-host-wiring-"));
   const materialPath = join(dir, "protected", "edge-material.json");
@@ -1525,7 +1735,7 @@ test("createRuntimeState writes remote data-plane lifecycle handoff instead of m
           type: "hysteria2",
           host: "sgp.example.test",
           port: 443,
-          password: "${SGP_HY2_PASSWORD}",
+          password: "${SGP_HY2_STATIC_PASSWORD}",
           runtimeAdapter: "remote-data-plane-handoff",
           credentialMode: "per-order",
           status: "online"
@@ -1539,7 +1749,7 @@ test("createRuntimeState writes remote data-plane lifecycle handoff instead of m
         CONSOLE_TOKEN: "secret",
         SS_PASSWORD: "pw",
         SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
-        SGP_HY2_PASSWORD: "synthetic-hy2-template-password",
+        SGP_HY2_STATIC_PASSWORD: "synthetic-hy2-template-password",
         USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
         USER_PORTAL_EDGE_CHANNEL_REF: "channel-sgp-a-hy2",
         USER_PORTAL_EDGE_CHANNEL_REFS: "channel-sgp-a-hy2",
@@ -1583,6 +1793,86 @@ test("createRuntimeState writes remote data-plane lifecycle handoff instead of m
     assert.match(handoff.actions[0].credentialRef, /^edgecred_pareq_/);
     assert.doesNotMatch(JSON.stringify(handoff), /synthetic-hy2-template-password|password|uuid|subscriptionUrl|rawConfig/i);
     assert.doesNotMatch(JSON.stringify(request), /synthetic-hy2-template-password|password|uuid|rawConfig/i);
+  } finally {
+    state?.close();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("createRuntimeState records remote data-plane desired-state notifications for new orders", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-remote-data-plane-notify-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  const materialPath = join(dir, "protected", "edge-material.json");
+  const handoffDir = join(dir, "handoff");
+  let state;
+
+  try {
+    mkdirSync(join(dir, "protected"), { recursive: true });
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_sgp_hy2",
+          name: "channel-sgp-a-hy2",
+          physicalNodeRef: "vultr-sgp-a",
+          protocol: "hysteria2",
+          type: "hysteria2",
+          host: "sgp.example.test",
+          port: 10443,
+          password: "${SGP_HY2_STATIC_PASSWORD}",
+          runtimeAdapter: "remote-data-plane-handoff",
+          credentialMode: "per-order",
+          status: "online",
+          subscriptionEligible: true
+        }
+      ]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        SGP_HY2_STATIC_PASSWORD: "synthetic-hy2-template-password",
+        USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
+        USER_PORTAL_EDGE_CHANNEL_REF: "channel-sgp-a-hy2",
+        USER_PORTAL_EDGE_CHANNEL_REFS: "channel-sgp-a-hy2",
+        EDGE_CREDENTIAL_CHANNEL_REFS: "channel-sgp-a-hy2",
+        EDGE_CREDENTIAL_MATERIAL_PATH: materialPath,
+        EDGE_CREDENTIAL_LIFECYCLE_EXECUTE_PRODUCTION_MUTATION: "true",
+        EDGE_DATA_PLANE_HANDOFF_DIR: handoffDir,
+        USER_PORTAL_AUTO_ISSUANCE_ENABLED: "true",
+        USER_PORTAL_AUTO_ISSUANCE_NODE_ID: "channel-sgp-a-hy2",
+        USER_PORTAL_AUTO_ISSUANCE_CHANNEL_REFS: "channel-sgp-a-hy2",
+        USER_PORTAL_AUTO_ISSUANCE_7D_MONTHLY_LIMIT: "5000",
+        USER_PORTAL_AUTO_ISSUANCE_30D_MONTHLY_LIMIT: "1000"
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      autoStartHttpProxy: false
+    });
+
+    const request = state.platform.portalAccessRequests.submitRequest({
+      portalUserRef: "portal_user_sgp_notify_001",
+      plan: "trial",
+      clientTarget: "clash",
+      quantity: 1
+    });
+
+    assert.equal(request.status, "delivered");
+    const notifications = state.platform.controlStore.listEdgeDesiredStateNotifications({
+      nodeRef: "vultr-sgp-a"
+    });
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0].status, "pending");
+    assert.equal(notifications[0].channelRef, "channel-sgp-a-hy2");
+    assert.equal(notifications[0].nodeRef, "vultr-sgp-a");
+    assert.match(notifications[0].desiredStateRef, /^desired_state_channel-sgp-a-hy2_/);
+    assert.equal(notifications[0].reason, "order_delivered");
+    assert.doesNotMatch(
+      JSON.stringify(notifications),
+      /synthetic-hy2-template-password|password|uuid|subscriptionUrl|rawConfig/i
+    );
   } finally {
     state?.close();
     rmSync(dir, { recursive: true, force: true });

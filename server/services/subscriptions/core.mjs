@@ -45,7 +45,8 @@ export function createSubscriptionCore({
   expiringDays = DEFAULT_EXPIRING_DAYS,
   lastUsedWriteIntervalMs = 15 * 60 * 1000,
   lastUsedWriteCache = new Map(),
-  tenantCredentialMaterialResolver = null
+  tenantCredentialMaterialResolver = null,
+  subscriptionChannelGate = null
 }) {
   const subscriptionStore = store || repository;
   assertSubscriptionStore(subscriptionStore);
@@ -195,6 +196,28 @@ export function createSubscriptionCore({
     };
   }
 
+  function applySubscriptionChannelGate(scopedProxyConfig, tenantAuth) {
+    if (typeof subscriptionChannelGate !== "function") {
+      return scopedProxyConfig;
+    }
+    return {
+      ...scopedProxyConfig,
+      servers: (scopedProxyConfig.servers || []).filter((server) => {
+        try {
+          return subscriptionChannelGate({
+            tenant: tenantAuth,
+            tenantId: tenantAuth.id,
+            nodeId: tenantAuth.nodeId,
+            channelRef: server.name,
+            server
+          }) !== false;
+        } catch {
+          return false;
+        }
+      })
+    };
+  }
+
   function ipPrefix(value) {
     const text = String(value || "").trim();
     const ipv4 = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/.exec(text);
@@ -235,7 +258,10 @@ export function createSubscriptionCore({
     }
 
     const scopedProxyConfig = applyTenantCredentialMaterial(
-      cloneProxyConfigForSubscriptionOutput(proxyConfig, tenantAuth.nodeId),
+      applySubscriptionChannelGate(
+        cloneProxyConfigForSubscriptionOutput(proxyConfig, tenantAuth.nodeId),
+        tenantAuth
+      ),
       tenantAuth
     );
     if (scopedProxyConfig.servers.length === 0) {
