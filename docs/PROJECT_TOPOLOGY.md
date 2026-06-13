@@ -57,14 +57,15 @@ legacy blue: stopped, controlled retirement review only
 
 ## Target Subscription Control / Edge Split
 
-The current Aliyun runtime serves the subscription-distribution boundary while
-edge data-plane activation remains pending. The target architecture separates
-subscription authority from replaceable edge capacity.
+The current documented production direction uses Vultr Japan as the
+subscription control plane and Vultr Japan/Singapore as data-plane capacity.
+The target architecture keeps subscription authority separate from replaceable
+edge capacity; any new runtime mutation still requires a fresh Risk A gate.
 
 ```mermaid
 flowchart LR
   subgraph "Subscription Control Plane"
-    SC["sub-control-a\ncurrent Aliyun server\nafter CI exit and approval"]
+    SC["sub-control-a\nVultr Japan control plane"]
     SB["sub-control-b\nfuture standby / restore target"]
     State["SQLite / artifact / tenant state"]
     Render["Subscription V2 renderer"]
@@ -158,10 +159,10 @@ plane only after a later approved integration gate.
 Opaque artifacts are bootstrap/access material, not the main architecture.
 Server Edge Mesh is for edge health, management, validation, and recovery first.
 Subscription control and edge data-plane capacity should split over time.
-The preferred physical split path is now: current Aliyun server as future
-`sub-control-a` after CI exits, HP/local Linux as manual CI and operator lab,
-and non-Aliyun / non-HP nodes drained through controlled retirement gates. The
-clean new-server control-plane path remains a fallback, not the first target.
+The preferred physical split path is now: Vultr Japan as `sub-control-a`,
+Vultr Japan/Singapore as data-plane capacity, and HP/local Linux as manual CI
+and operator lab. Historical Aliyun and AWS records remain rollback and
+archaeology evidence rather than current authority.
 ```
 
 Adjacent boundary matrix:
@@ -172,9 +173,9 @@ Adjacent boundary matrix:
 | Opaque artifacts | Access/bootstrap material and server-side credential containment. | Data-plane routing, local proxying, server mesh membership, or traffic accounting by themselves. |
 | Local Edge Agent | Loopback-only client-side adapter and future platform-controlled channel selection. | Clash/Mihomo UI/rules, TUN/driver/system proxy mutation in V1, HP Relay, or Server Edge Mesh. |
 | HP Relay | Operator lab diagnostics and upstream/channel behavior research. | Production, staging, CI, prod-edge-c, official Local Edge Agent runtime, or Server Edge Mesh. |
-| sub-control-a candidate | Current Aliyun server after it exits the CI lane and passes production-control inventory, or clean fallback host if Aliyun is rejected. | Edge data-plane traffic, prod-edge-c recovery capacity, HP Relay, CI, or automatic production authority. |
+| sub-control-a | Vultr Japan control-plane authority, subject to live verification before each Risk A operation. | Edge data-plane traffic, HP Relay, CI, or approval-free runtime mutation. |
 | local-ci-a | Local Linux manual CI host for repository validation evidence. | Staging, production, deploy approval, production secrets, SQLite, or subscription URL storage. |
-| Non-Aliyun node retirement | Controlled drain, stop, termination, and security-group cleanup after Aliyun promotion. | Approval-free shutdown, DNS change, or deletion while rollback depends on the node. |
+| Historical node retirement | Controlled drain, stop, termination, and security-group cleanup records for superseded Aliyun/AWS lanes. | Approval-free rollback, shutdown, DNS change, or deletion while a live dependency remains. |
 | Server Edge Mesh | Private edge-to-edge health, management, validation, and recovery path. | User VPN, Clash/Mihomo endpoint, Local Edge Agent transport in V1, or ordinary customer traffic routing. |
 | WireGuard canary | Candidate implementation for the private Server Edge Mesh. | Client VPN product, production traffic migration, opaque artifact migration, or approval-free setup. |
 

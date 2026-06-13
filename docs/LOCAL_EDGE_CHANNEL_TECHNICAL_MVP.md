@@ -29,15 +29,15 @@ The current production state is no longer a serving Shadowsocks edge baseline.
 As of the current project context:
 
 ```text
-Aliyun subscription distribution boundary: promoted
-sub.globalcirclecat.com: served by Aliyun control/subscription boundary
-edge data-plane traffic: pending clean rebuild or separately approved canary
-AWS Singapore prod-edge-a/prod-edge-b: stopped under accepted outage
+Vultr Japan control plane: current documented subscription authority
+Vultr Japan/Singapore data plane: current documented multichannel lane
+historical Aliyun boundary: execution evidence only
+historical AWS Singapore prod-edge-a/prod-edge-b: terminated
 tracked SS config: historical comparison input only until edge rebuild
 ```
 
 Therefore this technical MVP treats SS as the comparison and rollback model, not
-as proof that a current production edge is serving traffic. The long-term
+as proof of current production authority. The long-term
 client-side shape can still be:
 
 ```text
@@ -94,9 +94,9 @@ flowchart LR
   end
 
   subgraph "Production Boundary"
-    Control["Aliyun subscription boundary\ncurrent control/distribution"]
-    EdgePending["edge data-plane\npending clean rebuild"]
-    Canary["channel-lab or clean edge\ncontrolled experiment only"]
+    Control["Vultr Japan control plane\ncurrent documented authority"]
+    EdgePending["Vultr Japan + Singapore\ncurrent documented data plane"]
+    Canary["future channel canary\nseparate controlled gate"]
   end
 
   Clash -->|"imports local URL"| AgentSub
@@ -978,7 +978,7 @@ Scope:
   channel-lab or clean replacement edge canary slot
   operator-device only
   no broad user activation
-  no Aliyun subscription-boundary change
+  no current control-plane or data-plane mutation
   no all-user edge activation
 ```
 
@@ -992,7 +992,7 @@ approved target.
 This technical MVP does not:
 
 ```text
-replace current Aliyun subscription boundary
+replace or mutate the current documented Vultr control/data-plane boundary
 activate edge data-plane traffic
 change production DNS
 change production Nginx

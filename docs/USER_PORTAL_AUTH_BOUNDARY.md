@@ -3,7 +3,7 @@
 Last updated: 2026-06-03, Asia/Shanghai.
 
 This document defines the customer-portal authentication boundary for the
-Aliyun-first subscription-control platform. It is a repository design contract
+provider-neutral subscription-control platform, currently documented toward the Vultr Japan control-plane direction. It is a repository design contract
 only. It does not deploy a portal, expose a public login endpoint, create DNS or
 Nginx routes, issue real portal entries, migrate SQLite data, activate payment,
 or authorize subscription issuance.
@@ -323,8 +323,8 @@ Sensitive notes:
 ## Current Status
 
 ```text
-Public company site: active on Aliyun root
-Public lead intake: active on Aliyun boundary
+Public company site: historical Aliyun root record; verify the current public-site topology live
+Public lead intake: historical Aliyun boundary record; verify the current public route live
 Public Admin: blocked
 User portal shell: repository-only / local reference
 Dynamic portal entry: repo-only internal service, operator CLI, and default-off

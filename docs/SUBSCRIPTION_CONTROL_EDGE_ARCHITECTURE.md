@@ -50,21 +50,20 @@ Use a central subscription control plane to produce access artifacts and
 subscription output. Treat production edge nodes as data-plane capacity, not as
 subscription authorities.
 
-Recommended target identities:
+Current logical identities:
 
 ```text
 sub-control-a:
-  primary subscription control-plane authority, currently targeted for the
-  existing Aliyun server after CI exits and Risk A inventory approves it
+  Vultr Japan subscription control-plane authority
 
 sub-control-b:
   future standby or replacement subscription control-plane authority
 
 prod-edge-a:
-  production edge data-plane slot
+  logical production edge data-plane slot
 
 prod-edge-b:
-  iteration / canary edge data-plane slot
+  logical iteration / canary edge data-plane slot
 
 prod-edge-c:
   future recovery / standby edge data-plane slot
@@ -73,22 +72,25 @@ prod-edge-c:
 The names describe roles. They do not imply current host placement and do not
 authorize renaming, DNS changes, or node migration.
 
-Current planning decision:
+Current architecture decision:
 
 ```text
-Use the current Aliyun server as the first `sub-control-a` candidate only after
-it exits the CI lane and passes production-control inventory.
+Use Vultr Japan as the documented `sub-control-a` control-plane authority.
+Require fresh read-only inventory and explicit A-tier approval before each new
+runtime mutation.
+
+Use Vultr Japan/Singapore as the documented data-plane lane. New node,
+registration, measurement, subscription-output, or traffic changes remain
+separately gated.
 
 Use local Linux as manual CI.
 
 Use HP as operator lab, not production.
 
-Move non-Aliyun / non-HP nodes into controlled drain and retirement after
-Aliyun promotion. Clean edge rebuilds are no longer the default near-term
-direction unless a later technical MVP integration gate requires them.
+Treat historical Aliyun promotion and clean-start documents as evidence only, not as the current default.
 
-Use the clean new-server control-plane runbook only as fallback if Aliyun is
-rejected or cannot be safely cleaned and hardened.
+Use the clean new-server control-plane runbook only as a provider-neutral
+replacement or recovery pattern under a new approval.
 ```
 
 ## Target Topology
@@ -366,19 +368,18 @@ state or Admin exposure.
 
 Any real production edge-node change is Risk A.
 
-### Phase 4: Aliyun Control-Plane Candidate
+### Phase 4: Vultr Control-Plane Verification
 
-Move manual CI away from the current Aliyun server, then inventory and validate
-that server as the future `sub-control-a` candidate before attempting any
-physical split.
+Inventory and validate the current Vultr Japan control-plane boundary before
+attempting any new physical split or replacement.
 
 This is Risk A because it involves cloud resources and may later involve
-production-derived state. The candidate should not receive DNS, customer
-traffic, edge data-plane duties, or production authority during this phase.
+production-derived state. Inventory by itself does not authorize DNS, customer
+traffic, data-plane, service, or production-authority mutation.
 
-Use `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` for the current gates. Use
-`docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md` only as the fallback if
-Aliyun is rejected by inventory or cleanup gates.
+Use `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` for the current boundary.
+Use `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md` only as a
+provider-neutral replacement or recovery pattern. The Aliyun plan is historical.
 
 ### Phase 5: Control-Plane Standby
 
@@ -461,7 +462,7 @@ user-facing VPN
 Before runtime work starts, decide:
 
 ```text
-1. Whether the current Aliyun server passes inventory as `sub-control-a`.
+1. Whether the current Vultr Japan `sub-control-a` boundary still matches live inventory.
 2. Whether sub-control-b is cold standby, warm standby, or rebuild-on-restore.
 3. Whether edge nodes should report health by pull, push, or mesh registry.
 4. What edge status fields are safe and useful.
@@ -473,16 +474,17 @@ Before runtime work starts, decide:
 
 ## Recommended Next Step
 
-Keep current production co-located. Use this architecture to guide the next
-repository work:
+Keep the current documented Vultr Japan control-plane and Japan/Singapore
+data-plane split unless a new Risk A gate changes it. Use this architecture to
+guide the next repository work:
 
 ```text
 1. Move manual CI toward local Linux.
-2. Inventory Aliyun as the future `sub-control-a` candidate after CI exits.
+2. Refresh Vultr Japan `sub-control-a` inventory before any runtime mutation.
 3. Keep HP Relay as operator lab evidence, not production topology.
 4. Keep generated production YAML changes behind Risk A approval.
-5. Drain non-Aliyun / non-HP nodes only after Aliyun promotion and explicit
-   node-drain gates.
+5. Treat historical Aliyun/AWS node drain records as evidence only; require a
+   new gate for any live node lifecycle action.
 6. Keep Server Edge Mesh as private health / recovery infrastructure first.
 7. Defer physical control-plane split until backup/restore and edge-only
    behavior are both proven.
