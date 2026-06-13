@@ -2,7 +2,9 @@
 
 [中文](README.md) | [Documentation index](docs/README.md)
 
-Lightweight proxy gateway console for local proxy forwarding, Clash/Mihomo subscription delivery, and subscription-tenant operations.
+Lightweight subscription control and delivery gateway for the `gccgw`
+control plane, customer portal, protected operator surfaces, Clash/Mihomo
+subscription output, and local / SSH-tunneled operations.
 
 > Current network fact: Windows local forwarding and Clash/Mihomo subscription forwarding are different paths. `docs/NETWORK_FORWARDING.md` is the source of truth for network forwarding boundaries.
 
@@ -10,15 +12,45 @@ Lightweight proxy gateway console for local proxy forwarding, Clash/Mihomo subsc
 
 `proxy-gateway-minimal` is a small Node.js gateway that combines:
 
-- Local Windows HTTP-to-SOCKS forwarding through `ss-local`.
-- Clash/Mihomo subscription YAML generation at `/sub/clash.yaml`.
-- SQLite-backed subscription tenant management.
+- SQLite-backed subscription control-plane state for accounts, orders,
+  subscription artifacts, per-order edge credentials, and usage accounting.
+- Clash/Mihomo subscription YAML generation and multi-channel data-plane
+  output across replaceable edge channels.
 - A local or SSH-tunneled Admin Console Shell for operators.
+- Local Windows HTTP-to-SOCKS forwarding through `ss-local` as a legacy
+  compatibility and validation path.
 - Production runbooks for systemd, Nginx, SQLite backup/restore, staging, and manual CI validation.
 
 It is intentionally not a Kubernetes, Docker Compose, Terraform, or automatic CD system.
 
-## Network Topology
+## Current Source And Archive Boundary
+
+The active local checkout is:
+
+```text
+D:\Projects\proxy-gateway-minimal
+```
+
+Before continuing repository work, read:
+
+```text
+AGENTS.md
+docs/PROJECT_CONTEXT.md
+docs/README.md
+docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md
+```
+
+Legacy checkouts, old OneDrive folders, `.worktrees/`, `docs/archive/`,
+release packages, and generated local outputs such as `.codex-runtime/`,
+`.codex-artifacts/`, `.playwright-cli/`, `.tmp-node/`, `test-results/`,
+`admin/dist*`, `coverage/`, and `output/` are not active source material. Use
+them only for explicit
+archaeology or diff comparison. Re-importing code, docs, runtime config, or
+execution assumptions from those locations requires the boundary checks in
+`docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md`; production-adjacent re-imports
+remain Risk A.
+
+## Legacy Local Forwarding
 
 Windows local forwarding:
 
@@ -29,7 +61,7 @@ Windows app / WinINet / PAC / HTTP_PROXY / HTTPS_PROXY
         ↓
 127.0.0.1:1080 ss-local SOCKS5
         ↓
-Remote Shadowsocks server
+Legacy remote Shadowsocks server
 ```
 
 ALL_PROXY-aware local apps:
@@ -39,7 +71,7 @@ Application
         ↓
 127.0.0.1:1080 ss-local SOCKS5
         ↓
-Remote Shadowsocks server
+Legacy remote Shadowsocks server
 ```
 
 Clash/Mihomo subscription forwarding:
@@ -49,12 +81,15 @@ Clash / Mihomo
         ↓
 GET /sub/clash.yaml?token=...
         ↓
-Receives Shadowsocks YAML
+Receives a rendered Clash/Mihomo YAML bundle
         ↓
-Connects directly to the remote Shadowsocks server
+Connects directly to the approved VLESS Reality, Hysteria2, and TUIC channels
 ```
 
-In subscription mode, `proxy-gateway-minimal` is a subscription generator and access controller. After the client receives the YAML, Clash/Mihomo connects directly to the remote Shadowsocks node; it does not use local `127.0.0.1:18180` or `127.0.0.1:1080`.
+In subscription mode, `proxy-gateway-minimal` is a subscription generator and
+access controller. After the client receives the YAML, Clash/Mihomo connects
+directly to the rendered data-plane channels; it does not use local
+`127.0.0.1:18180` or `127.0.0.1:1080`.
 
 ## Ports
 

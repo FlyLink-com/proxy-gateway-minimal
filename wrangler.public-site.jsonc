@@ -1,0 +1,14 @@
+{
+  "name": "proxy-gateway-public-site-preview",
+  "compatibility_date": "2026-06-05",
+  "workers_dev": true,
+  "preview_urls": true,
+  "assets": {
+    "directory": "./admin/dist-site",
+    "not_found_handling": "404-page"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

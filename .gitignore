@@ -19,5 +19,11 @@ docs/superpowers/plans/*.tmp
 .gstack/
 .vs/
 admin/dist/
+admin/dist-portal/
+/.codex-artifacts/
+/.codex-runtime/
+/.playwright-cli/
+/.tmp-node/
+test-results/
 handoff/
 admin/dist-site/

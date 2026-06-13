@@ -76,6 +76,10 @@ test("node registry exposes safe summaries without runtime endpoints or credenti
     role: "primary",
     region: "Singapore",
     channelPool: "stable",
+    channelRole: "primary",
+    lifecycle: "active",
+    physicalNodeRef: "",
+    generation: "",
     strategyPriority: 20,
     canaryWeight: 0,
     credentialMode: "shared-node",
@@ -85,6 +89,86 @@ test("node registry exposes safe summaries without runtime endpoints or credenti
     reason: ""
   });
   assert.doesNotMatch(JSON.stringify(nodes), /203\.0\.113|18388|aes-256-gcm|secret/);
+});
+
+test("node registry surfaces credential mode without exposing runtime credentials", () => {
+  const registry = createNodeRegistry({
+    proxyConfig: {
+      servers: [
+        {
+          id: "node_shared",
+          name: "shared-node",
+          host: "203.0.113.10",
+          port: 18388,
+          method: "aes-256-gcm",
+          password: "shared-secret"
+        },
+        {
+          id: "node_per_order",
+          name: "per-order-node",
+          host: "203.0.113.11",
+          port: 443,
+          protocol: "tuic",
+          uuid: "11111111-1111-4111-8111-111111111111",
+          password: "tuic-secret",
+          credentialMode: "per-order"
+        }
+      ]
+    }
+  });
+
+  const nodes = registry.listSafeNodes();
+
+  assert.equal(nodes[0].credentialMode, "shared-node");
+  assert.equal(nodes[1].credentialMode, "per-order");
+  assert.doesNotMatch(JSON.stringify(nodes), /203\.0\.113|18388|443|shared-secret|tuic-secret|11111111/);
+});
+
+test("node registry exposes safe multi-channel metadata and blocks retired lifecycle", () => {
+  const registry = createNodeRegistry({
+    proxyConfig: {
+      servers: [
+        {
+          id: "channel_aliyun_a_tuic",
+          name: "channel-aliyun-a-tuic",
+          protocol: "tuic",
+          channelPool: "stable",
+          channelRole: "stable-candidate",
+          lifecycle: "active",
+          physicalNodeRef: "aliyun-control-a",
+          generation: "2026-06-05",
+          host: "203.0.113.20",
+          port: 443,
+          uuid: "11111111-1111-4111-8111-111111111111",
+          password: "tuic-secret",
+          credentialMode: "per-order"
+        },
+        {
+          id: "old_prod_edge_a",
+          name: "prod-edge-a",
+          protocol: "ss",
+          channelPool: "stable",
+          lifecycle: "retired",
+          physicalNodeRef: "retired-edge-a",
+          host: "203.0.113.21",
+          port: 18388,
+          password: "old-secret"
+        }
+      ]
+    }
+  });
+
+  const safeNodes = registry.listSafeNodes();
+  assert.equal(safeNodes[0].physicalNodeRef, "aliyun-control-a");
+  assert.equal(safeNodes[0].channelRole, "stable-candidate");
+  assert.equal(safeNodes[0].lifecycle, "active");
+  assert.equal(safeNodes[0].generation, "2026-06-05");
+  assert.equal(safeNodes[0].subscriptionEligible, true);
+  assert.equal(safeNodes[1].lifecycle, "retired");
+  assert.equal(safeNodes[1].subscriptionEligible, false);
+  assert.equal(registry.resolveAssignableNode("channel-aliyun-a-tuic")?.name, "channel-aliyun-a-tuic");
+  assert.equal(registry.resolveAssignableNode("prod-edge-a"), null);
+  assert.doesNotMatch(JSON.stringify(safeNodes), /203\.0\.113|443|18388|tuic-secret|old-secret|11111111/);
 });
 
 test("node registry keeps renderable material separate from safe summaries", () => {

@@ -108,6 +108,28 @@ function parseJsonObject(value) {
   }
 }
 
+function jsonArray(value, field) {
+  if (value == null) {
+    return "[]";
+  }
+  if (!Array.isArray(value)) {
+    throw platformError("validation_error", `${field} must be an array`);
+  }
+  return JSON.stringify(value);
+}
+
+function parseJsonArray(value) {
+  if (!value) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function sqliteRun(statement, input) {
   try {
     return statement.run(input);
@@ -116,6 +138,16 @@ function sqliteRun(statement, input) {
       throw platformError("constraint_error", "subscription control database constraint failed");
     }
     throw error;
+  }
+}
+
+function ensureTableColumns(db, tableName, columns) {
+  const existing = new Set(db.prepare(`pragma table_info(${tableName})`).all().map((column) => column.name));
+  for (const column of columns) {
+    if (!existing.has(column.name)) {
+      db.exec(`alter table ${tableName} add column ${column.definition}`);
+      existing.add(column.name);
+    }
   }
 }
 
@@ -182,6 +214,28 @@ function mapIssuedLink(row) {
   };
 }
 
+function mapIssuedSubscriptionBinding(row) {
+  if (!row) return null;
+  return {
+    id: row.link_id,
+    linkId: row.link_id,
+    requestId: row.request_id,
+    accountId: row.account_id,
+    entitlementId: row.entitlement_id,
+    tenantRef: row.tenant_ref,
+    artifactRef: row.artifact_ref,
+    status: row.link_status,
+    requestStatus: row.request_status,
+    entitlementStatus: row.entitlement_status,
+    nodeId: row.node_id,
+    plan: row.plan,
+    validFrom: row.valid_from,
+    validUntil: row.valid_until,
+    createdAt: row.link_created_at,
+    updatedAt: row.link_updated_at
+  };
+}
+
 function mapQuotaCounter(row) {
   if (!row) return null;
   return {
@@ -190,6 +244,68 @@ function mapQuotaCounter(row) {
     metric: row.metric,
     period: row.period,
     amount: row.amount,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapUsageBinding(row) {
+  if (!row) return null;
+  return {
+    id: row.link_id,
+    linkId: row.link_id,
+    requestId: row.request_id,
+    accountId: row.account_id,
+    entitlementId: row.entitlement_id,
+    tenantRef: row.tenant_ref,
+    artifactRef: row.artifact_ref,
+    status: row.link_status,
+    requestStatus: row.request_status,
+    entitlementStatus: row.entitlement_status,
+    nodeId: row.node_id,
+    plan: row.plan,
+    validFrom: row.valid_from,
+    validUntil: row.valid_until,
+    trafficLimitBytes: row.traffic_limit_bytes,
+    edgeCredentialRef: row.edge_credential_ref || `edgecred_${row.request_id}`,
+    portalUserRef: row.portal_user_ref,
+    createdAt: row.link_created_at,
+    updatedAt: row.link_updated_at
+  };
+}
+
+function mapUsageSample(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    sourceRef: row.source_ref,
+    channelRef: row.channel_ref,
+    edgeCredentialRef: row.edge_credential_ref,
+    accountId: row.account_id,
+    entitlementId: row.entitlement_id,
+    requestId: row.request_id,
+    observedAt: row.observed_at,
+    intervalStartedAt: row.interval_started_at,
+    intervalEndedAt: row.interval_ended_at,
+    uploadBytes: row.upload_bytes,
+    downloadBytes: row.download_bytes,
+    totalBytes: row.total_bytes,
+    sampleDigest: row.sample_digest,
+    createdAt: row.created_at
+  };
+}
+
+function mapUsageRollup(row) {
+  if (!row) return null;
+  return {
+    edgeCredentialRef: row.edge_credential_ref,
+    accountId: row.account_id,
+    entitlementId: row.entitlement_id,
+    requestId: row.request_id,
+    channelRef: row.channel_ref,
+    uploadBytes: row.upload_bytes,
+    downloadBytes: row.download_bytes,
+    totalBytes: row.total_bytes,
+    lastObservedAt: row.last_observed_at,
     updatedAt: row.updated_at
   };
 }
@@ -234,6 +350,72 @@ function mapAuditEvent(row) {
   };
 }
 
+function mapEdgeApplyReceipt(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    channelRef: row.channel_ref,
+    desiredStateRef: row.desired_state_ref,
+    status: row.status,
+    actionCounts: {
+      add: row.add_count,
+      revoke: row.revoke_count,
+      rotate: row.rotate_count,
+      unchanged: row.unchanged_count
+    },
+    configTestOk: row.config_test_ok === 1,
+    serviceActive: row.service_active === 1,
+    listenerUdp443: row.listener_udp443 === 1,
+    backupRef: row.backup_ref,
+    rollbackRef: row.rollback_ref,
+    appliedAt: row.applied_at,
+    createdAt: row.created_at
+  };
+}
+
+function mapPortalAccessRequest(row) {
+  if (!row) return null;
+  const event = parseJsonObject(row.event_json);
+  return {
+    id: row.id,
+    portalUserRef: row.portal_user_ref,
+    plan: row.plan,
+    clientTarget: row.client_target,
+    durationDays: row.duration_days,
+    quantity: row.quantity,
+    status: row.status,
+    nextAction: row.next_action,
+    noteProvided: row.note_provided === 1,
+    priorTrialState: row.prior_trial_state,
+    submittedAt: row.submitted_at,
+    updatedAt: row.updated_at,
+    reviewedAt: row.reviewed_at,
+    reviewedByRef: row.reviewed_by_ref,
+    safeReasonCode: row.safe_reason_code,
+    expiresAt: row.expires_at,
+    validUntil: row.valid_until,
+    entitlementRef: row.entitlement_ref,
+    accessGrantRef: row.access_grant_ref,
+    tenantId: row.tenant_id,
+    artifactId: row.artifact_id,
+    subscriptionUrl: row.subscription_url,
+    edgeChannelRef: row.edge_channel_ref,
+    edgeCredentialRef: row.edge_credential_ref,
+    edgeMaterialDigest: row.edge_material_digest,
+    edgeLifecycleMutation: row.edge_lifecycle_mutation === 1,
+    event: Object.keys(event).length > 0 ? event : null
+  };
+}
+
+function mapPortalEdgeCredential(row) {
+  if (!row) return null;
+  return {
+    edgeChannelRef: row.edge_channel_ref,
+    edgeCredentialRef: row.edge_credential_ref,
+    edgeMaterialDigest: row.edge_material_digest
+  };
+}
+
 function mapPortalEntry(row) {
   if (!row) return null;
   return {
@@ -266,6 +448,57 @@ function mapPortalTotpCredential(row) {
     enrolledAt: row.enrolled_at,
     lastVerifiedAt: row.last_verified_at,
     revokedAt: row.revoked_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapPortalPasswordCredential(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    passwordHash: row.password_hash,
+    status: row.status,
+    failureCount: row.failure_count,
+    lockedUntil: row.locked_until,
+    mustRotate: row.must_rotate === 1,
+    createdAt: row.created_at,
+    lastVerifiedAt: row.last_verified_at,
+    revokedAt: row.revoked_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapPortalPasskeyCredential(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    credentialId: row.credential_id,
+    credentialIdHash: row.credential_id_hash,
+    publicKeyJwk: parseJsonObject(row.public_key_jwk_json),
+    signCount: row.sign_count,
+    transports: parseJsonArray(row.transports_json),
+    status: row.status,
+    createdAt: row.created_at,
+    lastVerifiedAt: row.last_verified_at,
+    revokedAt: row.revoked_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapPortalSecondFactorChallenge(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    accountId: row.account_id,
+    challengeHash: row.challenge_hash,
+    allowedFactors: parseJsonArray(row.allowed_factors_json),
+    status: row.status,
+    failureCount: row.failure_count,
+    expiresAt: row.expires_at,
+    usedAt: row.used_at,
+    createdAt: row.created_at,
     updatedAt: row.updated_at
   };
 }
@@ -375,6 +608,47 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       primary key (account_id, entitlement_id, metric, period)
     );
 
+    create table if not exists platform_usage_samples (
+      id text primary key,
+      source_ref text not null,
+      channel_ref text not null,
+      edge_credential_ref text not null,
+      account_id text not null references platform_accounts(id) on delete cascade,
+      entitlement_id text not null references platform_entitlements(id) on delete cascade,
+      request_id text not null references platform_issuance_requests(id) on delete cascade,
+      observed_at text not null,
+      interval_started_at text not null,
+      interval_ended_at text not null,
+      upload_bytes integer not null default 0 check (upload_bytes >= 0),
+      download_bytes integer not null default 0 check (download_bytes >= 0),
+      total_bytes integer not null default 0 check (total_bytes >= 0),
+      sample_digest text not null unique,
+      created_at text not null
+    );
+
+    create index if not exists platform_usage_samples_edge_credential_idx
+      on platform_usage_samples(edge_credential_ref, observed_at);
+    create index if not exists platform_usage_samples_account_entitlement_idx
+      on platform_usage_samples(account_id, entitlement_id, observed_at);
+
+    create table if not exists platform_usage_rollups (
+      edge_credential_ref text primary key,
+      account_id text not null references platform_accounts(id) on delete cascade,
+      entitlement_id text not null references platform_entitlements(id) on delete cascade,
+      request_id text not null references platform_issuance_requests(id) on delete cascade,
+      channel_ref text not null,
+      upload_bytes integer not null default 0 check (upload_bytes >= 0),
+      download_bytes integer not null default 0 check (download_bytes >= 0),
+      total_bytes integer not null default 0 check (total_bytes >= 0),
+      last_observed_at text not null,
+      updated_at text not null
+    );
+
+    create index if not exists platform_usage_rollups_account_entitlement_idx
+      on platform_usage_rollups(account_id, entitlement_id);
+    create index if not exists platform_usage_rollups_channel_idx
+      on platform_usage_rollups(channel_ref);
+
     create table if not exists platform_device_bindings (
       id text primary key,
       account_id text not null references platform_accounts(id) on delete cascade,
@@ -416,6 +690,87 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
 
     create index if not exists platform_audit_events_entity_ref_idx
       on platform_audit_events(entity_ref);
+
+    create table if not exists platform_edge_apply_receipts (
+      id text primary key,
+      channel_ref text not null,
+      desired_state_ref text not null,
+      status text not null check (status in ('pending', 'applied', 'failed', 'rolled_back', 'drift_detected')),
+      add_count integer not null default 0,
+      revoke_count integer not null default 0,
+      rotate_count integer not null default 0,
+      unchanged_count integer not null default 0,
+      config_test_ok integer not null default 0 check (config_test_ok in (0, 1)),
+      service_active integer not null default 0 check (service_active in (0, 1)),
+      listener_udp443 integer not null default 0 check (listener_udp443 in (0, 1)),
+      backup_ref text,
+      rollback_ref text,
+      applied_at text,
+      created_at text not null
+    );
+
+    create index if not exists platform_edge_apply_receipts_channel_idx
+      on platform_edge_apply_receipts(channel_ref, created_at);
+    create index if not exists platform_edge_apply_receipts_desired_state_idx
+      on platform_edge_apply_receipts(desired_state_ref);
+
+    create table if not exists platform_portal_access_requests (
+      id text primary key,
+      portal_user_ref text not null,
+      plan text not null check (plan in ('trial', 'monthly', 'yearly')),
+      client_target text not null check (client_target in ('clash', 'karing')),
+      duration_days integer not null check (duration_days > 0),
+      quantity integer not null check (quantity > 0),
+      status text not null check (status in (
+        'pending_admin_review',
+        'approved_pending_delivery',
+        'delivered',
+        'issued',
+        'rejected',
+        'disabled'
+      )),
+      next_action text not null,
+      note_provided integer not null default 0 check (note_provided in (0, 1)),
+      prior_trial_state text not null,
+      submitted_at text not null,
+      updated_at text not null,
+      reviewed_at text,
+      reviewed_by_ref text,
+      safe_reason_code text,
+      expires_at text,
+      valid_until text,
+      entitlement_ref text,
+      access_grant_ref text,
+      tenant_id text,
+      artifact_id text,
+      subscription_url text,
+      edge_channel_ref text,
+      edge_credential_ref text,
+      edge_material_digest text,
+      edge_lifecycle_mutation integer not null default 0 check (edge_lifecycle_mutation in (0, 1)),
+      event_json text not null default '{}'
+    );
+
+    create index if not exists platform_portal_access_requests_user_idx
+      on platform_portal_access_requests(portal_user_ref, submitted_at);
+    create index if not exists platform_portal_access_requests_status_idx
+      on platform_portal_access_requests(status);
+    create index if not exists platform_portal_access_requests_plan_idx
+      on platform_portal_access_requests(plan);
+
+    create table if not exists platform_portal_edge_credentials (
+      request_id text not null references platform_portal_access_requests(id) on delete cascade,
+      edge_channel_ref text not null,
+      edge_credential_ref text not null,
+      edge_material_digest text not null,
+      ordinal integer not null default 0 check (ordinal >= 0),
+      primary key (request_id, edge_channel_ref)
+    );
+
+    create unique index if not exists platform_portal_edge_credentials_ref_idx
+      on platform_portal_edge_credentials(edge_credential_ref);
+    create index if not exists platform_portal_edge_credentials_request_idx
+      on platform_portal_edge_credentials(request_id, ordinal);
 
     create table if not exists platform_portal_entries (
       id text primary key,
@@ -459,6 +814,63 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     create index if not exists platform_portal_totp_credentials_status_idx
       on platform_portal_totp_credentials(status);
 
+    create table if not exists platform_portal_password_credentials (
+      id text primary key,
+      account_id text not null references platform_accounts(id) on delete cascade,
+      password_hash text not null,
+      status text not null check (status in ('active', 'revoked', 'locked')),
+      failure_count integer not null default 0 check (failure_count >= 0),
+      locked_until text,
+      must_rotate integer not null default 0 check (must_rotate in (0, 1)),
+      created_at text not null,
+      last_verified_at text,
+      revoked_at text,
+      updated_at text not null
+    );
+
+    create index if not exists platform_portal_password_credentials_account_id_idx
+      on platform_portal_password_credentials(account_id);
+    create index if not exists platform_portal_password_credentials_status_idx
+      on platform_portal_password_credentials(status);
+
+    create table if not exists platform_portal_passkey_credentials (
+      id text primary key,
+      account_id text not null references platform_accounts(id) on delete cascade,
+      credential_id text not null unique,
+      credential_id_hash text not null unique,
+      public_key_jwk_json text not null,
+      sign_count integer not null default 0 check (sign_count >= 0),
+      transports_json text not null default '[]',
+      status text not null check (status in ('active', 'revoked', 'locked')),
+      created_at text not null,
+      last_verified_at text,
+      revoked_at text,
+      updated_at text not null
+    );
+
+    create index if not exists platform_portal_passkey_credentials_account_id_idx
+      on platform_portal_passkey_credentials(account_id);
+    create index if not exists platform_portal_passkey_credentials_status_idx
+      on platform_portal_passkey_credentials(status);
+
+    create table if not exists platform_portal_second_factor_challenges (
+      id text primary key,
+      account_id text not null references platform_accounts(id) on delete cascade,
+      challenge_hash text not null,
+      allowed_factors_json text not null,
+      status text not null check (status in ('active', 'used', 'expired', 'locked')),
+      failure_count integer not null default 0 check (failure_count >= 0),
+      expires_at text not null,
+      used_at text,
+      created_at text not null,
+      updated_at text not null
+    );
+
+    create index if not exists platform_portal_second_factor_account_id_idx
+      on platform_portal_second_factor_challenges(account_id);
+    create index if not exists platform_portal_second_factor_status_idx
+      on platform_portal_second_factor_challenges(status);
+
     create table if not exists platform_portal_sessions (
       id text primary key,
       account_id text not null references platform_accounts(id) on delete cascade,
@@ -476,6 +888,23 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     create index if not exists platform_portal_sessions_status_idx
       on platform_portal_sessions(status);
   `);
+
+  ensureTableColumns(db, "platform_portal_access_requests", [
+    { name: "client_target", definition: "client_target text not null default 'clash'" },
+    { name: "duration_days", definition: "duration_days integer not null default 30" },
+    { name: "quantity", definition: "quantity integer not null default 1" },
+    { name: "note_provided", definition: "note_provided integer not null default 0" },
+    { name: "expires_at", definition: "expires_at text" },
+    { name: "valid_until", definition: "valid_until text" },
+    { name: "tenant_id", definition: "tenant_id text" },
+    { name: "artifact_id", definition: "artifact_id text" },
+    { name: "subscription_url", definition: "subscription_url text" },
+    { name: "edge_channel_ref", definition: "edge_channel_ref text" },
+    { name: "edge_credential_ref", definition: "edge_credential_ref text" },
+    { name: "edge_material_digest", definition: "edge_material_digest text" },
+    { name: "edge_lifecycle_mutation", definition: "edge_lifecycle_mutation integer not null default 0" },
+    { name: "event_json", definition: "event_json text not null default '{}'" }
+  ]);
 
   function createAccount(input) {
     assertNoUnsafeFields(input);
@@ -615,6 +1044,323 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     return getIssuedLink(id);
   }
 
+  function listIssuedSubscriptionBindings(filters = {}) {
+    assertNoUnsafeFields(filters);
+    const clauses = [
+      "l.status = 'active'",
+      "r.status = 'issued'",
+      "e.status = 'active'"
+    ];
+    const params = [];
+    const nodeId = optionalText(filters.nodeId);
+    const tenantRef = optionalText(filters.tenantRef);
+    if (nodeId) {
+      clauses.push("r.node_id = ?");
+      params.push(nodeId);
+    }
+    if (tenantRef) {
+      clauses.push("l.tenant_ref = ?");
+      params.push(tenantRef);
+    }
+
+    return db.prepare(`
+      select
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        r.node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until
+      from platform_issued_subscription_links l
+      join platform_issuance_requests r on r.id = l.request_id
+      join platform_entitlements e on e.id = r.entitlement_id
+      where ${clauses.join(" and ")}
+      order by l.created_at asc, l.id asc
+    `).all(...params).map(mapIssuedSubscriptionBinding);
+  }
+
+  function findIssuedSubscriptionBindingByTenantRef(tenantRef) {
+    const [binding] = listIssuedSubscriptionBindings({
+      tenantRef: requiredText(tenantRef, "tenantRef")
+    }).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt) || b.id.localeCompare(a.id));
+    return binding || null;
+  }
+
+  function findIssuedSubscriptionBindingByEdgeCredentialRef(edgeCredentialRef) {
+    const safeEdgeCredentialRef = requiredText(edgeCredentialRef, "edgeCredentialRef");
+    const durableCredential = mapUsageBinding(db.prepare(`
+      select
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        c.edge_channel_ref as node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until,
+        e.traffic_limit_bytes,
+        c.edge_credential_ref,
+        p.portal_user_ref
+      from platform_issued_subscription_links l
+      join platform_issuance_requests r on r.id = l.request_id
+      join platform_entitlements e on e.id = r.entitlement_id
+      join platform_portal_edge_credentials c on c.request_id = r.id
+      left join platform_portal_access_requests p on p.id = r.id
+      where l.status = 'active'
+        and r.status = 'issued'
+        and e.status = 'active'
+        and c.edge_credential_ref = ?
+      order by l.created_at desc, c.ordinal asc, l.id desc
+      limit 1
+    `).get(safeEdgeCredentialRef));
+    if (durableCredential) {
+      return durableCredential;
+    }
+
+    const direct = mapUsageBinding(db.prepare(`
+      select
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        r.node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until,
+        e.traffic_limit_bytes,
+        p.edge_credential_ref,
+        p.portal_user_ref
+      from platform_issued_subscription_links l
+      join platform_issuance_requests r on r.id = l.request_id
+      join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_portal_access_requests p on p.id = r.id
+      where l.status = 'active'
+        and r.status = 'issued'
+        and e.status = 'active'
+        and coalesce(p.edge_credential_ref, 'edgecred_' || r.id) = ?
+      order by l.created_at desc, l.id desc
+      limit 1
+    `).get(safeEdgeCredentialRef));
+    if (direct) {
+      return direct;
+    }
+
+    const derivedRows = db.prepare(`
+      select
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        r.node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until,
+        e.traffic_limit_bytes,
+        p.edge_credential_ref,
+        p.portal_user_ref
+      from platform_issued_subscription_links l
+      join platform_issuance_requests r on r.id = l.request_id
+      join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_portal_access_requests p on p.id = r.id
+      where l.status = 'active'
+        and r.status = 'issued'
+        and e.status = 'active'
+      order by l.created_at desc, l.id desc
+    `).all();
+
+    for (const row of derivedRows) {
+      const prefix = `edgecred_${row.request_id}_`;
+      if (!safeEdgeCredentialRef.startsWith(prefix)) {
+        continue;
+      }
+      const channelRef = safeEdgeCredentialRef.slice(prefix.length);
+      if (!channelRef) {
+        continue;
+      }
+      return mapUsageBinding({
+        ...row,
+        node_id: channelRef,
+        edge_credential_ref: safeEdgeCredentialRef
+      });
+    }
+    return null;
+  }
+
+  function findUsageBindingByTenantRef(tenantRef) {
+    return mapUsageBinding(db.prepare(`
+      select
+        l.id as link_id,
+        l.request_id,
+        l.tenant_ref,
+        l.artifact_ref,
+        l.status as link_status,
+        l.created_at as link_created_at,
+        l.updated_at as link_updated_at,
+        r.account_id,
+        r.entitlement_id,
+        r.status as request_status,
+        r.node_id,
+        e.plan,
+        e.status as entitlement_status,
+        e.valid_from,
+        e.valid_until,
+        e.traffic_limit_bytes,
+        p.edge_credential_ref,
+        p.portal_user_ref
+      from platform_issued_subscription_links l
+      join platform_issuance_requests r on r.id = l.request_id
+      join platform_entitlements e on e.id = r.entitlement_id
+      left join platform_portal_access_requests p on p.id = r.id
+      where l.status = 'active'
+        and r.status = 'issued'
+        and e.status = 'active'
+        and l.tenant_ref = ?
+      order by l.created_at desc, l.id desc
+      limit 1
+    `).get(requiredText(tenantRef, "tenantRef")));
+  }
+
+  function getUsageSampleByDigest(sampleDigest) {
+    return mapUsageSample(db.prepare(`
+      select * from platform_usage_samples
+      where sample_digest = ?
+    `).get(requiredText(sampleDigest, "sampleDigest")));
+  }
+
+  function getUsageRollupByEdgeCredentialRef(edgeCredentialRef) {
+    return mapUsageRollup(db.prepare(`
+      select * from platform_usage_rollups
+      where edge_credential_ref = ?
+    `).get(requiredText(edgeCredentialRef, "edgeCredentialRef")));
+  }
+
+  function listUsageRollupsByRequestId(requestId) {
+    return db.prepare(`
+      select * from platform_usage_rollups
+      where request_id = ?
+      order by updated_at asc, edge_credential_ref asc
+    `).all(requiredText(requestId, "requestId")).map(mapUsageRollup);
+  }
+
+  function listUsageSamples(filters = {}) {
+    const clauses = [];
+    const params = [];
+    const edgeCredentialRef = optionalText(filters.edgeCredentialRef);
+    const accountId = optionalText(filters.accountId);
+    const entitlementId = optionalText(filters.entitlementId);
+    if (edgeCredentialRef) {
+      clauses.push("edge_credential_ref = ?");
+      params.push(edgeCredentialRef);
+    }
+    if (accountId) {
+      clauses.push("account_id = ?");
+      params.push(accountId);
+    }
+    if (entitlementId) {
+      clauses.push("entitlement_id = ?");
+      params.push(entitlementId);
+    }
+    const where = clauses.length ? `where ${clauses.join(" and ")}` : "";
+    return db.prepare(`
+      select * from platform_usage_samples
+      ${where}
+      order by observed_at asc, id asc
+    `).all(...params).map(mapUsageSample);
+  }
+
+  function recordUsageSample(input) {
+    const uploadBytes = integer(input.uploadBytes ?? 0, "uploadBytes", { min: 0 });
+    const downloadBytes = integer(input.downloadBytes ?? 0, "downloadBytes", { min: 0 });
+    const totalBytes = integer(input.totalBytes ?? uploadBytes + downloadBytes, "totalBytes", { min: 0 });
+    const record = {
+      id: requiredText(input.id, "id"),
+      sourceRef: requiredText(input.sourceRef, "sourceRef"),
+      channelRef: requiredText(input.channelRef, "channelRef"),
+      edgeCredentialRef: requiredText(input.edgeCredentialRef, "edgeCredentialRef"),
+      accountId: requiredText(input.accountId, "accountId"),
+      entitlementId: requiredText(input.entitlementId, "entitlementId"),
+      requestId: requiredText(input.requestId, "requestId"),
+      observedAt: isoText(input.observedAt, "observedAt"),
+      intervalStartedAt: isoText(input.intervalStartedAt, "intervalStartedAt"),
+      intervalEndedAt: isoText(input.intervalEndedAt, "intervalEndedAt"),
+      uploadBytes,
+      downloadBytes,
+      totalBytes,
+      sampleDigest: requiredText(input.sampleDigest, "sampleDigest"),
+      createdAt: isoText(input.createdAt, "createdAt")
+    };
+    const inserted = db.transaction(() => {
+      const result = db.prepare(`
+        insert or ignore into platform_usage_samples (
+          id, source_ref, channel_ref, edge_credential_ref, account_id,
+          entitlement_id, request_id, observed_at, interval_started_at,
+          interval_ended_at, upload_bytes, download_bytes, total_bytes,
+          sample_digest, created_at
+        ) values (
+          @id, @sourceRef, @channelRef, @edgeCredentialRef, @accountId,
+          @entitlementId, @requestId, @observedAt, @intervalStartedAt,
+          @intervalEndedAt, @uploadBytes, @downloadBytes, @totalBytes,
+          @sampleDigest, @createdAt
+        )
+      `).run(record);
+      if (result.changes === 0) {
+        return false;
+      }
+      sqliteRun(db.prepare(`
+        insert into platform_usage_rollups (
+          edge_credential_ref, account_id, entitlement_id, request_id, channel_ref,
+          upload_bytes, download_bytes, total_bytes, last_observed_at, updated_at
+        ) values (
+          @edgeCredentialRef, @accountId, @entitlementId, @requestId, @channelRef,
+          @uploadBytes, @downloadBytes, @totalBytes, @observedAt, @createdAt
+        )
+        on conflict(edge_credential_ref)
+        do update set
+          upload_bytes = platform_usage_rollups.upload_bytes + excluded.upload_bytes,
+          download_bytes = platform_usage_rollups.download_bytes + excluded.download_bytes,
+          total_bytes = platform_usage_rollups.total_bytes + excluded.total_bytes,
+          last_observed_at = excluded.last_observed_at,
+          updated_at = excluded.updated_at
+      `), record);
+      return true;
+    })();
+    return {
+      inserted,
+      sample: getUsageSampleByDigest(record.sampleDigest),
+      rollup: getUsageRollupByEdgeCredentialRef(record.edgeCredentialRef)
+    };
+  }
+
   function upsertQuotaCounter(input) {
     assertNoUnsafeFields(input);
     const record = {
@@ -718,6 +1464,231 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
 
   function getAuditEvent(id) {
     return mapAuditEvent(db.prepare("select * from platform_audit_events where id = ?").get(requiredText(id, "id")));
+  }
+
+  function recordEdgeApplyReceipt(input) {
+    assertNoUnsafeFields(input);
+    const actionCounts = input.actionCounts ?? {};
+    const record = {
+      id: requiredText(input.id, "id"),
+      channelRef: requiredText(input.channelRef, "channelRef"),
+      desiredStateRef: requiredText(input.desiredStateRef, "desiredStateRef"),
+      status: requiredText(input.status, "status"),
+      addCount: integer(actionCounts.add ?? 0, "actionCounts.add", { min: 0 }),
+      revokeCount: integer(actionCounts.revoke ?? 0, "actionCounts.revoke", { min: 0 }),
+      rotateCount: integer(actionCounts.rotate ?? 0, "actionCounts.rotate", { min: 0 }),
+      unchangedCount: integer(actionCounts.unchanged ?? 0, "actionCounts.unchanged", { min: 0 }),
+      configTestOk: input.configTestOk === true ? 1 : 0,
+      serviceActive: input.serviceActive === true ? 1 : 0,
+      listenerUdp443: input.listenerUdp443 === true ? 1 : 0,
+      backupRef: optionalText(input.backupRef),
+      rollbackRef: optionalText(input.rollbackRef),
+      appliedAt: optionalIsoText(input.appliedAt, "appliedAt"),
+      createdAt: isoText(input.createdAt, "createdAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_edge_apply_receipts (
+        id, channel_ref, desired_state_ref, status, add_count, revoke_count,
+        rotate_count, unchanged_count, config_test_ok, service_active,
+        listener_udp443, backup_ref, rollback_ref, applied_at, created_at
+      ) values (
+        @id, @channelRef, @desiredStateRef, @status, @addCount, @revokeCount,
+        @rotateCount, @unchangedCount, @configTestOk, @serviceActive,
+        @listenerUdp443, @backupRef, @rollbackRef, @appliedAt, @createdAt
+      )
+    `), record);
+    return getEdgeApplyReceipt(record.id);
+  }
+
+  function getEdgeApplyReceipt(id) {
+    return mapEdgeApplyReceipt(db.prepare("select * from platform_edge_apply_receipts where id = ?").get(requiredText(id, "id")));
+  }
+
+  function listEdgeApplyReceipts(filters = {}) {
+    const channelRef = optionalText(filters.channelRef);
+    if (channelRef) {
+      return db.prepare(`
+        select * from platform_edge_apply_receipts
+        where channel_ref = ?
+        order by created_at asc, id asc
+      `).all(channelRef).map(mapEdgeApplyReceipt);
+    }
+    return db.prepare(`
+      select * from platform_edge_apply_receipts
+      order by created_at asc, id asc
+    `).all().map(mapEdgeApplyReceipt);
+  }
+
+  function listPortalEdgeCredentials(requestId) {
+    return db.prepare(`
+      select edge_channel_ref, edge_credential_ref, edge_material_digest
+      from platform_portal_edge_credentials
+      where request_id = ?
+      order by ordinal asc, edge_channel_ref asc
+    `).all(requiredText(requestId, "requestId")).map(mapPortalEdgeCredential);
+  }
+
+  function attachPortalEdgeCredentials(record) {
+    if (!record) {
+      return null;
+    }
+    const edgeCredentials = listPortalEdgeCredentials(record.id);
+    return edgeCredentials.length > 0 ? { ...record, edgeCredentials } : record;
+  }
+
+  function normalizePortalEdgeCredentials(input, record) {
+    const rawCredentials = Array.isArray(input.edgeCredentials) ? input.edgeCredentials : [];
+    const seen = new Set();
+    const credentials = [];
+    for (const credential of rawCredentials) {
+      const edgeChannelRef = requiredText(credential?.edgeChannelRef, "edgeChannelRef");
+      const edgeCredentialRef = requiredText(credential?.edgeCredentialRef, "edgeCredentialRef");
+      const edgeMaterialDigest = requiredText(credential?.edgeMaterialDigest, "edgeMaterialDigest");
+      const key = `${edgeChannelRef}\u0000${edgeCredentialRef}`;
+      if (seen.has(key)) {
+        continue;
+      }
+      seen.add(key);
+      credentials.push({ edgeChannelRef, edgeCredentialRef, edgeMaterialDigest });
+    }
+    if (credentials.length === 0 && record.edgeChannelRef && record.edgeCredentialRef && record.edgeMaterialDigest) {
+      credentials.push({
+        edgeChannelRef: record.edgeChannelRef,
+        edgeCredentialRef: record.edgeCredentialRef,
+        edgeMaterialDigest: record.edgeMaterialDigest
+      });
+    }
+    return credentials;
+  }
+
+  function upsertPortalAccessRequest(input) {
+    const record = {
+      id: requiredText(input.id, "id"),
+      portalUserRef: requiredText(input.portalUserRef, "portalUserRef"),
+      plan: requiredText(input.plan, "plan"),
+      clientTarget: requiredText(input.clientTarget || "clash", "clientTarget"),
+      durationDays: integer(input.durationDays, "durationDays", { min: 1 }),
+      quantity: integer(input.quantity ?? 1, "quantity", { min: 1 }),
+      status: requiredText(input.status, "status"),
+      nextAction: requiredText(input.nextAction, "nextAction"),
+      noteProvided: input.noteProvided ? 1 : 0,
+      priorTrialState: requiredText(input.priorTrialState, "priorTrialState"),
+      submittedAt: isoText(input.submittedAt, "submittedAt"),
+      updatedAt: isoText(input.updatedAt, "updatedAt"),
+      reviewedAt: optionalIsoText(input.reviewedAt, "reviewedAt"),
+      reviewedByRef: optionalText(input.reviewedByRef),
+      safeReasonCode: optionalText(input.safeReasonCode),
+      expiresAt: optionalIsoText(input.expiresAt, "expiresAt"),
+      validUntil: optionalIsoText(input.validUntil, "validUntil"),
+      entitlementRef: optionalText(input.entitlementRef),
+      accessGrantRef: optionalText(input.accessGrantRef),
+      tenantId: optionalText(input.tenantId),
+      artifactId: optionalText(input.artifactId),
+      subscriptionUrl: optionalText(input.subscriptionUrl),
+      edgeChannelRef: optionalText(input.edgeChannelRef),
+      edgeCredentialRef: optionalText(input.edgeCredentialRef),
+      edgeMaterialDigest: optionalText(input.edgeMaterialDigest),
+      edgeLifecycleMutation: input.edgeLifecycleMutation ? 1 : 0,
+      eventJson: jsonObject(input.event, "event")
+    };
+    const edgeCredentials = normalizePortalEdgeCredentials(input, record);
+    db.transaction(() => {
+      sqliteRun(db.prepare(`
+        insert into platform_portal_access_requests (
+          id, portal_user_ref, plan, client_target, duration_days, quantity,
+          status, next_action, note_provided, prior_trial_state, submitted_at,
+          updated_at, reviewed_at, reviewed_by_ref, safe_reason_code, expires_at,
+          valid_until, entitlement_ref, access_grant_ref, tenant_id, artifact_id,
+          subscription_url, edge_channel_ref, edge_credential_ref,
+          edge_material_digest, edge_lifecycle_mutation, event_json
+        ) values (
+          @id, @portalUserRef, @plan, @clientTarget, @durationDays, @quantity,
+          @status, @nextAction, @noteProvided, @priorTrialState, @submittedAt,
+          @updatedAt, @reviewedAt, @reviewedByRef, @safeReasonCode, @expiresAt,
+          @validUntil, @entitlementRef, @accessGrantRef, @tenantId, @artifactId,
+          @subscriptionUrl, @edgeChannelRef, @edgeCredentialRef,
+          @edgeMaterialDigest, @edgeLifecycleMutation, @eventJson
+        )
+        on conflict(id) do update set
+          portal_user_ref = excluded.portal_user_ref,
+          plan = excluded.plan,
+          client_target = excluded.client_target,
+          duration_days = excluded.duration_days,
+          quantity = excluded.quantity,
+          status = excluded.status,
+          next_action = excluded.next_action,
+          note_provided = excluded.note_provided,
+          prior_trial_state = excluded.prior_trial_state,
+          submitted_at = excluded.submitted_at,
+          updated_at = excluded.updated_at,
+          reviewed_at = excluded.reviewed_at,
+          reviewed_by_ref = excluded.reviewed_by_ref,
+          safe_reason_code = excluded.safe_reason_code,
+          expires_at = excluded.expires_at,
+          valid_until = excluded.valid_until,
+          entitlement_ref = excluded.entitlement_ref,
+          access_grant_ref = excluded.access_grant_ref,
+          tenant_id = excluded.tenant_id,
+          artifact_id = excluded.artifact_id,
+          subscription_url = excluded.subscription_url,
+          edge_channel_ref = excluded.edge_channel_ref,
+          edge_credential_ref = excluded.edge_credential_ref,
+          edge_material_digest = excluded.edge_material_digest,
+          edge_lifecycle_mutation = excluded.edge_lifecycle_mutation,
+          event_json = excluded.event_json
+      `), record);
+      db.prepare("delete from platform_portal_edge_credentials where request_id = ?").run(record.id);
+      const insertEdgeCredential = db.prepare(`
+        insert into platform_portal_edge_credentials (
+          request_id, edge_channel_ref, edge_credential_ref, edge_material_digest, ordinal
+        ) values (
+          @requestId, @edgeChannelRef, @edgeCredentialRef, @edgeMaterialDigest, @ordinal
+        )
+      `);
+      edgeCredentials.forEach((credential, ordinal) => {
+        sqliteRun(insertEdgeCredential, {
+          requestId: record.id,
+          edgeChannelRef: credential.edgeChannelRef,
+          edgeCredentialRef: credential.edgeCredentialRef,
+          edgeMaterialDigest: credential.edgeMaterialDigest,
+          ordinal
+        });
+      });
+    })();
+    return getPortalAccessRequest(record.id);
+  }
+
+  function getPortalAccessRequest(id) {
+    return attachPortalEdgeCredentials(mapPortalAccessRequest(db.prepare(`
+      select * from platform_portal_access_requests
+      where id = ?
+    `).get(requiredText(id, "id"))));
+  }
+
+  function listPortalAccessRequests(filters = {}) {
+    const clauses = [];
+    const params = [];
+    const status = optionalText(filters.status);
+    const portalUserRef = optionalText(filters.portalUserRef);
+    const plan = optionalText(filters.plan);
+    if (status) {
+      clauses.push("status = ?");
+      params.push(status);
+    }
+    if (portalUserRef) {
+      clauses.push("portal_user_ref = ?");
+      params.push(portalUserRef);
+    }
+    if (plan) {
+      clauses.push("plan = ?");
+      params.push(plan);
+    }
+    const where = clauses.length ? `where ${clauses.join(" and ")}` : "";
+    return db.prepare(`
+      select * from platform_portal_access_requests
+      ${where}
+      order by submitted_at asc, id asc
+    `).all(...params).map(mapPortalAccessRequest).map(attachPortalEdgeCredentials);
   }
 
   function createPortalEntry(input) {
@@ -829,6 +1800,202 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       throw platformError("not_found", "active portal TOTP credential not found");
     }
     return getPortalTotpCredential(id);
+  }
+
+  function createPortalPasswordCredential(input) {
+    const record = {
+      id: requiredText(input.id, "id"),
+      accountId: requiredText(input.accountId, "accountId"),
+      passwordHash: requiredText(input.passwordHash, "passwordHash"),
+      status: requiredText(input.status || "active", "status"),
+      failureCount: integer(input.failureCount ?? 0, "failureCount", { min: 0 }),
+      lockedUntil: optionalIsoText(input.lockedUntil, "lockedUntil"),
+      mustRotate: input.mustRotate ? 1 : 0,
+      createdAt: isoText(input.createdAt, "createdAt"),
+      lastVerifiedAt: optionalIsoText(input.lastVerifiedAt, "lastVerifiedAt"),
+      revokedAt: optionalIsoText(input.revokedAt, "revokedAt"),
+      updatedAt: isoText(input.updatedAt, "updatedAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_portal_password_credentials (
+        id, account_id, password_hash, status, failure_count, locked_until,
+        must_rotate, created_at, last_verified_at, revoked_at, updated_at
+      ) values (
+        @id, @accountId, @passwordHash, @status, @failureCount, @lockedUntil,
+        @mustRotate, @createdAt, @lastVerifiedAt, @revokedAt, @updatedAt
+      )
+    `), record);
+    return getPortalPasswordCredential(record.id);
+  }
+
+  function getPortalPasswordCredential(id) {
+    return mapPortalPasswordCredential(db.prepare("select * from platform_portal_password_credentials where id = ?").get(requiredText(id, "id")));
+  }
+
+  function getActivePortalPasswordCredential(accountId) {
+    return mapPortalPasswordCredential(db.prepare(`
+      select * from platform_portal_password_credentials
+      where account_id = ? and status = 'active'
+      order by created_at desc, id desc
+      limit 1
+    `).get(requiredText(accountId, "accountId")));
+  }
+
+  function recordPortalPasswordVerificationFailure(id, { updatedAt, lockedUntil } = {}) {
+    const nextLockedUntil = optionalIsoText(lockedUntil, "lockedUntil");
+    const result = db.prepare(`
+      update platform_portal_password_credentials
+      set failure_count = failure_count + 1,
+        status = case when ? is not null then 'locked' else status end,
+        locked_until = coalesce(?, locked_until),
+        updated_at = ?
+      where id = ? and status in ('active', 'locked')
+    `).run(
+      nextLockedUntil,
+      nextLockedUntil,
+      isoText(updatedAt, "updatedAt"),
+      requiredText(id, "id")
+    );
+    if (result.changes !== 1) {
+      throw platformError("not_found", "active portal password credential not found");
+    }
+    return getPortalPasswordCredential(id);
+  }
+
+  function markPortalPasswordVerified(id, { verifiedAt, updatedAt }) {
+    const result = db.prepare(`
+      update platform_portal_password_credentials
+      set failure_count = 0, status = 'active', locked_until = null,
+        last_verified_at = ?, updated_at = ?
+      where id = ? and status in ('active', 'locked')
+    `).run(
+      isoText(verifiedAt, "verifiedAt"),
+      isoText(updatedAt, "updatedAt"),
+      requiredText(id, "id")
+    );
+    if (result.changes !== 1) {
+      throw platformError("not_found", "active portal password credential not found");
+    }
+    return getPortalPasswordCredential(id);
+  }
+
+  function createPortalPasskeyCredential(input) {
+    const record = {
+      id: requiredText(input.id, "id"),
+      accountId: requiredText(input.accountId, "accountId"),
+      credentialId: requiredText(input.credentialId, "credentialId"),
+      credentialIdHash: requiredText(input.credentialIdHash, "credentialIdHash"),
+      publicKeyJwkJson: jsonObject(input.publicKeyJwk, "publicKeyJwk"),
+      signCount: integer(input.signCount ?? 0, "signCount", { min: 0 }),
+      transportsJson: jsonArray(input.transports ?? [], "transports"),
+      status: requiredText(input.status || "active", "status"),
+      createdAt: isoText(input.createdAt, "createdAt"),
+      lastVerifiedAt: optionalIsoText(input.lastVerifiedAt, "lastVerifiedAt"),
+      revokedAt: optionalIsoText(input.revokedAt, "revokedAt"),
+      updatedAt: isoText(input.updatedAt, "updatedAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_portal_passkey_credentials (
+        id, account_id, credential_id, credential_id_hash, public_key_jwk_json,
+        sign_count, transports_json, status, created_at, last_verified_at,
+        revoked_at, updated_at
+      ) values (
+        @id, @accountId, @credentialId, @credentialIdHash, @publicKeyJwkJson,
+        @signCount, @transportsJson, @status, @createdAt, @lastVerifiedAt,
+        @revokedAt, @updatedAt
+      )
+    `), record);
+    return getPortalPasskeyCredential(record.id);
+  }
+
+  function getPortalPasskeyCredential(id) {
+    return mapPortalPasskeyCredential(db.prepare("select * from platform_portal_passkey_credentials where id = ?").get(requiredText(id, "id")));
+  }
+
+  function getPortalPasskeyCredentialByCredentialId(credentialId) {
+    return mapPortalPasskeyCredential(db.prepare("select * from platform_portal_passkey_credentials where credential_id = ?").get(requiredText(credentialId, "credentialId")));
+  }
+
+  function listActivePortalPasskeyCredentials(accountId) {
+    return db.prepare(`
+      select * from platform_portal_passkey_credentials
+      where account_id = ? and status = 'active'
+      order by created_at asc, id asc
+    `).all(requiredText(accountId, "accountId")).map(mapPortalPasskeyCredential);
+  }
+
+  function markPortalPasskeyVerified(id, { verifiedAt, signCount, updatedAt }) {
+    const result = db.prepare(`
+      update platform_portal_passkey_credentials
+      set sign_count = ?, last_verified_at = ?, updated_at = ?
+      where id = ? and status = 'active'
+    `).run(
+      integer(signCount, "signCount", { min: 0 }),
+      isoText(verifiedAt, "verifiedAt"),
+      isoText(updatedAt, "updatedAt"),
+      requiredText(id, "id")
+    );
+    if (result.changes !== 1) {
+      throw platformError("not_found", "active portal passkey credential not found");
+    }
+    return getPortalPasskeyCredential(id);
+  }
+
+  function createPortalSecondFactorChallenge(input) {
+    const record = {
+      id: requiredText(input.id, "id"),
+      accountId: requiredText(input.accountId, "accountId"),
+      challengeHash: requiredText(input.challengeHash, "challengeHash"),
+      allowedFactorsJson: jsonArray(input.allowedFactors ?? [], "allowedFactors"),
+      status: requiredText(input.status || "active", "status"),
+      failureCount: integer(input.failureCount ?? 0, "failureCount", { min: 0 }),
+      expiresAt: isoText(input.expiresAt, "expiresAt"),
+      usedAt: optionalIsoText(input.usedAt, "usedAt"),
+      createdAt: isoText(input.createdAt, "createdAt"),
+      updatedAt: isoText(input.updatedAt, "updatedAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_portal_second_factor_challenges (
+        id, account_id, challenge_hash, allowed_factors_json, status,
+        failure_count, expires_at, used_at, created_at, updated_at
+      ) values (
+        @id, @accountId, @challengeHash, @allowedFactorsJson, @status,
+        @failureCount, @expiresAt, @usedAt, @createdAt, @updatedAt
+      )
+    `), record);
+    return getPortalSecondFactorChallenge(record.id);
+  }
+
+  function getPortalSecondFactorChallenge(id) {
+    return mapPortalSecondFactorChallenge(db.prepare("select * from platform_portal_second_factor_challenges where id = ?").get(requiredText(id, "id")));
+  }
+
+  function markPortalSecondFactorChallengeUsed(id, { usedAt, updatedAt }) {
+    const result = db.prepare(`
+      update platform_portal_second_factor_challenges
+      set status = 'used', used_at = ?, updated_at = ?
+      where id = ? and status = 'active'
+    `).run(
+      isoText(usedAt, "usedAt"),
+      isoText(updatedAt, "updatedAt"),
+      requiredText(id, "id")
+    );
+    if (result.changes !== 1) {
+      throw platformError("validation_error", "portal second-factor challenge is not active");
+    }
+    return getPortalSecondFactorChallenge(id);
+  }
+
+  function recordPortalSecondFactorChallengeFailure(id, { updatedAt } = {}) {
+    const result = db.prepare(`
+      update platform_portal_second_factor_challenges
+      set failure_count = failure_count + 1, updated_at = ?
+      where id = ? and status = 'active'
+    `).run(isoText(updatedAt, "updatedAt"), requiredText(id, "id"));
+    if (result.changes !== 1) {
+      throw platformError("not_found", "active portal second-factor challenge not found");
+    }
+    return getPortalSecondFactorChallenge(id);
   }
 
   function createPortalSession(input) {
@@ -964,6 +2131,15 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     linkIssuedSubscription,
     getIssuedLink,
     setIssuedLinkStatus,
+    listIssuedSubscriptionBindings,
+    findIssuedSubscriptionBindingByTenantRef,
+    findIssuedSubscriptionBindingByEdgeCredentialRef,
+    findUsageBindingByTenantRef,
+    recordUsageSample,
+    getUsageSampleByDigest,
+    getUsageRollupByEdgeCredentialRef,
+    listUsageRollupsByRequestId,
+    listUsageSamples,
     upsertQuotaCounter,
     bindDevice,
     getDeviceBinding,
@@ -971,6 +2147,12 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     getRevocationEvent,
     recordAuditEvent,
     getAuditEvent,
+    recordEdgeApplyReceipt,
+    getEdgeApplyReceipt,
+    listEdgeApplyReceipts,
+    upsertPortalAccessRequest,
+    getPortalAccessRequest,
+    listPortalAccessRequests,
     createPortalEntry,
     getPortalEntry,
     findPortalEntryByTokenHash,
@@ -980,6 +2162,20 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     getActivePortalTotpCredential,
     recordPortalTotpVerificationFailure,
     markPortalTotpVerified,
+    createPortalPasswordCredential,
+    getPortalPasswordCredential,
+    getActivePortalPasswordCredential,
+    recordPortalPasswordVerificationFailure,
+    markPortalPasswordVerified,
+    createPortalPasskeyCredential,
+    getPortalPasskeyCredential,
+    getPortalPasskeyCredentialByCredentialId,
+    listActivePortalPasskeyCredentials,
+    markPortalPasskeyVerified,
+    createPortalSecondFactorChallenge,
+    getPortalSecondFactorChallenge,
+    markPortalSecondFactorChallengeUsed,
+    recordPortalSecondFactorChallengeFailure,
     createPortalSession,
     getPortalSession,
     listPortalSessions,

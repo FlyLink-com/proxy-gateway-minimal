@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import Database from "better-sqlite3";
 import {
   createSqliteSubscriptionControlStore
 } from "../services/platform/subscription-control-db.mjs";
@@ -260,5 +261,623 @@ test("subscription control store exposes only safe references in serialized summ
     const serialized = JSON.stringify(store.getAccountControlSummary("acct_public_summary"));
     assert.doesNotMatch(serialized, /owner@sensitive\.example/);
     assert.doesNotMatch(serialized, /subscriptionUrl|artifactSecret|token|password|credential/i);
+  });
+});
+
+test("subscription control store persists portal password credential summaries safely", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_auth_1",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const credential = store.createPortalPasswordCredential({
+      id: "pwd_cred_1",
+      accountId: "acct_auth_1",
+      passwordHash: "scrypt$v=1$N=32768$r=8$p=1$saltref$hashref",
+      status: "active",
+      mustRotate: true,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    assert.equal(credential.id, "pwd_cred_1");
+    assert.equal(credential.accountId, "acct_auth_1");
+    assert.equal(credential.mustRotate, true);
+    assert.equal(store.getActivePortalPasswordCredential("acct_auth_1").id, "pwd_cred_1");
+
+    const serialized = JSON.stringify(store.getAccountControlSummary("acct_auth_1"));
+    assert.doesNotMatch(serialized, /passwordHash|scrypt\$v=1|saltref|hashref|credential/i);
+  });
+});
+
+test("subscription control store records redacted edge apply receipts", () => {
+  withStore((store) => {
+    const now = "2026-06-05T00:00:00.000Z";
+
+    const receipt = store.recordEdgeApplyReceipt({
+      id: "edge_receipt_001",
+      channelRef: "channel-aliyun-a-tuic",
+      desiredStateRef: "desired_state_orders_001",
+      status: "applied",
+      actionCounts: {
+        add: 1,
+        revoke: 1,
+        rotate: 0,
+        unchanged: 2
+      },
+      configTestOk: true,
+      serviceActive: true,
+      listenerUdp443: true,
+      backupRef: "backup_aliyun_001",
+      appliedAt: now,
+      createdAt: now
+    });
+
+    assert.equal(receipt.id, "edge_receipt_001");
+    assert.equal(receipt.channelRef, "channel-aliyun-a-tuic");
+    assert.equal(receipt.status, "applied");
+    assert.deepEqual(receipt.actionCounts, {
+      add: 1,
+      revoke: 1,
+      rotate: 0,
+      unchanged: 2
+    });
+    assert.equal(receipt.configTestOk, true);
+    assert.equal(receipt.serviceActive, true);
+    assert.equal(receipt.listenerUdp443, true);
+
+    const receipts = store.listEdgeApplyReceipts({
+      channelRef: "channel-aliyun-a-tuic"
+    });
+    assert.equal(receipts.length, 1);
+    assert.equal(receipts[0].desiredStateRef, "desired_state_orders_001");
+    assert.doesNotMatch(JSON.stringify(receipts), /password|rawConfig|subscriptionUrl|uuid|token/i);
+  });
+});
+
+test("subscription control store persists portal access request lifecycle", () => {
+  withStore((store) => {
+    const now = "2026-06-06T00:00:00.000Z";
+
+    const created = store.upsertPortalAccessRequest({
+      id: "pareq_store_001",
+      portalUserRef: "portal_user_store_001",
+      plan: "monthly",
+      clientTarget: "clash",
+      durationDays: 30,
+      quantity: 1,
+      status: "pending_admin_review",
+      nextAction: "admin_review_required",
+      noteProvided: false,
+      priorTrialState: "not_applicable",
+      submittedAt: now,
+      updatedAt: now
+    });
+
+    assert.equal(created.id, "pareq_store_001");
+    assert.equal(created.status, "pending_admin_review");
+
+    const delivered = store.upsertPortalAccessRequest({
+      ...created,
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      reviewedByRef: "portal_auto_issuer",
+      reviewedAt: "2026-06-06T00:01:00.000Z",
+      expiresAt: "2026-07-06T00:00:00.000Z",
+      validUntil: "2026-07-06T00:00:00.000Z",
+      entitlementRef: "ent_pareq_store_001",
+      accessGrantRef: "grant_pareq_store_001",
+      tenantId: "tenant_store_001",
+      artifactId: "artifact_store_001",
+      subscriptionUrl: "https://sub.example.test/sub/a/store-visible-once.yaml",
+      edgeChannelRef: "channel-aliyun-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_store_001",
+      edgeMaterialDigest: "sha256:digest_pareq_store_001",
+      updatedAt: "2026-06-06T00:01:00.000Z"
+    });
+
+    assert.equal(delivered.status, "delivered");
+    assert.equal(delivered.validUntil, "2026-07-06T00:00:00.000Z");
+    assert.equal(store.getPortalAccessRequest("pareq_store_001").edgeChannelRef, "channel-aliyun-a-tuic");
+
+    const listed = store.listPortalAccessRequests({
+      portalUserRef: "portal_user_store_001"
+    });
+    assert.equal(listed.length, 1);
+    assert.equal(listed[0].subscriptionUrl, "https://sub.example.test/sub/a/store-visible-once.yaml");
+    assert.doesNotMatch(JSON.stringify(listed), /password|uuid|rawConfig|token/i);
+  });
+});
+
+test("subscription control store upgrades legacy portal access request schema", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "platform-subscription-control-legacy-"));
+  let db;
+  let store;
+  try {
+    const dbPath = join(tempDir, "control.sqlite");
+    db = new Database(dbPath);
+    db.exec(`
+      create table platform_portal_access_requests (
+        id text primary key,
+        portal_user_ref text not null,
+        plan text not null,
+        client_target text not null default 'clash',
+        duration_days integer not null check (duration_days > 0),
+        quantity integer not null check (quantity > 0),
+        status text not null,
+        next_action text not null,
+        note_provided integer not null default 0 check (note_provided in (0, 1)),
+        prior_trial_state text not null,
+        submitted_at text not null,
+        updated_at text not null,
+        reviewed_at text,
+        reviewed_by_ref text,
+        safe_reason_code text,
+        entitlement_ref text,
+        access_grant_ref text,
+        expires_at text,
+        valid_until text,
+        runtime_mutated integer not null default 0 check (runtime_mutated in (0, 1)),
+        production_mutated integer not null default 0 check (production_mutated in (0, 1)),
+        delivery_link_count integer not null default 0
+      );
+    `);
+    db.close();
+    db = null;
+
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    const saved = store.upsertPortalAccessRequest({
+      id: "pareq_legacy_upgrade_001",
+      portalUserRef: "portal_user_legacy_upgrade",
+      plan: "monthly",
+      clientTarget: "clash",
+      durationDays: 30,
+      quantity: 1,
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      noteProvided: false,
+      priorTrialState: "not_applicable",
+      submittedAt: "2026-06-06T00:00:00.000Z",
+      updatedAt: "2026-06-06T00:01:00.000Z",
+      reviewedAt: "2026-06-06T00:01:00.000Z",
+      reviewedByRef: "portal_auto_issuer",
+      expiresAt: "2026-07-06T00:00:00.000Z",
+      validUntil: "2026-07-06T00:00:00.000Z",
+      entitlementRef: "ent_pareq_legacy_upgrade_001",
+      accessGrantRef: "grant_pareq_legacy_upgrade_001",
+      tenantId: "tenant_legacy_upgrade_001",
+      artifactId: "artifact_legacy_upgrade_001",
+      subscriptionUrl: "https://sub.example.test/sub/a/legacy-upgrade.yaml",
+      edgeChannelRef: "channel-aliyun-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_legacy_upgrade_001",
+      edgeMaterialDigest: "sha256:digest_pareq_legacy_upgrade_001",
+      edgeLifecycleMutation: true,
+      event: { status: "auto_issued" }
+    });
+
+    assert.equal(saved.tenantId, "tenant_legacy_upgrade_001");
+    assert.equal(saved.edgeLifecycleMutation, true);
+    assert.equal(store.getPortalAccessRequest("pareq_legacy_upgrade_001").edgeChannelRef, "channel-aliyun-a-tuic");
+  } finally {
+    db?.close();
+    store?.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("subscription control store lists issued subscription bindings for edge recovery", () => {
+  withStore((store) => {
+    const now = "2026-06-05T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_edge_recovery",
+      ownerRef: "portal_user_edge_recovery",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_edge_recovery",
+      accountId: "acct_edge_recovery",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-07-05T00:00:00.000Z",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createIssuanceRequest({
+      id: "pareq_edge_recovery_001",
+      accountId: "acct_edge_recovery",
+      entitlementId: "ent_edge_recovery",
+      approvalRef: "approval_edge_recovery",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel-aliyun-a-tuic",
+      purpose: "portal_access_request",
+      requestedByRef: "portal_auto_issuer",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.linkIssuedSubscription({
+      id: "link_edge_recovery_001",
+      requestId: "pareq_edge_recovery_001",
+      tenantRef: "tenant_edge_recovery_001",
+      artifactRef: "artifact_edge_recovery_001",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const bindings = store.listIssuedSubscriptionBindings({
+      nodeId: "channel-aliyun-a-tuic"
+    });
+    assert.equal(bindings.length, 1);
+    assert.deepEqual(bindings[0], {
+      id: "link_edge_recovery_001",
+      linkId: "link_edge_recovery_001",
+      requestId: "pareq_edge_recovery_001",
+      accountId: "acct_edge_recovery",
+      entitlementId: "ent_edge_recovery",
+      tenantRef: "tenant_edge_recovery_001",
+      artifactRef: "artifact_edge_recovery_001",
+      status: "active",
+      requestStatus: "issued",
+      entitlementStatus: "active",
+      nodeId: "channel-aliyun-a-tuic",
+      plan: "monthly",
+      validFrom: "2026-06-05T00:00:00.000Z",
+      validUntil: "2026-07-05T00:00:00.000Z",
+      createdAt: "2026-06-05T00:00:00.000Z",
+      updatedAt: "2026-06-05T00:00:00.000Z"
+    });
+
+    assert.equal(
+      store.findIssuedSubscriptionBindingByTenantRef("tenant_edge_recovery_001").requestId,
+      "pareq_edge_recovery_001"
+    );
+    assert.doesNotMatch(JSON.stringify(bindings), /password|token|subscriptionUrl|uuid|rawConfig/i);
+  });
+});
+
+test("subscription control store records idempotent traffic usage samples and rollups", () => {
+  withStore((store) => {
+    const now = "2026-06-06T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_usage_1",
+      ownerRef: "portal_user_usage_1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_usage_1",
+      accountId: "acct_usage_1",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-07-06T00:00:00.000Z",
+      trafficLimitBytes: 1024,
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createIssuanceRequest({
+      id: "pareq_usage_1",
+      accountId: "acct_usage_1",
+      entitlementId: "ent_usage_1",
+      approvalRef: "approval_usage_1",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel-aliyun-a-tuic",
+      purpose: "portal_auto_issuance",
+      requestedByRef: "portal_auto_issuer",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.linkIssuedSubscription({
+      id: "link_usage_1",
+      requestId: "pareq_usage_1",
+      tenantRef: "tenant_usage_1",
+      artifactRef: "artifact_usage_1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.upsertPortalAccessRequest({
+      id: "pareq_usage_1",
+      portalUserRef: "portal_user_usage_1",
+      plan: "monthly",
+      clientTarget: "clash",
+      durationDays: 30,
+      quantity: 1,
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      noteProvided: false,
+      priorTrialState: "not_applicable",
+      submittedAt: now,
+      updatedAt: now,
+      reviewedAt: now,
+      reviewedByRef: "portal_auto_issuer",
+      expiresAt: "2026-07-06T00:00:00.000Z",
+      validUntil: "2026-07-06T00:00:00.000Z",
+      entitlementRef: "ent_usage_1",
+      accessGrantRef: "grant_usage_1",
+      tenantId: "tenant_usage_1",
+      artifactId: "artifact_usage_1",
+      subscriptionUrl: "https://sub.example.test/sub/a/visible-once.yaml",
+      edgeChannelRef: "channel-aliyun-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_usage_1",
+      edgeMaterialDigest: "sha256:digest_usage_1",
+      edgeCredentials: [
+        {
+          edgeChannelRef: "channel-aliyun-a-tuic",
+          edgeCredentialRef: "edgecred_pareq_usage_1",
+          edgeMaterialDigest: "sha256:digest_usage_1"
+        },
+        {
+          edgeChannelRef: "channel-vultr-a-hy2",
+          edgeCredentialRef: "safe_nonprefix_hy2_ref",
+          edgeMaterialDigest: "sha256:digest_usage_hy2"
+        }
+      ]
+    });
+
+    const binding = store.findIssuedSubscriptionBindingByEdgeCredentialRef("edgecred_pareq_usage_1");
+    assert.equal(binding.requestId, "pareq_usage_1");
+    assert.equal(binding.trafficLimitBytes, 1024);
+    assert.equal(binding.edgeCredentialRef, "edgecred_pareq_usage_1");
+
+    const channelBinding = store.findIssuedSubscriptionBindingByEdgeCredentialRef(
+      "edgecred_pareq_usage_1_channel-vultr-a-hy2"
+    );
+    assert.equal(channelBinding.requestId, "pareq_usage_1");
+    assert.equal(channelBinding.nodeId, "channel-vultr-a-hy2");
+    assert.equal(channelBinding.edgeCredentialRef, "edgecred_pareq_usage_1_channel-vultr-a-hy2");
+
+    const durableChannelBinding = store.findIssuedSubscriptionBindingByEdgeCredentialRef("safe_nonprefix_hy2_ref");
+    assert.equal(durableChannelBinding.requestId, "pareq_usage_1");
+    assert.equal(durableChannelBinding.nodeId, "channel-vultr-a-hy2");
+    assert.equal(durableChannelBinding.portalUserRef, "portal_user_usage_1");
+    assert.equal(durableChannelBinding.edgeCredentialRef, "safe_nonprefix_hy2_ref");
+
+    const first = store.recordUsageSample({
+      id: "usage_sample_1",
+      sourceRef: "mihomo_snapshot_1",
+      channelRef: "channel-aliyun-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_usage_1",
+      accountId: "acct_usage_1",
+      entitlementId: "ent_usage_1",
+      requestId: "pareq_usage_1",
+      observedAt: "2026-06-06T00:05:00.000Z",
+      intervalStartedAt: "2026-06-06T00:00:00.000Z",
+      intervalEndedAt: "2026-06-06T00:05:00.000Z",
+      uploadBytes: 100,
+      downloadBytes: 200,
+      sampleDigest: "sha256:usage_sample_digest_1",
+      createdAt: "2026-06-06T00:05:01.000Z"
+    });
+    assert.equal(first.inserted, true);
+    assert.equal(first.sample.totalBytes, 300);
+    assert.equal(first.rollup.totalBytes, 300);
+
+    const duplicate = store.recordUsageSample({
+      id: "usage_sample_1_duplicate",
+      sourceRef: "mihomo_snapshot_1",
+      channelRef: "channel-aliyun-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_usage_1",
+      accountId: "acct_usage_1",
+      entitlementId: "ent_usage_1",
+      requestId: "pareq_usage_1",
+      observedAt: "2026-06-06T00:05:00.000Z",
+      intervalStartedAt: "2026-06-06T00:00:00.000Z",
+      intervalEndedAt: "2026-06-06T00:05:00.000Z",
+      uploadBytes: 100,
+      downloadBytes: 200,
+      sampleDigest: "sha256:usage_sample_digest_1",
+      createdAt: "2026-06-06T00:05:02.000Z"
+    });
+    assert.equal(duplicate.inserted, false);
+    assert.equal(duplicate.sample.id, "usage_sample_1");
+    assert.equal(duplicate.rollup.totalBytes, 300);
+
+    const samples = store.listUsageSamples({ edgeCredentialRef: "edgecred_pareq_usage_1" });
+    assert.equal(samples.length, 1);
+    assert.equal(store.getUsageRollupByEdgeCredentialRef("edgecred_pareq_usage_1").downloadBytes, 200);
+    const rollups = store.listUsageRollupsByRequestId("pareq_usage_1");
+    assert.deepEqual(rollups.map((rollup) => ({
+      requestId: rollup.requestId,
+      channelRef: rollup.channelRef,
+      uploadBytes: rollup.uploadBytes,
+      downloadBytes: rollup.downloadBytes,
+      totalBytes: rollup.totalBytes
+    })), [
+      {
+        requestId: "pareq_usage_1",
+        channelRef: "channel-aliyun-a-tuic",
+        uploadBytes: 100,
+        downloadBytes: 200,
+        totalBytes: 300
+      }
+    ]);
+    assert.doesNotMatch(JSON.stringify({ samples, duplicate }), /password|token|subscriptionUrl|rawConfig/i);
+  });
+});
+
+test("subscription control store rejects unsafe edge apply receipt material", () => {
+  withStore((store) => {
+    assert.throws(() => store.recordEdgeApplyReceipt({
+      id: "edge_receipt_bad",
+      channelRef: "channel-aliyun-a-tuic",
+      desiredStateRef: "desired_state_bad",
+      status: "applied",
+      actionCounts: {
+        add: 1
+      },
+      rawConfig: "users:\n- password: unsafe",
+      createdAt: "2026-06-05T00:00:00.000Z"
+    }), /unsafe field is not allowed/);
+  });
+});
+
+test("subscription control store tracks portal password verification state", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_auth_2",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createPortalPasswordCredential({
+      id: "pwd_cred_2",
+      accountId: "acct_auth_2",
+      passwordHash: "scrypt$v=1$N=32768$r=8$p=1$saltref$hashref",
+      status: "active",
+      mustRotate: false,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const failed = store.recordPortalPasswordVerificationFailure("pwd_cred_2", {
+      updatedAt: "2026-06-03T00:01:00.000Z"
+    });
+    assert.equal(failed.failureCount, 1);
+    assert.equal(failed.status, "active");
+
+    const locked = store.recordPortalPasswordVerificationFailure("pwd_cred_2", {
+      updatedAt: "2026-06-03T00:02:00.000Z",
+      lockedUntil: "2026-06-03T00:12:00.000Z"
+    });
+    assert.equal(locked.failureCount, 2);
+    assert.equal(locked.status, "locked");
+    assert.equal(locked.lockedUntil, "2026-06-03T00:12:00.000Z");
+
+    const verified = store.markPortalPasswordVerified("pwd_cred_2", {
+      verifiedAt: "2026-06-03T00:13:00.000Z",
+      updatedAt: "2026-06-03T00:13:00.000Z"
+    });
+    assert.equal(verified.failureCount, 0);
+    assert.equal(verified.status, "active");
+    assert.equal(verified.lockedUntil, null);
+    assert.equal(verified.lastVerifiedAt, "2026-06-03T00:13:00.000Z");
+  });
+});
+
+test("subscription control store persists portal passkey credentials without public summary leakage", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_passkey_1",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const credential = store.createPortalPasskeyCredential({
+      id: "passkey_cred_1",
+      accountId: "acct_passkey_1",
+      credentialId: "webauthn-credential-id",
+      credentialIdHash: "credhash_abcdef",
+      publicKeyJwk: { kty: "EC", crv: "P-256", x: "safe-x", y: "safe-y" },
+      signCount: 7,
+      transports: ["usb", "internal"],
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    assert.equal(credential.id, "passkey_cred_1");
+    assert.equal(credential.signCount, 7);
+    assert.deepEqual(credential.transports, ["usb", "internal"]);
+    assert.equal(store.getPortalPasskeyCredentialByCredentialId("webauthn-credential-id").id, "passkey_cred_1");
+    assert.equal(store.listActivePortalPasskeyCredentials("acct_passkey_1").length, 1);
+
+    const verified = store.markPortalPasskeyVerified("passkey_cred_1", {
+      verifiedAt: "2026-06-03T00:01:00.000Z",
+      signCount: 8,
+      updatedAt: "2026-06-03T00:01:00.000Z"
+    });
+    assert.equal(verified.signCount, 8);
+    assert.equal(verified.lastVerifiedAt, "2026-06-03T00:01:00.000Z");
+
+    const serialized = JSON.stringify(store.getAccountControlSummary("acct_passkey_1"));
+    assert.doesNotMatch(serialized, /webauthn-credential-id|credhash_abcdef|publicKeyJwk|safe-x|safe-y|credential/i);
+  });
+});
+
+test("subscription control store consumes portal second-factor challenges once", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_factor_1",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const challenge = store.createPortalSecondFactorChallenge({
+      id: "mfa_challenge_1",
+      accountId: "acct_factor_1",
+      challengeHash: "challengehash_abcdef",
+      allowedFactors: ["totp", "passkey"],
+      status: "active",
+      expiresAt: "2026-06-03T00:05:00.000Z",
+      createdAt: now,
+      updatedAt: now
+    });
+    assert.equal(challenge.status, "active");
+    assert.deepEqual(challenge.allowedFactors, ["totp", "passkey"]);
+
+    const failed = store.recordPortalSecondFactorChallengeFailure("mfa_challenge_1", {
+      updatedAt: "2026-06-03T00:01:00.000Z"
+    });
+    assert.equal(failed.failureCount, 1);
+
+    const used = store.markPortalSecondFactorChallengeUsed("mfa_challenge_1", {
+      usedAt: "2026-06-03T00:02:00.000Z",
+      updatedAt: "2026-06-03T00:02:00.000Z"
+    });
+    assert.equal(used.status, "used");
+    assert.throws(() => store.markPortalSecondFactorChallengeUsed("mfa_challenge_1", {
+      usedAt: "2026-06-03T00:03:00.000Z",
+      updatedAt: "2026-06-03T00:03:00.000Z"
+    }), /portal second-factor challenge is not active/);
+  });
+});
+
+test("subscription control store rolls back grouped portal credential writes", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_auth_tx",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    assert.throws(() => {
+      store.runInTransaction(() => {
+        store.createPortalPasswordCredential({
+          id: "pwd_cred_tx",
+          accountId: "acct_auth_tx",
+          passwordHash: "scrypt$v=1$N=32768$r=8$p=1$saltref$hashref",
+          status: "active",
+          mustRotate: true,
+          createdAt: now,
+          updatedAt: now
+        });
+        throw new Error("simulate portal credential failure");
+      });
+    }, /simulate portal credential failure/);
+
+    assert.equal(store.getActivePortalPasswordCredential("acct_auth_tx"), null);
   });
 });

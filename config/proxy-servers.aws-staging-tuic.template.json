@@ -1,0 +1,40 @@
+{
+  "reviewedRuntimeTemplate": true,
+  "templatePurpose": "AWS production-like staging TUIC logical channel lifecycle metadata. Replace placeholders from protected staging runtime storage before any deployment validation.",
+  "servers": [
+    {
+      "id": "channel_aws_staging_a_tuic",
+      "name": "channel-aws-staging-a-tuic",
+      "physicalNodeRef": "aws-apne1-staging-a",
+      "displayName": "AWS Tokyo Staging TUIC",
+      "region": "ap-northeast-1",
+      "provider": "aws",
+      "protocol": "tuic",
+      "type": "tuic",
+      "host": "${AWS_STAGING_TUIC_HOST}",
+      "port": 443,
+      "uuid": "${AWS_STAGING_TUIC_UUID}",
+      "password": "${AWS_STAGING_TUIC_PASSWORD}",
+      "udpRelayMode": "native",
+      "congestionController": "bbr",
+      "sni": "${AWS_STAGING_TUIC_SNI}",
+      "alpn": [
+        "h3"
+      ],
+      "channelPool": "staging",
+      "channelRole": "staging",
+      "status": "online",
+      "subscriptionEligible": true,
+      "strategyPriority": 50,
+      "stableProtocolApproved": false,
+      "stableProtocolApprovalRef": "aws-production-like-staging-validation-only",
+      "credentialMode": "per-order",
+      "credentialLifecycle": {
+        "addCredential": true,
+        "disableCredential": true,
+        "rotateCredential": true,
+        "restart": true
+      }
+    }
+  ]
+}

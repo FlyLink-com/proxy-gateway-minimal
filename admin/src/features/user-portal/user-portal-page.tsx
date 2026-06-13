@@ -1,31 +1,43 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import {
-  CalendarDays,
-  CircleCheck,
+  CheckCircle2,
   Copy,
+  Eye,
   Headphones,
   History,
+  Info,
   LifeBuoy,
-  PackageCheck,
+  LogOut,
+  Pencil,
+  Plus,
   ReceiptText,
   RefreshCw,
+  Search,
   ShieldCheck,
+  Trash2,
   User,
   Wifi
 } from "lucide-react";
+import { ModalFrame } from "../../components/modal-frame";
 import { copyText } from "../../lib/clipboard";
 import { errorMessage } from "../../lib/errors";
 import { cn } from "../../lib/utils";
 import type {
+  PortalAuthenticatorEnrollment,
   PortalClientId,
   PortalHistoryRecord,
+  PortalHumanVerificationChallenge,
+  PortalPasskeyExport,
   PortalPlanId,
+  PortalSupportCategory,
+  PortalSupportRequest,
+  PortalSecondFactorChallenge,
   PortalSession,
   PortalSubscriptionRequest,
   UserPortalClient
 } from "./user-portal-client";
 
-type AuthMode = "login" | "signup";
+type DisplayAuthMode = PortalSession["authMode"];
 type PortalView = "subscription" | "use" | "support" | "profile";
 
 type PortalPlan = {
@@ -39,28 +51,42 @@ type PortalPlan = {
 
 type CreatedSubscription = {
   request: PortalSubscriptionRequest;
-  action: "opening_requested" | "refreshed";
+  action: "opening_requested" | "refreshed" | "disabled";
   previousInvalidatedAt?: string;
 };
 
-type SubscriptionLifecycle = "none" | "pending" | "active" | "expired";
+type SubscriptionLifecycle = "none" | "pending" | "active" | "expired" | "disabled";
+type OrderStatusFilter = "all" | "active" | "pending" | "disabled" | "expired";
+type OrderSort = "newest" | "oldest" | "expires";
+type PortalOrderRow = {
+  requestRef: string;
+  request: PortalSubscriptionRequest;
+  createdAt: string;
+  planId: PortalPlanId;
+  durationDays: number;
+  quantity: number;
+  clientTarget: PortalClientId;
+  status: Exclude<SubscriptionLifecycle, "none">;
+  expiresAt: string;
+  subscriptionUrl?: string;
+};
 
 const plans: PortalPlan[] = [
   {
     id: "trial",
-    label: "7 天试用",
-    billingCycle: "管理员发放后 7 天",
-    priceLabel: "Trial",
-    description: "先申请试用，审核通过后由管理员发放。",
-    highlights: ["申请制", "管理员审批", "默认每个账户一次"]
+    label: "7 天订单",
+    billingCycle: "7 天",
+    priceLabel: "Order",
+    description: "提交后进入订单记录，系统自动发放订阅。",
+    highlights: ["订单申请", "有效期 7 天", "自动发放"]
   },
   {
     id: "monthly",
     label: "月卡",
     billingCycle: "30 天",
     priceLabel: "Monthly",
-    description: "适合先开通体验，按月管理订阅有效期。",
-    highlights: ["一个受控订阅", "有效期 30 天", "可刷新替换旧订阅"]
+    description: "适合先开通体验，按订单管理订阅有效期。",
+    highlights: ["订单记录", "有效期 30 天", "自动发放"]
   },
   {
     id: "yearly",
@@ -68,13 +94,27 @@ const plans: PortalPlan[] = [
     billingCycle: "365 天",
     priceLabel: "Yearly",
     description: "适合长期使用，减少频繁续期开通成本。",
-    highlights: ["一个受控订阅", "有效期 365 天", "可刷新替换旧订阅"]
+    highlights: ["订单记录", "有效期 365 天", "自动发放"]
   }
 ];
 
 const clientTargets: Array<{ id: PortalClientId; label: string }> = [
   { id: "clash", label: "Clash / Mihomo" },
   { id: "karing", label: "Karing" }
+];
+
+const orderDurationOptions: Array<{ days: number; label: string; planId: PortalPlanId }> = [
+  { days: 7, label: "7 天", planId: "trial" },
+  { days: 30, label: "30 天", planId: "monthly" },
+  { days: 365, label: "365 天", planId: "yearly" }
+];
+
+const orderStatusTabs: Array<{ id: OrderStatusFilter; label: string }> = [
+  { id: "all", label: "全部" },
+  { id: "active", label: "生效中" },
+  { id: "pending", label: "待发放" },
+  { id: "disabled", label: "已禁用" },
+  { id: "expired", label: "已过期" }
 ];
 
 const navItems: Array<{ id: PortalView; label: string; icon: typeof ReceiptText }> = [
@@ -87,37 +127,38 @@ const navItems: Array<{ id: PortalView; label: string; icon: typeof ReceiptText 
 const usageSteps = [
   {
     title: "下载客户端",
-    detail: "Windows / macOS 推荐 Clash Verge Rev；移动端使用支持订阅导入的客户端。"
+    detail: <>Windows / macOS 推荐 <code>Clash Verge Rev</code>；移动端使用支持订阅导入的客户端。</>
   },
   {
-    title: "复制订阅",
-    detail: "订阅生成后复制链接。刷新订阅后请重新复制新链接，旧订阅会失效。"
+    title: "从订单复制链接",
+    detail: <>订单发放后在订单行点击 <code>复制链接</code>。刷新订单后请重新复制新链接，旧订阅会失效。</>
   },
   {
     title: "导入配置",
-    detail: "在客户端中选择从 URL 导入或订阅导入，粘贴链接后保存。"
+    detail: <>在客户端中选择 <code>从 URL 导入</code> 或 <code>订阅导入</code>，粘贴链接后保存。</>
   },
   {
     title: "开始使用",
-    detail: "更新订阅，选择节点或规则模式，再打开系统代理。"
+    detail: <>更新订阅，选择节点或规则模式，再打开 <code>系统代理</code>。</>
   }
 ];
 
-const supportItems = [
+const supportCategories: Array<{ id: PortalSupportCategory; label: string }> = [
   {
-    title: "在线客服",
-    status: "预留",
-    detail: "后续可接入 Telegram 机器人助手，由机器人收集问题并转人工处理。"
+    id: "subscription",
+    label: "订阅申请"
   },
   {
-    title: "人工支持",
-    status: "预留",
-    detail: "用于订单、订阅刷新失败、客户端导入失败等需要人工判断的问题。"
+    id: "client_import",
+    label: "客户端导入"
   },
   {
-    title: "问题材料",
-    status: "建议",
-    detail: "联系支持时保留客户端名称、系统版本、错误截图和最近一次刷新时间。"
+    id: "account_security",
+    label: "账号安全"
+  },
+  {
+    id: "other",
+    label: "其他问题"
   }
 ];
 
@@ -125,10 +166,88 @@ function selectedPlan(planId: PortalPlanId) {
   return plans.find((plan) => plan.id === planId) ?? plans[0];
 }
 
-function displayNameFromEmail(email: string) {
-  const normalized = email.trim();
-  if (!normalized) return "User";
-  return normalized.includes("@") ? normalized.split("@")[0] : normalized;
+function durationDaysForPlan(planId: PortalPlanId) {
+  if (planId === "trial") return 7;
+  if (planId === "yearly") return 365;
+  return 30;
+}
+
+function planIdForDuration(days: number): PortalPlanId {
+  return orderDurationOptions.find((option) => option.days === days)?.planId ?? "monthly";
+}
+
+function normalizeOrderQuantity(value: number) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(1, Math.min(12, Math.trunc(value)));
+}
+
+function clientTargetLabel(clientTarget: PortalClientId) {
+  return clientTargets.find((target) => target.id === clientTarget)?.label ?? clientTarget;
+}
+
+function orderStatusFromLifecycle(lifecycle: PortalSubscriptionRequest["lifecycle"]): PortalOrderRow["status"] {
+  if (lifecycle === "active" || lifecycle === "pending" || lifecycle === "disabled" || lifecycle === "expired") {
+    return lifecycle;
+  }
+  return "pending";
+}
+
+function orderStatusLabel(status: PortalOrderRow["status"]) {
+  switch (status) {
+    case "active":
+      return "生效中";
+    case "pending":
+      return "待发放";
+    case "disabled":
+      return "已禁用";
+    case "expired":
+      return "已过期";
+    default:
+      return "待发放";
+  }
+}
+
+function orderNumber(requestRef: string) {
+  return requestRef.replace(/^subreq[_-]?/i, "O-").slice(0, 18);
+}
+
+function subscriptionRequestToOrder(
+  request: PortalSubscriptionRequest,
+  fallback?: { durationDays?: number; quantity?: number }
+): PortalOrderRow {
+  const durationDays = request.durationDays ?? fallback?.durationDays ?? durationDaysForPlan(request.planId);
+  const quantity = normalizeOrderQuantity(request.quantity ?? fallback?.quantity ?? 1);
+  return {
+    requestRef: request.requestRef,
+    request,
+    createdAt: request.updatedAt ?? new Date(0).toISOString(),
+    planId: request.planId,
+    durationDays,
+    quantity,
+    clientTarget: request.clientTarget,
+    status: orderStatusFromLifecycle(request.lifecycle),
+    expiresAt: request.expiresAt,
+    subscriptionUrl: request.subscriptionUrl
+  };
+}
+
+function upsertOrderRow(rows: PortalOrderRow[], order: PortalOrderRow) {
+  const existingIndex = rows.findIndex((row) => row.requestRef === order.requestRef);
+  if (existingIndex === -1) return [order, ...rows];
+  return rows.map((row, index) => (index === existingIndex ? order : row));
+}
+
+function createdSubscriptionFromOrder(order: PortalOrderRow | null): CreatedSubscription | null {
+  if (!order) return null;
+  return {
+    request: order.request,
+    action: order.status === "disabled"
+      ? "disabled"
+      : order.request.event
+        ? "refreshed"
+        : "opening_requested",
+    previousInvalidatedAt: order.request.event?.occurredAt
+  };
 }
 
 function formatDateTime(value: string) {
@@ -141,6 +260,36 @@ function formatDateTime(value: string) {
   }).format(date);
 }
 
+function formatTrafficBytes(bytes: number) {
+  const safeBytes = Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = safeBytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const formatted = unitIndex === 0 || value >= 10
+    ? Math.round(value).toString()
+    : value.toFixed(1).replace(/\.0$/, "");
+  return `${formatted} ${units[unitIndex]}`;
+}
+
+function trafficUsageLabel(order: PortalOrderRow) {
+  const usage = order.request.usage;
+  if (!usage) return "未采集";
+  if (usage.totalBytes > 0) {
+    return `${formatTrafficBytes(usage.usedBytes)} / ${formatTrafficBytes(usage.totalBytes)}`;
+  }
+  return `${formatTrafficBytes(usage.usedBytes)} / 不限量`;
+}
+
+function trafficUsagePercent(order: PortalOrderRow) {
+  const usage = order.request.usage;
+  if (!usage || usage.totalBytes <= 0) return 0;
+  return Math.max(0, Math.min(100, usage.usageRatio * 100));
+}
+
 function resolveLifecycle(created: CreatedSubscription | null): SubscriptionLifecycle {
   if (!created) return "none";
   return created.request.lifecycle;
@@ -151,30 +300,24 @@ function lifecycleLabel(lifecycle: SubscriptionLifecycle) {
     case "active":
       return "服务生效中";
     case "pending":
-      return "等待管理员审核";
+      return "等待系统发放";
     case "expired":
       return "已过期";
+    case "disabled":
+      return "订阅已禁用";
     default:
       return "未开通";
   }
 }
 
-function subscriptionCtaLabel(lifecycle: SubscriptionLifecycle, pending: boolean) {
-  if (pending) return "处理中";
-  if (lifecycle === "active") return "刷新当前订阅";
-  if (lifecycle === "pending") return "等待审核中";
-  if (lifecycle === "expired") return "重新提交申请";
-  return "提交申请";
-}
-
 function topbarDescription(view: PortalView) {
   switch (view) {
     case "subscription":
-      return "7 天试用 / 月卡 / 年卡均提交申请，管理员审核发放后才显示订阅。";
+      return "通过订单提交订阅申请，发放结果回写到订单记录。";
     case "use":
       return "查看客户端导入步骤和订阅刷新后的使用方式。";
     case "support":
-      return "处理授权确认、订阅异常和人工支持请求。";
+      return "提交订阅、客户端或账号问题反馈表单。";
     case "profile":
       return "查看账户基础信息与历史记录。";
     default:
@@ -188,21 +331,10 @@ function subscriptionPlan(created: CreatedSubscription | null, fallbackPlanId: P
 
 function expiryDisplay(created: CreatedSubscription | null, lifecycle: SubscriptionLifecycle) {
   if (!created) return "无";
-  if (lifecycle === "pending") return "待管理员发放";
+  if (lifecycle === "pending") return "待系统发放";
   if (lifecycle === "expired") return `${formatDateTime(created.request.expiresAt)}（已过期）`;
+  if (lifecycle === "disabled") return "已禁用";
   return `${formatDateTime(created.request.expiresAt)} 到期`;
-}
-
-function sidebarSubscriptionSummary(
-  created: CreatedSubscription | null,
-  lifecycle: SubscriptionLifecycle,
-  fallbackPlanId: PortalPlanId
-) {
-  if (!created) return "未开通套餐";
-  const plan = subscriptionPlan(created, fallbackPlanId);
-  if (lifecycle === "pending") return `${plan.label} · 待审核`;
-  if (lifecycle === "expired") return `${plan.label} · 已过期`;
-  return `${plan.label} · ${formatDateTime(created.request.expiresAt)} 到期`;
 }
 
 function historyRecord(historySummary: PortalHistoryRecord[]) {
@@ -211,92 +343,336 @@ function historyRecord(historySummary: PortalHistoryRecord[]) {
   return `${formatDateTime(latest.occurredAt)} - ${latest.label}`;
 }
 
+function authModeLabel(mode: DisplayAuthMode) {
+  if (mode === "email") return "邮箱验证码（未启用）";
+  if (mode === "token") return "入口 Token";
+  if (mode === "password") return "密码登录";
+  if (mode === "passkey") return "通行密钥";
+  return "身份验证器";
+}
+
+function isSecondFactorChallenge(result: PortalSession | PortalSecondFactorChallenge): result is PortalSecondFactorChallenge {
+  return result.status === "second_factor_required";
+}
+
+function createPendingHumanVerificationChallenge(prompt = "正在加载校验..."): PortalHumanVerificationChallenge {
+  return {
+    challengeId: "",
+    prompt
+  };
+}
+
+function buildHumanVerification(
+  challenge: PortalHumanVerificationChallenge,
+  challengeAnswer: string,
+  honeypot: string
+) {
+  if (honeypot.trim()) {
+    throw new Error("防机器人校验失败。");
+  }
+  const normalizedAnswer = challengeAnswer.trim();
+  if (!normalizedAnswer) {
+    throw new Error("请完成防机器人校验。");
+  }
+  if (!challenge.challengeId.trim()) {
+    throw new Error("防机器人校验尚未加载，请稍后重试。");
+  }
+  if (typeof challenge.answer === "string" && normalizedAnswer !== challenge.answer) {
+    throw new Error("请完成防机器人校验。");
+  }
+  return {
+    challengeId: challenge.challengeId,
+    challengeAnswer: normalizedAnswer,
+    honeypot: ""
+  };
+}
+
+function downloadPasskeyExport(passkeyExport: PortalPasskeyExport) {
+  if (typeof document === "undefined" || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+    return;
+  }
+  const blob = new Blob([passkeyExport.body], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = passkeyExport.fileName;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function UserPortalPage({
   portalClient
 }: {
   portalClient: UserPortalClient;
   onBackToAdmin?: () => void;
 }) {
-  const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [portalSession, setPortalSession] = useState<PortalSession | null>(null);
-  const [authEmail, setAuthEmail] = useState("");
-  const [authPassword, setAuthPassword] = useState("");
-  const [verificationCode, setVerificationCode] = useState("");
+  const [accountId, setAccountId] = useState("");
+  const [password, setPassword] = useState("");
+  const [robotAnswer, setRobotAnswer] = useState("");
+  const [robotTrap, setRobotTrap] = useState("");
+  const [humanChallenge, setHumanChallenge] = useState(createPendingHumanVerificationChallenge);
+  const [humanChallengeReady, setHumanChallengeReady] = useState(false);
+  const [humanChallengeLoading, setHumanChallengeLoading] = useState(true);
   const [activeView, setActiveView] = useState<PortalView>("subscription");
   const [selectedPlanId, setSelectedPlanId] = useState<PortalPlanId>("monthly");
   const [clientTarget, setClientTarget] = useState<PortalClientId>("clash");
+  const [orderDurationDays, setOrderDurationDays] = useState(30);
+  const [orderQuantity, setOrderQuantity] = useState(1);
+  const [orderRows, setOrderRows] = useState<PortalOrderRow[]>([]);
+  const [orderStatusFilter, setOrderStatusFilter] = useState<OrderStatusFilter>("all");
+  const [orderSearch, setOrderSearch] = useState("");
+  const [orderClientFilter, setOrderClientFilter] = useState<"all" | PortalClientId>("all");
+  const [orderSort, setOrderSort] = useState<OrderSort>("newest");
+  const [orderFormOpen, setOrderFormOpen] = useState(false);
+  const [editingOrderRef, setEditingOrderRef] = useState<string | null>(null);
+  const [selectedOrderRef, setSelectedOrderRef] = useState<string | null>(null);
   const [authError, setAuthError] = useState("");
   const [pending, setPending] = useState(false);
   const [actionError, setActionError] = useState("");
-  const [created, setCreated] = useState<CreatedSubscription | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedOrderRef, setCopiedOrderRef] = useState<string | null>(null);
   const [historySummary, setHistorySummary] = useState<PortalHistoryRecord[]>([]);
+  const [authenticatorBound, setAuthenticatorBound] = useState(false);
+  const [authenticatorEnrollment, setAuthenticatorEnrollment] = useState<PortalAuthenticatorEnrollment | null>(null);
+  const [authenticatorCode, setAuthenticatorCode] = useState("");
+  const [authenticatorError, setAuthenticatorError] = useState("");
+  const [authenticatorPending, setAuthenticatorPending] = useState(false);
+  const [passkeyExported, setPasskeyExported] = useState(false);
+  const [passkeyPending, setPasskeyPending] = useState(false);
+  const [passkeyError, setPasskeyError] = useState("");
+  const [securitySetupRequired, setSecuritySetupRequired] = useState(false);
+  const [secondFactorChallenge, setSecondFactorChallenge] = useState<PortalSecondFactorChallenge | null>(null);
+  const [secondFactorCode, setSecondFactorCode] = useState("");
+  const [passkeyProof, setPasskeyProof] = useState("");
+  const [secondFactorError, setSecondFactorError] = useState("");
+  const [secondFactorPending, setSecondFactorPending] = useState(false);
+  const [supportCategory, setSupportCategory] = useState<PortalSupportCategory>("client_import");
+  const [supportMessage, setSupportMessage] = useState("");
+  const [supportPending, setSupportPending] = useState(false);
+  const [supportError, setSupportError] = useState("");
+  const [supportResult, setSupportResult] = useState<PortalSupportRequest | null>(null);
 
-  const activePlan = useMemo(() => selectedPlan(selectedPlanId), [selectedPlanId]);
-  const userEmail = authEmail.trim();
-  const userDisplayName = portalSession?.displayName ?? displayNameFromEmail(userEmail);
+  const userDisplayName = portalSession?.displayName ?? (accountId.trim() || "Portal User");
   const registrationDate = portalSession?.registeredAt ?? new Date("2026-05-31T00:00:00.000Z").toISOString();
+  const selectedOrder = useMemo(
+    () => orderRows.find((row) => row.requestRef === selectedOrderRef) ?? orderRows[0] ?? null,
+    [orderRows, selectedOrderRef]
+  );
+  const created = useMemo(() => createdSubscriptionFromOrder(selectedOrder), [selectedOrder]);
   const lifecycle = resolveLifecycle(created);
-  const isReady = lifecycle === "active";
-  const isWaiting = lifecycle === "pending";
   const currentPlan = subscriptionPlan(created, selectedPlanId);
+  const filteredOrderRows = useMemo(() => {
+    const search = orderSearch.trim().toLowerCase();
+    const filtered = orderRows.filter((row) => {
+      const matchesStatus = orderStatusFilter === "all" || row.status === orderStatusFilter;
+      const matchesClient = orderClientFilter === "all" || row.clientTarget === orderClientFilter;
+      const searchable = [
+        orderNumber(row.requestRef),
+        row.requestRef,
+        selectedPlan(row.planId).label,
+        clientTargetLabel(row.clientTarget),
+        orderStatusLabel(row.status)
+      ].join(" ").toLowerCase();
+      return matchesStatus && matchesClient && (!search || searchable.includes(search));
+    });
+    return [...filtered].sort((left, right) => {
+      if (orderSort === "oldest") return left.createdAt.localeCompare(right.createdAt);
+      if (orderSort === "expires") return left.expiresAt.localeCompare(right.expiresAt);
+      return right.createdAt.localeCompare(left.createdAt);
+    });
+  }, [orderClientFilter, orderRows, orderSearch, orderSort, orderStatusFilter]);
+
+  const refreshHumanChallenge = useCallback(async () => {
+    setHumanChallengeLoading(true);
+    setHumanChallengeReady(false);
+    try {
+      const nextChallenge = await portalClient.issueHumanChallenge({ scope: "portal_login" });
+      setHumanChallenge(nextChallenge);
+      setHumanChallengeReady(Boolean(nextChallenge.challengeId.trim()));
+      setRobotAnswer("");
+    } catch (requestError) {
+      setHumanChallenge(createPendingHumanVerificationChallenge("校验加载失败，请刷新页面"));
+      setAuthError(errorMessage(requestError, "防机器人校验加载失败。"));
+    } finally {
+      setHumanChallengeLoading(false);
+    }
+  }, [portalClient]);
+
+  useEffect(() => {
+    void refreshHumanChallenge();
+  }, [refreshHumanChallenge]);
+
+  async function hydratePortalSession(session: PortalSession) {
+    const portalState = await portalClient.fetchCurrentState({
+      userRef: session.userRef,
+      sessionRef: session.sessionRef
+    });
+    setPortalSession(session);
+    setSecondFactorChallenge(null);
+    setSecondFactorCode("");
+    setPasskeyProof("");
+    setSecondFactorError("");
+    setSecondFactorPending(false);
+    setAuthenticatorBound(portalState.security?.authenticatorBound ?? false);
+    setPasskeyExported(portalState.security?.passkeyExported ?? false);
+    setSecuritySetupRequired(portalState.security?.setupRequired ?? false);
+    const subscriptionRequests = portalState.subscriptionRequests?.length
+      ? portalState.subscriptionRequests
+      : portalState.subscriptionRequest
+        ? [portalState.subscriptionRequest]
+        : [];
+    if (subscriptionRequests.length > 0) {
+      const orders = subscriptionRequests
+        .map((request) => subscriptionRequestToOrder(request))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+      const selected = orders.find((order) => order.requestRef === portalState.subscriptionRequest?.requestRef)
+        ?? orders[0];
+      setSelectedPlanId(selected.planId);
+      setOrderDurationDays(selected.durationDays);
+      setOrderQuantity(selected.quantity);
+      setClientTarget(selected.clientTarget);
+      setOrderRows(orders);
+      setSelectedOrderRef(selected.requestRef);
+    } else {
+      setOrderRows([]);
+      setSelectedOrderRef(null);
+    }
+    setHistorySummary(portalState.historySummary ?? subscriptionRequests.flatMap((request) => request.historySummary ?? []));
+    setActiveView("subscription");
+  }
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setAuthError("");
+    setSecondFactorError("");
     try {
-      const session = await portalClient.authenticate({
-        mode: authMode,
-        email: authEmail,
-        password: authPassword,
-        verificationCode
-      });
-      const portalState = await portalClient.fetchCurrentState({ userRef: session.userRef });
-      setPortalSession(session);
-      if (portalState.subscriptionRequest) {
-        setCreated({
-          request: portalState.subscriptionRequest,
-          action: "opening_requested",
-          previousInvalidatedAt: portalState.subscriptionRequest.event?.occurredAt
-        });
-        setSelectedPlanId(portalState.subscriptionRequest.planId);
-        setClientTarget(portalState.subscriptionRequest.clientTarget);
-      } else {
-        setCreated(null);
+      if (!humanChallengeReady || humanChallengeLoading) {
+        throw new Error("防机器人校验尚未加载，请稍后重试。");
       }
-      setHistorySummary(portalState.historySummary ?? []);
-      setActiveView("subscription");
+      const humanVerification = buildHumanVerification(humanChallenge, robotAnswer, robotTrap);
+      const result = await portalClient.authenticate({
+        mode: "password",
+        accountId,
+        password,
+        humanVerification
+      });
+      setPassword("");
+      if (isSecondFactorChallenge(result)) {
+        setSecondFactorChallenge(result);
+        setSecondFactorCode("");
+        return;
+      }
+      await hydratePortalSession(result);
     } catch (requestError) {
       setAuthError(errorMessage(requestError, "操作失败。"));
+      setRobotAnswer("");
+      void refreshHumanChallenge();
     }
+  }
+
+  async function submitAuthenticatorSecondFactor(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!secondFactorChallenge) return;
+    setSecondFactorError("");
+    setSecondFactorPending(true);
+    try {
+      const session = await portalClient.completeSecondFactor({
+        challengeRef: secondFactorChallenge.challengeRef,
+        factor: "authenticator",
+        totpCode: secondFactorCode
+      });
+      await hydratePortalSession(session);
+    } catch (requestError) {
+      setSecondFactorError(errorMessage(requestError, "二次验证失败。"));
+      setSecondFactorCode("");
+    } finally {
+      setSecondFactorPending(false);
+    }
+  }
+
+  async function submitPasskeySecondFactor(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!secondFactorChallenge) return;
+    setSecondFactorError("");
+    setSecondFactorPending(true);
+    try {
+      const session = await portalClient.completeSecondFactor({
+        challengeRef: secondFactorChallenge.challengeRef,
+        factor: "passkey",
+        passkeyProof
+      });
+      await hydratePortalSession(session);
+    } catch (requestError) {
+      setSecondFactorError(errorMessage(requestError, "通行密钥验证失败。"));
+      setPasskeyProof("");
+    } finally {
+      setSecondFactorPending(false);
+    }
+  }
+
+  function returnToPasswordLogin() {
+    setSecondFactorChallenge(null);
+    setSecondFactorCode("");
+    setPasskeyProof("");
+    setSecondFactorError("");
+    setSecondFactorPending(false);
+    setRobotAnswer("");
+    setRobotTrap("");
+    void refreshHumanChallenge();
   }
 
   async function submitSubscription(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setActionError("");
-    setCopied(false);
+    setCopiedOrderRef(null);
+    const quantity = normalizeOrderQuantity(orderQuantity);
+    const planId = planIdForDuration(orderDurationDays);
+
+    if (editingOrderRef) {
+      setOrderRows((rows) => rows.map((row) => {
+        if (row.requestRef !== editingOrderRef) return row;
+        return {
+          ...row,
+          planId,
+          durationDays: orderDurationDays,
+          quantity,
+          clientTarget,
+          request: {
+            ...row.request,
+            planId,
+            durationDays: orderDurationDays,
+            quantity,
+            clientTarget
+          }
+        };
+      }));
+      setSelectedPlanId(planId);
+      setEditingOrderRef(null);
+      setOrderFormOpen(false);
+      return;
+    }
+
     setPending(true);
     try {
-      const wasActive = lifecycle === "active";
       const userRef = portalSession?.userRef ?? "";
-      const result = wasActive && created
-        ? await portalClient.refreshSubscription({
-            userRef,
-            requestRef: created.request.requestRef,
-            clientTarget
-          })
-        : await portalClient.applyForSubscription({
-            userRef,
-            planId: selectedPlanId,
-            clientTarget,
-            requestOnly: true
-          });
-      setCreated({
-        request: result,
-        action: wasActive ? "refreshed" : "opening_requested",
-        previousInvalidatedAt: result.event?.occurredAt
+      const result = await portalClient.applyForSubscription({
+        userRef,
+        sessionRef: portalSession?.sessionRef,
+        planId,
+        clientTarget,
+        requestOnly: true,
+        durationDays: orderDurationDays,
+        quantity
       });
+      const order = subscriptionRequestToOrder(result, { durationDays: orderDurationDays, quantity });
+      setOrderRows((rows) => upsertOrderRow(rows, order));
+      setSelectedOrderRef(order.requestRef);
+      setSelectedPlanId(planId);
       setHistorySummary(result.historySummary ?? historySummary);
+      setOrderFormOpen(false);
     } catch (requestError) {
       setActionError(errorMessage(requestError, "操作失败。"));
     } finally {
@@ -304,79 +680,366 @@ export function UserPortalPage({
     }
   }
 
-  async function copySubscriptionUrl() {
-    if (!created?.request.subscriptionUrl) return;
-    await copyText(created.request.subscriptionUrl);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1800);
+  async function refreshSubscription(requestRef?: string) {
+    if (!portalSession) return;
+    const target = requestRef
+      ? orderRows.find((row) => row.requestRef === requestRef)?.request
+      : selectedOrder?.request;
+    if (!target || target.lifecycle !== "active") return;
+    setActionError("");
+    setCopiedOrderRef(null);
+    setPending(true);
+    try {
+      const result = await portalClient.refreshSubscription({
+        userRef: portalSession.userRef,
+        sessionRef: portalSession.sessionRef,
+        requestRef: target.requestRef,
+        clientTarget
+      });
+      const existing = orderRows.find((row) => row.requestRef === target.requestRef);
+      const order = subscriptionRequestToOrder(result, {
+        durationDays: existing?.durationDays,
+        quantity: existing?.quantity
+      });
+      setOrderRows((rows) => upsertOrderRow(rows, order));
+      setSelectedOrderRef(order.requestRef);
+      setHistorySummary(result.historySummary ?? historySummary);
+    } catch (requestError) {
+      setActionError(errorMessage(requestError, "刷新订阅失败。"));
+    } finally {
+      setPending(false);
+    }
   }
 
-  if (!portalSession) {
+  async function copyOrderSubscription(order: PortalOrderRow) {
+    if (!order.request.subscriptionUrl) return;
+    await copyText(order.request.subscriptionUrl);
+    setCopiedOrderRef(order.requestRef);
+    window.setTimeout(() => setCopiedOrderRef(null), 1800);
+  }
+
+  async function disableSubscription(requestRef?: string) {
+    if (!portalSession) return;
+    const target = requestRef
+      ? orderRows.find((row) => row.requestRef === requestRef)?.request
+      : selectedOrder?.request;
+    if (!target || target.lifecycle !== "active") return;
+    setActionError("");
+    setCopiedOrderRef(null);
+    setPending(true);
+    try {
+      const result = await portalClient.disableSubscription({
+        userRef: portalSession.userRef,
+        sessionRef: portalSession.sessionRef,
+        requestRef: target.requestRef
+      });
+      const existing = orderRows.find((row) => row.requestRef === target.requestRef);
+      const order = subscriptionRequestToOrder(result, {
+        durationDays: existing?.durationDays,
+        quantity: existing?.quantity
+      });
+      setOrderRows((rows) => upsertOrderRow(rows, order));
+      setSelectedOrderRef(order.requestRef);
+      setHistorySummary(result.historySummary ?? historySummary);
+    } catch (requestError) {
+      setActionError(errorMessage(requestError, "禁用订阅失败。"));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  function viewOrder(order: PortalOrderRow) {
+    setSelectedOrderRef(order.requestRef);
+    setSelectedPlanId(order.planId);
+    setOrderDurationDays(order.durationDays);
+    setOrderQuantity(order.quantity);
+    setClientTarget(order.clientTarget);
+  }
+
+  function editOrder(order: PortalOrderRow) {
+    viewOrder(order);
+    setEditingOrderRef(order.requestRef);
+    setOrderFormOpen(true);
+  }
+
+  function startNewOrder() {
+    setEditingOrderRef(null);
+    setOrderFormOpen(true);
+  }
+
+  function closeOrderForm() {
+    if (pending) return;
+    setOrderFormOpen(false);
+    setEditingOrderRef(null);
+    setActionError("");
+  }
+
+  async function submitSupportRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!portalSession) return;
+    setSupportError("");
+    setSupportPending(true);
+    try {
+      const result = await portalClient.submitSupportRequest({
+        userRef: portalSession.userRef,
+        sessionRef: portalSession.sessionRef,
+        category: supportCategory,
+        message: supportMessage,
+        clientTarget,
+        subscriptionRequestRef: created?.request.requestRef
+      });
+      setSupportResult(result);
+      setSupportMessage("");
+    } catch (requestError) {
+      setSupportError(errorMessage(requestError, "问题提交失败。"));
+    } finally {
+      setSupportPending(false);
+    }
+  }
+
+  async function startAuthenticatorEnrollment() {
+    if (!portalSession) return;
+    setAuthenticatorError("");
+    setAuthenticatorCode("");
+    setAuthenticatorPending(true);
+    try {
+      setAuthenticatorEnrollment(await portalClient.startAuthenticatorEnrollment({
+        userRef: portalSession.userRef,
+        sessionRef: portalSession.sessionRef
+      }));
+    } catch (requestError) {
+      setAuthenticatorError(errorMessage(requestError, "身份验证器绑定失败。"));
+    } finally {
+      setAuthenticatorPending(false);
+    }
+  }
+
+  async function confirmAuthenticatorEnrollment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!portalSession || !authenticatorEnrollment) return;
+    setAuthenticatorError("");
+    setAuthenticatorPending(true);
+    try {
+      await portalClient.confirmAuthenticatorEnrollment({
+        userRef: portalSession.userRef,
+        sessionRef: portalSession.sessionRef,
+        enrollmentRef: authenticatorEnrollment.enrollmentRef,
+        totpCode: authenticatorCode
+      });
+      setAuthenticatorBound(true);
+      setSecuritySetupRequired((current) => current && !passkeyExported);
+      setAuthenticatorEnrollment(null);
+      setAuthenticatorCode("");
+    } catch (requestError) {
+      setAuthenticatorError(errorMessage(requestError, "身份验证器绑定失败。"));
+    } finally {
+      setAuthenticatorPending(false);
+    }
+  }
+
+  async function exportPasskey() {
+    if (!portalSession) return;
+    setPasskeyError("");
+    setPasskeyPending(true);
+    try {
+      const passkeyExport = await portalClient.exportPasskey({ userRef: portalSession.userRef });
+      downloadPasskeyExport(passkeyExport);
+      setPasskeyExported(true);
+      setSecuritySetupRequired((current) => current && !authenticatorBound);
+    } catch (requestError) {
+      setPasskeyError(errorMessage(requestError, "通行密钥导出失败。"));
+    } finally {
+      setPasskeyPending(false);
+    }
+  }
+
+  function closeAuthenticatorEnrollment() {
+    if (authenticatorPending) return;
+    setAuthenticatorEnrollment(null);
+    setAuthenticatorCode("");
+    setAuthenticatorError("");
+  }
+
+  function logout() {
+    setPortalSession(null);
+    setAccountId("");
+    setPassword("");
+    setRobotAnswer("");
+    setRobotTrap("");
+    setHumanChallenge(createPendingHumanVerificationChallenge());
+    setHumanChallengeReady(false);
+    setHumanChallengeLoading(true);
+    void refreshHumanChallenge();
+    setActiveView("subscription");
+    setSelectedPlanId("monthly");
+    setClientTarget("clash");
+    setOrderDurationDays(30);
+    setOrderQuantity(1);
+    setOrderRows([]);
+    setOrderStatusFilter("all");
+    setOrderSearch("");
+    setOrderClientFilter("all");
+    setOrderSort("newest");
+    setOrderFormOpen(false);
+    setEditingOrderRef(null);
+    setSelectedOrderRef(null);
+    setAuthError("");
+    setActionError("");
+    setPending(false);
+    setCopiedOrderRef(null);
+    setHistorySummary([]);
+    setAuthenticatorBound(false);
+    setAuthenticatorEnrollment(null);
+    setAuthenticatorCode("");
+    setAuthenticatorError("");
+    setAuthenticatorPending(false);
+    setPasskeyExported(false);
+    setPasskeyPending(false);
+    setPasskeyError("");
+    setSecuritySetupRequired(false);
+    setSecondFactorChallenge(null);
+    setSecondFactorCode("");
+    setPasskeyProof("");
+    setSecondFactorError("");
+    setSecondFactorPending(false);
+    setSupportCategory("client_import");
+    setSupportMessage("");
+    setSupportPending(false);
+    setSupportError("");
+    setSupportResult(null);
+  }
+
+  if (!portalSession && secondFactorChallenge) {
+    const hasAuthenticator = secondFactorChallenge.availableFactors.includes("authenticator");
+    const hasPasskey = secondFactorChallenge.availableFactors.includes("passkey");
     return (
       <main className="portal-auth-shell">
-        <section className="portal-auth-card" aria-label="用户登录">
+        <section className="portal-auth-card" aria-label="二次验证">
           <div className="portal-auth-header">
-            <h1>{authMode === "login" ? "登录" : "注册"}</h1>
-            <p>{authMode === "login" ? "登录后管理你的套餐和订阅。" : "用邮箱创建账户，进入订阅管理。"}</p>
+            <h1>二次验证</h1>
+            <p>此账号已开启增强验证。完成一个已绑定因子后才会进入用户中心。</p>
           </div>
 
-          <form className="portal-auth-form" onSubmit={submitAuth}>
-            <label htmlFor="portal-auth-email">邮箱</label>
-            <input
-              id="portal-auth-email"
-              type="email"
-              value={authEmail}
-              onChange={(event) => setAuthEmail(event.target.value)}
-              required
-            />
+          {hasAuthenticator ? (
+            <form className="portal-auth-form" onSubmit={submitAuthenticatorSecondFactor}>
+              <label htmlFor="portal-second-factor-code">身份验证器验证码</label>
+              <input
+                id="portal-second-factor-code"
+                value={secondFactorCode}
+                onChange={(event) => setSecondFactorCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                required
+              />
+              <button className="portal-auth-submit" type="submit" disabled={secondFactorPending || secondFactorCode.length !== 6}>
+                {secondFactorPending ? "验证中" : "验证身份验证器"}
+              </button>
+            </form>
+          ) : null}
 
-            <div className="portal-password-row">
-              <label htmlFor="portal-auth-password">密码</label>
-              {authMode === "login" ? <button type="button">忘记密码？</button> : null}
-            </div>
-            <input
-              id="portal-auth-password"
-              type="password"
-              value={authPassword}
-              onChange={(event) => setAuthPassword(event.target.value)}
-              required
-            />
-
-            {authMode === "signup" ? (
-              <>
-                <label htmlFor="portal-auth-code">验证码</label>
-                <div className="portal-auth-code-row">
-                  <input
-                    id="portal-auth-code"
-                    value={verificationCode}
-                    onChange={(event) => setVerificationCode(event.target.value)}
-                    required
-                  />
-                  <button type="button">获取验证码</button>
-                </div>
-              </>
+          <div className="portal-second-factor-actions">
+            {hasPasskey ? (
+              <form className="portal-passkey-form" onSubmit={submitPasskeySecondFactor}>
+                <label htmlFor="portal-passkey-proof">通行密钥备份内容</label>
+                <textarea
+                  id="portal-passkey-proof"
+                  value={passkeyProof}
+                  onChange={(event) => setPasskeyProof(event.target.value)}
+                  autoComplete="off"
+                  placeholder="粘贴导出的通行密钥备份内容"
+                  required
+                />
+                <button
+                  className="portal-secondary-button"
+                  type="submit"
+                  disabled={secondFactorPending || !passkeyProof.trim()}
+                >
+                  {secondFactorPending ? "验证中" : "使用通行密钥"}
+                </button>
+              </form>
             ) : null}
-
-            {authError ? <div className="alert alert-error">{authError}</div> : null}
-
-            <button className="portal-auth-submit" type="submit">
-              {authMode === "login" ? "登录" : "注册"}
+            <button className="portal-secondary-button" type="button" disabled={secondFactorPending} onClick={returnToPasswordLogin}>
+              返回账号登录
             </button>
-          </form>
+          </div>
 
-          <p className="portal-auth-switch">
-            {authMode === "login" ? "还没有账户？" : "已有账户？"}
-            <button
-              type="button"
-              onClick={() => setAuthMode((mode) => (mode === "login" ? "signup" : "login"))}
-            >
-              {authMode === "login" ? "立即注册" : "返回登录"}
-            </button>
-          </p>
+          {secondFactorError ? <div className="alert alert-error">{secondFactorError}</div> : null}
         </section>
       </main>
     );
   }
+
+  if (!portalSession) {
+    const canSubmitPasswordLogin = humanChallengeReady && !humanChallengeLoading;
+    return (
+      <main className="portal-auth-shell">
+        <section className="portal-auth-card" aria-label="用户登录">
+          <div className="portal-auth-header">
+            <h1>账号登录</h1>
+            <p>使用账户密码登录。可在个人中心开启身份验证器和通行密钥。</p>
+          </div>
+
+          <form className="portal-auth-form" onSubmit={submitAuth}>
+            <label htmlFor="portal-account-id">账户 ID</label>
+            <input
+              id="portal-account-id"
+              value={accountId}
+              onChange={(event) => setAccountId(event.target.value)}
+              autoComplete="username"
+              required
+            />
+
+            <label htmlFor="portal-password">密码</label>
+            <input
+              id="portal-password"
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              required
+            />
+
+            <label htmlFor="portal-robot-check">防机器人校验</label>
+            <input
+              id="portal-robot-check"
+              value={robotAnswer}
+              onChange={(event) => setRobotAnswer(event.target.value)}
+              inputMode="numeric"
+              autoComplete="off"
+              placeholder={humanChallengeLoading ? "正在加载校验..." : humanChallenge.prompt}
+              disabled={!canSubmitPasswordLogin}
+              required
+            />
+
+            <label className="portal-honeypot" htmlFor="portal-company">公司名称</label>
+            <input
+              id="portal-company"
+              name="portal-company"
+              className="portal-honeypot"
+              value={robotTrap}
+              onChange={(event) => setRobotTrap(event.target.value)}
+              autoComplete="off"
+              tabIndex={-1}
+              aria-hidden="true"
+            />
+
+            {authError ? <div className="alert alert-error">{authError}</div> : null}
+
+            <button className="portal-auth-submit" type="submit" disabled={!canSubmitPasswordLogin}>
+              {humanChallengeLoading ? "加载校验中" : "登录"}
+            </button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
+  const shouldShowSecuritySetup = Boolean(
+    portalSession
+    && securitySetupRequired
+    && (!authenticatorBound || !passkeyExported)
+    && !authenticatorEnrollment
+  );
 
   return (
     <>
@@ -386,7 +1049,7 @@ export function UserPortalPage({
             <span className="portal-avatar">{userDisplayName.charAt(0).toUpperCase()}</span>
             <div>
               <strong>{userDisplayName}</strong>
-              <small>{sidebarSubscriptionSummary(created, lifecycle, selectedPlanId)}</small>
+              <small>账户 ID：{portalSession.userRef}</small>
             </div>
           </div>
 
@@ -406,6 +1069,11 @@ export function UserPortalPage({
               );
             })}
           </nav>
+
+          <button type="button" className="portal-logout-button" onClick={logout}>
+            <LogOut aria-hidden="true" />
+            <span>退出登录</span>
+          </button>
         </aside>
 
         <section className="portal-use-main">
@@ -414,33 +1082,66 @@ export function UserPortalPage({
               <h1>{navItems.find((item) => item.id === activeView)?.label}</h1>
               <p>{topbarDescription(activeView)}</p>
             </div>
-            <span className={cn("portal-status-pill", created && "active")}>
-              {lifecycleLabel(lifecycle)}
+            <span
+              className={cn("portal-status-indicator", lifecycle, created && lifecycle !== "disabled" && "active")}
+              aria-label={`服务状态：${lifecycle === "disabled" ? "已禁用" : lifecycleLabel(lifecycle)}`}
+            >
+              <span className="portal-status-dot" aria-hidden="true" />
+              {lifecycle === "disabled" ? "已禁用" : lifecycleLabel(lifecycle)}
             </span>
           </header>
 
           {activeView === "subscription" ? (
             <SubscriptionManager
-              activePlan={activePlan}
               actionError={actionError}
               clientTarget={clientTarget}
-              copied={copied}
-              created={created}
-              isReady={isReady}
-              isWaiting={isWaiting}
-              lifecycle={lifecycle}
+              copiedOrderRef={copiedOrderRef}
+              orderClientFilter={orderClientFilter}
+              orderDurationDays={orderDurationDays}
+              orderFormOpen={orderFormOpen}
+              orderQuantity={orderQuantity}
+              orderRows={filteredOrderRows}
+              orderSearch={orderSearch}
+              orderSort={orderSort}
+              orderStatusFilter={orderStatusFilter}
+              selectedOrderRef={selectedOrderRef}
+              editingOrderRef={editingOrderRef}
               pending={pending}
-              selectedPlanId={selectedPlanId}
-              setActiveView={setActiveView}
               setClientTarget={setClientTarget}
-              setSelectedPlanId={setSelectedPlanId}
+              setOrderClientFilter={setOrderClientFilter}
+              setOrderDurationDays={setOrderDurationDays}
+              setOrderQuantity={setOrderQuantity}
+              setOrderSearch={setOrderSearch}
+              setOrderSort={setOrderSort}
+              setOrderStatusFilter={setOrderStatusFilter}
               submitSubscription={submitSubscription}
-              copySubscriptionUrl={copySubscriptionUrl}
-              userRef={portalSession.userRef}
+              startNewOrder={startNewOrder}
+              closeOrderForm={closeOrderForm}
+              copyOrderSubscription={copyOrderSubscription}
+              refreshSubscription={refreshSubscription}
+              disableSubscription={disableSubscription}
+              editOrder={editOrder}
+              viewOrder={viewOrder}
             />
           ) : null}
           {activeView === "use" ? <UseGuide created={created} setActiveView={setActiveView} /> : null}
-          {activeView === "support" ? <SupportPanel /> : null}
+          {activeView === "support" ? (
+            <SupportPanel
+              category={supportCategory}
+              message={supportMessage}
+              pending={supportPending}
+              error={supportError}
+              result={supportResult}
+              setCategory={setSupportCategory}
+              setMessage={setSupportMessage}
+              resetSupportRequest={() => {
+                setSupportResult(null);
+                setSupportError("");
+                setSupportMessage("");
+              }}
+              submitSupportRequest={submitSupportRequest}
+            />
+          ) : null}
           {activeView === "profile" ? (
             <ProfilePanel
               created={created}
@@ -448,203 +1149,314 @@ export function UserPortalPage({
               historySummary={historySummary}
               lifecycle={lifecycle}
               registrationDate={registrationDate}
-              userEmail={userEmail}
+              authMode={portalSession.authMode}
+              authenticatorBound={authenticatorBound}
+              authenticatorPending={authenticatorPending}
+              passkeyExported={passkeyExported}
+              passkeyError={passkeyError}
+              passkeyPending={passkeyPending}
+              exportPasskey={exportPasskey}
+              startAuthenticatorEnrollment={startAuthenticatorEnrollment}
               userRef={portalSession.userRef}
             />
           ) : null}
         </section>
       </main>
+      {shouldShowSecuritySetup ? (
+        <SecuritySetupDialog
+          authenticatorBound={authenticatorBound}
+          authenticatorPending={authenticatorPending}
+          passkeyError={passkeyError}
+          passkeyExported={passkeyExported}
+          passkeyPending={passkeyPending}
+          onBindAuthenticator={startAuthenticatorEnrollment}
+          onClose={() => setSecuritySetupRequired(false)}
+          onExportPasskey={exportPasskey}
+        />
+      ) : null}
+      {authenticatorEnrollment ? (
+        <AuthenticatorEnrollmentDialog
+          code={authenticatorCode}
+          enrollment={authenticatorEnrollment}
+          error={authenticatorError}
+          pending={authenticatorPending}
+          onClose={closeAuthenticatorEnrollment}
+          onCodeChange={setAuthenticatorCode}
+          onSubmit={confirmAuthenticatorEnrollment}
+        />
+      ) : null}
     </>
   );
 }
 
 function SubscriptionManager({
-  activePlan,
   actionError,
   clientTarget,
-  copied,
-  created,
-  isReady,
-  isWaiting,
-  lifecycle,
+  copiedOrderRef,
+  orderClientFilter,
+  orderDurationDays,
+  orderFormOpen,
+  orderQuantity,
+  orderRows,
+  orderSearch,
+  orderSort,
+  orderStatusFilter,
+  selectedOrderRef,
+  editingOrderRef,
   pending,
-  selectedPlanId,
-  setActiveView,
   setClientTarget,
-  setSelectedPlanId,
+  setOrderClientFilter,
+  setOrderDurationDays,
+  setOrderQuantity,
+  setOrderSearch,
+  setOrderSort,
+  setOrderStatusFilter,
   submitSubscription,
-  copySubscriptionUrl,
-  userRef
+  startNewOrder,
+  closeOrderForm,
+  copyOrderSubscription,
+  refreshSubscription,
+  disableSubscription,
+  editOrder,
+  viewOrder
 }: {
-  activePlan: PortalPlan;
   actionError: string;
   clientTarget: PortalClientId;
-  copied: boolean;
-  created: CreatedSubscription | null;
-  isReady: boolean;
-  isWaiting: boolean;
-  lifecycle: SubscriptionLifecycle;
+  copiedOrderRef: string | null;
+  orderClientFilter: "all" | PortalClientId;
+  orderDurationDays: number;
+  orderFormOpen: boolean;
+  orderQuantity: number;
+  orderRows: PortalOrderRow[];
+  orderSearch: string;
+  orderSort: OrderSort;
+  orderStatusFilter: OrderStatusFilter;
+  selectedOrderRef: string | null;
+  editingOrderRef: string | null;
   pending: boolean;
-  selectedPlanId: PortalPlanId;
-  setActiveView: (value: PortalView) => void;
   setClientTarget: (value: PortalClientId) => void;
-  setSelectedPlanId: (value: PortalPlanId) => void;
+  setOrderClientFilter: (value: "all" | PortalClientId) => void;
+  setOrderDurationDays: (value: number) => void;
+  setOrderQuantity: (value: number) => void;
+  setOrderSearch: (value: string) => void;
+  setOrderSort: (value: OrderSort) => void;
+  setOrderStatusFilter: (value: OrderStatusFilter) => void;
   submitSubscription: (event: FormEvent<HTMLFormElement>) => void;
-  copySubscriptionUrl: () => Promise<void>;
-  userRef: string;
+  startNewOrder: () => void;
+  closeOrderForm: () => void;
+  copyOrderSubscription: (order: PortalOrderRow) => Promise<void>;
+  refreshSubscription: (requestRef?: string) => Promise<void>;
+  disableSubscription: (requestRef?: string) => Promise<void>;
+  editOrder: (order: PortalOrderRow) => void;
+  viewOrder: (order: PortalOrderRow) => void;
 }) {
-  const planLocked = lifecycle === "active" || lifecycle === "pending";
+  const selectedOrder = orderRows.find((row) => row.requestRef === selectedOrderRef) ?? orderRows[0] ?? null;
   return (
     <div className="portal-use-stack">
-      <form className="portal-use-card portal-subscription-form" onSubmit={submitSubscription}>
-        <div className="portal-section-heading">
-          <PackageCheck aria-hidden="true" />
-          <div>
-            <span className="portal-card-label">套餐</span>
-            <h2>{planLocked ? "当前套餐" : "选择试用或套餐"}</h2>
-            <p>
-              {lifecycle === "active"
-                ? "当前套餐已生效。刷新当前订阅只重置链接，不影响原到期时间。"
-                : "当前页面只提交试用、月卡、年卡申请；管理员审核通过后发放订阅。"}
-            </p>
+      <section className="portal-order-card" aria-label="订单管理">
+        <div className="portal-order-header">
+          <div className="portal-section-heading">
+            <ReceiptText aria-hidden="true" />
+            <div>
+              <span className="portal-card-label">订单</span>
+              <h2>订单管理</h2>
+              <p>按订单查看订阅申请、刷新和停用记录；删除操作以停用处理，保留记录便于查询。</p>
+            </div>
           </div>
         </div>
 
-        <div className="portal-plan-list compact">
-          {plans.map((plan) => (
+        <div className="portal-order-tabs" role="tablist" aria-label="订单状态">
+          {orderStatusTabs.map((tab) => (
             <button
-              key={plan.id}
+              key={tab.id}
               type="button"
-              className={cn("portal-plan-row", selectedPlanId === plan.id && "active")}
-              onClick={() => setSelectedPlanId(plan.id)}
-              aria-pressed={selectedPlanId === plan.id}
-              disabled={planLocked}
+              role="tab"
+              aria-selected={orderStatusFilter === tab.id}
+              className={cn("portal-order-tab", orderStatusFilter === tab.id && "active")}
+              onClick={() => setOrderStatusFilter(tab.id)}
             >
-              <span>
-                <strong>{plan.label}</strong>
-                <small>{plan.description}</small>
-              </span>
-              <b>{plan.priceLabel}</b>
+              {tab.label}
             </button>
           ))}
         </div>
 
-        <ul className="portal-plan-highlights">
-          {activePlan.highlights.map((item) => (
-            <li key={item}><CircleCheck aria-hidden="true" /> {item}</li>
-          ))}
-        </ul>
-
-        {planLocked ? (
-          <div className="portal-inline-note">
-            {lifecycle === "active"
-              ? "套餐生效中，月卡 / 年卡不可在当前周期内直接改选；如需换套餐，请到期后重新申请。"
-              : "申请已提交，管理员审核完成前暂不重复提交套餐申请。"}
-          </div>
-        ) : null}
-
-        <div className="portal-form-grid narrow">
+        <div className="portal-order-toolbar">
           <label>
-            <span>客户端偏好</span>
-            <select value={clientTarget} onChange={(event) => setClientTarget(event.target.value as PortalClientId)}>
+            <span>搜索订单</span>
+            <div className="portal-search-field">
+              <Search aria-hidden="true" />
+              <input
+                value={orderSearch}
+                onChange={(event) => setOrderSearch(event.target.value)}
+                placeholder="订单号 / 套餐 / 状态"
+              />
+            </div>
+          </label>
+          <label>
+            <span>客户端</span>
+            <select value={orderClientFilter} onChange={(event) => setOrderClientFilter(event.target.value as "all" | PortalClientId)}>
+              <option value="all">全部客户端</option>
               {clientTargets.map((target) => (
                 <option key={target.id} value={target.id}>{target.label}</option>
               ))}
             </select>
           </label>
           <label>
-            <span>有效期</span>
-            <input value={activePlan.billingCycle} readOnly />
+            <span>排序</span>
+            <select value={orderSort} onChange={(event) => setOrderSort(event.target.value as OrderSort)}>
+              <option value="newest">最新创建</option>
+              <option value="oldest">最早创建</option>
+              <option value="expires">到期时间</option>
+            </select>
           </label>
+          <button className="portal-primary-button compact portal-toolbar-create" type="button" onClick={startNewOrder}>
+            <Plus aria-hidden="true" />
+            新建订单申请
+          </button>
         </div>
 
-        {actionError ? <div className="alert alert-error">{actionError}</div> : null}
-
-        <button className="portal-primary-button" type="submit" disabled={pending || isWaiting}>
-          {subscriptionCtaLabel(lifecycle, pending)}
-        </button>
-      </form>
-
-      <section className="portal-use-card" aria-label="订阅状态">
-        <div className="portal-section-heading">
-          <RefreshCw aria-hidden="true" />
-          <div>
-            <span className="portal-card-label">订阅</span>
-            <h2>{lifecycleLabel(lifecycle)}</h2>
-            <p>
-              {lifecycle === "active"
-                ? "订阅已生效。可复制链接导入客户端；刷新只重置当前订阅链接。"
-                : lifecycle === "pending"
-                  ? "申请已提交。管理员审核通过后才会发放试用订阅或正式套餐。"
-                  : lifecycle === "expired"
-                    ? "套餐已过期，请重新选择试用、月卡或年卡提交申请。"
-                    : "还没有有效订阅，请先选择试用或套餐并提交申请。"}
-            </p>
-          </div>
-        </div>
-
-        <div className="portal-state-grid">
-          <StateItem active={lifecycle === "none"} title="无有效订阅" detail="选择试用或套餐后提交申请。" />
-          <StateItem active={isWaiting} title="等待管理员审核" detail="管理员审核通过后发放订阅。" />
-          <StateItem active={isReady} title="服务生效中" detail="可复制订阅并导入客户端。" />
-          <StateItem active={lifecycle === "expired"} title="已过期" detail="到期后重新提交申请。" />
-        </div>
-
-        {isWaiting ? (
-          <div className="portal-action-callout">
-            <strong>下一步：等待管理员审核</strong>
-            <p>管理员会根据账户 ID <code>{userRef}</code> 和申请套餐完成审批，审核通过后发放订阅。</p>
-            <button type="button" onClick={() => setActiveView("support")}>联系客服支持</button>
-          </div>
-        ) : null}
-
-        {created?.previousInvalidatedAt ? (
-          <div className="portal-event-note">
-            你已于 {formatDateTime(created.previousInvalidatedAt)} 刷新订阅，之前的旧链接已失效。
-          </div>
-        ) : null}
-
-        <div className="portal-link-list">
-          <div className="portal-link-box">
-            <h3>当前订阅</h3>
-            {isReady && created ? (
-              <dl className="portal-subscription-meta">
-                <div>
-                  <dt>套餐</dt>
-                  <dd>{activePlan.label}</dd>
-                </div>
-                <div>
-                  <dt>到期时间</dt>
-                  <dd>{formatDateTime(created.request.expiresAt)}</dd>
-                </div>
-              </dl>
-            ) : null}
-            <code>{created?.request.subscriptionUrl ?? "授权完成后显示订阅链接"}</code>
-            <button
-              className="portal-copy-button"
-              type="button"
-              disabled={!created?.request.subscriptionUrl}
-              onClick={copySubscriptionUrl}
-            >
-              <Copy aria-hidden="true" />
-              {copied ? "已复制" : "复制"}
+        {orderRows.length === 0 ? (
+          <div className="portal-order-empty-state" role="status">
+            <ReceiptText aria-hidden="true" />
+            <strong>暂无订单</strong>
+            <p>创建第一条订阅订单后，订单状态、到期时间和可执行操作会在这里统一管理。</p>
+            <button className="portal-primary-button compact" type="button" onClick={startNewOrder}>
+              <Plus aria-hidden="true" />
+              立即新建订单申请
             </button>
           </div>
-        </div>
-
-        <button className="portal-secondary-button" type="button" onClick={() => setActiveView("use")}>
-          查看导入教程
-        </button>
+        ) : (
+          <div className="portal-order-table-wrap">
+            <table className="portal-order-table" aria-label="订阅订单列表">
+              <thead>
+                <tr>
+                  <th>订单号</th>
+                  <th>创建时间</th>
+                  <th>时长</th>
+                  <th>数量</th>
+                  <th>客户端</th>
+                  <th>状态</th>
+                  <th>流量</th>
+                  <th>到期时间</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orderRows.map((order) => (
+                <tr key={order.requestRef} className={cn(selectedOrderRef === order.requestRef && "selected")}>
+                  <td>
+                    <button className="portal-order-link" type="button" onClick={() => viewOrder(order)}>
+                      {orderNumber(order.requestRef)}
+                    </button>
+                  </td>
+                  <td>{formatDateTime(order.createdAt)}</td>
+                  <td>{order.durationDays} 天</td>
+                  <td>{order.quantity}</td>
+                  <td>{clientTargetLabel(order.clientTarget)}</td>
+                  <td><span className={cn("portal-order-status", order.status)}>{orderStatusLabel(order.status)}</span></td>
+                  <td>
+                    <div className="portal-order-usage">
+                      <span>{trafficUsageLabel(order)}</span>
+                      {order.request.usage && order.request.usage.totalBytes > 0 ? (
+                        <div className="portal-traffic-meter" aria-hidden="true">
+                          <span style={{ width: `${trafficUsagePercent(order)}%` }} />
+                        </div>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td>{order.status === "pending" ? "待发放" : formatDateTime(order.expiresAt)}</td>
+                  <td>
+                    <div className="portal-order-actions">
+                      <button type="button" onClick={() => viewOrder(order)}><Eye aria-hidden="true" /> 查看</button>
+                      <button type="button" onClick={() => editOrder(order)}><Pencil aria-hidden="true" /> 编辑</button>
+                      {order.status === "active" ? (
+                        <>
+                          {order.request.subscriptionUrl ? (
+                            <button type="button" disabled={pending} onClick={() => copyOrderSubscription(order)}>
+                              <Copy aria-hidden="true" /> {copiedOrderRef === order.requestRef ? "已复制" : "复制链接"}
+                            </button>
+                          ) : null}
+                          <button type="button" disabled={pending} onClick={() => refreshSubscription(order.requestRef)}>
+                            <RefreshCw aria-hidden="true" /> 刷新订单
+                          </button>
+                          <button type="button" disabled={pending} onClick={() => disableSubscription(order.requestRef)}>
+                            禁用
+                          </button>
+                        </>
+                      ) : null}
+                      <button type="button" disabled title="删除已禁用"><Trash2 aria-hidden="true" /> 删除</button>
+                    </div>
+                  </td>
+                </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {selectedOrder?.request.event?.occurredAt ? (
+          <div className="portal-event-note">
+            订单 {orderNumber(selectedOrder.requestRef)} 已刷新，旧链接已于 {formatDateTime(selectedOrder.request.event.occurredAt)} 失效。
+          </div>
+        ) : null}
       </section>
-    </div>
-  );
-}
+      {orderFormOpen ? (
+        <ModalFrame
+          closeDisabled={pending}
+          closeLabel="关闭"
+          onClose={closeOrderForm}
+          subtitle="请选择您需要的套餐配置，提交后系统自动发放。"
+          title={editingOrderRef ? "编辑订单申请" : "新建订单申请"}
+          titleId="portal-order-form-title"
+          footer={(
+            <div className="portal-modal-actions">
+              <button className="portal-secondary-button" type="button" disabled={pending} onClick={closeOrderForm}>
+                取消
+              </button>
+              <button className="portal-primary-button compact" type="submit" form="portal-order-form" disabled={pending}>
+                {editingOrderRef ? "保存改动" : pending ? "提交中" : "确认提交"}
+              </button>
+            </div>
+          )}
+        >
+          <form id="portal-order-form" className="portal-order-form" onSubmit={submitSubscription}>
+            <div className="portal-form-grid narrow">
+              <label htmlFor="portal-order-duration">
+                <span>订单时长</span>
+                <select
+                  id="portal-order-duration"
+                  value={orderDurationDays}
+                  onChange={(event) => setOrderDurationDays(Number(event.target.value))}
+                >
+                  {orderDurationOptions.map((option) => (
+                    <option key={option.days} value={option.days}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label htmlFor="portal-order-quantity">
+                <span>数量</span>
+                <input
+                  id="portal-order-quantity"
+                  type="number"
+                  min={1}
+                  max={12}
+                  value={orderQuantity}
+                  onChange={(event) => setOrderQuantity(normalizeOrderQuantity(Number(event.target.value)))}
+                />
+              </label>
+              <label>
+                <span>使用客户端</span>
+                <select value={clientTarget} onChange={(event) => setClientTarget(event.target.value as PortalClientId)}>
+                  {clientTargets.map((target) => (
+                    <option key={target.id} value={target.id}>{target.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
 
-function StateItem({ active, detail, title }: { active: boolean; detail: string; title: string }) {
-  return (
-    <div className={cn("portal-state-item", active && "active")}>
-      <strong>{title}</strong>
-      <small>{detail}</small>
+            {actionError ? <div className="alert alert-error">{actionError}</div> : null}
+          </form>
+        </ModalFrame>
+      ) : null}
     </div>
   );
 }
@@ -662,16 +1474,21 @@ function UseGuide({
         <Wifi aria-hidden="true" />
         <div>
           <span className="portal-card-label">使用教程</span>
-          <h2>复制订阅并导入客户端</h2>
-          <p>这个页面只解释用户操作，不展示后台节点、流量图或运维指标。</p>
+          <h2>从订单复制链接并导入客户端</h2>
+          <p>按顺序完成客户端导入和系统代理开启。</p>
         </div>
+      </div>
+
+      <div className="portal-info-callout">
+        <Info aria-hidden="true" />
+        <p>这个页面只解释用户操作，不展示后台节点、流量图或运维指标。</p>
       </div>
 
       {!created ? (
         <div className="portal-empty-callout">
           <strong>还没有订阅</strong>
-          <span>请先到订阅管理提交试用、月卡或年卡申请。</span>
-          <button type="button" onClick={() => setActiveView("subscription")}>去提交申请</button>
+          <span>请先到订阅管理新建订单并提交。</span>
+          <button type="button" onClick={() => setActiveView("subscription")}>去新建订单</button>
         </div>
       ) : null}
 
@@ -690,29 +1507,227 @@ function UseGuide({
   );
 }
 
-function SupportPanel() {
+function SupportPanel({
+  category,
+  error,
+  message,
+  pending,
+  result,
+  resetSupportRequest,
+  setCategory,
+  setMessage,
+  submitSupportRequest
+}: {
+  category: PortalSupportCategory;
+  error: string;
+  message: string;
+  pending: boolean;
+  result: PortalSupportRequest | null;
+  resetSupportRequest: () => void;
+  setCategory: (category: PortalSupportCategory) => void;
+  setMessage: (message: string) => void;
+  submitSupportRequest: (event: FormEvent<HTMLFormElement>) => void;
+}) {
   return (
     <section className="portal-use-card">
       <div className="portal-section-heading">
         <LifeBuoy aria-hidden="true" />
         <div>
           <span className="portal-card-label">支持</span>
-          <h2>客服支持入口</h2>
-          <p>当前仅保留支持入口，后期可接 Telegram 机器人助手和人工客服。</p>
+          <h2>问题反馈表单</h2>
+          <p>提交后生成支持请求编号，账户 ID 会随表单一起提交。</p>
         </div>
       </div>
 
-      <div className="portal-support-grid">
-        {supportItems.map((item) => (
-          <article className="portal-support-card" key={item.title}>
-            <ShieldCheck aria-hidden="true" />
-            <strong>{item.title}</strong>
-            <small>{item.status}</small>
-            <p>{item.detail}</p>
-          </article>
-        ))}
-      </div>
+      {result ? (
+        <div className="portal-support-success" role="status">
+          <CheckCircle2 aria-hidden="true" />
+          <div>
+            <strong>问题已提交</strong>
+            <span>请求编号：{result.supportRef}</span>
+            <p>我们已记录问题类型和账户 ID，后续处理会以该编号追踪。</p>
+          </div>
+          <button className="portal-primary-button compact" type="button" onClick={resetSupportRequest}>
+            再提一个问题
+          </button>
+        </div>
+      ) : (
+      <form className="portal-support-form" onSubmit={submitSupportRequest}>
+        <div className="portal-form-grid narrow">
+          <label htmlFor="portal-support-category">
+            <span>问题类型</span>
+            <select
+              id="portal-support-category"
+              value={category}
+              onChange={(event) => setCategory(event.target.value as PortalSupportCategory)}
+            >
+              {supportCategories.map((item) => (
+                <option key={item.id} value={item.id}>{item.label}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <label className="portal-support-message" htmlFor="portal-support-message">
+          <span>问题描述</span>
+          <textarea
+            id="portal-support-message"
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            maxLength={1200}
+            minLength={6}
+            placeholder="描述遇到的问题、客户端名称和操作步骤"
+            required
+          />
+        </label>
+
+        {error ? <div className="alert alert-error">{error}</div> : null}
+        <button className="portal-primary-button" type="submit" disabled={pending || !message.trim()}>
+          {pending ? "提交中" : "提交问题"}
+        </button>
+      </form>
+      )}
     </section>
+  );
+}
+
+function SecuritySetupDialog({
+  authenticatorBound,
+  authenticatorPending,
+  passkeyError,
+  passkeyExported,
+  passkeyPending,
+  onBindAuthenticator,
+  onClose,
+  onExportPasskey
+}: {
+  authenticatorBound: boolean;
+  authenticatorPending: boolean;
+  passkeyError: string;
+  passkeyExported: boolean;
+  passkeyPending: boolean;
+  onBindAuthenticator: () => Promise<void>;
+  onClose: () => void;
+  onExportPasskey: () => Promise<void>;
+}) {
+  const complete = authenticatorBound && passkeyExported;
+  return (
+    <ModalFrame
+      closeDisabled={!complete}
+      closeLabel="完成"
+      onClose={onClose}
+      subtitle="初始账号首次登录必须完成安全绑定。"
+      title="账户安全初始化"
+      titleId="portal-security-setup-title"
+    >
+      <div className="portal-security-setup-list">
+        <div className="portal-security-setup-item">
+          <div>
+            <strong>身份验证器</strong>
+            <p>用 Google Authenticator 或兼容 TOTP 应用扫码绑定。</p>
+          </div>
+          <span className={cn("portal-security-status", authenticatorBound && "enabled")}>
+            {authenticatorBound ? "已绑定" : "未绑定"}
+          </span>
+          <button
+            className="portal-security-action"
+            type="button"
+            disabled={authenticatorPending}
+            onClick={onBindAuthenticator}
+          >
+            {authenticatorBound ? "重新绑定身份验证器" : "绑定身份验证器"}
+          </button>
+        </div>
+
+        <div className="portal-security-setup-item">
+          <div>
+            <strong>通行密钥导出</strong>
+            <p>导出通行密钥备份包，后续密码登录会进入二次验证。</p>
+          </div>
+          <span className={cn("portal-security-status", passkeyExported && "enabled")}>
+            {passkeyExported ? "已导出" : "未导出"}
+          </span>
+          <button
+            className="portal-security-action"
+            type="button"
+            disabled={passkeyPending}
+            onClick={onExportPasskey}
+          >
+            {passkeyPending ? "导出中" : passkeyExported ? "重新导出通行密钥" : "导出通行密钥"}
+          </button>
+        </div>
+      </div>
+      {passkeyError ? <div className="alert alert-error">{passkeyError}</div> : null}
+    </ModalFrame>
+  );
+}
+
+function AuthenticatorEnrollmentDialog({
+  code,
+  enrollment,
+  error,
+  pending,
+  onClose,
+  onCodeChange,
+  onSubmit
+}: {
+  code: string;
+  enrollment: PortalAuthenticatorEnrollment;
+  error: string;
+  pending: boolean;
+  onClose: () => void;
+  onCodeChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  return (
+    <ModalFrame
+      closeDisabled={pending}
+      closeLabel="取消"
+      onClose={onClose}
+      subtitle="用 Google Authenticator 或兼容 TOTP 应用扫码，然后输入当前 6 位动态码。"
+      title="绑定身份验证器"
+      titleId="portal-authenticator-enrollment-title"
+    >
+      <form className="portal-authenticator-form" onSubmit={onSubmit}>
+        <div className="portal-authenticator-setup">
+          <img
+            className="portal-authenticator-qr"
+            src={enrollment.qrDataUri}
+            alt="Google Authenticator 扫码二维码"
+          />
+          <div className="portal-authenticator-copy">
+            <strong>扫码绑定</strong>
+            <p>二维码内容是当前账户的一次性 TOTP 绑定 URI，{enrollment.expiresInSeconds / 60} 分钟内确认。</p>
+            <label htmlFor="portal-authenticator-manual-key">手动密钥</label>
+            <input
+              id="portal-authenticator-manual-key"
+              value={enrollment.manualKey}
+              readOnly
+              aria-label="手动密钥"
+            />
+          </div>
+        </div>
+
+        <label className="portal-authenticator-code" htmlFor="portal-authenticator-code">
+          <span>6 位动态码</span>
+          <input
+            id="portal-authenticator-code"
+            value={code}
+            onChange={(event) => onCodeChange(event.target.value.replace(/\D/g, "").slice(0, 6))}
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            pattern="[0-9]{6}"
+            required
+          />
+        </label>
+
+        {error ? <div className="alert alert-error">{error}</div> : null}
+
+        <button className="portal-primary-button" type="submit" disabled={pending || code.length !== 6}>
+          {pending ? "确认中" : "确认绑定"}
+        </button>
+      </form>
+    </ModalFrame>
   );
 }
 
@@ -722,7 +1737,14 @@ function ProfilePanel({
   historySummary,
   lifecycle,
   registrationDate,
-  userEmail,
+  authMode,
+  authenticatorBound,
+  authenticatorPending,
+  passkeyExported,
+  passkeyError,
+  passkeyPending,
+  exportPasskey,
+  startAuthenticatorEnrollment,
   userRef
 }: {
   created: CreatedSubscription | null;
@@ -730,7 +1752,14 @@ function ProfilePanel({
   historySummary: PortalHistoryRecord[];
   lifecycle: SubscriptionLifecycle;
   registrationDate: string;
-  userEmail: string;
+  authMode: PortalSession["authMode"];
+  authenticatorBound: boolean;
+  authenticatorPending: boolean;
+  passkeyExported: boolean;
+  passkeyError: string;
+  passkeyPending: boolean;
+  exportPasskey: () => Promise<void>;
+  startAuthenticatorEnrollment: () => Promise<void>;
   userRef: string;
 }) {
   return (
@@ -744,41 +1773,89 @@ function ProfilePanel({
         </div>
       </div>
 
-      <dl className="portal-profile-list">
-        <div>
-          <dt>邮箱</dt>
-          <dd>{userEmail}</dd>
-        </div>
-        <div>
-          <dt>用户编号</dt>
-          <dd>{userRef}</dd>
-        </div>
-        <div>
-          <dt>注册日期</dt>
-          <dd>{formatDateTime(registrationDate)}</dd>
-        </div>
-        <div>
-          <dt>当前套餐</dt>
-          <dd>{created ? `${currentPlan.label} · ${lifecycleLabel(lifecycle)}` : "未开通"}</dd>
-        </div>
-        <div>
-          <dt>到期时间</dt>
-          <dd>{expiryDisplay(created, lifecycle)}</dd>
-        </div>
-      </dl>
+      <div className="portal-profile-summary">
+        <dl className="portal-profile-list">
+          <div>
+            <dt>入口方式</dt>
+            <dd>{authModeLabel(authMode)}</dd>
+          </div>
+          <div>
+            <dt>账户 ID</dt>
+            <dd>{userRef}</dd>
+          </div>
+          <div>
+            <dt>注册日期</dt>
+            <dd>{formatDateTime(registrationDate)}</dd>
+          </div>
+          <div>
+            <dt>当前套餐</dt>
+            <dd>{created ? `${currentPlan.label} · ${lifecycleLabel(lifecycle)}` : "未开通"}</dd>
+          </div>
+          <div>
+            <dt>到期时间</dt>
+            <dd>{expiryDisplay(created, lifecycle)}</dd>
+          </div>
+        </dl>
 
-      <div className="portal-profile-module-grid">
-        <article className="portal-profile-module">
+        <article className="portal-profile-history">
           <History aria-hidden="true" />
-          <strong>历史消费账单</strong>
-          <small>{historyRecord(historySummary)}</small>
-        </article>
-        <article className="portal-profile-module">
-          <CalendarDays aria-hidden="true" />
-          <strong>注册日期</strong>
-          <small>{formatDateTime(registrationDate)}</small>
+          <div>
+            <strong>历史消费账单</strong>
+            <small>{historyRecord(historySummary)}</small>
+          </div>
         </article>
       </div>
+
+      <div className="portal-security-panel">
+        <div className="portal-section-heading compact">
+          <ShieldCheck aria-hidden="true" />
+          <div>
+            <span className="portal-card-label">安全</span>
+            <h3>安全设置</h3>
+            <p>身份验证器需要扫码并输入 6 位码后才会显示已绑定；通行密钥导出后用于后续二次验证。</p>
+          </div>
+        </div>
+
+        <div className="portal-security-list">
+          <div className="portal-security-row">
+            <div>
+              <strong>身份验证器</strong>
+              <small>绑定 Google Authenticator 等 TOTP 应用后，后续可作为增强登录因子。</small>
+            </div>
+            <span className={cn("portal-security-status", authenticatorBound && "enabled")}>
+              {authenticatorBound ? "已绑定" : "未绑定"}
+            </span>
+            <button
+              className="portal-security-action"
+              type="button"
+              disabled={authenticatorPending}
+              onClick={startAuthenticatorEnrollment}
+            >
+              {authenticatorBound ? "重新绑定身份验证器" : "绑定身份验证器"}
+            </button>
+          </div>
+
+          <div className="portal-security-row">
+            <div>
+              <strong>通行密钥</strong>
+              <small>导出通行密钥备份包；后续密码登录会要求二次验证。</small>
+            </div>
+            <span className={cn("portal-security-status", passkeyExported && "enabled")}>
+              {passkeyExported ? "已导出" : "未导出"}
+            </span>
+            <button
+              className="portal-security-action"
+              type="button"
+              disabled={passkeyPending}
+              onClick={exportPasskey}
+            >
+              {passkeyPending ? "导出中" : passkeyExported ? "重新导出通行密钥" : "导出通行密钥"}
+            </button>
+          </div>
+        </div>
+        {passkeyError ? <div className="alert alert-error">{passkeyError}</div> : null}
+      </div>
+
     </section>
   );
 }

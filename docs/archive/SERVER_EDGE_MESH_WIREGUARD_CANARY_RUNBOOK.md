@@ -1,9 +1,9 @@
 # Server Edge Mesh WireGuard Canary Runbook
 
-Last updated: 2026-06-01, Asia/Shanghai.
+Last updated: 2026-06-03, Asia/Shanghai.
 
 > Status:
-> - Type: Active Risk A runbook
+> - Type: Paused historical Risk A runbook
 > - Risk: A
 > - Execution authority: Does not authorize WireGuard installation, key
 >   generation, security-group changes, firewall changes, service changes,
@@ -11,14 +11,15 @@ Last updated: 2026-06-01, Asia/Shanghai.
 >   by itself
 > - Production impact: None unless a later execution record is separately
 >   approved
-> - Source of truth for: two-node WireGuard canary gates between `prod-edge-a`
->   and `prod-edge-b`
+> - Source of truth for: historical two-node WireGuard canary planning only;
+>   the former `prod-edge-a` / `prod-edge-b` AWS targets were later terminated
 
 ## Purpose
 
 This runbook converts `docs/SERVER_EDGE_MESH_DESIGN.md` and the read-only
-preflight record into exact gates for a first two-node WireGuard canary between
-`prod-edge-a` and `prod-edge-b`.
+preflight record into historical gates for a first two-node WireGuard canary
+between `prod-edge-a` and `prod-edge-b`. The original target instances were
+terminated on 2026-05-29, so this runbook must not be executed as-is.
 
 The canary goal is narrow:
 
@@ -31,14 +32,17 @@ It is not a product traffic feature.
 
 ## Required Approval Phrase
 
-No command in this runbook may be executed until the operator gives this exact
-approval:
+The historical approval phrase was:
 
 ```text
 Approve two-node WireGuard server edge mesh canary between prod-edge-a and prod-edge-b. No user traffic, no DNS change, no subscription output change, no cutover.
 ```
 
-This approval only covers the two-node canary described here. It does not
+Do not request or use that phrase for new execution. A future mesh canary
+requires fresh target selection, read-only inventory, approval text, validation,
+and rollback planning against newly approved targets.
+
+The historical approval only covered the two-node canary described here. It did not
 approve:
 
 ```text
@@ -84,7 +88,7 @@ Rollback owner and cleanup action: named
 If any preflight fact is stale, missing, or inconsistent with the approval
 phrase, stop before mutation.
 
-## Current Preflight Facts
+## Historical Preflight Facts
 
 Source record:
 
@@ -92,7 +96,7 @@ Source record:
 docs/server-edge-mesh-records/2026-05-25-server-edge-mesh-preflight.md
 ```
 
-Current target nodes:
+Historical target nodes:
 
 ```text
 prod-edge-a:
@@ -107,6 +111,11 @@ prod-edge-b:
   private ip: 172.31.18.176
   security group: sg-06682c36aa03834f7
 ```
+
+These targets are no longer current execution targets. The 2026-05-29 Singapore
+termination record permanently terminated the prod-edge-a/prod-edge-b carrying
+instances and deleted their associated security groups. Treat all facts below
+as pre-termination archaeology only.
 
 Current environment:
 
@@ -558,7 +567,7 @@ the exact failure. Do not widen firewall rules without a separate approval.
 
 ## Stage 7: Public Non-Regression Checks
 
-Run from the local operator device:
+Historical local operator-device checks:
 
 ```powershell
 Resolve-DnsName sub.globalcirclecat.com -Type A
@@ -573,7 +582,7 @@ Test-NetConnection 13.215.156.159 -Port 18388
 Test-NetConnection 18.136.102.226 -Port 18388
 ```
 
-Expected:
+Historical expected result:
 
 ```text
 sub.globalcirclecat.com -> 13.215.156.159
@@ -727,11 +736,6 @@ explicitly keep the partial state under a separate operator decision.
 
 ## Recommended Next Step
 
-After this runbook is reviewed and merged, the next action is not automatic
-execution.
-
-The next action requires the explicit approval phrase:
-
-```text
-Approve two-node WireGuard server edge mesh canary between prod-edge-a and prod-edge-b. No user traffic, no DNS change, no subscription output change, no cutover.
-```
+This historical runbook should not proceed to execution. The next action is a
+fresh mesh target-selection and runbook rewrite if private edge mesh work is
+needed again.

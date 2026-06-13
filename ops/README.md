@@ -1,5 +1,12 @@
 # Operations Environment Foundation
 
+Current-use guard: this README contains recovery foundations and older
+provider-specific examples. Treat provider names, public IPs, service names,
+and Shadowsocks examples here as historical or template context unless a
+current active runbook and live verification confirm them. Before using this
+directory as source material, read `docs/PROJECT_CONTEXT.md`,
+`docs/README.md`, and `docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md`.
+
 This directory contains the minimum deploy and recovery foundation for the
 subscription service. It is intentionally small: the project remains a modular
 monolith, SQLite remains the production store, and the admin UI/API are still

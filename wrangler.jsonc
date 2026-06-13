@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "proxy-gateway-minimal",
+  "compatibility_date": "2026-06-09",
+  "workers_dev": true,
+  "preview_urls": true,
+  "build": {
+    "command": "npm ci --prefix admin && npm run cloudflare:site:build && npm run cloudflare:site:verify"
+  },
+  "assets": {
+    "directory": "./admin/dist-site",
+    "not_found_handling": "404-page"
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

@@ -1,8 +1,15 @@
 # Environment Topology
 
-Last updated: 2026-05-31, Asia/Shanghai.
+Last updated: 2026-06-09, America/Los_Angeles.
 
-This document defines the operating map for the subscription management project. Use it to avoid mixing local Codex projects, historical repository copies, GitHub branches, and AWS runtime directories.
+This document defines the operating map for the subscription management
+project. Use it to avoid mixing local Codex projects, historical repository
+copies, GitHub branches, Cloudflare public-site builds, Vultr production
+runtime, AWS staging/DR, and archived runtime records.
+
+This document is an orientation aid only. It does not authorize production,
+DNS, Nginx, systemd, provider firewall, runtime config, database, account,
+subscription, token, credential, or customer-data actions.
 
 ## Source Of Truth
 
@@ -14,7 +21,9 @@ Default branch: master
 Local active checkout: D:\Projects\proxy-gateway-minimal
 ```
 
-`master` is the integrated stable baseline. Development starts from `master` on a task branch and returns to `master` through a pull request.
+`master` is the integrated stable baseline. It is not automatically the live
+production runtime. Development starts from `master` on a task branch and
+returns to `master` through a pull request.
 
 ## Local Directories
 
@@ -36,61 +45,86 @@ git -C D:\Projects\proxy-gateway-minimal rev-parse HEAD
 
 | Branch pattern | Purpose | Deployment status |
 | --- | --- | --- |
-| `master` | Stable integrated code line and production baseline | Deployable after verification. |
+| `master` | Stable integrated code line and production baseline | Deployable only after verification and a separate Risk A promotion gate. |
 | `codex/<task>` | Codex local/worktree task branches | Not deployable until reviewed and merged. |
 | `feat/<feature>` | Larger feature branches | Not deployable until reviewed and merged. |
 | `ops/<topic>` | Infrastructure, deployment, recovery, or environment changes | Deployable only after ops verification. |
 | `ops/domain-https` | Paused historical domain HTTPS plan | Preserve, but do not use unless domain plan is explicitly resumed. |
 | `release/<date-or-topic>` or `deploy/staging` | Optional pre-release candidate when a separate staging line is needed | Staging only; promote after verification. |
 
-The normal flow is:
+The normal source flow is:
 
 ```text
-master -> codex/<task> or feat/<feature> -> PR -> master -> staging verification -> production deployment
+master -> codex/<task> or feat/<feature> -> PR -> master -> staging verification -> production deployment gate
 ```
 
-If a change needs AWS testing before production, create or designate a staging deployment target and record the exact commit, branch, and verification result before touching production.
+If a change needs runtime testing before production, create or designate a
+non-production staging target and record the exact commit, branch, artifact, and
+verification result before touching production. AWS is currently a staging/DR
+surface, not the main production authority.
 
-## AWS Runtime Roles
+## Current Production Roles
 
-Current AWS Singapore inventory, latest updated on 2026-05-24:
+Point-in-time documented production posture as of 2026-06-09. Verify live DNS,
+provider firewall, Nginx, systemd, runtime configs, endpoints, and SQLite state
+before any Risk A action.
 
-| Role | Instance | Public IP | Private IP | State | Notes |
-| --- | --- | --- | --- | --- | --- |
-| Production blue | `i-004ab1c6c71d06bca` | `47.129.247.102` | `172.31.26.232` | `running` | Current in-use subscription node. EC2 tags currently have `Purpose=blue-deploy` but no `Project` or `Role` tag. |
-| Production green candidate | `i-0ad8676ee113d14cb` | `18.136.102.226` | `172.31.18.176` | `running` | Validated production replacement candidate. Not staging, not production cutover, and not receiving DNS/client traffic. |
-| Historical stopped node | `i-0589aac321172dd74` | none | `172.31.24.0` | `stopped` | Old proxy-gateway node with `Project=proxy-gateway-minimal`; do not treat as staging without explicit reassignment and verification. |
-| Staging / pre-release | unassigned | unassigned | unassigned | unassigned | Create or assign before testing deployment candidates. |
-
-No Elastic IP allocation was found for the production public IP during the 2026-05-23 `describe-addresses` check. Do not stop the production instance unless an IP change is acceptable or an Elastic IP migration plan is prepared first.
-
-Staging target decision: use a new clean staging instance when staging is needed. The stopped historical instance may be repurposed only through an explicit rebuild and retagging path. See `docs/STAGING_TARGET_DECISION.md`.
-
-Clean staging provisioning, validation, promotion gates, and cleanup rules live in `docs/STAGING_PROVISIONING.md`.
-
-Production runtime path:
-
-```text
-/opt/proxy-gateway-minimal
-```
-
-The production directory is an operational runtime directory. Do not assume it is a Git checkout or a byte-for-byte copy of `master`. Verify production by service status, file presence, database health, and endpoint behavior.
-
-Production runtime listeners verified on 2026-05-23:
-
-| Address | Port | Role |
+| Surface | Current role | Authority boundary |
 | --- | --- | --- |
-| `0.0.0.0` | `80` | Nginx public gateway |
-| `0.0.0.0` | `18388` | Shadowsocks server |
-| `127.0.0.1` | `3456` | Console/API service |
-| `127.0.0.1` | `18180` | Local HTTP proxy |
+| Vultr Japan | Main production control plane for `globalcirclecat.cloud`. | Owns accounts, user portal orders, subscription rendering, credential lifecycle orchestration, Admin/operator API, and usage ledger authority. |
+| Vultr Japan data plane | Production data-plane capacity on the same provider lane. | Owns protocol runtime capacity only; it must not become an independent customer/order database. |
+| Vultr Singapore | Additional production data-plane capacity connected through Japan control-plane handoff/apply. | Owns protocol runtime capacity only; it must not issue accounts, orders, package limits, or independent portal state. |
+| Cloudflare | DNS, optional static public-site hosting, cache/CDN edge, and Workers Builds validation for `admin/dist-site`. | Must not host the Express/SQLite control plane, Admin API, User Portal API, subscription issuance, payment, runtime adapters, or credentials. |
+| AWS | Staging, proof, validation, and future DR/migration option. | Not current main production; do not treat old AWS records or stopped nodes as active production without fresh live inventory and Risk A approval. |
 
-Production security group `sg-04a165ec77f430ee8` allows public `80/tcp`, `443/tcp`, and `18388/tcp+udp`; SSH `22/tcp` is restricted to `36.163.181.255/32`. HTTPS on `47.129.247.102` was not active during runtime verification even though `443/tcp` is allowed by the security group.
+## Current Production Data-Plane Channels
 
-Green candidate security group `sg-06682c36aa03834f7` mirrors the approved
-green validation boundary: SSH `22/tcp` from `36.163.181.255/32`, public
-`80/tcp`, public `443/tcp` reserved, and public `18388/tcp+udp`. It does not
-open `3456`, `18180`, or `1080`.
+The documented current bundle direction is Vultr Japan + Vultr Singapore as one
+subscription bundle when channel config, credential fan-out, runtime handoff,
+and render proof are aligned:
+
+| Channel | Provider / host role | Protocol family |
+| --- | --- | --- |
+| `channel-vultr-a-vless-reality-tcp` | Vultr Japan data plane | VLESS Reality over TCP |
+| `channel-vultr-a-hy2` | Vultr Japan data plane | Hysteria2 over UDP |
+| `channel-vultr-a-tuic` | Vultr Japan data plane | TUIC over UDP |
+| `channel-sgp-a-vless-reality-tcp` | Vultr Singapore data plane | VLESS Reality over TCP |
+| `channel-sgp-a-hy2` | Vultr Singapore data plane | Hysteria2 over UDP |
+| `channel-sgp-a-tuic` | Vultr Singapore data plane | TUIC over UDP |
+
+Do not mark these channels as production-ready based on template rendering
+alone. Runtime listener state, provider firewall, credential counts, client
+import behavior, mobile/desktop smoke, and order-owned usage mapping remain
+separate validation facts.
+
+## Runtime Paths
+
+Production runtime directories are operational deployment directories. Do not
+assume they are Git checkouts or byte-for-byte copies of `master`. Verify
+production by service status, release symlink, file presence, database health,
+endpoint behavior, and redacted execution records.
+
+| Surface | Path shape | Notes |
+| --- | --- | --- |
+| Vultr Japan control plane | `/opt/proxy-gateway-minimal-candidate/...` | Candidate-style release/current layout. Verify live before mutation. |
+| Vultr Singapore data plane | Provider host protected runtime paths | Runtime-only data-plane host. Verify through approved read-only inventory. |
+| Cloudflare public site | `admin/dist-site` | Static assets only; built through `wrangler.jsonc` / Workers Builds. |
+| AWS staging/DR | `/opt/proxy-gateway-minimal-candidate/...` when provisioned | Validation/DR only unless a future Risk A promotion says otherwise. |
+
+## Historical AWS Runtime Roles
+
+AWS Singapore runtime inventory in older records is historical unless freshly
+revalidated. The following observations were last current on 2026-05-24 and are
+retained only to prevent accidental reactivation:
+
+| Historical role | Instance | Public IP | Private IP | Last known state | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Production blue | `i-004ab1c6c71d06bca` | `47.129.247.102` | `172.31.26.232` | Running at last AWS inventory | Historical AWS subscription node; no longer the default production authority after the Vultr lane. |
+| Production green candidate | `i-0ad8676ee113d14cb` | `18.136.102.226` | `172.31.18.176` | Running at last AWS inventory | Historical replacement candidate; not current production unless a fresh gate reassigns it. |
+| Historical stopped node | `i-0589aac321172dd74` | none | `172.31.24.0` | Stopped at last AWS inventory | Do not treat as staging without explicit rebuild and retagging. |
+
+Clean staging provisioning, validation, promotion gates, and cleanup rules live
+in `docs/STAGING_PROVISIONING.md`.
 
 ## Deployment States
 
@@ -100,26 +134,14 @@ Use these terms consistently:
 | --- | --- |
 | Development | Local task branch or Codex worktree. Not deployed. |
 | Candidate / 待上线 | A reviewed commit or branch selected for staging verification. |
-| Staging | Candidate deployed to a non-production AWS target for endpoint and service checks. |
-| Production | Verified code/config deployed to the in-use AWS node. |
+| Staging | Candidate deployed to a non-production target, currently usually AWS, for endpoint and service checks. |
+| Production | Verified code/config deployed to the active Vultr control-plane or data-plane runtime through a Risk A gate. |
 
 Detailed promotion and rollback rules live in `docs/DEPLOYMENT_FLOW.md`.
 
-Minimum production checks:
-
-```powershell
-curl -i http://47.129.247.102/api/health
-curl -i http://47.129.247.102/api/admin/subscriptions
-curl -i http://47.129.247.102/sub/clash.yaml
-```
-
-Expected public behavior:
-
-```text
-/api/health -> 200
-/api/admin/subscriptions -> 404
-/sub/clash.yaml without token -> 401
-```
+Minimum production boundary checks must use the current approved domains and
+host inventory. Do not use historical AWS IP checks as current production
+validation without fresh reactivation.
 
 ## Codex Alignment
 
@@ -129,7 +151,9 @@ Codex app local environment configuration lives under:
 .codex/
 ```
 
-The Codex app may generate files in this folder from the Environment settings UI. These project-level files are part of the project alignment when they contain no secrets.
+The Codex app may generate files in this folder from the Environment settings
+UI. These project-level files are part of the project alignment when they
+contain no secrets.
 
 Current local environment name:
 
@@ -153,9 +177,10 @@ npm run admin:test
 npm run admin:build
 ```
 
-Do not store production tokens, subscription URLs, SSH keys, or `.env` values in `.codex/`.
+Do not store production tokens, subscription URLs, SSH keys, or `.env` values in
+`.codex/`.
 
-## GitHub And AWS Verification
+## Verification Commands
 
 GitHub:
 
@@ -165,11 +190,30 @@ gh repo view gaoyi1020-web/proxy-gateway-minimal --json nameWithOwner,visibility
 gh pr list --repo gaoyi1020-web/proxy-gateway-minimal --state open
 ```
 
-AWS:
+Vultr:
+
+```powershell
+$env:VULTR_API_KEY = [Environment]::GetEnvironmentVariable("VULTR_API_KEY", "User")
+vultr-cli instances list
+vultr-cli firewall group list
+```
+
+Cloudflare public-site validation:
+
+```powershell
+npm run cloudflare:site:validate
+npx --yes wrangler@4.99.0 deploy --dry-run
+```
+
+AWS staging/DR inventory:
 
 ```powershell
 $env:HTTP_PROXY=$null; $env:HTTPS_PROXY=$null; $env:ALL_PROXY=$null
 $env:http_proxy=$null; $env:https_proxy=$null; $env:all_proxy=$null
-aws ec2 describe-instances --region ap-southeast-1 --filters Name=instance-state-name,Values=running,stopped --query "Reservations[].Instances[].{InstanceId:InstanceId,State:State.Name,PublicIp:PublicIpAddress,Name:Tags[?Key=='Name']|[0].Value,Project:Tags[?Key=='Project']|[0].Value,Purpose:Tags[?Key=='Purpose']|[0].Value}" --output table
+aws ec2 describe-instances --region ap-northeast-1 --filters Name=instance-state-name,Values=running,stopped --query "Reservations[].Instances[].{InstanceId:InstanceId,State:State.Name,PublicIp:PublicIpAddress,Name:Tags[?Key=='Name']|[0].Value,Project:Tags[?Key=='Project']|[0].Value,Purpose:Tags[?Key=='Purpose']|[0].Value}" --output table
 ```
 
+These commands verify tooling and documented surfaces only. Production
+mutation, DNS changes, runtime restarts, firewall edits, live order creation,
+subscription URL/token/password output, SQLite row dumps, and secret handling
+remain separate Risk A gates.

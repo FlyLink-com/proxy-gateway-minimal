@@ -10,6 +10,8 @@ type AdminLayoutProps = {
   onNavigate: (page: AdminPage) => void;
   onOpenPortal: () => void;
   onOpenSite: () => void;
+  connectionPanel?: ReactNode;
+  connectionConfigured?: boolean;
   children: ReactNode;
 };
 
@@ -20,6 +22,8 @@ export function AdminLayout({
   onNavigate,
   onOpenPortal,
   onOpenSite,
+  connectionPanel,
+  connectionConfigured = false,
   children
 }: AdminLayoutProps) {
   return (
@@ -32,6 +36,8 @@ export function AdminLayout({
           onSearchChange={onSearchChange}
           onOpenPortal={onOpenPortal}
           onOpenSite={onOpenSite}
+          connectionPanel={connectionPanel}
+          connectionConfigured={connectionConfigured}
         />
         <section className="admin-content">{children}</section>
       </div>

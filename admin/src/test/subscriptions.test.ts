@@ -28,6 +28,7 @@ import type {
   CleanEdgeReadinessSummary,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
+  SubscriptionUsageMonitor,
   SubscriptionTenant
 } from "../features/subscriptions/types";
 import { NodesPage } from "../pages/nodes-page";
@@ -127,6 +128,34 @@ describe("admin API client", () => {
     expect((firstCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
   });
 
+  test("does not surface sensitive backend error messages", async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(
+        {
+          error: "internal_error",
+          message: "failed for https://gateway.example.com/sub/clash.yaml?token=pgsub_sensitive_token password=secret"
+        },
+        { status: 500 }
+      )
+    );
+    const client = createAdminApiClient({
+      baseUrl: "",
+      consoleToken: "console-secret",
+      fetcher: fetchMock
+    });
+
+    let thrown: unknown;
+    try {
+      await client.listTenants();
+    } catch (error) {
+      thrown = error;
+    }
+
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toBe("Admin API request failed with HTTP 500.");
+    expect((thrown as Error).message).not.toMatch(/pgsub_sensitive_token|password=secret|gateway\.example/);
+  });
+
   test("previews operator provisioning forms through the protected platform route", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
@@ -175,7 +204,7 @@ describe("admin API client", () => {
         type: "portal_access_request_summary",
         portalUserRef: "user_safe_ref",
         plan: "trial",
-        planLabel: "7-day trial",
+        planLabel: "30-day initial trial",
         durationDays: 7,
         status: "pending_admin_review",
         nextAction: "admin_review_required",
@@ -577,7 +606,7 @@ describe("portal access request admin page", () => {
       type: "portal_access_request_summary" as const,
       portalUserRef: "user_safe_ref",
       plan: "trial" as const,
-      planLabel: "7-day trial",
+      planLabel: "30-day initial trial",
       durationDays: 7,
       status: "pending_admin_review" as const,
       nextAction: "admin_review_required",
@@ -639,22 +668,23 @@ describe("portal access request admin page", () => {
       } as unknown as Partial<AdminApiClient>)
     }));
 
-    expect(await screen.findByText("订阅申请运营台")).not.toBeNull();
-    expect(screen.getByText("全部申请")).not.toBeNull();
-    expect(screen.getAllByText("待审核").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("待发放").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("已发放").length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText("订单运营")).not.toBeNull();
+    expect(screen.getByText("全部订单")).not.toBeNull();
+    expect(screen.getAllByText("待处理").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("待交付").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("已交付").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("已拒绝").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("申请队列")).not.toBeNull();
-    expect(screen.getByText("申请详情")).not.toBeNull();
-    expect(screen.queryByText(/pending_admin_review|approved_pending_delivery|Contact|Telegram|customer@example\.com|subscriptionUrl|token=/i)).toBeNull();
+    expect(screen.getByText("订单列表")).not.toBeNull();
+    expect(screen.getByText("订单详情")).not.toBeNull();
+    expect(screen.queryByText(/pending_admin_review|approved_pending_delivery|Contact|Telegram|customer@example\.com|subscriptionUrl|token=|artifact|node|channel-lab/i)).toBeNull();
 
     fireEvent.change(screen.getByLabelText("状态筛选"), { target: { value: "delivered" } });
 
     expect(screen.getAllByText("Yearly access").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Monthly access")).toBeNull();
-    expect(screen.getByText("ent_safe_ref")).not.toBeNull();
-    expect(screen.getByText("grant_safe_ref")).not.toBeNull();
+    expect(screen.queryByText("ent_safe_ref")).toBeNull();
+    expect(screen.queryByText("grant_safe_ref")).toBeNull();
+    expect(screen.getAllByText("已有记录").length).toBeGreaterThanOrEqual(1);
   });
 
   test("renders trial requests and safe approval preview", async () => {
@@ -683,23 +713,23 @@ describe("portal access request admin page", () => {
       } as unknown as Partial<AdminApiClient>)
     }));
 
-    expect(await screen.findByText("订阅申请运营台")).not.toBeNull();
-    expect(screen.getAllByText("7-day trial").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("待审核").length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText("订单运营")).not.toBeNull();
+    expect(screen.getAllByText("30-day initial trial").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("待处理").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("默认交付通道")).not.toBeNull();
 
     fireEvent.change(screen.getByLabelText("审批编号"), { target: { value: "approval_trial_1" } });
     fireEvent.change(screen.getByLabelText("操作员"), { target: { value: "operator_safe_ref" } });
-    fireEvent.change(screen.getByLabelText("目标通道节点"), { target: { value: "channel-lab-b-tuic" } });
-    fireEvent.click(screen.getByRole("button", { name: "生成发放预览" }));
+    fireEvent.click(screen.getByRole("button", { name: "生成交付预览" }));
 
-    expect(await screen.findByText("发放预览结果")).not.toBeNull();
-    expect(screen.getAllByText("待发放").length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText("交付预览结果")).not.toBeNull();
+    expect(screen.getAllByText("待交付").length).toBeGreaterThanOrEqual(1);
     expect(previewPortalAccessRequestApproval).toHaveBeenCalledWith("pareq_1", {
       approvalRef: "approval_trial_1",
       reviewedByRef: "operator_safe_ref",
-      nodeId: "channel-lab-b-tuic"
+      nodeId: "stable-node-a"
     });
-    expect(screen.queryByText(/approved_pending_delivery|subscriptionUrl|token=/i)).toBeNull();
+    expect(screen.queryByText(/approved_pending_delivery|subscriptionUrl|token=|artifact|node|channel-lab/i)).toBeNull();
   });
 });
 
@@ -744,6 +774,91 @@ function tenant(overrides: Partial<SubscriptionTenant> = {}): SubscriptionTenant
     tokenPrefix: "pgsub_realpre",
     lastUsedAt: null,
     credentialMode: "shared-node",
+    ...overrides
+  };
+}
+
+function subscriptionUsageMonitor(): SubscriptionUsageMonitor {
+  return {
+    type: "subscription_usage_monitor",
+    generatedAt: "2026-06-04T12:00:00.000Z",
+    filters: {
+      accountId: "",
+      plan: "",
+      nodeId: "",
+      status: "",
+      warning: "",
+      from: "",
+      to: "",
+      bucket: "hour"
+    },
+    aggregates: {
+      total: 0,
+      activeRecently: 0,
+      neverSeen: 0,
+      highRefresh: 0,
+      blocked: 0,
+      inactive: 0,
+      seen: 0,
+      withWarnings: 0,
+      byPlan: {},
+      byNode: {},
+      warnings: {},
+      usage: {
+        totalUsedBytes: 0,
+        totalUploadBytes: 0,
+        totalDownloadBytes: 0,
+        measuredOrders: 0,
+        unmeasuredOrders: 0,
+        zeroUsageOrders: 0,
+        overLimitOrders: 0,
+        nearLimitOrders: 0,
+        byUsageChannel: {}
+      }
+    },
+    items: [],
+    series: usageSeriesFixture(),
+    safety: {
+      summaryOnly: true,
+      realByteUsageMeasured: false,
+      orderLevelRows: true,
+      channelUsageBreakdownIncluded: true,
+      rawSubscriptionUrlReturned: false,
+      rawSecretReturned: false,
+      rawCustomerNetworkDataReturned: false,
+      mutationAllowed: false
+    }
+  };
+}
+
+function usageSeriesFixture(overrides: Partial<SubscriptionUsageMonitor["series"]> = {}): SubscriptionUsageMonitor["series"] {
+  return {
+    type: "subscription_usage_timeseries",
+    range: {
+      from: null,
+      to: null,
+      bucket: "hour"
+    },
+    points: [],
+    aggregates: {
+      totalUsedBytes: 0,
+      totalUploadBytes: 0,
+      totalDownloadBytes: 0,
+      pointCount: 0,
+      seriesCount: 0,
+      byOrder: {},
+      byAccount: {},
+      byChannel: {}
+    },
+    safety: {
+      summaryOnly: true,
+      orderScoped: true,
+      channelBreakdownIncluded: true,
+      rawEdgeCredentialReturned: false,
+      rawSubscriptionUrlReturned: false,
+      rawSecretReturned: false,
+      mutationAllowed: false
+    },
     ...overrides
   };
 }
@@ -798,6 +913,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewCleanEdgeReadiness: async () => cleanEdgeReadinessSummary(),
     previewProvisioningForm: async () => provisioningFormPreview(),
     listPortalAccessRequests: async () => [],
+    listSubscriptionUsageMonitor: async () => subscriptionUsageMonitor(),
     previewPortalAccessRequestApproval: async () => ({
       ok: true,
       mode: "portal-access-request-approval-preview" as const,

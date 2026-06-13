@@ -48,3 +48,12 @@ jobs:
 
       - name: Build admin app
         run: npm run admin:build
+
+      - name: Build public site
+        run: npm run cloudflare:site:build
+
+      - name: Verify public site boundary
+        run: npm run cloudflare:site:verify
+
+      - name: Cloudflare public site dry run
+        run: npm run cloudflare:site:dry-run

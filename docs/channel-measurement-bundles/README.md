@@ -7,6 +7,12 @@ collected aggregate evidence. They are not runtime configuration, do not
 activate channels, and must not contain secrets, tokens, subscription URLs,
 customer data, raw logs, or server credentials.
 
+These fixtures also are not current production-network status. If a result is
+needed for a live channel decision, re-run the approved measurement workflow or
+read a current execution record. Before importing bundles from old checkouts,
+local artifacts, or release packages, read
+`docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md`.
+
 The `2026-05-26-channel-lab-a-hysteria2-short-canary` bundle captures the
 first Hysteria2 operator-device and standalone Mihomo short-canary evidence.
 It is intentionally below the extended-measurement gate because each source

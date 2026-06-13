@@ -1,6 +1,6 @@
 # Aliyun User Management / Subscription Distribution Runbook
 
-Last updated: 2026-06-01, Asia/Shanghai.
+Last updated: 2026-06-03, Asia/Shanghai.
 
 > Status:
 > - Type: Active architecture and Risk A runbook
@@ -234,7 +234,8 @@ Repository-only platform work has started without production authority:
 private Admin subscriptions workflow: implemented
 customer-facing user portal MVP shell: implemented in repository only
   - current UI reference: EqualDCDN /use-style auth card plus user dashboard
-  - includes login/signup shell, package selection, subscription link boxes,
+  - includes authenticator login / entry Token activation / local password-login contract shell,
+    package selection, subscription link boxes,
     backup-link placeholder, app downloads, usage steps, and safety checklist
   - user portal business access is now wrapped by `UserPortalClient` instead of
     calling Admin subscription APIs directly
@@ -352,25 +353,26 @@ Documented records:
 Current DNS:
 
 ```text
-sub.globalcirclecat.com -> 13.215.156.159
+sub.globalcirclecat.com -> 47.251.178.125
 ss-sg.globalcirclecat.com -> 13.215.156.159
-TTL: 600
+sub is on Aliyun; ss-sg intentionally remains on the old AWS address until a
+separate edge rebuild/output gate changes it.
 ```
 
 Current AWS inventory:
 
 ```text
 i-0b7791340d3fedff5:
-  status: stopped under accepted outage decision
-  public IP: none after stop
-  documented role: prod-edge-a / stopped former production target
-  security group: sg-0379ece0b3d305c43
+  status: terminated under 2026-05-29 exact-approved cleanup
+  public IP: none
+  documented role: prod-edge-a / retired former production target
+  security group: deleted
 
 i-0ad8676ee113d14cb:
-  status: stopped under accepted outage decision
-  public IP: none after stop
-  documented role: prod-edge-b / stopped former green candidate
-  security group: sg-06682c36aa03834f7
+  status: terminated under 2026-05-29 exact-approved cleanup
+  public IP: none
+  documented role: prod-edge-b / retired former green candidate
+  security group: deleted
 
 i-004ab1c6c71d06bca:
   status: stopped
@@ -499,19 +501,18 @@ Package 5 of the Aliyun Subscription Control Platform MVP converts the later
 Aliyun promotion into explicit gates. This section is a repo-only runbook
 design. It does not execute any gate.
 
-Current accepted-outage context changes the rollback model:
+Current accepted-outage and termination context changes the rollback model:
 
 ```text
-prod-edge-a and prod-edge-b are documented as stopped after the Singapore
-stop-only cleanup.
+prod-edge-a and prod-edge-b were stopped after the Singapore stop-only cleanup
+and later permanently terminated with their security groups deleted.
 
 Do not describe rollback as "return to the current running prod-edge-a" unless
 a fresh live inventory proves that a running rollback source exists.
 
-The default rollback choice before promotion is now one of:
-  keep accepted outage and revert Aliyun candidate/public-boundary changes, or
-  request a separate rollback-start gate for stopped AWS nodes before relying
-  on them as a rollback target.
+Rollback by starting the terminated prod-edge-a/prod-edge-b instances is
+waived. Any temporary edge restore now requires a new clean edge or recovery
+path gate.
 ```
 
 ### Gate 0: Repo-Only Runbook PR
@@ -714,16 +715,16 @@ after the relevant private validation gates pass
 state-preserving fallback: source-state rescue planning, preferably
 rescue-volume/snapshot based before relying on SSH-first remediation
 
-temporary restore fallback: separate AWS rollback-start preflight and mutation
-approval before any stopped node is treated as a live source or user-facing
-rollback target
+temporary restore fallback: separate clean edge or recovery-path preflight and
+mutation approval before any replacement source is treated as live or
+user-facing
 
 source-copy status: not part of the clean-start default path; historical
 source-copy remains blocked unless the operator later approves a
 state-preserving source path
 
-rollback-source status: rollback-start-needed if AWS is used for temporary
-restore
+rollback-source status: terminated prod-edge-a/prod-edge-b cannot be restarted;
+new recovery source required if temporary restore is needed
 ```
 
 Provider-firewall hardening is now a separate prerequisite before Gate D
@@ -777,7 +778,7 @@ DNS change
 public 80/443 promotion
 public Admin exposure
 edge traffic activation
-AWS rollback-start or source rescue
+AWS lifecycle recovery or source rescue
 customer-facing announcement or rollout
 ```
 
@@ -1237,6 +1238,10 @@ Goal:
 Stop non-Aliyun / non-HP nodes after drain and observation.
 ```
 
+This phase is historical for Singapore `prod-edge-a` / `prod-edge-b`: the
+stop-only gate executed on 2026-05-26. Keep the approval phrase below only as
+audit evidence for reconstructing that decision.
+
 Required approval phrase:
 
 ```text
@@ -1262,6 +1267,11 @@ Goal:
 Remove cloud cost and obsolete ingress only after rollback no longer needs the
 nodes.
 ```
+
+This phase is historical for Singapore `prod-edge-a` / `prod-edge-b`: the
+termination and security-group cleanup gate executed on 2026-05-29. Do not use
+the phrase below for new cleanup without a fresh inventory and target-specific
+approval.
 
 Required approval phrase:
 
@@ -1349,19 +1359,18 @@ Aliyun public-boundary dry run: completed, validated, and cleaned up
 Current executable gates are now:
 
 ```text
-DNS promotion / production subscription distribution promotion
 clean edge rebuild planning
-AWS rollback-start if temporary restore is needed
-post-promotion observation and later cleanup
+new clean edge or recovery-path approval if temporary edge restore is needed
+broader opaque artifact issuance
+legacy query-token retirement after artifact issuance and observation
 ```
 
-DNS promotion still requires the exact approval phrase in Phase 4. The promotion
-gate should re-open durable 80/443 only as part of the approved promotion, keep
-Admin public access blocked, keep edge traffic activation out of scope, and use
-the accepted-outage rollback posture unless a separate rollback-start gate is
-approved first.
+DNS promotion for `sub.globalcirclecat.com` has already executed and is now a
+historical gate. Any future DNS, public-boundary, clean-edge, broader artifact,
+or legacy-token change still requires its own exact approval and execution
+record.
 
-Do not move DNS, promote production authority, expose public Admin, start edge
-traffic, restart stopped AWS nodes, terminate instances, or delete security
-groups before the relevant promotion, rebuild, rollback, and cleanup gates are
-separately approved and recorded.
+Do not move DNS, expose public Admin, start edge traffic, create or bootstrap
+clean edge capacity, mutate subscription output, terminate legacy blue, or
+delete remaining security groups before the relevant gates are separately
+approved and recorded.

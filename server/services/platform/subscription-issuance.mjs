@@ -357,7 +357,9 @@ export function executeSubscriptionIssuance({ controlStore, runtimeCore, input, 
     tenantId: tenantResult.tenant.id,
     artifactId: artifactResult.artifact.id,
     subscriptionUrl: artifactResult.subscriptionUrl,
-    issuedAt
+    issuedAt,
+    expiresAt: tenantResult.tenant.expiresAt,
+    validUntil: tenantResult.tenant.expiresAt
   };
 
   const summary = {

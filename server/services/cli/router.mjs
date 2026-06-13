@@ -3,13 +3,27 @@ import {
   buildGccgwConfigShow,
   buildGccgwConfigValidation
 } from "./config.mjs";
+import {
+  buildDataPlaneCredentialLifecyclePolicy,
+  buildStablePoolProtocolPolicy
+} from "../subscriptions/channel-policy.mjs";
 import { createNodeRegistry } from "../subscriptions/node-registry.mjs";
+import {
+  buildCredentialReconciliationApplyPlan,
+  buildCredentialReconciliationPlan
+} from "../edge/credential-reconciliation-gateway.mjs";
+import {
+  buildTuicCredentialLifecycleApplyPlan,
+  buildTuicCredentialLifecyclePlan
+} from "../edge/tuic-credential-lifecycle.mjs";
+import { inspectProductionArtifactBoundary } from "../platform/production-artifact-boundary.mjs";
 
 const DOMAIN_SOURCE_DOCS = {
   admin: ["docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"],
   backup: ["docs/PRODUCTION_DR.md", "docs/DEPLOYMENT_FLOW.md"],
   channel: ["docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md", "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md"],
   config: ["config/gccgw.config.example.json", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"],
+  edge: ["docs/EDGE_CREDENTIAL_RECONCILIATION_GATEWAY_DESIGN.md", "docs/JAPAN_TUIC_PER_ORDER_CREDENTIAL_UPGRADE_RUNBOOK.md", "docs/CHANNEL_MULTI_CHANNEL_NODE_DESIGN.md", "ops/edge-node/README.md"],
   env: ["docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md"],
   install: ["ops/README.md", "ops/edge-node/README.md"],
   node: ["ops/README.md", "ops/edge-node/README.md", "docs/PRODUCTION_EDGE_FLEET.md"],
@@ -26,6 +40,7 @@ const DOMAIN_SOURCE_DOCS = {
 
 const NODE_SCRIPT_COMMAND_ENTRIES = [
   ["project check", "scripts/check-project-state.mjs", "project", "C", "read-only", "Validate project-state and repository safety markers"],
+  ["project handoff-brief", "scripts/project-handoff-brief.mjs", "project", "C", "report", "Generate a structured Claude handoff brief from cached project context", ["docs/PROJECT_CONTEXT.md"]],
   ["channel validate", "scripts/channel-config-dry-run.mjs", "channel", "B", "dry-run", "Validate channel configuration candidates", undefined, { surface: "operator", aliasOf: "gccgw channel dry-run" }],
   ["channel measure", "scripts/channel-measurement-bundle.mjs", "channel", "C", "report", "Build channel measurement bundle evidence", undefined, { surface: "operator", aliasOf: "gccgw channel measurement-bundle" }],
   ["channel decide", "scripts/channel-system-decision-flow.mjs", "channel", "C", "report", "Build end-to-end channel decision evidence", undefined, { surface: "operator", aliasOf: "gccgw channel system-decision-flow" }],
@@ -58,6 +73,7 @@ const NODE_SCRIPT_COMMAND_ENTRIES = [
   ["platform provisioning-form", "scripts/platform-provisioning-form.mjs", "platform", "B", "preview", "Convert operator facts into issuance input"],
   ["platform issue-subscription", "scripts/platform-issue-subscription.mjs", "platform", "A", "execution-gated", "Issue a controlled subscription after approval", ["docs/CLI_PRODUCTION_PROVISIONING_SOP.md", "docs/SUBSCRIPTION_CONTROL_DATABASE.md", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"]],
   ["platform issue-portal-entry", "scripts/platform-issue-portal-entry.mjs", "platform", "A", "execution-gated", "Issue a dynamic portal entry after approval", ["docs/USER_PORTAL_AUTH_BOUNDARY.md", "docs/CLI_PRODUCTION_PROVISIONING_SOP.md", "docs/SUBSCRIPTION_CONTROL_DATABASE.md"]],
+  ["platform issue-portal-initial-account", "scripts/platform-issue-portal-initial-account.mjs", "platform", "A", "execution-gated", "Issue an initial portal account after approval", ["docs/USER_PORTAL_PRODUCTION_AUTH_PLAN.md", "docs/USER_PORTAL_AUTH_BOUNDARY.md", "docs/SUBSCRIPTION_CONTROL_DATABASE.md"]],
   ["platform resource-package", "scripts/platform-resource-package.mjs", "platform", "B", "package", "Build operator delivery package", ["docs/RESOURCE_PACKAGE_CLI.md", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"]],
   ["platform revoke-access", "scripts/platform-revoke-access.mjs", "platform", "A", "dry-run-only", "Plan access revocation"],
   ["platform access-inventory-summary", "scripts/access-model-inventory-summary.mjs", "platform", "C", "summary", "Summarize access model inventory"],
@@ -65,6 +81,7 @@ const NODE_SCRIPT_COMMAND_ENTRIES = [
   ["subscription form", "scripts/platform-provisioning-form.mjs", "subscription", "B", "preview", "Convert operator facts into issuance input", undefined, { surface: "operator", aliasOf: "gccgw platform provisioning-form" }],
   ["subscription issue", "scripts/platform-issue-subscription.mjs", "subscription", "A", "execution-gated", "Issue a controlled subscription after approval", undefined, { surface: "operator", aliasOf: "gccgw platform issue-subscription" }],
   ["subscription portal-entry", "scripts/platform-issue-portal-entry.mjs", "subscription", "A", "execution-gated", "Issue a dynamic portal entry after approval", undefined, { surface: "operator", aliasOf: "gccgw platform issue-portal-entry" }],
+  ["subscription portal-initial-account", "scripts/platform-issue-portal-initial-account.mjs", "subscription", "A", "execution-gated", "Issue an initial portal account after approval", undefined, { surface: "operator", aliasOf: "gccgw platform issue-portal-initial-account" }],
   ["subscription revoke", "scripts/platform-revoke-access.mjs", "subscription", "A", "dry-run-only", "Plan access revocation", undefined, { surface: "operator", aliasOf: "gccgw platform revoke-access" }],
   ["install bootstrap", "scripts/gccgw-install-bootstrap.mjs", "install", "A", "execution-gated", "Apply reviewed edge-node bootstrap materials on a server", ["ops/README.md", "ops/edge-node/README.md"]],
   ["node bootstrap", "scripts/gccgw-install-bootstrap.mjs", "node", "A", "execution-gated", "Apply reviewed edge-node bootstrap materials on a server", undefined, { surface: "operator", aliasOf: "gccgw install bootstrap" }]
@@ -81,6 +98,7 @@ const PACKAGE_SCRIPT_COMMAND_ENTRIES = [
 
 const SPECIAL_COMMAND_ENTRIES = [
   ["architecture", null, "project", "C", "read-only", "Print the flattened project architecture map", ["docs/PROJECT_CONTEXT.md", "docs/ROUTES_ARCHITECTURE.md", "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"]],
+  ["capabilities", null, "project", "C", "read-only", "List project capabilities grouped by operator workflow", ["docs/PROJECT_CONTEXT.md", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"]],
   ["commands", null, "project", "C", "read-only", "List registered gccgw commands"],
   ["config list", null, "config", "C", "read-only", "List configured gccgw profiles without printing raw values"],
   ["config show", null, "config", "C", "read-only", "Show one redacted gccgw profile"],
@@ -94,8 +112,14 @@ const SPECIAL_COMMAND_ENTRIES = [
   ["install configure", null, "install", "B", "dry-run", "Build a redacted install configuration plan without writing host files"],
   ["install plan", null, "install", "C", "read-only", "Show the server installation sequence without touching the host"],
   ["install preflight", null, "install", "C", "read-only", "Check server bootstrap prerequisites without mutating the host"],
+  ["edge credentials reconcile-plan", null, "edge", "B", "dry-run", "Build a redacted edge credential desired-state reconciliation plan", ["docs/EDGE_CREDENTIAL_RECONCILIATION_GATEWAY_DESIGN.md", "docs/ALIYUN_LOCAL_EDGE_LIFECYCLE_IMPLEMENTATION_PLAN.md"]],
+  ["edge credentials apply", null, "edge", "A", "execution-gated", "Apply a reviewed edge credential desired-state reconciliation plan on a node", ["docs/EDGE_CREDENTIAL_RECONCILIATION_GATEWAY_DESIGN.md", "docs/PRODUCTION_EDGE_FLEET.md"]],
+  ["edge tuic-credentials plan", null, "edge", "B", "dry-run", "Build a redacted TUIC per-order credential lifecycle plan", ["docs/JAPAN_TUIC_PER_ORDER_CREDENTIAL_UPGRADE_RUNBOOK.md", "docs/CHANNEL_MULTI_CHANNEL_NODE_DESIGN.md"]],
+  ["edge tuic-credentials apply", null, "edge", "A", "execution-gated", "Apply a reviewed TUIC per-order credential lifecycle plan on a node", ["docs/JAPAN_TUIC_PER_ORDER_CREDENTIAL_UPGRADE_RUNBOOK.md", "docs/PRODUCTION_EDGE_FLEET.md"]],
   ["node inspect", null, "node", "C", "read-only", "Inspect safe node registry facts without printing endpoints or credentials"],
   ["node validate", null, "node", "C", "read-only", "Validate runtime node registry facts against the production input package"],
+  ["node policy-check", null, "node", "C", "read-only", "Check stable-pool protocol posture without printing endpoints or credentials", ["docs/CHANNEL_STRATEGY_ENGINE.md", "docs/NODE_REGISTRATION_AND_POOL_CONTRACT.md", "docs/PRODUCTION_EDGE_FLEET.md"]],
+  ["node data-plane-lifecycle-policy", null, "node", "C", "read-only", "Check per-order credential lifecycle posture without printing endpoints or credentials", ["docs/CHANNEL_STRATEGY_ENGINE.md", "docs/NODE_REGISTRATION_AND_POOL_CONTRACT.md", "docs/PRODUCTION_EDGE_FLEET.md"]],
   ["node register", null, "node", "B", "dry-run", "Plan safe node registration without mutating runtime or subscription output"],
   ["node disable", null, "node", "B", "dry-run", "Plan node disablement without mutating runtime or subscription output"],
   ["node plan", null, "node", "C", "read-only", "Show the node installation sequence without touching the host", undefined, { aliasOf: "gccgw install plan" }],
@@ -174,6 +198,156 @@ export function buildCliCommandMap({ format = "text" } = {}) {
     "Command | Domain | Risk | Mode | Docs | Description",
     "--- | --- | --- | --- | --- | ---",
     ...rows.map((row) => row.join(" | "))
+  ];
+  return `${lines.join("\n")}\n`;
+}
+
+const RISK_TIER_RANK = {
+  C: 1,
+  B: 2,
+  A: 3
+};
+
+const CAPABILITY_GROUPS = [
+  {
+    id: "project",
+    title: "Project Verification And Navigation",
+    purpose: "Inspect the repository, command map, architecture map, docs map, and local bootstrap shape.",
+    domains: ["project", "env"],
+    commands: ["gccgw architecture", "gccgw capabilities", "gccgw commands", "gccgw docs list", "gccgw docs domain", "gccgw docs command"]
+  },
+  {
+    id: "install",
+    title: "Install And Host Bootstrap",
+    purpose: "Plan, preflight, configure, and execute reviewed host bootstrap materials.",
+    domains: ["install", "server", "service"]
+  },
+  {
+    id: "node",
+    title: "Production Node Fleet",
+    purpose: "Inspect, validate, register, disable, and bootstrap edge node slots without exposing runtime endpoints.",
+    domains: ["node", "edge"]
+  },
+  {
+    id: "package",
+    title: "Production Input Package",
+    purpose: "Inspect, import, and apply reviewed deployment packages through dry-run and A-tier gates.",
+    domains: ["package"]
+  },
+  {
+    id: "subscription",
+    title: "Subscription Factory",
+    purpose: "Prepare, issue, hand off, and revoke controlled subscription and portal-entry materials.",
+    domains: ["subscription"],
+    commands: [
+      "gccgw platform controlled-open",
+      "gccgw platform provisioning-form",
+      "gccgw platform issue-subscription",
+      "gccgw platform issue-portal-entry",
+      "gccgw platform issue-portal-initial-account",
+      "gccgw platform resource-package",
+      "gccgw platform revoke-access"
+    ]
+  },
+  {
+    id: "channel",
+    title: "Channel Technical MVP",
+    purpose: "Validate, measure, decide, package, and record channel runtime evidence.",
+    domains: ["channel"]
+  },
+  {
+    id: "config",
+    title: "Local Configuration Profiles",
+    purpose: "List, show, and validate redacted local gccgw configuration profiles.",
+    domains: ["config"]
+  },
+  {
+    id: "site-admin",
+    title: "Site And Admin Build",
+    purpose: "Build and test the public site and private admin surfaces from the same repository.",
+    domains: ["site", "admin"]
+  },
+  {
+    id: "operations",
+    title: "Operations, Backup, And Release",
+    purpose: "Inspect operational status, backup boundaries, release metadata, and redacted network status.",
+    domains: ["ops", "backup", "release"]
+  }
+];
+
+function uniqueSorted(values = []) {
+  return unique(values).sort((a, b) => a.localeCompare(b));
+}
+
+function highestRiskTier(commands) {
+  return commands.reduce((highest, command) => {
+    const currentRank = RISK_TIER_RANK[command.riskTier] || 0;
+    const highestRank = RISK_TIER_RANK[highest] || 0;
+    return currentRank > highestRank ? command.riskTier : highest;
+  }, "C");
+}
+
+function commandSummary(command) {
+  return {
+    command: command.command,
+    domain: command.domain,
+    riskTier: command.riskTier,
+    mode: command.mode,
+    handler: command.handler,
+    surface: command.surface,
+    ...(command.aliasOf ? { aliasOf: command.aliasOf } : {}),
+    ...(command.approvalPrompt ? { approvalPrompt: command.approvalPrompt } : {}),
+    description: command.description
+  };
+}
+
+function commandsForCapability(group, commands) {
+  const explicitCommands = new Set(group.commands || []);
+  const domains = new Set(group.domains || []);
+  return commands.filter((command) => domains.has(command.domain) || explicitCommands.has(command.command));
+}
+
+export function buildCliCapabilityRegistry({ format = "text" } = {}) {
+  const commands = listCliCommands();
+  const capabilities = CAPABILITY_GROUPS
+    .map((group) => {
+      const matchedCommands = commandsForCapability(group, commands);
+      return {
+        id: group.id,
+        title: group.title,
+        purpose: group.purpose,
+        highestRiskTier: highestRiskTier(matchedCommands),
+        modes: uniqueSorted(matchedCommands.map((command) => command.mode)),
+        sourceDocs: uniqueSorted(matchedCommands.flatMap((command) => command.sourceDocs || [])),
+        commands: matchedCommands.map(commandSummary)
+      };
+    })
+    .filter((capability) => capability.commands.length > 0);
+
+  const registry = {
+    type: "gccgw_capability_registry",
+    generatedBy: "gccgw capabilities",
+    principle: "Group the flat command map into operator workflows while keeping command risk, mode, and docs visible.",
+    redacted: true,
+    capabilities
+  };
+
+  if (format === "json") {
+    return registry;
+  }
+
+  const lines = [
+    "gccgw capability registry",
+    "",
+    "Capability | Highest Risk | Modes | Commands | Docs",
+    "--- | --- | --- | --- | ---",
+    ...capabilities.map((capability) => [
+      `${capability.id}: ${capability.title}`,
+      capability.highestRiskTier,
+      capability.modes.join(", "),
+      capability.commands.map((command) => command.command).join(", "),
+      capability.sourceDocs.join(", ")
+    ].join(" | "))
   ];
   return `${lines.join("\n")}\n`;
 }
@@ -433,7 +607,16 @@ export function buildPackageInspectReport({
     nodes,
     requiredEnv
   ];
-  const forbiddenFindings = uniqueFindings(jsonObjects.flatMap((item) => findForbiddenPackageFields(item)));
+  const productionBoundary = inspectProductionArtifactBoundary({ paths: Object.keys(files) });
+  const boundaryFindings = productionBoundary.blockers.map((finding) => ({
+    code: "production_artifact_boundary",
+    path: finding.path,
+    detail: finding.reason
+  }));
+  const forbiddenFindings = uniqueFindings([
+    ...jsonObjects.flatMap((item) => findForbiddenPackageFields(item)),
+    ...boundaryFindings
+  ]);
   const planIds = new Set((Array.isArray(plans.plans) ? plans.plans : []).map((plan) => plan.id));
   const registrationPlanRefs = Array.isArray(manifest.registrationPolicy?.availablePlanRefs)
     ? manifest.registrationPolicy.availablePlanRefs
@@ -458,6 +641,10 @@ export function buildPackageInspectReport({
     },
     noForbiddenFields: {
       ok: forbiddenFindings.length === 0,
+      required: true
+    },
+    productionArtifactBoundary: {
+      ok: productionBoundary.ok,
       required: true
     },
     registrationPolicyNoCustomerFields: {
@@ -486,6 +673,11 @@ export function buildPackageInspectReport({
     components,
     checks,
     forbiddenFindings,
+    productionArtifactBoundary: {
+      ok: productionBoundary.ok,
+      blockerCount: productionBoundary.blockers.length,
+      reviewRequiredCount: productionBoundary.reviewRequired.length
+    },
     importPhases: (Array.isArray(manifest.importPhases) ? manifest.importPhases : []).map((phase) => ({
       name: phase.name,
       riskTier: phase.riskTier,
@@ -1690,7 +1882,14 @@ function positionalArgs(args, startIndex = 0) {
     if (value === "--json" || value === "--dry-run" || value === "--execute-production-mutation" || value === "--apply") {
       continue;
     }
-    if (value === "--config" || value === "--profile" || value === "--package" || value === "--reason") {
+    if (
+      value === "--config"
+      || value === "--profile"
+      || value === "--package"
+      || value === "--reason"
+      || value === "--input"
+      || value === "--desired-state"
+    ) {
       index += 1;
       continue;
     }
@@ -1720,6 +1919,7 @@ export function buildCliHelp() {
 
 Usage:
   gccgw commands [--json]
+  gccgw capabilities [--json]
   gccgw architecture [--json]
   gccgw config list [--json] [--config <path>]
   gccgw config show <profile> [--json] [--config <path>]
@@ -1730,8 +1930,13 @@ Usage:
   gccgw install configure --dry-run --domain <url> --install-dir <path> --management-source <cidr> [--json]
   gccgw install plan [--json]
   gccgw install preflight [--json]
+  gccgw edge credentials reconcile-plan --input <desired-state.json> [--json]
+  gccgw edge credentials apply --input <desired-state.json> --execute-production-mutation [--json]
+  gccgw edge tuic-credentials plan --input <desired-state.json> [--json]
+  gccgw edge tuic-credentials apply --input <desired-state.json> --execute-production-mutation [--json]
   gccgw node inspect [--config <proxy-servers.json>] [--json]
   gccgw node validate [--package <package-dir>] [--config <proxy-servers.json>] [--json]
+  gccgw node policy-check [--config <proxy-servers.json>] [--json]
   gccgw node register --dry-run <safe-node-facts.json> [--json]
   gccgw node disable --dry-run <node-id> [--reason <text>] [--json]
   gccgw install bootstrap --config-plan <reviewed-install-configure-plan.json> --execute-production-mutation --apply
@@ -1742,6 +1947,7 @@ Usage:
   gccgw service status [--json]
   gccgw server start
   gccgw project check
+  gccgw project handoff-brief [--focus <text>] [--json] [--dry-run]
   gccgw project verify [--with-admin]
   gccgw env check
   gccgw ops network-status
@@ -1757,6 +1963,8 @@ Usage:
 Common commands:
   gccgw commands
   gccgw commands --json
+  gccgw capabilities
+  gccgw capabilities --json
   gccgw architecture
   gccgw architecture --json
   gccgw config list
@@ -1767,11 +1975,16 @@ Common commands:
   gccgw install configure --dry-run --domain https://sub.example.com --install-dir /opt/gccgw --management-source 203.0.113.10/32 --json
   gccgw install plan
   gccgw install preflight --json
+  gccgw edge credentials reconcile-plan --input desired-state.json --json
+  gccgw edge credentials apply --input reviewed-desired-state.json --execute-production-mutation --json
+  gccgw edge tuic-credentials plan --input desired-state.json --json
+  gccgw edge tuic-credentials apply --input reviewed-desired-state.json --execute-production-mutation --json
   gccgw package inspect deployments/production-template --json
   gccgw package import deployments/production-template --dry-run --json
   gccgw package apply deployments/production-template --import-plan reviewed-package-import-plan.json --config-plan reviewed-install-configure-plan.json --execute-production-mutation --apply
   gccgw node inspect --json
   gccgw node validate --package deployments/production-template --json
+  gccgw node policy-check --json
   gccgw node register --dry-run safe-node-facts.json --json
   gccgw node disable --dry-run prod-edge-a --reason maintenance --json
   gccgw node plan
@@ -1793,10 +2006,12 @@ Common commands:
   gccgw subscription form <input.json>
   gccgw subscription issue [--dry-run] <input.json>
   gccgw subscription portal-entry [--dry-run] <input.json>
+  gccgw subscription portal-initial-account [--dry-run] <input.json>
   gccgw subscription revoke <tenant-ref> --dry-run
   gccgw platform provisioning-form <input.json>
   gccgw platform issue-subscription [--dry-run] <input.json>
   gccgw platform issue-portal-entry [--dry-run] <input.json>
+  gccgw platform issue-portal-initial-account [--dry-run] <input.json>
   gccgw platform revoke-access <tenant-ref> --dry-run
   gccgw channel validate <config.json>
   gccgw channel measure <manifest.json>
@@ -1856,6 +2071,12 @@ export function resolveCliCommand(argv = []) {
   if (args[0] === "commands") {
     return {
       kind: "command-map",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "capabilities") {
+    return {
+      kind: "capability-registry",
       format: args.includes("--json") ? "json" : "text"
     };
   }
@@ -1946,6 +2167,48 @@ export function resolveCliCommand(argv = []) {
       format: args.includes("--json") ? "json" : "text"
     };
   }
+  if (args[0] === "edge" && args[1] === "tuic-credentials") {
+    const mode = args[2];
+    const inputPath = optionValue(args, "--input") || optionValue(args, "--desired-state") || positionalArgs(args, 3)[0];
+    if (mode === "plan") {
+      return {
+        kind: "edge-tuic-credentials-plan",
+        inputPath,
+        format: args.includes("--json") ? "json" : "text"
+      };
+    }
+    if (mode === "apply") {
+      return {
+        kind: "edge-tuic-credentials-apply",
+        commandName: "gccgw edge tuic-credentials apply",
+        inputPath,
+        executeProductionMutation: args.includes("--execute-production-mutation"),
+        format: args.includes("--json") ? "json" : "text"
+      };
+    }
+    throw new Error(`Unknown gccgw edge tuic-credentials command: ${mode || ""}`.trim());
+  }
+  if (args[0] === "edge" && args[1] === "credentials") {
+    const mode = args[2];
+    const inputPath = optionValue(args, "--input") || optionValue(args, "--desired-state") || positionalArgs(args, 3)[0];
+    if (mode === "reconcile-plan" || mode === "plan") {
+      return {
+        kind: "edge-credentials-reconcile-plan",
+        inputPath,
+        format: args.includes("--json") ? "json" : "text"
+      };
+    }
+    if (mode === "apply") {
+      return {
+        kind: "edge-credentials-apply",
+        commandName: "gccgw edge credentials apply",
+        inputPath,
+        executeProductionMutation: args.includes("--execute-production-mutation"),
+        format: args.includes("--json") ? "json" : "text"
+      };
+    }
+    throw new Error(`Unknown gccgw edge credentials command: ${mode || ""}`.trim());
+  }
   const commandKey = `${args[0] || ""} ${args[1] || ""}`.trim();
   if (hasKnownCommand(commandKey) && args.slice(2).some(isHelpArg)) {
     return {
@@ -1994,6 +2257,20 @@ export function resolveCliCommand(argv = []) {
     return {
       kind: "node-validate",
       packageDir: optionValue(args, "--package") || "deployments/production-template",
+      configPath: optionValue(args, "--config") || "config/proxy-servers.json",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "node" && args[1] === "policy-check") {
+    return {
+      kind: "node-policy-check",
+      configPath: optionValue(args, "--config") || "config/proxy-servers.json",
+      format: args.includes("--json") ? "json" : "text"
+    };
+  }
+  if (args[0] === "node" && args[1] === "data-plane-lifecycle-policy") {
+    return {
+      kind: "node-data-plane-lifecycle-policy",
       configPath: optionValue(args, "--config") || "config/proxy-servers.json",
       format: args.includes("--json") ? "json" : "text"
     };
@@ -2216,6 +2493,11 @@ export async function runProxyGatewayCli(argv, {
       writeStdout(command.format === "json" ? `${JSON.stringify(commandMap, null, 2)}\n` : commandMap);
       return 0;
     }
+    if (command.kind === "capability-registry") {
+      const capabilityRegistry = buildCliCapabilityRegistry({ format: command.format });
+      writeStdout(command.format === "json" ? `${JSON.stringify(capabilityRegistry, null, 2)}\n` : capabilityRegistry);
+      return 0;
+    }
     if (command.kind === "config-map") {
       let configMap;
       if (command.mode === "list") {
@@ -2260,6 +2542,56 @@ export async function runProxyGatewayCli(argv, {
     if (command.kind === "install-configure") {
       return await runInstallConfigure(command);
     }
+    if (command.kind === "edge-tuic-credentials-plan") {
+      const report = buildTuicCredentialLifecyclePlan({
+        desiredState: command.inputPath ? readJsonFile(command.inputPath) : {},
+        inputPath: command.inputPath
+      });
+      writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
+      return report.ok ? 0 : 1;
+    }
+    if (command.kind === "edge-tuic-credentials-apply") {
+      const approval = requiresRiskAExecutionPrompt(command);
+      if (approval) {
+        const accepted = await confirmRiskAExecution?.(approval);
+        if (!accepted) {
+          writeStderr("Risk A approval prompt rejected; execution stopped before TUIC credential apply.\n");
+          return 1;
+        }
+      }
+      const report = buildTuicCredentialLifecycleApplyPlan({
+        desiredState: command.inputPath ? readJsonFile(command.inputPath) : {},
+        inputPath: command.inputPath,
+        executeProductionMutation: command.executeProductionMutation
+      });
+      writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
+      return report.ok ? 0 : 1;
+    }
+    if (command.kind === "edge-credentials-reconcile-plan") {
+      const report = buildCredentialReconciliationPlan({
+        desiredState: command.inputPath ? readJsonFile(command.inputPath) : {},
+        inputPath: command.inputPath
+      });
+      writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
+      return report.ok ? 0 : 1;
+    }
+    if (command.kind === "edge-credentials-apply") {
+      const approval = requiresRiskAExecutionPrompt(command);
+      if (approval) {
+        const accepted = await confirmRiskAExecution?.(approval);
+        if (!accepted) {
+          writeStderr("Risk A approval prompt rejected; execution stopped before edge credential apply.\n");
+          return 1;
+        }
+      }
+      const report = buildCredentialReconciliationApplyPlan({
+        desiredState: command.inputPath ? readJsonFile(command.inputPath) : {},
+        inputPath: command.inputPath,
+        executeProductionMutation: command.executeProductionMutation
+      });
+      writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
+      return report.ok ? 0 : 1;
+    }
     if (command.kind === "node-inspect") {
       const report = buildNodeInspectReport({
         proxyConfig: readJsonFile(command.configPath),
@@ -2274,6 +2606,20 @@ export async function runProxyGatewayCli(argv, {
         nodesPackage: readJsonFile(`${command.packageDir}/nodes.json`),
         configPath: command.configPath,
         packageDir: command.packageDir
+      });
+      writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
+      return report.ok ? 0 : 1;
+    }
+    if (command.kind === "node-policy-check") {
+      const report = buildStablePoolProtocolPolicy({
+        proxyConfig: readJsonFile(command.configPath)
+      });
+      writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
+      return report.ok ? 0 : 1;
+    }
+    if (command.kind === "node-data-plane-lifecycle-policy") {
+      const report = buildDataPlaneCredentialLifecyclePolicy({
+        proxyConfig: readJsonFile(command.configPath)
       });
       writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
       return report.ok ? 0 : 1;

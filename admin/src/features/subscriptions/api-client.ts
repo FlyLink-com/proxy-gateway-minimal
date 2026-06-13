@@ -36,6 +36,8 @@ import type {
   ResetTokenResult,
   SubscriptionNode,
   SubscriptionOverview,
+  SubscriptionUsageMonitor,
+  SubscriptionUsageMonitorFilters,
   SubscriptionTenant,
   TempLinkResult
 } from "./types";
@@ -61,6 +63,21 @@ export class AdminApiError extends Error {
 
 function apiUrl(baseUrl: string, path: string) {
   return `${normalizeBaseUrl(baseUrl)}${path}`;
+}
+
+function queryString(filters: SubscriptionUsageMonitorFilters) {
+  const params = new URLSearchParams();
+  const entries = Object.entries(filters) as Array<
+    [keyof SubscriptionUsageMonitorFilters, string | undefined]
+  >;
+  for (const [key, value] of entries) {
+    const normalized = value?.trim() ?? "";
+    if (normalized) {
+      params.set(key, normalized);
+    }
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 async function parseJson(response: Response) {
@@ -108,9 +125,7 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
 
     const body = await parseJson(response);
     if (!response.ok) {
-      const backendMessage =
-        body && typeof body === "object" && "message" in body ? String((body as { message: unknown }).message) : "";
-      throw new AdminApiError(backendMessage || messageForStatus(response.status), response.status);
+      throw new AdminApiError(messageForStatus(response.status), response.status);
     }
     return body as T;
   }
@@ -174,6 +189,12 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
         )
       ).items;
     },
+    listSubscriptionUsageMonitor: async (filters: SubscriptionUsageMonitorFilters = {}) =>
+      (
+        await request<{ monitor: SubscriptionUsageMonitor }>(
+          `/api/admin/platform/subscription-usage-monitor${queryString(filters)}`
+        )
+      ).monitor,
     previewPortalAccessRequestApproval: async (
       requestRef: string,
       input: PortalAccessApprovalPreviewInput

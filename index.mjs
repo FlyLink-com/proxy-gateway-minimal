@@ -14,6 +14,8 @@ export {
   generateClashProviderSubscription,
   generateClashProxyProvider,
   generateClashSubscription,
+  generateMihomoProviderTemplate,
+  generateMihomoRenderTemplate,
   subscriptionSummary
 } from "./server/services/clash-subscription.mjs";
 export { dryRunChannelConfig } from "./server/services/channel-config-dry-run.mjs";

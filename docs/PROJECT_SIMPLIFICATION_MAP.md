@@ -274,8 +274,11 @@ Purpose:
 Primary docs:
 
 - `docs/SERVER_EDGE_MESH_DESIGN.md`
-- `docs/SERVER_EDGE_MESH_WIREGUARD_CANARY_RUNBOOK.md`
 - `docs/server-edge-mesh-records/*`
+
+Historical reference:
+
+- `docs/archive/SERVER_EDGE_MESH_WIREGUARD_CANARY_RUNBOOK.md`
 
 Keep active as an ops architecture lane. It is not a user VPN, not customer data
 routing, and not the local client adapter product.
@@ -475,7 +478,8 @@ Evidence used:
 - `rg` showed the deleted Admin placeholder pages were only reachable from the
   Admin navigation and App switch.
 - `rg` showed the deleted Admin mock files were not imported by current app or
-  test code; remaining mentions are historical `docs/superpowers/*` records.
+  test code; remaining mentions are historical `docs/archive/superpowers/*`
+  records.
 
 This classification is not an approval to remove additional files. Compatibility
 and diagnostics modules remain retained unless a separate B-tier audit proves

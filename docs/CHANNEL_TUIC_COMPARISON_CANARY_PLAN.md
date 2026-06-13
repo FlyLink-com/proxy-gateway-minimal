@@ -1,6 +1,6 @@
 # TUIC Comparison Canary Plan
 
-Last updated: 2026-05-27, Asia/Shanghai.
+Last updated: 2026-06-05, Asia/Shanghai.
 
 > Status:
 > - Type: Active channel comparison planning record
@@ -93,6 +93,34 @@ The next A-tier handoff for that inventory is recorded in
 `docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md`.
 It defines the exact Stage 0 read-only inventory approval phrase, allowed
 read-only evidence, stop conditions, and the later runtime deployment gates.
+
+## June 2026 Selection Addendum
+
+Later TUIC work produced enough controlled evidence to use TUIC in a scoped
+operator/canary path, and it can remain a temporary continuity option when no
+eligible conservative stable node is available. That does not promote TUIC to
+the long-term default stable pool.
+
+The stable-pool decision remains:
+
+```text
+default stable pool:
+  conservative TCP capacity, starting from SS/TCP and later VLESS over
+  TCP/TLS/H2 if validated
+
+next stable-candidate comparison:
+  VLESS / XUDP, with XUDP behavior kept canary-scoped until measured
+
+high-speed / canary candidates:
+  TUIC
+  Hysteria2
+  HTTP/3 / QUIC-style UDP paths
+```
+
+HTTP/3 is newer than HTTP/2, but for channel strategy it belongs with the
+QUIC/UDP candidate family rather than the conservative stable baseline. It
+should be tested for high-speed or weak-network behavior, not silently emitted
+to all default users.
 
 ## Proposed Measurement Shape
 

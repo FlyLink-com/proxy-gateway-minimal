@@ -23,6 +23,11 @@ const DEFAULT_PROVIDER_NAME = "globalcircle-pool";
 const DEFAULT_PROVIDER_PATH = "./providers/globalcircle-pool.yaml";
 const DEFAULT_PROVIDER_FETCH_INTERVAL = 3600;
 const DEFAULT_PROVIDER_HEALTH_INTERVAL = 300;
+const CONTROLLED_NODE_DOMAIN_SUFFIXES = [
+  "globalcirclecat.com",
+  "globalcirclecat.cloud",
+  "globalcirclecat.icu"
+];
 const INACTIVE_PROVIDER_STATUSES = new Set([
   "disabled",
   "maintenance",
@@ -36,6 +41,86 @@ const INACTIVE_PROVIDER_STATUSES = new Set([
   "offline",
   "retired"
 ]);
+
+function unique(values) {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function normalizedDomainHost(value) {
+  const normalized = text(value).toLowerCase().replace(/\.$/, "");
+  if (
+    !normalized ||
+    normalized === "localhost" ||
+    normalized.includes(":") ||
+    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalized) ||
+    /[^a-z0-9.-]/.test(normalized) ||
+    normalized.includes("..")
+  ) {
+    return "";
+  }
+  const labels = normalized.split(".");
+  if (labels.length < 2) {
+    return "";
+  }
+  if (labels.some((label) => !label || label.startsWith("-") || label.endsWith("-"))) {
+    return "";
+  }
+  return normalized;
+}
+
+function controlledNodeSuffix(host) {
+  return CONTROLLED_NODE_DOMAIN_SUFFIXES.find((suffix) => host === suffix || host.endsWith(`.${suffix}`)) || "";
+}
+
+function nodeDomainProtection(servers) {
+  const exact = [];
+  const suffixes = [];
+
+  for (const server of servers) {
+    const host = normalizedDomainHost(server.host);
+    if (!host) {
+      continue;
+    }
+    const suffix = controlledNodeSuffix(host);
+    if (!suffix) {
+      continue;
+    }
+    exact.push(host);
+    suffixes.push(suffix);
+  }
+
+  return {
+    exact: unique(exact),
+    suffixes: unique(suffixes)
+  };
+}
+
+function nodeDomainProtectionDnsLines(servers) {
+  const { exact, suffixes } = nodeDomainProtection(servers);
+  const filters = unique([
+    ...suffixes.map((suffix) => `+.${suffix}`),
+    ...exact
+  ]);
+  if (filters.length === 0) {
+    return [];
+  }
+  return [
+    "dns:",
+    "  enable: true",
+    "  enhanced-mode: fake-ip",
+    "  fake-ip-filter-mode: blacklist",
+    "  fake-ip-filter:",
+    ...filters.map((entry) => `    - ${yamlQuote(entry)}`)
+  ];
+}
+
+function nodeDomainProtectionRuleLines(servers) {
+  const { exact, suffixes } = nodeDomainProtection(servers);
+  return [
+    ...exact.map((host) => `  - DOMAIN,${host},DIRECT`),
+    ...suffixes.map((suffix) => `  - DOMAIN-SUFFIX,${suffix},DIRECT`)
+  ];
+}
 
 function normalizeProtocol(server) {
   const raw = text(server.protocol || server.clashType || server.type || "ss").toLowerCase();
@@ -110,6 +195,20 @@ function optionalStringListField(server, ...keys) {
   return [];
 }
 
+function optionalRealityOpts(server) {
+  const source =
+    server.realityOpts ||
+    server["reality-opts"] ||
+    server.realityOptions ||
+    {};
+  const publicKey = optionalTextField(source, "publicKey", "public-key");
+  const shortId = optionalTextField(source, "shortId", "short-id", "shortID");
+  if (!publicKey && !shortId) {
+    return null;
+  }
+  return { publicKey, shortId };
+}
+
 function clashProxy(server, index) {
   const protocol = normalizeProtocol(server);
   const base = {
@@ -139,6 +238,7 @@ function clashProxy(server, index) {
       serverName: optionalTextField(server, "serverName", "servername", "sni"),
       network: optionalTextField(server, "network"),
       flow: optionalTextField(server, "flow"),
+      realityOpts: optionalRealityOpts(server),
       clientFingerprint: optionalTextField(server, "clientFingerprint", "client-fingerprint")
     };
   }
@@ -218,6 +318,62 @@ function requireProviderUrl(value) {
 function providerText(value, fallback) {
   const normalized = text(value);
   return normalized || fallback;
+}
+
+function safeLifecycleText(value, maxLength = 80) {
+  const normalized = text(value);
+  if (!normalized || normalized.length > maxLength) {
+    return "";
+  }
+  if (
+    /https?:\/\//i.test(normalized) ||
+    /\b(token|secret|password|credential|apikey|api_key|private[_-]?key)\b/i.test(normalized) ||
+    /\b[A-Za-z0-9_-]{40,}={0,2}\b/.test(normalized)
+  ) {
+    return "";
+  }
+  return normalized;
+}
+
+function safeLifecycleIso(value) {
+  const normalized = text(value);
+  if (!normalized) {
+    return "";
+  }
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toISOString();
+}
+
+function lifecycleCommentLines(options = {}) {
+  const lifecycle = options.lifecycle || options.subscriptionLifecycle;
+  if (!lifecycle || typeof lifecycle !== "object") {
+    return [];
+  }
+
+  const status = safeLifecycleText(lifecycle.status);
+  const expiresAt = safeLifecycleIso(lifecycle.expiresAt || lifecycle.validUntil);
+  const validUntil = safeLifecycleIso(lifecycle.validUntil || lifecycle.expiresAt);
+  const lines = [];
+
+  if (status) {
+    lines.push(`# globalcircle-subscription-status: ${yamlQuote(status)}`);
+  }
+  if (expiresAt) {
+    lines.push(`# globalcircle-subscription-expires-at: ${yamlQuote(expiresAt)}`);
+  }
+  if (validUntil) {
+    lines.push(`# globalcircle-subscription-valid-until: ${yamlQuote(validUntil)}`);
+  }
+
+  return lines;
+}
+
+function yamlWithLifecycle(lines, options = {}) {
+  const comments = lifecycleCommentLines(options);
+  return [...comments, ...lines].join("\n");
 }
 
 function providerOptions(options = {}) {
@@ -366,10 +522,19 @@ function pushProxy(lines, server) {
   pushOptionalText(lines, "servername", server.serverName);
   pushOptionalText(lines, "network", server.network);
   pushOptionalText(lines, "flow", server.flow);
+  if (server.realityOpts) {
+    lines.push("    reality-opts:");
+    if (server.realityOpts.publicKey) {
+      lines.push(`      public-key: ${yamlQuote(server.realityOpts.publicKey)}`);
+    }
+    if (server.realityOpts.shortId) {
+      lines.push(`      short-id: ${yamlQuote(server.realityOpts.shortId)}`);
+    }
+  }
   pushOptionalText(lines, "client-fingerprint", server.clientFingerprint);
 }
 
-export function generateClashProxyProvider(proxyConfig) {
+export function generateClashProxyProvider(proxyConfig, options = {}) {
   const servers = clashProviderServers(proxyConfig);
   const lines = ["proxies:"];
 
@@ -378,7 +543,7 @@ export function generateClashProxyProvider(proxyConfig) {
   }
 
   lines.push("");
-  return lines.join("\n");
+  return yamlWithLifecycle(lines, options);
 }
 
 export function generateClashProviderSubscription(proxyConfig, options = {}) {
@@ -417,7 +582,6 @@ export function generateClashProviderSubscription(proxyConfig, options = {}) {
     "      - AUTO",
     "      - WEAK-NETWORK",
     "      - FALLBACK",
-    "      - DIRECT",
     "    use:",
     `      - ${yamlQuote(provider.name)}`,
     "rules:",
@@ -425,15 +589,140 @@ export function generateClashProviderSubscription(proxyConfig, options = {}) {
     ""
   );
 
-  return lines.join("\n");
+  return yamlWithLifecycle(lines, options);
 }
 
-export function generateClashSubscription(proxyConfig) {
+function mihomoCoreHeader() {
+  return [
+    "mixed-port: 7897",
+    "allow-lan: false",
+    "mode: rule",
+    "log-level: warning",
+    "unified-delay: true",
+    "tcp-concurrent: true",
+    "global-client-fingerprint: chrome",
+    "profile:",
+    "  store-selected: true"
+  ];
+}
+
+function pushInlineGlobalGroup(lines, servers) {
+  lines.push(
+    "  - name: GLOBAL",
+    "    type: select",
+    "    proxies:"
+  );
+
+  if (servers.length > 0) {
+    lines.push("      - AUTO");
+    if (qualityGroupServers(servers, ["weak-network", "long-haul", "high-loss"]).length > 0) {
+      lines.push("      - WEAK-NETWORK");
+    }
+    if (qualityGroupServers(servers, ["stable"]).length > 0) {
+      lines.push("      - STABLE");
+    }
+    lines.push("      - FALLBACK");
+  }
+
+  for (const server of servers) {
+    lines.push(`      - ${yamlQuote(server.name)}`);
+  }
+
+}
+
+export function generateMihomoRenderTemplate(proxyConfig, options = {}) {
+  const servers = clashServers(proxyConfig);
+  const lines = [
+    ...mihomoCoreHeader(),
+    ...nodeDomainProtectionDnsLines(servers),
+    "proxies:"
+  ];
+
+  for (const server of servers) {
+    pushProxy(lines, server);
+  }
+
+  lines.push("proxy-groups:");
+
+  if (servers.length > 0) {
+    pushProxyGroup(lines, { name: "AUTO", type: "url-test", servers });
+    pushProxyGroup(lines, {
+      name: "WEAK-NETWORK",
+      type: "url-test",
+      servers: qualityGroupServers(servers, ["weak-network", "long-haul", "high-loss"]),
+      tolerance: 50
+    });
+    pushProxyGroup(lines, {
+      name: "STABLE",
+      type: "fallback",
+      servers: qualityGroupServers(servers, ["stable"])
+    });
+    pushProxyGroup(lines, { name: "FALLBACK", type: "fallback", servers });
+  }
+
+  pushInlineGlobalGroup(lines, servers);
+
+  lines.push(
+    "rules:",
+    ...nodeDomainProtectionRuleLines(servers),
+    "  - MATCH,GLOBAL",
+    ""
+  );
+
+  return yamlWithLifecycle(lines, options);
+}
+
+export function generateMihomoProviderTemplate(proxyConfig, options = {}) {
+  const provider = providerOptions(options);
+  const lines = [
+    ...mihomoCoreHeader(),
+    "proxy-providers:",
+    `  ${yamlQuote(provider.name)}:`,
+    "    type: http",
+    `    url: ${yamlQuote(provider.url)}`,
+    `    path: ${yamlQuote(provider.path)}`,
+    `    interval: ${provider.interval}`,
+    "    health-check:",
+    "      enable: true",
+    `      url: ${yamlQuote(provider.healthCheckUrl)}`,
+    `      interval: ${provider.healthCheckInterval}`,
+    `      lazy: ${provider.healthCheckLazy ? "true" : "false"}`,
+    "proxy-groups:"
+  ];
+
+  pushProviderGroup(lines, { name: "AUTO", type: "url-test", providerName: provider.name });
+  pushProviderGroup(lines, {
+    name: "WEAK-NETWORK",
+    type: "url-test",
+    providerName: provider.name,
+    tolerance: 50
+  });
+  pushProviderGroup(lines, { name: "FALLBACK", type: "fallback", providerName: provider.name });
+
+  lines.push(
+    "  - name: GLOBAL",
+    "    type: select",
+    "    proxies:",
+    "      - AUTO",
+    "      - WEAK-NETWORK",
+    "      - FALLBACK",
+    "    use:",
+    `      - ${yamlQuote(provider.name)}`,
+    "rules:",
+    "  - MATCH,GLOBAL",
+    ""
+  );
+
+  return yamlWithLifecycle(lines, options);
+}
+
+export function generateClashSubscription(proxyConfig, options = {}) {
   const servers = clashServers(proxyConfig);
   const lines = [
     "mixed-port: 7897",
     "allow-lan: false",
     "mode: global",
+    ...nodeDomainProtectionDnsLines(servers),
     "proxies:"
   ];
 
@@ -481,13 +770,13 @@ export function generateClashSubscription(proxyConfig) {
   }
 
   lines.push(
-    "      - DIRECT",
     "rules:",
+    ...nodeDomainProtectionRuleLines(servers),
     "  - MATCH,GLOBAL",
     ""
   );
 
-  return lines.join("\n");
+  return yamlWithLifecycle(lines, options);
 }
 
 export function subscriptionSummary({

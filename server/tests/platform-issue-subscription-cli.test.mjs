@@ -8,12 +8,38 @@ import { createSqliteSubscriptionStore } from "../services/subscriptions/reposit
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 
 const rootDir = new URL("../../", import.meta.url);
+const VULTR_MULTICHANNEL_ENV = {
+  VULTR_TUIC_HOST: "tuic.example.test",
+  VULTR_TUIC_UUID: "11111111-1111-4111-8111-111111111111",
+  VULTR_TUIC_PASSWORD: "synthetic-tuic-password",
+  VULTR_TUIC_SNI: "tuic.example.test",
+  VULTR_VLESS_REALITY_HOST: "vless.example.test",
+  VULTR_VLESS_REALITY_UUID: "22222222-2222-4222-8222-222222222222",
+  VULTR_VLESS_REALITY_SNI: "www.example.test",
+  VULTR_VLESS_REALITY_PUBLIC_KEY: "synthetic-public-key",
+  VULTR_VLESS_REALITY_SHORT_ID: "synthetic-short-id",
+  VULTR_HY2_HOST: "hy2.example.test",
+  VULTR_HY2_PASSWORD: "synthetic-hy2-password",
+  VULTR_HY2_SNI: "hy2.example.test",
+  SGP_TUIC_HOST: "sgp-tuic.example.test",
+  SGP_TUIC_UUID: "33333333-3333-4333-8333-333333333333",
+  SGP_TUIC_PASSWORD: "synthetic-sgp-tuic-password",
+  SGP_TUIC_SNI: "sgp-tuic.example.test",
+  SGP_VLESS_REALITY_HOST: "sgp-vless.example.test",
+  SGP_VLESS_REALITY_UUID: "44444444-4444-4444-8444-444444444444",
+  SGP_VLESS_REALITY_SNI: "www.example.test",
+  SGP_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
+  SGP_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
+  SGP_HY2_HOST: "sgp-hy2.example.test",
+  SGP_HY2_PASSWORD: "synthetic-sgp-hy2-password",
+  SGP_HY2_SNI: "sgp-hy2.example.test"
+};
 
 function inputFixture(overrides = {}) {
   return {
     displayName: "Test User",
     expiresAt: "2026-06-04T00:00:00.000Z",
-    nodeId: "prod-edge-a",
+    nodeId: "channel-vultr-a-vless-reality-tcp",
     note: "test-note",
     control: {
       accountId: "acct_test_user",
@@ -57,7 +83,7 @@ function runCli(args) {
   return execFileSync(process.execPath, ["scripts/platform-issue-subscription.mjs", ...args], {
     cwd: rootDir,
     encoding: "utf8",
-    env: { ...process.env, SS_PASSWORD: process.env.SS_PASSWORD || "dummy" }
+    env: { ...process.env, ...VULTR_MULTICHANNEL_ENV, SS_PASSWORD: process.env.SS_PASSWORD || "dummy" }
   });
 }
 

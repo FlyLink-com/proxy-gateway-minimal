@@ -38,6 +38,12 @@ data plane carries the actual proxy traffic
 The control plane must not become a general-purpose proxy runtime. The data
 plane must not become the user, payment, entitlement, or artifact authority.
 
+The concrete production plan for one authoritative control plane with multiple
+runtime-only edge nodes is
+`docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md`. Use that plan before
+adding a new production node, moving user/order state, wiring per-order
+credential fan-out, or exposing usage by account and order.
+
 ## Traffic Shape
 
 ```text

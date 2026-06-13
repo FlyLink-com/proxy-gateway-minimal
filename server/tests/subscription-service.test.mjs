@@ -157,6 +157,134 @@ function channelStrategyProxyConfig() {
   };
 }
 
+function tuicPerOrderProxyConfig() {
+  return {
+    servers: [
+      {
+        id: "channel_aliyun_a_tuic",
+        name: "channel-aliyun-a-tuic",
+        role: "edge",
+        region: "Aliyun",
+        channelPool: "stable",
+        protocol: "tuic",
+        type: "tuic",
+        credentialMode: "per-order",
+        host: "203.0.113.50",
+        port: 443,
+        uuid: "00000000-0000-4000-8000-000000000000",
+        password: "static-template-password",
+        status: "online"
+      }
+    ],
+    pingHosts: ["1.1.1.1"],
+    nginx: { host: "127.0.0.1", ports: [443] }
+  };
+}
+
+function multiProtocolPerOrderProxyConfig() {
+  return {
+    servers: [
+      {
+        id: "channel_vless_a",
+        name: "channel-vless-a",
+        channelPool: "canary",
+        protocol: "vless",
+        type: "vless",
+        credentialMode: "per-order",
+        host: "203.0.113.60",
+        port: 443,
+        uuid: "00000000-0000-4000-8000-000000000001",
+        udp: true,
+        tls: true,
+        network: "tcp",
+        status: "online"
+      },
+      {
+        id: "channel_hy2_a",
+        name: "channel-hy2-a",
+        channelPool: "canary",
+        protocol: "hysteria2",
+        type: "hysteria2",
+        credentialMode: "per-order",
+        host: "203.0.113.61",
+        port: 443,
+        password: "static-hy2-template-password",
+        status: "online"
+      },
+      {
+        id: "channel_ss_a",
+        name: "channel-ss-a",
+        channelPool: "canary",
+        protocol: "ss",
+        type: "ss",
+        credentialMode: "per-order",
+        host: "203.0.113.62",
+        port: 18388,
+        method: "aes-256-gcm",
+        password: "static-ss-template-password",
+        status: "online"
+      }
+    ],
+    pingHosts: ["1.1.1.1"],
+    nginx: { host: "127.0.0.1", ports: [443] }
+  };
+}
+
+function multiChannelPerOrderBundleProxyConfig() {
+  return {
+    servers: [
+      {
+        id: "channel_vultr_vless",
+        name: "channel-vultr-a-vless-reality-tcp",
+        channelPool: "stable",
+        subscriptionBundleRef: "vultr-production-a",
+        protocol: "vless",
+        type: "vless",
+        credentialMode: "per-order",
+        host: "203.0.113.70",
+        port: 8443,
+        uuid: "00000000-0000-4000-8000-000000000010",
+        udp: true,
+        tls: true,
+        network: "tcp",
+        flow: "xtls-rprx-vision",
+        status: "online"
+      },
+      {
+        id: "channel_vultr_hy2",
+        name: "channel-vultr-a-hy2",
+        channelPool: "canary",
+        qualityClass: "weak-network",
+        subscriptionBundleRef: "vultr-production-a",
+        protocol: "hysteria2",
+        type: "hysteria2",
+        credentialMode: "per-order",
+        host: "203.0.113.71",
+        port: 10443,
+        password: "static-hy2-template-password",
+        status: "online"
+      },
+      {
+        id: "channel_vultr_tuic",
+        name: "channel-vultr-a-tuic",
+        channelPool: "canary",
+        qualityClass: "weak-network",
+        subscriptionBundleRef: "vultr-production-a",
+        protocol: "tuic",
+        type: "tuic",
+        credentialMode: "per-order",
+        host: "203.0.113.72",
+        port: 443,
+        uuid: "00000000-0000-4000-8000-000000000011",
+        password: "static-tuic-template-password",
+        status: "online"
+      }
+    ],
+    pingHosts: ["1.1.1.1"],
+    nginx: { host: "127.0.0.1", ports: [443] }
+  };
+}
+
 function tokenFromRaw(rawToken) {
   return {
     rawToken,
@@ -556,6 +684,254 @@ test("service creates visible-once opaque artifacts and resolves them to V2 outp
   });
 });
 
+test("service resolves per-order TUIC artifacts with tenant-bound credential material", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context, { nodeId: "channel-aliyun-a-tuic" });
+    context.service.createSubscriptionArtifact("tenant_1");
+
+    context.service.bindTenantCredentialMaterial({
+      tenantId: "tenant_1",
+      nodeId: "channel-aliyun-a-tuic",
+      material: {
+        uuid: "11111111-1111-4111-8111-111111111111",
+        password: "per-order-tuic-password"
+      }
+    });
+
+    const resolved = context.service.resolveSubscriptionArtifact("opaque_device_secret");
+
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.proxyConfig.servers.length, 1);
+    assert.equal(resolved.proxyConfig.servers[0].name, "channel-aliyun-a-tuic");
+    assert.equal(resolved.proxyConfig.servers[0].uuid, "11111111-1111-4111-8111-111111111111");
+    assert.equal(resolved.proxyConfig.servers[0].password, "per-order-tuic-password");
+  }, {
+    proxyConfig: tuicPerOrderProxyConfig()
+  });
+});
+
+test("service resolves per-order TUIC artifacts from durable credential resolver", async () => {
+  const resolverCalls = [];
+  await withService(async (context) => {
+    await createActiveTenant(context, { nodeId: "channel-aliyun-a-tuic" });
+    context.service.createSubscriptionArtifact("tenant_1");
+
+    const resolved = context.service.resolveSubscriptionArtifact("opaque_device_secret");
+
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.proxyConfig.servers.length, 1);
+    assert.equal(resolved.proxyConfig.servers[0].name, "channel-aliyun-a-tuic");
+    assert.equal(resolved.proxyConfig.servers[0].uuid, "22222222-2222-4222-8222-222222222222");
+    assert.equal(resolved.proxyConfig.servers[0].password, "durable-per-order-password");
+    assert.deepEqual(resolverCalls, [{
+      tenantId: "tenant_1",
+      nodeId: "channel-aliyun-a-tuic"
+    }]);
+  }, {
+    proxyConfig: tuicPerOrderProxyConfig(),
+    tenantCredentialMaterialResolver({ tenantId, nodeId }) {
+      resolverCalls.push({ tenantId, nodeId });
+      return {
+        uuid: "22222222-2222-4222-8222-222222222222",
+        password: "durable-per-order-password"
+      };
+    }
+  });
+});
+
+test("service rejects per-order TUIC artifacts when tenant material is unavailable", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context, { nodeId: "channel-aliyun-a-tuic" });
+    context.service.createSubscriptionArtifact("tenant_1");
+
+    assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret"), {
+      ok: false,
+      status: 403,
+      error: "Subscription node unavailable"
+    });
+  }, {
+    proxyConfig: tuicPerOrderProxyConfig()
+  });
+});
+
+test("service injects order credentials for non-TUIC per-order subscription protocols", async () => {
+  for (const scenario of [
+    {
+      nodeId: "channel-vless-a",
+      field: "uuid",
+      expected: "33333333-3333-4333-8333-333333333333",
+      staticValue: "00000000-0000-4000-8000-000000000001"
+    },
+    {
+      nodeId: "channel-hy2-a",
+      field: "password",
+      expected: "per-order-hy2-password",
+      staticValue: "static-hy2-template-password"
+    },
+    {
+      nodeId: "channel-ss-a",
+      field: "password",
+      expected: "per-order-ss-password",
+      staticValue: "static-ss-template-password"
+    }
+  ]) {
+    await withService(async (context) => {
+      await createActiveTenant(context, { nodeId: scenario.nodeId });
+      context.service.createSubscriptionArtifact("tenant_1");
+      context.service.bindTenantCredentialMaterial({
+        tenantId: "tenant_1",
+        nodeId: scenario.nodeId,
+        material: {
+          uuid: scenario.expected,
+          password: scenario.expected
+        }
+      });
+
+      const resolved = context.service.resolveSubscriptionArtifact("opaque_device_secret");
+
+      assert.equal(resolved.ok, true);
+      assert.equal(resolved.proxyConfig.servers.length, 1);
+      assert.equal(resolved.proxyConfig.servers[0].name, scenario.nodeId);
+      assert.equal(resolved.proxyConfig.servers[0][scenario.field], scenario.expected);
+      assert.notEqual(resolved.proxyConfig.servers[0][scenario.field], scenario.staticValue);
+    }, {
+      proxyConfig: multiProtocolPerOrderProxyConfig()
+    });
+  }
+});
+
+test("service composes Hysteria2 userpass credentials for per-order material", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context, { nodeId: "channel-hy2-a" });
+    context.service.createSubscriptionArtifact("tenant_1");
+    context.service.bindTenantCredentialMaterial({
+      tenantId: "tenant_1",
+      nodeId: "channel-hy2-a",
+      credentialRef: "edgecred_tenant_1_channel-hy2-a",
+      material: {
+        uuid: "66666666-6666-4666-8666-666666666666",
+        password: "per-order-hy2-password"
+      }
+    });
+
+    const resolved = context.service.resolveSubscriptionArtifact("opaque_device_secret");
+
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.proxyConfig.servers[0].name, "channel-hy2-a");
+    assert.equal(
+      resolved.proxyConfig.servers[0].password,
+      "edgecred_tenant_1_channel-hy2-a:per-order-hy2-password"
+    );
+  }, {
+    proxyConfig: multiProtocolPerOrderProxyConfig()
+  });
+});
+
+test("service composes Shadowsocks 2022 server and user passwords for per-order material", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context, { nodeId: "channel-ss-2022-a" });
+    context.service.createSubscriptionArtifact("tenant_1");
+    context.service.bindTenantCredentialMaterial({
+      tenantId: "tenant_1",
+      nodeId: "channel-ss-2022-a",
+      material: {
+        uuid: "44444444-4444-4444-8444-444444444444",
+        password: "per-order-ss-2022-user-password"
+      }
+    });
+
+    const resolved = context.service.resolveSubscriptionArtifact("opaque_device_secret");
+
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.proxyConfig.servers[0].name, "channel-ss-2022-a");
+    assert.equal(
+      resolved.proxyConfig.servers[0].password,
+      "static-ss-2022-server-password:per-order-ss-2022-user-password"
+    );
+  }, {
+    proxyConfig: {
+      servers: [
+        {
+          id: "channel_ss_2022_a",
+          name: "channel-ss-2022-a",
+          channelPool: "stable",
+          protocol: "ss",
+          type: "ss",
+          credentialMode: "per-order",
+          host: "203.0.113.63",
+          port: 18388,
+          method: "2022-blake3-aes-256-gcm",
+          password: "static-ss-2022-server-password",
+          serverPassword: "static-ss-2022-server-password",
+          status: "online"
+        }
+      ],
+      pingHosts: ["1.1.1.1"],
+      nginx: { host: "127.0.0.1", ports: [443] }
+    }
+  });
+});
+
+test("service renders all channels in a per-order bundle when every channel has tenant material", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context, { nodeId: "channel-vultr-a-vless-reality-tcp" });
+    context.service.createSubscriptionArtifact("tenant_1");
+
+    for (const [nodeId, material] of [
+      ["channel-vultr-a-vless-reality-tcp", {
+        uuid: "55555555-5555-4555-8555-555555555555",
+        password: "per-order-vless-password"
+      }],
+      ["channel-vultr-a-hy2", {
+        uuid: "66666666-6666-4666-8666-666666666666",
+        password: "per-order-hy2-password"
+      }],
+      ["channel-vultr-a-tuic", {
+        uuid: "77777777-7777-4777-8777-777777777777",
+        password: "per-order-tuic-password"
+      }]
+    ]) {
+      context.service.bindTenantCredentialMaterial({
+        tenantId: "tenant_1",
+        nodeId,
+        material
+      });
+    }
+
+    const resolved = context.service.resolveSubscriptionArtifact("opaque_device_secret");
+
+    assert.equal(resolved.ok, true);
+    assert.deepEqual(resolved.proxyConfig.servers.map((server) => server.name), [
+      "channel-vultr-a-vless-reality-tcp",
+      "channel-vultr-a-hy2",
+      "channel-vultr-a-tuic"
+    ]);
+    assert.equal(resolved.proxyConfig.servers[0].uuid, "55555555-5555-4555-8555-555555555555");
+    assert.equal(resolved.proxyConfig.servers[1].password, "per-order-hy2-password");
+    assert.equal(resolved.proxyConfig.servers[2].uuid, "77777777-7777-4777-8777-777777777777");
+    assert.equal(resolved.proxyConfig.servers[2].password, "per-order-tuic-password");
+  }, {
+    proxyConfig: multiChannelPerOrderBundleProxyConfig()
+  });
+});
+
+test("service fails closed for non-TUIC per-order protocols without order material", async () => {
+  for (const nodeId of ["channel-vless-a", "channel-hy2-a", "channel-ss-a"]) {
+    await withService(async (context) => {
+      await createActiveTenant(context, { nodeId });
+      context.service.createSubscriptionArtifact("tenant_1");
+
+      assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret"), {
+        ok: false,
+        status: 403,
+        error: "Subscription node unavailable"
+      });
+    }, {
+      proxyConfig: multiProtocolPerOrderProxyConfig()
+    });
+  }
+});
+
 test("service rejects revoked and rotated opaque artifacts", async () => {
   await withService(async (context) => {
     await createActiveTenant(context);
@@ -758,6 +1134,10 @@ test("nodes returns planned shared-node summaries", async () => {
       role: "",
       region: "Singapore",
       channelPool: "stable",
+      channelRole: "",
+      lifecycle: "active",
+      physicalNodeRef: "",
+      generation: "",
       strategyPriority: 0,
       canaryWeight: 0,
       host: "203.0.113.10",
@@ -783,6 +1163,10 @@ test("nodes returns safe edge inventory summaries without credentials", async ()
         role: "primary",
         region: "Singapore",
         channelPool: "stable",
+        channelRole: "primary",
+        lifecycle: "active",
+        physicalNodeRef: "",
+        generation: "",
         strategyPriority: 0,
         canaryWeight: 0,
         host: "203.0.113.10",
@@ -800,6 +1184,10 @@ test("nodes returns safe edge inventory summaries without credentials", async ()
         role: "canary",
         region: "Tokyo",
         channelPool: "canary",
+        channelRole: "canary",
+        lifecycle: "maintenance",
+        physicalNodeRef: "",
+        generation: "",
         strategyPriority: 0,
         canaryWeight: 0,
         host: "203.0.113.11",
@@ -817,6 +1205,10 @@ test("nodes returns safe edge inventory summaries without credentials", async ()
         role: "legacy",
         region: "Singapore",
         channelPool: "stable",
+        channelRole: "legacy",
+        lifecycle: "disabled",
+        physicalNodeRef: "",
+        generation: "",
         strategyPriority: 0,
         canaryWeight: 0,
         host: "203.0.113.12",
@@ -973,6 +1365,10 @@ test("overview returns ok, counts, and node summaries", async () => {
       role: "",
       region: "Singapore",
       channelPool: "stable",
+      channelRole: "",
+      lifecycle: "active",
+      physicalNodeRef: "",
+      generation: "",
       strategyPriority: 0,
       canaryWeight: 0,
       host: "203.0.113.10",

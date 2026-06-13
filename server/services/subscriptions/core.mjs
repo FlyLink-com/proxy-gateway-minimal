@@ -44,7 +44,8 @@ export function createSubscriptionCore({
   tempLinkTtlMinutes = 24 * 60,
   expiringDays = DEFAULT_EXPIRING_DAYS,
   lastUsedWriteIntervalMs = 15 * 60 * 1000,
-  lastUsedWriteCache = new Map()
+  lastUsedWriteCache = new Map(),
+  tenantCredentialMaterialResolver = null
 }) {
   const subscriptionStore = store || repository;
   assertSubscriptionStore(subscriptionStore);
@@ -72,6 +73,126 @@ export function createSubscriptionCore({
   function hashSignal(value) {
     if (!value) return null;
     return createHash("sha256").update(String(value)).digest("hex");
+  }
+
+  const tenantCredentialMaterials = new Map();
+
+  function requiredText(value, field) {
+    const normalized = String(value ?? "").trim();
+    if (!normalized) {
+      throw validationError(`${field} is required`);
+    }
+    return normalized;
+  }
+
+  function optionalText(value) {
+    return String(value ?? "").trim();
+  }
+
+  function normalizeCredentialMaterial(material = {}) {
+    const uuid = requiredText(material.uuid, "material.uuid");
+    const password = requiredText(material.password, "material.password");
+    const credentialRef = optionalText(material.credentialRef);
+    return {
+      uuid,
+      password,
+      ...(credentialRef ? { credentialRef } : {})
+    };
+  }
+
+  function tenantCredentialKey(tenantId, nodeName) {
+    return `${tenantId}\0${nodeName}`;
+  }
+
+  function protocolFor(server) {
+    const raw = String(server.protocol || server.clashType || server.type || "ss").trim().toLowerCase();
+    if (raw === "ss" || raw === "shadowsocks" || raw === "shadowsocks-libev" || raw === "shadowsocks-rust") {
+      return "ss";
+    }
+    if (raw === "hysteria2" || raw === "hy2") {
+      return "hysteria2";
+    }
+    return raw;
+  }
+
+  function credentialModeFor(server) {
+    return String(server.credentialMode || server.dataPlaneCredentialMode || "").trim().toLowerCase();
+  }
+
+  function requiresTenantCredentialMaterial(server) {
+    const credentialMode = credentialModeFor(server).replace(/[\s_]+/g, "-");
+    if (
+      credentialMode !== "per-order" &&
+      credentialMode !== "per-order-credential" &&
+      credentialMode !== "per-user" &&
+      credentialMode !== "per-user-credential" &&
+      credentialMode !== "dedicated"
+    ) {
+      return false;
+    }
+    return new Set(["ss", "vless", "hysteria2", "tuic"]).has(protocolFor(server));
+  }
+
+  function applyCredentialMaterialToServer(server, material) {
+    const protocol = protocolFor(server);
+    if (protocol === "vless") {
+      return {
+        ...server,
+        uuid: material.uuid
+      };
+    }
+    if (protocol === "hysteria2") {
+      const credentialRef = optionalText(material.credentialRef);
+      return {
+        ...server,
+        password: credentialRef ? `${credentialRef}:${material.password}` : material.password
+      };
+    }
+    if (protocol === "ss") {
+      const serverPassword = optionalText(server.serverPassword || server["server-password"]);
+      return {
+        ...server,
+        password: serverPassword
+          ? `${serverPassword}:${material.password}`
+          : material.password
+      };
+    }
+    return {
+      ...server,
+      uuid: material.uuid,
+      password: material.password
+    };
+  }
+
+  function resolveTenantCredentialMaterial(tenantAuth, server) {
+    const inMemory = tenantCredentialMaterials.get(tenantCredentialKey(tenantAuth.id, server.name));
+    if (inMemory) {
+      return inMemory;
+    }
+    if (typeof tenantCredentialMaterialResolver !== "function") {
+      return null;
+    }
+    const resolved = tenantCredentialMaterialResolver({
+      tenantId: tenantAuth.id,
+      nodeId: server.name
+    });
+    return resolved ? normalizeCredentialMaterial(resolved) : null;
+  }
+
+  function applyTenantCredentialMaterial(scopedProxyConfig, tenantAuth) {
+    return {
+      ...scopedProxyConfig,
+      servers: (scopedProxyConfig.servers || []).flatMap((server) => {
+        if (!requiresTenantCredentialMaterial(server)) {
+          return [server];
+        }
+        const material = resolveTenantCredentialMaterial(tenantAuth, server);
+        if (!material) {
+          return [];
+        }
+        return [applyCredentialMaterialToServer(server, material)];
+      })
+    };
   }
 
   function ipPrefix(value) {
@@ -113,7 +234,10 @@ export function createSubscriptionCore({
       return { ok: false, status: 403, error: "Subscription expired" };
     }
 
-    const scopedProxyConfig = cloneProxyConfigForSubscriptionOutput(proxyConfig, tenantAuth.nodeId);
+    const scopedProxyConfig = applyTenantCredentialMaterial(
+      cloneProxyConfigForSubscriptionOutput(proxyConfig, tenantAuth.nodeId),
+      tenantAuth
+    );
     if (scopedProxyConfig.servers.length === 0) {
       return { ok: false, status: 403, error: "Subscription node unavailable" };
     }
@@ -156,6 +280,25 @@ export function createSubscriptionCore({
       throw validationError("nodeId does not match an available node");
     }
     return node;
+  }
+
+  function bindTenantCredentialMaterial(input = {}) {
+    const tenantId = requiredText(input.tenantId, "tenantId");
+    const tenant = subscriptionStore.getTenant(tenantId);
+    if (!tenant) {
+      throw notFoundError(tenantId);
+    }
+    const node = selectTenantNode(input.nodeId);
+    const normalizedMaterial = normalizeCredentialMaterial({
+      ...input.material,
+      credentialRef: input.credentialRef || input.material?.credentialRef
+    });
+    tenantCredentialMaterials.set(tenantCredentialKey(tenantId, node.name), normalizedMaterial);
+    return {
+      ok: true,
+      tenantId,
+      nodeId: node.name
+    };
   }
 
   function createTenant(input) {
@@ -464,6 +607,7 @@ export function createSubscriptionCore({
     rotateSubscriptionArtifact,
     resolveSubscriptionToken,
     resolveSubscriptionArtifact,
+    bindTenantCredentialMaterial,
     listNodes,
     nodes,
     overview

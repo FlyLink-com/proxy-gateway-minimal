@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -38,6 +39,8 @@ import {
   generateClashProviderSubscription,
   generateClashProxyProvider,
   generateClashSubscription,
+  generateMihomoProviderTemplate,
+  generateMihomoRenderTemplate,
   normalizeChannelBenchmarkFixture,
   runChannelBenchmarkPlan,
   scoreChannelBenchmarkSummary,
@@ -103,12 +106,27 @@ test("package root exports stable module APIs", () => {
   assert.equal(typeof generateClashProviderSubscription, "function");
   assert.equal(typeof generateClashProxyProvider, "function");
   assert.equal(typeof generateClashSubscription, "function");
+  assert.equal(typeof generateMihomoProviderTemplate, "function");
+  assert.equal(typeof generateMihomoRenderTemplate, "function");
   assert.equal(typeof CHANNEL_BENCHMARK_SAMPLE_SCHEMA_VERSION, "string");
   assert.equal(typeof normalizeChannelBenchmarkFixture, "function");
   assert.equal(typeof runChannelBenchmarkPlan, "function");
   assert.equal(typeof scoreChannelBenchmarkSummary, "function");
   assert.equal(typeof summarizeChannelBenchmarkResults, "function");
   assert.equal(typeof startProxyGateway, "function");
+});
+
+test("candidate release startup shim is versioned and packageable", () => {
+  const rootDir = resolve(fileURLToPath(new URL("../../", import.meta.url)));
+  const shimPath = resolve(rootDir, "candidate-start.mjs");
+  const packagePath = resolve(rootDir, "package.json");
+  const source = readFileSync(shimPath, "utf8");
+  const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
+
+  assert.equal(existsSync(shimPath), true);
+  assert.match(source, /from "\.\/server\/start\.mjs"/);
+  assert.doesNotMatch(source, /process\.env\.[A-Z0-9_]*(TOKEN|SECRET|PASSWORD)/i);
+  assert.equal(packageJson.files.includes("candidate-start.mjs"), true);
 });
 
 test("startProxyGateway starts and stops an embedded app", async () => {

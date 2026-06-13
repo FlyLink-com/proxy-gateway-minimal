@@ -1,6 +1,6 @@
 # Project Topology
 
-Last updated: 2026-05-26, Asia/Shanghai.
+Last updated: 2026-06-03, Asia/Shanghai.
 
 > Status:
 > - Type: Active architecture topology
@@ -14,9 +14,10 @@ Last updated: 2026-05-26, Asia/Shanghai.
 
 ## Current Production Topology
 
-Current production delivery is still a server-side subscription gateway plus
-Shadowsocks data-plane nodes. Local Edge Agent work is repository prototype
-only and is not production active.
+Current production subscription delivery is the Aliyun public subscription
+boundary. The former AWS `prod-edge-a` / `prod-edge-b` carrying instances were
+terminated on 2026-05-29, so there is no active AWS edge data-plane baseline.
+Local Edge Agent work is repository prototype only and is not production active.
 
 ```mermaid
 flowchart LR
@@ -32,35 +33,33 @@ flowchart LR
   end
 
   subgraph "Production Edge Fleet"
-    E1["prod-edge-a\ncurrent primary"]
-    E2["prod-edge-b\niteration / canary secondary"]
-    E3["prod-edge-c\nfuture recovery slot"]
+    E1["prod-edge-a\nterminated AWS slot"]
+    E2["prod-edge-b\nterminated AWS slot"]
+    E3["prod-edge-c\nfuture clean edge slot"]
   end
 
   C -->|"refreshes subscription\n/sub/a/* or compatible /sub/clash.yaml"| D
   D --> N --> A --> DB
   A -->|"renders Subscription V2 YAML"| C
-  C -->|"direct Shadowsocks data plane"| E1
-  C -.->|"optional emitted secondary node"| E2
+  C -.->|"static config still references\nretired nodes until rebuilt"| E1
+  C -.->|"static config still references\nretired nodes until rebuilt"| E2
   E3 -.->|"not active standby yet"| E1
 ```
 
 Current production facts:
 
 ```text
-prod-edge-a: current primary production edge
-prod-edge-b: iteration / canary secondary slot
+prod-edge-a: historical AWS production edge slot; carrying instance terminated
+prod-edge-b: historical AWS iteration/canary slot; carrying instance terminated
 prod-edge-c: future recovery / standby slot, build materials only
 legacy blue: stopped, controlled retirement review only
 ```
 
 ## Target Subscription Control / Edge Split
 
-The current production runtime is still co-located: the primary production host
-serves subscription control-plane duties and primary edge data-plane duties.
-The target architecture separates subscription authority from edge capacity and
-now prefers the current Aliyun server as the future subscription control-plane
-candidate after CI is moved to local Linux.
+The current Aliyun runtime serves the subscription-distribution boundary while
+edge data-plane activation remains pending. The target architecture separates
+subscription authority from replaceable edge capacity.
 
 ```mermaid
 flowchart LR
@@ -71,9 +70,9 @@ flowchart LR
     Render["Subscription V2 renderer"]
   end
 
-  subgraph "Current Non-Aliyun Node Dependencies"
-    A["prod-edge-a\nAWS dependency until drain"]
-    B["prod-edge-b\nAWS secondary until drain"]
+  subgraph "Retired Non-Aliyun Node Slots"
+    A["prod-edge-a\nterminated AWS slot"]
+    B["prod-edge-b\nterminated AWS slot"]
     C["historical / future nodes\nno default keep path"]
   end
 
@@ -85,8 +84,8 @@ flowchart LR
   Clients["Clash / Mihomo\nor future Local Edge Agent"] -->|"refresh / bootstrap"| SC
   SC --> State --> Render
   Render -->|"approved policy"| Clients
-  Clients -.->|"existing traffic until drain"| A
-  Clients -.->|"existing secondary until drain"| B
+  Clients -.->|"historical config reference\nnot live edge authority"| A
+  Clients -.->|"historical config reference\nnot live edge authority"| B
   SC -.->|"backup / restore path"| SB
   A -.-> Mesh
   B -.-> Mesh
@@ -99,8 +98,8 @@ Target split boundaries:
 ```text
 sub-control-a on Aliyun produces subscriptions, owns artifacts, and keeps access state after separate approval
 local Linux owns manual CI after separate validation
-prod-edge-a/b are current AWS runtime dependencies until Aliyun promotion and drain approval
-non-Aliyun / non-HP nodes should be drained and retired through explicit gates
+prod-edge-a/b AWS carrying instances were stopped and then terminated under explicit gates
+non-Aliyun / non-HP nodes should only re-enter service through explicit new gates
 future edge rebuilds are deferred unless a technical MVP integration gate approves them
 edge nodes should not own subscription state or expose Admin
 private mesh is health / validation / recovery infrastructure first
@@ -130,8 +129,8 @@ flowchart LR
   end
 
   subgraph "Remote Channel Targets"
-    A["current prod-edge-a\nuntil drain"]
-    B["current prod-edge-b\nuntil drain"]
+    A["historical prod-edge-a\nterminated slot"]
+    B["historical prod-edge-b\nterminated slot"]
     C3["future target\nrequires new approval"]
     Mesh["private edge mesh\nfuture management / recovery plane"]
   end
@@ -256,7 +255,7 @@ flowchart TB
   subgraph "Data Plane"
     Clash["Clash / Mihomo"]
     Agent["Local Edge Agent adapter"]
-    Edges["current prod-edge-a / prod-edge-b\nuntil drain"]
+    Edges["future clean edge target\nrequires approval"]
     Outbound["remote outbound traffic"]
   end
 

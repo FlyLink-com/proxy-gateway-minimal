@@ -1,6 +1,6 @@
 # Unit Design Index
 
-Last updated: 2026-05-25, Asia/Shanghai.
+Last updated: 2026-06-08, America/Los_Angeles.
 
 > Status:
 > - Type: Active unit design index
@@ -16,6 +16,11 @@ Last updated: 2026-05-25, Asia/Shanghai.
 This directory keeps each project unit design separate. Use
 `docs/DOMAIN_UNIT_BOUNDARIES.md` as the top-level boundary and these unit files
 for focused ownership, interfaces, risks, and next tasks.
+
+For source/archive separation, use `docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md`
+before importing unit material from old checkouts, `.worktrees/`, generated
+artifacts, or `docs/archive/superpowers/`. Historical unit specs and plans are
+background only until a current active doc reactivates them.
 
 ## Unit Designs
 

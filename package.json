@@ -19,6 +19,7 @@
   "files": [
     "index.mjs",
     "daemon.mjs",
+    "candidate-start.mjs",
     "start-server.ps1",
     ".env.example",
     "server/app.mjs",
@@ -78,11 +79,13 @@
     "platform:provisioning-form": "node bin/gccgw.mjs platform provisioning-form",
     "platform:issue-subscription": "node bin/gccgw.mjs platform issue-subscription",
     "platform:issue-portal-entry": "node bin/gccgw.mjs platform issue-portal-entry",
+    "platform:issue-portal-initial-account": "node bin/gccgw.mjs platform issue-portal-initial-account",
     "platform:resource-package": "node bin/gccgw.mjs platform resource-package",
     "platform:revoke-access": "node bin/gccgw.mjs platform revoke-access",
     "platform:access-inventory-summary": "node bin/gccgw.mjs platform access-inventory-summary",
     "platform:clean-edge-readiness-summary": "node bin/gccgw.mjs platform clean-edge-readiness-summary",
     "project-state:check": "node bin/gccgw.mjs project check",
+    "project:handoff-brief": "node bin/gccgw.mjs project handoff-brief",
     "project:verify": "node bin/gccgw.mjs project verify",
     "project:verify:admin": "node bin/gccgw.mjs project verify --with-admin",
     "project:architecture": "node bin/gccgw.mjs architecture",
@@ -99,9 +102,18 @@
     "daemon": "node daemon.mjs",
     "admin:dev": "npm run dev --prefix admin",
     "admin:build": "npm run build --prefix admin",
+    "admin:portal:build": "npm run build:portal --prefix admin",
+    "admin:portal:verify": "npm run verify:portal-build --prefix admin",
     "admin:site:build": "npm run build:site --prefix admin",
     "admin:site:verify": "npm run verify:site-build --prefix admin",
+    "cloudflare:site:build": "npm run admin:site:build",
+    "cloudflare:site:verify": "npm run admin:site:verify",
+    "cloudflare:site:dry-run": "npx --yes wrangler@4.99.0 deploy --config wrangler.jsonc --dry-run",
+    "cloudflare:site:validate": "npm run cloudflare:site:build && npm run cloudflare:site:verify && npm run cloudflare:site:dry-run",
     "admin:test": "npm run test --prefix admin"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.78.0"
   },
   "dependencies": {
     "better-sqlite3": "^12.10.0",

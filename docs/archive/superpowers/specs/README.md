@@ -1,6 +1,6 @@
 # Specs Archive
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-06-08, America/Los_Angeles.
 
 This directory contains historical design specs. They are archived design
 artifacts, not current operational source-of-truth docs by default.
@@ -8,6 +8,8 @@ artifacts, not current operational source-of-truth docs by default.
 Read these files when you need design background, but verify current behavior
 against the code, tests, `docs/PROJECT_CONTEXT.md`, and active runbooks before
 making changes.
+Also read `docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md` before re-importing
+any archived spec fact into active source, docs, tests, or runtime templates.
 
 ## Specs
 

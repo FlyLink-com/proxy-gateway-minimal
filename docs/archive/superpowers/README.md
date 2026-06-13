@@ -1,6 +1,6 @@
 # Superpowers Archive Index
 
-Last updated: 2026-05-24, Asia/Shanghai.
+Last updated: 2026-06-08, America/Los_Angeles.
 
 This directory stores historical design and implementation artifacts produced
 during earlier planning work. These files are useful for background and
@@ -11,14 +11,15 @@ Use the current documentation index first:
 
 ```text
 docs/README.md
+docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md
 ```
 
 ## Sections
 
 | Directory | Purpose | Status | When to read |
 | --- | --- | --- | --- |
-| `docs/superpowers/specs/` | Historical design specs and decision notes. | Archived design artifacts. | Read for background on why a feature or ops path was designed. |
-| `docs/superpowers/plans/` | Historical implementation plans. | Archived implementation artifacts. | Read for background on how prior work was intended to be implemented. |
+| `docs/archive/superpowers/specs/` | Historical design specs and decision notes. | Archived design artifacts. | Read for background on why a feature or ops path was designed. |
+| `docs/archive/superpowers/plans/` | Historical implementation plans. | Archived implementation artifacts. | Read for background on how prior work was intended to be implemented. |
 
 ## Source-Of-Truth Rule
 

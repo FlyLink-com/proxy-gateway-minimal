@@ -18,10 +18,19 @@ import { resolveClientIp } from "./services/ip-address.mjs";
 const PUBLIC_PATHS = ["/api/health", "/api/public/leads", "/proxy.pac", "/sub/clash.yaml"];
 const PUBLIC_PATH_PREFIXES = ["/sub/a/"];
 const USER_PORTAL_PUBLIC_PATHS = [
+  "/api/portal/human-challenges",
+  "/api/portal/password/session",
+  "/api/portal/password/second-factor",
   "/api/portal/entry/enroll",
   "/api/portal/session",
   "/api/portal/access-requests",
-  "/api/portal/access-requests/current"
+  "/api/portal/access-requests/current",
+  "/api/portal/access-requests/refresh",
+  "/api/portal/access-requests/disable",
+  "/api/portal/security/current",
+  "/api/portal/security/totp/enrollment",
+  "/api/portal/security/totp/enrollment/confirm",
+  "/api/portal/support-requests"
 ];
 
 export function createApp(state, options = {}) {
@@ -35,7 +44,11 @@ export function createApp(state, options = {}) {
   const security = state.security || {};
   const userPortalRoutesEnabled = Boolean(
     state.platform?.userPortalRoutesEnabled
-    && (state.platform?.userPortalAuth || state.platform?.portalAccessRequests)
+    && (
+      state.platform?.userPortalAuth
+      || state.platform?.portalAccessRequests
+      || state.platform?.portalSupportRequests
+    )
   );
   const clientIpResolver = options.clientIpResolver || ((req) => resolveClientIp(req, {
     trustedProxyCidrs: security.trustedProxyCidrs
@@ -65,6 +78,9 @@ export function createApp(state, options = {}) {
     || state.platform?.accountShell
     || state.platform?.accessShell
     || state.platform?.portalAccessRequests
+    || state.platform?.controlStore
+    || state.platform?.edgeUsageAccounting
+    || state.platform?.dataPlaneHandoffQueue
   ) {
     app.use(adminPlatformRoutes(state));
   }

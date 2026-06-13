@@ -1,0 +1,264 @@
+{
+  "reviewedRuntimeTemplate": true,
+  "templatePurpose": "Vultr production multi-channel metadata. Replace placeholders from protected runtime storage before deployment.",
+  "servers": [
+    {
+      "id": "channel_vultr_a_vless_reality_tcp",
+      "name": "channel-vultr-a-vless-reality-tcp",
+      "provider": "vultr",
+      "physicalNodeRef": "vultr-nrt-a",
+      "subscriptionBundleRef": "vultr-production-a",
+      "displayName": "Vultr Tokyo VLESS Reality TCP stable candidate",
+      "region": "nrt",
+      "protocol": "vless",
+      "type": "vless",
+      "host": "${VULTR_VLESS_REALITY_HOST}",
+      "port": 8443,
+      "uuid": "${VULTR_VLESS_REALITY_UUID}",
+      "network": "tcp",
+      "udp": true,
+      "tls": true,
+      "flow": "xtls-rprx-vision",
+      "serverName": "${VULTR_VLESS_REALITY_SNI}",
+      "realityOpts": {
+        "publicKey": "${VULTR_VLESS_REALITY_PUBLIC_KEY}",
+        "shortId": "${VULTR_VLESS_REALITY_SHORT_ID}"
+      },
+      "clientFingerprint": "chrome",
+      "channelPool": "stable",
+      "channelRole": "stable",
+      "lifecycle": "active",
+      "status": "online",
+      "subscriptionEligible": true,
+      "strategyPriority": 10,
+      "credentialMode": "per-order",
+      "stableProtocolApproved": true,
+      "runtimeAdapter": "xray-vless-reality-explicit-restart",
+      "credentialLifecycle": {
+        "addCredential": true,
+        "disableCredential": true,
+        "rotateCredential": true,
+        "restart": true
+      }
+    },
+    {
+      "id": "channel_vultr_a_hy2",
+      "name": "channel-vultr-a-hy2",
+      "provider": "vultr",
+      "physicalNodeRef": "vultr-nrt-a",
+      "subscriptionBundleRef": "vultr-production-a",
+      "displayName": "Vultr Tokyo Hysteria2 weak-network candidate",
+      "region": "nrt",
+      "protocol": "hysteria2",
+      "type": "hysteria2",
+      "host": "${VULTR_HY2_HOST}",
+      "port": 10443,
+      "password": "${VULTR_HY2_PASSWORD}",
+      "sni": "${VULTR_HY2_SNI}",
+      "alpn": [
+        "h3"
+      ],
+      "qualityClass": "weak-network",
+      "bbrProfile": "aggressive",
+      "channelPool": "weak-network",
+      "channelRole": "weak-network",
+      "lifecycle": "active",
+      "status": "online",
+      "subscriptionEligible": true,
+      "strategyPriority": 20,
+      "credentialMode": "per-order",
+      "runtimeAdapter": "hysteria2-explicit-restart",
+      "runtimePolicy": {
+        "sniff": {
+          "enabled": true,
+          "rewriteDomain": true,
+          "tcpPorts": "80,443,8000-9000",
+          "udpPorts": "all"
+        },
+        "outbound": {
+          "mode": 4
+        },
+        "trafficStats": {
+          "loopbackOnly": true,
+          "listenEnv": "EDGE_HYSTERIA2_TRAFFIC_STATS_LISTEN"
+        }
+      },
+      "credentialLifecycle": {
+        "addCredential": true,
+        "disableCredential": true,
+        "rotateCredential": true,
+        "restart": true
+      }
+    },
+    {
+      "id": "channel_vultr_a_tuic",
+      "name": "channel-vultr-a-tuic",
+      "provider": "vultr",
+      "physicalNodeRef": "vultr-nrt-a",
+      "subscriptionBundleRef": "vultr-production-a",
+      "displayName": "Vultr Tokyo TUIC canary",
+      "region": "nrt",
+      "protocol": "tuic",
+      "type": "tuic",
+      "host": "${VULTR_TUIC_HOST}",
+      "port": 443,
+      "uuid": "${VULTR_TUIC_UUID}",
+      "password": "${VULTR_TUIC_PASSWORD}",
+      "sni": "${VULTR_TUIC_SNI}",
+      "alpn": [
+        "h3"
+      ],
+      "udpRelayMode": "native",
+      "congestionController": "bbr",
+      "qualityClass": "weak-network",
+      "channelPool": "canary",
+      "channelRole": "canary",
+      "lifecycle": "active",
+      "status": "online",
+      "subscriptionEligible": true,
+      "strategyPriority": 50,
+      "credentialMode": "per-order",
+      "stableProtocolApproved": false,
+      "runtimeAdapter": "mihomo-tuic-explicit-restart",
+      "credentialLifecycle": {
+        "addCredential": true,
+        "disableCredential": true,
+        "rotateCredential": true,
+        "restart": true
+      }
+    },
+    {
+      "id": "channel_sgp_a_vless_reality_tcp",
+      "name": "channel-sgp-a-vless-reality-tcp",
+      "provider": "vultr",
+      "physicalNodeRef": "vultr-sgp-a",
+      "subscriptionBundleRef": "vultr-production-a",
+      "displayName": "Vultr Singapore VLESS Reality TCP stable candidate",
+      "region": "sgp",
+      "protocol": "vless",
+      "type": "vless",
+      "host": "${SGP_VLESS_REALITY_HOST}",
+      "port": 8443,
+      "uuid": "${SGP_VLESS_REALITY_UUID}",
+      "network": "tcp",
+      "udp": true,
+      "tls": true,
+      "flow": "xtls-rprx-vision",
+      "serverName": "${SGP_VLESS_REALITY_SNI}",
+      "realityOpts": {
+        "publicKey": "${SGP_VLESS_REALITY_PUBLIC_KEY}",
+        "shortId": "${SGP_VLESS_REALITY_SHORT_ID}"
+      },
+      "clientFingerprint": "chrome",
+      "channelPool": "stable",
+      "channelRole": "stable",
+      "lifecycle": "active",
+      "status": "online",
+      "subscriptionEligible": true,
+      "strategyPriority": 15,
+      "credentialMode": "per-order",
+      "stableProtocolApproved": true,
+      "runtimeAdapter": "remote-data-plane-handoff",
+      "credentialLifecycle": {
+        "addCredential": true,
+        "disableCredential": true,
+        "rotateCredential": true,
+        "restart": true
+      }
+    },
+    {
+      "id": "channel_sgp_a_hy2",
+      "name": "channel-sgp-a-hy2",
+      "provider": "vultr",
+      "physicalNodeRef": "vultr-sgp-a",
+      "subscriptionBundleRef": "vultr-production-a",
+      "displayName": "Vultr Singapore Hysteria2 weak-network candidate",
+      "region": "sgp",
+      "protocol": "hysteria2",
+      "type": "hysteria2",
+      "host": "${SGP_HY2_HOST}",
+      "port": 10443,
+      "password": "${SGP_HY2_PASSWORD}",
+      "sni": "${SGP_HY2_SNI}",
+      "alpn": [
+        "h3"
+      ],
+      "qualityClass": "weak-network",
+      "bbrProfile": "aggressive",
+      "channelPool": "weak-network",
+      "channelRole": "weak-network",
+      "lifecycle": "active",
+      "status": "online",
+      "subscriptionEligible": true,
+      "strategyPriority": 25,
+      "credentialMode": "per-order",
+      "runtimeAdapter": "remote-data-plane-handoff",
+      "runtimePolicy": {
+        "sniff": {
+          "enabled": true,
+          "rewriteDomain": true,
+          "tcpPorts": "80,443,8000-9000",
+          "udpPorts": "all"
+        },
+        "outbound": {
+          "mode": 4
+        },
+        "trafficStats": {
+          "loopbackOnly": true,
+          "listenEnv": "EDGE_HYSTERIA2_TRAFFIC_STATS_LISTEN"
+        }
+      },
+      "credentialLifecycle": {
+        "addCredential": true,
+        "disableCredential": true,
+        "rotateCredential": true,
+        "restart": true
+      }
+    },
+    {
+      "id": "channel_sgp_a_tuic",
+      "name": "channel-sgp-a-tuic",
+      "provider": "vultr",
+      "physicalNodeRef": "vultr-sgp-a",
+      "subscriptionBundleRef": "vultr-production-a",
+      "displayName": "Vultr Singapore TUIC canary",
+      "region": "sgp",
+      "protocol": "tuic",
+      "type": "tuic",
+      "host": "${SGP_TUIC_HOST}",
+      "port": 443,
+      "uuid": "${SGP_TUIC_UUID}",
+      "password": "${SGP_TUIC_PASSWORD}",
+      "sni": "${SGP_TUIC_SNI}",
+      "alpn": [
+        "h3"
+      ],
+      "udpRelayMode": "native",
+      "congestionController": "bbr",
+      "qualityClass": "weak-network",
+      "channelPool": "canary",
+      "channelRole": "canary",
+      "lifecycle": "active",
+      "status": "online",
+      "subscriptionEligible": true,
+      "strategyPriority": 55,
+      "credentialMode": "per-order",
+      "stableProtocolApproved": false,
+      "runtimeAdapter": "remote-data-plane-handoff",
+      "credentialLifecycle": {
+        "addCredential": true,
+        "disableCredential": true,
+        "rotateCredential": true,
+        "restart": true
+      }
+    }
+  ],
+  "pingHosts": [
+    "sub.globalcirclecat.cloud",
+    "portal.globalcirclecat.cloud"
+  ],
+  "nginx": {
+    "host": "sub.globalcirclecat.cloud",
+    "ports": [80, 443]
+  }
+}

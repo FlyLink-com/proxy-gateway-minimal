@@ -233,6 +233,10 @@ function renderEnvSkeleton({ configurePlan, importPlan }) {
   skeleton.push(`CONSOLE_PORT=${configurePlan.install?.consolePort || 3456}`);
   const cidrs = configurePlan.management?.adminAllowedCidrs || [];
   skeleton.push(`ADMIN_ALLOWED_CIDRS=${cidrs.join(",")}`);
+  skeleton.push("TRUSTED_PROXY_CIDRS=");
+  skeleton.push("SUB_RATE_LIMIT_WINDOW_MS=60000");
+  skeleton.push("SUB_RATE_LIMIT_MAX=30");
+  skeleton.push("SUBSCRIPTION_TEMP_LINK_TTL_MINUTES=1440");
   for (const envItem of importPlan?.plannedOperations || []) {
     if (envItem.id === "prepare-env-requirements") {
       skeleton.push("# Required runtime env count is recorded in the reviewed package import plan.");
@@ -240,6 +244,18 @@ function renderEnvSkeleton({ configurePlan, importPlan }) {
   }
   skeleton.push("CONSOLE_TOKEN=__SET_ON_HOST__");
   skeleton.push("SS_PASSWORD=__SET_ON_HOST__");
+  skeleton.push("PAYMENT_PROVIDER=");
+  skeleton.push("PAYMENT_MODE=");
+  skeleton.push("PAYMENT_PROVIDER_API_KEY=");
+  skeleton.push("PAYMENT_PROVIDER_API_SECRET=");
+  skeleton.push("PAYMENT_PROVIDER_WEBHOOK_SECRET=");
+  skeleton.push("PAYMENT_RETURN_URL=");
+  skeleton.push("PAYMENT_CANCEL_URL=");
+  skeleton.push("PAYMENT_PUBLIC_BASE_URL=");
+  skeleton.push("CHANNEL_LAB_B_TUIC_HOST=");
+  skeleton.push("CHANNEL_LAB_B_TUIC_UUID=");
+  skeleton.push("CHANNEL_LAB_B_TUIC_PASSWORD=");
+  skeleton.push("CHANNEL_LAB_B_TUIC_CERT=");
   return `${skeleton.join("\n")}\n`;
 }
 
