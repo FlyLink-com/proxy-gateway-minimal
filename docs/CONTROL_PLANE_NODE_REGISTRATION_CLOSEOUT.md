@@ -8,6 +8,10 @@ Last updated: 2026-06-13, Asia/Shanghai.
 - Risk: A for runtime/production activation; this document is C-tier repo-only
 - Production impact: none
 - Scope: control-plane work needed after node-image readiness validation
+- Repo-only progress: first-boot packet to durable node registration ingestion is
+  implemented in `server/services/edge/node-registration-ingestion.mjs`, backed
+  by the `platform_edge_registered_nodes` control DB table and tests. This is
+  not production activation.
 
 This document closes the design boundary between production-node image readiness
 and control-plane activation. It does not authorize DNS, Nginx, provider
@@ -61,6 +65,9 @@ the control plane's desired runtime state.
    - Store protected endpoint/material refs only by key or digest.
    - Reject raw secrets, subscription URLs, private keys, raw IP inventories,
      and customer data.
+   - Repo-only implementation now persists the safe registration subset and
+     rejects unapproved first-boot apply packets; production ingestion still
+     requires the Risk A gate below.
 
 2. **Protected material handoff**
    - Bind registered node refs to protected material namespaces.
