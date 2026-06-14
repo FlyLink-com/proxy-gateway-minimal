@@ -147,6 +147,12 @@ Aliyun or other providers:
 
 ## Validation Checklist
 
+The staged acceptance path for this lane is tracked in
+`docs/production-replacement-records/2026-06-14-production-node-image-factory-acceptance-matrix.md`.
+Use that matrix to separate C-tier documentation closure, B-tier helper/fixture
+closure, AWS staging validation, production promotion approval, and follow-on
+control-plane registration gates.
+
 Image build validation:
 
 - image manifest exists and records release plus package hash;

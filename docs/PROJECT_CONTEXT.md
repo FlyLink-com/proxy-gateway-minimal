@@ -63,6 +63,11 @@ create live orders. The repo-only image-factory closeout is recorded in
 `docs/production-replacement-records/2026-06-14-production-node-image-factory-closeout.md`.
 It closes the current no-secret image/runbook/helper lane and hands future node
 work to a separate Risk A control-plane registration/material handoff gate. The
+staged acceptance matrix for that lane is recorded in
+`docs/production-replacement-records/2026-06-14-production-node-image-factory-acceptance-matrix.md`;
+it separates GCC-13 documentation alignment, GCC-14 helper/fixture closure,
+GCC-15 AWS staging validation, GCC-16 production promotion approval, and the
+follow-on node-registration/material-handoff gates. The
 AWS staging control/data-plane integration validation is
 recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-validation.md`.

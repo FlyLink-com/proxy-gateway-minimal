@@ -31,6 +31,7 @@ The image factory lane is currently represented by these source assets:
 - `server/tests/edge-material-handoff-preflight.test.mjs`
 - `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md`
 - `docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-validation.md`
+- `docs/production-replacement-records/2026-06-14-production-node-image-factory-acceptance-matrix.md`
 - `docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md`
 
 ## What Is Complete
@@ -69,6 +70,11 @@ The image factory lane is currently represented by these source assets:
   activation still require separate Risk A gates.
 
 ## Acceptance Boundary
+
+The staged gate order for this boundary is now explicit in
+`docs/production-replacement-records/2026-06-14-production-node-image-factory-acceptance-matrix.md`.
+Use that matrix to keep GCC-13, GCC-14, GCC-15, GCC-16, and the follow-on
+control-plane registration gates separate.
 
 The image factory lane is complete enough to support the next exact gate when
 an operator wants to create or clone a node:
