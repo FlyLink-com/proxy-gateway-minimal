@@ -560,6 +560,17 @@ test("works with the durable sqlite control store contract", () => {
     const [desiredState] = desiredResponse.desiredStates;
     assert.equal(desiredState.nodeRef, "node-sgp-a");
     assert.deepEqual(desiredState.edgeCredentialRefs, ["edgecred_agent_sqlite_hy2"]);
+    store.recordEdgeDesiredStateNotification({
+      id: "edge_state_notify_agent_sqlite_hy2",
+      nodeRef: "node-sgp-a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: desiredState.desiredStateRef,
+      generation: desiredState.generation,
+      reason: "order_delivered",
+      status: "pending",
+      createdAt: NOW.toISOString(),
+      updatedAt: NOW.toISOString()
+    });
 
     const lease = service.recordLease(identity, {
       channelRef: "channel-sgp-a-hy2",
@@ -588,5 +599,10 @@ test("works with the durable sqlite control store contract", () => {
     assert.equal(receipts[0].listenerUdp443, true);
     assert.equal(receipts[0].serviceActive, true);
     assert.equal(receipts[0].configTestOk, true);
+    const notifications = store.listEdgeDesiredStateNotifications({
+      channelRef: "channel-sgp-a-hy2"
+    });
+    assert.equal(notifications.length, 1);
+    assert.equal(notifications[0].status, "applied");
   });
 });

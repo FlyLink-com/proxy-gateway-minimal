@@ -1813,7 +1813,35 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
         applied_at = excluded.applied_at,
         created_at = excluded.created_at
     `), record);
+    syncEdgeDesiredStateNotificationFromReceipt(record);
     return getEdgeApplyReceipt(record.id);
+  }
+
+  function syncEdgeDesiredStateNotificationFromReceipt(record) {
+    const notificationStatus = (
+      record.status === "applied"
+      && record.configTestOk === 1
+      && record.serviceActive === 1
+      && record.listenerUdp443 === 1
+    )
+      ? "applied"
+      : (record.status === "failed" ? "failed" : "");
+    if (!notificationStatus) {
+      return;
+    }
+    sqliteRun(db.prepare(`
+      update platform_edge_desired_state_notifications
+      set status = @status,
+          updated_at = @updatedAt
+      where channel_ref = @channelRef
+        and desired_state_ref = @desiredStateRef
+        and status in ('pending', 'acknowledged')
+    `), {
+      status: notificationStatus,
+      updatedAt: record.appliedAt || record.createdAt,
+      channelRef: record.channelRef,
+      desiredStateRef: record.desiredStateRef
+    });
   }
 
   function getEdgeApplyReceipt(id) {
