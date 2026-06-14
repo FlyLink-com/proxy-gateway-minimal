@@ -79,6 +79,13 @@ GCC-16 production image promotion approval packet is recorded in
 It is an approval packet only and does not authorize provider image creation,
 host provisioning, node registration, protected material handoff,
 receipt-gated rendering, or traffic activation. The
+GCC-6 control-plane node registration production gate package is recorded in
+`docs/production-replacement-records/2026-06-14-control-plane-node-registration-production-gate-package.md`.
+It turns the image-lane handoff into a registration-focused Risk A package:
+one reviewed first-boot packet or one reviewed existing node may be registered
+or bound, but protected material handoff, data-plane apply receipts, broad
+render activation, traffic activation, and live orders remain separate unless
+the exact approval explicitly scopes a one-order controlled proof. The
 AWS staging control/data-plane integration validation is
 recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-validation.md`.
@@ -108,10 +115,11 @@ That closeout plan is recorded in
 `docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md`; it keeps order issuance as
 a control-plane action and edge-agent pull/apply as a lifecycle reconciliation
 path for apply receipts, expiry, disable, rotate, usage, and rollback.
-The approval template used for this lane is retained at
+The previous approval template used for this lane is retained at
 `docs/production-replacement-records/2026-06-13-control-plane-node-registration-closeout-approval-packet.md`;
-new executions must still be filled with exact release, artifact, SHA-256,
-current release, and target-node details before production mutation.
+new executions should use the 2026-06-14 GCC-6 package above and must still be
+filled with exact release, artifact, SHA-256, current release, target-node,
+registration mode, and protected-ref details before production mutation.
 The earlier AWS staging control/data-plane approval packet remains at
 `docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-approval-packet.md`
 for auditability; its matching execution record above is the current evidence.
