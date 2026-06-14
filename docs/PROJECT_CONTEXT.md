@@ -74,6 +74,11 @@ staged acceptance matrix for that lane is recorded in
 it separates GCC-13 documentation alignment, GCC-14 helper/fixture closure,
 GCC-15 AWS staging validation, GCC-16 production promotion approval, and the
 follow-on node-registration/material-handoff gates. The
+GCC-16 production image promotion approval packet is recorded in
+`docs/production-replacement-records/2026-06-14-production-image-promotion-approval-packet.md`.
+It is an approval packet only and does not authorize provider image creation,
+host provisioning, node registration, protected material handoff,
+receipt-gated rendering, or traffic activation. The
 AWS staging control/data-plane integration validation is
 recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-validation.md`.
