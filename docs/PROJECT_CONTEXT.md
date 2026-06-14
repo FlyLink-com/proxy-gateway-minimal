@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-06-13, Asia/Shanghai.
+Last updated: 2026-06-14, Asia/Shanghai.
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -67,24 +67,31 @@ edge-agent, redacted receipt, receipt-gated rendering, usage/lifecycle, and
 node-image helper path on AWS staging only. It did not promote AWS, touch
 production, create live orders, output subscription material, or mutate DNS,
 Nginx, provider firewall/security groups, Vultr, or Aliyun.
-The next stage remains control-plane closeout. Repo-only source now includes
+The control-plane node registration closeout lane has a production closeout
+snapshot recorded in
+`docs/production-replacement-records/2026-06-14-control-plane-node-registration-closeout-execution.md`.
+That record observes Japan running
+`control-plane-node-registration-closeout-20260614-001`, confirms public
+portal/subscription boundaries, confirms the internal control port is
+loopback-only, and confirms SGP data-plane services/listeners are active.
+Repo-only source now includes
 first-boot packet registration ingestion, a durable safe-node registration
 table, a redacted protected-material handoff preflight that checks current
 desired-state material readiness by registered node and digest, and an
 operator CLI dry-run entry
 `gccgw edge material-handoff preflight --dry-run` backed by a read-only control
-DB adapter; protected production material handoff, production desired-state
-generation, receipt-gated subscription rendering, operator approval,
-validation, and rollback framing remain separately gated for the production
-lane.
+DB adapter. Future production node additions, live order smoke, protected
+material handoff for new nodes, desired-state generation, receipt-gated render
+activation, validation, and rollback framing still require separate exact Risk A
+gates.
 That closeout plan is recorded in
 `docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md`; it keeps order issuance as
 a control-plane action and edge-agent pull/apply as a lifecycle reconciliation
 path for apply receipts, expiry, disable, rotate, usage, and rollback.
-The next approval template is
+The approval template used for this lane is retained at
 `docs/production-replacement-records/2026-06-13-control-plane-node-registration-closeout-approval-packet.md`;
-it must be filled with exact release, artifact, SHA-256, current release, and
-target-node details before any production execution.
+new executions must still be filled with exact release, artifact, SHA-256,
+current release, and target-node details before production mutation.
 The earlier AWS staging control/data-plane approval packet remains at
 `docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-approval-packet.md`
 for auditability; its matching execution record above is the current evidence.
