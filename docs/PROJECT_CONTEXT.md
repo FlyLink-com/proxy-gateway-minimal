@@ -59,7 +59,11 @@ The AWS staging node-image readiness validation is recorded in
 It validates the no-secret image readiness and first-boot packet helper path
 with synthetic safe input only. It did not register a production node, mutate
 DNS/Nginx/firewall, activate traffic, inject protected runtime material, or
-create live orders. The AWS staging control/data-plane integration validation is
+create live orders. The repo-only image-factory closeout is recorded in
+`docs/production-replacement-records/2026-06-14-production-node-image-factory-closeout.md`.
+It closes the current no-secret image/runbook/helper lane and hands future node
+work to a separate Risk A control-plane registration/material handoff gate. The
+AWS staging control/data-plane integration validation is
 recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-validation.md`.
 It validates the synthetic control-plane registration, desired-state,
