@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -161,5 +161,29 @@ test("node image readiness summary CLI prints safe JSON", () => {
     assert.equal(summary.readiness.preconditionsReady, true);
     assert.equal(summary.readiness.activationAllowed, false);
     assert.doesNotMatch(stdout, /secret-token|token=|https?:|customer@example\.com|\/sub\/clash\.yaml\?/);
+  });
+});
+
+test("node image readiness summary CLI prints sanitized JSON errors", () => {
+  withJsonFile({
+    ...readyInput(),
+    rawConfig: "server: 203.0.113.10",
+    notes: ["https://sub.example/sub/clash.yaml?token=secret-token"]
+  }, (path) => {
+    const result = spawnSync(process.execPath, [
+      "scripts/node-image-provisioning-readiness-summary.mjs",
+      path
+    ], {
+      cwd: new URL("../../", import.meta.url),
+      encoding: "utf8"
+    });
+
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stderr, "");
+    const summary = JSON.parse(result.stdout);
+    assert.equal(summary.ok, false);
+    assert.equal(summary.mode, "node-image-provisioning-readiness-summary");
+    assert.match(summary.error, /safe node image provisioning readiness summary/);
+    assert.doesNotMatch(result.stdout, /secret-token|203\.0\.113|sub\.example|rawConfig/);
   });
 });

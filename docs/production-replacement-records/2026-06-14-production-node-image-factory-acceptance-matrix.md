@@ -61,4 +61,3 @@ Before the image-factory closeout PR is marked ready:
   itself.
 - GCC-6, GCC-7, and GCC-8 remain the follow-on production gates for node
   registration, protected material handoff, apply receipts, and render proof.
-

@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { buildNodeImageProvisioningReadinessSummary } from "../server/services/node-image-provisioning-readiness-summary.mjs";
 
+const MODE = "node-image-provisioning-readiness-summary";
+
 function readJson(path) {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
@@ -21,6 +23,10 @@ try {
   const summary = main(process.argv.slice(2));
   process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
 } catch (error) {
-  process.stderr.write(`node image provisioning readiness summary failed: ${error.message}\n`);
+  process.stdout.write(`${JSON.stringify({
+    ok: false,
+    mode: MODE,
+    error: error.message
+  }, null, 2)}\n`);
   process.exitCode = 1;
 }
