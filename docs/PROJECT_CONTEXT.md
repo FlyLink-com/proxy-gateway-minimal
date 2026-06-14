@@ -57,9 +57,15 @@ making any new branch or production claim.
 The AWS staging node-image readiness validation is recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md`.
 It validates the no-secret image readiness and first-boot packet helper path
-with synthetic safe input only. It did not register a production node, mutate
-DNS/Nginx/firewall, activate traffic, inject protected runtime material, or
-create live orders. The repo-only image-factory closeout is recorded in
+with synthetic safe input only. The current GCC-15 repeat proof is recorded in
+`docs/production-replacement-records/2026-06-14-aws-staging-node-image-readiness-validation.md`.
+It validates the `aws-node-image-validation-20260614-001` artifact on AWS
+staging, confirms public Admin remains blocked, confirms the internal control
+port stays loopback-only, and confirms the helper CLIs accept synthetic safe
+input without granting activation or first-boot apply. These records did not
+register a production node, mutate DNS/Nginx/firewall/security groups,
+activate traffic, inject protected runtime material, or create live orders.
+The repo-only image-factory closeout is recorded in
 `docs/production-replacement-records/2026-06-14-production-node-image-factory-closeout.md`.
 It closes the current no-secret image/runbook/helper lane and hands future node
 work to a separate Risk A control-plane registration/material handoff gate. The
