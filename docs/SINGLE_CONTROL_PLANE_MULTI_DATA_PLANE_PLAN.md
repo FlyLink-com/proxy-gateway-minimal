@@ -1,6 +1,6 @@
 # Single Control Plane / Multi Data-Plane Plan
 
-Last updated: 2026-06-11, Asia/Shanghai.
+Last updated: 2026-06-14, Asia/Shanghai.
 
 > Status:
 > - Type: Active architecture and implementation plan
@@ -106,6 +106,21 @@ The portal should show orders, status, expiry, usage, and support actions. It
 should not ask normal users to choose backend production nodes. Channel choice
 is a policy decision rendered into the subscription file from control-plane
 state.
+
+Regional production channels must be separated from automatic preference.
+Singapore channels are customer-facing production capacity when an order or
+bundle is entitled to them; they should remain available as selectable client
+channels after receipt-gated runtime apply succeeds. Network quality facts may
+drive monitoring, warnings, and ordering, but they should not automatically
+convert an entitled Singapore channel into canary, maintenance, or a Japan
+relay path.
+
+The default client policy may keep Japan channels first for general bundles
+while leaving Singapore channels selectable. For Singapore-specific bundles,
+the renderer may place Singapore channels in the region group or a higher
+priority position, but the current baseline is not to add extra Japan-to-
+Singapore relay behavior unless a separate product and Risk A runtime gate
+approves it.
 
 ## Credential Fan-Out
 
