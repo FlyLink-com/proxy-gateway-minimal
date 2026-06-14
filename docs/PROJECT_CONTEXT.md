@@ -57,12 +57,35 @@ making any new branch or production claim.
 The AWS staging node-image readiness validation is recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md`.
 It validates the no-secret image readiness and first-boot packet helper path
-with synthetic safe input only. It did not register a production node, mutate
-DNS/Nginx/firewall, activate traffic, inject protected runtime material, or
-create live orders. The repo-only image-factory closeout is recorded in
+with synthetic safe input only. The current GCC-15 repeat proof is recorded in
+`docs/production-replacement-records/2026-06-14-aws-staging-node-image-readiness-validation.md`.
+It validates the `aws-node-image-validation-20260614-001` artifact on AWS
+staging, confirms public Admin remains blocked, confirms the internal control
+port stays loopback-only, and confirms the helper CLIs accept synthetic safe
+input without granting activation or first-boot apply. These records did not
+register a production node, mutate DNS/Nginx/firewall/security groups,
+activate traffic, inject protected runtime material, or create live orders.
+The repo-only image-factory closeout is recorded in
 `docs/production-replacement-records/2026-06-14-production-node-image-factory-closeout.md`.
 It closes the current no-secret image/runbook/helper lane and hands future node
 work to a separate Risk A control-plane registration/material handoff gate. The
+staged acceptance matrix for that lane is recorded in
+`docs/production-replacement-records/2026-06-14-production-node-image-factory-acceptance-matrix.md`;
+it separates GCC-13 documentation alignment, GCC-14 helper/fixture closure,
+GCC-15 AWS staging validation, GCC-16 production promotion approval, and the
+follow-on node-registration/material-handoff gates. The
+GCC-16 production image promotion approval packet is recorded in
+`docs/production-replacement-records/2026-06-14-production-image-promotion-approval-packet.md`.
+It is an approval packet only and does not authorize provider image creation,
+host provisioning, node registration, protected material handoff,
+receipt-gated rendering, or traffic activation. The
+GCC-6 control-plane node registration production gate package is recorded in
+`docs/production-replacement-records/2026-06-14-control-plane-node-registration-production-gate-package.md`.
+It turns the image-lane handoff into a registration-focused Risk A package:
+one reviewed first-boot packet or one reviewed existing node may be registered
+or bound, but protected material handoff, data-plane apply receipts, broad
+render activation, traffic activation, and live orders remain separate unless
+the exact approval explicitly scopes a one-order controlled proof. The
 AWS staging control/data-plane integration validation is
 recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-validation.md`.
@@ -92,10 +115,11 @@ That closeout plan is recorded in
 `docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md`; it keeps order issuance as
 a control-plane action and edge-agent pull/apply as a lifecycle reconciliation
 path for apply receipts, expiry, disable, rotate, usage, and rollback.
-The approval template used for this lane is retained at
+The previous approval template used for this lane is retained at
 `docs/production-replacement-records/2026-06-13-control-plane-node-registration-closeout-approval-packet.md`;
-new executions must still be filled with exact release, artifact, SHA-256,
-current release, and target-node details before production mutation.
+new executions should use the 2026-06-14 GCC-6 package above and must still be
+filled with exact release, artifact, SHA-256, current release, target-node,
+registration mode, and protected-ref details before production mutation.
 The earlier AWS staging control/data-plane approval packet remains at
 `docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-approval-packet.md`
 for auditability; its matching execution record above is the current evidence.

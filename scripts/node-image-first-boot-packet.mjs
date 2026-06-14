@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { buildNodeImageFirstBootPacket } from "../server/services/node-image-first-boot-packet.mjs";
 
+const MODE = "node-image-first-boot-packet";
+
 function readJson(path) {
   try {
     return JSON.parse(readFileSync(path, "utf8"));
@@ -21,6 +23,10 @@ try {
   const packet = main(process.argv.slice(2));
   process.stdout.write(`${JSON.stringify(packet, null, 2)}\n`);
 } catch (error) {
-  process.stderr.write(`node image first-boot packet failed: ${error.message}\n`);
+  process.stdout.write(`${JSON.stringify({
+    ok: false,
+    mode: MODE,
+    error: error.message
+  }, null, 2)}\n`);
   process.exitCode = 1;
 }

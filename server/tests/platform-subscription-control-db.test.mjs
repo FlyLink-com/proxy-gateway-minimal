@@ -405,6 +405,59 @@ test("subscription control store persists safe edge desired-state notifications"
   });
 });
 
+test("subscription control store marks matching desired-state notification applied from receipt", () => {
+  withStore((store) => {
+    const now = "2026-06-14T00:00:00.000Z";
+
+    store.recordEdgeDesiredStateNotification({
+      id: "edge_state_notify_apply_001",
+      nodeRef: "vultr-sgp-a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: "desired_state_channel-sgp-a-hy2_current",
+      generation: "gen_current",
+      reason: "order_delivered",
+      status: "pending",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.recordEdgeDesiredStateNotification({
+      id: "edge_state_notify_apply_old",
+      nodeRef: "vultr-sgp-a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: "desired_state_channel-sgp-a-hy2_old",
+      generation: "gen_old",
+      reason: "order_delivered",
+      status: "pending",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    store.recordEdgeApplyReceipt({
+      id: "edge_receipt_apply_001",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: "desired_state_channel-sgp-a-hy2_current",
+      status: "applied",
+      actionCounts: {
+        add: 1,
+        revoke: 0,
+        rotate: 0,
+        unchanged: 0
+      },
+      configTestOk: true,
+      serviceActive: true,
+      listenerUdp443: true,
+      appliedAt: "2026-06-14T00:01:00.000Z",
+      createdAt: "2026-06-14T00:01:00.000Z"
+    });
+
+    const applied = store.getEdgeDesiredStateNotification("edge_state_notify_apply_001");
+    const old = store.getEdgeDesiredStateNotification("edge_state_notify_apply_old");
+    assert.equal(applied.status, "applied");
+    assert.equal(applied.updatedAt, "2026-06-14T00:01:00.000Z");
+    assert.equal(old.status, "pending");
+  });
+});
+
 test("subscription control store persists portal access request lifecycle", () => {
   withStore((store) => {
     const now = "2026-06-06T00:00:00.000Z";

@@ -155,7 +155,8 @@ rollback by restoring backups and withholding the node from rendering.
 Do not combine this gate with DNS, Nginx, provider firewall, public Admin,
 payment, account/password generation, or broad live-order rollout.
 
-The current approval-packet template is
-`docs/production-replacement-records/2026-06-13-control-plane-node-registration-closeout-approval-packet.md`.
-It must be filled with exact release, artifact, SHA-256, current release, and
-target-node details before execution.
+The current GCC-6 production gate package is
+`docs/production-replacement-records/2026-06-14-control-plane-node-registration-production-gate-package.md`.
+It must be filled with exact release, artifact, SHA-256, current release,
+registration mode, target node, and protected-ref details before execution. The
+older 2026-06-13 approval packet remains retained for auditability only.

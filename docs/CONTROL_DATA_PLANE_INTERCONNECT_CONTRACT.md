@@ -1,6 +1,6 @@
 # Control Plane / Data Plane Interconnect Contract
 
-Last updated: 2026-06-11, Asia/Shanghai.
+Last updated: 2026-06-14, Asia/Shanghai.
 
 > Status:
 > - Type: Active architecture contract
@@ -144,9 +144,14 @@ canary
 recovery
 ```
 
-Default user subscription output should only include eligible `stable` nodes.
-Private/canary/recovery nodes require an explicit operator assignment or a
-separate approved rollout gate.
+Default automatic selection should only prefer eligible `stable` nodes.
+Entitled regional production nodes, such as Singapore capacity purchased or
+reserved by a customer, may still appear as selectable subscription channels
+after their receipt gate passes. Quality measurements may affect warnings,
+ranking, and operator decisions; they are not, by themselves, permission to
+remove an entitled production region from selectable output or to replace it
+with a relay path. Private/canary/recovery nodes require an explicit operator
+assignment or a separate approved rollout gate.
 
 ## Interconnect Contracts
 

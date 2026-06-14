@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -177,5 +177,32 @@ test("node image first-boot packet CLI prints safe JSON", () => {
     assert.equal(packet.packet.readyForFirstBootApproval, true);
     assert.equal(packet.packet.firstBootApplyAllowed, false);
     assert.doesNotMatch(stdout, /secret-token|token=|https?:|customer@example\.com|203\.0\.113/);
+  });
+});
+
+test("node image first-boot packet CLI prints sanitized JSON errors", () => {
+  withJsonFile({
+    ...readyInput(),
+    node: {
+      ...readyInput().node,
+      credentialRef: "token=secret-token"
+    },
+    rawRuntimeConfig: "server: 203.0.113.10"
+  }, (path) => {
+    const result = spawnSync(process.execPath, [
+      "scripts/node-image-first-boot-packet.mjs",
+      path
+    ], {
+      cwd: new URL("../../", import.meta.url),
+      encoding: "utf8"
+    });
+
+    assert.notEqual(result.status, 0);
+    assert.equal(result.stderr, "");
+    const packet = JSON.parse(result.stdout);
+    assert.equal(packet.ok, false);
+    assert.equal(packet.mode, "node-image-first-boot-packet");
+    assert.match(packet.error, /safe node image first-boot packet/);
+    assert.doesNotMatch(result.stdout, /secret-token|203\.0\.113|credentialRef|rawRuntimeConfig/);
   });
 });
