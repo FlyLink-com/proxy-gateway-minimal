@@ -88,6 +88,39 @@ For each candidate:
    different local proxy subscriptions, TUN modes, or ISP egress IPs unless the
    test case is explicitly about those differences.
 
+## Safe Channel Observation Report
+
+`buildChannelQualityMeasurementReport(...)` records already-collected safe
+observations by `channelRef`. It keeps client import compatibility separate
+from network quality so that a template/client problem is not confused with a
+provider or runtime path problem.
+
+Accepted observation facts are limited to safe fields such as:
+
+- `channelRef`
+- `nodeRef`
+- `source`
+- `clientProfile`
+- `compatibility`
+- `measuredAt`
+- `latencyMs`
+- `jitterMs`
+- `packetLossRatio`
+- `successRate`
+- `timeoutRate`
+- `downloadMbps`
+- `uploadMbps`
+
+The report outputs advisory `qualityTier` and `strategyAdvice` values. For
+example, a high-loss Singapore channel can be marked
+`keep_optional_collect_evidence` without removing it from the subscription
+bundle, while an import failure is marked as a client/template issue.
+
+This layer rejects endpoint-like or secret-shaped input and omits hosts, ports,
+tokens, credentials, subscription URLs, raw logs, and raw configs. It does not
+run probes, contact servers, mutate runtime config, alter proxy groups, or
+activate/deactivate channels.
+
 ## Promotion Threshold
 
 A candidate can move from investigation to canary only when it meets all of the
