@@ -2162,6 +2162,12 @@ High-value entrypoints:
 - `docs/NETWORK_FORWARDING.md` - local/proxy/Admin/runtime forwarding model.
 - `docs/ENVIRONMENT_TOPOLOGY.md` - repo, GitHub, branch, and AWS role map.
 - `docs/DEPLOYMENT_FLOW.md` - deployment, staging, promotion, rollback flow.
+- `docs/NODE_ONBOARDING_RUNBOOK.md` - end-to-end Risk A runbook for new
+  data-plane node onboarding or reviewed-node binding, from no-secret image or
+  safe node facts through material handoff, edge-agent apply, receipts, and
+  receipt-gated render proof.
+- `docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md` - no-secret image and first-boot
+  packet runbook for repeatable data-plane nodes.
 - `docs/CI_MANUAL_VALIDATION.md` - manual validation host workflow.
 - `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` - historical Aliyun/local-CI
   split and node-retirement plan.

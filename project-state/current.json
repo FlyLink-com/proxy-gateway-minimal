@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-06-14",
+  "lastUpdated": "2026-06-15",
   "timezone": "America/Los_Angeles",
   "status": "active-snapshot-vultr-japan-control-plane-sgp-data-plane",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
@@ -13,6 +13,7 @@
     "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
     "docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md",
     "docs/CONTROL_DATA_PLANE_INTERCONNECT_CONTRACT.md",
+    "docs/NODE_ONBOARDING_RUNBOOK.md",
     "docs/NODE_REGISTRATION_AND_POOL_CONTRACT.md",
     "docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md",
     "docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md",
