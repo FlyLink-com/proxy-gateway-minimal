@@ -50,6 +50,9 @@ Read these in order before doing project work:
    surface.
 5. `docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md` - current Vultr Japan
    control-plane plus Vultr Japan/Singapore data-plane direction.
+6. `docs/RUNTIME_LANE_AUTHORITY.md` - current versus staging versus historical
+   runtime-lane authority, especially before using Aliyun, AWS, canary,
+   retired-node, or generated-runtime records.
 
 For routine docs or repo-only code work, continue from the subsystem document in
 `docs/README.md`. For production, cloud, DNS, Nginx, systemd, node, runtime,
@@ -106,15 +109,17 @@ Do not treat these as current source:
 | `.codex-runtime/`, `.codex-artifacts/`, `.codex-tmp/`, `.playwright-cli/`, `.proxy-gateway/`, `coverage/`, `output/`, `test-results/` | Generated or runtime material. Do not promote to source of truth. |
 | `docs/archive/` | Historical reference only unless an active document explicitly re-imports it. |
 
-When local paths, old docs, generated artifacts, and current source disagree,
-prefer `D:\Projects\proxy-gateway-minimal`, `docs/PROJECT_CONTEXT.md`,
-`docs/README.md`, and live verification.
+When local paths, old docs, generated artifacts, runtime-lane records, and
+current source disagree, prefer `D:\Projects\proxy-gateway-minimal`,
+`docs/PROJECT_CONTEXT.md`, `docs/README.md`,
+`docs/RUNTIME_LANE_AUTHORITY.md`, and live verification.
 
 ## Common Agent Mistakes
 
 Avoid these failure modes:
 
-1. Treating old Aliyun or AWS records as the current platform direction.
+1. Treating old Aliyun, AWS, canary, retired-node, or generated-runtime records
+   as the current platform direction.
 2. Treating `docs/archive/`, `.worktrees/`, generated output, or old local
    checkouts as current source.
 3. Treating "I read `docs/PROJECT_CONTEXT.md`" as permission to touch
