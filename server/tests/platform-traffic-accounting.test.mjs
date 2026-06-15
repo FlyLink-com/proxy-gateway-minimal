@@ -180,6 +180,44 @@ test("traffic accounting maps derived multi-channel edge credentials to the issu
   });
 });
 
+test("traffic accounting rejects derived channel credentials when explicit order credentials exist", () => {
+  withStore((store) => {
+    const existing = store.getPortalAccessRequest("pareq_usage_service_1");
+    store.upsertPortalAccessRequest({
+      ...existing,
+      edgeCredentials: [
+        {
+          edgeChannelRef: "channel-vultr-a-hy2",
+          edgeCredentialRef: "edgecred_pareq_usage_service_1_channel-vultr-a-hy2",
+          edgeMaterialDigest: "sha256:digest_usage_service_hy2"
+        }
+      ]
+    });
+    const service = createTrafficAccountingService({
+      controlStore: store,
+      nowFn: () => "2026-06-06T00:10:00.000Z",
+      usageSampleRefFactory: () => "usage_sample_service_unissued_channel"
+    });
+
+    const result = service.recordUsageObservation({
+      sourceRef: "hy2_stats_snapshot_unissued_channel",
+      channelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: "edgecred_pareq_usage_service_1_channel-sgp-a-hy2",
+      observedAt: "2026-06-06T00:05:00.000Z",
+      intervalStartedAt: "2026-06-06T00:00:00.000Z",
+      intervalEndedAt: "2026-06-06T00:05:00.000Z",
+      uploadBytes: 10,
+      downloadBytes: 20
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "unresolved_binding");
+    assert.equal(result.sampleInserted, false);
+    assert.equal(store.listUsageSamples({ edgeCredentialRef: "edgecred_pareq_usage_service_1_channel-sgp-a-hy2" }).length, 0);
+    assert.equal(result.execution.directRuntimeMutationAllowed, false);
+  });
+});
+
 test("traffic accounting fails closed when an edge credential cannot be resolved", () => {
   withStore((store) => {
     const service = createTrafficAccountingService({
