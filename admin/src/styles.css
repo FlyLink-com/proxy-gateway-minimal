@@ -3683,9 +3683,38 @@ th {
   font-weight: 800;
 }
 
+.portal-order-usage small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+}
+
+.portal-order-usage em {
+  align-self: start;
+  border-radius: 999px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 1;
+  padding: 4px 7px;
+}
+
 .portal-order-usage .portal-traffic-meter {
   height: 6px;
   width: 120px;
+}
+
+.portal-order-usage.over-limit .portal-traffic-meter span {
+  background: #dc2626;
+}
+
+.portal-order-usage.over-limit em {
+  background: #fee2e2;
+  color: #991b1b;
 }
 
 .portal-order-actions {

@@ -134,6 +134,42 @@ function edgeCredentialRefsFor(record) {
   return refs;
 }
 
+function issuedChannelRefsFor(record, rollups = []) {
+  const refs = [];
+  const seen = new Set();
+  const pushRef = (value) => {
+    const ref = String(value || "").trim();
+    if (ref && !seen.has(ref)) {
+      seen.add(ref);
+      refs.push(ref);
+    }
+  };
+  const credentialCount = Array.isArray(record.edgeCredentials) ? record.edgeCredentials.length : 0;
+  const hasRollupChannelRefs = rollups.some((rollup) => String(rollup?.channelRef || "").trim());
+  if (credentialCount > 1 || (credentialCount === 1 && !hasRollupChannelRefs)) {
+    for (const credential of record.edgeCredentials) {
+      pushRef(credential?.edgeChannelRef);
+    }
+  } else if (credentialCount === 0 && !hasRollupChannelRefs) {
+    pushRef(record.edgeChannelRef);
+  }
+  for (const rollup of rollups) {
+    pushRef(rollup?.channelRef);
+  }
+  return refs;
+}
+
+function measuredChannelCountFor(rollups) {
+  const channelRefs = new Set();
+  for (const rollup of rollups) {
+    const channelRef = String(rollup?.channelRef || "").trim();
+    if (channelRef) {
+      channelRefs.add(channelRef);
+    }
+  }
+  return channelRefs.size > 0 ? channelRefs.size : rollups.length;
+}
+
 function usageSummaryFor(record, controlStore) {
   if (!controlStore || !record?.id) {
     return null;
@@ -174,6 +210,8 @@ function usageSummaryFor(record, controlStore) {
   const uploadBytes = rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.uploadBytes), 0);
   const downloadBytes = rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.downloadBytes), 0);
   const usedBytes = rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.totalBytes), 0);
+  const measuredChannelCount = measuredChannelCountFor(rollups);
+  const channelCount = Math.max(issuedChannelRefsFor(record, rollups).length, measuredChannelCount);
   const updatedAt = rollups
     .map((rollup) => rollup.updatedAt || rollup.lastObservedAt)
     .filter(Boolean)
@@ -187,6 +225,9 @@ function usageSummaryFor(record, controlStore) {
     totalBytes: trafficLimitBytes,
     usageRatio: usageRatio(usedBytes, trafficLimitBytes),
     status: trafficLimitBytes > 0 && usedBytes >= trafficLimitBytes ? "over_limit" : "within_limit",
+    collectionStatus: usedBytes > 0 || uploadBytes > 0 || downloadBytes > 0 ? "measured" : "measured_zero",
+    channelCount,
+    measuredChannelCount,
     ...(updatedAt ? { updatedAt } : {})
   };
 }

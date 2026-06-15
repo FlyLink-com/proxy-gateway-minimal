@@ -284,6 +284,44 @@ function trafficUsageLabel(order: PortalOrderRow) {
   return `${formatTrafficBytes(usage.usedBytes)} / 不限量`;
 }
 
+function trafficUsageDetail(order: PortalOrderRow) {
+  const usage = order.request.usage;
+  if (!usage) return "等待采集";
+  return `上传 ${formatTrafficBytes(usage.uploadBytes)} / 下载 ${formatTrafficBytes(usage.downloadBytes)}`;
+}
+
+function trafficUsageChannelLabel(order: PortalOrderRow) {
+  const usage = order.request.usage;
+  if (!usage) return "";
+  if (usage.channelCount > 0) {
+    return `已计量 ${usage.measuredChannelCount}/${usage.channelCount} 通道`;
+  }
+  switch (usage.collectionStatus) {
+    case "collector_disabled":
+      return "采集未启用";
+    case "not_collected":
+      return "尚未采集";
+    case "stale":
+      return "采集延迟";
+    default:
+      return usage.usedBytes > 0 ? "已计量" : "已计量 0 通道";
+  }
+}
+
+function trafficUsageCollectedAt(order: PortalOrderRow) {
+  const updatedAt = order.request.usage?.updatedAt;
+  return updatedAt ? `采集 ${formatDateTime(updatedAt)}` : "";
+}
+
+function trafficUsageStatusLabel(order: PortalOrderRow) {
+  const usage = order.request.usage;
+  if (!usage) return "";
+  if (usage.status === "over_limit") return "超额";
+  if (usage.collectionStatus === "stale") return "延迟";
+  if (usage.collectionStatus === "measured_zero") return "零用量";
+  return "";
+}
+
 function trafficUsagePercent(order: PortalOrderRow) {
   const usage = order.request.usage;
   if (!usage || usage.totalBytes <= 0) return 0;
@@ -1355,12 +1393,22 @@ function SubscriptionManager({
                   <td>{clientTargetLabel(order.clientTarget)}</td>
                   <td><span className={cn("portal-order-status", order.status)}>{orderStatusLabel(order.status)}</span></td>
                   <td>
-                    <div className="portal-order-usage">
+                    <div className={cn("portal-order-usage", order.request.usage?.status === "over_limit" && "over-limit")}>
                       <span>{trafficUsageLabel(order)}</span>
+                      <small>{trafficUsageDetail(order)}</small>
                       {order.request.usage && order.request.usage.totalBytes > 0 ? (
                         <div className="portal-traffic-meter" aria-hidden="true">
                           <span style={{ width: `${trafficUsagePercent(order)}%` }} />
                         </div>
+                      ) : null}
+                      {trafficUsageChannelLabel(order) ? (
+                        <small>{trafficUsageChannelLabel(order)}</small>
+                      ) : null}
+                      {trafficUsageCollectedAt(order) ? (
+                        <small>{trafficUsageCollectedAt(order)}</small>
+                      ) : null}
+                      {trafficUsageStatusLabel(order) ? (
+                        <em>{trafficUsageStatusLabel(order)}</em>
                       ) : null}
                     </div>
                   </td>

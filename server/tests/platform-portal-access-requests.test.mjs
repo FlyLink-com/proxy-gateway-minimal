@@ -172,6 +172,7 @@ function seedUsageOrder(store, overrides = {}) {
   const tenantRef = overrides.tenantRef || "tenant_usage_summary_1";
   const artifactRef = overrides.artifactRef || "artifact_usage_summary_1";
   const edgeCredentialRef = overrides.edgeCredentialRef || `edgecred_${requestId}`;
+  const edgeCredentials = Array.isArray(overrides.edgeCredentials) ? overrides.edgeCredentials : undefined;
 
   store.createAccount({
     id: accountId,
@@ -237,7 +238,8 @@ function seedUsageOrder(store, overrides = {}) {
     subscriptionUrl: "https://sub.example.test/import/visible-once",
     edgeChannelRef: "channel-vultr-a-vless-reality-tcp",
     edgeCredentialRef,
-    edgeMaterialDigest: `sha256:digest_${requestId}`
+    edgeMaterialDigest: `sha256:digest_${requestId}`,
+    ...(edgeCredentials ? { edgeCredentials } : {})
   });
 
   return { now, requestId, accountId, entitlementId, edgeCredentialRef };
@@ -396,6 +398,9 @@ test("portal access request summaries include redacted usage rollups from the co
       totalBytes: 1000,
       usageRatio: 0.7,
       status: "within_limit",
+      collectionStatus: "measured",
+      channelCount: 1,
+      measuredChannelCount: 1,
       updatedAt: "2026-06-06T00:05:01.000Z"
     });
     assert.doesNotMatch(JSON.stringify(summary.usage), /edgecred|channel-vultr|tenant_|artifact_|subscriptionUrl|password|token/i);
@@ -443,7 +448,64 @@ test("portal access request summaries aggregate multi-channel usage by request i
     assert.equal(summary.usage.totalBytes, 2000);
     assert.equal(summary.usage.usageRatio, 0.675);
     assert.equal(summary.usage.status, "within_limit");
+    assert.equal(summary.usage.collectionStatus, "measured");
+    assert.equal(summary.usage.channelCount, 3);
+    assert.equal(summary.usage.measuredChannelCount, 3);
     assert.equal(summary.usage.updatedAt, "2026-06-06T00:03:01.000Z");
+    assert.doesNotMatch(JSON.stringify(summary.usage), /edgecred|channel-vultr|password|token|subscriptionUrl/i);
+  });
+});
+
+test("portal access request summaries count issued channels without exposing channel refs", () => {
+  withControlStore((store) => {
+    const requestId = "pareq_usage_summary_partial_channels";
+    const issuedChannels = [
+      "channel-vultr-a-vless-reality-tcp",
+      "channel-vultr-a-hy2",
+      "channel-vultr-a-tuic"
+    ];
+    const { accountId, entitlementId } = seedUsageOrder(store, {
+      requestId,
+      trafficLimitBytes: 2000,
+      edgeCredentials: issuedChannels.map((channelRef) => ({
+        edgeChannelRef: channelRef,
+        edgeCredentialRef: `edgecred_${requestId}_${channelRef}`,
+        edgeMaterialDigest: `sha256:digest_${requestId}_${channelRef}`
+      }))
+    });
+    for (const [index, channelRef, uploadBytes, downloadBytes] of [
+      [1, "channel-vultr-a-vless-reality-tcp", 100, 150],
+      [2, "channel-vultr-a-hy2", 200, 250]
+    ]) {
+      store.recordUsageSample({
+        id: `usage_summary_partial_channels_${index}`,
+        sourceRef: `runtime_stats_snapshot_partial_${index}`,
+        channelRef,
+        edgeCredentialRef: `edgecred_${requestId}_${channelRef}`,
+        accountId,
+        entitlementId,
+        requestId,
+        observedAt: `2026-06-06T00:0${index}:00.000Z`,
+        intervalStartedAt: "2026-06-06T00:00:00.000Z",
+        intervalEndedAt: `2026-06-06T00:0${index}:00.000Z`,
+        uploadBytes,
+        downloadBytes,
+        sampleDigest: `usage_summary_partial_channels_digest_${index}`,
+        createdAt: `2026-06-06T00:0${index}:01.000Z`
+      });
+    }
+
+    const requests = createPortalAccessRequestService({
+      nowFn: () => "2026-06-06T00:06:00.000Z",
+      controlStore: store
+    });
+    const summary = requests.getRequest(requestId);
+
+    assert.equal(summary.usage.uploadBytes, 300);
+    assert.equal(summary.usage.downloadBytes, 400);
+    assert.equal(summary.usage.usedBytes, 700);
+    assert.equal(summary.usage.channelCount, 3);
+    assert.equal(summary.usage.measuredChannelCount, 2);
     assert.doesNotMatch(JSON.stringify(summary.usage), /edgecred|channel-vultr|password|token|subscriptionUrl/i);
   });
 });
