@@ -84,10 +84,9 @@ records:
 Do not derive current architecture from stale historical Aliyun/AWS records, old
 checkout paths, archive directories, runtime-only residue, or `master` alone.
 As of the latest local/GitHub read-only check for this snapshot, `master` and
-`origin/master` are at `e8db032` (`[codex] Close out node image factory lane
-(#315)`). Open PR count is 1: PR #316 (`codex/linear-agent-ops-guards`) is the
-current docs/agent-ops guard lane. Run `git status` and `gh pr list` before
-making any new branch or production claim.
+`origin/master` are at `094285c` after PR #317
+(`docs: add operator node onboarding intake form`). Open PR count is 0. Run
+`git status` and `gh pr list` before making any new branch or production claim.
 
 The AWS staging node-image readiness validation is recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md`.
@@ -195,8 +194,8 @@ The service-lane integration closeout record lives in
 `docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md`. It is now historical closeout
 context for the merged PR #299 / PR #302 integration lane rather than an active
 branch plan. As of the latest local/GitHub read-only check for this snapshot,
-`master` and `origin/master` are at `e8db032` after PR #315, and PR #316 is open
-for the current `codex/linear-agent-ops-guards` lane. Follow-up work should
+`master` and `origin/master` are at `094285c` after PR #317, and there are no
+open GitHub PRs. Follow-up work should
 branch from clean `master` unless a task explicitly states otherwise. Always
 verify the exact local branch and worktree state with `git status`; this
 document does not assert that a worktree is clean.
@@ -1651,8 +1650,8 @@ operator approval, validation, and rollback path exist:
 
 GitHub-hosted Actions must be checked per PR instead of treated as globally
 blocked. As of the latest local/GitHub read-only check for this snapshot,
-`master` and `origin/master` are at `e8db032`, PR #315 is merged, and PR #316 is
-open. Use local validation and `docs/CI_MANUAL_VALIDATION.md` when a clean
+`master` and `origin/master` are at `094285c` after PR #317, and there are no
+open GitHub PRs. Use local validation and `docs/CI_MANUAL_VALIDATION.md` when a clean
 fallback is actually needed. Manual CI is not staging, production, or deployment
 approval.
 
