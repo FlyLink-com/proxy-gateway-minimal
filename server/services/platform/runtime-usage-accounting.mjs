@@ -14,6 +14,33 @@ function blockerCodes(result) {
     : [];
 }
 
+function redactedBlocker(code) {
+  return { code };
+}
+
+function collectorExceptionResult(channelRef) {
+  return {
+    ok: false,
+    status: "collector_error",
+    channelRef,
+    observations: [],
+    blockers: [redactedBlocker("collector_exception")],
+    nextAction: "review_usage_collector_failure"
+  };
+}
+
+function accountingExceptionResult(observation) {
+  return {
+    ok: false,
+    status: "accounting_error",
+    channelRef: text(observation?.channelRef),
+    edgeCredentialRef: text(observation?.edgeCredentialRef),
+    sampleInserted: false,
+    blockers: [redactedBlocker("accounting_exception")],
+    nextAction: "review_usage_accounting_failure"
+  };
+}
+
 function normalizeCollectors(collectors = []) {
   return (Array.isArray(collectors) ? collectors : [])
     .map((collector) => ({
@@ -41,16 +68,26 @@ export function createRuntimeUsageAccountingService({
     let quotaDisableRequiredCount = 0;
 
     for (const { channelRef, collector } of normalizedCollectors) {
-      const collected = await collector.collect({
-        since: sinceByChannelRef[channelRef] || since
-      });
+      let collected;
+      try {
+        collected = await collector.collect({
+          since: sinceByChannelRef[channelRef] || since
+        });
+      } catch {
+        collected = collectorExceptionResult(channelRef);
+      }
       const observations = Array.isArray(collected?.observations)
         ? collected.observations
         : [];
       const recorded = [];
       for (const observation of observations) {
         observationCount += 1;
-        const result = accounting.recordUsageObservation(observation);
+        let result;
+        try {
+          result = await accounting.recordUsageObservation(observation);
+        } catch {
+          result = accountingExceptionResult(observation);
+        }
         if (result.ok === true) {
           recordedCount += 1;
           if (result.sampleInserted === true) insertedCount += 1;
@@ -66,6 +103,7 @@ export function createRuntimeUsageAccountingService({
           channelRef: result.channelRef,
           edgeCredentialRef: result.edgeCredentialRef,
           sampleInserted: result.sampleInserted === true,
+          blockers: blockerCodes(result),
           nextAction: result.nextAction
         });
       }
@@ -96,7 +134,10 @@ export function createRuntimeUsageAccountingService({
       nextAction: ok ? "continue_usage_monitoring" : "review_usage_collector_mapping",
       execution: {
         directRuntimeMutationAllowed: false,
-        subscriptionMutationRequired: quotaDisableRequiredCount > 0
+        subscriptionMutationRequired: quotaDisableRequiredCount > 0,
+        writerMode: "sequential",
+        retryMode: "operator_replay_idempotent_samples",
+        safeToRetry: true
       },
       safety: {
         noRawRuntimePayload: true,
