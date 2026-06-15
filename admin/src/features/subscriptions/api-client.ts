@@ -29,6 +29,8 @@ import type {
   PortalAccessApprovalPreview,
   PortalAccessApprovalPreviewInput,
   PortalAccessRequestSummary,
+  PortalAccessTrafficLimitUpdate,
+  PortalAccessTrafficLimitUpdateInput,
   ProvisioningFormInput,
   ProvisioningFormPreview,
   ProviderFirewallEvidenceInput,
@@ -208,6 +210,19 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
           }
         )
       ).preview,
+    updatePortalAccessRequestTrafficLimit: async (
+      requestRef: string,
+      input: PortalAccessTrafficLimitUpdateInput
+    ) =>
+      (
+        await request<{ quotaUpdate: PortalAccessTrafficLimitUpdate }>(
+          `/api/admin/platform/portal-access-requests/${encodeURIComponent(requestRef)}/traffic-limit`,
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).quotaUpdate,
     getAliyunGates: async () =>
       (await request<{ aliyunGates: AliyunGateDecisionPacket }>("/api/admin/platform/aliyun-gates")).aliyunGates,
     getAliyunGateEvidence: async () =>

@@ -274,7 +274,7 @@
     "Remote data-plane future-order coordination is coded in source: delivered orders record safe pending desired-state notifications for remote channels, and subscription rendering still requires a matching applied receipt before exposing those channels. Earlier 2026-06-11 gates found and corrected envfile, placeholder, source-deployment, and protected-material gaps through staged packages and rollback evidence. The 2026-06-14 closeout snapshot records the current Japan runtime baseline as control-plane-node-registration-closeout-20260614-001 and observes SGP agent/runtime service anchors active. Future-order SGP apply/render for new orders still needs a separately approved controlled smoke before broad rollout claims.",
     "Aliyun subscription-distribution records, channel-lab-a/b records, and Japan single-TUIC upgrade records are historical/fallback references. Do not reactivate them as current production authority or automatic issuance targets without a fresh Risk A gate and live verification.",
     "User Portal and Admin/Operator surfaces are adapters over shared domain services. User order creation, lifecycle status, refresh, usage monitor, and support flows must use durable backend state, not frontend Map/demo state.",
-    "Order-owned traffic accounting remains an active implementation lane: Admin usage monitor and User Portal order summaries have a basic durable-rollup display path, but GCC-9 UI/code closure is not complete; live runtime sample collection, quota enforcement, and auto-disable still require separate gates.",
+    "Order-owned traffic accounting remains an active implementation lane: Admin usage monitor, User Portal order summaries, Admin user-resource supervision, and Admin traffic/channel supervision now have repo-only UI/code paths for durable rollups, safe quota editing, platform channel health, anomaly queues, and order-ledger views. The Admin surface is positioned around user accounts and their resources, not standalone subscription creation. Live runtime sample collection, quota enforcement, and auto-disable still require separate gates.",
     "Legacy query-token retirement remains a separate Risk A lane after opaque artifact coverage, observation, endpoint compatibility checks, rollback evidence, and exact operator approval.",
     "All production/runtime/cloud changes remain Risk A: DNS, Nginx, provider firewall, systemd restarts, runtime config, live order creation, account/password generation, subscription URL/token/password output, and SQLite row dumps stay out of repo-only work."
   ],
@@ -354,7 +354,7 @@
     "opaqueArtifactCanaryActive": false,
     "legacyQueryTokenRouteStillExists": true,
     "broaderArtifactIssuance": "covered-by-current-portal-order-and-artifact-flow-subject-to-live-verification",
-    "trafficAccounting": "usage-ledger-admin-monitor-and-user-portal-basic-rollup-display-coded; gcc-9-ui-code-closure-live-collector-activation-and-quota-auto-disable-not-complete"
+    "trafficAccounting": "usage-ledger-admin-monitor-user-portal-basic-rollup-display-admin-user-resource-quota-edit-and-admin-traffic-channel-supervision-coded; live-collector-activation-and-quota-auto-disable-not-complete"
   },
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
@@ -403,7 +403,7 @@
     },
     {
       "id": "order-owned-usage-monitor-closure",
-      "summary": "Admin usage monitor and User Portal order summaries now have a basic durable-rollup display path before runtime samples arrive. Product-grade UI/code closure, live runtime sample ingestion, and quota/auto-disable remain separate gated work.",
+      "summary": "Admin usage monitor and User Portal order summaries now have a basic durable-rollup display path before runtime samples arrive. Admin user-resource supervision can edit delivered-order trafficLimitBytes with safe audit metadata, and Admin traffic/channel supervision now separates platform channel health, anomaly queues, historical curves, and order-ledger views. The management surface is oriented around user accounts, access resources, usage, and anomalies rather than standalone subscription creation. Live runtime sample ingestion, quota enforcement, and auto-disable remain separate gated work.",
       "sourceDoc": "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md"
     },
     {
@@ -427,7 +427,7 @@
     "Finish repo-only state/docs archive alignment, then run npm run project-state:check and git diff --check.",
     "Package any local adapter/template changes into an explicit Vultr runtime release only after current repo validation is clean.",
     "Use the protected remote handoff queue/API for future reviewed SGP handoff summaries, then use a separate Risk A gate for any future production remote apply.",
-    "Continue GCC-9 by closing the UI/code gap for order-owned usage views, then connect live runtime samples and any production collector activation while keeping quota auto-disable disabled until separately approved.",
+    "Continue the Admin UI lane by polishing shared dashboard primitives and visual QA, then connect live runtime samples and any production collector activation while keeping quota auto-disable disabled until separately approved.",
     "Keep legacy query-token retirement separate from multichannel rollout; do not combine route removal with artifact issuance or runtime changes.",
     "Do not mutate DNS, Nginx, provider firewall, runtime service state, account/passwords, payment, live orders, subscription URLs/tokens/passwords, or SQLite rows without exact approval."
   ],

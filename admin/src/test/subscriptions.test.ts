@@ -291,6 +291,63 @@ describe("admin API client", () => {
     expect(JSON.stringify(firstCall[1]?.body)).not.toMatch(/subscriptionUrl|token=/i);
   });
 
+  test("updates portal access request traffic limits through the protected Admin route", async () => {
+    const fetcher = vi.fn(async () => jsonResponse({
+      quotaUpdate: {
+        ok: true,
+        type: "portal_access_request_traffic_limit_update",
+        request: {
+          id: "pareq_1",
+          type: "portal_access_request_summary",
+          usage: {
+            usedBytes: 700,
+            totalBytes: 2048,
+            status: "within_limit"
+          }
+        },
+        quota: {
+          previousTrafficLimitBytes: 1000,
+          trafficLimitBytes: 2048,
+          updatedAt: "2026-06-15T00:01:00.000Z"
+        },
+        audit: {
+          action: "traffic_limit_updated",
+          recordedAt: "2026-06-15T00:01:00.000Z"
+        },
+        safety: {
+          noSubscriptionUrl: true,
+          noRawCustomerData: true,
+          noRawHandoffMaterial: true,
+          noRuntimeMutation: true,
+          noProductionMutation: true
+        }
+      }
+    }));
+    const client = createAdminApiClient({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "secret",
+      fetcher
+    });
+
+    const update = await client.updatePortalAccessRequestTrafficLimit("pareq_1", {
+      trafficLimitBytes: 2048,
+      reviewedByRef: "operator_safe_ref",
+      reasonCode: "plan_change"
+    });
+
+    expect(update.quota.trafficLimitBytes).toBe(2048);
+    const firstCall = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(firstCall[0]).toBe("http://127.0.0.1:3456/api/admin/platform/portal-access-requests/pareq_1/traffic-limit");
+    expect(firstCall[1]).toEqual(expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify({
+        trafficLimitBytes: 2048,
+        reviewedByRef: "operator_safe_ref",
+        reasonCode: "plan_change"
+      })
+    }));
+  });
+
   test("loads and records Aliyun gate review data without raw firewall details", async () => {
     const fetchMock = vi
       .fn()
@@ -668,14 +725,14 @@ describe("portal access request admin page", () => {
       } as unknown as Partial<AdminApiClient>)
     }));
 
-    expect(await screen.findByText("订单运营")).not.toBeNull();
-    expect(screen.getByText("全部订单")).not.toBeNull();
+    expect(await screen.findByText("用户资源监管")).not.toBeNull();
+    expect(screen.getByText("全部资源订单")).not.toBeNull();
     expect(screen.getAllByText("待处理").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("待交付").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("已交付").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("待发放").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("已发放").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("已拒绝").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("订单列表")).not.toBeNull();
-    expect(screen.getByText("订单详情")).not.toBeNull();
+    expect(screen.getByText("用户资源列表")).not.toBeNull();
+    expect(screen.getByText("用户资源详情")).not.toBeNull();
     expect(screen.queryByText(/pending_admin_review|approved_pending_delivery|Contact|Telegram|customer@example\.com|subscriptionUrl|token=|artifact|node|channel-lab/i)).toBeNull();
 
     fireEvent.change(screen.getByLabelText("状态筛选"), { target: { value: "delivered" } });
@@ -713,23 +770,101 @@ describe("portal access request admin page", () => {
       } as unknown as Partial<AdminApiClient>)
     }));
 
-    expect(await screen.findByText("订单运营")).not.toBeNull();
+    expect(await screen.findByText("用户资源监管")).not.toBeNull();
     expect(screen.getAllByText("30-day initial trial").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("待处理").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("默认交付通道")).not.toBeNull();
+    expect(screen.getByText("默认资源通道")).not.toBeNull();
 
     fireEvent.change(screen.getByLabelText("审批编号"), { target: { value: "approval_trial_1" } });
     fireEvent.change(screen.getByLabelText("操作员"), { target: { value: "operator_safe_ref" } });
-    fireEvent.click(screen.getByRole("button", { name: "生成交付预览" }));
+    fireEvent.click(screen.getByRole("button", { name: "生成发放预览" }));
 
-    expect(await screen.findByText("交付预览结果")).not.toBeNull();
-    expect(screen.getAllByText("待交付").length).toBeGreaterThanOrEqual(1);
+    expect(await screen.findByText("受控发放预览结果")).not.toBeNull();
+    expect(screen.getAllByText("待发放").length).toBeGreaterThanOrEqual(1);
     expect(previewPortalAccessRequestApproval).toHaveBeenCalledWith("pareq_1", {
       approvalRef: "approval_trial_1",
       reviewedByRef: "operator_safe_ref",
       nodeId: "stable-node-a"
     });
     expect(screen.queryByText(/approved_pending_delivery|subscriptionUrl|token=|artifact|node|channel-lab/i)).toBeNull();
+  });
+
+  test("edits delivered order traffic quota with a safe audit reason", async () => {
+    const deliveredOrder = portalRequest({
+      status: "delivered" as const,
+      reviewedByRef: "operator_safe_ref",
+      entitlementRef: "ent_safe_ref",
+      accessGrantRef: "grant_safe_ref",
+      usage: {
+        uploadBytes: 200,
+        downloadBytes: 500,
+        usedBytes: 700,
+        totalBytes: 10 * 1024 * 1024 * 1024,
+        usageRatio: 0.1,
+        status: "within_limit",
+        collectionStatus: "measured",
+        channelCount: 1,
+        measuredChannelCount: 1,
+        updatedAt: "2026-06-15T00:00:00.000Z"
+      }
+    });
+    const listPortalAccessRequests = vi.fn(async () => [deliveredOrder]);
+    const updatePortalAccessRequestTrafficLimit = vi.fn(async () => ({
+      ok: true,
+      type: "portal_access_request_traffic_limit_update" as const,
+      request: {
+        ...deliveredOrder,
+        usage: {
+          ...deliveredOrder.usage,
+          totalBytes: 20 * 1024 * 1024 * 1024
+        }
+      },
+      quota: {
+        previousTrafficLimitBytes: 10 * 1024 * 1024 * 1024,
+        trafficLimitBytes: 20 * 1024 * 1024 * 1024,
+        updatedAt: "2026-06-15T00:01:00.000Z"
+      },
+      audit: {
+        action: "traffic_limit_updated",
+        recordedAt: "2026-06-15T00:01:00.000Z"
+      },
+      safety: {
+        noSubscriptionUrl: true,
+        noRawCustomerData: true,
+        noRawHandoffMaterial: true,
+        noRuntimeMutation: true,
+        noProductionMutation: true
+      }
+    }));
+
+    render(createElement(PortalRequestsPage, {
+      apiClient: adminClient({
+        listPortalAccessRequests,
+        updatePortalAccessRequestTrafficLimit
+      } as unknown as Partial<AdminApiClient>)
+    }));
+
+    expect(await screen.findByText("用户资源监管")).not.toBeNull();
+    expect(screen.getAllByText("10 GB").length).toBeGreaterThanOrEqual(1);
+    await waitFor(() => {
+      expect((screen.getByLabelText("额度 GB") as HTMLInputElement).value).toBe("10");
+    });
+
+    fireEvent.change(screen.getByLabelText("额度 GB"), { target: { value: "20" } });
+    fireEvent.change(screen.getByLabelText("额度操作员"), { target: { value: "operator_safe_ref" } });
+    fireEvent.change(screen.getByLabelText("原因代码"), { target: { value: "plan_change" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存额度" }));
+
+    await waitFor(() => {
+      expect(updatePortalAccessRequestTrafficLimit).toHaveBeenCalledWith("pareq_1", {
+        trafficLimitBytes: 20 * 1024 * 1024 * 1024,
+        reviewedByRef: "operator_safe_ref",
+        reasonCode: "plan_change"
+      });
+    });
+    expect(await screen.findByText("额度已更新")).not.toBeNull();
+    expect(screen.getAllByText("20 GB").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/subscriptionUrl|token=|edgecred|channel-vultr|ent_safe_ref|grant_safe_ref/i)).toBeNull();
   });
 });
 
@@ -928,6 +1063,27 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
         noRuntimeMutation: true,
         noProductionMutation: true,
         requiresSeparateIssuanceExecution: true
+      }
+    }),
+    updatePortalAccessRequestTrafficLimit: async () => ({
+      ok: true,
+      type: "portal_access_request_traffic_limit_update" as const,
+      request: {},
+      quota: {
+        previousTrafficLimitBytes: 0,
+        trafficLimitBytes: 0,
+        updatedAt: "2026-06-15T00:00:00.000Z"
+      },
+      audit: {
+        action: "traffic_limit_updated",
+        recordedAt: "2026-06-15T00:00:00.000Z"
+      },
+      safety: {
+        noSubscriptionUrl: true,
+        noRawCustomerData: true,
+        noRawHandoffMaterial: true,
+        noRuntimeMutation: true,
+        noProductionMutation: true
       }
     }),
     ...overrides

@@ -9,6 +9,12 @@ import type {
   SubscriptionUsageMonitor,
   SubscriptionUsageMonitorRow
 } from "../features/subscriptions/types";
+import {
+  buildPortalRequestCaseCandidates,
+  buildUsageMonitorCaseCandidates,
+  topCaseCandidates
+} from "../features/admin-case-workbench/case-candidates";
+import { CaseQueue } from "../features/admin-case-workbench/case-workbench";
 
 type DashboardErrors = {
   overview?: string;
@@ -107,6 +113,10 @@ export function DashboardPage({ apiClient }: { apiClient: AdminApiClient }) {
   const warningEntries = useMemo(() => displayWarningEntries(sortedEntries(usageMonitor?.aggregates.warnings ?? {})), [usageMonitor]);
   const usageChannelEntries = useMemo(() => sortedEntries(usageMonitor?.aggregates.usage?.byUsageChannel ?? {}), [usageMonitor]);
   const recentRows = useMemo(() => (usageMonitor?.items ?? []).slice(0, 6), [usageMonitor]);
+  const dashboardCaseCandidates = useMemo(() => topCaseCandidates([
+    ...buildPortalRequestCaseCandidates(orders),
+    ...buildUsageMonitorCaseCandidates(usageMonitor?.items ?? [])
+  ], 5), [orders, usageMonitor]);
   const healthReady = Boolean(overview?.ok && overview.distribution.ready);
   const blockedSignals = (overview?.distribution.blockedNodes ?? 0) + (usageMonitor?.aggregates.blocked ?? 0);
 
@@ -177,6 +187,12 @@ export function DashboardPage({ apiClient }: { apiClient: AdminApiClient }) {
           icon={<AlertTriangle aria-hidden="true" />}
         />
       </section>
+
+      <CaseQueue
+        title="监管案件摘要"
+        description="只读展示最高优先级监管候选。"
+        cases={dashboardCaseCandidates}
+      />
 
       <section className="dashboard-grid dashboard-grid-primary">
         <Panel

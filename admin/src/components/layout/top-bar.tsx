@@ -1,6 +1,6 @@
 import { Search, Settings } from "lucide-react";
 import { type ReactNode } from "react";
-import { pageTitles, type AdminPage } from "../../app/navigation";
+import { pageContexts, pageTitles, type AdminPage } from "../../app/navigation";
 
 type TopBarProps = {
   activePage: AdminPage;
@@ -22,11 +22,13 @@ export function TopBar({
   connectionConfigured = false
 }: TopBarProps) {
   const searchPlaceholder = searchPlaceholderForPage(activePage);
+  const pageContext = pageContexts[activePage];
   return (
     <header className="top-bar">
-      <div>
-        <p className="eyebrow">管理控制台</p>
+      <div className="top-bar-heading">
+        <p className="eyebrow">{pageContext.eyebrow}</p>
         <h1>{pageTitles[activePage]}</h1>
+        <p className="top-bar-description">{pageContext.description}</p>
       </div>
       <div className="top-bar-actions">
         <a
@@ -86,9 +88,9 @@ export function TopBar({
 function searchPlaceholderForPage(activePage: AdminPage) {
   switch (activePage) {
     case "portalRequests":
-      return { label: "搜索订单", placeholder: "搜索订单..." };
+      return { label: "搜索账号与资源", placeholder: "搜索账号或资源..." };
     case "usageMonitor":
-      return { label: "搜索活动", placeholder: "搜索活动..." };
+      return { label: "搜索流量与通道", placeholder: "搜索账号、通道或状态..." };
     default:
       return null;
   }

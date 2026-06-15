@@ -148,6 +148,65 @@ test("subscription control store persists the business issuance lifecycle", () =
   });
 });
 
+test("subscription control store updates entitlement traffic limits without changing runtime bindings", () => {
+  withStore((store) => {
+    const now = "2026-06-15T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_quota_edit",
+      ownerRef: "portal_user_quota_edit",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createEntitlement({
+      id: "ent_quota_edit",
+      accountId: "acct_quota_edit",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-07-15T00:00:00.000Z",
+      trafficLimitBytes: 1024,
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createIssuanceRequest({
+      id: "pareq_quota_edit",
+      accountId: "acct_quota_edit",
+      entitlementId: "ent_quota_edit",
+      approvalRef: "approval_quota_edit",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel-vultr-a-vless-reality-tcp",
+      purpose: "portal_access_request",
+      requestedByRef: "operator_safe_ref",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.linkIssuedSubscription({
+      id: "link_quota_edit",
+      requestId: "pareq_quota_edit",
+      tenantRef: "tenant_quota_edit",
+      artifactRef: "artifact_quota_edit",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const updated = store.updateEntitlementTrafficLimit("ent_quota_edit", {
+      trafficLimitBytes: 2048,
+      updatedAt: "2026-06-15T00:01:00.000Z"
+    });
+
+    assert.equal(updated.trafficLimitBytes, 2048);
+    assert.equal(updated.updatedAt, "2026-06-15T00:01:00.000Z");
+    assert.equal(store.getEntitlement("ent_quota_edit").trafficLimitBytes, 2048);
+    assert.equal(
+      store.findIssuedSubscriptionBindingByTenantRef("tenant_quota_edit").trafficLimitBytes,
+      2048
+    );
+  });
+});
+
 test("subscription control store rejects raw secrets and customer data fields", () => {
   withStore((store) => {
     assert.throws(() => store.createAccount({
@@ -650,6 +709,7 @@ test("subscription control store lists issued subscription bindings for edge rec
       plan: "monthly",
       validFrom: "2026-06-05T00:00:00.000Z",
       validUntil: "2026-07-05T00:00:00.000Z",
+      trafficLimitBytes: 0,
       createdAt: "2026-06-05T00:00:00.000Z",
       updatedAt: "2026-06-05T00:00:00.000Z"
     });

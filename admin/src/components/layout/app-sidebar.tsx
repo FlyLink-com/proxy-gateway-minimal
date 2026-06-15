@@ -1,4 +1,4 @@
-import { navItems, type AdminPage } from "../../app/navigation";
+import { navSections, type AdminPage } from "../../app/navigation";
 import { cn } from "../../lib/utils";
 
 type AppSidebarProps = {
@@ -18,22 +18,32 @@ export function AppSidebar({ activePage, onNavigate }: AppSidebarProps) {
       </div>
 
       <nav className="nav-list">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const active = item.id === activePage;
-          return (
-            <button
-              key={item.id}
-              className={cn("nav-item", active && "nav-item-active")}
-              type="button"
-              aria-current={active ? "page" : undefined}
-              onClick={() => onNavigate(item.id)}
-            >
-              <Icon aria-hidden="true" />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
+        {navSections.map((section) => (
+          <div className="nav-section" key={section.id}>
+            <div className="nav-section-heading">
+              <div className="nav-section-label">{section.label}</div>
+              <div className="nav-section-description">{section.description}</div>
+            </div>
+            <div className="nav-section-items">
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                const active = item.id === activePage;
+                return (
+                  <button
+                    key={item.id}
+                    className={cn("nav-item", active && "nav-item-active")}
+                    type="button"
+                    aria-current={active ? "page" : undefined}
+                    onClick={() => onNavigate(item.id)}
+                  >
+                    <Icon aria-hidden="true" />
+                    <span>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
     </aside>
   );

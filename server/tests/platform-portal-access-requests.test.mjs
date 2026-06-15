@@ -407,6 +407,25 @@ test("portal access request summaries include redacted usage rollups from the co
   });
 });
 
+test("portal access request summaries expose redacted quota limits before usage collection", () => {
+  withControlStore((store) => {
+    const { requestId } = seedUsageOrder(store, {
+      requestId: "pareq_quota_before_usage",
+      trafficLimitBytes: 1234
+    });
+    const requests = createPortalAccessRequestService({
+      nowFn: () => "2026-06-06T00:06:00.000Z",
+      controlStore: store
+    });
+
+    const summary = requests.getRequest(requestId);
+
+    assert.equal(summary.trafficLimitBytes, 1234);
+    assert.equal(summary.usage, undefined);
+    assert.doesNotMatch(JSON.stringify(summary), /edgecred|channel-vultr|tenant_|artifact_|password|token=/i);
+  });
+});
+
 test("portal access request summaries aggregate multi-channel usage by request id", () => {
   withControlStore((store) => {
     const { requestId, accountId, entitlementId } = seedUsageOrder(store, {
@@ -507,6 +526,59 @@ test("portal access request summaries count issued channels without exposing cha
     assert.equal(summary.usage.channelCount, 3);
     assert.equal(summary.usage.measuredChannelCount, 2);
     assert.doesNotMatch(JSON.stringify(summary.usage), /edgecred|channel-vultr|password|token|subscriptionUrl/i);
+  });
+});
+
+test("portal access request service edits delivered order traffic limits with safe audit metadata", () => {
+  withControlStore((store) => {
+    const { requestId, accountId, entitlementId, edgeCredentialRef } = seedUsageOrder(store, {
+      requestId: "pareq_usage_quota_edit",
+      trafficLimitBytes: 1000
+    });
+    store.recordUsageSample({
+      id: "usage_quota_edit_sample_1",
+      sourceRef: "hy2_stats_snapshot_quota_edit",
+      channelRef: "channel-vultr-a-hy2",
+      edgeCredentialRef,
+      accountId,
+      entitlementId,
+      requestId,
+      observedAt: "2026-06-06T00:05:00.000Z",
+      intervalStartedAt: "2026-06-06T00:00:00.000Z",
+      intervalEndedAt: "2026-06-06T00:05:00.000Z",
+      uploadBytes: 300,
+      downloadBytes: 400,
+      sampleDigest: "usage_quota_edit_sample_digest_1",
+      createdAt: "2026-06-06T00:05:01.000Z"
+    });
+    const requests = createPortalAccessRequestService({
+      nowFn: () => "2026-06-15T00:01:00.000Z",
+      controlStore: store
+    });
+
+    const result = requests.updateTrafficLimit(requestId, {
+      trafficLimitBytes: 2048,
+      reviewedByRef: "operator_safe_ref",
+      reasonCode: "plan_change"
+    });
+
+    assert.equal(result.request.usage.totalBytes, 2048);
+    assert.equal(result.request.usage.status, "within_limit");
+    assert.equal(result.quota.previousTrafficLimitBytes, 1000);
+    assert.equal(result.quota.trafficLimitBytes, 2048);
+    assert.equal(result.audit.action, "traffic_limit_updated");
+    assert.equal(result.safety.noRuntimeMutation, true);
+    assert.equal(result.safety.noProductionMutation, true);
+    const summary = store.getAccountControlSummary(accountId);
+    assert.equal(summary.entitlements[0].trafficLimitBytes, 2048);
+    assert.equal(summary.auditEvents.length, 1);
+    assert.deepEqual(summary.auditEvents[0].metadata, {
+      requestRef: requestId,
+      reasonCode: "plan_change",
+      previousTrafficLimitBytes: 1000,
+      trafficLimitBytes: 2048
+    });
+    assert.doesNotMatch(JSON.stringify(result), /https?:|edgecred|channel-vultr|token=|password/i);
   });
 });
 

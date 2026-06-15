@@ -57,21 +57,24 @@ textarea {
   min-height: 100vh;
   display: grid;
   grid-template-columns: 280px minmax(0, 1fr);
+  background: #f5f7fb;
 }
 
 .app-sidebar {
-  background: #0f172a;
+  background: #111827;
   color: #e2e8f0;
-  padding: 20px;
+  padding: 22px 18px;
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 26px;
+  border-right: 1px solid rgba(148, 163, 184, 0.14);
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: 12px;
+  padding: 0 4px 4px;
 }
 
 .brand-mark {
@@ -98,12 +101,44 @@ textarea {
 .nav-list {
   display: flex;
   flex-direction: column;
+  gap: 18px;
+}
+
+.nav-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.nav-section-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 12px;
+}
+
+.nav-section-label {
+  color: #94a3b8;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+
+.nav-section-description {
+  color: #cbd5e1;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.nav-section-items {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
 }
 
 .nav-item {
   border: 0;
-  border-radius: 10px;
+  border-radius: 12px;
   background: transparent;
   color: #cbd5e1;
   display: flex;
@@ -129,7 +164,9 @@ textarea {
 
 .nav-item-active {
   background: #2563eb;
-  box-shadow: inset 3px 0 0 #38bdf8;
+  box-shadow:
+    inset 3px 0 0 #38bdf8,
+    0 12px 28px rgba(37, 99, 235, 0.24);
 }
 
 .admin-main {
@@ -138,14 +175,18 @@ textarea {
 }
 
 .top-bar {
-  min-height: 82px;
+  min-height: 92px;
   border-bottom: 1px solid #e2e8f0;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.94);
   padding: 16px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
+}
+
+.top-bar-heading {
+  min-width: 220px;
 }
 
 .top-bar-actions {
@@ -164,6 +205,13 @@ textarea {
 .top-bar h1 {
   margin: 0;
   font-size: 24px;
+}
+
+.top-bar-description {
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 0.92rem;
+  line-height: 1.35;
 }
 
 .eyebrow {
@@ -1554,6 +1602,277 @@ textarea {
   color: #166534;
   font-size: 12px;
   white-space: nowrap;
+}
+
+.usage-channel-health-grid,
+.usage-anomaly-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.usage-channel-health-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.usage-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.usage-card-header strong {
+  color: #0f172a;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.usage-channel-health-stats {
+  display: grid;
+  gap: 6px;
+  color: #475569;
+  font-size: 13px;
+}
+
+.usage-channel-health-stats strong {
+  color: #166534;
+  font-size: 18px;
+}
+
+.usage-anomaly-summary-card strong {
+  font-size: 24px;
+}
+
+.usage-anomaly-list {
+  display: grid;
+  gap: 10px;
+}
+
+.usage-anomaly-row {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(180px, 1.5fr) auto minmax(130px, 1fr) minmax(120px, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.usage-anomaly-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.usage-anomaly-row strong,
+.usage-anomaly-row span {
+  overflow-wrap: anywhere;
+}
+
+.case-workbench-layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.case-workbench-card,
+.case-detail-panel {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 18px;
+  min-width: 0;
+}
+
+.case-section-heading,
+.case-detail-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.case-section-heading h3,
+.case-detail-heading h3,
+.case-linked-objects h4,
+.case-timeline h4 {
+  margin: 0;
+}
+
+.case-count {
+  min-width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef2ff;
+  color: #3730a3;
+  font-weight: 700;
+}
+
+.case-queue-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.case-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  text-align: left;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+  color: inherit;
+  cursor: pointer;
+}
+
+.case-row:hover,
+.case-row:focus-visible {
+  border-color: #2563eb;
+}
+
+.case-row-active {
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgb(37 99 235 / 12%);
+}
+
+.case-row-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.case-row-main strong,
+.case-row-main small,
+.case-reason,
+.case-linked-item strong,
+.case-timeline-event strong {
+  overflow-wrap: anywhere;
+}
+
+.case-severity {
+  min-width: 34px;
+  height: 28px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.case-severity-critical {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.case-severity-warning {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.case-severity-info {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.case-severity-neutral {
+  background: #f1f5f9;
+  color: #334155;
+}
+
+.case-reason,
+.case-eyebrow {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.case-key-grid,
+.case-linked-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.case-key-value,
+.case-linked-item {
+  display: grid;
+  gap: 4px;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 10px;
+}
+
+.case-key-value span,
+.case-linked-item span,
+.case-linked-item small {
+  color: #64748b;
+  font-size: 13px;
+}
+
+.case-linked-objects,
+.case-timeline,
+.case-audit-note {
+  margin-top: 18px;
+}
+
+.case-timeline-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.case-timeline-event {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.case-timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  margin-top: 5px;
+}
+
+.case-state {
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  padding: 14px;
+  margin-top: 12px;
+}
+
+.case-error-state {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.case-loading-skeleton {
+  display: grid;
+  gap: 10px;
+}
+
+.case-skeleton-row {
+  height: 48px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #f1f5f9, #e2e8f0, #f1f5f9);
 }
 
 .usage-timeseries-card {
@@ -4668,6 +4987,16 @@ th {
     position: static;
   }
 
+  .nav-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .nav-section-heading {
+    padding: 0 8px;
+  }
+
   .top-bar {
     align-items: stretch;
     flex-direction: column;
@@ -4741,9 +5070,24 @@ th {
   }
 }
 
+@media (max-width: 620px) {
+  .nav-list {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-width: 980px) {
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usage-channel-health-grid,
+  .usage-anomaly-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .case-workbench-layout {
+    grid-template-columns: 1fr;
   }
 
   .ops-metric-grid,
@@ -4754,6 +5098,10 @@ th {
 
   .monitor-filter-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usage-anomaly-row {
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 
   .install-config-hero,
@@ -4860,6 +5208,29 @@ th {
 @media (max-width: 520px) {
   .admin-content {
     padding: 16px;
+  }
+
+  .usage-channel-health-grid,
+  .usage-anomaly-summary-grid,
+  .usage-anomaly-row {
+    grid-template-columns: 1fr;
+  }
+
+  .case-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .case-reason {
+    grid-column: 2;
+  }
+
+  .case-section-heading,
+  .case-detail-heading {
+    flex-direction: column;
+  }
+
+  .usage-card-header {
+    flex-direction: column;
   }
 
   .company-site-header,
