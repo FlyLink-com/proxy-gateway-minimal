@@ -26,12 +26,12 @@ PR state: open PR count 0; PR #299, #302, #303, #304, #305, #306, #307, #308,
   #309, #310, #311, and #312 merged
 ```
 
-This closeout record is now historical. The latest GitHub/mainline closeout
-has advanced `master` to `2517673`, open PR count 0, with PR #299, PR #302,
-PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310,
-PR #311, and PR #312 merged. Follow-up work should start from a clean `master`
-worktree and use new focused branches for docs repair, usage accounting, quota
-gates, channel quality tuning, or production-gate preparation.
+This closeout record is now historical. Later current-state checks have
+advanced `master` and `origin/master` to `e8db032` after PR #315, with PR #316
+open for the current `codex/linear-agent-ops-guards` lane. The PR #299 / PR
+#302 through PR #312 closeout below remains historical evidence; follow-up work
+should start from a clean `master` worktree unless a task explicitly selects an
+active branch.
 
 ## Split Units
 
@@ -330,7 +330,7 @@ Rationale:
 
 | PR / branch | Proposed action |
 | --- | --- |
-| GitHub/mainline closeout | Done: `master` is at `2517673`, open PR count 0, and PR #299, #302, #303, #304, #305, #306, #307, #308, #309, #310, #311, and #312 are merged. |
+| GitHub/mainline closeout | Historical: this record closed the PR #299 / PR #302-#312 lane. Later current-state checks place `master` and `origin/master` at `e8db032` after PR #315, with PR #316 open for `codex/linear-agent-ops-guards`. |
 | Local `codex/portal-order-ledger` | Inspect before reuse; likely superseded by current order-lifecycle work unless it contains unique tests. |
 | Local `codex/multi-channel-node-guard` | Compare against current node policy and multichannel runtime implementation; merge only unique guard behavior. |
 | Local `codex/user-portal-aliyun-rc` | Treat as historical Aliyun/user-portal lane unless current portal UI work explicitly imports it. |

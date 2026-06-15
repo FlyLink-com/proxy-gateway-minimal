@@ -39,7 +39,7 @@ test("project-state check reports missing lane docs, incomplete tasks, and raw s
     join(rootDir, "project-state", "current.json"),
     JSON.stringify({
       status: "active-snapshot",
-      sourceDocs: ["docs/current.md"]
+      sourceDocs: ["docs/PROJECT_CONTEXT.md"]
     })
   );
   writeFileSync(
@@ -60,7 +60,15 @@ test("project-state check reports missing lane docs, incomplete tasks, and raw s
       ]
     })
   );
-  writeFileSync(join(rootDir, "docs", "current.md"), "token=raw-secret-value\n");
+  writeFileSync(
+    join(rootDir, "docs", "PROJECT_CONTEXT.md"),
+    [
+      "# Current",
+      "",
+      "token=raw-secret-value",
+      "Historical Aliyun records are current authority."
+    ].join("\n")
+  );
 
   const result = checkProjectState({ rootDir });
 
@@ -68,4 +76,82 @@ test("project-state check reports missing lane docs, incomplete tasks, and raw s
   assert.match(result.errors.join("\n"), /docs\/missing\.md/);
   assert.match(result.errors.join("\n"), /bad-task/);
   assert.match(result.errors.join("\n"), /raw secret pattern/);
+  assert.match(result.errors.join("\n"), /metadata header/);
+  assert.match(result.errors.join("\n"), /authority drift/);
+  assert.doesNotMatch(result.errors.join("\n"), /raw-secret-value/);
+});
+
+test("project-state check accepts metadata headers and placeholder-only examples", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "project-state-check-valid-"));
+  mkdirSync(join(rootDir, "project-state"));
+  mkdirSync(join(rootDir, "docs"));
+
+  const activeDoc = [
+    "# Current",
+    "",
+    "> Status:",
+    "> - Type: Active current-state handoff",
+    "> - Risk: C",
+    "> - Execution authority: Does not authorize production mutation",
+    "> - Production impact: None",
+    "> - Source of truth for: Test fixture",
+    "",
+    "Use token=<placeholder> only in examples."
+  ].join("\n");
+  writeFileSync(join(rootDir, "docs", "PROJECT_CONTEXT.md"), activeDoc);
+
+  writeFileSync(
+    join(rootDir, "project-state", "lanes.json"),
+    JSON.stringify({
+      sourceDocs: ["docs/PROJECT_CONTEXT.md"],
+      lanes: [
+        {
+          id: "validation-ci",
+          name: "Validation And CI",
+          status: "active",
+          riskBoundary: "B",
+          purpose: "exercise checker",
+          primaryDocs: ["docs/PROJECT_CONTEXT.md"],
+          primaryCodeAreas: [],
+          nonGoals: ["production mutation"]
+        }
+      ]
+    })
+  );
+  writeFileSync(
+    join(rootDir, "project-state", "current.json"),
+    JSON.stringify({
+      status: "active-snapshot",
+      sourceDocs: ["docs/PROJECT_CONTEXT.md"],
+      productSpine: ["validation"],
+      productionSnapshot: {
+        requiresLiveVerification: true
+      },
+      forbiddenInStateFiles: ["tokens"]
+    })
+  );
+  writeFileSync(
+    join(rootDir, "project-state", "tasks.json"),
+    JSON.stringify({
+      sourceDocs: ["docs/PROJECT_CONTEXT.md"],
+      tasks: [
+        {
+          id: "B-validation",
+          risk: "B",
+          status: "ready",
+          lane: "validation-ci",
+          title: "Validation",
+          goal: "exercise checker",
+          allowedFiles: ["scripts/*"],
+          forbiddenActions: ["mutate production"],
+          validation: ["npm test"]
+        }
+      ]
+    })
+  );
+
+  const result = checkProjectState({ rootDir });
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.errors, []);
 });

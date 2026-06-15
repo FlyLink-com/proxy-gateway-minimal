@@ -1,6 +1,18 @@
 # Project Context
 
-Last updated: 2026-06-14, Asia/Shanghai.
+Last updated: 2026-06-15, America/Los_Angeles.
+
+> Status:
+> - Type: Active current-state handoff
+> - Risk: C
+> - Execution authority: Does not authorize production, AWS, Vultr, Aliyun,
+>   DNS, Nginx, systemd, firewall, SQLite, node, tenant, artifact, payment,
+>   deploy, rollback, secret, token, subscription URL, credential, or
+>   customer-data actions
+> - Production impact: None
+> - Source of truth for: Current repo orientation, active blockers,
+>   documented production snapshot, validation baseline, and first-pass
+>   reading boundary
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -26,6 +38,30 @@ Do not use this file as:
 - A place to store secrets, tokens, subscription URLs, credentials, SQLite data,
   or customer data.
 
+## Current-First Reading Boundary
+
+This file is the current-state handoff, not the complete project archive. For a
+first-pass agent handoff, read these sections before going deeper:
+
+1. `How To Use This File`
+2. `Current-First Reading Boundary`
+3. `Current Architecture View`
+4. `Repository`
+5. `Workflow Boundary`
+6. `Current Product Direction`
+7. `Current Production Snapshot`
+8. `Active Blockers And Gated Work`
+9. `Current Validation Baseline`
+10. `Documentation Navigation`
+11. `Guardrails`
+
+Use `docs/AGENT_ONBOARDING.md` for the shortest agent entry guide, and use
+`docs/README.md` plus the detailed production/incident/domain indexes when you
+need historical execution evidence. Do not read old Aliyun/AWS records,
+`docs/archive/`, generated folders, old local checkouts, or historical
+worktrees as current authority unless this file or an active runbook points
+there for archaeology.
+
 ## Current Architecture View
 
 Use this four-layer view as the current mental model before reading historical
@@ -47,11 +83,10 @@ records:
 
 Do not derive current architecture from stale historical Aliyun/AWS records, old
 checkout paths, archive directories, runtime-only residue, or `master` alone.
-As of the latest GitHub/mainline closeout, `master` is the follow-on
-development baseline at `2517673` (`Add edge material handoff preflight CLI`),
-with open PR count 0; PR #299, PR #302, PR #303, PR #304, PR #305, PR #306,
-PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 are merged, and
-PR #300 was closed without merge. Run `git status` and `gh pr list` before
+As of the latest local/GitHub read-only check for this snapshot, `master` and
+`origin/master` are at `e8db032` (`[codex] Close out node image factory lane
+(#315)`). Open PR count is 1: PR #316 (`codex/linear-agent-ops-guards`) is the
+current docs/agent-ops guard lane. Run `git status` and `gh pr list` before
 making any new branch or production claim.
 
 The AWS staging node-image readiness validation is recorded in
@@ -159,13 +194,12 @@ state from being confused with `master` or local worktree state.
 The service-lane integration closeout record lives in
 `docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md`. It is now historical closeout
 context for the merged PR #299 / PR #302 integration lane rather than an active
-branch plan. As of the latest GitHub/mainline closeout, `master` is at
-`2517673`, open PR count is 0, and PR #299, PR #302, PR #303, PR #304, PR #305,
-PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 are merged;
-PR #300 was closed without merge. Follow-up
-work should branch from clean `master` unless a task explicitly states
-otherwise. Always verify the exact local branch and worktree state with
-`git status`; this document does not assert that a worktree is clean.
+branch plan. As of the latest local/GitHub read-only check for this snapshot,
+`master` and `origin/master` are at `e8db032` after PR #315, and PR #316 is open
+for the current `codex/linear-agent-ops-guards` lane. Follow-up work should
+branch from clean `master` unless a task explicitly states otherwise. Always
+verify the exact local branch and worktree state with `git status`; this
+document does not assert that a worktree is clean.
 The latest Vultr Japan + Singapore multichannel runtime closeout is recorded in
 `docs/production-replacement-records/2026-06-09-vultr-sgp-multichannel-runtime-closeout.md`.
 It documents the SGP handoff/runtime apply fix, Hysteria2 config schema
@@ -1616,12 +1650,11 @@ operator approval, validation, and rollback path exist:
   tenant state, or SQLite authority changes.
 
 GitHub-hosted Actions must be checked per PR instead of treated as globally
-blocked. As of the latest GitHub/mainline closeout, `master` is at `2517673`,
-open PR count is 0, PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR
-#307, PR #308, PR #309, PR #310, PR #311, and PR #312 are merged, and PR #300
-was closed without merge. Use local validation and
-`docs/CI_MANUAL_VALIDATION.md` when a clean fallback is actually needed. Manual
-CI is not staging, production, or deployment approval.
+blocked. As of the latest local/GitHub read-only check for this snapshot,
+`master` and `origin/master` are at `e8db032`, PR #315 is merged, and PR #316 is
+open. Use local validation and `docs/CI_MANUAL_VALIDATION.md` when a clean
+fallback is actually needed. Manual CI is not staging, production, or deployment
+approval.
 
 ## Current Work Queue
 
@@ -2107,6 +2140,8 @@ historical specs/plans.
 High-value entrypoints:
 
 - `AGENTS.md` - workflow rules and A/B/C risk gates.
+- `docs/AGENT_ONBOARDING.md` - first-pass agent reading order, workspace
+  boundaries, common mistakes, and PR checklist.
 - `docs/PROJECT_OPERATING_MODEL.md` - source-of-truth layers and work lanes.
 - `docs/PROJECT_SIMPLIFICATION_MAP.md` - cleanup map and complexity hotspots.
 - `docs/MASTER_ARCHIVE_BOUNDARY.md` - `master` versus archive boundary for
@@ -2124,6 +2159,12 @@ High-value entrypoints:
 - `docs/NETWORK_FORWARDING.md` - local/proxy/Admin/runtime forwarding model.
 - `docs/ENVIRONMENT_TOPOLOGY.md` - repo, GitHub, branch, and AWS role map.
 - `docs/DEPLOYMENT_FLOW.md` - deployment, staging, promotion, rollback flow.
+- `docs/NODE_ONBOARDING_RUNBOOK.md` - end-to-end Risk A runbook for new
+  data-plane node onboarding or reviewed-node binding, from no-secret image or
+  safe node facts through material handoff, edge-agent apply, receipts, and
+  receipt-gated render proof.
+- `docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md` - no-secret image and first-boot
+  packet runbook for repeatable data-plane nodes.
 - `docs/CI_MANUAL_VALIDATION.md` - manual validation host workflow.
 - `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` - historical Aliyun/local-CI
   split and node-retirement plan.

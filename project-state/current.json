@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-06-14",
+  "lastUpdated": "2026-06-15",
   "timezone": "America/Los_Angeles",
   "status": "active-snapshot-vultr-japan-control-plane-sgp-data-plane",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
@@ -13,6 +13,7 @@
     "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
     "docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md",
     "docs/CONTROL_DATA_PLANE_INTERCONNECT_CONTRACT.md",
+    "docs/NODE_ONBOARDING_RUNBOOK.md",
     "docs/NODE_REGISTRATION_AND_POOL_CONTRACT.md",
     "docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md",
     "docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md",
@@ -162,8 +163,8 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "stableBaselineCommit": "2517673",
-    "openPrCount": 0,
+    "stableBaselineCommit": "e8db032",
+    "openPrCount": 1,
     "mergedPrsInCloseout": [
       299,
       302,
@@ -176,12 +177,13 @@
       309,
       310,
       311,
-      312
+      312,
+      315
     ],
     "followOnBaseline": "master",
     "followOnBranchPolicy": "Start subsequent tasks from a clean master worktree unless a task explicitly states another baseline.",
     "closeoutPlan": "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
-    "note": "Branch context was rechecked after GitHub/mainline closeout: master is at 2517673, open PR count is 0, PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 are merged, and PR #300 was closed without merge. Always verify live Git status before new work."
+    "note": "Branch context was rechecked after local/GitHub read-only check: master and origin/master are at e8db032 after PR #315 merged; open PR count is 1 with PR #316 for codex/linear-agent-ops-guards. Earlier PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 are merged, and PR #300 was closed without merge. Always verify live Git status before new work."
   },
   "architectureView": {
     "currentMentalModel": "four-layer-single-control-plane-multi-data-plane",
@@ -210,7 +212,7 @@
       "old checkout paths and archive directories",
       "runtime-only residue copied from production hosts"
     ],
-    "branchAuthority": "master at 2517673 is the follow-on development baseline after PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 merged; PR #300 is closed without merge; open PR count is 0."
+    "branchAuthority": "master and origin/master at e8db032 are the follow-on development baseline after PR #315 merged; PR #316 is currently open for codex/linear-agent-ops-guards. Earlier PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 merged; PR #300 is closed without merge."
   },
   "productSpine": [
     "stable subscription/import experience",
@@ -314,7 +316,7 @@
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, validation evidence, and Agent / Task Routing metadata before it is marked Ready, submitted for merge, or reported complete. The routing metadata must name the lead agent, supporting agents if any, primary unit, secondary units, follow-up agent suitability, and recommended next owner. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
-    "githubHostedActions": "GitHub/mainline closeout reports master at 2517673, open PR count 0, PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 merged, and PR #300 closed without merge. Recent master CI and Release Artifact workflows completed successfully. Use local/manual validation when hosted workflows do not run.",
+    "githubHostedActions": "Local/GitHub read-only check reports master and origin/master at e8db032 after PR #315 merged, with PR #316 currently open for codex/linear-agent-ops-guards. Earlier PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 merged, and PR #300 closed without merge. Recent master CI and Release Artifact workflows should be checked per PR/run; use local/manual validation when hosted workflows do not run.",
     "manualCiFallback": "Use docs/VALIDATION_BASELINE.md and docs/CI_MANUAL_VALIDATION.md for the current manual validation path; historical HP/Aliyun manual CI facts are reference only.",
     "manualCiIsStaging": false,
     "cTierCommand": "git diff --check origin/master...HEAD",

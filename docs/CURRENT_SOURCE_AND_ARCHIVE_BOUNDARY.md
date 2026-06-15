@@ -1,6 +1,6 @@
 # Current Source And Archive Boundary
 
-Last updated: 2026-06-09, America/Los_Angeles.
+Last updated: 2026-06-15, America/Los_Angeles.
 
 > Status:
 > - Type: Active repository hygiene and local archive boundary
@@ -42,6 +42,23 @@ artifact disagrees with the active source path above, treat the active source
 path and current docs as authoritative until the old material is explicitly
 reviewed and re-imported.
 
+## Agent Quick Check
+
+Before an agent edits files, verify:
+
+```powershell
+git status --short --branch
+```
+
+Then confirm the edit is happening under the active checkout above and not in a
+legacy checkout, generated runtime folder, release package, or temporary
+worktree. If a task requires a different checkout, it must name that checkout
+explicitly and explain why the active source path is not the target.
+
+When writing reusable documentation, avoid adding new machine-specific absolute
+paths unless they are already part of this boundary. Prefer repository-relative
+paths, placeholders, or environment-variable examples for portable instructions.
+
 ## Local Archive And Historical Paths
 
 These paths are not current source:
@@ -63,6 +80,7 @@ ignored by Git and should not become source-of-truth material:
 ```text
 .codex-runtime/
 .codex-artifacts/
+.codex-tmp/
 .playwright-cli/
 .tmp-node/
 .proxy-gateway/
