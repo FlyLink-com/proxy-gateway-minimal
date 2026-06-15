@@ -95,6 +95,109 @@ model:
     redacted evidence, validation result, rollback readiness, and any remaining
     blockers.
 
+## Operator Intake Form
+
+Use this form before drafting a Risk A approval packet. It is an
+operator-facing checklist, not an approval and not a place to store protected
+values. Fill only safe facts and key/digest references.
+
+### 1. Work Classification
+
+| Field | Required value | Notes |
+| --- | --- | --- |
+| `risk_tier` | `A` | Node onboarding, provider work, runtime apply, material handoff, and render unlock are Risk A. |
+| `registration_mode` | `new_image_node` or `bind_existing_reviewed_node_only` | Do not mix the two paths in one approval packet. |
+| `target_control_plane` | Reviewed control-plane host/ref | Use a stable host/ref label. Do not include secrets or tokens. |
+| `target_data_plane_node` | Reviewed node ref or new host ref | For existing hosts, cite the reviewed node evidence. For image nodes, cite the first-boot packet evidence. |
+| `operator_goal` | One concise sentence | Example: "bind reviewed SGP node channels into receipt-gated render flow." |
+
+### 2. Safe Node Facts
+
+These fields may appear in the operator packet, Linear comments, Slack updates,
+or execution records because they are safe operational facts.
+
+| Field | Required | Allowed shape |
+| --- | --- | --- |
+| `node_ref` | Yes | Stable redacted node identity or reviewed node reference. |
+| `provider` | Yes | Provider name only, for example `Vultr` or `AWS staging`. |
+| `region` | Yes | Region label only, for example `sgp` or `ap-northeast-1`. |
+| `role` | Yes | `control-plane`, `data-plane`, or `staging`. |
+| `pool` | Yes | Stable pool label, for example `production`, `canary`, or `staging`. |
+| `lifecycle` | Yes | `candidate`, `active`, `canary`, `disabled`, or `retired`. |
+| `channel_refs` | Yes | Approved channel refs only. |
+| `release_refs` | Yes | Runtime/source release refs and artifact hashes only. |
+| `public_boundary_refs` | Yes | Boundary evidence refs, not raw Nginx/firewall config. |
+| `health_refs` | Yes | Redacted health/listener/stats evidence refs. |
+
+Do not use IP addresses, hostnames, or public endpoint names as the only node
+identity. They can change independently from the durable node reference.
+
+### 3. Protected Material Reference Set
+
+The operator packet may name protected material by key and digest reference
+only. It must never contain material values.
+
+| Material class | Required refs | Forbidden content |
+| --- | --- | --- |
+| Node identity / agent auth | Key name, digest ref, rotation/ref date | Token value, bearer secret, private key. |
+| VLESS Reality | Key refs and derived public-key match evidence | Private key, raw Xray config, raw inbound config. |
+| Hysteria2 | Credential key ref, stats secret key ref, digest ref | Password value, stats secret value, raw config. |
+| TUIC | UUID/password key refs, digest refs | UUID/password values, raw Mihomo config. |
+| Subscription render material | Credential material key/digest refs | Subscription URL, token, password, rendered YAML. |
+
+Missing key, missing digest, digest mismatch, or unreviewed material namespace is
+a hard stop. Do not "temporarily" paste protected values into chat, docs,
+Linear, Slack, GitHub, command output, or screenshots to get past the gate.
+
+### 4. Channel Binding Input
+
+Each channel needs an explicit binding row. Keep channel identity, node identity,
+client-facing endpoint refs, runtime adapter, and receipt policy separate.
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `channel_ref` | Yes | Stable channel id such as `channel-sgp-a-hy2`. |
+| `node_ref` / `physical_node_ref` | Yes | Must match the registered data-plane agent node reference. |
+| `runtime_adapter` | Yes | For example `remote-data-plane-agent`, `xray-vless-reality`, `hysteria2`, or `mihomo-tuic`. |
+| `client_endpoint_ref` | Yes | Endpoint/SNI/host refs only. No secret values. |
+| `port_ref` | Yes | Port reference or approved public port fact. |
+| `requires_applied_receipt` | Yes | Must be `true` for remote data-plane channels before render unlock. |
+| `quality_policy` | Optional | Selection/priority policy only. It does not replace entitlement or receipt gates. |
+
+If the subscription bundle should expose multiple regional nodes, bind all
+approved channel refs to the same bundle deliberately. Do not rely on implicit
+default node selection.
+
+### 5. Gate Evidence Checklist
+
+Use this checklist to build the approval phrase and closeout record.
+
+| Evidence | Required before mutation | Required before render unlock |
+| --- | --- | --- |
+| Read-only inventory | Yes | Yes |
+| Protected backups named | Yes | Yes |
+| First-boot packet or reviewed-node packet | Yes | Yes |
+| Safe node facts reviewed | Yes | Yes |
+| Protected material key/digest refs present | Yes | Yes |
+| Desired-state dry-run | Yes | Yes |
+| Edge-agent controlled apply | No, unless the gate includes apply | Yes |
+| Runtime config-test before restart | No, unless runtime restart is requested | Yes |
+| Fresh applied receipts | No | Yes |
+| Render proof without URL/token/YAML output | No | Yes |
+| Rollback objects and actions | Yes | Yes |
+
+### 6. Fields That Must Not Be Collected
+
+Reject the intake packet if any of these appear in the form, docs, Linear,
+Slack, GitHub, or chat output:
+
+- Secrets, tokens, passwords, private keys, bearer material, or TOTP material.
+- Subscription URLs, subscription tokens, rendered subscription YAML, or client
+  credentials.
+- Raw Nginx, systemd, runtime, environment, log, or SQLite row dumps.
+- Customer private data, account passwords, payment data, or contact records.
+- Provider API keys, SSH private keys, passkey material, or webhook secrets.
+
 ## Approval Packet Template
 
 Use exact filled values in the real approval. Placeholders below are not
