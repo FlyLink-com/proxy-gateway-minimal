@@ -154,6 +154,47 @@ test("loadProxyConfig substitutes runtime endpoint placeholders for host and sni
   }
 });
 
+test("loadProxyConfig accepts client-facing server as a host alias", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "proxy-config-"));
+
+  try {
+    const configPath = join(tempDir, "proxy-servers.json");
+    writeFileSync(
+      configPath,
+      JSON.stringify(
+        {
+          servers: [
+            {
+              name: "vless-candidate",
+              server: "${VLESS_HOST}",
+              port: 8443,
+              protocol: "vless",
+              uuid: "${VLESS_UUID}",
+              tls: true,
+              serverName: "www.example.test"
+            }
+          ]
+        },
+        null,
+        2
+      )
+    );
+
+    const config = loadProxyConfig({
+      configPath,
+      env: {
+        VLESS_HOST: "vless.example.test",
+        VLESS_UUID: "11111111-1111-4111-8111-111111111111"
+      }
+    });
+
+    assert.equal(config.servers[0].host, "vless.example.test");
+    assert.equal(config.servers[0].server, undefined);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("loadProxyConfig supports protocol-specific channel candidate secrets", () => {
   const tempDir = mkdtempSync(join(tmpdir(), "proxy-config-"));
 

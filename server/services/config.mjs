@@ -21,6 +21,7 @@ const SENSITIVE_CONFIG_KEYS = new Set([
 const RUNTIME_PLACEHOLDER_CONFIG_KEYS = new Set([
   ...SENSITIVE_CONFIG_KEYS,
   "host",
+  "server",
   "publickey",
   "public-key",
   "shortid",
@@ -124,6 +125,32 @@ export function validateProxyConfig(config) {
   return config;
 }
 
+function normalizeProxyServerEndpointAliases(server) {
+  if (!server || typeof server !== "object" || Array.isArray(server)) {
+    return server;
+  }
+
+  const normalized = { ...server };
+  if (!text(normalized.host) && text(normalized.server)) {
+    normalized.host = text(normalized.server);
+  }
+  delete normalized.server;
+  return normalized;
+}
+
+function normalizeProxyConfig(config) {
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    return config;
+  }
+
+  return {
+    ...config,
+    servers: Array.isArray(config.servers)
+      ? config.servers.map(normalizeProxyServerEndpointAliases)
+      : config.servers
+  };
+}
+
 function replaceRuntimePlaceholders(value, env, key) {
   if (isRuntimePlaceholderConfigKey(key) && typeof value === "string") {
     const envName = envPlaceholderName(value);
@@ -166,7 +193,9 @@ function stripSensitiveConfigKeys(value) {
 
 export function loadProxyConfig({ configPath, env = process.env }) {
   const raw = readFileSync(pathFrom(configPath), "utf8");
-  return validateProxyConfig(replaceRuntimePlaceholders(JSON.parse(raw), env));
+  return validateProxyConfig(
+    normalizeProxyConfig(replaceRuntimePlaceholders(JSON.parse(raw), env))
+  );
 }
 
 export function publicProxyConfig(config) {
