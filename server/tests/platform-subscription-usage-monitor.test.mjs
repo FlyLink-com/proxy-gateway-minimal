@@ -203,11 +203,21 @@ test("admin subscription usage monitor returns every delivered order with portal
       ]);
       assert.equal(body.monitor.items[0].usedBytes, 0);
       assert.equal(body.monitor.items[0].usageStatus, "not_collected");
+      assert.equal(body.monitor.items[0].collectionStatus, "collector_disabled");
       assert.equal(body.monitor.items[0].usageMeasured, false);
       assert.equal(body.monitor.items[0].lastUsageObservedAt, null);
       assert.deepEqual(body.monitor.items[0].channelUsages, []);
+      assert.deepEqual(body.monitor.items[0].edgeCredentialBindings, [
+        {
+          channelRef: "channel-vultr-a-vless-reality-tcp",
+          credentialRefPresent: true,
+          materialDigestPresent: true,
+          usageMeasured: false
+        }
+      ]);
       assert.equal(body.monitor.items[1].usedBytes, 600);
       assert.equal(body.monitor.items[1].usageStatus, "measured");
+      assert.equal(body.monitor.items[1].collectionStatus, "measured");
       assert.equal(body.monitor.items[1].usageMeasured, true);
       assert.equal(body.monitor.items[1].lastUsageObservedAt, "2026-06-08T01:05:00.000Z");
       assert.deepEqual(body.monitor.items[1].channelUsages, [
@@ -424,7 +434,28 @@ test("admin subscription usage monitor shows all issued channels for multi-chann
         "channel-sgp-a-hy2"
       ]);
       assert.equal(body.monitor.items[0].usageStatus, "not_collected");
+      assert.equal(body.monitor.items[0].collectionStatus, "collector_disabled");
       assert.deepEqual(body.monitor.items[0].channelUsages, []);
+      assert.deepEqual(body.monitor.items[0].edgeCredentialBindings, [
+        {
+          channelRef: "channel-vultr-a-vless-reality-tcp",
+          credentialRefPresent: true,
+          materialDigestPresent: true,
+          usageMeasured: false
+        },
+        {
+          channelRef: "channel-vultr-a-hy2",
+          credentialRefPresent: true,
+          materialDigestPresent: true,
+          usageMeasured: false
+        },
+        {
+          channelRef: "channel-sgp-a-hy2",
+          credentialRefPresent: true,
+          materialDigestPresent: true,
+          usageMeasured: false
+        }
+      ]);
       assert.deepEqual(body.monitor.aggregates.byNode, {
         "channel-sgp-a-hy2": 1,
         "channel-vultr-a-hy2": 1,

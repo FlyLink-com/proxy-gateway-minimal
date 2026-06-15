@@ -18,6 +18,14 @@ const ACTIVITY_LEVELS = new Set([
   "blocked"
 ]);
 
+const COLLECTION_STATUSES = new Set([
+  "collector_disabled",
+  "not_collected",
+  "measured_zero",
+  "measured",
+  "stale"
+]);
+
 function normalizeFilter(value) {
   return String(value ?? "").trim();
 }
@@ -284,6 +292,39 @@ function issuedChannelsFor({ request = {}, binding = {} } = {}) {
   ]);
 }
 
+function edgeCredentialBindingsFor({ request = {}, binding = {}, rollups = [] } = {}) {
+  const rawCredentials = Array.isArray(request.edgeCredentials) ? request.edgeCredentials : [];
+  const fallbackCredentials = rawCredentials.length > 0 ? [] : [{
+    edgeChannelRef: request.edgeChannelRef || binding?.nodeId,
+    edgeCredentialRef: request.edgeCredentialRef || binding?.edgeCredentialRef,
+    edgeMaterialDigest: request.edgeMaterialDigest || binding?.edgeMaterialDigest
+  }];
+  const rollupChannels = new Set(rollups.map((rollup) => safeText(rollup.channelRef)).filter(Boolean));
+  const seen = new Set();
+  const bindings = [];
+  for (const credential of [...rawCredentials, ...fallbackCredentials]) {
+    const channelRef = safeText(credential?.edgeChannelRef);
+    if (!channelRef || seen.has(channelRef)) {
+      continue;
+    }
+    seen.add(channelRef);
+    bindings.push({
+      channelRef,
+      credentialRefPresent: Boolean(safeText(credential?.edgeCredentialRef)),
+      materialDigestPresent: Boolean(safeText(credential?.edgeMaterialDigest)),
+      usageMeasured: rollupChannels.has(channelRef)
+    });
+  }
+  return bindings;
+}
+
+function collectionStatusFor({ usageStatus, usageCollectorConfigured }) {
+  if (usageStatus === "measured" || usageStatus === "measured_zero") {
+    return usageStatus;
+  }
+  return usageCollectorConfigured ? "not_collected" : "collector_disabled";
+}
+
 function buildAggregates(items) {
   const aggregates = {
     total: items.length,
@@ -467,7 +508,7 @@ function buildUsageTimeseries({ controlStore, items, filters }) {
   };
 }
 
-function requestRow({ request, binding, controlStore, subscriptionCore, nowMs }) {
+function requestRow({ request, binding, controlStore, subscriptionCore, nowMs, usageCollectorConfigured }) {
   const tenantRef = request.tenantId || binding?.tenantRef || null;
   const artifactRef = request.artifactId || binding?.artifactRef || null;
   const usageBinding = tenantRef && controlStore?.findUsageBindingByTenantRef
@@ -485,8 +526,10 @@ function requestRow({ request, binding, controlStore, subscriptionCore, nowMs })
     request.edgeCredentialRef || resolvedBinding.edgeCredentialRef || `edgecred_${request.id}`
   );
   const usage = sumRollups(rollups);
+  const usageStatus = usageStatusFor({ rollups, usage });
   const issuedChannels = issuedChannelsFor({ request, binding: resolvedBinding });
   const lastRefreshAt = artifact?.lastSeenAt || usage.lastObservedAt || tenant?.lastUsedAt || null;
+  const collectionStatus = collectionStatusFor({ usageStatus, usageCollectorConfigured });
   const row = {
     accountId: resolvedBinding.accountId || request.portalUserRef,
     portalUserRef: request.portalUserRef,
@@ -511,9 +554,11 @@ function requestRow({ request, binding, controlStore, subscriptionCore, nowMs })
     usedBytes: usage.usedBytes,
     uploadBytes: usage.uploadBytes,
     downloadBytes: usage.downloadBytes,
-    usageStatus: usageStatusFor({ rollups, usage }),
+    usageStatus,
+    collectionStatus: COLLECTION_STATUSES.has(collectionStatus) ? collectionStatus : "not_collected",
     usageMeasured: rollups.length > 0,
     lastUsageObservedAt: safeIso(usage.lastObservedAt || null),
+    edgeCredentialBindings: edgeCredentialBindingsFor({ request, binding: resolvedBinding, rollups }),
     channelUsages: rollups.map(rollupChannelUsage)
       .sort((a, b) => a.channelRef.localeCompare(b.channelRef)),
     activityLevel: "seen",
@@ -535,7 +580,7 @@ function requestRow({ request, binding, controlStore, subscriptionCore, nowMs })
   return row;
 }
 
-function bindingRow({ binding, controlStore, subscriptionCore, nowMs }) {
+function bindingRow({ binding, controlStore, subscriptionCore, nowMs, usageCollectorConfigured }) {
   const request = {
     id: binding.requestId,
     portalUserRef: binding.portalUserRef || binding.accountId,
@@ -549,14 +594,15 @@ function bindingRow({ binding, controlStore, subscriptionCore, nowMs }) {
     edgeChannelRef: binding.nodeId,
     edgeCredentialRef: binding.edgeCredentialRef
   };
-  return requestRow({ request, binding, controlStore, subscriptionCore, nowMs });
+  return requestRow({ request, binding, controlStore, subscriptionCore, nowMs, usageCollectorConfigured });
 }
 
 export function buildSubscriptionUsageMonitor({
   controlStore,
   subscriptionCore,
   filters = {},
-  now = new Date()
+  now = new Date(),
+  usageCollectorConfigured = true
 } = {}) {
   const normalizedFilters = normalizeFilters(filters);
   const generatedAt = new Date(now).toISOString();
@@ -577,7 +623,8 @@ export function buildSubscriptionUsageMonitor({
       binding: bindingsByRequestId.get(request.id) || null,
       controlStore,
       subscriptionCore,
-      nowMs
+      nowMs,
+      usageCollectorConfigured: Boolean(usageCollectorConfigured)
     }));
   }
 
@@ -585,7 +632,13 @@ export function buildSubscriptionUsageMonitor({
     if (seenRequestIds.has(binding.requestId)) {
       continue;
     }
-    rows.push(bindingRow({ binding, controlStore, subscriptionCore, nowMs }));
+    rows.push(bindingRow({
+      binding,
+      controlStore,
+      subscriptionCore,
+      nowMs,
+      usageCollectorConfigured: Boolean(usageCollectorConfigured)
+    }));
   }
 
   const items = rows
@@ -607,6 +660,8 @@ export function buildSubscriptionUsageMonitor({
       rawSubscriptionUrlReturned: false,
       rawSecretReturned: false,
       rawCustomerNetworkDataReturned: false,
+      rawEdgeCredentialReturned: false,
+      usageCollectorConfigured: Boolean(usageCollectorConfigured),
       mutationAllowed: false
     }
   };
@@ -628,6 +683,8 @@ function emptyMonitor({ generatedAt, filters }) {
       rawSubscriptionUrlReturned: false,
       rawSecretReturned: false,
       rawCustomerNetworkDataReturned: false,
+      rawEdgeCredentialReturned: false,
+      usageCollectorConfigured: false,
       mutationAllowed: false
     }
   };
