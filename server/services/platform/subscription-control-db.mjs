@@ -1372,6 +1372,20 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       if (!channelRef) {
         continue;
       }
+      const explicitCredentials = db.prepare(`
+        select edge_channel_ref, edge_credential_ref
+        from platform_portal_edge_credentials
+        where request_id = ?
+        order by ordinal asc, edge_channel_ref asc
+      `).all(row.request_id);
+      const onlyLegacyDirectCredential = explicitCredentials.length === 1
+        && explicitCredentials[0]?.edge_credential_ref === row.edge_credential_ref;
+      const explicitChannelRefs = new Set(explicitCredentials
+        .map((credential) => credential.edge_channel_ref)
+        .filter(Boolean));
+      if (explicitCredentials.length > 0 && !onlyLegacyDirectCredential && !explicitChannelRefs.has(channelRef)) {
+        continue;
+      }
       return mapUsageBinding({
         ...row,
         node_id: channelRef,
