@@ -10,6 +10,7 @@ import {
 import type { AdminApiClient } from "../features/subscriptions/api-client";
 import type {
   SubscriptionUsageActivityLevel,
+  SubscriptionUsageCollectionStatus,
   SubscriptionUsageMonitor,
   SubscriptionUsageMonitorFilters,
   SubscriptionUsageMonitorRow,
@@ -281,6 +282,7 @@ export function SubscriptionUsageMonitorPage({ apiClient }: { apiClient: AdminAp
                 <th>订单</th>
                 <th>套餐 / 数量</th>
                 <th>下发通道</th>
+                <th>Credential 锚点</th>
                 <th>订单累计用量</th>
                 <th>实际用量通道</th>
                 <th>最近采集</th>
@@ -296,12 +298,12 @@ export function SubscriptionUsageMonitorPage({ apiClient }: { apiClient: AdminAp
             <tbody>
               {loading && !monitor ? (
                 <tr>
-                  <td className="loading-row" colSpan={14}>正在加载活动记录...</td>
+                  <td className="loading-row" colSpan={15}>正在加载活动记录...</td>
                 </tr>
               ) : null}
               {!loading && monitor?.items.length === 0 ? (
                 <tr>
-                  <td className="loading-row" colSpan={14}>
+                  <td className="loading-row" colSpan={15}>
                     当前筛选条件下没有活动记录。
                   </td>
                 </tr>
@@ -327,6 +329,7 @@ function MonitorRow({ row }: { row: SubscriptionUsageMonitorRow }) {
       <td>{safeValue(row.issuanceRequestId)}</td>
       <td>{safeValue(row.plan)} / {row.quantity || 1}</td>
       <td>{issuedChannelList(row)}</td>
+      <td>{edgeCredentialBindingList(row)}</td>
       <td>
         <div>{formatTrafficBytes(row)}</div>
       </td>
@@ -648,7 +651,11 @@ function issuedChannelList(row: SubscriptionUsageMonitorRow) {
 }
 
 function formatTrafficBytes(row: SubscriptionUsageMonitorRow) {
-  if (row.usageStatus === "not_collected") {
+  const collectionStatus = normalizedCollectionStatus(row);
+  if (collectionStatus === "collector_disabled") {
+    return "采集器未启用";
+  }
+  if (collectionStatus === "not_collected") {
     return "未采集";
   }
   const used = formatBytes(row.usedBytes);
@@ -674,18 +681,46 @@ function channelUsageList(row: SubscriptionUsageMonitorRow) {
   );
 }
 
+function edgeCredentialBindingList(row: SubscriptionUsageMonitorRow) {
+  const bindings = Array.isArray(row.edgeCredentialBindings) ? row.edgeCredentialBindings : [];
+  if (bindings.length === 0) {
+    return <span className="muted">未绑定</span>;
+  }
+  return (
+    <span className="usage-channel-list" aria-label="edge credential 绑定">
+      <span className="usage-channel-chip">
+        <span>edge credential</span>
+        <strong>{bindings.length} 个绑定</strong>
+      </span>
+      {bindings.map((binding) => (
+        <span className="usage-channel-chip" key={binding.channelRef || "unknown"}>
+          <span>{binding.channelRef || "unknown"}</span>
+          <strong>{binding.usageMeasured ? "已计量" : "待采集"}</strong>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function usageStatusBadge(row: SubscriptionUsageMonitorRow) {
-  const label = usageStatusLabel(row.usageStatus);
-  const className = row.usageStatus === "not_collected"
+  const collectionStatus = normalizedCollectionStatus(row);
+  const label = usageStatusLabel(collectionStatus);
+  const className = collectionStatus === "not_collected" || collectionStatus === "collector_disabled"
     ? "status-badge status-badge-muted"
     : "status-badge";
   return <span className={className}>{label}</span>;
 }
 
-function usageStatusLabel(status: SubscriptionUsageMonitorRow["usageStatus"]) {
+function normalizedCollectionStatus(row: SubscriptionUsageMonitorRow): SubscriptionUsageCollectionStatus {
+  return row.collectionStatus || row.usageStatus || "not_collected";
+}
+
+function usageStatusLabel(status: SubscriptionUsageCollectionStatus) {
   if (status === "measured") return "已采集";
   if (status === "measured_zero") return "已采集 0B";
-  return "未接入采集";
+  if (status === "collector_disabled") return "采集器未启用";
+  if (status === "stale") return "采集已过期";
+  return "未采集";
 }
 
 function formatBytes(value: number) {

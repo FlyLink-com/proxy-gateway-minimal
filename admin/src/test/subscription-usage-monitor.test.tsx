@@ -29,8 +29,17 @@ describe("subscription usage monitor page", () => {
           uploadBytes: 100,
           downloadBytes: 200,
           usageStatus: "measured",
+          collectionStatus: "measured",
           usageMeasured: true,
           lastUsageObservedAt: "2026-06-05T07:54:00.000Z",
+          edgeCredentialBindings: [
+            {
+              channelRef: "node-alpha",
+              credentialRefPresent: true,
+              materialDigestPresent: true,
+              usageMeasured: true
+            }
+          ],
           channelUsages: [
             {
               channelRef: "node-alpha",
@@ -51,6 +60,15 @@ describe("subscription usage monitor page", () => {
           nodeId: "node-beta",
           tenantRef: null,
           artifactRef: null,
+          collectionStatus: "collector_disabled",
+          edgeCredentialBindings: [
+            {
+              channelRef: "node-beta",
+              credentialRefPresent: true,
+              materialDigestPresent: true,
+              usageMeasured: false
+            }
+          ],
           activityLevel: "never_seen",
           warnings: []
         })
@@ -137,8 +155,23 @@ describe("subscription usage monitor page", () => {
           uploadBytes: 100,
           downloadBytes: 200,
           usageStatus: "measured",
+          collectionStatus: "measured",
           usageMeasured: true,
           lastUsageObservedAt: "2026-06-05T07:54:00.000Z",
+          edgeCredentialBindings: [
+            {
+              channelRef: "node-alpha",
+              credentialRefPresent: true,
+              materialDigestPresent: true,
+              usageMeasured: true
+            },
+            {
+              channelRef: "node-gamma",
+              credentialRefPresent: true,
+              materialDigestPresent: true,
+              usageMeasured: false
+            }
+          ],
           channelUsages: [
             {
               channelRef: "node-alpha",
@@ -159,6 +192,7 @@ describe("subscription usage monitor page", () => {
           nodeId: "node-beta",
           tenantRef: null,
           artifactRef: null,
+          collectionStatus: "collector_disabled",
           activityLevel: "never_seen",
           warnings: []
         })
@@ -216,14 +250,16 @@ describe("subscription usage monitor page", () => {
     expect(firstRowScope.getByText("order_demo_1")).not.toBeNull();
     expect(firstRowScope.getByText("trial / 1")).not.toBeNull();
     expect(firstRowScope.getAllByText("node-alpha").length).toBeGreaterThanOrEqual(2);
-    expect(firstRowScope.getByText("node-gamma")).not.toBeNull();
+    expect(firstRowScope.getAllByText("node-gamma").length).toBeGreaterThanOrEqual(2);
+    expect(firstRowScope.getByText("edge credential")).not.toBeNull();
+    expect(firstRowScope.getByText("2 个绑定")).not.toBeNull();
     expect(firstRowScope.getByText("300 B / 1000 B")).not.toBeNull();
     expect(firstRowScope.getAllByText("300 B").length).toBeGreaterThanOrEqual(1);
     expect(firstRowScope.getByText(formatExpectedDateTime("2026-06-05T07:54:00.000Z"))).not.toBeNull();
     expect(firstRowScope.getByText("已采集")).not.toBeNull();
     expect(firstRowScope.getByText("已绑定")).not.toBeNull();
     expect(firstRowScope.getByText("近期活跃")).not.toBeNull();
-    expect(screen.getAllByText("未接入采集").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("采集器未启用").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("未记录").length).toBeGreaterThanOrEqual(1);
 
     const renderedText = document.body.textContent ?? "";
@@ -514,6 +550,15 @@ function monitorRowFixture(overrides: Partial<SubscriptionUsageMonitorRow> = {})
     channelUsages: [],
     activityLevel: "seen",
     warnings: [],
+    collectionStatus: "not_collected",
+    edgeCredentialBindings: [
+      {
+        channelRef: "node-alpha",
+        credentialRefPresent: true,
+        materialDigestPresent: true,
+        usageMeasured: false
+      }
+    ],
     ...overrides
   };
 }

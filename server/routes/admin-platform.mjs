@@ -390,6 +390,7 @@ export function adminPlatformRoutes(state) {
             to: req.query.to,
             bucket: req.query.bucket
           },
+          usageCollectorConfigured: Boolean(edgeUsageAccounting?.collectAndRecord),
           now: new Date()
         })
       });

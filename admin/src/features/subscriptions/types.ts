@@ -173,6 +173,13 @@ export type SubscriptionUsageActivityLevel =
   | "inactive"
   | "blocked";
 
+export type SubscriptionUsageCollectionStatus =
+  | "collector_disabled"
+  | "not_collected"
+  | "measured_zero"
+  | "measured"
+  | "stale";
+
 export type SubscriptionUsageMonitorFilters = {
   accountId?: string;
   plan?: string;
@@ -209,8 +216,15 @@ export type SubscriptionUsageMonitorRow = {
   uploadBytes: number;
   downloadBytes: number;
   usageStatus: "not_collected" | "measured_zero" | "measured";
+  collectionStatus: SubscriptionUsageCollectionStatus;
   usageMeasured: boolean;
   lastUsageObservedAt: string | null;
+  edgeCredentialBindings: Array<{
+    channelRef: string;
+    credentialRefPresent: boolean;
+    materialDigestPresent: boolean;
+    usageMeasured: boolean;
+  }>;
   channelUsages: Array<{
     channelRef: string;
     usedBytes: number;
@@ -301,6 +315,8 @@ export type SubscriptionUsageMonitor = {
     rawSubscriptionUrlReturned: boolean;
     rawSecretReturned: boolean;
     rawCustomerNetworkDataReturned: boolean;
+    rawEdgeCredentialReturned?: boolean;
+    usageCollectorConfigured?: boolean;
     mutationAllowed: boolean;
   };
 };

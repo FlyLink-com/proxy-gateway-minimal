@@ -308,8 +308,17 @@ function usageRowFixture(overrides: Partial<SubscriptionUsageMonitorRow> = {}): 
     uploadBytes: 0,
     downloadBytes: 0,
     usageStatus: "not_collected",
+    collectionStatus: "not_collected",
     usageMeasured: false,
     lastUsageObservedAt: null,
+    edgeCredentialBindings: [
+      {
+        channelRef: "channel-lab-b-tuic",
+        credentialRefPresent: true,
+        materialDigestPresent: true,
+        usageMeasured: false
+      }
+    ],
     channelUsages: [],
     activityLevel: "seen",
     warnings: [],
