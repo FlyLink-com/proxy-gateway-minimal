@@ -625,6 +625,14 @@ test("opaque artifact route refreshes V2 Clash YAML without accepting query-toke
     assert.match(yaml, /name: "aws-tokyo"/);
     assert.doesNotMatch(yaml, /tenant_real_1|pgsub_route_visible/);
 
+    const artifactWithLegacyToken = await fetch(`${baseUrl}${artifactPath}?token=${RAW_TOKEN}`);
+    assert.equal(artifactWithLegacyToken.status, 200);
+    const artifactWithLegacyTokenYaml = await artifactWithLegacyToken.text();
+    assert.match(artifactWithLegacyTokenYaml, /^# globalcircle-subscription-status: "active"/);
+    assert.match(artifactWithLegacyTokenYaml, /name: "aws-singapore"/);
+    assert.match(artifactWithLegacyTokenYaml, /name: "aws-tokyo"/);
+    assert.doesNotMatch(artifactWithLegacyTokenYaml, /tenant_real_1|pgsub_route_visible/);
+
     const fallback = await fetch(`${baseUrl}/sub/a/missing-artifact.yaml?token=${RAW_TOKEN}`);
     assert.equal(fallback.status, 404);
     assert.deepEqual(await fallback.json(), { error: "Not found" });

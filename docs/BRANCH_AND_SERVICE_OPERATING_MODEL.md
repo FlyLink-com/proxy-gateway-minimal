@@ -1,6 +1,6 @@
 # Branch And Service Operating Model
 
-Last updated: 2026-06-09, America/Los_Angeles.
+Last updated: 2026-06-15, America/Los_Angeles.
 
 > Status:
 > - Type: Active operating model
@@ -47,7 +47,7 @@ Do not collapse these labels. In particular, `deployed` is not `merged`, and
 | Branch / lane | Role | Merge posture | Runtime posture |
 | --- | --- | --- | --- |
 | `master` | Accepted integrated baseline. | Only merge validated, reviewable work. | Deployable only after a separate Risk A promotion gate. |
-| `master` at `16a1d58` | Follow-on development baseline after PR #299, #302, #303, #304, and #305 merged. | Open PR count is 0 at closeout; start subsequent work from clean `master` unless a task explicitly states otherwise. | Deployable only after a separate Risk A promotion gate. |
+| `master` at `9d7b65b` | Point-in-time integrated baseline after PR #326 merged. | Open PRs remain active and must be evaluated from fresh GitHub inventory; start subsequent work from clean `master` unless a task explicitly states otherwise. | Deployable only after a separate Risk A promotion gate. |
 | `codex/<topic>` | Narrow task or feature branch. | Merge or archive after its PR reaches a clear outcome. | No runtime authority by branch name. |
 | `docs/<topic>` | Docs/runbook/status branch. | C-tier merge after docs validation. | No runtime authority. |
 | `release/<target>` or artifact label | Candidate source for one reviewed deployment. | Should point back to a commit and artifact hash. | Runtime authority only after explicit deployment approval and validation. |
@@ -61,7 +61,7 @@ This table is an orientation aid only; refresh it with `git fetch --prune`,
 
 | Branch / PR | Observed status | Current interpretation |
 | --- | --- | --- |
-| `master` / `origin/master` | At `16a1d58`; open PR count 0; PR #299, #302, #303, #304, and #305 merged. | Follow-on development baseline. Start new work from a clean `master` worktree. |
+| `master` / `origin/master` | At `9d7b65b` after PR #326 merged; open PRs #324 and #325 remain active at this point-in-time inventory. | Follow-on development baseline. Start new work from a clean `master` worktree and refresh open PR state before acting. |
 | Historical PR backlog | Closed/merged at closeout unless a fresh GitHub inventory proves otherwise. | Do not reopen old branch context as active work without a new branch, current diff, and validation plan. |
 
 ## Service Ownership Map
