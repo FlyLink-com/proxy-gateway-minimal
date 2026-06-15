@@ -106,11 +106,26 @@ Public Nginx should expose only:
 - `GET /api/health`
 - `GET /sub/clash.yaml?token=...`
 
-The admin API and admin UI are not public. Use an SSH tunnel for operator access:
+The admin API and admin UI are not public. Use the local Admin bridge or a raw
+SSH tunnel for operator access. The bridge keeps the remote Console Token in the
+local proxy process, creates a one-time local browser session, and binds only to
+`127.0.0.1`.
 
 ```powershell
-ssh -i "$env:USERPROFILE\.ssh\proxy-gateway-aws-sg-20260521.pem" -L 3456:127.0.0.1:3456 ubuntu@13.215.156.159
+$env:GCC_ADMIN_SSH_HOST="<operator-approved-host>"
+npm run admin:local-proxy:start
 ```
+
+If `127.0.0.1:5176` or `127.0.0.1:5177` is occupied by a stale bridge session,
+stop the tracked local listeners first:
+
+```powershell
+npm run admin:local-proxy:stop
+```
+
+When SSH is routed through Mihomo/TUN, the start script prints a clear warning
+and leaves routing to Clash/Mihomo by default. It only adds a temporary host
+route when the operator explicitly passes `-AllowDirectRoute`.
 
 ## Environment Roles
 

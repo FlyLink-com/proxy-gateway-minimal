@@ -111,6 +111,8 @@
     "admin:portal:verify": "npm run verify:portal-build --prefix admin",
     "admin:site:build": "npm run build:site --prefix admin",
     "admin:site:verify": "npm run verify:site-build --prefix admin",
+    "admin:local-proxy:start": "powershell -ExecutionPolicy Bypass -File ops/local-admin-bridge/start-admin-panel-local-proxy.ps1",
+    "admin:local-proxy:stop": "powershell -ExecutionPolicy Bypass -File ops/local-admin-bridge/stop-admin-panel-local-proxy.ps1",
     "cloudflare:site:build": "npm run admin:site:build",
     "cloudflare:site:verify": "npm run admin:site:verify",
     "cloudflare:site:dry-run": "npx --yes wrangler@4.99.0 deploy --config wrangler.jsonc --dry-run",
