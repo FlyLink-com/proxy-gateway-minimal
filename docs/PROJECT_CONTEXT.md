@@ -1,6 +1,18 @@
 # Project Context
 
-Last updated: 2026-06-14, Asia/Shanghai.
+Last updated: 2026-06-15, America/Los_Angeles.
+
+> Status:
+> - Type: Active current-state handoff
+> - Risk: C
+> - Execution authority: Does not authorize production, AWS, Vultr, Aliyun,
+>   DNS, Nginx, systemd, firewall, SQLite, node, tenant, artifact, payment,
+>   deploy, rollback, secret, token, subscription URL, credential, or
+>   customer-data actions
+> - Production impact: None
+> - Source of truth for: Current repo orientation, active blockers,
+>   documented production snapshot, validation baseline, and first-pass
+>   reading boundary
 
 This file is the compact handoff note for continuing
 `proxy-gateway-minimal`. Read it first, then inspect the live repo state before
@@ -25,6 +37,30 @@ Do not use this file as:
   verification.
 - A place to store secrets, tokens, subscription URLs, credentials, SQLite data,
   or customer data.
+
+## Current-First Reading Boundary
+
+This file is the current-state handoff, not the complete project archive. For a
+first-pass agent handoff, read these sections before going deeper:
+
+1. `How To Use This File`
+2. `Current-First Reading Boundary`
+3. `Current Architecture View`
+4. `Repository`
+5. `Workflow Boundary`
+6. `Current Product Direction`
+7. `Current Production Snapshot`
+8. `Active Blockers And Gated Work`
+9. `Current Validation Baseline`
+10. `Documentation Navigation`
+11. `Guardrails`
+
+Use `docs/AGENT_ONBOARDING.md` for the shortest agent entry guide, and use
+`docs/README.md` plus the detailed production/incident/domain indexes when you
+need historical execution evidence. Do not read old Aliyun/AWS records,
+`docs/archive/`, generated folders, old local checkouts, or historical
+worktrees as current authority unless this file or an active runbook points
+there for archaeology.
 
 ## Current Architecture View
 
@@ -2107,6 +2143,8 @@ historical specs/plans.
 High-value entrypoints:
 
 - `AGENTS.md` - workflow rules and A/B/C risk gates.
+- `docs/AGENT_ONBOARDING.md` - first-pass agent reading order, workspace
+  boundaries, common mistakes, and PR checklist.
 - `docs/PROJECT_OPERATING_MODEL.md` - source-of-truth layers and work lanes.
 - `docs/PROJECT_SIMPLIFICATION_MAP.md` - cleanup map and complexity hotspots.
 - `docs/MASTER_ARCHIVE_BOUNDARY.md` - `master` versus archive boundary for

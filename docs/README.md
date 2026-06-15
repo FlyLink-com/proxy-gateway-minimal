@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-06-13, Asia/Shanghai.
+Last updated: 2026-06-15, America/Los_Angeles.
 
 Use this file as the first navigation point for project documentation. It
 classifies current source-of-truth docs, active runbooks, execution records,
@@ -42,6 +42,7 @@ historical reference, and runtime material separated.
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
 | `AGENTS.md` | Default agent instructions, A/B/C risk tiers, PR completion gate, validation expectations, and safety boundaries. | Active workflow rules. | Read before repo, ops, CI, network, deployment, or production-adjacent work. |
+| `docs/AGENT_ONBOARDING.md` | First-pass AI agent entry guide covering reading order, metadata headers, risk tiers, workspace boundaries, common mistakes, and PR checklist. | Active onboarding guide; no execution authority. | Read when a new agent enters the repo or before turning a broad assessment into Linear/GitHub tasks. |
 | `docs/PROJECT_OPERATING_MODEL.md` | Project operating model for source-of-truth layers, work lanes, PR definition of done, risk tiers, production gates, and subscription stability. | Active operating model; no execution authority. | Read when deciding how to classify, sequence, or parallelize project work. |
 | `docs/BRANCH_AND_SERVICE_OPERATING_MODEL.md` | Branch and service operating model for interpreting current branches, PR lanes, service ownership, completion labels, and the difference between `master`, local worktree state, and deployed runtime state. | Active operating model; no code, production, deploy, secret, or runtime authority. | Read when deciding whether a branch is current, merged, deployed, archived, or service-owned by the control plane, data plane, portal, Admin, renderer, runtime adapter, usage collector, or docs lane. |
 | `docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md` | Current service-lane closeout plan for finishing `feat/install-config-wizard`, PR #299, generated-noise cleanup, docs/project-state, Admin UI, User Portal, control-plane ledger, edge runtime adapters, and CLI/helper units. | Active closeout plan; no code, production, deploy, secret, or runtime authority. | Read before staging, splitting, merging, archiving, or validating the current closeout branch. |

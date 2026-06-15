@@ -10,12 +10,19 @@ const REQUIRED_STATE_FILES = [
   "project-state/current.json",
   "project-state/tasks.json"
 ];
-const RAW_SECRET_PATTERNS = [
-  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
-  /\btoken=[A-Za-z0-9._~+/=-]{8,}/i,
-  /\bpassword\s*=\s*[^,\s"']{4,}/i,
-  /\bapi[_-]?key\s*=\s*[^,\s"']{8,}/i,
-  /\bss:\/\/[A-Za-z0-9+/=_-]{8,}/i
+const GUARDED_METADATA_DOCS = new Set([
+  "docs/PROJECT_CONTEXT.md",
+  "docs/VALIDATION_BASELINE.md",
+  "docs/AGENT_ONBOARDING.md",
+  "docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md"
+]);
+const SENSITIVE_PATTERN_DEFINITIONS = [
+  { type: "private-key", pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/i },
+  { type: "token", pattern: /\btoken=[A-Za-z0-9._~+/=-]{8,}/i },
+  { type: "password", pattern: /\bpassword\s*=\s*[^,\s"']{4,}/i },
+  { type: "api-key", pattern: /\bapi[_-]?key\s*=\s*[^,\s"']{8,}/i },
+  { type: "subscription-url", pattern: /\bhttps?:\/\/[^\s"']+[?&]token=[A-Za-z0-9._~+/=-]{8,}/i },
+  { type: "proxy-uri", pattern: /\b(?:ss|vless|vmess|trojan|hysteria2|tuic):\/\/[A-Za-z0-9+/=_:;,.?&%#@-]{8,}/i }
 ];
 
 function readJson(rootDir, path, errors) {
@@ -79,6 +86,29 @@ function checkPathPatternArray(owner, paths, errors) {
       errors.push(`${owner}: path reference must be a non-empty string`);
     }
   }
+}
+
+function isPlaceholderLine(line) {
+  return /<[^>]+>|\[redacted\]|\[REDACTED\]|\.\.\.|example\.(?:com|invalid)|placeholder|dummy|fake|sample|count -> 0/i.test(line);
+}
+
+function hasMetadataHeader(text) {
+  return (
+    />\s*Status:/i.test(text) &&
+    />\s*-\s*Type:/i.test(text) &&
+    />\s*-\s*Risk:/i.test(text) &&
+    />\s*-\s*Execution authority:/i.test(text) &&
+    />\s*-\s*Production impact:/i.test(text) &&
+    />\s*-\s*Source of truth for:/i.test(text)
+  );
+}
+
+function lineClaimsHistoricalAsCurrent(line) {
+  return (
+    /\bhistorical\b/i.test(line) &&
+    /\bcurrent authority\b/i.test(line) &&
+    !/\b(not|notCurrentAuthority|not-current|do not|don't|is not|are not|not a)\b/i.test(line)
+  );
 }
 
 function checkLanes(rootDir, lanesState, errors) {
@@ -168,7 +198,8 @@ function checkCurrentState(rootDir, currentState, errors) {
   }
 }
 
-function checkSensitivePatterns(rootDir, paths, errors) {
+export function findSensitivePatternFindings(rootDir, paths) {
+  const findings = [];
   for (const path of paths) {
     const fullPath = join(rootDir, path);
     if (!existsSync(fullPath)) {
@@ -177,10 +208,46 @@ function checkSensitivePatterns(rootDir, paths, errors) {
     const text = readFileSync(fullPath, "utf8");
     const lines = text.split(/\r?\n/);
     for (const [index, line] of lines.entries()) {
-      for (const pattern of RAW_SECRET_PATTERNS) {
-        if (pattern.test(line)) {
-          errors.push(`${path}:${index + 1}: raw secret pattern matched`);
+      if (isPlaceholderLine(line)) {
+        continue;
+      }
+      for (const definition of SENSITIVE_PATTERN_DEFINITIONS) {
+        if (definition.pattern.test(line)) {
+          findings.push({
+            path,
+            line: index + 1,
+            type: definition.type
+          });
         }
+      }
+    }
+  }
+  return findings;
+}
+
+function checkSensitivePatterns(rootDir, paths, errors) {
+  for (const finding of findSensitivePatternFindings(rootDir, paths)) {
+    errors.push(`${finding.path}:${finding.line}: raw secret pattern matched (${finding.type})`);
+  }
+}
+
+function checkActiveDocGuards(rootDir, sourceDocs, errors) {
+  for (const path of sourceDocs) {
+    if (!GUARDED_METADATA_DOCS.has(path)) {
+      continue;
+    }
+    const fullPath = join(rootDir, path);
+    if (!existsSync(fullPath)) {
+      continue;
+    }
+    const text = readFileSync(fullPath, "utf8");
+    if (!hasMetadataHeader(text)) {
+      errors.push(`${path}: metadata header is missing Status/Type/Risk/Execution authority/Production impact/Source of truth fields`);
+    }
+    const lines = text.split(/\r?\n/);
+    for (const [index, line] of lines.entries()) {
+      if (lineClaimsHistoricalAsCurrent(line)) {
+        errors.push(`${path}:${index + 1}: authority drift risk; historical material is claimed as current authority`);
       }
     }
   }
@@ -210,7 +277,9 @@ export function checkProjectState(options = {}) {
     ...(Array.isArray(tasksState?.sourceDocs) ? tasksState.sourceDocs : [])
   ];
   checkPathReferences(rootDir, "project-state sourceDocs", sourceDocs, errors);
-  checkSensitivePatterns(rootDir, [...REQUIRED_STATE_FILES, ...sourceDocs], errors);
+  const checkedPaths = [...new Set([...REQUIRED_STATE_FILES, ...sourceDocs, ...GUARDED_METADATA_DOCS])];
+  checkSensitivePatterns(rootDir, checkedPaths, errors);
+  checkActiveDocGuards(rootDir, checkedPaths, errors);
 
   const ok = errors.length === 0;
   return {
