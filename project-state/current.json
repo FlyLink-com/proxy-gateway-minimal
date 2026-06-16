@@ -275,6 +275,7 @@
     "Aliyun subscription-distribution records, channel-lab-a/b records, and Japan single-TUIC upgrade records are historical/fallback references. Do not reactivate them as current production authority or automatic issuance targets without a fresh Risk A gate and live verification.",
     "User Portal and Admin/Operator surfaces are adapters over shared domain services. User order creation, lifecycle status, refresh, usage monitor, and support flows must use durable backend state, not frontend Map/demo state.",
     "Order-owned traffic accounting remains an active implementation lane: Admin usage monitor, User Portal order summaries, Admin user-resource supervision, and Admin traffic/channel supervision now have repo-only UI/code paths for durable rollups, safe quota editing, platform channel health, anomaly queues, and order-ledger views. The Admin surface is positioned around user accounts and their resources, not standalone subscription creation. Live runtime sample collection, quota enforcement, and auto-disable still require separate gates.",
+    "Admin navigation is being formalized as a protected operator console shell: current visible entries stay limited to real pages for overview, user supervision, and platform monitoring; planned slots such as audit/work orders, platform development, and system settings require real data sources, redaction boundaries, tests, and validation before appearing in navigation.",
     "Legacy query-token retirement remains a separate Risk A lane after opaque artifact coverage, observation, endpoint compatibility checks, rollback evidence, and exact operator approval.",
     "All production/runtime/cloud changes remain Risk A: DNS, Nginx, provider firewall, systemd restarts, runtime config, live order creation, account/password generation, subscription URL/token/password output, and SQLite row dumps stay out of repo-only work."
   ],
@@ -407,6 +408,11 @@
       "sourceDoc": "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md"
     },
     {
+      "id": "admin-console-navigation-ia",
+      "summary": "Admin is being treated as a sustainable operator console shell rather than fixed reports or a subscription-creation tool. The current visible navigation remains limited to real pages, while audit/work orders, platform development, and system settings are planned IA slots gated by durable facts, safe redaction boundaries, tests, and validation.",
+      "sourceDoc": "docs/ADMIN_CONSOLE_NAVIGATION_IA.md"
+    },
+    {
       "id": "legacy-query-token-retirement",
       "summary": "Legacy query-token subscription access remains a separate Risk A lane after opaque artifact coverage, observation, endpoint compatibility checks, rollback evidence, and exact operator approval.",
       "sourceDoc": "docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md"
@@ -427,7 +433,7 @@
     "Finish repo-only state/docs archive alignment, then run npm run project-state:check and git diff --check.",
     "Package any local adapter/template changes into an explicit Vultr runtime release only after current repo validation is clean.",
     "Use the protected remote handoff queue/API for future reviewed SGP handoff summaries, then use a separate Risk A gate for any future production remote apply.",
-    "Continue the Admin UI lane by polishing shared dashboard primitives and visual QA, then connect live runtime samples and any production collector activation while keeping quota auto-disable disabled until separately approved.",
+    "Continue the Admin UI lane through docs/ADMIN_CONSOLE_NAVIGATION_IA.md: keep only real pages visible, gate future audit/work-order, platform-development, and system-settings entries on data sources, redaction boundaries, tests, and validation, then connect live runtime samples and any production collector activation only through separate approval.",
     "Keep legacy query-token retirement separate from multichannel rollout; do not combine route removal with artifact issuance or runtime changes.",
     "Do not mutate DNS, Nginx, provider firewall, runtime service state, account/passwords, payment, live orders, subscription URLs/tokens/passwords, or SQLite rows without exact approval."
   ],
