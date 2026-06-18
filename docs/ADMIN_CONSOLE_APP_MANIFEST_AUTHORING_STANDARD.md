@@ -15,6 +15,12 @@ Last updated: 2026-06-17, America/Los_Angeles.
 This standard defines how new Admin OS applications are authored. The code
 source of truth is `admin/src/app/admin-app-manifest.ts`.
 
+Future reviewed-upload and registry publication rules are documented in
+`docs/ADMIN_CONSOLE_APP_REGISTRY_REVIEW_DESIGN.md`. That registry design is not
+implemented in this phase; uploaded YAML remains a future capability until
+schema validation, review storage, approval, publication, permissions, and audit
+flows exist.
+
 ## Required Fields
 
 Every application manifest must carry:

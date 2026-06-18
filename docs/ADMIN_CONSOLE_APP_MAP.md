@@ -88,6 +88,9 @@ runtime, production, auth, schema, DB, or credential actions.
 1. Do not change existing `AdminPage`, plugin `navId`, or `targetId` values
    without a migration plan for local layout state and deep links.
 2. Do not introduce a remote/runtime app registry in this phase.
+   Future upload, review, publication, permission, audit, and rollback design
+   lives in `docs/ADMIN_CONSOLE_APP_REGISTRY_REVIEW_DESIGN.md`; it is not an
+   implemented runtime registry.
 3. Do not duplicate page/module/utility metadata outside the app manifest.
 4. App Library rendering should consume the app map, not rebuild entries from
    page navigation arrays.
