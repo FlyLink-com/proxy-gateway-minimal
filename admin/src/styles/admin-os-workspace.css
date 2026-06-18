@@ -1325,21 +1325,14 @@
   grid-column: 1 / -1;
   border: 1px dashed var(--admin-border-strong);
   border-radius: var(--admin-radius-panel);
-  background:
-    radial-gradient(circle at 28px 28px, rgba(37, 99, 235, 0.14) 0 3px, transparent 4px),
-    radial-gradient(circle at 52px 52px, rgba(20, 184, 166, 0.12) 0 2px, transparent 3px),
-    linear-gradient(135deg, rgba(239, 246, 255, 0.86), rgba(255, 255, 255, 0.68)),
-    var(--admin-surface-muted);
-  background-size: 88px 88px, 88px 88px, auto, auto;
+  background: var(--admin-surface-muted);
   color: var(--admin-text-soft);
   display: grid;
   justify-items: start;
   gap: 6px;
   min-height: 160px;
   padding: 24px;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.78),
-    0 10px 24px rgba(15, 23, 42, 0.04);
+  box-shadow: none;
 }
 
 .admin-blueprint-empty-workbench strong {
@@ -1836,7 +1829,6 @@
   border-color: var(--admin-accent);
   background: var(--admin-hover-surface);
   box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-  outline: none;
 }
 
 .new-console-row-selected {

@@ -109,6 +109,7 @@ describe("admin style token contract", () => {
     expect(adminOsStyles).not.toContain("background-attachment: fixed");
     expect(adminOsStyles).not.toContain("mix-blend-mode");
     expect(adminOsStyles).not.toMatch(/(?:^|\n)\s*filter:\s*none;/);
+    expect(adminOsStyles).not.toMatch(/outline:\s*(?:none|0)\s*;/);
     expect(adminOsStyles).not.toMatch(/stroke-width:\s*2\.[0-9]/);
     expect(adminOsStyles).not.toMatch(/(?:width|height):\s*(13|14|15|17|19|21)px;/);
     expect(primitiveSources).not.toMatch(/strokeWidth=\{2\.[0-9]/);
@@ -506,8 +507,10 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-card:not(.admin-blueprint-module-card-dragging):hover")).toContain("0 0 0 1px");
     expect(selectorBlock(".nav-library-search")).toContain("0 1px 2px");
     expect(selectorBlock(".nav-library-search input")).toContain("font-weight: 500");
-    expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("radial-gradient");
-    expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("0 10px 24px");
+    expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("background: var(--admin-surface-muted)");
+    expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("box-shadow: none");
+    expect(selectorBlock(".admin-blueprint-empty-workbench")).not.toContain("radial-gradient");
+    expect(selectorBlock(".admin-blueprint-empty-workbench")).not.toContain("inset 0 1px");
   });
 
   test("keeps portal and public entrypoint pixel regressions contained", () => {
