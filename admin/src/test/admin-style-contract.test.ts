@@ -13,7 +13,6 @@ const adminOsStyles = [
   .map((filePath) => readCssWithImports(filePath))
   .join("\n");
 const publicSiteStyles = readCssWithImports("src/styles/public-site.css");
-const legacyEntrypointStyles = readCssWithImports("src/styles/legacy-entrypoints.css");
 const responsiveStyles = readCssWithImports("src/styles/responsive.css");
 const faviconSvg = readFileSync(resolve("public/favicon.svg"), "utf8").replace(/\r\n?/g, "\n");
 const primitiveSources = [
@@ -161,8 +160,6 @@ describe("admin style token contract", () => {
       "--admin-shadow-panel",
       "--admin-shadow-popover",
       "--admin-canvas-grid-size",
-      "--admin-canvas-grid-alpha",
-      "--admin-canvas-grid-alpha-strong",
       "--admin-noise-opacity",
       "--admin-canvas-max-width",
       "--admin-canvas-gutter",
@@ -517,7 +514,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".portal-traffic-meter")).toContain("background: #eef2f7");
     expect(selectorBlock(".portal-traffic-meter span")).toContain("min-width: 4px");
     expect(selectorBlock(".portal-traffic-meter span")).toContain("linear-gradient(90deg, #2563eb, #14b8a6)");
-    expect(legacyEntrypointStyles).not.toContain("rgb(22 163 74 / 0.12)");
+    expect(styles).not.toMatch(/rgb\([^)]*\/[^)]*\)/);
 
     expect(selectorBlock(".site-orbit")).not.toContain("filter: blur(1px)");
     expect(selectorBlock(".site-terminal-card span")).toContain("letter-spacing: 0");

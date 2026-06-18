@@ -75,8 +75,6 @@
   --admin-shadow-popover: 0 12px 28px rgba(15, 23, 42, 0.084);
   --admin-shadow-hover: 0 6px 16px rgba(15, 23, 42, 0.044);
   --admin-canvas-grid-size: 32px;
-  --admin-canvas-grid-alpha: 0.006;
-  --admin-canvas-grid-alpha-strong: 0.008;
   --admin-noise-opacity: 0;
   --admin-canvas-max-width: 1520px;
   --admin-canvas-gutter: 24px;
