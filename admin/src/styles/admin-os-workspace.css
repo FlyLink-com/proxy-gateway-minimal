@@ -975,7 +975,6 @@
   display: none;
 }
 
-.admin-blueprint-module-card:hover .admin-blueprint-card-resize-grip,
 .admin-blueprint-module-card-resizing .admin-blueprint-card-resize-grip,
 .admin-blueprint-card-resize-grip:hover,
 .admin-blueprint-card-resize-grip:focus-visible {
@@ -984,10 +983,10 @@
   opacity: 1;
 }
 
-.admin-blueprint-module-card:hover .admin-blueprint-card-resize-e,
-.admin-blueprint-module-card:hover .admin-blueprint-card-resize-w,
-.admin-blueprint-module-card:hover .admin-blueprint-card-resize-n,
-.admin-blueprint-module-card:hover .admin-blueprint-card-resize-s {
+.admin-blueprint-module-card-resizing .admin-blueprint-card-resize-e,
+.admin-blueprint-module-card-resizing .admin-blueprint-card-resize-w,
+.admin-blueprint-module-card-resizing .admin-blueprint-card-resize-n,
+.admin-blueprint-module-card-resizing .admin-blueprint-card-resize-s {
   opacity: 0.34;
 }
 

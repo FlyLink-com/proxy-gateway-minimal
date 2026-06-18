@@ -76,7 +76,7 @@
   inset: 1px;
   z-index: 0;
   border-radius: calc(var(--admin-radius-chrome) - 1px);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0) 58%);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.12) 58%);
   pointer-events: none;
 }
 
@@ -363,6 +363,12 @@
   color: var(--admin-text);
   font-size: 14px;
   font-weight: 500;
+}
+
+.nav-library-search input:focus-visible,
+.search-box input:focus-visible {
+  outline: 2px solid transparent;
+  outline-offset: 0;
 }
 
 .nav-library-search:focus-within {

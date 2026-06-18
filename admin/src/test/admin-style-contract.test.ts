@@ -247,8 +247,11 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".app-sidebar")).toContain("var(--admin-dock-surface)");
     expect(selectorBlock(".app-sidebar")).toContain("var(--admin-dock-border)");
     expect(selectorBlock(".app-sidebar")).toContain("var(--admin-dock-shadow)");
+    expect(selectorBlock(":root")).toContain("--admin-dock-surface: rgba(248, 250, 252, 0.94)");
+    expect(selectorBlock(":root")).toContain("--admin-dock-border: rgba(148, 163, 184, 0.28)");
     expect(selectorBlock(".app-sidebar")).toContain("box-shadow: var(--admin-dock-shadow)");
     expect(selectorBlock(".app-sidebar::before")).toContain("linear-gradient");
+    expect(selectorBlock(".app-sidebar::before")).toContain("rgba(255, 255, 255, 0.58)");
     expect(selectorBlock(".app-sidebar > *")).toContain("z-index: 1");
     expect(selectorBlock(".app-sidebar")).toContain("position: fixed");
     expect(selectorBlock(".app-sidebar")).toContain("bottom: var(--admin-appbar-bottom)");
@@ -299,6 +302,11 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-icon-switch")).toContain("display: inline-grid");
     expect(selectorBlock(".admin-blueprint-card-resize-grip")).toContain("var(--admin-plugin-resize-handle)");
     expect(selectorBlock(".admin-blueprint-card-resize-grip")).toContain("touch-action: none");
+    expect(styles).not.toContain(".admin-blueprint-module-card:hover .admin-blueprint-card-resize-grip");
+    expect(styles).not.toContain(".admin-blueprint-module-card:hover .admin-blueprint-card-resize-e");
+    expect(styles).not.toContain(".admin-blueprint-module-card:hover .admin-blueprint-card-resize-w");
+    expect(styles).not.toContain(".admin-blueprint-module-card:hover .admin-blueprint-card-resize-n");
+    expect(styles).not.toContain(".admin-blueprint-module-card:hover .admin-blueprint-card-resize-s");
     expect(selectorBlock(".admin-blueprint-card-resize-e,\n.admin-blueprint-card-resize-w")).toContain("cursor: ew-resize");
     expect(selectorBlock(".admin-blueprint-card-resize-n,\n.admin-blueprint-card-resize-s")).toContain("cursor: ns-resize");
     expect(selectorBlock(".admin-blueprint-card-resize-se")).toContain("cursor: nwse-resize");
@@ -369,6 +377,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-library-toolbar")).toContain("minmax(0, 1fr)");
     expect(selectorBlock(".nav-library-search")).toContain("var(--admin-radius-pill)");
     expect(selectorBlock(".nav-library-search input")).toContain("width: 100%");
+    expect(selectorBlock(".nav-library-search input:focus-visible,\n.search-box input:focus-visible")).toContain("outline: 2px solid transparent");
     expect(selectorBlock(".nav-library-result-count")).toContain("var(--admin-radius-pill)");
     expect(selectorBlock(".nav-library-toolbar")).toContain("position: static");
     expect(selectorBlock(".nav-library-utilities")).toContain("order: 1");
