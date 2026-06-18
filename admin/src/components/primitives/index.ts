@@ -21,12 +21,12 @@ export { SectionPanel } from "./section-panel";
 export { StatusChip } from "./status-chip";
 export {
   NavigationLibrary,
-  WorkspaceAppbar,
+  WorkspaceSidebar,
   type NavigationLibraryProps,
-  type WorkspaceAppbarBrand,
-  type WorkspaceAppbarPinnedApp,
-  type WorkspaceAppbarProps
-} from "./workspace-appbar";
+  type WorkspaceSidebarBrand,
+  type WorkspaceSidebarPinnedRoute,
+  type WorkspaceSidebarProps
+} from "./workspace-sidebar";
 export {
   WorkbenchContainerCard,
   WorkbenchLayerMap,

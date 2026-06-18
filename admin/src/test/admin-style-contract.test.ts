@@ -56,12 +56,17 @@ describe("admin style token contract", () => {
       "--admin-canvas-gutter-mobile: 12px",
       "--admin-canvas-max-width: 1520px",
       "--admin-statusbar-height: 48px",
-      "--admin-appbar-height: 58px",
-      "--admin-appbar-width: 960px",
+      "--admin-mobile-nav-height: 58px",
+      "--admin-mobile-nav-width: 960px",
       "--admin-app-icon-size: 34px",
-      "--admin-app-icon-dock-size: 32px",
-      "--admin-library-width: 760px",
-      "--admin-library-max-height: min(560px",
+      "--admin-sidebar-route-icon-size: 32px",
+      "--admin-sidebar-width: 228px",
+      "--admin-sidebar-offset: 12px",
+      "--admin-sidebar-gap: 16px",
+      "--admin-library-width: 720px",
+      "--admin-library-left: calc(var(--admin-sidebar-offset) + var(--admin-sidebar-width) + var(--admin-sidebar-gap))",
+      "--admin-library-top: calc(var(--admin-sidebar-offset) + 50px)",
+      "--admin-library-max-height: min(620px",
       "--admin-library-padding: 12px",
       "--admin-library-gap: 10px",
       "--admin-library-cell-width: 78px",
@@ -72,7 +77,7 @@ describe("admin style token contract", () => {
       "--admin-library-tile-height: 64px",
       "--admin-library-icon-size: 30px",
       "--admin-library-icon-size-large: 34px",
-      "--admin-library-bottom: calc(var(--admin-appbar-bottom) + var(--admin-appbar-height) + 12px)",
+      "--admin-library-bottom: calc(var(--admin-mobile-nav-bottom) + var(--admin-mobile-nav-height) + 12px)",
       "--admin-plugin-grid-min: 260px",
       "--admin-plugin-grid-row-unit: 32px",
       "--admin-plugin-gap: 16px",
@@ -142,9 +147,6 @@ describe("admin style token contract", () => {
       "--admin-statusbar-surface",
       "--admin-statusbar-border",
       "--admin-statusbar-shadow",
-      "--admin-dock-surface",
-      "--admin-dock-border",
-      "--admin-dock-shadow",
       "--admin-radius-panel",
       "--admin-radius-card",
       "--admin-radius-chrome",
@@ -166,14 +168,18 @@ describe("admin style token contract", () => {
       "--admin-canvas-gutter-mobile",
       "--admin-statusbar-height",
       "--admin-statusbar-padding-x",
-      "--admin-appbar-height",
-      "--admin-appbar-bottom",
-      "--admin-appbar-width",
-      "--admin-appbar-padding",
-      "--admin-appbar-gap",
+      "--admin-mobile-nav-height",
+      "--admin-mobile-nav-bottom",
+      "--admin-mobile-nav-width",
+      "--admin-mobile-nav-padding",
+      "--admin-mobile-nav-gap",
+      "--admin-sidebar-offset",
+      "--admin-sidebar-gap",
       "--admin-app-icon-size",
-      "--admin-app-icon-dock-size",
+      "--admin-sidebar-route-icon-size",
       "--admin-library-width",
+      "--admin-library-left",
+      "--admin-library-top",
       "--admin-library-bottom",
       "--admin-library-max-height",
       "--admin-library-padding",
@@ -236,23 +242,25 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-shell")).toContain("var(--admin-desktop-grid-alpha)");
     expect(selectorBlock(".admin-shell")).toContain("isolation: isolate");
     expect(selectorBlock(".admin-shell::before")).toContain("var(--admin-noise-opacity)");
-    expect(selectorBlock(".admin-shell::after")).toContain("var(--admin-desktop-shelf)");
-    expect(selectorBlock(".admin-shell::after")).toContain("var(--admin-desktop-shelf-border)");
-    expect(selectorBlock(":root")).toContain("--admin-library-width: 760px");
-    expect(selectorBlock(":root")).toContain("--admin-library-max-height: min(560px");
-    expect(selectorBlock(":root")).toContain("--admin-appbar-width: 960px");
+    expect(selectorBlock(".admin-shell::after")).toContain("display: none");
+    expect(selectorBlock(":root")).toContain("--admin-sidebar-width: 228px");
+    expect(selectorBlock(":root")).toContain("--admin-library-width: 720px");
+    expect(selectorBlock(":root")).toContain("--admin-library-left: calc(var(--admin-sidebar-offset) + var(--admin-sidebar-width) + var(--admin-sidebar-gap))");
+    expect(selectorBlock(":root")).toContain("--admin-library-max-height: min(620px");
+    expect(selectorBlock(":root")).toContain("--admin-mobile-nav-width: 960px");
     expect(selectorBlock(":root")).toContain("--admin-shadow-floating-2k: 0 16px 36px");
-    expect(selectorBlock(".app-sidebar")).toContain("var(--admin-dock-surface)");
-    expect(selectorBlock(".app-sidebar")).toContain("var(--admin-dock-border)");
-    expect(selectorBlock(".app-sidebar")).toContain("var(--admin-dock-shadow)");
-    expect(selectorBlock(":root")).toContain("--admin-dock-surface: rgba(248, 250, 252, 0.94)");
-    expect(selectorBlock(":root")).toContain("--admin-dock-border: rgba(148, 163, 184, 0.28)");
-    expect(selectorBlock(".app-sidebar")).toContain("box-shadow: var(--admin-dock-shadow)");
-    expect(selectorBlock(".app-sidebar::before")).toContain("linear-gradient");
-    expect(selectorBlock(".app-sidebar::before")).toContain("rgba(255, 255, 255, 0.58)");
+    expect(selectorBlock(".app-sidebar")).toContain("width: var(--admin-sidebar-width)");
+    expect(selectorBlock(".app-sidebar")).toContain("top: var(--admin-sidebar-offset)");
+    expect(selectorBlock(".app-sidebar")).toContain("bottom: var(--admin-sidebar-offset)");
+    expect(selectorBlock(".app-sidebar")).toContain("background: #ffffff");
+    expect(selectorBlock(".app-sidebar")).toContain("var(--admin-border)");
+    expect(selectorBlock(".app-sidebar")).toContain("var(--admin-shadow-chrome)");
+    expect(selectorBlock(".app-sidebar")).toContain("flex-direction: column");
+    expect(selectorBlock(".app-sidebar")).toContain("box-shadow: var(--admin-shadow-chrome)");
+    expect(selectorBlock(".app-sidebar::before")).toContain("display: none");
     expect(selectorBlock(".app-sidebar > *")).toContain("z-index: 1");
     expect(selectorBlock(".app-sidebar")).toContain("position: fixed");
-    expect(selectorBlock(".app-sidebar")).toContain("bottom: var(--admin-appbar-bottom)");
+    expect(selectorBlock(".admin-main")).toContain("margin-left: calc(var(--admin-sidebar-offset) + var(--admin-sidebar-width) + var(--admin-sidebar-gap))");
     expect(selectorBlock(".top-bar")).toContain("var(--admin-statusbar-surface)");
     expect(selectorBlock(".top-bar")).toContain("var(--admin-statusbar-border)");
     expect(selectorBlock(".top-bar")).toContain("var(--admin-statusbar-shadow)");
@@ -400,7 +408,8 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-planned-summary")).toContain("min-height: 42px");
     expect(selectorBlock(".nav-planned-summary")).toContain("list-style: none");
     expect(selectorBlock(".nav-planned-list")).toContain("position: fixed");
-    expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-library-bottom)");
+    expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-library-left)");
+    expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-library-top)");
     expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-library-width)");
     expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-library-max-height)");
     expect(selectorBlock(".nav-planned-list")).toContain("overflow-y: auto");
@@ -434,11 +443,11 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-app-tone-emerald")).toContain("--nav-app-a: #059669");
     expect(selectorBlock(".nav-app-tone-indigo")).toContain("--nav-app-a: #4f46e5");
     expect(selectorBlock(".nav-app-icon")).toContain("var(--admin-library-icon-size)");
-    expect(selectorBlock(".nav-app-icon-dock")).toContain("var(--admin-app-icon-dock-size)");
-    expect(selectorBlock(".nav-item-icon.nav-app-icon-dock svg")).toContain("width: 16px");
-    expect(selectorBlock(".nav-item-icon.nav-app-icon-dock svg")).toContain("height: 16px");
+    expect(selectorBlock(".nav-route-icon")).toContain("var(--admin-sidebar-route-icon-size)");
+    expect(selectorBlock(".nav-item-icon.nav-route-icon svg")).toContain("width: 16px");
+    expect(selectorBlock(".nav-item-icon.nav-route-icon svg")).toContain("height: 16px");
     expect(selectorBlock(".sidebar-safety-summary")).toContain("min-height: 42px");
-    expect(styles).toMatch(/\.nav-item-active\s*\{[\s\S]*0 5px 14px rgba\(37, 99, 235, 0\.055\)/m);
+    expect(styles).toMatch(/\.nav-item-active\s*\{[\s\S]*inset 3px 0 0 var\(--admin-accent\)/m);
     expect(selectorBlock(".nav-item")).toContain("transition:");
     expect(selectorBlock(".environment-pill,\n.protected-console,\n.icon-button")).toContain("min-height: var(--admin-control-height)");
     expect(selectorBlock(".operator-account-summary")).toContain("min-height: 38px");

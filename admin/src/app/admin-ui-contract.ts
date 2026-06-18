@@ -5,7 +5,7 @@ export type AdminUiContract = {
     contractId: "app-shell";
     owns: readonly [
       "topbar",
-      "workspace-appbar",
+      "workspace-sidebar",
       "navigation-library",
       "operator-account",
       "content-canvas"
@@ -73,7 +73,7 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
     density: "normal",
     owns: [
       "topbar",
-      "workspace-appbar",
+      "workspace-sidebar",
       "navigation-library",
       "operator-account",
       "content-canvas"

@@ -1,6 +1,6 @@
 @media (max-width: 860px) {
   :root {
-    --admin-appbar-bottom: 8px;
+    --admin-mobile-nav-bottom: 8px;
     --admin-canvas-gutter: 16px;
   }
 
@@ -8,23 +8,35 @@
     display: block;
   }
 
+  .admin-main {
+    margin-left: 0;
+    padding-bottom: 92px;
+  }
+
   .app-sidebar {
+    top: auto;
     left: 8px;
     right: 8px;
     bottom: 8px;
     width: auto;
     transform: none;
-    padding: var(--admin-appbar-padding);
+    padding: var(--admin-mobile-nav-padding);
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--admin-mobile-nav-gap);
     border-radius: 18px;
   }
 
   .nav-list {
+    flex-direction: row;
     flex: 1;
     min-width: 0;
   }
 
   .nav-primary-list {
     display: flex;
+    flex-direction: row;
     gap: 6px;
     width: 100%;
   }
@@ -38,7 +50,10 @@
   }
 
   .brand {
+    width: auto;
+    border-bottom: 0;
     padding-right: 0;
+    padding-bottom: 0;
   }
 
   .brand-mark {
@@ -48,6 +63,7 @@
 
   .nav-item {
     flex: 1 1 0;
+    width: auto;
     min-width: 0;
   }
 

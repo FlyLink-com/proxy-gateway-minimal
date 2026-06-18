@@ -14,7 +14,7 @@ import {
 } from "../../app/admin-app-manifest";
 import { type AdminPage } from "../../app/navigation";
 import { cn } from "../../lib/utils";
-import { NavigationLibrary, WorkspaceAppbar } from "../primitives";
+import { NavigationLibrary, WorkspaceSidebar } from "../primitives";
 
 type AppSidebarProps = {
   activePage: AdminPage;
@@ -332,7 +332,7 @@ export function AppSidebar({
   });
 
   return (
-    <WorkspaceAppbar
+    <WorkspaceSidebar
       brand={{
         mark: "GC",
         name: "GlobalCircle AI",

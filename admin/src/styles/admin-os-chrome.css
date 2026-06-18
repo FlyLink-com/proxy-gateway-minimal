@@ -30,15 +30,7 @@
 
 .admin-shell::after {
   content: "";
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 0;
-  height: 132px;
-  pointer-events: none;
-  background: linear-gradient(180deg, transparent 0%, var(--admin-desktop-shelf) 100%);
-  border-top: 1px solid var(--admin-desktop-shelf-border);
+  display: none;
 }
 
 .admin-shell > * {
@@ -49,35 +41,29 @@
 .app-sidebar {
   position: fixed;
   z-index: 55;
-  left: 0;
-  right: 0;
-  bottom: var(--admin-appbar-bottom);
-  width: min(calc(100vw - (var(--admin-canvas-gutter) * 2)), var(--admin-appbar-width));
-  margin: 0 auto;
-  min-height: var(--admin-appbar-height);
-  background: var(--admin-dock-surface);
+  top: var(--admin-sidebar-offset);
+  bottom: var(--admin-sidebar-offset);
+  left: var(--admin-sidebar-offset);
+  width: var(--admin-sidebar-width);
+  min-height: 0;
+  background: #ffffff;
   color: var(--admin-text-soft);
-  padding: var(--admin-appbar-padding);
+  padding: 12px;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--admin-appbar-gap);
-  border: 1px solid var(--admin-dock-border);
+  justify-content: flex-start;
+  gap: 14px;
+  border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-chrome);
-  box-shadow: var(--admin-dock-shadow);
+  box-shadow: var(--admin-shadow-chrome);
   min-width: 0;
   backdrop-filter: none;
   overflow: visible;
 }
 
 .app-sidebar::before {
-  content: "";
-  position: absolute;
-  inset: 1px;
-  z-index: 0;
-  border-radius: calc(var(--admin-radius-chrome) - 1px);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.12) 58%);
-  pointer-events: none;
+  display: none;
 }
 
 .app-sidebar > * {
@@ -90,7 +76,9 @@
   align-items: center;
   gap: 8px;
   min-height: 42px;
-  padding: 0 8px 0 2px;
+  width: 100%;
+  padding: 0 2px 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
   flex: 0 0 auto;
 }
 
@@ -142,19 +130,23 @@
 
 .nav-list {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  justify-content: flex-start;
+  gap: 10px;
   flex: 1;
+  width: 100%;
   min-width: 0;
 }
 
 .nav-primary-list {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  flex: 1 1 auto;
+  justify-content: flex-start;
+  gap: 8px;
+  flex: 0 0 auto;
+  width: 100%;
   min-width: 0;
 }
 
@@ -191,10 +183,11 @@
 }
 
 .nav-planned-menu {
+  width: 100%;
   min-width: 0;
   position: relative;
   border: 0;
-  border-radius: var(--admin-radius-pill);
+  border-radius: var(--admin-radius-control);
   background: transparent;
   overflow: visible;
   flex: 0 0 auto;
@@ -205,20 +198,17 @@
   position: fixed;
   inset: 0;
   z-index: 44;
-  background:
-    radial-gradient(circle at 50% 82%, rgba(37, 99, 235, 0.032), transparent 34%),
-    rgba(226, 232, 240, 0.1);
+  background: rgba(226, 232, 240, 0.12);
   backdrop-filter: none;
   pointer-events: none;
 }
 
 .nav-planned-summary {
+  width: 100%;
   min-height: 42px;
   border: 1px solid var(--admin-border);
-  border-radius: var(--admin-radius-pill);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(241, 245, 249, 0.78)),
-    var(--admin-surface-muted);
+  border-radius: var(--admin-radius-control);
+  background: var(--admin-surface-muted);
   display: grid;
   grid-template-columns: auto minmax(0, auto) auto;
   align-items: center;
@@ -264,7 +254,7 @@
   border-color: var(--admin-info-border);
   background: var(--admin-accent-surface);
   color: var(--admin-accent-strong);
-  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.08);
+  box-shadow: inset 3px 0 0 var(--admin-accent);
 }
 
 .nav-planned-count {
@@ -281,11 +271,12 @@
 .nav-planned-list {
   position: fixed;
   z-index: 45;
-  bottom: var(--admin-library-bottom);
-  left: 50%;
+  top: var(--admin-library-top);
+  bottom: auto;
+  left: var(--admin-library-left);
   right: auto;
-  transform: translateX(-50%);
-  width: min(var(--admin-library-width), calc(100vw - (var(--admin-canvas-gutter) * 2)));
+  transform: none;
+  width: min(var(--admin-library-width), calc(100vw - var(--admin-library-left) - var(--admin-canvas-gutter)));
   max-height: var(--admin-library-max-height);
   overflow-x: hidden;
   overflow-y: auto;
@@ -755,13 +746,13 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
   height: 16px;
 }
 
-.nav-app-icon-dock {
-  width: var(--admin-app-icon-dock-size);
-  height: var(--admin-app-icon-dock-size);
+.nav-route-icon {
+  width: var(--admin-sidebar-route-icon-size);
+  height: var(--admin-sidebar-route-icon-size);
   flex: 0 0 auto;
 }
 
-.nav-app-icon-dock svg {
+.nav-route-icon svg {
   width: 16px;
   height: 16px;
 }
@@ -834,21 +825,22 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
 
 .nav-item {
   border: 1px solid var(--admin-border);
-  border-radius: var(--admin-radius-pill);
-  background: rgba(248, 250, 252, 0.72);
+  border-radius: var(--admin-radius-control);
+  background: transparent;
   color: var(--admin-text-soft);
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
   gap: 8px;
-  flex: 1 1 138px;
+  flex: 0 0 auto;
+  width: 100%;
   min-height: 42px;
-  min-width: 132px;
-  max-width: 176px;
+  min-width: 0;
+  max-width: none;
   padding: 4px 10px 4px 4px;
   cursor: pointer;
   position: relative;
-  text-align: center;
+  text-align: left;
   font-weight: 700;
   transition:
     background var(--admin-ease),
@@ -871,7 +863,7 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
   height: 18px;
 }
 
-.nav-item-icon.nav-app-icon-dock svg {
+.nav-item-icon.nav-route-icon svg {
   width: 16px;
   height: 16px;
 }
@@ -895,12 +887,12 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
   background: var(--admin-hover-surface);
   border-color: var(--admin-info-border);
   color: var(--admin-accent-strong);
-  transform: translateY(-1px);
+  transform: none;
 }
 
 .nav-item-active {
   background: rgba(239, 246, 255, 0.76);
-  box-shadow: 0 5px 14px rgba(37, 99, 235, 0.055);
+  box-shadow: inset 3px 0 0 var(--admin-accent);
 }
 
 .nav-item:hover .nav-item-icon,
@@ -955,11 +947,13 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
 
 .sidebar-safety-footer {
   border: 1px solid var(--admin-border);
-  border-radius: var(--admin-radius-pill);
+  border-radius: var(--admin-radius-control);
   background: var(--admin-surface-muted);
   color: var(--admin-text-soft);
   overflow: visible;
   position: relative;
+  width: 100%;
+  margin-top: auto;
   flex: 0 0 auto;
 }
 
@@ -1004,9 +998,9 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
 
 .sidebar-safety-detail {
   position: absolute;
-  right: 0;
-  bottom: calc(100% + 10px);
-  width: min(280px, calc(100vw - 24px));
+  left: calc(100% + 10px);
+  bottom: 0;
+  width: min(280px, calc(100vw - var(--admin-sidebar-width) - 48px));
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-panel);
   background: var(--admin-surface);
@@ -1020,7 +1014,8 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
 .admin-main {
   min-width: 0;
   background: transparent;
-  padding-bottom: 92px;
+  margin-left: calc(var(--admin-sidebar-offset) + var(--admin-sidebar-width) + var(--admin-sidebar-gap));
+  padding-bottom: 0;
 }
 
 .top-bar {

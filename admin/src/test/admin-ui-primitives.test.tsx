@@ -18,7 +18,7 @@ import {
   NavigationLibrary,
   WorkbenchContainerCard,
   WorkbenchLayerMap,
-  WorkspaceAppbar
+  WorkspaceSidebar
 } from "../components/primitives";
 
 afterEach(() => {
@@ -207,11 +207,11 @@ describe("admin ui primitives", () => {
     expect(screen.getByText("Account Directory")).not.toBeNull();
   });
 
-  test("renders workspace appbar chrome with pinned routes and navigation library slot", () => {
+  test("renders workspace sidebar chrome with primary routes and navigation library slot", () => {
     const onNavigate = vi.fn();
 
     render(
-      <WorkspaceAppbar
+      <WorkspaceSidebar
         brand={{
           mark: "GC",
           name: "GlobalCircle AI",
@@ -240,18 +240,18 @@ describe("admin ui primitives", () => {
       />
     );
 
-    const appbar = screen.getByLabelText("Workspace appbar");
-    expect(appbar.className).toContain("workspace-appbar");
-    expect(appbar.getAttribute("data-ui-contract")).toBe("app-shell");
-    expect(appbar.getAttribute("data-ui-surface")).toBe("workspace-appbar");
-    expect(appbar.getAttribute("data-density")).toBe("normal");
-    expect(within(appbar).getByText("GlobalCircle AI")).not.toBeNull();
-    expect(within(appbar).getByLabelText("Pinned workspace routes")).not.toBeNull();
-    expect(within(appbar).getByRole("button", { name: "Operations Overview" }).getAttribute("aria-current")).toBe("page");
-    expect(within(appbar).getByRole("button", { name: "Navigation library" })).not.toBeNull();
-    expect(within(appbar).getByRole("button", { name: "Risk A gated" })).not.toBeNull();
+    const sidebar = screen.getByLabelText("Workspace sidebar");
+    expect(sidebar.className).toContain("workspace-sidebar");
+    expect(sidebar.getAttribute("data-ui-contract")).toBe("app-shell");
+    expect(sidebar.getAttribute("data-ui-surface")).toBe("workspace-sidebar");
+    expect(sidebar.getAttribute("data-density")).toBe("normal");
+    expect(within(sidebar).getByText("GlobalCircle AI")).not.toBeNull();
+    expect(within(sidebar).getByLabelText("Primary workspace routes")).not.toBeNull();
+    expect(within(sidebar).getByRole("button", { name: "Operations Overview" }).getAttribute("aria-current")).toBe("page");
+    expect(within(sidebar).getByRole("button", { name: "Navigation library" })).not.toBeNull();
+    expect(within(sidebar).getByRole("button", { name: "Risk A gated" })).not.toBeNull();
 
-    fireEvent.click(within(appbar).getByRole("button", { name: "Accounts & Resources" }));
+    fireEvent.click(within(sidebar).getByRole("button", { name: "Accounts & Resources" }));
 
     expect(onNavigate).toHaveBeenCalledWith("users");
   });

@@ -3,13 +3,13 @@ import { type ReactNode, type Ref, type ToggleEvent } from "react";
 import { ADMIN_UI_CONTRACT } from "../../app/admin-ui-contract";
 import { cn } from "../../lib/utils";
 
-export type WorkspaceAppbarBrand = {
+export type WorkspaceSidebarBrand = {
   mark: ReactNode;
   name: string;
   subtitle: string;
 };
 
-export type WorkspaceAppbarPinnedApp = {
+export type WorkspaceSidebarPinnedRoute = {
   active?: boolean;
   icon: ReactNode;
   id: string;
@@ -18,12 +18,12 @@ export type WorkspaceAppbarPinnedApp = {
   tone?: string;
 };
 
-export type WorkspaceAppbarProps = {
+export type WorkspaceSidebarProps = {
   ariaLabel?: string;
-  brand: WorkspaceAppbarBrand;
+  brand: WorkspaceSidebarBrand;
   className?: string;
   navigationLibrary: ReactNode;
-  pinnedApps: WorkspaceAppbarPinnedApp[];
+  pinnedApps: WorkspaceSidebarPinnedRoute[];
   safetyGate?: ReactNode;
 };
 
@@ -43,21 +43,21 @@ export type NavigationLibraryProps = {
   workspacePages?: ReactNode;
 };
 
-export function WorkspaceAppbar({
-  ariaLabel = "Workspace appbar",
+export function WorkspaceSidebar({
+  ariaLabel = "Workspace sidebar",
   brand,
   className,
   navigationLibrary,
   pinnedApps,
   safetyGate
-}: WorkspaceAppbarProps) {
+}: WorkspaceSidebarProps) {
   return (
     <aside
-      className={cn("app-sidebar workspace-appbar", className)}
+      className={cn("app-sidebar workspace-sidebar", className)}
       aria-label={ariaLabel}
       data-density={ADMIN_UI_CONTRACT.appShell.density}
       data-ui-contract={ADMIN_UI_CONTRACT.appShell.contractId}
-      data-ui-surface="workspace-appbar"
+      data-ui-surface="workspace-sidebar"
     >
       <div className="brand">
         <div className="brand-mark">{brand.mark}</div>
@@ -68,7 +68,7 @@ export function WorkspaceAppbar({
       </div>
 
       <nav className="nav-list">
-        <div className="nav-primary-list" aria-label="Pinned workspace routes">
+        <div className="nav-primary-list" aria-label="Primary workspace routes">
           {pinnedApps.map((app) => (
             <button
               aria-current={app.active ? "page" : undefined}
@@ -78,7 +78,7 @@ export function WorkspaceAppbar({
               title={app.label}
               type="button"
             >
-              <span className={cn("nav-item-icon nav-app-icon nav-app-icon-dock", app.tone)} aria-hidden="true">
+              <span className={cn("nav-item-icon nav-app-icon nav-route-icon", app.tone)} aria-hidden="true">
                 {app.icon}
               </span>
               <span className="nav-item-copy">{app.label}</span>
