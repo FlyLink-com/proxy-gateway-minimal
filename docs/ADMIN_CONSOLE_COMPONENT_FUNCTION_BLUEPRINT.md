@@ -67,6 +67,10 @@ project-specific.
 
 The visual contract is guarded by `admin/src/test/admin-style-contract.test.ts`
 so later UI work does not drift back into one-off rough styling.
+Phase 4 frontend quality work now uses
+`docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md` as the Gate 0 source for exact spacing,
+radius, shadow, App Library density, plugin geometry, icon sizing, and
+responsive behavior before implementation sub-agents continue.
 
 ## Tooling Roles
 

@@ -24,6 +24,7 @@ Use it after:
 
 Use it before:
 
+- `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md`
 - `docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md`
 - any Phase 2 design-system work
 - any Phase 3 React page implementation or cleanup
@@ -113,6 +114,9 @@ The container model also defines the first visual style baseline:
 
 - Shell, top bar, panels, subnav, widgets, and popovers must use shared Admin
   CSS tokens rather than one-off color/radius/shadow values.
+- Phase 4 visual work must follow `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md`
+  before adding App Library, plugin, workspace, chrome, or drag/resize
+  behaviors.
 - Sidebar navigation, page-local subnavigation, top-bar route links, and
   route/action cards share one nav-card format: compact height, 8px radius, 1px
   border, icon or marker slot, blue owner/selected state, and muted preview or
