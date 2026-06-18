@@ -36,6 +36,7 @@ describe("admin app manifest", () => {
       "visibility",
       "riskTier",
       "dataBoundary",
+      "sourceContract",
       "state",
       "forbiddenFields"
     ]);
@@ -97,6 +98,12 @@ describe("admin app manifest", () => {
       enName: "Operations Overview",
       primaryObjects: expect.arrayContaining(["platform health", "risk case"]),
       searchableFields: expect.arrayContaining(["overview", "health", "risk"]),
+      sourceContract: {
+        dataSourceRefs: expect.arrayContaining(["platform-health-summary", "risk-case-summary"]),
+        drilldownTargets: expect.arrayContaining(["dashboard#dashboard-risk-queue"]),
+        evidenceRoutes: expect.arrayContaining(["risk-case"]),
+        transformBoundary: "display-only"
+      },
       zhName: "运营概览"
     });
   });
@@ -130,6 +137,15 @@ describe("admin app manifest", () => {
       followUpTask: "GCC-76 plugin container template and GCC-78 workspace engine",
       primaryObjects: expect.arrayContaining(["quota policy", "total usage", "quota risk"]),
       searchableFields: expect.arrayContaining(["quota-usage", "Quota & Usage", "User Operations"]),
+      sourceContract: {
+        dataSourceRefs: expect.arrayContaining(["quota-policy-summary", "usage-rollup-summary"]),
+        drilldownTargets: expect.arrayContaining([
+          "portalRequests#user-supervision-quota-usage",
+          "usageMonitor#platform-monitoring-usage-ledger"
+        ]),
+        evidenceRoutes: expect.arrayContaining(["quota-state", "order-ref"]),
+        transformBoundary: "display-only"
+      },
       zhName: "配额与使用情况"
     });
   });
@@ -210,6 +226,10 @@ describe("admin app manifest", () => {
       expect(app.catalog.searchableFields.length).toBeGreaterThan(0);
       expect(app.catalog.safetyBoundary).toMatch(/safe|locked|console/i);
       expect(app.catalog.followUpTask).toMatch(/^GCC-/);
+      expect(app.catalog.sourceContract.dataSourceRefs.length).toBeGreaterThan(0);
+      expect(app.catalog.sourceContract.drilldownTargets.length).toBeGreaterThan(0);
+      expect(app.catalog.sourceContract.evidenceRoutes.length).toBeGreaterThan(0);
+      expect(app.catalog.sourceContract.transformBoundary).toBe("display-only");
     });
   });
 
@@ -303,8 +323,43 @@ describe("admin app manifest", () => {
       });
       expect(ADMIN_APP_AUTHORING_STANDARD.states).toContain(app.state);
       expect(app.searchFields.join(" ")).not.toMatch(forbiddenSearchTextPattern);
+      expect(JSON.stringify(app.sourceContract)).not.toMatch(forbiddenSearchTextPattern);
+      expect(app.sourceContract.transformBoundary).toBe("display-only");
       expect(app.forbiddenFields).toEqual(expect.arrayContaining(["token", "credential", "SQLite row"]));
     });
+  });
+
+  test("defines source-backed panel contracts without granting execution", () => {
+    const usageLedger = getPluginApp("usage-ledger", "usageMonitor");
+    const riskQueue = getPluginApp("risk-queue", "dashboard");
+    const environmentUtility = getUtilityApps().find((app) => app.id === "utility.environment");
+
+    expect(usageLedger?.catalog.sourceContract).toMatchObject({
+      dataSourceRefs: expect.arrayContaining(["usage-ledger-summary", "usage-rollup-summary"]),
+      drilldownTargets: expect.arrayContaining([
+        "usageMonitor#platform-monitoring-usage-ledger",
+        "portalRequests#user-supervision-quota-usage"
+      ]),
+      evidenceRoutes: expect.arrayContaining(["account-ref", "order-ref", "measured-usage"]),
+      transformBoundary: "display-only"
+    });
+    expect(riskQueue?.catalog.sourceContract).toMatchObject({
+      dataSourceRefs: expect.arrayContaining(["risk-case-summary", "usage-anomaly-summary"]),
+      evidenceRoutes: expect.arrayContaining(["risk-case", "receipt-state"]),
+      transformBoundary: "display-only"
+    });
+    expect(environmentUtility?.catalog.sourceContract).toMatchObject({
+      dataSourceRefs: expect.arrayContaining(["environment-status-summary", "risk-gate-summary"]),
+      evidenceRoutes: expect.arrayContaining(["environment-state", "risk-gate"]),
+      transformBoundary: "display-only"
+    });
+
+    for (const app of adminAppManifest) {
+      const sourceContract = JSON.stringify(app.catalog.sourceContract);
+      expect(sourceContract).not.toMatch(forbiddenSearchTextPattern);
+      expect(app.safety.capabilities).not.toContain("execute");
+      expect(app.catalog.sourceContract.transformBoundary).toBe("display-only");
+    }
   });
 
   test("builds a safe app-library search index from whitelisted summary fields", () => {

@@ -362,7 +362,7 @@ Implementation backlog derived from the Grafana read:
 
 | Need | Admin OS rule | Follow-up scope |
 | --- | --- | --- |
-| Source-backed panels | Every plugin panel should name the safe backend summary or display-only data source it visualizes. | Add lightweight `dataSourceRefs` only when a B-scope implementation needs it. |
+| Source-backed panels | Every plugin panel should name the safe backend summary or display-only data source it visualizes. | Manifest-level `sourceContract` now records `dataSourceRefs`, drilldown targets, evidence routes, and a display-only transform boundary; next UI work should consume it. |
 | Safe filters | Filters behave like dashboard variables, preserving page context without bypassing backend permission checks. | Define page/filter scope before adding richer App Library or evidence search. |
 | Display transforms | Frontend transforms may format, group, sort, and unit-convert; quota, lifecycle, and risk decisions remain backend/domain-owned. | Keep `display transform only` language in component contracts and tests. |
 | Alert routing | Risk items route to account, order, channel, collector, receipt, or gate evidence. | Add `evidenceLink`/`sourcePanelId` only after the target evidence surface exists. |

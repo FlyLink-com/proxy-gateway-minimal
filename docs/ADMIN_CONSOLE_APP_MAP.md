@@ -35,6 +35,7 @@ Every app entry must have:
 | `searchableFields` | Whitelisted safe fields used by App Library search. |
 | `safetyBoundary` | What the app may show or control without new authority. |
 | `followUpTask` | Next implementation task that owns deeper behavior. |
+| `sourceContract` | Safe data-source refs, drilldown targets, evidence routes, and display-only transform boundary. |
 
 Search entries may use only `label`, aliases, safe descriptions, app category,
 owner area, capabilities, route target, and `catalog.searchableFields`.
@@ -80,6 +81,22 @@ responses, or error stacks.
 Frontend visibility only controls App Library display. Backend API permission
 remains the authority for every data fetch, drilldown, mutation, or future app
 registry action.
+
+## Source-Backed Panel Boundary
+
+The manifest now carries source-backed panel metadata for every workspace app,
+plugin, utility, and planned app:
+
+| Contract field | Rule |
+| --- | --- |
+| `dataSourceRefs` | Name only safe summaries or display-only frontend sources, for example `usage-ledger-summary` or `risk-case-summary`. |
+| `drilldownTargets` | Use existing `AdminPage` / plugin `targetId` / utility ids; do not invent route targets outside the manifest. |
+| `evidenceRoutes` | Use safe evidence labels such as `account-ref`, `order-ref`, `channel-ref`, `receipt-state`, or `risk-case`. |
+| `transformBoundary` | Always `display-only`; quota, lifecycle, risk, auth, and runtime decisions remain backend/domain owned. |
+
+This is a frontend manifest contract only. It does not authorize new API
+endpoints, raw query browsing, log/config browsing, production execution,
+runtime mutation, or arbitrary external data-source configuration.
 
 ## Workspace Apps
 

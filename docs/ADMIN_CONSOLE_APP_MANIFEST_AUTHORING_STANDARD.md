@@ -1,6 +1,6 @@
 # Admin Console App Manifest Authoring Standard
 
-Last updated: 2026-06-17, America/Los_Angeles.
+Last updated: 2026-06-18, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-75 under GCC-81 / GCC-42
@@ -41,8 +41,24 @@ Every application manifest must carry:
 | `visibility` | `pinned`, `library`, `hidden`, or `locked`. |
 | `riskTier` | Local UI risk classification: B or C for active UI, A for gated future apps. |
 | `dataBoundary` | Must be `safe-summary-only` in this phase. |
+| `sourceContract` | Display-only data-source, drilldown, and evidence-route contract for the app or plugin. |
 | `state` | `normal`, `warning`, `blocked`, `readonly`, `planned`, or `needs-config`. |
 | `forbiddenFields` | Explicit unsafe labels excluded from search, UI output, and app authoring payloads. |
+
+## Source Contract
+
+Every app and plugin must declare a source contract:
+
+| Field | Meaning |
+| --- | --- |
+| `dataSourceRefs` | Safe summary or display-only data source refs consumed by the app. |
+| `drilldownTargets` | Safe page, plugin, utility, or locked app targets the UI may route to. |
+| `evidenceRoutes` | Safe evidence labels such as `account-ref`, `order-ref`, `risk-case`, or `receipt-state`. |
+| `transformBoundary` | Must be `display-only`; frontend transforms may format, group, sort, or unit-convert but must not decide quota, lifecycle, risk, auth, or runtime behavior. |
+
+Source contracts are metadata. They do not authorize new API access, backend
+schema, runtime mutation, arbitrary data-source configuration, raw query/log
+browsing, or production action execution.
 
 ## Entry Types
 
@@ -111,10 +127,12 @@ must never include those forbidden field names or raw values.
 2. Include catalog metadata: Chinese planning name, English UI name, category,
    primary objects, core views, safe searchable fields, safety boundary, and
    follow-up task.
-3. Let `adminAppAuthoringManifest` derive the authoring entry.
-4. Add or update tests in `admin/src/test/admin-app-manifest.test.ts`.
-5. If the app has visible UI routing, add a focused navigation or page test.
-6. Do not add a second hardcoded array in App Library or page code.
+3. Include `sourceContract` with safe data source refs, drilldown targets,
+   evidence routes, and `transformBoundary: "display-only"`.
+4. Let `adminAppAuthoringManifest` derive the authoring entry.
+5. Add or update tests in `admin/src/test/admin-app-manifest.test.ts`.
+6. If the app has visible UI routing, add a focused navigation or page test.
+7. Do not add a second hardcoded array in App Library or page code.
 
 ## Validation
 
