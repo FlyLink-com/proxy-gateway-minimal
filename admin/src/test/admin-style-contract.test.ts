@@ -49,18 +49,18 @@ describe("admin style token contract", () => {
       "--admin-appbar-width: 960px",
       "--admin-app-icon-size: 34px",
       "--admin-app-icon-dock-size: 32px",
-      "--admin-library-width: 900px",
+      "--admin-library-width: 760px",
       "--admin-library-max-height: min(560px",
-      "--admin-library-padding: 16px",
-      "--admin-library-gap: 14px",
-      "--admin-library-cell-width: 92px",
-      "--admin-library-page-cell-width: 164px",
+      "--admin-library-padding: 12px",
+      "--admin-library-gap: 10px",
+      "--admin-library-cell-width: 78px",
+      "--admin-library-page-cell-width: 132px",
       "--admin-library-page-columns: 3",
-      "--admin-library-module-columns: 7",
+      "--admin-library-module-columns: 6",
       "--admin-library-utility-columns: 5",
-      "--admin-library-tile-height: 82px",
-      "--admin-library-icon-size: 36px",
-      "--admin-library-icon-size-large: 40px",
+      "--admin-library-tile-height: 64px",
+      "--admin-library-icon-size: 30px",
+      "--admin-library-icon-size-large: 34px",
       "--admin-plugin-grid-min: 260px",
       "--admin-plugin-grid-row-unit: 32px",
       "--admin-plugin-gap: 16px",
@@ -216,10 +216,10 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-shell::before")).toContain("var(--admin-noise-opacity)");
     expect(selectorBlock(".admin-shell::after")).toContain("var(--admin-desktop-shelf)");
     expect(selectorBlock(".admin-shell::after")).toContain("var(--admin-desktop-shelf-border)");
-    expect(selectorBlock(":root")).toContain("--admin-library-width: 900px");
+    expect(selectorBlock(":root")).toContain("--admin-library-width: 760px");
     expect(selectorBlock(":root")).toContain("--admin-library-max-height: min(560px");
     expect(selectorBlock(":root")).toContain("--admin-appbar-width: 960px");
-    expect(selectorBlock(":root")).toContain("--admin-shadow-floating-2k: 0 18px 44px");
+    expect(selectorBlock(":root")).toContain("--admin-shadow-floating-2k: 0 16px 36px");
     expect(selectorBlock(".app-sidebar")).toContain("var(--admin-dock-surface)");
     expect(selectorBlock(".app-sidebar")).toContain("var(--admin-dock-border)");
     expect(selectorBlock(".app-sidebar")).toContain("var(--admin-dock-shadow)");
@@ -234,7 +234,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".top-bar")).toContain("var(--admin-statusbar-height)");
     expect(selectorBlock(".top-bar")).toContain("position: sticky");
     expect(selectorBlock(":root")).toContain("--admin-statusbar-height: 48px");
-    expect(selectorBlock(".top-bar")).toContain("backdrop-filter: blur(10px)");
+    expect(selectorBlock(".top-bar")).toContain("backdrop-filter: none");
     expect(selectorBlock(".admin-content")).toContain("var(--admin-content-padding)");
     expect(selectorBlock(".admin-content")).toContain("var(--admin-canvas-max-width)");
     expect(selectorBlock(".dashboard-panel")).toContain("var(--admin-radius-panel)");
@@ -373,7 +373,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-library-width)");
     expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-library-max-height)");
     expect(selectorBlock(".nav-planned-list")).toContain("overflow-y: auto");
-    expect(selectorBlock(".nav-planned-list")).toContain("backdrop-filter:");
+    expect(selectorBlock(".nav-planned-list")).toContain("backdrop-filter: none");
     expect(selectorBlock(".nav-planned-list")).toContain("contain: layout paint");
     expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-shadow-floating-2k)");
     expect(selectorBlock(".nav-planned-list")).toContain("box-shadow: var(--admin-shadow-floating-2k)");
@@ -383,20 +383,21 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-library-heading")).toContain("font-size: 11px");
     expect(selectorBlock(".nav-library-heading")).toContain("text-transform: none");
     expect(selectorBlock(".nav-library-utility")).toContain("grid-template-columns: minmax(0, 1fr)");
-    expect(selectorBlock(".nav-library-utility")).toContain("padding: 8px 6px");
+    expect(selectorBlock(".nav-library-utility")).toContain("padding: 6px 4px");
     expect(selectorBlock(".nav-library-group")).toContain("display: grid");
     expect(selectorBlock(".nav-library-grid")).toContain("repeat(var(--admin-library-page-columns), minmax(0, var(--admin-library-page-cell-width)))");
     expect(selectorBlock(".nav-library-grid")).toContain("align-items: start");
-    expect(selectorBlock(".nav-library-grid")).toContain("justify-content: center");
+    expect(selectorBlock(".nav-library-grid")).toContain("justify-content: start");
     expect(selectorBlock(".nav-library-grid-modules")).toContain("repeat(var(--admin-library-module-columns), minmax(0, var(--admin-library-cell-width)))");
     expect(selectorBlock(".nav-library-utility-grid")).toContain("repeat(var(--admin-library-utility-columns), minmax(0, var(--admin-library-cell-width)))");
     expect(selectorBlock(".nav-library-utility-grid")).toContain("align-items: start");
+    expect(selectorBlock(".nav-library-utility-grid")).toContain("justify-content: start");
     expect(selectorBlock(".nav-planned-item")).toContain("grid-template-columns: 1fr");
     expect(selectorBlock(".nav-planned-item")).toContain("var(--admin-library-tile-height)");
     expect(selectorBlock(".nav-planned-item-module")).toContain("transparent");
     expect(selectorBlock(".nav-app-icon")).toContain("background: var(--nav-app-a)");
     expect(selectorBlock(".nav-app-icon")).toContain("var(--admin-radius-icon)");
-    expect(selectorBlock(".nav-app-icon")).toContain("0 4px 10px var(--nav-app-shadow)");
+    expect(selectorBlock(".nav-app-icon")).toContain("0 2px 6px var(--nav-app-shadow)");
     expect(selectorBlock(".nav-app-icon::after")).toContain("display: none");
     expect(selectorBlock(".nav-app-icon svg")).toContain("position: relative");
     expect(selectorBlock(".nav-app-tone-emerald")).toContain("--nav-app-a: #059669");
