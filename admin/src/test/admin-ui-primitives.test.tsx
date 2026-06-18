@@ -15,7 +15,7 @@ import {
   SafeRef,
   SectionPanel,
   StatusChip,
-  AppLibrary,
+  NavigationLibrary,
   WorkbenchContainerCard,
   WorkbenchLayerMap,
   WorkspaceAppbar
@@ -207,7 +207,7 @@ describe("admin ui primitives", () => {
     expect(screen.getByText("Account Directory")).not.toBeNull();
   });
 
-  test("renders workspace appbar chrome with pinned apps and library slot", () => {
+  test("renders workspace appbar chrome with pinned routes and navigation library slot", () => {
     const onNavigate = vi.fn();
 
     render(
@@ -217,7 +217,7 @@ describe("admin ui primitives", () => {
           name: "GlobalCircle AI",
           subtitle: "Proxy Gateway"
         }}
-        appLibrary={<button type="button">App library</button>}
+        navigationLibrary={<button type="button">Navigation library</button>}
         pinnedApps={[
           {
             active: true,
@@ -246,9 +246,9 @@ describe("admin ui primitives", () => {
     expect(appbar.getAttribute("data-ui-surface")).toBe("workspace-appbar");
     expect(appbar.getAttribute("data-density")).toBe("normal");
     expect(within(appbar).getByText("GlobalCircle AI")).not.toBeNull();
-    expect(within(appbar).getByLabelText("Pinned workspace apps")).not.toBeNull();
+    expect(within(appbar).getByLabelText("Pinned workspace routes")).not.toBeNull();
     expect(within(appbar).getByRole("button", { name: "Operations Overview" }).getAttribute("aria-current")).toBe("page");
-    expect(within(appbar).getByRole("button", { name: "App library" })).not.toBeNull();
+    expect(within(appbar).getByRole("button", { name: "Navigation library" })).not.toBeNull();
     expect(within(appbar).getByRole("button", { name: "Risk A gated" })).not.toBeNull();
 
     fireEvent.click(within(appbar).getByRole("button", { name: "Accounts & Resources" }));
@@ -256,12 +256,12 @@ describe("admin ui primitives", () => {
     expect(onNavigate).toHaveBeenCalledWith("users");
   });
 
-  test("renders app library chrome with search, grouped apps, and empty state", () => {
+  test("renders navigation library chrome with search, grouped routes, and empty state", () => {
     const onSearchChange = vi.fn();
 
     render(
-      <AppLibrary
-        emptyState={<span>No matching apps, plugins, or settings.</span>}
+      <NavigationLibrary
+        emptyState={<span>No matching routes, modules, or settings.</span>}
         open
         plannedApps={<div>System Settings</div>}
         plugins={<button type="button">Health Summary</button>}
@@ -274,19 +274,19 @@ describe("admin ui primitives", () => {
       />
     );
 
-    const trigger = screen.getByLabelText("Open app library");
+    const trigger = screen.getByLabelText("Open navigation library");
     expect(trigger.closest("details")?.getAttribute("data-ui-contract")).toBe("app-shell");
-    expect(trigger.closest("details")?.getAttribute("data-ui-surface")).toBe("app-library");
+    expect(trigger.closest("details")?.getAttribute("data-ui-surface")).toBe("navigation-library");
     expect(trigger.closest("details")?.getAttribute("data-density")).toBe("normal");
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByLabelText("24 app library entries")).not.toBeNull();
-    expect(screen.getByLabelText("4 app library results")).not.toBeNull();
+    expect(screen.getByLabelText("24 navigation library entries")).not.toBeNull();
+    expect(screen.getByLabelText("4 navigation library results")).not.toBeNull();
     expect(screen.getByLabelText("Console settings")).not.toBeNull();
     expect(screen.getByLabelText("Workspace pages")).not.toBeNull();
-    expect(screen.getByLabelText("Plugins")).not.toBeNull();
-    expect(screen.getByLabelText("Planned apps")).not.toBeNull();
+    expect(screen.getByLabelText("Modules")).not.toBeNull();
+    expect(screen.getByLabelText("Planned routes")).not.toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Search app library"), { target: { value: "quota" } });
+    fireEvent.change(screen.getByLabelText("Search navigation library"), { target: { value: "quota" } });
 
     expect(onSearchChange).toHaveBeenCalledWith("quota");
   });

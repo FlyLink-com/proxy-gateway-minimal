@@ -20,9 +20,9 @@ export { SafeRef } from "./safe-ref";
 export { SectionPanel } from "./section-panel";
 export { StatusChip } from "./status-chip";
 export {
-  AppLibrary,
+  NavigationLibrary,
   WorkspaceAppbar,
-  type AppLibraryProps,
+  type NavigationLibraryProps,
   type WorkspaceAppbarBrand,
   type WorkspaceAppbarPinnedApp,
   type WorkspaceAppbarProps

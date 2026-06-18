@@ -14,7 +14,7 @@ import {
 } from "../../app/admin-app-manifest";
 import { type AdminPage } from "../../app/navigation";
 import { cn } from "../../lib/utils";
-import { AppLibrary, WorkspaceAppbar } from "../primitives";
+import { NavigationLibrary, WorkspaceAppbar } from "../primitives";
 
 type AppSidebarProps = {
   activePage: AdminPage;
@@ -39,9 +39,9 @@ export function AppSidebar({
   connectionPanel,
   connectionConfigured = false
 }: AppSidebarProps) {
-  const [appLibraryOpen, setAppLibraryOpen] = useState(false);
-  const appLibraryRef = useRef<HTMLDetailsElement>(null);
-  const appLibrarySearchRef = useRef<HTMLInputElement>(null);
+  const [navigationLibraryOpen, setNavigationLibraryOpen] = useState(false);
+  const navigationLibraryRef = useRef<HTMLDetailsElement>(null);
+  const navigationLibrarySearchRef = useRef<HTMLInputElement>(null);
   const appMap = getAdminAppMap();
   const appSearchEntries = appMap.searchIndex;
   const appSearchEntriesById = new Map(appSearchEntries.map((entry) => [entry.appId, entry]));
@@ -67,19 +67,19 @@ export function AppSidebar({
   const resultCount = pageEntries.length + visibleModuleEntries.length + visiblePlannedApps.length + visibleUtilityCount;
 
   useEffect(() => {
-    if (!appLibraryOpen) {
+    if (!navigationLibraryOpen) {
       return;
     }
 
     const resetLibraryViewport = () => {
-      const libraryViewport = appLibraryRef.current?.querySelector<HTMLElement>(".nav-planned-list");
+      const libraryViewport = navigationLibraryRef.current?.querySelector<HTMLElement>(".nav-planned-list");
       libraryViewport?.scrollTo?.({
         top: 0
       });
       if (libraryViewport && typeof libraryViewport.scrollTo !== "function") {
         libraryViewport.scrollTop = 0;
       }
-      appLibrarySearchRef.current?.focus();
+      navigationLibrarySearchRef.current?.focus();
     };
     if (typeof window.requestAnimationFrame === "function") {
       const animationFrame = window.requestAnimationFrame(resetLibraryViewport);
@@ -88,20 +88,20 @@ export function AppSidebar({
 
     const timer = window.setTimeout(resetLibraryViewport, 0);
     return () => window.clearTimeout(timer);
-  }, [appLibraryOpen]);
+  }, [navigationLibraryOpen]);
 
   useEffect(() => {
-    if (!appLibraryOpen) {
+    if (!navigationLibraryOpen) {
       return;
     }
 
     const handlePointerDown = (event: globalThis.PointerEvent) => {
       const target = event.target;
-      if (target instanceof Node && appLibraryRef.current?.contains(target)) {
+      if (target instanceof Node && navigationLibraryRef.current?.contains(target)) {
         return;
       }
       onSearchChange("");
-      setAppLibraryOpen(false);
+      setNavigationLibraryOpen(false);
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -110,7 +110,7 @@ export function AppSidebar({
       }
       event.preventDefault();
       onSearchChange("");
-      setAppLibraryOpen(false);
+      setNavigationLibraryOpen(false);
     };
 
     document.addEventListener("pointerdown", handlePointerDown);
@@ -119,19 +119,19 @@ export function AppSidebar({
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [appLibraryOpen, onSearchChange]);
+  }, [navigationLibraryOpen, onSearchChange]);
 
-  const closeAppLibrary = () => {
+  const closeNavigationLibrary = () => {
     onSearchChange("");
-    setAppLibraryOpen(false);
+    setNavigationLibraryOpen(false);
   };
 
-  const handleAppLibraryToggle = (event: ToggleEvent<HTMLDetailsElement>) => {
+  const handleNavigationLibraryToggle = (event: ToggleEvent<HTMLDetailsElement>) => {
     const nextOpen = event.currentTarget.open;
     if (!nextOpen) {
       onSearchChange("");
     }
-    setAppLibraryOpen(nextOpen);
+    setNavigationLibraryOpen(nextOpen);
   };
 
   const clearSearchAndNavigate = (page: AdminPage) => {
@@ -185,7 +185,7 @@ export function AppSidebar({
           className={cn("nav-library-utility", visibleUtilityAppById.get("utility.risk-notifications")?.tone)}
           type="button"
           onClick={() => {
-            closeAppLibrary();
+            closeNavigationLibrary();
             clearSearchAndNavigate("dashboard");
           }}
         >
@@ -212,7 +212,7 @@ export function AppSidebar({
           className={cn("nav-library-utility", visibleUtilityAppById.get("utility.preview-site")?.tone)}
           type="button"
           onClick={() => {
-            closeAppLibrary();
+            closeNavigationLibrary();
             onSearchChange("");
             onOpenSite();
           }}
@@ -227,7 +227,7 @@ export function AppSidebar({
           className={cn("nav-library-utility", visibleUtilityAppById.get("utility.user-portal")?.tone)}
           type="button"
           onClick={() => {
-            closeAppLibrary();
+            closeNavigationLibrary();
             onSearchChange("");
             onOpenPortal();
           }}
@@ -243,7 +243,7 @@ export function AppSidebar({
           className={cn("nav-library-utility nav-library-connection", visibleUtilityAppById.get("utility.admin-api")?.tone)}
           type="button"
           onClick={() => {
-            closeAppLibrary();
+            closeNavigationLibrary();
             onSearchChange("");
             clearSearchAndNavigate("dashboard");
           }}
@@ -272,7 +272,7 @@ export function AppSidebar({
         className={cn("nav-planned-item nav-planned-item-active", active && "nav-planned-item-current")}
         key={app.id}
         onClick={() => {
-          closeAppLibrary();
+          closeNavigationLibrary();
           if (page) {
             clearSearchAndNavigate(page);
           }
@@ -283,7 +283,7 @@ export function AppSidebar({
           <Icon />
         </span>
         <span>{app.label}</span>
-        <small>{active ? "Open" : "App"}</small>
+        <small>{active ? "Open" : "Route"}</small>
       </button>
     );
   });
@@ -297,7 +297,7 @@ export function AppSidebar({
         className="nav-planned-item nav-planned-item-active nav-planned-item-module"
         key={app.id}
         onClick={() => {
-          closeAppLibrary();
+          closeNavigationLibrary();
           if (page && app.route.targetId) {
             openModuleApp(page, app.route.targetId);
           }
@@ -338,21 +338,21 @@ export function AppSidebar({
         name: "GlobalCircle AI",
         subtitle: "Proxy Gateway"
       }}
-      appLibrary={(
-        <AppLibrary
-          emptyState="No matching apps, plugins, or settings."
-          menuRef={appLibraryRef}
-          open={appLibraryOpen}
+      navigationLibrary={(
+        <NavigationLibrary
+          emptyState="No matching routes, modules, or settings."
+          menuRef={navigationLibraryRef}
+          open={navigationLibraryOpen}
           plannedApps={plannedApps}
           plugins={pluginApps}
           resultCount={resultCount}
           search={search}
-          searchInputRef={appLibrarySearchRef}
+          searchInputRef={navigationLibrarySearchRef}
           totalCount={appSearchEntries.length}
           utilities={utilityApps}
           workspacePages={workspacePages}
           onSearchChange={onSearchChange}
-          onToggle={handleAppLibraryToggle}
+          onToggle={handleNavigationLibraryToggle}
         />
       )}
       pinnedApps={pinnedApps}

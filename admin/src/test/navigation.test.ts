@@ -204,36 +204,36 @@ describe("admin navigation", () => {
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
     expect(screen.queryByLabelText("Admin navigation")).toBeNull();
     const workspaceAppbar = screen.getByLabelText("Workspace appbar");
-    expect(within(workspaceAppbar).getByLabelText("Pinned workspace apps")).not.toBeNull();
+    expect(within(workspaceAppbar).getByLabelText("Pinned workspace routes")).not.toBeNull();
     expect(within(workspaceAppbar).getByRole("button", { name: "Operations Overview" })).not.toBeNull();
     expect(within(workspaceAppbar).getByRole("button", { name: "Accounts & Resources" })).not.toBeNull();
     expect(within(workspaceAppbar).getByRole("button", { name: "Usage & Channels" })).not.toBeNull();
-    expect(within(workspaceAppbar).getByLabelText("Open app library").closest("details")?.hasAttribute("open")).toBe(false);
-    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
-    const appLibraryMenu = within(workspaceAppbar).getByLabelText("Open app library").closest("details");
-    expect(appLibraryMenu?.hasAttribute("open")).toBe(true);
-    const appLibrarySearch = within(workspaceAppbar).getByLabelText("Search app library");
-    expect(appLibrarySearch).not.toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(appLibrarySearch));
-    fireEvent.change(appLibrarySearch, { target: { value: "quota" } });
+    expect(within(workspaceAppbar).getByLabelText("Open navigation library").closest("details")?.hasAttribute("open")).toBe(false);
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open navigation library"));
+    const navigationLibraryMenu = within(workspaceAppbar).getByLabelText("Open navigation library").closest("details");
+    expect(navigationLibraryMenu?.hasAttribute("open")).toBe(true);
+    const navigationLibrarySearch = within(workspaceAppbar).getByLabelText("Search navigation library");
+    expect(navigationLibrarySearch).not.toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(navigationLibrarySearch));
+    fireEvent.change(navigationLibrarySearch, { target: { value: "quota" } });
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(appLibraryMenu?.hasAttribute("open")).toBe(false);
-    expect((appLibrarySearch as HTMLInputElement).value).toBe("");
-    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
-    await waitFor(() => expect(appLibraryMenu?.hasAttribute("open")).toBe(true));
-    await waitFor(() => expect(document.activeElement).toBe(appLibrarySearch));
-    fireEvent.change(appLibrarySearch, { target: { value: "admin api" } });
+    expect(navigationLibraryMenu?.hasAttribute("open")).toBe(false);
+    expect((navigationLibrarySearch as HTMLInputElement).value).toBe("");
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open navigation library"));
+    await waitFor(() => expect(navigationLibraryMenu?.hasAttribute("open")).toBe(true));
+    await waitFor(() => expect(document.activeElement).toBe(navigationLibrarySearch));
+    fireEvent.change(navigationLibrarySearch, { target: { value: "admin api" } });
     fireEvent.pointerDown(document.body);
-    await waitFor(() => expect(appLibraryMenu?.hasAttribute("open")).toBe(false));
-    expect((appLibrarySearch as HTMLInputElement).value).toBe("");
-    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
-    expect(appLibraryMenu?.hasAttribute("open")).toBe(true);
+    await waitFor(() => expect(navigationLibraryMenu?.hasAttribute("open")).toBe(false));
+    expect((navigationLibrarySearch as HTMLInputElement).value).toBe("");
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open navigation library"));
+    expect(navigationLibraryMenu?.hasAttribute("open")).toBe(true);
     expect(within(workspaceAppbar).getByLabelText("Console settings")).not.toBeNull();
     expect(within(workspaceAppbar).getByLabelText("Admin API connection settings")).not.toBeNull();
     expect(within(workspaceAppbar).queryByText("Admin API connection")).toBeNull();
     expect(within(workspaceAppbar).getByRole("button", { name: "Preview site Public shell" })).not.toBeNull();
     expect(within(workspaceAppbar).getByRole("button", { name: "Open user portal User view" })).not.toBeNull();
-    expect(within(workspaceAppbar).getByLabelText("Plugins")).not.toBeNull();
+    expect(within(workspaceAppbar).getByLabelText("Modules")).not.toBeNull();
     expect(within(workspaceAppbar).getByRole("button", { name: /Health Summary/ })).not.toBeNull();
     expect(within(workspaceAppbar).getByRole("button", { name: /Quota & Usage/ })).not.toBeNull();
     expect(within(workspaceAppbar).getByRole("button", { name: /Usage Ledger/ })).not.toBeNull();
@@ -280,7 +280,7 @@ describe("admin navigation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Collection Freshness Hide plugin" }));
     expect(screen.queryByRole("heading", { name: "Collection Freshness" })).toBeNull();
     const usageWorkspaceAppbar = screen.getByLabelText("Workspace appbar");
-    fireEvent.click(within(usageWorkspaceAppbar).getByLabelText("Open app library"));
+    fireEvent.click(within(usageWorkspaceAppbar).getByLabelText("Open navigation library"));
     fireEvent.click(within(usageWorkspaceAppbar).getByRole("button", { name: /Collection Freshness/ }));
     expect(screen.getByRole("heading", { name: "Collection Freshness" })).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
@@ -329,7 +329,7 @@ describe("admin navigation", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  test("uses app library search as a command palette for pages, cards, and settings", async () => {
+  test("uses navigation library search as a command palette for pages, modules, and settings", async () => {
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
@@ -340,17 +340,17 @@ describe("admin navigation", () => {
 
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
     const workspaceAppbar = screen.getByLabelText("Workspace appbar");
-    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
-    const librarySearch = within(workspaceAppbar).getByLabelText("Search app library");
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open navigation library"));
+    const librarySearch = within(workspaceAppbar).getByLabelText("Search navigation library");
     fireEvent.change(librarySearch, { target: { value: "channel" } });
 
     const workspacePages = within(workspaceAppbar).getByLabelText("Workspace pages");
-    const cardApps = within(workspaceAppbar).getByLabelText("Plugins");
+    const cardApps = within(workspaceAppbar).getByLabelText("Modules");
     expect(within(workspacePages).getByText("Usage & Channels")).not.toBeNull();
     expect(cardApps.textContent).toContain("Channel Coverage");
     expect(cardApps.textContent).toContain("Usage Ledger");
     expect(within(workspaceAppbar).queryByText("Risk notifications")).toBeNull();
-    expect(within(workspaceAppbar).getByLabelText(/app library results/)).not.toBeNull();
+    expect(within(workspaceAppbar).getByLabelText(/navigation library results/)).not.toBeNull();
 
     fireEvent.change(librarySearch, { target: { value: "admin api" } });
     expect(within(workspaceAppbar).getByLabelText("Console settings").textContent).toContain("Admin API");
@@ -362,11 +362,11 @@ describe("admin navigation", () => {
     fireEvent.click(within(workspacePages).getByRole("button", { name: /Usage & Channels/ }));
 
     expect(await screen.findByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
-    expect((within(workspaceAppbar).getByLabelText("Search app library") as HTMLInputElement).value).toBe("");
+    expect((within(workspaceAppbar).getByLabelText("Search navigation library") as HTMLInputElement).value).toBe("");
     expect(screen.getByRole("button", { name: "Usage & Channels" }).getAttribute("aria-current")).toBe("page");
   });
 
-  test("opens cross-page plugins from the app map route", async () => {
+  test("opens cross-page modules from the navigation map route", async () => {
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
@@ -377,17 +377,17 @@ describe("admin navigation", () => {
 
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
     const workspaceAppbar = screen.getByLabelText("Workspace appbar");
-    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
-    const librarySearch = within(workspaceAppbar).getByLabelText("Search app library");
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open navigation library"));
+    const librarySearch = within(workspaceAppbar).getByLabelText("Search navigation library");
     fireEvent.change(librarySearch, { target: { value: "quota" } });
 
-    const pluginApps = within(workspaceAppbar).getByLabelText("Plugins");
+    const pluginApps = within(workspaceAppbar).getByLabelText("Modules");
     fireEvent.click(within(pluginApps).getByRole("button", { name: /Quota & Usage/ }));
 
     expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Accounts & Resources" }).getAttribute("aria-current")).toBe("page");
-    expect((within(workspaceAppbar).getByLabelText("Search app library") as HTMLInputElement).value).toBe("");
+    expect((within(workspaceAppbar).getByLabelText("Search navigation library") as HTMLInputElement).value).toBe("");
   });
 
   test("routes the risk notification badge back to the operations dashboard", async () => {
@@ -404,14 +404,14 @@ describe("admin navigation", () => {
     expect(await screen.findByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
 
     const workspaceAppbar = screen.getByLabelText("Workspace appbar");
-    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open navigation library"));
     fireEvent.click(within(workspaceAppbar).getByRole("button", { name: "Risk notifications 0" }));
 
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Operations Overview" }).getAttribute("aria-current")).toBe("page");
   });
 
-  test("opens read-only environment from app library and account menu from the top bar", async () => {
+  test("opens read-only environment from navigation library and account menu from the top bar", async () => {
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
@@ -422,7 +422,7 @@ describe("admin navigation", () => {
 
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
     const workspaceAppbar = screen.getByLabelText("Workspace appbar");
-    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open navigation library"));
     fireEvent.click(within(workspaceAppbar).getByLabelText("Environment status"));
     expect(screen.getByText("Production read-only supervision")).not.toBeNull();
     expect(screen.getByText(/Production actions require a Risk A gate/)).not.toBeNull();

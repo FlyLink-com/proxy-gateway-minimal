@@ -369,7 +369,7 @@ describe("admin style token contract", () => {
     expect(styles).toContain(".page-header-status-stack .data-source-badge");
   });
 
-  test("keeps app library search and account chrome compact", () => {
+  test("keeps navigation library search and account chrome compact", () => {
     expect(selectorBlock(".nav-library-toolbar")).toContain("minmax(0, 1fr)");
     expect(selectorBlock(".nav-library-search")).toContain("var(--admin-radius-pill)");
     expect(selectorBlock(".nav-library-search input")).toContain("width: 100%");
@@ -465,7 +465,7 @@ describe("admin style token contract", () => {
     expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.new-console-row-head\s*\{\s*display: none;/m);
   });
 
-  test("keeps account and app library detail popovers closed until opened", () => {
+  test("keeps account and navigation library detail popovers closed until opened", () => {
     expect(styles).toMatch(/\.operator-account-menu:not\(\[open\]\)\s*>\s*\.operator-account-popover,[\s\S]*\.connection-widget:not\(\[open\]\)\s*>\s*\.connection-widget-popover\s*\{\s*display: none;/m);
   });
 

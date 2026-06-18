@@ -39,7 +39,7 @@ export type AdminAppLayoutSize = "large" | "medium" | "compact" | "icon-only" | 
 export type AdminAppRuntimeState = "normal" | "warning" | "blocked" | "readonly" | "planned" | "needs-config";
 export type AdminAppVisibility = "pinned" | "library" | "hidden" | "locked";
 export type AdminAppDataBoundary = "safe-summary-only";
-export type AdminAppLibraryGroup =
+export type AdminNavigationLibraryGroup =
   | "workspace-pages"
   | "plugins"
   | "console-settings"
@@ -136,7 +136,7 @@ export type AdminAppManifest = {
     action: AdminAppRouteAction;
   };
   library: {
-    group: AdminAppLibraryGroup;
+    group: AdminNavigationLibraryGroup;
     order: number;
     defaultPinned: boolean;
     searchableText: string[];
@@ -144,7 +144,7 @@ export type AdminAppManifest = {
   plugin?: {
     navId: string;
     ownerMode: PageSubNavigationItem["mode"];
-    settingsEntry: "inline" | "appLibrary" | "both" | "none";
+    settingsEntry: "inline" | "navigationLibrary" | "both" | "none";
     allowedControls: Array<"hide" | "pin" | "layout" | "reorder" | "compact" | "expand" | "reset">;
     states: string[];
     boundaries: string[];
@@ -177,7 +177,7 @@ export type AdminAppSearchIndexEntry = {
   searchText: string;
 };
 
-export type AppLibrarySearchDocument = {
+export type NavigationLibrarySearchDocument = {
   appId: string;
   label: string;
   zhName: string;
@@ -188,7 +188,7 @@ export type AppLibrarySearchDocument = {
   routeTarget: string;
   capabilities: AdminAppCapability[];
   searchableFields: string[];
-  libraryGroup: AdminAppLibraryGroup;
+  libraryGroup: AdminNavigationLibraryGroup;
   status: AdminAppStatus;
 };
 
@@ -761,9 +761,9 @@ export function getAdminAppAuthoringManifest(apps: readonly AdminAppManifest[] =
   return createAdminAppAuthoringManifest(apps);
 }
 
-export function createAppLibrarySearchIndex(apps: readonly AdminAppManifest[] = adminAppManifest): AdminAppSearchIndexEntry[] {
+export function createNavigationLibrarySearchIndex(apps: readonly AdminAppManifest[] = adminAppManifest): AdminAppSearchIndexEntry[] {
   return apps.map((app) => {
-    const searchDocument = createAppLibrarySearchDocument(app);
+    const searchDocument = createNavigationLibrarySearchDocument(app);
     const searchableParts = [
       searchDocument.appId,
       searchDocument.label,
@@ -801,14 +801,14 @@ export function createAppLibrarySearchIndex(apps: readonly AdminAppManifest[] = 
   });
 }
 
-export function createAppLibrarySearchDocument(app: AdminAppManifest): AppLibrarySearchDocument {
+export function createNavigationLibrarySearchDocument(app: AdminAppManifest): NavigationLibrarySearchDocument {
   return {
     aliases: app.aliases.map(sanitizeSafeSearchText),
     appId: sanitizeSafeSearchText(app.id),
     capabilities: app.safety.capabilities.map(sanitizeSafeSearchText) as AdminAppCapability[],
     category: sanitizeSafeSearchText(app.category) as WorkbenchCategory,
     label: sanitizeSafeSearchText(app.label),
-    libraryGroup: sanitizeSafeSearchText(app.library.group) as AdminAppLibraryGroup,
+    libraryGroup: sanitizeSafeSearchText(app.library.group) as AdminNavigationLibraryGroup,
     ownerArea: sanitizeSafeSearchText(app.owner.area),
     routeTarget: sanitizeSafeSearchText(routeTargetForApp(app)),
     safeDescription: sanitizeSafeSearchText(app.description),
@@ -829,7 +829,7 @@ export function matchesAppSearch(entry: Pick<AdminAppSearchIndexEntry, "searchTe
 
 function createAdminAppMap(apps: readonly AdminAppManifest[]): AdminAppMap {
   const byId = Object.fromEntries(apps.map((app) => [app.id, app])) as Record<string, AdminAppManifest>;
-  const byGroup = (group: AdminAppLibraryGroup) => (
+  const byGroup = (group: AdminNavigationLibraryGroup) => (
     apps
       .filter((app) => app.library.group === group)
       .sort((a, b) => a.library.order - b.library.order)
@@ -849,7 +849,7 @@ function createAdminAppMap(apps: readonly AdminAppManifest[]): AdminAppMap {
     plannedApps: byGroup("planned-apps"),
     plugins,
     pluginsByPage,
-    searchIndex: createAppLibrarySearchIndex(apps),
+    searchIndex: createNavigationLibrarySearchIndex(apps),
     utilities: byGroup("console-settings"),
     workspacePages: byGroup("workspace-pages")
   };
@@ -1151,7 +1151,7 @@ function createUtilityApp({
       category: "configuration",
       coreViews,
       enName: label,
-      followUpTask: "GCC-77 App Library search and safe indexing",
+      followUpTask: "GCC-77 Navigation Library search and safe indexing",
       primaryObjects,
       safetyBoundary: "Console utility only; no business-object ownership or production mutation.",
       searchableFields,

@@ -3,8 +3,8 @@ import {
   ADMIN_APP_AUTHORING_STANDARD,
   adminAppManifest,
   adminAppAuthoringManifest,
-  createAppLibrarySearchDocument,
-  createAppLibrarySearchIndex,
+  createNavigationLibrarySearchDocument,
+  createNavigationLibrarySearchIndex,
   getAdminAppAuthoringManifest,
   getAdminAppMap,
   getPlannedApps,
@@ -362,8 +362,8 @@ describe("admin app manifest", () => {
     }
   });
 
-  test("builds a safe app-library search index from whitelisted summary fields", () => {
-    const index = createAppLibrarySearchIndex();
+  test("builds a safe navigation-library search index from whitelisted summary fields", () => {
+    const index = createNavigationLibrarySearchIndex();
     const usageLedger = index.find((entry) => entry.appId === "plugin.usage-ledger");
     const operationsOverview = index.find((entry) => entry.appId === "operations-overview");
 
@@ -389,11 +389,11 @@ describe("admin app manifest", () => {
     });
   });
 
-  test("builds the app-library search index from an explicit safe document", () => {
+  test("builds the navigation-library search index from an explicit safe document", () => {
     const usageLedger = getPluginApp("usage-ledger", "usageMonitor");
     expect(usageLedger).toBeDefined();
 
-    const document = createAppLibrarySearchDocument(usageLedger!);
+    const document = createNavigationLibrarySearchDocument(usageLedger!);
 
     expect(document).toEqual({
       aliases: usageLedger!.aliases,
@@ -412,7 +412,7 @@ describe("admin app manifest", () => {
     expect(JSON.stringify(document)).not.toMatch(forbiddenSearchTextPattern);
   });
 
-  test("redacts unsafe app-library search document fields before indexing", () => {
+  test("redacts unsafe navigation-library search document fields before indexing", () => {
     const baseline = getWorkspacePageApp("dashboard");
     expect(baseline).toBeDefined();
     const unsafeApp = {
@@ -436,8 +436,8 @@ describe("admin app manifest", () => {
       }
     } satisfies typeof baseline;
 
-    const document = createAppLibrarySearchDocument(unsafeApp);
-    const [indexEntry] = createAppLibrarySearchIndex([unsafeApp]);
+    const document = createNavigationLibrarySearchDocument(unsafeApp);
+    const [indexEntry] = createNavigationLibrarySearchIndex([unsafeApp]);
     const indexedText = JSON.stringify({ document, indexEntry });
 
     expect(document.aliases).toContain("[redacted unsafe search text]");

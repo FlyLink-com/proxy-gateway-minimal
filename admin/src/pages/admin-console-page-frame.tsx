@@ -380,7 +380,7 @@ export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage 
         }) : (
           <EmptyState
             className="admin-blueprint-empty-workbench"
-            description="Open App Library to restore plugins."
+            description="Open Navigation Library to restore modules."
             role="status"
             title="All plugins are hidden."
           />
