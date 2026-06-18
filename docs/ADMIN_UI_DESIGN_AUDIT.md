@@ -14,6 +14,10 @@ This document maps the current Admin product needs to UI design patterns before
 new Admin UI work continues. It is a design audit and task-routing baseline,
 not a template adoption plan.
 
+Use `docs/ADMIN_CONSOLE_UI_PROMPT_TRACEABILITY.md` as the active prompt
+governance layer before turning this audit into Figma, product-design, or code
+work.
+
 ## Decision
 
 Use mature Admin products as design references, not as code sources.
@@ -73,7 +77,7 @@ Current first-pass Admin navigation should stay small and responsibility-based:
 
 | Section | Page | Responsibility |
 | --- | --- | --- |
-| `总览` | `运营总览` | Top-level health, risk, anomalies, and recent activity. |
+| `总览` | `运营总览` | Top-level health, risk summary, and routing to owner pages. |
 | `用户监管` | `账号与资源` | User accounts, resources, orders, entitlements, quota, and account lifecycle review. |
 | `平台监控` | `流量与通道` | Usage collection, channel health, data freshness, and platform anomaly review. |
 
@@ -99,9 +103,9 @@ Do not add placeholder navigation groups just to mirror a template.
 | User-visible usage | Compact order usage meter and status chips | User Portal | Present in user panel, separate from Admin | Keep separate; Admin may supervise but should not duplicate customer self-service UX. |
 | Usage collection health | Analytics dashboard with data-source freshness and stale/unknown states | `流量与通道` | Basic monitor exists and has order/account context | GCC-47: distinguish unknown, stale, failed, and true zero usage. |
 | Channel health | Infrastructure health cards, channel chips, measured/expected counts | `流量与通道` | Channel breakdown exists, but page responsibility needs sharpening | GCC-47: show channel coverage and collector availability before detailed rows. |
-| Abnormal subscriptions | Alert inbox or issue queue with severity chips | `运营总览`, `流量与通道` | Not yet a first-class queue | GCC-45/GCC-47: add over-limit, stale, zero-usage, receipt-missing, and collector-failed queues. |
+| Abnormal subscriptions | Alert inbox or issue queue with severity chips | `运营总览` summary, `流量与通道` owner page | Not yet a first-class durable queue | GCC-45/GCC-47: Overview shows computed risk summary and route action; detailed over-limit, stale, zero-usage, receipt-missing, and collector-failed queues belong to owner pages. |
 | Expiry, pause, archive | Lifecycle timeline and status workflow | `账号与资源`, later audit view | Partly represented through order status | GCC-46: separate account disable from order/subscription expiry, pause, and archive review. |
-| Safe issuance or lifecycle preview | Review card with no execution authority unless gated | `账号与资源`, legacy overview panels | Existing preview panels are useful but must not dominate the main IA | Keep preview panels secondary and label production gates clearly. |
+| Safe issuance or lifecycle preview | Review card with no execution authority unless gated | `账号与资源`, later gated audit/review pages | Existing preview panels are useful but must not dominate the main IA | Keep preview panels secondary, out of Overview, and label production gates clearly. |
 | Shared visual consistency | Project-owned UI primitives and CSS tokens | `admin/src/components`, `admin/src/styles.css` | Mixed page-local patterns | GCC-48: normalize cards, tables, chips, meters, empty states, spacing, and responsive rules. |
 
 ## Page-Level Audit
@@ -125,14 +129,16 @@ Recommended layout:
    usage collection health, abnormal items, expiring/paused/archive candidates.
 3. Risk queue: over-limit, stale usage, zero usage, collector unavailable,
    receipt missing, and lifecycle blockers.
-4. Recent activity/audit: low-density list, not the main hero.
-5. Secondary operator workbenches: collapsed or lower on the page if they are
-   about approval packets, canary review, or historical gate tools.
+4. Next-action routing: compact cards that open `账号与资源`, `流量与通道`, or a
+   gated future audit/case page.
+5. No detailed account/resource ledger, object timeline, channel ledger, or
+   approval workbench inside Overview.
 
 Avoid:
 
 - making old gate-review panels the first visual impression;
 - using a hero that markets the product instead of summarizing operations;
+- duplicating owner-page ledgers inside Overview;
 - implying any production mutation can be done from the overview page.
 
 ### 账号与资源
@@ -185,7 +191,7 @@ Recommended layout:
 3. Channel coverage card: expected channels, measured channels, missing
    channels, and collector status.
 4. Time-series chart for usage trend, scoped by order/account/channel filters.
-5. Anomaly queue before full ledger table.
+5. Collection anomaly queue before full ledger table.
 6. Ledger table with account, order, channel, safe edge credential reference,
    upload/download/total, quota decision, and collected time.
 

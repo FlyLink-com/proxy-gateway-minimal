@@ -1,97 +1,48 @@
-import { Search, Settings } from "lucide-react";
-import { type ReactNode } from "react";
+import { ChevronDown, ShieldCheck } from "lucide-react";
+import { getWorkspacePageApp } from "../../app/admin-app-manifest";
 import { pageContexts, pageTitles, type AdminPage } from "../../app/navigation";
+import { cn } from "../../lib/utils";
 
 type TopBarProps = {
   activePage: AdminPage;
-  search: string;
-  onSearchChange: (value: string) => void;
-  onOpenPortal: () => void;
-  onOpenSite: () => void;
-  connectionPanel?: ReactNode;
-  connectionConfigured?: boolean;
 };
 
-export function TopBar({
-  activePage,
-  search,
-  onSearchChange,
-  onOpenPortal,
-  onOpenSite,
-  connectionPanel,
-  connectionConfigured = false
-}: TopBarProps) {
-  const searchPlaceholder = searchPlaceholderForPage(activePage);
+export function TopBar({ activePage }: TopBarProps) {
   const pageContext = pageContexts[activePage];
+  const pageApp = getWorkspacePageApp(activePage);
+  const PageIcon = pageApp?.icon;
   return (
     <header className="top-bar">
       <div className="top-bar-heading">
-        <p className="eyebrow">{pageContext.eyebrow}</p>
-        <h1>{pageTitles[activePage]}</h1>
-        <p className="top-bar-description">{pageContext.description}</p>
+        {PageIcon ? (
+          <span className={cn("top-bar-app-icon nav-app-icon", pageApp?.tone)} aria-hidden="true">
+            <PageIcon />
+          </span>
+        ) : null}
+        <div>
+          <p className="top-bar-context">{pageContext.eyebrow}</p>
+          <strong className="top-bar-page-title">{pageTitles[activePage]}</strong>
+        </div>
       </div>
-      <div className="top-bar-actions">
-        <a
-          className="ghost-button top-bar-link"
-          href="#/site"
-          onClick={(event) => {
-            event.preventDefault();
-            onOpenSite();
-          }}
-        >
-          预览网站
-        </a>
-        <a
-          className="ghost-button top-bar-link"
-          href="#/portal"
-          onClick={(event) => {
-            event.preventDefault();
-            onOpenPortal();
-          }}
-        >
-          打开用户面板
-        </a>
-        {searchPlaceholder ? (
-          <label className="search-box">
-            <Search aria-hidden="true" />
-            <span className="sr-only">{searchPlaceholder.label}</span>
-            <input
-              value={search}
-              onChange={(event) => onSearchChange(event.target.value)}
-              placeholder={searchPlaceholder.placeholder}
-            />
-          </label>
-        ) : null}
-        {connectionPanel ? (
-          <details className="connection-widget">
-            <summary className="connection-widget-summary" aria-label="Admin API connection settings">
-              <span
-                className={connectionConfigured ? "connection-dot connection-dot-ready" : "connection-dot connection-dot-warning"}
-                aria-hidden="true"
-              />
-              <span className="connection-widget-copy">
-                <span>管理员 API</span>
-                <strong>{connectionConfigured ? "已配置" : "配置"}</strong>
-              </span>
-              <Settings aria-hidden="true" />
-            </summary>
-            <div className="connection-widget-popover">
-              {connectionPanel}
-            </div>
-          </details>
-        ) : null}
+      <div className="top-bar-actions" role="group" aria-label="Operator account controls">
+        <details className="operator-account-menu">
+          <summary className="operator-account-summary" aria-label="Operator account">
+            <span className="operator-account-avatar" aria-hidden="true">
+              <ShieldCheck />
+            </span>
+            <span className="operator-account-copy">
+              <strong>operator</strong>
+              <small>Production read-only</small>
+            </span>
+            <ChevronDown aria-hidden="true" />
+          </summary>
+          <div className="top-menu-popover operator-account-popover">
+            <strong>operator</strong>
+            <span>Production supervision only.</span>
+            <span>Runtime changes require a Risk A gate.</span>
+          </div>
+        </details>
       </div>
     </header>
   );
-}
-
-function searchPlaceholderForPage(activePage: AdminPage) {
-  switch (activePage) {
-    case "portalRequests":
-      return { label: "搜索账号与资源", placeholder: "搜索账号或资源..." };
-    case "usageMonitor":
-      return { label: "搜索流量与通道", placeholder: "搜索账号、通道或状态..." };
-    default:
-      return null;
-  }
 }

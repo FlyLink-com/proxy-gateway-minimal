@@ -17,24 +17,24 @@ export function AdminSetupPage({
           <div className="brand-mark">GC</div>
           <div>
             <strong>GlobalCircle AI</strong>
-            <span>运营与平台控制台</span>
+            <span>Operator Console</span>
           </div>
         </div>
 
         <div className="admin-setup-heading">
           <ShieldCheck aria-hidden="true" />
           <div>
-            <h1 id="admin-setup-heading">连接管理员 API</h1>
-            <p>保存控制台令牌后才能进入总览、用户监管和平台监控。</p>
+            <h1 id="admin-setup-heading">Connect Admin API</h1>
+            <p>Save a console token before opening Overview, User Operations, or Platform Monitoring.</p>
           </div>
         </div>
 
         <div className="admin-setup-actions">
           <button className="ghost-button" type="button" onClick={onOpenSite}>
-            预览网站
+            Preview site
           </button>
           <button className="ghost-button" type="button" onClick={onOpenPortal}>
-            打开用户面板
+            Open user portal
           </button>
         </div>
 

@@ -1,10 +1,20 @@
 # Admin UI Legacy Archive
 
-Last updated: 2026-06-08, America/Los_Angeles.
+Last updated: 2026-06-15, America/Los_Angeles.
 
 This document archives the existing `admin/` application as a legacy local
-protected reference surface. It does not move, delete, deploy, expose, or
-replace any code.
+protected reference surface. The original 2026-06-08 archive decision did not
+move, delete, deploy, expose, or replace any code.
+
+2026-06-15 follow-up: GCC-42 New Admin Console cleanup removed the inactive
+legacy Admin UI source files that were no longer routed by the current
+React/Vite shell: the old subscription creation/mutation page, its create,
+renew, reset-token, temporary-link, and disable dialogs, and the old overview,
+nodes, and provisioning pages. The cleanup keeps the current `运营总览`,
+`账号与资源`, and `流量与通道` routes, the Admin API client/contracts, safe
+summary tests, connection/session code, and the User Portal modal frame. This
+follow-up is repo-only and does not change backend routes, production runtime,
+schema, auth, DNS, Nginx, tokens, credentials, or subscription output.
 
 2026-06-08 clarification: this archive decision applies to the old public or
 product Admin direction. It does not authorize public Admin exposure, and it
@@ -94,7 +104,9 @@ packages, and protected preview APIs over more legacy Admin UI work.
 
 ## Not Performed
 
-- No `admin/` files moved or deleted.
+- The original 2026-06-08 archive decision did not move or delete `admin/`
+  files. The later 2026-06-15 GCC-42 cleanup did delete inactive legacy UI
+  files as documented above.
 - No route, API, build, test, Nginx, DNS, Aliyun, AWS, tenant, artifact, or
   subscription behavior changed.
 - No public Admin enabled.

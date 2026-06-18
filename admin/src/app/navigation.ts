@@ -18,6 +18,45 @@ export type NavSection = {
   items: NavItem[];
 };
 
+export type PageSubNavigationMode = "preview" | "owner";
+
+export type PageSubNavigationItem = {
+  id: string;
+  label: string;
+  description: string;
+  mode: PageSubNavigationMode;
+  owner: "Overview" | "User Operations" | "Platform Monitoring";
+  targetId: string;
+};
+
+export type PageWorkbenchRole = "overview" | "decision-owner" | "evidence-owner";
+
+export type PageDecisionKey =
+  | "next_review_target"
+  | "account_create_disable"
+  | "account_lifecycle"
+  | "resource_order_lifecycle"
+  | "subscription_artifact_lifecycle"
+  | "quota_policy"
+  | "order_pause_archive"
+  | "usage_collection_trust"
+  | "channel_coverage"
+  | "receipt_coverage"
+  | "collection_anomalies"
+  | "runtime_apply"
+  | "platform_tooling"
+  | "operator_settings";
+
+export type PageWorkbenchContract = {
+  role: PageWorkbenchRole;
+  primaryQuestion: string;
+  sectionIds: string[];
+  ownsDecisions: PageDecisionKey[];
+  previewOnly: PageDecisionKey[];
+  evidenceOnly: PageDecisionKey[];
+  forbiddenDecisions: PageDecisionKey[];
+};
+
 export type ConsoleSectionStatus = "active" | "planned";
 
 export type ConsoleSection = NavSection & {
@@ -29,62 +68,62 @@ export type ConsoleSection = NavSection & {
 export const consoleSections: ConsoleSection[] = [
   {
     id: "overview",
-    label: "总览",
-    description: "平台健康与风险",
+    label: "Overview",
+    description: "Platform health and risk",
     status: "active",
-    responsibility: "监管控制台的第一屏，汇总平台健康、异常风险和近期安全活动。",
-    entryGate: "已存在运营总览页面和安全摘要数据源。",
+    responsibility: "First-screen operator overview for platform health, risk, and recent safe activity.",
+    entryGate: "Operations Overview page and safe summary sources are available.",
     items: [
-      { id: "dashboard", label: "运营总览", icon: LayoutDashboard }
+      { id: "dashboard", label: "Operations Overview", icon: LayoutDashboard }
     ]
   },
   {
     id: "user-supervision",
-    label: "用户监管",
-    description: "账号、资源与额度",
+    label: "User Operations",
+    description: "Accounts, resources, and quotas",
     status: "active",
-    responsibility: "监管用户账号、资源、订单、订阅产物和流量额度。",
-    entryGate: "已存在账号与资源页面，并且只展示 safe refs 和脱敏状态。",
+    responsibility: "Supervise accounts, resources, orders, subscription artifacts, and traffic quotas.",
+    entryGate: "Accounts & Resources page exists and only displays safe refs and redacted states.",
     items: [
-      { id: "portalRequests", label: "账号与资源", icon: Users }
+      { id: "portalRequests", label: "Accounts & Resources", icon: Users }
     ]
   },
   {
     id: "platform-monitoring",
-    label: "平台监控",
-    description: "用量采集与通道",
+    label: "Platform Monitoring",
+    description: "Usage collection and channels",
     status: "active",
-    responsibility: "监管 usage accounting、采集状态、通道健康和异常订阅。",
-    entryGate: "已存在流量与通道页面，并且不暴露 token、URL 或 credential。",
+    responsibility: "Supervise usage accounting trust, collection freshness, channel health, receipts, and data-anomaly evidence.",
+    entryGate: "Usage & Channels page exists and does not expose tokens, URLs, or credentials.",
     items: [
-      { id: "usageMonitor", label: "流量与通道", icon: Activity }
+      { id: "usageMonitor", label: "Usage & Channels", icon: Activity }
     ]
   },
   {
     id: "audit-workflow",
-    label: "审计与工单",
-    description: "Case、历史与审计",
+    label: "Audit & Cases",
+    description: "Cases, history, and audit",
     status: "planned",
-    responsibility: "承载 durable Case、对象历史、审计备注、关闭原因和复核流。",
-    entryGate: "等待 GCC-55 durable Case/history 后端事实对接完成。",
+    responsibility: "Own durable cases, object history, audit notes, close reasons, and review workflow.",
+    entryGate: "Waiting for the GCC-55 durable Case/history backend contract.",
     items: []
   },
   {
     id: "platform-development",
-    label: "平台开发",
-    description: "通道、节点与策略工具",
+    label: "Platform Development",
+    description: "Channels, nodes, and tools",
     status: "planned",
-    responsibility: "承载通道实验、节点接入、策略建议和平台扩展工具。",
-    entryGate: "等待真实平台开发工具具备对象模型、数据源、安全边界和测试。",
+    responsibility: "Own channel experiments, node onboarding, strategy recommendations, and platform extension tools.",
+    entryGate: "Waiting for real platform tools with object models, data sources, safety boundaries, and tests.",
     items: []
   },
   {
     id: "system-settings",
-    label: "系统设置",
-    description: "私有 operator 设置",
+    label: "System Settings",
+    description: "Private operator settings",
     status: "planned",
-    responsibility: "承载私有 operator 设置和本地控制台配置。",
-    entryGate: "等待设置项具备私有访问边界、非目标和验证路径。",
+    responsibility: "Own private operator preferences and local console configuration.",
+    entryGate: "Waiting for a private settings boundary, explicit non-goals, and validation.",
     items: []
   }
 ];
@@ -94,22 +133,211 @@ export const navSections: NavSection[] = consoleSections.filter((section) => sec
 export const navItems: NavItem[] = navSections.flatMap((section) => section.items);
 
 export const pageTitles: Record<AdminPage, string> = {
-  dashboard: "运营总览",
-  portalRequests: "账号与资源",
-  usageMonitor: "流量与通道"
+  dashboard: "Operations Overview",
+  portalRequests: "Accounts & Resources",
+  usageMonitor: "Usage & Channels"
 };
 
 export const pageContexts: Record<AdminPage, { eyebrow: string; description: string }> = {
   dashboard: {
-    eyebrow: "总览",
-    description: "平台健康、风险摘要和近期活动"
+    eyebrow: "Overview",
+    description: "Platform health, risk summary, and recent activity"
   },
   portalRequests: {
-    eyebrow: "用户监管",
-    description: "账号、资源、订单和流量额度"
+    eyebrow: "User Operations",
+    description: "Accounts, resources, orders, and traffic quotas"
   },
   usageMonitor: {
-    eyebrow: "平台监控",
-    description: "用量采集、通道健康和异常订阅"
+    eyebrow: "Platform Monitoring",
+    description: "Collection trust, channel health, and data anomalies"
+  }
+};
+
+export const pageSubNavigation: Record<AdminPage, PageSubNavigationItem[]> = {
+  dashboard: [
+    {
+      id: "health-summary",
+      label: "Health Summary",
+      description: "Dashboard summary for platform health, risk, freshness, and channel coverage.",
+      mode: "preview",
+      owner: "Overview",
+      targetId: "dashboard-health-summary"
+    },
+    {
+      id: "risk-queue",
+      label: "Risk Queue",
+      description: "Cross-account, order, usage, and channel review entry.",
+      mode: "preview",
+      owner: "Overview",
+      targetId: "dashboard-risk-queue"
+    },
+    {
+      id: "next-actions",
+      label: "Next Actions",
+      description: "Route operators to the page that owns the detailed collection.",
+      mode: "preview",
+      owner: "Overview",
+      targetId: "dashboard-next-actions"
+    }
+  ],
+  portalRequests: [
+    {
+      id: "account-overview",
+      label: "Account Directory",
+      description: "Safe account refs, resource counts, risk state, and recent activity.",
+      mode: "owner",
+      owner: "User Operations",
+      targetId: "user-supervision-account-overview"
+    },
+    {
+      id: "resource-orders",
+      label: "Resources & Orders",
+      description: "Orders, resources, entitlements, subscription artifacts, and delivery lifecycle.",
+      mode: "owner",
+      owner: "User Operations",
+      targetId: "user-supervision-resource-orders"
+    },
+    {
+      id: "quota-usage",
+      label: "Quota & Usage",
+      description: "Default quota, edited quota, total usage, collection coverage, quota risk, and audit state.",
+      mode: "owner",
+      owner: "User Operations",
+      targetId: "user-supervision-quota-usage"
+    },
+    {
+      id: "lifecycle",
+      label: "Lifecycle",
+      description: "Account disablement, order pause, expiry, revocation, and archive candidates.",
+      mode: "owner",
+      owner: "User Operations",
+      targetId: "user-supervision-lifecycle"
+    },
+    {
+      id: "history-events",
+      label: "History & Events",
+      description: "Object history, case candidates, and future audit-event entry.",
+      mode: "owner",
+      owner: "User Operations",
+      targetId: "user-supervision-history-events"
+    }
+  ],
+  usageMonitor: [
+    {
+      id: "freshness",
+      label: "Collection Freshness",
+      description: "Generated time, delay threshold, unknown states, and collection trust.",
+      mode: "owner",
+      owner: "Platform Monitoring",
+      targetId: "platform-monitoring-freshness"
+    },
+    {
+      id: "channel-coverage",
+      label: "Channel Coverage",
+      description: "Issued channels, measured channels, missing channels, and receipt blockers.",
+      mode: "owner",
+      owner: "Platform Monitoring",
+      targetId: "platform-monitoring-channel-coverage"
+    },
+    {
+      id: "usage-ledger",
+      label: "Usage Ledger",
+      description: "Safe ledger for accounts, orders, channels, and measured usage.",
+      mode: "owner",
+      owner: "Platform Monitoring",
+      targetId: "platform-monitoring-usage-ledger"
+    },
+    {
+      id: "collection-anomalies",
+      label: "Collection Anomalies",
+      description: "Collection delay, true zero usage, not collected, disabled collector, and missing receipt candidates.",
+      mode: "owner",
+      owner: "Platform Monitoring",
+      targetId: "platform-monitoring-anomalies"
+    },
+    {
+      id: "receipts-collectors",
+      label: "Receipts & Collectors",
+      description: "Receipt state, collector availability, and future safe diagnostics entry.",
+      mode: "owner",
+      owner: "Platform Monitoring",
+      targetId: "platform-monitoring-receipts-collectors"
+    }
+  ]
+};
+
+export const pageWorkbenchContracts: Record<AdminPage, PageWorkbenchContract> = {
+  dashboard: {
+    role: "overview",
+    primaryQuestion: "What needs attention, and where should the operator go next?",
+    sectionIds: pageSubNavigation.dashboard.map((item) => item.id),
+    ownsDecisions: ["next_review_target"],
+    previewOnly: [
+      "account_lifecycle",
+      "resource_order_lifecycle",
+      "quota_policy",
+      "usage_collection_trust",
+      "channel_coverage",
+      "receipt_coverage",
+      "collection_anomalies"
+    ],
+    evidenceOnly: [],
+    forbiddenDecisions: [
+      "account_create_disable",
+      "order_pause_archive",
+      "runtime_apply",
+      "platform_tooling",
+      "operator_settings"
+    ]
+  },
+  portalRequests: {
+    role: "decision-owner",
+    primaryQuestion: "Which account owns which resources, and what quota or lifecycle decision is needed?",
+    sectionIds: pageSubNavigation.portalRequests.map((item) => item.id),
+    ownsDecisions: [
+      "account_create_disable",
+      "account_lifecycle",
+      "resource_order_lifecycle",
+      "subscription_artifact_lifecycle",
+      "quota_policy",
+      "order_pause_archive"
+    ],
+    previewOnly: [],
+    evidenceOnly: [
+      "usage_collection_trust",
+      "channel_coverage",
+      "receipt_coverage",
+      "collection_anomalies"
+    ],
+    forbiddenDecisions: [
+      "runtime_apply",
+      "platform_tooling",
+      "operator_settings"
+    ]
+  },
+  usageMonitor: {
+    role: "evidence-owner",
+    primaryQuestion: "Are usage collection, channels, and receipts trustworthy?",
+    sectionIds: pageSubNavigation.usageMonitor.map((item) => item.id),
+    ownsDecisions: [
+      "usage_collection_trust",
+      "channel_coverage",
+      "receipt_coverage",
+      "collection_anomalies"
+    ],
+    previewOnly: [],
+    evidenceOnly: [
+      "account_lifecycle",
+      "resource_order_lifecycle",
+      "quota_policy"
+    ],
+    forbiddenDecisions: [
+      "account_create_disable",
+      "order_pause_archive",
+      "subscription_artifact_lifecycle",
+      "runtime_apply",
+      "platform_tooling",
+      "operator_settings"
+    ]
   }
 };

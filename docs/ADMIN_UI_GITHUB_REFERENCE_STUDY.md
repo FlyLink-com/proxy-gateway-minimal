@@ -20,6 +20,38 @@ separate, which operational risks need first-class visibility, and which
 patterns should be avoided because they conflict with this project's control
 plane and Risk A gates.
 
+## Reuse Existing Wheels Without Copying The Vehicle
+
+GitHub reference projects are first-class design and product-analysis inputs
+for this Admin rebuild. The goal is to reuse proven panel patterns where they
+reduce product uncertainty, not to import a template or inherit another
+project's operating model.
+
+Use open-source panels for four separate jobs:
+
+| Job | What to extract | Examples | What not to do |
+| --- | --- | --- | --- |
+| Business-object discovery | Object names, ownership boundaries, lifecycle states, and detail-page shape. | Proxy panels, NetBird, Firezone, Lago. | Collapse this project's account, order, artifact, and runtime credential layers into one foreign `user/client` model. |
+| Operational path discovery | How operators move from alert to object, evidence, decision, note, and follow-up. | Linear-like issue tools, OpenStatus, OneUptime, Grafana-like consoles. | Add production execution buttons or incident workflows before backend authority exists. |
+| Component-pattern discovery | Sidebar, metric cards, filters, data tables, status chips, quota meters, timelines, empty states. | Horizon UI, TailAdmin, Flowbite, Mosaic. | Copy template code, migrate frameworks, or add Tailwind/commercial template dependency in this lane. |
+| Validation discovery | What states mature products make impossible to confuse. | Monitoring and billing/usage panels. | Let the frontend invent business meanings that backend summaries do not provide. |
+
+The durable output of a reference read is a project-specific decision, not a
+downloaded component:
+
+```text
+reference panel pattern
+  -> object/path/state insight
+  -> fit or conflict decision
+  -> Figma design source
+  -> local React/CSS implementation
+  -> Chrome/Browser/Computer visual and interaction verification
+```
+
+This keeps the project from repeating solved UI/IA work while preserving the
+current architecture: backend domain services own business logic, Admin
+visualizes safe summaries, and production-affecting actions remain gated.
+
 ## Current Project Reading Frame
 
 The current Admin surface is a protected management and supervision console.
@@ -105,6 +137,23 @@ Use these dimensions when reading a reference product:
 | Technical fit | Does it require a framework or template migration? | Do not adopt code or dependencies unless a later technical migration is approved. |
 
 ## Reference Inventory
+
+### Visual Template Source Candidates
+
+These projects are the closest GitHub source matches for the concept-image
+direction. They are useful for reading source structure and visual language,
+but they are not approved dependencies or copy sources for this branch.
+
+| Reference | What it proves | Borrow | Avoid | Maps to |
+| --- | --- | --- | --- | --- |
+| [Horizon UI Tailwind React](https://github.com/horizon-ui/horizon-tailwind-react) | The Horizon-style dashboard source exists publicly and matches the desired polished SaaS/card language. | Card rhythm, left rail feel, metric hierarchy, status-rich dashboard composition. | Direct migration: the current repo uses project-owned React/Vite/CSS, and this branch is not a Tailwind/template adoption. | GCC-42, GCC-45, GCC-48 |
+| [TailAdmin React](https://github.com/TailAdmin/free-react-tailwind-admin-dashboard) | A current React + TypeScript + Tailwind admin template can be used as a source-structure study for sidebar, tables, charts, modals, and dark-mode primitives. | Information density, table/chart primitives, accessible shell behavior, component inventory. | Treating it as a drop-in dependency or replacing the current CSS/component stack without a separate migration decision. | GCC-45, GCC-46, GCC-47, GCC-48 |
+| [Mosaic Lite](https://github.com/cruip/tailwind-dashboard-template) | React + Tailwind + Vite dashboards can give useful analytics widgets and chart-heavy operator layouts. | Usage trend, warning bars, activity cards, dashboard density. | Direct code adoption because the license/redistribution terms are not a clean fit for project source reuse. | GCC-45, GCC-47 |
+| [Flowbite Admin Dashboard](https://github.com/themesberg/flowbite-admin-dashboard) | Flowbite/Tailwind templates cover CRUD tables, charts, settings, modals, drawers, and multi-page admin examples. | Table/sidebar/component coverage and state layouts. | Pulling in Flowbite, Hugo, Webpack, or copied CRUD page assumptions that do not match this app. | GCC-48 |
+
+Decision: use these as design and source-reading references only. The current
+implementation remains a local React/Vite Admin app with project-owned CSS and
+lucide icons.
 
 ### Direct Proxy And Subscription Panels
 
@@ -295,13 +344,15 @@ Recommended composition:
 3. Channel coverage cards: issued channels, measured channels, missing channel
    count, receipt or collector blockers.
 4. Historical usage chart: filter by account/order/channel with visible legend.
-5. Anomaly queue before the ledger: over-limit, stale, true zero, not collected,
-   collector disabled, missing artifact/ref/receipt.
+5. Collection anomaly queue before the ledger: stale, true zero, not collected,
+   collector disabled, missing artifact/ref/receipt, plus over-limit/near-limit
+   evidence for correlation only.
 6. Order usage ledger: account ref, order ref, plan, issued channels, safe
    edge credential coverage, upload/download/total, quota decision, collection
    status, last observed, warnings.
 
-Do not let platform totals substitute for order-level quota decisions.
+Do not let platform totals or anomaly evidence substitute for order-level quota
+decisions; quota policy belongs to `账号与资源`.
 
 ### Shared Primitives / GCC-48
 
@@ -375,3 +426,7 @@ opening a PR.
 - [Lago](https://github.com/getlago/lago)
 - [OpenStatus](https://github.com/openstatusHQ/openstatus)
 - [OneUptime](https://github.com/oneuptime/oneuptime)
+- [Horizon UI Tailwind React](https://github.com/horizon-ui/horizon-tailwind-react)
+- [TailAdmin React](https://github.com/TailAdmin/free-react-tailwind-admin-dashboard)
+- [Mosaic Lite](https://github.com/cruip/tailwind-dashboard-template)
+- [Flowbite Admin Dashboard](https://github.com/themesberg/flowbite-admin-dashboard)

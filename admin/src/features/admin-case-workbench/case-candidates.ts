@@ -8,6 +8,11 @@ import type {
   PortalRequestCaseInput,
   UsageMonitorCaseInput
 } from "./types";
+import {
+  hasUnconfirmedBinding,
+  isNearLimit,
+  isOverLimit
+} from "../subscriptions/usage-view-model";
 
 const SEVERITY_RANK: Record<CaseSeverity, number> = {
   critical: 0,
@@ -17,17 +22,17 @@ const SEVERITY_RANK: Record<CaseSeverity, number> = {
 };
 
 const REASON_TITLES: Record<CaseReasonCode, string> = {
-  over_limit: "订单流量已超额",
-  near_limit: "订单流量接近上限",
-  usage_zero: "订单用量为零",
-  usage_stale: "用量采集延迟",
-  collector_disabled: "采集器未启用",
-  not_collected: "用量尚未采集",
-  receipt_missing: "回执/采集待确认",
-  expiry_candidate: "资源到期待复核",
-  archive_candidate: "资源待归档",
-  order_pending_review: "订单等待复核",
-  order_pending_delivery: "订单等待受控发放"
+  over_limit: "Order traffic over limit",
+  near_limit: "Order traffic near limit",
+  usage_zero: "Order usage is zero",
+  usage_stale: "Usage collection stale",
+  collector_disabled: "Collector disabled",
+  not_collected: "Usage not collected",
+  receipt_missing: "Receipt / collection pending",
+  expiry_candidate: "Resource expiry review",
+  archive_candidate: "Resource archive review",
+  order_pending_review: "Order pending review",
+  order_pending_delivery: "Order pending controlled delivery"
 };
 
 type CaseCandidateBuildOptions = {
@@ -58,7 +63,10 @@ function portalRequestReasons(item: PortalRequestCaseInput): CaseReasonCode[] {
   const reasons: CaseReasonCode[] = [];
   const usage = item.usage;
 
-  if (usage?.status === "over_limit" || isOverLimit(usage?.usedBytes, usage?.totalBytes)) reasons.push("over_limit");
+  if (usage?.status === "over_limit" || isOverLimit({
+    trafficLimitBytes: usage?.totalBytes,
+    usedBytes: usage?.usedBytes
+  })) reasons.push("over_limit");
   if (usage?.collectionStatus === "stale") reasons.push("usage_stale");
   if (usage?.collectionStatus === "collector_disabled") reasons.push("collector_disabled");
   if (usage?.collectionStatus === "not_collected") reasons.push("not_collected");
@@ -77,10 +85,8 @@ function usageMonitorReasons(item: UsageMonitorCaseInput, nowMs: number): CaseRe
   const reasons: CaseReasonCode[] = [];
   const hasReceiptGap = hasUnconfirmedBinding(item);
 
-  if (item.trafficLimitBytes > 0 && item.usedBytes >= item.trafficLimitBytes) reasons.push("over_limit");
-  if (item.trafficLimitBytes > 0 && item.usedBytes >= item.trafficLimitBytes * 0.8 && item.usedBytes < item.trafficLimitBytes) {
-    reasons.push("near_limit");
-  }
+  if (isOverLimit(item)) reasons.push("over_limit");
+  if (isNearLimit(item)) reasons.push("near_limit");
   if (item.collectionStatus === "stale") reasons.push("usage_stale");
   if (item.collectionStatus === "collector_disabled") reasons.push("collector_disabled");
   if (item.collectionStatus === "not_collected" && !hasReceiptGap) reasons.push("not_collected");
@@ -97,7 +103,7 @@ function portalRequestCase(item: PortalRequestCaseInput, reasonCode: CaseReasonC
     title: reasonTitle(reasonCode),
     objectType: "order",
     objectRef: item.id,
-    status: "待复核",
+    status: "Pending review",
     severity: reasonSeverity(reasonCode),
     reasonCode,
     source: "portal_access_requests",
@@ -115,7 +121,7 @@ function usageMonitorCase(item: UsageMonitorCaseInput, reasonCode: CaseReasonCod
     title: reasonTitle(reasonCode),
     objectType: "usage",
     objectRef: item.issuanceRequestId,
-    status: "待复核",
+    status: "Pending review",
     severity: reasonSeverity(reasonCode),
     reasonCode,
     source: "subscription_usage_monitor",
@@ -129,16 +135,16 @@ function usageMonitorCase(item: UsageMonitorCaseInput, reasonCode: CaseReasonCod
 
 function portalLinkedObjects(item: PortalRequestCaseInput): LinkedObject[] {
   return compactLinkedObjects([
-    linkedObject("owns", "account", item.portalUserRef, "用户账号"),
-    linkedObject("about", "order", item.id, "资源订单")
+    linkedObject("owns", "account", item.portalUserRef, "User account"),
+    linkedObject("about", "order", item.id, "Resource order")
   ]);
 }
 
 function usageLinkedObjects(item: UsageMonitorCaseInput): LinkedObject[] {
   return compactLinkedObjects([
-    linkedObject("owns", "account", item.portalUserRef || item.accountId, "用户账号"),
-    linkedObject("about", "order", item.issuanceRequestId, "资源订单"),
-    ...item.issuedChannels.map((channelRef) => linkedObject("uses", "channel", channelRef, "流量通道"))
+    linkedObject("owns", "account", item.portalUserRef || item.accountId, "User account"),
+    linkedObject("about", "order", item.issuanceRequestId, "Resource order"),
+    ...item.issuedChannels.map((channelRef) => linkedObject("uses", "channel", channelRef, "Usage channel"))
   ]);
 }
 
@@ -196,7 +202,7 @@ function usageTimeline(item: UsageMonitorCaseInput, reasonCode: CaseReasonCode):
       objectRef: item.nodeId,
       occurredAt: item.artifactLastSeenAt ?? item.lastRefreshAt,
       source: "subscription_usage_monitor",
-      summary: reasonCode === "receipt_missing" ? "通道回执或采集证据待确认" : "通道绑定为安全摘要",
+      summary: reasonCode === "receipt_missing" ? "Channel receipt or collection evidence pending" : "Channel binding recorded as safe summary",
       severity: reasonSeverity(reasonCode),
       reasonCode,
       relatedRefs: [item.issuanceRequestId]
@@ -244,12 +250,6 @@ function gateRequired(reasonCode: CaseReasonCode): boolean {
   return reasonCode === "over_limit" || reasonCode === "receipt_missing" || reasonCode === "order_pending_delivery";
 }
 
-function hasUnconfirmedBinding(item: UsageMonitorCaseInput): boolean {
-  return item.edgeCredentialBindings.some((binding) => (
-    !binding.credentialRefPresent || !binding.materialDigestPresent
-  ));
-}
-
 function uniqueReasons(reasons: CaseReasonCode[]): CaseReasonCode[] {
   return [...new Set(reasons)];
 }
@@ -282,13 +282,9 @@ function isExpired(value: string | null, nowMs: number): boolean {
   return value !== null && timestamp(value) > 0 && timestamp(value) <= nowMs;
 }
 
-function isOverLimit(usedBytes: number | undefined, totalBytes: number | undefined): boolean {
-  return typeof usedBytes === "number" && typeof totalBytes === "number" && usedBytes > totalBytes;
-}
-
 function usageSummary(usedBytes: number | undefined, totalBytes: number | undefined): string {
   if (typeof usedBytes !== "number" || typeof totalBytes !== "number" || totalBytes <= 0) {
-    return "用量采集安全摘要";
+    return "Usage collection safe summary";
   }
-  return `已用 ${usedBytes} / ${totalBytes} 字节`;
+  return `Used ${usedBytes} / ${totalBytes} bytes`;
 }
