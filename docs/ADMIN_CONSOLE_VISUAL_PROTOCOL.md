@@ -1,6 +1,6 @@
 # Admin Console Visual Protocol
 
-Last updated: 2026-06-17, America/Los_Angeles.
+Last updated: 2026-06-18, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-82 under GCC-81 / GCC-42
@@ -71,9 +71,8 @@ card surfaces just to create separation.
 
 Allowed effects:
 
-- small blur on chrome and floating surfaces;
 - low-opacity blue/teal workspace tint;
-- thin hairline borders and white optical stroke where it improves 2K clarity;
+- thin hairline borders where it improves 2K clarity;
 - single solid app-icon fills with restrained shadow.
 
 Disallowed effects:
@@ -81,8 +80,10 @@ Disallowed effects:
 - muddy multi-layer shadows that read as dirt;
 - high-saturation gradients on every icon;
 - inset highlight stacks on small icons;
+- glossy app-icon treatments, bokeh, radial empty-state decoration, or
+  decorative blur used to simulate quality;
 - `font-size: 10.5px`;
-- `font-weight: 750` or blanket `900`;
+- literal `font-weight: 650`, `750`, or blanket `900`;
 - decorative bokeh/orb backgrounds;
 - nested floating cards inside plugin cards.
 
@@ -91,8 +92,8 @@ Disallowed effects:
 | Use | Size/weight rule |
 | --- | --- |
 | Body and table copy | System/Inter stack, normal to medium weight, readable line height. |
-| Utility labels | 10-12px, `600` to `650`, uppercase only for short chrome labels. |
-| App/library tile labels | 12px, `650`, centered or compact; avoid mid-word breaks. |
+| Utility labels | 10-12px, `600`, uppercase only for short chrome labels. |
+| App/library tile labels | 12px, `600` or `700`, centered or compact; avoid mid-word breaks. |
 | Navigation labels | 12-13px, `700` to `800`, no negative letter spacing. |
 | Page titles | 16px in status bar, larger inside page headers only when the page owns a real title area. |
 | Metric values | Use bounded `clamp(...)`; do not break numeric values mid-word. |
@@ -222,6 +223,32 @@ Before a Phase 4 implementation PR is ready, verify:
 10. No production, backend schema, auth, runtime, token, credential, raw config,
     raw log, SQLite row, or customer-private data enters the UI, tests, docs,
     screenshots, or PR body.
+
+Next visual-quality pass should prioritize these items before adding new
+feature surfaces:
+
+1. Move remaining workspace/shared primitive hard-coded colors, radius, and
+   shadows into protocol-approved tokens.
+2. Remove decorative radial empty states, glossy icon highlights, white inset
+   strokes, and multi-stop icon gradients from Admin OS surfaces.
+3. Normalize older metric, usage, table, and dashboard primitives to one-level
+   8px panel surfaces with low shadows and no nested floating cards.
+4. Lock icon pixel grammar around 30/32/34px slots, 16/18/20px glyphs, and
+   consistent lucide/repo stroke treatment.
+5. Record Browser/Chrome screenshots for desktop, wide/2K, tablet, and mobile
+   viewports in the visual QA ledger.
+
+Style-contract candidates for follow-up PRs:
+
+- block new non-token hard-coded colors, unapproved radii, and unapproved
+  shadows in Admin OS CSS outside explicit token files;
+- block `radial-gradient` decorative empty states, card/plugin
+  `backdrop-filter`, small-icon inset highlights, and multi-stop icon
+  gradients;
+- keep typography bans for `10.5px`, literal `650`, `750`, `900`, and negative
+  letter spacing;
+- require App Library, plugin, status bar, and appbar geometry to match the
+  tokenized protocol.
 
 ## Validation
 

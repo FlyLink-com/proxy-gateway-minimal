@@ -168,6 +168,21 @@ export type AdminAppSearchIndexEntry = {
   searchText: string;
 };
 
+export type AppLibrarySearchDocument = {
+  appId: string;
+  label: string;
+  zhName: string;
+  aliases: string[];
+  safeDescription: string;
+  category: WorkbenchCategory;
+  ownerArea: string;
+  routeTarget: string;
+  capabilities: AdminAppCapability[];
+  searchableFields: string[];
+  libraryGroup: AdminAppLibraryGroup;
+  status: AdminAppStatus;
+};
+
 export type AdminAppMap = {
   byId: Readonly<Record<string, AdminAppManifest>>;
   workspacePages: readonly AdminAppManifest[];
@@ -559,46 +574,59 @@ export function getAdminAppAuthoringManifest(apps: readonly AdminAppManifest[] =
 
 export function createAppLibrarySearchIndex(apps: readonly AdminAppManifest[] = adminAppManifest): AdminAppSearchIndexEntry[] {
   return apps.map((app) => {
-    const safeSummary = sanitizeSafeSearchText(app.description);
-    const routeTarget = routeTargetForApp(app);
-    const searchableFields = safeSearchableFieldsForApp(app);
+    const searchDocument = createAppLibrarySearchDocument(app);
     const searchableParts = [
-      app.label,
-      app.catalog.zhName,
-      ...app.aliases,
-      app.owner.area,
-      app.category,
-      safeSummary,
-      ...app.catalog.primaryObjects,
-      ...app.catalog.coreViews,
-      ...searchableFields,
-      app.status,
-      ...app.safety.capabilities,
-      app.library.group,
-      ...app.library.searchableText,
-      routeTarget
+      searchDocument.appId,
+      searchDocument.label,
+      searchDocument.zhName,
+      ...searchDocument.aliases,
+      searchDocument.ownerArea,
+      searchDocument.category,
+      searchDocument.safeDescription,
+      ...searchDocument.searchableFields,
+      searchDocument.status,
+      ...searchDocument.capabilities,
+      searchDocument.libraryGroup,
+      searchDocument.routeTarget
     ];
     return {
-      aliases: app.aliases,
-      appId: app.id,
-      capabilities: app.safety.capabilities,
+      aliases: searchDocument.aliases,
+      appId: searchDocument.appId,
+      capabilities: searchDocument.capabilities,
       entryGateSummary: app.status === "planned" || app.status === "locked"
-        ? safeSummary
+        ? searchDocument.safeDescription
         : "Available in the protected console workspace.",
       moduleNavId: app.plugin?.navId,
       ownerArea: app.owner.area,
       pageId: app.route.page,
       resultType: app.kind,
       riskTier: app.safety.riskTier,
-      routeTarget,
-      safeSummary,
-      searchableFields,
+      routeTarget: searchDocument.routeTarget,
+      safeSummary: searchDocument.safeDescription,
+      searchableFields: searchDocument.searchableFields,
       searchText: normalizeAppSearchText(searchableParts.join(" ")),
       state: app.status,
-      targetId: app.route.targetId,
-      title: app.label
+      targetId: app.route.targetId ? sanitizeSafeSearchText(app.route.targetId) : undefined,
+      title: searchDocument.label
     };
   });
+}
+
+export function createAppLibrarySearchDocument(app: AdminAppManifest): AppLibrarySearchDocument {
+  return {
+    aliases: app.aliases.map(sanitizeSafeSearchText),
+    appId: sanitizeSafeSearchText(app.id),
+    capabilities: app.safety.capabilities.map(sanitizeSafeSearchText) as AdminAppCapability[],
+    category: sanitizeSafeSearchText(app.category) as WorkbenchCategory,
+    label: sanitizeSafeSearchText(app.label),
+    libraryGroup: sanitizeSafeSearchText(app.library.group) as AdminAppLibraryGroup,
+    ownerArea: sanitizeSafeSearchText(app.owner.area),
+    routeTarget: sanitizeSafeSearchText(routeTargetForApp(app)),
+    safeDescription: sanitizeSafeSearchText(app.description),
+    searchableFields: safeSearchableFieldsForApp(app),
+    status: sanitizeSafeSearchText(app.status) as AdminAppStatus,
+    zhName: sanitizeSafeSearchText(app.catalog.zhName)
+  };
 }
 
 export function normalizeAppSearchText(value: string) {

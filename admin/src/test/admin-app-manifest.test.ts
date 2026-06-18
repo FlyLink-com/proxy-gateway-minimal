@@ -3,6 +3,7 @@ import {
   ADMIN_APP_AUTHORING_STANDARD,
   adminAppManifest,
   adminAppAuthoringManifest,
+  createAppLibrarySearchDocument,
   createAppLibrarySearchIndex,
   getAdminAppAuthoringManifest,
   getAdminAppMap,
@@ -15,6 +16,8 @@ import {
   matchesAppSearch
 } from "../app/admin-app-manifest";
 import { pageSubNavigation } from "../app/navigation";
+
+const forbiddenSearchTextPattern = /token|secret|credential|subscription\s*url|auth\s*header|bearer|password|sqlite|raw\s/i;
 
 describe("admin app manifest", () => {
   test("defines the App Manifest authoring standard", () => {
@@ -299,7 +302,7 @@ describe("admin app manifest", () => {
         expect(ADMIN_APP_AUTHORING_STANDARD.layoutSizes).toContain(size);
       });
       expect(ADMIN_APP_AUTHORING_STANDARD.states).toContain(app.state);
-      expect(app.searchFields.join(" ")).not.toMatch(/token|secret|credential|subscription\s*url|auth\s*header|bearer|password|sqlite|raw\s/i);
+      expect(app.searchFields.join(" ")).not.toMatch(forbiddenSearchTextPattern);
       expect(app.forbiddenFields).toEqual(expect.arrayContaining(["token", "credential", "SQLite row"]));
     });
   });
@@ -325,9 +328,71 @@ describe("admin app manifest", () => {
     expect(usageLedger && matchesAppSearch(usageLedger, "channel")).toBe(true);
 
     index.forEach((entry) => {
-      expect(entry.searchText).not.toMatch(/token|secret|credential|subscription\s*url|auth\s*header|bearer|password|sqlite|raw\s/i);
+      expect(entry.searchText).not.toMatch(forbiddenSearchTextPattern);
       expect(entry.safeSummary).not.toMatch(/token=|Bearer|password|subscriptionUrl/i);
-      expect(entry.searchableFields.join(" ")).not.toMatch(/token|secret|credential|subscription\s*url|auth\s*header|bearer|password|sqlite|raw\s/i);
+      expect(entry.searchableFields.join(" ")).not.toMatch(forbiddenSearchTextPattern);
     });
+  });
+
+  test("builds the app-library search index from an explicit safe document", () => {
+    const usageLedger = getPluginApp("usage-ledger", "usageMonitor");
+    expect(usageLedger).toBeDefined();
+
+    const document = createAppLibrarySearchDocument(usageLedger!);
+
+    expect(document).toEqual({
+      aliases: usageLedger!.aliases,
+      appId: usageLedger!.id,
+      capabilities: usageLedger!.safety.capabilities,
+      category: usageLedger!.category,
+      label: usageLedger!.label,
+      libraryGroup: usageLedger!.library.group,
+      ownerArea: usageLedger!.owner.area,
+      routeTarget: "usageMonitor#platform-monitoring-usage-ledger",
+      safeDescription: usageLedger!.description,
+      searchableFields: expect.arrayContaining(["usage-ledger", "Usage Ledger", "Platform Monitoring"]),
+      status: usageLedger!.status,
+      zhName: usageLedger!.catalog.zhName
+    });
+    expect(JSON.stringify(document)).not.toMatch(forbiddenSearchTextPattern);
+  });
+
+  test("redacts unsafe app-library search document fields before indexing", () => {
+    const baseline = getWorkspacePageApp("dashboard");
+    expect(baseline).toBeDefined();
+    const unsafeApp = {
+      ...baseline!,
+      aliases: ["safe alias", "Bearer token alias"],
+      catalog: {
+        ...baseline!.catalog,
+        searchableFields: ["safe field", "raw SQLite row", "credential ref"],
+        zhName: "secret console"
+      },
+      description: "Inspect raw config with password and subscriptionUrl.",
+      id: "unsafe-token-fixture",
+      label: "Subscription URL console",
+      library: {
+        ...baseline!.library,
+        searchableText: ["auth header bearer"]
+      },
+      route: {
+        ...baseline!.route,
+        targetId: "raw-config-token"
+      }
+    } satisfies typeof baseline;
+
+    const document = createAppLibrarySearchDocument(unsafeApp);
+    const [indexEntry] = createAppLibrarySearchIndex([unsafeApp]);
+    const indexedText = JSON.stringify({ document, indexEntry });
+
+    expect(document.aliases).toContain("[redacted unsafe search text]");
+    expect(document.searchableFields).toEqual([
+      "safe field",
+      "[redacted unsafe search text]",
+      "[redacted unsafe search text]"
+    ]);
+    expect(indexEntry.searchText).toContain("safe field");
+    expect(indexEntry.searchText).not.toContain("auth header bearer");
+    expect(indexedText).not.toMatch(forbiddenSearchTextPattern);
   });
 });

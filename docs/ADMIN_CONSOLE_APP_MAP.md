@@ -1,6 +1,6 @@
 # Admin Console App Map
 
-Last updated: 2026-06-17, America/Los_Angeles.
+Last updated: 2026-06-18, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-74 under GCC-81 / GCC-42
@@ -39,6 +39,47 @@ Every app entry must have:
 Search entries may use only `label`, aliases, safe descriptions, app category,
 owner area, capabilities, route target, and `catalog.searchableFields`.
 Forbidden fields remain excluded from search and UI output.
+
+## Grafana-First Console Mapping
+
+Grafana is the primary external reference for the Admin OS shell, but only as a
+control-console pattern source. The local mapping is:
+
+| Grafana concept | Admin OS object |
+| --- | --- |
+| Dashboard | Workspace app: `operations-overview`, `accounts-resources`, `usage-channels`, and future gated workspaces. |
+| Panel | Plugin app/module owned by one workspace page. |
+| Data source | Safe backend summary/API domain such as accounts, orders, usage ledger, channels, collectors, receipts, or gates. |
+| Library | App Library groups, search index, hidden plugin recovery, and future safe tags/folders. |
+| Alert | Risk queue or anomaly item that routes to safe evidence, not production execution. |
+| Explore | Read-only drilldown from overview to account, order, channel, collector, receipt, or gate evidence. |
+
+Do not copy Grafana code, add a generic observability product model, or expose
+arbitrary data-source configuration, raw logs, raw config, SQLite rows,
+subscription material, token, credential, or production action APIs.
+
+## App Library Search Boundary
+
+The App Library is the global launcher, command/search surface, and hidden
+plugin recovery center. It is not a remote plugin market and not an
+authorization layer.
+
+Future search work should define an explicit `AppLibrarySearchDocument` shape
+instead of scraping rendered UI labels. The document may include only:
+
+- app id, labels, aliases, safe descriptions, category, owner area, route
+  target, capabilities, and `catalog.searchableFields`;
+- future safe summary fields only after backend permission and redaction are
+  defined.
+
+The document must never include secrets, tokens, credentials, subscription
+URLs, auth headers, passwords, raw environment/config/log/runtime values,
+SQLite rows, raw subscription material, customer-private data, full API
+responses, or error stacks.
+
+Frontend visibility only controls App Library display. Backend API permission
+remains the authority for every data fetch, drilldown, mutation, or future app
+registry action.
 
 ## Workspace Apps
 
