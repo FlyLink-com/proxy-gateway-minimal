@@ -46,7 +46,7 @@ describe("admin dashboard page", () => {
     expect(screen.getByRole("button", { name: "Risk Queue Medium plugin display" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Risk Queue Small plugin display" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Risk Queue Hide plugin" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Risk Queue resize plugin display" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Risk Queue resize plugin display" })).toBeNull();
 
     expect(screen.getByRole("heading", { name: "Health Summary" })).not.toBeNull();
     expect(screen.getByLabelText("Monitoring container contract")).not.toBeNull();
@@ -97,40 +97,14 @@ describe("admin dashboard page", () => {
     expect(document.querySelector(".admin-blueprint-card-switches")).toBeNull();
     expect(document.querySelector(".admin-blueprint-module-dock")).toBeNull();
 
-    const riskResizeGrip = screen.getByRole("button", { name: "Risk Queue resize plugin display" });
-    firePointerEvent(riskResizeGrip, "pointerdown", { button: 0, clientX: 100, clientY: 100, pointerId: 1 });
-    firePointerEvent(document, "pointermove", { clientX: 300, clientY: 100, pointerId: 1 });
+    fireEvent.click(screen.getByRole("button", { name: "Risk Queue Large plugin display" }));
     expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-large");
-    firePointerEvent(document, "pointermove", { clientX: -120, clientY: 100, pointerId: 1 });
-    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-small");
-    firePointerEvent(document, "pointerup", { clientX: -120, clientY: 100, pointerId: 1 });
-
-    const riskResizeWest = screen.getByRole("button", { name: "Risk Queue resize w plugin display" });
-    firePointerEvent(riskResizeWest, "pointerdown", { button: 0, clientX: 300, clientY: 100, pointerId: 2 });
-    firePointerEvent(riskResizeWest, "pointermove", { clientX: -80, clientY: 100, pointerId: 2 });
-    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-large");
-    firePointerEvent(riskResizeWest, "pointerup", { clientX: -80, clientY: 100, pointerId: 2 });
-
-    const riskResizeEast = screen.getByRole("button", { name: "Risk Queue resize e plugin display" });
-    firePointerEvent(riskResizeEast, "pointerdown", { button: 0, clientX: 300, clientY: 100, pointerId: 3 });
-    firePointerEvent(riskResizeEast, "pointermove", { clientX: -80, clientY: 100, pointerId: 3 });
-    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-small");
-    firePointerEvent(riskResizeEast, "pointerup", { clientX: -80, clientY: 100, pointerId: 3 });
-
-    const riskResizeSouth = screen.getByRole("button", { name: "Risk Queue resize s plugin display" });
-    firePointerEvent(riskResizeSouth, "pointerdown", { button: 0, clientX: 100, clientY: 100, pointerId: 4 });
-    firePointerEvent(riskResizeSouth, "pointermove", { clientX: 100, clientY: 240, pointerId: 4 });
     expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-height-tall");
-    firePointerEvent(riskResizeSouth, "pointerup", { clientX: 100, clientY: 240, pointerId: 4 });
-
-    const riskResizeNorth = screen.getByRole("button", { name: "Risk Queue resize n plugin display" });
-    firePointerEvent(riskResizeNorth, "pointerdown", { button: 0, clientX: 100, clientY: 100, pointerId: 5 });
-    firePointerEvent(riskResizeNorth, "pointermove", { clientX: 100, clientY: 340, pointerId: 5 });
-    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-height-short");
-    firePointerEvent(riskResizeNorth, "pointerup", { clientX: 100, clientY: 340, pointerId: 5 });
 
     fireEvent.click(screen.getByRole("button", { name: "Risk Queue Small plugin display" }));
     expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-small");
+    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-height-short");
+
     fireEvent.click(screen.getByRole("button", { name: "Risk Queue Hide plugin" }));
     expect(document.querySelector("#dashboard-risk-queue")).toBeNull();
     expect(screen.queryByRole("button", { name: "Open Risk Queue module" })).toBeNull();
@@ -181,10 +155,6 @@ describe("admin dashboard page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Risk Queue plugin settings" }));
     fireEvent.click(screen.getByRole("button", { name: "Risk Queue Large plugin display" }));
-    const riskResizeSouth = screen.getByRole("button", { name: "Risk Queue resize s plugin display" });
-    firePointerEvent(riskResizeSouth, "pointerdown", { button: 0, clientX: 100, clientY: 100, pointerId: 11 });
-    firePointerEvent(riskResizeSouth, "pointermove", { clientX: 100, clientY: 240, pointerId: 11 });
-    firePointerEvent(riskResizeSouth, "pointerup", { clientX: 100, clientY: 240, pointerId: 11 });
 
     fireEvent.click(screen.getByRole("button", { name: "Health Summary plugin settings" }));
     fireEvent.click(screen.getByRole("button", { name: "Health Summary Hide plugin" }));

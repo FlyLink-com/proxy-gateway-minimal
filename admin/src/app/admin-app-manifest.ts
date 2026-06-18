@@ -145,7 +145,7 @@ export type AdminAppManifest = {
     navId: string;
     ownerMode: PageSubNavigationItem["mode"];
     settingsEntry: "inline" | "appLibrary" | "both" | "none";
-    allowedControls: Array<"hide" | "pin" | "resize" | "reorder" | "compact" | "expand" | "reset">;
+    allowedControls: Array<"hide" | "pin" | "layout" | "reorder" | "compact" | "expand" | "reset">;
     states: string[];
     boundaries: string[];
   };
@@ -1027,7 +1027,7 @@ function createPluginApps(): AdminAppManifest[] {
           role: pageDefinition.role
         },
         plugin: {
-          allowedControls: ["hide", "resize", "reorder", "compact", "expand", "reset"],
+          allowedControls: ["hide", "layout", "reorder", "compact", "expand", "reset"],
           boundaries: [
             "safe-summary-only",
             "no production mutation",

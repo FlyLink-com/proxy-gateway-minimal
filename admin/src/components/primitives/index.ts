@@ -12,8 +12,8 @@ export {
 } from "./case-workflow";
 export { MetricCard, type MetricTone } from "./metric-card";
 export { PageHeader } from "./page-header";
-export { PluginContainer, type PluginContainerResizeDirection } from "./plugin-container";
-export { PluginFrame, type PluginFrameProps, type PluginFrameResizeDirection } from "./plugin-frame";
+export { PluginContainer } from "./plugin-container";
+export { PluginFrame, type PluginFrameProps } from "./plugin-frame";
 export { PageSubNav, type PageSubNavItem } from "./page-sub-nav";
 export { QuotaMeter } from "./quota-meter";
 export { SafeRef } from "./safe-ref";

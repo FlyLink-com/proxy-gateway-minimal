@@ -145,7 +145,7 @@ describe("admin ui primitives", () => {
 
   test("renders plugin frame chrome with inline settings and status slots", () => {
     const onHide = vi.fn();
-    const onResize = vi.fn();
+    const onLayoutChange = vi.fn();
 
     render(
       <PluginFrame
@@ -156,7 +156,7 @@ describe("admin ui primitives", () => {
         fieldLabels={["Platform health label", "Risk counter"]}
         height="medium"
         onHide={onHide}
-        onResize={onResize}
+        onLayoutChange={onLayoutChange}
         settingsOpen
         size="medium"
         title="Health Summary"
@@ -183,7 +183,7 @@ describe("admin ui primitives", () => {
     fireEvent.click(screen.getByRole("button", { name: "Health Summary Hide plugin" }));
     expect(onHide).toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Health Summary Large plugin display" }));
-    expect(onResize).toHaveBeenCalledWith({ size: "large", visible: true });
+    expect(onLayoutChange).toHaveBeenCalledWith({ height: "tall", size: "large", visible: true });
   });
 
   test("keeps plugin container as a compatibility mount wrapper over PluginFrame", () => {

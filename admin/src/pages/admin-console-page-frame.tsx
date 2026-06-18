@@ -11,18 +11,15 @@ import {
   isWorkspaceLayoutForModules,
   loadWorkspaceLayout,
   persistWorkspaceLayout,
-  type ModuleDisplayHeight,
   type ModuleDisplaySize,
   type ModuleLayoutMap,
   type ModuleLayoutState
 } from "../app/plugin-layout-store";
 import {
   hideModuleLayoutState,
-  layoutFromResizeDrag,
+  mergeModuleLayoutState,
   moveModuleBefore,
-  resizeModuleLayoutState,
-  restoreModuleLayoutState,
-  type PluginResizeDirection
+  restoreModuleLayoutState
 } from "../app/plugin-workspace-engine";
 import {
   EmptyState,
@@ -61,15 +58,6 @@ type OpenModuleEventDetail = {
   targetId?: string;
 };
 
-type ModuleResizeSession = {
-  navId: string;
-  direction: PluginResizeDirection;
-  startX: number;
-  startY: number;
-  startSize: ModuleDisplaySize;
-  startHeight: ModuleDisplayHeight;
-};
-
 type ModuleMoveSession = {
   navId: string;
   lastTargetNavId: string | null;
@@ -95,8 +83,6 @@ export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage 
   const [moduleLayout, setModuleLayout] = useState<ModuleLayoutMap>(() => initialWorkspaceLayout.moduleLayout);
   const [moduleOrder, setModuleOrder] = useState(() => initialWorkspaceLayout.moduleOrder);
   const [draggingModule, setDraggingModule] = useState<string | null>(null);
-  const [resizingModule, setResizingModule] = useState<string | null>(null);
-  const resizeSessionRef = useRef<ModuleResizeSession | null>(null);
   const moveSessionRef = useRef<ModuleMoveSession | null>(null);
 
   useEffect(() => {
@@ -105,8 +91,6 @@ export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage 
     setModuleOrder(nextLayout.moduleOrder);
     setOpenCardTools(null);
     setDraggingModule(null);
-    setResizingModule(null);
-    resizeSessionRef.current = null;
     moveSessionRef.current = null;
   }, [blueprint.page, defaultModuleLayout, moduleNavSignature]);
 
@@ -122,38 +106,13 @@ export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage 
     setModuleLayout((current) => ({
       ...current,
       [navId]: {
-        ...resizeModuleLayoutState(
+        ...mergeModuleLayoutState(
           current[navId] ?? defaultModuleLayout[navId] ?? defaultModuleLayoutState(),
           nextLayout
         )
       }
     }));
   };
-
-  const applyModuleResize = useCallback((session: ModuleResizeSession, clientX: number, clientY: number) => {
-    const nextLayout = layoutFromResizeDrag(
-      session.startSize,
-      session.startHeight,
-      session.direction,
-      clientX - session.startX,
-      clientY - session.startY
-    );
-    setModuleLayout((current) => {
-      const baseLayout = current[session.navId] ?? defaultModuleLayout[session.navId] ?? defaultModuleLayoutState();
-      const nextState = resizeModuleLayoutState(baseLayout, { ...nextLayout, visible: true });
-      if (
-        baseLayout.height === nextState.height &&
-        baseLayout.size === nextState.size &&
-        baseLayout.visible === nextState.visible
-      ) {
-        return current;
-      }
-      return {
-        ...current,
-        [session.navId]: nextState
-      };
-    });
-  }, [defaultModuleLayout]);
 
   const hideModuleLayout = (navId: string) => {
     setModuleLayout((current) => ({
@@ -243,82 +202,6 @@ export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage 
       document.removeEventListener("pointercancel", handlePointerEnd);
     };
   }, [reorderModule]);
-
-  useEffect(() => {
-    const handlePointerMove = (event: globalThis.PointerEvent) => {
-      const session = resizeSessionRef.current;
-      if (!session) {
-        return;
-      }
-      event.preventDefault();
-      applyModuleResize(session, event.clientX, event.clientY);
-    };
-
-    const handlePointerEnd = (event: globalThis.PointerEvent) => {
-      if (!resizeSessionRef.current) {
-        return;
-      }
-      event.preventDefault();
-      resizeSessionRef.current = null;
-      setResizingModule(null);
-    };
-
-    document.addEventListener("pointermove", handlePointerMove);
-    document.addEventListener("pointerup", handlePointerEnd);
-    document.addEventListener("pointercancel", handlePointerEnd);
-    return () => {
-      document.removeEventListener("pointermove", handlePointerMove);
-      document.removeEventListener("pointerup", handlePointerEnd);
-      document.removeEventListener("pointercancel", handlePointerEnd);
-    };
-  }, [applyModuleResize]);
-
-  const beginModuleResize = (
-    event: PointerEvent<HTMLButtonElement>,
-    navId: string,
-    layout: ModuleLayoutState,
-    direction: PluginResizeDirection
-  ) => {
-    if (event.button != null && event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    moveSessionRef.current = null;
-    setDraggingModule(null);
-    resizeSessionRef.current = {
-      navId,
-      direction,
-      startX: event.clientX,
-      startY: event.clientY,
-      startSize: layout.size,
-      startHeight: layout.height
-    };
-    setResizingModule(navId);
-  };
-
-  const moveModuleResize = (event: PointerEvent<HTMLButtonElement>, navId: string) => {
-    const session = resizeSessionRef.current;
-    if (!session || session.navId !== navId) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    applyModuleResize(session, event.clientX, event.clientY);
-  };
-
-  const endModuleResize = (event: PointerEvent<HTMLButtonElement>, navId: string) => {
-    const session = resizeSessionRef.current;
-    if (!session || session.navId !== navId) {
-      return;
-    }
-    event.preventDefault();
-    event.stopPropagation();
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-    resizeSessionRef.current = null;
-    setResizingModule(null);
-  };
 
   const beginModuleMove = (event: PointerEvent<HTMLButtonElement>, navId: string) => {
     if (event.button != null && event.button !== 0) {
@@ -410,8 +293,7 @@ export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage 
               className={[
                 cardToolsOpen ? "admin-blueprint-module-card-editing" : "",
                 layout.visible ? "" : "admin-blueprint-module-card-hidden",
-                draggingModule === module.navId ? "admin-blueprint-module-card-dragging" : "",
-                resizingModule === module.navId ? "admin-blueprint-module-card-resizing" : ""
+                draggingModule === module.navId ? "admin-blueprint-module-card-dragging" : ""
               ].filter(Boolean).join(" ")}
               containerLabel={module.container.container}
               dataModuleNavId={module.navId}
@@ -476,11 +358,7 @@ export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage 
                 </BlueprintDisclosure>
               )}
               onHide={() => hideModuleLayout(module.navId)}
-              onResize={(nextLayout) => updateModuleLayout(module.navId, nextLayout)}
-              onResizePointerCancel={(event) => endModuleResize(event, module.navId)}
-              onResizePointerDown={(event, direction) => beginModuleResize(event, module.navId, layout, direction)}
-              onResizePointerMove={(event) => moveModuleResize(event, module.navId)}
-              onResizePointerUp={(event) => endModuleResize(event, module.navId)}
+              onLayoutChange={(nextLayout) => updateModuleLayout(module.navId, nextLayout)}
               ownerMode={navItem?.mode === "preview" ? "preview" : "owner"}
               settingsOpen={cardToolsOpen}
               settingsTrigger={(

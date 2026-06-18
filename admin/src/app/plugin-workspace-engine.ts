@@ -1,17 +1,15 @@
 import {
   defaultModuleLayoutState,
-  type ModuleDisplayHeight,
   type ModuleDisplaySize,
   type ModuleLayoutState
 } from "./plugin-layout-store";
 
-export type PluginResizeDirection = "n" | "e" | "s" | "w" | "ne" | "nw" | "se" | "sw";
-
 export const PLUGIN_DISPLAY_SIZES: ModuleDisplaySize[] = ["small", "medium", "large"];
-export const PLUGIN_DISPLAY_HEIGHTS: ModuleDisplayHeight[] = ["short", "medium", "tall"];
-export const PLUGIN_RESIZE_DIRECTIONS: PluginResizeDirection[] = ["n", "e", "s", "w", "ne", "nw", "se", "sw"];
-export const PLUGIN_RESIZE_HORIZONTAL_STEP = 170;
-export const PLUGIN_RESIZE_VERTICAL_STEP = 110;
+export const PLUGIN_DISPLAY_MODE_LAYOUT: Record<ModuleDisplaySize, Pick<ModuleLayoutState, "height" | "size">> = {
+  large: { height: "tall", size: "large" },
+  medium: { height: "medium", size: "medium" },
+  small: { height: "short", size: "small" }
+};
 
 export function restoreModuleLayoutState(baseLayout?: Partial<ModuleLayoutState>): ModuleLayoutState {
   return {
@@ -31,7 +29,7 @@ export function hideModuleLayoutState(baseLayout?: Partial<ModuleLayoutState>): 
   };
 }
 
-export function resizeModuleLayoutState(
+export function mergeModuleLayoutState(
   baseLayout: ModuleLayoutState,
   nextLayout: Partial<ModuleLayoutState>
 ): ModuleLayoutState {
@@ -39,6 +37,13 @@ export function resizeModuleLayoutState(
     ...baseLayout,
     ...nextLayout,
     visible: nextLayout.visible ?? true
+  };
+}
+
+export function displayModeLayoutState(displaySize: ModuleDisplaySize): Pick<ModuleLayoutState, "height" | "size" | "visible"> {
+  return {
+    ...PLUGIN_DISPLAY_MODE_LAYOUT[displaySize],
+    visible: true
   };
 }
 
@@ -56,52 +61,4 @@ export function moveModuleBefore(moduleOrder: string[], sourceNavId: string, tar
   }
   nextOrder.splice(targetIndex, 0, sourceNavId);
   return nextOrder;
-}
-
-export function layoutFromResizeDrag(
-  startSize: ModuleDisplaySize,
-  startHeight: ModuleDisplayHeight,
-  direction: PluginResizeDirection,
-  deltaX: number,
-  deltaY: number
-): Pick<ModuleLayoutState, "height" | "size"> {
-  const safeDeltaX = Number.isFinite(deltaX) ? deltaX : 0;
-  const safeDeltaY = Number.isFinite(deltaY) ? deltaY : 0;
-  const horizontalDelta = direction.includes("w")
-    ? -safeDeltaX
-    : direction.includes("e")
-      ? safeDeltaX
-      : 0;
-  const verticalDelta = direction.includes("n")
-    ? -safeDeltaY
-    : direction.includes("s")
-      ? safeDeltaY
-      : 0;
-  const horizontalSteps = direction.includes("e") || direction.includes("w")
-    ? resizeStepFromDelta(horizontalDelta, PLUGIN_RESIZE_HORIZONTAL_STEP)
-    : 0;
-  const verticalSteps = direction.includes("n") || direction.includes("s")
-    ? resizeStepFromDelta(verticalDelta, PLUGIN_RESIZE_VERTICAL_STEP)
-    : 0;
-
-  return {
-    height: resizeDiscreteValue(PLUGIN_DISPLAY_HEIGHTS, startHeight, verticalSteps),
-    size: resizeDiscreteValue(PLUGIN_DISPLAY_SIZES, startSize, horizontalSteps)
-  };
-}
-
-function resizeStepFromDelta(delta: number, stepSize: number) {
-  if (!Number.isFinite(delta) || !Number.isFinite(stepSize) || stepSize <= 0) {
-    return 0;
-  }
-  return Math.round(delta / stepSize);
-}
-
-function resizeDiscreteValue<T extends string>(order: T[], startValue: T, steps: number): T {
-  const startIndex = order.indexOf(startValue);
-  const nextIndex = Math.min(
-    order.length - 1,
-    Math.max(0, Math.max(0, startIndex) + steps)
-  );
-  return order[nextIndex];
 }

@@ -84,7 +84,6 @@ describe("admin style token contract", () => {
       "--admin-plugin-height-tall: 252px",
       "--admin-plugin-field-height: 26px",
       "--admin-plugin-field-gap: 6px",
-      "--admin-plugin-resize-handle: 22px",
       "--admin-radius-control: 8px",
       "--admin-radius-panel: 8px",
       "--admin-radius-card: 8px",
@@ -208,7 +207,6 @@ describe("admin style token contract", () => {
       "--admin-plugin-height-tall",
       "--admin-plugin-field-height",
       "--admin-plugin-field-gap",
-      "--admin-plugin-resize-handle",
       "--admin-sidebar-width",
       "--admin-content-padding",
       "--admin-workbench-gap",
@@ -300,17 +298,9 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-card-head")).toContain("display: flex");
     expect(selectorBlock(".admin-blueprint-card-inline-tools")).toContain("var(--admin-radius-pill)");
     expect(selectorBlock(".admin-blueprint-icon-switch")).toContain("display: inline-grid");
-    expect(selectorBlock(".admin-blueprint-card-resize-grip")).toContain("var(--admin-plugin-resize-handle)");
-    expect(selectorBlock(".admin-blueprint-card-resize-grip")).toContain("touch-action: none");
-    expect(styles).not.toContain(".admin-blueprint-module-card:hover .admin-blueprint-card-resize-grip");
-    expect(styles).not.toContain(".admin-blueprint-module-card:hover .admin-blueprint-card-resize-e");
-    expect(styles).not.toContain(".admin-blueprint-module-card:hover .admin-blueprint-card-resize-w");
-    expect(styles).not.toContain(".admin-blueprint-module-card:hover .admin-blueprint-card-resize-n");
-    expect(styles).not.toContain(".admin-blueprint-module-card:hover .admin-blueprint-card-resize-s");
-    expect(selectorBlock(".admin-blueprint-module-card-editing .admin-blueprint-card-resize-se")).toContain("opacity: 1");
-    expect(selectorBlock(".admin-blueprint-card-resize-e,\n.admin-blueprint-card-resize-w")).toContain("cursor: ew-resize");
-    expect(selectorBlock(".admin-blueprint-card-resize-n,\n.admin-blueprint-card-resize-s")).toContain("cursor: ns-resize");
-    expect(selectorBlock(".admin-blueprint-card-resize-se")).toContain("cursor: nwse-resize");
+    expect(styles).not.toContain("admin-blueprint-card-resize");
+    expect(styles).not.toContain("admin-blueprint-module-card-resizing");
+    expect(styles).not.toContain("--admin-plugin-resize-handle");
   });
 
   test("keeps design-draft module containers visually typed and scannable", () => {
@@ -363,7 +353,6 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-card-small .admin-blueprint-module-card-meta")).toContain("justify-items: start");
     expect(selectorBlock(".admin-blueprint-card-drag-handle")).toContain("cursor: grab");
     expect(selectorBlock(".admin-blueprint-card-drag-handle")).toContain("touch-action: none");
-    expect(selectorBlock(".admin-blueprint-module-card-resizing")).toContain("user-select: none");
     expect(styles).toContain(".admin-blueprint-icon-switch[aria-pressed=\"true\"]");
     expect(styles).not.toContain(".admin-blueprint-card-switches");
     expect(styles).not.toContain(".admin-blueprint-module-dock");

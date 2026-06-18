@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vitest";
 import {
+  displayModeLayoutState,
   hideModuleLayoutState,
-  layoutFromResizeDrag,
   moveModuleBefore,
-  resizeModuleLayoutState,
+  mergeModuleLayoutState,
   restoreModuleLayoutState
 } from "../app/plugin-workspace-engine";
 
@@ -23,16 +23,16 @@ describe("plugin workspace engine", () => {
   });
 
   test("normalizes explicit size changes as visible plugin state", () => {
-    expect(resizeModuleLayoutState(
+    expect(mergeModuleLayoutState(
       { height: "short", size: "small", visible: false },
-      { size: "large" }
+      { height: "tall", size: "large" }
     )).toEqual({
-      height: "short",
+      height: "tall",
       size: "large",
       visible: true
     });
 
-    expect(resizeModuleLayoutState(
+    expect(mergeModuleLayoutState(
       { height: "short", size: "small", visible: true },
       { visible: false }
     )).toEqual({
@@ -42,42 +42,21 @@ describe("plugin workspace engine", () => {
     });
   });
 
-  test("turns edge drag distance into discrete width and height states", () => {
-    expect(layoutFromResizeDrag("medium", "medium", "e", 90, 0)).toEqual({
-      height: "medium",
-      size: "large"
-    });
-    expect(layoutFromResizeDrag("medium", "medium", "w", 90, 0)).toEqual({
-      height: "medium",
-      size: "small"
-    });
-    expect(layoutFromResizeDrag("medium", "medium", "s", 0, 60)).toEqual({
+  test("maps display modes to system-owned layout presets", () => {
+    expect(displayModeLayoutState("large")).toEqual({
       height: "tall",
-      size: "medium"
+      size: "large",
+      visible: true
     });
-    expect(layoutFromResizeDrag("medium", "medium", "n", 0, 60)).toEqual({
-      height: "short",
-      size: "medium"
-    });
-    expect(layoutFromResizeDrag("medium", "medium", "e", 40, 40)).toEqual({
+    expect(displayModeLayoutState("medium")).toEqual({
       height: "medium",
-      size: "medium"
+      size: "medium",
+      visible: true
     });
-    expect(layoutFromResizeDrag("medium", "medium", "se", 190, 130)).toEqual({
-      height: "tall",
-      size: "large"
-    });
-    expect(layoutFromResizeDrag("medium", "medium", "nw", 190, 130)).toEqual({
+    expect(displayModeLayoutState("small")).toEqual({
       height: "short",
-      size: "small"
-    });
-    expect(layoutFromResizeDrag("small", "short", "nw", 999, 999)).toEqual({
-      height: "short",
-      size: "small"
-    });
-    expect(layoutFromResizeDrag("large", "tall", "se", 999, 999)).toEqual({
-      height: "tall",
-      size: "large"
+      size: "small",
+      visible: true
     });
   });
 

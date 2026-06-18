@@ -23,7 +23,7 @@ describe("admin OS UI contract", () => {
       "plugin-header",
       "plugin-toolbar",
       "drag-handle",
-      "resize-handle",
+      "display-mode-controls",
       "hide-action",
       "plugin-state-chrome"
     ]);

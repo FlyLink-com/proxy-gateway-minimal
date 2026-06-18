@@ -1,14 +1,12 @@
-import { EyeOff, GripVertical, Maximize2, Minimize2, PanelTopOpen, Settings, type LucideIcon } from "lucide-react";
-import { type PointerEvent, type ReactNode } from "react";
+import { EyeOff, Maximize2, Minimize2, PanelTopOpen, Settings, type LucideIcon } from "lucide-react";
+import { type ReactNode } from "react";
 import { ADMIN_UI_CONTRACT, type AdminUiDensity } from "../../app/admin-ui-contract";
 import { type ModuleDisplayHeight, type ModuleDisplaySize, type ModuleLayoutState } from "../../app/plugin-layout-store";
-import { PLUGIN_DISPLAY_SIZES, PLUGIN_RESIZE_DIRECTIONS, type PluginResizeDirection } from "../../app/plugin-workspace-engine";
+import { displayModeLayoutState, PLUGIN_DISPLAY_SIZES } from "../../app/plugin-workspace-engine";
 import { cn } from "../../lib/utils";
 import { type MetricTone } from "./metric-card";
 import { StatusChip } from "./status-chip";
 import { type WorkbenchCategory } from "./workbench-container";
-
-export type PluginFrameResizeDirection = PluginResizeDirection;
 
 export type PluginFrameProps = {
   actions?: ReactNode;
@@ -25,11 +23,7 @@ export type PluginFrameProps = {
   id?: string;
   notes?: ReactNode;
   onHide?: () => void;
-  onResize?: (layout: Partial<ModuleLayoutState>) => void;
-  onResizePointerCancel?: (event: PointerEvent<HTMLButtonElement>, direction: PluginFrameResizeDirection) => void;
-  onResizePointerDown?: (event: PointerEvent<HTMLButtonElement>, direction: PluginFrameResizeDirection) => void;
-  onResizePointerMove?: (event: PointerEvent<HTMLButtonElement>, direction: PluginFrameResizeDirection) => void;
-  onResizePointerUp?: (event: PointerEvent<HTMLButtonElement>, direction: PluginFrameResizeDirection) => void;
+  onLayoutChange?: (layout: Partial<ModuleLayoutState>) => void;
   ownerMode: "preview" | "owner";
   settingsOpen: boolean;
   settingsTrigger?: ReactNode;
@@ -73,11 +67,7 @@ export function PluginFrame({
   id,
   notes,
   onHide,
-  onResize,
-  onResizePointerCancel,
-  onResizePointerDown,
-  onResizePointerMove,
-  onResizePointerUp,
+  onLayoutChange,
   ownerMode,
   settingsOpen,
   settingsTrigger,
@@ -137,7 +127,7 @@ export function PluginFrame({
                       ariaLabel={`${title} ${SIZE_LABEL[displaySize].replace(" height", "")} plugin display`}
                       key={displaySize}
                       label={`${SIZE_LABEL[displaySize]} plugin display`}
-                      onClick={() => onResize?.({ size: displaySize, visible: true })}
+                      onClick={() => onLayoutChange?.(displayModeLayoutState(displaySize))}
                       pressed={size === displaySize}
                     >
                       <SizeIcon aria-hidden="true" />
@@ -147,7 +137,7 @@ export function PluginFrame({
                 <LayoutIconButton
                   ariaLabel={`${title} Hide plugin`}
                   label="Hide plugin"
-                  onClick={onHide ?? (() => onResize?.({ visible: false }))}
+                  onClick={onHide ?? (() => onLayoutChange?.({ visible: false }))}
                   pressed={false}
                 >
                   <EyeOff aria-hidden="true" />
@@ -157,21 +147,6 @@ export function PluginFrame({
           </div>
         </div>
       </div>
-      {PLUGIN_RESIZE_DIRECTIONS.map((direction) => (
-        <button
-          aria-label={resizeHandleAriaLabel(title, direction)}
-          className={`admin-blueprint-card-resize-grip admin-blueprint-card-resize-${direction}`}
-          key={direction}
-          onPointerCancel={(event) => onResizePointerCancel?.(event, direction)}
-          onPointerDown={(event) => onResizePointerDown?.(event, direction)}
-          onPointerMove={(event) => onResizePointerMove?.(event, direction)}
-          onPointerUp={(event) => onResizePointerUp?.(event, direction)}
-          title={resizeHandleAriaLabel(title, direction)}
-          type="button"
-        >
-          <GripVertical aria-hidden="true" />
-        </button>
-      ))}
       <ul className="admin-blueprint-card-fields" aria-label={`${title} primary fields`}>
         {fieldLabels.map((field) => (
           <li key={field}>{field}</li>
@@ -209,10 +184,4 @@ function LayoutIconButton({
       {children}
     </button>
   );
-}
-
-function resizeHandleAriaLabel(sectionTitle: string, direction: PluginFrameResizeDirection) {
-  return direction === "se"
-    ? `${sectionTitle} resize plugin display`
-    : `${sectionTitle} resize ${direction} plugin display`;
 }

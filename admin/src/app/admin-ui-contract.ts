@@ -32,7 +32,7 @@ export type AdminUiContract = {
       "plugin-header",
       "plugin-toolbar",
       "drag-handle",
-      "resize-handle",
+      "display-mode-controls",
       "hide-action",
       "plugin-state-chrome"
     ];
@@ -118,7 +118,7 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
       "plugin-header",
       "plugin-toolbar",
       "drag-handle",
-      "resize-handle",
+      "display-mode-controls",
       "hide-action",
       "plugin-state-chrome"
     ]
