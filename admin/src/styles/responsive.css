@@ -822,6 +822,8 @@
   .company-site-card:hover,
   .company-site-scenario-card:hover,
   .company-site-direction:hover,
+  .site-effect-flow,
+  .site-orbit,
   .site-terminal-card:hover,
   .site-signal-card:hover {
     box-shadow: none;

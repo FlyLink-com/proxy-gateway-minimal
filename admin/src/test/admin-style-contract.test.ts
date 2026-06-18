@@ -12,6 +12,10 @@ const adminOsStyles = [
 ]
   .map((filePath) => readCssWithImports(filePath))
   .join("\n");
+const publicSiteStyles = readCssWithImports("src/styles/public-site.css");
+const legacyEntrypointStyles = readCssWithImports("src/styles/legacy-entrypoints.css");
+const responsiveStyles = readCssWithImports("src/styles/responsive.css");
+const faviconSvg = readFileSync(resolve("public/favicon.svg"), "utf8").replace(/\r\n?/g, "\n");
 const primitiveSources = [
   "src/components/primitives/metric-card.tsx",
   "src/components/primitives/workbench-container.tsx"
@@ -507,5 +511,26 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-library-search input")).toContain("font-weight: 500");
     expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("radial-gradient");
     expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("0 10px 24px");
+  });
+
+  test("keeps portal and public entrypoint pixel regressions contained", () => {
+    expect(selectorBlock(".portal-traffic-meter")).toContain("background: #eef2f7");
+    expect(selectorBlock(".portal-traffic-meter span")).toContain("min-width: 4px");
+    expect(selectorBlock(".portal-traffic-meter span")).toContain("linear-gradient(90deg, #2563eb, #14b8a6)");
+    expect(legacyEntrypointStyles).not.toContain("rgb(22 163 74 / 0.12)");
+
+    expect(selectorBlock(".site-orbit")).not.toContain("filter: blur(1px)");
+    expect(selectorBlock(".site-terminal-card span")).toContain("letter-spacing: 0");
+    expect(selectorBlock(".company-site-section-heading span,\n.company-site-band span")).toContain("letter-spacing: 0");
+    expect(selectorBlock(".company-site-effect-copy span")).toContain("letter-spacing: 0");
+    expect(selectorBlock(".company-site-workflow-header span")).toContain("font-weight: 800");
+    expect(selectorBlock(".site-effect-step span")).toContain("font-weight: 800");
+    expect(publicSiteStyles).not.toContain("font-weight: 900");
+    expect(publicSiteStyles).not.toMatch(/letter-spacing:\s*0\.0[6-8]em/);
+    expect(responsiveStyles).toMatch(/\.site-effect-flow,[\s\S]*\.site-orbit,[\s\S]*\.site-terminal-card:hover/);
+
+    expect(faviconSvg).toContain("GlobalCircle AI Proxy Gateway");
+    expect(faviconSvg).toContain("<circle cx=\"32\" cy=\"32\"");
+    expect(faviconSvg).not.toContain("M18 22h15");
   });
 });

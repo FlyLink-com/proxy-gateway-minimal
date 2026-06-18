@@ -794,7 +794,7 @@
 
 .portal-status-indicator.active .portal-status-dot {
   background: #16a34a;
-  box-shadow: 0 0 0 4px rgb(22 163 74 / 0.12);
+  box-shadow: 0 0 0 4px rgba(22, 163, 74, 0.12);
 }
 
 .portal-dashboard-grid,
@@ -844,15 +844,16 @@
 .portal-traffic-meter {
   height: 10px;
   border-radius: 999px;
-  background: #f3f4f6;
+  background: #eef2f7;
   overflow: hidden;
 }
 
 .portal-traffic-meter span {
   display: block;
   height: 100%;
+  min-width: 4px;
   border-radius: inherit;
-  background: #000000;
+  background: linear-gradient(90deg, #2563eb, #14b8a6);
 }
 
 .portal-quick-grid,

@@ -1,4 +1,7 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Proxy Gateway">
-  <rect width="64" height="64" rx="14" fill="#0f172a" />
-  <path d="M18 22h15c8 0 13 4 13 11s-5 11-13 11h-7v7h-8V22Zm8 7v8h7c3 0 5-1 5-4s-2-4-5-4h-7Z" fill="#38bdf8" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="GlobalCircle AI Proxy Gateway">
+  <rect width="64" height="64" rx="16" fill="#0f172a" />
+  <circle cx="32" cy="32" r="20" fill="#0f766e" />
+  <path d="M32 12a20 20 0 0 1 18.3 28.1h-9.7A11.8 11.8 0 0 0 32 20.2V12Z" fill="#38bdf8" />
+  <path d="M50.3 40.1A20 20 0 0 1 13.7 24H23a11.8 11.8 0 0 0 17.6 16.1h9.7Z" fill="#22c55e" />
+  <circle cx="32" cy="32" r="8" fill="#f8fafc" />
 </svg>

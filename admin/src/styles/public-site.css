@@ -317,7 +317,6 @@
   position: absolute;
   border-radius: 999px;
   background: rgba(45, 212, 191, 0.16);
-  filter: blur(1px);
   animation: site-pulse 7s ease-in-out infinite;
 }
 
@@ -428,7 +427,7 @@
   color: #93c5fd;
   font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.06em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -472,7 +471,7 @@
   font-weight: 800;
   font-size: 13px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .company-site-section-heading h2,
@@ -553,7 +552,7 @@
   font-weight: 800;
   font-size: 13px;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
 }
 
 .company-site-effect-copy h2 {
@@ -672,7 +671,7 @@
 .company-site-workflow-header span {
   color: #93c5fd;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 800;
 }
 
 .company-site-workflow-header strong {
@@ -704,7 +703,7 @@
 .site-effect-step span {
   color: #93c5fd;
   font-size: 12px;
-  font-weight: 900;
+  font-weight: 800;
 }
 
 .site-effect-step strong {
