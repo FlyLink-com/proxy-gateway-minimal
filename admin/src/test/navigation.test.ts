@@ -365,6 +365,30 @@ describe("admin navigation", () => {
     expect(screen.getByRole("button", { name: "Usage & Channels" }).getAttribute("aria-current")).toBe("page");
   });
 
+  test("opens cross-page plugins from the app map route", async () => {
+    saveAdminSession({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "admin_console_ref"
+    });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input))));
+
+    render(createElement(App));
+
+    expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
+    const workspaceAppbar = screen.getByLabelText("Workspace appbar");
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
+    const librarySearch = within(workspaceAppbar).getByLabelText("Search app library");
+    fireEvent.change(librarySearch, { target: { value: "quota" } });
+
+    const pluginApps = within(workspaceAppbar).getByLabelText("Plugins");
+    fireEvent.click(within(pluginApps).getByRole("button", { name: /Quota & Usage/ }));
+
+    expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Accounts & Resources" }).getAttribute("aria-current")).toBe("page");
+    expect((within(workspaceAppbar).getByLabelText("Search app library") as HTMLInputElement).value).toBe("");
+  });
+
   test("routes the risk notification badge back to the operations dashboard", async () => {
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
