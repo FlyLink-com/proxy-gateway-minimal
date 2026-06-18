@@ -1,11 +1,13 @@
 .admin-shell {
   min-height: 100vh;
   display: block;
+  isolation: isolate;
+  overflow-x: hidden;
   background:
-    linear-gradient(rgba(37, 99, 235, var(--admin-canvas-grid-alpha-strong)) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(20, 184, 166, var(--admin-canvas-grid-alpha)) 1px, transparent 1px),
-    linear-gradient(180deg, #fbfdff 0%, #f7faff 260px, #f2f6fb 100%),
-    var(--admin-bg);
+    linear-gradient(rgba(37, 99, 235, var(--admin-desktop-grid-alpha-strong)) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(20, 184, 166, var(--admin-desktop-grid-alpha)) 1px, transparent 1px),
+    linear-gradient(180deg, var(--admin-desktop-bg-top) 0%, var(--admin-desktop-bg-mid) 280px, var(--admin-desktop-bg-bottom) 100%),
+    var(--admin-desktop-bg);
   background-size:
     var(--admin-canvas-grid-size) var(--admin-canvas-grid-size),
     var(--admin-canvas-grid-size) var(--admin-canvas-grid-size),
@@ -27,6 +29,19 @@
   opacity: var(--admin-noise-opacity);
 }
 
+.admin-shell::after {
+  content: "";
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  height: 132px;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, var(--admin-desktop-shelf) 100%);
+  border-top: 1px solid var(--admin-desktop-shelf-border);
+}
+
 .admin-shell > * {
   position: relative;
   z-index: 1;
@@ -41,18 +56,34 @@
   width: min(calc(100vw - (var(--admin-canvas-gutter) * 2)), var(--admin-appbar-width));
   margin: 0 auto;
   min-height: var(--admin-appbar-height);
-  background: var(--admin-chrome-surface);
+  background: var(--admin-dock-surface);
   color: var(--admin-text-soft);
   padding: var(--admin-appbar-padding);
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--admin-appbar-gap);
-  border: 1px solid var(--admin-chrome-border);
+  border: 1px solid var(--admin-dock-border);
   border-radius: var(--admin-radius-chrome);
-  box-shadow: var(--admin-shadow-chrome-2k);
+  box-shadow: var(--admin-dock-shadow);
   min-width: 0;
-  backdrop-filter: blur(8px) saturate(1);
+  backdrop-filter: blur(10px) saturate(1);
+  overflow: visible;
+}
+
+.app-sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  border-radius: calc(var(--admin-radius-chrome) - 1px);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0) 58%);
+  pointer-events: none;
+}
+
+.app-sidebar > * {
+  position: relative;
+  z-index: 1;
 }
 
 .brand {
@@ -831,7 +862,7 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
 .nav-item {
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-pill);
-  background: var(--admin-surface-muted);
+  background: rgba(248, 250, 252, 0.72);
   color: var(--admin-text-soft);
   display: inline-flex;
   align-items: center;
@@ -845,7 +876,7 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
   cursor: pointer;
   position: relative;
   text-align: center;
-  font-weight: 800;
+  font-weight: 700;
   transition:
     background var(--admin-ease),
     border-color var(--admin-ease),
@@ -890,8 +921,8 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
 }
 
 .nav-item-active {
-  background: var(--admin-selected-surface);
-  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.065);
+  background: rgba(239, 246, 255, 0.76);
+  box-shadow: 0 5px 14px rgba(37, 99, 235, 0.055);
 }
 
 .nav-item:hover .nav-item-icon,
@@ -1016,19 +1047,15 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
 
 .top-bar {
   min-height: var(--admin-statusbar-height);
-  border-bottom: 1px solid rgba(203, 213, 225, 0.52);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(248, 250, 252, 0.78)),
-    var(--admin-topbar-bg);
+  border-bottom: 1px solid var(--admin-statusbar-border);
+  background: var(--admin-statusbar-surface);
   padding: 6px var(--admin-statusbar-padding-x);
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 14px;
-  backdrop-filter: blur(16px) saturate(1.04);
-  box-shadow:
-    0 4px 12px rgba(15, 23, 42, 0.018),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px) saturate(1);
+  box-shadow: var(--admin-statusbar-shadow);
   position: sticky;
   top: 0;
   z-index: 20;
@@ -1067,17 +1094,17 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
 
 .top-bar-heading .top-bar-context {
   color: var(--admin-muted);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .top-bar-page-title {
   display: block;
   color: var(--admin-text);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 650;
   line-height: 1.15;
 }
 
@@ -1085,7 +1112,7 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
   max-width: min(680px, 58vw);
   color: var(--admin-text-soft);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1110,9 +1137,7 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
   min-height: 38px;
   border: 1px solid rgba(148, 163, 184, 0.24);
   border-radius: var(--admin-radius-pill);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(248, 250, 252, 0.62)),
-    var(--admin-surface);
+  background: rgba(255, 255, 255, 0.82);
   color: var(--admin-text-soft);
   cursor: pointer;
   display: inline-flex;
@@ -1121,9 +1146,9 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
   list-style: none;
   padding: 3px 9px 3px 5px;
   box-shadow:
-    0 3px 9px rgba(15, 23, 42, 0.026),
+    0 2px 6px rgba(15, 23, 42, 0.026),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(12px) saturate(1.02);
+  backdrop-filter: blur(8px) saturate(1);
   transition:
     background var(--admin-ease),
     border-color var(--admin-ease),
@@ -1163,7 +1188,7 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
 .operator-account-copy strong {
   color: var(--admin-text);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 650;
   line-height: 1.1;
 }
 

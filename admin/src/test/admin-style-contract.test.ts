@@ -94,6 +94,14 @@ describe("admin style token contract", () => {
   test("declares shared New Admin visual tokens", () => {
     [
       "--admin-bg",
+      "--admin-desktop-bg",
+      "--admin-desktop-bg-top",
+      "--admin-desktop-bg-mid",
+      "--admin-desktop-bg-bottom",
+      "--admin-desktop-grid-alpha",
+      "--admin-desktop-grid-alpha-strong",
+      "--admin-desktop-shelf",
+      "--admin-desktop-shelf-border",
       "--admin-surface",
       "--admin-surface-muted",
       "--admin-surface-raised",
@@ -106,6 +114,12 @@ describe("admin style token contract", () => {
       "--admin-glass-surface",
       "--admin-glass-surface-strong",
       "--admin-glass-border",
+      "--admin-statusbar-surface",
+      "--admin-statusbar-border",
+      "--admin-statusbar-shadow",
+      "--admin-dock-surface",
+      "--admin-dock-border",
+      "--admin-dock-shadow",
       "--admin-radius-panel",
       "--admin-radius-card",
       "--admin-radius-chrome",
@@ -192,25 +206,35 @@ describe("admin style token contract", () => {
     expect(selectorBlock("body")).toContain("-webkit-font-smoothing: antialiased");
     expect(selectorBlock("body")).toContain("-moz-osx-font-smoothing: grayscale");
     expect(selectorBlock(".admin-shell")).toContain("display: block");
-    expect(selectorBlock(".admin-shell")).toContain("var(--admin-bg)");
+    expect(selectorBlock(".admin-shell")).toContain("var(--admin-desktop-bg)");
+    expect(selectorBlock(".admin-shell")).toContain("var(--admin-desktop-bg-top)");
+    expect(selectorBlock(".admin-shell")).toContain("var(--admin-desktop-bg-mid)");
+    expect(selectorBlock(".admin-shell")).toContain("var(--admin-desktop-bg-bottom)");
     expect(selectorBlock(".admin-shell")).toContain("linear-gradient");
-    expect(selectorBlock(".admin-shell")).toContain("var(--admin-canvas-grid-alpha)");
+    expect(selectorBlock(".admin-shell")).toContain("var(--admin-desktop-grid-alpha)");
+    expect(selectorBlock(".admin-shell")).toContain("isolation: isolate");
     expect(selectorBlock(".admin-shell::before")).toContain("var(--admin-noise-opacity)");
+    expect(selectorBlock(".admin-shell::after")).toContain("var(--admin-desktop-shelf)");
+    expect(selectorBlock(".admin-shell::after")).toContain("var(--admin-desktop-shelf-border)");
     expect(selectorBlock(":root")).toContain("--admin-library-width: 900px");
     expect(selectorBlock(":root")).toContain("--admin-library-max-height: min(560px");
     expect(selectorBlock(":root")).toContain("--admin-appbar-width: 960px");
     expect(selectorBlock(":root")).toContain("--admin-shadow-floating-2k: 0 18px 44px");
-    expect(selectorBlock(".app-sidebar")).toContain("var(--admin-chrome-surface)");
-    expect(selectorBlock(".app-sidebar")).toContain("var(--admin-chrome-border)");
-    expect(selectorBlock(".app-sidebar")).toContain("var(--admin-shadow-chrome-2k)");
-    expect(selectorBlock(".app-sidebar")).toContain("box-shadow: var(--admin-shadow-chrome-2k)");
+    expect(selectorBlock(".app-sidebar")).toContain("var(--admin-dock-surface)");
+    expect(selectorBlock(".app-sidebar")).toContain("var(--admin-dock-border)");
+    expect(selectorBlock(".app-sidebar")).toContain("var(--admin-dock-shadow)");
+    expect(selectorBlock(".app-sidebar")).toContain("box-shadow: var(--admin-dock-shadow)");
+    expect(selectorBlock(".app-sidebar::before")).toContain("linear-gradient");
+    expect(selectorBlock(".app-sidebar > *")).toContain("z-index: 1");
     expect(selectorBlock(".app-sidebar")).toContain("position: fixed");
     expect(selectorBlock(".app-sidebar")).toContain("bottom: var(--admin-appbar-bottom)");
-    expect(selectorBlock(".top-bar")).toContain("var(--admin-topbar-bg)");
+    expect(selectorBlock(".top-bar")).toContain("var(--admin-statusbar-surface)");
+    expect(selectorBlock(".top-bar")).toContain("var(--admin-statusbar-border)");
+    expect(selectorBlock(".top-bar")).toContain("var(--admin-statusbar-shadow)");
     expect(selectorBlock(".top-bar")).toContain("var(--admin-statusbar-height)");
     expect(selectorBlock(".top-bar")).toContain("position: sticky");
     expect(selectorBlock(":root")).toContain("--admin-statusbar-height: 48px");
-    expect(selectorBlock(".top-bar")).toContain("backdrop-filter: blur(16px)");
+    expect(selectorBlock(".top-bar")).toContain("backdrop-filter: blur(10px)");
     expect(selectorBlock(".admin-content")).toContain("var(--admin-content-padding)");
     expect(selectorBlock(".admin-content")).toContain("var(--admin-canvas-max-width)");
     expect(selectorBlock(".dashboard-panel")).toContain("var(--admin-radius-panel)");
@@ -380,7 +404,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-app-icon")).toContain("var(--admin-library-icon-size)");
     expect(selectorBlock(".nav-app-icon-dock")).toContain("var(--admin-app-icon-dock-size)");
     expect(selectorBlock(".sidebar-safety-summary")).toContain("min-height: 42px");
-    expect(styles).toMatch(/\.nav-item-active\s*\{[\s\S]*0 6px 16px rgba\(37, 99, 235, 0\.065\)/m);
+    expect(styles).toMatch(/\.nav-item-active\s*\{[\s\S]*0 5px 14px rgba\(37, 99, 235, 0\.055\)/m);
     expect(selectorBlock(".nav-item")).toContain("transition:");
     expect(selectorBlock(".environment-pill,\n.protected-console,\n.icon-button")).toContain("min-height: var(--admin-control-height)");
     expect(selectorBlock(".operator-account-summary")).toContain("min-height: 38px");

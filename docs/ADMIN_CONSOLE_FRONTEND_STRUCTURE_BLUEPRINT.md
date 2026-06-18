@@ -1,6 +1,6 @@
 # Admin Console Frontend Structure Blueprint
 
-Last updated: 2026-06-17, America/Los_Angeles.
+Last updated: 2026-06-18, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-73 under GCC-42
@@ -122,6 +122,10 @@ The container model also defines the first visual style baseline:
 
 - Shell, top bar, panels, subnav, widgets, and popovers must use shared Admin
   CSS tokens rather than one-off color/radius/shadow values.
+- The desktop theme is part of the shell contract: canvas background,
+  coordinate grid, bottom shelf, status bar, and dock each use dedicated tokens
+  (`--admin-desktop-*`, `--admin-statusbar-*`, `--admin-dock-*`) so future
+  pages do not restyle the operator desktop one component at a time.
 - Phase 4 visual work must follow `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md`
   before adding App Library, plugin, workspace, chrome, or drag/resize
   behaviors.
