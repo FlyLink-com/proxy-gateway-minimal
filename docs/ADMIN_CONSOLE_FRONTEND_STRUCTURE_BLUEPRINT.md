@@ -257,7 +257,7 @@ flowchart TD
 
   Risk --> R1["Top computed candidates"]
   Risk --> R2["Severity filters"]
-  Risk --> R3["Reason taxonomy"]
+  Risk --> R3["Reason: quota / delay / receipt"]
 
   Next --> N1["Open Accounts & Resources"]
   Next --> N2["Open Usage & Channels"]
@@ -303,7 +303,7 @@ flowchart TD
   Quota --> Q2["Edited limit"]
   Quota --> Q3["Used / total"]
   Quota --> Q4["Measured channels as evidence"]
-  Quota --> Q5["Audit note placeholder"]
+  Quota --> Q5["Audit note required gate"]
 
   Lifecycle --> L1["Account enabled/disabled"]
   Lifecycle --> L2["Order paused/expired"]
@@ -351,7 +351,7 @@ flowchart TD
   Ledger --> L1["Account safe ref"]
   Ledger --> L2["Order safe ref"]
   Ledger --> L3["Channel safe ref"]
-  Ledger --> L4["Upload / download / total"]
+  Ledger --> L4["Traffic: upload / download / total"]
   Ledger --> L5["Collected time"]
 
   Anomalies --> A1["Delayed collection"]
@@ -360,7 +360,7 @@ flowchart TD
   Anomalies --> A4["Missing receipt"]
 
   Receipts --> R1["Receipt freshness"]
-  Receipts --> R2["Collector availability"]
+  Receipts --> R2["Collectors: availability"]
   Receipts --> R3["Future safe diagnostics"]
 ```
 

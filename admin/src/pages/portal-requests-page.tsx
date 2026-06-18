@@ -24,11 +24,11 @@ const accountsResourcesBlueprint: BlueprintPage = {
       },
       purpose: "Directory of safe account refs, risk state, resource count, and review state.",
       contentFields: [
-        "User account safe ref",
-        "Account enabled or disabled state",
-        "Linked resource count",
-        "Risk summary",
-        "Last safe activity"
+        "Account ref · safe id",
+        "Account state · enabled / disabled",
+        "Resources · linked count",
+        "Risk · summary chip",
+        "Activity · last safe event"
       ],
       states: [
         "Empty directory",
@@ -56,11 +56,11 @@ const accountsResourcesBlueprint: BlueprintPage = {
       },
       purpose: "Group resources, orders, entitlements, and subscription artifact safe refs under the owning account.",
       contentFields: [
-        "Order safe ref",
-        "Plan and entitlement state",
-        "Subscription artifact safe ref presence",
-        "Delivery state",
-        "Associated channel safe refs"
+        "Order ref · safe id",
+        "Plan · entitlement state",
+        "Artifact · safe ref presence",
+        "Delivery · current state",
+        "Channels · safe refs only"
       ],
       states: [
         "Pending review",
@@ -88,11 +88,11 @@ const accountsResourcesBlueprint: BlueprintPage = {
       },
       purpose: "Own quota policy decisions while using usage collection only as evidence.",
       contentFields: [
-        "Default quota",
-        "Edited quota",
-        "Used / total",
-        "Measured channel count",
-        "Audit note placeholder"
+        "Default quota · policy value",
+        "Edited quota · review value",
+        "Usage · used / total",
+        "Measured channels · count",
+        "Audit note · required gate"
       ],
       states: [
         "Within quota",
@@ -120,11 +120,11 @@ const accountsResourcesBlueprint: BlueprintPage = {
       },
       purpose: "Plan account, order, artifact, expiry, revocation, pause, and archive states in one owner page.",
       contentFields: [
-        "Account lifecycle",
-        "Order pause or expiry candidate",
-        "Artifact revoked state",
-        "Archive candidate",
-        "Required evidence source"
+        "Account · lifecycle state",
+        "Order · pause / expiry candidate",
+        "Artifact · revoked state",
+        "Archive · candidate state",
+        "Evidence · required source"
       ],
       states: [
         "Active",
@@ -153,11 +153,11 @@ const accountsResourcesBlueprint: BlueprintPage = {
       },
       purpose: "Show safe computed events and case candidates until durable audit and case history exists.",
       contentFields: [
-        "Safe event label",
-        "Object safe ref",
-        "Source page",
-        "Case candidate reason",
-        "Future audit entry slot"
+        "Event · safe label",
+        "Object · safe ref",
+        "Source · owner page",
+        "Case · candidate reason",
+        "Audit · future entry slot"
       ],
       states: [
         "No computed events",

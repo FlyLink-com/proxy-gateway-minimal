@@ -43,16 +43,16 @@ describe("portal requests page", () => {
     expect(screen.getByLabelText("Configuration container contract")).not.toBeNull();
     expect(screen.getByLabelText("Audit / Workflow container contract")).not.toBeNull();
     expect(screen.getAllByText("Quota policy panel").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("User account safe ref").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Account ref · safe id").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Resources & Orders" })).not.toBeNull();
-    expect(screen.getAllByText("Subscription artifact safe ref presence").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Artifact · safe ref presence").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
-    expect(screen.getAllByText("Default quota").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Default quota · policy value").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Over limit")).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Lifecycle" })).not.toBeNull();
-    expect(screen.getAllByText("Order pause or expiry candidate").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Order · pause / expiry candidate").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "History & Events" })).not.toBeNull();
-    expect(screen.getAllByText("Future audit entry slot").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Audit · future entry slot").length).toBeGreaterThanOrEqual(1);
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(5);
     document.querySelectorAll(".admin-blueprint-module-notes").forEach((notes) => {
       expect(notes.hasAttribute("open")).toBe(false);

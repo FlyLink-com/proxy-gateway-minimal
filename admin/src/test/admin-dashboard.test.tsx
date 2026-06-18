@@ -51,10 +51,10 @@ describe("admin dashboard page", () => {
     expect(screen.getByRole("heading", { name: "Health Summary" })).not.toBeNull();
     expect(screen.getByLabelText("Monitoring container contract")).not.toBeNull();
     expect(screen.getAllByText("Overview metric widget set").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Platform health label and source note").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Platform health · summary state").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Risk Queue" })).not.toBeNull();
     expect(screen.getAllByLabelText("Audit / Workflow container contract").length).toBe(2);
-    expect(screen.getAllByText("Reason taxonomy").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Reason · quota / delay / receipt").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Next Actions" })).not.toBeNull();
     expect(screen.getAllByText("Wire route cards to section-level deep links after page modules are finalized.").length).toBeGreaterThanOrEqual(1);
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(3);

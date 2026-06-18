@@ -41,10 +41,10 @@ function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPag
         },
         purpose: "Summarize platform health without owning the account, quota, channel, or receipt detail collections.",
         contentFields: [
-          "Platform health label and source note",
-          "Risk count with severity split",
-          "Collection freshness P95 or latest observed age",
-          "Channel coverage percentage and safe availability note"
+          "Platform health · summary state",
+          "Risk counter · severity split",
+          "Freshness · P95 / latest age",
+          "Coverage · channel availability"
         ],
         states: [
           "Loading summary",
@@ -72,11 +72,11 @@ function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPag
         },
         purpose: "Show the highest-priority computed review candidates and the owner page that should handle them.",
         contentFields: [
-          "Severity",
-          "Reason taxonomy",
-          "Affected safe refs",
-          "Candidate count",
-          "Owner page target"
+          "Severity · high / medium / low",
+          "Reason · quota / delay / receipt",
+          "Affected refs · safe only",
+          "Candidates · bounded count",
+          "Owner route · page target"
         ],
         states: [
           "Empty queue",
@@ -104,10 +104,10 @@ function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPag
         },
         purpose: "Route operators to Accounts & Resources or Usage & Channels instead of repeating those collections here.",
         contentFields: [
-          "Owner page",
-          "Why this page owns the work",
-          "Gate status",
-          "Disabled future work areas"
+          "Owner page · action route",
+          "Reason · ownership handoff",
+          "Gate · review status",
+          "Future areas · locked"
         ],
         states: [
           "Ready route",

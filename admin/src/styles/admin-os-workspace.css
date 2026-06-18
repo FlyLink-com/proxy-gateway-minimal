@@ -657,13 +657,9 @@
   border: 1px solid color-mix(in srgb, var(--workbench-category-border, var(--admin-border)) 72%, transparent);
   border-left: 1px solid color-mix(in srgb, var(--workbench-category-border, var(--admin-border)) 78%, transparent);
   border-radius: var(--admin-radius-card);
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.9)),
-    color-mix(in srgb, var(--workbench-category-bg, rgba(239, 246, 255, 0.42)) 22%, white);
-  box-shadow:
-    var(--admin-shadow-plugin-rest),
-    0 0 0 1px rgba(255, 255, 255, 0.5);
-  backdrop-filter: blur(8px) saturate(1.01);
+  background: #ffffff;
+  box-shadow: var(--admin-shadow-plugin-rest);
+  backdrop-filter: none;
   contain: layout paint;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -690,6 +686,7 @@
   width: 2px;
   height: 100%;
   background: var(--admin-plugin-accent);
+  opacity: 0.82;
   pointer-events: none;
 }
 
@@ -697,7 +694,7 @@
   border-color: var(--workbench-category-color, var(--admin-info-border));
   box-shadow:
     var(--admin-shadow-plugin-hover),
-    0 0 0 1px color-mix(in srgb, var(--workbench-category-color, var(--admin-accent)) 18%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--workbench-category-color, var(--admin-accent)) 14%, transparent);
   transform: translateY(-1px);
 }
 
@@ -772,8 +769,8 @@
   align-items: center;
   justify-content: space-between;
   gap: var(--admin-plugin-header-gap);
-  border-bottom: 1px solid rgba(203, 213, 225, 0.36);
-  margin: -5px -5px 0;
+  border-bottom: 1px solid rgba(203, 213, 225, 0.46);
+  margin: -3px -2px 0;
   min-width: 0;
   padding: 4px 5px 10px;
 }
@@ -799,11 +796,11 @@
 .admin-blueprint-card-inline-tools {
   position: static;
   z-index: 8;
-  border: 1px solid color-mix(in srgb, var(--workbench-category-border, var(--admin-border)) 62%, transparent);
+  border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: var(--admin-radius-pill);
-  background: rgba(255, 255, 255, 0.64);
-  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
-  backdrop-filter: blur(12px) saturate(1.02);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035);
+  backdrop-filter: none;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1282,8 +1279,8 @@
 }
 
 .admin-blueprint-card-fields {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 190px), 1fr));
   gap: var(--admin-plugin-field-gap);
   grid-column: 1;
   list-style: none;
@@ -1293,21 +1290,38 @@
 }
 
 .admin-blueprint-card-fields li {
-  border: 1px solid var(--workbench-category-border, var(--admin-border));
-  border-radius: var(--admin-radius-pill);
-  background: color-mix(in srgb, var(--workbench-category-bg, var(--admin-surface-muted)) 54%, white);
+  position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-left: 3px solid var(--workbench-category-border, var(--admin-border));
+  border-radius: var(--admin-radius-control);
+  background: rgba(248, 250, 252, 0.72);
   color: var(--admin-text-soft);
+  display: flex;
+  align-items: center;
   max-width: 100%;
-  min-height: var(--admin-plugin-field-height);
-  padding: 3px 7px;
-  font-size: 11px;
-  font-weight: 650;
-  line-height: 1.25;
+  min-height: 32px;
+  padding: 5px 9px 5px 24px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
   overflow: visible;
   overflow-wrap: anywhere;
   text-overflow: clip;
   white-space: normal;
   box-shadow: none;
+}
+
+.admin-blueprint-card-fields li::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--workbench-category-color, var(--admin-accent));
+  opacity: 0.72;
+  transform: translateY(-50%);
 }
 
 .admin-blueprint-empty-workbench {

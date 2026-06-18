@@ -42,15 +42,15 @@ describe("subscription usage monitor page", () => {
     expect(screen.getAllByLabelText("Monitoring container contract").length).toBe(4);
     expect(screen.getByLabelText("Platform Tools container contract")).not.toBeNull();
     expect(screen.getAllByText("Safe diagnostics entry panel").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Latest observed usage age").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Latest usage · observed age").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Channel Coverage" })).not.toBeNull();
-    expect(screen.getAllByText("Measured channel count").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Measured channels · count").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Usage Ledger" })).not.toBeNull();
-    expect(screen.getAllByText("Upload / download / total").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Traffic · upload / download / total").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Collection Anomalies" })).not.toBeNull();
     expect(screen.getAllByText("Missing receipt").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Receipts & Collectors" })).not.toBeNull();
-    expect(screen.getAllByText("Collector availability").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Collectors · availability").length).toBeGreaterThanOrEqual(1);
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(5);
     document.querySelectorAll(".admin-blueprint-module-notes").forEach((notes) => {
       expect(notes.hasAttribute("open")).toBe(false);
