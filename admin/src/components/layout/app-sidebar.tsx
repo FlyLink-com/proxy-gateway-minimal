@@ -4,7 +4,6 @@ import {
   ExternalLink,
   Lock,
   PanelTopOpen,
-  Settings,
   ShieldCheck,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type ToggleEvent } from "react";
@@ -72,13 +71,22 @@ export function AppSidebar({
       return;
     }
 
-    const focusSearch = () => appLibrarySearchRef.current?.focus();
+    const resetLibraryViewport = () => {
+      const libraryViewport = appLibraryRef.current?.querySelector<HTMLElement>(".nav-planned-list");
+      libraryViewport?.scrollTo?.({
+        top: 0
+      });
+      if (libraryViewport && typeof libraryViewport.scrollTo !== "function") {
+        libraryViewport.scrollTop = 0;
+      }
+      appLibrarySearchRef.current?.focus();
+    };
     if (typeof window.requestAnimationFrame === "function") {
-      const animationFrame = window.requestAnimationFrame(focusSearch);
+      const animationFrame = window.requestAnimationFrame(resetLibraryViewport);
       return () => window.cancelAnimationFrame(animationFrame);
     }
 
-    const timer = window.setTimeout(focusSearch, 0);
+    const timer = window.setTimeout(resetLibraryViewport, 0);
     return () => window.clearTimeout(timer);
   }, [appLibraryOpen]);
 
@@ -230,22 +238,26 @@ export function AppSidebar({
         </button>
       ) : null}
       {connectionPanel && visibleUtilityAppById.has("utility.admin-api") ? (
-        <details className={cn("connection-widget nav-library-connection", visibleUtilityAppById.get("utility.admin-api")?.tone)}>
-          <summary className="connection-widget-summary" aria-label="Admin API connection settings">
-            <span
-              className={connectionConfigured ? "connection-dot connection-dot-ready" : "connection-dot connection-dot-warning"}
-              aria-hidden="true"
-            />
-            <span className="connection-widget-copy">
-              <span>Admin API</span>
-              <strong>{connectionConfigured ? "Configured" : "Configure"}</strong>
-            </span>
-            <Settings aria-hidden="true" />
-          </summary>
-          <div className="connection-widget-popover">
-            {connectionPanel}
-          </div>
-        </details>
+        <button
+          aria-label="Admin API connection settings"
+          className={cn("nav-library-utility nav-library-connection", visibleUtilityAppById.get("utility.admin-api")?.tone)}
+          type="button"
+          onClick={() => {
+            closeAppLibrary();
+            onSearchChange("");
+            clearSearchAndNavigate("dashboard");
+          }}
+        >
+          <span
+            className={connectionConfigured ? "connection-dot connection-dot-ready" : "connection-dot connection-dot-warning"}
+            aria-hidden="true"
+          />
+          <span className="connection-widget-copy">
+            <span>Admin API</span>
+            <strong>{connectionConfigured ? "Configured" : "Configure"}</strong>
+          </span>
+          <small>{connectionConfigured ? "Configured" : "Configure"}</small>
+        </button>
       ) : null}
     </>
   ) : undefined;

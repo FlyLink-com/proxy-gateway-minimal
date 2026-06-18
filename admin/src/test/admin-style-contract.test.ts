@@ -346,12 +346,14 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-library-search")).toContain("var(--admin-radius-pill)");
     expect(selectorBlock(".nav-library-search input")).toContain("width: 100%");
     expect(selectorBlock(".nav-library-result-count")).toContain("var(--admin-radius-pill)");
+    expect(selectorBlock(".nav-library-toolbar")).toContain("position: static");
     expect(selectorBlock(".nav-library-utilities")).toContain("order: 1");
     expect(selectorBlock(".nav-library-pages")).toContain("order: 2");
     expect(selectorBlock(".nav-library-card-apps")).toContain("order: 3");
     expect(selectorBlock(".nav-library-utilities")).toContain("background: transparent");
     expect(selectorBlock(".nav-library-utility")).toContain("text-align: center");
     expect(selectorBlock(".nav-library-utility")).toContain("box-shadow: none");
+    expect(styles).not.toContain(".nav-library-connection .connection-widget-popover");
     expect(selectorBlock(".operator-account-summary")).toContain("min-height: 38px");
     expect(selectorBlock(".operator-account-copy small")).toContain("white-space: nowrap");
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-utility-grid,[\s\S]*\.nav-library-grid,[\s\S]*\.nav-library-grid-modules\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/m);

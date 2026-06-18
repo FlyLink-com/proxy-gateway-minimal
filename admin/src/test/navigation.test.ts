@@ -230,6 +230,7 @@ describe("admin navigation", () => {
     expect(appLibraryMenu?.hasAttribute("open")).toBe(true);
     expect(within(workspaceAppbar).getByLabelText("Console settings")).not.toBeNull();
     expect(within(workspaceAppbar).getByLabelText("Admin API connection settings")).not.toBeNull();
+    expect(within(workspaceAppbar).queryByText("Admin API connection")).toBeNull();
     expect(within(workspaceAppbar).getByRole("button", { name: "Preview site Public shell" })).not.toBeNull();
     expect(within(workspaceAppbar).getByRole("button", { name: "Open user portal User view" })).not.toBeNull();
     expect(within(workspaceAppbar).getByLabelText("Plugins")).not.toBeNull();

@@ -327,8 +327,7 @@
   gap: 8px;
   align-items: center;
   min-width: 0;
-  position: sticky;
-  top: 0;
+  position: static;
   z-index: 2;
   margin: 0;
   padding: 0 0 8px;
@@ -578,27 +577,6 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
   width: 100%;
 }
 
-.nav-library-connection .connection-widget-summary {
-  min-height: var(--admin-library-tile-height);
-  width: 100%;
-  border-color: transparent;
-  background: transparent;
-  box-shadow: none;
-  border-radius: var(--admin-radius-tile);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: center;
-  justify-items: center;
-  align-content: center;
-  gap: 6px;
-  padding: 6px 4px;
-  text-align: center;
-}
-
-.nav-library-connection .connection-widget-summary > svg {
-  display: none;
-}
-
 .nav-library-connection .connection-widget-copy {
   display: grid;
   gap: 2px;
@@ -618,13 +596,6 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
   display: none;
 }
 
-.nav-library-connection .connection-widget-popover {
-  position: absolute;
-  right: 14px;
-  bottom: calc(100% + 10px);
-  width: min(460px, calc(100vw - 32px));
-}
-
 .nav-library-empty {
   border: 1px dashed var(--admin-border-strong);
   border-radius: var(--admin-radius-panel);
@@ -637,7 +608,7 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
 
 .nav-library-utility:hover,
 .nav-library-utility[open],
-.nav-library-connection .connection-widget-summary:hover {
+.nav-library-connection:hover {
   border-color: rgba(191, 219, 254, 0.72);
   background: rgba(239, 246, 255, 0.48);
   color: var(--admin-accent-strong);
