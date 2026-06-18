@@ -34,6 +34,11 @@ import { type WorkbenchCategory } from "../components/primitives";
 
 export type AdminAppKind = "page" | "plugin" | "utility" | "planned";
 export type AdminAppStatus = "active" | "planned" | "locked";
+export type AdminAppEntryType = "workspace-app" | "plugin-module" | "planned-app" | "system-action";
+export type AdminAppLayoutSize = "large" | "medium" | "compact" | "icon-only" | "hidden";
+export type AdminAppRuntimeState = "normal" | "warning" | "blocked" | "readonly" | "planned" | "needs-config";
+export type AdminAppVisibility = "pinned" | "library" | "hidden" | "locked";
+export type AdminAppDataBoundary = "safe-summary-only";
 export type AdminAppLibraryGroup =
   | "workspace-pages"
   | "plugins"
@@ -63,6 +68,39 @@ export type AdminAppCatalogEntry = {
   searchableFields: string[];
   safetyBoundary: string;
   followUpTask: string;
+};
+
+export type AdminAppLayoutDefaults = {
+  allowedSizes: AdminAppLayoutSize[];
+  defaultPinned: boolean;
+  size: AdminAppLayoutSize;
+  visibility: AdminAppVisibility;
+};
+
+export type AdminAppAuthoringRoute = {
+  action: AdminAppRouteAction;
+  page?: AdminPage;
+  routeTarget: string;
+  targetId?: string;
+};
+
+export type AdminAppAuthoringManifest = {
+  appId: string;
+  title: string;
+  subtitle: string;
+  icon: string;
+  entryType: AdminAppEntryType;
+  category: WorkbenchCategory;
+  primaryObject: string;
+  capabilities: AdminAppCapability[];
+  routes: AdminAppAuthoringRoute[];
+  searchFields: string[];
+  layoutDefaults: AdminAppLayoutDefaults;
+  visibility: AdminAppVisibility;
+  riskTier: AdminAppRiskTier;
+  dataBoundary: AdminAppDataBoundary;
+  state: AdminAppRuntimeState;
+  forbiddenFields: string[];
 };
 
 export type AdminAppManifest = {
@@ -139,6 +177,54 @@ export type AdminAppMap = {
   plannedApps: readonly AdminAppManifest[];
   searchIndex: readonly AdminAppSearchIndexEntry[];
 };
+
+export const ADMIN_APP_AUTHORING_STANDARD = Object.freeze({
+  requiredFields: [
+    "appId",
+    "title",
+    "subtitle",
+    "icon",
+    "entryType",
+    "category",
+    "primaryObject",
+    "capabilities",
+    "routes",
+    "searchFields",
+    "layoutDefaults",
+    "visibility",
+    "riskTier",
+    "dataBoundary",
+    "state",
+    "forbiddenFields"
+  ],
+  entryTypes: ["workspace-app", "plugin-module", "planned-app", "system-action"],
+  layoutSizes: ["large", "medium", "compact", "icon-only", "hidden"],
+  states: ["normal", "warning", "blocked", "readonly", "planned", "needs-config"],
+  forbiddenFields: forbiddenSearchFieldLabels()
+} satisfies {
+  entryTypes: AdminAppEntryType[];
+  forbiddenFields: string[];
+  layoutSizes: AdminAppLayoutSize[];
+  requiredFields: Array<keyof Pick<AdminAppAuthoringManifest,
+    | "appId"
+    | "title"
+    | "subtitle"
+    | "icon"
+    | "entryType"
+    | "category"
+    | "primaryObject"
+    | "capabilities"
+    | "routes"
+    | "searchFields"
+    | "layoutDefaults"
+    | "visibility"
+    | "riskTier"
+    | "dataBoundary"
+    | "state"
+    | "forbiddenFields"
+  >>;
+  states: AdminAppRuntimeState[];
+});
 
 const FORBIDDEN_SEARCH_FIELD_PATTERNS = [
   /token/i,
@@ -422,6 +508,8 @@ export const adminAppManifest = Object.freeze([
 
 export const adminAppMap = createAdminAppMap(adminAppManifest);
 
+export const adminAppAuthoringManifest = createAdminAppAuthoringManifest(adminAppManifest);
+
 export function getWorkspacePageApps() {
   return adminAppManifest.filter((app) => app.library.group === "workspace-pages");
 }
@@ -459,6 +547,14 @@ export function getAdminAppMap(apps: readonly AdminAppManifest[] = adminAppManif
   }
 
   return createAdminAppMap(apps);
+}
+
+export function getAdminAppAuthoringManifest(apps: readonly AdminAppManifest[] = adminAppManifest): AdminAppAuthoringManifest[] {
+  if (apps === adminAppManifest) {
+    return adminAppAuthoringManifest;
+  }
+
+  return createAdminAppAuthoringManifest(apps);
 }
 
 export function createAppLibrarySearchIndex(apps: readonly AdminAppManifest[] = adminAppManifest): AdminAppSearchIndexEntry[] {
@@ -549,6 +645,32 @@ function createCatalogEntry(entry: AdminAppCatalogEntry): AdminAppCatalogEntry {
     primaryObjects: [...entry.primaryObjects],
     searchableFields: [...entry.searchableFields]
   };
+}
+
+function createAdminAppAuthoringManifest(apps: readonly AdminAppManifest[]): AdminAppAuthoringManifest[] {
+  return apps.map((app) => ({
+    appId: app.id,
+    capabilities: [...app.safety.capabilities],
+    category: app.category,
+    dataBoundary: app.safety.redaction,
+    entryType: entryTypeForApp(app.kind),
+    forbiddenFields: [...app.safety.forbiddenFields],
+    icon: app.iconKey,
+    layoutDefaults: layoutDefaultsForApp(app),
+    primaryObject: app.catalog.primaryObjects[0],
+    riskTier: app.safety.riskTier,
+    routes: [{
+      action: app.route.action,
+      page: app.route.page,
+      routeTarget: routeTargetForApp(app),
+      targetId: app.route.targetId
+    }],
+    searchFields: safeSearchableFieldsForApp(app),
+    state: runtimeStateForApp(app),
+    subtitle: app.catalog.zhName,
+    title: app.catalog.enName,
+    visibility: visibilityForApp(app)
+  }));
 }
 
 function createWorkspacePageApps(): AdminAppManifest[] {
@@ -863,6 +985,62 @@ function routeTargetForApp(app: AdminAppManifest) {
     return app.route.page;
   }
   return app.id;
+}
+
+function entryTypeForApp(kind: AdminAppKind): AdminAppEntryType {
+  if (kind === "page") return "workspace-app";
+  if (kind === "plugin") return "plugin-module";
+  if (kind === "planned") return "planned-app";
+  return "system-action";
+}
+
+function layoutDefaultsForApp(app: AdminAppManifest): AdminAppLayoutDefaults {
+  if (app.kind === "page") {
+    return {
+      allowedSizes: ["large", "compact", "icon-only"],
+      defaultPinned: true,
+      size: "large",
+      visibility: "pinned"
+    };
+  }
+
+  if (app.kind === "plugin") {
+    return {
+      allowedSizes: ["large", "medium", "compact", "hidden"],
+      defaultPinned: false,
+      size: "medium",
+      visibility: "library"
+    };
+  }
+
+  if (app.kind === "planned") {
+    return {
+      allowedSizes: ["icon-only"],
+      defaultPinned: false,
+      size: "icon-only",
+      visibility: "locked"
+    };
+  }
+
+  return {
+    allowedSizes: ["icon-only", "hidden"],
+    defaultPinned: false,
+    size: "icon-only",
+    visibility: "library"
+  };
+}
+
+function runtimeStateForApp(app: AdminAppManifest): AdminAppRuntimeState {
+  if (app.kind === "planned" || app.status === "planned") return "planned";
+  if (app.id === "utility.environment") return "readonly";
+  if (app.id === "utility.admin-api") return "needs-config";
+  return "normal";
+}
+
+function visibilityForApp(app: AdminAppManifest): AdminAppVisibility {
+  if (app.kind === "planned") return "locked";
+  if (app.library.defaultPinned) return "pinned";
+  return "library";
 }
 
 function safeSearchableFieldsForApp(app: AdminAppManifest) {

@@ -1,7 +1,10 @@
 import { describe, expect, test } from "vitest";
 import {
+  ADMIN_APP_AUTHORING_STANDARD,
   adminAppManifest,
+  adminAppAuthoringManifest,
   createAppLibrarySearchIndex,
+  getAdminAppAuthoringManifest,
   getAdminAppMap,
   getPlannedApps,
   getPluginApp,
@@ -14,6 +17,55 @@ import {
 import { pageSubNavigation } from "../app/navigation";
 
 describe("admin app manifest", () => {
+  test("defines the App Manifest authoring standard", () => {
+    expect(ADMIN_APP_AUTHORING_STANDARD.requiredFields).toEqual([
+      "appId",
+      "title",
+      "subtitle",
+      "icon",
+      "entryType",
+      "category",
+      "primaryObject",
+      "capabilities",
+      "routes",
+      "searchFields",
+      "layoutDefaults",
+      "visibility",
+      "riskTier",
+      "dataBoundary",
+      "state",
+      "forbiddenFields"
+    ]);
+    expect(ADMIN_APP_AUTHORING_STANDARD.entryTypes).toEqual([
+      "workspace-app",
+      "plugin-module",
+      "planned-app",
+      "system-action"
+    ]);
+    expect(ADMIN_APP_AUTHORING_STANDARD.layoutSizes).toEqual([
+      "large",
+      "medium",
+      "compact",
+      "icon-only",
+      "hidden"
+    ]);
+    expect(ADMIN_APP_AUTHORING_STANDARD.states).toEqual([
+      "normal",
+      "warning",
+      "blocked",
+      "readonly",
+      "planned",
+      "needs-config"
+    ]);
+    expect(ADMIN_APP_AUTHORING_STANDARD.forbiddenFields).toEqual(expect.arrayContaining([
+      "token",
+      "credential",
+      "subscription URL",
+      "SQLite row",
+      "raw session/env/config/log"
+    ]));
+  });
+
   test("defines the first control-plane workspace apps", () => {
     expect(getWorkspacePageApps().map((app) => app.id)).toEqual([
       "operations-overview",
@@ -155,6 +207,100 @@ describe("admin app manifest", () => {
       expect(app.catalog.searchableFields.length).toBeGreaterThan(0);
       expect(app.catalog.safetyBoundary).toMatch(/safe|locked|console/i);
       expect(app.catalog.followUpTask).toMatch(/^GCC-/);
+    });
+  });
+
+  test("derives app authoring manifests from the app map without unsafe fields", () => {
+    const authoringManifest = getAdminAppAuthoringManifest();
+    const byId = new Map(authoringManifest.map((app) => [app.appId, app]));
+
+    expect(authoringManifest).toBe(adminAppAuthoringManifest);
+    expect(authoringManifest).toHaveLength(adminAppManifest.length);
+    expect(new Set(authoringManifest.map((app) => app.appId)).size).toBe(authoringManifest.length);
+
+    expect(byId.get("operations-overview")).toMatchObject({
+      appId: "operations-overview",
+      category: "monitoring",
+      dataBoundary: "safe-summary-only",
+      entryType: "workspace-app",
+      icon: "grid",
+      layoutDefaults: {
+        defaultPinned: true,
+        size: "large",
+        visibility: "pinned"
+      },
+      primaryObject: "platform health",
+      riskTier: "B",
+      routes: [{
+        action: "navigate",
+        page: "dashboard",
+        routeTarget: "dashboard"
+      }],
+      state: "normal",
+      subtitle: "运营概览",
+      title: "Operations Overview",
+      visibility: "pinned"
+    });
+    expect(byId.get("accounts-resources")).toMatchObject({
+      entryType: "workspace-app",
+      primaryObject: "user account",
+      subtitle: "账号与资源",
+      title: "Accounts & Resources"
+    });
+    expect(byId.get("usage-channels")).toMatchObject({
+      entryType: "workspace-app",
+      primaryObject: "usage sample",
+      subtitle: "使用情况和渠道",
+      title: "Usage & Channels"
+    });
+    expect(byId.get("plugin.quota-usage")).toMatchObject({
+      entryType: "plugin-module",
+      layoutDefaults: {
+        allowedSizes: ["large", "medium", "compact", "hidden"],
+        size: "medium",
+        visibility: "library"
+      },
+      routes: [{
+        action: "openPlugin",
+        page: "portalRequests",
+        routeTarget: "portalRequests#user-supervision-quota-usage",
+        targetId: "user-supervision-quota-usage"
+      }],
+      visibility: "library"
+    });
+    expect(byId.get("planned.platform-development")).toMatchObject({
+      entryType: "planned-app",
+      layoutDefaults: {
+        allowedSizes: ["icon-only"],
+        size: "icon-only",
+        visibility: "locked"
+      },
+      riskTier: "A",
+      state: "planned",
+      visibility: "locked"
+    });
+    expect(byId.get("utility.admin-api")).toMatchObject({
+      entryType: "system-action",
+      layoutDefaults: {
+        size: "icon-only",
+        visibility: "library"
+      },
+      state: "needs-config"
+    });
+    expect(byId.get("utility.environment")).toMatchObject({
+      entryType: "system-action",
+      state: "readonly"
+    });
+
+    authoringManifest.forEach((app) => {
+      expect(ADMIN_APP_AUTHORING_STANDARD.entryTypes).toContain(app.entryType);
+      expect(ADMIN_APP_AUTHORING_STANDARD.layoutSizes).toContain(app.layoutDefaults.size);
+      app.layoutDefaults.allowedSizes.forEach((size) => {
+        expect(ADMIN_APP_AUTHORING_STANDARD.layoutSizes).toContain(size);
+      });
+      expect(ADMIN_APP_AUTHORING_STANDARD.states).toContain(app.state);
+      expect(app.searchFields.join(" ")).not.toMatch(/token|secret|credential|subscription\s*url|auth\s*header|bearer|password|sqlite|raw\s/i);
+      expect(app.forbiddenFields).toEqual(expect.arrayContaining(["token", "credential", "SQLite row"]));
     });
   });
 

@@ -74,6 +74,10 @@ responsive behavior before implementation sub-agents continue.
 `docs/ADMIN_CONSOLE_APP_MAP.md` and `admin/src/app/admin-app-manifest.ts`
 define the active workspace apps, plugin apps, console utilities, planned apps,
 safe search fields, and follow-up task ownership used by the App Library.
+GCC-75 app authoring work uses
+`docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md`,
+`ADMIN_APP_AUTHORING_STANDARD`, and `adminAppAuthoringManifest` to standardize
+future app, plugin, utility, layout, state, and search registration.
 
 ## Tooling Roles
 
