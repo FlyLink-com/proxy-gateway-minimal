@@ -99,11 +99,11 @@ describe("admin dashboard page", () => {
 
     const riskResizeGrip = screen.getByRole("button", { name: "Risk Queue resize plugin display" });
     firePointerEvent(riskResizeGrip, "pointerdown", { button: 0, clientX: 100, clientY: 100, pointerId: 1 });
-    firePointerEvent(riskResizeGrip, "pointermove", { clientX: 300, clientY: 100, pointerId: 1 });
+    firePointerEvent(document, "pointermove", { clientX: 300, clientY: 100, pointerId: 1 });
     expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-large");
-    firePointerEvent(riskResizeGrip, "pointermove", { clientX: -120, clientY: 100, pointerId: 1 });
+    firePointerEvent(document, "pointermove", { clientX: -120, clientY: 100, pointerId: 1 });
     expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-small");
-    firePointerEvent(riskResizeGrip, "pointerup", { clientX: -120, clientY: 100, pointerId: 1 });
+    firePointerEvent(document, "pointerup", { clientX: -120, clientY: 100, pointerId: 1 });
 
     const riskResizeWest = screen.getByRole("button", { name: "Risk Queue resize w plugin display" });
     firePointerEvent(riskResizeWest, "pointerdown", { button: 0, clientX: 300, clientY: 100, pointerId: 2 });
@@ -268,11 +268,11 @@ function sectionAnchorOrder() {
 }
 
 function firePointerEvent(
-  element: Element,
+  element: EventTarget,
   type: string,
   init: Record<string, number>
 ) {
   const event = new Event(type, { bubbles: true, cancelable: true });
   Object.assign(event, init);
-  fireEvent(element, event);
+  fireEvent(element as Element, event);
 }

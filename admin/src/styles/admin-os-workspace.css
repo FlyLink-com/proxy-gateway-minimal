@@ -783,6 +783,17 @@
   min-width: 0;
 }
 
+.admin-blueprint-module-card-small .admin-blueprint-module-card-head {
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.admin-blueprint-module-card-small .admin-blueprint-module-card-meta {
+  flex-basis: 100%;
+  justify-items: start;
+  justify-self: stretch;
+}
+
 .admin-blueprint-module-status-stack {
   display: flex;
   align-items: flex-start;
@@ -812,6 +823,15 @@
   padding: 0 7px;
 }
 
+.admin-blueprint-module-card-small .admin-blueprint-card-inline-tools {
+  gap: 3px;
+  padding: 2px 3px;
+}
+
+.admin-blueprint-module-card-small .admin-blueprint-card-inline-tools .dashboard-status-badge {
+  display: none;
+}
+
 .admin-blueprint-icon-switch {
   appearance: none;
   width: 28px;
@@ -835,6 +855,11 @@
   width: 16px;
   height: 16px;
   stroke-width: 2;
+}
+
+.admin-blueprint-module-card-small .admin-blueprint-icon-switch {
+  width: 26px;
+  height: 26px;
 }
 
 .admin-blueprint-icon-switch:hover {
@@ -978,6 +1003,12 @@
 .admin-blueprint-module-card-resizing .admin-blueprint-card-resize-grip,
 .admin-blueprint-card-resize-grip:hover,
 .admin-blueprint-card-resize-grip:focus-visible {
+  border-color: var(--workbench-category-border, var(--admin-info-border));
+  box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
+  opacity: 1;
+}
+
+.admin-blueprint-module-card-editing .admin-blueprint-card-resize-se {
   border-color: var(--workbench-category-border, var(--admin-info-border));
   box-shadow: 0 3px 10px rgba(15, 23, 42, 0.08);
   opacity: 1;

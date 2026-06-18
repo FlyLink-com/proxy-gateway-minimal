@@ -307,6 +307,7 @@ describe("admin style token contract", () => {
     expect(styles).not.toContain(".admin-blueprint-module-card:hover .admin-blueprint-card-resize-w");
     expect(styles).not.toContain(".admin-blueprint-module-card:hover .admin-blueprint-card-resize-n");
     expect(styles).not.toContain(".admin-blueprint-module-card:hover .admin-blueprint-card-resize-s");
+    expect(selectorBlock(".admin-blueprint-module-card-editing .admin-blueprint-card-resize-se")).toContain("opacity: 1");
     expect(selectorBlock(".admin-blueprint-card-resize-e,\n.admin-blueprint-card-resize-w")).toContain("cursor: ew-resize");
     expect(selectorBlock(".admin-blueprint-card-resize-n,\n.admin-blueprint-card-resize-s")).toContain("cursor: ns-resize");
     expect(selectorBlock(".admin-blueprint-card-resize-se")).toContain("cursor: nwse-resize");
@@ -354,6 +355,12 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-card-height-tall")).toContain("var(--admin-plugin-height-tall)");
     expect(selectorBlock(".admin-blueprint-module-card-height-tall")).toContain("grid-row: span var(--admin-plugin-height-tall-rows)");
     expect(styles).toContain(".admin-blueprint-module-card-small > .admin-blueprint-actions");
+    expect(selectorBlock(".admin-blueprint-module-card-small .admin-blueprint-card-inline-tools")).toContain("gap: 3px");
+    expect(selectorBlock(".admin-blueprint-module-card-small .admin-blueprint-card-inline-tools .dashboard-status-badge")).toContain("display: none");
+    expect(selectorBlock(".admin-blueprint-module-card-small .admin-blueprint-icon-switch")).toContain("width: 26px");
+    expect(selectorBlock(".admin-blueprint-module-card-small .admin-blueprint-module-card-head")).toContain("flex-wrap: wrap");
+    expect(selectorBlock(".admin-blueprint-module-card-small .admin-blueprint-module-card-meta")).toContain("flex-basis: 100%");
+    expect(selectorBlock(".admin-blueprint-module-card-small .admin-blueprint-module-card-meta")).toContain("justify-items: start");
     expect(selectorBlock(".admin-blueprint-card-drag-handle")).toContain("cursor: grab");
     expect(selectorBlock(".admin-blueprint-card-drag-handle")).toContain("touch-action: none");
     expect(selectorBlock(".admin-blueprint-module-card-resizing")).toContain("user-select: none");

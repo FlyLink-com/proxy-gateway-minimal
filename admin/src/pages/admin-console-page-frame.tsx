@@ -130,6 +130,31 @@ export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage 
     }));
   };
 
+  const applyModuleResize = useCallback((session: ModuleResizeSession, clientX: number, clientY: number) => {
+    const nextLayout = layoutFromResizeDrag(
+      session.startSize,
+      session.startHeight,
+      session.direction,
+      clientX - session.startX,
+      clientY - session.startY
+    );
+    setModuleLayout((current) => {
+      const baseLayout = current[session.navId] ?? defaultModuleLayout[session.navId] ?? defaultModuleLayoutState();
+      const nextState = resizeModuleLayoutState(baseLayout, { ...nextLayout, visible: true });
+      if (
+        baseLayout.height === nextState.height &&
+        baseLayout.size === nextState.size &&
+        baseLayout.visible === nextState.visible
+      ) {
+        return current;
+      }
+      return {
+        ...current,
+        [session.navId]: nextState
+      };
+    });
+  }, [defaultModuleLayout]);
+
   const hideModuleLayout = (navId: string) => {
     setModuleLayout((current) => ({
       ...current,
@@ -219,6 +244,35 @@ export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage 
     };
   }, [reorderModule]);
 
+  useEffect(() => {
+    const handlePointerMove = (event: globalThis.PointerEvent) => {
+      const session = resizeSessionRef.current;
+      if (!session) {
+        return;
+      }
+      event.preventDefault();
+      applyModuleResize(session, event.clientX, event.clientY);
+    };
+
+    const handlePointerEnd = (event: globalThis.PointerEvent) => {
+      if (!resizeSessionRef.current) {
+        return;
+      }
+      event.preventDefault();
+      resizeSessionRef.current = null;
+      setResizingModule(null);
+    };
+
+    document.addEventListener("pointermove", handlePointerMove);
+    document.addEventListener("pointerup", handlePointerEnd);
+    document.addEventListener("pointercancel", handlePointerEnd);
+    return () => {
+      document.removeEventListener("pointermove", handlePointerMove);
+      document.removeEventListener("pointerup", handlePointerEnd);
+      document.removeEventListener("pointercancel", handlePointerEnd);
+    };
+  }, [applyModuleResize]);
+
   const beginModuleResize = (
     event: PointerEvent<HTMLButtonElement>,
     navId: string,
@@ -231,6 +285,8 @@ export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage 
     event.preventDefault();
     event.stopPropagation();
     event.currentTarget.setPointerCapture?.(event.pointerId);
+    moveSessionRef.current = null;
+    setDraggingModule(null);
     resizeSessionRef.current = {
       navId,
       direction,
@@ -249,14 +305,7 @@ export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage 
     }
     event.preventDefault();
     event.stopPropagation();
-    const nextLayout = layoutFromResizeDrag(
-      session.startSize,
-      session.startHeight,
-      session.direction,
-      event.clientX - session.startX,
-      event.clientY - session.startY
-    );
-    updateModuleLayout(navId, { ...nextLayout, visible: true });
+    applyModuleResize(session, event.clientX, event.clientY);
   };
 
   const endModuleResize = (event: PointerEvent<HTMLButtonElement>, navId: string) => {

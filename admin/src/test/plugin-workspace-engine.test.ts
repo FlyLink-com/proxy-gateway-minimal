@@ -43,6 +43,26 @@ describe("plugin workspace engine", () => {
   });
 
   test("turns edge drag distance into discrete width and height states", () => {
+    expect(layoutFromResizeDrag("medium", "medium", "e", 90, 0)).toEqual({
+      height: "medium",
+      size: "large"
+    });
+    expect(layoutFromResizeDrag("medium", "medium", "w", 90, 0)).toEqual({
+      height: "medium",
+      size: "small"
+    });
+    expect(layoutFromResizeDrag("medium", "medium", "s", 0, 60)).toEqual({
+      height: "tall",
+      size: "medium"
+    });
+    expect(layoutFromResizeDrag("medium", "medium", "n", 0, 60)).toEqual({
+      height: "short",
+      size: "medium"
+    });
+    expect(layoutFromResizeDrag("medium", "medium", "e", 40, 40)).toEqual({
+      height: "medium",
+      size: "medium"
+    });
     expect(layoutFromResizeDrag("medium", "medium", "se", 190, 130)).toEqual({
       height: "tall",
       size: "large"

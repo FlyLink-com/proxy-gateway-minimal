@@ -78,16 +78,23 @@ export function layoutFromResizeDrag(
       ? safeDeltaY
       : 0;
   const horizontalSteps = direction.includes("e") || direction.includes("w")
-    ? Math.trunc(horizontalDelta / PLUGIN_RESIZE_HORIZONTAL_STEP)
+    ? resizeStepFromDelta(horizontalDelta, PLUGIN_RESIZE_HORIZONTAL_STEP)
     : 0;
   const verticalSteps = direction.includes("n") || direction.includes("s")
-    ? Math.trunc(verticalDelta / PLUGIN_RESIZE_VERTICAL_STEP)
+    ? resizeStepFromDelta(verticalDelta, PLUGIN_RESIZE_VERTICAL_STEP)
     : 0;
 
   return {
     height: resizeDiscreteValue(PLUGIN_DISPLAY_HEIGHTS, startHeight, verticalSteps),
     size: resizeDiscreteValue(PLUGIN_DISPLAY_SIZES, startSize, horizontalSteps)
   };
+}
+
+function resizeStepFromDelta(delta: number, stepSize: number) {
+  if (!Number.isFinite(delta) || !Number.isFinite(stepSize) || stepSize <= 0) {
+    return 0;
+  }
+  return Math.round(delta / stepSize);
 }
 
 function resizeDiscreteValue<T extends string>(order: T[], startValue: T, steps: number): T {
