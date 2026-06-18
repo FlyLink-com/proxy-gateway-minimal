@@ -89,7 +89,7 @@
   min-height: 22px;
   padding: 0 8px;
   font-size: 11px;
-  font-weight: 650;
+  font-weight: 700;
   line-height: 1;
   white-space: nowrap;
 }
@@ -200,7 +200,7 @@
 
 .ops-metric-trend-line {
   stroke: currentColor;
-  stroke-width: 2.5;
+  stroke-width: 2;
 }
 
 .ops-metric-icon {
@@ -212,8 +212,8 @@
 }
 
 .ops-metric-icon svg {
-  width: 19px;
-  height: 19px;
+  width: 20px;
+  height: 20px;
 }
 
 .ops-metric-success {
@@ -392,9 +392,9 @@
 }
 
 .admin-blueprint-card-tool-trigger svg {
-  width: 15px;
-  height: 15px;
-  stroke-width: 2.3;
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
 }
 
 .admin-blueprint-disclosure {
@@ -574,8 +574,8 @@
   display: block;
   color: var(--admin-text);
   font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -620,8 +620,8 @@
 .admin-blueprint-next-step strong {
   color: var(--admin-text);
   font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -828,9 +828,9 @@
 }
 
 .admin-blueprint-icon-switch svg {
-  width: 13px;
-  height: 13px;
-  stroke-width: 2.4;
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
 }
 
 .admin-blueprint-icon-switch:hover {
@@ -952,11 +952,11 @@
 }
 
 .admin-blueprint-card-resize-grip svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   opacity: 0.45;
   rotate: -45deg;
-  stroke-width: 2.5;
+  stroke-width: 2;
 }
 
 .admin-blueprint-card-resize-e svg,
@@ -1016,7 +1016,7 @@
   appearance: none;
   position: absolute;
   top: 3px;
-  left: -2px;
+  left: 3px;
   width: 16px;
   height: 22px;
   border: 0;
@@ -1026,7 +1026,7 @@
   cursor: grab;
   display: inline-grid;
   place-items: center;
-  opacity: 0.44;
+  opacity: 0.72;
   padding: 0;
   touch-action: none;
   z-index: 4;
@@ -1037,9 +1037,9 @@
 }
 
 .admin-blueprint-card-drag-handle svg {
-  width: 14px;
-  height: 14px;
-  stroke-width: 2.4;
+  width: 16px;
+  height: 16px;
+  stroke-width: 2;
 }
 
 .admin-blueprint-module-card:active .admin-blueprint-card-drag-handle,
@@ -1142,8 +1142,8 @@
   border-radius: 999px;
   padding: 0 8px;
   font-size: 10px;
-  font-weight: 650;
-  letter-spacing: 0.03em;
+  font-weight: 700;
+  letter-spacing: 0;
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -1203,8 +1203,8 @@
   color: var(--workbench-category-color, var(--admin-accent-strong));
   padding: 0 11px;
   font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
+  font-weight: 700;
+  letter-spacing: 0;
   cursor: pointer;
   user-select: none;
   overflow-wrap: anywhere;
@@ -1374,8 +1374,8 @@
 .admin-blueprint-module-contract dt {
   color: var(--admin-text);
   font-size: 12px;
-  font-weight: 650;
-  letter-spacing: 0.04em;
+  font-weight: 700;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -1527,8 +1527,8 @@
 }
 
 .dashboard-inline-ok svg {
-  width: 17px;
-  height: 17px;
+  width: 16px;
+  height: 16px;
 }
 
 .dashboard-status-badge {
@@ -2014,8 +2014,8 @@
 }
 
 .workstream-empty-checks svg {
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
   color: #16a34a;
 }
 

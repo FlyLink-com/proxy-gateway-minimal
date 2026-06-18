@@ -12,6 +12,12 @@ const adminOsStyles = [
 ]
   .map((filePath) => readCssWithImports(filePath))
   .join("\n");
+const primitiveSources = [
+  "src/components/primitives/metric-card.tsx",
+  "src/components/primitives/workbench-container.tsx"
+]
+  .map((filePath) => readFileSync(resolve(filePath), "utf8").replace(/\r\n?/g, "\n"))
+  .join("\n");
 
 function readCssWithImports(filePath: string, seen = new Set<string>()): string {
   const resolvedPath = resolve(filePath);
@@ -41,6 +47,8 @@ describe("admin style token contract", () => {
 
     [
       "--admin-canvas-grid-size: 32px",
+      "--admin-desktop-grid-alpha: 0.012",
+      "--admin-desktop-grid-alpha-strong: 0.018",
       "--admin-canvas-gutter: 24px",
       "--admin-canvas-gutter-mobile: 12px",
       "--admin-canvas-max-width: 1520px",
@@ -61,6 +69,7 @@ describe("admin style token contract", () => {
       "--admin-library-tile-height: 64px",
       "--admin-library-icon-size: 30px",
       "--admin-library-icon-size-large: 34px",
+      "--admin-library-bottom: calc(var(--admin-appbar-bottom) + var(--admin-appbar-height) + 12px)",
       "--admin-plugin-grid-min: 260px",
       "--admin-plugin-grid-row-unit: 32px",
       "--admin-plugin-gap: 16px",
@@ -78,17 +87,30 @@ describe("admin style token contract", () => {
       "--admin-radius-card: 8px",
       "--admin-radius-chrome: 14px",
       "--admin-radius-floating: 18px",
-      "--admin-radius-icon: 8px"
+      "--admin-radius-icon: 8px",
+      "--admin-noise-opacity: 0"
     ].forEach((expectedToken) => {
       expect(rootBlock).toContain(expectedToken);
     });
 
     expect(adminOsStyles).not.toContain("font-size: 10.5px");
+    expect(adminOsStyles).not.toContain("font-weight: 620");
+    expect(adminOsStyles).not.toContain("font-weight: 650");
     expect(adminOsStyles).not.toContain("font-weight: 750");
+    expect(adminOsStyles).not.toContain("font-weight: 850");
     expect(adminOsStyles).not.toContain("font-weight: 900");
+    expect(adminOsStyles).not.toMatch(/letter-spacing:\s*0\.0[1-9]em/);
     expect(adminOsStyles).not.toContain("blur(30px)");
     expect(adminOsStyles).not.toContain("0 28px 78px");
     expect(adminOsStyles).not.toContain("linear-gradient(135deg, var(--nav-app-a), var(--nav-app-b))");
+    expect(adminOsStyles).not.toContain("background-attachment: fixed");
+    expect(adminOsStyles).not.toContain("mix-blend-mode");
+    expect(adminOsStyles).not.toMatch(/(?:^|\n)\s*filter:\s*none;/);
+    expect(adminOsStyles).not.toMatch(/stroke-width:\s*2\.[0-9]/);
+    expect(adminOsStyles).not.toMatch(/(?:width|height):\s*(13|14|15|17|19|21)px;/);
+    expect(primitiveSources).not.toMatch(/strokeWidth=\{2\.[0-9]/);
+    expect(primitiveSources).not.toMatch(/size=\{(13|14|15|17|19|21)\}/);
+    expect(primitiveSources).toContain("<svg width=\"92\" height=\"34\" viewBox=\"0 0 92 34\"");
   });
 
   test("declares shared New Admin visual tokens", () => {
@@ -406,6 +428,8 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-app-tone-indigo")).toContain("--nav-app-a: #4f46e5");
     expect(selectorBlock(".nav-app-icon")).toContain("var(--admin-library-icon-size)");
     expect(selectorBlock(".nav-app-icon-dock")).toContain("var(--admin-app-icon-dock-size)");
+    expect(selectorBlock(".nav-item-icon.nav-app-icon-dock svg")).toContain("width: 16px");
+    expect(selectorBlock(".nav-item-icon.nav-app-icon-dock svg")).toContain("height: 16px");
     expect(selectorBlock(".sidebar-safety-summary")).toContain("min-height: 42px");
     expect(styles).toMatch(/\.nav-item-active\s*\{[\s\S]*0 5px 14px rgba\(37, 99, 235, 0\.055\)/m);
     expect(selectorBlock(".nav-item")).toContain("transition:");

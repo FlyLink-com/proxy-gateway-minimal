@@ -76,7 +76,7 @@ export function WorkbenchContainerCard({ spec }: { spec: WorkbenchContainerSpec 
       <div className="workbench-container-card-heading">
         <div className="workbench-container-title">
           <span className="workbench-category-pill">
-            <CategoryIcon aria-hidden="true" size={14} strokeWidth={2.4} />
+            <CategoryIcon aria-hidden="true" size={16} strokeWidth={2} />
             <span>{CATEGORY_LABEL[spec.category]}</span>
           </span>
           <strong>{spec.container}</strong>
