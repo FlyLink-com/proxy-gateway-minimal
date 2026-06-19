@@ -3723,7 +3723,7 @@ th {
 }
 
 .portal-visible-delivery-panel.pending,
-.portal-visible-delivery-panel.refresh_failed {
+.portal-visible-delivery-panel.action_failed {
   background: #fffbeb;
   border-color: #fde68a;
 }

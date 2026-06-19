@@ -65,7 +65,7 @@ type DeliveryPanelState =
   | "refreshed"
   | "disabled"
   | "expired"
-  | "refresh_failed";
+  | "action_failed";
 type PortalOrderRow = {
   requestRef: string;
   request: PortalSubscriptionRequest;
@@ -152,8 +152,8 @@ const deliveryStateGuide: Array<{ state: DeliveryPanelState; label: string; deta
     detail: "过期订单不显示复制入口，需要重新申请或人工复核。"
   },
   {
-    state: "refresh_failed",
-    label: "刷新失败",
+    state: "action_failed",
+    label: "操作失败",
     detail: "显示错误并保留原订单状态，不由前端推断生命周期。"
   }
 ];
@@ -249,7 +249,7 @@ function orderStatusLabel(status: PortalOrderRow["status"]) {
 }
 
 function deliveryPanelState(order: PortalOrderRow | null, actionError: string): DeliveryPanelState | null {
-  if (actionError.trim()) return "refresh_failed";
+  if (actionError.trim()) return "action_failed";
   if (!order) return null;
   if (order.status === "pending") return "pending";
   if (order.status === "disabled") return "disabled";
@@ -260,9 +260,9 @@ function deliveryPanelState(order: PortalOrderRow | null, actionError: string): 
 }
 
 function deliveryPanelCopy(state: DeliveryPanelState | null, order: PortalOrderRow | null, actionError: string) {
-  if (state === "refresh_failed") {
+  if (state === "action_failed") {
     return {
-      title: "刷新失败",
+      title: "操作失败",
       detail: actionError,
       nextStep: "请稍后重试或提交客服支持，当前订单状态不会由前端自行改写。"
     };

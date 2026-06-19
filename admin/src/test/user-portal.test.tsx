@@ -1463,6 +1463,50 @@ describe("user portal product surface", () => {
     expect(screen.queryByText("https://sub.example.test/import/existing-visible-once")).toBeNull();
   });
 
+  test("uses a generic delivery failure state for non-refresh action errors", async () => {
+    const client = portalClient({
+      fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
+        userRef: input.userRef,
+        subscriptionRequest: {
+          status: "subscription_ready",
+          lifecycle: "active",
+          requestRef: "subreq_disable_error",
+          userRef: input.userRef,
+          planId: "trial",
+          clientTarget: "clash",
+          expiresAt: "2026-06-07T00:00:00.000Z",
+          subscriptionUrl: "https://sub.example.test/import/existing-visible-once",
+          nextAction: "copy_subscription_url",
+          safety: {
+            noAdminApi: true,
+            noDbMutation: true,
+            noPaymentActivation: true,
+            noPublicAdmin: true,
+            noRawCustomerDataReturned: true
+          }
+        },
+        updatedAt: "2026-05-31T00:00:00.000Z",
+        safety: {
+          noAdminApi: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true
+        }
+      })),
+      disableSubscription: vi.fn(async () => {
+        throw new Error("disable request failed");
+      })
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+    fireEvent.click(screen.getByRole("button", { name: "禁用" }));
+
+    expect(await screen.findByText("操作失败")).not.toBeNull();
+    expect(screen.getAllByText("disable request failed").length).toBeGreaterThan(0);
+    expect(screen.queryByText("刷新失败")).toBeNull();
+    expect(screen.queryByText("https://sub.example.test/import/existing-visible-once")).toBeNull();
+  });
+
   test("renders old-link invalidation only when the portal client returns the event", async () => {
     const client = portalClient({
       fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
