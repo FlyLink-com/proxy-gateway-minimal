@@ -652,26 +652,23 @@ describe("admin API client", () => {
 });
 
 describe("portal access request admin page", () => {
-  test("keeps the page layer as a design draft instead of the finished management panel", () => {
-    render(createElement(PortalRequestsPage));
+  test("requires a live admin API client for the resource supervision panel", async () => {
+    const listPortalAccessRequests = vi.fn(async () => []);
+    const previewPortalAccessRequestApproval = vi.fn();
+    const apiClient = {
+      listPortalAccessRequests,
+      previewPortalAccessRequestApproval
+    } as unknown as AdminApiClient;
 
-    expect(screen.getByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
-    expect(screen.getByText("User Operations / Accounts & Resources")).not.toBeNull();
-    expect(screen.queryByLabelText("Accounts & Resources status dashboard")).toBeNull();
-    expect(screen.getByLabelText("Accounts & Resources module layout")).not.toBeNull();
-    expect(screen.queryByLabelText("Accounts & Resources card controls")).toBeNull();
-    expect(screen.getByRole("button", { name: "Account Directory plugin settings" })).not.toBeNull();
-    expect(screen.queryByText(/not the finished management panel/)).toBeNull();
+    render(createElement(PortalRequestsPage, { apiClient }));
+
+    expect(await screen.findByRole("heading", { name: "User resource supervision" })).not.toBeNull();
+    expect(screen.getByLabelText("Supervision overview")).not.toBeNull();
+    expect(screen.getByLabelText("User account supervision")).not.toBeNull();
+    expect(screen.getByLabelText("Controlled delivery preview")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Account Directory plugin settings" })).toBeNull();
     expect(screen.queryByText("Page design notes")).toBeNull();
-    expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Resources & Orders" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Lifecycle" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "History & Events" })).not.toBeNull();
-    expect(screen.queryByText("User resource supervision")).toBeNull();
-    expect(screen.queryByText("Controlled delivery preview")).toBeNull();
-    expect(screen.queryByText("Traffic quota")).toBeNull();
-    expect(screen.queryByRole("button", { name: /Generate delivery preview|Save quota/i })).toBeNull();
+    expect(listPortalAccessRequests).toHaveBeenCalledTimes(1);
   });
 });
 

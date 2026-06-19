@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { type AdminPage } from "./app/navigation";
 import { AdminLayout } from "./components/layout/admin-layout";
+import { createAdminApiClient, type AdminApiClient } from "./features/subscriptions/api-client";
 import {
   loadAdminSession
 } from "./features/subscriptions/admin-session";
@@ -32,8 +33,11 @@ export function App() {
   const [route, setRoute] = useState<AppRoute>(() => routeFromHash());
   const [activePage, setActivePage] = useState<AdminPage>("dashboard");
   const [search, setSearch] = useState("");
-  const [riskNotificationCount, setRiskNotificationCount] = useState(0);
   const [adminSession, setAdminSession] = useState(() => loadAdminSession());
+  const apiClient = useMemo(
+    () => createAdminApiClient(adminSession),
+    [adminSession.baseUrl, adminSession.consoleToken]
+  );
   const adminApiConfigured = adminSession.consoleToken.trim().length > 0;
   const httpUserPortalClient = useMemo(() => createHttpUserPortalClient(), []);
   const localUserPortalClient = useMemo(() => createLocalUserPortalClient({
@@ -96,26 +100,25 @@ export function App() {
       onNavigate={setActivePage}
       onOpenPortal={openPortal}
       onOpenSite={openSite}
-      riskNotificationCount={riskNotificationCount}
       connectionPanel={connectionPanel}
       connectionConfigured={adminApiConfigured}
     >
-      {renderPage(activePage, setActivePage, setRiskNotificationCount)}
+      {renderPage(activePage, search, apiClient)}
     </AdminLayout>
   );
 }
 
 function renderPage(
   activePage: AdminPage,
-  onNavigate: (page: AdminPage) => void,
-  onRiskCountChange: (count: number) => void
+  search: string,
+  apiClient: AdminApiClient
 ) {
   switch (activePage) {
     case "dashboard":
-      return <DashboardPage onNavigate={onNavigate} onRiskCountChange={onRiskCountChange} />;
+      return <DashboardPage apiClient={apiClient} />;
     case "portalRequests":
-      return <PortalRequestsPage />;
+      return <PortalRequestsPage apiClient={apiClient} />;
     case "usageMonitor":
-      return <SubscriptionUsageMonitorPage />;
+      return <SubscriptionUsageMonitorPage apiClient={apiClient} />;
   }
 }
