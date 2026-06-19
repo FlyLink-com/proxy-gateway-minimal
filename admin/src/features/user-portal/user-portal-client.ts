@@ -9,8 +9,8 @@ import {
 export type PortalAuthMode = "email" | "authenticator" | "token" | "password" | "passkey";
 export type PortalPlanId = "trial" | "monthly" | "yearly";
 export type PortalClientId = "clash" | "karing";
-export type PortalSubscriptionStatus = "ready_for_operator_review" | "subscription_ready" | "subscription_disabled";
-export type PortalSubscriptionLifecycle = "pending" | "active" | "expired" | "disabled";
+export type PortalSubscriptionStatus = "ready_for_operator_review" | "subscription_ready" | "subscription_disabled" | "subscription_revoked";
+export type PortalSubscriptionLifecycle = "pending" | "active" | "expired" | "disabled" | "revoked";
 export type PortalEmailCodePurpose = "login";
 export type PortalSecondFactorKind = "authenticator" | "passkey";
 export type PortalSupportCategory = "subscription" | "client_import" | "account_security" | "other";
@@ -40,7 +40,7 @@ export type PortalSubscriptionUsage = {
 export type PortalHistoryRecord = {
   recordRef: string;
   label: string;
-  status: "待发放" | "已授权" | "已刷新" | "已过期" | "已禁用";
+  status: "待发放" | "已授权" | "已刷新" | "已过期" | "已禁用" | "已撤销";
   occurredAt: string;
 };
 
@@ -209,7 +209,7 @@ export type PortalSubscriptionRequest = {
   quantity?: number;
   subscriptionUrl?: string;
   usage?: PortalSubscriptionUsage;
-  nextAction: "operator_review_required" | "copy_subscription_url" | "subscription_disabled";
+  nextAction: "operator_review_required" | "copy_subscription_url" | "subscription_disabled" | "subscription_revoked";
   updatedAt?: string;
   event?: PortalSubscriptionEvent;
   historySummary?: PortalHistoryRecord[];
@@ -603,8 +603,11 @@ function mapAccessRequest(record: {
   };
 }): PortalSubscriptionRequest {
   const planId = record.plan ?? "monthly";
-  const disabled = record.status === "user_disabled" || record.status === "disabled" || record.status === "revoked";
-  const lifecycle: PortalSubscriptionLifecycle = disabled
+  const revoked = record.status === "revoked";
+  const disabled = record.status === "user_disabled" || record.status === "disabled";
+  const lifecycle: PortalSubscriptionLifecycle = revoked
+    ? "revoked"
+    : disabled
     ? "disabled"
     : record.status === "delivered" || record.status === "issued" || Boolean(record.accessGrantRef || record.subscriptionUrl)
       ? "active"
@@ -612,12 +615,20 @@ function mapAccessRequest(record: {
   const subscriptionReady = lifecycle === "active" && Boolean(record.accessGrantRef || record.subscriptionUrl);
   const expiresAt = record.expiresAt ?? record.validUntil ?? (lifecycle === "active" && record.durationDays
     ? `系统发放后 ${record.durationDays} 天`
-    : lifecycle === "disabled"
+    : lifecycle === "revoked"
+      ? "已撤销"
+      : lifecycle === "disabled"
       ? "已禁用"
       : "待系统发放");
-  const historyStatus = disabled ? "已禁用" : subscriptionReady ? "已授权" : "待发放";
+  const historyStatus = revoked ? "已撤销" : disabled ? "已禁用" : subscriptionReady ? "已授权" : "待发放";
   return {
-    status: disabled ? "subscription_disabled" : subscriptionReady ? "subscription_ready" : "ready_for_operator_review",
+    status: revoked
+      ? "subscription_revoked"
+      : disabled
+        ? "subscription_disabled"
+        : subscriptionReady
+          ? "subscription_ready"
+          : "ready_for_operator_review",
     lifecycle,
     requestRef: requiredText(record.id, "申请记录无效。"),
     userRef: requiredText(record.portalUserRef, "用户会话无效。"),
@@ -626,15 +637,21 @@ function mapAccessRequest(record: {
     expiresAt,
     durationDays: normalizeOrderDurationDays(record.durationDays, durationDaysForPlan(planId)),
     quantity: normalizeOrderQuantity(record.quantity),
-    subscriptionUrl: disabled ? undefined : record.subscriptionUrl,
+    subscriptionUrl: revoked || disabled ? undefined : record.subscriptionUrl,
     usage: mapSubscriptionUsage(record.usage),
-    nextAction: disabled ? "subscription_disabled" : subscriptionReady ? "copy_subscription_url" : "operator_review_required",
+    nextAction: revoked
+      ? "subscription_revoked"
+      : disabled
+        ? "subscription_disabled"
+        : subscriptionReady
+          ? "copy_subscription_url"
+          : "operator_review_required",
     updatedAt: record.updatedAt ?? record.submittedAt,
     event: record.event,
     historySummary: [
       {
         recordRef: `history_${record.id ?? "request"}`,
-        label: `${disabled ? "禁用" : "申请"}${planLabel(planId)}（${historyStatus}）`,
+        label: `${revoked ? "撤销" : disabled ? "禁用" : "申请"}${planLabel(planId)}（${historyStatus}）`,
         status: historyStatus,
         occurredAt: record.updatedAt ?? record.submittedAt ?? new Date(0).toISOString()
       }

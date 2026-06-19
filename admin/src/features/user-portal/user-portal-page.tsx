@@ -51,12 +51,12 @@ type PortalPlan = {
 
 type CreatedSubscription = {
   request: PortalSubscriptionRequest;
-  action: "opening_requested" | "refreshed" | "disabled";
+  action: "opening_requested" | "refreshed" | "disabled" | "revoked";
   previousInvalidatedAt?: string;
 };
 
-type SubscriptionLifecycle = "none" | "pending" | "active" | "expired" | "disabled";
-type OrderStatusFilter = "all" | "active" | "pending" | "disabled" | "expired";
+type SubscriptionLifecycle = "none" | "pending" | "active" | "expired" | "disabled" | "revoked";
+type OrderStatusFilter = "all" | "active" | "pending" | "disabled" | "expired" | "revoked";
 type OrderSort = "newest" | "oldest" | "expires";
 type DeliveryPanelState =
   | "pending"
@@ -65,6 +65,7 @@ type DeliveryPanelState =
   | "refreshed"
   | "disabled"
   | "expired"
+  | "revoked"
   | "action_failed";
 type PortalOrderRow = {
   requestRef: string;
@@ -122,7 +123,8 @@ const orderStatusTabs: Array<{ id: OrderStatusFilter; label: string }> = [
   { id: "active", label: "生效中" },
   { id: "pending", label: "待发放" },
   { id: "disabled", label: "已禁用" },
-  { id: "expired", label: "已过期" }
+  { id: "expired", label: "已过期" },
+  { id: "revoked", label: "已撤销" }
 ];
 
 const deliveryStateGuide: Array<{ state: DeliveryPanelState; label: string; detail: string }> = [
@@ -150,6 +152,11 @@ const deliveryStateGuide: Array<{ state: DeliveryPanelState; label: string; deta
     state: "expired",
     label: "已过期",
     detail: "过期订单不显示复制入口，需要重新申请或人工复核。"
+  },
+  {
+    state: "revoked",
+    label: "已撤销",
+    detail: "访问权已撤销，隐藏复制入口并引导客服复核。"
   },
   {
     state: "action_failed",
@@ -227,7 +234,13 @@ function clientTargetLabel(clientTarget: PortalClientId) {
 }
 
 function orderStatusFromLifecycle(lifecycle: PortalSubscriptionRequest["lifecycle"]): PortalOrderRow["status"] {
-  if (lifecycle === "active" || lifecycle === "pending" || lifecycle === "disabled" || lifecycle === "expired") {
+  if (
+    lifecycle === "active"
+    || lifecycle === "pending"
+    || lifecycle === "disabled"
+    || lifecycle === "expired"
+    || lifecycle === "revoked"
+  ) {
     return lifecycle;
   }
   return "pending";
@@ -243,6 +256,8 @@ function orderStatusLabel(status: PortalOrderRow["status"]) {
       return "已禁用";
     case "expired":
       return "已过期";
+    case "revoked":
+      return "已撤销";
     default:
       return "待发放";
   }
@@ -254,6 +269,7 @@ function deliveryPanelState(order: PortalOrderRow | null, actionError: string): 
   if (order.status === "pending") return "pending";
   if (order.status === "disabled") return "disabled";
   if (order.status === "expired") return "expired";
+  if (order.status === "revoked") return "revoked";
   if (order.request.event?.type === "old_link_invalidated") return "refreshed";
   if (order.request.subscriptionUrl) return "active_with_material";
   return "active_without_material";
@@ -309,6 +325,13 @@ function deliveryPanelCopy(state: DeliveryPanelState | null, order: PortalOrderR
       nextStep: "新建订单申请或联系客服复核。"
     };
   }
+  if (state === "revoked") {
+    return {
+      title: "订阅已撤销",
+      detail: "撤销后的订单只保留历史与审计记录，不再提供复制或刷新入口。",
+      nextStep: "如需恢复访问，请提交客服支持或等待管理员复核。"
+    };
+  }
   return {
     title: "订阅已禁用",
     detail: "禁用后的订单只保留历史记录，用户不能删除或继续导入。",
@@ -350,7 +373,9 @@ function createdSubscriptionFromOrder(order: PortalOrderRow | null): CreatedSubs
   if (!order) return null;
   return {
     request: order.request,
-    action: order.status === "disabled"
+    action: order.status === "revoked"
+      ? "revoked"
+      : order.status === "disabled"
       ? "disabled"
       : order.request.event
         ? "refreshed"
@@ -414,6 +439,8 @@ function lifecycleLabel(lifecycle: SubscriptionLifecycle) {
       return "已过期";
     case "disabled":
       return "订阅已禁用";
+    case "revoked":
+      return "订阅已撤销";
     default:
       return "未开通";
   }
@@ -443,6 +470,7 @@ function expiryDisplay(created: CreatedSubscription | null, lifecycle: Subscript
   if (lifecycle === "pending") return "待系统发放";
   if (lifecycle === "expired") return `${formatDateTime(created.request.expiresAt)}（已过期）`;
   if (lifecycle === "disabled") return "已禁用";
+  if (lifecycle === "revoked") return "已撤销";
   return `${formatDateTime(created.request.expiresAt)} 到期`;
 }
 
@@ -1192,11 +1220,11 @@ export function UserPortalPage({
               <p>{topbarDescription(activeView)}</p>
             </div>
             <span
-              className={cn("portal-status-indicator", lifecycle, created && lifecycle !== "disabled" && "active")}
-              aria-label={`服务状态：${lifecycle === "disabled" ? "已禁用" : lifecycleLabel(lifecycle)}`}
+              className={cn("portal-status-indicator", lifecycle, lifecycle === "active" && "active")}
+              aria-label={`服务状态：${lifecycleLabel(lifecycle)}`}
             >
               <span className="portal-status-dot" aria-hidden="true" />
-              {lifecycle === "disabled" ? "已禁用" : lifecycleLabel(lifecycle)}
+              {lifecycleLabel(lifecycle)}
             </span>
           </header>
 

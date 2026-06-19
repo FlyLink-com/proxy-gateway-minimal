@@ -3397,6 +3397,24 @@ th {
   box-shadow: 0 0 0 4px rgb(22 163 74 / 0.12);
 }
 
+.portal-status-indicator.expired,
+.portal-status-indicator.revoked {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.portal-status-indicator.expired .portal-status-dot,
+.portal-status-indicator.revoked .portal-status-dot {
+  background: #ef4444;
+}
+
+.portal-status-indicator.disabled {
+  border-color: #e5e7eb;
+  background: #f8fafc;
+  color: #4b5563;
+}
+
 .portal-dashboard-grid,
 .portal-use-stack {
   display: grid;
@@ -3735,7 +3753,8 @@ th {
 }
 
 .portal-visible-delivery-panel.disabled,
-.portal-visible-delivery-panel.expired {
+.portal-visible-delivery-panel.expired,
+.portal-visible-delivery-panel.revoked {
   background: #f8fafc;
 }
 
@@ -3800,6 +3819,11 @@ th {
 .portal-order-status.expired {
   background: #fee2e2;
   color: #991b1b;
+}
+
+.portal-order-status.revoked {
+  background: #f3e8ff;
+  color: #6b21a8;
 }
 
 .portal-order-usage {

@@ -777,6 +777,18 @@ describe("user portal product surface", () => {
       return new Response(JSON.stringify({
         items: [
           {
+            id: "pareq_revoked_0",
+            portalUserRef: "user_safe_ref",
+            plan: "yearly",
+            clientTarget: "clash",
+            durationDays: 365,
+            quantity: 1,
+            status: "revoked",
+            subscriptionUrl: "https://sub.example.test/import/revoked-should-not-render",
+            submittedAt: "2026-05-30T00:00:00.000Z",
+            updatedAt: "2026-05-30T00:00:00.000Z"
+          },
+          {
             id: "pareq_trial_1",
             portalUserRef: "user_safe_ref",
             plan: "trial",
@@ -822,12 +834,20 @@ describe("user portal product surface", () => {
     }).subscriptionRequests;
 
     expect(requests?.map((request) => request.requestRef)).toEqual([
+      "pareq_revoked_0",
       "pareq_trial_1",
       "pareq_monthly_2"
     ]);
-    expect(requests?.[1].quantity).toBe(3);
-    expect(requests?.[1].clientTarget).toBe("karing");
-    expect(requests?.[1].usage).toMatchObject({
+    expect(requests?.[0]).toMatchObject({
+      lifecycle: "revoked",
+      status: "subscription_revoked",
+      expiresAt: "已撤销",
+      nextAction: "subscription_revoked",
+      subscriptionUrl: undefined
+    });
+    expect(requests?.[2].quantity).toBe(3);
+    expect(requests?.[2].clientTarget).toBe("karing");
+    expect(requests?.[2].usage).toMatchObject({
       usedBytes: 30,
       totalBytes: 100,
       usageRatio: 0.3,
@@ -835,9 +855,11 @@ describe("user portal product surface", () => {
     });
     expect(state.subscriptionRequest?.requestRef).toBe("pareq_monthly_2");
     expect(state.historySummary?.map((record) => record.recordRef)).toEqual([
+      "history_pareq_revoked_0",
       "history_pareq_trial_1",
       "history_pareq_monthly_2"
     ]);
+    expect(JSON.stringify(state)).not.toContain("revoked-should-not-render");
   });
 
   test("http portal client sends the portal session when creating an order", async () => {
@@ -1505,6 +1527,63 @@ describe("user portal product surface", () => {
     expect(screen.getAllByText("disable request failed").length).toBeGreaterThan(0);
     expect(screen.queryByText("刷新失败")).toBeNull();
     expect(screen.queryByText("https://sub.example.test/import/existing-visible-once")).toBeNull();
+  });
+
+  test("renders revoked portal orders as revoked without copy or refresh actions", async () => {
+    const client = portalClient({
+      fetchCurrentState: vi.fn(async (input: { userRef: string }): Promise<PortalUserState> => ({
+        userRef: input.userRef,
+        subscriptionRequest: {
+          status: "subscription_revoked",
+          lifecycle: "revoked",
+          requestRef: "subreq_revoked_yearly",
+          userRef: input.userRef,
+          planId: "yearly",
+          clientTarget: "clash",
+          expiresAt: "已撤销",
+          durationDays: 365,
+          quantity: 1,
+          subscriptionUrl: "https://sub.example.test/import/revoked-should-not-render",
+          nextAction: "subscription_revoked",
+          updatedAt: "2026-06-04T00:00:00.000Z",
+          historySummary: [
+            {
+              recordRef: "history_revoked",
+              label: "撤销年卡（已撤销）",
+              status: "已撤销",
+              occurredAt: "2026-06-04T00:00:00.000Z"
+            }
+          ],
+          safety: {
+            noAdminApi: true,
+            noDbMutation: true,
+            noPaymentActivation: true,
+            noPublicAdmin: true,
+            noRawCustomerDataReturned: true
+          }
+        },
+        updatedAt: "2026-06-04T00:00:00.000Z",
+        safety: {
+          noAdminApi: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true
+        }
+      }))
+    });
+    render(createElement(UserPortalPage, { portalClient: client }));
+
+    await enterPortal();
+
+    expect(await screen.findByLabelText("服务状态：订阅已撤销")).not.toBeNull();
+    const orderTable = screen.getByRole("table", { name: "订阅订单列表" });
+    expect(within(orderTable).getAllByText("已撤销").length).toBeGreaterThan(0);
+    expect(screen.getByRole("tab", { name: "已撤销" })).not.toBeNull();
+    const deliveryPanel = screen.getByRole("region", { name: "可见一次交付状态" });
+    expect(within(deliveryPanel).getByText("订阅已撤销")).not.toBeNull();
+    expect(within(deliveryPanel).getByText("如需恢复访问，请提交客服支持或等待管理员复核。")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /复制链接/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /刷新订单/ })).toBeNull();
+    expect(screen.queryByText("https://sub.example.test/import/revoked-should-not-render")).toBeNull();
   });
 
   test("renders old-link invalidation only when the portal client returns the event", async () => {
