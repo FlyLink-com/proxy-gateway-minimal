@@ -62,6 +62,22 @@ describe("subscription usage monitor page", () => {
     expect(screen.queryByRole("img", { name: /usage chart/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Apply filters|Create|Disable|Pause|Archive|Activate|Apply/i })).toBeNull();
   });
+
+  test("renders Usage & Channels fixture preview with receipt and collector states", () => {
+    render(<SubscriptionUsageMonitorPage fixturePreviewEnabled />);
+
+    expect(screen.getByLabelText("Collection Freshness fixture preview")).not.toBeNull();
+    expect(screen.getByText("Channel coverage preview compares issued and measured safe channel refs.")).not.toBeNull();
+    expect(screen.getAllByText("chn_demo_sg_03").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("receipt_demo_302")).not.toBeNull();
+    expect(screen.getAllByText("collector_demo_sg").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Raw runtime config and logs are excluded.")).not.toBeNull();
+
+    const renderedText = document.body.textContent ?? "";
+    expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|yaml|edgecred_/i);
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Apply filters|Create|Disable|Pause|Archive|Activate|Apply/i })).toBeNull();
+  });
 });
 
 function sectionAnchorOrder() {

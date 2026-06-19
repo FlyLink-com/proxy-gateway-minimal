@@ -79,6 +79,24 @@ describe("admin dashboard page", () => {
     expect(screen.queryByText("Save quota")).toBeNull();
   });
 
+  test("renders fixture preview content when preview mode is enabled", () => {
+    const onRiskCountChange = vi.fn();
+
+    render(<DashboardPage fixturePreviewEnabled onNavigate={vi.fn()} onRiskCountChange={onRiskCountChange} />);
+
+    expect(screen.getByLabelText("Health Summary fixture preview")).not.toBeNull();
+    expect(screen.getByText("Synthetic operator snapshot with healthy platform status, one stale evidence lane, and bounded review candidates.")).not.toBeNull();
+    expect(screen.getByText("acct_demo_02")).not.toBeNull();
+    expect(screen.getByText("ord_demo_108")).not.toBeNull();
+    expect(screen.getByText("No production Admin API is connected.")).not.toBeNull();
+    expect(onRiskCountChange).toHaveBeenCalledWith(2);
+
+    const renderedText = document.body.textContent ?? "";
+    expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|yaml|edgecred_/i);
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Approve|Disable|Archive|Apply/i })).toBeNull();
+  });
+
   test("supports fixed panel hiding and restoring without sizing or drag controls", () => {
     render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
 

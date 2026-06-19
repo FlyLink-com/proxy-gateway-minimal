@@ -33,7 +33,13 @@ type OpenModuleEventDetail = {
   targetId?: string;
 };
 
-export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage }) {
+export function AdminConsolePageFrame({
+  blueprint,
+  fixturePreviewEnabled = false
+}: {
+  blueprint: BlueprintPage;
+  fixturePreviewEnabled?: boolean;
+}) {
   const subNavigation = pageSubNavigation[blueprint.page];
   const moduleNavSignature = blueprint.modules.map((module) => module.navId).join("|");
   const defaultModuleLayout = useMemo(() => createDefaultModuleLayout(blueprint.modules), [moduleNavSignature]);
@@ -102,6 +108,7 @@ export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage 
   const panelViewModels = projectBlueprintPanelViewModels({
     blueprint,
     defaultModuleLayout,
+    fixturePreviewEnabled,
     moduleLayout,
     subNavigation
   });
@@ -130,6 +137,7 @@ export function AdminConsolePageFrame({ blueprint }: { blueprint: BlueprintPage 
             dataModuleNavId={panel.navId}
             dataUiSurfaceRole={panel.uiSurface}
             fieldLabels={panel.fieldLabels}
+            fixturePreview={panel.fixturePreview}
             id={panel.targetId}
             key={panel.navId}
             onHide={() => hideModuleLayout(panel.navId)}

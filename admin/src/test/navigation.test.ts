@@ -192,6 +192,23 @@ describe("admin navigation", () => {
     expect(fetcher).not.toHaveBeenCalled();
   });
 
+  test("allows the fixture preview route to render Admin pages without a configured API", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input)));
+    vi.stubGlobal("fetch", fetcher);
+    window.location.hash = "#/fixture-preview";
+
+    render(createElement(App));
+
+    expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
+    expect(screen.getByLabelText("Admin fixture preview status")).not.toBeNull();
+    expect(screen.getByText("GCC-104 safe fixture preview")).not.toBeNull();
+    expect(screen.getByLabelText("Risk Queue fixture preview")).not.toBeNull();
+    expect(screen.getByText("acct_demo_02")).not.toBeNull();
+    expect(screen.queryByRole("heading", { name: "Connect Admin API" })).toBeNull();
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_/i);
+  });
+
   test("defaults the admin shell to the operations dashboard", async () => {
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",

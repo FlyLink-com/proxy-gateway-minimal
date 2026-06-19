@@ -425,6 +425,10 @@
     justify-items: start;
   }
 
+  .admin-fixture-preview-row {
+    grid-template-columns: 1fr;
+  }
+
   .nav-library-grid,
   .nav-library-grid-modules {
     grid-template-columns: repeat(2, minmax(0, 1fr));

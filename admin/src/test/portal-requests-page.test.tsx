@@ -65,6 +65,22 @@ describe("portal requests page", () => {
     expect(screen.queryByLabelText("Controlled delivery preview")).toBeNull();
     expect(screen.queryByLabelText("Traffic quota")).toBeNull();
   });
+
+  test("renders Accounts & Resources fixture preview without executable controls", () => {
+    render(<PortalRequestsPage fixturePreviewEnabled />);
+
+    expect(screen.getByLabelText("Account Directory fixture preview")).not.toBeNull();
+    expect(screen.getByText("Account directory preview shows safe account refs, supervision state, and linked resource counts.")).not.toBeNull();
+    expect(screen.getAllByText("acct_demo_02").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("ord_demo_108").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("art_ref_demo_077").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Quota edits remain disabled.")).not.toBeNull();
+
+    const renderedText = document.body.textContent ?? "";
+    expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|raw token|secret-value|password|edgecred_/i);
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Generate delivery preview|Save quota|Approve|Disable|Archive/i })).toBeNull();
+  });
 });
 
 function sectionAnchorOrder() {

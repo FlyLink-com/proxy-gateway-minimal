@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  ADMIN_FIXTURE_PREVIEW_DATA,
+  isAdminFixturePreviewEnabled
+} from "./app/admin-fixture-preview";
 import { type AdminPage } from "./app/navigation";
 import { AdminLayout } from "./components/layout/admin-layout";
 import {
@@ -34,7 +38,8 @@ export function App() {
   const [search, setSearch] = useState("");
   const [riskNotificationCount, setRiskNotificationCount] = useState(0);
   const [adminSession, setAdminSession] = useState(() => loadAdminSession());
-  const adminApiConfigured = adminSession.consoleToken.trim().length > 0;
+  const fixturePreviewEnabled = isAdminFixturePreviewEnabled();
+  const adminApiConfigured = fixturePreviewEnabled || adminSession.consoleToken.trim().length > 0;
   const httpUserPortalClient = useMemo(() => createHttpUserPortalClient(), []);
   const localUserPortalClient = useMemo(() => createLocalUserPortalClient({
     demoSubscriptionUrl: "https://sub.example.test/import/local-preview-visible-once"
@@ -100,7 +105,8 @@ export function App() {
       connectionPanel={connectionPanel}
       connectionConfigured={adminApiConfigured}
     >
-      {renderPage(activePage, setActivePage, setRiskNotificationCount)}
+      {fixturePreviewEnabled ? <FixturePreviewBanner /> : null}
+      {renderPage(activePage, setActivePage, setRiskNotificationCount, fixturePreviewEnabled)}
     </AdminLayout>
   );
 }
@@ -108,14 +114,33 @@ export function App() {
 function renderPage(
   activePage: AdminPage,
   onNavigate: (page: AdminPage) => void,
-  onRiskCountChange: (count: number) => void
+  onRiskCountChange: (count: number) => void,
+  fixturePreviewEnabled: boolean
 ) {
   switch (activePage) {
     case "dashboard":
-      return <DashboardPage onNavigate={onNavigate} onRiskCountChange={onRiskCountChange} />;
+      return (
+        <DashboardPage
+          fixturePreviewEnabled={fixturePreviewEnabled}
+          onNavigate={onNavigate}
+          onRiskCountChange={onRiskCountChange}
+        />
+      );
     case "portalRequests":
-      return <PortalRequestsPage />;
+      return <PortalRequestsPage fixturePreviewEnabled={fixturePreviewEnabled} />;
     case "usageMonitor":
-      return <SubscriptionUsageMonitorPage />;
+      return <SubscriptionUsageMonitorPage fixturePreviewEnabled={fixturePreviewEnabled} />;
   }
+}
+
+function FixturePreviewBanner() {
+  return (
+    <aside className="admin-fixture-preview-banner" aria-label="Admin fixture preview status">
+      <div>
+        <strong>Fixture preview</strong>
+        <span>{ADMIN_FIXTURE_PREVIEW_DATA.generatedLabel}</span>
+      </div>
+      <p>Safe synthetic data only. No production Admin API is connected, and mutation workflows remain locked.</p>
+    </aside>
+  );
 }

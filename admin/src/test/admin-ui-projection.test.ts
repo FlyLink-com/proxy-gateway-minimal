@@ -81,4 +81,23 @@ describe("admin UI projection", () => {
       "dashboard-next-actions"
     ]);
   });
+
+  test("projects fixture preview payloads only when preview mode is enabled", () => {
+    const blueprint = overviewBlueprint();
+    const defaultLayout = createDefaultModuleLayout(blueprint.modules);
+    const panels = projectBlueprintPanelViewModels({
+      blueprint,
+      defaultModuleLayout: defaultLayout,
+      fixturePreviewEnabled: true,
+      moduleLayout: defaultLayout,
+      subNavigation: pageSubNavigation[blueprint.page]
+    });
+
+    expect(panels[0].fixturePreview?.summary).toContain("Synthetic operator snapshot");
+    expect(panels[1].fixturePreview?.rows.map((row) => row.value)).toEqual([
+      "acct_demo_02",
+      "ord_demo_108"
+    ]);
+    expect(JSON.stringify(panels)).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_/i);
+  });
 });

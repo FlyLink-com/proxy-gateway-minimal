@@ -331,6 +331,9 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-panel-fields li")).toContain("box-shadow: none");
     expect(selectorBlock(".admin-blueprint-panel-fields li::before")).toContain("var(--workbench-category-color");
     expect(selectorBlock(".admin-blueprint-module-panel-meta")).toContain("justify-content: flex-end");
+    expect(selectorBlock(".admin-fixture-preview")).toContain("display: grid");
+    expect(selectorBlock(".admin-fixture-preview-row")).toContain("grid-template-columns: minmax(120px, 0.34fr) minmax(0, 1fr)");
+    expect(selectorBlock(".admin-fixture-preview-banner")).toContain("var(--admin-info-bg)");
     expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("border: 1px dashed");
     expect(styles).not.toContain(".admin-blueprint-card-switches");
     expect(styles).not.toContain(".admin-blueprint-module-dock");

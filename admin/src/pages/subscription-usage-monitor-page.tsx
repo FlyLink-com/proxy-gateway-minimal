@@ -181,6 +181,15 @@ export const usageChannelsBlueprint: BlueprintPage = {
   ]
 };
 
-export function SubscriptionUsageMonitorPage() {
-  return <AdminConsolePageFrame blueprint={usageChannelsBlueprint} />;
+export function SubscriptionUsageMonitorPage({
+  fixturePreviewEnabled = false
+}: {
+  fixturePreviewEnabled?: boolean;
+}) {
+  return (
+    <AdminConsolePageFrame
+      blueprint={usageChannelsBlueprint}
+      fixturePreviewEnabled={fixturePreviewEnabled}
+    />
+  );
 }

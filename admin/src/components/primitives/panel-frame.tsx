@@ -1,5 +1,6 @@
 import { EyeOff } from "lucide-react";
 import { type ReactNode } from "react";
+import { type AdminFixturePreviewPanel } from "../../app/admin-fixture-preview";
 import { ADMIN_UI_CONTRACT, type AdminUiDensity } from "../../app/admin-ui-contract";
 import { cn } from "../../lib/utils";
 import { type MetricTone } from "./metric-card";
@@ -17,6 +18,7 @@ export type PanelFrameProps = {
   dataUiSurfaceRole?: string;
   density?: AdminUiDensity;
   fieldLabels: string[];
+  fixturePreview?: AdminFixturePreviewPanel;
   id?: string;
   notes?: ReactNode;
   onHide?: () => void;
@@ -44,6 +46,7 @@ export function PanelFrame({
   dataUiSurfaceRole,
   density = ADMIN_UI_CONTRACT.pluginFrame.density,
   fieldLabels,
+  fixturePreview,
   id,
   notes,
   onHide,
@@ -97,6 +100,37 @@ export function PanelFrame({
           <li key={field}>{field}</li>
         ))}
       </ul>
+      {fixturePreview ? (
+        <div
+          aria-label={`${title} fixture preview`}
+          className="admin-fixture-preview"
+          data-fixture-schema="admin-fixture-preview/v1"
+        >
+          <p>{fixturePreview.summary}</p>
+          <div className="admin-fixture-preview-chips" aria-label={`${title} fixture states`}>
+            {fixturePreview.chips.map((chip) => (
+              <StatusChip key={chip.label} label={chip.label} tone={chip.tone} />
+            ))}
+          </div>
+          <dl className="admin-fixture-preview-rows" aria-label={`${title} fixture rows`}>
+            {fixturePreview.rows.map((row) => (
+              <div className="admin-fixture-preview-row" key={`${row.label}:${row.value}`}>
+                <dt>{row.label}</dt>
+                <dd>
+                  <strong>{row.value}</strong>
+                  {row.meta ? <span>{row.meta}</span> : null}
+                  {row.tone ? <StatusChip label={row.tone} tone={row.tone} /> : null}
+                </dd>
+              </div>
+            ))}
+          </dl>
+          <ul className="admin-fixture-preview-safety" aria-label={`${title} fixture safety notes`}>
+            {fixturePreview.safetyNotes.map((note) => (
+              <li key={note}>{note}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       {actions ? <div className="admin-blueprint-actions">{actions}</div> : null}
       {children}
       {notes}

@@ -337,6 +337,19 @@ npm run admin:site:build
 npm run admin:site:verify
 ```
 
+Admin fixture preview 用于前端实现和 Vercel 预览，不连接生产 Admin API，也不启用
+订单、receipt apply、collector activation、DNS/Nginx/provider firewall 或任何真实
+runtime mutation。默认 Admin 入口仍要求本地连接配置；本地只读预览可运行：
+
+```bash
+npm run admin:dev
+```
+
+然后打开 `http://127.0.0.1:5173/#/fixture-preview`。根目录 `vercel.json`
+将 Vercel Preview 构建到 `admin/dist`，并在构建时设置
+`VITE_ADMIN_FIXTURE_PREVIEW=true`，因此 Vercel 预览页可直接显示安全 fixture
+Admin shell。该预览只能用于 UI 验收和实现交接，不代表公网 Admin 产品化。
+
 用户门户路由默认不挂载。只有运行状态显式启用
 `state.platform.userPortalRoutesEnabled === true`，并注入对应 auth / service
 能力时，用户侧 API 才进入公共白名单。生产启用门户、支付、自动权益、真实订阅
