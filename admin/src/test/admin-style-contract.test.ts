@@ -359,6 +359,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-library-search input:focus-visible,\n.search-box input:focus-visible")).toContain("outline: 2px solid transparent");
     expect(selectorBlock(".nav-library-result-count")).toContain("var(--admin-radius-pill)");
     expect(selectorBlock(".nav-library-toolbar")).toContain("position: static");
+    expect(selectorBlock(".top-bar-search")).toContain("width: min(420px, 42vw)");
     expect(selectorBlock(".nav-library-utilities")).toContain("order: 1");
     expect(selectorBlock(".nav-library-pages")).toContain("order: 2");
     expect(selectorBlock(".nav-library-panel-apps")).toContain("order: 3");
@@ -369,6 +370,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".operator-account-summary")).toContain("min-height: 38px");
     expect(selectorBlock(".operator-account-copy small")).toContain("white-space: nowrap");
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-utility-grid,[\s\S]*\.nav-library-grid,[\s\S]*\.nav-library-grid-modules\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.top-bar-search\s*\{[\s\S]*display: none;/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.admin-blueprint-module-panel-meta\s*\{[\s\S]*justify-items: start;/m);
     expect(styles).toMatch(/@media \(max-width: 980px\) \{[\s\S]*\.admin-blueprint-module-panel-head\s*\{[\s\S]*display: flex;/m);
   });

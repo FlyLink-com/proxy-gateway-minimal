@@ -154,6 +154,11 @@
     width: auto;
   }
 
+  .top-bar-search {
+    width: min(320px, 34vw);
+    padding: 0 12px;
+  }
+
   .top-search-shell {
     width: 42px;
     flex: 0 0 42px;
@@ -256,6 +261,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .top-bar-search {
+    display: none;
   }
 
   .top-bar-actions {
