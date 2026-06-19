@@ -68,6 +68,89 @@ function lifecycleRequestService() {
   return { portalAccessRequests, calls };
 }
 
+const ROUTE_SAFE_SUMMARY_MARKERS = [
+  "route-safe-visible-once-link",
+  "route-safe-delivery-link",
+  "route-safe-handoff-material",
+  "route-safe-token-marker",
+  "route-safe-credential-marker",
+  "route-safe-raw-artifact-material",
+  "route-safe-edge-credential-ref",
+  "route-safe-edge-material-digest"
+];
+
+function routeMaterialBearingPortalRequest(overrides = {}) {
+  const id = overrides.id || "pareq_route_safe_delivered";
+  const now = "2026-06-08T00:00:00.000Z";
+  return {
+    id,
+    portalUserRef: "route_user_safe_summary",
+    plan: "monthly",
+    clientTarget: "clash",
+    durationDays: 30,
+    quantity: 1,
+    status: "delivered",
+    nextAction: "user_can_use_access",
+    noteProvided: false,
+    priorTrialState: "not_applicable",
+    submittedAt: now,
+    updatedAt: now,
+    reviewedAt: now,
+    reviewedByRef: "operator_safe_ref",
+    safeReasonCode: "safe_reviewed",
+    expiresAt: "2026-07-08T00:00:00.000Z",
+    validUntil: "2026-07-08T00:00:00.000Z",
+    entitlementRef: `ent_${id}`,
+    accessGrantRef: `grant_${id}`,
+    tenantId: "route_tenant_safe_summary",
+    artifactId: "route_artifact_safe_summary",
+    subscriptionUrl: "route-safe-visible-once-link",
+    deliveryLink: "route-safe-delivery-link",
+    handoffMaterial: { marker: "route-safe-handoff-material" },
+    token: "route-safe-token-marker",
+    credentials: { marker: "route-safe-credential-marker" },
+    rawArtifactMaterial: "route-safe-raw-artifact-material",
+    edgeChannelRef: "route-channel-safe-summary",
+    edgeCredentialRef: "route-safe-edge-credential-ref",
+    edgeMaterialDigest: "route-safe-edge-material-digest",
+    edgeCredentials: [{
+      edgeChannelRef: "route-channel-safe-summary",
+      edgeCredentialRef: "route-safe-edge-credential-ref",
+      edgeMaterialDigest: "route-safe-edge-material-digest"
+    }],
+    event: {
+      type: "old_link_invalidated",
+      occurredAt: "2026-06-08T00:01:00.000Z",
+      deliveryLink: "route-safe-delivery-link",
+      rawArtifactMaterial: "route-safe-raw-artifact-material"
+    },
+    ...overrides
+  };
+}
+
+function routePortalRequestStoreWith(records) {
+  const byId = new Map(records.map((record) => [record.id, structuredClone(record)]));
+  return {
+    upsertPortalAccessRequest(record) {
+      byId.set(record.id, structuredClone(record));
+      return structuredClone(record);
+    },
+    getPortalAccessRequest(id) {
+      const record = byId.get(id);
+      return record ? structuredClone(record) : null;
+    },
+    listPortalAccessRequests(filters = {}) {
+      const status = String(filters.status || "").trim();
+      const portalUserRef = String(filters.portalUserRef || "").trim();
+      return [...byId.values()]
+        .filter((record) => !status || record.status === status)
+        .filter((record) => !portalUserRef || record.portalUserRef === portalUserRef)
+        .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
+        .map((record) => structuredClone(record));
+    }
+  };
+}
+
 function authHeaders() {
   return { Authorization: "Bearer secret", "Content-Type": "application/json" };
 }
@@ -253,6 +336,42 @@ test("admin route lists and previews portal access requests behind console auth"
     assert.equal(previewBody.preview.status, "approved_pending_delivery");
     assert.equal(previewBody.preview.safety.noRuntimeMutation, true);
     assert.equal(JSON.stringify(previewBody).includes("subscriptionUrl"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin route list omits stored material for delivered and issued portal access requests", async () => {
+  const portalAccessRequests = createPortalAccessRequestService({
+    portalAccessRequestStore: routePortalRequestStoreWith([
+      routeMaterialBearingPortalRequest({ id: "pareq_route_safe_delivered", status: "delivered" }),
+      routeMaterialBearingPortalRequest({ id: "pareq_route_safe_issued", status: "issued" })
+    ])
+  });
+  const { server, baseUrl } = await listen(createApp(fakeState({ portalAccessRequests })));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/portal-access-requests`, {
+      headers: authHeaders()
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+
+    assert.deepEqual(body.items.map((item) => item.id), [
+      "pareq_route_safe_delivered",
+      "pareq_route_safe_issued"
+    ]);
+    for (const item of body.items) {
+      assert.equal(Object.hasOwn(item, "subscriptionUrl"), false);
+      assert.equal(item.safety.noSubscriptionUrl, true);
+      assert.deepEqual(item.event, {
+        type: "old_link_invalidated",
+        occurredAt: "2026-06-08T00:01:00.000Z"
+      });
+    }
+    const serialized = JSON.stringify(body);
+    for (const marker of ROUTE_SAFE_SUMMARY_MARKERS) {
+      assert.equal(serialized.includes(marker), false);
+    }
   } finally {
     server.close();
   }

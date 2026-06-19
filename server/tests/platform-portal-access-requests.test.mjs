@@ -245,6 +245,147 @@ function seedUsageOrder(store, overrides = {}) {
   return { now, requestId, accountId, entitlementId, edgeCredentialRef };
 }
 
+const SAFE_ROUTINE_SUMMARY_MARKERS = [
+  "safe-visible-once-link",
+  "safe-delivery-link",
+  "safe-handoff-material",
+  "safe-token-marker",
+  "safe-credential-marker",
+  "safe-raw-artifact-material",
+  "safe-edge-credential-ref",
+  "safe-edge-material-digest"
+];
+
+function materialBearingPortalRequest(overrides = {}) {
+  const id = overrides.id || "pareq_safe_summary_delivered";
+  const now = "2026-06-08T00:00:00.000Z";
+  return {
+    id,
+    portalUserRef: "portal_user_safe_summary",
+    plan: "monthly",
+    clientTarget: "clash",
+    durationDays: 30,
+    quantity: 1,
+    status: "delivered",
+    nextAction: "user_can_use_access",
+    noteProvided: false,
+    priorTrialState: "not_applicable",
+    submittedAt: now,
+    updatedAt: now,
+    reviewedAt: now,
+    reviewedByRef: "operator_safe_ref",
+    safeReasonCode: "safe_reviewed",
+    expiresAt: "2026-07-08T00:00:00.000Z",
+    validUntil: "2026-07-08T00:00:00.000Z",
+    entitlementRef: `ent_${id}`,
+    accessGrantRef: `grant_${id}`,
+    tenantId: "tenant_safe_summary",
+    artifactId: "artifact_safe_summary",
+    subscriptionUrl: "safe-visible-once-link",
+    deliveryLink: "safe-delivery-link",
+    handoffMaterial: { marker: "safe-handoff-material" },
+    token: "safe-token-marker",
+    credentials: { marker: "safe-credential-marker" },
+    rawArtifactMaterial: "safe-raw-artifact-material",
+    edgeChannelRef: "channel-safe-summary",
+    edgeCredentialRef: "safe-edge-credential-ref",
+    edgeMaterialDigest: "safe-edge-material-digest",
+    edgeCredentials: [{
+      edgeChannelRef: "channel-safe-summary",
+      edgeCredentialRef: "safe-edge-credential-ref",
+      edgeMaterialDigest: "safe-edge-material-digest"
+    }],
+    event: {
+      type: "old_link_invalidated",
+      occurredAt: "2026-06-08T00:01:00.000Z",
+      deliveryLink: "safe-delivery-link",
+      rawArtifactMaterial: "safe-raw-artifact-material"
+    },
+    ...overrides
+  };
+}
+
+function portalRequestStoreWith(records) {
+  const byId = new Map(records.map((record) => [record.id, structuredClone(record)]));
+  return {
+    upsertPortalAccessRequest(record) {
+      byId.set(record.id, structuredClone(record));
+      return structuredClone(record);
+    },
+    getPortalAccessRequest(id) {
+      const record = byId.get(id);
+      return record ? structuredClone(record) : null;
+    },
+    listPortalAccessRequests(filters = {}) {
+      const status = String(filters.status || "").trim();
+      const portalUserRef = String(filters.portalUserRef || "").trim();
+      return [...byId.values()]
+        .filter((record) => !status || record.status === status)
+        .filter((record) => !portalUserRef || record.portalUserRef === portalUserRef)
+        .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
+        .map((record) => structuredClone(record));
+    }
+  };
+}
+
+function assertRoutineSummarySafe(summary) {
+  assert.deepEqual(Object.keys(summary).sort(), [
+    "accessGrantRef",
+    "clientTarget",
+    "durationDays",
+    "entitlementRef",
+    "event",
+    "expiresAt",
+    "id",
+    "nextAction",
+    "plan",
+    "planLabel",
+    "portalUserRef",
+    "priorTrialState",
+    "quantity",
+    "reviewedAt",
+    "reviewedByRef",
+    "safeReasonCode",
+    "safety",
+    "status",
+    "submittedAt",
+    "type",
+    "updatedAt",
+    "validUntil"
+  ]);
+  assert.equal(Object.hasOwn(summary, "subscriptionUrl"), false);
+  assert.deepEqual(summary.event, {
+    type: "old_link_invalidated",
+    occurredAt: "2026-06-08T00:01:00.000Z"
+  });
+  assert.equal(summary.safety.noSubscriptionUrl, true);
+  const serialized = JSON.stringify(summary);
+  for (const marker of SAFE_ROUTINE_SUMMARY_MARKERS) {
+    assert.equal(serialized.includes(marker), false);
+  }
+}
+
+test("portal access request routine summaries allowlist delivered and issued records", () => {
+  const requests = createPortalAccessRequestService({
+    portalAccessRequestStore: portalRequestStoreWith([
+      materialBearingPortalRequest({ id: "pareq_safe_summary_delivered", status: "delivered" }),
+      materialBearingPortalRequest({ id: "pareq_safe_summary_issued", status: "issued" })
+    ])
+  });
+
+  const listed = requests.listRequests({ portalUserRef: "portal_user_safe_summary" });
+
+  assert.deepEqual(listed.map((request) => request.id), [
+    "pareq_safe_summary_delivered",
+    "pareq_safe_summary_issued"
+  ]);
+  for (const summary of listed) {
+    assertRoutineSummarySafe(summary);
+  }
+  assertRoutineSummarySafe(requests.getRequest("pareq_safe_summary_delivered"));
+  assertRoutineSummarySafe(requests.getRequest("pareq_safe_summary_issued"));
+});
+
 test("portal access request service creates 7-day trial requests pending admin review", () => {
   const requests = service();
   const request = requests.submitRequest(validTrialInput());

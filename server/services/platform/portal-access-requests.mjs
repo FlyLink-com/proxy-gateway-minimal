@@ -7,6 +7,7 @@ const PLANS = {
   yearly: { durationDays: 365, label: "yearly" }
 };
 const CLIENT_TARGETS = new Set(["clash", "karing"]);
+const SAFE_SUMMARY_EVENT_TYPES = new Set(["old_link_invalidated"]);
 const SAFE_REASON_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:-]{0,79}$/;
 const UNSAFE_REASON_CODE_PATTERN = /https?:|token|secret|credential|password|private|customer|@|\//i;
 
@@ -280,7 +281,26 @@ function trafficLimitBytesFor(record, controlStore, usage = null) {
   return nonNegativeInteger(entitlement.trafficLimitBytes);
 }
 
-function summaryFor(record, usage = null, trafficLimitBytes = null) {
+function safeEventFor(event) {
+  if (!event || typeof event !== "object") {
+    return null;
+  }
+  const type = String(event.type || "").trim();
+  const occurredAt = String(event.occurredAt || "").trim();
+  const safeEvent = {};
+  if (SAFE_SUMMARY_EVENT_TYPES.has(type)) {
+    safeEvent.type = type;
+  }
+  if (occurredAt) {
+    const date = new Date(occurredAt);
+    if (!Number.isNaN(date.getTime())) {
+      safeEvent.occurredAt = date.toISOString();
+    }
+  }
+  return Object.keys(safeEvent).length > 0 ? safeEvent : null;
+}
+
+function safeSummaryFor(record, usage = null, trafficLimitBytes = null) {
   const summary = {
     id: record.id,
     type: "portal_access_request_summary",
@@ -303,10 +323,9 @@ function summaryFor(record, usage = null, trafficLimitBytes = null) {
     ...(trafficLimitBytes === null ? {} : { trafficLimitBytes }),
     entitlementRef: record.entitlementRef,
     accessGrantRef: record.accessGrantRef,
-    subscriptionUrl: record.status === "disabled" || !record.subscriptionUrl ? undefined : record.subscriptionUrl,
-    event: record.event,
+    event: safeEventFor(record.event),
     safety: {
-      noSubscriptionUrl: !record.subscriptionUrl,
+      noSubscriptionUrl: true,
       noRawCustomerData: true,
       noRawHandoffMaterial: true,
       noEntitlementCreated: !record.entitlementRef,
@@ -318,6 +337,21 @@ function summaryFor(record, usage = null, trafficLimitBytes = null) {
     summary.usage = usage;
   }
   return summary;
+}
+
+function visibleOnceSummaryFor(record, usage = null, trafficLimitBytes = null) {
+  const summary = safeSummaryFor(record, usage, trafficLimitBytes);
+  if (record.status === "disabled" || !record.subscriptionUrl) {
+    return summary;
+  }
+  return {
+    ...summary,
+    subscriptionUrl: record.subscriptionUrl,
+    safety: {
+      ...summary.safety,
+      noSubscriptionUrl: false
+    }
+  };
 }
 
 function edgeOrderSummaryFor(record) {
@@ -474,7 +508,12 @@ export function createPortalAccessRequestService(options = {}) {
 
   function summarize(record) {
     const usage = usageSummaryFor(record, controlStore);
-    return summaryFor(record, usage, trafficLimitBytesFor(record, controlStore, usage));
+    return safeSummaryFor(record, usage, trafficLimitBytesFor(record, controlStore, usage));
+  }
+
+  function summarizeVisibleOnce(record) {
+    const usage = usageSummaryFor(record, controlStore);
+    return visibleOnceSummaryFor(record, usage, trafficLimitBytesFor(record, controlStore, usage));
   }
 
   function requireRuntimeMethod(method) {
@@ -851,7 +890,7 @@ export function createPortalAccessRequestService(options = {}) {
         recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_delivered", request));
         notifyEdgeDesiredState("order_delivered", request);
       }
-      return summarize(saveRecord(request));
+      return summarizeVisibleOnce(saveRecord(request));
     },
 
     updateTrafficLimit(id, input = {}) {
@@ -970,7 +1009,7 @@ export function createPortalAccessRequestService(options = {}) {
       saveRecord(request);
       recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_refreshed", request));
       notifyEdgeDesiredState("order_refreshed", request);
-      return summarize(saveRecord(request));
+      return summarizeVisibleOnce(saveRecord(request));
     },
 
     disableSubscription(input = {}) {
