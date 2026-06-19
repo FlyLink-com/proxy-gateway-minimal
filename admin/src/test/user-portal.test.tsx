@@ -1598,6 +1598,10 @@ describe("user portal product surface", () => {
     expect((await screen.findAllByText("服务生效中")).length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: /刷新订单/ })).not.toBeNull();
     expect(screen.getByRole("button", { name: "复制链接" })).not.toBeNull();
+    const deliveryPanel = screen.getByRole("region", { name: "可见一次交付状态" });
+    expect(within(deliveryPanel).getByText("订阅材料可复制")).not.toBeNull();
+    expect(within(deliveryPanel).getByRole("button", { name: "复制可见一次链接" })).not.toBeNull();
+    expect(screen.getByRole("region", { name: "交付状态说明" })).not.toBeNull();
     expect(screen.queryByText("https://sub.example.test/import/existing-visible-once")).toBeNull();
     const hydratedOrderTable = screen.getByRole("table", { name: "订阅订单列表" });
     expect(within(hydratedOrderTable).getByText("365 天")).not.toBeNull();
@@ -1780,6 +1784,8 @@ describe("user portal product surface", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认提交" }));
 
     expect((await screen.findAllByText("等待系统发放")).length).toBeGreaterThan(0);
+    expect(screen.getByRole("region", { name: "可见一次交付状态" })).not.toBeNull();
+    expect(screen.getByText("订单已进入队列。发放完成前不会出现复制入口，也不会展示任何原始订阅材料。")).not.toBeNull();
     expect(screen.queryByText("下一步：等待系统发放")).toBeNull();
     expect(screen.queryByText("授权完成后显示订阅链接")).toBeNull();
     expect(screen.queryByRole("button", { name: "复制" })).toBeNull();

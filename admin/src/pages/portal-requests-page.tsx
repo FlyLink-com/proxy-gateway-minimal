@@ -40,6 +40,44 @@ const NEXT_ACTION_LABELS: Record<PortalAccessRequestStatus, string> = {
   revoked: "查看撤销"
 };
 
+const STATUS_DESCRIPTIONS: Array<{ status: PortalAccessRequestStatus; label: string; detail: string }> = [
+  {
+    status: "pending_admin_review",
+    label: "待处理",
+    detail: "用户已提交申请，等待管理员复核。"
+  },
+  {
+    status: "approved_pending_delivery",
+    label: "待交付",
+    detail: "审批已通过，但真实交付仍需受控执行。"
+  },
+  {
+    status: "delivered",
+    label: "已交付",
+    detail: "交付记录已存在，页面仍只展示安全摘要。"
+  },
+  {
+    status: "rejected",
+    label: "已拒绝",
+    detail: "申请被拒绝，不再进入交付队列。"
+  },
+  {
+    status: "cancelled",
+    label: "已取消",
+    detail: "用户或流程取消申请，保留记录但不再交付。"
+  },
+  {
+    status: "expired",
+    label: "已过期",
+    detail: "订单超出有效窗口，需要人工复核。"
+  },
+  {
+    status: "revoked",
+    label: "已撤销",
+    detail: "访问权已撤销，保留审计记录。"
+  }
+];
+
 const DELIVERY_CHANNEL_OPTIONS = [
   { value: "stable-node-a", label: "默认交付通道" }
 ];
@@ -236,6 +274,25 @@ export function PortalRequestsPage({ apiClient }: { apiClient: AdminApiClient })
             <span>已拒绝</span>
             <strong>{statusSummary.rejected}</strong>
           </div>
+        </div>
+        <div className="portal-review-safety-note" role="note">
+          <strong>安全边界</strong>
+          <span>本页只显示安全引用、状态和交付预览；不会展示订阅链接、原始交付材料、客户私密信息或运行配置。</span>
+        </div>
+      </section>
+
+      <section className="gate-review-card" aria-label="状态说明">
+        <div>
+          <h3>状态说明</h3>
+          <p className="muted">状态来自后端订单记录，前端只负责展示和筛选，不推断生命周期。</p>
+        </div>
+        <div className="portal-review-status-grid">
+          {STATUS_DESCRIPTIONS.map((item) => (
+            <article key={item.status} className="portal-review-status-card">
+              <strong>{item.label}</strong>
+              <span>{item.detail}</span>
+            </article>
+          ))}
         </div>
       </section>
 

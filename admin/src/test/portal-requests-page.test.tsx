@@ -29,6 +29,10 @@ describe("portal requests page", () => {
 
     expect(await screen.findByRole("heading", { name: "订单运营" })).not.toBeNull();
     expect(screen.getByLabelText("订单概览")).not.toBeNull();
+    expect(screen.getByText("安全边界")).not.toBeNull();
+    expect(screen.getByText("本页只显示安全引用、状态和交付预览；不会展示订阅链接、原始交付材料、客户私密信息或运行配置。")).not.toBeNull();
+    expect(screen.getByLabelText("状态说明")).not.toBeNull();
+    expect(screen.getByText("审批已通过，但真实交付仍需受控执行。")).not.toBeNull();
     expect(screen.getByLabelText("订单列表")).not.toBeNull();
     expect(screen.getByLabelText("订单详情")).not.toBeNull();
     expect(screen.getByLabelText("交付预览")).not.toBeNull();

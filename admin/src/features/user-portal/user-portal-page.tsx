@@ -58,6 +58,14 @@ type CreatedSubscription = {
 type SubscriptionLifecycle = "none" | "pending" | "active" | "expired" | "disabled";
 type OrderStatusFilter = "all" | "active" | "pending" | "disabled" | "expired";
 type OrderSort = "newest" | "oldest" | "expires";
+type DeliveryPanelState =
+  | "pending"
+  | "active_with_material"
+  | "active_without_material"
+  | "refreshed"
+  | "disabled"
+  | "expired"
+  | "refresh_failed";
 type PortalOrderRow = {
   requestRef: string;
   request: PortalSubscriptionRequest;
@@ -115,6 +123,39 @@ const orderStatusTabs: Array<{ id: OrderStatusFilter; label: string }> = [
   { id: "pending", label: "待发放" },
   { id: "disabled", label: "已禁用" },
   { id: "expired", label: "已过期" }
+];
+
+const deliveryStateGuide: Array<{ state: DeliveryPanelState; label: string; detail: string }> = [
+  {
+    state: "pending",
+    label: "待发放",
+    detail: "订单已提交，等待系统或管理员完成受控交付。"
+  },
+  {
+    state: "active_with_material",
+    label: "可复制",
+    detail: "页面只提供复制动作，不在界面明文展示订阅材料。"
+  },
+  {
+    state: "refreshed",
+    label: "已刷新",
+    detail: "刷新后新材料可复制，旧链接已失效。"
+  },
+  {
+    state: "disabled",
+    label: "已禁用",
+    detail: "用户不能继续导入或删除，只保留订单记录。"
+  },
+  {
+    state: "expired",
+    label: "已过期",
+    detail: "过期订单不显示复制入口，需要重新申请或人工复核。"
+  },
+  {
+    state: "refresh_failed",
+    label: "刷新失败",
+    detail: "显示错误并保留原订单状态，不由前端推断生命周期。"
+  }
 ];
 
 const navItems: Array<{ id: PortalView; label: string; icon: typeof ReceiptText }> = [
@@ -205,6 +246,74 @@ function orderStatusLabel(status: PortalOrderRow["status"]) {
     default:
       return "待发放";
   }
+}
+
+function deliveryPanelState(order: PortalOrderRow | null, actionError: string): DeliveryPanelState | null {
+  if (actionError.trim()) return "refresh_failed";
+  if (!order) return null;
+  if (order.status === "pending") return "pending";
+  if (order.status === "disabled") return "disabled";
+  if (order.status === "expired") return "expired";
+  if (order.request.event?.type === "old_link_invalidated") return "refreshed";
+  if (order.request.subscriptionUrl) return "active_with_material";
+  return "active_without_material";
+}
+
+function deliveryPanelCopy(state: DeliveryPanelState | null, order: PortalOrderRow | null, actionError: string) {
+  if (state === "refresh_failed") {
+    return {
+      title: "刷新失败",
+      detail: actionError,
+      nextStep: "请稍后重试或提交客服支持，当前订单状态不会由前端自行改写。"
+    };
+  }
+  if (!order || !state) {
+    return {
+      title: "未选择订单",
+      detail: "选择订单后查看交付状态和可执行操作。",
+      nextStep: "先创建或选择一条订单。"
+    };
+  }
+  if (state === "pending") {
+    return {
+      title: "等待系统发放",
+      detail: "订单已进入队列。发放完成前不会出现复制入口，也不会展示任何原始订阅材料。",
+      nextStep: "等待订单状态变为生效中。"
+    };
+  }
+  if (state === "refreshed") {
+    return {
+      title: "刷新完成，旧链接已失效",
+      detail: `订单 ${orderNumber(order.requestRef)} 已刷新，新材料仍只通过复制动作交付。`,
+      nextStep: "复制新的可见一次链接，并在客户端重新导入。"
+    };
+  }
+  if (state === "active_with_material") {
+    return {
+      title: "订阅材料可复制",
+      detail: "链接不会在页面明文展示；复制后请立即导入客户端并妥善保存。",
+      nextStep: "从订单行或本面板复制链接。"
+    };
+  }
+  if (state === "active_without_material") {
+    return {
+      title: "服务生效中",
+      detail: "当前订单已生效，但本次响应未返回可复制材料。",
+      nextStep: "如需重新导入，请使用刷新订单。"
+    };
+  }
+  if (state === "expired") {
+    return {
+      title: "订单已过期",
+      detail: "过期订单不会继续展示复制入口。",
+      nextStep: "新建订单申请或联系客服复核。"
+    };
+  }
+  return {
+    title: "订阅已禁用",
+    detail: "禁用后的订单只保留历史记录，用户不能删除或继续导入。",
+    nextStep: "如需恢复，请新建订单申请。"
+  };
 }
 
 function orderNumber(requestRef: string) {
@@ -1251,6 +1360,7 @@ function SubscriptionManager({
   viewOrder: (order: PortalOrderRow) => void;
 }) {
   const selectedOrder = orderRows.find((row) => row.requestRef === selectedOrderRef) ?? orderRows[0] ?? null;
+  const selectedDeliveryState = deliveryPanelState(selectedOrder, actionError);
   return (
     <div className="portal-use-stack">
       <section className="portal-order-card" aria-label="订单管理">
@@ -1314,6 +1424,10 @@ function SubscriptionManager({
             新建订单申请
           </button>
         </div>
+
+        <DeliveryStateGuide activeState={selectedDeliveryState} />
+
+        {actionError ? <div className="alert alert-error">{actionError}</div> : null}
 
         {orderRows.length === 0 ? (
           <div className="portal-order-empty-state" role="status">
@@ -1399,6 +1513,14 @@ function SubscriptionManager({
           </div>
         ) : null}
       </section>
+      <VisibleOnceDeliveryPanel
+        actionError={actionError}
+        copiedOrderRef={copiedOrderRef}
+        copyOrderSubscription={copyOrderSubscription}
+        order={selectedOrder}
+        pending={pending}
+        state={selectedDeliveryState}
+      />
       {orderFormOpen ? (
         <ModalFrame
           closeDisabled={pending}
@@ -1458,6 +1580,71 @@ function SubscriptionManager({
         </ModalFrame>
       ) : null}
     </div>
+  );
+}
+
+function DeliveryStateGuide({ activeState }: { activeState: DeliveryPanelState | null }) {
+  return (
+    <section className="portal-delivery-guide" aria-label="交付状态说明">
+      {deliveryStateGuide.map((item) => (
+        <article
+          key={item.state}
+          className={cn("portal-delivery-guide-item", activeState === item.state && "active")}
+        >
+          <strong>{item.label}</strong>
+          <span>{item.detail}</span>
+        </article>
+      ))}
+    </section>
+  );
+}
+
+function VisibleOnceDeliveryPanel({
+  actionError,
+  copiedOrderRef,
+  copyOrderSubscription,
+  order,
+  pending,
+  state
+}: {
+  actionError: string;
+  copiedOrderRef: string | null;
+  copyOrderSubscription: (order: PortalOrderRow) => Promise<void>;
+  order: PortalOrderRow | null;
+  pending: boolean;
+  state: DeliveryPanelState | null;
+}) {
+  const copy = deliveryPanelCopy(state, order, actionError);
+  const canCopy = Boolean(order && (state === "active_with_material" || state === "refreshed") && order.request.subscriptionUrl);
+  return (
+    <section className={cn("portal-visible-delivery-panel", state)} aria-label="可见一次交付状态">
+      <div className="portal-section-heading compact">
+        <Copy aria-hidden="true" />
+        <div>
+          <span className="portal-card-label">可见一次交付</span>
+          <h3>{copy.title}</h3>
+          <p>{copy.detail}</p>
+        </div>
+      </div>
+      <div className="portal-delivery-next-step">
+        <strong>下一步</strong>
+        <span>{copy.nextStep}</span>
+      </div>
+      {canCopy && order ? (
+        <button
+          className="portal-primary-button compact"
+          type="button"
+          disabled={pending}
+          onClick={() => void copyOrderSubscription(order)}
+        >
+          <Copy aria-hidden="true" />
+          {copiedOrderRef === order.requestRef ? "已复制可见一次链接" : "复制可见一次链接"}
+        </button>
+      ) : null}
+      <p className="portal-delivery-safety-note">
+        安全边界：用户面板不调用 Admin API，不展示原始订阅材料，不保存链接到浏览器本地存储，生命周期以服务端返回为准。
+      </p>
+    </section>
   );
 }
 
