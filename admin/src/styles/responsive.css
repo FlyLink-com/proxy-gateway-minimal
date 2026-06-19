@@ -32,13 +32,16 @@
     flex-direction: row;
     flex: 1;
     min-width: 0;
+    align-items: center;
   }
 
   .nav-primary-list {
     display: flex;
     flex-direction: row;
+    flex: 1 1 auto;
     gap: 6px;
-    width: 100%;
+    width: auto;
+    min-width: 0;
   }
 
   .brand-name,
@@ -78,6 +81,13 @@
     padding: 0;
     justify-content: center;
     place-items: center;
+  }
+
+  .nav-planned-menu,
+  .sidebar-safety-footer {
+    flex: 0 0 42px;
+    width: 42px;
+    min-width: 42px;
   }
 
   .nav-planned-list {
@@ -410,13 +420,9 @@
     display: none;
   }
 
-  .admin-blueprint-module-card-meta {
+  .admin-blueprint-module-panel-meta {
     align-items: flex-start;
     justify-items: start;
-  }
-
-  .admin-blueprint-card-inline-tools {
-    justify-self: start;
   }
 
   .nav-library-grid,
@@ -439,29 +445,18 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .admin-blueprint-module-grid,
-  .admin-blueprint-module-contract,
-  .admin-blueprint-module-card,
-  .admin-blueprint-next-step,
-  .workbench-container-meta {
+  .admin-blueprint-module-panel {
     grid-template-columns: 1fr;
   }
 
-  .admin-blueprint-module-card-large,
-  .admin-blueprint-module-card-medium,
-  .admin-blueprint-module-card-small {
-    grid-column: auto;
-  }
-
-  .admin-blueprint-module-card-head,
-  .admin-blueprint-card-fields,
-  .admin-blueprint-module-card > .admin-blueprint-actions,
-  .admin-blueprint-module-card > .admin-blueprint-module-notes {
+  .admin-blueprint-module-panel-head,
+  .admin-blueprint-panel-fields,
+  .admin-blueprint-module-panel > .admin-blueprint-actions {
     grid-column: 1;
     grid-row: auto;
   }
 
-  .admin-blueprint-module-card-head {
+  .admin-blueprint-module-panel-head {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -469,12 +464,12 @@
   }
 
   .admin-blueprint-module-title,
-  .admin-blueprint-module-card-meta {
+  .admin-blueprint-module-panel-meta {
     grid-column: auto;
     grid-row: auto;
   }
 
-  .admin-blueprint-module-card > .admin-blueprint-actions {
+  .admin-blueprint-module-panel > .admin-blueprint-actions {
     justify-content: flex-start;
   }
 
@@ -839,8 +834,7 @@
   .company-site-scenario-card:hover,
   .company-site-direction:hover,
   .page-subnav-link:hover,
-  .admin-blueprint-module-card:not(.admin-blueprint-module-card-dragging):hover,
-  .admin-blueprint-module-card-dragging,
+  .admin-blueprint-module-panel:hover,
   .admin-blueprint-mini-card:hover,
   .admin-blueprint-page-card:hover,
   .nav-item:hover,

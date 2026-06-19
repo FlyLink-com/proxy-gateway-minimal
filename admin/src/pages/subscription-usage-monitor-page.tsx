@@ -3,7 +3,7 @@ import {
   type BlueprintPage
 } from "./admin-console-page-frame";
 
-const usageChannelsBlueprint: BlueprintPage = {
+export const usageChannelsBlueprint: BlueprintPage = {
   page: "usageMonitor",
   ariaLabel: "Usage & Channels page header",
   kicker: "Platform Monitoring / Usage & Channels",
@@ -36,6 +36,7 @@ const usageChannelsBlueprint: BlueprintPage = {
         "Unknown",
         "Disconnected"
       ],
+      uiSurface: "usage-freshness",
       ownership: "Owns collection trust and stale/unknown diagnosis.",
       boundaries: [
         "No quota edit",
@@ -50,7 +51,7 @@ const usageChannelsBlueprint: BlueprintPage = {
         category: "monitoring",
         container: "Channel coverage monitor",
         dataAdapter: "Static channel fields now; later issued/measured channel and receipt blocker summaries.",
-        layoutPolicy: "Coverage cards and safe ledger; no node provisioning or runtime apply controls.",
+        layoutPolicy: "Coverage panels and safe ledger; no node provisioning or runtime apply controls.",
         performanceBoundary: "Channel aggregates load separately from order usage rows.",
         interactionModel: "Inspect missing coverage and prepare evidence handoff."
       },
@@ -68,6 +69,7 @@ const usageChannelsBlueprint: BlueprintPage = {
         "Missing receipt",
         "No issued channel"
       ],
+      uiSurface: "channel-coverage",
       ownership: "Owns channel coverage evidence and receipt blocker classification.",
       boundaries: [
         "No channel runtime apply",
@@ -100,6 +102,7 @@ const usageChannelsBlueprint: BlueprintPage = {
         "Not collected",
         "Collector disabled"
       ],
+      uiSurface: "usage-ledger",
       ownership: "Owns measurement evidence only; Accounts & Resources owns quota and lifecycle decisions.",
       boundaries: [
         "No order pause/archive action",
@@ -133,6 +136,7 @@ const usageChannelsBlueprint: BlueprintPage = {
         "Collection gap",
         "Missing receipt"
       ],
+      uiSurface: "collection-anomalies",
       ownership: "Owns anomaly classification; durable case workflow is a future Audit & Cases responsibility.",
       boundaries: [
         "No false-positive close",
@@ -165,6 +169,7 @@ const usageChannelsBlueprint: BlueprintPage = {
         "Collector disabled",
         "Diagnostics locked"
       ],
+      uiSurface: "receipts-collectors",
       ownership: "Owns receipt and collector evidence availability.",
       boundaries: [
         "No raw logs",

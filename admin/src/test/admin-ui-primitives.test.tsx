@@ -8,16 +8,14 @@ import {
   ObjectChain,
   ObjectTimeline,
   PageHeader,
+  PanelFrame,
   PluginContainer,
-  PluginFrame,
   QuotaMeter,
   RiskQueue,
   SafeRef,
   SectionPanel,
   StatusChip,
   NavigationLibrary,
-  WorkbenchContainerCard,
-  WorkbenchLayerMap,
   WorkspaceSidebar
 } from "../components/primitives";
 
@@ -102,108 +100,57 @@ describe("admin ui primitives", () => {
     expect(screen.getByText("Service normal")).not.toBeNull();
   });
 
-  test("renders frontend workbench layers and container contracts", () => {
-    render(
-      <>
-        <WorkbenchLayerMap
-          layers={[
-            {
-              label: "Shell Container",
-              description: "Sidebar, top bar, search, environment, and operator context."
-            },
-            {
-              label: "Data Adapter",
-              description: "Static design data now; safe backend API adapters later."
-            }
-          ]}
-        />
-        <WorkbenchContainerCard
-          spec={{
-            category: "monitoring",
-            container: "Collection freshness monitor",
-            dataAdapter: "Static design fields now; later safe usage summaries.",
-            layoutPolicy: "Collapsible monitoring section.",
-            performanceBoundary: "Refreshes independently from account tables.",
-            interactionModel: "Read-only inspection and owner-page routing."
-          }}
-        />
-      </>
-    );
 
-    expect(screen.getByText("Shell Container")).not.toBeNull();
-    expect(screen.getByText("Data Adapter")).not.toBeNull();
-    const contract = screen.getByLabelText("Monitoring container contract");
-    expect(contract.className).toContain("workbench-container-card");
-    expect(contract.className).toContain("workbench-category-monitoring");
-    expect(screen.getByText("Design adapter")).not.toBeNull();
-    expect(screen.getByText("Read-only health, freshness, usage, channel, and anomaly evidence.")).not.toBeNull();
-    expect(screen.getByText("Collection freshness monitor")).not.toBeNull();
-    expect(screen.getByText("Container contract").closest("details")?.hasAttribute("open")).toBe(false);
-    expect(screen.getByText("Performance boundary")).not.toBeNull();
-    expect(screen.getByText("Refreshes independently from account tables.")).not.toBeNull();
-  });
-
-  test("renders plugin frame chrome with inline settings and status slots", () => {
+  test("renders fixed panel frame chrome with status and hide control", () => {
     const onHide = vi.fn();
-    const onLayoutChange = vi.fn();
 
     render(
-      <PluginFrame
+      <PanelFrame
         ariaLabel="Monitoring container contract"
         category="monitoring"
-        className="custom-plugin"
+        className="custom-panel"
         containerLabel="Overview metric widget set"
         fieldLabels={["Platform health label", "Risk counter"]}
-        height="medium"
         onHide={onHide}
-        onLayoutChange={onLayoutChange}
-        settingsOpen
-        size="medium"
         title="Health Summary"
         ownerMode="preview"
       >
-        <p>Plugin content</p>
-      </PluginFrame>
+        <p>Panel content</p>
+      </PanelFrame>
     );
 
-    const plugin = screen.getByLabelText("Monitoring container contract");
-    expect(plugin.className).toContain("admin-blueprint-module-card");
-    expect(plugin.className).toContain("custom-plugin");
-    expect(plugin.getAttribute("data-ui-contract")).toBe("plugin-frame");
-    expect(plugin.getAttribute("data-density")).toBe("normal");
-    expect(plugin.getAttribute("data-size")).toBe("medium");
-    expect(plugin.getAttribute("data-height")).toBe("medium");
-    expect(screen.getByRole("button", { name: "Health Summary plugin settings" }).getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByLabelText("Health Summary plugin display controls")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Health Summary Large plugin display" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Health Summary Hide plugin" })).not.toBeNull();
+    const panel = screen.getByLabelText("Monitoring container contract");
+    expect(panel.className).toContain("admin-blueprint-module-panel");
+    expect(panel.className).toContain("custom-panel");
+    expect(panel.getAttribute("data-ui-contract")).toBe("panel-frame");
+    expect(panel.getAttribute("data-density")).toBe("normal");
+    expect(panel.getAttribute("data-size")).toBeNull();
+    expect(panel.getAttribute("data-height")).toBeNull();
+    expect(screen.queryByLabelText("Health Summary plugin display controls")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Health Summary Large plugin display" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Health Summary hide module" })).not.toBeNull();
     expect(screen.getByText("Preview")).not.toBeNull();
-    expect(screen.getByText("Plugin content")).not.toBeNull();
+    expect(screen.getByText("Panel content")).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Health Summary Hide plugin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Health Summary hide module" }));
     expect(onHide).toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Health Summary Large plugin display" }));
-    expect(onLayoutChange).toHaveBeenCalledWith({ height: "tall", size: "large", visible: true });
   });
 
-  test("keeps plugin container as a compatibility mount wrapper over PluginFrame", () => {
+  test("keeps plugin container as a compatibility mount wrapper over fixed panels", () => {
     render(
       <PluginContainer
         ariaLabel="Management container contract"
         category="management"
         containerLabel="Account directory workspace"
         fieldLabels={["Safe account ref"]}
-        height="short"
-        settingsOpen={false}
-        size="small"
         title="Account Directory"
         ownerMode="owner"
       />
     );
 
-    const plugin = screen.getByLabelText("Management container contract");
-    expect(plugin.getAttribute("data-ui-contract")).toBe("plugin-frame");
-    expect(plugin.className).toContain("admin-blueprint-module-card-small");
+    const panel = screen.getByLabelText("Management container contract");
+    expect(panel.getAttribute("data-ui-contract")).toBe("panel-frame");
+    expect(panel.className).toContain("admin-blueprint-module-panel");
     expect(screen.getByText("Account Directory")).not.toBeNull();
   });
 
@@ -261,10 +208,10 @@ describe("admin ui primitives", () => {
 
     render(
       <NavigationLibrary
-        emptyState={<span>No matching routes, modules, or settings.</span>}
+        emptyState={<span>No matching routes, panels, or settings.</span>}
         open
         plannedApps={<div>System Settings</div>}
-        plugins={<button type="button">Health Summary</button>}
+        panels={<button type="button">Health Summary</button>}
         resultCount={4}
         search="health"
         totalCount={24}
@@ -283,7 +230,7 @@ describe("admin ui primitives", () => {
     expect(screen.getByLabelText("4 navigation library results")).not.toBeNull();
     expect(screen.getByLabelText("Console settings")).not.toBeNull();
     expect(screen.getByLabelText("Workspace pages")).not.toBeNull();
-    expect(screen.getByLabelText("Modules")).not.toBeNull();
+    expect(screen.getByLabelText("Panels")).not.toBeNull();
     expect(screen.getByLabelText("Planned routes")).not.toBeNull();
 
     fireEvent.change(screen.getByLabelText("Search navigation library"), { target: { value: "quota" } });

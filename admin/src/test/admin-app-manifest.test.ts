@@ -120,8 +120,10 @@ describe("admin app manifest", () => {
         group: "plugins"
       },
       plugin: {
+        allowedControls: ["hide"],
         navId: "usage-ledger",
-        settingsEntry: "both"
+        settingsEntry: "navigationLibrary",
+        states: ["visible", "hidden"]
       },
       route: {
         action: "openPlugin",
@@ -134,7 +136,7 @@ describe("admin app manifest", () => {
     );
     expect(getPluginApp("quota-usage", "portalRequests")?.catalog).toMatchObject({
       enName: "Quota & Usage",
-      followUpTask: "GCC-76 plugin container template and GCC-78 workspace engine",
+      followUpTask: "GCC-76 panel container template and GCC-78 workspace engine",
       primaryObjects: expect.arrayContaining(["quota policy", "total usage", "quota risk"]),
       searchableFields: expect.arrayContaining(["quota-usage", "Quota & Usage", "User Operations"]),
       sourceContract: {

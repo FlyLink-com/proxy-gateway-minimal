@@ -19,7 +19,7 @@ export function DashboardPage({
   return <AdminConsolePageFrame blueprint={overviewBlueprint(onNavigate)} />;
 }
 
-function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPage {
+export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPage {
   return {
     page: "dashboard",
     ariaLabel: "Operations Overview page header",
@@ -35,7 +35,7 @@ function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPag
           category: "monitoring",
           container: "Overview metric widget set",
           dataAdapter: "Static design draft now; later safe platform overview and usage freshness summaries.",
-          layoutPolicy: "Hideable and reorderable on the overview workbench only.",
+          layoutPolicy: "Fixed monitoring panel; operators can hide it and restore it from navigation.",
           performanceBoundary: "Independent widget render; no owner-page table or ledger mount.",
           interactionModel: "Read-only summary with owner-page routing."
         },
@@ -52,6 +52,7 @@ function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPag
           "Ready",
           "Stale or partial data"
         ],
+        uiSurface: "operations-health",
         ownership: "Overview summarizes and routes; detailed evidence belongs to owner pages.",
         boundaries: [
           "No account or order ledger",
@@ -84,6 +85,7 @@ function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPag
           "Warning",
           "Danger"
         ],
+        uiSurface: "operations-risk",
         ownership: "Overview owns next review target selection only.",
         boundaries: [
           "No durable case close or false-positive workflow",
@@ -98,7 +100,7 @@ function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPag
           category: "audit-workflow",
           container: "Operator routing widget",
           dataAdapter: "Static route contract now; later page contract and computed attention signals.",
-          layoutPolicy: "Default medium card; operators can switch large, small, or hide it from the workbench.",
+          layoutPolicy: "Fixed panel surface; operators can hide it from the workbench and restore it from navigation.",
           performanceBoundary: "No backend write path and no owner-page data fetch inside this widget.",
           interactionModel: "Open owner page or future gated workflow entry."
         },
@@ -114,13 +116,14 @@ function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPag
           "Disabled route",
           "Locked future area"
         ],
+        uiSurface: "operations-routing",
         ownership: "Overview decides where the operator should inspect next.",
         boundaries: [
           "No account create/disable",
           "No collector activation",
           "No production execution"
         ],
-        nextStep: "Wire route cards to section-level deep links after page modules are finalized.",
+        nextStep: "Wire panel routes to section-level deep links after page modules are finalized.",
         actions: (
           <div className="admin-blueprint-action-row">
             <button className="primary-button" type="button" onClick={() => onNavigate?.("portalRequests")}>

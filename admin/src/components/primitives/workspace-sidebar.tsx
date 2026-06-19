@@ -34,7 +34,7 @@ export type NavigationLibraryProps = {
   onToggle?: (event: ToggleEvent<HTMLDetailsElement>) => void;
   open?: boolean;
   plannedApps?: ReactNode;
-  plugins?: ReactNode;
+  panels?: ReactNode;
   resultCount: number;
   search: string;
   searchInputRef?: Ref<HTMLInputElement>;
@@ -101,7 +101,7 @@ export function NavigationLibrary({
   onToggle,
   open = false,
   plannedApps,
-  plugins,
+  panels,
   resultCount,
   search,
   searchInputRef,
@@ -138,7 +138,7 @@ export function NavigationLibrary({
             <input
               aria-label="Search navigation library"
               onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Search pages, modules, settings..."
+              placeholder="Search pages, panels, settings..."
               ref={searchInputRef}
               value={search}
             />
@@ -166,11 +166,11 @@ export function NavigationLibrary({
           </div>
         ) : null}
 
-        {plugins ? (
-          <div className="nav-library-group nav-library-card-apps" aria-label="Modules">
-            <strong className="nav-library-heading">Modules</strong>
+        {panels ? (
+          <div className="nav-library-group nav-library-panel-apps" aria-label="Panels">
+            <strong className="nav-library-heading">Panels</strong>
             <div className="nav-library-grid nav-library-grid-modules">
-              {plugins}
+              {panels}
             </div>
           </div>
         ) : null}

@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-06-16, America/Los_Angeles.
+Last updated: 2026-06-18, America/Los_Angeles.
 
 > Status:
 > - Type: Active current-state handoff
@@ -780,21 +780,27 @@ Current architecture priorities:
   delete Admin code; a later GCC-42 repo-only cleanup removed inactive legacy
   subscription/overview/nodes/provisioning UI files after the new operator
   console routes were in place. See `docs/ADMIN_UI_LEGACY_ARCHIVE.md`.
-- New Admin Console Rebuild Baseline: current Admin UI work is a repo-only
-  protected operator-console rebuild, not a commercial template migration and
-  not subscription creation. The first screen should supervise users,
-  resources, orders, quota, usage, channels, cases, and object history while
-  keeping production actions behind separate gates. The dashboard should use
-  the existing business objects directly: platform health, risk cases,
-  user/resource supervision, traffic/channel monitoring, freshness, receipt
-  status, and object timeline evidence. Active navigation remains tied to real
-  pages; audit/work orders, platform development, and system settings may
-  appear only as locked IA slots until their data sources, redaction
-  boundaries, tests, and validation exist. See
-  `docs/ADMIN_CONSOLE_REBUILD_BASELINE.md`,
-  `docs/ADMIN_CONSOLE_CONCEPT_REQUIREMENTS_MATRIX.md`,
-  `docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md`, and
-  `docs/ADMIN_CONSOLE_NAVIGATION_IA.md`.
+- New Admin Console / Admin OS handoff: current Admin work remains a repo-only
+  protected operator-console rebuild and must be treated as in-progress until
+  the owning Admin code branch closes with tests. Do not report uncommitted
+  Admin UI changes as delivered from this docs/state handoff. The active page
+  set is `Operations Overview`, `Accounts & Resources`, and `Usage & Channels`.
+  `Audit & Cases`, `Platform Development`, and `System Settings` remain locked
+  planned slots until their data sources, redaction boundaries, tests, and
+  validation exist. Current Admin OS task-state is: GCC-74 app map,
+  GCC-75 manifest authoring, and GCC-82 visual protocol are active
+  docs/design-state lines; GCC-76 plugin container template, GCC-77 App Library
+  search/safe indexing, and GCC-78 workspace drag/resize/minimize engine remain
+  backlog/follow-up implementation lines. The current app metadata source of
+  truth is `admin/src/app/admin-app-manifest.ts`. App Registry / YAML import is
+  future design only and must not be treated as an implemented runtime registry
+  or upload flow. See `docs/ADMIN_CONSOLE_REBUILD_BASELINE.md`,
+  `docs/ADMIN_CONSOLE_NAVIGATION_IA.md`,
+  `docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md`,
+  `docs/ADMIN_CONSOLE_APP_MAP.md`,
+  `docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md`,
+  `docs/ADMIN_CONSOLE_APP_REGISTRY_REVIEW_DESIGN.md`, and
+  `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md`.
 - Platform Domain Contract: repository-only platform lead, account,
   entitlement, and subscription-access grant shapes live under
   `server/services/platform/control-plane-contract.mjs`. They provide

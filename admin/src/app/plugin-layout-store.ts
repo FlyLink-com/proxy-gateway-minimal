@@ -1,19 +1,13 @@
 import { type AdminPage } from "./navigation";
 
-export type ModuleDisplaySize = "large" | "medium" | "small";
-export type ModuleDisplayHeight = "short" | "medium" | "tall";
-
 export type ModuleLayoutState = {
   visible: boolean;
-  size: ModuleDisplaySize;
-  height: ModuleDisplayHeight;
 };
 
 export type ModuleLayoutMap = Record<string, ModuleLayoutState>;
 
 export type WorkspaceLayoutSnapshot = {
   moduleLayout: ModuleLayoutMap;
-  moduleOrder: string[];
 };
 
 type ModuleWithNavId = {
@@ -23,16 +17,13 @@ type ModuleWithNavId = {
 type StoredPageLayout = {
   version?: unknown;
   moduleLayout?: unknown;
-  moduleOrder?: unknown;
 };
 
 export const WORKSPACE_LAYOUT_STORAGE_KEY = "globalcircle-admin-workspace-layout-v1";
-export const WORKSPACE_LAYOUT_VERSION = 1;
+export const WORKSPACE_LAYOUT_VERSION = 4;
 
 export function defaultModuleLayoutState(): ModuleLayoutState {
   return {
-    height: "medium",
-    size: "medium",
     visible: true
   };
 }
@@ -51,14 +42,12 @@ export function loadWorkspaceLayout(
   const storedPageLayout = readWorkspaceLayoutStore()[page] as StoredPageLayout | undefined;
   if (!isPlainObject(storedPageLayout) || storedPageLayout.version !== WORKSPACE_LAYOUT_VERSION) {
     return {
-      moduleLayout: defaultLayout,
-      moduleOrder: modules.map((module) => module.navId)
+      moduleLayout: defaultLayout
     };
   }
 
   return {
-    moduleLayout: mergeStoredModuleLayout(storedPageLayout.moduleLayout, modules, defaultLayout),
-    moduleOrder: mergeStoredModuleOrder(storedPageLayout.moduleOrder, modules)
+    moduleLayout: mergeStoredModuleLayout(storedPageLayout.moduleLayout, modules, defaultLayout)
   };
 }
 
@@ -66,40 +55,17 @@ export function persistWorkspaceLayout(page: AdminPage, snapshot: WorkspaceLayou
   const store = readWorkspaceLayoutStore();
   store[page] = {
     version: WORKSPACE_LAYOUT_VERSION,
-    moduleLayout: snapshot.moduleLayout,
-    moduleOrder: snapshot.moduleOrder
+    moduleLayout: snapshot.moduleLayout
   };
   writeWorkspaceLayoutStore(store);
 }
 
 export function isWorkspaceLayoutForModules(snapshot: WorkspaceLayoutSnapshot, modules: ModuleWithNavId[]) {
   const moduleNavIds = modules.map((module) => module.navId);
-  const moduleNavIdSet = new Set(moduleNavIds);
-  const orderedNavIdSet = new Set(snapshot.moduleOrder);
   return (
-    moduleNavIdSet.size === snapshot.moduleOrder.length &&
-    orderedNavIdSet.size === snapshot.moduleOrder.length &&
-    moduleNavIds.every((navId) => (
-      orderedNavIdSet.has(navId) &&
-      snapshot.moduleLayout[navId]
-    ))
+    Object.keys(snapshot.moduleLayout).length === moduleNavIds.length &&
+    moduleNavIds.every((navId) => snapshot.moduleLayout[navId])
   );
-}
-
-function mergeStoredModuleOrder(storedOrder: unknown, modules: ModuleWithNavId[]) {
-  const defaultOrder = modules.map((module) => module.navId);
-  const validNavIds = new Set(defaultOrder);
-  const restoredOrder = Array.isArray(storedOrder)
-    ? storedOrder.filter((navId): navId is string => (
-      typeof navId === "string" &&
-      validNavIds.has(navId)
-    ))
-    : [];
-  const uniqueRestoredOrder = Array.from(new Set(restoredOrder));
-  return [
-    ...uniqueRestoredOrder,
-    ...defaultOrder.filter((navId) => !uniqueRestoredOrder.includes(navId))
-  ];
 }
 
 function mergeStoredModuleLayout(
@@ -117,8 +83,6 @@ function mergeStoredModuleLayout(
     return [
       module.navId,
       {
-        height: isModuleDisplayHeight(storedState.height) ? storedState.height : baseLayout.height,
-        size: isModuleDisplaySize(storedState.size) ? storedState.size : baseLayout.size,
         visible: typeof storedState.visible === "boolean" ? storedState.visible : baseLayout.visible
       }
     ];
@@ -162,12 +126,4 @@ function canUseLocalStorage() {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
-}
-
-function isModuleDisplaySize(value: unknown): value is ModuleDisplaySize {
-  return value === "large" || value === "medium" || value === "small";
-}
-
-function isModuleDisplayHeight(value: unknown): value is ModuleDisplayHeight {
-  return value === "short" || value === "medium" || value === "tall";
 }

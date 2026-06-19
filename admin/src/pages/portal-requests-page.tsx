@@ -3,7 +3,7 @@ import {
   type BlueprintPage
 } from "./admin-console-page-frame";
 
-const accountsResourcesBlueprint: BlueprintPage = {
+export const accountsResourcesBlueprint: BlueprintPage = {
   page: "portalRequests",
   ariaLabel: "Accounts & Resources page header",
   kicker: "User Operations / Accounts & Resources",
@@ -36,6 +36,7 @@ const accountsResourcesBlueprint: BlueprintPage = {
         "Needs review",
         "Disabled account"
       ],
+      uiSurface: "account-directory",
       ownership: "Owns account create, enable, disable, and review planning.",
       boundaries: [
         "No customer-private contact data",
@@ -68,6 +69,7 @@ const accountsResourcesBlueprint: BlueprintPage = {
         "Delivered",
         "Expired or revoked"
       ],
+      uiSurface: "resource-orders",
       ownership: "Owns resource/order lifecycle and artifact lifecycle review.",
       boundaries: [
         "No subscription URL",
@@ -100,6 +102,7 @@ const accountsResourcesBlueprint: BlueprintPage = {
         "Over limit",
         "Unmetered or collection gap"
       ],
+      uiSurface: "quota-usage",
       ownership: "Owns quota policy, over-limit disposition, and quota-change review.",
       boundaries: [
         "No collector trust decision",
@@ -133,6 +136,7 @@ const accountsResourcesBlueprint: BlueprintPage = {
         "Revoked",
         "Archive candidate"
       ],
+      uiSurface: "lifecycle-review",
       ownership: "Owns lifecycle decisions, but execution remains gated by backend contracts and runbooks.",
       boundaries: [
         "No direct production mutation",
@@ -165,6 +169,7 @@ const accountsResourcesBlueprint: BlueprintPage = {
         "Case backend locked",
         "Audit write unavailable"
       ],
+      uiSurface: "history-events",
       ownership: "Provides review context for accounts and resources; durable history later moves to Audit & Cases.",
       boundaries: [
         "No raw logs",

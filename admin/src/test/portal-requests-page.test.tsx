@@ -32,28 +32,28 @@ describe("portal requests page", () => {
 
     expect(screen.queryByLabelText("Accounts & Resources page navigation")).toBeNull();
     expect(screen.queryByLabelText("Accounts & Resources card controls")).toBeNull();
-    expect(screen.getByRole("button", { name: "Account Directory plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Resources & Orders plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Quota & Usage plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Lifecycle plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "History & Events plugin settings" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Account Directory hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Resources & Orders hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Quota & Usage hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Lifecycle hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "History & Events hide module" })).not.toBeNull();
 
     expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();
-    expect(screen.getAllByLabelText("Management container contract").length).toBe(3);
-    expect(screen.getByLabelText("Configuration container contract")).not.toBeNull();
-    expect(screen.getByLabelText("Audit / Workflow container contract")).not.toBeNull();
+    expect(screen.getAllByLabelText("Management panel").length).toBe(3);
+    expect(screen.getByLabelText("Configuration panel")).not.toBeNull();
+    expect(screen.getByLabelText("Audit / Workflow panel")).not.toBeNull();
     expect(screen.getAllByText("Quota policy panel").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Account ref · safe id").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Resources & Orders" })).not.toBeNull();
     expect(screen.getAllByText("Artifact · safe ref presence").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
     expect(screen.getAllByText("Default quota · policy value").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Over limit")).not.toBeNull();
+    expect(screen.queryByText("Over limit")).toBeNull();
     expect(screen.getByRole("heading", { name: "Lifecycle" })).not.toBeNull();
     expect(screen.getAllByText("Order · pause / expiry candidate").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "History & Events" })).not.toBeNull();
     expect(screen.getAllByText("Audit · future entry slot").length).toBeGreaterThanOrEqual(1);
-    expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(5);
+    expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);
     document.querySelectorAll(".admin-blueprint-module-notes").forEach((notes) => {
       expect(notes.hasAttribute("open")).toBe(false);
     });

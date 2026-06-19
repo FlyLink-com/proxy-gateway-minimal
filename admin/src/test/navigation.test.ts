@@ -233,7 +233,7 @@ describe("admin navigation", () => {
     expect(within(workspaceSidebar).queryByText("Admin API connection")).toBeNull();
     expect(within(workspaceSidebar).getByRole("button", { name: "Preview site Public shell" })).not.toBeNull();
     expect(within(workspaceSidebar).getByRole("button", { name: "Open user portal User view" })).not.toBeNull();
-    expect(within(workspaceSidebar).getByLabelText("Modules")).not.toBeNull();
+    expect(within(workspaceSidebar).getByLabelText("Panels")).not.toBeNull();
     expect(within(workspaceSidebar).getByRole("button", { name: /Health Summary/ })).not.toBeNull();
     expect(within(workspaceSidebar).getByRole("button", { name: /Quota & Usage/ })).not.toBeNull();
     expect(within(workspaceSidebar).getByRole("button", { name: /Usage Ledger/ })).not.toBeNull();
@@ -270,14 +270,13 @@ describe("admin navigation", () => {
     expect(screen.queryByText("Collection trust, channel health, and data anomalies")).toBeNull();
     expect(screen.queryByLabelText("Usage & Channels page navigation")).toBeNull();
     expect(screen.queryByLabelText("Usage & Channels card controls")).toBeNull();
-    expect(screen.getByRole("button", { name: "Collection Freshness plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Channel Coverage plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Usage Ledger plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Collection Anomalies plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Receipts & Collectors plugin settings" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Collection Freshness hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Channel Coverage hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Usage Ledger hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Collection Anomalies hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Receipts & Collectors hide module" })).not.toBeNull();
     expect(screen.getByLabelText("Usage & Channels module layout").textContent).not.toContain("Generated time, delay threshold");
-    fireEvent.click(screen.getByRole("button", { name: "Collection Freshness plugin settings" }));
-    fireEvent.click(screen.getByRole("button", { name: "Collection Freshness Hide plugin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Collection Freshness hide module" }));
     expect(screen.queryByRole("heading", { name: "Collection Freshness" })).toBeNull();
     const usageWorkspaceSidebar = screen.getByLabelText("Workspace sidebar");
     fireEvent.click(within(usageWorkspaceSidebar).getByLabelText("Open navigation library"));
@@ -319,17 +318,17 @@ describe("admin navigation", () => {
     expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
     expect(screen.queryByLabelText("Accounts & Resources page navigation")).toBeNull();
     expect(screen.queryByLabelText("Accounts & Resources card controls")).toBeNull();
-    expect(screen.getByRole("button", { name: "Account Directory plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Resources & Orders plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Quota & Usage plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Lifecycle plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "History & Events plugin settings" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Account Directory hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Resources & Orders hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Quota & Usage hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Lifecycle hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "History & Events hide module" })).not.toBeNull();
     expect(screen.getByLabelText("Accounts & Resources module layout").textContent).not.toContain("Safe account refs");
     expect(screen.getByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  test("uses navigation library search as a command palette for pages, modules, and settings", async () => {
+  test("uses navigation library search as a command palette for pages, panels, and settings", async () => {
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
@@ -345,10 +344,10 @@ describe("admin navigation", () => {
     fireEvent.change(librarySearch, { target: { value: "channel" } });
 
     const workspacePages = within(workspaceSidebar).getByLabelText("Workspace pages");
-    const cardApps = within(workspaceSidebar).getByLabelText("Modules");
+    const panelApps = within(workspaceSidebar).getByLabelText("Panels");
     expect(within(workspacePages).getByText("Usage & Channels")).not.toBeNull();
-    expect(cardApps.textContent).toContain("Channel Coverage");
-    expect(cardApps.textContent).toContain("Usage Ledger");
+    expect(panelApps.textContent).toContain("Channel Coverage");
+    expect(panelApps.textContent).toContain("Usage Ledger");
     expect(within(workspaceSidebar).queryByText("Risk notifications")).toBeNull();
     expect(within(workspaceSidebar).getByLabelText(/navigation library results/)).not.toBeNull();
 
@@ -381,8 +380,8 @@ describe("admin navigation", () => {
     const librarySearch = within(workspaceSidebar).getByLabelText("Search navigation library");
     fireEvent.change(librarySearch, { target: { value: "quota" } });
 
-    const pluginApps = within(workspaceSidebar).getByLabelText("Modules");
-    fireEvent.click(within(pluginApps).getByRole("button", { name: /Quota & Usage/ }));
+    const panelApps = within(workspaceSidebar).getByLabelText("Panels");
+    fireEvent.click(within(panelApps).getByRole("button", { name: /Quota & Usage/ }));
 
     expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();

@@ -12,6 +12,7 @@ export {
 } from "./case-workflow";
 export { MetricCard, type MetricTone } from "./metric-card";
 export { PageHeader } from "./page-header";
+export { PanelFrame, type PanelFrameProps } from "./panel-frame";
 export { PluginContainer } from "./plugin-container";
 export { PluginFrame, type PluginFrameProps } from "./plugin-frame";
 export { PageSubNav, type PageSubNavItem } from "./page-sub-nav";
@@ -27,10 +28,4 @@ export {
   type WorkspaceSidebarPinnedRoute,
   type WorkspaceSidebarProps
 } from "./workspace-sidebar";
-export {
-  WorkbenchContainerCard,
-  WorkbenchLayerMap,
-  type WorkbenchCategory,
-  type WorkbenchContainerSpec,
-  type WorkbenchLayer
-} from "./workbench-container";
+export { type WorkbenchCategory, type WorkbenchContainerSpec } from "./workbench-container";

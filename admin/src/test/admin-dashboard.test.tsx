@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { WORKSPACE_LAYOUT_VERSION } from "../app/plugin-layout-store";
 import { DashboardPage } from "../pages/dashboard-page";
 
 const WORKSPACE_LAYOUT_STORAGE_KEY = "globalcircle-admin-workspace-layout-v1";
@@ -39,29 +40,28 @@ describe("admin dashboard page", () => {
 
     expect(screen.queryByLabelText("Operations Overview page navigation")).toBeNull();
     expect(screen.queryByLabelText("Operations Overview card controls")).toBeNull();
-    expect(screen.getByRole("button", { name: "Health Summary plugin settings" }).getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(screen.getByRole("button", { name: "Risk Queue plugin settings" }));
-    expect(screen.getByLabelText("Risk Queue plugin display controls")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Risk Queue Large plugin display" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Risk Queue Medium plugin display" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Risk Queue Small plugin display" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Risk Queue Hide plugin" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Health Summary hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Risk Queue hide module" })).not.toBeNull();
+    expect(screen.queryByLabelText("Risk Queue plugin display controls")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Risk Queue Large plugin display" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Risk Queue Medium plugin display" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Risk Queue Small plugin display" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Risk Queue resize plugin display" })).toBeNull();
 
     expect(screen.getByRole("heading", { name: "Health Summary" })).not.toBeNull();
-    expect(screen.getByLabelText("Monitoring container contract")).not.toBeNull();
+    expect(screen.getByLabelText("Monitoring panel")).not.toBeNull();
     expect(screen.getAllByText("Overview metric widget set").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Platform health · summary state").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Risk Queue" })).not.toBeNull();
-    expect(screen.getAllByLabelText("Audit / Workflow container contract").length).toBe(2);
+    expect(screen.getAllByLabelText("Audit / Workflow panel").length).toBe(2);
     expect(screen.getAllByText("Reason · quota / delay / receipt").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Next Actions" })).not.toBeNull();
-    expect(screen.getAllByText("Wire route cards to section-level deep links after page modules are finalized.").length).toBeGreaterThanOrEqual(1);
-    expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(3);
-    expect(document.querySelectorAll(".admin-blueprint-module-card > .admin-blueprint-module-purpose")).toHaveLength(0);
+    expect(screen.queryByText("Wire panel routes to section-level deep links after page modules are finalized.")).toBeNull();
+    expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);
+    expect(document.querySelectorAll(".admin-blueprint-module-panel > .admin-blueprint-module-purpose")).toHaveLength(0);
     expect(document.querySelectorAll(".admin-blueprint-module-gate")).toHaveLength(0);
     expect(document.querySelectorAll(".admin-blueprint-library-next")).toHaveLength(0);
-    expect(screen.getAllByText("Details")).toHaveLength(3);
+    expect(screen.queryByText("Details")).toBeNull();
     document.querySelectorAll(".admin-blueprint-module-notes").forEach((notes) => {
       expect(notes.hasAttribute("open")).toBe(false);
     });
@@ -79,33 +79,23 @@ describe("admin dashboard page", () => {
     expect(screen.queryByText("Save quota")).toBeNull();
   });
 
-  test("supports card sizing, hiding, restoring, and drag ordering", () => {
+  test("supports fixed panel hiding and restoring without sizing or drag controls", () => {
     render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
 
-    const riskSettingsButton = screen.getByRole("button", { name: "Risk Queue plugin settings" });
-    expect(riskSettingsButton.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("switch", { name: "Edit workspace" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Risk Queue Small plugin display" })).toBeNull();
-    fireEvent.click(riskSettingsButton);
-    expect(riskSettingsButton.getAttribute("aria-expanded")).toBe("true");
     expect(screen.queryByText("Module Library")).toBeNull();
     expect(screen.queryByRole("button", { name: "Reset layout" })).toBeNull();
     expect(screen.queryByLabelText("Active module count")).toBeNull();
     expect(screen.queryByLabelText("Operations Overview card controls")).toBeNull();
-    expect(screen.getByLabelText("Risk Queue plugin display controls")).not.toBeNull();
-    expect(document.querySelector("#dashboard-risk-queue .admin-blueprint-card-inline-tools")).not.toBeNull();
-    expect(document.querySelector(".admin-blueprint-card-switches")).toBeNull();
+    expect(screen.queryByLabelText("Risk Queue plugin display controls")).toBeNull();
+    expect(document.querySelector("#dashboard-risk-queue .admin-blueprint-module-panel-meta")).not.toBeNull();
+    expect(document.querySelector(".admin-blueprint-panel-display-controls")).toBeNull();
     expect(document.querySelector(".admin-blueprint-module-dock")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Next Actions move plugin" })).toBeNull();
+    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-panel");
 
-    fireEvent.click(screen.getByRole("button", { name: "Risk Queue Large plugin display" }));
-    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-large");
-    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-height-tall");
-
-    fireEvent.click(screen.getByRole("button", { name: "Risk Queue Small plugin display" }));
-    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-small");
-    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-height-short");
-
-    fireEvent.click(screen.getByRole("button", { name: "Risk Queue Hide plugin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Risk Queue hide module" }));
     expect(document.querySelector("#dashboard-risk-queue")).toBeNull();
     expect(screen.queryByRole("button", { name: "Open Risk Queue module" })).toBeNull();
 
@@ -117,10 +107,7 @@ describe("admin dashboard page", () => {
     }));
     expect(document.querySelector("#dashboard-risk-queue")).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Health Summary plugin settings" }));
-    fireEvent.click(screen.getByRole("button", { name: "Health Summary Large plugin display" }));
-    expect(document.querySelector("#dashboard-health-summary")?.className).toContain("admin-blueprint-module-card-large");
-    fireEvent.click(screen.getByRole("button", { name: "Health Summary Hide plugin" }));
+    fireEvent.click(screen.getByRole("button", { name: "Health Summary hide module" }));
     expect(document.querySelector("#dashboard-health-summary")).toBeNull();
     expect(screen.queryByRole("button", { name: "Open Health Summary module" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Show Health Summary in workspace" })).toBeNull();
@@ -132,57 +119,29 @@ describe("admin dashboard page", () => {
       }
     }));
     expect(document.querySelector("#dashboard-health-summary")).not.toBeNull();
-
-    const originalElementFromPoint = document.elementFromPoint;
-    const healthSummaryCard = document.querySelector("#dashboard-health-summary") as HTMLElement;
-    Object.defineProperty(document, "elementFromPoint", {
-      configurable: true,
-      value: vi.fn(() => healthSummaryCard)
-    });
-    const nextActionsMoveHandle = screen.getByRole("button", { name: "Next Actions move plugin" });
-    firePointerEvent(nextActionsMoveHandle, "pointerdown", { button: 0, clientX: 320, clientY: 220, pointerId: 6 });
-    firePointerEvent(nextActionsMoveHandle, "pointermove", { clientX: 60, clientY: 120, pointerId: 6 });
-    firePointerEvent(nextActionsMoveHandle, "pointerup", { clientX: 60, clientY: 120, pointerId: 6 });
-    expect(sectionAnchorOrder()[0]).toBe("dashboard-next-actions");
-    Object.defineProperty(document, "elementFromPoint", {
-      configurable: true,
-      value: originalElementFromPoint
-    });
   });
 
-  test("persists workspace plugin layout locally across remounts", () => {
+  test("persists fixed panel visibility locally across remounts", () => {
     render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Risk Queue plugin settings" }));
-    fireEvent.click(screen.getByRole("button", { name: "Risk Queue Large plugin display" }));
+    fireEvent.click(screen.getByRole("button", { name: "Health Summary hide module" }));
 
-    fireEvent.click(screen.getByRole("button", { name: "Health Summary plugin settings" }));
-    fireEvent.click(screen.getByRole("button", { name: "Health Summary Hide plugin" }));
-
-    const originalElementFromPoint = document.elementFromPoint;
-    const riskQueueCard = document.querySelector("#dashboard-risk-queue") as HTMLElement;
-    Object.defineProperty(document, "elementFromPoint", {
-      configurable: true,
-      value: vi.fn(() => riskQueueCard)
+    expect(window.localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY)).toContain("health-summary");
+    const storedLayout = JSON.parse(window.localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY) ?? "{}");
+    expect(storedLayout.dashboard.moduleOrder).toBeUndefined();
+    expect(storedLayout.dashboard.moduleLayout["health-summary"]).toEqual({
+      visible: false
     });
-    const nextActionsMoveHandle = screen.getByRole("button", { name: "Next Actions move plugin" });
-    firePointerEvent(nextActionsMoveHandle, "pointerdown", { button: 0, clientX: 320, clientY: 220, pointerId: 12 });
-    firePointerEvent(nextActionsMoveHandle, "pointermove", { clientX: 60, clientY: 120, pointerId: 12 });
-    firePointerEvent(nextActionsMoveHandle, "pointerup", { clientX: 60, clientY: 120, pointerId: 12 });
-    Object.defineProperty(document, "elementFromPoint", {
-      configurable: true,
-      value: originalElementFromPoint
-    });
-
-    expect(window.localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY)).toContain("risk-queue");
     cleanup();
 
     render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
 
-    expect(sectionAnchorOrder()[0]).toBe("dashboard-next-actions");
+    expect(sectionAnchorOrder()).toEqual([
+      "dashboard-risk-queue",
+      "dashboard-next-actions"
+    ]);
     expect(document.querySelector("#dashboard-health-summary")).toBeNull();
-    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-large");
-    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-height-tall");
+    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-panel");
 
     fireEvent(window, new CustomEvent("admin-open-module", {
       detail: {
@@ -196,22 +155,16 @@ describe("admin dashboard page", () => {
   test("merges stored workspace layout with the current module list", () => {
     window.localStorage.setItem(WORKSPACE_LAYOUT_STORAGE_KEY, JSON.stringify({
       dashboard: {
-        version: 1,
+        version: WORKSPACE_LAYOUT_VERSION,
         moduleOrder: ["missing-module", "risk-queue"],
         moduleLayout: {
           "missing-module": {
-            height: "tall",
-            size: "large",
             visible: true
           },
           "next-actions": {
-            height: "tall",
-            size: "large",
             visible: true
           },
           "risk-queue": {
-            height: "overgrown",
-            size: "wide",
             visible: true
           }
         }
@@ -221,28 +174,49 @@ describe("admin dashboard page", () => {
     render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
 
     expect(sectionAnchorOrder()).toEqual([
-      "dashboard-risk-queue",
       "dashboard-health-summary",
+      "dashboard-risk-queue",
       "dashboard-next-actions"
     ]);
-    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-medium");
-    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-card-height-medium");
-    expect(document.querySelector("#dashboard-next-actions")?.className).toContain("admin-blueprint-module-card-large");
-    expect(document.querySelector("#dashboard-next-actions")?.className).toContain("admin-blueprint-module-card-height-tall");
+    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-panel");
+    expect(document.querySelector("#dashboard-next-actions")?.className).toContain("admin-blueprint-module-panel");
+  });
+
+  test("resets pre-visual-foundation layout cache to the current default modules", () => {
+    window.localStorage.setItem(WORKSPACE_LAYOUT_STORAGE_KEY, JSON.stringify({
+      dashboard: {
+        version: 1,
+        moduleOrder: ["health-summary", "risk-queue"],
+        moduleLayout: {
+          "health-summary": {
+            visible: true
+          },
+          "risk-queue": {
+            visible: true
+          },
+          "next-actions": {
+            visible: false
+          }
+        }
+      }
+    }));
+
+    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
+
+    expect(sectionAnchorOrder()).toEqual([
+      "dashboard-health-summary",
+      "dashboard-risk-queue",
+      "dashboard-next-actions"
+    ]);
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-size")).toBeNull();
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-height")).toBeNull();
+    expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-size")).toBeNull();
+    expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-height")).toBeNull();
+    expect(document.querySelector("#dashboard-next-actions")).not.toBeNull();
   });
 });
 
 function sectionAnchorOrder() {
   return Array.from(document.querySelectorAll(".page-anchor-group"))
     .map((element) => element.id);
-}
-
-function firePointerEvent(
-  element: EventTarget,
-  type: string,
-  init: Record<string, number>
-) {
-  const event = new Event(type, { bubbles: true, cancelable: true });
-  Object.assign(event, init);
-  fireEvent(element as Element, event);
 }

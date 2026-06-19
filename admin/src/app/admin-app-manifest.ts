@@ -472,6 +472,22 @@ const PLUGIN_PRIMARY_OBJECTS: Record<string, string[]> = {
   "usage-ledger": ["account", "order", "channel", "measured usage"]
 };
 
+const PLUGIN_CATEGORIES: Record<string, WorkbenchCategory> = {
+  "account-overview": "management",
+  "channel-coverage": "monitoring",
+  "collection-anomalies": "monitoring",
+  freshness: "monitoring",
+  "health-summary": "monitoring",
+  "history-events": "audit-workflow",
+  lifecycle: "management",
+  "next-actions": "audit-workflow",
+  "quota-usage": "configuration",
+  "receipts-collectors": "platform-tools",
+  "resource-orders": "management",
+  "risk-queue": "audit-workflow",
+  "usage-ledger": "monitoring"
+};
+
 const PLUGIN_SOURCE_CONTRACTS: Record<string, AdminAppSourceContract> = {
   "account-overview": sourceContract(
     ["account-summary", "resource-order-summary", "risk-state-summary"],
@@ -980,13 +996,13 @@ function createPluginApps(): AdminAppManifest[] {
           category: pluginCategoryForModule(module),
           coreViews: [
             module.label,
-            `${pageTitles[adminPage]} plugin restore route`,
-            "local display controls"
+            `${pageTitles[adminPage]} panel restore route`,
+            "fixed panel visibility"
           ],
           enName: module.label,
-          followUpTask: "GCC-76 plugin container template and GCC-78 workspace engine",
+          followUpTask: "GCC-76 panel container template and GCC-78 workspace engine",
           primaryObjects: PLUGIN_PRIMARY_OBJECTS[module.id] ?? [module.owner, module.label],
-          safetyBoundary: "Safe summary only; plugin controls affect local layout, not runtime state.",
+          safetyBoundary: "Safe summary only; panel controls affect local visibility, not runtime state.",
           searchableFields: [
             module.id,
             module.label,
@@ -1027,7 +1043,7 @@ function createPluginApps(): AdminAppManifest[] {
           role: pageDefinition.role
         },
         plugin: {
-          allowedControls: ["hide", "layout", "reorder", "compact", "expand", "reset"],
+          allowedControls: ["hide"],
           boundaries: [
             "safe-summary-only",
             "no production mutation",
@@ -1035,8 +1051,8 @@ function createPluginApps(): AdminAppManifest[] {
           ],
           navId: module.id,
           ownerMode: module.mode,
-          settingsEntry: "both",
-          states: ["visible", "hidden", "compact", "standard", "expanded"]
+          settingsEntry: "navigationLibrary",
+          states: ["visible", "hidden"]
         },
         route: {
           action: "openPlugin",
@@ -1206,13 +1222,7 @@ function pageOrder(page: AdminPage) {
 }
 
 function pluginCategoryForModule(module: PageSubNavigationItem): WorkbenchCategory {
-  if (module.id === "risk-queue" || module.id === "next-actions") {
-    return "audit-workflow";
-  }
-  if (module.owner === "User Operations") {
-    return "management";
-  }
-  return "monitoring";
+  return PLUGIN_CATEGORIES[module.id] ?? "monitoring";
 }
 
 function routeTargetForApp(app: AdminAppManifest) {

@@ -26,23 +26,21 @@ export type AdminUiContract = {
     density: AdminUiDensity;
   };
   pluginFrame: {
-    contractId: "plugin-frame";
+    contractId: "panel-frame";
     owns: readonly [
-      "plugin-card-surface",
-      "plugin-header",
-      "plugin-toolbar",
-      "drag-handle",
-      "display-mode-controls",
+      "panel-surface",
+      "panel-header",
+      "panel-toolbar",
       "hide-action",
-      "plugin-state-chrome"
+      "panel-state-chrome"
     ];
     forbiddenPluginResponsibilities: readonly [
-      "outer-card-border",
-      "outer-card-radius",
-      "outer-card-shadow",
-      "plugin-header-layout",
-      "plugin-resize-controls",
-      "plugin-hide-controls",
+      "outer-panel-border",
+      "outer-panel-radius",
+      "outer-panel-shadow",
+      "panel-header-layout",
+      "panel-resize-controls",
+      "panel-hide-controls",
       "loading-error-empty-chrome"
     ];
     density: AdminUiDensity;
@@ -51,7 +49,7 @@ export type AdminUiContract = {
     buttonMdHeight: "36px";
     inputHeight: "36px";
     tableRowHeight: "44px";
-    cardPadding: "20px";
+    panelPadding: "20px";
     pluginHeaderMinHeight: "48px";
     pageGap: "20px";
     sectionGap: "24px";
@@ -81,8 +79,8 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
   },
   density: {
     buttonMdHeight: "36px",
-    cardPadding: "20px",
     inputHeight: "36px",
+    panelPadding: "20px",
     pageGap: "20px",
     pluginHeaderMinHeight: "48px",
     sectionGap: "24px",
@@ -102,25 +100,23 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
     ]
   },
   pluginFrame: {
-    contractId: "plugin-frame",
+    contractId: "panel-frame",
     density: "normal",
     forbiddenPluginResponsibilities: [
-      "outer-card-border",
-      "outer-card-radius",
-      "outer-card-shadow",
-      "plugin-header-layout",
-      "plugin-resize-controls",
-      "plugin-hide-controls",
+      "outer-panel-border",
+      "outer-panel-radius",
+      "outer-panel-shadow",
+      "panel-header-layout",
+      "panel-resize-controls",
+      "panel-hide-controls",
       "loading-error-empty-chrome"
     ],
     owns: [
-      "plugin-card-surface",
-      "plugin-header",
-      "plugin-toolbar",
-      "drag-handle",
-      "display-mode-controls",
+      "panel-surface",
+      "panel-header",
+      "panel-toolbar",
       "hide-action",
-      "plugin-state-chrome"
+      "panel-state-chrome"
     ]
   },
   styleLayers: [

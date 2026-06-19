@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-06-13",
+  "lastUpdated": "2026-06-18",
   "timezone": "Asia/Shanghai",
   "status": "active-closeout-and-a-tier-blocked",
   "purpose": "Machine-readable backlog for simplification and project-control work. This file does not authorize production mutation.",
@@ -36,6 +36,13 @@
     "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-operator-device-canary.md",
     "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-mihomo-import-validation.md",
     "docs/MULTI_AGENT_OPERATING_MODEL.md",
+    "docs/ADMIN_CONSOLE_REBUILD_BASELINE.md",
+    "docs/ADMIN_CONSOLE_NAVIGATION_IA.md",
+    "docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md",
+    "docs/ADMIN_CONSOLE_APP_MAP.md",
+    "docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md",
+    "docs/ADMIN_CONSOLE_APP_REGISTRY_REVIEW_DESIGN.md",
+    "docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md",
     "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md"
   ],
   "tasks": [
@@ -70,6 +77,171 @@
       ],
       "validation": [
         "git diff --check -- README.md README_EN.md docs project-state",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "C-admin-os-gcc-74-app-map",
+      "risk": "C",
+      "status": "in-progress-docs-state",
+      "lane": "subscription-control-plane",
+      "title": "Track GCC-74 Admin OS app map and control-plane app list",
+      "goal": "Keep the Admin OS app map aligned with the active workspace apps, plugin apps, console utilities, planned apps, safe search inputs, and the current manifest source-of-truth boundary without treating uncommitted Admin UI work as delivered.",
+      "allowedFiles": [
+        "docs/ADMIN_CONSOLE_APP_MAP.md",
+        "docs/ADMIN_CONSOLE_NAVIGATION_IA.md",
+        "docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "change Admin implementation files from this docs/state worker",
+        "introduce a remote/runtime app registry",
+        "mark uncommitted Admin UI work as delivered",
+        "mutate production, cloud, DNS, Nginx, systemd, firewall, runtime config, auth model, schema, DB, tenants, artifacts, or subscriptions",
+        "write secrets, tokens, subscription URLs, account credentials, raw logs, raw config, raw env values, SQLite rows, or customer-private data"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "C-admin-os-gcc-75-manifest-authoring",
+      "risk": "C",
+      "status": "in-progress-docs-state",
+      "lane": "subscription-control-plane",
+      "title": "Track GCC-75 Admin app manifest authoring standard",
+      "goal": "Keep the manifest authoring rules, source-contract boundary, active page examples, and App Registry/YAML future-design separation aligned with admin/src/app/admin-app-manifest.ts as the current code source of truth.",
+      "allowedFiles": [
+        "docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md",
+        "docs/ADMIN_CONSOLE_APP_MAP.md",
+        "docs/ADMIN_CONSOLE_APP_REGISTRY_REVIEW_DESIGN.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "change Admin implementation files from this docs/state worker",
+        "treat uploaded YAML as an implemented runtime registry or publication flow",
+        "mark uncommitted Admin UI work as delivered",
+        "mutate production, cloud, DNS, Nginx, systemd, firewall, runtime config, auth model, schema, DB, tenants, artifacts, or subscriptions",
+        "write secrets, tokens, subscription URLs, account credentials, raw logs, raw config, raw env values, SQLite rows, or customer-private data"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "B-admin-os-gcc-76-plugin-container",
+      "risk": "B",
+      "status": "backlog-admin-ui-follow-up",
+      "lane": "subscription-control-plane",
+      "title": "Implement GCC-76 Admin OS plugin container template",
+      "goal": "Add the plugin container template only in a focused Admin UI PR after the current Admin branch owner is ready, preserving active page ownership and keeping plugin controls local to each plugin surface.",
+      "allowedFiles": [
+        "admin/src/**/*",
+        "docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md",
+        "docs/ADMIN_CONSOLE_APP_MAP.md",
+        "docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "change Admin code from this docs/state worker",
+        "change backend auth, schema, runtime, DB, or production behavior",
+        "introduce remote plugin execution or arbitrary app uploads",
+        "mark uncommitted Admin UI work as delivered",
+        "write secrets, tokens, subscription URLs, account credentials, raw logs, raw config, raw env values, SQLite rows, or customer-private data"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm run admin:test",
+        "npm run admin:build",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "B-admin-os-gcc-77-app-library-search",
+      "risk": "B",
+      "status": "backlog-admin-ui-follow-up",
+      "lane": "subscription-control-plane",
+      "title": "Implement GCC-77 App Library search and safe indexing",
+      "goal": "Build App Library search from explicit safe manifest fields instead of scraping rendered UI or exposing unsafe backend/raw material, after the manifest boundary is stable.",
+      "allowedFiles": [
+        "admin/src/**/*",
+        "docs/ADMIN_CONSOLE_APP_MAP.md",
+        "docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md",
+        "docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "change Admin code from this docs/state worker",
+        "index secrets, tokens, subscription URLs, credentials, raw logs, raw config, raw env values, SQLite rows, raw API responses, or customer-private data",
+        "introduce a backend registry, auth change, schema migration, or production action",
+        "mark uncommitted Admin UI work as delivered",
+        "mutate production, cloud, DNS, Nginx, systemd, firewall, runtime config, tenants, artifacts, or subscriptions"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm run admin:test",
+        "npm run admin:build",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "B-admin-os-gcc-78-workspace-engine",
+      "risk": "B",
+      "status": "backlog-admin-ui-follow-up",
+      "lane": "subscription-control-plane",
+      "title": "Implement GCC-78 workspace drag, resize, and minimize engine",
+      "goal": "Add local workspace layout behavior for plugin cards only after the visual protocol and plugin ownership rules are stable, without changing production authority or backend contracts.",
+      "allowedFiles": [
+        "admin/src/**/*",
+        "docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md",
+        "docs/ADMIN_CONSOLE_APP_MAP.md",
+        "docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "change Admin code from this docs/state worker",
+        "change production, auth, schema, DB, runtime, or backend permission behavior",
+        "persist secrets, raw runtime material, raw logs, raw config, raw env values, SQLite rows, or customer-private data in layout state",
+        "mark uncommitted Admin UI work as delivered",
+        "introduce public Admin exposure or production execution controls"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
+        "npm run admin:test",
+        "npm run admin:build",
+        "npm test",
+        "npm run project-state:check"
+      ]
+    },
+    {
+      "id": "C-admin-os-gcc-82-visual-protocol",
+      "risk": "C",
+      "status": "in-progress-docs-state",
+      "lane": "subscription-control-plane",
+      "title": "Track GCC-82 Admin OS visual protocol",
+      "goal": "Keep the Phase 4 Gate 0 visual protocol as the docs/design source for spacing, surface hierarchy, App Library density, plugin dimensions, chrome behavior, responsive rules, and downstream implementation checklist.",
+      "allowedFiles": [
+        "docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md",
+        "docs/ADMIN_CONSOLE_APP_MAP.md",
+        "docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "change Admin implementation files from this docs/state worker",
+        "mark uncommitted Admin UI work as delivered",
+        "authorize production, backend schema, auth model, runtime, token, credential, raw config, raw log, SQLite row, or customer-private data changes",
+        "introduce App Registry/YAML import as implemented behavior",
+        "write secrets, tokens, subscription URLs, account credentials, raw logs, raw config, raw env values, SQLite rows, or customer-private data"
+      ],
+      "validation": [
+        "git diff --check origin/master...HEAD",
         "npm run project-state:check"
       ]
     },

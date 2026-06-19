@@ -660,7 +660,7 @@ describe("portal access request admin page", () => {
     expect(screen.queryByLabelText("Accounts & Resources status dashboard")).toBeNull();
     expect(screen.getByLabelText("Accounts & Resources module layout")).not.toBeNull();
     expect(screen.queryByLabelText("Accounts & Resources card controls")).toBeNull();
-    expect(screen.getByRole("button", { name: "Account Directory plugin settings" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Account Directory hide module" })).not.toBeNull();
     expect(screen.queryByText(/not the finished management panel/)).toBeNull();
     expect(screen.queryByText("Page design notes")).toBeNull();
     expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();

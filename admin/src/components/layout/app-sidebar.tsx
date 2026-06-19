@@ -340,11 +340,11 @@ export function AppSidebar({
       }}
       navigationLibrary={(
         <NavigationLibrary
-          emptyState="No matching routes, modules, or settings."
+          emptyState="No matching routes, panels, or settings."
           menuRef={navigationLibraryRef}
           open={navigationLibraryOpen}
           plannedApps={plannedApps}
-          plugins={pluginApps}
+          panels={pluginApps}
           resultCount={resultCount}
           search={search}
           searchInputRef={navigationLibrarySearchRef}
