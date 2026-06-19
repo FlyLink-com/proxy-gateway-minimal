@@ -18,12 +18,14 @@ const GUARDED_METADATA_DOCS = new Set([
 ]);
 const SENSITIVE_PATTERN_DEFINITIONS = [
   { type: "private-key", pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/i },
-  { type: "token", pattern: /\btoken=[A-Za-z0-9._~+/=-]{8,}/i },
-  { type: "password", pattern: /\bpassword\s*=\s*[^,\s"']{4,}/i },
-  { type: "api-key", pattern: /\bapi[_-]?key\s*=\s*[^,\s"']{8,}/i },
-  { type: "subscription-url", pattern: /\bhttps?:\/\/[^\s"']+[?&]token=[A-Za-z0-9._~+/=-]{8,}/i },
-  { type: "proxy-uri", pattern: /\b(?:ss|vless|vmess|trojan|hysteria2|tuic):\/\/[A-Za-z0-9+/=_:;,.?&%#@-]{8,}/i }
+  { type: "token", pattern: /\btoken=([A-Za-z0-9._~+/=-]{8,})/i },
+  { type: "password", pattern: /\bpassword\s*=\s*([^,\s"']{4,})/i },
+  { type: "api-key", pattern: /\bapi[_-]?key\s*=\s*([^,\s"']{8,})/i },
+  { type: "subscription-url", pattern: /\bhttps?:\/\/[^\s"']+[?&]token=([A-Za-z0-9._~+/=-]{8,})/i },
+  { type: "proxy-uri", pattern: /\b(?:ss|vless|vmess|trojan|hysteria2|tuic):\/\/([A-Za-z0-9+/=_:;,.?&%#@-]{8,})/i }
 ];
+const SAFE_PLACEHOLDER_VALUE_PATTERN = /^(?:placeholder|redacted|dummy|fake|sample|example)(?:[-_ ]?(?:value|secret|token|password|api[-_]?key|key|url|uri))?$/i;
+const SAFE_PLACEHOLDER_WRAPPER_PATTERN = /^(?:<[^>\r\n]*(?:placeholder|redacted|dummy|fake|sample|example)[^>\r\n]*>|\[[^\]\r\n]*(?:placeholder|redacted|dummy|fake|sample|example)[^\]\r\n]*\]|\.\.\.)$/i;
 
 function readJson(rootDir, path, errors) {
   const fullPath = join(rootDir, path);
@@ -88,8 +90,22 @@ function checkPathPatternArray(owner, paths, errors) {
   }
 }
 
-function isPlaceholderLine(line) {
-  return /<[^>]+>|\[redacted\]|\[REDACTED\]|\.\.\.|example\.(?:com|invalid)|placeholder|dummy|fake|sample|count -> 0/i.test(line);
+function isSafePlaceholderValue(value) {
+  const trimmed = String(value ?? "").trim();
+  return SAFE_PLACEHOLDER_WRAPPER_PATTERN.test(trimmed) || SAFE_PLACEHOLDER_VALUE_PATTERN.test(trimmed);
+}
+
+function isSafePlaceholderMatch(definition, match) {
+  const capturedValues = match.slice(1).filter((value) => value !== undefined);
+  if (capturedValues.length > 0) {
+    return capturedValues.every(isSafePlaceholderValue);
+  }
+  return definition.type === "private-key" && /\b(?:placeholder|redacted|dummy|fake|sample|example)\b/i.test(match[0]);
+}
+
+function globalPattern(pattern) {
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  return new RegExp(pattern.source, flags);
 }
 
 function hasMetadataHeader(text) {
@@ -208,11 +224,10 @@ export function findSensitivePatternFindings(rootDir, paths) {
     const text = readFileSync(fullPath, "utf8");
     const lines = text.split(/\r?\n/);
     for (const [index, line] of lines.entries()) {
-      if (isPlaceholderLine(line)) {
-        continue;
-      }
       for (const definition of SENSITIVE_PATTERN_DEFINITIONS) {
-        if (definition.pattern.test(line)) {
+        const pattern = globalPattern(definition.pattern);
+        const matches = line.matchAll(pattern);
+        if ([...matches].some((match) => !isSafePlaceholderMatch(definition, match))) {
           findings.push({
             path,
             line: index + 1,

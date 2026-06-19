@@ -179,6 +179,63 @@ token=real-secret-token-123456
   assert.doesNotMatch(JSON.stringify(brief), /real-secret-token-123456/);
 });
 
+test("agent brief allows safe placeholders and redacted values", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "agent-brief-placeholders-"));
+  writeMinimalRepo(rootDir, {
+    projectContext: `# Project Context
+
+Last updated: 2026-06-15, America/Los_Angeles.
+
+> Status:
+> - Type: Active current-state handoff
+> - Risk: C
+> - Execution authority: Does not authorize production mutation
+> - Production impact: None
+> - Source of truth for: Current repo orientation
+
+Use token=<placeholder> in docs.
+Use password=[REDACTED] in docs.
+Use api_key=<placeholder> in docs.
+`
+  });
+
+  const brief = buildAgentBrief({
+    rootDir,
+    gitStatusText: "## feature/agent-brief\n"
+  });
+
+  assert.equal(brief.ok, true);
+  assert.deepEqual(brief.sensitiveFindings, []);
+});
+
+test("agent brief reports token-shaped values in placeholder prose", () => {
+  const rootDir = mkdtempSync(join(tmpdir(), "agent-brief-mixed-secret-"));
+  writeMinimalRepo(rootDir, {
+    projectContext: `# Project Context
+
+Last updated: 2026-06-15, America/Los_Angeles.
+
+> Status:
+> - Type: Active current-state handoff
+> - Risk: C
+> - Execution authority: Does not authorize production mutation
+> - Production impact: None
+> - Source of truth for: Current repo orientation
+
+Sample placeholder prose must not hide token=scanner-bypass-value-123456.
+`
+  });
+
+  const brief = buildAgentBrief({
+    rootDir,
+    gitStatusText: "## feature/agent-brief\n"
+  });
+
+  assert.equal(brief.ok, false);
+  assert.ok(brief.sensitiveFindings.some((finding) => finding.type === "token"));
+  assert.doesNotMatch(JSON.stringify(brief), /scanner-bypass-value-123456/);
+});
+
 test("package scripts expose the repo-only agent brief command", () => {
   const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
 
