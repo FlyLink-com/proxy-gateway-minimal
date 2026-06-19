@@ -61,46 +61,49 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
   modules: {
     dashboard: {
       "health-summary": {
-        summary: "Synthetic operator snapshot with healthy platform status, one stale evidence lane, and bounded review candidates.",
+        summary: "Metric cards for platform health, risk candidates, freshness, and channel coverage.",
         chips: [
-          { label: "Healthy", tone: "success" },
-          { label: "1 stale lane", tone: "warning" },
-          { label: "Safe refs only", tone: "info" }
+          { label: "Summary and routing", tone: "info" },
+          { label: "Risk A gated", tone: "warning" }
         ],
         rows: [
-          { label: "Platform state", value: "Ready", tone: "success" },
-          { label: "Freshness P95", value: "7m", meta: "preview window" },
-          { label: "Channel coverage", value: "5 measured / 6 issued", tone: "warning" }
+          { label: "Platform health", value: "Good", meta: "reviewable · latest source safe", tone: "success" },
+          { label: "Risk candidates", value: "18 total", meta: "5 high · routes only", tone: "danger" },
+          { label: "Freshness P95", value: "2m 14s", meta: "stale threshold visible", tone: "info" },
+          { label: "Channel coverage", value: "98.6%", meta: "aggregate only", tone: "success" }
         ],
         safetyNotes: [
           "Fixture data is synthetic and bounded.",
-          "No production Admin API is connected."
+          "Overview summarizes and routes; owner pages hold detailed collections."
         ]
       },
       "risk-queue": {
-        summary: "Review queue previews routing decisions without durable case closure or mutation actions.",
+        summary: "Computed review candidates. No case close, approval, or mutation action here.",
         chips: [
-          { label: "2 candidates", tone: "warning" },
-          { label: "No write action", tone: "neutral" }
+          { label: "All 18", tone: "info" },
+          { label: "High 5", tone: "danger" }
         ],
         rows: [
-          { label: "High", value: "acct_demo_02", meta: "missing receipt evidence", tone: "danger" },
-          { label: "Medium", value: "ord_demo_108", meta: "quota review candidate", tone: "warning" }
+          { label: "Order traffic over limit", value: "12 affected", meta: "Accounts & Resources", tone: "danger" },
+          { label: "Collection delay", value: "6 affected", meta: "Usage & Channels", tone: "warning" },
+          { label: "Receipt missing", value: "3 affected", meta: "Usage & Channels", tone: "danger" },
+          { label: "Future durable case", value: "Locked", meta: "Audit & Cases", tone: "neutral" }
         ],
         safetyNotes: [
-          "Candidate refs are synthetic.",
+          "Candidates are bounded synthetic summaries.",
           "Closure and approval workflows remain locked."
         ]
       },
       "next-actions": {
-        summary: "Operator routes are limited to owner pages already present in the Admin shell.",
+        summary: "Route operators to the page that owns the detailed collection.",
         chips: [
-          { label: "Accounts route", tone: "info" },
-          { label: "Usage route", tone: "info" }
+          { label: "Owner routes", tone: "info" },
+          { label: "Future area locked", tone: "neutral" }
         ],
         rows: [
-          { label: "User Operations", value: "Inspect account and order state" },
-          { label: "Platform Monitoring", value: "Inspect usage and channel evidence" }
+          { label: "Open Accounts & Resources", value: "Account/order/quota/lifecycle decisions are owned there.", tone: "info" },
+          { label: "Open Usage & Channels", value: "Usage collection trust, channel coverage, receipts, and anomalies are owned there.", tone: "info" },
+          { label: "Audit & Cases locked", value: "Durable case/history backend contract is not ready.", tone: "neutral" }
         ],
         safetyNotes: [
           "Future Audit and Platform Development areas remain planned.",
@@ -110,47 +113,45 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
     },
     portalRequests: {
       "account-overview": {
-        summary: "Account directory preview shows safe account refs, supervision state, and linked resource counts.",
+        summary: "Safe account refs, resource count, risk state, and last safe event.",
         chips: [
-          { label: "3 accounts", tone: "info" },
-          { label: "1 review", tone: "warning" }
+          { label: "Account Directory", tone: "info" },
+          { label: "Selection allowed", tone: "success" }
         ],
         rows: [
-          { label: "acct_demo_01", value: "Enabled", meta: "2 resources", tone: "success" },
-          { label: "acct_demo_02", value: "Needs review", meta: "receipt gap", tone: "warning" },
-          { label: "acct_demo_03", value: "Disabled", meta: "archive candidate", tone: "neutral" }
+          { label: "acct_demo_01", value: "Enabled", meta: "Normal", tone: "success" },
+          { label: "acct_demo_02", value: "Review", meta: "Quota", tone: "warning" },
+          { label: "acct_demo_03", value: "Disabled", meta: "Lifecycle", tone: "neutral" }
         ],
         safetyNotes: [
-          "No customer-private contact fields are present.",
-          "Create and disable controls wait for backend contracts."
+          "Selection and review planning only until backend action contracts land.",
+          "No customer-private contact fields are present."
         ]
       },
       "resource-orders": {
-        summary: "Resource and order preview keeps artifact state visible without showing delivery material.",
+        summary: "Orders, entitlements, delivery lifecycle, and artifact safe refs.",
         chips: [
-          { label: "4 orders", tone: "info" },
-          { label: "1 pending", tone: "warning" }
+          { label: "Resources & Orders", tone: "info" },
+          { label: "Sensitive boundary", tone: "danger" }
         ],
         rows: [
-          { label: "ord_demo_104", value: "Delivered", meta: "art_ref_demo_104", tone: "success" },
-          { label: "ord_demo_108", value: "Pending delivery", meta: "waiting for receipt", tone: "warning" },
-          { label: "ord_demo_077", value: "Expired", meta: "safe history only", tone: "neutral" }
+          { label: "ord_safe_101", value: "Active", meta: "Delivered · review usage", tone: "success" },
+          { label: "ord_safe_102", value: "Pending", meta: "Receipt pending · wait", tone: "warning" },
+          { label: "ord_safe_103", value: "Expired", meta: "Revoked · archive review", tone: "neutral" }
         ],
         safetyNotes: [
-          "Artifact refs are synthetic display refs.",
-          "Delivery preview generation is not enabled."
+          "No protected runtime material, raw handoff, or raw runtime config.",
+          "Artifact refs are synthetic display refs."
         ]
       },
       "quota-usage": {
-        summary: "Quota review preview separates policy decisions from usage evidence ownership.",
+        summary: "Quota policy is owned here; usage facts are evidence only.",
         chips: [
-          { label: "2 within plan", tone: "success" },
-          { label: "1 over plan", tone: "warning" }
+          { label: "Warning", tone: "warning" },
+          { label: "Owner decision", tone: "info" }
         ],
         rows: [
-          { label: "acct_demo_01", value: "42 GB / 100 GB", tone: "success" },
-          { label: "acct_demo_02", value: "103 GB / 100 GB", meta: "requires review", tone: "warning" },
-          { label: "acct_demo_03", value: "0 GB / 20 GB", meta: "disabled account", tone: "neutral" }
+          { label: "Quota & Usage", value: "Used / total", meta: "measured channel count · audit note gate", tone: "warning" }
         ],
         safetyNotes: [
           "Quota edits remain disabled.",
@@ -158,15 +159,13 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
         ]
       },
       lifecycle: {
-        summary: "Lifecycle preview shows review lanes before any approved backend mutation flow exists.",
+        summary: "Active, paused, expired, revoked, archive candidate.",
         chips: [
-          { label: "Read-only", tone: "neutral" },
-          { label: "Dry-run later", tone: "info" }
+          { label: "Info", tone: "info" },
+          { label: "Backend gate", tone: "neutral" }
         ],
         rows: [
-          { label: "Account", value: "acct_demo_02 review", tone: "warning" },
-          { label: "Order", value: "ord_demo_108 delivery check", tone: "warning" },
-          { label: "Artifact", value: "art_ref_demo_077 expired", tone: "neutral" }
+          { label: "Lifecycle", value: "Active, paused, expired, revoked", meta: "archive candidate", tone: "info" }
         ],
         safetyNotes: [
           "Pause, revoke, and archive actions are not rendered.",
@@ -174,15 +173,14 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
         ]
       },
       "history-events": {
-        summary: "Computed history preview provides bounded review context until durable audit storage lands.",
+        summary: "Safe computed events now; durable audit later.",
         chips: [
-          { label: "5 safe events", tone: "info" },
-          { label: "Audit locked", tone: "neutral" }
+          { label: "Locked", tone: "neutral" },
+          { label: "Future audit", tone: "info" }
         ],
         rows: [
-          { label: "evt_demo_501", value: "Receipt gap candidate", meta: "acct_demo_02" },
-          { label: "evt_demo_502", value: "Quota review candidate", meta: "ord_demo_108" },
-          { label: "evt_demo_503", value: "Expiry observed", meta: "art_ref_demo_077" }
+          { label: "History & Events", value: "Safe computed events", meta: "durable audit later", tone: "neutral" },
+          { label: "Forbidden here", value: "No runtime apply, collector activation, platform tools, or operator settings.", tone: "danger" }
         ],
         safetyNotes: [
           "Raw logs and row dumps are excluded.",
@@ -192,15 +190,13 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
     },
     usageMonitor: {
       freshness: {
-        summary: "Freshness preview shows whether collected usage evidence is current enough to trust.",
+        summary: "Fresh · stale · unknown · disconnected states.",
         chips: [
-          { label: "Fresh", tone: "success" },
-          { label: "1 stale", tone: "warning" }
+          { label: "Info", tone: "info" },
+          { label: "Collection Freshness", tone: "info" }
         ],
         rows: [
-          { label: "Generated", value: "T-2m", meta: "fixture clock" },
-          { label: "Latest usage", value: "T-4m", tone: "success" },
-          { label: "Stale channels", value: "1", tone: "warning" }
+          { label: "State taxonomy", value: "Fresh · stale · unknown · disconnected", tone: "info" }
         ],
         safetyNotes: [
           "Timestamps are relative synthetic labels.",
@@ -208,15 +204,13 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
         ]
       },
       "channel-coverage": {
-        summary: "Channel coverage preview compares issued and measured safe channel refs.",
+        summary: "Issued vs measured vs missing receipt blockers.",
         chips: [
-          { label: "5 measured", tone: "success" },
-          { label: "1 missing", tone: "warning" }
+          { label: "Success", tone: "success" },
+          { label: "Channel Coverage", tone: "success" }
         ],
         rows: [
-          { label: "chn_demo_jp_01", value: "Measured", tone: "success" },
-          { label: "chn_demo_sg_02", value: "Measured", tone: "success" },
-          { label: "chn_demo_sg_03", value: "Missing receipt", tone: "warning" }
+          { label: "Issued vs measured", value: "Receipt blockers visible", meta: "safe aggregate", tone: "success" }
         ],
         safetyNotes: [
           "Channel refs are safe preview identifiers.",
@@ -224,31 +218,32 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
         ]
       },
       "usage-ledger": {
-        summary: "Usage ledger preview gives bounded evidence rows for account, order, channel, and traffic correlation.",
+        summary: "Read-only measurement evidence with safe refs.",
         chips: [
-          { label: "6 rows", tone: "info" },
-          { label: "Bounded", tone: "neutral" }
+          { label: "Usage Ledger", tone: "info" },
+          { label: "Read-only", tone: "neutral" }
         ],
         rows: [
-          { label: "acct_demo_01 / ord_demo_104", value: "42 GB", meta: "chn_demo_jp_01", tone: "success" },
-          { label: "acct_demo_02 / ord_demo_108", value: "103 GB", meta: "chn_demo_sg_03", tone: "warning" },
-          { label: "acct_demo_03 / ord_demo_077", value: "0 GB", meta: "disabled collector", tone: "neutral" }
+          { label: "acct_demo_01 · ord_safe_101", value: "42.8 GB", meta: "jp-vless · fresh", tone: "success" },
+          { label: "acct_demo_02 · ord_safe_102", value: "0 GB", meta: "sgp-hy2 · receipt pending", tone: "warning" },
+          { label: "acct_demo_03 · ord_safe_103", value: "N/A", meta: "jp-tuic · collector disabled", tone: "neutral" }
         ],
         safetyNotes: [
-          "Ledger rows are synthetic and capped.",
-          "No table virtualization is required for this preview dataset."
+          "Back end source: /api/admin/platform/subscription-usage-monitor or equivalent Admin DTO.",
+          "Ledger rows are synthetic and capped."
         ]
       },
       "collection-anomalies": {
-        summary: "Anomaly preview classifies collection delay, zero usage, disabled collector, and receipt gaps.",
+        summary: "Classify evidence; do not mutate accounts or orders.",
         chips: [
-          { label: "2 warnings", tone: "warning" },
-          { label: "Case backend locked", tone: "neutral" }
+          { label: "Collection Anomalies", tone: "warning" },
+          { label: "No mutation", tone: "neutral" }
         ],
         rows: [
-          { label: "Delay warning", value: "chn_demo_sg_03", meta: "receipt gap", tone: "warning" },
-          { label: "Zero usage", value: "acct_demo_03", meta: "disabled account", tone: "neutral" },
-          { label: "Collection gap", value: "collector_demo_sg", meta: "diagnostics later", tone: "warning" }
+          { label: "Delay warning", value: "Observed age exceeds threshold", meta: "route evidence to owner page", tone: "warning" },
+          { label: "True zero usage", value: "Different from not collected", meta: "visually distinct", tone: "info" },
+          { label: "Missing receipt", value: "Channel remains gated", meta: "matching applied receipt required", tone: "danger" },
+          { label: "Forbidden here", value: "No quota edit, order pause/archive, or artifact lifecycle.", tone: "danger" }
         ],
         safetyNotes: [
           "False-positive closure is not available.",
@@ -256,15 +251,13 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
         ]
       },
       "receipts-collectors": {
-        summary: "Receipt and collector preview shows evidence availability without exposing runtime config.",
+        summary: "Pending receipt, collector disabled, diagnostics locked.",
         chips: [
-          { label: "Receipts healthy", tone: "success" },
-          { label: "1 pending", tone: "warning" }
+          { label: "Warning", tone: "warning" },
+          { label: "Diagnostics locked", tone: "neutral" }
         ],
         rows: [
-          { label: "receipt_demo_301", value: "Applied", meta: "chn_demo_jp_01", tone: "success" },
-          { label: "receipt_demo_302", value: "Pending", meta: "chn_demo_sg_03", tone: "warning" },
-          { label: "collector_demo_sg", value: "Available", meta: "read-only diagnostics", tone: "info" }
+          { label: "Receipts & Collectors", value: "Pending receipt", meta: "collector disabled · diagnostics locked", tone: "warning" }
         ],
         safetyNotes: [
           "Raw runtime config and logs are excluded.",

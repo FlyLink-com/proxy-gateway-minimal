@@ -22,6 +22,7 @@ describe("admin UI projection", () => {
       category: "monitoring",
       className: "",
       containerLabel: "Overview metric widget set",
+      description: "Summarize platform health without owning the account, quota, channel, or receipt detail collections.",
       fieldLabels: [
         "Platform health · summary state",
         "Risk counter · severity split",
@@ -40,6 +41,7 @@ describe("admin UI projection", () => {
       "category",
       "className",
       "containerLabel",
+      "description",
       "fieldLabels",
       "navId",
       "ownerMode",
@@ -93,10 +95,12 @@ describe("admin UI projection", () => {
       subNavigation: pageSubNavigation[blueprint.page]
     });
 
-    expect(panels[0].fixturePreview?.summary).toContain("Synthetic operator snapshot");
+    expect(panels[0].fixturePreview?.summary).toContain("Metric cards");
     expect(panels[1].fixturePreview?.rows.map((row) => row.value)).toEqual([
-      "acct_demo_02",
-      "ord_demo_108"
+      "12 affected",
+      "6 affected",
+      "3 affected",
+      "Locked"
     ]);
     expect(JSON.stringify(panels)).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_/i);
   });

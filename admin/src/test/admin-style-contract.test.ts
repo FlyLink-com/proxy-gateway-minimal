@@ -54,14 +54,14 @@ describe("admin style token contract", () => {
       "--admin-canvas-gutter: 24px",
       "--admin-canvas-gutter-mobile: 12px",
       "--admin-canvas-max-width: 1520px",
-      "--admin-statusbar-height: 48px",
+      "--admin-statusbar-height: 64px",
       "--admin-mobile-nav-height: 58px",
       "--admin-mobile-nav-width: 960px",
       "--admin-app-icon-size: 34px",
       "--admin-sidebar-route-icon-size: 32px",
-      "--admin-sidebar-width: 228px",
-      "--admin-sidebar-offset: 12px",
-      "--admin-sidebar-gap: 16px",
+      "--admin-sidebar-width: 240px",
+      "--admin-sidebar-offset: 0px",
+      "--admin-sidebar-gap: 0px",
       "--admin-library-width: 640px",
       "--admin-library-left: calc(var(--admin-sidebar-offset) + var(--admin-sidebar-width) + var(--admin-sidebar-gap))",
       "--admin-library-top: calc(var(--admin-sidebar-offset) + 50px)",
@@ -88,10 +88,10 @@ describe("admin style token contract", () => {
       "--admin-plugin-height-tall: 252px",
       "--admin-plugin-field-height: 26px",
       "--admin-plugin-field-gap: 6px",
-      "--admin-radius-control: 8px",
-      "--admin-radius-panel: 8px",
-      "--admin-radius-card: 8px",
-      "--admin-radius-chrome: 12px",
+      "--admin-radius-control: 10px",
+      "--admin-radius-panel: 12px",
+      "--admin-radius-card: 12px",
+      "--admin-radius-chrome: 16px",
       "--admin-radius-floating: 12px",
       "--admin-radius-icon: 8px",
       "--admin-noise-opacity: 0"
@@ -242,7 +242,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-shell")).toContain("isolation: isolate");
     expect(selectorBlock(".admin-shell::before")).toContain("var(--admin-noise-opacity)");
     expect(selectorBlock(".admin-shell::after")).toContain("display: none");
-    expect(selectorBlock(":root")).toContain("--admin-sidebar-width: 228px");
+    expect(selectorBlock(":root")).toContain("--admin-sidebar-width: 240px");
     expect(selectorBlock(":root")).toContain("--admin-library-width: 640px");
     expect(selectorBlock(":root")).toContain("--admin-library-left: calc(var(--admin-sidebar-offset) + var(--admin-sidebar-width) + var(--admin-sidebar-gap))");
     expect(selectorBlock(":root")).toContain("--admin-library-max-height: min(500px");
@@ -251,11 +251,11 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".app-sidebar")).toContain("width: var(--admin-sidebar-width)");
     expect(selectorBlock(".app-sidebar")).toContain("top: var(--admin-sidebar-offset)");
     expect(selectorBlock(".app-sidebar")).toContain("bottom: var(--admin-sidebar-offset)");
-    expect(selectorBlock(".app-sidebar")).toContain("background: #ffffff");
-    expect(selectorBlock(".app-sidebar")).toContain("var(--admin-border)");
-    expect(selectorBlock(".app-sidebar")).toContain("var(--admin-shadow-chrome)");
+    expect(selectorBlock(".app-sidebar")).toContain("background: #0f172a");
+    expect(selectorBlock(".app-sidebar")).toContain("border: 0");
+    expect(selectorBlock(".app-sidebar")).toContain("box-shadow: none");
     expect(selectorBlock(".app-sidebar")).toContain("flex-direction: column");
-    expect(selectorBlock(".app-sidebar")).toContain("box-shadow: var(--admin-shadow-chrome)");
+    expect(selectorBlock(".app-sidebar")).toContain("box-shadow: none");
     expect(selectorBlock(".app-sidebar::before")).toContain("display: none");
     expect(selectorBlock(".app-sidebar > *")).toContain("z-index: 1");
     expect(selectorBlock(".app-sidebar")).toContain("position: fixed");
@@ -265,7 +265,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".top-bar")).toContain("var(--admin-statusbar-shadow)");
     expect(selectorBlock(".top-bar")).toContain("var(--admin-statusbar-height)");
     expect(selectorBlock(".top-bar")).toContain("position: sticky");
-    expect(selectorBlock(":root")).toContain("--admin-statusbar-height: 48px");
+    expect(selectorBlock(":root")).toContain("--admin-statusbar-height: 64px");
     expect(selectorBlock(".top-bar")).toContain("backdrop-filter: none");
     expect(selectorBlock(".admin-content")).toContain("var(--admin-content-padding)");
     expect(selectorBlock(".admin-content")).toContain("var(--admin-canvas-max-width)");
@@ -298,6 +298,8 @@ describe("admin style token contract", () => {
     expect(styles).not.toContain(".admin-blueprint-window-tool");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("var(--workbench-category-color");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("grid-template-columns: minmax(0, 1fr)");
+    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("grid-auto-rows: max-content");
+    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("align-content: start");
     expect(selectorBlock(".admin-blueprint-module-panel-head")).toContain("display: flex");
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("display: inline-grid");
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger:hover")).toContain("var(--workbench-category-bg");
@@ -318,7 +320,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".workbench-category-pill::before")).toContain("background: currentColor");
     expect(selectorBlock(".workbench-category-monitoring")).toContain("--workbench-category-color: #2563eb");
     expect(selectorBlock(".admin-blueprint-module-title small")).toContain("text-overflow: ellipsis");
-    expect(selectorBlock(".admin-blueprint-module-title small")).toContain("font-size: 11px");
+    expect(selectorBlock(".admin-blueprint-module-title small")).toContain("font-size: 12px");
     expect(selectorBlock(".admin-blueprint-module-title h3")).toContain("word-break: normal");
     expect(selectorBlock(".admin-blueprint-panel-fields")).toContain("display: grid");
     expect(selectorBlock(".admin-blueprint-panel-fields")).toContain("repeat(auto-fit");
@@ -374,7 +376,7 @@ describe("admin style token contract", () => {
   test("keeps interactive admin controls visually consistent", () => {
     expect(selectorBlock(".nav-item")).toContain("min-height: 42px");
     expect(selectorBlock(".nav-item")).toContain("display: inline-flex");
-    expect(selectorBlock(".nav-item-icon")).toContain("width: 32px");
+    expect(selectorBlock(".nav-item-icon")).toContain("width: 0");
     expect(selectorBlock(".nav-primary-list")).toContain("display: flex");
     expect(selectorBlock(".nav-planned-menu")).toContain("position: relative");
     expect(selectorBlock(".nav-planned-summary")).toContain("min-height: 42px");
@@ -418,8 +420,8 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-route-icon")).toContain("var(--admin-sidebar-route-icon-size)");
     expect(selectorBlock(".nav-item-icon.nav-route-icon svg")).toContain("width: 16px");
     expect(selectorBlock(".nav-item-icon.nav-route-icon svg")).toContain("height: 16px");
-    expect(selectorBlock(".sidebar-safety-summary")).toContain("min-height: 42px");
-    expect(styles).toMatch(/\.nav-item-active\s*\{[\s\S]*inset 3px 0 0 var\(--admin-accent\)/m);
+    expect(selectorBlock(".sidebar-safety-summary")).toContain("min-height: 102px");
+    expect(styles).toMatch(/\.nav-item-active\s*\{[\s\S]*box-shadow: none;/m);
     expect(selectorBlock(".nav-item")).toContain("transition:");
     expect(selectorBlock(".environment-pill,\n.protected-console,\n.icon-button")).toContain("min-height: var(--admin-control-height)");
     expect(selectorBlock(".operator-account-summary")).toContain("min-height: 38px");
@@ -488,7 +490,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("contain: layout paint");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("box-shadow: none");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("backdrop-filter: none");
-    expect(selectorBlock(".admin-blueprint-module-panel::before")).toContain("width: 2px");
+    expect(selectorBlock(".admin-blueprint-module-panel::before")).toContain("width: 0");
     expect(selectorBlock(".admin-blueprint-module-panel::before")).toContain("background: var(--admin-plugin-accent)");
     expect(selectorBlock(".admin-blueprint-module-panel:hover")).toContain("border-color: var(--workbench-category-border");
     expect(selectorBlock(".nav-library-search")).toContain("box-shadow: none");

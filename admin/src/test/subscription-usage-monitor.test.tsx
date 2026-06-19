@@ -67,10 +67,10 @@ describe("subscription usage monitor page", () => {
     render(<SubscriptionUsageMonitorPage fixturePreviewEnabled />);
 
     expect(screen.getByLabelText("Collection Freshness fixture preview")).not.toBeNull();
-    expect(screen.getByText("Channel coverage preview compares issued and measured safe channel refs.")).not.toBeNull();
-    expect(screen.getAllByText("chn_demo_sg_03").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("receipt_demo_302")).not.toBeNull();
-    expect(screen.getAllByText("collector_demo_sg").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Issued vs measured vs missing receipt blockers.")).not.toBeNull();
+    expect(screen.getAllByText("sgp-hy2 · receipt pending").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Missing receipt")).not.toBeNull();
+    expect(screen.getAllByText("Pending receipt").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Raw runtime config and logs are excluded.")).not.toBeNull();
 
     const renderedText = document.body.textContent ?? "";

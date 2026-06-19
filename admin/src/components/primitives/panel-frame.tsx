@@ -16,6 +16,7 @@ export type PanelFrameProps = {
   containerLabel: string;
   dataModuleNavId?: string;
   dataUiSurfaceRole?: string;
+  description?: string;
   density?: AdminUiDensity;
   fieldLabels: string[];
   fixturePreview?: AdminFixturePreviewPanel;
@@ -44,6 +45,7 @@ export function PanelFrame({
   containerLabel,
   dataModuleNavId,
   dataUiSurfaceRole,
+  description,
   density = ADMIN_UI_CONTRACT.pluginFrame.density,
   fieldLabels,
   fixturePreview,
@@ -75,6 +77,7 @@ export function PanelFrame({
           <div>
             <h3>{title}</h3>
             <small>{containerLabel}</small>
+            {description ? <p className="admin-figma-panel-description">{description}</p> : null}
           </div>
         </div>
         <div className="admin-blueprint-module-panel-meta">

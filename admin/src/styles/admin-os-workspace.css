@@ -348,7 +348,34 @@
 .admin-blueprint-page {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 18px;
+}
+
+.admin-blueprint-page-hero {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-blueprint-page-hero p {
+  margin: 0;
+  color: var(--admin-text-soft);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.admin-blueprint-page-hero p:first-child {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-blueprint-page-hero h1 {
+  margin: 0;
+  color: var(--admin-text);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1.35;
 }
 
 
@@ -391,8 +418,79 @@
   grid-template-columns: minmax(0, 1fr);
   grid-auto-flow: row;
   grid-auto-rows: auto;
-  gap: var(--admin-plugin-gap);
+  gap: 16px;
   align-items: stretch;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-blueprint-module-board {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-board {
+  grid-template-columns: minmax(300px, 0.95fr) minmax(380px, 1.2fr) minmax(260px, 0.75fr);
+}
+
+.admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-board {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="health-summary"] {
+  grid-column: 1 / -1;
+}
+
+.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="risk-queue"] {
+  grid-column: 1 / span 2;
+  min-height: 520px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="next-actions"] {
+  grid-column: 3 / span 2;
+  min-height: 520px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="account-overview"] {
+  grid-column: 1;
+  grid-row: 1 / span 3;
+  min-height: 690px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="resource-orders"] {
+  grid-column: 2;
+  grid-row: 1 / span 3;
+  min-height: 690px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="quota-usage"],
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="lifecycle"],
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="history-events"] {
+  grid-column: 3;
+}
+
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="freshness"] {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="channel-coverage"] {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="receipts-collectors"] {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="usage-ledger"] {
+  grid-column: 1 / span 2;
+  grid-row: 2;
+  min-height: 560px;
+}
+
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="collection-anomalies"] {
+  grid-column: 3;
+  grid-row: 2;
+  min-height: 560px;
 }
 
 .admin-blueprint-module-panel {
@@ -400,17 +498,19 @@
   position: relative;
   overflow: hidden;
   border: 1px solid var(--admin-border);
-  border-radius: var(--admin-radius-control);
+  border-radius: var(--admin-radius-panel);
   background: #ffffff;
   box-shadow: none;
   backdrop-filter: none;
   contain: layout paint;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 13px;
+  grid-auto-rows: max-content;
+  gap: 12px;
+  align-content: start;
   align-items: start;
   min-width: 0;
-  padding: 14px 15px;
+  padding: 16px;
   scroll-margin-top: 96px;
   transition:
     border-color var(--admin-ease),
@@ -421,9 +521,9 @@
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
-  width: 2px;
+  width: 0;
   background: var(--admin-plugin-accent);
-  opacity: 0.9;
+  opacity: 0;
 }
 
 .admin-blueprint-module-panel:hover {
@@ -509,7 +609,7 @@
 
 .admin-blueprint-module-title {
   display: grid;
-  gap: 5px;
+  gap: 8px;
   justify-items: start;
   min-width: 0;
   padding-left: 0;
@@ -518,14 +618,14 @@
 
 .admin-blueprint-module-title > div {
   display: grid;
-  gap: 2px;
+  gap: 10px;
   min-width: 0;
 }
 
 .admin-blueprint-module-title h3 {
   margin: 0;
   color: var(--admin-text);
-  font-size: 15px;
+  font-size: 18px;
   line-height: 1.25;
   letter-spacing: 0;
   overflow-wrap: normal;
@@ -534,12 +634,20 @@
 
 .admin-blueprint-module-title small {
   color: var(--admin-muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.3;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.admin-figma-panel-description {
+  margin: 0;
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
 }
 
 
@@ -548,7 +656,7 @@
 
 
 .workbench-category-pill {
-  display: inline-flex;
+  display: none;
   align-items: center;
   gap: 5px;
   width: fit-content;
@@ -695,10 +803,10 @@
 }
 
 .admin-fixture-preview {
-  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  border-top: 0;
   display: grid;
-  gap: 10px;
-  padding-top: 12px;
+  gap: 12px;
+  padding-top: 0;
 }
 
 .admin-fixture-preview > p {
@@ -718,19 +826,62 @@
 
 .admin-fixture-preview-rows {
   display: grid;
-  gap: 7px;
+  gap: 12px;
   margin: 0;
 }
 
 .admin-fixture-preview-row {
-  border: 1px solid rgba(148, 163, 184, 0.22);
+  border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-control);
-  background: var(--admin-surface-muted);
+  background: #ffffff;
   display: grid;
   grid-template-columns: minmax(120px, 0.34fr) minmax(0, 1fr);
   gap: 10px;
   min-width: 0;
   padding: 9px 10px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="health-summary"] .admin-fixture-preview-rows {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="health-summary"] .admin-fixture-preview-row,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="freshness"] .admin-fixture-preview-row,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="channel-coverage"] .admin-fixture-preview-row,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="receipts-collectors"] .admin-fixture-preview-row,
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="quota-usage"] .admin-fixture-preview-row,
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="lifecycle"] .admin-fixture-preview-row,
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="history-events"] .admin-fixture-preview-row {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 96px;
+  padding: 14px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="health-summary"] .admin-fixture-preview-row {
+  min-height: 130px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="account-overview"] .admin-fixture-preview-rows,
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="resource-orders"] .admin-fixture-preview-rows,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="usage-ledger"] .admin-fixture-preview-rows {
+  gap: 13px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="account-overview"] .admin-fixture-preview-row,
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="resource-orders"] .admin-fixture-preview-row,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="usage-ledger"] .admin-fixture-preview-row {
+  grid-template-columns: minmax(140px, 0.35fr) minmax(0, 0.65fr);
+  min-height: 33px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="risk-queue"] .admin-fixture-preview-row {
+  grid-template-columns: minmax(180px, 1fr) minmax(100px, 0.5fr);
+}
+
+.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="next-actions"] .admin-fixture-preview-row,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="collection-anomalies"] .admin-fixture-preview-row {
+  grid-template-columns: minmax(0, 1fr);
+  padding: 14px;
 }
 
 .admin-fixture-preview-row dt {

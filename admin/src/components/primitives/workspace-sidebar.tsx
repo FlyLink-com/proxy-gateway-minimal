@@ -24,6 +24,7 @@ export type WorkspaceSidebarProps = {
   className?: string;
   navigationLibrary: ReactNode;
   pinnedApps: WorkspaceSidebarPinnedRoute[];
+  plannedRoutes?: ReactNode;
   safetyGate?: ReactNode;
 };
 
@@ -49,6 +50,7 @@ export function WorkspaceSidebar({
   className,
   navigationLibrary,
   pinnedApps,
+  plannedRoutes,
   safetyGate
 }: WorkspaceSidebarProps) {
   return (
@@ -85,6 +87,12 @@ export function WorkspaceSidebar({
             </button>
           ))}
         </div>
+
+        {plannedRoutes ? (
+          <div className="nav-planned-sidebar-list" aria-label="Planned workspace routes">
+            {plannedRoutes}
+          </div>
+        ) : null}
 
         {navigationLibrary}
       </nav>

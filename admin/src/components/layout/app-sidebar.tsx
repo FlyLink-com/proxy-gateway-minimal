@@ -12,7 +12,7 @@ import {
   matchesAppSearch,
   normalizeAppSearchText
 } from "../../app/admin-app-manifest";
-import { type AdminPage } from "../../app/navigation";
+import { consoleSections, type AdminPage } from "../../app/navigation";
 import { cn } from "../../lib/utils";
 import { NavigationLibrary, WorkspaceSidebar } from "../primitives";
 
@@ -331,12 +331,28 @@ export function AppSidebar({
     );
   });
 
+  const plannedSidebarRoutes = consoleSections
+    .filter((section) => section.status === "planned")
+    .map((section) => (
+      <button
+        aria-label={`${section.label} planned gate`}
+        className="nav-item nav-item-planned nav-item-sidebar-planned"
+        disabled
+        key={section.id}
+        title={section.entryGate}
+        type="button"
+      >
+        <span className="nav-item-copy">{section.label}</span>
+        <span className="nav-item-gate-pill">Gate</span>
+      </button>
+    ));
+
   return (
     <WorkspaceSidebar
       brand={{
         mark: "GC",
         name: "GlobalCircle AI",
-        subtitle: "Proxy Gateway"
+        subtitle: "Proxy Gateway Admin"
       }}
       navigationLibrary={(
         <NavigationLibrary
@@ -356,11 +372,13 @@ export function AppSidebar({
         />
       )}
       pinnedApps={pinnedApps}
+      plannedRoutes={plannedSidebarRoutes}
       safetyGate={(
         <details className="sidebar-safety-footer">
           <summary className="sidebar-safety-summary" aria-label="Production action guard">
             <ShieldCheck aria-hidden="true" />
             <strong>Risk A gated</strong>
+            <span>No token, URL, credential, runtime config, or raw customer data in Admin UI fixtures.</span>
             <ChevronUp aria-hidden="true" />
           </summary>
           <div className="sidebar-safety-detail">

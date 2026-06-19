@@ -70,10 +70,10 @@ describe("portal requests page", () => {
     render(<PortalRequestsPage fixturePreviewEnabled />);
 
     expect(screen.getByLabelText("Account Directory fixture preview")).not.toBeNull();
-    expect(screen.getByText("Account directory preview shows safe account refs, supervision state, and linked resource counts.")).not.toBeNull();
+    expect(screen.getByText("Safe account refs, resource count, risk state, and last safe event.")).not.toBeNull();
     expect(screen.getAllByText("acct_demo_02").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("ord_demo_108").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("art_ref_demo_077").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("ord_safe_102").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("ord_safe_103").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Quota edits remain disabled.")).not.toBeNull();
 
     const renderedText = document.body.textContent ?? "";

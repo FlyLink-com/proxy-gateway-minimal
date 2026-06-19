@@ -120,9 +120,9 @@ export function AdminConsolePageFrame({
       data-page={blueprint.page}
       data-ui-contract={ADMIN_UI_CONTRACT.pageFrame.contractId}
     >
-      <header className="sr-only" aria-label={blueprint.ariaLabel}>
+      <header className="admin-blueprint-page-hero" aria-label={blueprint.ariaLabel}>
         <p>{blueprint.kicker}</p>
-        <h2>{blueprint.title}</h2>
+        <h1>{blueprint.title}</h1>
         <p>{blueprint.description}</p>
       </header>
 
@@ -136,6 +136,7 @@ export function AdminConsolePageFrame({
             containerLabel={panel.containerLabel}
             dataModuleNavId={panel.navId}
             dataUiSurfaceRole={panel.uiSurface}
+            description={panel.description}
             fieldLabels={panel.fieldLabels}
             fixturePreview={panel.fixturePreview}
             id={panel.targetId}

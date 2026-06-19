@@ -44,6 +44,10 @@
     min-width: 0;
   }
 
+  .nav-planned-sidebar-list {
+    display: none;
+  }
+
   .brand-name,
   .brand-subtitle,
   .nav-item-copy,
@@ -451,6 +455,24 @@
 
   .admin-blueprint-module-panel {
     grid-template-columns: 1fr;
+  }
+
+  .admin-blueprint-page[data-page="dashboard"] .admin-blueprint-module-board,
+  .admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-board,
+  .admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-board {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id],
+  .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id],
+  .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id] {
+    grid-column: auto;
+    grid-row: auto;
+    min-height: 0;
+  }
+
+  .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="health-summary"] .admin-fixture-preview-rows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .admin-blueprint-module-panel-head,

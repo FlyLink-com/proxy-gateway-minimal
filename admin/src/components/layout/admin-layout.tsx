@@ -47,7 +47,11 @@ export function AdminLayout({
         connectionConfigured={connectionConfigured}
       />
       <div className="admin-main">
-        <TopBar activePage={activePage} />
+        <TopBar
+          activePage={activePage}
+          search={search}
+          onSearchChange={onSearchChange}
+        />
         <section className="admin-content">{children}</section>
       </div>
     </div>

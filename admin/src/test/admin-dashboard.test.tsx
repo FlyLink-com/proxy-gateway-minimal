@@ -85,10 +85,11 @@ describe("admin dashboard page", () => {
     render(<DashboardPage fixturePreviewEnabled onNavigate={vi.fn()} onRiskCountChange={onRiskCountChange} />);
 
     expect(screen.getByLabelText("Health Summary fixture preview")).not.toBeNull();
-    expect(screen.getByText("Synthetic operator snapshot with healthy platform status, one stale evidence lane, and bounded review candidates.")).not.toBeNull();
-    expect(screen.getByText("acct_demo_02")).not.toBeNull();
-    expect(screen.getByText("ord_demo_108")).not.toBeNull();
-    expect(screen.getByText("No production Admin API is connected.")).not.toBeNull();
+    expect(screen.getByText("Metric cards for platform health, risk candidates, freshness, and channel coverage.")).not.toBeNull();
+    expect(screen.getByText("2m 14s")).not.toBeNull();
+    expect(screen.getByText("Order traffic over limit")).not.toBeNull();
+    expect(screen.getByText("Accounts & Resources")).not.toBeNull();
+    expect(screen.getByText("Overview summarizes and routes; owner pages hold detailed collections.")).not.toBeNull();
     expect(onRiskCountChange).toHaveBeenCalledWith(2);
 
     const renderedText = document.body.textContent ?? "";
