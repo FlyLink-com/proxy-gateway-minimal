@@ -206,8 +206,8 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "stableBaselineCommit": "e8db032",
-    "openPrCount": 1,
+    "stableBaselineCommit": "3a3522e",
+    "openPrCount": 9,
     "mergedPrsInCloseout": [
       299,
       302,
@@ -226,7 +226,7 @@
     "followOnBaseline": "master",
     "followOnBranchPolicy": "Start subsequent tasks from a clean master worktree unless a task explicitly states another baseline.",
     "closeoutPlan": "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
-    "note": "Branch context was rechecked after local/GitHub read-only check: master and origin/master are at e8db032 after PR #315 merged; open PR count is 1 with PR #316 for codex/linear-agent-ops-guards. Earlier PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 are merged, and PR #300 was closed without merge. Always verify live Git status before new work."
+    "note": "GCC-90 state refresh context records origin/master at 3a3522e for this branch baseline. Current known open PR stack is PR #328 through PR #336. PR #328 through PR #334 are Draft/review stack items; PR #335 is the GCC-92 lane based on codex/gcc-56-admin-supervision-closeout; PR #336 is the GCC-87 lane based on master. Treat the stack as draft/review with validation gaps unless live GitHub checks prove otherwise. Always verify live Git status and PR state before new work."
   },
   "architectureView": {
     "currentMentalModel": "four-layer-single-control-plane-multi-data-plane",
@@ -255,7 +255,7 @@
       "old checkout paths and archive directories",
       "runtime-only residue copied from production hosts"
     ],
-    "branchAuthority": "master and origin/master at e8db032 are the follow-on development baseline after PR #315 merged; PR #316 is currently open for codex/linear-agent-ops-guards. Earlier PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 merged; PR #300 is closed without merge."
+    "branchAuthority": "master/origin-master is the default follow-on baseline, with this GCC-90 worker branch created from origin/master at 3a3522e. Current known open PR stack is PR #328 through PR #336: PR #328 through PR #334 are Draft/review stack items, PR #335 is GCC-92 based on codex/gcc-56-admin-supervision-closeout, and PR #336 is GCC-87 based on master. Do not treat those PRs as merged or complete until live GitHub state, review readiness, and validation evidence confirm it."
   },
   "productSpine": [
     "stable subscription/import experience",
@@ -275,6 +275,7 @@
     "Aliyun subscription-distribution records, channel-lab-a/b records, and Japan single-TUIC upgrade records are historical/fallback references. Do not reactivate them as current production authority or automatic issuance targets without a fresh Risk A gate and live verification.",
     "User Portal and Admin/Operator surfaces are adapters over shared domain services. User order creation, lifecycle status, refresh, usage monitor, and support flows must use durable backend state, not frontend Map/demo state.",
     "Order-owned traffic accounting remains an active implementation lane: Admin usage monitor now shows order-owned issued channels from durable state, but live runtime sample collection, User Portal usage display, quota enforcement, and auto-disable still require separate gates.",
+    "GCC-86/GCC-96 decision context keeps the New Admin lane blocked on a live operational shell: long-term preview-only Admin UI, demo state, or isolated concept parity is not a completion state. Admin completion claims need protected operator shell behavior backed by durable facts, safe redaction boundaries, tests, and validation evidence.",
     "Legacy query-token retirement remains a separate Risk A lane after opaque artifact coverage, observation, endpoint compatibility checks, rollback evidence, and exact operator approval.",
     "All production/runtime/cloud changes remain Risk A: DNS, Nginx, provider firewall, systemd restarts, runtime config, live order creation, account/password generation, subscription URL/token/password output, and SQLite row dumps stay out of repo-only work."
   ],
@@ -359,7 +360,7 @@
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, validation evidence, and Agent / Task Routing metadata before it is marked Ready, submitted for merge, or reported complete. The routing metadata must name the lead agent, supporting agents if any, primary unit, secondary units, follow-up agent suitability, and recommended next owner. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
-    "githubHostedActions": "Local/GitHub read-only check reports master and origin/master at e8db032 after PR #315 merged, with PR #316 currently open for codex/linear-agent-ops-guards. Earlier PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 merged, and PR #300 closed without merge. Recent master CI and Release Artifact workflows should be checked per PR/run; use local/manual validation when hosted workflows do not run.",
+    "githubHostedActions": "Known PR-triggered workflow visibility is incomplete for the current stack: PR #328 has a successful PR-triggered CI run, while PR #329 through PR #334 have no visible PR-triggered workflow runs in the reviewed context. Treat PR #328 through PR #336 as draft/review until each PR has explicit validation evidence. Recent master CI and Release Artifact workflows should be checked per PR/run; use local/manual validation when hosted workflows do not run.",
     "manualCiFallback": "Use docs/VALIDATION_BASELINE.md and docs/CI_MANUAL_VALIDATION.md for the current manual validation path; historical HP/Aliyun manual CI facts are reference only.",
     "manualCiIsStaging": false,
     "cTierCommand": "git diff --check origin/master...HEAD",
@@ -407,6 +408,11 @@
       "sourceDoc": "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md"
     },
     {
+      "id": "admin-live-operational-shell-required",
+      "summary": "GCC-86/GCC-96 decision context does not accept long-term preview-only Admin UI as done. The New Admin lane remains blocked until a protected live operational shell is backed by durable facts, safe redaction boundaries, tests, and validation evidence; concept parity and demo state are review inputs, not completion evidence.",
+      "sourceDoc": "docs/ADMIN_CONSOLE_REBUILD_BASELINE.md"
+    },
+    {
       "id": "legacy-query-token-retirement",
       "summary": "Legacy query-token subscription access remains a separate Risk A lane after opaque artifact coverage, observation, endpoint compatibility checks, rollback evidence, and exact operator approval.",
       "sourceDoc": "docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md"
@@ -428,6 +434,7 @@
     "Package any local adapter/template changes into an explicit Vultr runtime release only after current repo validation is clean.",
     "Use the protected remote handoff queue/API for future reviewed SGP handoff summaries, then use a separate Risk A gate for any future production remote apply.",
     "Continue order-owned usage monitor work by connecting live runtime samples and User Portal usage display, while keeping quota auto-disable disabled until separately approved.",
+    "For GCC-87/GCC-92 and related Admin PRs, keep completion language draft/review until the live operational shell blocker is closed with durable data, redaction boundaries, tests, and validation evidence.",
     "Keep legacy query-token retirement separate from multichannel rollout; do not combine route removal with artifact issuance or runtime changes.",
     "Do not mutate DNS, Nginx, provider firewall, runtime service state, account/passwords, payment, live orders, subscription URLs/tokens/passwords, or SQLite rows without exact approval."
   ],
