@@ -22,7 +22,6 @@ describe("admin UI projection", () => {
       category: "monitoring",
       className: "",
       containerLabel: "Overview metric widget set",
-      description: "Summarize platform health without owning the account, quota, channel, or receipt detail collections.",
       fieldLabels: [
         "Platform health · summary state",
         "Risk counter · severity split",
@@ -41,7 +40,6 @@ describe("admin UI projection", () => {
       "category",
       "className",
       "containerLabel",
-      "description",
       "fieldLabels",
       "navId",
       "ownerMode",
@@ -57,6 +55,7 @@ describe("admin UI projection", () => {
     expect(projectedText).not.toContain("Interaction model");
     expect(projectedText).not.toContain("Wire panel routes");
     expect(projectedText).not.toContain("Overview owns only first-screen monitoring");
+    expect(projectedText).not.toContain("Summarize platform health without owning");
   });
 
   test("omits hidden modules while preserving restored panel identity", () => {

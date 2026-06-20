@@ -16,7 +16,6 @@ export type PanelFrameProps = {
   containerLabel: string;
   dataModuleNavId?: string;
   dataUiSurfaceRole?: string;
-  description?: string;
   density?: AdminUiDensity;
   fieldLabels: string[];
   fixturePreview?: AdminFixturePreviewPanel;
@@ -45,7 +44,6 @@ export function PanelFrame({
   containerLabel,
   dataModuleNavId,
   dataUiSurfaceRole,
-  description,
   density = ADMIN_UI_CONTRACT.pluginFrame.density,
   fieldLabels,
   fixturePreview,
@@ -77,7 +75,6 @@ export function PanelFrame({
           <div>
             <h3>{title}</h3>
             <small>{containerLabel}</small>
-            {description ? <p className="admin-figma-panel-description">{description}</p> : null}
           </div>
         </div>
         <div className="admin-blueprint-module-panel-meta">
@@ -98,18 +95,12 @@ export function PanelFrame({
           ) : null}
         </div>
       </div>
-      <ul className="admin-blueprint-panel-fields" aria-label={`${title} primary fields`}>
-        {fieldLabels.map((field) => (
-          <li key={field}>{field}</li>
-        ))}
-      </ul>
       {fixturePreview ? (
         <div
           aria-label={`${title} fixture preview`}
           className="admin-fixture-preview"
           data-fixture-schema="admin-fixture-preview/v1"
         >
-          <p>{fixturePreview.summary}</p>
           <div className="admin-fixture-preview-chips" aria-label={`${title} fixture states`}>
             {fixturePreview.chips.map((chip) => (
               <StatusChip key={chip.label} label={chip.label} tone={chip.tone} />
@@ -127,11 +118,6 @@ export function PanelFrame({
               </div>
             ))}
           </dl>
-          <ul className="admin-fixture-preview-safety" aria-label={`${title} fixture safety notes`}>
-            {fixturePreview.safetyNotes.map((note) => (
-              <li key={note}>{note}</li>
-            ))}
-          </ul>
         </div>
       ) : null}
       {actions ? <div className="admin-blueprint-actions">{actions}</div> : null}

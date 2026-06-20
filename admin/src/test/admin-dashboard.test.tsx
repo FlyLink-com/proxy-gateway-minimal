@@ -51,10 +51,11 @@ describe("admin dashboard page", () => {
     expect(screen.getByRole("heading", { name: "Health Summary" })).not.toBeNull();
     expect(screen.getByLabelText("Monitoring panel")).not.toBeNull();
     expect(screen.getAllByText("Overview metric widget set").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Platform health · summary state").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Platform health · summary state")).toBeNull();
+    expect(screen.queryByText("First-screen operator view for platform health, risk routing, and the next owner page.")).toBeNull();
     expect(screen.getByRole("heading", { name: "Risk Queue" })).not.toBeNull();
     expect(screen.getAllByLabelText("Audit / Workflow panel").length).toBe(2);
-    expect(screen.getAllByText("Reason · quota / delay / receipt").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Reason · quota / delay / receipt")).toBeNull();
     expect(screen.getByRole("heading", { name: "Next Actions" })).not.toBeNull();
     expect(screen.queryByText("Wire panel routes to section-level deep links after page modules are finalized.")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);
@@ -85,11 +86,11 @@ describe("admin dashboard page", () => {
     render(<DashboardPage fixturePreviewEnabled onNavigate={vi.fn()} onRiskCountChange={onRiskCountChange} />);
 
     expect(screen.getByLabelText("Health Summary fixture preview")).not.toBeNull();
-    expect(screen.getByText("Metric cards for platform health, risk candidates, freshness, and channel coverage.")).not.toBeNull();
+    expect(screen.queryByText("Metric cards for platform health, risk candidates, freshness, and channel coverage.")).toBeNull();
     expect(screen.getByText("2m 14s")).not.toBeNull();
     expect(screen.getByText("Order traffic over limit")).not.toBeNull();
     expect(screen.getByText("Accounts & Resources")).not.toBeNull();
-    expect(screen.getByText("Overview summarizes and routes; owner pages hold detailed collections.")).not.toBeNull();
+    expect(screen.queryByText("Overview summarizes and routes; owner pages hold detailed collections.")).toBeNull();
     expect(onRiskCountChange).toHaveBeenCalledWith(2);
 
     const renderedText = document.body.textContent ?? "";

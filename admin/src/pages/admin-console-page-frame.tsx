@@ -123,7 +123,6 @@ export function AdminConsolePageFrame({
       <header className="admin-blueprint-page-hero" aria-label={blueprint.ariaLabel}>
         <p>{blueprint.kicker}</p>
         <h1>{blueprint.title}</h1>
-        <p>{blueprint.description}</p>
       </header>
 
       <div className="admin-blueprint-module-board" aria-label={`${blueprint.title} module layout`}>
@@ -136,7 +135,6 @@ export function AdminConsolePageFrame({
             containerLabel={panel.containerLabel}
             dataModuleNavId={panel.navId}
             dataUiSurfaceRole={panel.uiSurface}
-            description={panel.description}
             fieldLabels={panel.fieldLabels}
             fixturePreview={panel.fixturePreview}
             id={panel.targetId}

@@ -322,16 +322,9 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-title small")).toContain("text-overflow: ellipsis");
     expect(selectorBlock(".admin-blueprint-module-title small")).toContain("font-size: 12px");
     expect(selectorBlock(".admin-blueprint-module-title h3")).toContain("word-break: normal");
-    expect(selectorBlock(".admin-blueprint-panel-fields")).toContain("display: grid");
-    expect(selectorBlock(".admin-blueprint-panel-fields")).toContain("repeat(auto-fit");
-    expect(selectorBlock(".admin-blueprint-panel-fields")).toContain("gap: 8px 18px");
-    expect(selectorBlock(".admin-blueprint-panel-fields")).toContain("border-top");
-    expect(selectorBlock(".admin-blueprint-panel-fields li")).toContain("white-space: normal");
-    expect(selectorBlock(".admin-blueprint-panel-fields li")).toContain("border: 0");
-    expect(selectorBlock(".admin-blueprint-panel-fields li")).toContain("background: transparent");
-    expect(selectorBlock(".admin-blueprint-panel-fields li")).toContain("font-weight: 600");
-    expect(selectorBlock(".admin-blueprint-panel-fields li")).toContain("box-shadow: none");
-    expect(selectorBlock(".admin-blueprint-panel-fields li::before")).toContain("var(--workbench-category-color");
+    expect(styles).not.toContain(".admin-figma-panel-description");
+    expect(styles).not.toContain(".admin-blueprint-panel-fields");
+    expect(styles).not.toContain(".admin-fixture-preview-safety");
     expect(selectorBlock(".admin-blueprint-module-panel-meta")).toContain("justify-content: flex-end");
     expect(selectorBlock(".admin-fixture-preview")).toContain("display: grid");
     expect(selectorBlock(".admin-fixture-preview-row")).toContain("grid-template-columns: minmax(120px, 0.34fr) minmax(0, 1fr)");
@@ -485,6 +478,7 @@ describe("admin style token contract", () => {
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-planned-count\s*\{[\s\S]*right: 0;/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-summary\s*\{[\s\S]*min-height: 42px;/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-summary span,[\s\S]*\.sidebar-safety-summary strong\s*\{[\s\S]*display: none;/m);
+    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-detail\s*\{[\s\S]*display: none;/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-summary svg:first-of-type\s*\{[\s\S]*display: block;/m);
   });
 

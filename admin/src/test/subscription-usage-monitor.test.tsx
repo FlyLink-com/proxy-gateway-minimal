@@ -42,15 +42,16 @@ describe("subscription usage monitor page", () => {
     expect(screen.getAllByLabelText("Monitoring panel").length).toBe(4);
     expect(screen.getByLabelText("Platform Tools panel")).not.toBeNull();
     expect(screen.getAllByText("Safe diagnostics entry panel").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Latest usage · observed age").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Latest usage · observed age")).toBeNull();
+    expect(screen.queryByText("Evidence owner for usage collection trust, channel coverage, receipts, collectors, and collection anomalies.")).toBeNull();
     expect(screen.getByRole("heading", { name: "Channel Coverage" })).not.toBeNull();
-    expect(screen.getAllByText("Measured channels · count").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Measured channels · count")).toBeNull();
     expect(screen.getByRole("heading", { name: "Usage Ledger" })).not.toBeNull();
-    expect(screen.getAllByText("Traffic · upload / download / total").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Traffic · upload / download / total")).toBeNull();
     expect(screen.getByRole("heading", { name: "Collection Anomalies" })).not.toBeNull();
     expect(screen.queryByText("Missing receipt")).toBeNull();
     expect(screen.getByRole("heading", { name: "Receipts & Collectors" })).not.toBeNull();
-    expect(screen.getAllByText("Collectors · availability").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Collectors · availability")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);
     document.querySelectorAll(".admin-blueprint-module-notes").forEach((notes) => {
       expect(notes.hasAttribute("open")).toBe(false);
@@ -67,11 +68,11 @@ describe("subscription usage monitor page", () => {
     render(<SubscriptionUsageMonitorPage fixturePreviewEnabled />);
 
     expect(screen.getByLabelText("Collection Freshness fixture preview")).not.toBeNull();
-    expect(screen.getByText("Issued vs measured vs missing receipt blockers.")).not.toBeNull();
+    expect(screen.queryByText("Issued vs measured vs missing receipt blockers.")).toBeNull();
     expect(screen.getAllByText("sgp-hy2 · receipt pending").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Missing receipt")).not.toBeNull();
     expect(screen.getAllByText("Pending receipt").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Raw runtime config and logs are excluded.")).not.toBeNull();
+    expect(screen.queryByText("Raw runtime config and logs are excluded.")).toBeNull();
 
     const renderedText = document.body.textContent ?? "";
     expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|yaml|edgecred_/i);

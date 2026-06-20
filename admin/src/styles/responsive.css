@@ -144,6 +144,10 @@
     display: none;
   }
 
+  .sidebar-safety-detail {
+    display: none;
+  }
+
   .sidebar-safety-summary svg:first-of-type {
     display: block;
     width: 18px;
@@ -530,7 +534,6 @@
   }
 
   .admin-blueprint-module-panel-head,
-  .admin-blueprint-panel-fields,
   .admin-blueprint-module-panel > .admin-blueprint-actions {
     grid-column: 1;
     grid-row: auto;

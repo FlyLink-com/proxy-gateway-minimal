@@ -129,6 +129,9 @@ describe("admin ui primitives", () => {
     expect(screen.queryByLabelText("Health Summary plugin display controls")).toBeNull();
     expect(screen.queryByRole("button", { name: "Health Summary Large plugin display" })).toBeNull();
     expect(screen.getByRole("button", { name: "Health Summary hide module" })).not.toBeNull();
+    expect(screen.getByLabelText("2 primary fields")).not.toBeNull();
+    expect(screen.queryByText("Platform health label")).toBeNull();
+    expect(screen.queryByText("Risk counter")).toBeNull();
     expect(screen.getByText("Preview")).not.toBeNull();
     expect(screen.getByText("Panel content")).not.toBeNull();
 
@@ -163,7 +166,8 @@ describe("admin ui primitives", () => {
     expect(fixturePreview.getAttribute("data-fixture-schema")).toBe("admin-fixture-preview/v1");
     expect(within(fixturePreview).getByText("2 candidates")).not.toBeNull();
     expect(within(fixturePreview).getByText("acct_demo_02")).not.toBeNull();
-    expect(within(fixturePreview).getByText("Candidate refs are synthetic.")).not.toBeNull();
+    expect(within(fixturePreview).queryByText("Review queue previews routing decisions without durable case closure.")).toBeNull();
+    expect(within(fixturePreview).queryByText("Candidate refs are synthetic.")).toBeNull();
     expect(screen.queryByRole("table")).toBeNull();
     expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_/i);
   });

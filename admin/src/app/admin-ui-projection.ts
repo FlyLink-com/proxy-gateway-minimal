@@ -48,7 +48,6 @@ export type BlueprintPanelViewModel = {
   category: WorkbenchCategory;
   className: string;
   containerLabel: string;
-  description?: string;
   fieldLabels: string[];
   fixturePreview?: AdminFixturePreviewPanel;
   navId: string;
@@ -94,7 +93,6 @@ export function projectBlueprintPanelViewModels({
       category: module.container.category,
       className: "",
       containerLabel: module.container.container,
-      description: module.purpose,
       fieldLabels: module.contentFields,
       navId: module.navId,
       ownerMode: navItem?.mode === "preview" ? "preview" : "owner",
