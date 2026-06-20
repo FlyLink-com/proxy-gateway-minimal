@@ -63,7 +63,7 @@ describe("portal requests page", () => {
     expect(screen.queryByText("Order · pause / expiry candidate")).toBeNull();
     expect(screen.getByRole("heading", { name: "History & Events" })).not.toBeNull();
     expect(screen.getByText("Safe computed history")).not.toBeNull();
-    expect(screen.getByText("Audit backend locked")).not.toBeNull();
+    expect(screen.getByText("Restricted backend locked")).not.toBeNull();
     expect(screen.queryByText("Audit · future entry slot")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);
     document.querySelectorAll(".admin-blueprint-module-notes").forEach((notes) => {

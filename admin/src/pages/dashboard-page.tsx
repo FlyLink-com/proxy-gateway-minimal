@@ -89,7 +89,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           category: "audit-workflow",
           container: "Review candidate queue widget",
           dataAdapter: "Static candidate taxonomy now; later computed safe risk candidates and durable case handoff.",
-          layoutPolicy: "Hideable summary queue; detailed case workflow stays in Audit & Cases.",
+          layoutPolicy: "Hideable summary queue; detailed restricted workflow is not registered for normal operators.",
           performanceBoundary: "Queue rows stay bounded and do not mount object history by default.",
           interactionModel: "Select and route only; no close, approve, or mutation actions."
         },
@@ -115,7 +115,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           "No object timeline",
           "No write action"
         ],
-        nextStep: "Map computed candidates to Audit & Cases after durable case/history facts exist."
+        nextStep: "Map computed candidates to the restricted case workflow after durable case/history facts exist."
       },
       {
         navId: "next-actions",
@@ -245,7 +245,7 @@ const overviewRiskItems: RiskQueueItem[] = [
     severityLabel: "Locked",
     objectType: "case",
     objectRef: "case_backend_pending",
-    reasonLabel: "Future Audit & Cases"
+    reasonLabel: "Future restricted workflow"
   }
 ];
 
@@ -254,7 +254,7 @@ function OverviewRiskCandidates() {
     <RiskQueue
       countLabel="Overview risk candidates"
       description="Computed safe candidates route to the owning page; closure and approval workflows stay locked."
-      footer={<span className="panel-link panel-link-disabled">Audit & Cases locked until durable history exists</span>}
+      footer={<span className="panel-link panel-link-disabled">Restricted case workflow is not registered for normal operators</span>}
       items={overviewRiskItems}
       title="Review candidates"
     />
@@ -278,8 +278,8 @@ function OverviewRouteCards() {
       </article>
       <article className="admin-static-card admin-static-card-muted">
         <span><Bell aria-hidden="true" /> Future queue</span>
-        <strong>Audit & Cases</strong>
-        <p>Planned durable case inbox, notes, close/reopen review, and object history remain locked.</p>
+        <strong>Restricted case workflow</strong>
+        <p>Planned durable case inbox, notes, close/reopen review, and object history require a higher-permission registration.</p>
         <StatusChip label="Planned / locked" tone="neutral" />
       </article>
     </div>

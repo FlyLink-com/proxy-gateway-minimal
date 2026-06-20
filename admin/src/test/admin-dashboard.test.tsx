@@ -64,7 +64,11 @@ describe("admin dashboard page", () => {
     expect(screen.queryByText("Reason · quota / delay / receipt")).toBeNull();
     expect(screen.getByRole("heading", { name: "Next Actions" })).not.toBeNull();
     expect(screen.getByLabelText("Overview owner page routing content")).not.toBeNull();
-    expect(screen.getByText("Audit & Cases")).not.toBeNull();
+    expect(screen.getByText("Restricted case workflow")).not.toBeNull();
+    expect(screen.queryByText("Audit & Cases")).toBeNull();
+    expect(screen.queryByText("Audit Center")).toBeNull();
+    expect(screen.queryByText("Log Access")).toBeNull();
+    expect(screen.queryByText("Key Management")).toBeNull();
     expect(screen.queryByText("Wire panel routes to section-level deep links after page modules are finalized.")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);
     expect(document.querySelectorAll(".admin-blueprint-module-panel > .admin-blueprint-module-purpose")).toHaveLength(0);

@@ -65,11 +65,12 @@ describe("admin navigation", () => {
       "Platform Monitoring",
       "Audit & Cases",
       "Platform Development",
-      "System Settings"
+      "System Settings",
+      "About"
     ]);
     expect(activeSections.map((section) => section.id)).toEqual(navSections.map((section) => section.id));
-    expect(plannedSections.map((section) => section.label)).toEqual(["Audit & Cases", "Platform Development", "System Settings"]);
-    expect(plannedSections.map((section) => section.items)).toEqual([[], [], []]);
+    expect(plannedSections.map((section) => section.label)).toEqual(["Audit & Cases", "Platform Development", "System Settings", "About"]);
+    expect(plannedSections.map((section) => section.items)).toEqual([[], [], [], []]);
     expect(navSections.map((section) => section.label)).not.toContain("Audit & Cases");
     expect(navSections.map((section) => section.label)).not.toContain("Platform Development");
     expect(navSections.map((section) => section.label)).not.toContain("System Settings");
@@ -254,9 +255,11 @@ describe("admin navigation", () => {
     expect(within(workspaceSidebar).getByRole("button", { name: /Health Summary/ })).not.toBeNull();
     expect(within(workspaceSidebar).getByRole("button", { name: /Quota & Usage/ })).not.toBeNull();
     expect(within(workspaceSidebar).getByRole("button", { name: /Usage Ledger/ })).not.toBeNull();
-    expect(within(workspaceSidebar).getByLabelText("Audit & Cases planned")).not.toBeNull();
     expect(within(workspaceSidebar).getByLabelText("Platform Development planned")).not.toBeNull();
     expect(within(workspaceSidebar).getByLabelText("System Settings planned")).not.toBeNull();
+    expect(within(workspaceSidebar).getByLabelText("About planned")).not.toBeNull();
+    expect(within(workspaceSidebar).queryByLabelText("Audit & Cases planned")).toBeNull();
+    expect(workspaceSidebar.textContent).not.toMatch(/Audit & Cases|Key Management|Audit Center|Log Access/);
     expect(within(workspaceSidebar).getByText("Risk A gated").closest("details")?.hasAttribute("open")).toBe(false);
     expect(workspaceSidebar.textContent).not.toContain("Platform health and risk");
     expect(workspaceSidebar.textContent).not.toContain("Accounts, resources, and quotas");

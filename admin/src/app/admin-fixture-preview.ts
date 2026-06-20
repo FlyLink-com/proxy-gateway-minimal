@@ -87,7 +87,7 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
           { label: "Order traffic over limit", value: "12 affected", meta: "Accounts & Resources", tone: "danger" },
           { label: "Collection delay", value: "6 affected", meta: "Usage & Channels", tone: "warning" },
           { label: "Receipt missing", value: "3 affected", meta: "Usage & Channels", tone: "danger" },
-          { label: "Future durable case", value: "Locked", meta: "Audit & Cases", tone: "neutral" }
+          { label: "Future durable case", value: "Locked", meta: "restricted workflow", tone: "neutral" }
         ],
         safetyNotes: [
           "Candidates are bounded synthetic summaries.",
@@ -103,10 +103,10 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
         rows: [
           { label: "Open Accounts & Resources", value: "Account/order/quota/lifecycle decisions are owned there.", tone: "info" },
           { label: "Open Usage & Channels", value: "Usage collection trust, channel coverage, receipts, and anomalies are owned there.", tone: "info" },
-          { label: "Audit & Cases locked", value: "Durable case/history backend contract is not ready.", tone: "neutral" }
+          { label: "Restricted workflow locked", value: "Durable case/history backend contract is not ready.", tone: "neutral" }
         ],
         safetyNotes: [
-          "Future Audit and Platform Development areas remain planned.",
+          "Future restricted workflow and Platform Development areas remain planned.",
           "Preview routing does not execute production actions."
         ]
       }
@@ -151,7 +151,7 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
           { label: "Owner decision", tone: "info" }
         ],
         rows: [
-          { label: "Quota & Usage", value: "Used / total", meta: "measured channel count · audit note gate", tone: "warning" }
+          { label: "Quota & Usage", value: "Used / total", meta: "measured channel count · review note gate", tone: "warning" }
         ],
         safetyNotes: [
           "Quota edits remain disabled.",
@@ -173,18 +173,18 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
         ]
       },
       "history-events": {
-        summary: "Safe computed events now; durable audit later.",
+        summary: "Safe computed events now; durable restricted history later.",
         chips: [
           { label: "Locked", tone: "neutral" },
-          { label: "Future audit", tone: "info" }
+          { label: "Future restricted history", tone: "info" }
         ],
         rows: [
-          { label: "History & Events", value: "Safe computed events", meta: "durable audit later", tone: "neutral" },
+          { label: "History & Events", value: "Safe computed events", meta: "durable restricted history later", tone: "neutral" },
           { label: "Forbidden here", value: "No runtime apply, collector activation, platform tools, or operator settings.", tone: "danger" }
         ],
         safetyNotes: [
           "Raw logs and row dumps are excluded.",
-          "Audit note writes wait for durable case backend work."
+          "Restricted note writes wait for durable case backend work."
         ]
       }
     },
