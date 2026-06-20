@@ -1,6 +1,6 @@
 # Admin Console App Map
 
-Last updated: 2026-06-17, America/Los_Angeles.
+Last updated: 2026-06-18, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-74 under GCC-81 / GCC-42
@@ -35,10 +35,68 @@ Every app entry must have:
 | `searchableFields` | Whitelisted safe fields used by App Library search. |
 | `safetyBoundary` | What the app may show or control without new authority. |
 | `followUpTask` | Next implementation task that owns deeper behavior. |
+| `sourceContract` | Safe data-source refs, drilldown targets, evidence routes, and display-only transform boundary. |
 
 Search entries may use only `label`, aliases, safe descriptions, app category,
 owner area, capabilities, route target, and `catalog.searchableFields`.
 Forbidden fields remain excluded from search and UI output.
+
+## Grafana-First Console Mapping
+
+Grafana is the primary external reference for the Admin OS shell, but only as a
+control-console pattern source. The local mapping is:
+
+| Grafana concept | Admin OS object |
+| --- | --- |
+| Dashboard | Workspace app: `operations-overview`, `accounts-resources`, `usage-channels`, and future gated workspaces. |
+| Panel | Plugin app/module owned by one workspace page. |
+| Data source | Safe backend summary/API domain such as accounts, orders, usage ledger, channels, collectors, receipts, or gates. |
+| Library | App Library groups, search index, hidden plugin recovery, and future safe tags/folders. |
+| Alert | Risk queue or anomaly item that routes to safe evidence, not production execution. |
+| Explore | Read-only drilldown from overview to account, order, channel, collector, receipt, or gate evidence. |
+
+Do not copy Grafana code, add a generic observability product model, or expose
+arbitrary data-source configuration, raw logs, raw config, SQLite rows,
+subscription material, token, credential, or production action APIs.
+
+## App Library Search Boundary
+
+The App Library is the global launcher, command/search surface, and hidden
+plugin recovery center. It is not a remote plugin market and not an
+authorization layer.
+
+Future search work should define an explicit `AppLibrarySearchDocument` shape
+instead of scraping rendered UI labels. The document may include only:
+
+- app id, labels, aliases, safe descriptions, category, owner area, route
+  target, capabilities, and `catalog.searchableFields`;
+- future safe summary fields only after backend permission and redaction are
+  defined.
+
+The document must never include secrets, tokens, credentials, subscription
+URLs, auth headers, passwords, raw environment/config/log/runtime values,
+SQLite rows, raw subscription material, customer-private data, full API
+responses, or error stacks.
+
+Frontend visibility only controls App Library display. Backend API permission
+remains the authority for every data fetch, drilldown, mutation, or future app
+registry action.
+
+## Source-Backed Panel Boundary
+
+The manifest now carries source-backed panel metadata for every workspace app,
+plugin, utility, and planned app:
+
+| Contract field | Rule |
+| --- | --- |
+| `dataSourceRefs` | Name only safe summaries or display-only frontend sources, for example `usage-ledger-summary` or `risk-case-summary`. |
+| `drilldownTargets` | Use existing `AdminPage` / plugin `targetId` / utility ids; do not invent route targets outside the manifest. |
+| `evidenceRoutes` | Use safe evidence labels such as `account-ref`, `order-ref`, `channel-ref`, `receipt-state`, or `risk-case`. |
+| `transformBoundary` | Always `display-only`; quota, lifecycle, risk, auth, and runtime decisions remain backend/domain owned. |
+
+This is a frontend manifest contract only. It does not authorize new API
+endpoints, raw query browsing, log/config browsing, production execution,
+runtime mutation, or arbitrary external data-source configuration.
 
 ## Workspace Apps
 
@@ -88,6 +146,9 @@ runtime, production, auth, schema, DB, or credential actions.
 1. Do not change existing `AdminPage`, plugin `navId`, or `targetId` values
    without a migration plan for local layout state and deep links.
 2. Do not introduce a remote/runtime app registry in this phase.
+   Future upload, review, publication, permission, audit, and rollback design
+   lives in `docs/ADMIN_CONSOLE_APP_REGISTRY_REVIEW_DESIGN.md`; it is not an
+   implemented runtime registry.
 3. Do not duplicate page/module/utility metadata outside the app manifest.
 4. App Library rendering should consume the app map, not rebuild entries from
    page navigation arrays.

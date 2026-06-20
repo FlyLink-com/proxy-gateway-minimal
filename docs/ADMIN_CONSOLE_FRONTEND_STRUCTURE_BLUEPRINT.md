@@ -1,6 +1,6 @@
 # Admin Console Frontend Structure Blueprint
 
-Last updated: 2026-06-17, America/Los_Angeles.
+Last updated: 2026-06-18, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-73 under GCC-42
@@ -122,6 +122,10 @@ The container model also defines the first visual style baseline:
 
 - Shell, top bar, panels, subnav, widgets, and popovers must use shared Admin
   CSS tokens rather than one-off color/radius/shadow values.
+- The desktop theme is part of the shell contract: canvas background,
+  coordinate grid, bottom shelf, status bar, and dock each use dedicated tokens
+  (`--admin-desktop-*`, `--admin-statusbar-*`, `--admin-dock-*`) so future
+  pages do not restyle the operator desktop one component at a time.
 - Phase 4 visual work must follow `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md`
   before adding App Library, plugin, workspace, chrome, or drag/resize
   behaviors.
@@ -257,7 +261,7 @@ flowchart TD
 
   Risk --> R1["Top computed candidates"]
   Risk --> R2["Severity filters"]
-  Risk --> R3["Reason taxonomy"]
+  Risk --> R3["Reason: quota / delay / receipt"]
 
   Next --> N1["Open Accounts & Resources"]
   Next --> N2["Open Usage & Channels"]
@@ -303,7 +307,7 @@ flowchart TD
   Quota --> Q2["Edited limit"]
   Quota --> Q3["Used / total"]
   Quota --> Q4["Measured channels as evidence"]
-  Quota --> Q5["Audit note placeholder"]
+  Quota --> Q5["Audit note required gate"]
 
   Lifecycle --> L1["Account enabled/disabled"]
   Lifecycle --> L2["Order paused/expired"]
@@ -351,7 +355,7 @@ flowchart TD
   Ledger --> L1["Account safe ref"]
   Ledger --> L2["Order safe ref"]
   Ledger --> L3["Channel safe ref"]
-  Ledger --> L4["Upload / download / total"]
+  Ledger --> L4["Traffic: upload / download / total"]
   Ledger --> L5["Collected time"]
 
   Anomalies --> A1["Delayed collection"]
@@ -360,7 +364,7 @@ flowchart TD
   Anomalies --> A4["Missing receipt"]
 
   Receipts --> R1["Receipt freshness"]
-  Receipts --> R2["Collector availability"]
+  Receipts --> R2["Collectors: availability"]
   Receipts --> R3["Future safe diagnostics"]
 ```
 

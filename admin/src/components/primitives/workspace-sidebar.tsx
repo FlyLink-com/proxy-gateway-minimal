@@ -3,13 +3,13 @@ import { type ReactNode, type Ref, type ToggleEvent } from "react";
 import { ADMIN_UI_CONTRACT } from "../../app/admin-ui-contract";
 import { cn } from "../../lib/utils";
 
-export type WorkspaceAppbarBrand = {
+export type WorkspaceSidebarBrand = {
   mark: ReactNode;
   name: string;
   subtitle: string;
 };
 
-export type WorkspaceAppbarPinnedApp = {
+export type WorkspaceSidebarPinnedRoute = {
   active?: boolean;
   icon: ReactNode;
   id: string;
@@ -18,23 +18,23 @@ export type WorkspaceAppbarPinnedApp = {
   tone?: string;
 };
 
-export type WorkspaceAppbarProps = {
-  appLibrary: ReactNode;
+export type WorkspaceSidebarProps = {
   ariaLabel?: string;
-  brand: WorkspaceAppbarBrand;
+  brand: WorkspaceSidebarBrand;
   className?: string;
-  pinnedApps: WorkspaceAppbarPinnedApp[];
+  navigationLibrary: ReactNode;
+  pinnedApps: WorkspaceSidebarPinnedRoute[];
   safetyGate?: ReactNode;
 };
 
-export type AppLibraryProps = {
+export type NavigationLibraryProps = {
   emptyState?: ReactNode;
   menuRef?: Ref<HTMLDetailsElement>;
   onSearchChange: (value: string) => void;
   onToggle?: (event: ToggleEvent<HTMLDetailsElement>) => void;
   open?: boolean;
   plannedApps?: ReactNode;
-  plugins?: ReactNode;
+  panels?: ReactNode;
   resultCount: number;
   search: string;
   searchInputRef?: Ref<HTMLInputElement>;
@@ -43,21 +43,21 @@ export type AppLibraryProps = {
   workspacePages?: ReactNode;
 };
 
-export function WorkspaceAppbar({
-  appLibrary,
-  ariaLabel = "Workspace appbar",
+export function WorkspaceSidebar({
+  ariaLabel = "Workspace sidebar",
   brand,
   className,
+  navigationLibrary,
   pinnedApps,
   safetyGate
-}: WorkspaceAppbarProps) {
+}: WorkspaceSidebarProps) {
   return (
     <aside
-      className={cn("app-sidebar workspace-appbar", className)}
+      className={cn("app-sidebar workspace-sidebar", className)}
       aria-label={ariaLabel}
       data-density={ADMIN_UI_CONTRACT.appShell.density}
       data-ui-contract={ADMIN_UI_CONTRACT.appShell.contractId}
-      data-ui-surface="workspace-appbar"
+      data-ui-surface="workspace-sidebar"
     >
       <div className="brand">
         <div className="brand-mark">{brand.mark}</div>
@@ -68,7 +68,7 @@ export function WorkspaceAppbar({
       </div>
 
       <nav className="nav-list">
-        <div className="nav-primary-list" aria-label="Pinned workspace apps">
+        <div className="nav-primary-list" aria-label="Primary workspace routes">
           {pinnedApps.map((app) => (
             <button
               aria-current={app.active ? "page" : undefined}
@@ -78,7 +78,7 @@ export function WorkspaceAppbar({
               title={app.label}
               type="button"
             >
-              <span className={cn("nav-item-icon nav-app-icon nav-app-icon-dock", app.tone)} aria-hidden="true">
+              <span className={cn("nav-item-icon nav-app-icon nav-route-icon", app.tone)} aria-hidden="true">
                 {app.icon}
               </span>
               <span className="nav-item-copy">{app.label}</span>
@@ -86,7 +86,7 @@ export function WorkspaceAppbar({
           ))}
         </div>
 
-        {appLibrary}
+        {navigationLibrary}
       </nav>
 
       {safetyGate}
@@ -94,39 +94,39 @@ export function WorkspaceAppbar({
   );
 }
 
-export function AppLibrary({
+export function NavigationLibrary({
   emptyState,
   menuRef,
   onSearchChange,
   onToggle,
   open = false,
   plannedApps,
-  plugins,
+  panels,
   resultCount,
   search,
   searchInputRef,
   totalCount,
   utilities,
   workspacePages
-}: AppLibraryProps) {
+}: NavigationLibraryProps) {
   return (
     <details
       className="nav-planned-menu"
       data-density={ADMIN_UI_CONTRACT.appShell.density}
       data-ui-contract={ADMIN_UI_CONTRACT.appShell.contractId}
-      data-ui-surface="app-library"
+      data-ui-surface="navigation-library"
       onToggle={onToggle}
       open={open}
       ref={menuRef}
     >
       <summary
         aria-expanded={open}
-        aria-label="Open app library"
+        aria-label="Open navigation library"
         className="nav-planned-summary"
       >
         <Grid2X2 aria-hidden="true" />
-        <span>App library</span>
-        <span className="nav-planned-count" aria-label={`${totalCount} app library entries`}>
+        <span>Navigation library</span>
+        <span className="nav-planned-count" aria-label={`${totalCount} navigation library entries`}>
           {totalCount}
         </span>
       </summary>
@@ -134,16 +134,16 @@ export function AppLibrary({
         <div className="nav-library-toolbar">
           <label className="nav-library-search">
             <Search aria-hidden="true" />
-            <span className="sr-only">Search app library</span>
+            <span className="sr-only">Search navigation library</span>
             <input
-              aria-label="Search app library"
+              aria-label="Search navigation library"
               onChange={(event) => onSearchChange(event.target.value)}
-              placeholder="Search apps, plugins, settings..."
+              placeholder="Search pages, panels, settings..."
               ref={searchInputRef}
               value={search}
             />
           </label>
-          <span className="nav-library-result-count" aria-label={`${resultCount} app library results`}>
+          <span className="nav-library-result-count" aria-label={`${resultCount} navigation library results`}>
             {resultCount}
           </span>
         </div>
@@ -166,18 +166,18 @@ export function AppLibrary({
           </div>
         ) : null}
 
-        {plugins ? (
-          <div className="nav-library-group nav-library-card-apps" aria-label="Plugins">
-            <strong className="nav-library-heading">Plugins</strong>
+        {panels ? (
+          <div className="nav-library-group nav-library-panel-apps" aria-label="Panels">
+            <strong className="nav-library-heading">Panels</strong>
             <div className="nav-library-grid nav-library-grid-modules">
-              {plugins}
+              {panels}
             </div>
           </div>
         ) : null}
 
         {plannedApps ? (
-          <div className="nav-library-group nav-library-planned-apps" aria-label="Planned apps">
-            <strong className="nav-library-heading">Planned apps</strong>
+          <div className="nav-library-group nav-library-planned-apps" aria-label="Planned routes">
+            <strong className="nav-library-heading">Planned routes</strong>
             <div className="nav-library-grid">
               {plannedApps}
             </div>

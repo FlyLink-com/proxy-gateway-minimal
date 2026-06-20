@@ -1,81 +1,34 @@
 import { describe, expect, test } from "vitest";
 import {
   hideModuleLayoutState,
-  layoutFromResizeDrag,
-  moveModuleBefore,
-  resizeModuleLayoutState,
+  mergeModuleLayoutState,
   restoreModuleLayoutState
 } from "../app/plugin-workspace-engine";
 
 describe("plugin workspace engine", () => {
-  test("restores and hides plugins through one layout contract", () => {
-    expect(restoreModuleLayoutState({ height: "tall", size: "large", visible: false })).toEqual({
-      height: "medium",
-      size: "medium",
+  test("restores and hides modules through one visibility contract", () => {
+    expect(restoreModuleLayoutState({ visible: false })).toEqual({
       visible: true
     });
 
-    expect(hideModuleLayoutState({ height: "short", size: "small", visible: true })).toEqual({
-      height: "short",
-      size: "small",
+    expect(hideModuleLayoutState({ visible: true })).toEqual({
       visible: false
     });
   });
 
-  test("normalizes explicit size changes as visible plugin state", () => {
-    expect(resizeModuleLayoutState(
-      { height: "short", size: "small", visible: false },
-      { size: "large" }
+  test("normalizes explicit panel changes as visible module state", () => {
+    expect(mergeModuleLayoutState(
+      { visible: false },
+      {}
     )).toEqual({
-      height: "short",
-      size: "large",
       visible: true
     });
 
-    expect(resizeModuleLayoutState(
-      { height: "short", size: "small", visible: true },
+    expect(mergeModuleLayoutState(
+      { visible: true },
       { visible: false }
     )).toEqual({
-      height: "short",
-      size: "small",
       visible: false
     });
-  });
-
-  test("turns edge drag distance into discrete width and height states", () => {
-    expect(layoutFromResizeDrag("medium", "medium", "se", 190, 130)).toEqual({
-      height: "tall",
-      size: "large"
-    });
-    expect(layoutFromResizeDrag("medium", "medium", "nw", 190, 130)).toEqual({
-      height: "short",
-      size: "small"
-    });
-    expect(layoutFromResizeDrag("small", "short", "nw", 999, 999)).toEqual({
-      height: "short",
-      size: "small"
-    });
-    expect(layoutFromResizeDrag("large", "tall", "se", 999, 999)).toEqual({
-      height: "tall",
-      size: "large"
-    });
-  });
-
-  test("reorders plugins without dropping unknown or duplicate targets", () => {
-    expect(moveModuleBefore(["health", "risk", "actions"], "actions", "health")).toEqual([
-      "actions",
-      "health",
-      "risk"
-    ]);
-    expect(moveModuleBefore(["health", "risk", "actions"], "missing", "health")).toEqual([
-      "health",
-      "risk",
-      "actions"
-    ]);
-    expect(moveModuleBefore(["health", "risk", "actions"], "risk", "risk")).toEqual([
-      "health",
-      "risk",
-      "actions"
-    ]);
   });
 });

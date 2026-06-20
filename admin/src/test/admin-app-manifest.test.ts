@@ -3,7 +3,8 @@ import {
   ADMIN_APP_AUTHORING_STANDARD,
   adminAppManifest,
   adminAppAuthoringManifest,
-  createAppLibrarySearchIndex,
+  createNavigationLibrarySearchDocument,
+  createNavigationLibrarySearchIndex,
   getAdminAppAuthoringManifest,
   getAdminAppMap,
   getPlannedApps,
@@ -15,6 +16,8 @@ import {
   matchesAppSearch
 } from "../app/admin-app-manifest";
 import { pageSubNavigation } from "../app/navigation";
+
+const forbiddenSearchTextPattern = /token|secret|credential|subscription\s*url|auth\s*header|bearer|password|sqlite|raw\s/i;
 
 describe("admin app manifest", () => {
   test("defines the App Manifest authoring standard", () => {
@@ -33,6 +36,7 @@ describe("admin app manifest", () => {
       "visibility",
       "riskTier",
       "dataBoundary",
+      "sourceContract",
       "state",
       "forbiddenFields"
     ]);
@@ -94,6 +98,12 @@ describe("admin app manifest", () => {
       enName: "Operations Overview",
       primaryObjects: expect.arrayContaining(["platform health", "risk case"]),
       searchableFields: expect.arrayContaining(["overview", "health", "risk"]),
+      sourceContract: {
+        dataSourceRefs: expect.arrayContaining(["platform-health-summary", "risk-case-summary"]),
+        drilldownTargets: expect.arrayContaining(["dashboard#dashboard-risk-queue"]),
+        evidenceRoutes: expect.arrayContaining(["risk-case"]),
+        transformBoundary: "display-only"
+      },
       zhName: "运营概览"
     });
   });
@@ -110,8 +120,10 @@ describe("admin app manifest", () => {
         group: "plugins"
       },
       plugin: {
+        allowedControls: ["hide"],
         navId: "usage-ledger",
-        settingsEntry: "both"
+        settingsEntry: "navigationLibrary",
+        states: ["visible", "hidden"]
       },
       route: {
         action: "openPlugin",
@@ -124,9 +136,18 @@ describe("admin app manifest", () => {
     );
     expect(getPluginApp("quota-usage", "portalRequests")?.catalog).toMatchObject({
       enName: "Quota & Usage",
-      followUpTask: "GCC-76 plugin container template and GCC-78 workspace engine",
+      followUpTask: "GCC-76 panel container template and GCC-78 workspace engine",
       primaryObjects: expect.arrayContaining(["quota policy", "total usage", "quota risk"]),
       searchableFields: expect.arrayContaining(["quota-usage", "Quota & Usage", "User Operations"]),
+      sourceContract: {
+        dataSourceRefs: expect.arrayContaining(["quota-policy-summary", "usage-rollup-summary"]),
+        drilldownTargets: expect.arrayContaining([
+          "portalRequests#user-supervision-quota-usage",
+          "usageMonitor#platform-monitoring-usage-ledger"
+        ]),
+        evidenceRoutes: expect.arrayContaining(["quota-state", "order-ref"]),
+        transformBoundary: "display-only"
+      },
       zhName: "配额与使用情况"
     });
   });
@@ -207,6 +228,10 @@ describe("admin app manifest", () => {
       expect(app.catalog.searchableFields.length).toBeGreaterThan(0);
       expect(app.catalog.safetyBoundary).toMatch(/safe|locked|console/i);
       expect(app.catalog.followUpTask).toMatch(/^GCC-/);
+      expect(app.catalog.sourceContract.dataSourceRefs.length).toBeGreaterThan(0);
+      expect(app.catalog.sourceContract.drilldownTargets.length).toBeGreaterThan(0);
+      expect(app.catalog.sourceContract.evidenceRoutes.length).toBeGreaterThan(0);
+      expect(app.catalog.sourceContract.transformBoundary).toBe("display-only");
     });
   });
 
@@ -299,13 +324,48 @@ describe("admin app manifest", () => {
         expect(ADMIN_APP_AUTHORING_STANDARD.layoutSizes).toContain(size);
       });
       expect(ADMIN_APP_AUTHORING_STANDARD.states).toContain(app.state);
-      expect(app.searchFields.join(" ")).not.toMatch(/token|secret|credential|subscription\s*url|auth\s*header|bearer|password|sqlite|raw\s/i);
+      expect(app.searchFields.join(" ")).not.toMatch(forbiddenSearchTextPattern);
+      expect(JSON.stringify(app.sourceContract)).not.toMatch(forbiddenSearchTextPattern);
+      expect(app.sourceContract.transformBoundary).toBe("display-only");
       expect(app.forbiddenFields).toEqual(expect.arrayContaining(["token", "credential", "SQLite row"]));
     });
   });
 
-  test("builds a safe app-library search index from whitelisted summary fields", () => {
-    const index = createAppLibrarySearchIndex();
+  test("defines source-backed panel contracts without granting execution", () => {
+    const usageLedger = getPluginApp("usage-ledger", "usageMonitor");
+    const riskQueue = getPluginApp("risk-queue", "dashboard");
+    const environmentUtility = getUtilityApps().find((app) => app.id === "utility.environment");
+
+    expect(usageLedger?.catalog.sourceContract).toMatchObject({
+      dataSourceRefs: expect.arrayContaining(["usage-ledger-summary", "usage-rollup-summary"]),
+      drilldownTargets: expect.arrayContaining([
+        "usageMonitor#platform-monitoring-usage-ledger",
+        "portalRequests#user-supervision-quota-usage"
+      ]),
+      evidenceRoutes: expect.arrayContaining(["account-ref", "order-ref", "measured-usage"]),
+      transformBoundary: "display-only"
+    });
+    expect(riskQueue?.catalog.sourceContract).toMatchObject({
+      dataSourceRefs: expect.arrayContaining(["risk-case-summary", "usage-anomaly-summary"]),
+      evidenceRoutes: expect.arrayContaining(["risk-case", "receipt-state"]),
+      transformBoundary: "display-only"
+    });
+    expect(environmentUtility?.catalog.sourceContract).toMatchObject({
+      dataSourceRefs: expect.arrayContaining(["environment-status-summary", "risk-gate-summary"]),
+      evidenceRoutes: expect.arrayContaining(["environment-state", "risk-gate"]),
+      transformBoundary: "display-only"
+    });
+
+    for (const app of adminAppManifest) {
+      const sourceContract = JSON.stringify(app.catalog.sourceContract);
+      expect(sourceContract).not.toMatch(forbiddenSearchTextPattern);
+      expect(app.safety.capabilities).not.toContain("execute");
+      expect(app.catalog.sourceContract.transformBoundary).toBe("display-only");
+    }
+  });
+
+  test("builds a safe navigation-library search index from whitelisted summary fields", () => {
+    const index = createNavigationLibrarySearchIndex();
     const usageLedger = index.find((entry) => entry.appId === "plugin.usage-ledger");
     const operationsOverview = index.find((entry) => entry.appId === "operations-overview");
 
@@ -325,9 +385,71 @@ describe("admin app manifest", () => {
     expect(usageLedger && matchesAppSearch(usageLedger, "channel")).toBe(true);
 
     index.forEach((entry) => {
-      expect(entry.searchText).not.toMatch(/token|secret|credential|subscription\s*url|auth\s*header|bearer|password|sqlite|raw\s/i);
+      expect(entry.searchText).not.toMatch(forbiddenSearchTextPattern);
       expect(entry.safeSummary).not.toMatch(/token=|Bearer|password|subscriptionUrl/i);
-      expect(entry.searchableFields.join(" ")).not.toMatch(/token|secret|credential|subscription\s*url|auth\s*header|bearer|password|sqlite|raw\s/i);
+      expect(entry.searchableFields.join(" ")).not.toMatch(forbiddenSearchTextPattern);
     });
+  });
+
+  test("builds the navigation-library search index from an explicit safe document", () => {
+    const usageLedger = getPluginApp("usage-ledger", "usageMonitor");
+    expect(usageLedger).toBeDefined();
+
+    const document = createNavigationLibrarySearchDocument(usageLedger!);
+
+    expect(document).toEqual({
+      aliases: usageLedger!.aliases,
+      appId: usageLedger!.id,
+      capabilities: usageLedger!.safety.capabilities,
+      category: usageLedger!.category,
+      label: usageLedger!.label,
+      libraryGroup: usageLedger!.library.group,
+      ownerArea: usageLedger!.owner.area,
+      routeTarget: "usageMonitor#platform-monitoring-usage-ledger",
+      safeDescription: usageLedger!.description,
+      searchableFields: expect.arrayContaining(["usage-ledger", "Usage Ledger", "Platform Monitoring"]),
+      status: usageLedger!.status,
+      zhName: usageLedger!.catalog.zhName
+    });
+    expect(JSON.stringify(document)).not.toMatch(forbiddenSearchTextPattern);
+  });
+
+  test("redacts unsafe navigation-library search document fields before indexing", () => {
+    const baseline = getWorkspacePageApp("dashboard");
+    expect(baseline).toBeDefined();
+    const unsafeApp = {
+      ...baseline!,
+      aliases: ["safe alias", "Bearer token alias"],
+      catalog: {
+        ...baseline!.catalog,
+        searchableFields: ["safe field", "raw SQLite row", "credential ref"],
+        zhName: "secret console"
+      },
+      description: "Inspect raw config with password and subscriptionUrl.",
+      id: "unsafe-token-fixture",
+      label: "Subscription URL console",
+      library: {
+        ...baseline!.library,
+        searchableText: ["auth header bearer"]
+      },
+      route: {
+        ...baseline!.route,
+        targetId: "raw-config-token"
+      }
+    } satisfies typeof baseline;
+
+    const document = createNavigationLibrarySearchDocument(unsafeApp);
+    const [indexEntry] = createNavigationLibrarySearchIndex([unsafeApp]);
+    const indexedText = JSON.stringify({ document, indexEntry });
+
+    expect(document.aliases).toContain("[redacted unsafe search text]");
+    expect(document.searchableFields).toEqual([
+      "safe field",
+      "[redacted unsafe search text]",
+      "[redacted unsafe search text]"
+    ]);
+    expect(indexEntry.searchText).toContain("safe field");
+    expect(indexEntry.searchText).not.toContain("auth header bearer");
+    expect(indexedText).not.toMatch(forbiddenSearchTextPattern);
   });
 });

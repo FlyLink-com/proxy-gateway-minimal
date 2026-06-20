@@ -330,7 +330,7 @@
 .case-row-active {
   border-color: var(--admin-accent);
   background: var(--admin-selected-surface);
-  box-shadow: 0 0 0 3px rgb(37 99 235 / 12%);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
 }
 
 .case-workbench-footer {
@@ -631,7 +631,7 @@ th {
   color: #64748b;
   font-size: 12px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
 }
 
 .primary-button,
@@ -700,7 +700,7 @@ th {
   position: fixed;
   inset: 0;
   z-index: 10;
-  background: rgb(15 23 42 / 0.44);
+  background: rgba(15, 23, 42, 0.44);
   display: grid;
   place-items: center;
   padding: 20px;
@@ -856,8 +856,8 @@ th {
 }
 
 .dashboard-refresh-meta svg {
-  width: 15px;
-  height: 15px;
+  width: 16px;
+  height: 16px;
   color: var(--admin-text-soft);
 }
 
@@ -887,8 +887,8 @@ th {
 }
 
 .dashboard-health svg {
-  width: 17px;
-  height: 17px;
+  width: 16px;
+  height: 16px;
 }
 
 .dashboard-health-ready {

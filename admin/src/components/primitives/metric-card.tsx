@@ -46,7 +46,7 @@ function MetricSparkline({ ariaLabel, values }: { ariaLabel: string; values: num
 
   return (
     <span className="ops-metric-trend" role="img" aria-label={ariaLabel}>
-      <svg viewBox="0 0 92 34" aria-hidden="true" focusable="false">
+      <svg width="92" height="34" viewBox="0 0 92 34" aria-hidden="true" focusable="false">
         <polyline className="ops-metric-trend-grid" points="4,29 88,29" />
         <polyline className="ops-metric-trend-line" points={points} />
       </svg>

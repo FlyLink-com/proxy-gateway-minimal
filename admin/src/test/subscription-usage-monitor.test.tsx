@@ -32,26 +32,26 @@ describe("subscription usage monitor page", () => {
 
     expect(screen.queryByLabelText("Usage & Channels page navigation")).toBeNull();
     expect(screen.queryByLabelText("Usage & Channels card controls")).toBeNull();
-    expect(screen.getByRole("button", { name: "Collection Freshness plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Channel Coverage plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Usage Ledger plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Collection Anomalies plugin settings" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Receipts & Collectors plugin settings" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Collection Freshness hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Channel Coverage hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Usage Ledger hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Collection Anomalies hide module" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Receipts & Collectors hide module" })).not.toBeNull();
 
     expect(screen.getByRole("heading", { name: "Collection Freshness" })).not.toBeNull();
-    expect(screen.getAllByLabelText("Monitoring container contract").length).toBe(4);
-    expect(screen.getByLabelText("Platform Tools container contract")).not.toBeNull();
+    expect(screen.getAllByLabelText("Monitoring panel").length).toBe(4);
+    expect(screen.getByLabelText("Platform Tools panel")).not.toBeNull();
     expect(screen.getAllByText("Safe diagnostics entry panel").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Latest observed usage age").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Latest usage · observed age").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Channel Coverage" })).not.toBeNull();
-    expect(screen.getAllByText("Measured channel count").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Measured channels · count").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Usage Ledger" })).not.toBeNull();
-    expect(screen.getAllByText("Upload / download / total").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Traffic · upload / download / total").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Collection Anomalies" })).not.toBeNull();
-    expect(screen.getAllByText("Missing receipt").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Missing receipt")).toBeNull();
     expect(screen.getByRole("heading", { name: "Receipts & Collectors" })).not.toBeNull();
-    expect(screen.getAllByText("Collector availability").length).toBeGreaterThanOrEqual(1);
-    expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(5);
+    expect(screen.getAllByText("Collectors · availability").length).toBeGreaterThanOrEqual(1);
+    expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);
     document.querySelectorAll(".admin-blueprint-module-notes").forEach((notes) => {
       expect(notes.hasAttribute("open")).toBe(false);
     });

@@ -3,7 +3,7 @@ import {
   type BlueprintPage
 } from "./admin-console-page-frame";
 
-const accountsResourcesBlueprint: BlueprintPage = {
+export const accountsResourcesBlueprint: BlueprintPage = {
   page: "portalRequests",
   ariaLabel: "Accounts & Resources page header",
   kicker: "User Operations / Accounts & Resources",
@@ -24,11 +24,11 @@ const accountsResourcesBlueprint: BlueprintPage = {
       },
       purpose: "Directory of safe account refs, risk state, resource count, and review state.",
       contentFields: [
-        "User account safe ref",
-        "Account enabled or disabled state",
-        "Linked resource count",
-        "Risk summary",
-        "Last safe activity"
+        "Account ref · safe id",
+        "Account state · enabled / disabled",
+        "Resources · linked count",
+        "Risk · summary chip",
+        "Activity · last safe event"
       ],
       states: [
         "Empty directory",
@@ -36,6 +36,7 @@ const accountsResourcesBlueprint: BlueprintPage = {
         "Needs review",
         "Disabled account"
       ],
+      uiSurface: "account-directory",
       ownership: "Owns account create, enable, disable, and review planning.",
       boundaries: [
         "No customer-private contact data",
@@ -56,11 +57,11 @@ const accountsResourcesBlueprint: BlueprintPage = {
       },
       purpose: "Group resources, orders, entitlements, and subscription artifact safe refs under the owning account.",
       contentFields: [
-        "Order safe ref",
-        "Plan and entitlement state",
-        "Subscription artifact safe ref presence",
-        "Delivery state",
-        "Associated channel safe refs"
+        "Order ref · safe id",
+        "Plan · entitlement state",
+        "Artifact · safe ref presence",
+        "Delivery · current state",
+        "Channels · safe refs only"
       ],
       states: [
         "Pending review",
@@ -68,6 +69,7 @@ const accountsResourcesBlueprint: BlueprintPage = {
         "Delivered",
         "Expired or revoked"
       ],
+      uiSurface: "resource-orders",
       ownership: "Owns resource/order lifecycle and artifact lifecycle review.",
       boundaries: [
         "No subscription URL",
@@ -88,11 +90,11 @@ const accountsResourcesBlueprint: BlueprintPage = {
       },
       purpose: "Own quota policy decisions while using usage collection only as evidence.",
       contentFields: [
-        "Default quota",
-        "Edited quota",
-        "Used / total",
-        "Measured channel count",
-        "Audit note placeholder"
+        "Default quota · policy value",
+        "Edited quota · review value",
+        "Usage · used / total",
+        "Measured channels · count",
+        "Audit note · required gate"
       ],
       states: [
         "Within quota",
@@ -100,6 +102,7 @@ const accountsResourcesBlueprint: BlueprintPage = {
         "Over limit",
         "Unmetered or collection gap"
       ],
+      uiSurface: "quota-usage",
       ownership: "Owns quota policy, over-limit disposition, and quota-change review.",
       boundaries: [
         "No collector trust decision",
@@ -120,11 +123,11 @@ const accountsResourcesBlueprint: BlueprintPage = {
       },
       purpose: "Plan account, order, artifact, expiry, revocation, pause, and archive states in one owner page.",
       contentFields: [
-        "Account lifecycle",
-        "Order pause or expiry candidate",
-        "Artifact revoked state",
-        "Archive candidate",
-        "Required evidence source"
+        "Account · lifecycle state",
+        "Order · pause / expiry candidate",
+        "Artifact · revoked state",
+        "Archive · candidate state",
+        "Evidence · required source"
       ],
       states: [
         "Active",
@@ -133,6 +136,7 @@ const accountsResourcesBlueprint: BlueprintPage = {
         "Revoked",
         "Archive candidate"
       ],
+      uiSurface: "lifecycle-review",
       ownership: "Owns lifecycle decisions, but execution remains gated by backend contracts and runbooks.",
       boundaries: [
         "No direct production mutation",
@@ -153,11 +157,11 @@ const accountsResourcesBlueprint: BlueprintPage = {
       },
       purpose: "Show safe computed events and case candidates until durable audit and case history exists.",
       contentFields: [
-        "Safe event label",
-        "Object safe ref",
-        "Source page",
-        "Case candidate reason",
-        "Future audit entry slot"
+        "Event · safe label",
+        "Object · safe ref",
+        "Source · owner page",
+        "Case · candidate reason",
+        "Audit · future entry slot"
       ],
       states: [
         "No computed events",
@@ -165,6 +169,7 @@ const accountsResourcesBlueprint: BlueprintPage = {
         "Case backend locked",
         "Audit write unavailable"
       ],
+      uiSurface: "history-events",
       ownership: "Provides review context for accounts and resources; durable history later moves to Audit & Cases.",
       boundaries: [
         "No raw logs",

@@ -3,7 +3,7 @@ import {
   type BlueprintPage
 } from "./admin-console-page-frame";
 
-const usageChannelsBlueprint: BlueprintPage = {
+export const usageChannelsBlueprint: BlueprintPage = {
   page: "usageMonitor",
   ariaLabel: "Usage & Channels page header",
   kicker: "Platform Monitoring / Usage & Channels",
@@ -24,11 +24,11 @@ const usageChannelsBlueprint: BlueprintPage = {
       },
       purpose: "Inspect whether usage collection is fresh enough to trust downstream quota and risk decisions.",
       contentFields: [
-        "Monitor generated time",
-        "Latest observed usage age",
-        "Unknown count",
-        "Stale count",
-        "Delay threshold"
+        "Generated · monitor time",
+        "Latest usage · observed age",
+        "Unknown · count",
+        "Stale · count",
+        "Delay · threshold"
       ],
       states: [
         "Fresh",
@@ -36,6 +36,7 @@ const usageChannelsBlueprint: BlueprintPage = {
         "Unknown",
         "Disconnected"
       ],
+      uiSurface: "usage-freshness",
       ownership: "Owns collection trust and stale/unknown diagnosis.",
       boundaries: [
         "No quota edit",
@@ -50,17 +51,17 @@ const usageChannelsBlueprint: BlueprintPage = {
         category: "monitoring",
         container: "Channel coverage monitor",
         dataAdapter: "Static channel fields now; later issued/measured channel and receipt blocker summaries.",
-        layoutPolicy: "Coverage cards and safe ledger; no node provisioning or runtime apply controls.",
+        layoutPolicy: "Coverage panels and safe ledger; no node provisioning or runtime apply controls.",
         performanceBoundary: "Channel aggregates load separately from order usage rows.",
         interactionModel: "Inspect missing coverage and prepare evidence handoff."
       },
       purpose: "Compare issued channels, measured channels, missing channels, and receipt blockers.",
       contentFields: [
-        "Issued channel count",
-        "Measured channel count",
-        "Missing channel count",
-        "Receipt blocker count",
-        "Channel safe refs"
+        "Issued channels · count",
+        "Measured channels · count",
+        "Missing channels · count",
+        "Receipt blockers · count",
+        "Channels · safe refs"
       ],
       states: [
         "Fully measured",
@@ -68,6 +69,7 @@ const usageChannelsBlueprint: BlueprintPage = {
         "Missing receipt",
         "No issued channel"
       ],
+      uiSurface: "channel-coverage",
       ownership: "Owns channel coverage evidence and receipt blocker classification.",
       boundaries: [
         "No channel runtime apply",
@@ -88,11 +90,11 @@ const usageChannelsBlueprint: BlueprintPage = {
       },
       purpose: "Provide evidence rows for account, order, channel, and measured traffic correlation.",
       contentFields: [
-        "Account safe ref",
-        "Order safe ref",
-        "Channel safe ref",
-        "Upload / download / total",
-        "Collected time"
+        "Account · safe ref",
+        "Order · safe ref",
+        "Channel · safe ref",
+        "Traffic · upload / download / total",
+        "Collected · timestamp"
       ],
       states: [
         "Measured",
@@ -100,6 +102,7 @@ const usageChannelsBlueprint: BlueprintPage = {
         "Not collected",
         "Collector disabled"
       ],
+      uiSurface: "usage-ledger",
       ownership: "Owns measurement evidence only; Accounts & Resources owns quota and lifecycle decisions.",
       boundaries: [
         "No order pause/archive action",
@@ -120,11 +123,11 @@ const usageChannelsBlueprint: BlueprintPage = {
       },
       purpose: "Classify delayed collection, true zero usage, not collected, disabled collector, and missing receipt candidates.",
       contentFields: [
-        "Anomaly reason",
-        "Severity",
-        "Affected safe refs",
-        "Evidence source",
-        "Owner page handoff"
+        "Reason · anomaly type",
+        "Severity · queue level",
+        "Affected refs · safe only",
+        "Evidence · source",
+        "Owner page · handoff"
       ],
       states: [
         "No anomalies",
@@ -133,6 +136,7 @@ const usageChannelsBlueprint: BlueprintPage = {
         "Collection gap",
         "Missing receipt"
       ],
+      uiSurface: "collection-anomalies",
       ownership: "Owns anomaly classification; durable case workflow is a future Audit & Cases responsibility.",
       boundaries: [
         "No false-positive close",
@@ -153,11 +157,11 @@ const usageChannelsBlueprint: BlueprintPage = {
       },
       purpose: "Show whether receipt and collector evidence is available for safe operator decisions.",
       contentFields: [
-        "Receipt freshness",
-        "Collector availability",
-        "Pending receipt count",
-        "Collector disabled count",
-        "Future diagnostics entry"
+        "Receipts · freshness",
+        "Collectors · availability",
+        "Pending receipts · count",
+        "Disabled collectors · count",
+        "Diagnostics · future entry"
       ],
       states: [
         "Receipts healthy",
@@ -165,6 +169,7 @@ const usageChannelsBlueprint: BlueprintPage = {
         "Collector disabled",
         "Diagnostics locked"
       ],
+      uiSurface: "receipts-collectors",
       ownership: "Owns receipt and collector evidence availability.",
       boundaries: [
         "No raw logs",

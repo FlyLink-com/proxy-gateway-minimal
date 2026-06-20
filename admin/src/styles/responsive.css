@@ -1,6 +1,6 @@
 @media (max-width: 860px) {
   :root {
-    --admin-appbar-bottom: 8px;
+    --admin-mobile-nav-bottom: 8px;
     --admin-canvas-gutter: 16px;
   }
 
@@ -8,25 +8,40 @@
     display: block;
   }
 
+  .admin-main {
+    margin-left: 0;
+    padding-bottom: 92px;
+  }
+
   .app-sidebar {
+    top: auto;
     left: 8px;
     right: 8px;
     bottom: 8px;
     width: auto;
     transform: none;
-    padding: var(--admin-appbar-padding);
+    padding: var(--admin-mobile-nav-padding);
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--admin-mobile-nav-gap);
     border-radius: 18px;
   }
 
   .nav-list {
+    flex-direction: row;
     flex: 1;
     min-width: 0;
+    align-items: center;
   }
 
   .nav-primary-list {
     display: flex;
+    flex-direction: row;
+    flex: 1 1 auto;
     gap: 6px;
-    width: 100%;
+    width: auto;
+    min-width: 0;
   }
 
   .brand-name,
@@ -38,7 +53,10 @@
   }
 
   .brand {
+    width: auto;
+    border-bottom: 0;
     padding-right: 0;
+    padding-bottom: 0;
   }
 
   .brand-mark {
@@ -48,6 +66,7 @@
 
   .nav-item {
     flex: 1 1 0;
+    width: auto;
     min-width: 0;
   }
 
@@ -62,6 +81,13 @@
     padding: 0;
     justify-content: center;
     place-items: center;
+  }
+
+  .nav-planned-menu,
+  .sidebar-safety-footer {
+    flex: 0 0 42px;
+    width: 42px;
+    min-width: 42px;
   }
 
   .nav-planned-list {
@@ -83,12 +109,6 @@
 
   .nav-library-utility-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .nav-library-connection .connection-widget-popover {
-    position: static;
-    width: 100%;
-    margin-top: 8px;
   }
 
   .nav-planned-item {
@@ -400,13 +420,9 @@
     display: none;
   }
 
-  .admin-blueprint-module-card-meta {
+  .admin-blueprint-module-panel-meta {
     align-items: flex-start;
     justify-items: start;
-  }
-
-  .admin-blueprint-card-inline-tools {
-    justify-self: start;
   }
 
   .nav-library-grid,
@@ -429,29 +445,18 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .admin-blueprint-module-grid,
-  .admin-blueprint-module-contract,
-  .admin-blueprint-module-card,
-  .admin-blueprint-next-step,
-  .workbench-container-meta {
+  .admin-blueprint-module-panel {
     grid-template-columns: 1fr;
   }
 
-  .admin-blueprint-module-card-large,
-  .admin-blueprint-module-card-medium,
-  .admin-blueprint-module-card-small {
-    grid-column: auto;
-  }
-
-  .admin-blueprint-module-card-head,
-  .admin-blueprint-card-fields,
-  .admin-blueprint-module-card > .admin-blueprint-actions,
-  .admin-blueprint-module-card > .admin-blueprint-module-notes {
+  .admin-blueprint-module-panel-head,
+  .admin-blueprint-panel-fields,
+  .admin-blueprint-module-panel > .admin-blueprint-actions {
     grid-column: 1;
     grid-row: auto;
   }
 
-  .admin-blueprint-module-card-head {
+  .admin-blueprint-module-panel-head {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
@@ -459,12 +464,12 @@
   }
 
   .admin-blueprint-module-title,
-  .admin-blueprint-module-card-meta {
+  .admin-blueprint-module-panel-meta {
     grid-column: auto;
     grid-row: auto;
   }
 
-  .admin-blueprint-module-card > .admin-blueprint-actions {
+  .admin-blueprint-module-panel > .admin-blueprint-actions {
     justify-content: flex-start;
   }
 
@@ -828,6 +833,14 @@
   .company-site-card:hover,
   .company-site-scenario-card:hover,
   .company-site-direction:hover,
+  .page-subnav-link:hover,
+  .admin-blueprint-module-panel:hover,
+  .admin-blueprint-mini-card:hover,
+  .admin-blueprint-page-card:hover,
+  .nav-item:hover,
+  .nav-item-active,
+  .site-effect-flow,
+  .site-orbit,
   .site-terminal-card:hover,
   .site-signal-card:hover {
     box-shadow: none;

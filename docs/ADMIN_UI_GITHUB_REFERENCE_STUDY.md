@@ -1,6 +1,6 @@
 # Admin UI GitHub Reference Study
 
-Last updated: 2026-06-15, America/Los_Angeles.
+Last updated: 2026-06-18, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-49 under GCC-42
@@ -20,6 +20,30 @@ separate, which operational risks need first-class visibility, and which
 patterns should be avoided because they conflict with this project's control
 plane and Risk A gates.
 
+## Current Reference Scope Decision
+
+The current Admin OS research lane should not treat hosted deployment platforms
+as primary product references. GlobalCircle Admin is not a hosted deployment
+platform, and the current work is a protected self-operated control-plane
+workspace for supervision, operations review, app/plugin organization, and
+future gated tooling.
+
+Reference priority for the next design pass:
+
+1. **Tier 1:** Grafana-style self-operated observability/control consoles.
+   Grafana is the highest-value source because it has solved many dashboard,
+   panel, library, plugin, alert, drilldown, and operator workflow problems
+   that are close to this Admin OS direction.
+2. **Tier 2:** domain-adjacent proxy, zero-trust, status, usage, and billing
+   panels when they clarify one of our objects or page responsibilities.
+3. **Tier 3:** visual template or component examples only when a specific
+   density, spacing, table, chart, icon, modal, or empty-state pattern needs
+   confirmation.
+
+Every source still needs a fit check before entering the design library. The
+output should be an Admin OS rule, component requirement, or app/plugin
+behavior decision, not copied code or a new dependency.
+
 ## Reuse Existing Wheels Without Copying The Vehicle
 
 GitHub reference projects are first-class design and product-analysis inputs
@@ -31,6 +55,7 @@ Use open-source panels for four separate jobs:
 
 | Job | What to extract | Examples | What not to do |
 | --- | --- | --- | --- |
+| Self-operated console architecture | Dashboard/panel model, plugin catalog, alert-to-object routing, query/drilldown flow, app shell, and source-backed visualization patterns. | Grafana. | Copy AGPL code, inherit Grafana's full observability taxonomy, or turn Admin into a generic metrics product. |
 | Business-object discovery | Object names, ownership boundaries, lifecycle states, and detail-page shape. | Proxy panels, NetBird, Firezone, Lago. | Collapse this project's account, order, artifact, and runtime credential layers into one foreign `user/client` model. |
 | Operational path discovery | How operators move from alert to object, evidence, decision, note, and follow-up. | Linear-like issue tools, OpenStatus, OneUptime, Grafana-like consoles. | Add production execution buttons or incident workflows before backend authority exists. |
 | Component-pattern discovery | Sidebar, metric cards, filters, data tables, status chips, quota meters, timelines, empty states. | Horizon UI, TailAdmin, Flowbite, Mosaic. | Copy template code, migrate frameworks, or add Tailwind/commercial template dependency in this lane. |
@@ -138,6 +163,28 @@ Use these dimensions when reading a reference product:
 
 ## Reference Inventory
 
+### Tier 1 Self-Operated Control Console Reference
+
+Grafana is the primary reference for the Admin OS operating model. Use it as a
+source for console architecture and operator experience, not as a source for
+code adoption.
+
+| Reference | What it proves | Borrow | Avoid | Maps to |
+| --- | --- | --- | --- | --- |
+| [Grafana](https://github.com/grafana/grafana) | A self-operated console can organize dashboards, panels, visualizations, alerts, exploration, mixed data sources, and plugin-style extensibility around operator workflows. | Panel/plugin mental model, dashboard library discipline, alert-to-panel drilldown, data-source separation, query/explore affordances, visualization density, variable/filter bars, folder/library organization, and stateful operator workspaces. | Copying AGPL code; adopting Grafana as the product model; exposing raw logs/queries/config; adding generic observability scope before our account, order, usage, channel, and gate objects are stable. | GCC-74, GCC-76, GCC-77, GCC-78, GCC-82 |
+
+Design translation:
+
+- Admin workspace apps behave like first-class console applications.
+- Page modules behave like local plugins/panels with explicit ownership,
+  display state, restore path, and safe search metadata.
+- App Library should evolve toward a searchable console library, not a scroll
+  dialog.
+- Usage and channel views should learn from Grafana's panel/explore/alert
+  workflow, while keeping our backend summaries as the authority.
+- Alerts and risk queues should route to account, order, channel, collector,
+  receipt, or gate evidence rather than becoming free-form production actions.
+
 ### Visual Template Source Candidates
 
 These projects are the closest GitHub source matches for the concept-image
@@ -176,6 +223,8 @@ mutation into one panel.
 These are better references for the protected Admin's information architecture:
 they manage users, devices/resources, policies, health, usage, incidents, and
 operational review without being narrowly tied to proxy subscription output.
+They are secondary to Grafana for the Admin OS shell, but remain useful when a
+specific object model or workflow needs a closer domain match.
 
 | Reference | What it proves | Borrow | Avoid | Maps to |
 | --- | --- | --- | --- | --- |
@@ -285,6 +334,41 @@ The value is in the design vocabulary:
 - master/detail review panels;
 - empty/error/loading states that preserve layout size.
 
+### 6. Grafana should drive the next OS-level review pass.
+
+Grafana is valuable because it solves the exact class of product problem we are
+now approaching: a console shell that hosts many operator-facing panels,
+searchable dashboards, visualized facts, alert entry points, and extensible
+plugins without requiring every panel to reinvent navigation, data source
+selection, drilldown, or layout rules.
+
+For this project, the useful extraction is:
+
+| Grafana concept | Admin OS translation |
+| --- | --- |
+| Dashboard | Workspace app such as Operations Overview, Accounts & Resources, or Usage & Channels. |
+| Panel | Plugin app/module with local controls, display state, and restore path. |
+| Data source | Backend summary/API domain such as accounts, orders, usage ledger, channels, collectors, receipts, or gates. |
+| Variables/filter bar | Safe search and scoped filters inside App Library or page-level toolbars. |
+| Alerting | Risk queues and anomaly routing, not production execution. |
+| Explore | Drilldown from overview to safe account/order/channel evidence. |
+| Plugin ecosystem | Future reviewed Admin app manifest/YAML mechanism after approval, not arbitrary runtime upload. |
+
+The next reference-library task should start by auditing Grafana's dashboard,
+panel, library, alert, explore, and plugin patterns against the existing
+Admin app map before spending time on lower-fit template projects.
+
+Implementation backlog derived from the Grafana read:
+
+| Need | Admin OS rule | Follow-up scope |
+| --- | --- | --- |
+| Source-backed panels | Every plugin panel should name the safe backend summary or display-only data source it visualizes. | Manifest-level `sourceContract` now records `dataSourceRefs`, drilldown targets, evidence routes, and a display-only transform boundary; next UI work should consume it. |
+| Safe filters | Filters behave like dashboard variables, preserving page context without bypassing backend permission checks. | Define page/filter scope before adding richer App Library or evidence search. |
+| Display transforms | Frontend transforms may format, group, sort, and unit-convert; quota, lifecycle, and risk decisions remain backend/domain-owned. | Keep `display transform only` language in component contracts and tests. |
+| Alert routing | Risk items route to account, order, channel, collector, receipt, or gate evidence. | Add `evidenceLink`/`sourcePanelId` only after the target evidence surface exists. |
+| Explore | Explore is a safe evidence drawer or page drilldown, not arbitrary SQL, log, config, or data-source browsing. | Start with read-only account/order/channel drilldown from existing safe summaries. |
+| Library taxonomy | App Library can gain tags, folders, recent/favorite state, and hidden-plugin state once the manifest search contract is explicit. | Build on the current static manifest; do not introduce a runtime plugin market. |
+
 ## Page Mapping
 
 ### `运营总览` / GCC-45
@@ -385,6 +469,9 @@ The reference set also shows what this project should not absorb:
   Admin value proposition.
 - New hard dependencies such as Tailwind, Redis, billing/payment providers, or
   auth services just because a reference project uses them.
+- Hosted deployment-platform assumptions such as project hosting, edge deploy,
+  cloud preview promotion, tenant-hosted apps, or Vercel/Cloudflare-style
+  runtime ownership as primary Admin OS requirements.
 
 ## Recommended Execution Order
 
@@ -426,6 +513,7 @@ opening a PR.
 - [Lago](https://github.com/getlago/lago)
 - [OpenStatus](https://github.com/openstatusHQ/openstatus)
 - [OneUptime](https://github.com/oneuptime/oneuptime)
+- [Grafana](https://github.com/grafana/grafana)
 - [Horizon UI Tailwind React](https://github.com/horizon-ui/horizon-tailwind-react)
 - [TailAdmin React](https://github.com/TailAdmin/free-react-tailwind-admin-dashboard)
 - [Mosaic Lite](https://github.com/cruip/tailwind-dashboard-template)
