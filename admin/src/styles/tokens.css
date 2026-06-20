@@ -129,7 +129,7 @@
   --admin-plugin-screen-max-height-mobile: clamp(280px, calc(100dvh - var(--admin-statusbar-height) - var(--admin-mobile-nav-height) - 260px), 430px);
   --admin-plugin-field-height: 26px;
   --admin-plugin-field-gap: 6px;
-  --admin-control-height: 42px;
+  --admin-control-height: var(--admin-touch-target-min);
   --admin-nav-card-height: var(--admin-touch-target-min);
   --admin-nav-icon-size: 30px;
   --admin-content-padding: var(--admin-canvas-gutter);

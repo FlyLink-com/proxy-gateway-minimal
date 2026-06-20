@@ -101,6 +101,7 @@ describe("admin style token contract", () => {
       "--admin-density-spacious-card-padding: 20px",
       "--admin-touch-target-min: 44px",
       "--admin-touch-target-comfortable: 48px",
+      "--admin-control-height: var(--admin-touch-target-min)",
       "--admin-noise-opacity: 0"
     ].forEach((expectedToken) => {
       expect(rootBlock).toContain(expectedToken);
@@ -289,7 +290,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".new-console-workbench")).toContain("var(--admin-workbench-gap)");
     expect(selectorBlock(".new-console-row")).toContain("var(--admin-border)");
     expect(selectorBlock(".operator-account-summary")).toContain("var(--admin-radius-pill)");
-    expect(selectorBlock(".operator-account-summary")).toContain("min-height: 38px");
+    expect(selectorBlock(".operator-account-summary")).toContain("min-height: var(--admin-touch-target-min)");
     expect(selectorBlock(".operator-account-avatar")).toContain("background: #0891b2");
     expect(selectorBlock(".nav-library-utility-grid")).toContain("repeat(var(--admin-library-utility-columns), minmax(0, var(--admin-library-cell-width)))");
     expect(styles).not.toContain(".admin-blueprint-page-tools");
@@ -318,8 +319,8 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("scrollbar-gutter: stable");
     expect(selectorBlock(".admin-blueprint-module-panel-head")).toContain("display: flex");
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("display: inline-grid");
-    expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("width: 34px");
-    expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("height: 34px");
+    expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("width: var(--admin-touch-target-min)");
+    expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("height: var(--admin-touch-target-min)");
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger:hover")).toContain("var(--workbench-category-bg");
     expect(selectorBlock(".admin-blueprint-panel-field-count")).toContain("display: inline-grid");
     expect(styles).not.toContain(".admin-blueprint-card-menu");
@@ -371,9 +372,9 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-library-result-count")).toContain("var(--admin-radius-pill)");
     expect(selectorBlock(".nav-library-toolbar")).toContain("position: static");
     expect(selectorBlock(".top-bar-search")).toContain("width: min(420px, 42vw)");
-    expect(selectorBlock(".top-bar-search input")).toContain("min-height: 38px");
-    expect(selectorBlock(".search-box input")).toContain("min-height: 38px");
-    expect(selectorBlock(".nav-library-search input")).toContain("min-height: 38px");
+    expect(selectorBlock(".top-bar-search input")).toContain("min-height: var(--admin-control-height)");
+    expect(selectorBlock(".search-box input")).toContain("min-height: var(--admin-control-height)");
+    expect(selectorBlock(".nav-library-search input")).toContain("min-height: var(--admin-control-height)");
     expect(selectorBlock(".nav-library-utilities")).toContain("order: 1");
     expect(selectorBlock(".nav-library-pages")).toContain("order: 2");
     expect(selectorBlock(".nav-library-panel-apps")).toContain("order: 3");
@@ -381,12 +382,12 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-library-utility")).toContain("text-align: center");
     expect(selectorBlock(".nav-library-utility")).toContain("box-shadow: none");
     expect(styles).not.toContain(".nav-library-connection .connection-widget-popover");
-    expect(selectorBlock(".operator-account-summary")).toContain("min-height: 38px");
+    expect(selectorBlock(".operator-account-summary")).toContain("min-height: var(--admin-touch-target-min)");
     expect(selectorBlock(".operator-account-copy small")).toContain("white-space: nowrap");
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-utility-grid,[\s\S]*\.nav-library-grid,[\s\S]*\.nav-library-grid-modules\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.top-bar-search\s*\{[\s\S]*display: none;/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.top-bar-actions > \.dashboard-status-badge\s*\{[\s\S]*display: none;/m);
-    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.operator-account-summary\s*\{[\s\S]*width: 38px;/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.operator-account-summary\s*\{[\s\S]*width: var\(--admin-touch-target-min\);/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.operator-account-summary > svg,[\s\S]*\.operator-account-copy\s*\{[\s\S]*display: none;/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-planned-apps \.nav-library-grid\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-planned-apps \.nav-planned-item span\s*\{[\s\S]*white-space: normal;/m);
@@ -400,12 +401,12 @@ describe("admin style token contract", () => {
   });
 
   test("keeps interactive admin controls visually consistent", () => {
-    expect(selectorBlock(".nav-item")).toContain("min-height: 42px");
+    expect(selectorBlock(".nav-item")).toContain("min-height: var(--admin-touch-target-min)");
     expect(selectorBlock(".nav-item")).toContain("display: inline-flex");
     expect(selectorBlock(".nav-item-icon")).toContain("width: 0");
     expect(selectorBlock(".nav-primary-list")).toContain("display: flex");
     expect(selectorBlock(".nav-planned-menu")).toContain("position: relative");
-    expect(selectorBlock(".nav-planned-summary")).toContain("min-height: 42px");
+    expect(selectorBlock(".nav-planned-summary")).toContain("min-height: var(--admin-touch-target-min)");
     expect(selectorBlock(".nav-planned-summary")).toContain("list-style: none");
     expect(selectorBlock(".nav-planned-list")).toContain("position: fixed");
     expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-library-left)");
@@ -450,7 +451,8 @@ describe("admin style token contract", () => {
     expect(styles).toMatch(/\.nav-item-active\s*\{[\s\S]*box-shadow: none;/m);
     expect(selectorBlock(".nav-item")).toContain("transition:");
     expect(selectorBlock(".environment-pill,\n.protected-console,\n.icon-button")).toContain("min-height: var(--admin-control-height)");
-    expect(selectorBlock(".operator-account-summary")).toContain("min-height: 38px");
+    expect(selectorBlock(".icon-button,\n.protected-console,\n.console-tools-summary")).toContain("width: var(--admin-touch-target-min)");
+    expect(selectorBlock(".operator-account-summary")).toContain("min-height: var(--admin-touch-target-min)");
     expect(styles).toMatch(/\.top-bar-link\s*\{[\s\S]*display: inline-flex/m);
     expect(styles).toMatch(/\.ghost-button\s*\{[\s\S]*display: inline-flex/m);
     expect(selectorBlock(".case-row")).toContain("transition:");
@@ -464,6 +466,34 @@ describe("admin style token contract", () => {
     expect(styles).not.toContain("linear-gradient(135deg, var(--nav-app-a), var(--nav-app-b))");
     expect(styles).not.toContain("0 12px 24px var(--nav-app-shadow)");
     expect(styles).not.toContain("inset 0 1px 0 rgba(255, 255, 255, 0.36)");
+  });
+
+  test("keeps admin touch targets on the grammar minimum token", () => {
+    [
+      ".nav-item",
+      ".nav-planned-summary",
+      ".nav-library-search",
+      ".top-bar-search",
+      ".operator-account-summary",
+      ".top-search-shell",
+      ".top-search-shell .search-box",
+      ".environment-pill,\n.protected-console,\n.icon-button",
+      ".icon-button,\n.protected-console,\n.console-tools-summary",
+      ".top-menu-action",
+      ".page-subnav-link",
+      ".admin-blueprint-panel-tool-trigger",
+      ".channel-status-filter",
+      ".object-timeline-tab"
+    ].forEach((selector) => {
+      const block = selectorBlock(selector);
+      expect(block).not.toMatch(/(?:min-height|height|width|min-width):\s*(?:3[0-9]|4[0-3])px/);
+    });
+
+    expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("width: var(--admin-touch-target-min)");
+    expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("height: var(--admin-touch-target-min)");
+    expect(selectorBlock(".page-subnav-link")).toContain("min-height: var(--admin-touch-target-min)");
+    expect(selectorBlock(".channel-status-filter")).toContain("min-height: var(--admin-touch-target-min)");
+    expect(selectorBlock(".object-timeline-tab")).toContain("min-height: var(--admin-touch-target-min)");
   });
 
   test("keeps dense New Admin tables and safe refs mobile-safe", () => {
@@ -481,7 +511,7 @@ describe("admin style token contract", () => {
   test("keeps page-local subnavigation and usage charts mobile-safe", () => {
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.page-subnav-scroll\s*\{[\s\S]*flex-wrap: wrap;[\s\S]*overflow-x: visible;/m);
     expect(selectorBlock(".page-subnav-scroll")).toContain("flex-wrap: wrap");
-    expect(selectorBlock(".page-subnav-link")).toContain("min-height: 36px");
+    expect(selectorBlock(".page-subnav-link")).toContain("min-height: var(--admin-touch-target-min)");
     expect(selectorBlock(".page-subnav-card-head")).toContain("grid-template-columns: auto minmax(0, 1fr)");
     expect(selectorBlock(".page-subnav-marker")).toContain("var(--admin-accent)");
     expect(selectorBlock(".page-subnav-mode")).toContain("var(--admin-neutral-bg)");
@@ -493,16 +523,16 @@ describe("admin style token contract", () => {
 
   test("keeps the mobile admin shell focused on active navigation and compact actions", () => {
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.top-bar-actions\s*\{[\s\S]*display: flex;[\s\S]*flex-wrap: wrap;/m);
-    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.operator-account-summary\s*\{[\s\S]*min-height: 38px;/m);
-    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-search\s*\{[\s\S]*min-height: 38px;/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.operator-account-summary\s*\{[\s\S]*min-height: var\(--admin-touch-target-min\);/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-search\s*\{[\s\S]*min-height: var\(--admin-touch-target-min\);/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.app-sidebar\s*\{[\s\S]*bottom: 8px;/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-primary-list\s*\{[\s\S]*display: flex;/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-primary-list\s*\{[\s\S]*flex: 1 1 auto;[\s\S]*width: auto;/m);
-    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-planned-menu,[\s\S]*\.sidebar-safety-footer\s*\{[\s\S]*flex: 0 0 42px;/m);
-    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-planned-summary,[\s\S]*\.sidebar-safety-summary\s*\{[\s\S]*width: 42px;/m);
+    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-planned-menu,[\s\S]*\.sidebar-safety-footer\s*\{[\s\S]*flex: 0 0 var\(--admin-touch-target-min\);/m);
+    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-planned-summary,[\s\S]*\.sidebar-safety-summary\s*\{[\s\S]*width: var\(--admin-touch-target-min\);/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-list\s*\{[\s\S]*gap: var\(--admin-mobile-nav-gap\);/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-planned-count\s*\{[\s\S]*right: 0;/m);
-    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-summary\s*\{[\s\S]*min-height: 42px;/m);
+    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-summary\s*\{[\s\S]*min-height: var\(--admin-touch-target-min\);/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-summary span,[\s\S]*\.sidebar-safety-summary strong\s*\{[\s\S]*display: none;/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-detail\s*\{[\s\S]*display: none;/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-summary svg:first-of-type\s*\{[\s\S]*display: block;/m);
