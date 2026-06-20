@@ -56,7 +56,13 @@ describe("subscription usage monitor page", () => {
     expect(screen.getByRole("heading", { name: "Channel Coverage" })).not.toBeNull();
     expect(screen.getByLabelText("Channel Coverage static table")).not.toBeNull();
     expect(screen.getAllByText("channel_safe_sgp_hy2").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Degraded")).not.toBeNull();
+    expect(screen.getByText("51%")).not.toBeNull();
     expect(screen.getAllByText("Pending receipt").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Route Latency static table")).not.toBeNull();
+    expect(screen.getByText("route_safe_sgp_backup")).not.toBeNull();
+    expect(screen.getByText("146 ms")).not.toBeNull();
+    expect(screen.getAllByText("Stale").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Measured channels · count")).toBeNull();
     expect(screen.getByRole("heading", { name: "Usage Ledger" })).not.toBeNull();
     expect(screen.getByLabelText("Usage Ledger static table")).not.toBeNull();
@@ -68,6 +74,12 @@ describe("subscription usage monitor page", () => {
     expect(screen.getByRole("heading", { name: "Receipts & Collectors" })).not.toBeNull();
     expect(screen.getByLabelText("Receipts and Collectors static operator content")).not.toBeNull();
     expect(screen.getByText("Receipt gaps stay visible without exposing protected runtime material.")).not.toBeNull();
+    expect(screen.getByLabelText("Agent Status static table")).not.toBeNull();
+    expect(screen.getByText("agent_safe_sgp_02")).not.toBeNull();
+    expect(screen.getByText("4m ago")).not.toBeNull();
+    expect(screen.getByLabelText("Inspection Runs static table")).not.toBeNull();
+    expect(screen.getByText("route-latency-sample")).not.toBeNull();
+    expect(screen.getAllByText("route_safe_tuic_recovery").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Collectors · availability")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);
     document.querySelectorAll(".admin-blueprint-module-notes").forEach((notes) => {
@@ -87,6 +99,10 @@ describe("subscription usage monitor page", () => {
     expect(screen.getByLabelText("Collection Freshness fixture preview")).not.toBeNull();
     expect(screen.queryByText("Issued vs measured vs missing receipt blockers.")).toBeNull();
     expect(screen.getAllByText("sgp-hy2 · receipt pending").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Route latency").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("route_safe_tuic_recovery").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("agent_safe_sgp_02").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("route-latency-sample").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Missing receipt").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Pending receipt").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Raw runtime config and logs are excluded.")).toBeNull();

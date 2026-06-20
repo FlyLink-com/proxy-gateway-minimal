@@ -137,8 +137,8 @@ whole roadmap into one implementation batch.
 | Wave | Component/design focus | Current output |
 | --- | --- | --- |
 | Current: GCC-109 / GCC-103 | Operations Overview, Accounts & Resources, Usage & Channels, shell states, locked slots, and the relationship map for future pages. | Docs/Figma handoff only; no new React route or backend contract implied. |
-| Next: GCC-110 | Capability-gated registration for routes, App Library entries, search, command results, notifications, and frontend data hooks. | Tests must prove non-super-admin absence before privileged UI work. |
-| Next: GCC-111 | Platform Monitoring details: route latency, agent status, inspection summaries, channel health, and receipt freshness. | Design and fixture UI after the current handoff is reviewable. |
+| Current: GCC-110 | Capability-gated registration for routes, App Library entries, search, command results, notifications, and frontend data hooks. | Tests prove non-super-admin absence before privileged UI work. |
+| Current: GCC-111 | Platform Monitoring details: route latency, agent status, inspection summaries, channel health, and receipt freshness. | Static Usage & Channels UI and fixture preview; backend DTO still pending. |
 | Contract: GCC-101 / GCC-112 | DTO fields, redaction, retention, MFA, and forbidden response behavior. | Backend design first; implementation risk rises if auth/schema/retention changes start. |
 | Deferred: GCC-113 / GCC-114 | Super-admin Key/Audit/Log fixtures; User Management and Order Management top-level split decision. | Backlog until dependencies are settled. |
 
@@ -257,11 +257,14 @@ the UI.
 | Freshness strip | Shows collector state, last collection, stale threshold, unknown count. | Usage monitor generatedAt, collection status. | Runtime collector health summary missing. | Collector health endpoint. |
 | Usage cards | Upload/download/total, measured orders, zero usage, over-limit. | Usage monitor aggregates. | Trend windows partial. | Time-window aggregate endpoint. |
 | Channel coverage cards | Issued/measured/missing channels and receipt blockers. | Usage rows and bindings. | First-class channel rollup missing. | Channel coverage endpoint. |
+| Route latency ledger | Source, target, route type, p50, p95, p99, sample count, and stale state. | Future route health rollup. | Backend route latency DTO missing. | Route latency endpoint or safe monitoring aggregate. |
 | Usage chart | Trend by account/order/channel. | Usage series when available. | History may be sparse. | Durable time-series query. |
 | Collection anomaly queue | Stale usage, true zero, not-collected, collector disabled, missing receipt, and quota-risk evidence for correlation. | Warnings and derived selectors. | Backend anomaly summaries optional. | Durable cases or anomaly endpoint. |
 | Channel ledger | Channel status, traffic, freshness, receipt, utilization, order count. | Aggregated usage rows. | Error rate/req-s fields missing. | Channel health rollup. |
 | Order usage ledger | Account, order, plan, issued channels, safe binding coverage, usage, warnings. | Usage monitor rows. | Works for first slice. | Add pagination/export only after privacy review. |
 | Receipts and collectors | Shows receipt binding, unbound rows, stale collection, collection gaps, and disabled collector counts. | Usage monitor rows and safe binding summaries. | Runtime collector health summary missing. | Collector health endpoint; visual-only until separate gate. |
+| Agent status ledger | Agent ref, node ref, version, heartbeat, desired-state pull, receipt push, and collector state. | Future no-secret agent status DTO. | Backend agent status DTO missing. | Agent status endpoint; no raw logs. |
+| Inspection runs ledger | Check name, latest result, duration, next run, and owner object. | Future safe inspection summary DTO. | Backend inspection summary DTO missing. | Inspection summary endpoint; raw logs remain privileged. |
 
 ## Active Page Ownership Slice
 
