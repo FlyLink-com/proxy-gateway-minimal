@@ -204,16 +204,19 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
         ]
       },
       "channel-coverage": {
-        summary: "Issued vs measured vs missing receipt blockers.",
+        summary: "Channel health, route latency, and receipt blockers.",
         chips: [
           { label: "Success", tone: "success" },
-          { label: "Channel Coverage", tone: "success" }
+          { label: "Route latency", tone: "info" }
         ],
         rows: [
-          { label: "Issued vs measured", value: "Receipt blockers visible", meta: "safe aggregate", tone: "success" }
+          { label: "channel_safe_jp_vless", value: "Healthy", meta: "64% utilization · p95 88 ms", tone: "success" },
+          { label: "channel_safe_sgp_hy2", value: "Degraded", meta: "Pending receipt · route stale", tone: "warning" },
+          { label: "route_safe_tuic_recovery", value: "No sample", meta: "missing receipt blocker", tone: "danger" }
         ],
         safetyNotes: [
           "Channel refs are safe preview identifiers.",
+          "Route latency rows use synthetic p50, p95, and p99 labels.",
           "Node provisioning and apply controls are absent."
         ]
       },
@@ -251,16 +254,19 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
         ]
       },
       "receipts-collectors": {
-        summary: "Pending receipt, collector disabled, diagnostics locked.",
+        summary: "Pending receipt, agent status, collector state, and inspection runs.",
         chips: [
           { label: "Warning", tone: "warning" },
-          { label: "Diagnostics locked", tone: "neutral" }
+          { label: "Inspection warning", tone: "warning" }
         ],
         rows: [
-          { label: "Receipts & Collectors", value: "Pending receipt", meta: "collector disabled · diagnostics locked", tone: "warning" }
+          { label: "Receipt state", value: "Pending receipt", meta: "2 pending · 1 missing", tone: "warning" },
+          { label: "agent_safe_sgp_02", value: "Delayed", meta: "heartbeat 4m · receipt push pending", tone: "warning" },
+          { label: "route-latency-sample", value: "Blocked", meta: "owner route_safe_tuic_recovery", tone: "danger" }
         ],
         safetyNotes: [
-          "Raw runtime config and logs are excluded.",
+          "Protected runtime material is excluded.",
+          "Log and audit surfaces are not available to normal operators.",
           "Collector activation is not available in preview."
         ]
       }

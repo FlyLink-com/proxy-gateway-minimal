@@ -269,7 +269,7 @@ creating immediate route sprawl:
 | --- | --- | --- |
 | User Management | `Accounts & Resources` sections | Keep user directory, order count, active order count, and user usage in the existing management page until GCC-114 decides a split. |
 | Order Management | `Accounts & Resources -> Resources & Orders` / `Quota & Usage` / `Lifecycle` | Keep per-order usage, lifecycle, artifact safe refs, and quota evidence in the existing page until DTO ownership justifies a split. |
-| Platform Monitoring, route latency, agent status, inspection summaries | `Usage & Channels` sections | Treat as the next monitoring expansion, not part of the current IA closeout. |
+| Platform Monitoring, route latency, agent status, inspection summaries | `Usage & Channels` sections | Current static UI expansion under existing modules; backend DTO ownership remains pending. |
 | Account & Permissions | `System Settings` / future permission panel | Document as scoped operator-permission content; do not change auth model in this wave. |
 | About | Future safe system-info panel | Can be designed as a low-risk surface after build/version DTO fields are defined. |
 | Key Management | Privileged, not registered for non-super-admin | No route, App Library entry, search source, command result, notification link, hidden DOM, or API call for non-super-admin users. |
@@ -432,6 +432,8 @@ flowchart TD
   Coverage --> C2["Measured channels"]
   Coverage --> C3["Missing channels"]
   Coverage --> C4["Receipt blockers"]
+  Coverage --> C5["Channel health"]
+  Coverage --> C6["Route latency p50 / p95 / p99"]
 
   Ledger --> L1["Account safe ref"]
   Ledger --> L2["Order safe ref"]
@@ -446,7 +448,9 @@ flowchart TD
 
   Receipts --> R1["Receipt freshness"]
   Receipts --> R2["Collectors: availability"]
-  Receipts --> R3["Future safe diagnostics"]
+  Receipts --> R3["Agent heartbeat / version"]
+  Receipts --> R4["Inspection summaries"]
+  Receipts --> R5["Future safe diagnostics"]
 ```
 
 Content requirements:
@@ -454,10 +458,10 @@ Content requirements:
 | Section | Primary objects | Decisions owned here | Forbidden here |
 | --- | --- | --- | --- |
 | Collection Freshness | collector, usage sample | collection trust and stale/unknown diagnosis | quota editing, account disable |
-| Channel Coverage | channel, receipt, edge credential ref | measured/missing channel diagnosis | channel runtime apply |
+| Channel Coverage | channel, route, receipt, edge credential ref | measured/missing channel diagnosis, health state, route latency evidence | channel runtime apply |
 | Usage Ledger | usage sample, account/order refs | measurement evidence and correlation | order pause/archive decision |
 | Collection Anomalies | usage sample, collector, receipt | anomaly classification | durable case close/reopen |
-| Receipts & Collectors | receipt, collector | evidence availability and future diagnostics | raw logs, raw config, credentials |
+| Receipts & Collectors | receipt, collector, agent, inspection run | evidence availability, agent health, inspection summary, and future diagnostics | raw logs, audit rows, raw config, credentials |
 
 ## Locked Page Structure
 
