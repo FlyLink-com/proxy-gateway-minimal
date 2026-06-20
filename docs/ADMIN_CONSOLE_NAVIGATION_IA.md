@@ -1,6 +1,6 @@
 # Admin Console Navigation IA
 
-Last updated: 2026-06-20, Asia/Shanghai.
+Last updated: 2026-06-21, Asia/Shanghai.
 
 > Status:
 > - Linear: GCC-57 under GCC-50
@@ -29,12 +29,12 @@ dictionary is the source of truth for deciding whether a card belongs to
 `Overview`, `User Operations`, `Platform Monitoring`, `Audit & Cases`,
 `Platform Development`, or `System Settings`.
 
-For the expanded relationship model discussed in GCC-109/GCC-103, use
-`docs/ADMIN_CONSOLE_RELATIONSHIP_DRAFT.md`. That document records future
-User Management, Order Management, Key Management, Audit Center, Log Access,
-About, route-latency, agent-status, and inspection-summary needs. This IA
-document decides which of those needs may enter active navigation in the
-current wave.
+For the expanded relationship model and backend DTO contract, use
+`docs/ADMIN_CONSOLE_RELATIONSHIP_DRAFT.md` and
+`docs/ADMIN_BACKEND_DTO_CONTRACT.md`. Those documents record User Management,
+Order Management, Key Management, Audit Center, Log Access, About,
+route-latency, agent-status, and inspection-summary needs. This IA document
+decides which of those needs may enter active navigation.
 
 ## Decision
 
@@ -85,8 +85,8 @@ not promote every relationship surface into the active React route map.
 
 | Relationship surface | Current navigation decision | Follow-up owner |
 | --- | --- | --- |
-| `Operations Overview` | Active page. | Current handoff. |
-| Platform monitoring dashboards, route latency, agent status, inspection summaries | Stay inside `Usage & Channels` / Platform Monitoring until GCC-111 is worked. | `GCC-111` after current handoff. |
+| `Operations Overview` | Active page. | Current handoff closed; backend DTO mapping continues under GCC-112. |
+| Platform monitoring dashboards, route latency, agent status, inspection summaries | Stay inside `Usage & Channels` / Platform Monitoring; static UI exists and backend DTO ownership remains pending. | `GCC-112` backend contract. |
 | User Management | Stay inside `Accounts & Resources` as account/user supervision. | `GCC-114` decides later split. |
 | Order Management | Stay inside `Accounts & Resources` as resources/orders/lifecycle supervision. | `GCC-114` decides later split. |
 | Account & Permissions | Stay as scoped permissions/settings content until capability and backend contracts exist. | `GCC-79`, `GCC-110`, backend contract work. |
@@ -187,9 +187,9 @@ Every new top-level Admin entry must define:
 
 | Phase | Linear issue | Navigation effect |
 | --- | --- | --- |
-| Current wave | GCC-109 / GCC-103 | Close the relationship model into IA/docs and Figma handoff. Keep active navigation to real pages only. |
-| Next wave | GCC-110 / GCC-111 | Add capability-gated registration and richer Platform Monitoring dashboards after current handoff review. |
-| Backend contract | GCC-101 / GCC-112 | Define DTO, redaction, retention, and privilege contracts before live integration. |
+| Closed wave | GCC-109 / GCC-103 | Relationship model, IA/docs, and Figma handoff boundaries are documented. |
+| Closed wave | GCC-110 / GCC-111 | Capability-gated registration and richer Platform Monitoring static UI are on `master`. |
+| Current backend contract | GCC-101 / GCC-112 | Define DTO, redaction, retention, and privilege contracts before live integration. |
 | Phase 3 decision | GCC-114 | Decide whether User Management and Order Management split from `Accounts & Resources`. |
 | Deferred privileged UI | GCC-113 | Add super-admin-only Key/Audit/Log fixture surfaces only after capability and backend contracts settle. |
 | Older durable case lane | GCC-55 | Promote durable cases/history into `Audit & Cases -> Case Inbox` after backend facts exist. |

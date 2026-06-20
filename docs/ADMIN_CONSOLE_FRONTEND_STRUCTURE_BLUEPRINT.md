@@ -1,6 +1,6 @@
 # Admin Console Frontend Structure Blueprint
 
-Last updated: 2026-06-20, Asia/Shanghai.
+Last updated: 2026-06-21, Asia/Shanghai.
 
 > Status:
 > - Linear: GCC-73 under GCC-42
@@ -49,15 +49,14 @@ Admin shell, App Library, plugin container rules, and persisted browser layout
 preferences. It does not add backend authority, production mutation, schema
 migration, or sensitive runtime data exposure.
 
-The 2026-06-20 GCC-109/GCC-103 update adds an expanded relationship model in
-`docs/ADMIN_CONSOLE_RELATIONSHIP_DRAFT.md`, but the current wave does not
-promote every relationship surface to active React pages. The active WIP is:
+The 2026-06-20 to 2026-06-21 Admin sequence closed the relationship model,
+capability-gated frontend registration, and static Platform Monitoring
+expansion. The active follow-up is backend DTO contract design in
+`docs/ADMIN_BACKEND_DTO_CONTRACT.md`.
 
-1. close the relationship model into IA/docs;
-2. produce a Figma/Admin UI handoff for the current frontend design phase.
-
-Capability gating, Platform Monitoring expansion, backend DTO design, and
-super-admin-only Key/Audit/Log surfaces remain follow-up waves.
+Backend DTO design remains docs-only until a separate implementation PR adds
+read-only summary tests and adapters. Super-admin-only Key/Audit/Log surfaces
+remain deferred until after that contract work.
 
 ## Frontend Containerization Model
 
@@ -558,5 +557,6 @@ Before starting Phase 2 or Phase 3 work, confirm:
 8. Future implementation has a code anchor and test anchor.
 9. Privileged key/audit/log surfaces are absent for non-super-admin users, not
    rendered as disabled placeholders.
-10. The current wave is limited to GCC-109 and GCC-103 unless Linear is
-   explicitly re-prioritized.
+10. Current implementation must stay within the active wave boundary: GCC-112
+   is docs-only backend DTO contract work until a separate implementation gate
+   exists.

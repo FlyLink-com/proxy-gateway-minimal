@@ -1,6 +1,6 @@
 # Admin Console App Map
 
-Last updated: 2026-06-20, Asia/Shanghai.
+Last updated: 2026-06-21, Asia/Shanghai.
 
 > Status:
 > - Linear: GCC-74 under GCC-81 / GCC-42
@@ -166,7 +166,7 @@ the App Library registration source.
 | --- | --- | --- |
 | User Management | Current `accounts-resources` workspace modules. | `GCC-114` decides future split. |
 | Order Management | Current `accounts-resources` workspace modules. | `GCC-114` decides future split. |
-| Route Latency / Agent Status / Inspection Runs | Future `usage-channels` plugin expansion. | `GCC-111`. |
+| Route Latency / Agent Status / Inspection Runs | Static `usage-channels` monitoring content exists; backend DTO ownership is pending. | `GCC-112`. |
 | Account & Permissions | Future scoped settings/permission plugin. | `GCC-79`, `GCC-110`. |
 | About | Future safe system-info planned app. | Later low-risk UI slice. |
 | Key Management / Audit Center / Log Access | Privileged registration only; absent for non-super-admin. | `GCC-113` after `GCC-79`, `GCC-110`, `GCC-112`. |
