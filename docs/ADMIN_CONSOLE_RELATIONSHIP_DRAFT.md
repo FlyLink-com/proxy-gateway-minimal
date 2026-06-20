@@ -1,6 +1,6 @@
 # Admin Console Relationship Draft
 
-Last updated: 2026-06-20, Asia/Shanghai.
+Last updated: 2026-06-21, Asia/Shanghai.
 
 > Status:
 > - Type: Active relationship and page-design contract.
@@ -42,13 +42,14 @@ batch. Do not treat every surface below as simultaneous implementation work.
 
 | Wave | Linear scope | Delivery boundary |
 | --- | --- | --- |
-| Current | `GCC-109`, `GCC-103` | Close this relationship model into the Admin IA/docs and produce the current Figma/UI handoff. No React, backend, auth, schema, production, or deployment change is implied. |
-| Next | `GCC-110`, `GCC-111` | Add capability-gated frontend registration and expand Platform Monitoring details only after the current handoff is reviewable. |
-| Contract | `GCC-101`, `GCC-112` | Design backend DTO, redaction, retention, and privilege contracts before live integration. This remains C while it is design-only and becomes A if auth/schema/retention changes start. |
+| Closed | `GCC-109`, `GCC-103` | Relationship model, Admin IA/docs, and Figma/UI handoff boundaries are documented. |
+| Closed | `GCC-110`, `GCC-111` | Capability-gated frontend registration and static Platform Monitoring details are on `master`. |
+| Current | `GCC-101`, `GCC-112` | Design backend DTO, redaction, retention, and privilege contracts before live integration. This remains C while it is design-only and becomes A if auth/schema/retention changes start. |
 | Deferred | `GCC-113`, `GCC-114` | Keep super-admin Key/Audit/Log fixture surfaces and User/Order page splitting out of the current wave. |
 
-Current WIP limit: `GCC-109` plus `GCC-103`. The rest of this document is a
-map for sequencing, not a commitment to finish every page in one PR.
+Current WIP limit: `GCC-101` / `GCC-112` design-only contract work. The rest of
+this document is a map for sequencing, not a commitment to finish every page in
+one PR.
 
 ## Object Relationship Model
 
@@ -428,7 +429,9 @@ Accessibility rules:
 
 ## Backend DTO Draft
 
-These are DTO names for design discussion, not implemented API contracts.
+These DTO names are now expanded in
+`docs/ADMIN_BACKEND_DTO_CONTRACT.md`. They are still design contracts, not
+implemented API routes or schema authority.
 
 | DTO | Purpose | Privilege |
 | --- | --- | --- |

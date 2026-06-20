@@ -1,6 +1,6 @@
 # Admin Console Component And Function Blueprint
 
-Last updated: 2026-06-20, Asia/Shanghai.
+Last updated: 2026-06-21, Asia/Shanghai.
 
 > Status:
 > - Product Design brief: locked from the current concept image, existing
@@ -136,10 +136,10 @@ whole roadmap into one implementation batch.
 
 | Wave | Component/design focus | Current output |
 | --- | --- | --- |
-| Current: GCC-109 / GCC-103 | Operations Overview, Accounts & Resources, Usage & Channels, shell states, locked slots, and the relationship map for future pages. | Docs/Figma handoff only; no new React route or backend contract implied. |
-| Current: GCC-110 | Capability-gated registration for routes, App Library entries, search, command results, notifications, and frontend data hooks. | Tests prove non-super-admin absence before privileged UI work. |
-| Current: GCC-111 | Platform Monitoring details: route latency, agent status, inspection summaries, channel health, and receipt freshness. | Static Usage & Channels UI and fixture preview; backend DTO still pending. |
-| Contract: GCC-101 / GCC-112 | DTO fields, redaction, retention, MFA, and forbidden response behavior. | Backend design first; implementation risk rises if auth/schema/retention changes start. |
+| Closed: GCC-109 / GCC-103 | Operations Overview, Accounts & Resources, Usage & Channels, shell states, locked slots, and the relationship map for future pages. | Docs/Figma handoff boundary is documented. |
+| Closed: GCC-110 | Capability-gated registration for routes, App Library entries, search, command results, notifications, and frontend data hooks. | Tests prove non-super-admin absence before privileged UI work. |
+| Closed: GCC-111 | Platform Monitoring details: route latency, agent status, inspection summaries, channel health, and receipt freshness. | Static Usage & Channels UI and fixture preview are on `master`; backend DTO still pending. |
+| Current: GCC-101 / GCC-112 | DTO fields, redaction, retention, MFA, and forbidden response behavior. | Backend design first in `docs/ADMIN_BACKEND_DTO_CONTRACT.md`; implementation risk rises if auth/schema/retention changes start. |
 | Deferred: GCC-113 / GCC-114 | Super-admin Key/Audit/Log fixtures; User Management and Order Management top-level split decision. | Backlog until dependencies are settled. |
 
 ## Front-End Page Logic
