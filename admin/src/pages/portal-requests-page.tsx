@@ -181,6 +181,15 @@ export const accountsResourcesBlueprint: BlueprintPage = {
   ]
 };
 
-export function PortalRequestsPage() {
-  return <AdminConsolePageFrame blueprint={accountsResourcesBlueprint} />;
+export function PortalRequestsPage({
+  fixturePreviewEnabled = false
+}: {
+  fixturePreviewEnabled?: boolean;
+}) {
+  return (
+    <AdminConsolePageFrame
+      blueprint={accountsResourcesBlueprint}
+      fixturePreviewEnabled={fixturePreviewEnabled}
+    />
+  );
 }

@@ -6,17 +6,24 @@ import {
 } from "./admin-console-page-frame";
 
 export function DashboardPage({
+  fixturePreviewEnabled = false,
   onNavigate,
   onRiskCountChange
 }: {
+  fixturePreviewEnabled?: boolean;
   onNavigate?: (page: AdminPage) => void;
   onRiskCountChange?: (count: number) => void;
 }) {
   useEffect(() => {
-    onRiskCountChange?.(0);
-  }, [onRiskCountChange]);
+    onRiskCountChange?.(fixturePreviewEnabled ? 2 : 0);
+  }, [fixturePreviewEnabled, onRiskCountChange]);
 
-  return <AdminConsolePageFrame blueprint={overviewBlueprint(onNavigate)} />;
+  return (
+    <AdminConsolePageFrame
+      blueprint={overviewBlueprint(onNavigate)}
+      fixturePreviewEnabled={fixturePreviewEnabled}
+    />
+  );
 }
 
 export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPage {

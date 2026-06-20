@@ -5,6 +5,10 @@ import {
 } from "./navigation";
 import { type AdminUiSurfaceKey } from "./admin-ui-reference-model";
 import {
+  getAdminFixturePreviewPanel,
+  type AdminFixturePreviewPanel
+} from "./admin-fixture-preview";
+import {
   defaultModuleLayoutState,
   type ModuleLayoutMap
 } from "./plugin-layout-store";
@@ -45,6 +49,7 @@ export type BlueprintPanelViewModel = {
   className: string;
   containerLabel: string;
   fieldLabels: string[];
+  fixturePreview?: AdminFixturePreviewPanel;
   navId: string;
   ownerMode: "preview" | "owner";
   targetId: string;
@@ -55,6 +60,7 @@ export type BlueprintPanelViewModel = {
 export type BlueprintPanelProjectionInput = {
   blueprint: BlueprintPage;
   defaultModuleLayout: ModuleLayoutMap;
+  fixturePreviewEnabled?: boolean;
   moduleLayout: ModuleLayoutMap;
   subNavigation: PageSubNavigationItem[];
 };
@@ -70,6 +76,7 @@ const CATEGORY_LABEL: Record<WorkbenchCategory, string> = {
 export function projectBlueprintPanelViewModels({
   blueprint,
   defaultModuleLayout,
+  fixturePreviewEnabled = false,
   moduleLayout,
   subNavigation
 }: BlueprintPanelProjectionInput): BlueprintPanelViewModel[] {
@@ -80,7 +87,7 @@ export function projectBlueprintPanelViewModels({
       return [];
     }
 
-    return [{
+    const basePanel: BlueprintPanelViewModel = {
       actions: module.actions,
       ariaLabel: `${CATEGORY_LABEL[module.container.category]} panel`,
       category: module.container.category,
@@ -92,6 +99,12 @@ export function projectBlueprintPanelViewModels({
       targetId: navItem?.targetId ?? module.navId,
       title: navItem?.label ?? module.navId,
       uiSurface: module.uiSurface
-    }];
+    };
+
+    const fixturePreview = fixturePreviewEnabled
+      ? getAdminFixturePreviewPanel(blueprint.page, module.navId)
+      : undefined;
+
+    return fixturePreview ? [{ ...basePanel, fixturePreview }] : [basePanel];
   });
 }

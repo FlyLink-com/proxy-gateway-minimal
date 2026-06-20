@@ -663,6 +663,136 @@
   opacity: 0.72;
 }
 
+.admin-fixture-preview-banner {
+  border: 1px solid var(--admin-info-border);
+  border-radius: var(--admin-radius-control);
+  background: var(--admin-info-bg);
+  color: var(--admin-info-fg);
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+}
+
+.admin-fixture-preview-banner > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-fixture-preview-banner strong {
+  color: var(--admin-text);
+  font-size: 13px;
+}
+
+.admin-fixture-preview-banner span,
+.admin-fixture-preview-banner p {
+  margin: 0;
+  color: var(--admin-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.admin-fixture-preview {
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+.admin-fixture-preview > p {
+  margin: 0;
+  color: var(--admin-text-soft);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.admin-fixture-preview-chips {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-fixture-preview-rows {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.admin-fixture-preview-row {
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: var(--admin-radius-control);
+  background: var(--admin-surface-muted);
+  display: grid;
+  grid-template-columns: minmax(120px, 0.34fr) minmax(0, 1fr);
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 10px;
+}
+
+.admin-fixture-preview-row dt {
+  color: var(--admin-muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.admin-fixture-preview-row dd {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0;
+  min-width: 0;
+}
+
+.admin-fixture-preview-row dd strong {
+  color: var(--admin-text);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.admin-fixture-preview-row dd span {
+  color: var(--admin-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.admin-fixture-preview-safety {
+  display: grid;
+  gap: 5px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.admin-fixture-preview-safety li {
+  position: relative;
+  color: var(--admin-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.35;
+  padding-left: 13px;
+}
+
+.admin-fixture-preview-safety li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.64em;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--admin-plugin-accent, var(--admin-accent));
+}
+
 .admin-blueprint-empty-workbench {
   grid-column: 1 / -1;
   border: 1px dashed var(--admin-border-strong);

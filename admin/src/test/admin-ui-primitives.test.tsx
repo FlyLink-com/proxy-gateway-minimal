@@ -136,6 +136,38 @@ describe("admin ui primitives", () => {
     expect(onHide).toHaveBeenCalled();
   });
 
+  test("renders fixture preview content inside the fixed panel frame", () => {
+    render(
+      <PanelFrame
+        ariaLabel="Risk queue preview contract"
+        category="audit-workflow"
+        containerLabel="Review candidate queue widget"
+        fieldLabels={["Severity", "Affected refs"]}
+        fixturePreview={{
+          summary: "Review queue previews routing decisions without durable case closure.",
+          chips: [
+            { label: "2 candidates", tone: "warning" },
+            { label: "No write action", tone: "neutral" }
+          ],
+          rows: [
+            { label: "High", value: "acct_demo_02", meta: "missing receipt evidence", tone: "danger" }
+          ],
+          safetyNotes: ["Candidate refs are synthetic."]
+        }}
+        title="Risk Queue"
+        ownerMode="preview"
+      />
+    );
+
+    const fixturePreview = screen.getByLabelText("Risk Queue fixture preview");
+    expect(fixturePreview.getAttribute("data-fixture-schema")).toBe("admin-fixture-preview/v1");
+    expect(within(fixturePreview).getByText("2 candidates")).not.toBeNull();
+    expect(within(fixturePreview).getByText("acct_demo_02")).not.toBeNull();
+    expect(within(fixturePreview).getByText("Candidate refs are synthetic.")).not.toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_/i);
+  });
+
   test("keeps plugin container as a compatibility mount wrapper over fixed panels", () => {
     render(
       <PluginContainer
