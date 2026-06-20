@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ADMIN_UI_CONTRACT } from "../app/admin-ui-contract";
+import { ADMIN_UI_CONTRACT, getAdminPageContract } from "../app/admin-ui-contract";
 import {
   type AdminPage,
   pageSubNavigation
@@ -41,6 +41,7 @@ export function AdminConsolePageFrame({
   fixturePreviewEnabled?: boolean;
 }) {
   const subNavigation = pageSubNavigation[blueprint.page];
+  const pageContract = getAdminPageContract(blueprint.page);
   const moduleNavSignature = blueprint.modules.map((module) => module.navId).join("|");
   const defaultModuleLayout = useMemo(() => createDefaultModuleLayout(blueprint.modules), [moduleNavSignature]);
   const initialWorkspaceLayout = useMemo(
@@ -116,9 +117,14 @@ export function AdminConsolePageFrame({
   return (
     <div
       className="page-stack admin-blueprint-page"
-      data-density={ADMIN_UI_CONTRACT.pageFrame.density}
+      data-density={pageContract.density}
+      data-layout={pageContract.layout}
+      data-mobile-projection={pageContract.mobileProjection}
       data-page={blueprint.page}
+      data-page-id={pageContract.page}
+      data-required-blocks={pageContract.requiredBlocks.join(" ")}
       data-ui-contract={ADMIN_UI_CONTRACT.pageFrame.contractId}
+      data-ui-role="workspace"
     >
       <header className="admin-blueprint-page-hero" aria-label={blueprint.ariaLabel}>
         <p>{blueprint.kicker}</p>

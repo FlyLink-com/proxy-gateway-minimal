@@ -13,6 +13,11 @@ describe("subscription usage monitor page", () => {
     expect(screen.getByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
     expect(screen.getByText("Platform Monitoring / Usage & Channels")).not.toBeNull();
     expect(screen.getByLabelText("Usage & Channels page header")).not.toBeNull();
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-page-id")).toBe("usageMonitor");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-layout")).toBe("dashboard");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-ui-role")).toBe("workspace");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-mobile-projection")).toBe("single-column-review-flow");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-required-blocks")).toContain("evidence-row");
     expect(screen.queryByRole("button", { name: "Card settings" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Edit workspace" })).toBeNull();
     expect(screen.queryByLabelText("Usage & Channels status dashboard")).toBeNull();
@@ -39,6 +44,7 @@ describe("subscription usage monitor page", () => {
     expect(screen.getByRole("button", { name: "Receipts & Collectors hide module" })).not.toBeNull();
 
     expect(screen.getByRole("heading", { name: "Collection Freshness" })).not.toBeNull();
+    expect(document.querySelector("#platform-monitoring-freshness")?.getAttribute("data-ui-role")).toBe("panel");
     expect(screen.getAllByLabelText("Monitoring panel").length).toBe(4);
     expect(screen.getByLabelText("Platform Tools panel")).not.toBeNull();
     expect(screen.getAllByText("Safe diagnostics entry panel").length).toBeGreaterThanOrEqual(1);

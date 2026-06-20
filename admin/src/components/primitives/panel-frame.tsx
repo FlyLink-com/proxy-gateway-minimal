@@ -65,6 +65,7 @@ export function PanelFrame({
       )}
       data-density={density}
       data-module-nav-id={dataModuleNavId}
+      data-ui-role="panel"
       data-ui-surface-role={dataUiSurfaceRole}
       data-ui-contract={ADMIN_UI_CONTRACT.pluginFrame.contractId}
       id={id}

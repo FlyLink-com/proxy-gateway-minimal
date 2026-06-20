@@ -22,6 +22,11 @@ describe("admin dashboard page", () => {
     expect(screen.getByLabelText("Operations Overview page header")).not.toBeNull();
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-ui-contract")).toBe("page-frame");
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-density")).toBe("normal");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-page-id")).toBe("dashboard");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-layout")).toBe("dashboard");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-ui-role")).toBe("workspace");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-mobile-projection")).toBe("single-column-review-flow");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-required-blocks")).toContain("owner-action");
     expect(screen.queryByRole("button", { name: "Card settings" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Edit workspace" })).toBeNull();
     expect(screen.queryByLabelText("Operations Overview status dashboard")).toBeNull();
@@ -50,6 +55,7 @@ describe("admin dashboard page", () => {
 
     expect(screen.getByRole("heading", { name: "Health Summary" })).not.toBeNull();
     expect(screen.getByLabelText("Monitoring panel")).not.toBeNull();
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-role")).toBe("panel");
     expect(screen.getAllByText("Overview metric widget set").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText("Operations Overview static health content")).not.toBeNull();
     expect(screen.getByText("Platform health")).not.toBeNull();

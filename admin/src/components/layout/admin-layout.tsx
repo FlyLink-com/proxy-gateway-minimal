@@ -34,6 +34,7 @@ export function AdminLayout({
       className="admin-shell"
       data-density={ADMIN_UI_CONTRACT.appShell.density}
       data-ui-contract={ADMIN_UI_CONTRACT.appShell.contractId}
+      data-ui-role="system"
     >
       <AppSidebar
         activePage={activePage}

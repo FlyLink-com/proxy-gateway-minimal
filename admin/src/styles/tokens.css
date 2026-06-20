@@ -59,6 +59,11 @@
   --admin-radius-tile: 8px;
   --admin-radius-icon: 8px;
   --admin-radius-pill: 999px;
+  --admin-density-compact-card-padding: 12px;
+  --admin-density-normal-card-padding: 16px;
+  --admin-density-spacious-card-padding: 20px;
+  --admin-touch-target-min: 44px;
+  --admin-touch-target-comfortable: 48px;
   --admin-shadow-chrome: 0 1px 2px rgba(15, 23, 42, 0.035);
   --admin-shadow-chrome-2k: 0 4px 12px rgba(15, 23, 42, 0.045), 0 1px 2px rgba(15, 23, 42, 0.026);
   --admin-shadow-floating: 0 8px 20px rgba(15, 23, 42, 0.065);
@@ -120,10 +125,12 @@
   --admin-plugin-height-short: 128px;
   --admin-plugin-height-medium: 168px;
   --admin-plugin-height-tall: 252px;
+  --admin-plugin-screen-max-height: min(680px, calc(100dvh - var(--admin-statusbar-height) - 132px));
+  --admin-plugin-screen-max-height-mobile: clamp(280px, calc(100dvh - var(--admin-statusbar-height) - var(--admin-mobile-nav-height) - 260px), 430px);
   --admin-plugin-field-height: 26px;
   --admin-plugin-field-gap: 6px;
   --admin-control-height: 42px;
-  --admin-nav-card-height: 44px;
+  --admin-nav-card-height: var(--admin-touch-target-min);
   --admin-nav-icon-size: 30px;
   --admin-content-padding: var(--admin-canvas-gutter);
   --admin-workbench-gap: var(--admin-plugin-gap);

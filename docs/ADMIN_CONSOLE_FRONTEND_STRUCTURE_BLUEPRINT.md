@@ -126,6 +126,61 @@ New app entries should also follow
 required authoring fields, entry types, layout sizes, runtime states, and
 safe-search boundaries before additional visible UI is added.
 
+## Viewport Strategy
+
+The Admin console has two design targets, not one desktop layout with narrow
+CSS overrides:
+
+| Target | Primary frame | Layout model | Current rule |
+| --- | --- | --- | --- |
+| Web / desktop workbench | `1600 x 1024` first, then tablet-safe collapse | Multi-column operator workspace with page-owned modules, App Library recovery, and dense evidence widgets. | This is the primary design and implementation target for the current Admin UI closeout. |
+| Mobile review mode | `390 x 844` first, with `375 x 667` as the small-height guard | Single-column review flow for quick status, risk, and owner-page handoff. | Must be designed as a separate projection, not by reusing the desktop column map, plugin grid, card density, or page scroll plan. |
+
+The current mobile CSS may keep the page safe from clipping while the web
+layout is being closed, but it is not the final mobile design. Final mobile
+work must define its own information architecture before implementation:
+
+1. top status summary and current page identity;
+2. page-local priority tabs or compact section switcher;
+3. one active review card at a time with drill-in details;
+4. bottom navigation and App Library recovery that do not cover content;
+5. safe empty/stale/disconnected states;
+6. no hidden privileged key, audit, log, raw URL, token, credential, raw log, or
+   customer-private data surfaces.
+
+Mobile should reuse the same domain facts, redaction rules, route ownership,
+and capability gates as desktop. It should not reuse desktop component
+geometry when the operator task is different.
+
+## Design Grammar Contract
+
+The active Admin frontend now has a first-pass Design Grammar layer:
+
+- `admin/src/design/grammar/layout.ts` defines layout archetypes and required
+  rendered metadata.
+- `admin/src/design/grammar/density.ts` defines density and touch-target
+  rules.
+- `admin/src/design/grammar/hierarchy.ts` defines the order of metric,
+  context, state, action, evidence, and detail.
+- `admin/src/design/grammar/components.ts` defines system/container/content/
+  control/state responsibilities.
+- `admin/src/app/admin-ui-contract.ts` binds the three active pages to
+  page-level contracts.
+
+The active pages must render stable metadata so Browser/Chrome/Playwright QA can
+validate the contract without treating CSS class names as product semantics:
+
+| Page | `data-layout` | `data-density` | `data-mobile-projection` |
+| --- | --- | --- | --- |
+| `Operations Overview` | `dashboard` | `normal` | `single-column-review-flow` |
+| `Accounts & Resources` | `table` | `normal` | `single-column-review-flow` |
+| `Usage & Channels` | `dashboard` | `normal` | `single-column-review-flow` |
+
+QA is therefore a compliance layer over the grammar. It should check rendered
+metadata, required blocks, redaction, privileged-surface absence, overflow, and
+touch targets; it should not be the layer that decides new design density or
+layout hierarchy.
+
 ## Visual Container Rules
 
 The container model also defines the first visual style baseline:
