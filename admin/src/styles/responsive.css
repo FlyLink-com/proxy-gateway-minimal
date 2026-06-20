@@ -31,6 +31,7 @@
   .nav-list {
     flex-direction: row;
     flex: 1;
+    gap: var(--admin-mobile-nav-gap);
     min-width: 0;
     align-items: center;
   }
@@ -129,7 +130,28 @@
   .nav-planned-count {
     position: absolute;
     top: -6px;
-    right: -6px;
+    right: 0;
+  }
+
+  .sidebar-safety-summary {
+    min-height: 42px;
+    height: 42px;
+    gap: 0;
+  }
+
+  .sidebar-safety-summary span,
+  .sidebar-safety-summary strong {
+    display: none;
+  }
+
+  .sidebar-safety-summary svg:first-of-type {
+    display: block;
+    width: 18px;
+    height: 18px;
+  }
+
+  .sidebar-safety-summary svg:last-of-type {
+    display: none;
   }
 
   .top-bar {
@@ -244,10 +266,12 @@
 
 @media (max-width: 620px) {
   .top-bar {
+    gap: 8px;
     padding: 8px var(--admin-canvas-gutter-mobile);
   }
 
   .top-bar-heading {
+    flex: 1 1 auto;
     gap: 0;
   }
 
@@ -273,18 +297,30 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
+    flex: 0 0 auto;
     min-width: 0;
     width: auto;
   }
 
+  .top-bar-actions > .dashboard-status-badge {
+    display: none;
+  }
+
   .operator-account-summary {
+    width: 38px;
+    justify-content: center;
     min-height: 38px;
-    padding: 3px 9px 3px 4px;
+    padding: 3px;
   }
 
   .operator-account-avatar {
     width: 30px;
     height: 30px;
+  }
+
+  .operator-account-summary > svg,
+  .operator-account-copy {
+    display: none;
   }
 
   .operator-account-copy small {
@@ -307,6 +343,15 @@
   .nav-library-grid,
   .nav-library-grid-modules {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nav-library-planned-apps .nav-library-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nav-library-planned-apps .nav-planned-item span {
+    overflow-wrap: normal;
+    white-space: normal;
   }
 
   .nav-library-utility {

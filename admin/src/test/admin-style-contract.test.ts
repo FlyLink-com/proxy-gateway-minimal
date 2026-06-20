@@ -371,6 +371,11 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".operator-account-copy small")).toContain("white-space: nowrap");
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-utility-grid,[\s\S]*\.nav-library-grid,[\s\S]*\.nav-library-grid-modules\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.top-bar-search\s*\{[\s\S]*display: none;/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.top-bar-actions > \.dashboard-status-badge\s*\{[\s\S]*display: none;/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.operator-account-summary\s*\{[\s\S]*width: 38px;/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.operator-account-summary > svg,[\s\S]*\.operator-account-copy\s*\{[\s\S]*display: none;/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-planned-apps \.nav-library-grid\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-planned-apps \.nav-planned-item span\s*\{[\s\S]*white-space: normal;/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.admin-blueprint-module-panel-meta\s*\{[\s\S]*justify-items: start;/m);
     expect(styles).toMatch(/@media \(max-width: 980px\) \{[\s\S]*\.admin-blueprint-module-panel-head\s*\{[\s\S]*display: flex;/m);
   });
@@ -476,6 +481,11 @@ describe("admin style token contract", () => {
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-primary-list\s*\{[\s\S]*flex: 1 1 auto;[\s\S]*width: auto;/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-planned-menu,[\s\S]*\.sidebar-safety-footer\s*\{[\s\S]*flex: 0 0 42px;/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-planned-summary,[\s\S]*\.sidebar-safety-summary\s*\{[\s\S]*width: 42px;/m);
+    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-list\s*\{[\s\S]*gap: var\(--admin-mobile-nav-gap\);/m);
+    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-planned-count\s*\{[\s\S]*right: 0;/m);
+    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-summary\s*\{[\s\S]*min-height: 42px;/m);
+    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-summary span,[\s\S]*\.sidebar-safety-summary strong\s*\{[\s\S]*display: none;/m);
+    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-summary svg:first-of-type\s*\{[\s\S]*display: block;/m);
   });
 
   test("keeps hero metric values readable without mid-word breaks", () => {
