@@ -53,6 +53,18 @@ export type AdminAppCapability =
   | "develop"
   | "administer";
 
+export type AdminAppCatalogEntry = {
+  appId: string;
+  zhName: string;
+  enName: string;
+  category: WorkbenchCategory;
+  primaryObjects: string[];
+  coreViews: string[];
+  searchableFields: string[];
+  safetyBoundary: string;
+  followUpTask: string;
+};
+
 export type AdminAppManifest = {
   id: string;
   kind: AdminAppKind;
@@ -63,6 +75,7 @@ export type AdminAppManifest = {
   tone: string;
   status: AdminAppStatus;
   category: WorkbenchCategory;
+  catalog: AdminAppCatalogEntry;
   aliases: string[];
   owner: {
     page?: AdminPage;
@@ -108,12 +121,23 @@ export type AdminAppSearchIndexEntry = {
   moduleNavId?: string;
   targetId?: string;
   safeSummary: string;
+  searchableFields: string[];
   state: AdminAppStatus;
   capabilities: AdminAppCapability[];
   riskTier: AdminAppRiskTier;
   entryGateSummary: string;
   routeTarget: string;
   searchText: string;
+};
+
+export type AdminAppMap = {
+  byId: Readonly<Record<string, AdminAppManifest>>;
+  workspacePages: readonly AdminAppManifest[];
+  plugins: readonly AdminAppManifest[];
+  pluginsByPage: Readonly<Record<AdminPage, readonly AdminAppManifest[]>>;
+  utilities: readonly AdminAppManifest[];
+  plannedApps: readonly AdminAppManifest[];
+  searchIndex: readonly AdminAppSearchIndexEntry[];
 };
 
 const FORBIDDEN_SEARCH_FIELD_PATTERNS = [
@@ -135,7 +159,11 @@ const PAGE_APP_DEFINITIONS: Record<AdminPage, {
   tone: string;
   category: WorkbenchCategory;
   role: PageWorkbenchRole;
+  zhName: string;
   aliases: string[];
+  primaryObjects: string[];
+  coreViews: string[];
+  searchableFields: string[];
   capabilities: AdminAppCapability[];
 }> = {
   dashboard: {
@@ -143,8 +171,12 @@ const PAGE_APP_DEFINITIONS: Record<AdminPage, {
     appId: "operations-overview",
     capabilities: ["view", "inspect", "suggest-action"],
     category: "monitoring",
+    coreViews: ["health summary", "risk queue", "next action routing"],
     iconKey: "grid",
+    primaryObjects: ["platform health", "risk case", "activity event", "channel summary"],
     role: "overview",
+    searchableFields: ["overview", "health", "risk", "freshness", "channel coverage", "next action"],
+    zhName: "运营概览",
     tone: "nav-app-tone-blue"
   },
   portalRequests: {
@@ -152,8 +184,12 @@ const PAGE_APP_DEFINITIONS: Record<AdminPage, {
     appId: "accounts-resources",
     capabilities: ["view", "inspect", "comment", "suggest-action", "dry-run"],
     category: "management",
+    coreViews: ["account directory", "resources and orders", "quota and usage", "lifecycle", "history and events"],
     iconKey: "users",
+    primaryObjects: ["user account", "resource", "order", "subscription artifact", "quota policy"],
     role: "decision-owner",
+    searchableFields: ["account", "resource", "order", "artifact", "quota", "lifecycle"],
+    zhName: "账号与资源",
     tone: "nav-app-tone-emerald"
   },
   usageMonitor: {
@@ -161,8 +197,12 @@ const PAGE_APP_DEFINITIONS: Record<AdminPage, {
     appId: "usage-channels",
     capabilities: ["view", "inspect", "suggest-action", "dry-run"],
     category: "monitoring",
+    coreViews: ["collection freshness", "channel coverage", "usage ledger", "collection anomalies", "receipts and collectors"],
     iconKey: "activity",
+    primaryObjects: ["usage sample", "channel", "collector", "receipt", "safe edge reference"],
     role: "evidence-owner",
+    searchableFields: ["usage", "channel", "collector", "receipt", "freshness", "anomaly"],
+    zhName: "使用情况和渠道",
     tone: "nav-app-tone-cyan"
   }
 };
@@ -223,32 +263,80 @@ const PLUGIN_TONES: Record<string, string> = {
   "usage-ledger": "nav-app-tone-indigo"
 };
 
+const PLUGIN_ZH_NAMES: Record<string, string> = {
+  "account-overview": "账户目录",
+  "channel-coverage": "通道覆盖范围",
+  "collection-anomalies": "采集异常",
+  freshness: "采集新鲜度",
+  "health-summary": "健康概况",
+  "history-events": "历史与事件",
+  lifecycle: "生命周期",
+  "next-actions": "后续行动",
+  "quota-usage": "配额与使用情况",
+  "receipts-collectors": "收据和采集器",
+  "resource-orders": "资源与订单",
+  "risk-queue": "风险队列",
+  "usage-ledger": "使用情况账簿"
+};
+
+const PLUGIN_PRIMARY_OBJECTS: Record<string, string[]> = {
+  "account-overview": ["user account", "resource count", "risk state", "recent activity"],
+  "channel-coverage": ["issued channel", "measured channel", "receipt blocker"],
+  "collection-anomalies": ["collector state", "delay signal", "zero usage candidate", "missing receipt candidate"],
+  freshness: ["collection timestamp", "delay threshold", "trust state"],
+  "health-summary": ["platform health", "risk count", "freshness", "channel coverage"],
+  "history-events": ["object history", "case candidate", "audit event"],
+  lifecycle: ["account lifecycle", "order pause", "expiry", "archive candidate"],
+  "next-actions": ["review route", "owner page", "operator action"],
+  "quota-usage": ["quota policy", "edited limit", "total usage", "quota risk"],
+  "receipts-collectors": ["receipt state", "collector availability", "safe diagnostic"],
+  "resource-orders": ["order", "resource", "entitlement", "subscription artifact"],
+  "risk-queue": ["risk case", "account", "order", "usage", "channel"],
+  "usage-ledger": ["account", "order", "channel", "measured usage"]
+};
+
 const PLANNED_APP_DEFINITIONS: Record<string, {
   iconKey: string;
   tone: string;
   category: WorkbenchCategory;
+  zhName: string;
   aliases: string[];
+  primaryObjects: string[];
+  coreViews: string[];
+  searchableFields: string[];
   capabilities: AdminAppCapability[];
 }> = {
   "audit-workflow": {
     aliases: ["cases", "audit", "history", "workflow"],
     capabilities: ["view", "inspect", "comment"],
     category: "audit-workflow",
+    coreViews: ["case inbox", "audit trail", "object timeline", "work-order routing"],
     iconKey: "clipboard",
+    primaryObjects: ["case", "audit event", "object history", "work order"],
+    searchableFields: ["case", "audit", "history", "workflow"],
+    zhName: "审计与案例",
     tone: "nav-app-tone-amber"
   },
   "platform-development": {
     aliases: ["platform", "channels", "nodes", "tools", "diagnostics"],
     capabilities: ["view", "develop", "dry-run"],
     category: "platform-tools",
+    coreViews: ["channel lab", "node readiness", "strategy tool", "safe diagnostics"],
     iconKey: "code",
+    primaryObjects: ["node", "channel candidate", "dry-run packet", "diagnostic tool"],
+    searchableFields: ["platform", "channel", "node", "tool", "diagnostic"],
+    zhName: "平台开发",
     tone: "nav-app-tone-indigo"
   },
   "system-settings": {
     aliases: ["settings", "permissions", "safety", "operator preferences"],
     capabilities: ["view", "configure", "administer"],
     category: "configuration",
+    coreViews: ["operator preferences", "permission policy", "refresh policy", "local console settings"],
     iconKey: "sliders",
+    primaryObjects: ["operator setting", "environment profile", "permission", "safety policy"],
+    searchableFields: ["settings", "permission", "safety", "operator preference"],
+    zhName: "系统设置",
     tone: "nav-app-tone-slate"
   }
 };
@@ -257,51 +345,71 @@ const UTILITY_APPS: AdminAppManifest[] = [
   createUtilityApp({
     aliases: ["alerts", "risk", "notification count"],
     capabilities: ["view"],
+    coreViews: ["risk notification badge", "operations overview route"],
     description: "Risk notifications route back to the Operations Overview app.",
     iconKey: "bell",
     id: "utility.risk-notifications",
     label: "Risk notifications",
     order: 10,
+    primaryObjects: ["risk notification", "operator route"],
+    searchableFields: ["risk", "notification", "alert"],
+    zhName: "风险通知",
     tone: "nav-app-tone-red"
   }),
   createUtilityApp({
     aliases: ["production", "read-only", "environment", "risk gate"],
     capabilities: ["view", "inspect"],
+    coreViews: ["environment status", "Risk A gate reminder"],
     description: "Current environment status. Production actions require a Risk A gate.",
     iconKey: "shield",
     id: "utility.environment",
     label: "Production",
     order: 20,
+    primaryObjects: ["environment profile", "production gate"],
+    searchableFields: ["production", "environment", "read-only", "risk gate"],
+    zhName: "生产环境",
     tone: "nav-app-tone-emerald"
   }),
   createUtilityApp({
     aliases: ["preview", "website", "public shell"],
     capabilities: ["view"],
+    coreViews: ["public preview launcher"],
     description: "Open the public preview shell.",
     iconKey: "external",
     id: "utility.preview-site",
     label: "Preview site",
     order: 30,
+    primaryObjects: ["public site", "preview route"],
+    searchableFields: ["preview", "website", "public shell"],
+    zhName: "预览网站",
     tone: "nav-app-tone-blue"
   }),
   createUtilityApp({
     aliases: ["user portal", "portal", "user view"],
     capabilities: ["view"],
+    coreViews: ["user portal launcher"],
     description: "Open the user-facing portal view.",
     iconKey: "external",
     id: "utility.user-portal",
     label: "Open user portal",
     order: 40,
+    primaryObjects: ["user portal", "customer view"],
+    searchableFields: ["user portal", "portal", "user view"],
+    zhName: "打开用户门户",
     tone: "nav-app-tone-cyan"
   }),
   createUtilityApp({
     aliases: ["connection", "admin api", "configured", "local settings"],
     capabilities: ["view", "configure"],
+    coreViews: ["Admin API connection widget", "local console settings"],
     description: "Private Admin API connection status and local console settings.",
     iconKey: "settings",
     id: "utility.admin-api",
     label: "Admin API",
-    order: 50
+    order: 50,
+    primaryObjects: ["Admin API connection", "local console setting"],
+    searchableFields: ["admin api", "connection", "configured", "local settings"],
+    zhName: "管理员 API"
   })
 ];
 
@@ -311,6 +419,8 @@ export const adminAppManifest = Object.freeze([
   ...UTILITY_APPS,
   ...createPlannedApps()
 ]);
+
+export const adminAppMap = createAdminAppMap(adminAppManifest);
 
 export function getWorkspacePageApps() {
   return adminAppManifest.filter((app) => app.library.group === "workspace-pages");
@@ -343,16 +453,29 @@ export function getPlannedApp(sectionId: string) {
   return getPlannedApps().find((app) => app.owner.sectionId === sectionId);
 }
 
+export function getAdminAppMap(apps: readonly AdminAppManifest[] = adminAppManifest): AdminAppMap {
+  if (apps === adminAppManifest) {
+    return adminAppMap;
+  }
+
+  return createAdminAppMap(apps);
+}
+
 export function createAppLibrarySearchIndex(apps: readonly AdminAppManifest[] = adminAppManifest): AdminAppSearchIndexEntry[] {
   return apps.map((app) => {
     const safeSummary = sanitizeSafeSearchText(app.description);
     const routeTarget = routeTargetForApp(app);
+    const searchableFields = safeSearchableFieldsForApp(app);
     const searchableParts = [
       app.label,
+      app.catalog.zhName,
       ...app.aliases,
       app.owner.area,
       app.category,
       safeSummary,
+      ...app.catalog.primaryObjects,
+      ...app.catalog.coreViews,
+      ...searchableFields,
       app.status,
       ...app.safety.capabilities,
       app.library.group,
@@ -373,6 +496,7 @@ export function createAppLibrarySearchIndex(apps: readonly AdminAppManifest[] = 
       riskTier: app.safety.riskTier,
       routeTarget,
       safeSummary,
+      searchableFields,
       searchText: normalizeAppSearchText(searchableParts.join(" ")),
       state: app.status,
       targetId: app.route.targetId,
@@ -390,12 +514,60 @@ export function matchesAppSearch(entry: Pick<AdminAppSearchIndexEntry, "searchTe
   return !normalizedQuery || entry.searchText.includes(normalizedQuery);
 }
 
+function createAdminAppMap(apps: readonly AdminAppManifest[]): AdminAppMap {
+  const byId = Object.fromEntries(apps.map((app) => [app.id, app])) as Record<string, AdminAppManifest>;
+  const byGroup = (group: AdminAppLibraryGroup) => (
+    apps
+      .filter((app) => app.library.group === group)
+      .sort((a, b) => a.library.order - b.library.order)
+  );
+  const plugins = byGroup("plugins");
+  const pluginsByPage = (Object.keys(pageSubNavigation) as AdminPage[]).reduce<Record<AdminPage, AdminAppManifest[]>>((acc, page) => {
+    acc[page] = plugins.filter((app) => app.route.page === page);
+    return acc;
+  }, {
+    dashboard: [],
+    portalRequests: [],
+    usageMonitor: []
+  });
+
+  return {
+    byId,
+    plannedApps: byGroup("planned-apps"),
+    plugins,
+    pluginsByPage,
+    searchIndex: createAppLibrarySearchIndex(apps),
+    utilities: byGroup("console-settings"),
+    workspacePages: byGroup("workspace-pages")
+  };
+}
+
+function createCatalogEntry(entry: AdminAppCatalogEntry): AdminAppCatalogEntry {
+  return {
+    ...entry,
+    coreViews: [...entry.coreViews],
+    primaryObjects: [...entry.primaryObjects],
+    searchableFields: [...entry.searchableFields]
+  };
+}
+
 function createWorkspacePageApps(): AdminAppManifest[] {
   return consoleSections.flatMap((section, sectionIndex) => (
     section.items.map((item, itemIndex) => {
       const definition = PAGE_APP_DEFINITIONS[item.id];
       return {
         aliases: definition.aliases,
+        catalog: createCatalogEntry({
+          appId: definition.appId,
+          category: definition.category,
+          coreViews: definition.coreViews,
+          enName: item.label,
+          followUpTask: "GCC-75 App Manifest and app authoring standard",
+          primaryObjects: definition.primaryObjects,
+          safetyBoundary: "Safe summary only; page owns supervision context without production mutation.",
+          searchableFields: definition.searchableFields,
+          zhName: definition.zhName
+        }),
         category: definition.category,
         description: section.responsibility,
         icon: item.icon,
@@ -452,6 +624,28 @@ function createPluginApps(): AdminAppManifest[] {
           pageTitles[adminPage],
           ...module.description.split(/[, ]+/).filter(Boolean).slice(0, 6)
         ],
+        catalog: createCatalogEntry({
+          appId: `plugin.${module.id}`,
+          category: pluginCategoryForModule(module),
+          coreViews: [
+            module.label,
+            `${pageTitles[adminPage]} plugin restore route`,
+            "local display controls"
+          ],
+          enName: module.label,
+          followUpTask: "GCC-76 plugin container template and GCC-78 workspace engine",
+          primaryObjects: PLUGIN_PRIMARY_OBJECTS[module.id] ?? [module.owner, module.label],
+          safetyBoundary: "Safe summary only; plugin controls affect local layout, not runtime state.",
+          searchableFields: [
+            module.id,
+            module.label,
+            module.owner,
+            module.mode,
+            pageTitles[adminPage],
+            ...module.description.split(/[, ]+/).filter(Boolean).slice(0, 8)
+          ],
+          zhName: PLUGIN_ZH_NAMES[module.id] ?? module.label
+        }),
         category: pluginCategoryForModule(module),
         description: module.description,
         icon: ICONS[iconKey] ?? PanelTopOpen,
@@ -514,6 +708,17 @@ function createPlannedApps(): AdminAppManifest[] {
       const definition = PLANNED_APP_DEFINITIONS[section.id] ?? PLANNED_APP_DEFINITIONS["system-settings"];
       return {
         aliases: definition.aliases,
+        catalog: createCatalogEntry({
+          appId: `planned.${section.id}`,
+          category: definition.category,
+          coreViews: definition.coreViews,
+          enName: section.label,
+          followUpTask: "GCC-79 permission capability matrix before unlock",
+          primaryObjects: definition.primaryObjects,
+          safetyBoundary: "Locked planned app; requires explicit future backend and safety boundary before activation.",
+          searchableFields: definition.searchableFields,
+          zhName: definition.zhName
+        }),
         category: definition.category,
         description: section.entryGate,
         icon: ICONS[definition.iconKey] ?? Lock,
@@ -556,24 +761,43 @@ function createPlannedApps(): AdminAppManifest[] {
 function createUtilityApp({
   aliases,
   capabilities,
+  coreViews,
   description,
   iconKey,
   id,
   label,
   order,
-  tone
+  primaryObjects,
+  searchableFields,
+  tone,
+  zhName
 }: {
   aliases: string[];
   capabilities: AdminAppCapability[];
+  coreViews: string[];
   description: string;
   iconKey: string;
   id: string;
   label: string;
   order: number;
+  primaryObjects: string[];
+  searchableFields: string[];
   tone?: string;
+  zhName: string;
 }): AdminAppManifest {
   return {
     aliases,
+    catalog: createCatalogEntry({
+      appId: id,
+      category: "configuration",
+      coreViews,
+      enName: label,
+      followUpTask: "GCC-77 App Library search and safe indexing",
+      primaryObjects,
+      safetyBoundary: "Console utility only; no business-object ownership or production mutation.",
+      searchableFields,
+      zhName
+    }),
     category: "configuration",
     description,
     icon: ICONS[iconKey] ?? Settings,
@@ -639,6 +863,10 @@ function routeTargetForApp(app: AdminAppManifest) {
     return app.route.page;
   }
   return app.id;
+}
+
+function safeSearchableFieldsForApp(app: AdminAppManifest) {
+  return app.catalog.searchableFields.map(sanitizeSafeSearchText);
 }
 
 function sanitizeSafeSearchText(value: string) {

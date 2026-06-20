@@ -71,6 +71,9 @@ Phase 4 frontend quality work now uses
 `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md` as the Gate 0 source for exact spacing,
 radius, shadow, App Library density, plugin geometry, icon sizing, and
 responsive behavior before implementation sub-agents continue.
+`docs/ADMIN_CONSOLE_APP_MAP.md` and `admin/src/app/admin-app-manifest.ts`
+define the active workspace apps, plugin apps, console utilities, planned apps,
+safe search fields, and follow-up task ownership used by the App Library.
 
 ## Tooling Roles
 

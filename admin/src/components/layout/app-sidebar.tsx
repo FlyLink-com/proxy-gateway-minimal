@@ -9,15 +9,11 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type ToggleEvent } from "react";
 import {
-  createAppLibrarySearchIndex,
-  getPlannedApp,
-  getPluginApp,
-  getUtilityApps,
-  getWorkspacePageApp,
+  getAdminAppMap,
   matchesAppSearch,
   normalizeAppSearchText
 } from "../../app/admin-app-manifest";
-import { consoleSections, pageSubNavigation, pageTitles, type AdminPage } from "../../app/navigation";
+import { type AdminPage } from "../../app/navigation";
 import { cn } from "../../lib/utils";
 import { AppLibrary, WorkspaceAppbar } from "../primitives";
 
@@ -47,17 +43,8 @@ export function AppSidebar({
   const [appLibraryOpen, setAppLibraryOpen] = useState(false);
   const appLibraryRef = useRef<HTMLDetailsElement>(null);
   const appLibrarySearchRef = useRef<HTMLInputElement>(null);
-  const activeSections = consoleSections.filter((section) => section.items.length > 0);
-  const plannedSections = consoleSections.filter((section) => section.items.length === 0);
-  const moduleEntries = activeSections.flatMap((section) => section.items.flatMap((item) => (
-    pageSubNavigation[item.id].map((module) => ({
-      module,
-      page: item.id,
-      pageLabel: pageTitles[item.id],
-      sectionLabel: section.label
-    }))
-  )));
-  const appSearchEntries = createAppLibrarySearchIndex();
+  const appMap = getAdminAppMap();
+  const appSearchEntries = appMap.searchIndex;
   const appSearchEntriesById = new Map(appSearchEntries.map((entry) => [entry.appId, entry]));
   const normalizedSearch = normalizeAppSearchText(search);
   const matchesLibrarySearch = (...values: Array<string | undefined>) => (
@@ -70,38 +57,15 @@ export function AppSidebar({
     }
     return matchesLibrarySearch(...fallbackValues);
   };
-  const visibleUtilityApps = getUtilityApps().filter((app) => (
+  const visibleUtilityApps = appMap.utilities.filter((app) => (
     matchesManifestEntry(app.id, app.label, app.description, ...app.aliases)
   ));
   const visibleUtilityAppById = new Map(visibleUtilityApps.map((app) => [app.id, app]));
-  const pageEntries = activeSections.flatMap((section) => section.items.map((item) => ({
-    item,
-    section
-  }))).filter((entry) => matchesManifestEntry(
-    getWorkspacePageApp(entry.item.id)?.id,
-    entry.item.label,
-    pageTitles[entry.item.id],
-    entry.section.label,
-    entry.section.description,
-    entry.section.responsibility
-  ));
-  const visibleModuleEntries = moduleEntries.filter((entry) => matchesManifestEntry(
-    getPluginApp(entry.module.id, entry.page)?.id,
-    entry.module.label,
-    entry.module.description,
-    entry.module.owner,
-    entry.pageLabel,
-    entry.sectionLabel
-  ));
-  const visiblePlannedSections = plannedSections.filter((section) => matchesManifestEntry(
-    getPlannedApp(section.id)?.id,
-    section.label,
-    section.description,
-    section.responsibility,
-    section.entryGate
-  ));
+  const pageEntries = appMap.workspacePages.filter((app) => matchesManifestEntry(app.id));
+  const visibleModuleEntries = appMap.plugins.filter((app) => matchesManifestEntry(app.id));
+  const visiblePlannedApps = appMap.plannedApps.filter((app) => matchesManifestEntry(app.id));
   const visibleUtilityCount = visibleUtilityApps.length;
-  const resultCount = pageEntries.length + visibleModuleEntries.length + visiblePlannedSections.length + visibleUtilityCount;
+  const resultCount = pageEntries.length + visibleModuleEntries.length + visiblePlannedApps.length + visibleUtilityCount;
 
   useEffect(() => {
     if (!appLibraryOpen) {
@@ -193,18 +157,18 @@ export function AppSidebar({
     window.setTimeout(scrollToTarget, 0);
   };
 
-  const pinnedApps = activeSections.flatMap((section) => section.items.map((item) => {
-    const pageApp = getWorkspacePageApp(item.id);
-    const Icon = pageApp?.icon ?? item.icon;
+  const pinnedApps = appMap.workspacePages.map((app) => {
+    const Icon = app.icon;
+    const page = app.route.page;
     return {
-      active: item.id === activePage,
+      active: page === activePage,
       icon: <Icon />,
-      id: item.id,
-      label: item.label,
-      onClick: () => clearSearchAndNavigate(item.id),
-      tone: pageApp?.tone
+      id: app.id,
+      label: app.label,
+      onClick: () => page && clearSearchAndNavigate(page),
+      tone: app.tone
     };
-  }));
+  });
 
   const utilityApps = visibleUtilityCount ? (
     <>
@@ -286,67 +250,70 @@ export function AppSidebar({
     </>
   ) : undefined;
 
-  const workspacePages = pageEntries.map(({ item }) => {
-    const pageApp = getWorkspacePageApp(item.id);
-    const Icon = pageApp?.icon ?? item.icon;
-    const active = item.id === activePage;
+  const workspacePages = pageEntries.map((app) => {
+    const Icon = app.icon;
+    const page = app.route.page;
+    const active = page === activePage;
     return (
       <button
         aria-current={active ? "page" : undefined}
         className={cn("nav-planned-item nav-planned-item-active", active && "nav-planned-item-current")}
-        key={item.id}
+        key={app.id}
         onClick={() => {
           closeAppLibrary();
-          clearSearchAndNavigate(item.id);
+          if (page) {
+            clearSearchAndNavigate(page);
+          }
         }}
         type="button"
       >
-        <span className={cn("nav-app-icon", pageApp?.tone)} aria-hidden="true">
+        <span className={cn("nav-app-icon", app.tone)} aria-hidden="true">
           <Icon />
         </span>
-        <span>{item.label}</span>
+        <span>{app.label}</span>
         <small>{active ? "Open" : "App"}</small>
       </button>
     );
   });
 
-  const pluginApps = visibleModuleEntries.map((entry) => {
-    const pluginApp = getPluginApp(entry.module.id, entry.page);
-    const pageApp = getWorkspacePageApp(entry.page);
-    const ModuleIcon = pluginApp?.icon ?? PanelTopOpen;
+  const pluginApps = visibleModuleEntries.map((app) => {
+    const ModuleIcon = app.icon ?? PanelTopOpen;
+    const page = app.route.page;
+    const pageLabel = page ? appMap.workspacePages.find((workspaceApp) => workspaceApp.route.page === page)?.label : undefined;
     return (
       <button
         className="nav-planned-item nav-planned-item-active nav-planned-item-module"
-        key={`${entry.page}-${entry.module.id}`}
+        key={app.id}
         onClick={() => {
           closeAppLibrary();
-          openModuleApp(entry.page, entry.module.targetId);
+          if (page && app.route.targetId) {
+            openModuleApp(page, app.route.targetId);
+          }
         }}
         type="button"
       >
-        <span className={cn("nav-app-icon", pluginApp?.tone ?? pageApp?.tone)} aria-hidden="true">
+        <span className={cn("nav-app-icon", app.tone)} aria-hidden="true">
           <ModuleIcon />
         </span>
-        <span>{entry.module.label}</span>
-        <small>{entry.pageLabel}</small>
+        <span>{app.label}</span>
+        <small>{pageLabel ?? app.owner.area}</small>
       </button>
     );
   });
 
-  const plannedApps = visiblePlannedSections.map((section) => {
-    const plannedApp = getPlannedApp(section.id);
-    const PlannedIcon = plannedApp?.icon ?? Lock;
+  const plannedApps = visiblePlannedApps.map((app) => {
+    const PlannedIcon = app.icon ?? Lock;
     return (
       <div
-        aria-label={`${section.label} planned`}
+        aria-label={`${app.label} planned`}
         className="nav-planned-item nav-planned-item-planned"
-        key={section.id}
-        title={section.entryGate}
+        key={app.id}
+        title={app.description}
       >
-        <span className={cn("nav-app-icon", plannedApp?.tone ?? "nav-app-tone-slate")} aria-hidden="true">
+        <span className={cn("nav-app-icon", app.tone ?? "nav-app-tone-slate")} aria-hidden="true">
           <PlannedIcon />
         </span>
-        <span>{section.label}</span>
+        <span>{app.label}</span>
         <small>Planned</small>
       </div>
     );

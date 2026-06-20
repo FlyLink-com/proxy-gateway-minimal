@@ -25,6 +25,7 @@ Use it after:
 Use it before:
 
 - `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md`
+- `docs/ADMIN_CONSOLE_APP_MAP.md`
 - `docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md`
 - any Phase 2 design-system work
 - any Phase 3 React page implementation or cleanup
@@ -107,6 +108,9 @@ display controls, and `admin/src/app/plugin-workspace-engine.ts` owns the
 shared local layout rules for visibility, restore, discrete size/height changes,
 drag reordering, and pointer resize distance. Page frames should not invent
 their own editor panels or module-specific layout semantics.
+`admin/src/app/admin-app-manifest.ts` is now the concrete App Map source for
+workspace pages, plugin apps, console utilities, planned apps, and safe App
+Library search fields; `docs/ADMIN_CONSOLE_APP_MAP.md` documents that contract.
 
 ## Visual Container Rules
 

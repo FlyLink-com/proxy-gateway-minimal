@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import {
   adminAppManifest,
   createAppLibrarySearchIndex,
+  getAdminAppMap,
   getPlannedApps,
   getPluginApp,
   getPluginApps,
@@ -35,6 +36,14 @@ describe("admin app manifest", () => {
     });
     expect(getWorkspacePageApp("portalRequests")?.owner.area).toBe("User Operations");
     expect(getWorkspacePageApp("usageMonitor")?.owner.area).toBe("Platform Monitoring");
+    expect(getWorkspacePageApp("dashboard")?.catalog).toMatchObject({
+      appId: "operations-overview",
+      coreViews: ["health summary", "risk queue", "next action routing"],
+      enName: "Operations Overview",
+      primaryObjects: expect.arrayContaining(["platform health", "risk case"]),
+      searchableFields: expect.arrayContaining(["overview", "health", "risk"]),
+      zhName: "运营概览"
+    });
   });
 
   test("registers page modules as plugins with safe restore routes", () => {
@@ -61,6 +70,13 @@ describe("admin app manifest", () => {
     expect(getPluginApp("quota-usage", "portalRequests")?.safety.capabilities).toEqual(
       expect.arrayContaining(["view", "inspect", "suggest-action"])
     );
+    expect(getPluginApp("quota-usage", "portalRequests")?.catalog).toMatchObject({
+      enName: "Quota & Usage",
+      followUpTask: "GCC-76 plugin container template and GCC-78 workspace engine",
+      primaryObjects: expect.arrayContaining(["quota policy", "total usage", "quota risk"]),
+      searchableFields: expect.arrayContaining(["quota-usage", "Quota & Usage", "User Operations"]),
+      zhName: "配额与使用情况"
+    });
   });
 
   test("keeps planned apps locked and utilities separate from business pages", () => {
@@ -78,6 +94,68 @@ describe("admin app manifest", () => {
       "utility.admin-api"
     ]);
     expect(adminAppManifest.every((app) => app.safety.redaction === "safe-summary-only")).toBe(true);
+    expect(getPlannedApps().find((app) => app.id === "planned.platform-development")?.catalog).toMatchObject({
+      category: "platform-tools",
+      primaryObjects: expect.arrayContaining(["node", "channel candidate", "dry-run packet"]),
+      zhName: "平台开发"
+    });
+    expect(getUtilityApps().find((app) => app.id === "utility.admin-api")?.catalog).toMatchObject({
+      coreViews: ["Admin API connection widget", "local console settings"],
+      primaryObjects: ["Admin API connection", "local console setting"],
+      zhName: "管理员 API"
+    });
+  });
+
+  test("builds a single app map for pages, plugins, utilities, and planned apps", () => {
+    const appMap = getAdminAppMap();
+    const expectedPluginRoutes = Object.entries(pageSubNavigation).flatMap(([page, modules]) => (
+      modules.map((module) => `${page}:${module.id}:${module.targetId}`)
+    ));
+    const actualPluginRoutes = appMap.plugins.map((app) => (
+      `${app.route.page}:${app.plugin?.navId}:${app.route.targetId}`
+    ));
+
+    expect(Object.keys(appMap.byId).sort()).toEqual(adminAppManifest.map((app) => app.id).sort());
+    expect(new Set(adminAppManifest.map((app) => app.id)).size).toBe(adminAppManifest.length);
+    expect(appMap.workspacePages.map((app) => app.id)).toEqual([
+      "operations-overview",
+      "accounts-resources",
+      "usage-channels"
+    ]);
+    expect(appMap.utilities.map((app) => app.library.group)).toEqual([
+      "console-settings",
+      "console-settings",
+      "console-settings",
+      "console-settings",
+      "console-settings"
+    ]);
+    expect(actualPluginRoutes.sort()).toEqual(expectedPluginRoutes.sort());
+    expect(appMap.pluginsByPage.portalRequests.map((app) => app.plugin?.navId)).toEqual([
+      "account-overview",
+      "resource-orders",
+      "quota-usage",
+      "lifecycle",
+      "history-events"
+    ]);
+    expect(appMap.pluginsByPage.usageMonitor.map((app) => app.plugin?.navId)).toEqual([
+      "freshness",
+      "channel-coverage",
+      "usage-ledger",
+      "collection-anomalies",
+      "receipts-collectors"
+    ]);
+    expect(appMap.searchIndex).toHaveLength(adminAppManifest.length);
+
+    adminAppManifest.forEach((app) => {
+      expect(app.catalog.appId).toBe(app.id);
+      expect(app.catalog.enName).toBe(app.label);
+      expect(app.catalog.category).toBe(app.category);
+      expect(app.catalog.primaryObjects.length).toBeGreaterThan(0);
+      expect(app.catalog.coreViews.length).toBeGreaterThan(0);
+      expect(app.catalog.searchableFields.length).toBeGreaterThan(0);
+      expect(app.catalog.safetyBoundary).toMatch(/safe|locked|console/i);
+      expect(app.catalog.followUpTask).toMatch(/^GCC-/);
+    });
   });
 
   test("builds a safe app-library search index from whitelisted summary fields", () => {
@@ -89,7 +167,8 @@ describe("admin app manifest", () => {
       moduleNavId: "usage-ledger",
       pageId: "usageMonitor",
       resultType: "plugin",
-      routeTarget: "usageMonitor#platform-monitoring-usage-ledger"
+      routeTarget: "usageMonitor#platform-monitoring-usage-ledger",
+      searchableFields: expect.arrayContaining(["usage-ledger", "Usage Ledger", "Platform Monitoring"])
     });
     expect(operationsOverview).toMatchObject({
       pageId: "dashboard",
@@ -102,6 +181,7 @@ describe("admin app manifest", () => {
     index.forEach((entry) => {
       expect(entry.searchText).not.toMatch(/token|secret|credential|subscription\s*url|auth\s*header|bearer|password|sqlite|raw\s/i);
       expect(entry.safeSummary).not.toMatch(/token=|Bearer|password|subscriptionUrl/i);
+      expect(entry.searchableFields.join(" ")).not.toMatch(/token|secret|credential|subscription\s*url|auth\s*header|bearer|password|sqlite|raw\s/i);
     });
   });
 });
