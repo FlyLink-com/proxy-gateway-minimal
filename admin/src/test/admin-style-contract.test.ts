@@ -3,6 +3,15 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 
 const styles = readCssWithImports("src/styles.css");
+const adminOsStyles = [
+  "src/styles/tokens.css",
+  "src/styles/base.css",
+  "src/styles/admin-os-chrome.css",
+  "src/styles/admin-os-workspace.css",
+  "src/styles/responsive.css"
+]
+  .map((filePath) => readCssWithImports(filePath))
+  .join("\n");
 
 function readCssWithImports(filePath: string, seen = new Set<string>()): string {
   const resolvedPath = resolve(filePath);
@@ -13,7 +22,7 @@ function readCssWithImports(filePath: string, seen = new Set<string>()): string 
 
   seen.add(resolvedPath);
 
-  const css = readFileSync(resolvedPath, "utf8");
+  const css = readFileSync(resolvedPath, "utf8").replace(/\r\n?/g, "\n");
   const cssDir = dirname(resolvedPath);
 
   return css.replace(/^@import\s+["']([^"']+)["'];\s*$/gm, (_statement, importPath: string) =>
@@ -27,6 +36,61 @@ function selectorBlock(selector: string) {
 }
 
 describe("admin style token contract", () => {
+  test("freezes the Phase 4 Admin OS visual protocol coordinates", () => {
+    const rootBlock = selectorBlock(":root");
+
+    [
+      "--admin-canvas-grid-size: 32px",
+      "--admin-canvas-gutter: 24px",
+      "--admin-canvas-gutter-mobile: 12px",
+      "--admin-canvas-max-width: 1520px",
+      "--admin-statusbar-height: 48px",
+      "--admin-appbar-height: 58px",
+      "--admin-appbar-width: 960px",
+      "--admin-app-icon-size: 34px",
+      "--admin-app-icon-dock-size: 32px",
+      "--admin-library-width: 760px",
+      "--admin-library-max-height: min(560px",
+      "--admin-library-padding: 12px",
+      "--admin-library-gap: 10px",
+      "--admin-library-cell-width: 78px",
+      "--admin-library-page-cell-width: 132px",
+      "--admin-library-page-columns: 3",
+      "--admin-library-module-columns: 6",
+      "--admin-library-utility-columns: 5",
+      "--admin-library-tile-height: 64px",
+      "--admin-library-icon-size: 30px",
+      "--admin-library-icon-size-large: 34px",
+      "--admin-plugin-grid-min: 260px",
+      "--admin-plugin-grid-row-unit: 32px",
+      "--admin-plugin-gap: 16px",
+      "--admin-plugin-padding: 15px",
+      "--admin-plugin-header-gap: 12px",
+      "--admin-plugin-small-height: 128px",
+      "--admin-plugin-medium-height: 168px",
+      "--admin-plugin-large-height: 216px",
+      "--admin-plugin-height-tall: 252px",
+      "--admin-plugin-field-height: 26px",
+      "--admin-plugin-field-gap: 6px",
+      "--admin-plugin-resize-handle: 22px",
+      "--admin-radius-control: 8px",
+      "--admin-radius-panel: 8px",
+      "--admin-radius-card: 8px",
+      "--admin-radius-chrome: 14px",
+      "--admin-radius-floating: 18px",
+      "--admin-radius-icon: 8px"
+    ].forEach((expectedToken) => {
+      expect(rootBlock).toContain(expectedToken);
+    });
+
+    expect(adminOsStyles).not.toContain("font-size: 10.5px");
+    expect(adminOsStyles).not.toContain("font-weight: 750");
+    expect(adminOsStyles).not.toContain("font-weight: 900");
+    expect(adminOsStyles).not.toContain("blur(30px)");
+    expect(adminOsStyles).not.toContain("0 28px 78px");
+    expect(adminOsStyles).not.toContain("linear-gradient(135deg, var(--nav-app-a), var(--nav-app-b))");
+  });
+
   test("declares shared New Admin visual tokens", () => {
     [
       "--admin-bg",
