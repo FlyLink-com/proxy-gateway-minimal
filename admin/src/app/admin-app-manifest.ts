@@ -47,6 +47,7 @@ export type AdminNavigationLibraryGroup =
 export type AdminAppRouteAction = "navigate" | "openPlugin" | "openUtility" | "locked";
 export type AdminAppRiskTier = "A" | "B" | "C";
 export type AdminAppProductionImpact = "none" | "read-only" | "gated";
+export type AdminOperatorRole = "operator" | "admin" | "superAdmin";
 export type AdminAppCapability =
   | "view"
   | "inspect"
@@ -57,6 +58,19 @@ export type AdminAppCapability =
   | "configure"
   | "develop"
   | "administer";
+
+export type AdminCapabilityContext = {
+  role: AdminOperatorRole;
+  freshMfa: boolean;
+};
+
+export type AdminAppAccessPolicy = {
+  minimumRole: AdminOperatorRole;
+  detailRequiresFreshMfa: boolean;
+  hiddenWhenUnauthorized: true;
+  registeredApiHooks: string[];
+  detailApiHooks: string[];
+};
 
 export type AdminAppSourceContract = {
   dataSourceRefs: string[];
@@ -156,6 +170,7 @@ export type AdminAppManifest = {
     redaction: "safe-summary-only";
     forbiddenFields: string[];
   };
+  access?: AdminAppAccessPolicy;
 };
 
 export type AdminAppSearchIndexEntry = {
@@ -264,6 +279,35 @@ const FORBIDDEN_SEARCH_FIELD_PATTERNS = [
   /sqlite/i,
   /raw\s*(session|env|config|log|db|runtime|error|operator|subscription|material)/i
 ];
+
+export const DEFAULT_ADMIN_CAPABILITY_CONTEXT = Object.freeze({
+  freshMfa: false,
+  role: "operator"
+} satisfies AdminCapabilityContext);
+
+export const SUPER_ADMIN_CAPABILITY_CONTEXT = Object.freeze({
+  freshMfa: false,
+  role: "superAdmin"
+} satisfies AdminCapabilityContext);
+
+export const SUPER_ADMIN_FRESH_MFA_CAPABILITY_CONTEXT = Object.freeze({
+  freshMfa: true,
+  role: "superAdmin"
+} satisfies AdminCapabilityContext);
+
+const ROLE_RANK: Record<AdminOperatorRole, number> = {
+  operator: 0,
+  admin: 1,
+  superAdmin: 2
+};
+
+const DEFAULT_ACCESS_POLICY: AdminAppAccessPolicy = {
+  detailApiHooks: [],
+  detailRequiresFreshMfa: false,
+  hiddenWhenUnauthorized: true,
+  minimumRole: "operator",
+  registeredApiHooks: []
+};
 
 function sourceContract(
   dataSourceRefs: string[],
@@ -462,7 +506,7 @@ const PLUGIN_PRIMARY_OBJECTS: Record<string, string[]> = {
   "collection-anomalies": ["collector state", "delay signal", "zero usage candidate", "missing receipt candidate"],
   freshness: ["collection timestamp", "delay threshold", "trust state"],
   "health-summary": ["platform health", "risk count", "freshness", "channel coverage"],
-  "history-events": ["object history", "case candidate", "audit event"],
+  "history-events": ["object history", "case candidate", "restricted event"],
   lifecycle: ["account lifecycle", "order pause", "expiry", "archive candidate"],
   "next-actions": ["review route", "owner page", "operator action"],
   "quota-usage": ["quota policy", "edited limit", "total usage", "quota risk"],
@@ -573,15 +617,15 @@ const PLANNED_APP_DEFINITIONS: Record<string, {
   capabilities: AdminAppCapability[];
 }> = {
   "audit-workflow": {
-    aliases: ["cases", "audit", "history", "workflow"],
+    aliases: ["cases", "history", "workflow"],
     capabilities: ["view", "inspect", "comment"],
     category: "audit-workflow",
-    coreViews: ["case inbox", "audit trail", "object timeline", "work-order routing"],
+    coreViews: ["case inbox", "object timeline", "work-order routing"],
     iconKey: "clipboard",
-    primaryObjects: ["case", "audit event", "object history", "work order"],
-    searchableFields: ["case", "audit", "history", "workflow"],
+    primaryObjects: ["case", "object history", "work order"],
+    searchableFields: ["case", "history", "workflow"],
     sourceContract: sourceContract(
-      ["planned-audit-workflow-summary"],
+      ["planned-case-workflow-summary"],
       ["planned.audit-workflow"],
       ["locked-planned-app"]
     ),
@@ -619,8 +663,102 @@ const PLANNED_APP_DEFINITIONS: Record<string, {
     ),
     zhName: "系统设置",
     tone: "nav-app-tone-slate"
+  },
+  about: {
+    aliases: ["about", "version", "build", "changelog"],
+    capabilities: ["view", "inspect"],
+    category: "configuration",
+    coreViews: ["version", "created time", "build time", "changelog"],
+    iconKey: "settings",
+    primaryObjects: ["version", "build metadata", "release note"],
+    searchableFields: ["about", "version", "build", "changelog"],
+    sourceContract: sourceContract(
+      ["planned-about-summary"],
+      ["planned.about"],
+      ["locked-planned-app"]
+    ),
+    zhName: "关于",
+    tone: "nav-app-tone-slate"
   }
 };
+
+const PRIVILEGED_APP_DEFINITIONS: Array<{
+  appId: string;
+  aliases: string[];
+  category: WorkbenchCategory;
+  coreViews: string[];
+  description: string;
+  detailApiHooks: string[];
+  iconKey: string;
+  label: string;
+  primaryObjects: string[];
+  registeredApiHooks: string[];
+  searchableFields: string[];
+  sourceContract: AdminAppSourceContract;
+  tone: string;
+  zhName: string;
+}> = [
+  {
+    aliases: ["keys", "rotation", "metadata", "guard"],
+    appId: "privileged.key-management",
+    category: "configuration",
+    coreViews: ["key inventory metadata", "rotation status", "access guard"],
+    description: "Super-admin key metadata entry. Detail requires fresh MFA and never exposes key material.",
+    detailApiHooks: ["admin.keyMetadataDetail"],
+    iconKey: "shield",
+    label: "Key Management",
+    primaryObjects: ["key metadata", "rotation status", "access guard"],
+    registeredApiHooks: ["admin.keyMetadataSummary"],
+    searchableFields: ["key management", "key metadata", "rotation", "access guard"],
+    sourceContract: sourceContract(
+      ["privileged-key-metadata-summary"],
+      ["privileged.key-management"],
+      ["super-admin-fresh-mfa-gate"]
+    ),
+    tone: "nav-app-tone-violet",
+    zhName: "密钥管理"
+  },
+  {
+    aliases: ["audit center", "permission changes", "access records"],
+    appId: "privileged.audit-center",
+    category: "audit-workflow",
+    coreViews: ["audit summaries", "permission changes", "key access records", "log access records"],
+    description: "Super-admin audit summary entry. Detail requires fresh MFA and durable backend authority.",
+    detailApiHooks: ["admin.auditDetail"],
+    iconKey: "clipboard",
+    label: "Audit Center",
+    primaryObjects: ["audit summary", "permission change", "access record"],
+    registeredApiHooks: ["admin.auditSummary"],
+    searchableFields: ["audit center", "permission change", "access record"],
+    sourceContract: sourceContract(
+      ["privileged-audit-summary"],
+      ["privileged.audit-center"],
+      ["super-admin-fresh-mfa-gate"]
+    ),
+    tone: "nav-app-tone-amber",
+    zhName: "审计中心"
+  },
+  {
+    aliases: ["logs", "ephemeral session", "burned state", "reason code"],
+    appId: "privileged.log-access",
+    category: "audit-workflow",
+    coreViews: ["ephemeral request", "reason code", "fresh MFA", "burned state"],
+    description: "Super-admin ephemeral log request entry. Detail requires fresh MFA and one-time redacted session authority.",
+    detailApiHooks: ["admin.ephemeralLogViewSession"],
+    iconKey: "history",
+    label: "Log Access",
+    primaryObjects: ["ephemeral log session", "reason code", "burned state"],
+    registeredApiHooks: ["admin.logAccessRequestSummary"],
+    searchableFields: ["log access", "ephemeral session", "reason code", "burned state"],
+    sourceContract: sourceContract(
+      ["privileged-log-access-summary"],
+      ["privileged.log-access"],
+      ["super-admin-fresh-mfa-gate"]
+    ),
+    tone: "nav-app-tone-red",
+    zhName: "日志访问"
+  }
+];
 
 const UTILITY_APPS: AdminAppManifest[] = [
   createUtilityApp({
@@ -723,7 +861,8 @@ export const adminAppManifest = Object.freeze([
   ...createWorkspacePageApps(),
   ...createPluginApps(),
   ...UTILITY_APPS,
-  ...createPlannedApps()
+  ...createPlannedApps(),
+  ...createPrivilegedApps()
 ]);
 
 export const adminAppMap = createAdminAppMap(adminAppManifest);
@@ -775,6 +914,43 @@ export function getAdminAppAuthoringManifest(apps: readonly AdminAppManifest[] =
   }
 
   return createAdminAppAuthoringManifest(apps);
+}
+
+export function isAdminAppRegisteredForContext(
+  app: AdminAppManifest,
+  context: AdminCapabilityContext = DEFAULT_ADMIN_CAPABILITY_CONTEXT
+) {
+  const access = accessPolicyForApp(app);
+  return ROLE_RANK[context.role] >= ROLE_RANK[access.minimumRole];
+}
+
+export function getCapabilityScopedAdminApps(
+  context: AdminCapabilityContext = DEFAULT_ADMIN_CAPABILITY_CONTEXT,
+  apps: readonly AdminAppManifest[] = adminAppManifest
+) {
+  return apps.filter((app) => isAdminAppRegisteredForContext(app, context));
+}
+
+export function getCapabilityScopedAdminAppMap(
+  context: AdminCapabilityContext = DEFAULT_ADMIN_CAPABILITY_CONTEXT,
+  apps: readonly AdminAppManifest[] = adminAppManifest
+) {
+  return getAdminAppMap(getCapabilityScopedAdminApps(context, apps));
+}
+
+export function getRegisteredAdminApiHookIds(
+  context: AdminCapabilityContext = DEFAULT_ADMIN_CAPABILITY_CONTEXT,
+  apps: readonly AdminAppManifest[] = adminAppManifest
+) {
+  return Array.from(new Set(
+    getCapabilityScopedAdminApps(context, apps).flatMap((app) => {
+      const access = accessPolicyForApp(app);
+      return [
+        ...access.registeredApiHooks,
+        ...(access.detailRequiresFreshMfa && !context.freshMfa ? [] : access.detailApiHooks)
+      ];
+    })
+  )).sort();
 }
 
 export function createNavigationLibrarySearchIndex(apps: readonly AdminAppManifest[] = adminAppManifest): AdminAppSearchIndexEntry[] {
@@ -1125,10 +1301,73 @@ function createPlannedApps(): AdminAppManifest[] {
           redaction: "safe-summary-only",
           riskTier: "A"
         },
+        access: section.id === "audit-workflow"
+          ? accessPolicy({
+            minimumRole: "superAdmin"
+          })
+          : undefined,
         status: "planned",
         tone: definition.tone
       } satisfies AdminAppManifest;
     });
+}
+
+function createPrivilegedApps(): AdminAppManifest[] {
+  return PRIVILEGED_APP_DEFINITIONS.map((definition, index) => ({
+    access: accessPolicy({
+      detailApiHooks: definition.detailApiHooks,
+      detailRequiresFreshMfa: true,
+      minimumRole: "superAdmin",
+      registeredApiHooks: definition.registeredApiHooks
+    }),
+    aliases: definition.aliases,
+    catalog: createCatalogEntry({
+      appId: definition.appId,
+      category: definition.category,
+      coreViews: definition.coreViews,
+      enName: definition.label,
+      followUpTask: "GCC-113 privileged Admin fixture surfaces after backend contract",
+      primaryObjects: definition.primaryObjects,
+      safetyBoundary: "Locked privileged registration only; omitted for non-super-admin and detail requires fresh MFA.",
+      searchableFields: definition.searchableFields,
+      sourceContract: definition.sourceContract,
+      zhName: definition.zhName
+    }),
+    category: definition.category,
+    description: definition.description,
+    icon: ICONS[definition.iconKey] ?? Lock,
+    iconKey: definition.iconKey,
+    id: definition.appId,
+    kind: "planned",
+    label: definition.label,
+    library: {
+      defaultPinned: false,
+      group: "planned-apps",
+      order: 100 + index,
+      searchableText: [
+        definition.label,
+        definition.description,
+        ...definition.aliases
+      ]
+    },
+    owner: {
+      area: "System Settings",
+      role: "planned",
+      sectionId: definition.appId
+    },
+    route: {
+      action: "locked"
+    },
+    safety: {
+      capabilities: ["view", "inspect", "administer"],
+      forbiddenFields: forbiddenSearchFieldLabels(),
+      productionImpact: "gated",
+      redaction: "safe-summary-only",
+      riskTier: "A"
+    },
+    status: "locked",
+    tone: definition.tone
+  } satisfies AdminAppManifest));
 }
 
 function createUtilityApp({
@@ -1289,6 +1528,30 @@ function visibilityForApp(app: AdminAppManifest): AdminAppVisibility {
   if (app.kind === "planned") return "locked";
   if (app.library.defaultPinned) return "pinned";
   return "library";
+}
+
+function accessPolicyForApp(app: AdminAppManifest): AdminAppAccessPolicy {
+  return app.access ?? DEFAULT_ACCESS_POLICY;
+}
+
+function accessPolicy({
+  detailApiHooks = [],
+  detailRequiresFreshMfa = false,
+  minimumRole,
+  registeredApiHooks = []
+}: {
+  detailApiHooks?: string[];
+  detailRequiresFreshMfa?: boolean;
+  minimumRole: AdminOperatorRole;
+  registeredApiHooks?: string[];
+}): AdminAppAccessPolicy {
+  return {
+    detailApiHooks,
+    detailRequiresFreshMfa,
+    hiddenWhenUnauthorized: true,
+    minimumRole,
+    registeredApiHooks
+  };
 }
 
 function safeSearchableFieldsForApp(app: AdminAppManifest) {

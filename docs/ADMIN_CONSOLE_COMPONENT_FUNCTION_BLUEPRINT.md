@@ -46,6 +46,12 @@ The design draft is built in layers:
 5. **Action layer:** visual review and dry-run context first; production
    mutation remains a separate Risk A gate.
 
+Viewport design is split into two tracks. The web Admin console is the primary
+operator workbench and should be completed first against the desktop frame. The
+mobile Admin surface is a separate review mode for quick status, risk triage,
+and owner-page handoff. It must not inherit the desktop column map, plugin grid,
+card density, or page scroll plan as its final layout.
+
 The 2026-06-20 GCC-109/GCC-103 update narrows the current execution wave to
 relationship-doc closeout and Figma/UI handoff. The blueprint may describe
 future components, but they are not all current delivery scope.
@@ -150,6 +156,17 @@ configuration logic in one long page.
 | Section Container | One task-focused group under the page contract. | `AdminConsolePageFrame` and page-local blueprint modules. |
 | Widget Container | Reusable cards, tables, queues, timelines, drawers, forms, or tool panels. | `admin/src/components/primitives/*`, including `WorkbenchContainerCard`. |
 | Data Adapter | Static design data now; backend summaries later. It must not invent backend facts or expose sensitive material. | Page-local static blueprints first, future safe selectors/adapters later. |
+
+The code-level Design Grammar sits between this blueprint and rendered React.
+`admin/src/design/grammar/*` defines the layout, density, hierarchy, and
+component role vocabulary; `admin/src/app/admin-ui-contract.ts` maps each active
+page to that vocabulary. The page frame emits `data-page-id`, `data-layout`,
+`data-density`, `data-ui-role`, `data-required-blocks`, and
+`data-mobile-projection`, while panel frames emit `data-ui-role="panel"`.
+
+Component QA should consume those attributes first. Class names remain an
+implementation detail for CSS and legacy style tests; they should not be the
+only way to infer page ownership, mobile projection, or component role.
 
 Each module declares one category before it can be implemented as a real
 business component:

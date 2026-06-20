@@ -5,15 +5,20 @@ import {
   adminAppAuthoringManifest,
   createNavigationLibrarySearchDocument,
   createNavigationLibrarySearchIndex,
+  DEFAULT_ADMIN_CAPABILITY_CONTEXT,
+  getCapabilityScopedAdminAppMap,
   getAdminAppAuthoringManifest,
   getAdminAppMap,
   getPlannedApps,
   getPluginApp,
   getPluginApps,
+  getRegisteredAdminApiHookIds,
   getUtilityApps,
   getWorkspacePageApp,
   getWorkspacePageApps,
-  matchesAppSearch
+  matchesAppSearch,
+  SUPER_ADMIN_CAPABILITY_CONTEXT,
+  SUPER_ADMIN_FRESH_MFA_CAPABILITY_CONTEXT
 } from "../app/admin-app-manifest";
 import { pageSubNavigation } from "../app/navigation";
 
@@ -156,7 +161,11 @@ describe("admin app manifest", () => {
     expect(getPlannedApps().map((app) => app.id)).toEqual([
       "planned.audit-workflow",
       "planned.platform-development",
-      "planned.system-settings"
+      "planned.system-settings",
+      "planned.about",
+      "privileged.key-management",
+      "privileged.audit-center",
+      "privileged.log-access"
     ]);
     expect(getPlannedApps().every((app) => app.route.action === "locked")).toBe(true);
     expect(getUtilityApps().map((app) => app.id)).toEqual([
@@ -177,6 +186,56 @@ describe("admin app manifest", () => {
       primaryObjects: ["Admin API connection", "local console setting"],
       zhName: "管理员 API"
     });
+  });
+
+  test("scopes privileged route, search, and API-hook registration by operator capability", () => {
+    const operatorMap = getCapabilityScopedAdminAppMap(DEFAULT_ADMIN_CAPABILITY_CONTEXT);
+    const operatorIds = Object.keys(operatorMap.byId).sort();
+    const operatorSearchText = operatorMap.searchIndex.map((entry) => entry.searchText).join(" ");
+
+    expect(operatorMap.plannedApps.map((app) => app.id)).toEqual([
+      "planned.platform-development",
+      "planned.system-settings",
+      "planned.about"
+    ]);
+    expect(operatorIds).not.toEqual(expect.arrayContaining([
+      "planned.audit-workflow",
+      "privileged.key-management",
+      "privileged.audit-center",
+      "privileged.log-access"
+    ]));
+    expect(operatorSearchText).not.toMatch(/key management|audit center|log access|audit & cases/i);
+    expect(getRegisteredAdminApiHookIds(DEFAULT_ADMIN_CAPABILITY_CONTEXT)).toEqual([]);
+
+    const adminMap = getCapabilityScopedAdminAppMap({ freshMfa: false, role: "admin" });
+    expect(Object.keys(adminMap.byId)).not.toEqual(expect.arrayContaining([
+      "planned.audit-workflow",
+      "privileged.key-management",
+      "privileged.audit-center",
+      "privileged.log-access"
+    ]));
+    expect(getRegisteredAdminApiHookIds({ freshMfa: false, role: "admin" })).toEqual([]);
+
+    const superAdminMap = getCapabilityScopedAdminAppMap(SUPER_ADMIN_CAPABILITY_CONTEXT);
+    expect(superAdminMap.plannedApps.map((app) => app.id)).toEqual(expect.arrayContaining([
+      "planned.audit-workflow",
+      "privileged.key-management",
+      "privileged.audit-center",
+      "privileged.log-access"
+    ]));
+    expect(getRegisteredAdminApiHookIds(SUPER_ADMIN_CAPABILITY_CONTEXT)).toEqual([
+      "admin.auditSummary",
+      "admin.keyMetadataSummary",
+      "admin.logAccessRequestSummary"
+    ]);
+    expect(getRegisteredAdminApiHookIds(SUPER_ADMIN_FRESH_MFA_CAPABILITY_CONTEXT)).toEqual([
+      "admin.auditDetail",
+      "admin.auditSummary",
+      "admin.ephemeralLogViewSession",
+      "admin.keyMetadataDetail",
+      "admin.keyMetadataSummary",
+      "admin.logAccessRequestSummary"
+    ]);
   });
 
   test("builds a single app map for pages, plugins, utilities, and planned apps", () => {

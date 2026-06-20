@@ -196,16 +196,46 @@ the plugin.
 | Under 620px | App Library grids become two columns; controls wrap; plugin tools align left. |
 | Under 520px | Dense table headers may hide and rows must stay horizontally safe. |
 
-Mobile should preserve the operating model:
+Responsive CSS is only a safety layer for the desktop workbench while the web
+design is being completed. It may prevent clipping, overflow, and blocked touch
+targets, but it must not be treated as the final mobile product design.
+
+Mobile has a separate review-mode target:
 
 ```text
 status bar
-  -> content canvas
-  -> compact appbar
-  -> App Library recovery
+  -> compact page identity
+  -> priority section switcher
+  -> one active review card / drill-in detail
+  -> compact appbar and App Library recovery
 ```
 
-It should not introduce a second navigation paradigm.
+Mobile must preserve route ownership, capability gates, and redaction rules,
+but it must not reuse the desktop column map, desktop plugin grid, desktop
+card density, or desktop page scroll plan. If a mobile screen needs different
+information order, implement a separate mobile projection instead of adding
+more breakpoint-specific desktop CSS.
+
+## Design Grammar Layer
+
+The visual protocol is no longer only a descriptive QA checklist. The code
+source of truth for first-pass Admin UI grammar lives in
+`admin/src/design/grammar/*` and is consumed by
+`admin/src/app/admin-ui-contract.ts`.
+
+That grammar defines:
+
+- layout archetypes such as `dashboard` and `table`;
+- density modes and the minimum `44px` touch target / `48px` comfortable
+  target;
+- hierarchy roles for metric, context, state, action, evidence, and detail;
+- component role groups for system, container, content, control, and state.
+
+Rendered Admin pages must expose grammar metadata with `data-page-id`,
+`data-layout`, `data-density`, `data-ui-role`, and `data-mobile-projection`.
+Visual QA should validate those attributes, overflow, touch targets, redaction,
+and gated surfaces. It should not invent spacing, density, or hierarchy rules
+outside the grammar contract.
 
 ## Implementation Checklist
 

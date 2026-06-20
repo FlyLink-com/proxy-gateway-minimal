@@ -86,6 +86,8 @@ describe("admin style token contract", () => {
       "--admin-plugin-medium-height: 168px",
       "--admin-plugin-large-height: 216px",
       "--admin-plugin-height-tall: 252px",
+      "--admin-plugin-screen-max-height: min(680px",
+      "--admin-plugin-screen-max-height-mobile: clamp(280px",
       "--admin-plugin-field-height: 26px",
       "--admin-plugin-field-gap: 6px",
       "--admin-radius-control: 10px",
@@ -94,6 +96,11 @@ describe("admin style token contract", () => {
       "--admin-radius-chrome: 16px",
       "--admin-radius-floating: 12px",
       "--admin-radius-icon: 8px",
+      "--admin-density-compact-card-padding: 12px",
+      "--admin-density-normal-card-padding: 16px",
+      "--admin-density-spacious-card-padding: 20px",
+      "--admin-touch-target-min: 44px",
+      "--admin-touch-target-comfortable: 48px",
       "--admin-noise-opacity: 0"
     ].forEach((expectedToken) => {
       expect(rootBlock).toContain(expectedToken);
@@ -152,6 +159,11 @@ describe("admin style token contract", () => {
       "--admin-radius-floating",
       "--admin-radius-tile",
       "--admin-radius-icon",
+      "--admin-density-compact-card-padding",
+      "--admin-density-normal-card-padding",
+      "--admin-density-spacious-card-padding",
+      "--admin-touch-target-min",
+      "--admin-touch-target-comfortable",
       "--admin-shadow-chrome",
       "--admin-shadow-chrome-2k",
       "--admin-shadow-floating",
@@ -300,8 +312,14 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("grid-template-columns: minmax(0, 1fr)");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("grid-auto-rows: max-content");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("align-content: start");
+    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("max-block-size: var(--admin-plugin-screen-max-height)");
+    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("overflow-y: auto");
+    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("overscroll-behavior: contain");
+    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("scrollbar-gutter: stable");
     expect(selectorBlock(".admin-blueprint-module-panel-head")).toContain("display: flex");
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("display: inline-grid");
+    expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("width: 34px");
+    expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("height: 34px");
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger:hover")).toContain("var(--workbench-category-bg");
     expect(selectorBlock(".admin-blueprint-panel-field-count")).toContain("display: inline-grid");
     expect(styles).not.toContain(".admin-blueprint-card-menu");
@@ -353,6 +371,9 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-library-result-count")).toContain("var(--admin-radius-pill)");
     expect(selectorBlock(".nav-library-toolbar")).toContain("position: static");
     expect(selectorBlock(".top-bar-search")).toContain("width: min(420px, 42vw)");
+    expect(selectorBlock(".top-bar-search input")).toContain("min-height: 38px");
+    expect(selectorBlock(".search-box input")).toContain("min-height: 38px");
+    expect(selectorBlock(".nav-library-search input")).toContain("min-height: 38px");
     expect(selectorBlock(".nav-library-utilities")).toContain("order: 1");
     expect(selectorBlock(".nav-library-pages")).toContain("order: 2");
     expect(selectorBlock(".nav-library-panel-apps")).toContain("order: 3");
@@ -370,6 +391,11 @@ describe("admin style token contract", () => {
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-planned-apps \.nav-library-grid\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-planned-apps \.nav-planned-item span\s*\{[\s\S]*white-space: normal;/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.admin-blueprint-module-panel-meta\s*\{[\s\S]*justify-items: start;/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.admin-blueprint-page\s*\{[\s\S]*gap: 12px;/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.admin-blueprint-page-hero\s*\{[\s\S]*gap: 6px;/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.admin-fixture-preview-banner p\s*\{[\s\S]*display: none;/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.admin-blueprint-module-panel\s*\{[\s\S]*max-block-size: var\(--admin-plugin-screen-max-height-mobile\);/m);
+    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.admin-blueprint-page\[data-page\] \[data-module-nav-id\] \.admin-fixture-preview-row\s*\{[\s\S]*min-height: 0;/m);
     expect(styles).toMatch(/@media \(max-width: 980px\) \{[\s\S]*\.admin-blueprint-module-panel-head\s*\{[\s\S]*display: flex;/m);
   });
 
@@ -496,6 +522,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("contain: layout paint");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("box-shadow: none");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("backdrop-filter: none");
+    expect(styles).toContain('min-height: min(680px, var(--admin-plugin-screen-max-height))');
     expect(selectorBlock(".admin-blueprint-module-panel::before")).toContain("width: 0");
     expect(selectorBlock(".admin-blueprint-module-panel::before")).toContain("background: var(--admin-plugin-accent)");
     expect(selectorBlock(".admin-blueprint-module-panel:hover")).toContain("border-color: var(--workbench-category-border");

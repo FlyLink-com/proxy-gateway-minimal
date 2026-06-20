@@ -349,11 +349,13 @@
 .nav-library-search input {
   min-width: 0;
   width: 100%;
+  min-height: 38px;
   border: 0;
   background: transparent;
   color: var(--admin-text);
   font-size: 14px;
   font-weight: 500;
+  line-height: 1.2;
 }
 
 .nav-library-search input:focus-visible,
@@ -1136,11 +1138,13 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
 .top-bar-search input {
   width: 100%;
   min-width: 0;
+  min-height: 38px;
   border: 0;
   background: transparent;
   color: var(--admin-text);
   font-size: 12px;
   font-weight: 500;
+  line-height: 1.2;
 }
 
 .top-bar-search input:focus-visible {
@@ -1283,9 +1287,11 @@ details.nav-library-utility:not([open]) > .nav-library-utility-detail {
 
 .search-box input {
   width: 100%;
+  min-height: 38px;
   border: 0;
   background: transparent;
   font-size: 0.9rem;
+  line-height: 1.2;
 }
 
 .top-search-shell {

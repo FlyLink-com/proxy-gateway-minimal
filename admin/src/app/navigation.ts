@@ -125,6 +125,15 @@ export const consoleSections: ConsoleSection[] = [
     responsibility: "Own private operator preferences and local console configuration.",
     entryGate: "Waiting for a private settings boundary, explicit non-goals, and validation.",
     items: []
+  },
+  {
+    id: "about",
+    label: "About",
+    description: "Version and release notes",
+    status: "planned",
+    responsibility: "Own version, created time, build time, update notes, and compatibility summaries.",
+    entryGate: "Waiting for safe version, build, and changelog fields.",
+    items: []
   }
 ];
 
@@ -200,7 +209,7 @@ export const pageSubNavigation: Record<AdminPage, PageSubNavigationItem[]> = {
     {
       id: "quota-usage",
       label: "Quota & Usage",
-      description: "Default quota, edited quota, total usage, collection coverage, quota risk, and audit state.",
+      description: "Default quota, edited quota, total usage, collection coverage, quota risk, and review state.",
       mode: "owner",
       owner: "User Operations",
       targetId: "user-supervision-quota-usage"
@@ -216,7 +225,7 @@ export const pageSubNavigation: Record<AdminPage, PageSubNavigationItem[]> = {
     {
       id: "history-events",
       label: "History & Events",
-      description: "Object history, case candidates, and future audit-event entry.",
+      description: "Object history, case candidates, and future restricted-event entry.",
       mode: "owner",
       owner: "User Operations",
       targetId: "user-supervision-history-events"

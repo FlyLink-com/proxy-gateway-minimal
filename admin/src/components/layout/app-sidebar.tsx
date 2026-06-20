@@ -8,11 +8,13 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type ToggleEvent } from "react";
 import {
-  getAdminAppMap,
+  DEFAULT_ADMIN_CAPABILITY_CONTEXT,
+  getCapabilityScopedAdminAppMap,
   matchesAppSearch,
-  normalizeAppSearchText
+  normalizeAppSearchText,
+  type AdminCapabilityContext
 } from "../../app/admin-app-manifest";
-import { consoleSections, type AdminPage } from "../../app/navigation";
+import { type AdminPage } from "../../app/navigation";
 import { cn } from "../../lib/utils";
 import { NavigationLibrary, WorkspaceSidebar } from "../primitives";
 
@@ -26,6 +28,7 @@ type AppSidebarProps = {
   riskNotificationCount?: number;
   connectionPanel?: ReactNode;
   connectionConfigured?: boolean;
+  capabilityContext?: AdminCapabilityContext;
 };
 
 export function AppSidebar({
@@ -37,12 +40,13 @@ export function AppSidebar({
   onOpenSite,
   riskNotificationCount = 0,
   connectionPanel,
-  connectionConfigured = false
+  connectionConfigured = false,
+  capabilityContext = DEFAULT_ADMIN_CAPABILITY_CONTEXT
 }: AppSidebarProps) {
   const [navigationLibraryOpen, setNavigationLibraryOpen] = useState(false);
   const navigationLibraryRef = useRef<HTMLDetailsElement>(null);
   const navigationLibrarySearchRef = useRef<HTMLInputElement>(null);
-  const appMap = getAdminAppMap();
+  const appMap = getCapabilityScopedAdminAppMap(capabilityContext);
   const appSearchEntries = appMap.searchIndex;
   const appSearchEntriesById = new Map(appSearchEntries.map((entry) => [entry.appId, entry]));
   const normalizedSearch = normalizeAppSearchText(search);
@@ -331,18 +335,17 @@ export function AppSidebar({
     );
   });
 
-  const plannedSidebarRoutes = consoleSections
-    .filter((section) => section.status === "planned")
-    .map((section) => (
+  const plannedSidebarRoutes = appMap.plannedApps
+    .map((app) => (
       <button
-        aria-label={`${section.label} planned gate`}
+        aria-label={`${app.label} planned gate`}
         className="nav-item nav-item-planned nav-item-sidebar-planned"
         disabled
-        key={section.id}
-        title={section.entryGate}
+        key={app.id}
+        title={app.description}
         type="button"
       >
-        <span className="nav-item-copy">{section.label}</span>
+        <span className="nav-item-copy">{app.label}</span>
         <span className="nav-item-gate-pill">Gate</span>
       </button>
     ));

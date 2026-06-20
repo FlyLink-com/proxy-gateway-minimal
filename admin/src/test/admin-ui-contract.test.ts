@@ -1,5 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { ADMIN_UI_CONTRACT } from "../app/admin-ui-contract";
+import {
+  ADMIN_PRIVILEGED_SURFACE_IDS,
+  ADMIN_UI_CONTRACT,
+  getAdminPageContract
+} from "../app/admin-ui-contract";
+import { ADMIN_COMPONENT_GRAMMAR } from "../design/grammar/components";
+import { ADMIN_DENSITY_SPECS } from "../design/grammar/density";
+import { ADMIN_HIERARCHY_RULES } from "../design/grammar/hierarchy";
+import { ADMIN_LAYOUT_SPECS } from "../design/grammar/layout";
 
 describe("admin OS UI contract", () => {
   test("names the platform visual control points", () => {
@@ -39,6 +47,76 @@ describe("admin OS UI contract", () => {
       pluginHeaderMinHeight: "48px",
       sectionGap: "24px",
       tableRowHeight: "44px"
+    });
+  });
+
+  test("keeps desktop and mobile as separate layout targets", () => {
+    expect(ADMIN_UI_CONTRACT.viewportTargets.desktopWorkbench).toMatchObject({
+      contractId: "desktop-workbench",
+      frame: "1600x1024",
+      implementationMode: "primary-web-design",
+      layoutModel: "multi-column-workbench"
+    });
+
+    expect(ADMIN_UI_CONTRACT.viewportTargets.mobileReview).toMatchObject({
+      contractId: "mobile-review",
+      frame: "390x844",
+      implementationMode: "separate-mobile-projection",
+      layoutModel: "single-column-review-flow"
+    });
+    expect(ADMIN_UI_CONTRACT.viewportTargets.mobileReview.forbiddenLayoutReuse).toEqual([
+      "desktop-column-map",
+      "desktop-plugin-grid",
+      "desktop-card-density",
+      "desktop-page-scroll-plan"
+    ]);
+  });
+
+  test("defines grammar primitives before QA checks rendered visuals", () => {
+    expect(ADMIN_LAYOUT_SPECS.dashboard).toMatchObject({
+      contentFlow: "stack",
+      mobileProjection: "single-column-review-flow"
+    });
+    expect(ADMIN_LAYOUT_SPECS.table.maxPrimaryColumns).toBe(1);
+    expect(ADMIN_DENSITY_SPECS.normal).toMatchObject({
+      cardPadding: "16px",
+      minTouchTargetPx: 44,
+      rowHeight: "44px"
+    });
+    expect(ADMIN_HIERARCHY_RULES.map((rule) => rule.role)).toEqual([
+      "metric",
+      "context",
+      "state",
+      "action",
+      "evidence",
+      "detail"
+    ]);
+    expect(ADMIN_COMPONENT_GRAMMAR.container.forbiddenResponsibilities).toContain("raw-log-display");
+  });
+
+  test("declares page-level grammar contracts for active Admin surfaces", () => {
+    expect(Object.keys(ADMIN_UI_CONTRACT.pageContracts).sort()).toEqual([
+      "dashboard",
+      "portalRequests",
+      "usageMonitor"
+    ]);
+
+    expect(getAdminPageContract("dashboard")).toMatchObject({
+      layout: "dashboard",
+      mobileProjection: "single-column-review-flow",
+      page: "dashboard"
+    });
+    expect(getAdminPageContract("portalRequests")).toMatchObject({
+      layout: "table",
+      page: "portalRequests"
+    });
+    expect(getAdminPageContract("usageMonitor").requiredBlocks).toContain("evidence-row");
+
+    Object.values(ADMIN_UI_CONTRACT.pageContracts).forEach((contract) => {
+      expect(contract.density).toBe("normal");
+      expect(contract.requiredBlocks).toContain("page-title");
+      expect(contract.requiredBlocks).toContain("state-preview");
+      expect(contract.forbiddenSurfaces).toEqual(ADMIN_PRIVILEGED_SURFACE_IDS);
     });
   });
 });

@@ -488,8 +488,55 @@
     justify-items: start;
   }
 
+  .admin-blueprint-page {
+    gap: 12px;
+  }
+
+  .admin-blueprint-page-hero {
+    gap: 6px;
+  }
+
+  .admin-blueprint-page-hero p {
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .admin-blueprint-page-hero h1 {
+    font-size: 26px;
+    line-height: 1.2;
+  }
+
+  .admin-fixture-preview-banner {
+    gap: 4px;
+    padding: 8px 10px;
+  }
+
+  .admin-fixture-preview-banner > div {
+    gap: 6px;
+  }
+
+  .admin-fixture-preview-banner p {
+    display: none;
+  }
+
+  .admin-blueprint-module-panel {
+    gap: 8px;
+    max-block-size: var(--admin-plugin-screen-max-height-mobile);
+    padding: 10px;
+  }
+
+  .admin-fixture-preview,
+  .admin-fixture-preview-rows {
+    gap: 8px;
+  }
+
   .admin-fixture-preview-row {
     grid-template-columns: 1fr;
+  }
+
+  .admin-blueprint-page[data-page] [data-module-nav-id] .admin-fixture-preview-row {
+    min-height: 0;
+    padding: 10px;
   }
 
   .nav-library-grid,

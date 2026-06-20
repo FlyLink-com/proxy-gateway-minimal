@@ -92,10 +92,10 @@ export const accountsResourcesBlueprint: BlueprintPage = {
       container: {
         category: "configuration",
         container: "Quota policy panel",
-        dataAdapter: "Static quota fields now; later existing traffic-limit update API plus audit-note contract.",
+        dataAdapter: "Static quota fields now; later existing traffic-limit update API plus review-note contract.",
         layoutPolicy: "Config panel with preview and reset controls later; not a monitoring ledger.",
         performanceBoundary: "Quota calculations remain derived from supplied summaries, not repeated polling.",
-        interactionModel: "Review policy and prepare edit; save action waits for audit gate."
+        interactionModel: "Review policy and prepare edit; save action waits for a reviewed update gate."
       },
       content: <QuotaUsageContent />,
       purpose: "Own quota policy decisions while using usage collection only as evidence.",
@@ -104,7 +104,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         "Edited quota · review value",
         "Usage · used / total",
         "Measured channels · count",
-        "Audit note · required gate"
+        "Review note · required gate"
       ],
       states: [
         "Within quota",
@@ -119,7 +119,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         "No channel coverage diagnosis",
         "No order pause/archive without later backend gate"
       ],
-      nextStep: "Reconnect quota editor only after audit note and backend update contract are reviewed."
+      nextStep: "Reconnect quota editor only after review note and backend update contract are reviewed."
     },
     {
       navId: "lifecycle",
@@ -161,34 +161,34 @@ export const accountsResourcesBlueprint: BlueprintPage = {
       container: {
         category: "audit-workflow",
         container: "Computed history preview",
-        dataAdapter: "Static event slots now; later durable audit and case-history adapter.",
-        layoutPolicy: "Preview section until Audit & Cases owns durable history.",
+        dataAdapter: "Static event slots now; later durable restricted case-history adapter.",
+        layoutPolicy: "Preview section until restricted case workflow owns durable history.",
         performanceBoundary: "Timeline content stays lazy and bounded until durable history exists.",
         interactionModel: "Read-only context; no note write or case close actions."
       },
       content: <HistoryEventsContent />,
-      purpose: "Show safe computed events and case candidates until durable audit and case history exists.",
+      purpose: "Show safe computed events and case candidates until durable restricted case history exists.",
       contentFields: [
         "Event · safe label",
         "Object · safe ref",
         "Source · owner page",
         "Case · candidate reason",
-        "Audit · future entry slot"
+        "Restricted event · future entry slot"
       ],
       states: [
         "No computed events",
         "Context available",
         "Case backend locked",
-        "Audit write unavailable"
+        "Restricted write unavailable"
       ],
       uiSurface: "history-events",
-      ownership: "Provides review context for accounts and resources; durable history later moves to Audit & Cases.",
+      ownership: "Provides review context for accounts and resources; durable history later moves to the restricted case workflow.",
       boundaries: [
         "No raw logs",
         "No raw SQLite row",
         "No note write until durable case backend exists"
       ],
-      nextStep: "Hand durable history to Audit & Cases after the case/history backend contract lands."
+      nextStep: "Hand durable history to the restricted case workflow after the case/history backend contract lands."
     }
   ]
 };
@@ -304,9 +304,9 @@ function QuotaUsageContent() {
         <StatusChip label="Measured" tone="success" />
       </article>
       <article className="admin-static-card admin-static-card-muted">
-        <span>Audit gate</span>
+        <span>Review gate</span>
         <strong>Quota edits locked</strong>
-        <p>Future edits require an audit note and reviewed backend update contract.</p>
+        <p>Future edits require a review note and reviewed backend update contract.</p>
         <StatusChip label="Planned / locked" tone="neutral" />
       </article>
     </div>
@@ -362,7 +362,7 @@ function HistoryEventsContent() {
         title="Safe computed history"
       />
       <div className="admin-static-status-row" aria-label="History and Events backend states">
-        <StatusChip label="Audit backend locked" tone="neutral" />
+        <StatusChip label="Restricted backend locked" tone="neutral" />
         <StatusChip label="Note write unavailable" tone="warning" />
         <StatusChip label="Evidence redacted" tone="danger" />
       </div>

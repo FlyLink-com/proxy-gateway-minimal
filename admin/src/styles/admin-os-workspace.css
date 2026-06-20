@@ -530,13 +530,13 @@
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="account-overview"] {
   grid-column: 1;
   grid-row: 1 / span 3;
-  min-height: 690px;
+  min-height: min(680px, var(--admin-plugin-screen-max-height));
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="resource-orders"] {
   grid-column: 2;
   grid-row: 1 / span 3;
-  min-height: 690px;
+  min-height: min(680px, var(--admin-plugin-screen-max-height));
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="quota-usage"],
@@ -576,6 +576,9 @@
   --admin-plugin-accent: var(--workbench-category-color, var(--admin-accent));
   position: relative;
   overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-panel);
   background: #ffffff;
@@ -588,6 +591,7 @@
   gap: 12px;
   align-content: start;
   align-items: start;
+  max-block-size: var(--admin-plugin-screen-max-height);
   min-width: 0;
   padding: 16px;
   scroll-margin-top: 96px;
@@ -644,8 +648,8 @@
 
 .admin-blueprint-panel-tool-trigger {
   appearance: none;
-  width: 30px;
-  height: 30px;
+  width: 34px;
+  height: 34px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: var(--admin-radius-pill);
   background: transparent;

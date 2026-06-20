@@ -134,7 +134,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         category: "monitoring",
         container: "Collection anomaly queue",
         dataAdapter: "Static anomaly taxonomy now; later safe computed anomaly candidates.",
-        layoutPolicy: "Queue with filters later; durable case workflow belongs to Audit & Cases.",
+        layoutPolicy: "Queue with filters later; durable case workflow is restricted and not registered for normal operators.",
         performanceBoundary: "Bounded candidate list, no mounted object history by default.",
         interactionModel: "Classify and route evidence; no false-positive close yet."
       },
@@ -155,7 +155,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         "Missing receipt"
       ],
       uiSurface: "collection-anomalies",
-      ownership: "Owns anomaly classification; durable case workflow is a future Audit & Cases responsibility.",
+      ownership: "Owns anomaly classification; durable case workflow is a future restricted responsibility.",
       boundaries: [
         "No false-positive close",
         "No durable case note write",

@@ -13,6 +13,11 @@ describe("portal requests page", () => {
     expect(screen.getByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
     expect(screen.getByText("User Operations / Accounts & Resources")).not.toBeNull();
     expect(screen.getByLabelText("Accounts & Resources page header")).not.toBeNull();
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-page-id")).toBe("portalRequests");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-layout")).toBe("table");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-ui-role")).toBe("workspace");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-mobile-projection")).toBe("single-column-review-flow");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-required-blocks")).toContain("evidence-row");
     expect(screen.queryByRole("button", { name: "Card settings" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Edit workspace" })).toBeNull();
     expect(screen.queryByLabelText("Accounts & Resources status dashboard")).toBeNull();
@@ -39,6 +44,7 @@ describe("portal requests page", () => {
     expect(screen.getByRole("button", { name: "History & Events hide module" })).not.toBeNull();
 
     expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();
+    expect(document.querySelector("#user-supervision-account-overview")?.getAttribute("data-ui-role")).toBe("panel");
     expect(screen.getAllByLabelText("Management panel").length).toBe(3);
     expect(screen.getByLabelText("Configuration panel")).not.toBeNull();
     expect(screen.getByLabelText("Audit / Workflow panel")).not.toBeNull();
@@ -63,7 +69,7 @@ describe("portal requests page", () => {
     expect(screen.queryByText("Order · pause / expiry candidate")).toBeNull();
     expect(screen.getByRole("heading", { name: "History & Events" })).not.toBeNull();
     expect(screen.getByText("Safe computed history")).not.toBeNull();
-    expect(screen.getByText("Audit backend locked")).not.toBeNull();
+    expect(screen.getByText("Restricted backend locked")).not.toBeNull();
     expect(screen.queryByText("Audit · future entry slot")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);
     document.querySelectorAll(".admin-blueprint-module-notes").forEach((notes) => {
