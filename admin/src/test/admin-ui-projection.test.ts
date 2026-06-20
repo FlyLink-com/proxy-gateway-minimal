@@ -21,6 +21,7 @@ describe("admin UI projection", () => {
       ariaLabel: "Monitoring panel",
       category: "monitoring",
       className: "",
+      content: blueprint.modules[0].content,
       containerLabel: "Overview metric widget set",
       fieldLabels: [
         "Platform health · summary state",
@@ -40,6 +41,7 @@ describe("admin UI projection", () => {
       "category",
       "className",
       "containerLabel",
+      "content",
       "fieldLabels",
       "navId",
       "ownerMode",

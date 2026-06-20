@@ -250,6 +250,7 @@
   }
 
   .ops-metric-grid,
+  .admin-static-card-grid,
   .dashboard-mini-metrics,
   .dashboard-mini-metrics-compact {
     grid-template-columns: 1fr;
@@ -561,6 +562,7 @@
   }
 
   .ops-metric-grid,
+  .admin-static-card-grid,
   .new-console-workbench,
   .overview-next-actions-grid,
   .dashboard-grid-primary,

@@ -142,7 +142,9 @@ export function AdminConsolePageFrame({
             onHide={() => hideModuleLayout(panel.navId)}
             ownerMode={panel.ownerMode}
             title={panel.title}
-          />
+          >
+            {panel.content}
+          </PanelFrame>
         )) : (
           <EmptyState
             className="admin-blueprint-empty-workbench"

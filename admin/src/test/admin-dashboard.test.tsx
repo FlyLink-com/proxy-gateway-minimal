@@ -51,12 +51,20 @@ describe("admin dashboard page", () => {
     expect(screen.getByRole("heading", { name: "Health Summary" })).not.toBeNull();
     expect(screen.getByLabelText("Monitoring panel")).not.toBeNull();
     expect(screen.getAllByText("Overview metric widget set").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Operations Overview static health content")).not.toBeNull();
+    expect(screen.getByText("Platform health")).not.toBeNull();
+    expect(screen.getByText("Channel coverage")).not.toBeNull();
+    expect(screen.getByText("Disconnected keeps layout")).not.toBeNull();
     expect(screen.queryByText("Platform health · summary state")).toBeNull();
     expect(screen.queryByText("First-screen operator view for platform health, risk routing, and the next owner page.")).toBeNull();
     expect(screen.getByRole("heading", { name: "Risk Queue" })).not.toBeNull();
     expect(screen.getAllByLabelText("Audit / Workflow panel").length).toBe(2);
+    expect(screen.getByText("Review candidates")).not.toBeNull();
+    expect(screen.getByText("Order traffic over limit")).not.toBeNull();
     expect(screen.queryByText("Reason · quota / delay / receipt")).toBeNull();
     expect(screen.getByRole("heading", { name: "Next Actions" })).not.toBeNull();
+    expect(screen.getByLabelText("Overview owner page routing content")).not.toBeNull();
+    expect(screen.getByText("Audit & Cases")).not.toBeNull();
     expect(screen.queryByText("Wire panel routes to section-level deep links after page modules are finalized.")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);
     expect(document.querySelectorAll(".admin-blueprint-module-panel > .admin-blueprint-module-purpose")).toHaveLength(0);
@@ -87,9 +95,9 @@ describe("admin dashboard page", () => {
 
     expect(screen.getByLabelText("Health Summary fixture preview")).not.toBeNull();
     expect(screen.queryByText("Metric cards for platform health, risk candidates, freshness, and channel coverage.")).toBeNull();
-    expect(screen.getByText("2m 14s")).not.toBeNull();
-    expect(screen.getByText("Order traffic over limit")).not.toBeNull();
-    expect(screen.getByText("Accounts & Resources")).not.toBeNull();
+    expect(screen.getAllByText("2m 14s").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Order traffic over limit").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Accounts & Resources").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Overview summarizes and routes; owner pages hold detailed collections.")).toBeNull();
     expect(onRiskCountChange).toHaveBeenCalledWith(2);
 

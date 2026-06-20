@@ -340,6 +340,7 @@
   justify-content: space-between;
   gap: 12px;
   margin-top: 14px;
+  min-width: 0;
   padding-top: 12px;
 }
 
@@ -347,7 +348,10 @@
   color: var(--admin-muted);
   font-size: 12px;
   font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
   text-align: right;
+  white-space: normal;
 }
 
 .case-row-main {

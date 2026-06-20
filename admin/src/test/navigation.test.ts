@@ -203,7 +203,7 @@ describe("admin navigation", () => {
     expect(screen.getByLabelText("Admin fixture preview status")).not.toBeNull();
     expect(screen.getByText("GCC-104 safe fixture preview")).not.toBeNull();
     expect(screen.getByLabelText("Risk Queue fixture preview")).not.toBeNull();
-    expect(screen.getByText("Order traffic over limit")).not.toBeNull();
+    expect(screen.getAllByText("Order traffic over limit").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole("heading", { name: "Connect Admin API" })).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
     expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_/i);
