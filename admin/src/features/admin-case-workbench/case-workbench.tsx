@@ -1,5 +1,16 @@
+import { useMemo } from "react";
+import {
+  EmptyState as PrimitiveEmptyState,
+  ObjectChain as ObjectChainPrimitive,
+  ObjectTimeline as ObjectTimelinePrimitive,
+  RiskQueue,
+  type ObjectChainItem,
+  type ObjectTimelineItem,
+  type RiskQueueItem
+} from "../../components/primitives";
 import type {
   CaseCandidate,
+  CaseObjectType,
   CaseReasonCode,
   CaseSeverity,
   LinkedObject,
@@ -7,30 +18,30 @@ import type {
 } from "./types";
 
 const SEVERITY_LABELS: Record<CaseSeverity, string> = {
-  critical: "高",
-  warning: "中",
-  info: "提示",
-  neutral: "低"
+  critical: "High",
+  warning: "Medium",
+  info: "Info",
+  neutral: "Low"
 };
 
 const REASON_LABELS: Record<CaseReasonCode, string> = {
-  over_limit: "超额",
-  near_limit: "接近上限",
-  usage_zero: "零用量",
-  usage_stale: "采集延迟",
-  collector_disabled: "采集器未启用",
-  not_collected: "尚未采集",
-  receipt_missing: "回执待确认",
-  expiry_candidate: "到期待复核",
-  archive_candidate: "待归档复核",
-  order_pending_review: "等待复核",
-  order_pending_delivery: "等待受控发放"
+  over_limit: "Over limit",
+  near_limit: "Near limit",
+  usage_zero: "Zero usage",
+  usage_stale: "Collection stale",
+  collector_disabled: "Collector disabled",
+  not_collected: "Not collected",
+  receipt_missing: "Receipt pending",
+  expiry_candidate: "Expiry review",
+  archive_candidate: "Archive review",
+  order_pending_review: "Pending review",
+  order_pending_delivery: "Pending controlled delivery"
 };
 
 const SOURCE_LABELS: Record<CaseCandidate["source"], string> = {
-  portal_access_requests: "账号与资源",
-  subscription_usage_monitor: "流量与通道",
-  dashboard_summary: "运营总览"
+  portal_access_requests: "Accounts & Resources",
+  subscription_usage_monitor: "Usage & Channels",
+  dashboard_summary: "Operations Overview"
 };
 
 export function CaseQueue({
@@ -46,80 +57,49 @@ export function CaseQueue({
   selectedCaseRef?: string | null;
   onSelect?: (caseRef: string) => void;
 }) {
-  return (
-    <section className="case-workbench-card" aria-label={title}>
-      <div className="case-section-heading">
-        <div>
-          <h3>{title}</h3>
-          <p className="muted">{description}</p>
-        </div>
-        <span className="case-count" aria-label={`监管案件数量 ${cases.length}`}>
-          {cases.length}
-        </span>
-      </div>
-      {cases.length === 0 ? (
-        <EmptyState title="暂无监管案件" description="当前筛选条件下没有活跃候选。" />
-      ) : (
-        <div className="case-queue-list">
-          {cases.map((caseItem) => (
-            onSelect ? (
-              <button
-                aria-pressed={caseItem.caseRef === selectedCaseRef}
-                className={caseItem.caseRef === selectedCaseRef ? "case-row case-row-active" : "case-row"}
-                key={caseItem.caseRef}
-                type="button"
-                onClick={() => onSelect(caseItem.caseRef)}
-              >
-                <CaseRowContent caseItem={caseItem} />
-              </button>
-            ) : (
-              <article className="case-row case-row-readonly" key={caseItem.caseRef}>
-                <CaseRowContent caseItem={caseItem} />
-              </article>
-            )
-          ))}
-        </div>
-      )}
-    </section>
-  );
-}
+  const queueItems = useMemo(() => cases.map(toRiskQueueItem), [cases]);
 
-function CaseRowContent({ caseItem }: { caseItem: CaseCandidate }) {
   return (
-    <>
-      <span className={`case-severity case-severity-${caseItem.severity}`}>
-        {severityLabel(caseItem.severity)}
-      </span>
-      <span className="case-row-main">
-        <strong>{caseItem.title}</strong>
-        <small>
-          <span>{caseItem.objectType}</span>
-          <span> · </span>
-          <span>{caseItem.objectRef}</span>
-        </small>
-      </span>
-      <span className="case-reason">{reasonLabel(caseItem.reasonCode)}</span>
-    </>
+    <RiskQueue
+      countLabel="Cases"
+      description={description}
+      emptyDescription="No active candidates match the current filters."
+      emptyFilterDescription="No active candidates match the current risk filter."
+      emptyFilterTitle="No matching cases"
+      emptyTitle="No supervision cases"
+      items={queueItems}
+      onSelect={onSelect}
+      selectedRef={selectedCaseRef}
+      title={title}
+      footer={onSelect ? (
+        <>
+          <button className="panel-link panel-link-disabled" type="button" disabled>
+            View all cases
+          </button>
+          <span>Available after the durable case inbox is connected.</span>
+        </>
+      ) : undefined}
+    />
   );
 }
 
 export function CaseDetailPanel({ caseItem }: { caseItem: CaseCandidate | null }) {
   if (caseItem === null) {
     return (
-      <section className="case-detail-panel" aria-label="监管案件详情">
-        <EmptyState title="选择一个监管案件" description="从队列选择候选后查看证据和对象历史。" />
+      <section className="case-detail-panel" aria-label="Case detail">
+        <EmptyState title="Select a supervision case" description="Select a queue candidate to inspect evidence and object history." />
       </section>
     );
   }
 
   return (
-    <section className="case-detail-panel" aria-label="监管案件详情">
+    <section className="case-detail-panel" aria-label="Case detail">
       <div className="case-detail-heading">
         <div>
           <p className="case-eyebrow">{caseItem.status}</p>
           <h3>{caseItem.title}</h3>
           <p className="muted">
-            {caseItem.objectType} · {caseItem.objectRef}
+            {objectTypeLabel(caseItem.objectType)} · {caseItem.objectRef}
           </p>
         </div>
         <span className={`case-severity case-severity-${caseItem.severity}`}>
@@ -127,87 +107,69 @@ export function CaseDetailPanel({ caseItem }: { caseItem: CaseCandidate | null }
         </span>
       </div>
       <div className="case-key-grid">
-        <KeyValue label="来源" value={sourceLabel(caseItem.source)} />
-        <KeyValue label="原因" value={reasonLabel(caseItem.reasonCode)} />
-        <KeyValue label="门禁" value={caseItem.gateRequired ? "需要单独门禁" : "只读复核"} />
-        <KeyValue label="更新时间" value={formatDateTime(caseItem.updatedAt)} />
+        <KeyValue label="Source" value={sourceLabel(caseItem.source)} />
+        <KeyValue label="Reason" value={reasonLabel(caseItem.reasonCode)} />
+        <KeyValue label="Gate" value={caseItem.gateRequired ? "Separate gate required" : "Read-only review"} />
+        <KeyValue label="Updated at" value={formatDateTime(caseItem.updatedAt)} />
       </div>
       <LinkedObjects objects={caseItem.linkedObjects} />
       <ObjectTimeline events={caseItem.timeline} />
-      <div className="case-audit-note" aria-label="只读审计说明">
-        <strong>审计备注</strong>
-        <p className="muted">阶段一只读展示候选和证据；关闭、误报、归档和备注写入等待后端 Case 契约。</p>
+      <div className="case-audit-note" aria-label="Read-only audit note">
+        <strong>Audit note</strong>
+        <p className="muted">Phase one is read-only for candidates and evidence; close, false-positive, archive, and note writes wait for the backend Case contract.</p>
       </div>
     </section>
   );
 }
 
 export function LinkedObjects({ objects }: { objects: LinkedObject[] }) {
-  return (
-    <section className="case-linked-objects" aria-label="关联对象">
-      <h4>关联对象</h4>
-      {objects.length === 0 ? (
-        <p className="muted">暂无关联对象。</p>
-      ) : (
-        <div className="case-linked-list">
-          {objects.map((object) => (
-            <div className="case-linked-item" key={`${object.relationType}:${object.objectType}:${object.objectRef}`}>
-              <span>{object.label}</span>
-              <strong>{object.objectRef}</strong>
-              <small>
-                {object.relationType} · {object.objectType}
-              </small>
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  );
+  const chainItems = useMemo<ObjectChainItem[]>(() => objects.map((object) => ({
+    label: object.label,
+    objectRef: object.objectRef,
+    objectType: objectTypeLabel(object.objectType),
+    ref: `${object.relationType}:${object.objectType}:${object.objectRef}`,
+    relationType: object.relationType
+  })), [objects]);
+
+  return <ObjectChainPrimitive objects={chainItems} />;
 }
 
 export function ObjectTimeline({ events }: { events: ObjectTimelineEvent[] }) {
-  return (
-    <section className="case-timeline" aria-label="对象时间线">
-      <h4>对象时间线</h4>
-      {events.length === 0 ? (
-        <p className="muted">暂无对象事件。</p>
-      ) : (
-        <div className="case-timeline-list">
-          {events.map((event) => (
-            <article className="case-timeline-event" key={event.eventRef}>
-              <span className={`case-timeline-dot case-severity-${event.severity}`} aria-hidden="true" />
-              <div>
-                <strong>{event.summary}</strong>
-                <p className="muted">
-                  {actionLabel(event.action)} · {event.objectType} · {event.objectRef}
-                </p>
-                <p className="muted">
-                  {timelineSourceLabel(event.source)} · {formatDateTime(event.occurredAt)}
-                </p>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
-    </section>
-  );
+  const timelineItems = useMemo<ObjectTimelineItem[]>(() => events.map((event) => ({
+    actionLabel: actionLabel(event.action),
+    objectRef: event.objectRef,
+    objectType: objectTypeLabel(event.objectType),
+    occurredAtLabel: formatDateTime(event.occurredAt),
+    ref: event.eventRef,
+    severity: event.severity,
+    sourceLabel: timelineSourceLabel(event.source),
+    summary: event.summary
+  })), [events]);
+
+  return <ObjectTimelinePrimitive events={timelineItems} />;
 }
 
 export function EmptyState({ title, description }: { title: string; description: string }) {
   return (
-    <div className="case-state case-empty-state">
-      <strong>{title}</strong>
-      <p className="muted">{description}</p>
-    </div>
+    <PrimitiveEmptyState
+      chrome="case"
+      description={description}
+      descriptionClassName="muted"
+      title={title}
+    />
   );
 }
 
 export function ErrorState({ title, message }: { title: string; message: string }) {
   return (
-    <div className="case-state case-error-state" role="alert">
-      <strong>{title}</strong>
-      <p className="muted">{message}</p>
-    </div>
+    <PrimitiveEmptyState
+      chrome="none"
+      className="case-state case-error-state"
+      description={message}
+      descriptionClassName="muted"
+      role="alert"
+      title={title}
+    />
   );
 }
 
@@ -242,43 +204,67 @@ function sourceLabel(source: CaseCandidate["source"]): string {
   return SOURCE_LABELS[source];
 }
 
+function toRiskQueueItem(caseItem: CaseCandidate): RiskQueueItem {
+  return {
+    objectRef: caseItem.objectRef,
+    objectType: objectTypeLabel(caseItem.objectType),
+    reasonLabel: reasonLabel(caseItem.reasonCode),
+    ref: caseItem.caseRef,
+    severity: caseItem.severity,
+    severityLabel: severityLabel(caseItem.severity),
+    title: caseItem.title
+  };
+}
+
 function timelineSourceLabel(source: string): string {
   const labels: Record<string, string> = {
-    portal_access_requests: "账号与资源",
-    subscription_usage_monitor: "流量与通道",
-    dashboard_summary: "运营总览"
+    portal_access_requests: "Accounts & Resources",
+    subscription_usage_monitor: "Usage & Channels",
+    dashboard_summary: "Operations Overview"
   };
   return labels[source] ?? source;
 }
 
+function objectTypeLabel(objectType: CaseObjectType): string {
+  const labels: Record<CaseObjectType, string> = {
+    account: "User account",
+    order: "Order",
+    artifact: "Subscription artifact",
+    channel: "Channel",
+    usage: "Usage",
+    lifecycle: "Lifecycle"
+  };
+  return labels[objectType] ?? objectType;
+}
+
 function actionLabel(action: string): string {
   const labels: Record<string, string> = {
-    pending_admin_review: "待处理",
-    approved_pending_delivery: "待发放",
-    delivered: "已发放",
-    rejected: "已拒绝",
-    cancelled: "已取消",
-    expired: "已过期",
-    revoked: "已撤销",
-    measured: "已采集",
-    measured_zero: "零用量",
-    stale: "采集延迟",
-    not_collected: "未采集",
-    collector_disabled: "采集器未启用",
-    over_limit: "超额",
-    near_limit: "接近上限",
-    usage_zero: "零用量",
-    usage_stale: "采集延迟",
-    receipt_missing: "回执待确认",
-    binding_present: "绑定已记录",
-    unknown: "未知状态"
+    pending_admin_review: "Pending review",
+    approved_pending_delivery: "Pending delivery",
+    delivered: "Delivered",
+    rejected: "Rejected",
+    cancelled: "Cancelled",
+    expired: "Expired",
+    revoked: "Revoked",
+    measured: "Collected",
+    measured_zero: "Zero usage",
+    stale: "Collection stale",
+    not_collected: "Not collected",
+    collector_disabled: "Collector disabled",
+    over_limit: "Over limit",
+    near_limit: "Near limit",
+    usage_zero: "Zero usage",
+    usage_stale: "Collection stale",
+    receipt_missing: "Receipt pending",
+    binding_present: "Binding recorded",
+    unknown: "Unknown state"
   };
   return labels[action] ?? action;
 }
 
 function formatDateTime(value: string | null): string {
-  if (value === null) return "未记录";
+  if (value === null) return "Not recorded";
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return "未记录";
+  if (Number.isNaN(parsed.getTime())) return "Not recorded";
   return value.slice(0, 16).replace("T", " ").replaceAll("-", "/");
 }

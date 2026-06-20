@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-06-15, America/Los_Angeles.
+Last updated: 2026-06-16, America/Los_Angeles.
 
 > Status:
 > - Type: Active current-state handoff
@@ -776,8 +776,25 @@ Current architecture priorities:
   should be rebuilt around the provider-neutral CLI-first, public-site/portal
   split, operator provisioning form contract, resource-package handoff, and
   role/permission boundaries instead of polishing the old Overview-heavy Admin
-  information architecture. No Admin code was moved or deleted by the archive
-  decision. See `docs/ADMIN_UI_LEGACY_ARCHIVE.md`.
+  information architecture. The original archive decision did not move or
+  delete Admin code; a later GCC-42 repo-only cleanup removed inactive legacy
+  subscription/overview/nodes/provisioning UI files after the new operator
+  console routes were in place. See `docs/ADMIN_UI_LEGACY_ARCHIVE.md`.
+- New Admin Console Rebuild Baseline: current Admin UI work is a repo-only
+  protected operator-console rebuild, not a commercial template migration and
+  not subscription creation. The first screen should supervise users,
+  resources, orders, quota, usage, channels, cases, and object history while
+  keeping production actions behind separate gates. The dashboard should use
+  the existing business objects directly: platform health, risk cases,
+  user/resource supervision, traffic/channel monitoring, freshness, receipt
+  status, and object timeline evidence. Active navigation remains tied to real
+  pages; audit/work orders, platform development, and system settings may
+  appear only as locked IA slots until their data sources, redaction
+  boundaries, tests, and validation exist. See
+  `docs/ADMIN_CONSOLE_REBUILD_BASELINE.md`,
+  `docs/ADMIN_CONSOLE_CONCEPT_REQUIREMENTS_MATRIX.md`,
+  `docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md`, and
+  `docs/ADMIN_CONSOLE_NAVIGATION_IA.md`.
 - Platform Domain Contract: repository-only platform lead, account,
   entitlement, and subscription-access grant shapes live under
   `server/services/platform/control-plane-contract.mjs`. They provide

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-06-15",
+  "lastUpdated": "2026-06-16",
   "timezone": "America/Los_Angeles",
   "status": "active-snapshot-vultr-japan-control-plane-sgp-data-plane",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
@@ -71,6 +71,9 @@
     "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md",
     "docs/OPERATOR_PROVISIONING_FORM_CONTRACT.md",
     "docs/ADMIN_UI_LEGACY_ARCHIVE.md",
+    "docs/ADMIN_CONSOLE_REBUILD_BASELINE.md",
+    "docs/ADMIN_CONSOLE_CONCEPT_REQUIREMENTS_MATRIX.md",
+    "docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md",
     "docs/RESOURCE_PACKAGE_CLI.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
     "docs/MULTI_ENV_ADAPTER_RUNTIME_MODEL.md",
@@ -274,8 +277,8 @@
     "Remote data-plane future-order coordination is coded in source: delivered orders record safe pending desired-state notifications for remote channels, and subscription rendering still requires a matching applied receipt before exposing those channels. Earlier 2026-06-11 gates found and corrected envfile, placeholder, source-deployment, and protected-material gaps through staged packages and rollback evidence. The 2026-06-14 closeout snapshot records the current Japan runtime baseline as control-plane-node-registration-closeout-20260614-001 and observes SGP agent/runtime service anchors active. Future-order SGP apply/render for new orders still needs a separately approved controlled smoke before broad rollout claims.",
     "Aliyun subscription-distribution records, channel-lab-a/b records, and Japan single-TUIC upgrade records are historical/fallback references. Do not reactivate them as current production authority or automatic issuance targets without a fresh Risk A gate and live verification.",
     "User Portal and Admin/Operator surfaces are adapters over shared domain services. User order creation, lifecycle status, refresh, usage monitor, and support flows must use durable backend state, not frontend Map/demo state.",
-    "Order-owned traffic accounting remains an active implementation lane: Admin usage monitor, User Portal order summaries, Admin user-resource supervision, and Admin traffic/channel supervision now have repo-only UI/code paths for durable rollups, safe quota editing, platform channel health, anomaly queues, and order-ledger views. The Admin surface is positioned around user accounts and their resources, not standalone subscription creation. Live runtime sample collection, quota enforcement, and auto-disable still require separate gates.",
-    "Admin navigation is being formalized as a protected operator console shell: current visible entries stay limited to real pages for overview, user supervision, and platform monitoring; planned slots such as audit/work orders, platform development, and system settings require real data sources, redaction boundaries, tests, and validation before appearing in navigation.",
+    "Order-owned traffic accounting remains an active implementation lane: Admin usage monitor, User Portal order summaries, Admin user-resource supervision, and Admin traffic/channel supervision now have repo-only UI/code paths for durable rollups, safe quota editing, platform channel health, anomaly queues, and order-ledger views. The New Admin surface is positioned around user accounts and their resources, not standalone subscription creation. Live runtime sample collection, quota enforcement, and auto-disable still require separate gates.",
+    "New Admin is being rebuilt as a protected operator console shell: active navigation stays limited to real pages for overview, user supervision, and platform monitoring; the dashboard uses existing business objects directly for platform health, risk cases, user/resource supervision, traffic/channel monitoring, freshness, receipt status, and object timeline evidence; P1 shared primitive work now covers metric cards, status chips, quota meters, page headers, section panels, div-based data tables with loading/error/empty rows, selectable table rows, safe refs, empty states, shared RiskQueue/ObjectChain/ObjectTimeline display primitives, and the first shared CSS token contract for shell/sidebar/topbar/content/panel/workbench/table-row surfaces in the Overview page; P2 Overview concept parity now includes header freshness, bounded metric sparklines, computed case selection, selectable user/resource and traffic/channel rows driving a persistent filtered object timeline, a disabled durable-case-inbox footer, derived traffic/channel status filters, honest request-rate/error-rate table slots that show backend gaps without fake values, top-bar controls for active-route search, computed risk notification routing, read-only environment/operator gate menus, and an English-canonical active Admin content layer guarded by admin-english-copy-contract; the active-page ownership cleanup now keeps Overview preview-only, orders account/resource content as Account Directory -> Resources & Orders -> Quota & Usage -> Lifecycle -> History & Events, and orders Usage & Channels as Collection Freshness -> Channel Coverage -> Usage Ledger -> Collection Anomalies -> Receipts & Collectors; planned slots such as audit/work orders, platform development, and system settings may appear as locked IA slots, but require real data sources, redaction boundaries, tests, and validation before becoming active page navigation.",
     "Legacy query-token retirement remains a separate Risk A lane after opaque artifact coverage, observation, endpoint compatibility checks, rollback evidence, and exact operator approval.",
     "All production/runtime/cloud changes remain Risk A: DNS, Nginx, provider firewall, systemd restarts, runtime config, live order creation, account/password generation, subscription URL/token/password output, and SQLite row dumps stay out of repo-only work."
   ],
@@ -355,7 +358,7 @@
     "opaqueArtifactCanaryActive": false,
     "legacyQueryTokenRouteStillExists": true,
     "broaderArtifactIssuance": "covered-by-current-portal-order-and-artifact-flow-subject-to-live-verification",
-    "trafficAccounting": "usage-ledger-admin-monitor-user-portal-basic-rollup-display-admin-user-resource-quota-edit-and-admin-traffic-channel-supervision-coded; live-collector-activation-and-quota-auto-disable-not-complete"
+    "trafficAccounting": "usage-ledger-admin-monitor-user-portal-basic-rollup-display-admin-user-resource-quota-edit-admin-traffic-channel-supervision-and-admin-ia-section-ownership-coded; live-collector-activation-and-quota-auto-disable-not-complete"
   },
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
@@ -404,13 +407,13 @@
     },
     {
       "id": "order-owned-usage-monitor-closure",
-      "summary": "Admin usage monitor and User Portal order summaries now have a basic durable-rollup display path before runtime samples arrive. Admin user-resource supervision can edit delivered-order trafficLimitBytes with safe audit metadata, and Admin traffic/channel supervision now separates platform channel health, anomaly queues, historical curves, and order-ledger views. The management surface is oriented around user accounts, access resources, usage, and anomalies rather than standalone subscription creation. Live runtime sample ingestion, quota enforcement, and auto-disable remain separate gated work.",
+      "summary": "Admin usage monitor and User Portal order summaries now have a basic durable-rollup display path before runtime samples arrive. Admin user-resource supervision can edit delivered-order trafficLimitBytes with safe audit metadata, and Admin traffic/channel supervision now separates platform channel health, usage-ledger filters, historical curves, anomaly queues, receipts/collectors, and order-ledger views. The New Admin management surface is oriented around user accounts, access resources, usage, and anomalies rather than standalone subscription creation. Live runtime sample ingestion, quota enforcement, and auto-disable remain separate gated work.",
       "sourceDoc": "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md"
     },
     {
       "id": "admin-console-navigation-ia",
-      "summary": "Admin is being treated as a sustainable operator console shell rather than fixed reports or a subscription-creation tool. The current visible navigation remains limited to real pages, while audit/work orders, platform development, and system settings are planned IA slots gated by durable facts, safe redaction boundaries, tests, and validation.",
-      "sourceDoc": "docs/ADMIN_CONSOLE_NAVIGATION_IA.md"
+      "summary": "New Admin is being treated as a sustainable operator console shell rather than fixed reports or a subscription-creation tool. The concept image is now parsed into a card-by-card requirements matrix, and the component/function blueprint maps every page, shared primitive, feature, data contract, backend gap, phase, and Chrome/Computer/Browser/Product Design QA responsibility. P1 shared primitive work covers Overview metric cards, status chips, quota meters, page headers, section panels, div-based data tables with loading/error/empty rows, selectable table rows, safe refs, empty states, shared RiskQueue/ObjectChain/ObjectTimeline display primitives, and the first shared CSS token contract for shell/sidebar/topbar/content/panel/workbench/table-row surfaces. P2 Overview concept parity now includes exact refresh copy, bounded metric sparklines, computed case selection, selectable user/resource and traffic/channel rows that drive the object timeline, a disabled durable-case-inbox footer, derived traffic/channel status filters, honest request-rate/error-rate table slots without fake values, a real platform-monitor route link, top-bar controls for active-route search, computed risk notification routing, read-only environment/operator gate menus, and an English-canonical active Admin content layer guarded by admin-english-copy-contract; active-page section ownership is now enforced by targeted Admin tests across Overview, Accounts & Resources, and Usage & Channels; active navigation remains limited to real pages, while locked IA slots require durable facts, safe redaction boundaries, tests, and validation before promotion.",
+      "sourceDoc": "docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md"
     },
     {
       "id": "legacy-query-token-retirement",
@@ -433,7 +436,7 @@
     "Finish repo-only state/docs archive alignment, then run npm run project-state:check and git diff --check.",
     "Package any local adapter/template changes into an explicit Vultr runtime release only after current repo validation is clean.",
     "Use the protected remote handoff queue/API for future reviewed SGP handoff summaries, then use a separate Risk A gate for any future production remote apply.",
-    "Continue the Admin UI lane through docs/ADMIN_CONSOLE_NAVIGATION_IA.md: keep only real pages visible, gate future audit/work-order, platform-development, and system-settings entries on data sources, redaction boundaries, tests, and validation, then connect live runtime samples and any production collector activation only through separate approval.",
+    "Continue the New Admin UI lane through docs/ADMIN_CONSOLE_REBUILD_BASELINE.md, docs/ADMIN_CONSOLE_CONCEPT_REQUIREMENTS_MATRIX.md, docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md, and docs/ADMIN_CONSOLE_NAVIGATION_IA.md: implement concept parity card by card, extract shared primitives before duplicating page-local UI, keep only real pages active, organize the first screen around existing business objects for platform health, risk cases, user/resource supervision, traffic/channel monitoring, freshness, receipt status, and object timeline evidence, show future audit/work-order, platform-development, and system-settings slots only as locked entries until their data sources, redaction boundaries, tests, and validation exist, then connect live runtime samples and any production collector activation only through separate approval.",
     "Keep legacy query-token retirement separate from multichannel rollout; do not combine route removal with artifact issuance or runtime changes.",
     "Do not mutate DNS, Nginx, provider firewall, runtime service state, account/passwords, payment, live orders, subscription URLs/tokens/passwords, or SQLite rows without exact approval."
   ],

@@ -1,0 +1,836 @@
+@media (max-width: 860px) {
+  :root {
+    --admin-appbar-bottom: 8px;
+    --admin-canvas-gutter: 16px;
+  }
+
+  .admin-shell {
+    display: block;
+  }
+
+  .app-sidebar {
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    transform: none;
+    padding: var(--admin-appbar-padding);
+    border-radius: 18px;
+  }
+
+  .nav-list {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .nav-primary-list {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+  }
+
+  .brand-name,
+  .brand-subtitle,
+  .nav-item-copy,
+  .nav-planned-summary > span:first-of-type,
+  .sidebar-safety-summary strong {
+    display: none;
+  }
+
+  .brand {
+    padding-right: 0;
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .nav-item {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .nav-item-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .nav-planned-summary,
+  .sidebar-safety-summary {
+    width: 42px;
+    padding: 0;
+    justify-content: center;
+    place-items: center;
+  }
+
+  .nav-planned-list {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: var(--admin-library-bottom);
+    width: auto;
+    max-height: calc(100dvh - 96px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    transform: none;
+  }
+
+  .nav-library-grid,
+  .nav-library-grid-modules {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .nav-library-utility-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nav-library-connection .connection-widget-popover {
+    position: static;
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  .nav-planned-item {
+    min-height: 68px;
+    padding: 8px 6px;
+    font-size: 10px;
+  }
+
+  .nav-planned-item svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .nav-planned-count {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+  }
+
+  .top-bar {
+    align-items: center;
+    flex-direction: row;
+    min-width: 0;
+  }
+
+  .top-bar-heading {
+    flex: 1 1 auto;
+  }
+
+  .top-bar-description {
+    max-width: 48vw;
+  }
+
+  .top-bar-actions {
+    align-items: center;
+    flex-direction: row;
+    justify-content: flex-end;
+    min-width: 0;
+    width: auto;
+  }
+
+  .top-search-shell {
+    width: 42px;
+    flex: 0 0 42px;
+  }
+
+  .top-search-shell-expanded {
+    width: min(420px, 52vw);
+    flex: 1 1 min(420px, 52vw);
+    max-width: 420px;
+  }
+
+  .connection-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .connection-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .connection-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .connection-actions .primary-button,
+  .connection-actions .ghost-button {
+    width: 100%;
+  }
+
+  .connection-widget,
+  .connection-widget-summary {
+    width: 100%;
+  }
+
+  .connection-widget-summary {
+    justify-content: space-between;
+  }
+
+  .connection-widget-popover {
+    position: static;
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  .dashboard-hero {
+    flex-direction: column;
+  }
+
+  .dashboard-health {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .page-header-status-stack {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .page-header-status-stack .data-source-badge {
+    max-width: none;
+    width: 100%;
+  }
+
+  .ops-metric-grid,
+  .dashboard-mini-metrics,
+  .dashboard-mini-metrics-compact {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-split {
+    grid-template-columns: 1fr;
+  }
+
+  .donut-chart {
+    justify-self: center;
+  }
+
+  .sparkline-axis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 620px) {
+  .top-bar {
+    padding: 8px var(--admin-canvas-gutter-mobile);
+  }
+
+  .top-bar-heading {
+    gap: 0;
+  }
+
+  .top-bar-heading .top-bar-context,
+  .top-bar-description {
+    display: none;
+  }
+
+  .top-bar-page-title {
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .top-bar-actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    width: auto;
+  }
+
+  .operator-account-summary {
+    min-height: 38px;
+    padding: 3px 9px 3px 4px;
+  }
+
+  .operator-account-avatar {
+    width: 30px;
+    height: 30px;
+  }
+
+  .operator-account-copy small {
+    display: none;
+  }
+
+  .operator-account-popover {
+    min-width: min(260px, calc(100vw - 24px));
+  }
+
+  .nav-library-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .nav-library-search {
+    min-height: 38px;
+  }
+
+  .nav-library-utility-grid,
+  .nav-library-grid,
+  .nav-library-grid-modules {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nav-library-utility {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nav-library-utility small {
+    display: none;
+  }
+
+  .top-search-shell {
+    width: 38px;
+    flex: 0 0 38px;
+    min-width: 38px;
+  }
+
+  .top-search-shell .search-box {
+    min-height: 38px;
+    padding: 0 10px;
+  }
+
+  .top-search-shell-expanded {
+    width: 100%;
+    flex: 1 0 100%;
+    max-width: none;
+    order: -1;
+  }
+
+  .top-status-strip {
+    gap: 6px;
+    justify-content: flex-end;
+    padding: 3px;
+  }
+
+  .top-status-strip .environment-pill,
+  .top-status-strip .icon-button,
+  .top-status-strip .console-tools-summary {
+    min-height: 38px;
+  }
+
+  .top-status-strip .icon-button,
+  .top-status-strip .console-tools-summary {
+    width: 38px;
+  }
+
+  .top-status-strip .environment-pill {
+    padding: 0 10px;
+  }
+
+  .environment-menu,
+  .top-bar-link,
+  .top-bar .connection-widget,
+  .top-bar .connection-widget-summary {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .operator-menu {
+    min-width: 0;
+    width: auto;
+  }
+
+  .environment-summary {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .top-status-strip .environment-menu,
+  .top-status-strip .environment-summary {
+    width: auto;
+  }
+
+  .top-bar .connection-widget-copy {
+    min-width: 0;
+  }
+
+  .top-bar .connection-widget-copy strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .top-bar-link {
+    justify-content: center;
+    min-height: 38px;
+    min-width: 0;
+    padding: 0 10px;
+    white-space: normal;
+  }
+
+  .nav-item {
+    display: inline-flex;
+    justify-content: center;
+    min-height: 42px;
+    min-width: 0;
+    overflow: hidden;
+    padding: 4px;
+    text-align: center;
+  }
+
+  .nav-item-icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .nav-item-copy {
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  .page-subnav-scroll {
+    display: flex;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+
+  .page-subnav-link {
+    flex: 1 1 156px;
+    min-height: 34px;
+    width: auto;
+  }
+
+  .page-subnav-mode {
+    display: none;
+  }
+
+  .admin-blueprint-module-card-meta {
+    align-items: flex-start;
+    justify-items: start;
+  }
+
+  .admin-blueprint-card-inline-tools {
+    justify-self: start;
+  }
+
+  .nav-library-grid,
+  .nav-library-grid-modules {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usage-timeseries-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 980px) {
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usage-channel-health-grid,
+  .usage-anomaly-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-blueprint-module-grid,
+  .admin-blueprint-module-contract,
+  .admin-blueprint-module-card,
+  .admin-blueprint-next-step,
+  .workbench-container-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-blueprint-module-card-large,
+  .admin-blueprint-module-card-medium,
+  .admin-blueprint-module-card-small {
+    grid-column: auto;
+  }
+
+  .admin-blueprint-module-card-head,
+  .admin-blueprint-card-fields,
+  .admin-blueprint-module-card > .admin-blueprint-actions,
+  .admin-blueprint-module-card > .admin-blueprint-module-notes {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .admin-blueprint-module-card-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .admin-blueprint-module-title,
+  .admin-blueprint-module-card-meta {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .admin-blueprint-module-card > .admin-blueprint-actions {
+    justify-content: flex-start;
+  }
+
+  .case-workbench-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-metric-grid,
+  .new-console-workbench,
+  .overview-next-actions-grid,
+  .dashboard-grid-primary,
+  .dashboard-grid-secondary {
+    grid-template-columns: 1fr;
+  }
+
+  .new-console-workbench > .case-detail-panel,
+  .new-console-workbench-slot-channel,
+  .new-console-channel-panel {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .new-console-channel-table .new-console-row {
+    grid-template-columns: minmax(0, 1.1fr) minmax(88px, 0.7fr) minmax(88px, 0.7fr);
+  }
+
+  .monitor-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usage-anomaly-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .install-config-hero,
+  .install-config-grid,
+  .install-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .json-deployment-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-hero,
+  .company-site-band,
+  .company-site-capabilities,
+  .company-site-effect-layout,
+  .company-site-direction-list {
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-hero {
+    min-height: auto;
+  }
+
+  .company-site-visual {
+    min-height: 420px;
+  }
+
+  .company-site-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .company-site-contact {
+    align-items: flex-start;
+    grid-template-columns: 1fr;
+  }
+
+  .portal-use-shell,
+  .portal-dashboard-grid,
+  .portal-link-list,
+  .portal-download-grid,
+  .portal-form-grid,
+  .portal-guide-grid,
+  .portal-state-grid,
+  .portal-support-grid,
+  .portal-profile-module-grid,
+  .portal-profile-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-order-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portal-order-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-support-success {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .portal-support-success .portal-primary-button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+
+  .portal-security-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-security-status,
+  .portal-security-action {
+    justify-self: stretch;
+  }
+
+  .portal-primary-button.compact {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .portal-use-shell {
+    padding: 16px;
+  }
+
+  .portal-use-sidebar {
+    position: static;
+    height: auto;
+  }
+
+  .portal-use-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 981px) {
+  .portal-use-main {
+    padding-right: 8px;
+  }
+}
+
+@media (max-width: 520px) {
+  .admin-content {
+    padding: 16px;
+  }
+
+  .new-console-row-head {
+    display: none;
+  }
+
+  .usage-channel-health-grid,
+  .usage-anomaly-summary-grid,
+  .usage-anomaly-row,
+  .new-console-row,
+  .new-console-channel-table .new-console-row {
+    grid-template-columns: 1fr;
+  }
+
+  .case-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .case-reason {
+    grid-column: 2;
+  }
+
+  .case-section-heading,
+  .case-detail-heading {
+    flex-direction: column;
+  }
+
+  .usage-card-header {
+    flex-direction: column;
+  }
+
+  .company-site-header,
+  .company-site-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .company-site-header {
+    position: static;
+  }
+
+  .company-site-primary,
+  .company-site-secondary {
+    width: 100%;
+  }
+
+  .company-site-nav {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .company-site-nav a {
+    padding-left: 0;
+  }
+
+  .company-site-hero {
+    padding-top: 34px;
+  }
+
+  .company-site-visual {
+    min-height: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 18px;
+  }
+
+  .company-site-visual::before,
+  .company-site-visual::after,
+  .site-orbit {
+    display: none;
+  }
+
+  .site-signal-card {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    padding: 14px;
+  }
+
+  .site-signal-card-main {
+    top: auto;
+    left: auto;
+  }
+
+  .site-signal-card-sub {
+    top: auto;
+    right: auto;
+  }
+
+  .site-signal-card-edge {
+    bottom: auto;
+    left: auto;
+  }
+
+  .site-terminal-card {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    padding: 14px;
+  }
+
+  .company-site-band,
+  .company-site-contact,
+  .company-site-product-effect {
+    padding: 24px;
+  }
+
+  .company-site-scenario-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .site-effect-flow {
+    min-height: auto;
+  }
+
+  .company-site-contact-form {
+    padding: 18px;
+  }
+
+  .company-site-contact-form .company-site-primary {
+    width: 100%;
+  }
+
+  .company-site-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-heading {
+    flex-direction: column;
+  }
+
+  .page-heading .primary-button {
+    width: 100%;
+  }
+
+  .install-config-hero {
+    padding: 20px;
+  }
+
+  .portal-auth-card {
+    padding: 24px 22px;
+  }
+
+  .portal-use-topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portal-use-nav,
+  .portal-quick-grid,
+  .portal-form-grid,
+  .portal-plan-row,
+  .portal-authenticator-setup,
+  .portal-profile-list div {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-authenticator-qr {
+    width: min(208px, 100%);
+    height: auto;
+    aspect-ratio: 1;
+  }
+
+  .portal-contact-summary,
+  .portal-modal-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portal-contact-summary button,
+  .portal-modal-actions button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .company-site-shell::before,
+  .company-site-shell::after,
+  .company-site-primary,
+  .company-site-primary svg,
+  .company-site-section,
+  .company-site-band,
+  .company-site-contact,
+  .company-site-product-effect,
+  .company-site-visual,
+  .company-site-card,
+  .company-site-scenario-card,
+  .company-site-direction,
+  .nav-item,
+  .top-search-option,
+  .primary-button,
+  .ghost-button,
+  .icon-button,
+  .case-row,
+  .new-console-row,
+  .site-effect-flow,
+  .site-orbit,
+  .site-signal-card,
+  .site-terminal-card {
+    animation: none;
+    transition: none;
+  }
+
+  .company-site-primary:hover,
+  .company-site-shell[data-active-section="top"] .company-site-visual,
+  .company-site-shell[data-active-section="api-proof"] .site-effect-flow,
+  .company-site-shell[data-active-section="scenarios"] .site-effect-flow,
+  .company-site-shell[data-active-section="capabilities"] .company-site-section,
+  .company-site-shell[data-active-section="scenarios"] .company-site-product-effect,
+  .company-site-shell[data-active-section="api-proof"] .company-site-product-effect,
+  .company-site-shell[data-active-section="delivery"] .company-site-band,
+  .company-site-shell[data-active-section="contact"] .company-site-contact,
+  .company-site-card:hover,
+  .company-site-scenario-card:hover,
+  .company-site-direction:hover,
+  .site-terminal-card:hover,
+  .site-signal-card:hover {
+    box-shadow: none;
+    transform: none;
+  }
+}

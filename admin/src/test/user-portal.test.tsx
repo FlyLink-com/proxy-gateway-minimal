@@ -323,10 +323,10 @@ describe("user portal route", () => {
   test("opens a separate customer portal without Admin navigation", async () => {
     render(createElement(App));
 
-    expect(screen.getByRole("heading", { name: "连接管理员 API" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Connect Admin API" })).not.toBeNull();
     expect(screen.queryByLabelText("Admin navigation")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "打开用户面板" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open user portal" }));
 
     expect(await screen.findByRole("heading", { name: "账号登录" })).not.toBeNull();
     expect(screen.getByText("使用账户密码登录。可在个人中心开启身份验证器和通行密钥。")).not.toBeNull();
@@ -1001,6 +1001,7 @@ describe("user portal product surface", () => {
 
     expect(await screen.findByText("已绑定")).not.toBeNull();
 
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
     fireEvent.click(screen.getByRole("button", { name: "导出通行密钥" }));
 
     await waitFor(() => {

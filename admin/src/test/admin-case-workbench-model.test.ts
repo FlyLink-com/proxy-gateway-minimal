@@ -45,10 +45,10 @@ describe("admin case workbench model", () => {
     expect(cases.map((item) => item.reasonCode)).toEqual(["over_limit", "order_pending_delivery"]);
     expect(cases[0]).toMatchObject({
       caseRef: "case_candidate:portal:order_safe_over_limit:over_limit",
-      title: "订单流量已超额",
+      title: "Order traffic over limit",
       objectType: "order",
       objectRef: "order_safe_over_limit",
-      status: "待复核",
+      status: "Pending review",
       severity: "critical",
       gateRequired: true,
       source: "portal_access_requests"
@@ -58,13 +58,13 @@ describe("admin case workbench model", () => {
         relationType: "owns",
         objectType: "account",
         objectRef: "portal_user_safe",
-        label: "用户账号"
+        label: "User account"
       },
       {
         relationType: "about",
         objectType: "order",
         objectRef: "order_safe_over_limit",
-        label: "资源订单"
+        label: "Resource order"
       }
     ]);
     expect(cases[0].timeline.map((event) => event.category)).toContain("usage_collection");
@@ -357,7 +357,7 @@ function caseFixture(caseRef: string, severity: CaseSeverity, updatedAt: string)
     title: caseRef,
     objectType: "order",
     objectRef: caseRef,
-    status: "待复核",
+    status: "Pending review",
     severity,
     reasonCode: "not_collected",
     source: "dashboard_summary",

@@ -5,7 +5,14 @@ import type {
 
 export type CaseSeverity = "critical" | "warning" | "info" | "neutral";
 
-export type CaseStatus = "待复核" | "处理中" | "需门禁" | "已确认" | "误报" | "已关闭" | "待归档";
+export type CaseStatus =
+  | "Pending review"
+  | "In progress"
+  | "Gate required"
+  | "Confirmed"
+  | "False positive"
+  | "Closed"
+  | "Pending archive";
 
 export type CaseReasonCode =
   | "over_limit"

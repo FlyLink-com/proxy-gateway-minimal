@@ -1,8 +1,16 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "../App";
-import { consoleSections, navItems, navSections, pageContexts, pageTitles } from "../app/navigation";
+import {
+  consoleSections,
+  navItems,
+  navSections,
+  pageContexts,
+  pageSubNavigation,
+  pageTitles,
+  pageWorkbenchContracts
+} from "../app/navigation";
 import { saveAdminSession } from "../features/subscriptions/admin-session";
 
 afterEach(() => {
@@ -19,53 +27,155 @@ describe("admin navigation", () => {
 
     expect(navPageIds).toEqual(activePages);
     expect(Object.keys(pageTitles)).toEqual(activePages);
-    expect(navSections.map((section) => section.label)).toEqual(["总览", "用户监管", "平台监控"]);
+    expect(navSections.map((section) => section.label)).toEqual(["Overview", "User Operations", "Platform Monitoring"]);
     expect(navSections.map((section) => section.description)).toEqual([
-      "平台健康与风险",
-      "账号、资源与额度",
-      "用量采集与通道"
+      "Platform health and risk",
+      "Accounts, resources, and quotas",
+      "Usage collection and channels"
     ]);
     expect(navSections.map((section) => section.items.map((item) => item.label))).toEqual([
-      ["运营总览"],
-      ["账号与资源"],
-      ["流量与通道"]
+      ["Operations Overview"],
+      ["Accounts & Resources"],
+      ["Usage & Channels"]
     ]);
-    expect(pageTitles.dashboard).toBe("运营总览");
-    expect(pageTitles.portalRequests).toBe("账号与资源");
-    expect(pageTitles.usageMonitor).toBe("流量与通道");
+    expect(pageTitles.dashboard).toBe("Operations Overview");
+    expect(pageTitles.portalRequests).toBe("Accounts & Resources");
+    expect(pageTitles.usageMonitor).toBe("Usage & Channels");
     expect(pageContexts.dashboard).toEqual({
-      eyebrow: "总览",
-      description: "平台健康、风险摘要和近期活动"
+      eyebrow: "Overview",
+      description: "Platform health, risk summary, and recent activity"
     });
     expect(pageContexts.portalRequests).toEqual({
-      eyebrow: "用户监管",
-      description: "账号、资源、订单和流量额度"
+      eyebrow: "User Operations",
+      description: "Accounts, resources, orders, and traffic quotas"
     });
     expect(pageContexts.usageMonitor).toEqual({
-      eyebrow: "平台监控",
-      description: "用量采集、通道健康和异常订阅"
+      eyebrow: "Platform Monitoring",
+      description: "Collection trust, channel health, and data anomalies"
     });
   });
 
-  test("reserves future console sections without rendering empty navigation groups", () => {
+  test("reserves future console sections without promoting them to active pages", () => {
     const activeSections = consoleSections.filter((section) => section.status === "active");
     const plannedSections = consoleSections.filter((section) => section.status === "planned");
 
     expect(consoleSections.map((section) => section.label)).toEqual([
-      "总览",
-      "用户监管",
-      "平台监控",
-      "审计与工单",
-      "平台开发",
-      "系统设置"
+      "Overview",
+      "User Operations",
+      "Platform Monitoring",
+      "Audit & Cases",
+      "Platform Development",
+      "System Settings"
     ]);
     expect(activeSections.map((section) => section.id)).toEqual(navSections.map((section) => section.id));
-    expect(plannedSections.map((section) => section.label)).toEqual(["审计与工单", "平台开发", "系统设置"]);
+    expect(plannedSections.map((section) => section.label)).toEqual(["Audit & Cases", "Platform Development", "System Settings"]);
     expect(plannedSections.map((section) => section.items)).toEqual([[], [], []]);
-    expect(navSections.map((section) => section.label)).not.toContain("审计与工单");
-    expect(navSections.map((section) => section.label)).not.toContain("平台开发");
-    expect(navSections.map((section) => section.label)).not.toContain("系统设置");
-    expect(navItems.map((item) => item.label)).toEqual(["运营总览", "账号与资源", "流量与通道"]);
+    expect(navSections.map((section) => section.label)).not.toContain("Audit & Cases");
+    expect(navSections.map((section) => section.label)).not.toContain("Platform Development");
+    expect(navSections.map((section) => section.label)).not.toContain("System Settings");
+    expect(navItems.map((item) => item.label)).toEqual(["Operations Overview", "Accounts & Resources", "Usage & Channels"]);
+  });
+
+  test("defines page-local subnavigation from the Admin domain dictionary", () => {
+    expect(Object.keys(pageSubNavigation)).toEqual(["dashboard", "portalRequests", "usageMonitor"]);
+    expect(pageSubNavigation.dashboard.map((item) => item.label)).toEqual([
+      "Health Summary",
+      "Risk Queue",
+      "Next Actions"
+    ]);
+    expect(pageSubNavigation.portalRequests.map((item) => item.label)).toEqual([
+      "Account Directory",
+      "Resources & Orders",
+      "Quota & Usage",
+      "Lifecycle",
+      "History & Events"
+    ]);
+    expect(pageSubNavigation.usageMonitor.map((item) => item.label)).toEqual([
+      "Collection Freshness",
+      "Channel Coverage",
+      "Usage Ledger",
+      "Collection Anomalies",
+      "Receipts & Collectors"
+    ]);
+    expect(pageSubNavigation.dashboard.every((item) => item.mode === "preview")).toBe(true);
+    expect(pageSubNavigation.portalRequests.every((item) => item.owner === "User Operations")).toBe(true);
+    expect(pageSubNavigation.usageMonitor.every((item) => item.owner === "Platform Monitoring")).toBe(true);
+    expect(pageSubNavigation.portalRequests.find((item) => item.id === "quota-usage")?.description)
+      .toContain("quota risk");
+    expect(pageSubNavigation.portalRequests.find((item) => item.id === "lifecycle")?.description)
+      .toContain("order pause");
+    expect(pageSubNavigation.usageMonitor.find((item) => item.id === "collection-anomalies")?.description)
+      .toMatch(/collection delay/i);
+    expect(pageSubNavigation.usageMonitor.map((item) => item.description).join(" "))
+      .not.toMatch(/subscription lifecycle|order pause|archive candidate|quota ownership/i);
+  });
+
+  test("defines page contracts for front-end ownership and decision boundaries", () => {
+    expect(Object.keys(pageWorkbenchContracts)).toEqual(["dashboard", "portalRequests", "usageMonitor"]);
+
+    expect(pageWorkbenchContracts.dashboard.role).toBe("overview");
+    expect(pageWorkbenchContracts.dashboard.primaryQuestion).toBe("What needs attention, and where should the operator go next?");
+    expect(pageWorkbenchContracts.dashboard.ownsDecisions).toEqual(["next_review_target"]);
+    expect(pageWorkbenchContracts.dashboard.previewOnly).toEqual(expect.arrayContaining([
+      "account_lifecycle",
+      "quota_policy",
+      "usage_collection_trust",
+      "collection_anomalies"
+    ]));
+    expect(pageWorkbenchContracts.dashboard.forbiddenDecisions).toEqual(expect.arrayContaining([
+      "account_create_disable",
+      "order_pause_archive",
+      "runtime_apply"
+    ]));
+
+    expect(pageWorkbenchContracts.portalRequests.role).toBe("decision-owner");
+    expect(pageWorkbenchContracts.portalRequests.ownsDecisions).toEqual(expect.arrayContaining([
+      "account_create_disable",
+      "account_lifecycle",
+      "resource_order_lifecycle",
+      "subscription_artifact_lifecycle",
+      "quota_policy",
+      "order_pause_archive"
+    ]));
+    expect(pageWorkbenchContracts.portalRequests.evidenceOnly).toEqual(expect.arrayContaining([
+      "usage_collection_trust",
+      "channel_coverage",
+      "receipt_coverage",
+      "collection_anomalies"
+    ]));
+    expect(pageWorkbenchContracts.portalRequests.forbiddenDecisions).toEqual(expect.arrayContaining([
+      "runtime_apply",
+      "platform_tooling"
+    ]));
+
+    expect(pageWorkbenchContracts.usageMonitor.role).toBe("evidence-owner");
+    expect(pageWorkbenchContracts.usageMonitor.ownsDecisions).toEqual(expect.arrayContaining([
+      "usage_collection_trust",
+      "channel_coverage",
+      "receipt_coverage",
+      "collection_anomalies"
+    ]));
+    expect(pageWorkbenchContracts.usageMonitor.evidenceOnly).toEqual(expect.arrayContaining([
+      "account_lifecycle",
+      "resource_order_lifecycle",
+      "quota_policy"
+    ]));
+    expect(pageWorkbenchContracts.usageMonitor.forbiddenDecisions).toEqual(expect.arrayContaining([
+      "account_create_disable",
+      "order_pause_archive",
+      "subscription_artifact_lifecycle",
+      "runtime_apply"
+    ]));
+
+    expect(pageWorkbenchContracts.dashboard.sectionIds).toEqual(
+      pageSubNavigation.dashboard.map((item) => item.id)
+    );
+    expect(pageWorkbenchContracts.portalRequests.sectionIds).toEqual(
+      pageSubNavigation.portalRequests.map((item) => item.id)
+    );
+    expect(pageWorkbenchContracts.usageMonitor.sectionIds).toEqual(
+      pageSubNavigation.usageMonitor.map((item) => item.id)
+    );
   });
 
   test("gates the admin shell behind API configuration before rendering business pages", () => {
@@ -74,11 +184,11 @@ describe("admin navigation", () => {
 
     render(createElement(App));
 
-    expect(screen.getByRole("heading", { name: "连接管理员 API" })).not.toBeNull();
-    expect(screen.getByText("运营与平台控制台")).not.toBeNull();
-    expect(screen.getByText("保存控制台令牌后才能进入总览、用户监管和平台监控。")).not.toBeNull();
-    expect(screen.queryByRole("heading", { name: "运营总览" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "运营总览" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Connect Admin API" })).not.toBeNull();
+    expect(screen.getByText("Operator Console")).not.toBeNull();
+    expect(screen.getByText("Save a console token before opening Overview, User Operations, or Platform Monitoring.")).not.toBeNull();
+    expect(screen.queryByRole("heading", { name: "Operations Overview" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Operations Overview" })).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
   });
 
@@ -91,14 +201,55 @@ describe("admin navigation", () => {
 
     render(createElement(App));
 
-    expect(await screen.findByRole("heading", { name: "运营总览" })).not.toBeNull();
-    expect(screen.getByText("平台健康与风险")).not.toBeNull();
-    expect(screen.getByText("账号、资源与额度")).not.toBeNull();
-    expect(screen.getByText("用量采集与通道")).not.toBeNull();
-    expect(screen.getByText("运营与平台控制台")).not.toBeNull();
-    expect(screen.getByText("平台健康、风险摘要和近期活动")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "运营总览" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByLabelText("Admin API connection settings")).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
+    expect(screen.queryByLabelText("Admin navigation")).toBeNull();
+    const workspaceAppbar = screen.getByLabelText("Workspace appbar");
+    expect(within(workspaceAppbar).getByLabelText("Pinned workspace apps")).not.toBeNull();
+    expect(within(workspaceAppbar).getByRole("button", { name: "Operations Overview" })).not.toBeNull();
+    expect(within(workspaceAppbar).getByRole("button", { name: "Accounts & Resources" })).not.toBeNull();
+    expect(within(workspaceAppbar).getByRole("button", { name: "Usage & Channels" })).not.toBeNull();
+    expect(within(workspaceAppbar).getByLabelText("Open app library").closest("details")?.hasAttribute("open")).toBe(false);
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
+    const appLibraryMenu = within(workspaceAppbar).getByLabelText("Open app library").closest("details");
+    expect(appLibraryMenu?.hasAttribute("open")).toBe(true);
+    const appLibrarySearch = within(workspaceAppbar).getByLabelText("Search app library");
+    expect(appLibrarySearch).not.toBeNull();
+    await waitFor(() => expect(document.activeElement).toBe(appLibrarySearch));
+    fireEvent.change(appLibrarySearch, { target: { value: "quota" } });
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(appLibraryMenu?.hasAttribute("open")).toBe(false);
+    expect((appLibrarySearch as HTMLInputElement).value).toBe("");
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
+    await waitFor(() => expect(appLibraryMenu?.hasAttribute("open")).toBe(true));
+    await waitFor(() => expect(document.activeElement).toBe(appLibrarySearch));
+    fireEvent.change(appLibrarySearch, { target: { value: "admin api" } });
+    fireEvent.pointerDown(document.body);
+    await waitFor(() => expect(appLibraryMenu?.hasAttribute("open")).toBe(false));
+    expect((appLibrarySearch as HTMLInputElement).value).toBe("");
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
+    expect(appLibraryMenu?.hasAttribute("open")).toBe(true);
+    expect(within(workspaceAppbar).getByLabelText("Console settings")).not.toBeNull();
+    expect(within(workspaceAppbar).getByLabelText("Admin API connection settings")).not.toBeNull();
+    expect(within(workspaceAppbar).getByRole("button", { name: "Preview site Public shell" })).not.toBeNull();
+    expect(within(workspaceAppbar).getByRole("button", { name: "Open user portal User view" })).not.toBeNull();
+    expect(within(workspaceAppbar).getByLabelText("Plugins")).not.toBeNull();
+    expect(within(workspaceAppbar).getByRole("button", { name: /Health Summary/ })).not.toBeNull();
+    expect(within(workspaceAppbar).getByRole("button", { name: /Quota & Usage/ })).not.toBeNull();
+    expect(within(workspaceAppbar).getByRole("button", { name: /Usage Ledger/ })).not.toBeNull();
+    expect(within(workspaceAppbar).getByLabelText("Audit & Cases planned")).not.toBeNull();
+    expect(within(workspaceAppbar).getByLabelText("Platform Development planned")).not.toBeNull();
+    expect(within(workspaceAppbar).getByLabelText("System Settings planned")).not.toBeNull();
+    expect(within(workspaceAppbar).getByText("Risk A gated").closest("details")?.hasAttribute("open")).toBe(false);
+    expect(workspaceAppbar.textContent).not.toContain("Platform health and risk");
+    expect(workspaceAppbar.textContent).not.toContain("Accounts, resources, and quotas");
+    expect(workspaceAppbar.textContent).not.toContain("Usage collection and channels");
+    expect(workspaceAppbar.textContent).not.toContain("Waiting for the GCC-55 durable Case/history backend contract.");
+    expect(screen.getByText("Proxy Gateway")).not.toBeNull();
+    expect(screen.queryByText("Platform health, risk summary, and recent activity")).toBeNull();
+    expect(screen.getByRole("button", { name: "Operations Overview" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("button", { name: "Audit & Cases" })).toBeNull();
+    expect(screen.getByLabelText("Operator account")).not.toBeNull();
+    expect(screen.queryByLabelText("Console status bar")).toBeNull();
     expect(document.querySelector(".admin-content")?.textContent).not.toContain("Admin API connection");
   });
 
@@ -107,36 +258,32 @@ describe("admin navigation", () => {
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
     });
-    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes("/api/admin/platform/subscription-usage-monitor")) {
-        return jsonResponse({ monitor: usageMonitorResponse() });
-      }
-      if (url.includes("/api/admin/overview")) {
-        return jsonResponse(overviewResponse());
-      }
-      if (url.includes("/api/admin/platform/portal-access-requests")) {
-        return jsonResponse({ items: [] });
-      }
-      if (url.includes("/api/admin/subscriptions")) {
-        return jsonResponse({ items: [] });
-      }
-      return jsonResponse({}, 404);
-    });
+    const fetcher = vi.fn(async () => jsonResponse({}));
     vi.stubGlobal("fetch", fetcher);
 
     render(createElement(App));
 
-    fireEvent.click(screen.getByRole("button", { name: "流量与通道" }));
+    fireEvent.click(screen.getByRole("button", { name: "Usage & Channels" }));
 
-    expect(await screen.findByRole("heading", { name: "流量与通道" })).not.toBeNull();
-    expect(screen.getByText("用量采集、通道健康和异常订阅")).not.toBeNull();
-    await waitFor(() => {
-      expect(fetcher).toHaveBeenCalledWith(
-        expect.stringContaining("/api/admin/platform/subscription-usage-monitor"),
-        expect.any(Object)
-      );
-    });
+    expect(await screen.findByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
+    expect(screen.queryByText("Collection trust, channel health, and data anomalies")).toBeNull();
+    expect(screen.queryByLabelText("Usage & Channels page navigation")).toBeNull();
+    expect(screen.queryByLabelText("Usage & Channels card controls")).toBeNull();
+    expect(screen.getByRole("button", { name: "Collection Freshness plugin settings" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Channel Coverage plugin settings" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Usage Ledger plugin settings" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Collection Anomalies plugin settings" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Receipts & Collectors plugin settings" })).not.toBeNull();
+    expect(screen.getByLabelText("Usage & Channels module layout").textContent).not.toContain("Generated time, delay threshold");
+    fireEvent.click(screen.getByRole("button", { name: "Collection Freshness plugin settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Collection Freshness Hide plugin" }));
+    expect(screen.queryByRole("heading", { name: "Collection Freshness" })).toBeNull();
+    const usageWorkspaceAppbar = screen.getByLabelText("Workspace appbar");
+    fireEvent.click(within(usageWorkspaceAppbar).getByLabelText("Open app library"));
+    fireEvent.click(within(usageWorkspaceAppbar).getByRole("button", { name: /Collection Freshness/ }));
+    expect(screen.getByRole("heading", { name: "Collection Freshness" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
+    expect(fetcher).not.toHaveBeenCalled();
   });
 
   test("keeps retired engineering tools out of the main navigation", async () => {
@@ -148,12 +295,117 @@ describe("admin navigation", () => {
 
     render(createElement(App));
 
-    expect(await screen.findByRole("heading", { name: "运营总览" })).not.toBeNull();
-    const navigation = screen.getByLabelText("Admin navigation");
-    expect(navigation.textContent).toContain("用户监管");
-    expect(navigation.textContent).toContain("平台监控");
-    expect(navigation.textContent).not.toMatch(/Overview|Provisioning|Subscriptions|Nodes/);
-    expect(screen.queryByRole("button", { name: /Overview|Provisioning|Subscriptions|Nodes/ })).toBeNull();
+    expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
+    const workspaceAppbar = screen.getByLabelText("Workspace appbar");
+    expect(workspaceAppbar.textContent).toContain("Accounts & Resources");
+    expect(workspaceAppbar.textContent).toContain("Usage & Channels");
+    expect(workspaceAppbar.textContent).not.toMatch(/Provisioning|Subscriptions|Nodes/);
+    expect(screen.queryByRole("button", { name: /Provisioning|Subscriptions|Nodes/ })).toBeNull();
+  });
+
+  test("renders user supervision subnavigation before account resource sections", async () => {
+    saveAdminSession({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "admin_console_ref"
+    });
+    const fetcher = vi.fn(async () => jsonResponse({}));
+    vi.stubGlobal("fetch", fetcher);
+
+    render(createElement(App));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Accounts & Resources" }));
+
+    expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
+    expect(screen.queryByLabelText("Accounts & Resources page navigation")).toBeNull();
+    expect(screen.queryByLabelText("Accounts & Resources card controls")).toBeNull();
+    expect(screen.getByRole("button", { name: "Account Directory plugin settings" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Resources & Orders plugin settings" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Quota & Usage plugin settings" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Lifecycle plugin settings" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "History & Events plugin settings" })).not.toBeNull();
+    expect(screen.getByLabelText("Accounts & Resources module layout").textContent).not.toContain("Safe account refs");
+    expect(screen.getByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  test("uses app library search as a command palette for pages, cards, and settings", async () => {
+    saveAdminSession({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "admin_console_ref"
+    });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input))));
+
+    render(createElement(App));
+
+    expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
+    const workspaceAppbar = screen.getByLabelText("Workspace appbar");
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
+    const librarySearch = within(workspaceAppbar).getByLabelText("Search app library");
+    fireEvent.change(librarySearch, { target: { value: "channel" } });
+
+    const workspacePages = within(workspaceAppbar).getByLabelText("Workspace pages");
+    const cardApps = within(workspaceAppbar).getByLabelText("Plugins");
+    expect(within(workspacePages).getByText("Usage & Channels")).not.toBeNull();
+    expect(cardApps.textContent).toContain("Channel Coverage");
+    expect(cardApps.textContent).toContain("Usage Ledger");
+    expect(within(workspaceAppbar).queryByText("Risk notifications")).toBeNull();
+    expect(within(workspaceAppbar).getByLabelText(/app library results/)).not.toBeNull();
+
+    fireEvent.change(librarySearch, { target: { value: "admin api" } });
+    expect(within(workspaceAppbar).getByLabelText("Console settings").textContent).toContain("Admin API");
+    expect(within(workspaceAppbar).queryByText("Risk notifications")).toBeNull();
+    expect(within(workspaceAppbar).queryByText("Usage Ledger")).toBeNull();
+
+    fireEvent.change(librarySearch, { target: { value: "channel" } });
+
+    fireEvent.click(within(workspacePages).getByRole("button", { name: /Usage & Channels/ }));
+
+    expect(await screen.findByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
+    expect((within(workspaceAppbar).getByLabelText("Search app library") as HTMLInputElement).value).toBe("");
+    expect(screen.getByRole("button", { name: "Usage & Channels" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  test("routes the risk notification badge back to the operations dashboard", async () => {
+    saveAdminSession({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "admin_console_ref"
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({})));
+
+    render(createElement(App));
+
+    expect(await screen.findByLabelText("Operator account")).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Usage & Channels" }));
+    expect(await screen.findByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
+
+    const workspaceAppbar = screen.getByLabelText("Workspace appbar");
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
+    fireEvent.click(within(workspaceAppbar).getByRole("button", { name: "Risk notifications 0" }));
+
+    expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Operations Overview" }).getAttribute("aria-current")).toBe("page");
+  });
+
+  test("opens read-only environment from app library and account menu from the top bar", async () => {
+    saveAdminSession({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "admin_console_ref"
+    });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input))));
+
+    render(createElement(App));
+
+    expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
+    const workspaceAppbar = screen.getByLabelText("Workspace appbar");
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Open app library"));
+    fireEvent.click(within(workspaceAppbar).getByLabelText("Environment status"));
+    expect(screen.getByText("Production read-only supervision")).not.toBeNull();
+    expect(screen.getByText(/Production actions require a Risk A gate/)).not.toBeNull();
+
+    fireEvent.click(screen.getByLabelText("Operator account"));
+    expect(screen.getAllByText("operator").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Production supervision only.")).not.toBeNull();
+    expect(screen.getByText("Runtime changes require a Risk A gate.")).not.toBeNull();
   });
 });
 

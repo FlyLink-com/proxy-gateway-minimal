@@ -1,0 +1,45 @@
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--admin-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.install-config-standalone {
+  min-height: 100vh;
+  padding: 40px;
+  background:
+    radial-gradient(circle at top left, rgba(20, 184, 166, 0.12), transparent 34rem),
+    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+.install-config-standalone .page-stack {
+  max-width: 1180px;
+  margin: 0 auto;
+}

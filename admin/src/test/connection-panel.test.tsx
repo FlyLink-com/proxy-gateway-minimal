@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ConnectionHealthResult } from "../features/subscriptions/connection-health";
+import { createDefaultAdminSession } from "../features/subscriptions/admin-session";
 import { ConnectionPanel } from "../features/subscriptions/connection-panel";
 
 function deferredConnectionHealth() {
@@ -19,6 +20,38 @@ afterEach(() => {
 });
 
 describe("connection panel", () => {
+  test("uses local development defaults for the Admin API session", () => {
+    expect(createDefaultAdminSession({
+      DEV: true,
+      MODE: "development",
+      VITE_ADMIN_CONSOLE_TOKEN: "console-secret"
+    })).toEqual({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "console-secret"
+    });
+  });
+
+  test("does not carry a local development console token into test or production modes", () => {
+    expect(createDefaultAdminSession({
+      DEV: true,
+      MODE: "test",
+      VITE_ADMIN_API_BASE_URL: "http://127.0.0.1:3456",
+      VITE_ADMIN_CONSOLE_TOKEN: "console-secret"
+    })).toEqual({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: ""
+    });
+    expect(createDefaultAdminSession({
+      DEV: false,
+      MODE: "production",
+      VITE_ADMIN_API_BASE_URL: "https://admin.example.test",
+      VITE_ADMIN_CONSOLE_TOKEN: "console-secret"
+    })).toEqual({
+      baseUrl: "https://admin.example.test",
+      consoleToken: ""
+    });
+  });
+
   test("check button renders a successful diagnostic without saving the session", async () => {
     const onSave = vi.fn();
     const checkConnection = vi.fn(async () => ({
