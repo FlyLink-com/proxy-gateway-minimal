@@ -1,6 +1,6 @@
 # Admin Console UI Prompt Traceability
 
-Last updated: 2026-06-16, America/Los_Angeles.
+Last updated: 2026-06-20, Asia/Shanghai.
 
 > Status:
 > - Risk: C for this prompt traceability document; follow-up Admin UI code work
@@ -8,8 +8,8 @@ Last updated: 2026-06-16, America/Los_Angeles.
 > - Production impact: None.
 > - Execution authority: Does not authorize production, AWS, Vultr, DNS,
 >   Nginx, systemd, DB, runtime, auth model, schema/migration, token,
->   credential, subscription URL, raw config/log/env, SQLite row, or
->   customer-data actions.
+>   credential, subscription URL, raw config/log/env, raw log, audit export,
+>   SQLite row, or customer-data actions.
 
 This document fixes the missing layer between design requirements and code:
 the prompt relationship model. The Admin console should not be prompted as a
@@ -26,6 +26,7 @@ concept image
   -> concept requirements matrix
   -> domain dictionary
   -> navigation IA
+  -> relationship draft
   -> this prompt traceability map
   -> frontend page structure blueprint
   -> component/function blueprint or page spec
@@ -43,6 +44,7 @@ cards, mixed page responsibilities, and long-scroll pages reappear.
 | Project prompt | Defines Admin as a protected operator console, not User Portal, not subscription creation, and not production execution. | `docs/ADMIN_CONSOLE_REBUILD_BASELINE.md` | Product boundary and visual direction. |
 | Object prompt | Defines account, order, quota, usage, channel, receipt, case, history, setting, and platform tool terms. | `docs/ADMIN_CONSOLE_DOMAIN_DICTIONARY.md` | State language and object ownership. |
 | Navigation prompt | Decides which page owns each operator decision. | `docs/ADMIN_CONSOLE_NAVIGATION_IA.md` and `admin/src/app/navigation.ts` | Active top-level pages and locked slots. |
+| Relationship prompt | Maps expanded Admin needs into current, next, contract, and deferred waves. | `docs/ADMIN_CONSOLE_RELATIONSHIP_DRAFT.md` | Figma handoff scope and task sequencing. |
 | Page prompt | Defines one page's primary question, allowed decisions, evidence-only facts, and forbidden decisions. | `pageWorkbenchContracts` in `admin/src/app/navigation.ts` | Page-local section list. |
 | Structure prompt | Freezes page hierarchy, module ownership, locked-page gates, and implementation mapping before code work. | `docs/ADMIN_CONSOLE_FRONTEND_STRUCTURE_BLUEPRINT.md` | Page structure graph and module graph. |
 | Section prompt | Defines one task-focused panel or sub-navigation section. | This document plus frontend structure blueprint and component blueprint. | One operator question, one owner, one data boundary. |
@@ -51,6 +53,23 @@ cards, mixed page responsibilities, and long-scroll pages reappear.
 | Data prompt | Defines real safe sources, gaps, redaction, and no-fake-data rules. | Backend summaries, page selectors, data contract map. | View model and backend follow-up if needed. |
 
 ## Current Active Page Prompts
+
+## Current Figma Handoff Boundary
+
+The GCC-103 Figma/Admin UI handoff is not a request to design every future page
+at production depth. Use this scope for the current handoff:
+
+| Frame group | Must include | Must not include |
+| --- | --- | --- |
+| Shell and navigation | Active three pages, locked ordinary slots, top bar controls, protected-console safety line, App Library/search states. | Search results or hidden launchers for Key Management, Audit Center, or Log Access for non-super-admin users. |
+| `Operations Overview` | Health Summary, Risk Queue, Next Actions, inspection summary as compact signal. | Full account/order ledger, raw audit trail, raw logs, key metadata, production action buttons. |
+| `Accounts & Resources` | Account/user supervision, order count, active order count, per-user traffic, resources/orders, quota and lifecycle states, safe artifact refs. | Raw subscription URL, token, private key, credential, billing/payment expansion, runtime mutation controls. |
+| `Usage & Channels` | Collection Freshness, Channel Coverage, Usage Ledger, Collection Anomalies, Receipts & Collectors; next-wave placeholders for route latency, agent status, and inspection summaries. | Raw logs, raw config, collector activation, quota decision ownership. |
+| Future / privileged map | Clear callouts that System Settings/About/Key/Audit/Log are later waves with entry gates. | Clickable empty route pages or disabled placeholders that imply current availability. |
+
+If the design needs to show super-admin Key/Audit/Log, it must be a separate
+variant labelled future/deferred and must show MFA, reason, TTL, and no raw
+secret/log fixture data. It is not part of the normal-operator frame set.
 
 ### Operations Overview
 

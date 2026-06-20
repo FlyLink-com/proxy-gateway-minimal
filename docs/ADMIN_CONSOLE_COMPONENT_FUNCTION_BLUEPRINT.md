@@ -1,6 +1,6 @@
 # Admin Console Component And Function Blueprint
 
-Last updated: 2026-06-17, America/Los_Angeles.
+Last updated: 2026-06-20, Asia/Shanghai.
 
 > Status:
 > - Product Design brief: locked from the current concept image, existing
@@ -10,8 +10,8 @@ Last updated: 2026-06-17, America/Los_Angeles.
 > - Production impact: None.
 > - Execution authority: Does not authorize production, AWS, Vultr, DNS,
 >   Nginx, systemd, DB, runtime, auth model, schema/migration, token,
->   credential, subscription URL, raw config/log/env, SQLite row, or
->   customer-data actions.
+>   credential, subscription URL, raw config/log/env, raw log, audit export,
+>   SQLite row, or customer-data actions.
 
 This document is the execution blueprint for the New Admin console design. It
 connects the concept image, page requirements, component inventory, future
@@ -45,6 +45,10 @@ The design draft is built in layers:
    only when a component needs facts that do not exist.
 5. **Action layer:** visual review and dry-run context first; production
    mutation remains a separate Risk A gate.
+
+The 2026-06-20 GCC-109/GCC-103 update narrows the current execution wave to
+relationship-doc closeout and Figma/UI handoff. The blueprint may describe
+future components, but they are not all current delivery scope.
 
 ## Visual Style Baseline
 
@@ -118,6 +122,19 @@ separate self-service surface and is not part of this Admin copy contract.
 | `Audit & Cases` | Locked | case, audit event, object history, work order | Track long-running investigations and decisions. | Locked slot only. | Durable case/history store, notes, assignment, close/reopen, work-order packet generation. |
 | `Platform Development` | Locked | node, channel candidate, strategy tool, dry-run packet | Support future platform development and safe tools. | Locked slot only. | Channel strategy, node onboarding readiness, collector lab, API diagnostics, dry-run utilities. |
 | `System Settings` | Locked | operator setting, environment profile, permission, refresh policy | Configure private console behavior. | Locked slot only. | Admin connection settings, environment labels, refresh intervals, permissions, safety policy. |
+
+## Current Relationship Handoff
+
+Use this table to keep the Figma/Admin UI handoff reviewable without turning the
+whole roadmap into one implementation batch.
+
+| Wave | Component/design focus | Current output |
+| --- | --- | --- |
+| Current: GCC-109 / GCC-103 | Operations Overview, Accounts & Resources, Usage & Channels, shell states, locked slots, and the relationship map for future pages. | Docs/Figma handoff only; no new React route or backend contract implied. |
+| Next: GCC-110 | Capability-gated registration for routes, App Library entries, search, command results, notifications, and frontend data hooks. | Tests must prove non-super-admin absence before privileged UI work. |
+| Next: GCC-111 | Platform Monitoring details: route latency, agent status, inspection summaries, channel health, and receipt freshness. | Design and fixture UI after the current handoff is reviewable. |
+| Contract: GCC-101 / GCC-112 | DTO fields, redaction, retention, MFA, and forbidden response behavior. | Backend design first; implementation risk rises if auth/schema/retention changes start. |
+| Deferred: GCC-113 / GCC-114 | Super-admin Key/Audit/Log fixtures; User Management and Order Management top-level split decision. | Backlog until dependencies are settled. |
 
 ## Front-End Page Logic
 
@@ -250,6 +267,12 @@ sections. It does not introduce new routes or backend contracts.
 | Review workflow | Assign, note, close, reopen, false-positive. | Authorization + audit trail. | UI actions only after backend contract. |
 | Work-order bridge | Turn a case into dry-run plan or approval packet. | Explicit non-execution boundary. | Risk A packets are prepared, not executed. |
 
+Normal risk/case summaries and super-admin Audit Center are separate surfaces.
+Normal operators may see risk candidates, stale inspection summaries, channel
+receipt blockers, and owner-page routing. They must not see audit rows, raw
+history, raw logs, or key access records unless the privileged registration and
+backend contracts explicitly allow that role.
+
 ## Platform Development Components
 
 | Component/section | Function | Entry gate | Later implementation |
@@ -300,15 +323,23 @@ Rules:
 | Order usage | Usage metadata on portal summaries and usage monitor rows. | Live runtime sample activation. | Risk A for runtime collector activation. |
 | Traffic limit edit | Safe traffic limit update API for delivered requests. | Durable quota audit history. | B for audit summary; A if enforcement mutates production. |
 | Channel health | Usage monitor rows, issued channels, bindings. | First-class channel rollup, req/s, error rate. | B for summary endpoint. |
+| Route latency | No first-class Admin summary yet. | Route pair, p50/p95/p99, sample count, stale state. | B for summary endpoint; A if runtime measurement changes are required. |
+| Agent status | Receipts/collectors show safe derived facts. | Agent heartbeat, version, desired-state pull, receipt push, collector state. | B for read-only summary; A if data-plane behavior changes. |
+| Inspection summaries | Computed review candidates may imply failures. | Latest inspection run, failed checks, duration, next run, owner object. | B for read-only summary; A if production inspection scheduling changes. |
 | Cases | Computed candidates. | Durable case/history store. | B/A depending on schema/migration and production use. |
 | Object timeline | Computed safe events. | Durable object event taxonomy and storage. | B/A depending on migration. |
 | Settings | Local Admin session and static safety copy. | Operator profile, permissions, persisted preferences. | B for local/private settings; A if auth model changes. |
+| About/build info | Build metadata exists in project context but not as an Admin DTO. | Frontend/backend version, build id, created/build time, development phase, changelog, compatibility. | B if API summary changes; C if docs/design only. |
+| Key metadata | No active Admin route. | Key inventory metadata only: keyRef, type, scope, owner, expiry, rotation state, last-used/audit summary. | C/A contract first; no raw values. |
+| Audit summary | Computed risks are not durable audit. | Durable audit categories, counts, permission changes, key/log access summaries. | A if schema/auth/retention changes start. |
+| Ephemeral log view | No active Admin route. | One-time redacted log view session with reason, fresh MFA, TTL, burn state, durable audit summary. | A if runtime log access or retention changes start. |
 
 ## Implementation Phases
 
 | Phase | Scope | Output | Validation |
 | --- | --- | --- | --- |
 | P0 Design blueprint | This component/function blueprint and docs index wiring. | `docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md`. | `git diff --check origin/master...HEAD`; `npm run project-state:check` if state updated. |
+| P0.5 Current relationship handoff | GCC-109/GCC-103 relationship model and Figma handoff scope. | Relationship draft, IA/structure/app-map updates, current wave design handoff. | `git diff --check`; Linear notes only. |
 | P1 Shared primitives | Extract shell, cards, chips, meters, tables, queues, empty states. | Reusable React components and CSS tokens. | `npm run admin:test`, `npm run admin:build`, Browser/Chrome QA. |
 | P2 Overview parity | Match the concept first screen against the Figma spec. | Desktop-first overview plus responsive fallback. | Concept screenshot vs implementation screenshot ledger. |
 | P3 User supervision | Make account/resource/order/quota separation complete. | `Accounts & Resources` master/detail workbench. | Admin tests plus safe-summary server tests if API changes. |

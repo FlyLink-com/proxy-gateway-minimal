@@ -1,6 +1,6 @@
 # Admin Console Navigation IA
 
-Last updated: 2026-06-16, America/Los_Angeles.
+Last updated: 2026-06-20, Asia/Shanghai.
 
 > Status:
 > - Linear: GCC-57 under GCC-50
@@ -8,7 +8,8 @@ Last updated: 2026-06-16, America/Los_Angeles.
 > - Production impact: None
 > - Execution authority: Does not authorize production, AWS, Vultr, DNS,
 >   Nginx, systemd, DB, runtime, auth model, schema/migration, token,
->   credential, subscription URL, or customer-data actions
+>   credential, subscription URL, raw config/log/env, raw log, audit export,
+>   SQLite row, or customer-data actions
 
 This document defines the Admin console navigation model after GCC-57. Admin is
 not a subscription creation surface and is not the user self-service portal. It
@@ -27,6 +28,13 @@ into sub-navigation, use `docs/ADMIN_CONSOLE_DOMAIN_DICTIONARY.md`. The
 dictionary is the source of truth for deciding whether a card belongs to
 `Overview`, `User Operations`, `Platform Monitoring`, `Audit & Cases`,
 `Platform Development`, or `System Settings`.
+
+For the expanded relationship model discussed in GCC-109/GCC-103, use
+`docs/ADMIN_CONSOLE_RELATIONSHIP_DRAFT.md`. That document records future
+User Management, Order Management, Key Management, Audit Center, Log Access,
+About, route-latency, agent-status, and inspection-summary needs. This IA
+document decides which of those needs may enter active navigation in the
+current wave.
 
 ## Decision
 
@@ -68,6 +76,25 @@ boundaries:
 
 The visible shell subtitle remains `Proxy Gateway`. Page labels carry the
 operator-console responsibility split.
+
+## Current Wave Boundary
+
+The current GCC-109/GCC-103 wave keeps the active top-level navigation sparse.
+The expanded relationship model is valid for design and sequencing, but it does
+not promote every relationship surface into the active React route map.
+
+| Relationship surface | Current navigation decision | Follow-up owner |
+| --- | --- | --- |
+| `Operations Overview` | Active page. | Current handoff. |
+| Platform monitoring dashboards, route latency, agent status, inspection summaries | Stay inside `Usage & Channels` / Platform Monitoring until GCC-111 is worked. | `GCC-111` after current handoff. |
+| User Management | Stay inside `Accounts & Resources` as account/user supervision. | `GCC-114` decides later split. |
+| Order Management | Stay inside `Accounts & Resources` as resources/orders/lifecycle supervision. | `GCC-114` decides later split. |
+| Account & Permissions | Stay as scoped permissions/settings content until capability and backend contracts exist. | `GCC-79`, `GCC-110`, backend contract work. |
+| System Settings | Planned/locked until a private settings boundary exists. | Later settings work. |
+| About | Planned safe system-info surface; no route is created in this wave. | Later low-risk UI slice after build/version DTO is defined. |
+| Key Management | Not registered for non-super-admin users; not active in this wave. | `GCC-113` after `GCC-79`, `GCC-110`, `GCC-112`. |
+| Audit Center | Not registered for non-super-admin users; separate from normal risk/case summaries. | `GCC-113` / durable audit contract. |
+| Log Access | Not registered for non-super-admin users; no raw log route or search source. | `GCC-113` / `GCC-112`. |
 
 ## Sub-Navigation Model
 
@@ -124,6 +151,22 @@ until their entry gate is met:
 | `Platform Development` | Channel experiments, node onboarding, strategy tools, platform extension utilities. | Real platform tooling with object model, data source, safe boundary, tests, and validation. |
 | `System Settings` | Private operator settings and local console configuration. | Private access boundary, explicit non-goals, validation, and no public Admin exposure. |
 
+## Privileged Registration Rule
+
+Privileged pages are different from ordinary locked slots. For non-super-admin
+operators, Key Management, Audit Center, and Log Access must not be registered
+at all:
+
+- no sidebar or planned-app entry;
+- no hidden route;
+- no App Library launcher;
+- no global-search or command-palette result;
+- no notification deep link;
+- no frontend API call for key, audit, or raw/ephemeral log data.
+
+Super-admin visibility still is not backend authority. Privileged detail views
+must be backed by backend permission checks and, when sensitive, fresh MFA.
+
 ## Entry Gate
 
 Every new top-level Admin entry must define:
@@ -144,11 +187,12 @@ Every new top-level Admin entry must define:
 
 | Phase | Linear issue | Navigation effect |
 | --- | --- | --- |
-| Phase 1 | GCC-57 | Define console shell IA; keep only three real pages active and render planned work areas as locked slots if shown. |
-| Phase 2 | GCC-55 | Promote durable cases/history into `Audit & Cases -> Case Inbox` after backend facts exist. |
-| Phase 3 | GCC-58 / GCC-59 | Expand user/resource/account lifecycle supervision and controlled action design. |
-| Phase 4 | GCC-61 | Add platform extension entry only after real tools and automated case strategy exist. |
-| Phase 5 | GCC-60 | Keep overage/expiry pause/archive as a separate A-tier production gate; UI work does not authorize execution. |
+| Current wave | GCC-109 / GCC-103 | Close the relationship model into IA/docs and Figma handoff. Keep active navigation to real pages only. |
+| Next wave | GCC-110 / GCC-111 | Add capability-gated registration and richer Platform Monitoring dashboards after current handoff review. |
+| Backend contract | GCC-101 / GCC-112 | Define DTO, redaction, retention, and privilege contracts before live integration. |
+| Phase 3 decision | GCC-114 | Decide whether User Management and Order Management split from `Accounts & Resources`. |
+| Deferred privileged UI | GCC-113 | Add super-admin-only Key/Audit/Log fixture surfaces only after capability and backend contracts settle. |
+| Older durable case lane | GCC-55 | Promote durable cases/history into `Audit & Cases -> Case Inbox` after backend facts exist. |
 
 ## User Portal Boundary
 

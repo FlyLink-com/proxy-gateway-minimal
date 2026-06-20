@@ -1,6 +1,6 @@
 # Admin Console App Map
 
-Last updated: 2026-06-18, America/Los_Angeles.
+Last updated: 2026-06-20, Asia/Shanghai.
 
 > Status:
 > - Linear: GCC-74 under GCC-81 / GCC-42
@@ -9,8 +9,8 @@ Last updated: 2026-06-18, America/Los_Angeles.
 > - Production impact: None.
 > - Execution authority: Does not authorize production, AWS, Vultr, DNS,
 >   Nginx, systemd, DB, runtime, auth model, schema/migration, token,
->   credential, subscription URL, raw config/log/env, SQLite row, or
->   customer-data actions.
+>   credential, subscription URL, raw config/log/env, raw log, audit export,
+>   SQLite row, or customer-data actions.
 
 The Admin console is a browser desktop. A page is a workspace app, and each
 page module is a plugin app. The App Library is the restore/search surface for
@@ -40,6 +40,12 @@ Every app entry must have:
 Search entries may use only `label`, aliases, safe descriptions, app category,
 owner area, capabilities, route target, and `catalog.searchableFields`.
 Forbidden fields remain excluded from search and UI output.
+
+The 2026-06-20 relationship update adds one stricter rule: privileged apps are
+not ordinary locked search results. Key Management, Audit Center, and Log
+Access must be absent from non-super-admin manifests, search documents, command
+results, notifications, App Library entries, hidden DOM, and frontend data-fetch
+registration.
 
 ## Grafana-First Console Mapping
 
@@ -77,6 +83,10 @@ The document must never include secrets, tokens, credentials, subscription
 URLs, auth headers, passwords, raw environment/config/log/runtime values,
 SQLite rows, raw subscription material, customer-private data, full API
 responses, or error stacks.
+
+Search documents are generated from registered apps only. If a role does not
+receive a privileged app registration, that app also contributes no aliases,
+safe descriptions, notifications, command results, or route hints.
 
 Frontend visibility only controls App Library display. Backend API permission
 remains the authority for every data fetch, drilldown, mutation, or future app
@@ -137,9 +147,29 @@ actions.
 | `planned.audit-workflow` | Locked until durable case/history facts exist. |
 | `planned.platform-development` | Locked until safe platform tools and object models exist. |
 | `planned.system-settings` | Locked until private settings and permission boundaries exist. |
+| `planned.about` | Locked until safe build/version/changelog fields are defined. |
+| `privileged.key-management` | Super-admin only; detail requires fresh MFA and backend metadata contract. |
+| `privileged.audit-center` | Super-admin only; durable audit contract required before detail. |
+| `privileged.log-access` | Super-admin only; ephemeral redacted log view session, reason code, fresh MFA, TTL, and durable audit summary required. |
 
-Planned apps may be searchable as locked launchers, but they cannot execute
-runtime, production, auth, schema, DB, or credential actions.
+Non-privileged planned apps may be searchable as locked launchers, but they
+cannot execute runtime, production, auth, schema, DB, or credential actions.
+Privileged apps are not searchable locked launchers for non-super-admin users;
+they are omitted from the generated manifest entirely.
+
+## Relationship Queue Mapping
+
+The expanded relationship draft is the sequencing source, while this map remains
+the App Library registration source.
+
+| Relationship surface | App-map treatment | Linear owner |
+| --- | --- | --- |
+| User Management | Current `accounts-resources` workspace modules. | `GCC-114` decides future split. |
+| Order Management | Current `accounts-resources` workspace modules. | `GCC-114` decides future split. |
+| Route Latency / Agent Status / Inspection Runs | Future `usage-channels` plugin expansion. | `GCC-111`. |
+| Account & Permissions | Future scoped settings/permission plugin. | `GCC-79`, `GCC-110`. |
+| About | Future safe system-info planned app. | Later low-risk UI slice. |
+| Key Management / Audit Center / Log Access | Privileged registration only; absent for non-super-admin. | `GCC-113` after `GCC-79`, `GCC-110`, `GCC-112`. |
 
 ## Implementation Rules
 

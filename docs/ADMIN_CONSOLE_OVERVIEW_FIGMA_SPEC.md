@@ -1,6 +1,6 @@
 # Admin Console Overview Figma Spec
 
-Last updated: 2026-06-16, America/Los_Angeles.
+Last updated: 2026-06-20, Asia/Shanghai.
 
 > Status:
 > - Source Figma file:
@@ -23,6 +23,13 @@ keeps Overview focused on summary and routing: `Health Summary`, `Risk Queue`,
 and `Next Actions`. The old concept regions for account/resource rows, object
 timeline, and channel ledger are source material for owner pages, not
 Overview-owned content.
+
+The source concept image and early Figma notes contain Chinese planning copy.
+For the current GCC-103 handoff, React-visible UI labels remain English
+canonical unless an explicit locale adapter and tests are added. Figma frames
+may keep Chinese annotations for planning, but implementation labels, route
+names, test anchors, and copy handoff should map to the existing English Admin
+contract.
 
 ## Design Intent
 
