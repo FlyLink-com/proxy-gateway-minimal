@@ -13,7 +13,7 @@ export function AppSidebar({ activePage, onNavigate }: AppSidebarProps) {
         <div className="brand-mark">GC</div>
         <div>
           <div className="brand-name">GlobalCircle AI</div>
-          <div className="brand-subtitle">运营管理控制台</div>
+          <div className="brand-subtitle">运营与平台控制台</div>
         </div>
       </div>
 

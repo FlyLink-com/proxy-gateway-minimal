@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { createElement } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "../App";
-import { navItems, navSections, pageContexts, pageTitles } from "../app/navigation";
+import { consoleSections, navItems, navSections, pageContexts, pageTitles } from "../app/navigation";
 import { saveAdminSession } from "../features/subscriptions/admin-session";
 
 afterEach(() => {
@@ -47,6 +47,27 @@ describe("admin navigation", () => {
     });
   });
 
+  test("reserves future console sections without rendering empty navigation groups", () => {
+    const activeSections = consoleSections.filter((section) => section.status === "active");
+    const plannedSections = consoleSections.filter((section) => section.status === "planned");
+
+    expect(consoleSections.map((section) => section.label)).toEqual([
+      "总览",
+      "用户监管",
+      "平台监控",
+      "审计与工单",
+      "平台开发",
+      "系统设置"
+    ]);
+    expect(activeSections.map((section) => section.id)).toEqual(navSections.map((section) => section.id));
+    expect(plannedSections.map((section) => section.label)).toEqual(["审计与工单", "平台开发", "系统设置"]);
+    expect(plannedSections.map((section) => section.items)).toEqual([[], [], []]);
+    expect(navSections.map((section) => section.label)).not.toContain("审计与工单");
+    expect(navSections.map((section) => section.label)).not.toContain("平台开发");
+    expect(navSections.map((section) => section.label)).not.toContain("系统设置");
+    expect(navItems.map((item) => item.label)).toEqual(["运营总览", "账号与资源", "流量与通道"]);
+  });
+
   test("gates the admin shell behind API configuration before rendering business pages", () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input)));
     vi.stubGlobal("fetch", fetcher);
@@ -54,6 +75,7 @@ describe("admin navigation", () => {
     render(createElement(App));
 
     expect(screen.getByRole("heading", { name: "连接管理员 API" })).not.toBeNull();
+    expect(screen.getByText("运营与平台控制台")).not.toBeNull();
     expect(screen.getByText("保存控制台令牌后才能进入总览、用户监管和平台监控。")).not.toBeNull();
     expect(screen.queryByRole("heading", { name: "运营总览" })).toBeNull();
     expect(screen.queryByRole("button", { name: "运营总览" })).toBeNull();
@@ -73,6 +95,7 @@ describe("admin navigation", () => {
     expect(screen.getByText("平台健康与风险")).not.toBeNull();
     expect(screen.getByText("账号、资源与额度")).not.toBeNull();
     expect(screen.getByText("用量采集与通道")).not.toBeNull();
+    expect(screen.getByText("运营与平台控制台")).not.toBeNull();
     expect(screen.getByText("平台健康、风险摘要和近期活动")).not.toBeNull();
     expect(screen.getByRole("button", { name: "运营总览" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByLabelText("Admin API connection settings")).not.toBeNull();

@@ -17,7 +17,7 @@ export function AdminSetupPage({
           <div className="brand-mark">GC</div>
           <div>
             <strong>GlobalCircle AI</strong>
-            <span>运营管理控制台</span>
+            <span>运营与平台控制台</span>
           </div>
         </div>
 
