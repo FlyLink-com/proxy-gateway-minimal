@@ -258,6 +258,80 @@ test("admin route lists and previews portal access requests behind console auth"
   }
 });
 
+test("admin route updates portal access request traffic limits without returning subscription material", async () => {
+  const calls = [];
+  const portalAccessRequests = {
+    updateTrafficLimit(requestRef, input) {
+      calls.push({ requestRef, input });
+      return {
+        ok: true,
+        type: "portal_access_request_traffic_limit_update",
+        request: {
+          id: requestRef,
+          type: "portal_access_request_summary",
+          status: "delivered",
+          usage: {
+            usedBytes: 700,
+            totalBytes: 2048,
+            status: "within_limit"
+          },
+          safety: {
+            noSubscriptionUrl: true,
+            noRawCustomerData: true,
+            noRawHandoffMaterial: true,
+            noRuntimeMutation: true,
+            noProductionMutation: true
+          }
+        },
+        quota: {
+          previousTrafficLimitBytes: 1000,
+          trafficLimitBytes: 2048,
+          updatedAt: "2026-06-15T00:01:00.000Z"
+        },
+        audit: {
+          action: "traffic_limit_updated",
+          recordedAt: "2026-06-15T00:01:00.000Z"
+        },
+        safety: {
+          noSubscriptionUrl: true,
+          noRawCustomerData: true,
+          noRawHandoffMaterial: true,
+          noRuntimeMutation: true,
+          noProductionMutation: true
+        }
+      };
+    }
+  };
+  const { server, baseUrl } = await listen(createApp(fakeState({ portalAccessRequests })));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/portal-access-requests/pareq_route_1/traffic-limit`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        trafficLimitBytes: 2048,
+        reviewedByRef: "operator_safe_ref",
+        reasonCode: "plan_change"
+      })
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+
+    assert.deepEqual(calls, [{
+      requestRef: "pareq_route_1",
+      input: {
+        trafficLimitBytes: 2048,
+        reviewedByRef: "operator_safe_ref",
+        reasonCode: "plan_change"
+      }
+    }]);
+    assert.equal(body.quotaUpdate.quota.trafficLimitBytes, 2048);
+    assert.equal(body.quotaUpdate.audit.action, "traffic_limit_updated");
+    assert.doesNotMatch(JSON.stringify(body), /https?:|token=|password|edgecred|channel-vultr/i);
+  } finally {
+    server.close();
+  }
+});
+
 test("enabled portal route refreshes and disables a delivered order lifecycle", async () => {
   const { portalAccessRequests, calls } = lifecycleRequestService();
   const { server, baseUrl } = await listen(createApp(fakeState({

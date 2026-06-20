@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { executeSubscriptionIssuance } from "./subscription-issuance.mjs";
 
 const PLANS = {
@@ -6,6 +7,8 @@ const PLANS = {
   yearly: { durationDays: 365, label: "yearly" }
 };
 const CLIENT_TARGETS = new Set(["clash", "karing"]);
+const SAFE_REASON_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:-]{0,79}$/;
+const UNSAFE_REASON_CODE_PATTERN = /https?:|token|secret|credential|password|private|customer|@|\//i;
 
 function platformError(code, message) {
   const error = new Error(message);
@@ -55,6 +58,37 @@ function expiresAtFromDuration(baseIso, durationDays) {
 function limitNumber(value) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.trunc(parsed) : null;
+}
+
+function requireNonNegativeInteger(value, field) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw platformError("validation_error", `${field} must be an integer >= 0`);
+  }
+  return parsed;
+}
+
+function safeReasonCode(value, field) {
+  const normalized = text(value, field);
+  if (!SAFE_REASON_CODE_PATTERN.test(normalized) || UNSAFE_REASON_CODE_PATTERN.test(normalized)) {
+    throw platformError("validation_error", `${field} must be a safe reason code`);
+  }
+  return normalized;
+}
+
+function auditIdForTrafficLimit({ requestRef, reviewedByRef, reasonCode, previousTrafficLimitBytes, trafficLimitBytes, now }) {
+  const digest = createHash("sha256")
+    .update([
+      requestRef,
+      reviewedByRef,
+      reasonCode,
+      String(previousTrafficLimitBytes),
+      String(trafficLimitBytes),
+      now
+    ].join("|"))
+    .digest("hex")
+    .slice(0, 16);
+  return `audit_${digest}`;
 }
 
 function normalizeChannelRefs(value) {
@@ -134,6 +168,42 @@ function edgeCredentialRefsFor(record) {
   return refs;
 }
 
+function issuedChannelRefsFor(record, rollups = []) {
+  const refs = [];
+  const seen = new Set();
+  const pushRef = (value) => {
+    const ref = String(value || "").trim();
+    if (ref && !seen.has(ref)) {
+      seen.add(ref);
+      refs.push(ref);
+    }
+  };
+  const credentialCount = Array.isArray(record.edgeCredentials) ? record.edgeCredentials.length : 0;
+  const hasRollupChannelRefs = rollups.some((rollup) => String(rollup?.channelRef || "").trim());
+  if (credentialCount > 1 || (credentialCount === 1 && !hasRollupChannelRefs)) {
+    for (const credential of record.edgeCredentials) {
+      pushRef(credential?.edgeChannelRef);
+    }
+  } else if (credentialCount === 0 && !hasRollupChannelRefs) {
+    pushRef(record.edgeChannelRef);
+  }
+  for (const rollup of rollups) {
+    pushRef(rollup?.channelRef);
+  }
+  return refs;
+}
+
+function measuredChannelCountFor(rollups) {
+  const channelRefs = new Set();
+  for (const rollup of rollups) {
+    const channelRef = String(rollup?.channelRef || "").trim();
+    if (channelRef) {
+      channelRefs.add(channelRef);
+    }
+  }
+  return channelRefs.size > 0 ? channelRefs.size : rollups.length;
+}
+
 function usageSummaryFor(record, controlStore) {
   if (!controlStore || !record?.id) {
     return null;
@@ -174,6 +244,8 @@ function usageSummaryFor(record, controlStore) {
   const uploadBytes = rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.uploadBytes), 0);
   const downloadBytes = rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.downloadBytes), 0);
   const usedBytes = rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.totalBytes), 0);
+  const measuredChannelCount = measuredChannelCountFor(rollups);
+  const channelCount = Math.max(issuedChannelRefsFor(record, rollups).length, measuredChannelCount);
   const updatedAt = rollups
     .map((rollup) => rollup.updatedAt || rollup.lastObservedAt)
     .filter(Boolean)
@@ -187,11 +259,28 @@ function usageSummaryFor(record, controlStore) {
     totalBytes: trafficLimitBytes,
     usageRatio: usageRatio(usedBytes, trafficLimitBytes),
     status: trafficLimitBytes > 0 && usedBytes >= trafficLimitBytes ? "over_limit" : "within_limit",
+    collectionStatus: usedBytes > 0 || uploadBytes > 0 || downloadBytes > 0 ? "measured" : "measured_zero",
+    channelCount,
+    measuredChannelCount,
     ...(updatedAt ? { updatedAt } : {})
   };
 }
 
-function summaryFor(record, usage = null) {
+function trafficLimitBytesFor(record, controlStore, usage = null) {
+  if (usage) {
+    return nonNegativeInteger(usage.totalBytes);
+  }
+  if (!record?.entitlementRef || !controlStore || typeof controlStore.getEntitlement !== "function") {
+    return null;
+  }
+  const entitlement = controlStore.getEntitlement(record.entitlementRef);
+  if (!entitlement) {
+    return null;
+  }
+  return nonNegativeInteger(entitlement.trafficLimitBytes);
+}
+
+function summaryFor(record, usage = null, trafficLimitBytes = null) {
   const summary = {
     id: record.id,
     type: "portal_access_request_summary",
@@ -211,6 +300,7 @@ function summaryFor(record, usage = null) {
     priorTrialState: record.priorTrialState,
     expiresAt: record.expiresAt,
     validUntil: record.validUntil,
+    ...(trafficLimitBytes === null ? {} : { trafficLimitBytes }),
     entitlementRef: record.entitlementRef,
     accessGrantRef: record.accessGrantRef,
     subscriptionUrl: record.status === "disabled" || !record.subscriptionUrl ? undefined : record.subscriptionUrl,
@@ -383,7 +473,8 @@ export function createPortalAccessRequestService(options = {}) {
   }
 
   function summarize(record) {
-    return summaryFor(record, usageSummaryFor(record, controlStore));
+    const usage = usageSummaryFor(record, controlStore);
+    return summaryFor(record, usage, trafficLimitBytesFor(record, controlStore, usage));
   }
 
   function requireRuntimeMethod(method) {
@@ -761,6 +852,98 @@ export function createPortalAccessRequestService(options = {}) {
         notifyEdgeDesiredState("order_delivered", request);
       }
       return summarize(saveRecord(request));
+    },
+
+    updateTrafficLimit(id, input = {}) {
+      const now = isoNow(nowFn);
+      const request = getRecord(id);
+      if (request.status !== "delivered") {
+        throw platformError("validation_error", "traffic limit can only be edited after delivery");
+      }
+      if (!request.entitlementRef) {
+        throw platformError("validation_error", "order entitlement is not available");
+      }
+      if (
+        !controlStore
+        || typeof controlStore.getEntitlement !== "function"
+        || typeof controlStore.updateEntitlementTrafficLimit !== "function"
+        || typeof controlStore.recordAuditEvent !== "function"
+      ) {
+        throw platformError("validation_error", "traffic limit editing is not configured");
+      }
+
+      const trafficLimitBytes = requireNonNegativeInteger(input.trafficLimitBytes, "trafficLimitBytes");
+      const reviewedByRef = text(input.reviewedByRef || input.actorRef, "reviewedByRef");
+      const reasonCode = safeReasonCode(input.reasonCode, "reasonCode");
+      const currentEntitlement = controlStore.getEntitlement(request.entitlementRef);
+      if (!currentEntitlement) {
+        throw platformError("not_found", "order entitlement not found");
+      }
+      const previousTrafficLimitBytes = requireNonNegativeInteger(
+        currentEntitlement.trafficLimitBytes ?? 0,
+        "previousTrafficLimitBytes"
+      );
+
+      const write = () => {
+        const entitlement = controlStore.updateEntitlementTrafficLimit(request.entitlementRef, {
+          trafficLimitBytes,
+          updatedAt: now
+        });
+        const audit = controlStore.recordAuditEvent({
+          id: auditIdForTrafficLimit({
+            requestRef: request.id,
+            reviewedByRef,
+            reasonCode,
+            previousTrafficLimitBytes,
+            trafficLimitBytes,
+            now
+          }),
+          entityType: "entitlement",
+          entityRef: request.entitlementRef,
+          action: "traffic_limit_updated",
+          actorRef: reviewedByRef,
+          createdAt: now,
+          metadata: {
+            requestRef: request.id,
+            reasonCode,
+            previousTrafficLimitBytes,
+            trafficLimitBytes
+          }
+        });
+        return { entitlement, audit };
+      };
+      const { entitlement, audit } = typeof controlStore.runInTransaction === "function"
+        ? controlStore.runInTransaction(write)
+        : write();
+      const requestSummary = summarize(request);
+      delete requestSummary.subscriptionUrl;
+      requestSummary.safety = {
+        ...requestSummary.safety,
+        noSubscriptionUrl: true
+      };
+
+      return {
+        ok: true,
+        type: "portal_access_request_traffic_limit_update",
+        request: requestSummary,
+        quota: {
+          entitlementRef: "recorded",
+          previousTrafficLimitBytes,
+          trafficLimitBytes: entitlement.trafficLimitBytes,
+          updatedAt: entitlement.updatedAt
+        },
+        audit: {
+          action: audit.action,
+          recordedAt: audit.createdAt
+        },
+        safety: {
+          noSubscriptionUrl: true,
+          noRawCustomerData: true,
+          noRawHandoffMaterial: true,
+          noRuntimeMutation: true,
+          noProductionMutation: true
+        }
+      };
     },
 
     refreshSubscription(input = {}) {

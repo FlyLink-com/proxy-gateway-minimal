@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { createElement } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "../App";
-import { navItems, pageTitles } from "../app/navigation";
+import { navItems, navSections, pageContexts, pageTitles } from "../app/navigation";
 import { saveAdminSession } from "../features/subscriptions/admin-session";
 
 afterEach(() => {
@@ -13,16 +13,38 @@ afterEach(() => {
 });
 
 describe("admin navigation", () => {
-  test("exposes only product-facing admin surfaces", () => {
+  test("groups product-facing admin surfaces by responsibility", () => {
     const activePages = ["dashboard", "portalRequests", "usageMonitor"];
     const navPageIds = navItems.map((item) => item.id);
 
     expect(navPageIds).toEqual(activePages);
     expect(Object.keys(pageTitles)).toEqual(activePages);
-    expect(navItems.map((item) => item.label)).toEqual(["运营总览", "订单管理", "用量监护"]);
+    expect(navSections.map((section) => section.label)).toEqual(["总览", "用户监管", "平台监控"]);
+    expect(navSections.map((section) => section.description)).toEqual([
+      "平台健康与风险",
+      "账号、资源与额度",
+      "用量采集与通道"
+    ]);
+    expect(navSections.map((section) => section.items.map((item) => item.label))).toEqual([
+      ["运营总览"],
+      ["账号与资源"],
+      ["流量与通道"]
+    ]);
     expect(pageTitles.dashboard).toBe("运营总览");
-    expect(pageTitles.portalRequests).toBe("订单管理");
-    expect(pageTitles.usageMonitor).toBe("用量监护");
+    expect(pageTitles.portalRequests).toBe("账号与资源");
+    expect(pageTitles.usageMonitor).toBe("流量与通道");
+    expect(pageContexts.dashboard).toEqual({
+      eyebrow: "总览",
+      description: "平台健康、风险摘要和近期活动"
+    });
+    expect(pageContexts.portalRequests).toEqual({
+      eyebrow: "用户监管",
+      description: "账号、资源、订单和流量额度"
+    });
+    expect(pageContexts.usageMonitor).toEqual({
+      eyebrow: "平台监控",
+      description: "用量采集、通道健康和异常订阅"
+    });
   });
 
   test("gates the admin shell behind API configuration before rendering business pages", () => {
@@ -32,7 +54,7 @@ describe("admin navigation", () => {
     render(createElement(App));
 
     expect(screen.getByRole("heading", { name: "连接管理员 API" })).not.toBeNull();
-    expect(screen.getByText("保存控制台令牌后才能进入运营总览、订单管理和用量监护。")).not.toBeNull();
+    expect(screen.getByText("保存控制台令牌后才能进入总览、用户监管和平台监控。")).not.toBeNull();
     expect(screen.queryByRole("heading", { name: "运营总览" })).toBeNull();
     expect(screen.queryByRole("button", { name: "运营总览" })).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
@@ -48,12 +70,16 @@ describe("admin navigation", () => {
     render(createElement(App));
 
     expect(await screen.findByRole("heading", { name: "运营总览" })).not.toBeNull();
+    expect(screen.getByText("平台健康与风险")).not.toBeNull();
+    expect(screen.getByText("账号、资源与额度")).not.toBeNull();
+    expect(screen.getByText("用量采集与通道")).not.toBeNull();
+    expect(screen.getByText("平台健康、风险摘要和近期活动")).not.toBeNull();
     expect(screen.getByRole("button", { name: "运营总览" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByLabelText("Admin API connection settings")).not.toBeNull();
     expect(document.querySelector(".admin-content")?.textContent).not.toContain("Admin API connection");
   });
 
-  test("routes usage monitor navigation to the activity monitor page", async () => {
+  test("routes platform monitoring navigation to the usage and channel monitor page", async () => {
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
@@ -78,9 +104,10 @@ describe("admin navigation", () => {
 
     render(createElement(App));
 
-    fireEvent.click(screen.getByRole("button", { name: "用量监护" }));
+    fireEvent.click(screen.getByRole("button", { name: "流量与通道" }));
 
-    expect(await screen.findByRole("heading", { name: "用量监护" })).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "流量与通道" })).not.toBeNull();
+    expect(screen.getByText("用量采集、通道健康和异常订阅")).not.toBeNull();
     await waitFor(() => {
       expect(fetcher).toHaveBeenCalledWith(
         expect.stringContaining("/api/admin/platform/subscription-usage-monitor"),
@@ -100,6 +127,8 @@ describe("admin navigation", () => {
 
     expect(await screen.findByRole("heading", { name: "运营总览" })).not.toBeNull();
     const navigation = screen.getByLabelText("Admin navigation");
+    expect(navigation.textContent).toContain("用户监管");
+    expect(navigation.textContent).toContain("平台监控");
     expect(navigation.textContent).not.toMatch(/Overview|Provisioning|Subscriptions|Nodes/);
     expect(screen.queryByRole("button", { name: /Overview|Provisioning|Subscriptions|Nodes/ })).toBeNull();
   });

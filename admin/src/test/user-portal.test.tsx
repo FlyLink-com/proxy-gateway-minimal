@@ -1644,6 +1644,9 @@ describe("user portal product surface", () => {
         totalBytes: 10737418240,
         usageRatio: 0.15,
         status: "within_limit",
+        collectionStatus: "measured",
+        channelCount: 3,
+        measuredChannelCount: 2,
         updatedAt: "2026-06-02T00:10:00.000Z"
       },
       nextAction: "copy_subscription_url",
@@ -1681,6 +1684,15 @@ describe("user portal product surface", () => {
     expect(within(hydratedOrderTable).getByText("Karing")).not.toBeNull();
     expect(within(hydratedOrderTable).getByText("流量")).not.toBeNull();
     expect(within(hydratedOrderTable).getByText("1.5 GB / 10 GB")).not.toBeNull();
+    expect(within(hydratedOrderTable).getByText("上传 512 MB / 下载 1 GB")).not.toBeNull();
+    expect(within(hydratedOrderTable).getByText("已计量 2/3 通道")).not.toBeNull();
+    const collectedAtLabel = `采集 ${new Intl.DateTimeFormat("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).format(new Date("2026-06-02T00:10:00.000Z"))}`;
+    expect(within(hydratedOrderTable).getByText(collectedAtLabel)).not.toBeNull();
+    expect(within(hydratedOrderTable).queryByText(/channel-vultr|edgecred/i)).toBeNull();
     expect(screen.getByRole("button", { name: /刷新订单/ })).not.toBeNull();
     expect(client.applyForSubscription).not.toHaveBeenCalled();
   });

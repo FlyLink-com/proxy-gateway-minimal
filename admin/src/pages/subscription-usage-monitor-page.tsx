@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type Dispatch,
@@ -16,6 +17,14 @@ import type {
   SubscriptionUsageMonitorRow,
   SubscriptionUsageTimeseriesPoint
 } from "../features/subscriptions/types";
+import {
+  buildUsageMonitorCaseCandidates,
+  topCaseCandidates
+} from "../features/admin-case-workbench/case-candidates";
+import {
+  CaseDetailPanel,
+  CaseQueue
+} from "../features/admin-case-workbench/case-workbench";
 import { errorMessage } from "../lib/errors";
 
 type FilterState = Required<SubscriptionUsageMonitorFilters>;
@@ -68,12 +77,35 @@ const ACTIVITY_LABELS: Record<SubscriptionUsageActivityLevel, string> = {
   blocked: "已阻断"
 };
 
+type ChannelHealthSummary = {
+  channelRef: string;
+  issuedOrderCount: number;
+  measuredOrderCount: number;
+  pendingOrderCount: number;
+  staleOrderCount: number;
+  collectorDisabledCount: number;
+  zeroUsageOrderCount: number;
+  unconfirmedBindingCount: number;
+  usedBytes: number;
+};
+
+type AnomalyReason = {
+  label: string;
+  tone: "critical" | "warning" | "muted";
+};
+
+type AnomalyItem = {
+  row: SubscriptionUsageMonitorRow;
+  reason: AnomalyReason;
+};
+
 export function SubscriptionUsageMonitorPage({ apiClient }: { apiClient: AdminApiClient }) {
   const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
   const [monitor, setMonitor] = useState<SubscriptionUsageMonitor | null>(null);
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [selectedChannels, setSelectedChannels] = useState<Set<string>>(new Set());
+  const [selectedCaseRef, setSelectedCaseRef] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const requestSequenceRef = useRef(0);
@@ -131,16 +163,36 @@ export function SubscriptionUsageMonitorPage({ apiClient }: { apiClient: AdminAp
     }));
   }
 
+  const caseCandidates = useMemo(() => buildUsageMonitorCaseCandidates(monitor?.items ?? []), [monitor]);
+  const visibleCaseCandidates = useMemo(() => topCaseCandidates(caseCandidates, 8), [caseCandidates]);
+  const selectedCase = useMemo(() => (
+    visibleCaseCandidates.find((item) => item.caseRef === selectedCaseRef)
+      ?? visibleCaseCandidates[0]
+      ?? null
+  ), [selectedCaseRef, visibleCaseCandidates]);
+
+  useEffect(() => {
+    if (visibleCaseCandidates.length === 0) {
+      setSelectedCaseRef(null);
+      return;
+    }
+    setSelectedCaseRef((current) => (
+      current && visibleCaseCandidates.some((item) => item.caseRef === current)
+        ? current
+        : visibleCaseCandidates[0].caseRef
+    ));
+  }, [visibleCaseCandidates]);
+
   return (
     <div className="page-stack">
       <div className="page-heading">
         <div>
-          <h2>活动明细监护</h2>
+          <h2>流量与通道监管</h2>
           <p className="muted">平台采集看通道健康，订单账本看账号、订单和真实通道用量归属。</p>
         </div>
       </div>
 
-      <div className="alert">平台摘要只做运营观测；额度、告警和禁用判断以订单账本的账号、订单和 edge credential 归属为准。</div>
+      <div className="alert">平台摘要只做监管观测；额度、告警、暂停和归档判断以订单账本的账号、订单和 edge credential 归属为准。</div>
       {error ? <div className="alert alert-error">{error}</div> : null}
 
       <section className="gate-review-card" aria-labelledby="usage-platform-heading">
@@ -170,6 +222,19 @@ export function SubscriptionUsageMonitorPage({ apiClient }: { apiClient: AdminAp
         </div>
       </section>
 
+      <div className="case-workbench-layout">
+        <CaseQueue
+          title="流量与通道监管案件"
+          description="从订单用量、采集覆盖、通道绑定和回执状态派生的只读监管候选。"
+          cases={visibleCaseCandidates}
+          selectedCaseRef={selectedCase?.caseRef ?? null}
+          onSelect={setSelectedCaseRef}
+        />
+        <CaseDetailPanel caseItem={selectedCase} />
+      </div>
+
+      <ChannelHealthSection monitor={monitor} />
+
       <UsageTimeseriesSection
         monitor={monitor}
         selectedUsers={selectedUsers}
@@ -179,6 +244,8 @@ export function SubscriptionUsageMonitorPage({ apiClient }: { apiClient: AdminAp
         onToggleOrder={(value) => toggleSetValue(setSelectedOrders, value)}
         onToggleChannel={(value) => toggleSetValue(setSelectedChannels, value)}
       />
+
+      <AnomalyQueueSection monitor={monitor} />
 
       <section className="gate-review-card" aria-labelledby="usage-monitor-filters-heading">
         <div>
@@ -356,6 +423,317 @@ function MonitorRow({ row }: { row: SubscriptionUsageMonitorRow }) {
       </td>
     </tr>
   );
+}
+
+function ChannelHealthSection({ monitor }: { monitor: SubscriptionUsageMonitor | null }) {
+  const channels = channelHealthSummaries(monitor);
+
+  return (
+    <section className="gate-review-card" aria-label="通道采集健康" aria-labelledby="usage-channel-health-heading">
+      <div>
+        <h3 id="usage-channel-health-heading">平台通道健康</h3>
+        <p className="muted">按下发通道看采集覆盖，不把平台通道汇总当成单个用户订单用量。</p>
+      </div>
+      {channels.length > 0 ? (
+        <div className="usage-channel-health-grid">
+          {channels.map((channel) => (
+            <article className="usage-channel-health-card" key={channel.channelRef}>
+              <div className="usage-card-header">
+                <strong>{channel.channelRef}</strong>
+                <span className={channelHealthBadgeClass(channel)}>{channelHealthLabel(channel)}</span>
+              </div>
+              <div className="usage-channel-health-stats">
+                <span>覆盖 {channel.issuedOrderCount} 个订单</span>
+                <span>已计量 {channel.measuredOrderCount} 个订单</span>
+                <span>待采集 {channel.pendingOrderCount} 个订单</span>
+                <strong>{formatBytes(channel.usedBytes)}</strong>
+              </div>
+              {channel.unconfirmedBindingCount > 0 ? (
+                <span className="warning-chip">回执/采集待确认 {channel.unconfirmedBindingCount}</span>
+              ) : null}
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">暂无可监管通道。</p>
+      )}
+    </section>
+  );
+}
+
+function AnomalyQueueSection({ monitor }: { monitor: SubscriptionUsageMonitor | null }) {
+  const anomalies = anomalyItems(monitor);
+  const stats = anomalyStats(monitor);
+
+  return (
+    <section className="gate-review-card" aria-label="异常订阅队列" aria-labelledby="usage-anomaly-heading">
+      <div>
+        <h3 id="usage-anomaly-heading">异常订阅队列</h3>
+        <p className="muted">只做可视化监管和异常定位；不会在此处创建、禁用或归档订阅。</p>
+      </div>
+      <div className="usage-anomaly-summary-grid">
+        {stats.map((stat) => (
+          <div className="metric-card usage-anomaly-summary-card" key={stat.label}>
+            <span>{stat.label}</span>
+            <strong>{stat.value}</strong>
+          </div>
+        ))}
+      </div>
+      {anomalies.length > 0 ? (
+        <div className="usage-anomaly-list">
+          {anomalies.map((item) => (
+            <article className="usage-anomaly-row" key={item.row.issuanceRequestId}>
+              <div>
+                <strong>{safeValue(item.row.issuanceRequestId)}</strong>
+                <span className="muted">{safeValue(item.row.portalUserRef)}</span>
+              </div>
+              <span className={anomalyBadgeClass(item.reason)}>{item.reason.label}</span>
+              <span>{anomalyUsageDetail(item.row)}</span>
+              <span>{anomalyChannelSummary(item.row)}</span>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">当前没有需要人工复核的异常订阅。</p>
+      )}
+    </section>
+  );
+}
+
+function channelHealthSummaries(monitor: SubscriptionUsageMonitor | null): ChannelHealthSummary[] {
+  const summaries = new Map<string, {
+    channelRef: string;
+    issuedOrders: Set<string>;
+    measuredOrders: Set<string>;
+    pendingOrders: Set<string>;
+    staleOrders: Set<string>;
+    collectorDisabledOrders: Set<string>;
+    zeroUsageOrders: Set<string>;
+    unconfirmedBindings: Set<string>;
+    usedBytes: number;
+  }>();
+
+  for (const row of monitor?.items ?? []) {
+    const channels = channelsForRow(row);
+    for (const channelRef of channels) {
+      const summary = summaries.get(channelRef) ?? {
+        channelRef,
+        issuedOrders: new Set<string>(),
+        measuredOrders: new Set<string>(),
+        pendingOrders: new Set<string>(),
+        staleOrders: new Set<string>(),
+        collectorDisabledOrders: new Set<string>(),
+        zeroUsageOrders: new Set<string>(),
+        unconfirmedBindings: new Set<string>(),
+        usedBytes: 0
+      };
+      const orderId = row.issuanceRequestId;
+      const status = normalizedCollectionStatus(row);
+      const measured = isMeasuredChannel(row, channelRef) && (status === "measured" || status === "measured_zero");
+
+      summary.issuedOrders.add(orderId);
+      if (measured) {
+        summary.measuredOrders.add(orderId);
+      } else {
+        summary.pendingOrders.add(orderId);
+      }
+      if (status === "stale") {
+        summary.staleOrders.add(orderId);
+      }
+      if (status === "collector_disabled") {
+        summary.collectorDisabledOrders.add(orderId);
+      }
+      if (status === "measured_zero") {
+        summary.zeroUsageOrders.add(orderId);
+      }
+      if (hasUnconfirmedBinding(row, channelRef)) {
+        summary.unconfirmedBindings.add(orderId);
+      }
+      summary.usedBytes += channelUsedBytes(row, channelRef, channels.length);
+      summaries.set(channelRef, summary);
+    }
+  }
+
+  return [...summaries.values()]
+    .map((summary) => ({
+      channelRef: summary.channelRef,
+      issuedOrderCount: summary.issuedOrders.size,
+      measuredOrderCount: summary.measuredOrders.size,
+      pendingOrderCount: summary.pendingOrders.size,
+      staleOrderCount: summary.staleOrders.size,
+      collectorDisabledCount: summary.collectorDisabledOrders.size,
+      zeroUsageOrderCount: summary.zeroUsageOrders.size,
+      unconfirmedBindingCount: summary.unconfirmedBindings.size,
+      usedBytes: summary.usedBytes
+    }))
+    .sort((left, right) => right.usedBytes - left.usedBytes || left.channelRef.localeCompare(right.channelRef));
+}
+
+function channelsForRow(row: SubscriptionUsageMonitorRow) {
+  const channels = Array.isArray(row.issuedChannels) && row.issuedChannels.length > 0
+    ? row.issuedChannels
+    : (row.nodeId ? [row.nodeId] : []);
+  return uniqueSorted(channels);
+}
+
+function isMeasuredChannel(row: SubscriptionUsageMonitorRow, channelRef: string) {
+  if (row.channelUsages.some((usage) => usage.channelRef === channelRef)) {
+    return true;
+  }
+  if (row.edgeCredentialBindings.some((binding) => binding.channelRef === channelRef && binding.usageMeasured)) {
+    return true;
+  }
+  return channelsForRow(row).length <= 1 && row.usageMeasured;
+}
+
+function channelUsedBytes(row: SubscriptionUsageMonitorRow, channelRef: string, channelCount: number) {
+  const channelUsage = row.channelUsages.find((usage) => usage.channelRef === channelRef);
+  if (channelUsage) {
+    return safeNumber(channelUsage.usedBytes);
+  }
+  if (channelCount === 1 && (normalizedCollectionStatus(row) === "measured" || normalizedCollectionStatus(row) === "measured_zero")) {
+    return safeNumber(row.usedBytes);
+  }
+  return 0;
+}
+
+function hasUnconfirmedBinding(row: SubscriptionUsageMonitorRow, channelRef?: string) {
+  return row.edgeCredentialBindings.some((binding) => (
+    (!channelRef || binding.channelRef === channelRef)
+      && (!binding.credentialRefPresent || !binding.materialDigestPresent)
+  ));
+}
+
+function channelHealthLabel(channel: ChannelHealthSummary) {
+  if (channel.unconfirmedBindingCount > 0) return "回执待确认";
+  if (channel.collectorDisabledCount > 0) return "采集器停用";
+  if (channel.staleOrderCount > 0) return "采集延迟";
+  if (channel.pendingOrderCount > 0) return "待采集";
+  if (channel.zeroUsageOrderCount > 0) return "真实 0B";
+  return "采集正常";
+}
+
+function channelHealthBadgeClass(channel: ChannelHealthSummary) {
+  if (channel.unconfirmedBindingCount > 0 || channel.collectorDisabledCount > 0 || channel.staleOrderCount > 0) {
+    return "warning-chip";
+  }
+  if (channel.pendingOrderCount > 0 || channel.zeroUsageOrderCount > 0) {
+    return "status-badge status-badge-muted";
+  }
+  return "status-badge";
+}
+
+function anomalyStats(monitor: SubscriptionUsageMonitor | null) {
+  const rows = monitor?.items ?? [];
+  return [
+    { label: "超额订阅", value: rows.filter(isOverLimitRow).length },
+    { label: "零用量", value: rows.filter((row) => normalizedCollectionStatus(row) === "measured_zero").length },
+    { label: "延迟订单", value: rows.filter((row) => normalizedCollectionStatus(row) === "stale").length },
+    { label: "采集缺口", value: rows.filter(isCollectionGapRow).length }
+  ];
+}
+
+function anomalyItems(monitor: SubscriptionUsageMonitor | null): AnomalyItem[] {
+  return (monitor?.items ?? [])
+    .map((row) => {
+      const reason = anomalyReason(row);
+      return reason ? { row, reason } : null;
+    })
+    .filter((item): item is AnomalyItem => Boolean(item))
+    .sort((left, right) => (
+      anomalyPriority(left.reason) - anomalyPriority(right.reason)
+      || left.row.issuanceRequestId.localeCompare(right.row.issuanceRequestId)
+    ));
+}
+
+function anomalyReason(row: SubscriptionUsageMonitorRow): AnomalyReason | null {
+  const status = normalizedCollectionStatus(row);
+  if (isOverLimitRow(row)) {
+    return { label: "超额", tone: "critical" };
+  }
+  if (isNearLimitRow(row)) {
+    return { label: "接近额度", tone: "warning" };
+  }
+  if (status === "measured_zero") {
+    return { label: "真实 0B", tone: "muted" };
+  }
+  if (status === "stale") {
+    return { label: "采集延迟", tone: "warning" };
+  }
+  if (status === "collector_disabled") {
+    return { label: "采集器未启用", tone: "warning" };
+  }
+  if (hasUnconfirmedBinding(row)) {
+    return { label: "回执/采集待确认", tone: "warning" };
+  }
+  if (status === "not_collected") {
+    return { label: "未接入采集", tone: "muted" };
+  }
+  if (row.warnings.length > 0) {
+    return { label: warningLabel(row.warnings[0]), tone: "warning" };
+  }
+  return null;
+}
+
+function anomalyPriority(reason: AnomalyReason) {
+  const priorities: Record<string, number> = {
+    "超额": 1,
+    "接近额度": 2,
+    "采集延迟": 3,
+    "采集器未启用": 4,
+    "回执/采集待确认": 5,
+    "未接入采集": 6,
+    "真实 0B": 7
+  };
+  return priorities[reason.label] ?? 8;
+}
+
+function isOverLimitRow(row: SubscriptionUsageMonitorRow) {
+  return row.trafficLimitBytes > 0 && row.usedBytes >= row.trafficLimitBytes;
+}
+
+function isNearLimitRow(row: SubscriptionUsageMonitorRow) {
+  return row.trafficLimitBytes > 0
+    && row.usedBytes >= row.trafficLimitBytes * 0.8
+    && row.usedBytes < row.trafficLimitBytes;
+}
+
+function isCollectionGapRow(row: SubscriptionUsageMonitorRow) {
+  const status = normalizedCollectionStatus(row);
+  return status === "collector_disabled" || status === "not_collected" || hasUnconfirmedBinding(row);
+}
+
+function anomalyBadgeClass(reason: AnomalyReason) {
+  if (reason.tone === "critical") {
+    return "warning-chip warning-chip-critical";
+  }
+  if (reason.tone === "muted") {
+    return "status-badge status-badge-muted";
+  }
+  return "warning-chip";
+}
+
+function anomalyUsageDetail(row: SubscriptionUsageMonitorRow) {
+  const status = normalizedCollectionStatus(row);
+  if (status === "collector_disabled") {
+    return "无计量数据";
+  }
+  if (status === "not_collected") {
+    return hasUnconfirmedBinding(row) ? "等待回执/采集" : "等待采集";
+  }
+  return formatTrafficBytes(row);
+}
+
+function anomalyChannelSummary(row: SubscriptionUsageMonitorRow) {
+  const channels = channelsForRow(row);
+  const measured = channels.filter((channelRef) => (
+    isMeasuredChannel(row, channelRef)
+      && (normalizedCollectionStatus(row) === "measured" || normalizedCollectionStatus(row) === "measured_zero")
+  )).length;
+  if (channels.length === 0) {
+    return "未记录通道";
+  }
+  return `${measured}/${channels.length} 通道已计量`;
 }
 
 function trimFilters(filters: FilterState): FilterState {
@@ -759,7 +1137,9 @@ function warningLabel(value: string) {
     high_refresh_count: "刷新频率偏高",
     missing_artifact_ref: "交付记录缺失",
     node_unavailable: "资源通道不可用",
-    blocked: "访问已阻断"
+    blocked: "访问已阻断",
+    usage_over_limit: "超额",
+    usage_near_limit: "接近额度"
   };
   return labels[normalized] ?? "运营告警";
 }

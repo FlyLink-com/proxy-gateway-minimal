@@ -13,6 +13,167 @@ afterEach(() => {
 });
 
 describe("subscription usage monitor page", () => {
+  test("separates platform channel health from anomalous subscription queue", async () => {
+    const listSubscriptionUsageMonitor = vi.fn(async () => monitorFixture({
+      items: [
+        monitorRowFixture({
+          portalUserRef: "portal_user_over_limit",
+          accountId: "acct_over_limit",
+          issuanceRequestId: "order_over_limit",
+          nodeId: "node-alpha",
+          issuedChannels: ["node-alpha"],
+          usedBytes: 1200,
+          uploadBytes: 400,
+          downloadBytes: 800,
+          usageStatus: "measured",
+          collectionStatus: "measured",
+          usageMeasured: true,
+          trafficLimitBytes: 1000,
+          lastUsageObservedAt: "2026-06-05T07:54:00.000Z",
+          channelUsages: [
+            {
+              channelRef: "node-alpha",
+              usedBytes: 1200,
+              uploadBytes: 400,
+              downloadBytes: 800,
+              lastObservedAt: "2026-06-05T07:54:00.000Z"
+            }
+          ],
+          warnings: ["usage_over_limit"]
+        }),
+        monitorRowFixture({
+          portalUserRef: "portal_user_zero_usage",
+          accountId: "acct_zero_usage",
+          issuanceRequestId: "order_zero_usage",
+          nodeId: "node-beta",
+          issuedChannels: ["node-beta"],
+          usageStatus: "measured_zero",
+          collectionStatus: "measured_zero",
+          usageMeasured: true,
+          trafficLimitBytes: 1000,
+          lastUsageObservedAt: "2026-06-05T07:55:00.000Z",
+          channelUsages: [
+            {
+              channelRef: "node-beta",
+              usedBytes: 0,
+              uploadBytes: 0,
+              downloadBytes: 0,
+              lastObservedAt: "2026-06-05T07:55:00.000Z"
+            }
+          ]
+        }),
+        monitorRowFixture({
+          portalUserRef: "portal_user_stale",
+          accountId: "acct_stale",
+          issuanceRequestId: "order_stale",
+          nodeId: "node-alpha",
+          issuedChannels: ["node-alpha"],
+          usageStatus: "not_collected",
+          collectionStatus: "stale",
+          usageMeasured: false,
+          lastUsageObservedAt: "2026-06-01T07:55:00.000Z"
+        }),
+        monitorRowFixture({
+          portalUserRef: "portal_user_collector_off",
+          accountId: "acct_collector_off",
+          issuanceRequestId: "order_collector_off",
+          nodeId: "node-gamma",
+          issuedChannels: ["node-gamma"],
+          usageStatus: "not_collected",
+          collectionStatus: "collector_disabled",
+          usageMeasured: false
+        }),
+        monitorRowFixture({
+          portalUserRef: "portal_user_unconfirmed",
+          accountId: "acct_unconfirmed",
+          issuanceRequestId: "order_unconfirmed",
+          nodeId: "node-delta",
+          issuedChannels: ["node-delta"],
+          edgeCredentialBindings: [
+            {
+              channelRef: "node-delta",
+              credentialRefPresent: false,
+              materialDigestPresent: false,
+              usageMeasured: false
+            }
+          ]
+        })
+      ],
+      aggregates: {
+        total: 5,
+        activeRecently: 1,
+        neverSeen: 2,
+        highRefresh: 0,
+        blocked: 0,
+        inactive: 0,
+        seen: 2,
+        withWarnings: 1,
+        byPlan: { monthly: 5 },
+        byNode: {
+          "node-alpha": 2,
+          "node-beta": 1,
+          "node-gamma": 1,
+          "node-delta": 1
+        },
+        warnings: { usage_over_limit: 1 },
+        usage: usageAggregateFixture({
+          totalUsedBytes: 1200,
+          totalUploadBytes: 400,
+          totalDownloadBytes: 800,
+          measuredOrders: 1,
+          unmeasuredOrders: 3,
+          zeroUsageOrders: 1,
+          overLimitOrders: 1,
+          nearLimitOrders: 0,
+          byUsageChannel: { "node-alpha": 1200 }
+        })
+      }
+    }));
+
+    render(<SubscriptionUsageMonitorPage apiClient={adminClient({ listSubscriptionUsageMonitor })} />);
+
+    expect(await screen.findByRole("heading", { name: "流量与通道监管" })).not.toBeNull();
+    expect(screen.getByLabelText("流量与通道监管案件")).not.toBeNull();
+    expect(screen.getAllByText("订单流量已超额").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("回执/采集待确认").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("用量采集延迟").length).toBeGreaterThanOrEqual(1);
+    const caseDetail = screen.getByLabelText("监管案件详情");
+    expect(within(caseDetail).getByText("流量与通道")).not.toBeNull();
+    expect(within(caseDetail).getByText("需要单独门禁")).not.toBeNull();
+    expect(within(caseDetail).queryByRole("button", { name: /禁用|归档|创建|删除/i })).toBeNull();
+    const channelHealth = screen.getByLabelText("通道采集健康");
+    expect(within(channelHealth).getByRole("heading", { name: "平台通道健康" })).not.toBeNull();
+    const alphaCard = within(channelHealth).getByText("node-alpha").closest(".usage-channel-health-card");
+    expect(alphaCard).not.toBeNull();
+    const alphaCardScope = within(alphaCard as HTMLElement);
+    expect(alphaCardScope.getByText("覆盖 2 个订单")).not.toBeNull();
+    expect(alphaCardScope.getByText("已计量 1 个订单")).not.toBeNull();
+    expect(alphaCardScope.getByText("待采集 1 个订单")).not.toBeNull();
+    expect(alphaCardScope.getByText("1.17 KB")).not.toBeNull();
+
+    const anomalyQueue = screen.getByLabelText("异常订阅队列");
+    expect(within(anomalyQueue).getByRole("heading", { name: "异常订阅队列" })).not.toBeNull();
+    expect(within(anomalyQueue).getByText("超额订阅")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("零用量")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("采集延迟")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("采集缺口")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("order_over_limit")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("超额")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("1.17 KB / 1000 B")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("order_zero_usage")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("真实 0B")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("order_stale")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("采集延迟")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("order_collector_off")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("采集器未启用")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("order_unconfirmed")).not.toBeNull();
+    expect(within(anomalyQueue).getByText("回执/采集待确认")).not.toBeNull();
+    expect(within(anomalyQueue).queryByText("未采集")).not.toEqual(within(anomalyQueue).queryByText("真实 0B"));
+
+    const renderedText = document.body.textContent ?? "";
+    expect(renderedText).not.toMatch(/subscriptionUrl|token|secret|password|yaml|edgecred_/i);
+  });
+
   test("renders selectable historical usage curves without mixing table ownership", async () => {
     const listSubscriptionUsageMonitor = vi.fn(async () => monitorFixture({
       items: [
@@ -123,7 +284,7 @@ describe("subscription usage monitor page", () => {
 
     render(<SubscriptionUsageMonitorPage apiClient={adminClient({ listSubscriptionUsageMonitor })} />);
 
-    expect(await screen.findByRole("heading", { name: "活动明细监护" })).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "流量与通道监管" })).not.toBeNull();
     expect(screen.getByRole("heading", { name: "历史用量曲线" })).not.toBeNull();
     expect(screen.getByText("按用户、订单和实际用量通道勾选曲线；表格仍保留完整订单账本。")).not.toBeNull();
     expect(screen.getByRole("img", { name: "订单历史用量曲线" })).not.toBeNull();
@@ -222,8 +383,8 @@ describe("subscription usage monitor page", () => {
 
     render(<SubscriptionUsageMonitorPage apiClient={adminClient({ listSubscriptionUsageMonitor })} />);
 
-    expect(await screen.findByRole("heading", { name: "活动明细监护" })).not.toBeNull();
-    expect(screen.getByText("平台摘要只做运营观测；额度、告警和禁用判断以订单账本的账号、订单和 edge credential 归属为准。")).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "流量与通道监管" })).not.toBeNull();
+    expect(screen.getByText("平台摘要只做监管观测；额度、告警、暂停和归档判断以订单账本的账号、订单和 edge credential 归属为准。")).not.toBeNull();
     expect(screen.getByRole("heading", { name: "平台采集概览" })).not.toBeNull();
     expect(screen.getByText("平台已计量流量")).not.toBeNull();
     expect(screen.getByText("上传")).not.toBeNull();
@@ -272,7 +433,7 @@ describe("subscription usage monitor page", () => {
 
     render(<SubscriptionUsageMonitorPage apiClient={adminClient({ listSubscriptionUsageMonitor })} />);
 
-    expect(await screen.findByRole("heading", { name: "活动明细监护" })).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "流量与通道监管" })).not.toBeNull();
     fireEvent.change(screen.getByLabelText("账号 ID"), { target: { value: " acct_demo_1 " } });
     fireEvent.change(screen.getByLabelText("套餐"), { target: { value: " trial " } });
     fireEvent.change(screen.getByLabelText("资源通道"), { target: { value: " node-alpha " } });
@@ -372,7 +533,7 @@ describe("subscription usage monitor page", () => {
     }));
 
     expect(await screen.findByText("acct_strict_latest")).not.toBeNull();
-    expect(screen.getByText("order_strict_latest")).not.toBeNull();
+    expect(screen.getAllByText("order_strict_latest").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("正在加载活动记录...")).toBeNull();
     expect(screen.queryByText("acct_strict_stale")).toBeNull();
   });

@@ -603,6 +603,19 @@ export function adminPlatformRoutes(state) {
     }
   });
 
+  router.post("/api/admin/platform/portal-access-requests/:requestRef/traffic-limit", (req, res) => {
+    try {
+      if (!portalAccessRequests) {
+        throw new Error("portalAccessRequests is not configured");
+      }
+      res.json({
+        quotaUpdate: portalAccessRequests.updateTrafficLimit(req.params.requestRef, req.body ?? {})
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
   router.post("/api/admin/platform/portal-access-requests/:requestRef/mark-delivered", (req, res) => {
     try {
       if (!portalAccessRequests) {

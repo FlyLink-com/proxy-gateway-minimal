@@ -64,6 +64,9 @@ describe("admin dashboard page", () => {
           usedBytes: 1536,
           uploadBytes: 512,
           downloadBytes: 1024,
+          trafficLimitBytes: 1024,
+          usageStatus: "measured",
+          collectionStatus: "measured",
           activityLevel: "active_recently",
           warnings: ["high_refresh_count"]
         })
@@ -91,6 +94,12 @@ describe("admin dashboard page", () => {
     expect(screen.getAllByText("1.50 KB").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("刷新频率偏高").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("交付记录缺失").length).toBeGreaterThanOrEqual(1);
+    const caseSummary = screen.getByLabelText("监管案件摘要");
+    expect(caseSummary).not.toBeNull();
+    expect(screen.getByText("只读展示最高优先级监管候选。")).not.toBeNull();
+    expect(screen.getAllByText("订单流量已超额").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("order_7d_ready").length).toBeGreaterThanOrEqual(1);
+    expect(within(caseSummary).queryByRole("button")).toBeNull();
     expect(screen.queryByText(/\+12%/)).toBeNull();
 
     await expect.poll(() => overview).toHaveBeenCalledTimes(1);

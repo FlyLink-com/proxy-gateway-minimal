@@ -115,6 +115,19 @@ export type PortalAccessRequestStatus =
   | "expired"
   | "revoked";
 
+export type PortalAccessRequestUsageSummary = {
+  uploadBytes: number;
+  downloadBytes: number;
+  usedBytes: number;
+  totalBytes: number;
+  usageRatio: number;
+  status: "within_limit" | "over_limit" | "unmetered" | string;
+  collectionStatus: "measured" | "measured_zero" | "stale" | "not_collected" | "collector_disabled" | string;
+  channelCount: number;
+  measuredChannelCount: number;
+  updatedAt?: string;
+};
+
 export type PortalAccessRequestSummary = {
   id: string;
   type: "portal_access_request_summary";
@@ -130,6 +143,8 @@ export type PortalAccessRequestSummary = {
   reviewedByRef: string | null;
   safeReasonCode: string | null;
   priorTrialState: string;
+  usage?: PortalAccessRequestUsageSummary;
+  trafficLimitBytes?: number;
   entitlementRef: string | null;
   accessGrantRef: string | null;
   safety: {
@@ -137,6 +152,34 @@ export type PortalAccessRequestSummary = {
     noRawCustomerData: boolean;
     noRawHandoffMaterial: boolean;
     noEntitlementCreated: boolean;
+    noRuntimeMutation: boolean;
+    noProductionMutation: boolean;
+  };
+};
+
+export type PortalAccessTrafficLimitUpdateInput = {
+  trafficLimitBytes: number;
+  reviewedByRef: string;
+  reasonCode: string;
+};
+
+export type PortalAccessTrafficLimitUpdate = {
+  ok: boolean;
+  type: "portal_access_request_traffic_limit_update";
+  request: Partial<PortalAccessRequestSummary>;
+  quota: {
+    previousTrafficLimitBytes: number;
+    trafficLimitBytes: number;
+    updatedAt: string;
+  };
+  audit: {
+    action: string;
+    recordedAt: string;
+  };
+  safety: {
+    noSubscriptionUrl: boolean;
+    noRawCustomerData: boolean;
+    noRawHandoffMaterial: boolean;
     noRuntimeMutation: boolean;
     noProductionMutation: boolean;
   };

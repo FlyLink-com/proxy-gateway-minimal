@@ -34,6 +34,9 @@ export type PortalSubscriptionUsage = {
   totalBytes: number;
   usageRatio: number;
   status: "within_limit" | "over_limit" | "unmetered";
+  collectionStatus: "collector_disabled" | "not_collected" | "measured_zero" | "measured" | "stale";
+  channelCount: number;
+  measuredChannelCount: number;
   updatedAt?: string;
 };
 
@@ -565,17 +568,35 @@ function mapSubscriptionUsage(raw: {
   totalBytes?: unknown;
   usageRatio?: unknown;
   status?: unknown;
+  collectionStatus?: unknown;
+  channelCount?: unknown;
+  measuredChannelCount?: unknown;
   updatedAt?: unknown;
 } | undefined): PortalSubscriptionUsage | undefined {
   if (!raw) return undefined;
   const status = raw.status === "over_limit" || raw.status === "unmetered" ? raw.status : "within_limit";
+  const usedBytes = Math.max(0, Math.trunc(finiteNumber(raw.usedBytes)));
+  const collectionStatus = raw.collectionStatus === "collector_disabled"
+    || raw.collectionStatus === "not_collected"
+    || raw.collectionStatus === "measured_zero"
+    || raw.collectionStatus === "measured"
+    || raw.collectionStatus === "stale"
+    ? raw.collectionStatus
+    : usedBytes > 0
+      ? "measured"
+      : "measured_zero";
+  const channelCount = Math.max(0, Math.trunc(finiteNumber(raw.channelCount)));
+  const measuredChannelCount = Math.max(0, Math.trunc(finiteNumber(raw.measuredChannelCount)));
   return {
     uploadBytes: Math.max(0, Math.trunc(finiteNumber(raw.uploadBytes))),
     downloadBytes: Math.max(0, Math.trunc(finiteNumber(raw.downloadBytes))),
-    usedBytes: Math.max(0, Math.trunc(finiteNumber(raw.usedBytes))),
+    usedBytes,
     totalBytes: Math.max(0, Math.trunc(finiteNumber(raw.totalBytes))),
     usageRatio: Math.max(0, finiteNumber(raw.usageRatio)),
     status,
+    collectionStatus,
+    channelCount,
+    measuredChannelCount: channelCount > 0 ? Math.min(measuredChannelCount, channelCount) : measuredChannelCount,
     ...(typeof raw.updatedAt === "string" && raw.updatedAt.trim() ? { updatedAt: raw.updatedAt } : {})
   };
 }

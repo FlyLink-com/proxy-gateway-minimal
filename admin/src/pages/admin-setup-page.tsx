@@ -25,7 +25,7 @@ export function AdminSetupPage({
           <ShieldCheck aria-hidden="true" />
           <div>
             <h1 id="admin-setup-heading">连接管理员 API</h1>
-            <p>保存控制台令牌后才能进入运营总览、订单管理和用量监护。</p>
+            <p>保存控制台令牌后才能进入总览、用户监管和平台监控。</p>
           </div>
         </div>
 

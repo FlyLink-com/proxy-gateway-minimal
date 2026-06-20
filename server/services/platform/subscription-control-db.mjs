@@ -286,6 +286,7 @@ function mapIssuedSubscriptionBinding(row) {
     plan: row.plan,
     validFrom: row.valid_from,
     validUntil: row.valid_until,
+    trafficLimitBytes: row.traffic_limit_bytes,
     createdAt: row.link_created_at,
     updatedAt: row.link_updated_at
   };
@@ -1126,6 +1127,23 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     return mapEntitlement(db.prepare("select * from platform_entitlements where id = ?").get(requiredText(id, "id")));
   }
 
+  function updateEntitlementTrafficLimit(id, { trafficLimitBytes, updatedAt }) {
+    assertNoUnsafeFields({ trafficLimitBytes, updatedAt });
+    const result = db.prepare(`
+      update platform_entitlements
+      set traffic_limit_bytes = ?, updated_at = ?
+      where id = ?
+    `).run(
+      integer(trafficLimitBytes ?? 0, "trafficLimitBytes", { min: 0 }),
+      isoText(updatedAt, "updatedAt"),
+      requiredText(id, "id")
+    );
+    if (result.changes !== 1) {
+      throw platformError("not_found", "entitlement not found");
+    }
+    return getEntitlement(id);
+  }
+
   function createIssuanceRequest(input) {
     assertNoUnsafeFields(input);
     const record = {
@@ -1244,7 +1262,8 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
         e.plan,
         e.status as entitlement_status,
         e.valid_from,
-        e.valid_until
+        e.valid_until,
+        e.traffic_limit_bytes
       from platform_issued_subscription_links l
       join platform_issuance_requests r on r.id = l.request_id
       join platform_entitlements e on e.id = r.entitlement_id
@@ -2583,6 +2602,7 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     getAccount,
     createEntitlement,
     getEntitlement,
+    updateEntitlementTrafficLimit,
     createIssuanceRequest,
     getIssuanceRequest,
     setIssuanceRequestStatus,
