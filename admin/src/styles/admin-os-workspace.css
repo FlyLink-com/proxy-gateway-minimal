@@ -23,7 +23,7 @@
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 8px;
-  min-height: 36px;
+  min-height: var(--admin-touch-target-min);
   min-width: 0;
   max-width: 100%;
   padding: 0 10px;
@@ -410,8 +410,8 @@
 }
 
 .dashboard-panel-icon {
-  width: 34px;
-  height: 34px;
+  width: var(--admin-touch-target-min);
+  height: var(--admin-touch-target-min);
   border-radius: var(--admin-radius-control);
   background: var(--admin-neutral-bg);
   color: var(--admin-text-soft);
@@ -648,8 +648,8 @@
 
 .admin-blueprint-panel-tool-trigger {
   appearance: none;
-  width: 34px;
-  height: 34px;
+  width: var(--admin-touch-target-min);
+  height: var(--admin-touch-target-min);
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: var(--admin-radius-pill);
   background: transparent;
@@ -1193,7 +1193,7 @@
 }
 
 .channel-status-filter {
-  min-height: 34px;
+  min-height: var(--admin-touch-target-min);
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-control);
   background: #ffffff;
@@ -1260,7 +1260,7 @@
 }
 
 .object-timeline-tab {
-  min-height: 34px;
+  min-height: var(--admin-touch-target-min);
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-control);
   background: #ffffff;

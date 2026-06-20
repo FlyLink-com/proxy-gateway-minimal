@@ -82,7 +82,7 @@
 
   .nav-planned-summary,
   .sidebar-safety-summary {
-    width: 42px;
+    width: var(--admin-touch-target-min);
     padding: 0;
     justify-content: center;
     place-items: center;
@@ -90,9 +90,9 @@
 
   .nav-planned-menu,
   .sidebar-safety-footer {
-    flex: 0 0 42px;
-    width: 42px;
-    min-width: 42px;
+    flex: 0 0 var(--admin-touch-target-min);
+    width: var(--admin-touch-target-min);
+    min-width: var(--admin-touch-target-min);
   }
 
   .nav-planned-list {
@@ -134,8 +134,8 @@
   }
 
   .sidebar-safety-summary {
-    min-height: 42px;
-    height: 42px;
+    min-height: var(--admin-touch-target-min);
+    height: var(--admin-touch-target-min);
     gap: 0;
   }
 
@@ -186,8 +186,8 @@
   }
 
   .top-search-shell {
-    width: 42px;
-    flex: 0 0 42px;
+    width: var(--admin-touch-target-min);
+    flex: 0 0 var(--admin-touch-target-min);
   }
 
   .top-search-shell-expanded {
@@ -312,9 +312,9 @@
   }
 
   .operator-account-summary {
-    width: 38px;
+    width: var(--admin-touch-target-min);
     justify-content: center;
-    min-height: 38px;
+    min-height: var(--admin-touch-target-min);
     padding: 3px;
   }
 
@@ -341,7 +341,7 @@
   }
 
   .nav-library-search {
-    min-height: 38px;
+    min-height: var(--admin-touch-target-min);
   }
 
   .nav-library-utility-grid,
@@ -368,13 +368,13 @@
   }
 
   .top-search-shell {
-    width: 38px;
-    flex: 0 0 38px;
-    min-width: 38px;
+    width: var(--admin-touch-target-min);
+    flex: 0 0 var(--admin-touch-target-min);
+    min-width: var(--admin-touch-target-min);
   }
 
   .top-search-shell .search-box {
-    min-height: 38px;
+    min-height: var(--admin-touch-target-min);
     padding: 0 10px;
   }
 
@@ -394,12 +394,12 @@
   .top-status-strip .environment-pill,
   .top-status-strip .icon-button,
   .top-status-strip .console-tools-summary {
-    min-height: 38px;
+    min-height: var(--admin-touch-target-min);
   }
 
   .top-status-strip .icon-button,
   .top-status-strip .console-tools-summary {
-    width: 38px;
+    width: var(--admin-touch-target-min);
   }
 
   .top-status-strip .environment-pill {
@@ -440,7 +440,7 @@
 
   .top-bar-link {
     justify-content: center;
-    min-height: 38px;
+    min-height: var(--admin-touch-target-min);
     min-width: 0;
     padding: 0 10px;
     white-space: normal;
@@ -449,7 +449,7 @@
   .nav-item {
     display: inline-flex;
     justify-content: center;
-    min-height: 42px;
+    min-height: var(--admin-touch-target-min);
     min-width: 0;
     overflow: hidden;
     padding: 4px;
@@ -475,7 +475,7 @@
 
   .page-subnav-link {
     flex: 1 1 156px;
-    min-height: 34px;
+    min-height: var(--admin-touch-target-min);
     width: auto;
   }
 

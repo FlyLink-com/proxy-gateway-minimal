@@ -40,8 +40,8 @@ describe("admin OS UI contract", () => {
 
   test("locks the first density baseline for admin workspace controls", () => {
     expect(ADMIN_UI_CONTRACT.density).toEqual({
-      buttonMdHeight: "36px",
-      inputHeight: "36px",
+      buttonMdHeight: "44px",
+      inputHeight: "44px",
       panelPadding: "20px",
       pageGap: "20px",
       pluginHeaderMinHeight: "48px",

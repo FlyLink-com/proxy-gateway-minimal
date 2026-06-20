@@ -86,8 +86,8 @@ export type AdminUiContract = {
     density: AdminUiDensity;
   };
   density: {
-    buttonMdHeight: "36px";
-    inputHeight: "36px";
+    buttonMdHeight: "44px";
+    inputHeight: "44px";
     tableRowHeight: "44px";
     panelPadding: "20px";
     pluginHeaderMinHeight: "48px";
@@ -139,8 +139,8 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
     ]
   },
   density: {
-    buttonMdHeight: "36px",
-    inputHeight: "36px",
+    buttonMdHeight: "44px",
+    inputHeight: "44px",
     panelPadding: "20px",
     pageGap: "20px",
     pluginHeaderMinHeight: "48px",
