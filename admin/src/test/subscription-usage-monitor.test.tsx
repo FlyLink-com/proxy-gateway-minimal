@@ -42,15 +42,27 @@ describe("subscription usage monitor page", () => {
     expect(screen.getAllByLabelText("Monitoring panel").length).toBe(4);
     expect(screen.getByLabelText("Platform Tools panel")).not.toBeNull();
     expect(screen.getAllByText("Safe diagnostics entry panel").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Latest usage · observed age").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Collection Freshness static operator content")).not.toBeNull();
+    expect(screen.getByText("Collection state")).not.toBeNull();
+    expect(screen.getAllByText("Collector disabled").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Latest usage · observed age")).toBeNull();
+    expect(screen.queryByText("Evidence owner for usage collection trust, channel coverage, receipts, collectors, and collection anomalies.")).toBeNull();
     expect(screen.getByRole("heading", { name: "Channel Coverage" })).not.toBeNull();
-    expect(screen.getAllByText("Measured channels · count").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Channel Coverage static table")).not.toBeNull();
+    expect(screen.getAllByText("channel_safe_sgp_hy2").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Pending receipt").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Measured channels · count")).toBeNull();
     expect(screen.getByRole("heading", { name: "Usage Ledger" })).not.toBeNull();
-    expect(screen.getAllByText("Traffic · upload / download / total").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Usage Ledger static table")).not.toBeNull();
+    expect(screen.getByText("Measured zero")).not.toBeNull();
+    expect(screen.getByText("Not collected")).not.toBeNull();
+    expect(screen.queryByText("Traffic · upload / download / total")).toBeNull();
     expect(screen.getByRole("heading", { name: "Collection Anomalies" })).not.toBeNull();
-    expect(screen.queryByText("Missing receipt")).toBeNull();
+    expect(screen.getAllByText("Missing receipt").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByRole("heading", { name: "Receipts & Collectors" })).not.toBeNull();
-    expect(screen.getAllByText("Collectors · availability").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Receipts and Collectors static operator content")).not.toBeNull();
+    expect(screen.getByText("Receipt gaps stay visible without exposing protected runtime material.")).not.toBeNull();
+    expect(screen.queryByText("Collectors · availability")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);
     document.querySelectorAll(".admin-blueprint-module-notes").forEach((notes) => {
       expect(notes.hasAttribute("open")).toBe(false);
@@ -58,7 +70,7 @@ describe("subscription usage monitor page", () => {
 
     const renderedText = document.body.textContent ?? "";
     expect(renderedText).not.toMatch(/subscriptionUrl|token=|secret-value|password|yaml|edgecred_/i);
-    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getAllByRole("table").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole("img", { name: /usage chart/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Apply filters|Create|Disable|Pause|Archive|Activate|Apply/i })).toBeNull();
   });
@@ -67,15 +79,15 @@ describe("subscription usage monitor page", () => {
     render(<SubscriptionUsageMonitorPage fixturePreviewEnabled />);
 
     expect(screen.getByLabelText("Collection Freshness fixture preview")).not.toBeNull();
-    expect(screen.getByText("Channel coverage preview compares issued and measured safe channel refs.")).not.toBeNull();
-    expect(screen.getAllByText("chn_demo_sg_03").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("receipt_demo_302")).not.toBeNull();
-    expect(screen.getAllByText("collector_demo_sg").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Raw runtime config and logs are excluded.")).not.toBeNull();
+    expect(screen.queryByText("Issued vs measured vs missing receipt blockers.")).toBeNull();
+    expect(screen.getAllByText("sgp-hy2 · receipt pending").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Missing receipt").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Pending receipt").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Raw runtime config and logs are excluded.")).toBeNull();
 
     const renderedText = document.body.textContent ?? "";
     expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|yaml|edgecred_/i);
-    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getAllByRole("table").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole("button", { name: /Apply filters|Create|Disable|Pause|Archive|Activate|Apply/i })).toBeNull();
   });
 });

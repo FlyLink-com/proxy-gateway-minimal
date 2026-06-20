@@ -25,7 +25,7 @@ export function MetricCard({
       <div className="ops-metric-icon">{icon}</div>
       <span>{label}</span>
       <strong>{value}</strong>
-      <div className="ops-metric-footer">
+      <div className={trend ? "ops-metric-footer" : "ops-metric-footer ops-metric-footer-single"}>
         <small>{detail}</small>
         {trend ? <MetricSparkline ariaLabel={trend.ariaLabel ?? `${label} trend`} values={trend.values} /> : null}
       </div>

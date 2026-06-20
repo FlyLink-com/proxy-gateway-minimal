@@ -21,6 +21,7 @@ import {
 export type BlueprintModule = {
   navId: string;
   container: WorkbenchContainerSpec;
+  content?: ReactNode;
   purpose: string;
   contentFields: string[];
   states: string[];
@@ -47,6 +48,7 @@ export type BlueprintPanelViewModel = {
   ariaLabel: string;
   category: WorkbenchCategory;
   className: string;
+  content?: ReactNode;
   containerLabel: string;
   fieldLabels: string[];
   fixturePreview?: AdminFixturePreviewPanel;
@@ -92,6 +94,7 @@ export function projectBlueprintPanelViewModels({
       ariaLabel: `${CATEGORY_LABEL[module.container.category]} panel`,
       category: module.container.category,
       className: "",
+      content: module.content,
       containerLabel: module.container.container,
       fieldLabels: module.contentFields,
       navId: module.navId,

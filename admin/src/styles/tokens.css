@@ -51,10 +51,10 @@
   --admin-danger-border: #fecaca;
   --admin-neutral-bg: #f1f5f9;
   --admin-neutral-fg: #334155;
-  --admin-radius-control: 8px;
-  --admin-radius-panel: 8px;
-  --admin-radius-card: 8px;
-  --admin-radius-chrome: 12px;
+  --admin-radius-control: 10px;
+  --admin-radius-panel: 12px;
+  --admin-radius-card: 12px;
+  --admin-radius-chrome: 16px;
   --admin-radius-floating: 12px;
   --admin-radius-tile: 8px;
   --admin-radius-icon: 8px;
@@ -74,7 +74,7 @@
   --admin-canvas-max-width: 1520px;
   --admin-canvas-gutter: 24px;
   --admin-canvas-gutter-mobile: 12px;
-  --admin-statusbar-height: 48px;
+  --admin-statusbar-height: 64px;
   --admin-statusbar-padding-x: var(--admin-canvas-gutter);
   --admin-mobile-nav-height: 58px;
   --admin-mobile-nav-bottom: 12px;
@@ -83,9 +83,9 @@
   --admin-mobile-nav-gap: 8px;
   --admin-app-icon-size: 34px;
   --admin-sidebar-route-icon-size: 32px;
-  --admin-sidebar-width: 228px;
-  --admin-sidebar-offset: 12px;
-  --admin-sidebar-gap: 16px;
+  --admin-sidebar-width: 240px;
+  --admin-sidebar-offset: 0px;
+  --admin-sidebar-gap: 0px;
   --admin-library-width: 640px;
   --admin-library-left: calc(var(--admin-sidebar-offset) + var(--admin-sidebar-width) + var(--admin-sidebar-gap));
   --admin-library-top: calc(var(--admin-sidebar-offset) + 50px);

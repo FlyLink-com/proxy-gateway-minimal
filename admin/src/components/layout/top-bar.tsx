@@ -1,13 +1,21 @@
-import { ChevronDown, ShieldCheck } from "lucide-react";
+import { ChevronDown, Search, ShieldCheck } from "lucide-react";
 import { getWorkspacePageApp } from "../../app/admin-app-manifest";
 import { pageContexts, pageTitles, type AdminPage } from "../../app/navigation";
 import { cn } from "../../lib/utils";
 
 type TopBarProps = {
   activePage: AdminPage;
+  search: string;
+  onSearchChange: (value: string) => void;
 };
 
-export function TopBar({ activePage }: TopBarProps) {
+const PAGE_STATUS_LABEL: Record<AdminPage, string> = {
+  dashboard: "Summary and routing",
+  portalRequests: "Decision owner",
+  usageMonitor: "Evidence owner"
+};
+
+export function TopBar({ activePage, search, onSearchChange }: TopBarProps) {
   const pageContext = pageContexts[activePage];
   const pageApp = getWorkspacePageApp(activePage);
   const PageIcon = pageApp?.icon;
@@ -24,7 +32,19 @@ export function TopBar({ activePage }: TopBarProps) {
           <strong className="top-bar-page-title">{pageTitles[activePage]}</strong>
         </div>
       </div>
+      <label className="top-bar-search">
+        <Search aria-hidden="true" />
+        <span className="sr-only">Search accounts, orders, channels, cases</span>
+        <input
+          aria-label="Search accounts, orders, channels, cases"
+          onChange={(event) => onSearchChange(event.target.value)}
+          placeholder="Search accounts, orders, channels, cases"
+          value={search}
+        />
+      </label>
       <div className="top-bar-actions" role="group" aria-label="Operator account controls">
+        <span className="dashboard-status-badge dashboard-status-info">{PAGE_STATUS_LABEL[activePage]}</span>
+        <span className="dashboard-status-badge dashboard-status-warning">Risk A gated</span>
         <details className="operator-account-menu">
           <summary className="operator-account-summary" aria-label="Operator account">
             <span className="operator-account-avatar" aria-hidden="true">

@@ -43,16 +43,28 @@ describe("portal requests page", () => {
     expect(screen.getByLabelText("Configuration panel")).not.toBeNull();
     expect(screen.getByLabelText("Audit / Workflow panel")).not.toBeNull();
     expect(screen.getAllByText("Quota policy panel").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Account ref · safe id").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Account Directory static operator content")).not.toBeNull();
+    expect(screen.getByLabelText("Account Directory static table")).not.toBeNull();
+    expect(screen.getByText("acct_safe_014")).not.toBeNull();
+    expect(screen.getByText("Disabled account")).not.toBeNull();
+    expect(screen.queryByText("Account ref · safe id")).toBeNull();
+    expect(screen.queryByText("Decision owner for user accounts, resources, orders, subscription artifacts, quota, lifecycle, and safe history context.")).toBeNull();
     expect(screen.getByRole("heading", { name: "Resources & Orders" })).not.toBeNull();
-    expect(screen.getAllByText("Artifact · safe ref presence").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Resources and Orders static table")).not.toBeNull();
+    expect(screen.getByText("ord_safe_102")).not.toBeNull();
+    expect(screen.getByText("Pending receipt")).not.toBeNull();
+    expect(screen.queryByText("Artifact · safe ref presence")).toBeNull();
     expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
-    expect(screen.getAllByText("Default quota · policy value").length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryByText("Over limit")).toBeNull();
+    expect(screen.getByText("82% used")).not.toBeNull();
+    expect(screen.getByLabelText("ord_safe_101 quota usage 82 percent")).not.toBeNull();
+    expect(screen.queryByText("Default quota · policy value")).toBeNull();
     expect(screen.getByRole("heading", { name: "Lifecycle" })).not.toBeNull();
-    expect(screen.getAllByText("Order · pause / expiry candidate").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Archive candidate").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Order · pause / expiry candidate")).toBeNull();
     expect(screen.getByRole("heading", { name: "History & Events" })).not.toBeNull();
-    expect(screen.getAllByText("Audit · future entry slot").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Safe computed history")).not.toBeNull();
+    expect(screen.getByText("Audit backend locked")).not.toBeNull();
+    expect(screen.queryByText("Audit · future entry slot")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);
     document.querySelectorAll(".admin-blueprint-module-notes").forEach((notes) => {
       expect(notes.hasAttribute("open")).toBe(false);
@@ -60,7 +72,7 @@ describe("portal requests page", () => {
 
     const renderedText = document.body.textContent ?? "";
     expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|raw token|raw credential|password|secret-value|sqlite-row-value/i);
-    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getAllByRole("table").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole("button", { name: /Generate delivery preview|Save quota|Approve|Disable|Archive/i })).toBeNull();
     expect(screen.queryByLabelText("Controlled delivery preview")).toBeNull();
     expect(screen.queryByLabelText("Traffic quota")).toBeNull();
@@ -70,15 +82,15 @@ describe("portal requests page", () => {
     render(<PortalRequestsPage fixturePreviewEnabled />);
 
     expect(screen.getByLabelText("Account Directory fixture preview")).not.toBeNull();
-    expect(screen.getByText("Account directory preview shows safe account refs, supervision state, and linked resource counts.")).not.toBeNull();
+    expect(screen.queryByText("Safe account refs, resource count, risk state, and last safe event.")).toBeNull();
     expect(screen.getAllByText("acct_demo_02").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("ord_demo_108").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("art_ref_demo_077").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("Quota edits remain disabled.")).not.toBeNull();
+    expect(screen.getAllByText("ord_safe_102").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("ord_safe_103").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Quota edits remain disabled.")).toBeNull();
 
     const renderedText = document.body.textContent ?? "";
     expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|raw token|secret-value|password|edgecred_/i);
-    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getAllByRole("table").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole("button", { name: /Generate delivery preview|Save quota|Approve|Disable|Archive/i })).toBeNull();
   });
 });

@@ -25,9 +25,12 @@ describe("admin fixture preview", () => {
 
     const dashboardRiskQueue = getAdminFixturePreviewPanel("dashboard", "risk-queue");
     expect(dashboardRiskQueue.rows.map((row) => row.value)).toEqual([
-      "acct_demo_02",
-      "ord_demo_108"
+      "12 affected",
+      "6 affected",
+      "3 affected",
+      "Locked"
     ]);
+    expect(dashboardRiskQueue.rows.map((row) => row.meta)).toContain("Accounts & Resources");
 
     const moduleCount = Object.values(ADMIN_FIXTURE_PREVIEW_DATA.modules)
       .flatMap((modules) => Object.values(modules))

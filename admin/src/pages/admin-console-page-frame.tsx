@@ -120,10 +120,9 @@ export function AdminConsolePageFrame({
       data-page={blueprint.page}
       data-ui-contract={ADMIN_UI_CONTRACT.pageFrame.contractId}
     >
-      <header className="sr-only" aria-label={blueprint.ariaLabel}>
+      <header className="admin-blueprint-page-hero" aria-label={blueprint.ariaLabel}>
         <p>{blueprint.kicker}</p>
-        <h2>{blueprint.title}</h2>
-        <p>{blueprint.description}</p>
+        <h1>{blueprint.title}</h1>
       </header>
 
       <div className="admin-blueprint-module-board" aria-label={`${blueprint.title} module layout`}>
@@ -143,7 +142,9 @@ export function AdminConsolePageFrame({
             onHide={() => hideModuleLayout(panel.navId)}
             ownerMode={panel.ownerMode}
             title={panel.title}
-          />
+          >
+            {panel.content}
+          </PanelFrame>
         )) : (
           <EmptyState
             className="admin-blueprint-empty-workbench"

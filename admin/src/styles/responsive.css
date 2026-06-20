@@ -31,6 +31,7 @@
   .nav-list {
     flex-direction: row;
     flex: 1;
+    gap: var(--admin-mobile-nav-gap);
     min-width: 0;
     align-items: center;
   }
@@ -42,6 +43,10 @@
     gap: 6px;
     width: auto;
     min-width: 0;
+  }
+
+  .nav-planned-sidebar-list {
+    display: none;
   }
 
   .brand-name,
@@ -125,7 +130,32 @@
   .nav-planned-count {
     position: absolute;
     top: -6px;
-    right: -6px;
+    right: 0;
+  }
+
+  .sidebar-safety-summary {
+    min-height: 42px;
+    height: 42px;
+    gap: 0;
+  }
+
+  .sidebar-safety-summary span,
+  .sidebar-safety-summary strong {
+    display: none;
+  }
+
+  .sidebar-safety-detail {
+    display: none;
+  }
+
+  .sidebar-safety-summary svg:first-of-type {
+    display: block;
+    width: 18px;
+    height: 18px;
+  }
+
+  .sidebar-safety-summary svg:last-of-type {
+    display: none;
   }
 
   .top-bar {
@@ -148,6 +178,11 @@
     justify-content: flex-end;
     min-width: 0;
     width: auto;
+  }
+
+  .top-bar-search {
+    width: min(320px, 34vw);
+    padding: 0 12px;
   }
 
   .top-search-shell {
@@ -215,6 +250,7 @@
   }
 
   .ops-metric-grid,
+  .admin-static-card-grid,
   .dashboard-mini-metrics,
   .dashboard-mini-metrics-compact {
     grid-template-columns: 1fr;
@@ -235,10 +271,12 @@
 
 @media (max-width: 620px) {
   .top-bar {
+    gap: 8px;
     padding: 8px var(--admin-canvas-gutter-mobile);
   }
 
   .top-bar-heading {
+    flex: 1 1 auto;
     gap: 0;
   }
 
@@ -254,24 +292,40 @@
     white-space: nowrap;
   }
 
+  .top-bar-search {
+    display: none;
+  }
+
   .top-bar-actions {
     display: flex;
     justify-content: flex-end;
     flex-wrap: wrap;
     align-items: center;
     gap: 6px;
+    flex: 0 0 auto;
     min-width: 0;
     width: auto;
   }
 
+  .top-bar-actions > .dashboard-status-badge {
+    display: none;
+  }
+
   .operator-account-summary {
+    width: 38px;
+    justify-content: center;
     min-height: 38px;
-    padding: 3px 9px 3px 4px;
+    padding: 3px;
   }
 
   .operator-account-avatar {
     width: 30px;
     height: 30px;
+  }
+
+  .operator-account-summary > svg,
+  .operator-account-copy {
+    display: none;
   }
 
   .operator-account-copy small {
@@ -294,6 +348,15 @@
   .nav-library-grid,
   .nav-library-grid-modules {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nav-library-planned-apps .nav-library-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nav-library-planned-apps .nav-planned-item span {
+    overflow-wrap: normal;
+    white-space: normal;
   }
 
   .nav-library-utility {
@@ -453,8 +516,25 @@
     grid-template-columns: 1fr;
   }
 
+  .admin-blueprint-page[data-page="dashboard"] .admin-blueprint-module-board,
+  .admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-board,
+  .admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-board {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id],
+  .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id],
+  .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id] {
+    grid-column: auto;
+    grid-row: auto;
+    min-height: 0;
+  }
+
+  .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="health-summary"] .admin-fixture-preview-rows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .admin-blueprint-module-panel-head,
-  .admin-blueprint-panel-fields,
   .admin-blueprint-module-panel > .admin-blueprint-actions {
     grid-column: 1;
     grid-row: auto;
@@ -482,6 +562,7 @@
   }
 
   .ops-metric-grid,
+  .admin-static-card-grid,
   .new-console-workbench,
   .overview-next-actions-grid,
   .dashboard-grid-primary,

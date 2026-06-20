@@ -21,6 +21,7 @@ describe("admin UI projection", () => {
       ariaLabel: "Monitoring panel",
       category: "monitoring",
       className: "",
+      content: blueprint.modules[0].content,
       containerLabel: "Overview metric widget set",
       fieldLabels: [
         "Platform health · summary state",
@@ -40,6 +41,7 @@ describe("admin UI projection", () => {
       "category",
       "className",
       "containerLabel",
+      "content",
       "fieldLabels",
       "navId",
       "ownerMode",
@@ -55,6 +57,7 @@ describe("admin UI projection", () => {
     expect(projectedText).not.toContain("Interaction model");
     expect(projectedText).not.toContain("Wire panel routes");
     expect(projectedText).not.toContain("Overview owns only first-screen monitoring");
+    expect(projectedText).not.toContain("Summarize platform health without owning");
   });
 
   test("omits hidden modules while preserving restored panel identity", () => {
@@ -93,10 +96,12 @@ describe("admin UI projection", () => {
       subNavigation: pageSubNavigation[blueprint.page]
     });
 
-    expect(panels[0].fixturePreview?.summary).toContain("Synthetic operator snapshot");
+    expect(panels[0].fixturePreview?.summary).toContain("Metric cards");
     expect(panels[1].fixturePreview?.rows.map((row) => row.value)).toEqual([
-      "acct_demo_02",
-      "ord_demo_108"
+      "12 affected",
+      "6 affected",
+      "3 affected",
+      "Locked"
     ]);
     expect(JSON.stringify(panels)).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_/i);
   });

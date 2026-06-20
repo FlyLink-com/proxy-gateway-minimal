@@ -203,7 +203,7 @@ describe("admin navigation", () => {
     expect(screen.getByLabelText("Admin fixture preview status")).not.toBeNull();
     expect(screen.getByText("GCC-104 safe fixture preview")).not.toBeNull();
     expect(screen.getByLabelText("Risk Queue fixture preview")).not.toBeNull();
-    expect(screen.getByText("acct_demo_02")).not.toBeNull();
+    expect(screen.getAllByText("Order traffic over limit").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole("heading", { name: "Connect Admin API" })).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
     expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_/i);
@@ -262,7 +262,7 @@ describe("admin navigation", () => {
     expect(workspaceSidebar.textContent).not.toContain("Accounts, resources, and quotas");
     expect(workspaceSidebar.textContent).not.toContain("Usage collection and channels");
     expect(workspaceSidebar.textContent).not.toContain("Waiting for the GCC-55 durable Case/history backend contract.");
-    expect(screen.getByText("Proxy Gateway")).not.toBeNull();
+    expect(screen.getByText("Proxy Gateway Admin")).not.toBeNull();
     expect(screen.queryByText("Platform health, risk summary, and recent activity")).toBeNull();
     expect(screen.getByRole("button", { name: "Operations Overview" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByRole("button", { name: "Audit & Cases" })).toBeNull();
