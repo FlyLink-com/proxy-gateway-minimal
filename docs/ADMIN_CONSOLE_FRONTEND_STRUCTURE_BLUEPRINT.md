@@ -1,6 +1,6 @@
 # Admin Console Frontend Structure Blueprint
 
-Last updated: 2026-06-18, America/Los_Angeles.
+Last updated: 2026-06-20, Asia/Shanghai.
 
 > Status:
 > - Linear: GCC-73 under GCC-42
@@ -9,8 +9,8 @@ Last updated: 2026-06-18, America/Los_Angeles.
 > - Production impact: None.
 > - Execution authority: Does not authorize production, AWS, Vultr, DNS,
 >   Nginx, systemd, DB, runtime, auth model, schema/migration, token,
->   credential, subscription URL, raw config/log/env, SQLite row, or
->   customer-data actions.
+>   credential, subscription URL, raw config/log/env, raw log, audit export,
+>   SQLite row, or customer-data actions.
 
 This document freezes the Phase 1 frontend page structure and module ownership
 before more UI implementation work continues. It is a structure blueprint, not a
@@ -48,6 +48,16 @@ Current follow-up React work keeps that boundary: it implements only the local
 Admin shell, App Library, plugin container rules, and persisted browser layout
 preferences. It does not add backend authority, production mutation, schema
 migration, or sensitive runtime data exposure.
+
+The 2026-06-20 GCC-109/GCC-103 update adds an expanded relationship model in
+`docs/ADMIN_CONSOLE_RELATIONSHIP_DRAFT.md`, but the current wave does not
+promote every relationship surface to active React pages. The active WIP is:
+
+1. close the relationship model into IA/docs;
+2. produce a Figma/Admin UI handoff for the current frontend design phase.
+
+Capability gating, Platform Monitoring expansion, backend DTO design, and
+super-admin-only Key/Audit/Log surfaces remain follow-up waves.
 
 ## Frontend Containerization Model
 
@@ -194,6 +204,22 @@ flowchart TD
 | `Audit & Cases` | Locked future work area | What happened over time, who reviewed it, and what case state is durable? | `Case Inbox`, `Object History`, `Audit Notes`, `Work Orders`, `Close / False Positive Review` | Direct production execution. |
 | `Platform Development` | Locked future work area | Which platform tool, strategy, or onboarding path should be reviewed? | `Channel Strategy`, `Node Onboarding`, `Collector Lab`, `API Diagnostics`, `Dry-run Tools` | User account operations and ungated production mutation. |
 | `System Settings` | Locked future work area | How is this private console configured? | `Connection Settings`, `Environment Profiles`, `Refresh Policy`, `Permissions`, `Safety Policy` | Public user settings and auth model changes without a separate gate. |
+
+## Relationship Model Mapping
+
+The expanded relationship model maps into this Phase 1 structure without
+creating immediate route sprawl:
+
+| Relationship item | Current structural owner | Current-wave rule |
+| --- | --- | --- |
+| User Management | `Accounts & Resources` sections | Keep user directory, order count, active order count, and user usage in the existing management page until GCC-114 decides a split. |
+| Order Management | `Accounts & Resources -> Resources & Orders` / `Quota & Usage` / `Lifecycle` | Keep per-order usage, lifecycle, artifact safe refs, and quota evidence in the existing page until DTO ownership justifies a split. |
+| Platform Monitoring, route latency, agent status, inspection summaries | `Usage & Channels` sections | Treat as the next monitoring expansion, not part of the current IA closeout. |
+| Account & Permissions | `System Settings` / future permission panel | Document as scoped operator-permission content; do not change auth model in this wave. |
+| About | Future safe system-info panel | Can be designed as a low-risk surface after build/version DTO fields are defined. |
+| Key Management | Privileged, not registered for non-super-admin | No route, App Library entry, search source, command result, notification link, hidden DOM, or API call for non-super-admin users. |
+| Audit Center | Privileged, separate from normal risk/case summaries | Normal operators may see risks/anomalies, not audit rows or raw history. |
+| Log Access | Privileged ephemeral view session | No raw log UI in normal monitoring; no cache/search/localStorage fixture for raw logs. |
 
 ## Module Ownership Graph
 
@@ -403,6 +429,12 @@ flowchart TD
   Settings --> S3["Needs explicit non-goals"]
 ```
 
+Privileged Key Management, Audit Center, and Log Access are stricter than
+ordinary locked slots. For non-super-admin users, they are not rendered as
+locked placeholders; they are absent from registration entirely. The first
+frontend task for those surfaces is GCC-110 capability-gated registration, and
+the first fixture UI task is deferred to GCC-113.
+
 ## Data And Decision Flow
 
 ```mermaid
@@ -446,6 +478,7 @@ implementation:
 | Page-local sections | `pageSubNavigation` in `admin/src/app/navigation.ts` | Section IDs must match page content anchors and tests. |
 | Ownership boundary | `pageWorkbenchContracts` in `admin/src/app/navigation.ts` | Update docs, contract, tests, and QA together if ownership changes. |
 | App and plugin registry | `admin/src/app/admin-app-manifest.ts` | Search, App Library grouping, safe route targets, and plugin restore metadata must come from the manifest. |
+| Expanded relationship model | `docs/ADMIN_CONSOLE_RELATIONSHIP_DRAFT.md` | Use as sequencing and Figma handoff input; do not convert every surface into an active route in one wave. |
 | Workspace layout engine | `admin/src/app/plugin-workspace-engine.ts` and `admin/src/app/plugin-layout-store.ts` | Keep hide/restore/resize/reorder behavior pure and tested before adding richer drag or persistence features. |
 | Plugin container primitive | `admin/src/components/primitives/plugin-container.tsx` | Card-level controls belong in the plugin header; no separate page-level editor card. |
 | Shared UI modules | `docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md` | Phase 2 design-system work should refine component states before broad implementation. |
@@ -464,3 +497,7 @@ Before starting Phase 2 or Phase 3 work, confirm:
 6. Usage & Channels owns collection/channel/receipt evidence only.
 7. Locked pages have entry gates and no empty route pages.
 8. Future implementation has a code anchor and test anchor.
+9. Privileged key/audit/log surfaces are absent for non-super-admin users, not
+   rendered as disabled placeholders.
+10. The current wave is limited to GCC-109 and GCC-103 unless Linear is
+   explicitly re-prioritized.
