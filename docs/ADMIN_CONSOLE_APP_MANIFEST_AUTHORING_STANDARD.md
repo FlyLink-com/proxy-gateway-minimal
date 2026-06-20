@@ -1,0 +1,135 @@
+# Admin Console App Manifest Authoring Standard
+
+Last updated: 2026-06-17, America/Los_Angeles.
+
+> Status:
+> - Linear: GCC-75 under GCC-81 / GCC-42
+> - Type: Control-plane app authoring standard
+> - Risk: C for this document; current Admin manifest/test integration is B.
+> - Production impact: None.
+> - Execution authority: Does not authorize production, AWS, Vultr, DNS,
+>   Nginx, systemd, DB, runtime, auth model, schema/migration, token,
+>   credential, subscription URL, raw config/log/env, SQLite row, or
+>   customer-data actions.
+
+This standard defines how new Admin OS applications are authored. The code
+source of truth is `admin/src/app/admin-app-manifest.ts`.
+
+## Required Fields
+
+Every application manifest must carry:
+
+| Field | Purpose |
+| --- | --- |
+| `appId` | Stable id used by App Library, search, layout, permissions, tests, and future deep links. |
+| `title` | Canonical English UI label. |
+| `subtitle` | Chinese planning label for product/IA review. |
+| `icon` | Stable icon key, not a direct component snapshot. |
+| `entryType` | `workspace-app`, `plugin-module`, `system-action`, or `planned-app`. |
+| `category` | `monitoring`, `management`, `configuration`, `audit-workflow`, or `platform-tools`. |
+| `primaryObject` | First business object owned or represented by the app. |
+| `capabilities` | Safe UI abilities such as view, inspect, comment, suggest-action, dry-run, configure, develop, or administer. |
+| `routes` | One or more safe route targets. Plugin routes must include both page and target id. |
+| `searchFields` | Whitelisted safe search text. |
+| `layoutDefaults` | Default size, allowed sizes, default pin state, and initial visibility. |
+| `visibility` | `pinned`, `library`, `hidden`, or `locked`. |
+| `riskTier` | Local UI risk classification: B or C for active UI, A for gated future apps. |
+| `dataBoundary` | Must be `safe-summary-only` in this phase. |
+| `state` | `normal`, `warning`, `blocked`, `readonly`, `planned`, or `needs-config`. |
+| `forbiddenFields` | Explicit unsafe labels excluded from search, UI output, and app authoring payloads. |
+
+## Entry Types
+
+| Type | Meaning | Examples |
+| --- | --- | --- |
+| `workspace-app` | First-class appbar page entry. | Operations Overview, Accounts & Resources, Usage & Channels. |
+| `plugin-module` | Restorable page module hosted by a workspace app. | Quota & Usage, Usage Ledger, Collection Freshness. |
+| `system-action` | Console utility or launcher that does not own business objects. | Production environment, Admin API, Preview site. |
+| `planned-app` | Locked future application slot. | Audit & Cases, Platform Development, System Settings. |
+
+## Layout Sizes
+
+| Size | Use |
+| --- | --- |
+| `large` | First-class workspace app or expanded plugin surface. |
+| `medium` | Default plugin/module size. |
+| `compact` | Dense plugin view that still shows title and status. |
+| `icon-only` | Appbar/App Library launcher or locked utility. |
+| `hidden` | Removed from the canvas and recoverable from App Library. |
+
+## Runtime States
+
+| State | Meaning |
+| --- | --- |
+| `normal` | Ready for normal safe UI use. |
+| `warning` | Safe UI is available but needs attention. |
+| `blocked` | App cannot show meaningful data until a prerequisite is resolved. |
+| `readonly` | App is explicitly read-only. |
+| `planned` | Future app slot, not active. |
+| `needs-config` | Utility requires local/private configuration before it is useful. |
+
+## Three Active Examples
+
+| appId | title | subtitle | type | category | primaryObject | default layout |
+| --- | --- | --- | --- | --- | --- | --- |
+| `operations-overview` | Operations Overview | 运营概览 | `workspace-app` | `monitoring` | platform health | `large`, `pinned` |
+| `accounts-resources` | Accounts & Resources | 账号与资源 | `workspace-app` | `management` | user account | `large`, `pinned` |
+| `usage-channels` | Usage & Channels | 使用情况和渠道 | `workspace-app` | `monitoring` | usage sample | `large`, `pinned` |
+
+## Safety Rules
+
+Manifests may store UI metadata, safe refs, labels, categories, route ids, safe
+capabilities, safe summaries, and redaction policies.
+
+Manifests must not store or expose:
+
+- raw token;
+- raw secret;
+- credential;
+- subscription URL;
+- auth header;
+- raw session, env, config, log, runtime, or error data;
+- SQLite row;
+- raw runtime endpoint;
+- raw subscription material;
+- customer-private identity or contact data;
+- unredacted operator notes or case evidence.
+
+Search fields are stricter than safety-boundary fields: a manifest may list
+forbidden labels in `forbiddenFields`, but `searchFields` and search index text
+must never include those forbidden field names or raw values.
+
+## Authoring Workflow
+
+1. Add or edit the source entry in `admin/src/app/admin-app-manifest.ts`.
+2. Include catalog metadata: Chinese planning name, English UI name, category,
+   primary objects, core views, safe searchable fields, safety boundary, and
+   follow-up task.
+3. Let `adminAppAuthoringManifest` derive the authoring entry.
+4. Add or update tests in `admin/src/test/admin-app-manifest.test.ts`.
+5. If the app has visible UI routing, add a focused navigation or page test.
+6. Do not add a second hardcoded array in App Library or page code.
+
+## Validation
+
+For manifest-only changes:
+
+```powershell
+npm run admin:test -- src/test/admin-app-manifest.test.ts
+```
+
+For App Library or route consumption changes:
+
+```powershell
+npm run admin:test -- src/test/navigation.test.ts
+npm run admin:build
+```
+
+For PR closeout touching Admin code:
+
+```powershell
+git diff --check
+npm run admin:test
+npm run admin:build
+npm test
+```

@@ -111,6 +111,10 @@ their own editor panels or module-specific layout semantics.
 `admin/src/app/admin-app-manifest.ts` is now the concrete App Map source for
 workspace pages, plugin apps, console utilities, planned apps, and safe App
 Library search fields; `docs/ADMIN_CONSOLE_APP_MAP.md` documents that contract.
+New app entries should also follow
+`docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md`, which freezes the
+required authoring fields, entry types, layout sizes, runtime states, and
+safe-search boundaries before additional visible UI is added.
 
 ## Visual Container Rules
 

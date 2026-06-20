@@ -16,7 +16,10 @@ The Admin console is a browser desktop. A page is a workspace app, and each
 page module is a plugin app. The App Library is the restore/search surface for
 workspace pages, plugins, console utilities, and planned apps.
 
-The code source of truth is `admin/src/app/admin-app-manifest.ts`.
+The code source of truth is `admin/src/app/admin-app-manifest.ts`. The app
+authoring contract is documented in
+`docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md` and exposed through
+`ADMIN_APP_AUTHORING_STANDARD` plus `adminAppAuthoringManifest`.
 
 ## App Model
 
@@ -90,6 +93,9 @@ runtime, production, auth, schema, DB, or credential actions.
    page navigation arrays.
 5. Future permission and search work should consume the manifest catalog,
    not scrape rendered labels.
+6. Future app templates should conform to
+   `docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md` before adding
+   visible UI, search, or permissions.
 
 ## Validation
 
