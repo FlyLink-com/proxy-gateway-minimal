@@ -27,6 +27,7 @@ describe("admin visual QA contract", () => {
 
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
     expect(document.querySelector("[data-ui-role='system'][data-ui-contract='app-shell']")).not.toBeNull();
+    expect(document.querySelector("[data-ui-surface='top-bar'][data-figma-component='TopBar']")).not.toBeNull();
     expect(document.querySelector(".admin-content")).not.toBeNull();
     expect(screen.getByLabelText("Workspace sidebar")).not.toBeNull();
     expect(screen.getByLabelText("Open navigation library")).not.toBeNull();

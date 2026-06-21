@@ -229,7 +229,7 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
     react: {
       primarySurface: "src/components/primitives/data-table.tsx#DataTable",
       propContract: ["ariaLabel", "columns", "rows", "state", "selectedRowKey", "onRowSelect"],
-      propValues: ["empty", "loading", "error", "selected"],
+      propValues: ["empty", "loading", "stale", "error", "selected"],
       supportingSurfaces: [
         "src/components/primitives/safe-ref.tsx#SafeRef",
         "src/pages/portal-requests-page.tsx#DataTable usage",
@@ -422,10 +422,11 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Browser Evidence"
     ],
     react: {
-      primarySurface: "src/components/primitives/empty-state.tsx#EmptyState",
-      propContract: ["title", "description", "chrome", "role", "checklist"],
-      propValues: ["workstream", "case", "none", "status", "alert"],
+      primarySurface: "src/components/primitives/state-feedback.tsx#StateFeedback",
+      propContract: ["title", "description", "chrome", "role", "tone", "checklist"],
+      propValues: ["workstream", "case", "table", "none", "status", "alert", "empty", "loading", "stale", "error"],
       supportingSurfaces: [
+        "src/components/primitives/empty-state.tsx#EmptyState",
         "src/components/primitives/data-table.tsx#DataTableState",
         "src/pages/admin-console-page-frame.tsx#EmptyState usage"
       ]

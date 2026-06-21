@@ -1,7 +1,7 @@
-import { CheckCircle2 } from "lucide-react";
 import type { ReactNode } from "react";
+import { StateFeedback, type StateFeedbackChrome } from "./state-feedback";
 
-export type EmptyStateChrome = "workstream" | "case" | "none";
+export type EmptyStateChrome = StateFeedbackChrome;
 
 export function EmptyState({
   checklist,
@@ -20,26 +20,16 @@ export function EmptyState({
   descriptionClassName?: string;
   role?: "alert" | "status";
 }) {
-  const classes = [
-    chrome === "workstream" ? "workstream-empty-state" : "",
-    chrome === "case" ? "case-state case-empty-state" : "",
-    className
-  ].filter(Boolean).join(" ");
-
   return (
-    <div className={classes} role={role}>
-      <strong>{title}</strong>
-      <p className={descriptionClassName}>{description}</p>
-      {checklist?.length ? (
-        <div className="workstream-empty-checks">
-          {checklist.map((item) => (
-            <span key={item}>
-              <CheckCircle2 aria-hidden="true" />
-              {item}
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
+    <StateFeedback
+      checklist={checklist}
+      chrome={chrome}
+      className={className}
+      description={description}
+      descriptionClassName={descriptionClassName}
+      role={role}
+      title={title}
+      tone={role === "alert" ? "error" : "empty"}
+    />
   );
 }

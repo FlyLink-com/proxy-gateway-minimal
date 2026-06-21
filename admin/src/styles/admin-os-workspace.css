@@ -1552,15 +1552,21 @@ button.admin-overview-action-card:focus-visible {
   gap: 4px;
 }
 
+.state-feedback {
+  min-width: 0;
+}
+
 .new-console-state-cell strong {
   color: var(--admin-text);
   font-size: 13px;
 }
 
-.new-console-state-cell small {
+.new-console-state-cell small,
+.new-console-state-feedback p {
   color: var(--admin-muted);
   font-size: 12px;
   line-height: 1.45;
+  margin: 0;
 }
 
 .new-console-state-loading {
@@ -1576,6 +1582,11 @@ button.admin-overview-action-card:focus-visible {
 .new-console-state-empty {
   border-style: dashed;
   background: var(--admin-surface-muted);
+}
+
+.new-console-state-stale {
+  border-color: var(--admin-warning-border);
+  background: var(--admin-warning-bg);
 }
 
 .new-console-channel-table .new-console-row {

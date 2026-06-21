@@ -21,8 +21,13 @@ export function MetricCard({
   };
 }) {
   return (
-    <article className={`ops-metric-card ops-metric-${tone}`}>
-      <div className="ops-metric-icon">{icon}</div>
+    <article
+      className={`ops-metric-card ops-metric-${tone}`}
+      data-figma-component="MetricCard"
+      data-state-tone={tone}
+      data-ui-surface="metric-card"
+    >
+      <div className="ops-metric-icon" data-ui-slot="metric-icon">{icon}</div>
       <span>{label}</span>
       <strong>{value}</strong>
       <div className={trend ? "ops-metric-footer" : "ops-metric-footer ops-metric-footer-single"}>

@@ -81,6 +81,7 @@ Local mirror contract added:
 | `admin/src/design/figma-parity.ts` | GCC-118 design-to-code parity matrix for Figma component set, React surface, grammar role, CSS token, state semantics, responsive rules, a11y rules, and QA evidence. |
 | `admin/src/test/admin-figma-mirror-contract.test.ts` | Verifies mirror page names, one page mirror per active Admin route, connector status, and component-mirror boundary. |
 | `admin/src/test/admin-visual-qa-contract.test.tsx` | Verifies fixture shell landmarks, page/panel DOM ownership hooks, named interactive controls, and safe-data boundary. |
+| `admin/src/components/primitives/state-feedback.tsx` | GCC-119 shared state-feedback primitive for empty/loading/stale/error surfaces across empty states and table state rows. |
 
 GCC-118 parity status:
 
@@ -90,6 +91,15 @@ GCC-118 parity status:
 | Design-to-code mapping | Current: each required Figma component set maps to a React or contract surface, CSS tokens, grammar roles, state semantics, responsive rules, a11y rules, and current QA evidence references. |
 | Current implementation gaps | Recorded in `admin/src/design/figma-parity.ts` and `docs/ADMIN_CONSOLE_FIGMA_MIRROR.md`; handoff continues through `GCC-119` before visual evidence closes in `GCC-120`. |
 | Ready gate | `PR #355` remains Draft until `GCC-118`, `GCC-119`, and `GCC-120` are complete. |
+
+GCC-119 implementation alignment status:
+
+| Check | Result |
+| --- | --- |
+| Shared state feedback | Current: `StateFeedback` is a first-class primitive with `empty`, `loading`, `stale`, and `error` tones, named `status` / `alert` roles, chrome variants, and stable DOM hooks. |
+| Empty and table states | Current: `EmptyState` delegates to `StateFeedback`; `DataTableState` renders through `StateFeedback` while preserving table `row` / `cell` semantics. |
+| QA DOM hooks | Current: `MetricCard`, `StatusChip`, `TopBar`, `WorkspaceSidebar`, and `NavigationLibrary` expose stable `data-figma-component` / `data-ui-surface` hooks for GCC-120 viewport checks. |
+| Remaining GCC-119 surface | `PanelFrame` override reduction, overview metric normalization, privileged-gate extraction decision, and tablet navigation behavior still need review before `GCC-119` can close. |
 
 ## Current Browser Evidence
 

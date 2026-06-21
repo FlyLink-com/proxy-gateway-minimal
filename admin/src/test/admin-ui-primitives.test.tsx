@@ -14,6 +14,7 @@ import {
   RiskQueue,
   SafeRef,
   SectionPanel,
+  StateFeedback,
   StatusChip,
   NavigationLibrary,
   WorkspaceSidebar
@@ -38,6 +39,9 @@ describe("admin ui primitives", () => {
     const card = screen.getByText("Platform health").closest(".ops-metric-card");
     expect(card).not.toBeNull();
     expect(card?.className).toContain("ops-metric-success");
+    expect(card?.getAttribute("data-figma-component")).toBe("MetricCard");
+    expect(card?.getAttribute("data-state-tone")).toBe("success");
+    expect(card?.getAttribute("data-ui-surface")).toBe("metric-card");
     expect(screen.getByText("Good")).not.toBeNull();
     expect(screen.getByText("1 eligible channels")).not.toBeNull();
   });
@@ -48,6 +52,9 @@ describe("admin ui primitives", () => {
     const chip = screen.getByText("Stale");
     expect(chip.className).toContain("dashboard-status-badge");
     expect(chip.className).toContain("dashboard-status-warning");
+    expect(chip.getAttribute("data-figma-component")).toBe("StatusChip");
+    expect(chip.getAttribute("data-state-tone")).toBe("warning");
+    expect(chip.getAttribute("data-ui-surface")).toBe("status-chip");
   });
 
   test("clamps quota meter width while preserving the visible ratio", () => {
@@ -226,6 +233,7 @@ describe("admin ui primitives", () => {
     const sidebar = screen.getByLabelText("Workspace sidebar");
     expect(sidebar.className).toContain("workspace-sidebar");
     expect(sidebar.getAttribute("data-ui-contract")).toBe("app-shell");
+    expect(sidebar.getAttribute("data-figma-component")).toBe("SidebarNavigation");
     expect(sidebar.getAttribute("data-ui-surface")).toBe("workspace-sidebar");
     expect(sidebar.getAttribute("data-density")).toBe("normal");
     expect(within(sidebar).getByText("GlobalCircle AI")).not.toBeNull();
@@ -259,6 +267,7 @@ describe("admin ui primitives", () => {
 
     const trigger = screen.getByLabelText("Open navigation library");
     expect(trigger.closest("details")?.getAttribute("data-ui-contract")).toBe("app-shell");
+    expect(trigger.closest("details")?.getAttribute("data-figma-component")).toBe("SidebarNavigation");
     expect(trigger.closest("details")?.getAttribute("data-ui-surface")).toBe("navigation-library");
     expect(trigger.closest("details")?.getAttribute("data-density")).toBe("normal");
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
@@ -349,8 +358,48 @@ describe("admin ui primitives", () => {
     expect(screen.getByRole("columnheader", { name: "Channel ID" })).not.toBeNull();
     const stateCell = screen.getByRole("cell", { name: /Loading channel collection samples/ });
     expect(stateCell.className).toContain("new-console-state-cell");
+    expect(within(stateCell).getByRole("status").getAttribute("data-ui-surface")).toBe("state-feedback");
+    expect(within(stateCell).getByRole("status").getAttribute("data-state-feedback")).toBe("loading");
     expect(screen.getByText("Keep the current filters while waiting for the collector to return a safe summary.")).not.toBeNull();
     expect(screen.getAllByRole("row")).toHaveLength(2);
+  });
+
+  test("renders table stale and error states through shared state feedback semantics", () => {
+    const { rerender } = render(
+      <DataTable<{ ref: string }>
+        ariaLabel="Case evidence table"
+        columns={[{ key: "ref", header: "Reference", render: (row) => row.ref }]}
+        getRowKey={(row) => row.ref}
+        rows={[]}
+        state={{
+          description: "Evidence age exceeds the current review window.",
+          title: "Evidence may be stale",
+          tone: "stale"
+        }}
+      />
+    );
+
+    const staleState = screen.getByRole("status", { name: /Evidence may be stale/ });
+    expect(staleState.getAttribute("data-state-feedback")).toBe("stale");
+    expect(staleState.getAttribute("data-ui-surface")).toBe("state-feedback");
+
+    rerender(
+      <DataTable<{ ref: string }>
+        ariaLabel="Case evidence table"
+        columns={[{ key: "ref", header: "Reference", render: (row) => row.ref }]}
+        getRowKey={(row) => row.ref}
+        rows={[]}
+        state={{
+          description: "The unavailable detail is redacted.",
+          title: "Evidence source unavailable",
+          tone: "error"
+        }}
+      />
+    );
+
+    const errorState = screen.getByRole("alert", { name: /Evidence source unavailable/ });
+    expect(errorState.getAttribute("data-state-feedback")).toBe("error");
+    expect(errorState.getAttribute("data-ui-surface")).toBe("state-feedback");
   });
 
   test("renders shared empty states with checklist guidance", () => {
@@ -364,9 +413,29 @@ describe("admin ui primitives", () => {
 
     const emptyState = screen.getByText("Waiting for account and resource facts").closest(".workstream-empty-state");
     expect(emptyState).not.toBeNull();
+    expect(emptyState?.getAttribute("data-ui-surface")).toBe("state-feedback");
+    expect(emptyState?.getAttribute("data-state-feedback")).toBe("empty");
     expect(screen.getByText("After Admin API connects, this view shows supervisable objects by account, order, and quota.")).not.toBeNull();
     expect(screen.getByText("Account safe ref")).not.toBeNull();
     expect(screen.getByText("Order safe ref")).not.toBeNull();
+  });
+
+  test("renders first-class state feedback with chrome and role variants", () => {
+    render(
+      <StateFeedback
+        chrome="none"
+        description="No raw runtime detail is rendered."
+        role="alert"
+        title="Review state blocked"
+        tone="error"
+      />
+    );
+
+    const feedback = screen.getByRole("alert", { name: /Review state blocked/ });
+    expect(feedback.className).toContain("state-feedback");
+    expect(feedback.className).toContain("state-feedback-error");
+    expect(feedback.getAttribute("data-chrome")).toBe("none");
+    expect(feedback.getAttribute("data-ui-surface")).toBe("state-feedback");
   });
 
   test("renders empty states through shared chrome variants", () => {
@@ -392,6 +461,7 @@ describe("admin ui primitives", () => {
     const caseState = screen.getByText("Select a supervision case").closest(".case-empty-state");
     expect(caseState).not.toBeNull();
     expect(caseState?.className).toContain("case-state");
+    expect(caseState?.getAttribute("data-ui-surface")).toBe("state-feedback");
     expect(screen.getByText("Select a queue candidate to inspect evidence and object history.").className).toContain("muted");
 
     const errorState = screen.getByRole("alert");

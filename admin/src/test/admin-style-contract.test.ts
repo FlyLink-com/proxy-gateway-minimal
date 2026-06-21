@@ -289,6 +289,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".top-menu-popover")).toContain("var(--admin-shadow-popover)");
     expect(selectorBlock(".new-console-workbench")).toContain("var(--admin-workbench-gap)");
     expect(selectorBlock(".new-console-row")).toContain("var(--admin-border)");
+    expect(selectorBlock(".state-feedback")).toContain("min-width: 0");
     expect(selectorBlock(".operator-account-summary")).toContain("var(--admin-radius-pill)");
     expect(selectorBlock(".operator-account-summary")).toContain("min-height: var(--admin-touch-target-min)");
     expect(selectorBlock(".operator-account-avatar")).toContain("background: #0891b2");
@@ -508,6 +509,8 @@ describe("admin style token contract", () => {
   test("keeps dense New Admin tables and safe refs mobile-safe", () => {
     expect(selectorBlock(".new-console-table")).toContain("overflow-x: auto");
     expect(selectorBlock(".new-console-row")).toContain("min-width: min(100%, 720px)");
+    expect(selectorBlock(".new-console-state-stale")).toContain("var(--admin-warning-bg)");
+    expect(selectorBlock(".new-console-state-cell small,\n.new-console-state-feedback p")).toContain("var(--admin-muted)");
     expect(selectorBlock(".mono-ref")).toContain("max-width: 100%");
     expect(selectorBlock(".mono-ref")).toContain("overflow-wrap: anywhere");
     expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.new-console-row-head\s*\{\s*display: none;/m);

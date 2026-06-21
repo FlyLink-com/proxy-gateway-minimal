@@ -188,7 +188,7 @@ This matrix makes the implicit handoff explicit:
 | `TopBar` | `src/components/layout/top-bar.tsx` | Shell height, search/account controls, route status chips, Risk A notice. | `GCC-119` |
 | `SidebarNavigation` | `src/components/primitives/workspace-sidebar.tsx` | Sidebar route state, navigation library, local search, planned-route gate. | `GCC-119` |
 | `PrivilegedGate` | `admin-ui-contract`, `admin-app-manifest`, and shell safety surfaces | Hidden/gated/fresh-MFA/unavailable semantics and production-action guard copy. | `GCC-119` |
-| `StateFeedback` | `src/components/primitives/empty-state.tsx` and `DataTableState` | Loading, empty, stale, error, status/alert role, redacted detail. | `GCC-119` |
+| `StateFeedback` | `src/components/primitives/state-feedback.tsx`, `empty-state.tsx`, and `DataTableState` | Loading, empty, stale, error, status/alert role, redacted detail. | `GCC-119` |
 
 The matrix intentionally records current gaps instead of hiding them:
 
@@ -206,6 +206,20 @@ The matrix intentionally records current gaps instead of hiding them:
   current contract and shell surfaces.
 - `StateFeedback`: consolidate empty, loading, stale, and error presentation
   into one explicit mapping.
+
+GCC-119 implementation alignment started from the shared primitives rather than
+page-local rewrites:
+
+- `StateFeedback` is now a first-class primitive with `empty`, `loading`,
+  `stale`, and `error` tones, named `status` / `alert` roles, chrome variants,
+  and a stable `data-ui-surface="state-feedback"` hook.
+- `EmptyState` now delegates to `StateFeedback` while retaining the existing
+  workstream and case chrome class names.
+- `DataTableState` now accepts the shared state-feedback tones and renders state
+  content through `StateFeedback` inside the existing table cell.
+- `MetricCard`, `StatusChip`, `TopBar`, `WorkspaceSidebar`, and
+  `NavigationLibrary` now expose stable `data-figma-component` /
+  `data-ui-surface` hooks for GCC-120 browser evidence.
 
 `PR #355` must stay Draft until this parity matrix, `GCC-119` implementation
 alignment, and `GCC-120` breakpoint/state evidence are all complete.

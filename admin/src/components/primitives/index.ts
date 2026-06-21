@@ -19,6 +19,7 @@ export { PageSubNav, type PageSubNavItem } from "./page-sub-nav";
 export { QuotaMeter } from "./quota-meter";
 export { SafeRef } from "./safe-ref";
 export { SectionPanel } from "./section-panel";
+export { StateFeedback, type StateFeedbackChrome, type StateFeedbackTone } from "./state-feedback";
 export { StatusChip } from "./status-chip";
 export {
   NavigationLibrary,
