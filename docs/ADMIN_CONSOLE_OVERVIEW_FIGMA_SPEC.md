@@ -4,8 +4,8 @@ Last updated: 2026-06-21, America/Los_Angeles.
 
 > Status:
 > - Source Figma file:
->   <https://www.figma.com/design/EvQXTtJ2XnRfcGxRLTRt0B>
-> - Target page: `01 Overview Console`
+>   <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19>
+> - Target frame: `01 Operations Overview / 1600x1024`
 > - Risk: C for this design spec; follow-up Admin UI code work is B
 > - Production impact: None
 > - Execution authority: Does not authorize production, AWS, Vultr, DNS,
@@ -14,10 +14,10 @@ Last updated: 2026-06-21, America/Los_Angeles.
 >   customer-data actions
 
 This document preserves the concept-image design intent for the `总览 / 运营控制台`
-first screen. It exists because the current Figma MCP session hit the Starter
-plan tool-call limit before the page could be written. The broader Figma mirror
-contract and the current 2026-06-21 write-access blocker are now tracked in
-`docs/ADMIN_CONSOLE_FIGMA_MIRROR.md` and
+first screen. The canonical Figma handoff frame is now
+`01 Operations Overview / 1600x1024` in the multi-frame handoff file. The
+broader Figma mirror contract and the current 2026-06-21 connector evidence are
+tracked in `docs/ADMIN_CONSOLE_FIGMA_MIRROR.md` and
 `admin/src/design/figma-mirror.ts`.
 
 Use this spec only after applying the ownership rules in

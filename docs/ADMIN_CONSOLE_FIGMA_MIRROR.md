@@ -4,7 +4,7 @@ Last updated: 2026-06-21, America/Los_Angeles.
 
 > Status:
 > - Source Figma file:
->   <https://www.figma.com/design/EvQXTtJ2XnRfcGxRLTRt0B>
+>   <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19>
 > - Local contract: `admin/src/design/figma-mirror.ts`
 > - Risk: C for this mirror document; follow-up Admin UI code work is B
 > - Production impact: None
@@ -19,54 +19,56 @@ design artifact that must stay aligned with the local Admin page contracts.
 
 ## Current Connector Evidence
 
-Figma metadata read succeeded on 2026-06-21 for file
-`EvQXTtJ2XnRfcGxRLTRt0B`.
+Figma metadata and `use_figma` access succeeded on 2026-06-21 for canonical
+file `oZuKNtGPhP6oOQ0MSzpfvn`.
 
 Observed current canvas:
 
 | Item | Current value |
 | --- | --- |
-| Top-level page | `00 Requirements Map` |
-| Main frame | `GlobalCircle AI Admin Console / Requirements Map` |
-| Main frame size | `1440 x 1200` |
+| Top-level page | `Admin UI Handoff` |
+| Canonical build/order frame | `00 Contract & Build Order`, `1600 x 1024` |
+| Active page mirror frames | `01 Operations Overview / 1600x1024`, `02 Accounts & Resources / 1600x1024`, `03 Usage & Channels / 1600x1024` |
+| Safety/review frames | `04 State & Safety Matrix`, `05 GCC-103 Review Addendum / 1600x1024` |
+| Implementation capture frames | `06 Current Implementation / Operations Overview / 1600w full-content capture`, `07 Current Implementation / Accounts & Resources / 1600w full-content capture`, `08 Current Implementation / Usage & Channels / 1600w full-content capture` |
 | React-visible implementation baseline | Three active Admin pages: `Operations Overview`, `Accounts & Resources`, `Usage & Channels` |
 
-Observed mirror quality issue:
+Previous source mismatch:
 
-| Node / section | Problem |
+| File key | Finding |
 | --- | --- |
-| `Section / Design To Implementation Workflow` | Row frame height is smaller than child cards, causing clipping risk. |
-| `Page cards row 1` | Row frame height is smaller than child cards, causing clipping risk. |
-| `Page cards row 2` | Row frame height is smaller than child cards, causing clipping risk. |
+| `EvQXTtJ2XnRfcGxRLTRt0B` | Older one-page Requirements Map used during early handoff. Do not use it as the active mirror source. |
+| `oZuKNtGPhP6oOQ0MSzpfvn` | Canonical multi-frame Admin UI Handoff file. |
 
 Write attempt:
 
 | Field | Result |
 | --- | --- |
 | Date | 2026-06-21 |
-| Attempted operation | Resize clipped rows and create mirror pages. |
+| Attempted operation | Read canonical handoff metadata, execute `use_figma`, and write a shared-plugin-data probe. |
 | Connector-reported seat | `Dev / developer`. |
 | User-reported Figma UI access | Full access for the connected account. |
-| Connector result | `get_metadata` and `get_screenshot` can read the file, but `use_figma` read-only execution is blocked with `User does not have view permission on file`. |
-| Required action | Refresh or reconnect the Figma connector so the MCP `use_figma` session sees the same Full/edit permission shown in Figma UI, then rerun the mirror write step. |
+| Desktop evidence | Figma Desktop opens the canonical multi-frame file. The Share button shows a Full-seat upgrade prompt; do not continue that prompt through automation. |
+| Connector result | `get_metadata` can read the canonical file, `use_figma` can execute, and a shared plugin data write probe succeeded on page `0:1`. |
+| Required action | Use the canonical handoff file for future Figma mirror and visual QA work. Avoid Share or seat/billing prompts unless the operator explicitly approves that action. |
 
-Do not infer from this blocker that the React Admin UI is unavailable. The
-blocker is scoped to the Figma Plugin API execution path, not to metadata or
-screenshot read access.
+Do not infer from the previous blocker that the React Admin UI is unavailable.
+That blocker was scoped to using the wrong one-page file key and the earlier
+`use_figma` permission probe against that key.
 
 ## Required Mirror Pages
 
 The canonical local contract is `ADMIN_FIGMA_MIRROR_PAGES` in
 `admin/src/design/figma-mirror.ts`.
 
-| Page | Role | Maps to React page |
+| Frame | Role | Maps to React page |
 | --- | --- | --- |
-| `00 Requirements Map` | Requirements map | All three active pages |
-| `01 Design Tokens / Components` | Token and primitive mirror | Shared Admin shell, workspace, panel, and primitive contracts |
-| `02 Operations Overview / 1600x1024` | Page mirror | `dashboard` / `Operations Overview` |
-| `03 Accounts & Resources / 1600x1024` | Page mirror | `portalRequests` / `Accounts & Resources` |
-| `04 Usage & Channels / 1600x1024` | Page mirror | `usageMonitor` / `Usage & Channels` |
-| `05 Visual QA / Ledger` | QA evidence page | Figma, DOM, Browser, style-token, and safe-data evidence |
+| `00 Contract & Build Order` | Contract and build-order map | All three active pages |
+| `01 Operations Overview / 1600x1024` | Page mirror | `dashboard` / `Operations Overview` |
+| `02 Accounts & Resources / 1600x1024` | Page mirror | `portalRequests` / `Accounts & Resources` |
+| `03 Usage & Channels / 1600x1024` | Page mirror | `usageMonitor` / `Usage & Channels` |
+| `04 State & Safety Matrix` | Safety and boundary matrix | All three active pages |
+| `05 GCC-103 Review Addendum / 1600x1024` | Visual QA / review addendum | Figma, DOM, Browser, style-token, and safe-data evidence |
 
 ## Page Ownership Rules
 
@@ -104,8 +106,8 @@ The automated contract for these axes is covered by
 1. Update `admin/src/design/figma-mirror.ts` first when page names, frame names,
    or mirror ownership changes.
 2. Update this document and `docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md`.
-3. Regenerate or update the Figma file only with an account that has edit
-   access.
+3. Update only the canonical `oZuKNtGPhP6oOQ0MSzpfvn` Figma file. Do not use
+   the older one-page Requirements Map file for active mirror work.
 4. Run focused Admin tests for the mirror and visual QA contracts.
 5. Run Browser or Chrome viewport checks against `#/fixture-preview`.
 6. Record the exact validation commands before marking the visual task done.

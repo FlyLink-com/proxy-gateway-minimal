@@ -16,17 +16,17 @@ import {
 } from "../design/figma-mirror";
 
 describe("admin Figma mirror contract", () => {
-  test("declares the current Figma source and required mirror pages", () => {
+  test("declares the current Figma source and required mirror frames", () => {
     expect(ADMIN_FIGMA_MIRROR_CONTRACT_VERSION).toBe("admin-figma-mirror/v1");
-    expect(ADMIN_FIGMA_FILE_KEY).toBe("EvQXTtJ2XnRfcGxRLTRt0B");
-    expect(ADMIN_FIGMA_SOURCE_URL).toBe("https://www.figma.com/design/EvQXTtJ2XnRfcGxRLTRt0B");
+    expect(ADMIN_FIGMA_FILE_KEY).toBe("oZuKNtGPhP6oOQ0MSzpfvn");
+    expect(ADMIN_FIGMA_SOURCE_URL).toBe("https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn");
     expect(ADMIN_FIGMA_REQUIRED_PAGE_NAMES).toEqual([
-      "00 Requirements Map",
-      "01 Design Tokens / Components",
-      "02 Operations Overview / 1600x1024",
-      "03 Accounts & Resources / 1600x1024",
-      "04 Usage & Channels / 1600x1024",
-      "05 Visual QA / Ledger"
+      "00 Contract & Build Order",
+      "01 Operations Overview / 1600x1024",
+      "02 Accounts & Resources / 1600x1024",
+      "03 Usage & Channels / 1600x1024",
+      "04 State & Safety Matrix",
+      "05 GCC-103 Review Addendum / 1600x1024"
     ]);
     expect(new Set(ADMIN_FIGMA_REQUIRED_PAGE_NAMES).size).toBe(ADMIN_FIGMA_REQUIRED_PAGE_NAMES.length);
   });
@@ -41,7 +41,7 @@ describe("admin Figma mirror contract", () => {
       expect(matchingMirror).toHaveLength(1);
       expect(matchingMirror[0].name).toContain(pageTitles[navItem.id]);
       expect(matchingMirror[0].frameSize).toBe(ADMIN_UI_CONTRACT.viewportTargets.desktopWorkbench.frame);
-      expect(matchingMirror[0].status).toBe("required");
+      expect(matchingMirror[0].status).toBe("current");
     });
   });
 
@@ -59,18 +59,22 @@ describe("admin Figma mirror contract", () => {
       });
   });
 
-  test("records the current Figma connector permission mismatch until use_figma can execute", () => {
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.status).toBe("blocked");
+  test("records the current Figma connector write path and remaining Share prompt guard", () => {
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.status).toBe("ready");
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.checkedAt).toBe("2026-06-21");
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.attemptedOperation).toContain("create mirror pages");
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.attemptedOperation).toContain("shared-plugin-data probe");
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.connectorReportedSeat).toBe("Dev / developer");
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.userReportedAccess).toMatch(/Full access/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.userReportedAccess).toMatch(/reported Full access/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.desktopEvidence).toMatch(/canonical multi-page/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.desktopEvidence).toMatch(/Full-seat upgrade prompt/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.sourceFileMismatch).toMatch(/Previous recorded file key/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.sourceFileMismatch).toContain(ADMIN_FIGMA_FILE_KEY);
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("get_metadata");
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("get_screenshot");
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("can read");
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("use_figma read-only execution is denied");
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.connectorMessage).toMatch(/permission|view/i);
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/Refresh or reconnect the Figma connector/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("use_figma can execute");
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("write probe succeeded");
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.connectorMessage).toMatch(/use_figma succeeded/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/canonical handoff file/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/seat\/billing prompts/i);
   });
 
   test("defines the complete visual QA evidence axes", () => {

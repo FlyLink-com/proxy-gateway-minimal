@@ -47,21 +47,22 @@ Figma connector evidence on 2026-06-21:
 
 | Check | Result |
 | --- | --- |
-| Source file metadata | Read succeeded for `https://www.figma.com/design/EvQXTtJ2XnRfcGxRLTRt0B`. |
-| Current top-level page | `00 Requirements Map`. |
-| Current main frame | `GlobalCircle AI Admin Console / Requirements Map`, `1440 x 1200`. |
-| Current mismatch | Several requirement-map row frames are shorter than their child cards, creating clipping risk. |
+| Source file metadata | Read succeeded for `https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19`. |
+| Current top-level page | `Admin UI Handoff`. |
+| Current mirror frames | `00 Contract & Build Order`, `01 Operations Overview / 1600x1024`, `02 Accounts & Resources / 1600x1024`, `03 Usage & Channels / 1600x1024`, `04 State & Safety Matrix`, `05 GCC-103 Review Addendum / 1600x1024`. |
+| Implementation captures | `06 Current Implementation / Operations Overview / 1600w full-content capture`, `07 Current Implementation / Accounts & Resources / 1600w full-content capture`, `08 Current Implementation / Usage & Channels / 1600w full-content capture`. |
+| Previous mismatch | The earlier recorded `EvQXTtJ2XnRfcGxRLTRt0B` file is a one-page Requirements Map, not the canonical multi-frame handoff file. |
 | Connector-reported seat | `Dev / developer`. |
 | User-reported Figma UI access | Full access for the connected account. |
-| Write attempt | Blocked while trying to resize clipped rows and create mirror pages. |
-| Connector message | `get_metadata` and `get_screenshot` can read the file, but `use_figma` read-only execution is blocked with `User does not have view permission on file`. |
-| Next action | Refresh or reconnect the Figma connector so the MCP `use_figma` session sees the same Full/edit permission shown in Figma UI, then rerun the mirror write step. |
+| Desktop evidence | Figma Desktop opens the canonical multi-frame file. The Share button shows a Full-seat upgrade prompt; do not continue that prompt through automation. |
+| Write probe | `use_figma` succeeded on the canonical file and wrote safe shared plugin data under `adminos.mcpWriteProbe` on page `0:1`. |
+| Next action | Use the canonical handoff file for future Figma mirror and visual QA work. Avoid Share or seat/billing prompts unless the operator explicitly approves that action. |
 
 Local mirror contract added:
 
 | Contract | Purpose |
 | --- | --- |
-| `admin/src/design/figma-mirror.ts` | Canonical Figma file key, required mirror pages, page-to-React mapping, write-access blocker, and QA evidence axes. |
+| `admin/src/design/figma-mirror.ts` | Canonical Figma file key, required mirror frames, page-to-React mapping, connector evidence, and QA evidence axes. |
 | `admin/src/test/admin-figma-mirror-contract.test.ts` | Verifies mirror page names, one page mirror per active Admin route, and blocker visibility. |
 | `admin/src/test/admin-visual-qa-contract.test.tsx` | Verifies fixture shell landmarks, page/panel DOM ownership hooks, named interactive controls, and safe-data boundary. |
 
