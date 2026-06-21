@@ -1,6 +1,6 @@
 # Admin Console Overview Figma Spec
 
-Last updated: 2026-06-20, Asia/Shanghai.
+Last updated: 2026-06-21, America/Los_Angeles.
 
 > Status:
 > - Source Figma file:
@@ -15,7 +15,10 @@ Last updated: 2026-06-20, Asia/Shanghai.
 
 This document preserves the concept-image design intent for the `总览 / 运营控制台`
 first screen. It exists because the current Figma MCP session hit the Starter
-plan tool-call limit before the page could be written.
+plan tool-call limit before the page could be written. The broader Figma mirror
+contract and the current 2026-06-21 write-access blocker are now tracked in
+`docs/ADMIN_CONSOLE_FIGMA_MIRROR.md` and
+`admin/src/design/figma-mirror.ts`.
 
 Use this spec only after applying the ownership rules in
 `docs/ADMIN_CONSOLE_UI_PROMPT_TRACEABILITY.md`. The current React implementation

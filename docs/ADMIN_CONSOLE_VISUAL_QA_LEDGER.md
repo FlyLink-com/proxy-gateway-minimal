@@ -1,6 +1,6 @@
 # Admin Console Visual QA Ledger
 
-Last updated: 2026-06-16, America/Los_Angeles.
+Last updated: 2026-06-21, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-68
@@ -30,6 +30,8 @@ Source references:
   `docs/ADMIN_CONSOLE_DOMAIN_DICTIONARY.md`
 - Component/function blueprint:
   `docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md`
+- Figma mirror:
+  `docs/ADMIN_CONSOLE_FIGMA_MIRROR.md`
 
 ## Tool Roles
 
@@ -38,6 +40,28 @@ Source references:
 | Browser / IAB | Fast local DOM, viewport, console-log, and responsive checks. | Primary tool for this ledger. | Use first for local `127.0.0.1` checks. |
 | Chrome | Real desktop-profile visual inspection when Browser viewport or extension state is insufficient. | Not required in this pass because Browser covered DOM, desktop, and mobile checks. | Use for final wide-screen polish or profile-specific issues. |
 | Computer | Windows desktop-level fallback when browser automation cannot expose the visual state. | Not required in this pass. | Use only for visual capture or app-window issues that Browser/Chrome cannot inspect. |
+
+## Current Figma Mirror Evidence
+
+Figma connector evidence on 2026-06-21:
+
+| Check | Result |
+| --- | --- |
+| Source file metadata | Read succeeded for `https://www.figma.com/design/EvQXTtJ2XnRfcGxRLTRt0B`. |
+| Current top-level page | `00 Requirements Map`. |
+| Current main frame | `GlobalCircle AI Admin Console / Requirements Map`, `1440 x 1200`. |
+| Current mismatch | Several requirement-map row frames are shorter than their child cards, creating clipping risk. |
+| Write attempt | Blocked while trying to resize clipped rows and create mirror pages. |
+| Connector message | `User does not have view permission on file`. |
+| Next action | Grant the connected Figma account edit access, then rerun the mirror write step. |
+
+Local mirror contract added:
+
+| Contract | Purpose |
+| --- | --- |
+| `admin/src/design/figma-mirror.ts` | Canonical Figma file key, required mirror pages, page-to-React mapping, write-access blocker, and QA evidence axes. |
+| `admin/src/test/admin-figma-mirror-contract.test.ts` | Verifies mirror page names, one page mirror per active Admin route, and blocker visibility. |
+| `admin/src/test/admin-visual-qa-contract.test.tsx` | Verifies fixture shell landmarks, page/panel DOM ownership hooks, named interactive controls, and safe-data boundary. |
 
 ## Current Browser Evidence
 
@@ -53,6 +77,14 @@ Fresh Browser check on 2026-06-16 after the English canonical content slice:
 | --- | --- | --- | --- | --- | --- |
 | Browser split viewport `584px` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | No | No | 0 | Pass |
 | Desktop override `1440 x 900` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | No | No | 0 | Pass |
+
+Focused Browser check on 2026-06-21 after adding the Figma mirror and visual QA
+contracts used `http://127.0.0.1:5173/#/fixture-preview`:
+
+| Viewport | Page checked | Panels | Global horizontal overflow | Unnamed interactive controls | Sensitive text boundary | Console errors | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Browser override `1440 x 900` | `Operations Overview` | 3: `dashboard-health-summary`, `dashboard-risk-queue`, `dashboard-next-actions` | No | 0 | Pass | 0 | Pass |
+| Browser override `390 x 844` | `Operations Overview` | 3: `dashboard-health-summary`, `dashboard-risk-queue`, `dashboard-next-actions` | No | 0 | Pass | 0 | Pass |
 
 Clean Browser check on 2026-06-16 after the page-ownership cleanup used
 `http://127.0.0.1:5175/` to avoid stale HMR console entries from the existing
