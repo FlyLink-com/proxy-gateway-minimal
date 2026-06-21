@@ -6,10 +6,11 @@ Last updated: 2026-06-21, Asia/Shanghai.
 > - Source of truth: current React Admin implementation.
 > - Figma handoff file:
 >   <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn>
-> - Current implementation capture:
+> - Current implementation capture set:
 >   <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn?node-id=17-2>
-> - Annotation node: `18:2`
-> - Captured implementation node: `17:2`
+> - Overview annotation node: `18:2`
+> - Active capture set annotation node: `24:2`
+> - Captured active implementation nodes: `17:2`, `22:2`, `23:2`
 > - Risk: C for this spec; follow-up Admin UI code changes are B
 > - Production impact: None
 > - Execution authority: Does not authorize production, AWS, Vultr, DNS,
@@ -28,18 +29,41 @@ visual authority for the active implementation.
 | --- | --- |
 | File | `GlobalCircle AI Admin UI Handoff` |
 | File key | `oZuKNtGPhP6oOQ0MSzpfvn` |
-| Current implementation frame | `06 Current Implementation / Operations Overview / 1600w full-content capture` |
-| Current implementation node | `17:2` |
-| Captured size | `1600 x 1457` |
+| Operations implementation frame | `06 Current Implementation / Operations Overview / 1600w full-content capture` |
+| Operations implementation node | `17:2` |
+| Accounts implementation frame | `07 Current Implementation / Accounts & Resources / 1600w full-content capture` |
+| Accounts implementation node | `22:2` |
+| Usage implementation frame | `08 Current Implementation / Usage & Channels / 1600w full-content capture` |
+| Usage implementation node | `23:2` |
+| Active capture annotation | `24:2` |
+| Captured size | `1600px` browser width, full rendered content height |
 | Capture basis | Local React Admin fixture preview, 1600px browser width |
 | Capture date | 2026-06-21 |
 | Data posture | Safe synthetic fixture data only |
 
-The imported frame intentionally preserves the full rendered page height. The
+The imported frames intentionally preserve the full rendered page height. The
 previous 1600x1024 concept frames assumed first-viewport fit, but the current
-implementation renders a taller OS workspace with module panels and fixture
-preview content. Treat that height difference as implementation evidence, not
-as a Figma import bug.
+implementation renders taller OS workspace pages with module panels and fixture
+preview content. Treat those height differences as implementation evidence, not
+as Figma import bugs.
+
+The current active Admin pages are:
+
+| Page | Code route | Figma implementation node | Status |
+| --- | --- | --- | --- |
+| `Operations Overview` | `dashboard` | `17:2` | Active |
+| `Accounts & Resources` | `portalRequests` | `22:2` | Active |
+| `Usage & Channels` | `usageMonitor` | `23:2` | Active |
+
+The current planned/gated shell entries are not active page captures in this
+handoff:
+
+| Planned/gated entry | Current status |
+| --- | --- |
+| `Platform Development` | Planned/gated in the sidebar. |
+| `System Settings` | Planned/gated in the sidebar. |
+| `About` | Planned/gated in the sidebar. |
+| Durable cases, logs, audit history | Future privileged/audit surfaces only. |
 
 ## Legacy Frames
 
@@ -54,15 +78,18 @@ These frames remain in the Figma file for comparison and semantic constraints:
 | `2:427` | `04 State & Safety Matrix` | Still valid for state/security constraints. |
 | `14:2` | `05 GCC-103 Review Addendum / 1600x1024` | Review notes predating the reverse handoff. |
 | `17:2` | `06 Current Implementation / Operations Overview / 1600w full-content capture` | Active visual baseline. |
+| `22:2` | `07 Current Implementation / Accounts & Resources / 1600w full-content capture` | Active visual baseline. |
+| `23:2` | `08 Current Implementation / Usage & Channels / 1600w full-content capture` | Active visual baseline. |
+| `24:2` | `Annotation / Active implementation page capture set` | Active capture set explanation. |
 
-Do not use the older flat `01 Operations Overview / 1600x1024` frame as a
-pixel-parity target unless the product direction explicitly changes back away
-from the Admin OS/pluginized shell.
+Do not use the older flat `01/02/03 ... / 1600x1024` frames as pixel-parity
+targets unless the product direction explicitly changes back away from the
+Admin OS/pluginized shell.
 
 ## Implementation Visual Contract
 
-The active Overview screen is an operator workspace, not a flat dashboard page.
-It is composed of:
+The active Admin shell is an operator workspace, not a flat dashboard page. The
+active pages share this shell:
 
 1. Workspace sidebar.
 2. Top bar with page context, search, risk posture chips, and operator control.
@@ -96,6 +123,13 @@ owner pages.
 | `Risk Queue` | Computed safe review candidates and severity routing. |
 | `Next Actions` | Route operators to the page that owns the detailed work. |
 
+Owner-page captures now exist for the two active detailed areas:
+
+| Owner page | Figma node | Ownership |
+| --- | --- | --- |
+| `Accounts & Resources` | `22:2` | Accounts, orders, resources, quota, lifecycle, and safe history/events. |
+| `Usage & Channels` | `23:2` | Usage ledger, freshness, channel coverage, receipts, collectors, and anomalies. |
+
 The following detailed areas must not be duplicated as Overview-owned ledgers:
 
 | Detailed area | Owning page |
@@ -127,15 +161,23 @@ Use this local-only process when refreshing the implementation frame:
    ```
 
 2. Temporarily load the Figma capture script in `admin/index.html`.
-3. Open the local Admin page at a 1600px-wide browser viewport using the capture
+3. For non-default Admin pages, use a temporary local-only query or equivalent
+   safe route hook so the target page is selected before capture. Remove that
+   hook before committing.
+4. Open the local Admin page at a 1600px-wide browser viewport using the capture
    URL generated by the Figma MCP `generate_figma_design` tool.
-4. Poll the capture until Figma reports completion.
-5. Rename the imported frame to the next implementation handoff label.
-6. Remove the temporary capture script from `admin/index.html`.
-7. Verify the repo is back to a normal state and run `git diff --check` for any
+5. Confirm the page heading and active nav match the intended target before
+   polling the capture.
+6. Poll the capture until Figma reports completion.
+7. Rename the imported frame to the next implementation handoff label.
+8. Remove the temporary capture script from `admin/index.html`.
+9. Verify the repo is back to a normal state and run `git diff --check` for any
    documentation changes.
 
 Never leave the capture script committed to the project.
+The HTML-to-design import may expose closed `<details>` children structurally;
+visible-state QA should still verify browser screenshots in addition to the
+Figma capture nodes.
 
 ## Security Contract
 
@@ -154,10 +196,11 @@ Safe synthetic fixture labels, redacted refs, and aggregate states are allowed.
 
 ## Acceptance
 
-- The Figma file contains a clearly named current implementation capture.
-- The current implementation capture is marked as the active visual baseline.
+- The Figma file contains clearly named current implementation captures for all
+  active Admin pages.
+- The current implementation captures are marked as the active visual baseline.
 - Legacy flat Figma frames are clearly treated as concept references, not the
   implementation parity target.
 - The repo does not retain the temporary capture script.
-- Future Admin UI visual QA compares the current frontend against node `17:2`
-  or its successor, not the stale requirements-map file.
+- Future Admin UI visual QA compares the current frontend against nodes `17:2`,
+  `22:2`, and `23:2` or their successors, not the stale requirements-map file.
