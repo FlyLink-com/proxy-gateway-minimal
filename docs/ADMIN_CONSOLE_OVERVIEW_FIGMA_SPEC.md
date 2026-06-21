@@ -1,218 +1,163 @@
 # Admin Console Overview Figma Spec
 
-Last updated: 2026-06-20, Asia/Shanghai.
+Last updated: 2026-06-21, Asia/Shanghai.
 
 > Status:
-> - Source Figma file:
->   <https://www.figma.com/design/EvQXTtJ2XnRfcGxRLTRt0B>
-> - Target page: `01 Overview Console`
-> - Risk: C for this design spec; follow-up Admin UI code work is B
+> - Source of truth: current React Admin implementation.
+> - Figma handoff file:
+>   <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn>
+> - Current implementation capture:
+>   <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn?node-id=17-2>
+> - Annotation node: `18:2`
+> - Captured implementation node: `17:2`
+> - Risk: C for this spec; follow-up Admin UI code changes are B
 > - Production impact: None
 > - Execution authority: Does not authorize production, AWS, Vultr, DNS,
 >   Nginx, systemd, DB, runtime, auth model, schema/migration, token,
 >   credential, subscription URL, raw config/log/env, SQLite row, or
 >   customer-data actions
 
-This document preserves the concept-image design intent for the `总览 / 运营控制台`
-first screen. It exists because the current Figma MCP session hit the Starter
-plan tool-call limit before the page could be written.
+This document is now a reverse handoff record: the current React Admin
+OS/pluginized frontend is the design source for Figma. Older Figma frames in
+the same file remain useful semantic references, but they are no longer the
+visual authority for the active implementation.
 
-Use this spec only after applying the ownership rules in
-`docs/ADMIN_CONSOLE_UI_PROMPT_TRACEABILITY.md`. The current React implementation
-keeps Overview focused on summary and routing: `Health Summary`, `Risk Queue`,
-and `Next Actions`. The old concept regions for account/resource rows, object
-timeline, and channel ledger are source material for owner pages, not
-Overview-owned content.
-
-The source concept image and early Figma notes contain Chinese planning copy.
-For the current GCC-103 handoff, React-visible UI labels remain English
-canonical unless an explicit locale adapter and tests are added. Figma frames
-may keep Chinese annotations for planning, but implementation labels, route
-names, test anchors, and copy handoff should map to the existing English Admin
-contract.
-
-## Design Intent
-
-The overview is an operator console first screen. It must answer:
-
-1. Is the platform reviewable right now?
-2. Which computed risks need attention?
-3. Which owner page should the operator open next?
-4. Are production actions still gated?
-
-It is not a subscription creation form, not a runtime execution console, and
-not a public customer surface.
-
-## Canvas
+## Current Figma Source
 
 | Item | Value |
 | --- | --- |
-| Frame name | `Overview Console / 1600x1024` |
-| Size | `1600 x 1024` |
-| Background | `#F8FAFC` |
-| App shell | Sidebar + top bar + content workbench |
-| Sidebar width | `240` |
-| Top bar height | `64` |
-| Content padding | `24` |
-| Card radius | `12` for dashboard cards; `8` for compact controls |
-| Stroke | `#D8E1EE` / `#E2E8F0` |
-| Primary blue | `#0F5ED7` |
-| Success green | `#0A7A45` |
-| Warning orange | `#C2410C` |
-| Danger red | `#B91C1C` |
-| Text primary | `#0F172A` |
-| Text secondary | `#475569` |
-| Text muted | `#64748B` |
-| Font | `Noto Sans SC` for Chinese UI text; `Inter` only for numeric fallback if needed |
+| File | `GlobalCircle AI Admin UI Handoff` |
+| File key | `oZuKNtGPhP6oOQ0MSzpfvn` |
+| Current implementation frame | `06 Current Implementation / Operations Overview / 1600w full-content capture` |
+| Current implementation node | `17:2` |
+| Captured size | `1600 x 1457` |
+| Capture basis | Local React Admin fixture preview, 1600px browser width |
+| Capture date | 2026-06-21 |
+| Data posture | Safe synthetic fixture data only |
 
-## Shell Layout
+The imported frame intentionally preserves the full rendered page height. The
+previous 1600x1024 concept frames assumed first-viewport fit, but the current
+implementation renders a taller OS workspace with module panels and fixture
+preview content. Treat that height difference as implementation evidence, not
+as a Figma import bug.
 
-| Region | Size/position | Content | Notes |
-| --- | --- | --- | --- |
-| Sidebar | `240 x 1024` left | Logo, product subtitle, nav, safety footer. | Active item `总览`; planned items locked. |
-| Top bar | `1360 x 64` top right | Search, environment selector, alerts, help, shield, operator menu. | No secret/session raw values. |
-| Content | `1360 x 960` under top bar | Header, metric cards, risk queue, next-action routing. | Fits first viewport without scroll in desktop spec. |
+## Legacy Frames
 
-### Sidebar Content
+These frames remain in the Figma file for comparison and semantic constraints:
 
-| Item | Text | State |
+| Node | Frame | Current role |
 | --- | --- | --- |
-| Brand | `GlobalCircle AI` | Visible |
-| Subtitle | `Proxy Gateway` | Visible |
-| Nav 1 | `总览` | Active |
-| Nav 2 | `用户监管` | Locked or active when real route exists |
-| Nav 3 | `平台监控` | Locked or active when real route exists |
-| Nav 4 | `审计与工单` | Locked |
-| Nav 5 | `平台开发` | Locked |
-| Nav 6 | `系统设置` | Locked |
-| Footer | `生产环境操作我们来保护`; `请通过门禁申请后执行` | Safety copy |
+| `2:2` | `00 Contract & Build Order` | Historical planning and build-order reference. |
+| `2:81` | `01 Operations Overview / 1600x1024` | Legacy flat concept reference. Not current visual authority. |
+| `2:189` | `02 Accounts & Resources / 1600x1024` | Legacy owner-page concept reference. |
+| `2:*` | `03 Usage & Channels / 1600x1024` | Legacy owner-page concept reference. |
+| `2:427` | `04 State & Safety Matrix` | Still valid for state/security constraints. |
+| `14:2` | `05 GCC-103 Review Addendum / 1600x1024` | Review notes predating the reverse handoff. |
+| `17:2` | `06 Current Implementation / Operations Overview / 1600w full-content capture` | Active visual baseline. |
 
-### Top Bar Content
+Do not use the older flat `01 Operations Overview / 1600x1024` frame as a
+pixel-parity target unless the product direction explicitly changes back away
+from the Admin OS/pluginized shell.
 
-| Item | Text/state | Notes |
-| --- | --- | --- |
-| Search | `搜索用户、订单、通道、工单或事件`; shortcut `⌘ K` | Search shell only until global safe search exists. |
-| Environment | `生产环境` | Read-only selector in first slice. |
-| Notifications | badge `12` | Opens risk/case queue only after route exists. |
-| Operator | `operator` | Safe display name only. |
+## Implementation Visual Contract
 
-## Content Layout
+The active Overview screen is an operator workspace, not a flat dashboard page.
+It is composed of:
 
-Content uses three ownership-safe vertical bands:
+1. Workspace sidebar.
+2. Top bar with page context, search, risk posture chips, and operator control.
+3. Fixture preview banner when safe preview mode is enabled.
+4. Page header with `Overview / Operations Overview` and the page title.
+5. Module board with `Health Summary`, `Risk Queue`, and `Next Actions`.
+6. Panel-level controls: field count, preview chip, and hide-module control.
+7. Navigation library and planned workspace routes.
 
-1. Header + metric cards.
-2. Risk queue with severity filters and safe summary rows.
-3. Next-action routing to the owning pages.
+The visible UI intentionally contains OS/workspace behaviors that were not in
+the legacy flat Figma concept:
 
-The old concept's `用户与资源`, `对象时间线`, and `流量与通道` regions are no
-longer Overview-owned implementation areas. They are routed as follows:
-
-| Concept region | Owning page |
+| Current behavior | Design implication |
 | --- | --- |
-| `用户与资源` | `Accounts & Resources` |
-| `对象时间线` | Future `Audit & Cases`, with interim history entry points in `Accounts & Resources` |
-| `流量与通道` | `Usage & Channels` |
+| `Fixture preview` banner | Figma must preserve the safe-preview state for fixture captures. |
+| Module panel headers | Panels are plugin/workbench units, not plain content sections. |
+| Field-count badges | Design must account for panel metadata density. |
+| Hide-module controls | Module chrome is part of the UI contract. |
+| Navigation library | Sidebar design must include the library entry and count badge. |
+| `About` planned route | Current React navigation includes this planned route. |
+| Full content height > 1024 | Desktop QA should distinguish first-viewport fit from full-page workspace height. |
 
-### Current Overview Subnavigation
+## Current Page Ownership
 
-| Section | Role |
+Overview owns only cross-page summary and routing. Detailed ledgers remain on
+owner pages.
+
+| Overview module | Current role |
 | --- | --- |
-| `Health Summary` | Metric cards and platform reviewability. |
-| `Risk Queue` | Computed risk candidates and severity filters. |
-| `Next Actions` | Route cards into the owner pages; no detailed ledger ownership. |
+| `Health Summary` | Platform health, risk count, freshness, and channel coverage summary. |
+| `Risk Queue` | Computed safe review candidates and severity routing. |
+| `Next Actions` | Route operators to the page that owns the detailed work. |
 
-## Header
+The following detailed areas must not be duplicated as Overview-owned ledgers:
 
-| Element | Text | Requirement |
-| --- | --- | --- |
-| Title | `运营控制台` | Page title. |
-| Freshness | `刷新于 12:30:45` | Use `刷新于 HH:mm:ss`; disconnected state uses `未连接`. |
-| Refresh icon | visual only | Manual refresh hook when API wiring exists. |
-
-## Metric Cards
-
-Cards are four equal columns across the content width, excluding right panel
-when the design uses a separate timeline column.
-
-| Card | Value | Source note | Tone |
-| --- | --- | --- | --- |
-| `平台健康` | `良好` | `近 5 分钟` | Success |
-| `风险案件` | `18` | `较昨日 +6` | Danger |
-| `采集新鲜度` | `2 分 14 秒` | `P95 延迟` | Info |
-| `通道覆盖` | `98.6%` | `可用通道占比` | Success |
-
-Each card includes:
-
-- small icon chip;
-- label;
-- dominant value;
-- source note;
-- tiny sparkline;
-- empty/disconnected state.
-
-## `监管案件`
-
-| Element | Text/state |
+| Detailed area | Owning page |
 | --- | --- |
-| Header | `监管案件` + badge `18` |
-| Tabs | `全部 18`; `高风险 5`; `中风险 9`; `低风险 4` |
-| Row 1 | `订单流量超额`; `涉及订单 12`; badge `9` |
-| Row 2 | `采集延迟`; `超过阈值 5 分钟`; badge `6` |
-| Row 3 | `回执缺失`; `超过阈值 15 分钟`; badge `3` |
-| Footer | `查看全部案件` |
+| Accounts, orders, resources, quota, lifecycle | `Accounts & Resources` |
+| Usage ledger, freshness, channel coverage, receipts, collectors | `Usage & Channels` |
+| Durable cases, logs, audit history | Future privileged/audit surfaces only |
 
-Interaction:
+## Figma Update Rule
 
-- tabs filter local visible rows;
-- row selection drives timeline/object detail;
-- footer stays disabled/gated until durable case page exists.
+For this phase, the direction is:
 
-## Concept Regions Routed Out Of Overview
+```text
+React Admin implementation -> Figma handoff -> QA / future design iteration
+```
 
-These regions came from the concept image and remain useful design material,
-but they must not be implemented as detailed Overview collections.
+Do not force the current frontend to match the older flat Figma frame. If the
+frontend changes, refresh or replace the current implementation capture in the
+Figma file and update this document with the new node ID.
 
-| Concept region | Original visual intent | Current implementation prompt |
-| --- | --- | --- |
-| `用户与资源` | Safe user/order/quota/risk rows. | Implement as `Accounts & Resources` account/resource/order review content. In Overview, show only a route card or computed summary count. |
-| `对象时间线` | Object filters, object chain, and safe event list. | Implement later in durable `Audit & Cases`; interim history entry points belong under owner pages. In Overview, show only the next review target. |
-| `流量与通道` | Channel status filters, freshness, receipt state, usage rows. | Implement as `Usage & Channels` monitoring content. In Overview, show only aggregate freshness/coverage metrics and route action. |
+## Capture Procedure
 
-Rules for all routed regions:
+Use this local-only process when refreshing the implementation frame:
 
-- show safe refs only;
-- no raw customer identity, token, credential, or subscription URL;
-- do not duplicate owner-page ledgers inside Overview;
-- route by page ownership before adding any new card.
+1. Start the Admin dev server with safe fixture preview enabled:
 
-## Component Backlog From This Screen
+   ```bash
+   VITE_ADMIN_FIXTURE_PREVIEW=1 npm run admin:dev
+   ```
 
-| Component | Purpose | First code target |
-| --- | --- | --- |
-| `AdminShell` | Sidebar + top bar + content workbench. | `admin/src/components/layout/*` |
-| `PageHeader` | Title, freshness, refresh status. | Shared UI component. |
-| `MetricCard` | Operator metric with trend and source note. | Replace ad hoc card markup. |
-| `RiskQueue` | Severity filters and risk rows. | `Operations Overview`, then future case page. |
-| `QuotaMeter` | Percent, used/limit, overage and source state. | `Accounts & Resources`; Overview summary only. |
-| `StatusChip` | Semantic state language. | All pages. |
-| `ObjectChain` | Safe linked refs. | Future `Audit & Cases` or owner-page history. |
-| `ObjectTimeline` | Safe event list. | Future durable audit; not current Overview. |
-| `ChannelLedger` | Traffic/channel table. | `Usage & Channels`. |
-| `Sparkline` | Bounded visual trend. | Metric cards and channel rows. |
+2. Temporarily load the Figma capture script in `admin/index.html`.
+3. Open the local Admin page at a 1600px-wide browser viewport using the capture
+   URL generated by the Figma MCP `generate_figma_design` tool.
+4. Poll the capture until Figma reports completion.
+5. Rename the imported frame to the next implementation handoff label.
+6. Remove the temporary capture script from `admin/index.html`.
+7. Verify the repo is back to a normal state and run `git diff --check` for any
+   documentation changes.
 
-## Implementation Acceptance
+Never leave the capture script committed to the project.
 
-- The screen must fit the desktop `1600 x 1024` frame without overlapping text.
-- The sidebar and top bar must remain visually stable when content data is
-  missing.
-- Unknown, stale, zero, disabled, over-limit, delayed, and receipt-missing
-  states must be visually distinct.
-- Overview must not render account/resource ledgers, object timelines, or
-  channel ledgers as page-owned collections.
-- Overview next actions must route detailed work to `Accounts & Resources`,
-  `Usage & Channels`, or a gated future page.
-- Links navigate only to real pages; planned pages remain gated.
-- No raw subscription URLs, tokens, credentials, runtime config, env values,
-  logs, SQLite rows, or customer-private data appear.
-- Chrome/Browser/Computer QA must compare the implemented screen against this
-  Figma page after the Figma canvas is generated.
+## Security Contract
+
+The Figma implementation capture and this document must not include:
+
+- raw subscription URLs;
+- tokens or credentials;
+- private keys;
+- runtime config;
+- raw logs;
+- raw environment values;
+- SQLite rows;
+- customer-private data.
+
+Safe synthetic fixture labels, redacted refs, and aggregate states are allowed.
+
+## Acceptance
+
+- The Figma file contains a clearly named current implementation capture.
+- The current implementation capture is marked as the active visual baseline.
+- Legacy flat Figma frames are clearly treated as concept references, not the
+  implementation parity target.
+- The repo does not retain the temporary capture script.
+- Future Admin UI visual QA compares the current frontend against node `17:2`
+  or its successor, not the stale requirements-map file.
