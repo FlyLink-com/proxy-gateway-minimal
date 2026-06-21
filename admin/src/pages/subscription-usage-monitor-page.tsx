@@ -16,6 +16,14 @@ import {
   RadioTower,
   ReceiptText
 } from "lucide-react";
+import { USAGE_RUNTIME_FIXTURE } from "../features/subscriptions/usage-runtime-fixture";
+import {
+  buildUsageRuntimeViewModel,
+  type UsageAnomalyCandidate,
+  type UsageLedgerViewRow
+} from "../features/subscriptions/usage-view-model";
+
+const usageRuntimeViewModel = buildUsageRuntimeViewModel(USAGE_RUNTIME_FIXTURE);
 
 export const usageChannelsBlueprint: BlueprintPage = {
   page: "usageMonitor",
@@ -415,28 +423,13 @@ function ChannelCoverageContent() {
   );
 }
 
-type UsageLedgerRow = {
-  accountRef: string;
-  channelRef: string;
-  collection: "Measured" | "Measured zero" | "Not collected" | "Collector disabled";
-  orderRef: string;
-  traffic: string;
-};
-
-const usageLedgerRows: UsageLedgerRow[] = [
-  { accountRef: "acct_safe_001", orderRef: "ord_safe_101", channelRef: "channel_safe_jp_vless", traffic: "42.8 GB", collection: "Measured" },
-  { accountRef: "acct_safe_014", orderRef: "ord_safe_102", channelRef: "channel_safe_sgp_hy2", traffic: "0 B", collection: "Measured zero" },
-  { accountRef: "acct_safe_022", orderRef: "ord_safe_103", channelRef: "channel_safe_sgp_tuic", traffic: "Unknown", collection: "Collector disabled" },
-  { accountRef: "acct_safe_030", orderRef: "ord_safe_104", channelRef: "channel_safe_pending", traffic: "Unknown", collection: "Not collected" }
-];
-
 function UsageLedgerContent() {
   return (
-    <div className="admin-operator-content" aria-label="Usage Ledger static operator content">
+    <div className="admin-operator-content" aria-label="Usage Ledger runtime operator content">
       <DataTable
-        ariaLabel="Usage Ledger static table"
+        ariaLabel="Usage Ledger runtime table"
         columns={[
-          { header: "Account / order", key: "account", render: (row: UsageLedgerRow) => <><SafeRef value={row.accountRef} /> · <SafeRef value={row.orderRef} /></> },
+          { header: "Account / order", key: "account", render: (row: UsageLedgerViewRow) => <><SafeRef value={row.accountRef} /> · <SafeRef value={row.orderRef} /></> },
           { header: "Channel", key: "channel", render: (row) => <SafeRef value={row.channelRef} /> },
           { header: "Traffic", key: "traffic", render: (row) => row.traffic },
           {
@@ -444,57 +437,18 @@ function UsageLedgerContent() {
             key: "collection",
             render: (row) => (
               <StatusChip
-                label={row.collection}
-                tone={row.collection === "Measured" ? "success" : row.collection === "Measured zero" ? "info" : row.collection === "Not collected" ? "warning" : "danger"}
+                label={row.collectionLabel}
+                tone={row.collectionTone}
               />
             )
           }
         ]}
         getRowKey={(row) => `${row.accountRef}:${row.orderRef}:${row.channelRef}`}
-        rows={usageLedgerRows}
+        rows={usageRuntimeViewModel.ledgerRows}
       />
     </div>
   );
 }
-
-const anomalyItems: RiskQueueItem[] = [
-  {
-    ref: "anomaly-stale",
-    title: "Stale usage collection",
-    severity: "warning",
-    severityLabel: "Medium",
-    objectType: "order",
-    objectRef: "ord_safe_104",
-    reasonLabel: "Last sample beyond threshold"
-  },
-  {
-    ref: "anomaly-zero",
-    title: "True zero usage",
-    severity: "info",
-    severityLabel: "Low",
-    objectType: "order",
-    objectRef: "ord_safe_102",
-    reasonLabel: "Measured 0 B"
-  },
-  {
-    ref: "anomaly-collector-disabled",
-    title: "Collector disabled",
-    severity: "critical",
-    severityLabel: "High",
-    objectType: "collector",
-    objectRef: "collector_safe_sgp",
-    reasonLabel: "No trusted samples"
-  },
-  {
-    ref: "anomaly-receipt-missing",
-    title: "Receipt missing",
-    severity: "critical",
-    severityLabel: "High",
-    objectType: "channel",
-    objectRef: "channel_safe_sgp_tuic",
-    reasonLabel: "Missing receipt"
-  }
-];
 
 type AgentStatusRow = {
   agentRef: string;
@@ -574,10 +528,22 @@ function CollectionAnomaliesContent() {
       countLabel="Collection anomaly candidates"
       description="Classifies evidence only; quota and lifecycle decisions remain on Accounts & Resources."
       footer={<span className="panel-link panel-link-disabled">Durable case close workflow locked</span>}
-      items={anomalyItems}
+      items={usageRuntimeViewModel.anomalyItems.map(toRiskQueueItem)}
       title="Anomaly candidates"
     />
   );
+}
+
+function toRiskQueueItem(item: UsageAnomalyCandidate): RiskQueueItem {
+  return {
+    objectRef: item.objectRef,
+    objectType: item.objectType,
+    reasonLabel: item.reasonLabel,
+    ref: item.ref,
+    severity: item.severity,
+    severityLabel: item.severityLabel,
+    title: item.title
+  };
 }
 
 function ReceiptsCollectorsContent() {

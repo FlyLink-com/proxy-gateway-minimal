@@ -65,7 +65,8 @@ describe("subscription usage monitor page", () => {
     expect(screen.getAllByText("Stale").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Measured channels · count")).toBeNull();
     expect(screen.getByRole("heading", { name: "Usage Ledger" })).not.toBeNull();
-    expect(screen.getByLabelText("Usage Ledger static table")).not.toBeNull();
+    expect(screen.getByLabelText("Usage Ledger runtime table")).not.toBeNull();
+    expect(screen.getByText("Collection expired")).not.toBeNull();
     expect(screen.getByText("Measured zero")).not.toBeNull();
     expect(screen.getByText("Not collected")).not.toBeNull();
     expect(screen.queryByText("Traffic · upload / download / total")).toBeNull();
