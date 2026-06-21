@@ -77,6 +77,39 @@ boundaries:
 The visible shell subtitle remains `Proxy Gateway`. Page labels carry the
 operator-console responsibility split.
 
+## Navigation Library Safe Index Contract
+
+`Navigation Library` is the protected console launcher, search, and recovery
+surface. It is not an OS app drawer and must not behave like a large scrolling
+modal that duplicates page content.
+
+The React source of truth is `admin/src/app/admin-app-manifest.ts`. Its
+`createNavigationLibrarySearchIndex()` output is the reviewable contract for
+safe search and recovery. Every entry must be a safe summary record with these
+properties:
+
+| Field | Contract |
+| --- | --- |
+| `resultType` | One of `workspace-app`, `plugin-module`, `system-action`, or `planned-app`. |
+| `libraryGroup` | One of `workspace-pages`, `plugins`, `console-settings`, or `planned-apps`. |
+| `dataBoundary` | Always `safe-summary-only` in this phase. |
+| `productionImpact` | `read-only`, `none`, or `gated`; never direct production mutation. |
+| `forbiddenFields` | Explicit policy labels for forbidden raw fields. These labels are not searchable payload. |
+| `moduleRecovery` | Present only for `plugin-module` entries. Recovery source is `navigation-library`, action is `restore-module`, and hidden modules consume no canvas space. |
+
+Search payload is limited to sanitized label, alias, owner area, category,
+route target, safe description, approved searchable fields, status,
+capabilities, and group. The searchable payload must not include tokens,
+credentials, subscription URLs, auth headers, raw session/env/config/log text,
+SQLite rows, raw runtime endpoints, raw subscription material, customer-private
+identity/contact fields, raw operator notes, raw error stacks, or unredacted
+case evidence.
+
+`GCC-78` must consume `moduleRecovery` instead of inventing a separate hidden
+module registry. `GCC-79` must consume `resultType`, `capabilities`,
+`productionImpact`, and `forbiddenFields` when defining capability and
+permission boundaries.
+
 ## Current Wave Boundary
 
 The current GCC-109/GCC-103 wave keeps the active top-level navigation sparse.
