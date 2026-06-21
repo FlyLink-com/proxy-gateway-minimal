@@ -1,10 +1,11 @@
 import type {
-  SubscriptionUsageMonitor,
   SubscriptionUsageMonitorRow
 } from "./types";
+import type { UsageRuntimeProjectionInput } from "./usage-view-model";
 
 export const USAGE_RUNTIME_FIXTURE = {
   generatedAt: "2026-06-05T08:00:00.000Z",
+  staleThresholdMinutes: 5,
   items: [
     usageRowFixture({
       accountId: "acct_safe_001",
@@ -65,8 +66,95 @@ export const USAGE_RUNTIME_FIXTURE = {
       usageMeasured: false,
       usageStatus: "not_collected"
     })
+  ],
+  routeLatencyRows: [
+    {
+      p50Ms: 42,
+      p95Ms: 88,
+      p99Ms: 131,
+      routeRef: "route_safe_jp_primary",
+      routeType: "Primary",
+      sampleCount: 820,
+      sourceRef: "ingress_jp",
+      state: "Fresh",
+      targetRef: "egress_jp"
+    },
+    {
+      p50Ms: 67,
+      p95Ms: 146,
+      p99Ms: 212,
+      routeRef: "route_safe_sgp_backup",
+      routeType: "Fallback",
+      sampleCount: 240,
+      sourceRef: "ingress_sgp",
+      state: "Stale",
+      targetRef: "egress_sgp"
+    },
+    {
+      p50Ms: null,
+      p95Ms: null,
+      p99Ms: null,
+      routeRef: "route_safe_tuic_recovery",
+      routeType: "Recovery",
+      sampleCount: 0,
+      sourceRef: "ingress_tuic",
+      state: "No sample",
+      targetRef: "egress_pending"
+    }
+  ],
+  agentStatusRows: [
+    {
+      agentRef: "agent_safe_jp_01",
+      collectorState: "Ready",
+      desiredStatePull: "Current",
+      heartbeat: "31s ago",
+      nodeRef: "node_safe_jp",
+      receiptPush: "Ready",
+      version: "v0.8.4"
+    },
+    {
+      agentRef: "agent_safe_sgp_02",
+      collectorState: "Delayed",
+      desiredStatePull: "Delayed",
+      heartbeat: "4m ago",
+      nodeRef: "node_safe_sgp",
+      receiptPush: "Pending",
+      version: "v0.8.4"
+    },
+    {
+      agentRef: "agent_safe_tuic_03",
+      collectorState: "Disabled",
+      desiredStatePull: "Unavailable",
+      heartbeat: "No heartbeat",
+      nodeRef: "node_safe_tuic",
+      receiptPush: "Unavailable",
+      version: "v0.8.1"
+    }
+  ],
+  inspectionRunRows: [
+    {
+      checkName: "receipt-freshness",
+      duration: "1.2s",
+      latestResult: "Warning",
+      nextRun: "3m",
+      ownerObject: "channel_safe_sgp_hy2"
+    },
+    {
+      checkName: "collector-heartbeat",
+      duration: "0.8s",
+      latestResult: "Pass",
+      nextRun: "1m",
+      ownerObject: "agent_safe_jp_01"
+    },
+    {
+      checkName: "route-latency-sample",
+      duration: "2.4s",
+      latestResult: "Blocked",
+      nextRun: "manual review",
+      ownerObject: "route_safe_tuic_recovery"
+    }
   ]
-} satisfies Pick<SubscriptionUsageMonitor, "generatedAt" | "items">;
+} satisfies UsageRuntimeProjectionInput;
 
 function usageRowFixture(overrides: Partial<SubscriptionUsageMonitorRow>): SubscriptionUsageMonitorRow {
   return {

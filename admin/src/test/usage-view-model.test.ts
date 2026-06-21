@@ -157,6 +157,39 @@ describe("usage view model", () => {
       "Receipt missing",
       "True zero usage"
     ]);
+    expect(viewModel.freshness).toMatchObject({
+      collectionStateLabel: "Stale",
+      collectionStateTone: "warning",
+      observedAgeLabel: "12m",
+      staleRows: 1,
+      unknownRows: 1
+    });
+    expect(viewModel.channelCoverageRows.map((row) => ({
+      channelRef: row.channelRef,
+      receipt: row.receipt,
+      state: row.state
+    }))).toEqual([
+      {
+        channelRef: "channel_safe_pending",
+        receipt: "Missing receipt",
+        state: "Blocked"
+      },
+      {
+        channelRef: "channel_safe_stale",
+        receipt: "Pending receipt",
+        state: "Degraded"
+      },
+      {
+        channelRef: "channel_safe_zero",
+        receipt: "Healthy",
+        state: "Healthy"
+      }
+    ]);
+    expect(viewModel.receiptCollectorCards.map((card) => `${card.label}:${card.value}`)).toEqual([
+      "Receipt state:1 pending",
+      "Collector state:Ready",
+      "Diagnostics:Locked"
+    ]);
     expect(viewModel.events.map((event) => event.category)).toEqual(expect.arrayContaining([
       "usage",
       "collection",
@@ -165,6 +198,63 @@ describe("usage view model", () => {
     ]));
     expect(viewModel.entities.find((entity) => entity.ref === "portal_user_demo")?.type).toBe("account");
     expect(viewModel.entities.find((entity) => entity.ref === "channel_safe_pending")?.state).toBe("blocked");
+    expect(JSON.stringify(viewModel)).not.toMatch(/subscriptionUrl|token=|secret-value|password|yaml|edgecred_/i);
+  });
+
+  test("projects safe route latency, agent status, and inspection rows", () => {
+    const viewModel = buildUsageRuntimeViewModel({
+      generatedAt: "2026-06-05T08:00:00.000Z",
+      items: [rowFixture()],
+      routeLatencyRows: [{
+        p50Ms: 42,
+        p95Ms: 88,
+        p99Ms: 131,
+        routeRef: "route_safe_jp_primary",
+        routeType: "Primary",
+        sampleCount: 820,
+        sourceRef: "ingress_jp",
+        state: "Fresh",
+        targetRef: "egress_jp"
+      }],
+      agentStatusRows: [{
+        agentRef: "agent_safe_jp_01",
+        collectorState: "Delayed",
+        desiredStatePull: "Delayed",
+        heartbeat: "4m ago",
+        nodeRef: "node_safe_jp",
+        receiptPush: "Pending",
+        version: "v0.8.4"
+      }],
+      inspectionRunRows: [{
+        checkName: "route-latency-sample",
+        duration: "2.4s",
+        latestResult: "Blocked",
+        nextRun: "manual review",
+        ownerObject: "route_safe_jp_primary"
+      }]
+    });
+
+    expect(viewModel.routeLatencyRows).toEqual([{
+      p50: "42 ms",
+      p95: "88 ms",
+      p99: "131 ms",
+      routeRef: "route_safe_jp_primary",
+      routeType: "Primary",
+      samples: "820",
+      source: "ingress_jp",
+      state: "Fresh",
+      stateTone: "success",
+      target: "egress_jp"
+    }]);
+    expect(viewModel.agentStatusRows[0]).toMatchObject({
+      collectorTone: "warning",
+      desiredStateTone: "warning",
+      receiptPushTone: "warning"
+    });
+    expect(viewModel.inspectionRunRows[0]).toMatchObject({
+      latestResult: "Blocked",
+      resultTone: "danger"
+    });
     expect(JSON.stringify(viewModel)).not.toMatch(/subscriptionUrl|token=|secret-value|password|yaml|edgecred_/i);
   });
 

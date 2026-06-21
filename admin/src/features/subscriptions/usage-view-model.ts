@@ -47,6 +47,94 @@ export type UsageLedgerViewRow = {
   uploadTraffic: string;
 };
 
+export type UsageFreshnessViewModel = {
+  collectionStateDetail: string;
+  collectionStateLabel: string;
+  collectionStateTone: UsageViewTone;
+  disabledRows: number;
+  disconnectedRows: number;
+  generatedAtLabel: string;
+  observedAgeDetail: string;
+  observedAgeLabel: string;
+  staleRows: number;
+  staleThresholdLabel: string;
+  unknownRows: number;
+};
+
+export type ChannelCoverageViewRow = {
+  channelRef: string;
+  errorRate: string;
+  issued: string;
+  lastMeasured: string;
+  measured: string;
+  receipt: "Healthy" | "Pending receipt" | "Missing receipt";
+  receiptTone: UsageViewTone;
+  state: "Healthy" | "Degraded" | "Blocked";
+  stateTone: UsageViewTone;
+  utilization: string;
+};
+
+export type RouteLatencyRuntimeInput = {
+  p50Ms: number | null;
+  p95Ms: number | null;
+  p99Ms: number | null;
+  routeRef: string;
+  routeType: "Primary" | "Fallback" | "Recovery";
+  sampleCount: number;
+  sourceRef: string;
+  state: "Fresh" | "Stale" | "No sample";
+  targetRef: string;
+};
+
+export type RouteLatencyViewRow = {
+  p50: string;
+  p95: string;
+  p99: string;
+  routeRef: string;
+  routeType: "Primary" | "Fallback" | "Recovery";
+  samples: string;
+  source: string;
+  state: "Fresh" | "Stale" | "No sample";
+  stateTone: UsageViewTone;
+  target: string;
+};
+
+export type AgentStatusRuntimeInput = {
+  agentRef: string;
+  collectorState: "Ready" | "Delayed" | "Disabled";
+  desiredStatePull: "Current" | "Delayed" | "Unavailable";
+  heartbeat: string;
+  nodeRef: string;
+  receiptPush: "Ready" | "Pending" | "Unavailable";
+  version: string;
+};
+
+export type AgentStatusViewRow = AgentStatusRuntimeInput & {
+  collectorTone: UsageViewTone;
+  desiredStateTone: UsageViewTone;
+  receiptPushTone: UsageViewTone;
+};
+
+export type InspectionRunRuntimeInput = {
+  checkName: string;
+  duration: string;
+  latestResult: "Pass" | "Warning" | "Blocked";
+  nextRun: string;
+  ownerObject: string;
+};
+
+export type InspectionRunViewRow = InspectionRunRuntimeInput & {
+  resultTone: UsageViewTone;
+};
+
+export type ReceiptCollectorSummaryCard = {
+  detail: string;
+  label: string;
+  statusLabel: string;
+  statusTone: UsageViewTone;
+  value: string;
+};
+
 export type UsageAnomalyCandidate = {
   eventRef: string;
   objectRef: string;
@@ -60,12 +148,25 @@ export type UsageAnomalyCandidate = {
   title: string;
 };
 
+export type UsageRuntimeProjectionInput = Pick<SubscriptionUsageMonitor, "generatedAt" | "items"> & {
+  agentStatusRows?: AgentStatusRuntimeInput[];
+  inspectionRunRows?: InspectionRunRuntimeInput[];
+  routeLatencyRows?: RouteLatencyRuntimeInput[];
+  staleThresholdMinutes?: number;
+};
+
 export type UsageRuntimeViewModel = {
+  agentStatusRows: AgentStatusViewRow[];
   anomalyItems: UsageAnomalyCandidate[];
+  channelCoverageRows: ChannelCoverageViewRow[];
   entities: UsageOperationalEntity[];
   events: UsageDomainEvent[];
+  freshness: UsageFreshnessViewModel;
   generatedAt: string;
+  inspectionRunRows: InspectionRunViewRow[];
   ledgerRows: UsageLedgerViewRow[];
+  receiptCollectorCards: ReceiptCollectorSummaryCard[];
+  routeLatencyRows: RouteLatencyViewRow[];
 };
 
 type CollectionStatusInput = {
@@ -238,15 +339,21 @@ export function warningLabel(value: string): string {
 }
 
 export function buildUsageRuntimeViewModel(
-  monitor: Pick<SubscriptionUsageMonitor, "generatedAt" | "items">
+  monitor: UsageRuntimeProjectionInput
 ): UsageRuntimeViewModel {
   const events = monitor.items.flatMap((row) => usageDomainEvents(row));
   return {
+    agentStatusRows: buildAgentStatusRows(monitor.agentStatusRows ?? []),
     anomalyItems: buildUsageAnomalyCandidates(monitor.items),
+    channelCoverageRows: buildChannelCoverageRows(monitor.items, monitor.generatedAt),
     entities: buildUsageOperationalEntities(monitor.items, events),
     events,
+    freshness: buildFreshnessViewModel(monitor.items, monitor.generatedAt, monitor.staleThresholdMinutes ?? 5),
     generatedAt: monitor.generatedAt,
-    ledgerRows: buildUsageLedgerRows(monitor.items, events)
+    inspectionRunRows: buildInspectionRunRows(monitor.inspectionRunRows ?? []),
+    ledgerRows: buildUsageLedgerRows(monitor.items, events),
+    receiptCollectorCards: buildReceiptCollectorCards(monitor.items),
+    routeLatencyRows: buildRouteLatencyRows(monitor.routeLatencyRows ?? [])
   };
 }
 
@@ -277,6 +384,132 @@ export function buildUsageLedgerRows(
       };
     });
   });
+}
+
+function buildFreshnessViewModel(
+  rows: SubscriptionUsageMonitorRow[],
+  generatedAt: string,
+  staleThresholdMinutes: number
+): UsageFreshnessViewModel {
+  const statusCounts = collectionStatusCounts(rows);
+  const latestObservedAt = latestTimestamp(rows.flatMap((row) => [
+    row.lastUsageObservedAt,
+    row.lastRefreshAt,
+    ...row.channelUsages.map((usage) => usage.lastObservedAt)
+  ]));
+  const collectionState = freshnessState(statusCounts);
+  return {
+    collectionStateDetail: "Latest safe monitor sample",
+    collectionStateLabel: collectionState.label,
+    collectionStateTone: collectionState.tone,
+    disabledRows: statusCounts.collector_disabled,
+    disconnectedRows: 0,
+    generatedAtLabel: safeDateTime(generatedAt),
+    observedAgeDetail: `Stale threshold ${staleThresholdMinutes}m`,
+    observedAgeLabel: ageLabel(generatedAt, latestObservedAt),
+    staleRows: statusCounts.stale,
+    staleThresholdLabel: `${staleThresholdMinutes}m`,
+    unknownRows: statusCounts.not_collected + statusCounts.collector_disabled
+  };
+}
+
+function buildChannelCoverageRows(
+  rows: SubscriptionUsageMonitorRow[],
+  generatedAt: string
+): ChannelCoverageViewRow[] {
+  const channelRows = new Map<string, SubscriptionUsageMonitorRow[]>();
+  for (const row of rows) {
+    for (const channelRef of usageChannelRefs(row)) {
+      channelRows.set(channelRef, [...(channelRows.get(channelRef) ?? []), row]);
+    }
+  }
+
+  return [...channelRows.entries()]
+    .map(([channelRef, channelScopedRows]) => {
+      const measuredCount = channelScopedRows.filter((row) => (
+        normalizeCollectionStatus(row) === "measured" || normalizeCollectionStatus(row) === "measured_zero"
+        || (normalizeCollectionStatus(row) === "stale" && row.lastUsageObservedAt !== null)
+      )).length;
+      const missingBinding = channelScopedRows.some((row) => hasUnconfirmedBinding(row, channelRef));
+      const disabled = channelScopedRows.some((row) => normalizeCollectionStatus(row) === "collector_disabled");
+      const stale = channelScopedRows.some((row) => normalizeCollectionStatus(row) === "stale");
+      const totalUsedBytes = channelScopedRows.reduce((sum, row) => sum + safeNumber(row.usedBytes), 0);
+      const totalLimitBytes = channelScopedRows.reduce((sum, row) => sum + safeNumber(row.trafficLimitBytes), 0);
+      const state = channelState({ disabled, measuredCount, missingBinding, stale });
+      const receipt = receiptState({ missingBinding, stale });
+      return {
+        channelRef,
+        errorRate: "N/A",
+        issued: `${channelScopedRows.length} ${plural(channelScopedRows.length, "order")}`,
+        lastMeasured: latestChannelMeasurementLabel(channelScopedRows, generatedAt),
+        measured: `${measuredCount} measured`,
+        receipt: receipt.label,
+        receiptTone: receipt.tone,
+        state: state.label,
+        stateTone: state.tone,
+        utilization: utilizationLabel(totalUsedBytes, totalLimitBytes)
+      };
+    })
+    .sort((left, right) => stateRank(left.state) - stateRank(right.state) || left.channelRef.localeCompare(right.channelRef));
+}
+
+function buildRouteLatencyRows(rows: RouteLatencyRuntimeInput[]): RouteLatencyViewRow[] {
+  return rows.map((row) => ({
+    p50: latencyLabel(row.p50Ms),
+    p95: latencyLabel(row.p95Ms),
+    p99: latencyLabel(row.p99Ms),
+    routeRef: row.routeRef,
+    routeType: row.routeType,
+    samples: String(safeNumber(row.sampleCount)),
+    source: row.sourceRef,
+    state: row.state,
+    stateTone: row.state === "Fresh" ? "success" : row.state === "Stale" ? "warning" : "neutral",
+    target: row.targetRef
+  }));
+}
+
+function buildAgentStatusRows(rows: AgentStatusRuntimeInput[]): AgentStatusViewRow[] {
+  return rows.map((row) => ({
+    ...row,
+    collectorTone: row.collectorState === "Ready" ? "success" : row.collectorState === "Delayed" ? "warning" : "danger",
+    desiredStateTone: row.desiredStatePull === "Current" ? "success" : row.desiredStatePull === "Delayed" ? "warning" : "neutral",
+    receiptPushTone: row.receiptPush === "Ready" ? "success" : row.receiptPush === "Pending" ? "warning" : "neutral"
+  }));
+}
+
+function buildInspectionRunRows(rows: InspectionRunRuntimeInput[]): InspectionRunViewRow[] {
+  return rows.map((row) => ({
+    ...row,
+    resultTone: row.latestResult === "Pass" ? "success" : row.latestResult === "Warning" ? "warning" : "danger"
+  }));
+}
+
+function buildReceiptCollectorCards(rows: SubscriptionUsageMonitorRow[]): ReceiptCollectorSummaryCard[] {
+  const pendingReceiptCount = rows.filter((row) => hasUnconfirmedBinding(row)).length;
+  const disabledCount = rows.filter((row) => normalizeCollectionStatus(row) === "collector_disabled").length;
+  return [
+    {
+      detail: "Receipt gaps stay visible without exposing protected runtime material.",
+      label: "Receipt state",
+      statusLabel: pendingReceiptCount > 0 ? "Pending receipt" : "Receipts healthy",
+      statusTone: pendingReceiptCount > 0 ? "warning" : "success",
+      value: pendingReceiptCount > 0 ? `${pendingReceiptCount} pending` : "Healthy"
+    },
+    {
+      detail: "Collector availability is evidence, not an account or order lifecycle decision.",
+      label: "Collector state",
+      statusLabel: disabledCount > 0 ? "Collector disabled" : "Collectors ready",
+      statusTone: disabledCount > 0 ? "danger" : "success",
+      value: disabledCount > 0 ? `${disabledCount} disabled` : "Ready"
+    },
+    {
+      detail: "Future diagnostics require no-secret contracts and redaction tests before activation.",
+      label: "Diagnostics",
+      statusLabel: "Readonly",
+      statusTone: "neutral",
+      value: "Locked"
+    }
+  ];
 }
 
 export function buildUsageAnomalyCandidates(rows: SubscriptionUsageMonitorRow[]): UsageAnomalyCandidate[] {
@@ -539,6 +772,124 @@ function compareAnomalyCandidates(left: UsageAnomalyCandidate, right: UsageAnoma
   const priorityDelta = left.priority - right.priority;
   if (priorityDelta !== 0) return priorityDelta;
   return left.ref.localeCompare(right.ref);
+}
+
+function collectionStatusCounts(rows: SubscriptionUsageMonitorRow[]): Record<SubscriptionUsageCollectionStatus, number> {
+  return rows.reduce<Record<SubscriptionUsageCollectionStatus, number>>((counts, row) => {
+    counts[normalizeCollectionStatus(row)] += 1;
+    return counts;
+  }, {
+    collector_disabled: 0,
+    measured: 0,
+    measured_zero: 0,
+    not_collected: 0,
+    stale: 0
+  });
+}
+
+function freshnessState(counts: Record<SubscriptionUsageCollectionStatus, number>): {
+  label: string;
+  tone: UsageViewTone;
+} {
+  if (counts.collector_disabled > 0) return { label: "Collector disabled", tone: "danger" };
+  if (counts.stale > 0) return { label: "Stale", tone: "warning" };
+  if (counts.not_collected > 0) return { label: "Unknown", tone: "neutral" };
+  return { label: "Fresh", tone: "success" };
+}
+
+function channelState({
+  disabled,
+  measuredCount,
+  missingBinding,
+  stale
+}: {
+  disabled: boolean;
+  measuredCount: number;
+  missingBinding: boolean;
+  stale: boolean;
+}): {
+  label: ChannelCoverageViewRow["state"];
+  tone: UsageViewTone;
+} {
+  if (disabled || missingBinding || measuredCount === 0) return { label: "Blocked", tone: "danger" };
+  if (stale) return { label: "Degraded", tone: "warning" };
+  return { label: "Healthy", tone: "success" };
+}
+
+function receiptState({
+  missingBinding,
+  stale
+}: {
+  missingBinding: boolean;
+  stale: boolean;
+}): {
+  label: ChannelCoverageViewRow["receipt"];
+  tone: UsageViewTone;
+} {
+  if (missingBinding) return { label: "Missing receipt", tone: "danger" };
+  if (stale) return { label: "Pending receipt", tone: "warning" };
+  return { label: "Healthy", tone: "success" };
+}
+
+function stateRank(state: ChannelCoverageViewRow["state"]): number {
+  const ranks: Record<ChannelCoverageViewRow["state"], number> = {
+    Blocked: 0,
+    Degraded: 1,
+    Healthy: 2
+  };
+  return ranks[state];
+}
+
+function latestChannelMeasurementLabel(rows: SubscriptionUsageMonitorRow[], generatedAt: string): string {
+  const latest = latestTimestamp(rows.flatMap((row) => [
+    row.lastUsageObservedAt,
+    ...row.channelUsages.map((usage) => usage.lastObservedAt)
+  ]));
+  if (!latest) return "No trusted sample";
+  return `${ageLabel(generatedAt, latest)} ago`;
+}
+
+function utilizationLabel(usedBytes: number, limitBytes: number): string {
+  if (limitBytes <= 0) return "Unknown";
+  return `${Math.min(999, Math.round((usedBytes / limitBytes) * 100))}%`;
+}
+
+function latencyLabel(value: number | null): string {
+  return value === null ? "N/A" : `${safeNumber(value)} ms`;
+}
+
+function latestTimestamp(values: Array<string | null | undefined>): string | null {
+  let latestValue: string | null = null;
+  let latestMs = 0;
+  for (const value of values) {
+    const parsed = timestampMs(value);
+    if (parsed > latestMs) {
+      latestMs = parsed;
+      latestValue = value ?? null;
+    }
+  }
+  return latestValue;
+}
+
+function ageLabel(reference: string, value: string | null): string {
+  if (!value) return "Not recorded";
+  const referenceMs = timestampMs(reference);
+  const valueMs = timestampMs(value);
+  if (referenceMs <= 0 || valueMs <= 0) return "Not recorded";
+  const diffMinutes = Math.max(0, Math.round((referenceMs - valueMs) / 60_000));
+  if (diffMinutes < 60) return `${diffMinutes}m`;
+  const diffHours = Math.round(diffMinutes / 60);
+  return `${diffHours}h`;
+}
+
+function timestampMs(value: string | null | undefined): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function plural(count: number, singular: string): string {
+  return count === 1 ? singular : `${singular}s`;
 }
 
 function trafficLabel(row: SubscriptionUsageMonitorRow, value: number | null | undefined): string {
