@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import { ADMIN_UI_CONTRACT } from "../app/admin-ui-contract";
 import {
@@ -15,6 +17,18 @@ import {
   ADMIN_FIGMA_WRITE_ACCESS_CHECK,
   ADMIN_VISUAL_QA_AXES
 } from "../design/figma-mirror";
+import {
+  ADMIN_FIGMA_REACT_PARITY_CONTRACT_VERSION,
+  ADMIN_FIGMA_REACT_PARITY_MATRIX,
+  ADMIN_FIGMA_REACT_PARITY_READY_GATE,
+  ADMIN_FIGMA_REACT_PARITY_REQUIRED_COMPONENTS
+} from "../design/figma-parity";
+
+const tokenCss = readFileSync(resolve("src/styles/tokens.css"), "utf8").replace(/\r\n?/g, "\n");
+
+function surfacePath(surface: string) {
+  return surface.split("#")[0];
+}
 
 describe("admin Figma mirror contract", () => {
   test("declares the current Figma source and required mirror frames", () => {
@@ -165,6 +179,62 @@ describe("admin Figma mirror contract", () => {
       "Figma screenshot checks covered TopBar, SidebarNavigation, PrivilegedGate, and StateFeedback; SidebarNavigation, PrivilegedGate, and StateFeedback variant grids were resized after overlap detection."
     ]);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.nextTaskLine).toBe("Admin React/CSS grammar alignment from Figma Component Mirror v1");
+  });
+
+  test("maps every mirrored component to React surfaces, grammar roles, tokens, and QA evidence", () => {
+    expect(ADMIN_FIGMA_REACT_PARITY_CONTRACT_VERSION).toBe("admin-figma-react-parity/v1");
+    expect(ADMIN_FIGMA_REACT_PARITY_REQUIRED_COMPONENTS).toEqual(
+      ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedComponentSets.map((componentSet) => componentSet.name)
+    );
+    expect(ADMIN_FIGMA_REACT_PARITY_MATRIX.map((entry) => entry.figmaComponentSet)).toEqual(
+      ADMIN_FIGMA_REACT_PARITY_REQUIRED_COMPONENTS
+    );
+
+    ADMIN_FIGMA_REACT_PARITY_MATRIX.forEach((entry) => {
+      expect(entry.figmaVariantProperties.length).toBeGreaterThan(0);
+      expect(entry.figmaVariableCollections.length).toBeGreaterThan(0);
+      expect(entry.grammarRoles.length).toBeGreaterThan(0);
+      expect(entry.hierarchyRoles.length).toBeGreaterThan(0);
+      expect(entry.react.propContract.length).toBeGreaterThan(0);
+      expect(entry.react.propValues.length).toBeGreaterThan(0);
+      expect(entry.stateSemantics.length).toBeGreaterThan(0);
+      expect(entry.responsiveRules.length).toBeGreaterThan(0);
+      expect(entry.a11yRules.length).toBeGreaterThan(0);
+      expect(entry.qaEvidence).toEqual([
+        "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Figma Mirror Evidence",
+        "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Browser Evidence"
+      ]);
+      expect(entry.nextLinearIssue).toBe("GCC-119");
+
+      [
+        entry.react.primarySurface,
+        ...entry.react.supportingSurfaces
+      ].forEach((surface) => {
+        expect(existsSync(resolve(surfacePath(surface))), surface).toBe(true);
+      });
+
+      entry.cssTokens.forEach((token) => {
+        expect(token).toMatch(/^--admin-/);
+        expect(tokenCss, `${entry.figmaComponentSet} missing token ${token}`).toContain(token);
+      });
+    });
+  });
+
+  test("declares the PR 355 ready gate dependency chain from parity to implementation and QA", () => {
+    expect(ADMIN_FIGMA_REACT_PARITY_READY_GATE.source).toBe("GCC-118");
+    expect(ADMIN_FIGMA_REACT_PARITY_READY_GATE.blocks).toEqual([
+      "GCC-119",
+      "GCC-120",
+      "GCC-117",
+      "PR #355 Ready review"
+    ]);
+    expect(ADMIN_FIGMA_REACT_PARITY_READY_GATE.requiredEvidence).toEqual([
+      "all required component sets have matrix entries",
+      "every matrix entry maps to an existing React or contract surface",
+      "every entry declares CSS semantic or layout tokens",
+      "every entry declares responsive and accessibility rules",
+      "every entry points to visual QA evidence"
+    ]);
   });
 
   test("defines the complete visual QA evidence axes", () => {

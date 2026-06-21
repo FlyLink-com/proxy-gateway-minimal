@@ -78,8 +78,18 @@ Local mirror contract added:
 | Contract | Purpose |
 | --- | --- |
 | `admin/src/design/figma-mirror.ts` | Canonical Figma file key, required mirror frames, page-to-React mapping, connector evidence, component-mirror gap, and QA evidence axes. |
+| `admin/src/design/figma-parity.ts` | GCC-118 design-to-code parity matrix for Figma component set, React surface, grammar role, CSS token, state semantics, responsive rules, a11y rules, and QA evidence. |
 | `admin/src/test/admin-figma-mirror-contract.test.ts` | Verifies mirror page names, one page mirror per active Admin route, connector status, and component-mirror boundary. |
 | `admin/src/test/admin-visual-qa-contract.test.tsx` | Verifies fixture shell landmarks, page/panel DOM ownership hooks, named interactive controls, and safe-data boundary. |
+
+GCC-118 parity status:
+
+| Check | Result |
+| --- | --- |
+| Required component families | `StatusChip`, `MetricCard`, `PanelFrame`, `DataRow`, `TopBar`, `SidebarNavigation`, `PrivilegedGate`, `StateFeedback`. |
+| Design-to-code mapping | Current: each required Figma component set maps to a React or contract surface, CSS tokens, grammar roles, state semantics, responsive rules, a11y rules, and current QA evidence references. |
+| Current implementation gaps | Recorded in `admin/src/design/figma-parity.ts` and `docs/ADMIN_CONSOLE_FIGMA_MIRROR.md`; handoff continues through `GCC-119` before visual evidence closes in `GCC-120`. |
+| Ready gate | `PR #355` remains Draft until `GCC-118`, `GCC-119`, and `GCC-120` are complete. |
 
 ## Current Browser Evidence
 
