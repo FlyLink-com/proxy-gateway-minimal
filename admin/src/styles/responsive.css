@@ -521,7 +521,7 @@
 
   .admin-blueprint-module-panel {
     gap: 8px;
-    max-block-size: var(--admin-plugin-screen-max-height-mobile);
+    max-block-size: none;
     padding: 10px;
   }
 
@@ -626,6 +626,11 @@
 
   .new-console-channel-table .new-console-row {
     grid-template-columns: minmax(0, 1.1fr) minmax(88px, 0.7fr) minmax(88px, 0.7fr);
+  }
+
+  .new-console-row,
+  .new-console-channel-table .new-console-row {
+    min-width: 100%;
   }
 
   .monitor-filter-grid {
@@ -752,6 +757,7 @@
   .new-console-row,
   .new-console-channel-table .new-console-row {
     grid-template-columns: 1fr;
+    min-width: 100%;
   }
 
   .case-row {

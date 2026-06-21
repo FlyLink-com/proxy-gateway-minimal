@@ -1,4 +1,4 @@
-import type { Key, KeyboardEvent, ReactNode } from "react";
+import type { CSSProperties, Key, KeyboardEvent, ReactNode } from "react";
 
 export type DataTableColumn<Row> = {
   header: ReactNode;
@@ -35,9 +35,20 @@ export function DataTable<Row>({
 }) {
   const classes = ["new-console-table", className].filter(Boolean).join(" ");
   const selectable = onRowSelect !== undefined;
+  const tableStyle = {
+    "--admin-table-column-count": columns.length,
+    "--admin-table-min-width": `${Math.max(520, columns.length * 132)}px`
+  } as CSSProperties;
 
   return (
-    <div className={classes} role="table" aria-label={ariaLabel} aria-busy={state?.tone === "loading" ? true : undefined}>
+    <div
+      aria-busy={state?.tone === "loading" ? true : undefined}
+      aria-label={ariaLabel}
+      className={classes}
+      data-column-count={columns.length}
+      role="table"
+      style={tableStyle}
+    >
       <div className="new-console-row new-console-row-head" role="row">
         {columns.map((column) => (
           <span key={column.key} role="columnheader">
