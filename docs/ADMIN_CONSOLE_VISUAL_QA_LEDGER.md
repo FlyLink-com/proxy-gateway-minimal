@@ -89,6 +89,33 @@ Local target:
 http://127.0.0.1:5173/
 ```
 
+GCC-117 Browser check on 2026-06-21 after Figma Component Mirror Phase 2 used
+`http://127.0.0.1:5173/#/fixture-preview` and the existing local Vite listener
+on `127.0.0.1:5173`:
+
+| Browser viewport | Pages checked | Panel counts | Global horizontal overflow | Visual overlap candidates | Unnamed controls | Sensitive text boundary | Console errors | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `1600 x 1024` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | No | 0 | 0 | Pass | 0 | Pass |
+| `1440 x 900` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | No | 0 | 0 | Pass | 0 | Pass |
+| `390 x 844` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | No | 0 | 0 | Pass | 0 | Pass |
+
+GCC-117 shell interaction check on 2026-06-21:
+
+| Browser viewport | Surfaces checked | Global horizontal overflow | Sensitive text boundary | Console errors | Result |
+| --- | --- | --- | --- | --- | --- |
+| `1440 x 900` | Navigation library open, navigation-library search for `usage`, operator account menu, production action guard | No | Pass | 0 | Pass |
+| `390 x 844` | Navigation library open, navigation-library search for `usage`, operator account menu, production action guard | No | Pass | 0 | Pass |
+
+Observed interaction details:
+
+- Navigation library result count changed from `24` to `8` after searching
+  `usage`, and the visible results stayed route/panel scoped.
+- Operator account popover stayed within viewport on desktop and mobile.
+- Production action guard summary is visible on mobile; its expanded detail is
+  responsive-hidden at `390 x 844` and did not create overflow.
+- Browser screenshots were generated during each checked state for visual
+  inspection; no screenshot artifact was committed.
+
 Fresh Browser check on 2026-06-16 after the English canonical content slice:
 
 | Viewport | Pages checked | Han copy in body/title | Global horizontal overflow | Console errors | Result |
