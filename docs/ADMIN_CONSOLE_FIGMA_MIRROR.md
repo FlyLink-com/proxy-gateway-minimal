@@ -86,6 +86,18 @@ The mirror must not reintroduce the older App Library / OS experiment as an
 implementation target. Navigation library and panel hiding remain useful
 patterns, but the current web implementation is a structured Admin workbench.
 
+Current implementation alignment:
+
+- `Operations Overview` uses operator chrome for its three visible panels:
+  `dashboard-health-summary`, `dashboard-risk-queue`, and
+  `dashboard-next-actions`.
+- Operator chrome keeps panel IDs, ownership hooks, and hide/restore events,
+  but removes draft-only field counts, `Preview` / `Owner` chips, and nested
+  fixture preview rows from the visible dashboard surface.
+- The `01 Operations Overview / 1600x1024` mirror frame is the reference for
+  the current top-level structure: metric cards, `Risk Queue`, and
+  `Next Actions`. Owner-page ledgers stay out of Overview.
+
 ## Visual QA Evidence Axes
 
 Every future visual QA pass should record these axes:

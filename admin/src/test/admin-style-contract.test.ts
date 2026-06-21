@@ -323,6 +323,10 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("height: var(--admin-touch-target-min)");
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger:hover")).toContain("var(--workbench-category-bg");
     expect(selectorBlock(".admin-blueprint-panel-field-count")).toContain("display: inline-grid");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("background: transparent");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("border: 0");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("max-block-size: none");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"] .admin-blueprint-panel-tool-trigger-floating")).toContain("position: absolute");
     expect(styles).not.toContain(".admin-blueprint-card-menu");
     expect(styles).not.toContain(".admin-blueprint-card-tool-trigger");
     expect(styles).not.toContain(".admin-blueprint-module-card");
@@ -348,6 +352,11 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-fixture-preview")).toContain("display: grid");
     expect(selectorBlock(".admin-fixture-preview-row")).toContain("grid-template-columns: minmax(120px, 0.34fr) minmax(0, 1fr)");
     expect(selectorBlock(".admin-fixture-preview-banner")).toContain("var(--admin-info-bg)");
+    expect(selectorBlock(".admin-overview-metric-grid")).toContain("repeat(4, minmax(0, 1fr))");
+    expect(selectorBlock(".admin-overview-section-card")).toContain("min-height: 520px");
+    expect(selectorBlock(".admin-overview-section-card")).toContain("align-content: start");
+    expect(styles).toMatch(/^\.admin-overview-action-card\s*\{[\s\S]*text-align: left;/m);
+    expect(selectorBlock(".admin-overview-table-row")).toContain("grid-template-columns: minmax(0, 1fr) minmax(96px, 0.5fr) minmax(132px, 0.7fr)");
     expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("border: 1px dashed");
     expect(styles).not.toContain(".admin-blueprint-card-switches");
     expect(styles).not.toContain(".admin-blueprint-module-dock");

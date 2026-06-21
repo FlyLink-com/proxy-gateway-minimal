@@ -203,7 +203,8 @@ describe("admin navigation", () => {
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
     expect(screen.getByLabelText("Admin fixture preview status")).not.toBeNull();
     expect(screen.getByText("GCC-104 safe fixture preview")).not.toBeNull();
-    expect(screen.getByLabelText("Risk Queue fixture preview")).not.toBeNull();
+    expect(screen.queryByLabelText("Risk Queue fixture preview")).toBeNull();
+    expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-chrome")).toBe("operator");
     expect(screen.getAllByText("Order traffic over limit").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole("heading", { name: "Connect Admin API" })).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();

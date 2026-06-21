@@ -53,25 +53,28 @@ describe("admin dashboard page", () => {
     expect(screen.queryByRole("button", { name: "Risk Queue Small plugin display" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Risk Queue resize plugin display" })).toBeNull();
 
-    expect(screen.getByRole("heading", { name: "Health Summary" })).not.toBeNull();
     expect(screen.getByLabelText("Monitoring panel")).not.toBeNull();
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-role")).toBe("panel");
-    expect(screen.getAllByText("Overview metric widget set").length).toBeGreaterThanOrEqual(1);
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-chrome")).toBe("operator");
+    expect(screen.queryByText("Overview metric widget set")).toBeNull();
     expect(screen.getByLabelText("Operations Overview static health content")).not.toBeNull();
     expect(screen.getByText("Platform health")).not.toBeNull();
+    expect(screen.getByText("Good · reviewable · latest source safe")).not.toBeNull();
     expect(screen.getByText("Channel coverage")).not.toBeNull();
     expect(screen.getByText("Disconnected keeps layout")).not.toBeNull();
     expect(screen.queryByText("Platform health · summary state")).toBeNull();
     expect(screen.queryByText("First-screen operator view for platform health, risk routing, and the next owner page.")).toBeNull();
     expect(screen.getByRole("heading", { name: "Risk Queue" })).not.toBeNull();
     expect(screen.getAllByLabelText("Audit / Workflow panel").length).toBe(2);
-    expect(screen.getByText("Review candidates")).not.toBeNull();
+    expect(screen.getByText("Computed review candidates. No case close, approval, or mutation action here.")).not.toBeNull();
+    expect(screen.getByText("All 18")).not.toBeNull();
+    expect(screen.getByText("High 5")).not.toBeNull();
     expect(screen.getByText("Order traffic over limit")).not.toBeNull();
+    expect(screen.getByText("12 affected")).not.toBeNull();
     expect(screen.queryByText("Reason · quota / delay / receipt")).toBeNull();
     expect(screen.getByRole("heading", { name: "Next Actions" })).not.toBeNull();
     expect(screen.getByLabelText("Overview owner page routing content")).not.toBeNull();
-    expect(screen.getByText("Restricted case workflow")).not.toBeNull();
-    expect(screen.queryByText("Audit & Cases")).toBeNull();
+    expect(screen.getByText("Audit & Cases locked")).not.toBeNull();
     expect(screen.queryByText("Audit Center")).toBeNull();
     expect(screen.queryByText("Log Access")).toBeNull();
     expect(screen.queryByText("Key Management")).toBeNull();
@@ -85,8 +88,8 @@ describe("admin dashboard page", () => {
       expect(notes.hasAttribute("open")).toBe(false);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: "Open Accounts & Resources" }));
-    fireEvent.click(screen.getByRole("button", { name: "Open Usage & Channels" }));
+    fireEvent.click(screen.getByRole("button", { name: /Open Accounts & Resources/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Open Usage & Channels/ }));
 
     expect(onNavigate).toHaveBeenCalledWith("portalRequests");
     expect(onNavigate).toHaveBeenCalledWith("usageMonitor");
@@ -98,15 +101,16 @@ describe("admin dashboard page", () => {
     expect(screen.queryByText("Save quota")).toBeNull();
   });
 
-  test("renders fixture preview content when preview mode is enabled", () => {
+  test("keeps fixture preview route in operator chrome without nested preview rows", () => {
     const onRiskCountChange = vi.fn();
 
     render(<DashboardPage fixturePreviewEnabled onNavigate={vi.fn()} onRiskCountChange={onRiskCountChange} />);
 
-    expect(screen.getByLabelText("Health Summary fixture preview")).not.toBeNull();
+    expect(screen.queryByLabelText("Health Summary fixture preview")).toBeNull();
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-chrome")).toBe("operator");
     expect(screen.queryByText("Metric cards for platform health, risk candidates, freshness, and channel coverage.")).toBeNull();
-    expect(screen.getAllByText("2m 14s").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Order traffic over limit").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("2m 14s · stale threshold visible")).not.toBeNull();
+    expect(screen.getByText("Order traffic over limit")).not.toBeNull();
     expect(screen.getAllByText("Accounts & Resources").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Overview summarizes and routes; owner pages hold detailed collections.")).toBeNull();
     expect(onRiskCountChange).toHaveBeenCalledWith(2);
@@ -127,7 +131,8 @@ describe("admin dashboard page", () => {
     expect(screen.queryByLabelText("Active module count")).toBeNull();
     expect(screen.queryByLabelText("Operations Overview card controls")).toBeNull();
     expect(screen.queryByLabelText("Risk Queue plugin display controls")).toBeNull();
-    expect(document.querySelector("#dashboard-risk-queue .admin-blueprint-module-panel-meta")).not.toBeNull();
+    expect(document.querySelector("#dashboard-risk-queue .admin-blueprint-module-panel-meta")).toBeNull();
+    expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-chrome")).toBe("operator");
     expect(document.querySelector(".admin-blueprint-panel-display-controls")).toBeNull();
     expect(document.querySelector(".admin-blueprint-module-dock")).toBeNull();
     expect(screen.queryByRole("button", { name: "Next Actions move plugin" })).toBeNull();

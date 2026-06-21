@@ -47,6 +47,7 @@ export type BlueprintPanelViewModel = {
   actions?: ReactNode;
   ariaLabel: string;
   category: WorkbenchCategory;
+  chrome: "draft" | "operator";
   className: string;
   content?: ReactNode;
   containerLabel: string;
@@ -82,6 +83,8 @@ export function projectBlueprintPanelViewModels({
   moduleLayout,
   subNavigation
 }: BlueprintPanelProjectionInput): BlueprintPanelViewModel[] {
+  const chrome: BlueprintPanelViewModel["chrome"] = blueprint.page === "dashboard" ? "operator" : "draft";
+
   return blueprint.modules.flatMap((module) => {
     const navItem = subNavigation.find((item) => item.id === module.navId);
     const layout = moduleLayout[module.navId] ?? defaultModuleLayout[module.navId] ?? defaultModuleLayoutState();
@@ -93,6 +96,7 @@ export function projectBlueprintPanelViewModels({
       actions: module.actions,
       ariaLabel: `${CATEGORY_LABEL[module.container.category]} panel`,
       category: module.container.category,
+      chrome,
       className: "",
       content: module.content,
       containerLabel: module.container.container,
@@ -104,7 +108,7 @@ export function projectBlueprintPanelViewModels({
       uiSurface: module.uiSurface
     };
 
-    const fixturePreview = fixturePreviewEnabled
+    const fixturePreview = fixturePreviewEnabled && chrome === "draft"
       ? getAdminFixturePreviewPanel(blueprint.page, module.navId)
       : undefined;
 

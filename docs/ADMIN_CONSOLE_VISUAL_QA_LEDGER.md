@@ -89,6 +89,13 @@ contracts used `http://127.0.0.1:5173/#/fixture-preview`:
 | Browser override `1440 x 900` | `Operations Overview` | 3: `dashboard-health-summary`, `dashboard-risk-queue`, `dashboard-next-actions` | No | 0 | Pass | 0 | Pass |
 | Browser override `390 x 844` | `Operations Overview` | 3: `dashboard-health-summary`, `dashboard-risk-queue`, `dashboard-next-actions` | No | 0 | Pass | 0 | Pass |
 
+Focused Browser check on 2026-06-21 after the `Operations Overview` operator
+chrome cleanup used `http://127.0.0.1:5173/#/fixture-preview`:
+
+| Viewport | Page checked | Panel chrome | Nested fixture rows | Overview cards | Section cards | Result |
+| --- | --- | --- | --- | --- | --- | --- |
+| Playwright `1600 x 1024` | `Operations Overview` | `operator` on all 3 panels | 0 | 4 | 2 | Pass |
+
 Clean Browser check on 2026-06-16 after the page-ownership cleanup used
 `http://127.0.0.1:5175/` to avoid stale HMR console entries from the existing
 5173 dev server:
@@ -113,11 +120,11 @@ Page-local navigation observed:
 | SH-01 | Shell and brand | Left rail with GlobalCircle AI identity and protected operator context. | Sidebar shows brand, grouped navigation, locked future slots, and safety footer. | Pass |
 | SH-02 | Navigation | Overview, user supervision, platform monitoring, audit/cases, platform development, and settings. | Active real pages remain limited to `Operations Overview`, `Accounts & Resources`, and `Usage & Channels`; planned areas are locked. | Pass |
 | SH-03 | Top search | Search users, orders, channels, cases, or events. | Top search is route-aware and searches active console pages; global object search is a later data-contract gap. | Partial |
-| OV-10 | Platform health metric | Health card with status, note, and sparkline. | `Platform health` metric renders with safe overview readiness and trend. | Pass |
-| OV-11 | Risk cases metric | Risk count and trend. | `Risk cases` renders from computed safe candidates; count differs from concept because local data is real fixture/API state. | Pass |
-| OV-12 | Collection freshness metric | Freshness/P95-style latency card. | `Collection freshness` renders from usage monitor generated/observed timestamps. | Pass |
-| OV-13 | Channel coverage metric | Channel coverage card. | `Channel coverage` renders measured-channel coverage and trend. | Pass |
-| OV-20 | Risk queue | Severity filters and selectable risk rows. | `Risk Queue` renders severity filters and computed safe risk candidates. | Pass |
+| OV-10 | Platform health metric | Health card with status, note, and sparkline. | `Platform health` now follows the canonical handoff card pattern: status pill, title, and safe summary copy. | Pass |
+| OV-11 | Risk cases metric | Risk count and trend. | `Risk candidates` now follows the canonical handoff card pattern and routes only; it does not mount a case workflow. | Pass |
+| OV-12 | Collection freshness metric | Freshness/P95-style latency card. | `Freshness P95` renders the safe age summary with stale-threshold wording. | Pass |
+| OV-13 | Channel coverage metric | Channel coverage card. | `Channel coverage` renders aggregate-only coverage copy. | Pass |
+| OV-20 | Risk queue | Severity filters and selectable risk rows. | `Risk Queue` renders the handoff-style filters and bounded rows. No case close, approval, or mutation action is present. | Pass |
 | OV-30 | User/resources preview | User, order, quota, risk status table. | Routed out of Overview. The owning implementation is `Accounts & Resources`; Overview may show only next-action routing or aggregate signals. | Pass by intentional routing |
 | OV-40 | Object timeline | Object filters, object chain, safe event list. | Routed out of Overview. Full durable history belongs to future `Audit & Cases`; interim history entry points stay under owner pages. | Pass by intentional routing |
 | OV-50 | Traffic/channel preview | Status filters and channel ledger. | Routed out of Overview. The owning implementation is `Usage & Channels`; Overview keeps only freshness/coverage metrics and route action. | Pass by intentional routing |
@@ -126,7 +133,7 @@ Page-local navigation observed:
 
 | Page | Expected role | Current result | QA status |
 | --- | --- | --- | --- |
-| `Operations Overview` | Summary-and-routing dashboard that sends deep work to the owning page. | The page renders top metrics, risk queue, and next-action routing. Account/resource ledgers, object timelines, and channel ledgers are intentionally absent from Overview. Legacy service/order/activity/warning/recent-activity detail panels are also removed. | Pass |
+| `Operations Overview` | Summary-and-routing dashboard that sends deep work to the owning page. | The page renders operator-chrome panels with four metric cards, `Risk Queue`, and `Next Actions`. Draft-only field counts, `Preview` / `Owner` chips, and nested fixture preview rows are suppressed on Overview. Account/resource ledgers, object timelines, and channel ledgers are intentionally absent from Overview. Legacy service/order/activity/warning/recent-activity detail panels are also removed. | Pass |
 | `User Operations / Accounts & Resources` | Own user accounts, resources, orders, quota, lifecycle, and history/event entry points. | Page header, safety note, resource data badge, sub-navigation, account directory, resource/order section, quota section, lifecycle summary, history/events cases, controlled delivery preview, and safe refs render in page-local ownership order. | Pass |
 | `Platform Monitoring / Usage & Channels` | Own collection freshness, channel coverage, usage ledger, collection anomaly queue, receipt/collector entry points. | Page header, read-only safety note, data badge, sub-navigation, freshness, channel health, usage ledger with filters/curves/activity/order table, collection anomalies with case queue and anomaly queue, and a real receipts/collectors panel render. | Pass |
 

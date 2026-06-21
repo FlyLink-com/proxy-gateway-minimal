@@ -85,7 +85,13 @@ describe("admin visual QA contract", () => {
       expect(panel.getAttribute("data-ui-contract")).toBe("panel-frame");
       expect(panel.getAttribute("data-density")).toBe("normal");
       expect(panel.getAttribute("aria-label")).toMatch(/panel/i);
-      expect(panel.querySelector(".admin-blueprint-module-panel-head")).not.toBeNull();
+      if (page === "dashboard") {
+        expect(panel.getAttribute("data-chrome")).toBe("operator");
+        expect(panel.querySelector(".admin-blueprint-module-panel-head")).toBeNull();
+      } else {
+        expect(panel.getAttribute("data-chrome")).toBe("draft");
+        expect(panel.querySelector(".admin-blueprint-module-panel-head")).not.toBeNull();
+      }
       expect(panel.querySelector(".admin-blueprint-panel-display-controls")).toBeNull();
       expect(panel.querySelector(".admin-blueprint-module-notes")).toBeNull();
     });

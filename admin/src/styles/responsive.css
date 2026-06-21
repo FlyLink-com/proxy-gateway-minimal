@@ -249,6 +249,7 @@
     width: 100%;
   }
 
+  .admin-overview-metric-grid,
   .ops-metric-grid,
   .admin-static-card-grid,
   .dashboard-mini-metrics,
@@ -608,6 +609,7 @@
     grid-template-columns: 1fr;
   }
 
+  .admin-overview-metric-grid,
   .ops-metric-grid,
   .admin-static-card-grid,
   .new-console-workbench,
@@ -756,6 +758,15 @@
 
   .case-row {
     grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .admin-overview-table-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-overview-table-row span,
+  .admin-overview-table-row strong {
+    white-space: normal;
   }
 
   .case-reason {

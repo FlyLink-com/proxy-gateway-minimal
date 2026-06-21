@@ -12,6 +12,7 @@ export type PanelFrameProps = {
   ariaLabel: string;
   category: WorkbenchCategory;
   children?: ReactNode;
+  chrome?: "draft" | "operator";
   className?: string;
   containerLabel: string;
   dataModuleNavId?: string;
@@ -40,6 +41,7 @@ export function PanelFrame({
   ariaLabel,
   category,
   children,
+  chrome = "draft",
   className,
   containerLabel,
   dataModuleNavId,
@@ -54,6 +56,9 @@ export function PanelFrame({
   title,
   tone = ownerMode === "preview" ? "neutral" : "info"
 }: PanelFrameProps) {
+  const showDraftChrome = chrome === "draft";
+  const showFixturePreview = showDraftChrome && fixturePreview;
+
   return (
     <section
       aria-label={ariaLabel}
@@ -64,29 +69,47 @@ export function PanelFrame({
         className
       )}
       data-density={density}
+      data-chrome={chrome}
       data-module-nav-id={dataModuleNavId}
       data-ui-role="panel"
       data-ui-surface-role={dataUiSurfaceRole}
       data-ui-contract={ADMIN_UI_CONTRACT.pluginFrame.contractId}
       id={id}
     >
-      <div className="admin-blueprint-module-panel-head">
-        <div className="admin-blueprint-module-title">
-          <span className="workbench-category-pill">{CATEGORY_LABEL[category]}</span>
-          <div>
-            <h3>{title}</h3>
-            <small>{containerLabel}</small>
+      {showDraftChrome ? (
+        <div className="admin-blueprint-module-panel-head">
+          <div className="admin-blueprint-module-title">
+            <span className="workbench-category-pill">{CATEGORY_LABEL[category]}</span>
+            <div>
+              <h3>{title}</h3>
+              <small>{containerLabel}</small>
+            </div>
+          </div>
+          <div className="admin-blueprint-module-panel-meta">
+            <span className="admin-blueprint-panel-field-count" aria-label={`${fieldLabels.length} primary fields`}>
+              {fieldLabels.length}
+            </span>
+            <StatusChip label={ownerMode === "preview" ? "Preview" : "Owner"} tone={tone} />
+            {onHide ? (
+              <button
+                aria-label={`${title} hide module`}
+                className="admin-blueprint-panel-tool-trigger"
+                onClick={onHide}
+                title={`${title} hide module`}
+                type="button"
+              >
+                <EyeOff aria-hidden="true" />
+              </button>
+            ) : null}
           </div>
         </div>
-        <div className="admin-blueprint-module-panel-meta">
-          <span className="admin-blueprint-panel-field-count" aria-label={`${fieldLabels.length} primary fields`}>
-            {fieldLabels.length}
-          </span>
-          <StatusChip label={ownerMode === "preview" ? "Preview" : "Owner"} tone={tone} />
+      ) : (
+        <>
+          <span className="sr-only">{title}</span>
           {onHide ? (
             <button
               aria-label={`${title} hide module`}
-              className="admin-blueprint-panel-tool-trigger"
+              className="admin-blueprint-panel-tool-trigger admin-blueprint-panel-tool-trigger-floating"
               onClick={onHide}
               title={`${title} hide module`}
               type="button"
@@ -94,9 +117,9 @@ export function PanelFrame({
               <EyeOff aria-hidden="true" />
             </button>
           ) : null}
-        </div>
-      </div>
-      {fixturePreview ? (
+        </>
+      )}
+      {showFixturePreview ? (
         <div
           aria-label={`${title} fixture preview`}
           className="admin-fixture-preview"
