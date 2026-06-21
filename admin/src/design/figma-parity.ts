@@ -317,7 +317,7 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
     hierarchyRoles: ["context", "action"],
     nextLinearIssue: "GCC-119",
     openGaps: [
-      "Tablet navigation behavior is token-owned and contract-covered; GCC-120 must add the 768 and 1024 viewport screenshot evidence before PR #355 moves to Ready."
+      "Tablet navigation behavior is token-owned and contract-covered; GCC-120 browser evidence now covers 768 and 1024-class viewports before PR #355 Ready review."
     ],
     qaEvidence: [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Figma Mirror Evidence",

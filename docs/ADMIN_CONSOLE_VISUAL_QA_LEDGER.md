@@ -102,7 +102,7 @@ GCC-119 implementation alignment status:
 | Overview metric normalization | Current: `Operations Overview` metric cards now render through shared `MetricCard` hooks, not the old page-local metric-card contract. |
 | PanelFrame hooks | Current: `PanelFrame` exposes stable `data-figma-component`, `data-ui-surface`, owner-mode, and workbench-category hooks across operator and draft panels. |
 | Privileged gate extraction | Current: shell production guard renders through the `PrivilegedGate` primitive with explicit state and capability attributes. |
-| Remaining GCC-119 surface | Tablet navigation behavior is contract-covered in CSS/tests; screenshot evidence moves to `GCC-120` before PR #355 can leave Draft. |
+| GCC-120 handoff surface | Current: tablet and ultra-narrow screenshot evidence is recorded below. PR #355 should stay Draft until the linked Linear review gates are accepted. |
 
 ## Current Browser Evidence
 
@@ -138,6 +138,27 @@ Observed interaction details:
   responsive-hidden at `390 x 844` and did not create overflow.
 - Browser screenshots were generated during each checked state for visual
   inspection; no screenshot artifact was committed.
+
+GCC-120 breakpoint/state check on 2026-06-21 after shared-surface alignment
+used `http://127.0.0.1:5173/#/fixture-preview` and the existing local Vite
+listener on `127.0.0.1:5173`:
+
+| Browser viewport | Pages checked | Panel counts | Shared surface hooks | Shell interactions | Global horizontal overflow | Visual overlap candidates | Unnamed controls | Sensitive text boundary | Console errors | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `1280 x 800` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | Navigation library search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Pass |
+| `768 x 1024` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | Navigation library search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Pass |
+| `360 x 740` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | Navigation library search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Pass |
+
+Observed state/surface details:
+
+- `StatusChip` tones were present across success, info, warning, danger, and
+  neutral states on the page set.
+- Table rows and safe refs stayed inside their local containers; no `.mono-ref`
+  overflow was detected in the breakpoint sweep.
+- `PrivilegedGate` exposed `data-gate-state="gated"` and
+  `data-capability="readonly"` during the shell check.
+- Local screenshot and JSON artifacts were generated under `output/playwright/`
+  for operator inspection and were not committed.
 
 Fresh Browser check on 2026-06-16 after the English canonical content slice:
 

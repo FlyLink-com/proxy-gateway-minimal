@@ -202,8 +202,8 @@ The matrix intentionally records current gaps instead of hiding them:
 - `DataRow`: choose one mobile safe-ref strategy: local horizontal scroll or
   stacked row.
 - `TopBar`: confirm compact search behavior is token-owned, not page-owned.
-- `SidebarNavigation`: tablet behavior is token-owned and contract-covered;
-  `GCC-120` must add the 768 and 1024 viewport screenshots.
+- `SidebarNavigation`: tablet behavior is token-owned, contract-covered, and
+  has `GCC-120` browser evidence for 768 and 1024-class viewports.
 - `PrivilegedGate`: the shell production guard is now a first-class primitive;
   future super-admin detail surfaces remain contract-only until backend
   authority exists.
@@ -230,8 +230,9 @@ page-local rewrites:
 - `PrivilegedGate` is now a first-class primitive for the shell production
   action guard; it does not add production authority or backend write behavior.
 
-`PR #355` must stay Draft until this parity matrix, `GCC-119` implementation
-alignment, and `GCC-120` breakpoint/state evidence are all complete.
+`PR #355` should stay Draft until the linked Linear review gates for the parity
+matrix, `GCC-119` implementation alignment, and `GCC-120` breakpoint/state
+evidence are accepted.
 
 ## Visual QA Evidence Axes
 
