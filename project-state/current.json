@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-06-18",
+  "lastUpdated": "2026-06-21",
   "timezone": "America/Los_Angeles",
   "status": "active-snapshot-vultr-japan-control-plane-sgp-data-plane",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
@@ -214,8 +214,8 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "stableBaselineCommit": "e8db032",
-    "openPrCount": 1,
+    "stableBaselineCommit": "76c9c003",
+    "openPrCount": 11,
     "mergedPrsInCloseout": [
       299,
       302,
@@ -229,12 +229,16 @@
       310,
       311,
       312,
-      315
+      315,
+      345,
+      346,
+      347,
+      348
     ],
     "followOnBaseline": "master",
     "followOnBranchPolicy": "Start subsequent tasks from a clean master worktree unless a task explicitly states another baseline.",
     "closeoutPlan": "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
-    "note": "Branch context was rechecked after local/GitHub read-only check: master and origin/master are at e8db032 after PR #315 merged; open PR count is 1 with PR #316 for codex/linear-agent-ops-guards. Earlier PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 are merged, and PR #300 was closed without merge. Always verify live Git status before new work."
+    "note": "Branch context was rechecked locally on 2026-06-21: master and origin/master are at 76c9c003 after PR #348 merged. PR #345, PR #346, PR #347, and PR #348 are merged into master. gh pr list showed 11 open PRs, including the Admin follow-up stack #349-#353 and open PRs #336-#341. Always verify live GitHub status before new work."
   },
   "architectureView": {
     "currentMentalModel": "four-layer-single-control-plane-multi-data-plane",
@@ -263,7 +267,7 @@
       "old checkout paths and archive directories",
       "runtime-only residue copied from production hosts"
     ],
-    "branchAuthority": "master and origin/master at e8db032 are the follow-on development baseline after PR #315 merged; PR #316 is currently open for codex/linear-agent-ops-guards. Earlier PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 merged; PR #300 is closed without merge."
+    "branchAuthority": "master and origin/master at 76c9c003 are the current local development baseline after PR #348 merged. PR #345, PR #346, PR #347, and PR #348 are merged into master. gh pr list on 2026-06-21 showed 11 open PRs, including the Admin follow-up stack #349-#353 plus #336-#341; verify live GitHub status before acting on any PR."
   },
   "productSpine": [
     "stable subscription/import experience",
@@ -283,7 +287,7 @@
     "Aliyun subscription-distribution records, channel-lab-a/b records, and Japan single-TUIC upgrade records are historical/fallback references. Do not reactivate them as current production authority or automatic issuance targets without a fresh Risk A gate and live verification.",
     "User Portal and Admin/Operator surfaces are adapters over shared domain services. User order creation, lifecycle status, refresh, usage monitor, and support flows must use durable backend state, not frontend Map/demo state.",
     "Order-owned traffic accounting remains an active implementation lane: Admin usage monitor, User Portal order summaries, Admin user-resource supervision, and Admin traffic/channel supervision now have repo-only UI/code paths for durable rollups, safe quota editing, platform channel health, anomaly queues, and order-ledger views. The New Admin surface is positioned around user accounts and their resources, not standalone subscription creation. Live runtime sample collection, quota enforcement, and auto-disable still require separate gates.",
-    "Admin OS is an active repo-only operator-console workstream and must not be reported as delivered from uncommitted Admin UI changes. Current active pages are Operations Overview, Accounts & Resources, and Usage & Channels; Audit & Cases, Platform Development, and System Settings remain locked/planned until real data sources, redaction boundaries, tests, and validation exist. Current Admin OS task-state is GCC-74 app map, GCC-75 manifest authoring, and GCC-82 visual protocol in progress as docs/design-state, with GCC-76 plugin container template, GCC-77 App Library search/safe indexing, and GCC-78 workspace drag/resize/minimize engine remaining backlog/follow-up implementation lines. The app metadata source of truth is admin/src/app/admin-app-manifest.ts. App Registry and YAML import are future design only and are not an implemented runtime registry, upload endpoint, schema migration, permission model, or publication flow.",
+    "Admin OS is an active repo-only operator-console workstream and must not be reported as delivered from uncommitted Admin UI changes. Current master includes the first Admin design grammar/runtime contract, capability gating, Platform Monitoring static UI details, Admin backend DTO docs, and 44px touch-target grammar QA through PR #345-#348. Current active pages are Operations Overview, Accounts & Resources, and Usage & Channels; Audit & Cases, Platform Development, and System Settings remain locked/planned until real data sources, redaction boundaries, tests, and validation exist. The current local Admin UI task is closing grammar enforcement drift by requiring every active page contract to satisfy required hierarchy roles and matching block hints; Figma remains a requirements-map/design-mirror follow-up, not a high-fidelity source of truth. The app metadata source of truth is admin/src/app/admin-app-manifest.ts. App Registry and YAML import are future design only and are not an implemented runtime registry, upload endpoint, schema migration, permission model, or publication flow.",
     "Legacy query-token retirement remains a separate Risk A lane after opaque artifact coverage, observation, endpoint compatibility checks, rollback evidence, and exact operator approval.",
     "All production/runtime/cloud changes remain Risk A: DNS, Nginx, provider firewall, systemd restarts, runtime config, live order creation, account/password generation, subscription URL/token/password output, and SQLite row dumps stay out of repo-only work."
   ],
@@ -368,7 +372,7 @@
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, validation evidence, and Agent / Task Routing metadata before it is marked Ready, submitted for merge, or reported complete. The routing metadata must name the lead agent, supporting agents if any, primary unit, secondary units, follow-up agent suitability, and recommended next owner. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
-    "githubHostedActions": "Local/GitHub read-only check reports master and origin/master at e8db032 after PR #315 merged, with PR #316 currently open for codex/linear-agent-ops-guards. Earlier PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 merged, and PR #300 closed without merge. Recent master CI and Release Artifact workflows should be checked per PR/run; use local/manual validation when hosted workflows do not run.",
+    "githubHostedActions": "Local Git check reports master and origin/master at 76c9c003 after PR #348 merged. gh pr list on 2026-06-21 showed 11 open PRs, including Admin follow-up stack #349-#353 and open PRs #336-#341. Recent master CI and Release Artifact workflows should be checked per PR/run; use local/manual validation when hosted workflows do not run.",
     "manualCiFallback": "Use docs/VALIDATION_BASELINE.md and docs/CI_MANUAL_VALIDATION.md for the current manual validation path; historical HP/Aliyun manual CI facts are reference only.",
     "manualCiIsStaging": false,
     "cTierCommand": "git diff --check origin/master...HEAD",
@@ -417,7 +421,7 @@
     },
     {
       "id": "admin-console-navigation-ia",
-      "summary": "Admin OS is being treated as a sustainable protected operator console shell, but the current docs/state handoff records it as in-progress/backlog only. Active pages are Operations Overview, Accounts & Resources, and Usage & Channels. Audit & Cases, Platform Development, and System Settings stay locked/planned. GCC-74 app map, GCC-75 manifest authoring, and GCC-82 visual protocol are active docs/design-state lines; GCC-76 plugin container template, GCC-77 App Library search/safe indexing, and GCC-78 workspace drag/resize/minimize engine remain backlog/follow-up implementation lines. The current app metadata source of truth is admin/src/app/admin-app-manifest.ts. App Registry/YAML import is future design only and is not an implemented runtime registry or upload flow.",
+      "summary": "Admin OS is being treated as a sustainable protected operator console shell. Master now includes the first design grammar/runtime contract, capability gating, Platform Monitoring static UI details, Admin backend DTO docs, and 44px touch-target grammar QA through PR #345-#348. Active pages are Operations Overview, Accounts & Resources, and Usage & Channels. Audit & Cases, Platform Development, and System Settings stay locked/planned. The current local Admin UI task closes grammar enforcement drift by binding page contracts to required hierarchy roles, matching block hints, and layout mobile projections. Figma remains a requirements-map/design-mirror follow-up rather than a high-fidelity source of truth. App Registry/YAML import is future design only and is not an implemented runtime registry or upload flow.",
       "sourceDoc": "docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md"
     },
     {
@@ -441,7 +445,7 @@
     "Finish repo-only state/docs archive alignment, then run npm run project-state:check and git diff --check.",
     "Package any local adapter/template changes into an explicit Vultr runtime release only after current repo validation is clean.",
     "Use the protected remote handoff queue/API for future reviewed SGP handoff summaries, then use a separate Risk A gate for any future production remote apply.",
-    "Continue the Admin OS lane through docs/ADMIN_CONSOLE_REBUILD_BASELINE.md, docs/ADMIN_CONSOLE_NAVIGATION_IA.md, docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md, docs/ADMIN_CONSOLE_APP_MAP.md, docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md, and docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md: keep Operations Overview, Accounts & Resources, and Usage & Channels as the only active pages; keep Audit & Cases, Platform Development, and System Settings locked/planned; use admin/src/app/admin-app-manifest.ts as the current app metadata source of truth; treat App Registry/YAML import as future design only; do not mark uncommitted Admin UI work as delivered until the owning Admin branch closes with validation.",
+    "Continue the Admin OS lane through docs/ADMIN_CONSOLE_REBUILD_BASELINE.md, docs/ADMIN_CONSOLE_NAVIGATION_IA.md, docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md, docs/ADMIN_CONSOLE_APP_MAP.md, docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md, and docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md: keep Operations Overview, Accounts & Resources, and Usage & Channels as the only active pages; keep Audit & Cases, Platform Development, and System Settings locked/planned; use admin/src/app/admin-app-manifest.ts and admin/src/app/admin-ui-contract.ts as current code source-of-truth files; keep grammar enforcement tests ahead of visual/Figma work; treat App Registry/YAML import as future design only; do not mark uncommitted Admin UI work as delivered until the owning Admin branch closes with validation.",
     "Keep legacy query-token retirement separate from multichannel rollout; do not combine route removal with artifact issuance or runtime changes.",
     "Do not mutate DNS, Nginx, provider firewall, runtime service state, account/passwords, payment, live orders, subscription URLs/tokens/passwords, or SQLite rows without exact approval."
   ],

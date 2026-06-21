@@ -5,6 +5,11 @@ import {
   getAdminPageContract
 } from "../app/admin-ui-contract";
 import { ADMIN_COMPONENT_GRAMMAR } from "../design/grammar/components";
+import {
+  ADMIN_HIERARCHY_BLOCK_HINTS,
+  defineAdminPageContract,
+  getRequiredAdminHierarchyRoles
+} from "../design/grammar/contract";
 import { ADMIN_DENSITY_SPECS } from "../design/grammar/density";
 import { ADMIN_HIERARCHY_RULES } from "../design/grammar/hierarchy";
 import { ADMIN_LAYOUT_SPECS } from "../design/grammar/layout";
@@ -108,6 +113,7 @@ describe("admin OS UI contract", () => {
     });
     expect(getAdminPageContract("portalRequests")).toMatchObject({
       layout: "table",
+      hierarchy: ["metric", "context", "state", "evidence", "action", "detail"],
       page: "portalRequests"
     });
     expect(getAdminPageContract("usageMonitor").requiredBlocks).toContain("evidence-row");
@@ -117,6 +123,36 @@ describe("admin OS UI contract", () => {
       expect(contract.requiredBlocks).toContain("page-title");
       expect(contract.requiredBlocks).toContain("state-preview");
       expect(contract.forbiddenSurfaces).toEqual(ADMIN_PRIVILEGED_SURFACE_IDS);
+    });
+  });
+
+  test("enforces required hierarchy roles for every active page contract", () => {
+    const requiredRoles = getRequiredAdminHierarchyRoles();
+
+    Object.values(ADMIN_UI_CONTRACT.pageContracts).forEach((contract) => {
+      requiredRoles.forEach((role) => {
+        expect(contract.hierarchy).toContain(role);
+        expect(
+          ADMIN_HIERARCHY_BLOCK_HINTS[role].some((block) => contract.requiredBlocks.includes(block))
+        ).toBe(true);
+      });
+    });
+  });
+
+  test("rejects page contracts that drift from grammar requirements", () => {
+    const dashboardContract = getAdminPageContract("dashboard");
+
+    expect(() => {
+      defineAdminPageContract({
+        ...dashboardContract,
+        hierarchy: dashboardContract.hierarchy.filter((role) => role !== "metric")
+      });
+    }).toThrow("missing required hierarchy role: metric");
+  });
+
+  test("keeps page mobile projections aligned with layout grammar", () => {
+    Object.values(ADMIN_UI_CONTRACT.pageContracts).forEach((contract) => {
+      expect(contract.mobileProjection).toBe(ADMIN_LAYOUT_SPECS[contract.layout].mobileProjection);
     });
   });
 });

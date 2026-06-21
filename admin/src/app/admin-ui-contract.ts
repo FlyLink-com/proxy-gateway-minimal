@@ -9,6 +9,7 @@ import {
   type AdminLayoutArchetype,
   type AdminMobileProjection
 } from "../design/grammar/layout";
+import { defineAdminPageContract } from "../design/grammar/contract";
 
 export type AdminUiDensity = AdminDensityMode;
 
@@ -168,7 +169,7 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
     }
   },
   pageContracts: {
-    dashboard: {
+    dashboard: defineAdminPageContract({
       density: "normal",
       forbiddenSurfaces: ADMIN_PRIVILEGED_SURFACE_IDS,
       hierarchy: ["metric", "context", "state", "action", "evidence"],
@@ -182,13 +183,14 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
         "primary-panel",
         "status-chip",
         "state-preview",
-        "owner-action"
+        "owner-action",
+        "evidence-row"
       ]
-    },
-    portalRequests: {
+    }),
+    portalRequests: defineAdminPageContract({
       density: "normal",
       forbiddenSurfaces: ADMIN_PRIVILEGED_SURFACE_IDS,
-      hierarchy: ["context", "state", "evidence", "action", "detail"],
+      hierarchy: ["metric", "context", "state", "evidence", "action", "detail"],
       layout: "table",
       mobileProjection: "single-column-review-flow",
       page: "portalRequests",
@@ -201,8 +203,8 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
         "evidence-row",
         "owner-action"
       ]
-    },
-    usageMonitor: {
+    }),
+    usageMonitor: defineAdminPageContract({
       density: "normal",
       forbiddenSurfaces: ADMIN_PRIVILEGED_SURFACE_IDS,
       hierarchy: ["metric", "context", "state", "evidence", "detail"],
@@ -218,7 +220,7 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
         "state-preview",
         "evidence-row"
       ]
-    }
+    })
   },
   pageFrame: {
     contractId: "page-frame",
