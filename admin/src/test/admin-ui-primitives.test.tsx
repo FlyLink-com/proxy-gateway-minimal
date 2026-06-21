@@ -386,6 +386,7 @@ describe("admin ui primitives", () => {
     expect(table.getAttribute("aria-busy")).toBe("true");
     expect(screen.getByRole("columnheader", { name: "Channel ID" })).not.toBeNull();
     const stateCell = screen.getByRole("cell", { name: /Loading channel collection samples/ });
+    expect(stateCell.tagName).toBe("DIV");
     expect(stateCell.className).toContain("new-console-state-cell");
     expect(within(stateCell).getByRole("status").getAttribute("data-ui-surface")).toBe("state-feedback");
     expect(within(stateCell).getByRole("status").getAttribute("data-state-feedback")).toBe("loading");

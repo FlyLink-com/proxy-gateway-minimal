@@ -48,7 +48,7 @@ export function DataTable<Row>({
       </div>
       {state ? (
         <div className={`new-console-row new-console-state-row new-console-state-${state.tone}`} role="row">
-          <span className="new-console-state-cell" role="cell">
+          <div className="new-console-state-cell" role="cell">
             <StateFeedback
               chrome="none"
               className="new-console-state-feedback"
@@ -57,7 +57,7 @@ export function DataTable<Row>({
               title={state.title}
               tone={state.tone}
             />
-          </span>
+          </div>
         </div>
       ) : rows.map((row) => {
         const rowKey = getRowKey(row);
