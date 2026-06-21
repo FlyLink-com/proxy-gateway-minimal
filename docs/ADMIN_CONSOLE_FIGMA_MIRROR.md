@@ -52,6 +52,18 @@ Write attempt:
 | Connector result | `get_metadata` can read the canonical file, `use_figma` can execute, and a shared plugin data write probe succeeded on page `0:1`. |
 | Required action | Use the canonical handoff file for future Figma mirror and visual QA work. Avoid Share or seat/billing prompts unless the operator explicitly approves that action. |
 
+Follow-up component mirror evidence:
+
+| Item | Current value |
+| --- | --- |
+| Page-level handoff | Current. The canonical file contains multi-frame page mirrors and implementation captures. |
+| Component-system mirror | Required. The Figma file does not yet expose local components, variables, text styles, or paint styles for the Admin grammar. |
+| Observed local components | `0` |
+| Observed local variable collections | `0` |
+| Observed local text styles | `0` |
+| Observed local paint styles | `0` |
+| Next task line | `Admin Figma Component Mirror v1` |
+
 Do not infer from the previous blocker that the React Admin UI is unavailable.
 That blocker was scoped to using the wrong one-page file key and the earlier
 `use_figma` permission probe against that key.
@@ -97,6 +109,37 @@ Current implementation alignment:
 - The `01 Operations Overview / 1600x1024` mirror frame is the reference for
   the current top-level structure: metric cards, `Risk Queue`, and
   `Next Actions`. Owner-page ledgers stay out of Overview.
+
+## Component Mirror Gap
+
+The current Figma source is a page-level handoff, not yet a full component
+library. The next visual-design task is to mirror the existing code grammar and
+tokens into Figma components and variants instead of reopening page-level
+direction.
+
+Required component mirrors:
+
+- `PanelFrame`
+- `MetricCard`
+- `StatusChip`
+- `DataTable / DataRow`
+- `TopBar`
+- `Sidebar / Navigation Library`
+- `PrivilegedGate`
+- `EmptyState / Loading / Stale / Error`
+
+Required variant groups:
+
+- Semantic status: success, info, warning, danger, neutral, stale.
+- Panel state: default, loading, empty, stale, error.
+- Metric priority: stable, attention, critical, unavailable.
+- Data-row interaction: default, hover, selected, disabled, flagged.
+- Privileged gate state: hidden, gated, fresh-MFA-required, unavailable.
+
+This task line should reuse the existing React grammar and tokens from
+`admin/src/design/grammar/*`, `admin/src/app/admin-ui-contract.ts`, and
+`admin/src/styles/tokens.css`. It must not create a second naming system in
+Figma.
 
 ## Visual QA Evidence Axes
 

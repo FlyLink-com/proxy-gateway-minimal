@@ -58,12 +58,24 @@ Figma connector evidence on 2026-06-21:
 | Write probe | `use_figma` succeeded on the canonical file and wrote safe shared plugin data under `adminos.mcpWriteProbe` on page `0:1`. |
 | Next action | Use the canonical handoff file for future Figma mirror and visual QA work. Avoid Share or seat/billing prompts unless the operator explicitly approves that action. |
 
+Component-system mirror status:
+
+| Check | Result |
+| --- | --- |
+| Page-level handoff | Current: the canonical file has page mirrors, safety/review frames, and implementation captures. |
+| Component-system mirror | Required: local Figma components, variables, text styles, and paint styles are not yet present for the Admin grammar. |
+| Observed local components | `0` |
+| Observed local variable collections | `0` |
+| Observed local text styles | `0` |
+| Observed local paint styles | `0` |
+| Next task line | `Admin Figma Component Mirror v1` |
+
 Local mirror contract added:
 
 | Contract | Purpose |
 | --- | --- |
-| `admin/src/design/figma-mirror.ts` | Canonical Figma file key, required mirror frames, page-to-React mapping, connector evidence, and QA evidence axes. |
-| `admin/src/test/admin-figma-mirror-contract.test.ts` | Verifies mirror page names, one page mirror per active Admin route, and blocker visibility. |
+| `admin/src/design/figma-mirror.ts` | Canonical Figma file key, required mirror frames, page-to-React mapping, connector evidence, component-mirror gap, and QA evidence axes. |
+| `admin/src/test/admin-figma-mirror-contract.test.ts` | Verifies mirror page names, one page mirror per active Admin route, connector status, and component-mirror boundary. |
 | `admin/src/test/admin-visual-qa-contract.test.tsx` | Verifies fixture shell landmarks, page/panel DOM ownership hooks, named interactive controls, and safe-data boundary. |
 
 ## Current Browser Evidence

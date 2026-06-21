@@ -111,6 +111,47 @@ export const ADMIN_FIGMA_WRITE_ACCESS_CHECK = {
   nextStep: "Use the canonical handoff file for future Figma mirror and visual QA work. Avoid Share or seat/billing prompts unless the operator explicitly approves that action."
 } as const;
 
+export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {
+  checkedAt: "2026-06-21",
+  sourceFile: ADMIN_FIGMA_FILE_KEY,
+  pageLevelHandoff: "current",
+  componentSystemMirror: "required",
+  observedTopLevelPage: "Admin UI Handoff",
+  observedFrames: [
+    "00 Contract & Build Order",
+    "01 Operations Overview / 1600x1024",
+    "02 Accounts & Resources / 1600x1024",
+    "03 Usage & Channels / 1600x1024",
+    "04 State & Safety Matrix",
+    "05 GCC-103 Review Addendum / 1600x1024",
+    "06 Current Implementation / Operations Overview / 1600w full-content capture",
+    "07 Current Implementation / Accounts & Resources / 1600w full-content capture",
+    "08 Current Implementation / Usage & Channels / 1600w full-content capture"
+  ],
+  observedLocalComponentCount: 0,
+  observedLocalVariableCollectionCount: 0,
+  observedLocalTextStyleCount: 0,
+  observedLocalPaintStyleCount: 0,
+  requiredComponentMirrors: [
+    "PanelFrame",
+    "MetricCard",
+    "StatusChip",
+    "DataTable / DataRow",
+    "TopBar",
+    "Sidebar / Navigation Library",
+    "PrivilegedGate",
+    "EmptyState / Loading / Stale / Error"
+  ],
+  requiredVariantGroups: [
+    "semantic-status",
+    "panel-state",
+    "metric-priority",
+    "data-row-interaction",
+    "privileged-gate-state"
+  ],
+  nextTaskLine: "Admin Figma Component Mirror v1"
+} as const;
+
 export const ADMIN_VISUAL_QA_AXES = [
   "figma-mirror",
   "dom-contract",
