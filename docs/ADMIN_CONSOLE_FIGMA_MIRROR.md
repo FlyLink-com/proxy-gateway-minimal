@@ -45,8 +45,9 @@ Write attempt:
 | --- | --- |
 | Date | 2026-06-21 |
 | Attempted operation | Resize clipped rows and create mirror pages. |
-| Connector result | Blocked with `User does not have view permission on file`. |
-| Required action | Grant the connected Figma account edit access, then rerun the mirror write step. |
+| Connector account seat | `Dev / developer`. |
+| Connector result | `get_metadata` can read the file, but `use_figma` read-only execution is blocked with `User does not have view permission on file`. |
+| Required action | Verify the connected account has a Full Figma Design seat, or reconnect Figma with a Full-seat account, then rerun the mirror write step. |
 
 Do not infer from this blocker that the React Admin UI is unavailable. The
 blocker is scoped to Figma write access.

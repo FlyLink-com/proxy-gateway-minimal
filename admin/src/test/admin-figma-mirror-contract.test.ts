@@ -63,8 +63,11 @@ describe("admin Figma mirror contract", () => {
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.status).toBe("blocked");
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.checkedAt).toBe("2026-06-21");
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.attemptedOperation).toContain("create mirror pages");
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.authenticatedSeat).toBe("Dev / developer");
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("get_metadata can read");
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("use_figma read-only execution is denied");
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.connectorMessage).toMatch(/permission|view/i);
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/edit access/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/Full Figma Design seat/i);
   });
 
   test("defines the complete visual QA evidence axes", () => {

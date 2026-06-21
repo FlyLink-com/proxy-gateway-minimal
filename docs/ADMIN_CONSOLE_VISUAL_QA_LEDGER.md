@@ -51,9 +51,10 @@ Figma connector evidence on 2026-06-21:
 | Current top-level page | `00 Requirements Map`. |
 | Current main frame | `GlobalCircle AI Admin Console / Requirements Map`, `1440 x 1200`. |
 | Current mismatch | Several requirement-map row frames are shorter than their child cards, creating clipping risk. |
+| Connector account seat | `Dev / developer`. |
 | Write attempt | Blocked while trying to resize clipped rows and create mirror pages. |
-| Connector message | `User does not have view permission on file`. |
-| Next action | Grant the connected Figma account edit access, then rerun the mirror write step. |
+| Connector message | `get_metadata` can read the file, but `use_figma` read-only execution is blocked with `User does not have view permission on file`. |
+| Next action | Verify the connected account has a Full Figma Design seat, or reconnect Figma with a Full-seat account, then rerun the mirror write step. |
 
 Local mirror contract added:
 
