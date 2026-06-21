@@ -117,7 +117,7 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
     hierarchyRoles: ["metric", "context", "state"],
     nextLinearIssue: "GCC-119",
     openGaps: [
-      "Normalize overview-specific metric card markup with the shared primitive where possible."
+      "Overview metrics now route through the shared MetricCard primitive; GCC-120 must visually verify desktop and narrow viewport density."
     ],
     qaEvidence: [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Figma Mirror Evidence",
@@ -128,7 +128,7 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
       propContract: ["label", "value", "detail", "tone", "icon", "trend"],
       propValues: ["success", "info", "warning", "danger", "neutral"],
       supportingSurfaces: [
-        "src/pages/dashboard-page.tsx#OverviewMetricCard"
+        "src/pages/dashboard-page.tsx#OverviewMetricCard wrapper"
       ]
     },
     responsiveRules: [
@@ -165,7 +165,7 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
     hierarchyRoles: ["context", "state", "evidence", "action"],
     nextLinearIssue: "GCC-119",
     openGaps: [
-      "Move any page-level panel chrome overrides back to the shared panel frame."
+      "PanelFrame now exposes stable Figma and DOM hooks; GCC-120 must compare the operator and draft chrome variants in browser screenshots."
     ],
     qaEvidence: [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Figma Mirror Evidence",
@@ -317,7 +317,7 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
     hierarchyRoles: ["context", "action"],
     nextLinearIssue: "GCC-119",
     openGaps: [
-      "Lock tablet behavior for navigation library before PR #355 moves to Ready."
+      "Tablet navigation behavior is token-owned and contract-covered; GCC-120 must add the 768 and 1024 viewport screenshot evidence before PR #355 moves to Ready."
     ],
     qaEvidence: [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Figma Mirror Evidence",
@@ -364,17 +364,18 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
     hierarchyRoles: ["state", "action", "evidence"],
     nextLinearIssue: "GCC-119",
     openGaps: [
-      "Decide whether to extract a first-class PrivilegedGate primitive from current manifest and shell surfaces."
+      "PrivilegedGate is now a first-class shell primitive; future super-admin detail surfaces remain contract-only until backend authority exists."
     ],
     qaEvidence: [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Figma Mirror Evidence",
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Browser Evidence"
     ],
     react: {
-      primarySurface: "src/app/admin-ui-contract.ts#ADMIN_PRIVILEGED_SURFACE_IDS",
-      propContract: ["capabilityContext", "freshMfa", "allowedCapabilities", "entryGateSummary"],
+      primarySurface: "src/components/primitives/privileged-gate.tsx#PrivilegedGate",
+      propContract: ["title", "description", "detail", "state", "capability", "ariaLabel"],
       propValues: ["hidden", "gated", "fresh-mfa-required", "unavailable", "readonly", "super-admin"],
       supportingSurfaces: [
+        "src/app/admin-ui-contract.ts#ADMIN_PRIVILEGED_SURFACE_IDS",
         "src/app/admin-app-manifest.ts#AdminCapabilityContext",
         "src/components/layout/app-sidebar.tsx#safetyGate",
         "src/components/layout/top-bar.tsx#Risk A gated chip"

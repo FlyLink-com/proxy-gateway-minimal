@@ -99,7 +99,10 @@ GCC-119 implementation alignment status:
 | Shared state feedback | Current: `StateFeedback` is a first-class primitive with `empty`, `loading`, `stale`, and `error` tones, named `status` / `alert` roles, chrome variants, and stable DOM hooks. |
 | Empty and table states | Current: `EmptyState` delegates to `StateFeedback`; `DataTableState` renders through `StateFeedback` while preserving table `row` / `cell` semantics. |
 | QA DOM hooks | Current: `MetricCard`, `StatusChip`, `TopBar`, `WorkspaceSidebar`, and `NavigationLibrary` expose stable `data-figma-component` / `data-ui-surface` hooks for GCC-120 viewport checks. |
-| Remaining GCC-119 surface | `PanelFrame` override reduction, overview metric normalization, privileged-gate extraction decision, and tablet navigation behavior still need review before `GCC-119` can close. |
+| Overview metric normalization | Current: `Operations Overview` metric cards now render through shared `MetricCard` hooks, not the old page-local metric-card contract. |
+| PanelFrame hooks | Current: `PanelFrame` exposes stable `data-figma-component`, `data-ui-surface`, owner-mode, and workbench-category hooks across operator and draft panels. |
+| Privileged gate extraction | Current: shell production guard renders through the `PrivilegedGate` primitive with explicit state and capability attributes. |
+| Remaining GCC-119 surface | Tablet navigation behavior is contract-covered in CSS/tests; screenshot evidence moves to `GCC-120` before PR #355 can leave Draft. |
 
 ## Current Browser Evidence
 

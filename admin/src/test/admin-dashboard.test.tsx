@@ -56,11 +56,18 @@ describe("admin dashboard page", () => {
     expect(screen.getByLabelText("Monitoring panel")).not.toBeNull();
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-role")).toBe("panel");
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-chrome")).toBe("operator");
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-figma-component")).toBe("PanelFrame");
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-surface")).toBe("panel-frame");
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-owner-mode")).toBe("preview");
     expect(screen.queryByText("Overview metric widget set")).toBeNull();
     expect(screen.getByLabelText("Operations Overview static health content")).not.toBeNull();
+    expect(document.querySelectorAll("#dashboard-health-summary [data-figma-component='MetricCard'][data-ui-surface='metric-card']")).toHaveLength(4);
+    expect(document.querySelectorAll("#dashboard-health-summary .admin-overview-metric-card")).toHaveLength(0);
     expect(screen.getByText("Platform health")).not.toBeNull();
+    expect(screen.getByText("Good")).not.toBeNull();
     expect(screen.getByText("Good · reviewable · latest source safe")).not.toBeNull();
     expect(screen.getByText("Channel coverage")).not.toBeNull();
+    expect(screen.getByText("98.6%")).not.toBeNull();
     expect(screen.getByText("Disconnected keeps layout")).not.toBeNull();
     expect(screen.queryByText("Platform health · summary state")).toBeNull();
     expect(screen.queryByText("First-screen operator view for platform health, risk routing, and the next owner page.")).toBeNull();
@@ -253,6 +260,7 @@ describe("admin dashboard page", () => {
     ]);
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-size")).toBeNull();
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-height")).toBeNull();
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-surface")).toBe("panel-frame");
     expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-size")).toBeNull();
     expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-height")).toBeNull();
     expect(document.querySelector("#dashboard-next-actions")).not.toBeNull();

@@ -70,10 +70,14 @@ export function PanelFrame({
       )}
       data-density={density}
       data-chrome={chrome}
+      data-figma-component="PanelFrame"
       data-module-nav-id={dataModuleNavId}
+      data-owner-mode={ownerMode}
       data-ui-role="panel"
+      data-ui-surface="panel-frame"
       data-ui-surface-role={dataUiSurfaceRole}
       data-ui-contract={ADMIN_UI_CONTRACT.pluginFrame.contractId}
+      data-workbench-category={category}
       id={id}
     >
       {showDraftChrome ? (

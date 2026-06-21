@@ -354,6 +354,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-fixture-preview-row")).toContain("grid-template-columns: minmax(120px, 0.34fr) minmax(0, 1fr)");
     expect(selectorBlock(".admin-fixture-preview-banner")).toContain("var(--admin-info-bg)");
     expect(selectorBlock(".admin-overview-metric-grid")).toContain("repeat(4, minmax(0, 1fr))");
+    expect(styles).not.toContain(".admin-overview-metric-card");
     expect(selectorBlock(".admin-overview-section-card")).toContain("min-height: 520px");
     expect(selectorBlock(".admin-overview-section-card")).toContain("align-content: start");
     expect(styles).toMatch(/^\.admin-overview-action-card\s*\{[\s\S]*text-align: left;/m);

@@ -11,6 +11,7 @@ import {
   PanelFrame,
   PluginContainer,
   QuotaMeter,
+  PrivilegedGate,
   RiskQueue,
   SafeRef,
   SectionPanel,
@@ -129,7 +130,11 @@ describe("admin ui primitives", () => {
     const panel = screen.getByLabelText("Monitoring container contract");
     expect(panel.className).toContain("admin-blueprint-module-panel");
     expect(panel.className).toContain("custom-panel");
+    expect(panel.getAttribute("data-figma-component")).toBe("PanelFrame");
     expect(panel.getAttribute("data-ui-contract")).toBe("panel-frame");
+    expect(panel.getAttribute("data-ui-surface")).toBe("panel-frame");
+    expect(panel.getAttribute("data-owner-mode")).toBe("preview");
+    expect(panel.getAttribute("data-workbench-category")).toBe("monitoring");
     expect(panel.getAttribute("data-density")).toBe("normal");
     expect(panel.getAttribute("data-size")).toBeNull();
     expect(panel.getAttribute("data-height")).toBeNull();
@@ -144,6 +149,30 @@ describe("admin ui primitives", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Health Summary hide module" }));
     expect(onHide).toHaveBeenCalled();
+  });
+
+  test("renders privileged gate as a reusable shell safety surface", () => {
+    render(
+      <PrivilegedGate
+        capability="super-admin"
+        description="Fresh MFA is required before restricted data is displayed."
+        detail="Production actions require an approved runbook."
+        state="fresh-mfa-required"
+        title="Risk A gated"
+      />
+    );
+
+    const summary = screen.getByLabelText("Production action guard");
+    const gate = summary.closest("[data-ui-surface='privileged-gate']");
+    expect(gate).not.toBeNull();
+    expect(gate?.className).toContain("sidebar-safety-footer");
+    expect(gate?.getAttribute("data-figma-component")).toBe("PrivilegedGate");
+    expect(gate?.getAttribute("data-gate-state")).toBe("fresh-mfa-required");
+    expect(gate?.getAttribute("data-capability")).toBe("super-admin");
+    expect(summary.className).toContain("sidebar-safety-summary");
+    expect(screen.getByText("Risk A gated")).not.toBeNull();
+    expect(screen.getByText("Fresh MFA is required before restricted data is displayed.")).not.toBeNull();
+    expect(screen.getByText("Production actions require an approved runbook.")).not.toBeNull();
   });
 
   test("renders fixture preview content inside the fixed panel frame", () => {

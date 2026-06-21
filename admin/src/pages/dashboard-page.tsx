@@ -1,6 +1,9 @@
-import { useEffect } from "react";
+import { Activity, AlertTriangle, Clock3, RadioTower } from "lucide-react";
+import { useEffect, type ReactNode } from "react";
 import { type AdminPage } from "../app/navigation";
 import {
+  MetricCard,
+  type MetricTone,
   StatusChip
 } from "../components/primitives";
 import {
@@ -149,27 +152,35 @@ function OverviewHealthSummary() {
       <div className="admin-overview-metric-grid" aria-label="Operations Overview metric cards">
         <OverviewMetricCard
           body="Good · reviewable · latest source safe"
-          status="SUCCESS"
+          icon={<Activity aria-hidden="true" />}
           title="Platform health"
           tone="success"
+          trend={[72, 74, 73, 76, 77, 79, 81]}
+          value="Good"
         />
         <OverviewMetricCard
           body="18 total · 5 high · routes only"
-          status="DANGER"
+          icon={<AlertTriangle aria-hidden="true" />}
           title="Risk candidates"
           tone="danger"
+          trend={[6, 8, 7, 10, 12, 15, 18]}
+          value="18"
         />
         <OverviewMetricCard
           body="2m 14s · stale threshold visible"
-          status="INFO"
+          icon={<Clock3 aria-hidden="true" />}
           title="Freshness P95"
           tone="info"
+          trend={[180, 172, 160, 148, 140, 136, 134]}
+          value="2m 14s"
         />
         <OverviewMetricCard
           body="98.6% · aggregate only"
-          status="SUCCESS"
+          icon={<RadioTower aria-hidden="true" />}
           title="Channel coverage"
           tone="success"
+          trend={[96, 97, 97.4, 98, 98.2, 98.5, 98.6]}
+          value="98.6%"
         />
       </div>
       <div className="admin-static-status-row" aria-label="Overview source states">
@@ -184,21 +195,31 @@ function OverviewHealthSummary() {
 
 function OverviewMetricCard({
   body,
-  status,
+  icon,
   title,
-  tone
+  tone,
+  trend,
+  value
 }: {
   body: string;
-  status: string;
+  icon: ReactNode;
   title: string;
-  tone: "success" | "danger" | "info";
+  tone: MetricTone;
+  trend: number[];
+  value: string;
 }) {
   return (
-    <article className={`admin-overview-metric-card admin-overview-metric-card-${tone}`}>
-      <StatusChip label={status} tone={tone} />
-      <h3>{title}</h3>
-      <p>{body}</p>
-    </article>
+    <MetricCard
+      detail={body}
+      icon={icon}
+      label={title}
+      tone={tone}
+      trend={{
+        ariaLabel: `${title} safe trend`,
+        values: trend
+      }}
+      value={value}
+    />
   );
 }
 

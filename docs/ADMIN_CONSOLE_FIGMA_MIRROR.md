@@ -182,28 +182,31 @@ This matrix makes the implicit handoff explicit:
 | Component set | React surface | CSS / grammar responsibility | Next gate |
 | --- | --- | --- | --- |
 | `StatusChip` | `src/components/primitives/status-chip.tsx` | Semantic status tokens, visible text state, no color-only meaning. | `GCC-119` |
-| `MetricCard` | `src/components/primitives/metric-card.tsx` | Metric priority, trend evidence, card density/radius/shadow tokens. | `GCC-119` |
+| `MetricCard` | `src/components/primitives/metric-card.tsx` | Metric priority, trend evidence, card density/radius/shadow tokens. Overview metrics now use this primitive. | `GCC-119` |
 | `PanelFrame` | `src/components/primitives/panel-frame.tsx` | Panel chrome ownership, header layout, density, hide affordance, state chrome. | `GCC-119` |
 | `DataRow` | `src/components/primitives/data-table.tsx` | Row interaction, table state rows, safe-ref overflow boundary. | `GCC-119` |
 | `TopBar` | `src/components/layout/top-bar.tsx` | Shell height, search/account controls, route status chips, Risk A notice. | `GCC-119` |
 | `SidebarNavigation` | `src/components/primitives/workspace-sidebar.tsx` | Sidebar route state, navigation library, local search, planned-route gate. | `GCC-119` |
-| `PrivilegedGate` | `admin-ui-contract`, `admin-app-manifest`, and shell safety surfaces | Hidden/gated/fresh-MFA/unavailable semantics and production-action guard copy. | `GCC-119` |
+| `PrivilegedGate` | `src/components/primitives/privileged-gate.tsx`, `admin-ui-contract`, `admin-app-manifest`, and shell safety surfaces | Hidden/gated/fresh-MFA/unavailable semantics and production-action guard copy. | `GCC-119` |
 | `StateFeedback` | `src/components/primitives/state-feedback.tsx`, `empty-state.tsx`, and `DataTableState` | Loading, empty, stale, error, status/alert role, redacted detail. | `GCC-119` |
 
 The matrix intentionally records current gaps instead of hiding them:
 
 - `StatusChip`: decide whether `stale` becomes an explicit React tone or stays
   warning copy.
-- `MetricCard`: normalize overview-specific metric markup with the shared
-  primitive where possible.
-- `PanelFrame`: move page-level panel chrome overrides back to the shared
-  frame.
+- `MetricCard`: Overview-specific metric markup now routes through the shared
+  primitive; `GCC-120` must visually verify its density in the page frame.
+- `PanelFrame`: shared panel chrome now exposes stable
+  `data-figma-component`, `data-ui-surface`, owner-mode, and workbench-category
+  hooks for browser evidence.
 - `DataRow`: choose one mobile safe-ref strategy: local horizontal scroll or
   stacked row.
 - `TopBar`: confirm compact search behavior is token-owned, not page-owned.
-- `SidebarNavigation`: lock tablet behavior for the navigation library.
-- `PrivilegedGate`: decide whether to extract a first-class primitive from the
-  current contract and shell surfaces.
+- `SidebarNavigation`: tablet behavior is token-owned and contract-covered;
+  `GCC-120` must add the 768 and 1024 viewport screenshots.
+- `PrivilegedGate`: the shell production guard is now a first-class primitive;
+  future super-admin detail surfaces remain contract-only until backend
+  authority exists.
 - `StateFeedback`: consolidate empty, loading, stale, and error presentation
   into one explicit mapping.
 
@@ -220,6 +223,12 @@ page-local rewrites:
 - `MetricCard`, `StatusChip`, `TopBar`, `WorkspaceSidebar`, and
   `NavigationLibrary` now expose stable `data-figma-component` /
   `data-ui-surface` hooks for GCC-120 browser evidence.
+- Overview health metrics now render through `MetricCard` instead of the old
+  page-local `admin-overview-metric-card` contract.
+- `PanelFrame` now exposes stable Figma/DOM hooks for owner mode, surface, and
+  workbench category.
+- `PrivilegedGate` is now a first-class primitive for the shell production
+  action guard; it does not add production authority or backend write behavior.
 
 `PR #355` must stay Draft until this parity matrix, `GCC-119` implementation
 alignment, and `GCC-120` breakpoint/state evidence are all complete.

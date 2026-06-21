@@ -28,6 +28,8 @@ describe("admin visual QA contract", () => {
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
     expect(document.querySelector("[data-ui-role='system'][data-ui-contract='app-shell']")).not.toBeNull();
     expect(document.querySelector("[data-ui-surface='top-bar'][data-figma-component='TopBar']")).not.toBeNull();
+    expect(document.querySelector("[data-ui-surface='privileged-gate'][data-figma-component='PrivilegedGate']")).not.toBeNull();
+    expect(document.querySelector("[data-ui-surface='privileged-gate']")?.getAttribute("data-gate-state")).toBe("gated");
     expect(document.querySelector(".admin-content")).not.toBeNull();
     expect(screen.getByLabelText("Workspace sidebar")).not.toBeNull();
     expect(screen.getByLabelText("Open navigation library")).not.toBeNull();
@@ -84,6 +86,10 @@ describe("admin visual QA contract", () => {
 
     panels.forEach((panel) => {
       expect(panel.getAttribute("data-ui-contract")).toBe("panel-frame");
+      expect(panel.getAttribute("data-figma-component")).toBe("PanelFrame");
+      expect(panel.getAttribute("data-ui-surface")).toBe("panel-frame");
+      expect(panel.getAttribute("data-owner-mode")).toMatch(/preview|owner/);
+      expect(panel.getAttribute("data-workbench-category")).toMatch(/monitoring|management|configuration|audit-workflow|platform-tools/);
       expect(panel.getAttribute("data-density")).toBe("normal");
       expect(panel.getAttribute("aria-label")).toMatch(/panel/i);
       if (page === "dashboard") {
