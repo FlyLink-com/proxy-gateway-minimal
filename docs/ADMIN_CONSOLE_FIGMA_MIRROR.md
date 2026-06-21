@@ -57,11 +57,12 @@ Follow-up component mirror evidence:
 | Item | Current value |
 | --- | --- |
 | Page-level handoff | Current. The canonical file contains multi-frame page mirrors and implementation captures. |
-| Component-system mirror | Required. The Figma file does not yet expose local components, variables, text styles, or paint styles for the Admin grammar. |
-| Observed local components | `0` |
-| Observed local variable collections | `0` |
-| Observed local text styles | `0` |
-| Observed local paint styles | `0` |
+| Component-system mirror | Partial. The first component-system batch now exists on page `Admin Component Mirror v1`. |
+| Observed component sets | `4`: `StatusChip`, `MetricCard`, `PanelFrame`, `DataRow` |
+| Observed component nodes / variants | `23` component nodes / `23` variants |
+| Observed variable collections / variables | `4` collections / `57` variables |
+| Observed text styles / effect styles | `6` text styles / `3` effect styles |
+| Observed paint styles | `0` |
 | Next task line | `Admin Figma Component Mirror v1` |
 
 Do not infer from the previous blocker that the React Admin UI is unavailable.
@@ -110,23 +111,35 @@ Current implementation alignment:
   the current top-level structure: metric cards, `Risk Queue`, and
   `Next Actions`. Owner-page ledgers stay out of Overview.
 
-## Component Mirror Gap
+## Component Mirror Progress
 
-The current Figma source is a page-level handoff, not yet a full component
-library. The next visual-design task is to mirror the existing code grammar and
-tokens into Figma components and variants instead of reopening page-level
-direction.
+The current Figma source now has the first component-system batch, but it is
+not yet a full component library. The next visual-design task is to continue
+mirroring the existing code grammar and tokens into Figma components and
+variants instead of reopening page-level direction.
 
-Required component mirrors:
+Completed component mirrors:
 
 - `PanelFrame`
 - `MetricCard`
 - `StatusChip`
 - `DataTable / DataRow`
+
+Pending component mirrors:
+
 - `TopBar`
 - `Sidebar / Navigation Library`
 - `PrivilegedGate`
 - `EmptyState / Loading / Stale / Error`
+
+Observed Figma component sets:
+
+| Component set | Node ID | Variants |
+| --- | --- | --- |
+| `StatusChip` | `69:20` | `5` |
+| `MetricCard` | `73:42` | `5` |
+| `PanelFrame` | `74:178` | `8` |
+| `DataRow` | `75:107` | `5` |
 
 Required variant groups:
 

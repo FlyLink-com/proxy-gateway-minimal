@@ -78,17 +78,44 @@ describe("admin Figma mirror contract", () => {
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/seat\/billing prompts/i);
   });
 
-  test("separates current page-level handoff from the required component mirror line", () => {
+  test("records partial component mirror progress without closing the task line", () => {
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.sourceFile).toBe(ADMIN_FIGMA_FILE_KEY);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.pageLevelHandoff).toBe("current");
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.componentSystemMirror).toBe("required");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.componentSystemMirror).toBe("partial");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedTopLevelPage).toBe("Admin UI Handoff");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedComponentMirrorPage).toBe("Admin Component Mirror v1");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedFrames).toContain("01 Operations Overview / 1600x1024");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedFrames).toContain("08 Current Implementation / Usage & Channels / 1600w full-content capture");
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalComponentCount).toBe(0);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariableCollectionCount).toBe(0);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalTextStyleCount).toBe(0);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalComponentSetCount).toBe(4);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalComponentNodeCount).toBe(23);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariantCount).toBe(23);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariableCollectionCount).toBe(4);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariableCount).toBe(57);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalTextStyleCount).toBe(6);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalPaintStyleCount).toBe(0);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalEffectStyleCount).toBe(3);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedComponentSets).toEqual([
+      {
+        name: "StatusChip",
+        nodeId: "69:20",
+        variantCount: 5
+      },
+      {
+        name: "MetricCard",
+        nodeId: "73:42",
+        variantCount: 5
+      },
+      {
+        name: "PanelFrame",
+        nodeId: "74:178",
+        variantCount: 8
+      },
+      {
+        name: "DataRow",
+        nodeId: "75:107",
+        variantCount: 5
+      }
+    ]);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.requiredComponentMirrors).toEqual([
       "PanelFrame",
       "MetricCard",
@@ -99,7 +126,24 @@ describe("admin Figma mirror contract", () => {
       "PrivilegedGate",
       "EmptyState / Loading / Stale / Error"
     ]);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.completedComponentMirrors).toEqual([
+      "PanelFrame",
+      "MetricCard",
+      "StatusChip",
+      "DataTable / DataRow"
+    ]);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.pendingComponentMirrors).toEqual([
+      "TopBar",
+      "Sidebar / Navigation Library",
+      "PrivilegedGate",
+      "EmptyState / Loading / Stale / Error"
+    ]);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.requiredVariantGroups).toContain("semantic-status");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.figmaValidationEvidence).toEqual([
+      "use_figma created MetricCard, PanelFrame, and DataRow component sets on Admin Component Mirror v1.",
+      "Final Figma inventory reported 4 component sets, 23 component nodes, 23 variants, 4 variable collections, 57 variables, 6 text styles, and 3 effect styles.",
+      "Figma mutation code passed connector syntax and variable-scope checks."
+    ]);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.nextTaskLine).toBe("Admin Figma Component Mirror v1");
   });
 

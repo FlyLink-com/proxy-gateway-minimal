@@ -63,11 +63,13 @@ Component-system mirror status:
 | Check | Result |
 | --- | --- |
 | Page-level handoff | Current: the canonical file has page mirrors, safety/review frames, and implementation captures. |
-| Component-system mirror | Required: local Figma components, variables, text styles, and paint styles are not yet present for the Admin grammar. |
-| Observed local components | `0` |
-| Observed local variable collections | `0` |
-| Observed local text styles | `0` |
-| Observed local paint styles | `0` |
+| Component-system mirror | Partial: the first component-system batch exists on page `Admin Component Mirror v1`. |
+| Observed component sets | `4`: `StatusChip`, `MetricCard`, `PanelFrame`, `DataRow` |
+| Observed component nodes / variants | `23` component nodes / `23` variants |
+| Observed variable collections / variables | `4` collections / `57` variables |
+| Observed text styles / effect styles | `6` text styles / `3` effect styles |
+| Observed paint styles | `0` |
+| Pending component mirrors | `TopBar`, `Sidebar / Navigation Library`, `PrivilegedGate`, `EmptyState / Loading / Stale / Error` |
 | Next task line | `Admin Figma Component Mirror v1` |
 
 Local mirror contract added:
