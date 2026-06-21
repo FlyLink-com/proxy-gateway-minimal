@@ -63,14 +63,15 @@ Component-system mirror status:
 | Check | Result |
 | --- | --- |
 | Page-level handoff | Current: the canonical file has page mirrors, safety/review frames, and implementation captures. |
-| Component-system mirror | Partial: the first component-system batch exists on page `Admin Component Mirror v1`. |
-| Observed component sets | `4`: `StatusChip`, `MetricCard`, `PanelFrame`, `DataRow` |
-| Observed component nodes / variants | `23` component nodes / `23` variants |
+| Component-system mirror | Current: the required component-system batch exists on page `Admin Component Mirror v1`. |
+| Observed component sets | `8`: `StatusChip`, `MetricCard`, `PanelFrame`, `DataRow`, `TopBar`, `SidebarNavigation`, `PrivilegedGate`, `StateFeedback` |
+| Observed component nodes / variants | `41` component nodes / `41` variants |
 | Observed variable collections / variables | `4` collections / `57` variables |
 | Observed text styles / effect styles | `6` text styles / `3` effect styles |
 | Observed paint styles | `0` |
-| Pending component mirrors | `TopBar`, `Sidebar / Navigation Library`, `PrivilegedGate`, `EmptyState / Loading / Stale / Error` |
-| Next task line | `Admin Figma Component Mirror v1` |
+| Pending component mirrors | None for this phase. |
+| Phase 2 screenshot evidence | `TopBar`, `SidebarNavigation`, `PrivilegedGate`, and `StateFeedback` screenshots generated successfully; three newly added variant grids were resized after overlap detection. |
+| Next task line | `Admin React/CSS grammar alignment from Figma Component Mirror v1` |
 
 Local mirror contract added:
 

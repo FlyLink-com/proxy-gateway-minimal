@@ -78,17 +78,17 @@ describe("admin Figma mirror contract", () => {
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/seat\/billing prompts/i);
   });
 
-  test("records partial component mirror progress without closing the task line", () => {
+  test("records current component mirror progress and closes the Figma component gap", () => {
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.sourceFile).toBe(ADMIN_FIGMA_FILE_KEY);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.pageLevelHandoff).toBe("current");
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.componentSystemMirror).toBe("partial");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.componentSystemMirror).toBe("current");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedTopLevelPage).toBe("Admin UI Handoff");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedComponentMirrorPage).toBe("Admin Component Mirror v1");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedFrames).toContain("01 Operations Overview / 1600x1024");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedFrames).toContain("08 Current Implementation / Usage & Channels / 1600w full-content capture");
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalComponentSetCount).toBe(4);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalComponentNodeCount).toBe(23);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariantCount).toBe(23);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalComponentSetCount).toBe(8);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalComponentNodeCount).toBe(41);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariantCount).toBe(41);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariableCollectionCount).toBe(4);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariableCount).toBe(57);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalTextStyleCount).toBe(6);
@@ -114,6 +114,26 @@ describe("admin Figma mirror contract", () => {
         name: "DataRow",
         nodeId: "75:107",
         variantCount: 5
+      },
+      {
+        name: "TopBar",
+        nodeId: "79:88",
+        variantCount: 4
+      },
+      {
+        name: "SidebarNavigation",
+        nodeId: "82:212",
+        variantCount: 6
+      },
+      {
+        name: "PrivilegedGate",
+        nodeId: "83:62",
+        variantCount: 4
+      },
+      {
+        name: "StateFeedback",
+        nodeId: "84:73",
+        variantCount: 4
       }
     ]);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.requiredComponentMirrors).toEqual([
@@ -130,21 +150,21 @@ describe("admin Figma mirror contract", () => {
       "PanelFrame",
       "MetricCard",
       "StatusChip",
-      "DataTable / DataRow"
-    ]);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.pendingComponentMirrors).toEqual([
+      "DataTable / DataRow",
       "TopBar",
       "Sidebar / Navigation Library",
       "PrivilegedGate",
       "EmptyState / Loading / Stale / Error"
     ]);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.pendingComponentMirrors).toEqual([]);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.requiredVariantGroups).toContain("semantic-status");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.figmaValidationEvidence).toEqual([
       "use_figma created MetricCard, PanelFrame, and DataRow component sets on Admin Component Mirror v1.",
-      "Final Figma inventory reported 4 component sets, 23 component nodes, 23 variants, 4 variable collections, 57 variables, 6 text styles, and 3 effect styles.",
-      "Figma mutation code passed connector syntax and variable-scope checks."
+      "use_figma created TopBar, SidebarNavigation, PrivilegedGate, and StateFeedback component sets on Admin Component Mirror v1.",
+      "Final Figma inventory reported 8 component sets, 41 component nodes, 41 variants, 4 variable collections, 57 variables, 6 text styles, and 3 effect styles.",
+      "Figma screenshot checks covered TopBar, SidebarNavigation, PrivilegedGate, and StateFeedback; SidebarNavigation, PrivilegedGate, and StateFeedback variant grids were resized after overlap detection."
     ]);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.nextTaskLine).toBe("Admin Figma Component Mirror v1");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.nextTaskLine).toBe("Admin React/CSS grammar alignment from Figma Component Mirror v1");
   });
 
   test("defines the complete visual QA evidence axes", () => {

@@ -57,13 +57,13 @@ Follow-up component mirror evidence:
 | Item | Current value |
 | --- | --- |
 | Page-level handoff | Current. The canonical file contains multi-frame page mirrors and implementation captures. |
-| Component-system mirror | Partial. The first component-system batch now exists on page `Admin Component Mirror v1`. |
-| Observed component sets | `4`: `StatusChip`, `MetricCard`, `PanelFrame`, `DataRow` |
-| Observed component nodes / variants | `23` component nodes / `23` variants |
+| Component-system mirror | Current. The required component-system batch now exists on page `Admin Component Mirror v1`. |
+| Observed component sets | `8`: `StatusChip`, `MetricCard`, `PanelFrame`, `DataRow`, `TopBar`, `SidebarNavigation`, `PrivilegedGate`, `StateFeedback` |
+| Observed component nodes / variants | `41` component nodes / `41` variants |
 | Observed variable collections / variables | `4` collections / `57` variables |
 | Observed text styles / effect styles | `6` text styles / `3` effect styles |
 | Observed paint styles | `0` |
-| Next task line | `Admin Figma Component Mirror v1` |
+| Next task line | `Admin React/CSS grammar alignment from Figma Component Mirror v1` |
 
 Do not infer from the previous blocker that the React Admin UI is unavailable.
 That blocker was scoped to using the wrong one-page file key and the earlier
@@ -113,10 +113,9 @@ Current implementation alignment:
 
 ## Component Mirror Progress
 
-The current Figma source now has the first component-system batch, but it is
-not yet a full component library. The next visual-design task is to continue
-mirroring the existing code grammar and tokens into Figma components and
-variants instead of reopening page-level direction.
+The current Figma source now has the required component-system batch for this
+phase. The next Admin UI task is to align the React/CSS grammar with these
+components instead of reopening page-level direction.
 
 Completed component mirrors:
 
@@ -124,13 +123,14 @@ Completed component mirrors:
 - `MetricCard`
 - `StatusChip`
 - `DataTable / DataRow`
-
-Pending component mirrors:
-
 - `TopBar`
 - `Sidebar / Navigation Library`
 - `PrivilegedGate`
 - `EmptyState / Loading / Stale / Error`
+
+Pending component mirrors:
+
+- None for this phase.
 
 Observed Figma component sets:
 
@@ -140,6 +140,22 @@ Observed Figma component sets:
 | `MetricCard` | `73:42` | `5` |
 | `PanelFrame` | `74:178` | `8` |
 | `DataRow` | `75:107` | `5` |
+| `TopBar` | `79:88` | `4` |
+| `SidebarNavigation` | `82:212` | `6` |
+| `PrivilegedGate` | `83:62` | `4` |
+| `StateFeedback` | `84:73` | `4` |
+
+Phase 2 Figma validation evidence:
+
+- `use_figma` created `TopBar`, `SidebarNavigation`, `PrivilegedGate`, and
+  `StateFeedback` component sets.
+- Final Figma inventory reported `8` component sets, `41` component nodes,
+  `41` variants, `4` variable collections, `57` variables, `6` text styles,
+  and `3` effect styles.
+- Screenshot checks covered the four Phase 2 component sets. During that pass,
+  `SidebarNavigation`, `PrivilegedGate`, and `StateFeedback` variant grids were
+  resized after overlap detection so the canvas shows the complete variant
+  library.
 
 Required variant groups:
 

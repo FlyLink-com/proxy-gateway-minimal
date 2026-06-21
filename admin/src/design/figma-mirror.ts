@@ -115,7 +115,7 @@ export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {
   checkedAt: "2026-06-21",
   sourceFile: ADMIN_FIGMA_FILE_KEY,
   pageLevelHandoff: "current",
-  componentSystemMirror: "partial",
+  componentSystemMirror: "current",
   observedTopLevelPage: "Admin UI Handoff",
   observedComponentMirrorPage: "Admin Component Mirror v1",
   observedFrames: [
@@ -129,9 +129,9 @@ export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {
     "07 Current Implementation / Accounts & Resources / 1600w full-content capture",
     "08 Current Implementation / Usage & Channels / 1600w full-content capture"
   ],
-  observedLocalComponentSetCount: 4,
-  observedLocalComponentNodeCount: 23,
-  observedLocalVariantCount: 23,
+  observedLocalComponentSetCount: 8,
+  observedLocalComponentNodeCount: 41,
+  observedLocalVariantCount: 41,
   observedLocalVariableCollectionCount: 4,
   observedLocalVariableCount: 57,
   observedLocalTextStyleCount: 6,
@@ -157,6 +157,26 @@ export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {
       name: "DataRow",
       nodeId: "75:107",
       variantCount: 5
+    },
+    {
+      name: "TopBar",
+      nodeId: "79:88",
+      variantCount: 4
+    },
+    {
+      name: "SidebarNavigation",
+      nodeId: "82:212",
+      variantCount: 6
+    },
+    {
+      name: "PrivilegedGate",
+      nodeId: "83:62",
+      variantCount: 4
+    },
+    {
+      name: "StateFeedback",
+      nodeId: "84:73",
+      variantCount: 4
     }
   ],
   requiredComponentMirrors: [
@@ -173,14 +193,13 @@ export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {
     "PanelFrame",
     "MetricCard",
     "StatusChip",
-    "DataTable / DataRow"
-  ],
-  pendingComponentMirrors: [
+    "DataTable / DataRow",
     "TopBar",
     "Sidebar / Navigation Library",
     "PrivilegedGate",
     "EmptyState / Loading / Stale / Error"
   ],
+  pendingComponentMirrors: [],
   requiredVariantGroups: [
     "semantic-status",
     "panel-state",
@@ -190,10 +209,11 @@ export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {
   ],
   figmaValidationEvidence: [
     "use_figma created MetricCard, PanelFrame, and DataRow component sets on Admin Component Mirror v1.",
-    "Final Figma inventory reported 4 component sets, 23 component nodes, 23 variants, 4 variable collections, 57 variables, 6 text styles, and 3 effect styles.",
-    "Figma mutation code passed connector syntax and variable-scope checks."
+    "use_figma created TopBar, SidebarNavigation, PrivilegedGate, and StateFeedback component sets on Admin Component Mirror v1.",
+    "Final Figma inventory reported 8 component sets, 41 component nodes, 41 variants, 4 variable collections, 57 variables, 6 text styles, and 3 effect styles.",
+    "Figma screenshot checks covered TopBar, SidebarNavigation, PrivilegedGate, and StateFeedback; SidebarNavigation, PrivilegedGate, and StateFeedback variant grids were resized after overlap detection."
   ],
-  nextTaskLine: "Admin Figma Component Mirror v1"
+  nextTaskLine: "Admin React/CSS grammar alignment from Figma Component Mirror v1"
 } as const;
 
 export const ADMIN_VISUAL_QA_AXES = [
