@@ -102,10 +102,11 @@ export const ADMIN_FIGMA_WRITE_ACCESS_CHECK = {
   checkedAt: "2026-06-21",
   status: "blocked",
   attemptedOperation: "Resize existing requirements-map rows and create mirror pages",
-  authenticatedSeat: "Dev / developer",
-  diagnosticResult: "get_metadata can read the file, but use_figma read-only execution is denied.",
+  connectorReportedSeat: "Dev / developer",
+  userReportedAccess: "Figma UI shows Full access for the connected account.",
+  diagnosticResult: "get_metadata and get_screenshot can read the file, but use_figma read-only execution is denied.",
   connectorMessage: "User does not have view permission on file",
-  nextStep: "Verify the connected account has a Full Figma Design seat, or reconnect Figma with a Full-seat account before rerunning the mirror write script."
+  nextStep: "Refresh or reconnect the Figma connector so the MCP use_figma session sees the same Full/edit permission shown in Figma UI, then rerun the mirror write script."
 } as const;
 
 export const ADMIN_VISUAL_QA_AXES = [
