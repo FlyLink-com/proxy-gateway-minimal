@@ -10,7 +10,8 @@ import {
 } from "./admin-fixture-preview";
 import {
   defaultModuleLayoutState,
-  type ModuleLayoutMap
+  type ModuleLayoutMap,
+  type WorkspaceModuleVisibleSizePreset
 } from "./plugin-layout-store";
 import {
   type MetricTone,
@@ -55,6 +56,7 @@ export type BlueprintPanelViewModel = {
   fixturePreview?: AdminFixturePreviewPanel;
   navId: string;
   ownerMode: "preview" | "owner";
+  sizePreset: WorkspaceModuleVisibleSizePreset;
   targetId: string;
   title: string;
   uiSurface: AdminUiSurfaceKey;
@@ -87,8 +89,8 @@ export function projectBlueprintPanelViewModels({
 
   return blueprint.modules.flatMap((module) => {
     const navItem = subNavigation.find((item) => item.id === module.navId);
-    const layout = moduleLayout[module.navId] ?? defaultModuleLayout[module.navId] ?? defaultModuleLayoutState();
-    if (!layout.visible) {
+    const layout = moduleLayout[module.navId] ?? defaultModuleLayout[module.navId] ?? defaultModuleLayoutState(blueprint.page, module);
+    if (!layout.visible || layout.sizePreset === "hidden") {
       return [];
     }
 
@@ -103,6 +105,7 @@ export function projectBlueprintPanelViewModels({
       fieldLabels: module.contentFields,
       navId: module.navId,
       ownerMode: navItem?.mode === "preview" ? "preview" : "owner",
+      sizePreset: layout.sizePreset,
       targetId: navItem?.targetId ?? module.navId,
       title: navItem?.label ?? module.navId,
       uiSurface: module.uiSurface

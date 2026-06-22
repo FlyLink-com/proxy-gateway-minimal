@@ -59,6 +59,7 @@ describe("admin dashboard page", () => {
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-figma-component")).toBe("PanelFrame");
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-surface")).toBe("panel-frame");
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-owner-mode")).toBe("preview");
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-size-preset")).toBe("standard");
     expect(screen.queryByText("Overview metric widget set")).toBeNull();
     expect(screen.getByLabelText("Operations Overview static health content")).not.toBeNull();
     expect(document.querySelectorAll("#dashboard-health-summary [data-figma-component='MetricCard'][data-ui-surface='metric-card']")).toHaveLength(4);
@@ -128,7 +129,7 @@ describe("admin dashboard page", () => {
     expect(screen.queryByRole("button", { name: /Approve|Disable|Archive|Apply/i })).toBeNull();
   });
 
-  test("supports fixed panel hiding and restoring without sizing or drag controls", () => {
+  test("supports preset-based panel layout, hiding, and restoring without drag controls", () => {
     render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
 
     expect(screen.queryByRole("switch", { name: "Edit workspace" })).toBeNull();
@@ -140,10 +141,20 @@ describe("admin dashboard page", () => {
     expect(screen.queryByLabelText("Risk Queue plugin display controls")).toBeNull();
     expect(document.querySelector("#dashboard-risk-queue .admin-blueprint-module-panel-meta")).toBeNull();
     expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-chrome")).toBe("operator");
+    expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-size-preset")).toBe("standard");
+    expect(screen.getByLabelText("Risk Queue layout preset controls")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Risk Queue compact layout" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Risk Queue standard layout" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Risk Queue wide layout" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Risk Queue full layout" })).not.toBeNull();
     expect(document.querySelector(".admin-blueprint-panel-display-controls")).toBeNull();
     expect(document.querySelector(".admin-blueprint-module-dock")).toBeNull();
     expect(screen.queryByRole("button", { name: "Next Actions move plugin" })).toBeNull();
     expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-panel");
+
+    fireEvent.click(screen.getByRole("button", { name: "Risk Queue wide layout" }));
+    expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-size-preset")).toBe("wide");
+    expect(screen.getByRole("button", { name: "Risk Queue wide layout" }).getAttribute("aria-pressed")).toBe("true");
 
     fireEvent.click(screen.getByRole("button", { name: "Risk Queue hide module" }));
     expect(document.querySelector("#dashboard-risk-queue")).toBeNull();
@@ -156,6 +167,7 @@ describe("admin dashboard page", () => {
       }
     }));
     expect(document.querySelector("#dashboard-risk-queue")).not.toBeNull();
+    expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-size-preset")).toBe("standard");
 
     fireEvent.click(screen.getByRole("button", { name: "Health Summary hide module" }));
     expect(document.querySelector("#dashboard-health-summary")).toBeNull();
@@ -179,9 +191,16 @@ describe("admin dashboard page", () => {
     expect(window.localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY)).toContain("health-summary");
     const storedLayout = JSON.parse(window.localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY) ?? "{}");
     expect(storedLayout.dashboard.moduleOrder).toBeUndefined();
-    expect(storedLayout.dashboard.moduleLayout["health-summary"]).toEqual({
-      visible: false
+    expect(storedLayout.dashboard.moduleLayout["health-summary"]).toMatchObject({
+      appId: "plugin.health-summary",
+      moduleId: "health-summary",
+      order: 0,
+      pinned: false,
+      sizePreset: "hidden",
+      visible: false,
+      workspaceId: "dashboard"
     });
+    expect(typeof storedLayout.dashboard.moduleLayout["health-summary"].updatedAt).toBe("string");
     cleanup();
 
     render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
@@ -239,13 +258,34 @@ describe("admin dashboard page", () => {
         moduleOrder: ["health-summary", "risk-queue"],
         moduleLayout: {
           "health-summary": {
-            visible: true
+            appId: "plugin.health-summary",
+            moduleId: "health-summary",
+            order: 0,
+            pinned: false,
+            sizePreset: "wide",
+            updatedAt: "2026-06-21T12:00:00.000Z",
+            visible: true,
+            workspaceId: "dashboard"
           },
           "risk-queue": {
-            visible: true
+            appId: "plugin.risk-queue",
+            moduleId: "risk-queue",
+            order: 1,
+            pinned: false,
+            sizePreset: "standard",
+            updatedAt: "2026-06-21T12:00:00.000Z",
+            visible: true,
+            workspaceId: "dashboard"
           },
           "next-actions": {
-            visible: false
+            appId: "plugin.next-actions",
+            moduleId: "next-actions",
+            order: 2,
+            pinned: false,
+            sizePreset: "hidden",
+            updatedAt: "2026-06-21T12:00:00.000Z",
+            visible: false,
+            workspaceId: "dashboard"
           }
         }
       }
@@ -259,9 +299,11 @@ describe("admin dashboard page", () => {
       "dashboard-next-actions"
     ]);
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-size")).toBeNull();
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-size-preset")).toBe("standard");
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-height")).toBeNull();
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-surface")).toBe("panel-frame");
     expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-size")).toBeNull();
+    expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-size-preset")).toBe("standard");
     expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-height")).toBeNull();
     expect(document.querySelector("#dashboard-next-actions")).not.toBeNull();
   });

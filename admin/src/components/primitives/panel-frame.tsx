@@ -2,6 +2,7 @@ import { EyeOff } from "lucide-react";
 import { type ReactNode } from "react";
 import { type AdminFixturePreviewPanel } from "../../app/admin-fixture-preview";
 import { ADMIN_UI_CONTRACT, type AdminUiDensity } from "../../app/admin-ui-contract";
+import { type WorkspaceModuleVisibleSizePreset } from "../../app/plugin-layout-store";
 import { cn } from "../../lib/utils";
 import { type MetricTone } from "./metric-card";
 import { StatusChip } from "./status-chip";
@@ -9,6 +10,7 @@ import { type WorkbenchCategory } from "./workbench-container";
 
 export type PanelFrameProps = {
   actions?: ReactNode;
+  allowedSizePresets?: WorkspaceModuleVisibleSizePreset[];
   ariaLabel: string;
   category: WorkbenchCategory;
   children?: ReactNode;
@@ -23,7 +25,9 @@ export type PanelFrameProps = {
   id?: string;
   notes?: ReactNode;
   onHide?: () => void;
+  onSizePresetChange?: (sizePreset: WorkspaceModuleVisibleSizePreset) => void;
   ownerMode: "preview" | "owner";
+  sizePreset?: WorkspaceModuleVisibleSizePreset;
   title: string;
   tone?: MetricTone;
 };
@@ -38,6 +42,7 @@ const CATEGORY_LABEL: Record<WorkbenchCategory, string> = {
 
 export function PanelFrame({
   actions,
+  allowedSizePresets,
   ariaLabel,
   category,
   children,
@@ -52,12 +57,44 @@ export function PanelFrame({
   id,
   notes,
   onHide,
+  onSizePresetChange,
   ownerMode,
+  sizePreset,
   title,
   tone = ownerMode === "preview" ? "neutral" : "info"
 }: PanelFrameProps) {
   const showDraftChrome = chrome === "draft";
   const showFixturePreview = showDraftChrome && fixturePreview;
+  const layoutPresetControls = onSizePresetChange && sizePreset && allowedSizePresets?.length ? (
+    <div className="admin-blueprint-panel-preset-controls" aria-label={`${title} layout preset controls`}>
+      {allowedSizePresets.map((preset) => (
+        <button
+          aria-label={`${title} ${preset} layout`}
+          aria-pressed={preset === sizePreset}
+          className="admin-blueprint-panel-preset-button"
+          key={preset}
+          onClick={() => onSizePresetChange(preset)}
+          type="button"
+        >
+          {presetLabel(preset)}
+        </button>
+      ))}
+    </div>
+  ) : null;
+  const hideControl = onHide ? (
+    <button
+      aria-label={`${title} hide module`}
+      className={cn(
+        "admin-blueprint-panel-tool-trigger",
+        !showDraftChrome && "admin-blueprint-panel-tool-trigger-floating"
+      )}
+      onClick={onHide}
+      title={`${title} hide module`}
+      type="button"
+    >
+      <EyeOff aria-hidden="true" />
+    </button>
+  ) : null;
 
   return (
     <section
@@ -73,6 +110,7 @@ export function PanelFrame({
       data-figma-component="PanelFrame"
       data-module-nav-id={dataModuleNavId}
       data-owner-mode={ownerMode}
+      data-size-preset={sizePreset}
       data-ui-role="panel"
       data-ui-surface="panel-frame"
       data-ui-surface-role={dataUiSurfaceRole}
@@ -94,33 +132,15 @@ export function PanelFrame({
               {fieldLabels.length}
             </span>
             <StatusChip label={ownerMode === "preview" ? "Preview" : "Owner"} tone={tone} />
-            {onHide ? (
-              <button
-                aria-label={`${title} hide module`}
-                className="admin-blueprint-panel-tool-trigger"
-                onClick={onHide}
-                title={`${title} hide module`}
-                type="button"
-              >
-                <EyeOff aria-hidden="true" />
-              </button>
-            ) : null}
+            {layoutPresetControls}
+            {hideControl}
           </div>
         </div>
       ) : (
         <>
           <span className="sr-only">{title}</span>
-          {onHide ? (
-            <button
-              aria-label={`${title} hide module`}
-              className="admin-blueprint-panel-tool-trigger admin-blueprint-panel-tool-trigger-floating"
-              onClick={onHide}
-              title={`${title} hide module`}
-              type="button"
-            >
-              <EyeOff aria-hidden="true" />
-            </button>
-          ) : null}
+          {layoutPresetControls}
+          {hideControl}
         </>
       )}
       {showFixturePreview ? (
@@ -153,4 +173,11 @@ export function PanelFrame({
       {notes}
     </section>
   );
+}
+
+function presetLabel(preset: WorkspaceModuleVisibleSizePreset) {
+  if (preset === "compact") return "Compact";
+  if (preset === "wide") return "Wide";
+  if (preset === "full") return "Full";
+  return "Standard";
 }

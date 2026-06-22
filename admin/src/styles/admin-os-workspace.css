@@ -732,6 +732,24 @@ button.admin-overview-action-card:focus-visible {
     background var(--admin-ease);
 }
 
+.admin-blueprint-module-panel[data-size-preset="compact"] {
+  min-height: var(--admin-plugin-small-height);
+}
+
+.admin-blueprint-module-panel[data-size-preset="standard"] {
+  min-height: var(--admin-plugin-medium-height);
+}
+
+.admin-blueprint-module-panel[data-size-preset="wide"] {
+  grid-column: span 2;
+  min-height: var(--admin-plugin-large-height);
+}
+
+.admin-blueprint-module-panel[data-size-preset="full"] {
+  grid-column: 1 / -1;
+  min-height: var(--admin-plugin-large-height);
+}
+
 .admin-blueprint-module-panel::before {
   content: "";
   position: absolute;
@@ -779,8 +797,26 @@ button.admin-overview-action-card:focus-visible {
   opacity: 0;
 }
 
+.admin-blueprint-panel-preset-controls {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-blueprint-module-panel[data-chrome="operator"] .admin-blueprint-panel-preset-controls {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 56px;
+  opacity: 0;
+}
+
 .admin-blueprint-module-panel[data-chrome="operator"]:hover .admin-blueprint-panel-tool-trigger-floating,
-.admin-blueprint-module-panel[data-chrome="operator"]:focus-within .admin-blueprint-panel-tool-trigger-floating {
+.admin-blueprint-module-panel[data-chrome="operator"]:focus-within .admin-blueprint-panel-tool-trigger-floating,
+.admin-blueprint-module-panel[data-chrome="operator"]:hover .admin-blueprint-panel-preset-controls,
+.admin-blueprint-module-panel[data-chrome="operator"]:focus-within .admin-blueprint-panel-preset-controls {
   opacity: 1;
 }
 
@@ -835,6 +871,36 @@ button.admin-overview-action-card:focus-visible {
 }
 
 .admin-blueprint-panel-tool-trigger:hover {
+  border-color: var(--workbench-category-border, var(--admin-info-border));
+  background: var(--workbench-category-bg, var(--admin-hover-surface));
+  color: var(--workbench-category-color, var(--admin-accent));
+}
+
+.admin-blueprint-panel-preset-button {
+  appearance: none;
+  min-height: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: var(--admin-radius-pill);
+  background: transparent;
+  color: var(--admin-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0 8px;
+  transition:
+    background var(--admin-ease),
+    border-color var(--admin-ease),
+    color var(--admin-ease);
+}
+
+.admin-blueprint-panel-preset-button:hover {
+  border-color: var(--workbench-category-border, var(--admin-info-border));
+  background: var(--workbench-category-bg, var(--admin-hover-surface));
+  color: var(--workbench-category-color, var(--admin-accent));
+}
+
+.admin-blueprint-panel-preset-button[aria-pressed="true"] {
   border-color: var(--workbench-category-border, var(--admin-info-border));
   background: var(--workbench-category-bg, var(--admin-hover-surface));
   color: var(--workbench-category-color, var(--admin-accent));

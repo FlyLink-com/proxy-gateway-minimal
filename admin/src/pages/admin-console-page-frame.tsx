@@ -10,11 +10,14 @@ import {
   isWorkspaceLayoutForModules,
   loadWorkspaceLayout,
   persistWorkspaceLayout,
-  type ModuleLayoutMap
+  WORKSPACE_MODULE_VISIBLE_SIZE_PRESETS,
+  type ModuleLayoutMap,
+  type WorkspaceModuleVisibleSizePreset
 } from "../app/plugin-layout-store";
 import {
   hideModuleLayoutState,
-  restoreModuleLayoutState
+  restoreModuleLayoutState,
+  setModuleSizePresetLayoutState
 } from "../app/plugin-workspace-engine";
 import {
   projectBlueprintPanelViewModels,
@@ -43,7 +46,10 @@ export function AdminConsolePageFrame({
   const subNavigation = pageSubNavigation[blueprint.page];
   const pageContract = getAdminPageContract(blueprint.page);
   const moduleNavSignature = blueprint.modules.map((module) => module.navId).join("|");
-  const defaultModuleLayout = useMemo(() => createDefaultModuleLayout(blueprint.modules), [moduleNavSignature]);
+  const defaultModuleLayout = useMemo(
+    () => createDefaultModuleLayout(blueprint.page, blueprint.modules),
+    [blueprint.page, moduleNavSignature]
+  );
   const initialWorkspaceLayout = useMemo(
     () => loadWorkspaceLayout(blueprint.page, blueprint.modules, defaultModuleLayout),
     [blueprint.page, defaultModuleLayout, moduleNavSignature]
@@ -67,7 +73,17 @@ export function AdminConsolePageFrame({
     setModuleLayout((current) => ({
       ...current,
       [navId]: hideModuleLayoutState(
-        current[navId] ?? defaultModuleLayout[navId] ?? defaultModuleLayoutState()
+        current[navId] ?? defaultModuleLayout[navId] ?? defaultModuleLayoutState(blueprint.page, { navId })
+      )
+    }));
+  };
+
+  const setModuleSizePreset = (navId: string, sizePreset: WorkspaceModuleVisibleSizePreset) => {
+    setModuleLayout((current) => ({
+      ...current,
+      [navId]: setModuleSizePresetLayoutState(
+        current[navId] ?? defaultModuleLayout[navId] ?? defaultModuleLayoutState(blueprint.page, { navId }),
+        sizePreset
       )
     }));
   };
@@ -97,7 +113,7 @@ export function AdminConsolePageFrame({
       setModuleLayout((current) => ({
         ...current,
         [match.navId]: restoreModuleLayoutState(
-          current[match.navId] ?? defaultModuleLayout[match.navId] ?? defaultModuleLayoutState()
+          current[match.navId] ?? defaultModuleLayout[match.navId] ?? defaultModuleLayoutState(blueprint.page, { navId: match.navId })
         )
       }));
     };
@@ -146,8 +162,11 @@ export function AdminConsolePageFrame({
             fixturePreview={panel.fixturePreview}
             id={panel.targetId}
             key={panel.navId}
+            allowedSizePresets={[...WORKSPACE_MODULE_VISIBLE_SIZE_PRESETS]}
             onHide={() => hideModuleLayout(panel.navId)}
+            onSizePresetChange={(sizePreset) => setModuleSizePreset(panel.navId, sizePreset)}
             ownerMode={panel.ownerMode}
+            sizePreset={panel.sizePreset}
             title={panel.title}
           >
             {panel.content}
