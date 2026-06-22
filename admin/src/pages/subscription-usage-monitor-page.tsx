@@ -8,9 +8,7 @@ import {
   MetricCard,
   RiskQueue,
   SafeRef,
-  StatusChip,
-  type RiskQueueItem,
-  type RiskSeverity
+  StatusChip
 } from "../components/primitives";
 import {
   Activity,
@@ -18,16 +16,13 @@ import {
   RadioTower,
   ReceiptText
 } from "lucide-react";
+import { usageRuntimeProjectionFixture } from "../features/subscriptions/usage-runtime-fixture";
 import {
-  collectionStatusDisplay,
-  formatBytes,
-  usageAnomalyReason,
-  usageRatio,
-  type UsageAnomalyReason,
-  type UsageAnomalyTone
+  buildUsageRuntimeViewModel,
+  type UsageRuntimeLedgerRow
 } from "../features/subscriptions/usage-view-model";
-import type { MetricTone } from "../components/primitives";
-import type { SubscriptionUsageCollectionStatus } from "../features/subscriptions/types";
+
+const usageRuntimeViewModel = buildUsageRuntimeViewModel(usageRuntimeProjectionFixture);
 
 export const usageChannelsBlueprint: BlueprintPage = {
   page: "usageMonitor",
@@ -74,7 +69,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
       container: {
         category: "monitoring",
         container: "Collection freshness monitor",
-        dataAdapter: "Static freshness fields now; later safe usage monitor generatedAt and collector summaries.",
+        dataAdapter: "Runtime projection fixture now; later safe usage monitor generatedAt and collector summaries.",
         layoutPolicy: "Monitoring strip with collapsible detail; no quota ownership controls.",
         performanceBoundary: "Freshness can refresh independently from ledgers and account workspaces.",
         interactionModel: "Inspect trust state and route evidence to owner pages."
@@ -145,7 +140,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
       container: {
         category: "monitoring",
         container: "Usage ledger table",
-        dataAdapter: "Static ledger fields now; later redacted usage monitor rows and pagination.",
+        dataAdapter: "Runtime projection fixture now; later redacted usage monitor rows and pagination.",
         layoutPolicy: "Dense table inside Platform Monitoring; never duplicated in Overview.",
         performanceBoundary: "Virtualization or pagination required before large production datasets.",
         interactionModel: "Read-only measurement evidence with safe refs."
@@ -180,7 +175,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
       container: {
         category: "monitoring",
         container: "Collection anomaly queue",
-        dataAdapter: "Static anomaly taxonomy now; later safe computed anomaly candidates.",
+        dataAdapter: "Runtime projection fixture now; later safe computed anomaly candidates.",
         layoutPolicy: "Queue with filters later; durable case workflow is restricted and not registered for normal operators.",
         performanceBoundary: "Bounded candidate list, no mounted object history by default.",
         interactionModel: "Classify and route evidence; no false-positive close yet."
@@ -266,36 +261,37 @@ export function SubscriptionUsageMonitorPage({
 }
 
 function FreshnessContent() {
+  const freshness = usageRuntimeViewModel.freshness;
   return (
-    <div className="admin-operator-content" aria-label="Collection Freshness static operator content">
+    <div className="admin-operator-content" aria-label="Collection Freshness runtime projection content">
       <div className="ops-metric-grid ops-metric-grid-compact">
         <MetricCard
-          detail="Latest safe monitor sample"
+          detail={`Generated ${usageRuntimeViewModel.generatedAtLabel}`}
           icon={<Activity aria-hidden="true" />}
           label="Collection state"
-          tone="success"
-          value="Fresh"
+          tone={freshness.tone}
+          value={freshness.state}
         />
         <MetricCard
           detail="Stale threshold 5m"
           icon={<Gauge aria-hidden="true" />}
           label="Observed age"
           tone="info"
-          value="2m"
+          value={freshness.latestObservedAtLabel}
         />
         <MetricCard
           detail="Kept distinct from true zero"
           icon={<RadioTower aria-hidden="true" />}
           label="Unknown rows"
           tone="warning"
-          value="2"
+          value={freshness.unknownRows}
         />
         <MetricCard
           detail="Layout remains stable"
           icon={<ReceiptText aria-hidden="true" />}
           label="Disconnected"
-          tone="neutral"
-          value="0"
+          tone={freshness.collectorDisabledRows > 0 || freshness.disconnectedRows > 0 ? "danger" : "neutral"}
+          value={freshness.collectorDisabledRows + freshness.disconnectedRows}
         />
       </div>
       <div className="admin-static-status-row" aria-label="Freshness state taxonomy">
@@ -473,151 +469,28 @@ function ChannelCoverageContent() {
   );
 }
 
-type UsageLedgerRow = {
-  accountRef: string;
-  channelRef: string;
-  collectionStatus: SubscriptionUsageCollectionStatus;
-  downloadBytes: number;
-  edgeCredentialBindings: Array<{
-    channelRef: string;
-    credentialRefPresent: boolean;
-    materialDigestPresent: boolean;
-  }>;
-  lastObservedLabel: string;
-  orderRef: string;
-  trafficLimitBytes: number;
-  uploadBytes: number;
-  usageStatus: "not_collected" | "measured_zero" | "measured";
-  usedBytes: number;
-  warnings?: string[];
-};
-
-const GB = 1024 ** 3;
-
-const usageLedgerRows: UsageLedgerRow[] = [
-  {
-    accountRef: "acct_safe_over",
-    channelRef: "channel_safe_jp_vless",
-    collectionStatus: "measured",
-    downloadBytes: 38 * GB,
-    edgeCredentialBindings: [confirmedBinding("channel_safe_jp_vless")],
-    lastObservedLabel: "2m ago",
-    orderRef: "ord_safe_over",
-    trafficLimitBytes: 50 * GB,
-    uploadBytes: 16 * GB,
-    usageStatus: "measured",
-    usedBytes: 54 * GB
-  },
-  {
-    accountRef: "acct_safe_near",
-    channelRef: "channel_safe_sgp_hy2",
-    collectionStatus: "measured",
-    downloadBytes: 31 * GB,
-    edgeCredentialBindings: [confirmedBinding("channel_safe_sgp_hy2")],
-    lastObservedLabel: "4m ago",
-    orderRef: "ord_safe_near",
-    trafficLimitBytes: 50 * GB,
-    uploadBytes: 11.5 * GB,
-    usageStatus: "measured",
-    usedBytes: 42.5 * GB
-  },
-  {
-    accountRef: "acct_safe_zero",
-    channelRef: "channel_safe_jp_vless",
-    collectionStatus: "measured_zero",
-    downloadBytes: 0,
-    edgeCredentialBindings: [confirmedBinding("channel_safe_jp_vless")],
-    lastObservedLabel: "Fresh sample",
-    orderRef: "ord_safe_zero",
-    trafficLimitBytes: 50 * GB,
-    uploadBytes: 0,
-    usageStatus: "measured_zero",
-    usedBytes: 0
-  },
-  {
-    accountRef: "acct_safe_stale",
-    channelRef: "channel_safe_sgp_hy2",
-    collectionStatus: "stale",
-    downloadBytes: 12 * GB,
-    edgeCredentialBindings: [confirmedBinding("channel_safe_sgp_hy2")],
-    lastObservedLabel: "18m ago",
-    orderRef: "ord_safe_stale",
-    trafficLimitBytes: 50 * GB,
-    uploadBytes: 5 * GB,
-    usageStatus: "measured",
-    usedBytes: 17 * GB
-  },
-  {
-    accountRef: "acct_safe_disabled",
-    channelRef: "channel_safe_sgp_tuic",
-    collectionStatus: "collector_disabled",
-    downloadBytes: 0,
-    edgeCredentialBindings: [confirmedBinding("channel_safe_sgp_tuic")],
-    lastObservedLabel: "No trusted sample",
-    orderRef: "ord_safe_disabled",
-    trafficLimitBytes: 50 * GB,
-    uploadBytes: 0,
-    usageStatus: "not_collected",
-    usedBytes: 0
-  },
-  {
-    accountRef: "acct_safe_pending",
-    channelRef: "channel_safe_pending",
-    collectionStatus: "not_collected",
-    downloadBytes: 0,
-    edgeCredentialBindings: [{
-      channelRef: "channel_safe_pending",
-      credentialRefPresent: true,
-      materialDigestPresent: false
-    }],
-    lastObservedLabel: "Receipt pending",
-    orderRef: "ord_safe_pending",
-    trafficLimitBytes: 50 * GB,
-    uploadBytes: 0,
-    usageStatus: "not_collected",
-    usedBytes: 0
-  }
-];
+const usageLedgerRows = usageRuntimeViewModel.ledgerRows;
+const anomalyItems = usageRuntimeViewModel.anomalyItems;
 
 function UsageLedgerContent() {
   return (
-    <div className="admin-operator-content" aria-label="Usage Ledger static operator content">
+    <div className="admin-operator-content" aria-label="Usage Ledger runtime projection content">
       <DataTable
-        ariaLabel="Usage Ledger static table"
+        ariaLabel="Usage Ledger runtime projection table"
         columns={[
-          { header: "Account / order", key: "account", render: (row: UsageLedgerRow) => <><SafeRef value={row.accountRef} /> · <SafeRef value={row.orderRef} /></> },
+          { header: "Account / order", key: "account", render: (row: UsageRuntimeLedgerRow) => <><SafeRef value={row.accountRef} /> · <SafeRef value={row.orderRef} /></> },
           { header: "Channel", key: "channel", render: (row) => <SafeRef value={row.channelRef} /> },
+          { header: "Traffic · upload / download / total", key: "traffic", render: (row) => row.traffic },
+          { header: "Collected", key: "collectedAt", render: (row) => row.collectedAt },
           {
-            header: "Usage evidence",
-            key: "usageEvidence",
+            header: "Collection",
+            key: "collection",
             render: (row) => (
-              <span className="admin-usage-ledger-evidence">
-                <span>{usageTrafficLabel(row)}</span>
-                <small>{usageRatioLabel(row)} · {row.lastObservedLabel}</small>
-              </span>
+              <StatusChip
+                label={row.collection}
+                tone={row.collectionTone}
+              />
             )
-          },
-          {
-            header: "Collection / risk",
-            key: "collectionRisk",
-            render: (row) => {
-              const collection = collectionStatusDisplay(row.collectionStatus);
-              const anomaly = usageAnomalyReason(row);
-              return (
-                <span className="admin-usage-ledger-state">
-                  <StatusChip
-                    label={collection.label}
-                    tone={collection.tone}
-                  />
-                  {anomaly?.label !== collection.label ? (
-                    <StatusChip
-                      label={anomaly?.label ?? "No anomaly"}
-                      tone={anomalyStatusTone(anomaly?.tone)}
-                    />
-                  ) : null}
-                </span>
-              );
-            }
           }
         ]}
         getRowKey={(row) => `${row.accountRef}:${row.orderRef}:${row.channelRef}`}
@@ -630,91 +503,6 @@ function UsageLedgerContent() {
       />
     </div>
   );
-}
-
-const anomalyItems: RiskQueueItem[] = usageLedgerRows
-  .map((row) => usageAnomalyItem(row))
-  .filter((item): item is RiskQueueItem => item !== null);
-
-function confirmedBinding(channelRef: string) {
-  return {
-    channelRef,
-    credentialRefPresent: true,
-    materialDigestPresent: true
-  };
-}
-
-function usageTrafficLabel(row: UsageLedgerRow): string {
-  const collection = collectionStatusDisplay(row.collectionStatus);
-  if (!collection.measured && row.collectionStatus !== "stale") {
-    return "Not recorded";
-  }
-  return `${formatBytes(row.usedBytes)} / ${formatBytes(row.trafficLimitBytes)}`;
-}
-
-function usageRatioLabel(row: UsageLedgerRow): string {
-  const collection = collectionStatusDisplay(row.collectionStatus);
-  if (!collection.measured && row.collectionStatus !== "stale") {
-    return "No trusted sample";
-  }
-  return `${usageRatio(row.usedBytes, row.trafficLimitBytes)}% used`;
-}
-
-function anomalyStatusTone(tone?: UsageAnomalyTone): MetricTone {
-  if (tone === "critical") return "danger";
-  if (tone === "warning") return "warning";
-  if (tone === "muted") return "info";
-  return "success";
-}
-
-function usageAnomalyItem(row: UsageLedgerRow): RiskQueueItem | null {
-  const reason = usageAnomalyReason(row);
-  if (!reason) return null;
-
-  return {
-    ref: `anomaly-${row.orderRef}`,
-    title: reason.label,
-    severity: anomalySeverity(reason.tone),
-    severityLabel: anomalySeverityLabel(reason.tone),
-    objectType: anomalyObjectType(reason),
-    objectRef: anomalyObjectRef(row, reason),
-    reasonLabel: anomalyReasonLabel(row, reason)
-  };
-}
-
-function anomalySeverity(tone: UsageAnomalyTone): RiskSeverity {
-  if (tone === "critical") return "critical";
-  if (tone === "warning") return "warning";
-  return "info";
-}
-
-function anomalySeverityLabel(tone: UsageAnomalyTone): string {
-  if (tone === "critical") return "High";
-  if (tone === "warning") return "Medium";
-  return "Low";
-}
-
-function anomalyObjectType(reason: UsageAnomalyReason): string {
-  if (reason.label === "Collector disabled") return "collector";
-  if (reason.label === "Receipt / collection pending") return "channel";
-  return "order";
-}
-
-function anomalyObjectRef(row: UsageLedgerRow, reason: UsageAnomalyReason): string {
-  if (reason.label === "Collector disabled" || reason.label === "Receipt / collection pending") {
-    return row.channelRef;
-  }
-  return row.orderRef;
-}
-
-function anomalyReasonLabel(row: UsageLedgerRow, reason: UsageAnomalyReason): string {
-  if (reason.label === "Over limit" || reason.label === "Near quota") {
-    return usageRatioLabel(row);
-  }
-  if (reason.label === "Receipt / collection pending") {
-    return "Receipt not confirmed";
-  }
-  return collectionStatusDisplay(row.collectionStatus).label;
 }
 
 type AgentStatusRow = {

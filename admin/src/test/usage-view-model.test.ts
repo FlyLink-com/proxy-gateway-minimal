@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import {
+  buildUsageRuntimeViewModel,
   collectionStatusDisplay,
   formatBytes,
   hasUnconfirmedBinding,
@@ -89,6 +90,142 @@ describe("usage view model", () => {
     expect(hasUnconfirmedBinding(row)).toBe(true);
     expect(hasUnconfirmedBinding(row, "node-a")).toBe(false);
     expect(hasUnconfirmedBinding(row, "node-b")).toBe(true);
+  });
+
+  test("projects redacted runtime rows into freshness, ledger, and anomaly queues", () => {
+    const model = buildUsageRuntimeViewModel({
+      generatedAt: "2026-06-22T05:40:00.000Z",
+      items: [
+        rowFixture({
+          accountId: "acct_safe_001",
+          collectionStatus: "measured",
+          downloadBytes: 2048,
+          issuanceRequestId: "ord_safe_101",
+          issuedChannels: ["channel_safe_jp_vless"],
+          lastUsageObservedAt: "2026-06-22T05:38:00.000Z",
+          trafficLimitBytes: 10000,
+          uploadBytes: 1024,
+          usedBytes: 3072
+        }),
+        rowFixture({
+          accountId: "acct_safe_014",
+          collectionStatus: "measured_zero",
+          downloadBytes: 0,
+          issuanceRequestId: "ord_safe_102",
+          issuedChannels: ["channel_safe_sgp_hy2"],
+          lastUsageObservedAt: "2026-06-22T05:33:00.000Z",
+          usageStatus: "measured_zero",
+          usedBytes: 0
+        }),
+        rowFixture({
+          accountId: "acct_safe_022",
+          collectionStatus: "collector_disabled",
+          issuanceRequestId: "ord_safe_103",
+          issuedChannels: ["channel_safe_sgp_tuic"],
+          lastUsageObservedAt: null,
+          trafficLimitBytes: 1000,
+          usedBytes: 1200
+        }),
+        rowFixture({
+          accountId: "acct_safe_030",
+          collectionStatus: "not_collected",
+          edgeCredentialBindings: [{
+            channelRef: "channel_safe_pending",
+            credentialRefPresent: true,
+            materialDigestPresent: false,
+            usageMeasured: false
+          }],
+          issuanceRequestId: "ord_safe_104",
+          issuedChannels: ["channel_safe_pending"],
+          lastUsageObservedAt: null,
+          usageMeasured: false
+        })
+      ],
+      nowMs: Date.parse("2026-06-22T05:40:00.000Z")
+    });
+
+    expect(model.freshness).toEqual({
+      collectorDisabledRows: 1,
+      disconnectedRows: 1,
+      latestObservedAtLabel: "2m ago",
+      staleRows: 0,
+      state: "Needs review",
+      tone: "warning",
+      unknownRows: 1
+    });
+    expect(model.ledgerRows.map((row) => ({
+      accountRef: row.accountRef,
+      channelRef: row.channelRef,
+      collection: row.collection,
+      collectionTone: row.collectionTone,
+      orderRef: row.orderRef,
+      traffic: row.traffic
+    }))).toEqual([
+      {
+        accountRef: "acct_safe_001",
+        channelRef: "channel_safe_jp_vless",
+        collection: "Measured",
+        collectionTone: "success",
+        orderRef: "ord_safe_101",
+        traffic: "1 KB up / 2 KB down / 3 KB total"
+      },
+      {
+        accountRef: "acct_safe_014",
+        channelRef: "channel_safe_sgp_hy2",
+        collection: "Measured zero",
+        collectionTone: "info",
+        orderRef: "ord_safe_102",
+        traffic: "0 B up / 0 B down / 0 B total"
+      },
+      {
+        accountRef: "acct_safe_022",
+        channelRef: "channel_safe_sgp_tuic",
+        collection: "Collector disabled",
+        collectionTone: "danger",
+        orderRef: "ord_safe_103",
+        traffic: "0 B up / 0 B down / 1.17 KB total"
+      },
+      {
+        accountRef: "acct_safe_030",
+        channelRef: "channel_safe_pending",
+        collection: "Not collected",
+        collectionTone: "warning",
+        orderRef: "ord_safe_104",
+        traffic: "0 B up / 0 B down / 0 B total"
+      }
+    ]);
+    expect(model.anomalyItems.map((item) => ({
+      objectRef: item.objectRef,
+      reasonLabel: item.reasonLabel,
+      severity: item.severity,
+      title: item.title
+    }))).toEqual([
+      {
+        objectRef: "ord_safe_103",
+        reasonLabel: "Over limit",
+        severity: "critical",
+        title: "Usage evidence needs review"
+      },
+      {
+        objectRef: "ord_safe_104",
+        reasonLabel: "Receipt / collection pending",
+        severity: "warning",
+        title: "Usage evidence needs review"
+      },
+      {
+        objectRef: "ord_safe_102",
+        reasonLabel: "True 0 B",
+        severity: "info",
+        title: "Usage evidence needs review"
+      }
+    ]);
+    expect(model.safety).toEqual({
+      mutationAllowed: false,
+      rawEdgeCredentialReturned: false,
+      rawSecretReturned: false,
+      rawSubscriptionUrlReturned: false,
+      summaryOnly: true
+    });
   });
 });
 
