@@ -250,14 +250,15 @@ describe("admin navigation", () => {
     expect(within(workspaceSidebar).getByLabelText("Console settings")).not.toBeNull();
     expect(within(workspaceSidebar).getByLabelText("Admin API connection settings")).not.toBeNull();
     expect(within(workspaceSidebar).queryByText("Admin API connection")).toBeNull();
-    expect(within(workspaceSidebar).getByRole("button", { name: "Preview site Public shell" })).not.toBeNull();
-    expect(within(workspaceSidebar).getByRole("button", { name: "Open user portal User view" })).not.toBeNull();
+    expect(within(workspaceSidebar).getByRole("button", { name: "Preview site Supervision view" })).not.toBeNull();
+    expect(within(workspaceSidebar).getByRole("button", { name: "Open user portal Supervision view" })).not.toBeNull();
     expect(within(workspaceSidebar).getByLabelText("Panels")).not.toBeNull();
-    expect(within(workspaceSidebar).getByRole("button", { name: /Health Summary/ })).not.toBeNull();
-    expect(within(workspaceSidebar).getByRole("button", { name: /Quota & Usage/ })).not.toBeNull();
-    expect(within(workspaceSidebar).getByRole("button", { name: /Usage Ledger/ })).not.toBeNull();
-    expect(within(workspaceSidebar).getByLabelText("Platform Development planned")).not.toBeNull();
-    expect(within(workspaceSidebar).getByLabelText("System Settings planned")).not.toBeNull();
+    expect(within(workspaceSidebar).getByRole("button", { name: "Health Summary Review suggestions" })).not.toBeNull();
+    expect(within(workspaceSidebar).getByRole("button", { name: "Quota & Usage Review suggestions" })).not.toBeNull();
+    expect(within(workspaceSidebar).getByRole("button", { name: "Usage Ledger Review suggestions" })).not.toBeNull();
+    expect(within(workspaceSidebar).getByLabelText("Admin API connection settings").getAttribute("data-capability-state")).toBe("requires-approval");
+    expect(within(workspaceSidebar).getByLabelText("Platform Development planned").textContent).toContain("Planned gate");
+    expect(within(workspaceSidebar).getByLabelText("System Settings planned").textContent).toContain("Planned gate");
     expect(within(workspaceSidebar).getByLabelText("About planned")).not.toBeNull();
     expect(within(workspaceSidebar).queryByLabelText("Audit & Cases planned")).toBeNull();
     expect(workspaceSidebar.textContent).not.toMatch(/Audit & Cases|Key Management|Audit Center|Log Access/);
@@ -425,7 +426,7 @@ describe("admin navigation", () => {
 
     const workspaceSidebar = screen.getByLabelText("Workspace sidebar");
     fireEvent.click(within(workspaceSidebar).getByLabelText("Open navigation library"));
-    fireEvent.click(within(workspaceSidebar).getByRole("button", { name: "Risk notifications 0" }));
+    fireEvent.click(within(workspaceSidebar).getByRole("button", { name: "Risk notifications Supervision view 0" }));
 
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Operations Overview" }).getAttribute("aria-current")).toBe("page");
