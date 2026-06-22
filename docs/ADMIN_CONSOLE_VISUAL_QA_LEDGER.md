@@ -90,7 +90,7 @@ GCC-118 parity status:
 | Required component families | `StatusChip`, `MetricCard`, `PanelFrame`, `DataRow`, `TopBar`, `SidebarNavigation`, `PrivilegedGate`, `StateFeedback`. |
 | Design-to-code mapping | Current: each required Figma component set maps to a React or contract surface, CSS tokens, grammar roles, state semantics, responsive rules, a11y rules, and current QA evidence references. |
 | Current implementation gaps | Recorded in `admin/src/design/figma-parity.ts` and `docs/ADMIN_CONSOLE_FIGMA_MIRROR.md`; handoff continues through `GCC-119` before visual evidence closes in `GCC-120`. |
-| Ready gate | `PR #355` remains Draft until `GCC-118`, `GCC-119`, and `GCC-120` are complete. |
+| Ready gate | Closed: `PR #355` merged after `GCC-118`, `GCC-119`, and `GCC-120` completed the parity, implementation-alignment, and breakpoint/state evidence gates. |
 
 GCC-119 implementation alignment status:
 
@@ -102,7 +102,7 @@ GCC-119 implementation alignment status:
 | Overview metric normalization | Current: `Operations Overview` metric cards now render through shared `MetricCard` hooks, not the old page-local metric-card contract. |
 | PanelFrame hooks | Current: `PanelFrame` exposes stable `data-figma-component`, `data-ui-surface`, owner-mode, and workbench-category hooks across operator and draft panels. |
 | Privileged gate extraction | Current: shell production guard renders through the `PrivilegedGate` primitive with explicit state and capability attributes. |
-| GCC-120 handoff surface | Current: tablet and ultra-narrow screenshot evidence is recorded below. PR #355 should stay Draft until the linked Linear review gates are accepted. |
+| GCC-120 handoff surface | Current: tablet and ultra-narrow screenshot evidence is recorded below and was accepted for the PR #355 merge gate. |
 
 ## Current Browser Evidence
 
