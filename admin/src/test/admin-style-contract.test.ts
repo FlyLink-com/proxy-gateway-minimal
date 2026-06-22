@@ -345,6 +345,23 @@ describe("admin style token contract", () => {
     expect(styles).not.toContain("--admin-plugin-resize-handle");
   });
 
+  test("keeps subpage plugin layouts within the Figma viewport protocol", () => {
+    expect(selectorBlock(".admin-blueprint-subpage-button")).toContain("min-height: 64px");
+    expect(selectorBlock(".admin-blueprint-subpage-button")).toContain("grid-template-columns: minmax(0, 1fr) auto");
+    expect(selectorBlock(".admin-blueprint-subpage-description")).toContain("text-overflow: ellipsis");
+    expect(selectorBlock(".admin-blueprint-subpage-description")).toContain("white-space: nowrap");
+    expect(selectorBlock(".admin-blueprint-page[data-subpage-mode=\"true\"] .admin-blueprint-module-board"))
+      .toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+    expect(selectorBlock(".admin-blueprint-page[data-subpage-mode=\"true\"] [data-module-nav-id=\"usage-ledger\"]"))
+      .toContain("min-height: 0");
+    expect(selectorBlock(".admin-blueprint-page[data-subpage-mode=\"true\"] .admin-blueprint-module-panel[data-size-preset=\"standard\"]"))
+      .toContain("block-size: var(--admin-plugin-height-tall)");
+    expect(selectorBlock(".admin-blueprint-page[data-subpage-mode=\"true\"] .admin-blueprint-module-panel[data-size-preset=\"standard\"]"))
+      .toContain("max-block-size: var(--admin-plugin-height-tall)");
+    expect(selectorBlock(".admin-blueprint-page[data-subpage-mode=\"true\"] .admin-blueprint-module-panel[data-size-preset=\"full\"]"))
+      .toContain("block-size: min(520px, var(--admin-plugin-screen-max-height))");
+  });
+
   test("keeps design-draft module containers visually typed and scannable", () => {
     expect(selectorBlock(".workbench-category-pill")).toContain("background: transparent");
     expect(selectorBlock(".workbench-category-pill::before")).toContain("background: currentColor");

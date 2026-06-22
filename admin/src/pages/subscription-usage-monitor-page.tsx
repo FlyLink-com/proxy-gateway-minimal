@@ -8,7 +8,8 @@ import {
   RiskQueue,
   SafeRef,
   StatusChip,
-  type RiskQueueItem
+  type RiskQueueItem,
+  type RiskSeverity
 } from "../components/primitives";
 import {
   Activity,
@@ -16,6 +17,16 @@ import {
   RadioTower,
   ReceiptText
 } from "lucide-react";
+import {
+  collectionStatusDisplay,
+  formatBytes,
+  usageAnomalyReason,
+  usageRatio,
+  type UsageAnomalyReason,
+  type UsageAnomalyTone
+} from "../features/subscriptions/usage-view-model";
+import type { MetricTone } from "../components/primitives";
+import type { SubscriptionUsageCollectionStatus } from "../features/subscriptions/types";
 
 export const usageChannelsBlueprint: BlueprintPage = {
   page: "usageMonitor",
@@ -25,6 +36,37 @@ export const usageChannelsBlueprint: BlueprintPage = {
   description: "Evidence owner for usage collection trust, channel coverage, receipts, collectors, and collection anomalies.",
   statusLabel: "Evidence owner",
   statusTone: "info",
+  subPages: [
+    {
+      id: "collection-trust",
+      label: "Collection Trust",
+      owner: "Platform Monitoring",
+      description: "Freshness and anomaly classification for collection trust.",
+      moduleNavIds: [
+        "freshness",
+        "collection-anomalies"
+      ]
+    },
+    {
+      id: "channel-evidence",
+      label: "Channel Evidence",
+      owner: "Platform Monitoring",
+      description: "Channel coverage, route latency, receipt evidence, and collector diagnostics.",
+      moduleNavIds: [
+        "channel-coverage",
+        "receipts-collectors"
+      ]
+    },
+    {
+      id: "usage-ledger",
+      label: "Usage Ledger",
+      owner: "Platform Monitoring",
+      description: "Read-only account, order, channel, and traffic evidence.",
+      moduleNavIds: [
+        "usage-ledger"
+      ]
+    }
+  ],
   modules: [
     {
       navId: "freshness",
@@ -37,6 +79,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         interactionModel: "Inspect trust state and route evidence to owner pages."
       },
       content: <FreshnessContent />,
+      containmentStrategy: "not-applicable",
       purpose: "Inspect whether usage collection is fresh enough to trust downstream quota and risk decisions.",
       contentFields: [
         "Generated · monitor time",
@@ -71,6 +114,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         interactionModel: "Inspect missing coverage and prepare evidence handoff."
       },
       content: <ChannelCoverageContent />,
+      containmentStrategy: "pagination",
       purpose: "Compare issued channels, measured channels, missing channels, and receipt blockers.",
       contentFields: [
         "Channel safe ref · health state",
@@ -106,6 +150,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         interactionModel: "Read-only measurement evidence with safe refs."
       },
       content: <UsageLedgerContent />,
+      containmentStrategy: "pagination",
       purpose: "Provide evidence rows for account, order, channel, and measured traffic correlation.",
       contentFields: [
         "Account · safe ref",
@@ -140,6 +185,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         interactionModel: "Classify and route evidence; no false-positive close yet."
       },
       content: <CollectionAnomaliesContent />,
+      containmentStrategy: "pagination",
       purpose: "Classify delayed collection, true zero usage, not collected, disabled collector, and missing receipt candidates.",
       contentFields: [
         "Reason · anomaly type",
@@ -175,6 +221,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         interactionModel: "Show evidence availability; no raw logs, config, or runtime apply."
       },
       content: <ReceiptsCollectorsContent />,
+      containmentStrategy: "pagination",
       purpose: "Show whether receipt and collector evidence is available for safe operator decisions.",
       contentFields: [
         "Receipt freshness",
@@ -418,16 +465,107 @@ function ChannelCoverageContent() {
 type UsageLedgerRow = {
   accountRef: string;
   channelRef: string;
-  collection: "Measured" | "Measured zero" | "Not collected" | "Collector disabled";
+  collectionStatus: SubscriptionUsageCollectionStatus;
+  downloadBytes: number;
+  edgeCredentialBindings: Array<{
+    channelRef: string;
+    credentialRefPresent: boolean;
+    materialDigestPresent: boolean;
+  }>;
+  lastObservedLabel: string;
   orderRef: string;
-  traffic: string;
+  trafficLimitBytes: number;
+  uploadBytes: number;
+  usageStatus: "not_collected" | "measured_zero" | "measured";
+  usedBytes: number;
+  warnings?: string[];
 };
 
+const GB = 1024 ** 3;
+
 const usageLedgerRows: UsageLedgerRow[] = [
-  { accountRef: "acct_safe_001", orderRef: "ord_safe_101", channelRef: "channel_safe_jp_vless", traffic: "42.8 GB", collection: "Measured" },
-  { accountRef: "acct_safe_014", orderRef: "ord_safe_102", channelRef: "channel_safe_sgp_hy2", traffic: "0 B", collection: "Measured zero" },
-  { accountRef: "acct_safe_022", orderRef: "ord_safe_103", channelRef: "channel_safe_sgp_tuic", traffic: "Unknown", collection: "Collector disabled" },
-  { accountRef: "acct_safe_030", orderRef: "ord_safe_104", channelRef: "channel_safe_pending", traffic: "Unknown", collection: "Not collected" }
+  {
+    accountRef: "acct_safe_over",
+    channelRef: "channel_safe_jp_vless",
+    collectionStatus: "measured",
+    downloadBytes: 38 * GB,
+    edgeCredentialBindings: [confirmedBinding("channel_safe_jp_vless")],
+    lastObservedLabel: "2m ago",
+    orderRef: "ord_safe_over",
+    trafficLimitBytes: 50 * GB,
+    uploadBytes: 16 * GB,
+    usageStatus: "measured",
+    usedBytes: 54 * GB
+  },
+  {
+    accountRef: "acct_safe_near",
+    channelRef: "channel_safe_sgp_hy2",
+    collectionStatus: "measured",
+    downloadBytes: 31 * GB,
+    edgeCredentialBindings: [confirmedBinding("channel_safe_sgp_hy2")],
+    lastObservedLabel: "4m ago",
+    orderRef: "ord_safe_near",
+    trafficLimitBytes: 50 * GB,
+    uploadBytes: 11.5 * GB,
+    usageStatus: "measured",
+    usedBytes: 42.5 * GB
+  },
+  {
+    accountRef: "acct_safe_zero",
+    channelRef: "channel_safe_jp_vless",
+    collectionStatus: "measured_zero",
+    downloadBytes: 0,
+    edgeCredentialBindings: [confirmedBinding("channel_safe_jp_vless")],
+    lastObservedLabel: "Fresh sample",
+    orderRef: "ord_safe_zero",
+    trafficLimitBytes: 50 * GB,
+    uploadBytes: 0,
+    usageStatus: "measured_zero",
+    usedBytes: 0
+  },
+  {
+    accountRef: "acct_safe_stale",
+    channelRef: "channel_safe_sgp_hy2",
+    collectionStatus: "stale",
+    downloadBytes: 12 * GB,
+    edgeCredentialBindings: [confirmedBinding("channel_safe_sgp_hy2")],
+    lastObservedLabel: "18m ago",
+    orderRef: "ord_safe_stale",
+    trafficLimitBytes: 50 * GB,
+    uploadBytes: 5 * GB,
+    usageStatus: "measured",
+    usedBytes: 17 * GB
+  },
+  {
+    accountRef: "acct_safe_disabled",
+    channelRef: "channel_safe_sgp_tuic",
+    collectionStatus: "collector_disabled",
+    downloadBytes: 0,
+    edgeCredentialBindings: [confirmedBinding("channel_safe_sgp_tuic")],
+    lastObservedLabel: "No trusted sample",
+    orderRef: "ord_safe_disabled",
+    trafficLimitBytes: 50 * GB,
+    uploadBytes: 0,
+    usageStatus: "not_collected",
+    usedBytes: 0
+  },
+  {
+    accountRef: "acct_safe_pending",
+    channelRef: "channel_safe_pending",
+    collectionStatus: "not_collected",
+    downloadBytes: 0,
+    edgeCredentialBindings: [{
+      channelRef: "channel_safe_pending",
+      credentialRefPresent: true,
+      materialDigestPresent: false
+    }],
+    lastObservedLabel: "Receipt pending",
+    orderRef: "ord_safe_pending",
+    trafficLimitBytes: 50 * GB,
+    uploadBytes: 0,
+    usageStatus: "not_collected",
+    usedBytes: 0
+  }
 ];
 
 function UsageLedgerContent() {
@@ -438,16 +576,37 @@ function UsageLedgerContent() {
         columns={[
           { header: "Account / order", key: "account", render: (row: UsageLedgerRow) => <><SafeRef value={row.accountRef} /> · <SafeRef value={row.orderRef} /></> },
           { header: "Channel", key: "channel", render: (row) => <SafeRef value={row.channelRef} /> },
-          { header: "Traffic", key: "traffic", render: (row) => row.traffic },
           {
-            header: "Collection",
-            key: "collection",
+            header: "Usage evidence",
+            key: "usageEvidence",
             render: (row) => (
-              <StatusChip
-                label={row.collection}
-                tone={row.collection === "Measured" ? "success" : row.collection === "Measured zero" ? "info" : row.collection === "Not collected" ? "warning" : "danger"}
-              />
+              <span className="admin-usage-ledger-evidence">
+                <span>{usageTrafficLabel(row)}</span>
+                <small>{usageRatioLabel(row)} · {row.lastObservedLabel}</small>
+              </span>
             )
+          },
+          {
+            header: "Collection / risk",
+            key: "collectionRisk",
+            render: (row) => {
+              const collection = collectionStatusDisplay(row.collectionStatus);
+              const anomaly = usageAnomalyReason(row);
+              return (
+                <span className="admin-usage-ledger-state">
+                  <StatusChip
+                    label={collection.label}
+                    tone={collection.tone}
+                  />
+                  {anomaly?.label !== collection.label ? (
+                    <StatusChip
+                      label={anomaly?.label ?? "No anomaly"}
+                      tone={anomalyStatusTone(anomaly?.tone)}
+                    />
+                  ) : null}
+                </span>
+              );
+            }
           }
         ]}
         getRowKey={(row) => `${row.accountRef}:${row.orderRef}:${row.channelRef}`}
@@ -457,44 +616,90 @@ function UsageLedgerContent() {
   );
 }
 
-const anomalyItems: RiskQueueItem[] = [
-  {
-    ref: "anomaly-stale",
-    title: "Stale usage collection",
-    severity: "warning",
-    severityLabel: "Medium",
-    objectType: "order",
-    objectRef: "ord_safe_104",
-    reasonLabel: "Last sample beyond threshold"
-  },
-  {
-    ref: "anomaly-zero",
-    title: "True zero usage",
-    severity: "info",
-    severityLabel: "Low",
-    objectType: "order",
-    objectRef: "ord_safe_102",
-    reasonLabel: "Measured 0 B"
-  },
-  {
-    ref: "anomaly-collector-disabled",
-    title: "Collector disabled",
-    severity: "critical",
-    severityLabel: "High",
-    objectType: "collector",
-    objectRef: "collector_safe_sgp",
-    reasonLabel: "No trusted samples"
-  },
-  {
-    ref: "anomaly-receipt-missing",
-    title: "Receipt missing",
-    severity: "critical",
-    severityLabel: "High",
-    objectType: "channel",
-    objectRef: "channel_safe_sgp_tuic",
-    reasonLabel: "Missing receipt"
+const anomalyItems: RiskQueueItem[] = usageLedgerRows
+  .map((row) => usageAnomalyItem(row))
+  .filter((item): item is RiskQueueItem => item !== null);
+
+function confirmedBinding(channelRef: string) {
+  return {
+    channelRef,
+    credentialRefPresent: true,
+    materialDigestPresent: true
+  };
+}
+
+function usageTrafficLabel(row: UsageLedgerRow): string {
+  const collection = collectionStatusDisplay(row.collectionStatus);
+  if (!collection.measured && row.collectionStatus !== "stale") {
+    return "Not recorded";
   }
-];
+  return `${formatBytes(row.usedBytes)} / ${formatBytes(row.trafficLimitBytes)}`;
+}
+
+function usageRatioLabel(row: UsageLedgerRow): string {
+  const collection = collectionStatusDisplay(row.collectionStatus);
+  if (!collection.measured && row.collectionStatus !== "stale") {
+    return "No trusted sample";
+  }
+  return `${usageRatio(row.usedBytes, row.trafficLimitBytes)}% used`;
+}
+
+function anomalyStatusTone(tone?: UsageAnomalyTone): MetricTone {
+  if (tone === "critical") return "danger";
+  if (tone === "warning") return "warning";
+  if (tone === "muted") return "info";
+  return "success";
+}
+
+function usageAnomalyItem(row: UsageLedgerRow): RiskQueueItem | null {
+  const reason = usageAnomalyReason(row);
+  if (!reason) return null;
+
+  return {
+    ref: `anomaly-${row.orderRef}`,
+    title: reason.label,
+    severity: anomalySeverity(reason.tone),
+    severityLabel: anomalySeverityLabel(reason.tone),
+    objectType: anomalyObjectType(reason),
+    objectRef: anomalyObjectRef(row, reason),
+    reasonLabel: anomalyReasonLabel(row, reason)
+  };
+}
+
+function anomalySeverity(tone: UsageAnomalyTone): RiskSeverity {
+  if (tone === "critical") return "critical";
+  if (tone === "warning") return "warning";
+  return "info";
+}
+
+function anomalySeverityLabel(tone: UsageAnomalyTone): string {
+  if (tone === "critical") return "High";
+  if (tone === "warning") return "Medium";
+  return "Low";
+}
+
+function anomalyObjectType(reason: UsageAnomalyReason): string {
+  if (reason.label === "Collector disabled") return "collector";
+  if (reason.label === "Receipt / collection pending") return "channel";
+  return "order";
+}
+
+function anomalyObjectRef(row: UsageLedgerRow, reason: UsageAnomalyReason): string {
+  if (reason.label === "Collector disabled" || reason.label === "Receipt / collection pending") {
+    return row.channelRef;
+  }
+  return row.orderRef;
+}
+
+function anomalyReasonLabel(row: UsageLedgerRow, reason: UsageAnomalyReason): string {
+  if (reason.label === "Over limit" || reason.label === "Near quota") {
+    return usageRatioLabel(row);
+  }
+  if (reason.label === "Receipt / collection pending") {
+    return "Receipt not confirmed";
+  }
+  return collectionStatusDisplay(row.collectionStatus).label;
+}
 
 type AgentStatusRow = {
   agentRef: string;

@@ -50,7 +50,7 @@ describe("admin OS UI contract", () => {
     });
   });
 
-  test("keeps desktop and mobile as separate layout targets", () => {
+  test("keeps desktop and tablet accepted while mobile waits for its own standard", () => {
     expect(ADMIN_UI_CONTRACT.viewportTargets.desktopWorkbench).toMatchObject({
       contractId: "desktop-workbench",
       frame: "1600x1024",
@@ -58,13 +58,20 @@ describe("admin OS UI contract", () => {
       layoutModel: "multi-column-workbench"
     });
 
-    expect(ADMIN_UI_CONTRACT.viewportTargets.mobileReview).toMatchObject({
-      contractId: "mobile-review",
-      frame: "390x844",
-      implementationMode: "separate-mobile-projection",
-      layoutModel: "single-column-review-flow"
+    expect(ADMIN_UI_CONTRACT.viewportTargets.tabletReview).toMatchObject({
+      contractId: "tablet-review",
+      frame: "1024x768",
+      implementationMode: "accepted-responsive-check",
+      layoutModel: "contained-reflow"
     });
-    expect(ADMIN_UI_CONTRACT.viewportTargets.mobileReview.forbiddenLayoutReuse).toEqual([
+
+    expect(ADMIN_UI_CONTRACT.viewportTargets.mobilePending).toMatchObject({
+      contractId: "mobile-pending",
+      frame: "390x844",
+      implementationMode: "blocked-until-dedicated-standard",
+      layoutModel: "not-yet-defined"
+    });
+    expect(ADMIN_UI_CONTRACT.viewportTargets.mobilePending.forbiddenLayoutReuse).toEqual([
       "desktop-column-map",
       "desktop-plugin-grid",
       "desktop-card-density",
@@ -75,7 +82,7 @@ describe("admin OS UI contract", () => {
   test("defines grammar primitives before QA checks rendered visuals", () => {
     expect(ADMIN_LAYOUT_SPECS.dashboard).toMatchObject({
       contentFlow: "stack",
-      mobileProjection: "single-column-review-flow"
+      mobileStandardStatus: "pending-dedicated-standard"
     });
     expect(ADMIN_LAYOUT_SPECS.table.maxPrimaryColumns).toBe(1);
     expect(ADMIN_DENSITY_SPECS.normal).toMatchObject({
@@ -103,7 +110,7 @@ describe("admin OS UI contract", () => {
 
     expect(getAdminPageContract("dashboard")).toMatchObject({
       layout: "dashboard",
-      mobileProjection: "single-column-review-flow",
+      mobileStandardStatus: "pending-dedicated-standard",
       page: "dashboard"
     });
     expect(getAdminPageContract("portalRequests")).toMatchObject({
@@ -114,6 +121,7 @@ describe("admin OS UI contract", () => {
 
     Object.values(ADMIN_UI_CONTRACT.pageContracts).forEach((contract) => {
       expect(contract.density).toBe("normal");
+      expect(contract.mobileStandardStatus).toBe("pending-dedicated-standard");
       expect(contract.requiredBlocks).toContain("page-title");
       expect(contract.requiredBlocks).toContain("state-preview");
       expect(contract.forbiddenSurfaces).toEqual(ADMIN_PRIVILEGED_SURFACE_IDS);

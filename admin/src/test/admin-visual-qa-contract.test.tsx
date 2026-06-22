@@ -72,16 +72,27 @@ describe("admin visual QA contract", () => {
     expect(workspace?.getAttribute("data-ui-role")).toBe("workspace");
     expect(workspace?.getAttribute("data-page-id")).toBe(page);
     expect(workspace?.getAttribute("data-layout")).toBe(expectedLayout);
-    expect(workspace?.getAttribute("data-mobile-projection")).toBe("single-column-review-flow");
+    expect(workspace?.getAttribute("data-mobile-standard-status")).toBe("pending-dedicated-standard");
+    expect(workspace?.getAttribute("data-responsive-standard")).toBe("desktop-tablet");
     expect(workspace?.getAttribute("data-required-blocks")).toMatch(/page-title|primary-panel/);
+    if (page === "usageMonitor") {
+      expect(workspace?.getAttribute("data-subpage-mode")).toBe("true");
+      expect(workspace?.getAttribute("data-active-subpage")).toBe("collection-trust");
+      expect(screen.getByLabelText("Usage & Channels subpages")).not.toBeNull();
+    } else {
+      expect(workspace?.getAttribute("data-subpage-mode")).toBe("false");
+    }
 
     const panels = Array.from(document.querySelectorAll("[data-ui-role='panel']"));
-    expect(panels).toHaveLength(pageSubNavigation[page].length);
+    const expectedSections = page === "usageMonitor"
+      ? pageSubNavigation[page].filter((section) => ["freshness", "collection-anomalies"].includes(section.id))
+      : pageSubNavigation[page];
+    expect(panels).toHaveLength(expectedSections.length);
     expect(panels.map((panel) => panel.getAttribute("data-module-nav-id"))).toEqual(
-      pageSubNavigation[page].map((section) => section.id)
+      expectedSections.map((section) => section.id)
     );
     expect(panels.map((panel) => panel.id)).toEqual(
-      pageSubNavigation[page].map((section) => section.targetId)
+      expectedSections.map((section) => section.targetId)
     );
 
     panels.forEach((panel) => {
@@ -91,6 +102,12 @@ describe("admin visual QA contract", () => {
       expect(panel.getAttribute("data-owner-mode")).toMatch(/preview|owner/);
       expect(panel.getAttribute("data-workbench-category")).toMatch(/monitoring|management|configuration|audit-workflow|platform-tools/);
       expect(panel.getAttribute("data-density")).toBe("normal");
+      expect(panel.getAttribute("data-containment-strategy")).toMatch(/not-applicable|pagination|route-split|bounded-internal-scroll/);
+      if (panel.getAttribute("data-containment-strategy") === "not-applicable") {
+        expect(panel.getAttribute("data-pagination-standard-node-id")).toBeNull();
+      } else {
+        expect(panel.getAttribute("data-pagination-standard-node-id")).toBe("157:2");
+      }
       expect(panel.getAttribute("aria-label")).toMatch(/panel/i);
       if (page === "dashboard") {
         expect(panel.getAttribute("data-chrome")).toBe("operator");
@@ -114,7 +131,9 @@ describe("admin visual QA contract", () => {
       "figma-mirror",
       "dom-contract",
       "browser-desktop",
-      "browser-mobile",
+      "browser-tablet",
+      "mobile-standard-pending",
+      "pagination-containment",
       "style-token-regression",
       "safe-data-boundary"
     ]));

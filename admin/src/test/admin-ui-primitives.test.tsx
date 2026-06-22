@@ -120,6 +120,8 @@ describe("admin ui primitives", () => {
         category="monitoring"
         className="custom-panel"
         containerLabel="Overview metric widget set"
+        dataContainmentStrategy="pagination"
+        dataPaginationStandardNodeId="157:2"
         fieldLabels={["Platform health label", "Risk counter"]}
         onHide={onHide}
         onSizePresetChange={onSizePresetChange}
@@ -135,6 +137,8 @@ describe("admin ui primitives", () => {
     expect(panel.className).toContain("admin-blueprint-module-panel");
     expect(panel.className).toContain("custom-panel");
     expect(panel.getAttribute("data-figma-component")).toBe("PanelFrame");
+    expect(panel.getAttribute("data-containment-strategy")).toBe("pagination");
+    expect(panel.getAttribute("data-pagination-standard-node-id")).toBe("157:2");
     expect(panel.getAttribute("data-ui-contract")).toBe("panel-frame");
     expect(panel.getAttribute("data-ui-surface")).toBe("panel-frame");
     expect(panel.getAttribute("data-owner-mode")).toBe("preview");

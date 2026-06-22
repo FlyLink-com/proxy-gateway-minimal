@@ -25,7 +25,8 @@ describe("admin dashboard page", () => {
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-page-id")).toBe("dashboard");
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-layout")).toBe("dashboard");
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-ui-role")).toBe("workspace");
-    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-mobile-projection")).toBe("single-column-review-flow");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-mobile-standard-status")).toBe("pending-dedicated-standard");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-responsive-standard")).toBe("desktop-tablet");
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-required-blocks")).toContain("owner-action");
     expect(screen.queryByRole("button", { name: "Card settings" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Edit workspace" })).toBeNull();

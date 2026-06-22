@@ -30,6 +30,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         interactionModel: "Selection and review planning now; create/disable requires later backend contract."
       },
       content: <AccountDirectoryContent />,
+      containmentStrategy: "pagination",
       purpose: "Directory of safe account refs, risk state, resource count, and review state.",
       contentFields: [
         "Account ref · safe id",
@@ -64,6 +65,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         interactionModel: "Inspect and plan lifecycle review; no raw subscription output."
       },
       content: <ResourceOrdersContent />,
+      containmentStrategy: "pagination",
       purpose: "Group resources, orders, entitlements, and subscription artifact safe refs under the owning account.",
       contentFields: [
         "Order ref · safe id",
@@ -98,6 +100,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         interactionModel: "Review policy and prepare edit; save action waits for a reviewed update gate."
       },
       content: <QuotaUsageContent />,
+      containmentStrategy: "not-applicable",
       purpose: "Own quota policy decisions while using usage collection only as evidence.",
       contentFields: [
         "Default quota · policy value",
@@ -132,6 +135,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         interactionModel: "Review and dry-run planning only before approved mutation flows."
       },
       content: <LifecycleContent />,
+      containmentStrategy: "route-split",
       purpose: "Plan account, order, artifact, expiry, revocation, pause, and archive states in one owner page.",
       contentFields: [
         "Account · lifecycle state",
@@ -167,6 +171,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         interactionModel: "Read-only context; no note write or case close actions."
       },
       content: <HistoryEventsContent />,
+      containmentStrategy: "pagination",
       purpose: "Show safe computed events and case candidates until durable restricted case history exists.",
       contentFields: [
         "Event · safe label",

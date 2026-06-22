@@ -17,7 +17,9 @@ export type PanelFrameProps = {
   chrome?: "draft" | "operator";
   className?: string;
   containerLabel: string;
+  dataContainmentStrategy?: string;
   dataModuleNavId?: string;
+  dataPaginationStandardNodeId?: string;
   dataUiSurfaceRole?: string;
   density?: AdminUiDensity;
   fieldLabels: string[];
@@ -49,7 +51,9 @@ export function PanelFrame({
   chrome = "draft",
   className,
   containerLabel,
+  dataContainmentStrategy,
   dataModuleNavId,
+  dataPaginationStandardNodeId,
   dataUiSurfaceRole,
   density = ADMIN_UI_CONTRACT.pluginFrame.density,
   fieldLabels,
@@ -107,9 +111,11 @@ export function PanelFrame({
       )}
       data-density={density}
       data-chrome={chrome}
+      data-containment-strategy={dataContainmentStrategy}
       data-figma-component="PanelFrame"
       data-module-nav-id={dataModuleNavId}
       data-owner-mode={ownerMode}
+      data-pagination-standard-node-id={dataPaginationStandardNodeId}
       data-size-preset={sizePreset}
       data-ui-role="panel"
       data-ui-surface="panel-frame"

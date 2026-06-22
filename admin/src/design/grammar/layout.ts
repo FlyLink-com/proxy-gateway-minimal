@@ -9,14 +9,14 @@ export type AdminLayoutArchetype = (typeof ADMIN_LAYOUT_ARCHETYPES)[number];
 
 export type AdminShellModel = "standard" | "immersive";
 export type AdminContentFlow = "stack" | "split" | "grid";
-export type AdminMobileProjection = "single-column-review-flow";
+export type AdminMobileStandardStatus = "pending-dedicated-standard";
 
 export type AdminLayoutSpec = {
   id: AdminLayoutArchetype;
   shell: AdminShellModel;
   contentFlow: AdminContentFlow;
   maxPrimaryColumns: 1 | 2 | 3;
-  mobileProjection: AdminMobileProjection;
+  mobileStandardStatus: AdminMobileStandardStatus;
   requiredMetadata: readonly [
     "data-page-id",
     "data-layout",
@@ -31,7 +31,7 @@ export const ADMIN_LAYOUT_SPECS: Record<AdminLayoutArchetype, AdminLayoutSpec> =
     shell: "standard",
     contentFlow: "stack",
     maxPrimaryColumns: 2,
-    mobileProjection: "single-column-review-flow",
+    mobileStandardStatus: "pending-dedicated-standard",
     requiredMetadata: [
       "data-page-id",
       "data-layout",
@@ -44,7 +44,7 @@ export const ADMIN_LAYOUT_SPECS: Record<AdminLayoutArchetype, AdminLayoutSpec> =
     shell: "immersive",
     contentFlow: "split",
     maxPrimaryColumns: 2,
-    mobileProjection: "single-column-review-flow",
+    mobileStandardStatus: "pending-dedicated-standard",
     requiredMetadata: [
       "data-page-id",
       "data-layout",
@@ -57,7 +57,7 @@ export const ADMIN_LAYOUT_SPECS: Record<AdminLayoutArchetype, AdminLayoutSpec> =
     shell: "standard",
     contentFlow: "stack",
     maxPrimaryColumns: 1,
-    mobileProjection: "single-column-review-flow",
+    mobileStandardStatus: "pending-dedicated-standard",
     requiredMetadata: [
       "data-page-id",
       "data-layout",
@@ -70,7 +70,7 @@ export const ADMIN_LAYOUT_SPECS: Record<AdminLayoutArchetype, AdminLayoutSpec> =
     shell: "standard",
     contentFlow: "stack",
     maxPrimaryColumns: 1,
-    mobileProjection: "single-column-review-flow",
+    mobileStandardStatus: "pending-dedicated-standard",
     requiredMetadata: [
       "data-page-id",
       "data-layout",

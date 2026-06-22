@@ -16,7 +16,8 @@ describe("portal requests page", () => {
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-page-id")).toBe("portalRequests");
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-layout")).toBe("table");
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-ui-role")).toBe("workspace");
-    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-mobile-projection")).toBe("single-column-review-flow");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-mobile-standard-status")).toBe("pending-dedicated-standard");
+    expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-responsive-standard")).toBe("desktop-tablet");
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-required-blocks")).toContain("evidence-row");
     expect(screen.queryByRole("button", { name: "Card settings" })).toBeNull();
     expect(screen.queryByRole("switch", { name: "Edit workspace" })).toBeNull();

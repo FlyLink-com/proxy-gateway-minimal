@@ -1,6 +1,6 @@
 # Admin Console Visual QA Ledger
 
-Last updated: 2026-06-21, America/Los_Angeles.
+Last updated: 2026-06-22, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-68
@@ -38,19 +38,21 @@ Source references:
 | Tool | Role | Current use | Fallback rule |
 | --- | --- | --- | --- |
 | Browser / IAB | Fast local DOM, viewport, console-log, and responsive checks. | Primary tool for this ledger. | Use first for local `127.0.0.1` checks. |
-| Chrome | Real desktop-profile visual inspection when Browser viewport or extension state is insufficient. | Not required in this pass because Browser covered DOM, desktop, and mobile checks. | Use for final wide-screen polish or profile-specific issues. |
-| Computer | Windows desktop-level fallback when browser automation cannot expose the visual state. | Not required in this pass. | Use only for visual capture or app-window issues that Browser/Chrome cannot inspect. |
+| Chrome | Real desktop-profile visual inspection when Browser viewport or extension state is insufficient. | Not required in the 2026-06-22 Figma audit. | Use for final wide-screen polish or profile-specific issues. |
+| Computer | Windows desktop-level fallback when browser automation cannot expose the visual state. | Used on 2026-06-22 to confirm Figma Desktop opened the canonical handoff file and showed the current GCC-122 gate frames. | Use only for visual capture or app-window issues that Browser/Chrome cannot inspect. |
 
 ## Current Figma Mirror Evidence
 
-Figma connector evidence on 2026-06-21:
+Figma connector evidence on 2026-06-22:
 
 | Check | Result |
 | --- | --- |
 | Source file metadata | Read succeeded for `https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19`. |
-| Current top-level page | `Admin UI Handoff`. |
+| Current top-level pages | `Admin UI Handoff`; `Admin Component Mirror v1`. |
 | Current mirror frames | `00 Contract & Build Order`, `01 Operations Overview / 1600x1024`, `02 Accounts & Resources / 1600x1024`, `03 Usage & Channels / 1600x1024`, `04 State & Safety Matrix`, `05 GCC-103 Review Addendum / 1600x1024`. |
+| Current GCC-122 gate frames | `12 GCC-122 Component State Placement / 1600x1024`, `13 GCC-122 Responsive QA Strategy / 1600x1024`, `14 GCC-122 Figma-to-code Mapping / 1600x1024`, `15 GCC-122 Stage Review Evidence Source Rule / 1600x1024`, `16 GCC-122 PR #364 Review Packet / 1600x1024`, `17 GCC-122 Review Findings And Next Gates / 1600x1024`, `18 GCC-122 P0 Gate Hardening / 1600x1024`, `19 GCC-122 Pagination Standard / 1600x1024`. |
 | Implementation captures | `06 Current Implementation / Operations Overview / 1600w full-content capture`, `07 Current Implementation / Accounts & Resources / 1600w full-content capture`, `08 Current Implementation / Usage & Channels / 1600w full-content capture`. |
+| Implementation capture sizing | Current implementation captures are intentionally full-content reference frames, not accepted page-size standards: `1600x1457`, `1600x2346`, and `1600x1650`. |
 | Previous mismatch | The earlier recorded `EvQXTtJ2XnRfcGxRLTRt0B` file is a one-page Requirements Map, not the canonical multi-frame handoff file. |
 | Connector-reported seat | `Dev / developer`. |
 | User-reported Figma UI access | Full access for the connected account. |
@@ -71,7 +73,18 @@ Component-system mirror status:
 | Observed paint styles | `0` |
 | Pending component mirrors | None for this phase. |
 | Phase 2 screenshot evidence | `TopBar`, `SidebarNavigation`, `PrivilegedGate`, and `StateFeedback` screenshots generated successfully; three newly added variant grids were resized after overlap detection. |
-| Next task line | `Admin React/CSS grammar alignment from Figma Component Mirror v1` |
+| Next task line | `Admin React/CSS grammar alignment from Figma Component Mirror v1` plus `GCC-122` pagination/mobile-pending contract alignment. |
+
+GCC-122 standard status:
+
+| Check | Result |
+| --- | --- |
+| Pagination standard frame | Current: `19 GCC-122 Pagination Standard / 1600x1024`, node `157:2`. |
+| Pagination contract | Long tables/lists must declare one of `pagination`, `route-split`, or `bounded-internal-scroll` before implementation. |
+| Non-paginated surfaces | Health cards, KPI summaries, tiny status groups, navigation/app library, and action chips are explicitly non-paginated. |
+| Mobile standard | Mobile is `pending-dedicated-standard`; desktop and tablet remain current implementation targets. |
+| Local contract mirror | `admin/src/design/figma-mirror.ts` exports `ADMIN_FIGMA_PAGINATION_STANDARD` and the QA axis `pagination-containment`. |
+| DOM contract hook | `PanelFrame` receives `data-containment-strategy`; long-content modules bind `data-pagination-standard-node-id="157:2"`. |
 
 Local mirror contract added:
 
@@ -103,8 +116,24 @@ GCC-119 implementation alignment status:
 | PanelFrame hooks | Current: `PanelFrame` exposes stable `data-figma-component`, `data-ui-surface`, owner-mode, and workbench-category hooks across operator and draft panels. |
 | Privileged gate extraction | Current: shell production guard renders through the `PrivilegedGate` primitive with explicit state and capability attributes. |
 | GCC-120 handoff surface | Current: tablet and ultra-narrow screenshot evidence is recorded below and was accepted for the PR #355 merge gate. |
+| GCC-122 handoff surface | Current: desktop/tablet and pagination containment are the active QA axes; mobile remains explicitly pending until a dedicated Figma standard is accepted. |
+
+GCC-122 local validation on 2026-06-22:
+
+| Command | Result |
+| --- | --- |
+| `npm run admin:test` | Pass: `25` files / `236` tests. |
+| `npm run admin:build` | Pass. |
+| `git diff --check` | Pass; only LF/CRLF working-copy warnings were reported. |
+| `npm test` | Pass: `816` tests. |
+| Local preview | `http://127.0.0.1:5173/` returned HTTP `200`; listener was on `127.0.0.1:5173`. |
 
 ## Current Browser Evidence
+
+The 2026-06-21 mobile/narrow rows below are retained as historical overflow
+evidence. They are no longer an accepted mobile implementation standard after
+the 2026-06-22 GCC-122 update. Current acceptance is desktop + tablet +
+pagination containment; mobile remains `pending-dedicated-standard`.
 
 Local target:
 
@@ -229,8 +258,22 @@ Page-local navigation observed:
 | --- | --- | --- |
 | Browser split viewport `584px` | Three pages have no global horizontal overflow, no Han copy, and render active navigation. | Pass |
 | Desktop override `1440 x 900` | Three pages have no global horizontal overflow, no Han copy, and render active navigation. | Pass |
-| Mobile sub-navigation | Sub-nav uses horizontal scrolling inside its own container instead of widening the page. | Pass |
+| Mobile sub-navigation | Historical overflow check only. Current mobile product standard is pending a dedicated Figma frame. | Superseded by GCC-122 |
 | Tables and refs | Long safe refs and table content stay inside their scroll/row containers. | Covered by Admin tests and Browser overflow check. |
+
+## Current Containment Checks
+
+| Surface | Current standard | Local contract |
+| --- | --- | --- |
+| Account Directory | Paginated data card before live account lists. | `containmentStrategy: "pagination"` |
+| Resources & Orders | Paginated data card before live order/resource rows. | `containmentStrategy: "pagination"` |
+| Lifecycle | Split route for high-context review flow. | `containmentStrategy: "route-split"` |
+| History & Events | Paginated event/candidate list. | `containmentStrategy: "pagination"` |
+| Channel Coverage | Paginated channel/route evidence list. | `containmentStrategy: "pagination"` |
+| Usage Ledger | Paginated ledger before production datasets. | `containmentStrategy: "pagination"` |
+| Collection Anomalies | Paginated candidate queue. | `containmentStrategy: "pagination"` |
+| Receipts & Collectors | Paginated diagnostics/evidence list. | `containmentStrategy: "pagination"` |
+| Health and small summary cards | No pagination. | `containmentStrategy: "not-applicable"` |
 
 ## Intentional Deviations
 
@@ -265,6 +308,10 @@ Before marking a future Admin UI visual task complete, record:
 5. Any intentional concept deviation.
 6. Any backend/data contract gap.
 7. The exact local validation commands that passed.
+8. Whether each long table/list declares pagination, route split, or bounded
+   internal scroll.
+9. Whether mobile is backed by a dedicated accepted Figma standard; until then,
+   record mobile as pending rather than passed.
 
 Do not use concept parity to justify production mutation, runtime apply,
 collector activation, account disablement, order pause, quota enforcement, or
