@@ -244,3 +244,32 @@ test("Vultr multi-channel template separates runtime listen tuples from web and 
   assert.equal(new Set(runtimeTuples).size, runtimeTuples.length);
   assert.equal(runtimeTuples.some((tuple) => tuple.endsWith(":tcp:443")), false);
 });
+
+test("production proxy config uses the SGP domain for SGP VLESS client server host", () => {
+  const proxyConfig = loadProxyConfig({
+    configPath: resolve(rootDir, "config", "proxy-servers.json"),
+    env: {
+      VULTR_TUIC_HOST: "jp.gccwebos.com",
+      VULTR_TUIC_UUID: "11111111-1111-4111-8111-111111111111",
+      VULTR_TUIC_PASSWORD: "synthetic-tuic-password",
+      VULTR_TUIC_SNI: "jp.gccwebos.com",
+      VULTR_VLESS_REALITY_HOST: "jp.gccwebos.com",
+      VULTR_VLESS_REALITY_UUID: "22222222-2222-4222-8222-222222222222",
+      VULTR_VLESS_REALITY_SNI: "www.cloudflare.com",
+      VULTR_VLESS_REALITY_PUBLIC_KEY: "synthetic-public-key",
+      VULTR_VLESS_REALITY_SHORT_ID: "synthetic-short-id",
+      VULTR_HY2_HOST: "jp.gccwebos.com",
+      VULTR_HY2_PASSWORD: "synthetic-hy2-password",
+      VULTR_HY2_SNI: "jp.gccwebos.com",
+      SGP_TUIC_STATIC_UUID: "33333333-3333-4333-8333-333333333333",
+      SGP_TUIC_STATIC_PASSWORD: "synthetic-sgp-tuic-password",
+      SGP_VLESS_STATIC_UUID: "44444444-4444-4444-8444-444444444444",
+      SGP_XRAY_VLESS_REALITY_PUBLIC_KEY: "synthetic-sgp-public-key",
+      SGP_XRAY_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
+      SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-password"
+    }
+  });
+
+  const sgpVless = proxyConfig.servers.find((server) => server.name === "channel-sgp-a-vless-reality-tcp");
+  assert.equal(sgpVless?.host, "sgp.gccwebos.com");
+});

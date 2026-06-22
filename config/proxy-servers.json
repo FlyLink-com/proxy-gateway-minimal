@@ -137,7 +137,7 @@
       "region": "sgp",
       "protocol": "vless",
       "type": "vless",
-      "host": "portal.globalcirclecat.icu",
+      "host": "sgp.gccwebos.com",
       "port": 8443,
       "uuid": "${SGP_VLESS_STATIC_UUID}",
       "network": "tcp",
