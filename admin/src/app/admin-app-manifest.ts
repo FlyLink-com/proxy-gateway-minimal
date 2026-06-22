@@ -174,14 +174,19 @@ export type AdminAppManifest = {
 };
 
 export type AdminAppSearchIndexEntry = {
-  resultType: AdminAppKind;
+  resultType: AdminAppEntryType;
   appId: string;
   title: string;
   aliases: string[];
+  dataBoundary: AdminAppDataBoundary;
+  forbiddenFields: string[];
+  libraryGroup: AdminNavigationLibraryGroup;
+  moduleRecovery?: AdminNavigationLibraryModuleRecovery;
   ownerArea: string;
   pageId?: AdminPage;
   moduleNavId?: string;
   targetId?: string;
+  productionImpact: AdminAppProductionImpact;
   safeSummary: string;
   searchableFields: string[];
   state: AdminAppStatus;
@@ -190,6 +195,12 @@ export type AdminAppSearchIndexEntry = {
   entryGateSummary: string;
   routeTarget: string;
   searchText: string;
+};
+
+export type AdminNavigationLibraryModuleRecovery = {
+  action: "restore-module";
+  consumesCanvasSpaceWhenHidden: false;
+  source: "navigation-library";
 };
 
 export type NavigationLibrarySearchDocument = {
@@ -974,13 +985,24 @@ export function createNavigationLibrarySearchIndex(apps: readonly AdminAppManife
       aliases: searchDocument.aliases,
       appId: searchDocument.appId,
       capabilities: searchDocument.capabilities,
+      dataBoundary: app.safety.redaction,
       entryGateSummary: app.status === "planned" || app.status === "locked"
         ? searchDocument.safeDescription
         : "Available in the protected console workspace.",
+      forbiddenFields: [...app.safety.forbiddenFields],
+      libraryGroup: searchDocument.libraryGroup,
       moduleNavId: app.plugin?.navId,
+      moduleRecovery: app.kind === "plugin"
+        ? {
+            action: "restore-module",
+            consumesCanvasSpaceWhenHidden: false,
+            source: "navigation-library"
+          }
+        : undefined,
       ownerArea: app.owner.area,
       pageId: app.route.page,
-      resultType: app.kind,
+      productionImpact: app.safety.productionImpact,
+      resultType: entryTypeForApp(app.kind),
       riskTier: app.safety.riskTier,
       routeTarget: searchDocument.routeTarget,
       safeSummary: searchDocument.safeDescription,

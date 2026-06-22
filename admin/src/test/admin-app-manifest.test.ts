@@ -431,13 +431,13 @@ describe("admin app manifest", () => {
     expect(usageLedger).toMatchObject({
       moduleNavId: "usage-ledger",
       pageId: "usageMonitor",
-      resultType: "plugin",
+      resultType: "plugin-module",
       routeTarget: "usageMonitor#platform-monitoring-usage-ledger",
       searchableFields: expect.arrayContaining(["usage-ledger", "Usage Ledger", "Platform Monitoring"])
     });
     expect(operationsOverview).toMatchObject({
       pageId: "dashboard",
-      resultType: "page",
+      resultType: "workspace-app",
       routeTarget: "dashboard"
     });
     expect(operationsOverview && matchesAppSearch(operationsOverview, "risk")).toBe(true);
@@ -447,6 +447,46 @@ describe("admin app manifest", () => {
       expect(entry.searchText).not.toMatch(forbiddenSearchTextPattern);
       expect(entry.safeSummary).not.toMatch(/token=|Bearer|password|subscriptionUrl/i);
       expect(entry.searchableFields.join(" ")).not.toMatch(forbiddenSearchTextPattern);
+    });
+  });
+
+  test("classifies navigation-library results and exposes module recovery without canvas allocation", () => {
+    const index = createNavigationLibrarySearchIndex();
+    const operationsOverview = index.find((entry) => entry.appId === "operations-overview");
+    const usageLedger = index.find((entry) => entry.appId === "plugin.usage-ledger");
+    const adminApi = index.find((entry) => entry.appId === "utility.admin-api");
+    const platformDevelopment = index.find((entry) => entry.appId === "planned.platform-development");
+
+    expect(operationsOverview).toMatchObject({
+      dataBoundary: "safe-summary-only",
+      libraryGroup: "workspace-pages",
+      productionImpact: "read-only",
+      resultType: "workspace-app"
+    });
+    expect(usageLedger).toMatchObject({
+      dataBoundary: "safe-summary-only",
+      libraryGroup: "plugins",
+      moduleRecovery: {
+        action: "restore-module",
+        consumesCanvasSpaceWhenHidden: false,
+        source: "navigation-library"
+      },
+      productionImpact: "read-only",
+      resultType: "plugin-module"
+    });
+    expect(adminApi).toMatchObject({
+      libraryGroup: "console-settings",
+      resultType: "system-action"
+    });
+    expect(platformDevelopment).toMatchObject({
+      libraryGroup: "planned-apps",
+      resultType: "planned-app"
+    });
+
+    index.forEach((entry) => {
+      expect(entry.forbiddenFields).toEqual(expect.arrayContaining(["token", "credential", "SQLite row"]));
+      expect(entry.searchText).not.toMatch(forbiddenSearchTextPattern);
+      expect(JSON.stringify(entry.moduleRecovery ?? {})).not.toMatch(forbiddenSearchTextPattern);
     });
   });
 
@@ -499,7 +539,19 @@ describe("admin app manifest", () => {
 
     const document = createNavigationLibrarySearchDocument(unsafeApp);
     const [indexEntry] = createNavigationLibrarySearchIndex([unsafeApp]);
-    const indexedText = JSON.stringify({ document, indexEntry });
+    const indexedText = JSON.stringify({
+      document,
+      indexEntry: {
+        aliases: indexEntry.aliases,
+        appId: indexEntry.appId,
+        routeTarget: indexEntry.routeTarget,
+        safeSummary: indexEntry.safeSummary,
+        searchableFields: indexEntry.searchableFields,
+        searchText: indexEntry.searchText,
+        targetId: indexEntry.targetId,
+        title: indexEntry.title
+      }
+    });
 
     expect(document.aliases).toContain("[redacted unsafe search text]");
     expect(document.searchableFields).toEqual([
@@ -510,5 +562,6 @@ describe("admin app manifest", () => {
     expect(indexEntry.searchText).toContain("safe field");
     expect(indexEntry.searchText).not.toContain("auth header bearer");
     expect(indexedText).not.toMatch(forbiddenSearchTextPattern);
+    expect(indexEntry.forbiddenFields).toEqual(expect.arrayContaining(["token", "credential", "SQLite row"]));
   });
 });
