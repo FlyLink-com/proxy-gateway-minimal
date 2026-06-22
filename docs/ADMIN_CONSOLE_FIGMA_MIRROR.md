@@ -230,9 +230,12 @@ page-local rewrites:
 - `PrivilegedGate` is now a first-class primitive for the shell production
   action guard; it does not add production authority or backend write behavior.
 
-`PR #355` should stay Draft until the linked Linear review gates for the parity
-matrix, `GCC-119` implementation alignment, and `GCC-120` breakpoint/state
-evidence are accepted.
+`PR #355` merged after the linked Linear review gates for the parity matrix,
+`GCC-119` implementation alignment, and `GCC-120` breakpoint/state evidence
+were accepted. Treat this file as the merged Admin Figma mirror baseline, not
+as an open Draft gate. Follow-on PRs #356, #357, and #358 extended the same
+baseline with Navigation Library safe indexing, workspace layout presets, and
+the Admin capability boundary matrix.
 
 ## Visual QA Evidence Axes
 
