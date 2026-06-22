@@ -318,11 +318,17 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("overflow-y: auto");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("overscroll-behavior: contain");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("scrollbar-gutter: stable");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-size-preset=\"compact\"]")).toContain("min-height: var(--admin-plugin-small-height)");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-size-preset=\"standard\"]")).toContain("min-height: var(--admin-plugin-medium-height)");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-size-preset=\"wide\"]")).toContain("grid-column: span 2");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-size-preset=\"full\"]")).toContain("grid-column: 1 / -1");
     expect(selectorBlock(".admin-blueprint-module-panel-head")).toContain("display: flex");
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("display: inline-grid");
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("width: var(--admin-touch-target-min)");
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("height: var(--admin-touch-target-min)");
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger:hover")).toContain("var(--workbench-category-bg");
+    expect(selectorBlock(".admin-blueprint-panel-preset-controls")).toContain("display: inline-flex");
+    expect(selectorBlock(".admin-blueprint-panel-preset-button[aria-pressed=\"true\"]")).toContain("background: var(--workbench-category-bg");
     expect(selectorBlock(".admin-blueprint-panel-field-count")).toContain("display: inline-grid");
     expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("background: transparent");
     expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("border: 0");

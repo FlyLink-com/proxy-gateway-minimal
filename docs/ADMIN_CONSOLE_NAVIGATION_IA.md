@@ -110,6 +110,35 @@ module registry. `GCC-79` must consume `resultType`, `capabilities`,
 `productionImpact`, and `forbiddenFields` when defining capability and
 permission boundaries.
 
+## Workspace Layout Preset Contract
+
+Workspace modules use a browser-console layout preset model instead of
+desktop-OS freeform drag or edge resize behavior. The local client state is a
+safe UI preference record:
+
+| Field | Contract |
+| --- | --- |
+| `workspaceId` | Owning Admin page route. |
+| `appId` | Safe manifest app id for the module. |
+| `moduleId` | Page-local module nav id. |
+| `sizePreset` | `compact`, `standard`, `wide`, `full`, or `hidden`. |
+| `visible` | Hidden modules are removed from the canvas. |
+| `pinned` | Reserved local preference flag; not a permission or production gate. |
+| `order` | Stable page-local ordering hint. |
+| `updatedAt` | Client preference update marker, not operational evidence. |
+
+The current implementation stores this state only in browser local storage and
+does not create a server schema, production database index, realtime sync
+channel, or cross-user preference model. `hidden` is represented both as
+`visible: false` and `sizePreset: hidden`; restoring a hidden module from
+Navigation Library returns it to `standard`.
+
+Panel controls live in the module header/floating header affordance. They must
+offer preset changes and hide behavior without reintroducing an edit workspace
+switch, module dock, drag handle, free x/y coordinates, arbitrary width/height
+fields, or resize handles. Narrow screens collapse through the existing
+responsive single-column projection.
+
 ## Current Wave Boundary
 
 The current GCC-109/GCC-103 wave keeps the active top-level navigation sparse.

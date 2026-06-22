@@ -111,15 +111,19 @@ describe("admin ui primitives", () => {
 
   test("renders fixed panel frame chrome with status and hide control", () => {
     const onHide = vi.fn();
+    const onSizePresetChange = vi.fn();
 
     render(
       <PanelFrame
         ariaLabel="Monitoring container contract"
+        allowedSizePresets={["compact", "standard", "wide", "full"]}
         category="monitoring"
         className="custom-panel"
         containerLabel="Overview metric widget set"
         fieldLabels={["Platform health label", "Risk counter"]}
         onHide={onHide}
+        onSizePresetChange={onSizePresetChange}
+        sizePreset="standard"
         title="Health Summary"
         ownerMode="preview"
       >
@@ -137,15 +141,24 @@ describe("admin ui primitives", () => {
     expect(panel.getAttribute("data-workbench-category")).toBe("monitoring");
     expect(panel.getAttribute("data-density")).toBe("normal");
     expect(panel.getAttribute("data-size")).toBeNull();
+    expect(panel.getAttribute("data-size-preset")).toBe("standard");
     expect(panel.getAttribute("data-height")).toBeNull();
     expect(screen.queryByLabelText("Health Summary plugin display controls")).toBeNull();
     expect(screen.queryByRole("button", { name: "Health Summary Large plugin display" })).toBeNull();
+    expect(screen.getByLabelText("Health Summary layout preset controls")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Health Summary compact layout" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Health Summary standard layout" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "Health Summary wide layout" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Health Summary full layout" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Health Summary hide module" })).not.toBeNull();
     expect(screen.getByLabelText("2 primary fields")).not.toBeNull();
     expect(screen.queryByText("Platform health label")).toBeNull();
     expect(screen.queryByText("Risk counter")).toBeNull();
     expect(screen.getByText("Preview")).not.toBeNull();
     expect(screen.getByText("Panel content")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Health Summary wide layout" }));
+    expect(onSizePresetChange).toHaveBeenCalledWith("wide");
 
     fireEvent.click(screen.getByRole("button", { name: "Health Summary hide module" }));
     expect(onHide).toHaveBeenCalled();

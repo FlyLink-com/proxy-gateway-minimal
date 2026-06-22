@@ -7,7 +7,7 @@ import { overviewBlueprint } from "../pages/dashboard-page";
 describe("admin UI projection", () => {
   test("projects full page blueprints into light panel render models", () => {
     const blueprint = overviewBlueprint();
-    const defaultLayout = createDefaultModuleLayout(blueprint.modules);
+    const defaultLayout = createDefaultModuleLayout(blueprint.page, blueprint.modules);
     const panels = projectBlueprintPanelViewModels({
       blueprint,
       defaultModuleLayout: defaultLayout,
@@ -32,6 +32,7 @@ describe("admin UI projection", () => {
       ],
       navId: "health-summary",
       ownerMode: "preview",
+      sizePreset: "standard",
       targetId: "dashboard-health-summary",
       title: "Health Summary",
       uiSurface: "operations-health"
@@ -47,6 +48,7 @@ describe("admin UI projection", () => {
       "fieldLabels",
       "navId",
       "ownerMode",
+      "sizePreset",
       "targetId",
       "title",
       "uiSurface"
@@ -64,13 +66,14 @@ describe("admin UI projection", () => {
 
   test("omits hidden modules while preserving restored panel identity", () => {
     const blueprint = overviewBlueprint();
-    const defaultLayout = createDefaultModuleLayout(blueprint.modules);
+    const defaultLayout = createDefaultModuleLayout(blueprint.page, blueprint.modules);
     const panels = projectBlueprintPanelViewModels({
       blueprint,
       defaultModuleLayout: defaultLayout,
       moduleLayout: {
         ...defaultLayout,
         "risk-queue": {
+          ...defaultLayout["risk-queue"],
           visible: false
         }
       },
@@ -89,7 +92,7 @@ describe("admin UI projection", () => {
 
   test("keeps dashboard projection in operator chrome without fixture preview rows", () => {
     const blueprint = overviewBlueprint();
-    const defaultLayout = createDefaultModuleLayout(blueprint.modules);
+    const defaultLayout = createDefaultModuleLayout(blueprint.page, blueprint.modules);
     const panels = projectBlueprintPanelViewModels({
       blueprint,
       defaultModuleLayout: defaultLayout,
@@ -101,5 +104,28 @@ describe("admin UI projection", () => {
     expect(panels.map((panel) => panel.chrome)).toEqual(["operator", "operator", "operator"]);
     expect(panels.some((panel) => panel.fixturePreview)).toBe(false);
     expect(JSON.stringify(panels)).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_/i);
+  });
+
+  test("projects module size presets without reintroducing freeform resize coordinates", () => {
+    const blueprint = overviewBlueprint();
+    const defaultLayout = createDefaultModuleLayout(blueprint.page, blueprint.modules);
+    const panels = projectBlueprintPanelViewModels({
+      blueprint,
+      defaultModuleLayout: defaultLayout,
+      moduleLayout: {
+        ...defaultLayout,
+        "risk-queue": {
+          ...defaultLayout["risk-queue"],
+          sizePreset: "wide"
+        }
+      },
+      subNavigation: pageSubNavigation[blueprint.page]
+    });
+
+    expect(panels.find((panel) => panel.navId === "risk-queue")).toMatchObject({
+      navId: "risk-queue",
+      sizePreset: "wide"
+    });
+    expect(JSON.stringify(panels)).not.toMatch(/"x"|"y"|width|height|resizeHandle/i);
   });
 });

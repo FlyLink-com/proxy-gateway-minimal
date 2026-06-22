@@ -1,7 +1,18 @@
 import { type AdminPage } from "./navigation";
 
+export const WORKSPACE_MODULE_VISIBLE_SIZE_PRESETS = ["compact", "standard", "wide", "full"] as const;
+export type WorkspaceModuleVisibleSizePreset = typeof WORKSPACE_MODULE_VISIBLE_SIZE_PRESETS[number];
+export type WorkspaceModuleSizePreset = WorkspaceModuleVisibleSizePreset | "hidden";
+
 export type ModuleLayoutState = {
+  appId: string;
+  moduleId: string;
+  order: number;
+  pinned: boolean;
+  sizePreset: WorkspaceModuleSizePreset;
+  updatedAt: string;
   visible: boolean;
+  workspaceId: AdminPage;
 };
 
 export type ModuleLayoutMap = Record<string, ModuleLayoutState>;
@@ -11,6 +22,7 @@ export type WorkspaceLayoutSnapshot = {
 };
 
 type ModuleWithNavId = {
+  appId?: string;
   navId: string;
 };
 
@@ -20,17 +32,29 @@ type StoredPageLayout = {
 };
 
 export const WORKSPACE_LAYOUT_STORAGE_KEY = "globalcircle-admin-workspace-layout-v1";
-export const WORKSPACE_LAYOUT_VERSION = 4;
+export const WORKSPACE_LAYOUT_VERSION = 5;
+export const WORKSPACE_LAYOUT_DEFAULT_UPDATED_AT = "system-default";
 
-export function defaultModuleLayoutState(): ModuleLayoutState {
+export function defaultModuleLayoutState(
+  workspaceId: AdminPage,
+  module: ModuleWithNavId,
+  order = 0
+): ModuleLayoutState {
   return {
-    visible: true
+    appId: module.appId ?? `plugin.${module.navId}`,
+    moduleId: module.navId,
+    order,
+    pinned: false,
+    sizePreset: "standard",
+    updatedAt: WORKSPACE_LAYOUT_DEFAULT_UPDATED_AT,
+    visible: true,
+    workspaceId
   };
 }
 
-export function createDefaultModuleLayout(modules: ModuleWithNavId[]): ModuleLayoutMap {
+export function createDefaultModuleLayout(workspaceId: AdminPage, modules: ModuleWithNavId[]): ModuleLayoutMap {
   return Object.fromEntries(
-    modules.map((module) => [module.navId, defaultModuleLayoutState()])
+    modules.map((module, order) => [module.navId, defaultModuleLayoutState(workspaceId, module, order)])
   );
 }
 
@@ -47,7 +71,7 @@ export function loadWorkspaceLayout(
   }
 
   return {
-    moduleLayout: mergeStoredModuleLayout(storedPageLayout.moduleLayout, modules, defaultLayout)
+    moduleLayout: mergeStoredModuleLayout(page, storedPageLayout.moduleLayout, modules, defaultLayout)
   };
 }
 
@@ -69,24 +93,51 @@ export function isWorkspaceLayoutForModules(snapshot: WorkspaceLayoutSnapshot, m
 }
 
 function mergeStoredModuleLayout(
+  workspaceId: AdminPage,
   storedLayout: unknown,
   modules: ModuleWithNavId[],
   defaultLayout: ModuleLayoutMap
 ): ModuleLayoutMap {
   const storedLayoutMap = isPlainObject(storedLayout) ? storedLayout : {};
-  return Object.fromEntries(modules.map((module) => {
-    const baseLayout = defaultLayout[module.navId] ?? defaultModuleLayoutState();
+  return Object.fromEntries(modules.map((module, order) => {
+    const baseLayout = defaultLayout[module.navId] ?? defaultModuleLayoutState(workspaceId, module, order);
     const storedState = storedLayoutMap[module.navId];
     if (!isPlainObject(storedState)) {
       return [module.navId, baseLayout];
     }
+    const storedVisible = typeof storedState.visible === "boolean" ? storedState.visible : baseLayout.visible;
+    const storedSizePreset = normalizeStoredSizePreset(storedState.sizePreset, baseLayout.sizePreset);
+    const visible = storedSizePreset === "hidden" ? false : storedVisible;
+    const sizePreset = visible ? (storedSizePreset === "hidden" ? "standard" : storedSizePreset) : "hidden";
+
     return [
       module.navId,
       {
-        visible: typeof storedState.visible === "boolean" ? storedState.visible : baseLayout.visible
+        ...baseLayout,
+        order: isSafeOrder(storedState.order) ? storedState.order : baseLayout.order,
+        pinned: typeof storedState.pinned === "boolean" ? storedState.pinned : baseLayout.pinned,
+        sizePreset,
+        updatedAt: typeof storedState.updatedAt === "string" && storedState.updatedAt.trim()
+          ? storedState.updatedAt
+          : baseLayout.updatedAt,
+        visible
       }
     ];
   }));
+}
+
+function normalizeStoredSizePreset(value: unknown, fallback: WorkspaceModuleSizePreset): WorkspaceModuleSizePreset {
+  if (value === "hidden") {
+    return "hidden";
+  }
+  if (WORKSPACE_MODULE_VISIBLE_SIZE_PRESETS.includes(value as WorkspaceModuleVisibleSizePreset)) {
+    return value as WorkspaceModuleVisibleSizePreset;
+  }
+  return fallback;
+}
+
+function isSafeOrder(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value < 1000;
 }
 
 function readWorkspaceLayoutStore(): Record<string, unknown> {
