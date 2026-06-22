@@ -57,6 +57,8 @@ describe("subscription usage monitor page", () => {
     expect(screen.queryByText("Latest usage · observed age")).toBeNull();
     expect(screen.queryByText("Evidence owner for usage collection trust, channel coverage, receipts, collectors, and collection anomalies.")).toBeNull();
     expect(screen.getByRole("heading", { name: "Collection Anomalies" })).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "Collection Anomalies pagination" })).not.toBeNull();
+    expect(screen.getByText("1-6 of 6 items")).not.toBeNull();
     expect(screen.getAllByText("Receipt / collection pending").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole("heading", { name: "Channel Coverage" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Usage Ledger" })).toBeNull();
@@ -74,11 +76,14 @@ describe("subscription usage monitor page", () => {
     expect(screen.queryByRole("button", { name: "Collection Freshness hide module" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Usage Ledger hide module" })).toBeNull();
     expect(screen.getByLabelText("Channel Coverage static table")).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "Channel Coverage pagination" })).not.toBeNull();
+    expect(screen.getByText("1-3 of 3 rows")).not.toBeNull();
     expect(screen.getAllByText("channel_safe_sgp_hy2").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Degraded")).not.toBeNull();
     expect(screen.getByText("51%")).not.toBeNull();
     expect(screen.getAllByText("Pending receipt").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText("Route Latency static table")).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "Route Latency pagination" })).not.toBeNull();
     expect(screen.getByText("route_safe_sgp_backup")).not.toBeNull();
     expect(screen.getByText("146 ms")).not.toBeNull();
     expect(screen.getAllByText("Stale").length).toBeGreaterThanOrEqual(1);
@@ -88,10 +93,12 @@ describe("subscription usage monitor page", () => {
     expect(screen.getByLabelText("Receipts and Collectors static operator content")).not.toBeNull();
     expect(screen.getByText("Receipt gaps stay visible without exposing protected runtime material.")).not.toBeNull();
     expect(screen.getByLabelText("Agent Status static table")).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "Agent Status pagination" })).not.toBeNull();
     expect(screen.getByText("agent_safe_sgp_02")).not.toBeNull();
     expect(screen.getAllByText("4m ago").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText("Inspection Runs static table")).not.toBeNull();
     expect(screen.getByText("route-latency-sample")).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "Inspection Runs pagination" })).not.toBeNull();
     expect(screen.getAllByText("route_safe_tuic_recovery").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Collectors · availability")).toBeNull();
 
@@ -102,6 +109,8 @@ describe("subscription usage monitor page", () => {
     expect(screen.getByRole("button", { name: "Usage Ledger hide module" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Channel Coverage hide module" })).toBeNull();
     expect(screen.getByLabelText("Usage Ledger static table")).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "Usage Ledger pagination" })).not.toBeNull();
+    expect(screen.getByText("1-6 of 6 rows")).not.toBeNull();
     expect(screen.getAllByText("Collected 0B").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Not collected").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Traffic · upload / download / total")).toBeNull();

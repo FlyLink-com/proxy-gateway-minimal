@@ -108,6 +108,9 @@ describe("admin visual QA contract", () => {
       } else {
         expect(panel.getAttribute("data-pagination-standard-node-id")).toBe("157:2");
       }
+      if (panel.getAttribute("data-containment-strategy") === "pagination") {
+        expect(panel.querySelector("[data-ui-surface='data-card-pagination']")).not.toBeNull();
+      }
       expect(panel.getAttribute("aria-label")).toMatch(/panel/i);
       if (page === "dashboard") {
         expect(panel.getAttribute("data-chrome")).toBe("operator");

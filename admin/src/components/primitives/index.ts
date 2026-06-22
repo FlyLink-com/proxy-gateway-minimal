@@ -1,4 +1,5 @@
 export { DataTable, type DataTableColumn } from "./data-table";
+export { DataCardPagination, type DataCardPaginationProps } from "./data-card-pagination";
 export { DataSourceBadge, type DataSourceBadgeState } from "./data-source-badge";
 export { EmptyState } from "./empty-state";
 export {

@@ -3,6 +3,7 @@ import {
   type BlueprintPage
 } from "./admin-console-page-frame";
 import {
+  DataCardPagination,
   DataTable,
   ObjectTimeline,
   QuotaMeter,
@@ -242,6 +243,11 @@ function AccountDirectoryContent() {
           { header: "Risk", key: "risk", render: (row) => row.risk }
         ]}
         getRowKey={(row) => row.accountRef}
+        pagination={{
+          ariaLabel: "Account Directory pagination",
+          itemLabel: "accounts",
+          pageSize: 3
+        }}
         rows={accountRows}
       />
     </div>
@@ -282,6 +288,11 @@ function ResourceOrdersContent() {
           }
         ]}
         getRowKey={(row) => row.orderRef}
+        pagination={{
+          ariaLabel: "Resources and Orders pagination",
+          itemLabel: "orders",
+          pageSize: 3
+        }}
         rows={resourceOrderRows}
       />
       <div className="admin-static-status-row" aria-label="Resources and Orders safety states">
@@ -365,6 +376,12 @@ function HistoryEventsContent() {
           }
         ]}
         title="Safe computed history"
+      />
+      <DataCardPagination
+        ariaLabel="History and Events pagination"
+        itemLabel="events"
+        pageSize={2}
+        totalItems={2}
       />
       <div className="admin-static-status-row" aria-label="History and Events backend states">
         <StatusChip label="Restricted backend locked" tone="neutral" />

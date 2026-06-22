@@ -2,6 +2,7 @@ import { Activity, AlertTriangle, Clock3, RadioTower } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { type AdminPage } from "../app/navigation";
 import {
+  DataCardPagination,
   MetricCard,
   type MetricTone,
   StatusChip
@@ -273,6 +274,12 @@ function OverviewRiskCandidates() {
           </article>
         ))}
       </div>
+      <DataCardPagination
+        ariaLabel="Risk Queue pagination"
+        itemLabel="items"
+        pageSize={4}
+        totalItems={overviewRiskItems.length}
+      />
     </section>
   );
 }

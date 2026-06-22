@@ -3,6 +3,7 @@ import {
   type BlueprintPage
 } from "./admin-console-page-frame";
 import {
+  DataCardPagination,
   DataTable,
   MetricCard,
   RiskQueue,
@@ -433,6 +434,11 @@ function ChannelCoverageContent() {
           { header: "Last measured", key: "lastMeasured", render: (row) => row.lastMeasured }
         ]}
         getRowKey={(row) => row.channelRef}
+        pagination={{
+          ariaLabel: "Channel Coverage pagination",
+          itemLabel: "rows",
+          pageSize: 3
+        }}
         rows={channelCoverageRows}
       />
       <DataTable
@@ -456,6 +462,11 @@ function ChannelCoverageContent() {
           }
         ]}
         getRowKey={(row) => row.routeRef}
+        pagination={{
+          ariaLabel: "Route Latency pagination",
+          itemLabel: "routes",
+          pageSize: 3
+        }}
         rows={routeLatencyRows}
       />
     </div>
@@ -610,6 +621,11 @@ function UsageLedgerContent() {
           }
         ]}
         getRowKey={(row) => `${row.accountRef}:${row.orderRef}:${row.channelRef}`}
+        pagination={{
+          ariaLabel: "Usage Ledger pagination",
+          itemLabel: "rows",
+          pageSize: 6
+        }}
         rows={usageLedgerRows}
       />
     </div>
@@ -778,7 +794,17 @@ function CollectionAnomaliesContent() {
     <RiskQueue
       countLabel="Collection anomaly candidates"
       description="Classifies evidence only; quota and lifecycle decisions remain on Accounts & Resources."
-      footer={<span className="panel-link panel-link-disabled">Durable case close workflow locked</span>}
+      footer={
+        <>
+          <span className="panel-link panel-link-disabled">Durable case close workflow locked</span>
+          <DataCardPagination
+            ariaLabel="Collection Anomalies pagination"
+            itemLabel="items"
+            pageSize={6}
+            totalItems={anomalyItems.length}
+          />
+        </>
+      }
       items={anomalyItems}
       title="Anomaly candidates"
     />
@@ -846,6 +872,11 @@ function ReceiptsCollectorsContent() {
           }
         ]}
         getRowKey={(row) => row.agentRef}
+        pagination={{
+          ariaLabel: "Agent Status pagination",
+          itemLabel: "agents",
+          pageSize: 3
+        }}
         rows={agentStatusRows}
       />
       <DataTable
@@ -867,6 +898,11 @@ function ReceiptsCollectorsContent() {
           { header: "Owner object", key: "owner", render: (row) => <SafeRef value={row.ownerObject} /> }
         ]}
         getRowKey={(row) => `${row.checkName}:${row.ownerObject}`}
+        pagination={{
+          ariaLabel: "Inspection Runs pagination",
+          itemLabel: "checks",
+          pageSize: 3
+        }}
         rows={inspectionRunRows}
       />
     </div>

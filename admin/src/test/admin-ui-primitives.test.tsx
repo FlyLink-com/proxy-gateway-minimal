@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
   DataTable,
+  DataCardPagination,
   DataSourceBadge,
   EmptyState,
   MetricCard,
@@ -166,6 +167,34 @@ describe("admin ui primitives", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Health Summary hide module" }));
     expect(onHide).toHaveBeenCalled();
+  });
+
+  test("renders data card pagination as a bounded card footer control", () => {
+    const onPageChange = vi.fn();
+
+    render(
+      <DataCardPagination
+        ariaLabel="Usage Ledger pagination"
+        itemLabel="rows"
+        onPageChange={onPageChange}
+        page={2}
+        pageSize={4}
+        totalItems={9}
+      />
+    );
+
+    const pagination = screen.getByRole("navigation", { name: "Usage Ledger pagination" });
+    expect(pagination.getAttribute("data-ui-surface")).toBe("data-card-pagination");
+    expect(pagination.getAttribute("data-figma-component")).toBe("DataCardPagination");
+    expect(pagination.getAttribute("data-pagination-standard-node-id")).toBe("157:2");
+    expect(within(pagination).getByText("5-8 of 9 rows")).not.toBeNull();
+    expect(within(pagination).getByText("Page 2 of 3")).not.toBeNull();
+
+    fireEvent.click(within(pagination).getByRole("button", { name: "Previous Usage Ledger page" }));
+    fireEvent.click(within(pagination).getByRole("button", { name: "Next Usage Ledger page" }));
+
+    expect(onPageChange).toHaveBeenNthCalledWith(1, 1);
+    expect(onPageChange).toHaveBeenNthCalledWith(2, 3);
   });
 
   test("renders privileged gate as a reusable shell safety surface", () => {
@@ -377,6 +406,44 @@ describe("admin ui primitives", () => {
     expect(screen.getByRole("cell", { name: "user_001" })).not.toBeNull();
     expect(screen.getByRole("cell", { name: "order_2048" })).not.toBeNull();
     expect(screen.getAllByRole("row")).toHaveLength(2);
+  });
+
+  test("renders data tables with card-contained pagination rows", () => {
+    render(
+      <DataTable
+        ariaLabel="Usage Ledger static table"
+        columns={[
+          { key: "account", header: "Account", render: (row) => <SafeRef value={row.account} /> },
+          { key: "order", header: "Order", render: (row) => <SafeRef value={row.order} /> }
+        ]}
+        getRowKey={(row) => row.order}
+        pagination={{
+          ariaLabel: "Usage Ledger pagination",
+          itemLabel: "rows",
+          pageSize: 2
+        }}
+        rows={[
+          { account: "acct_safe_001", order: "ord_safe_001" },
+          { account: "acct_safe_002", order: "ord_safe_002" },
+          { account: "acct_safe_003", order: "ord_safe_003" }
+        ]}
+      />
+    );
+
+    expect(screen.getByRole("table", { name: "Usage Ledger static table" })).not.toBeNull();
+    expect(screen.getAllByRole("row")).toHaveLength(3);
+    expect(screen.getByText("acct_safe_001")).not.toBeNull();
+    expect(screen.getByText("acct_safe_002")).not.toBeNull();
+    expect(screen.queryByText("acct_safe_003")).toBeNull();
+    expect(screen.getByRole("navigation", { name: "Usage Ledger pagination" })).not.toBeNull();
+    expect(screen.getByText("1-2 of 3 rows")).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Next Usage Ledger page" }));
+
+    expect(screen.queryByText("acct_safe_001")).toBeNull();
+    expect(screen.queryByText("acct_safe_002")).toBeNull();
+    expect(screen.getByText("acct_safe_003")).not.toBeNull();
+    expect(screen.getByText("3-3 of 3 rows")).not.toBeNull();
   });
 
   test("renders data table state rows without dropping headers", () => {
