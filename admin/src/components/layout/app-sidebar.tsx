@@ -1,10 +1,8 @@
 import {
   Bell,
-  ChevronUp,
   ExternalLink,
   Lock,
   PanelTopOpen,
-  ShieldCheck,
 } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode, type ToggleEvent } from "react";
 import {
@@ -16,7 +14,7 @@ import {
 } from "../../app/admin-app-manifest";
 import { type AdminPage } from "../../app/navigation";
 import { cn } from "../../lib/utils";
-import { NavigationLibrary, WorkspaceSidebar } from "../primitives";
+import { NavigationLibrary, PrivilegedGate, WorkspaceSidebar } from "../primitives";
 
 type AppSidebarProps = {
   activePage: AdminPage;
@@ -377,17 +375,11 @@ export function AppSidebar({
       pinnedApps={pinnedApps}
       plannedRoutes={plannedSidebarRoutes}
       safetyGate={(
-        <details className="sidebar-safety-footer">
-          <summary className="sidebar-safety-summary" aria-label="Production action guard">
-            <ShieldCheck aria-hidden="true" />
-            <strong>Risk A gated</strong>
-            <span>No token, URL, credential, runtime config, or raw customer data in Admin UI fixtures.</span>
-            <ChevronUp aria-hidden="true" />
-          </summary>
-          <div className="sidebar-safety-detail">
-            Production actions require an approved runbook.
-          </div>
-        </details>
+        <PrivilegedGate
+          description="No token, URL, credential, runtime config, or raw customer data in Admin UI fixtures."
+          detail="Production actions require an approved runbook."
+          title="Risk A gated"
+        />
       )}
     />
   );

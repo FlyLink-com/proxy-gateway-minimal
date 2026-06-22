@@ -58,6 +58,7 @@ export function WorkspaceSidebar({
       className={cn("app-sidebar workspace-sidebar", className)}
       aria-label={ariaLabel}
       data-density={ADMIN_UI_CONTRACT.appShell.density}
+      data-figma-component="SidebarNavigation"
       data-ui-contract={ADMIN_UI_CONTRACT.appShell.contractId}
       data-ui-surface="workspace-sidebar"
     >
@@ -121,6 +122,7 @@ export function NavigationLibrary({
     <details
       className="nav-planned-menu"
       data-density={ADMIN_UI_CONTRACT.appShell.density}
+      data-figma-component="SidebarNavigation"
       data-ui-contract={ADMIN_UI_CONTRACT.appShell.contractId}
       data-ui-surface="navigation-library"
       onToggle={onToggle}

@@ -193,6 +193,138 @@
   line-height: 1.45;
 }
 
+.admin-overview-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.admin-overview-section-card,
+.admin-overview-action-card {
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-panel);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow-panel);
+  min-width: 0;
+}
+
+.admin-overview-section-heading h3,
+.admin-overview-action-card strong {
+  margin: 0;
+  color: var(--admin-text);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.admin-overview-section-heading p,
+.admin-overview-action-card span:last-child {
+  margin: 0;
+  color: var(--admin-text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.admin-overview-section-card {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  grid-auto-rows: max-content;
+  min-height: 520px;
+  padding: 18px;
+}
+
+.admin-overview-section-heading {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+}
+
+.admin-overview-section-heading h3 {
+  font-size: 17px;
+}
+
+.admin-overview-pill-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-overview-table-list {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+.admin-overview-table-row {
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-control);
+  background: var(--admin-surface);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 0.5fr) minmax(132px, 0.7fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 36px;
+  padding: 9px 10px;
+}
+
+.admin-overview-table-row span,
+.admin-overview-table-row strong {
+  min-width: 0;
+  color: var(--admin-text-soft);
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-overview-table-row strong {
+  color: var(--admin-text);
+  font-weight: 700;
+}
+
+.admin-overview-action-list {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  min-width: 0;
+}
+
+.admin-overview-action-card {
+  appearance: none;
+  color: inherit;
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  min-height: 116px;
+  padding: 14px;
+  text-align: left;
+  text-decoration: none;
+}
+
+button.admin-overview-action-card {
+  cursor: pointer;
+  transition:
+    border-color var(--admin-ease),
+    background var(--admin-ease),
+    box-shadow var(--admin-ease);
+}
+
+button.admin-overview-action-card:hover,
+button.admin-overview-action-card:focus-visible {
+  border-color: var(--admin-info-border);
+  background: var(--admin-hover-surface);
+  box-shadow: var(--admin-shadow-hover);
+}
+
+.admin-overview-action-card-muted {
+  background: var(--admin-surface-muted);
+}
+
 .page-anchor-target {
   height: 0;
   overflow: hidden;
@@ -612,6 +744,44 @@
 .admin-blueprint-module-panel:hover {
   border-color: var(--workbench-category-border, var(--admin-info-border));
   background: color-mix(in srgb, var(--workbench-category-bg, #ffffff) 16%, #ffffff);
+}
+
+.admin-blueprint-module-panel[data-chrome="operator"] {
+  overflow: visible;
+  overflow-y: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  contain: layout;
+  gap: 0;
+  max-block-size: none;
+  padding: 0;
+}
+
+.admin-blueprint-module-panel[data-chrome="operator"]::before {
+  display: none;
+}
+
+.admin-blueprint-module-panel[data-chrome="operator"]:hover {
+  border-color: transparent;
+  background: transparent;
+}
+
+.admin-blueprint-module-panel[data-chrome="operator"] .admin-blueprint-panel-tool-trigger-floating {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 8px;
+  border-color: rgba(148, 163, 184, 0.26);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--admin-shadow-panel);
+  opacity: 0;
+}
+
+.admin-blueprint-module-panel[data-chrome="operator"]:hover .admin-blueprint-panel-tool-trigger-floating,
+.admin-blueprint-module-panel[data-chrome="operator"]:focus-within .admin-blueprint-panel-tool-trigger-floating {
+  opacity: 1;
 }
 
 .admin-blueprint-module-panel-head {
@@ -1358,15 +1528,21 @@
   gap: 4px;
 }
 
+.state-feedback {
+  min-width: 0;
+}
+
 .new-console-state-cell strong {
   color: var(--admin-text);
   font-size: 13px;
 }
 
-.new-console-state-cell small {
+.new-console-state-cell small,
+.new-console-state-feedback p {
   color: var(--admin-muted);
   font-size: 12px;
   line-height: 1.45;
+  margin: 0;
 }
 
 .new-console-state-loading {
@@ -1382,6 +1558,11 @@
 .new-console-state-empty {
   border-style: dashed;
   background: var(--admin-surface-muted);
+}
+
+.new-console-state-stale {
+  border-color: var(--admin-warning-border);
+  background: var(--admin-warning-bg);
 }
 
 .new-console-channel-table .new-console-row {

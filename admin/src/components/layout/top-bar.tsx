@@ -20,7 +20,7 @@ export function TopBar({ activePage, search, onSearchChange }: TopBarProps) {
   const pageApp = getWorkspacePageApp(activePage);
   const PageIcon = pageApp?.icon;
   return (
-    <header className="top-bar">
+    <header className="top-bar" data-figma-component="TopBar" data-ui-surface="top-bar">
       <div className="top-bar-heading">
         {PageIcon ? (
           <span className={cn("top-bar-app-icon nav-app-icon", pageApp?.tone)} aria-hidden="true">

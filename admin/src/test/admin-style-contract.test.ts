@@ -289,6 +289,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".top-menu-popover")).toContain("var(--admin-shadow-popover)");
     expect(selectorBlock(".new-console-workbench")).toContain("var(--admin-workbench-gap)");
     expect(selectorBlock(".new-console-row")).toContain("var(--admin-border)");
+    expect(selectorBlock(".state-feedback")).toContain("min-width: 0");
     expect(selectorBlock(".operator-account-summary")).toContain("var(--admin-radius-pill)");
     expect(selectorBlock(".operator-account-summary")).toContain("min-height: var(--admin-touch-target-min)");
     expect(selectorBlock(".operator-account-avatar")).toContain("background: #0891b2");
@@ -323,6 +324,10 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("height: var(--admin-touch-target-min)");
     expect(selectorBlock(".admin-blueprint-panel-tool-trigger:hover")).toContain("var(--workbench-category-bg");
     expect(selectorBlock(".admin-blueprint-panel-field-count")).toContain("display: inline-grid");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("background: transparent");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("border: 0");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("max-block-size: none");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"] .admin-blueprint-panel-tool-trigger-floating")).toContain("position: absolute");
     expect(styles).not.toContain(".admin-blueprint-card-menu");
     expect(styles).not.toContain(".admin-blueprint-card-tool-trigger");
     expect(styles).not.toContain(".admin-blueprint-module-card");
@@ -348,6 +353,12 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-fixture-preview")).toContain("display: grid");
     expect(selectorBlock(".admin-fixture-preview-row")).toContain("grid-template-columns: minmax(120px, 0.34fr) minmax(0, 1fr)");
     expect(selectorBlock(".admin-fixture-preview-banner")).toContain("var(--admin-info-bg)");
+    expect(selectorBlock(".admin-overview-metric-grid")).toContain("repeat(4, minmax(0, 1fr))");
+    expect(styles).not.toContain(".admin-overview-metric-card");
+    expect(selectorBlock(".admin-overview-section-card")).toContain("min-height: 520px");
+    expect(selectorBlock(".admin-overview-section-card")).toContain("align-content: start");
+    expect(styles).toMatch(/^\.admin-overview-action-card\s*\{[\s\S]*text-align: left;/m);
+    expect(selectorBlock(".admin-overview-table-row")).toContain("grid-template-columns: minmax(0, 1fr) minmax(96px, 0.5fr) minmax(132px, 0.7fr)");
     expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("border: 1px dashed");
     expect(styles).not.toContain(".admin-blueprint-card-switches");
     expect(styles).not.toContain(".admin-blueprint-module-dock");
@@ -499,6 +510,8 @@ describe("admin style token contract", () => {
   test("keeps dense New Admin tables and safe refs mobile-safe", () => {
     expect(selectorBlock(".new-console-table")).toContain("overflow-x: auto");
     expect(selectorBlock(".new-console-row")).toContain("min-width: min(100%, 720px)");
+    expect(selectorBlock(".new-console-state-stale")).toContain("var(--admin-warning-bg)");
+    expect(selectorBlock(".new-console-state-cell small,\n.new-console-state-feedback p")).toContain("var(--admin-muted)");
     expect(selectorBlock(".mono-ref")).toContain("max-width: 100%");
     expect(selectorBlock(".mono-ref")).toContain("overflow-wrap: anywhere");
     expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.new-console-row-head\s*\{\s*display: none;/m);

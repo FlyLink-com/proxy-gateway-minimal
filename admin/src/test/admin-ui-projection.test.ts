@@ -20,6 +20,7 @@ describe("admin UI projection", () => {
       actions: blueprint.modules[0].actions,
       ariaLabel: "Monitoring panel",
       category: "monitoring",
+      chrome: "operator",
       className: "",
       content: blueprint.modules[0].content,
       containerLabel: "Overview metric widget set",
@@ -39,6 +40,7 @@ describe("admin UI projection", () => {
       "actions",
       "ariaLabel",
       "category",
+      "chrome",
       "className",
       "containerLabel",
       "content",
@@ -85,7 +87,7 @@ describe("admin UI projection", () => {
     ]);
   });
 
-  test("projects fixture preview payloads only when preview mode is enabled", () => {
+  test("keeps dashboard projection in operator chrome without fixture preview rows", () => {
     const blueprint = overviewBlueprint();
     const defaultLayout = createDefaultModuleLayout(blueprint.modules);
     const panels = projectBlueprintPanelViewModels({
@@ -96,13 +98,8 @@ describe("admin UI projection", () => {
       subNavigation: pageSubNavigation[blueprint.page]
     });
 
-    expect(panels[0].fixturePreview?.summary).toContain("Metric cards");
-    expect(panels[1].fixturePreview?.rows.map((row) => row.value)).toEqual([
-      "12 affected",
-      "6 affected",
-      "3 affected",
-      "Locked"
-    ]);
+    expect(panels.map((panel) => panel.chrome)).toEqual(["operator", "operator", "operator"]);
+    expect(panels.some((panel) => panel.fixturePreview)).toBe(false);
     expect(JSON.stringify(panels)).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_/i);
   });
 });

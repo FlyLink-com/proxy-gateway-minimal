@@ -1,18 +1,10 @@
-import { useEffect } from "react";
-import {
-  Activity,
-  Bell,
-  Gauge,
-  HeartPulse,
-  Route,
-  ShieldAlert
-} from "lucide-react";
+import { Activity, AlertTriangle, Clock3, RadioTower } from "lucide-react";
+import { useEffect, type ReactNode } from "react";
 import { type AdminPage } from "../app/navigation";
 import {
   MetricCard,
-  RiskQueue,
-  StatusChip,
-  type RiskQueueItem
+  type MetricTone,
+  StatusChip
 } from "../components/primitives";
 import {
   AdminConsolePageFrame,
@@ -46,7 +38,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
     ariaLabel: "Operations Overview page header",
     kicker: "Overview / Operations Overview",
     title: "Operations Overview",
-    description: "First-screen operator view for platform health, risk routing, and the next owner page.",
+    description: "First-screen operator view for platform health, computed risk routing, and next owner page. It summarizes; it does not own account, quota, channel, or receipt ledgers.",
     statusLabel: "Summary and routing",
     statusTone: "info",
     modules: [
@@ -127,7 +119,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           performanceBoundary: "No backend write path and no owner-page data fetch inside this widget.",
           interactionModel: "Open owner page or future gated workflow entry."
         },
-        content: <OverviewRouteCards />,
+        content: <OverviewRouteCards onNavigate={onNavigate} />,
         purpose: "Route operators to Accounts & Resources or Usage & Channels instead of repeating those collections here.",
         contentFields: [
           "Owner page · action route",
@@ -148,16 +140,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           "No production execution"
         ],
         nextStep: "Wire panel routes to section-level deep links after page modules are finalized.",
-        actions: (
-          <div className="admin-blueprint-action-row">
-            <button className="primary-button" type="button" onClick={() => onNavigate?.("portalRequests")}>
-              Open Accounts & Resources
-            </button>
-            <button className="ghost-button" type="button" onClick={() => onNavigate?.("usageMonitor")}>
-              Open Usage & Channels
-            </button>
-          </div>
-        )
+        actions: undefined
       }
     ]
   };
@@ -166,37 +149,37 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
 function OverviewHealthSummary() {
   return (
     <div className="admin-operator-content" aria-label="Operations Overview static health content">
-      <div className="ops-metric-grid">
-        <MetricCard
-          detail="Ready for review · no execution path"
-          icon={<HeartPulse aria-hidden="true" />}
-          label="Platform health"
+      <div className="admin-overview-metric-grid" aria-label="Operations Overview metric cards">
+        <OverviewMetricCard
+          body="Good · reviewable · latest source safe"
+          icon={<Activity aria-hidden="true" />}
+          title="Platform health"
           tone="success"
-          trend={{ values: [86, 88, 91, 90, 92, 94] }}
+          trend={[72, 74, 73, 76, 77, 79, 81]}
           value="Good"
         />
-        <MetricCard
-          detail="5 high · 9 medium · 4 low"
-          icon={<ShieldAlert aria-hidden="true" />}
-          label="Risk candidates"
+        <OverviewMetricCard
+          body="18 total · 5 high · routes only"
+          icon={<AlertTriangle aria-hidden="true" />}
+          title="Risk candidates"
           tone="danger"
-          trend={{ values: [8, 9, 12, 13, 16, 18] }}
+          trend={[6, 8, 7, 10, 12, 15, 18]}
           value="18"
         />
-        <MetricCard
-          detail="P95 collection age"
-          icon={<Activity aria-hidden="true" />}
-          label="Freshness"
+        <OverviewMetricCard
+          body="2m 14s · stale threshold visible"
+          icon={<Clock3 aria-hidden="true" />}
+          title="Freshness P95"
           tone="info"
-          trend={{ values: [4, 3, 3, 2, 2, 2] }}
+          trend={[180, 172, 160, 148, 140, 136, 134]}
           value="2m 14s"
         />
-        <MetricCard
-          detail="Measured channel coverage"
-          icon={<Gauge aria-hidden="true" />}
-          label="Channel coverage"
+        <OverviewMetricCard
+          body="98.6% · aggregate only"
+          icon={<RadioTower aria-hidden="true" />}
+          title="Channel coverage"
           tone="success"
-          trend={{ values: [92, 94, 96, 97, 98, 99] }}
+          trend={[96, 97, 97.4, 98, 98.2, 98.5, 98.6]}
           value="98.6%"
         />
       </div>
@@ -210,78 +193,111 @@ function OverviewHealthSummary() {
   );
 }
 
-const overviewRiskItems: RiskQueueItem[] = [
+function OverviewMetricCard({
+  body,
+  icon,
+  title,
+  tone,
+  trend,
+  value
+}: {
+  body: string;
+  icon: ReactNode;
+  title: string;
+  tone: MetricTone;
+  trend: number[];
+  value: string;
+}) {
+  return (
+    <MetricCard
+      detail={body}
+      icon={icon}
+      label={title}
+      tone={tone}
+      trend={{
+        ariaLabel: `${title} safe trend`,
+        values: trend
+      }}
+      value={value}
+    />
+  );
+}
+
+const overviewRiskItems = [
   {
     ref: "risk-over-limit",
     title: "Order traffic over limit",
-    severity: "critical",
-    severityLabel: "High",
-    objectType: "order",
-    objectRef: "ord_safe_2048",
-    reasonLabel: "Quota evidence"
+    count: "12 affected",
+    owner: "Accounts & Resources"
   },
   {
     ref: "risk-collection-delay",
     title: "Collection delay",
-    severity: "warning",
-    severityLabel: "Medium",
-    objectType: "collector",
-    objectRef: "collector_safe_sgp",
-    reasonLabel: "Stale usage"
+    count: "6 affected",
+    owner: "Usage & Channels"
   },
   {
     ref: "risk-receipt-missing",
     title: "Receipt missing",
-    severity: "critical",
-    severityLabel: "High",
-    objectType: "channel",
-    objectRef: "channel_safe_hy2",
-    reasonLabel: "Receipt gap"
+    count: "3 affected",
+    owner: "Usage & Channels"
   },
   {
     ref: "risk-case-locked",
-    title: "Durable case backend locked",
-    severity: "neutral",
-    severityLabel: "Locked",
-    objectType: "case",
-    objectRef: "case_backend_pending",
-    reasonLabel: "Future restricted workflow"
+    title: "Future durable case",
+    count: "Locked",
+    owner: "Audit & Cases"
   }
 ];
 
 function OverviewRiskCandidates() {
   return (
-    <RiskQueue
-      countLabel="Overview risk candidates"
-      description="Computed safe candidates route to the owning page; closure and approval workflows stay locked."
-      footer={<span className="panel-link panel-link-disabled">Restricted case workflow is not registered for normal operators</span>}
-      items={overviewRiskItems}
-      title="Review candidates"
-    />
+    <section className="admin-overview-section-card" aria-label="Risk Queue">
+      <div className="admin-overview-section-heading">
+        <h3>Risk Queue</h3>
+        <p>Computed review candidates. No case close, approval, or mutation action here.</p>
+      </div>
+      <div className="admin-overview-pill-row" aria-label="Risk Queue filters">
+        <StatusChip label="All 18" tone="info" />
+        <StatusChip label="High 5" tone="danger" />
+      </div>
+      <div className="admin-overview-table-list" aria-label="Risk Queue rows">
+        {overviewRiskItems.map((item) => (
+          <article className="admin-overview-table-row" key={item.ref}>
+            <span>{item.title}</span>
+            <strong>{item.count}</strong>
+            <span>{item.owner}</span>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 
-function OverviewRouteCards() {
+function OverviewRouteCards({ onNavigate }: { onNavigate?: (page: AdminPage) => void }) {
   return (
-    <div className="admin-static-card-grid" aria-label="Overview owner page routing content">
-      <article className="admin-static-card">
-        <span><Route aria-hidden="true" /> Owner route</span>
-        <strong>Accounts & Resources</strong>
-        <p>Review account state, order lifecycle, quota policy, and subscription artifact status there.</p>
-        <StatusChip label="Decision owner" tone="info" />
-      </article>
-      <article className="admin-static-card">
-        <span><Activity aria-hidden="true" /> Evidence route</span>
-        <strong>Usage & Channels</strong>
-        <p>Inspect freshness, channel coverage, usage ledger rows, anomalies, receipts, and collectors there.</p>
-        <StatusChip label="Evidence owner" tone="success" />
-      </article>
-      <article className="admin-static-card admin-static-card-muted">
-        <span><Bell aria-hidden="true" /> Future queue</span>
-        <strong>Restricted case workflow</strong>
-        <p>Planned durable case inbox, notes, close/reopen review, and object history require a higher-permission registration.</p>
-        <StatusChip label="Planned / locked" tone="neutral" />
-      </article>
-    </div>
+    <section className="admin-overview-section-card" aria-label="Overview owner page routing content">
+      <div className="admin-overview-section-heading">
+        <h3>Next Actions</h3>
+        <p>Route operators to the page that owns the detailed collection.</p>
+      </div>
+      <div className="admin-overview-action-list">
+        <button className="admin-overview-action-card" type="button" onClick={() => onNavigate?.("portalRequests")}>
+          <StatusChip label="INFO" tone="info" />
+          <strong>Open Accounts & Resources</strong>
+          <span>Account/order/quota/lifecycle decisions are owned there.</span>
+        </button>
+        <button className="admin-overview-action-card" type="button" onClick={() => onNavigate?.("usageMonitor")}>
+          <StatusChip label="INFO" tone="info" />
+          <strong>Open Usage & Channels</strong>
+          <span>Usage collection trust, channel coverage, receipts, and anomalies are owned there.</span>
+        </button>
+        <article className="admin-overview-action-card admin-overview-action-card-muted">
+          <StatusChip label="LOCKED" tone="neutral" />
+          <strong>Audit & Cases locked</strong>
+          <span>Future durable case workflow remains gated.</span>
+        </article>
+      </div>
+    </section>
   );
 }

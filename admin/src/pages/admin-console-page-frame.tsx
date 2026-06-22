@@ -137,6 +137,7 @@ export function AdminConsolePageFrame({
             actions={panel.actions}
             ariaLabel={panel.ariaLabel}
             category={panel.category}
+            chrome={panel.chrome}
             className={panel.className}
             containerLabel={panel.containerLabel}
             dataModuleNavId={panel.navId}

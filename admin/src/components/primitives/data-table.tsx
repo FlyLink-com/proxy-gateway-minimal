@@ -1,4 +1,5 @@
 import type { Key, KeyboardEvent, ReactNode } from "react";
+import { StateFeedback, type StateFeedbackTone } from "./state-feedback";
 
 export type DataTableColumn<Row> = {
   header: ReactNode;
@@ -9,7 +10,7 @@ export type DataTableColumn<Row> = {
 export type DataTableState = {
   description?: ReactNode;
   title: ReactNode;
-  tone: "empty" | "error" | "loading";
+  tone: StateFeedbackTone;
 };
 
 export function DataTable<Row>({
@@ -47,10 +48,16 @@ export function DataTable<Row>({
       </div>
       {state ? (
         <div className={`new-console-row new-console-state-row new-console-state-${state.tone}`} role="row">
-          <span className="new-console-state-cell" role="cell">
-            <strong>{state.title}</strong>
-            {state.description ? <small>{state.description}</small> : null}
-          </span>
+          <div className="new-console-state-cell" role="cell">
+            <StateFeedback
+              chrome="none"
+              className="new-console-state-feedback"
+              description={state.description}
+              role={state.tone === "error" ? "alert" : "status"}
+              title={state.title}
+              tone={state.tone}
+            />
+          </div>
         </div>
       ) : rows.map((row) => {
         const rowKey = getRowKey(row);
