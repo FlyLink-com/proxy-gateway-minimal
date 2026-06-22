@@ -7,6 +7,7 @@ import {
 import { useEffect, useRef, useState, type ReactNode, type ToggleEvent } from "react";
 import {
   DEFAULT_ADMIN_CAPABILITY_CONTEXT,
+  getAdminAppCapabilityBoundaryMatrix,
   getCapabilityScopedAdminAppMap,
   matchesAppSearch,
   normalizeAppSearchText,
@@ -45,6 +46,9 @@ export function AppSidebar({
   const navigationLibraryRef = useRef<HTMLDetailsElement>(null);
   const navigationLibrarySearchRef = useRef<HTMLInputElement>(null);
   const appMap = getCapabilityScopedAdminAppMap(capabilityContext);
+  const capabilityBoundaryById = new Map(
+    getAdminAppCapabilityBoundaryMatrix(capabilityContext).map((entry) => [entry.appId, entry])
+  );
   const appSearchEntries = appMap.searchIndex;
   const appSearchEntriesById = new Map(appSearchEntries.map((entry) => [entry.appId, entry]));
   const normalizedSearch = normalizeAppSearchText(search);
@@ -67,6 +71,12 @@ export function AppSidebar({
   const visiblePlannedApps = appMap.plannedApps.filter((app) => matchesManifestEntry(app.id));
   const visibleUtilityCount = visibleUtilityApps.length;
   const resultCount = pageEntries.length + visibleModuleEntries.length + visiblePlannedApps.length + visibleUtilityCount;
+  const capabilityLabelForApp = (appId: string) => (
+    capabilityBoundaryById.get(appId)?.uiStateLabel ?? "Supervision view"
+  );
+  const capabilityStateForApp = (appId: string) => (
+    capabilityBoundaryById.get(appId)?.uiState ?? "readonly"
+  );
 
   useEffect(() => {
     if (!navigationLibraryOpen) {
@@ -185,6 +195,7 @@ export function AppSidebar({
       {visibleUtilityAppById.has("utility.risk-notifications") ? (
         <button
           className={cn("nav-library-utility", visibleUtilityAppById.get("utility.risk-notifications")?.tone)}
+          data-capability-state={capabilityStateForApp("utility.risk-notifications")}
           type="button"
           onClick={() => {
             closeNavigationLibrary();
@@ -193,15 +204,19 @@ export function AppSidebar({
         >
           <Bell aria-hidden="true" />
           <span>Risk notifications</span>
+          <small>{capabilityLabelForApp("utility.risk-notifications")}</small>
           <small>{formatNotificationCount(riskNotificationCount)}</small>
         </button>
       ) : null}
       {visibleUtilityAppById.has("utility.environment") ? (
-        <details className={cn("nav-library-utility nav-library-environment", visibleUtilityAppById.get("utility.environment")?.tone)}>
+        <details
+          className={cn("nav-library-utility nav-library-environment", visibleUtilityAppById.get("utility.environment")?.tone)}
+          data-capability-state={capabilityStateForApp("utility.environment")}
+        >
           <summary aria-label="Environment status">
             <span className="environment-dot" aria-hidden="true" />
             <span>Production</span>
-            <small>Read-only</small>
+            <small>{capabilityLabelForApp("utility.environment")}</small>
           </summary>
           <div className="nav-library-utility-detail">
             <strong>Production read-only supervision</strong>
@@ -212,6 +227,7 @@ export function AppSidebar({
       {visibleUtilityAppById.has("utility.preview-site") ? (
         <button
           className={cn("nav-library-utility", visibleUtilityAppById.get("utility.preview-site")?.tone)}
+          data-capability-state={capabilityStateForApp("utility.preview-site")}
           type="button"
           onClick={() => {
             closeNavigationLibrary();
@@ -221,12 +237,13 @@ export function AppSidebar({
         >
           <ExternalLink aria-hidden="true" />
           <span>Preview site</span>
-          <small>Public shell</small>
+          <small>{capabilityLabelForApp("utility.preview-site")}</small>
         </button>
       ) : null}
       {visibleUtilityAppById.has("utility.user-portal") ? (
         <button
           className={cn("nav-library-utility", visibleUtilityAppById.get("utility.user-portal")?.tone)}
+          data-capability-state={capabilityStateForApp("utility.user-portal")}
           type="button"
           onClick={() => {
             closeNavigationLibrary();
@@ -236,13 +253,14 @@ export function AppSidebar({
         >
           <ExternalLink aria-hidden="true" />
           <span>Open user portal</span>
-          <small>User view</small>
+          <small>{capabilityLabelForApp("utility.user-portal")}</small>
         </button>
       ) : null}
       {connectionPanel && visibleUtilityAppById.has("utility.admin-api") ? (
         <button
           aria-label="Admin API connection settings"
           className={cn("nav-library-utility nav-library-connection", visibleUtilityAppById.get("utility.admin-api")?.tone)}
+          data-capability-state={capabilityStateForApp("utility.admin-api")}
           type="button"
           onClick={() => {
             closeNavigationLibrary();
@@ -258,7 +276,7 @@ export function AppSidebar({
             <span>Admin API</span>
             <strong>{connectionConfigured ? "Configured" : "Configure"}</strong>
           </span>
-          <small>{connectionConfigured ? "Configured" : "Configure"}</small>
+          <small>{capabilityLabelForApp("utility.admin-api")}</small>
         </button>
       ) : null}
     </>
@@ -272,6 +290,7 @@ export function AppSidebar({
       <button
         aria-current={active ? "page" : undefined}
         className={cn("nav-planned-item nav-planned-item-active", active && "nav-planned-item-current")}
+        data-capability-state={capabilityStateForApp(app.id)}
         key={app.id}
         onClick={() => {
           closeNavigationLibrary();
@@ -285,7 +304,7 @@ export function AppSidebar({
           <Icon />
         </span>
         <span>{app.label}</span>
-        <small>{active ? "Open" : "Route"}</small>
+        <small>{capabilityLabelForApp(app.id)}</small>
       </button>
     );
   });
@@ -293,10 +312,10 @@ export function AppSidebar({
   const pluginApps = visibleModuleEntries.map((app) => {
     const ModuleIcon = app.icon ?? PanelTopOpen;
     const page = app.route.page;
-    const pageLabel = page ? appMap.workspacePages.find((workspaceApp) => workspaceApp.route.page === page)?.label : undefined;
     return (
       <button
         className="nav-planned-item nav-planned-item-active nav-planned-item-module"
+        data-capability-state={capabilityStateForApp(app.id)}
         key={app.id}
         onClick={() => {
           closeNavigationLibrary();
@@ -310,7 +329,7 @@ export function AppSidebar({
           <ModuleIcon />
         </span>
         <span>{app.label}</span>
-        <small>{pageLabel ?? app.owner.area}</small>
+        <small>{capabilityLabelForApp(app.id)}</small>
       </button>
     );
   });
@@ -321,6 +340,7 @@ export function AppSidebar({
       <div
         aria-label={`${app.label} planned`}
         className="nav-planned-item nav-planned-item-planned"
+        data-capability-state={capabilityStateForApp(app.id)}
         key={app.id}
         title={app.description}
       >
@@ -328,7 +348,7 @@ export function AppSidebar({
           <PlannedIcon />
         </span>
         <span>{app.label}</span>
-        <small>Planned</small>
+        <small>{capabilityLabelForApp(app.id)}</small>
       </div>
     );
   });
@@ -338,6 +358,7 @@ export function AppSidebar({
       <button
         aria-label={`${app.label} planned gate`}
         className="nav-item nav-item-planned nav-item-sidebar-planned"
+        data-capability-state={capabilityStateForApp(app.id)}
         disabled
         key={app.id}
         title={app.description}

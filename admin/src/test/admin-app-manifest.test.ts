@@ -6,6 +6,7 @@ import {
   createNavigationLibrarySearchDocument,
   createNavigationLibrarySearchIndex,
   DEFAULT_ADMIN_CAPABILITY_CONTEXT,
+  getAdminAppCapabilityBoundaryMatrix,
   getCapabilityScopedAdminAppMap,
   getAdminAppAuthoringManifest,
   getAdminAppMap,
@@ -421,6 +422,83 @@ describe("admin app manifest", () => {
       expect(app.safety.capabilities).not.toContain("execute");
       expect(app.catalog.sourceContract.transformBoundary).toBe("display-only");
     }
+  });
+
+  test("builds a capability boundary matrix without granting auth or execution", () => {
+    const matrix = getAdminAppCapabilityBoundaryMatrix(DEFAULT_ADMIN_CAPABILITY_CONTEXT);
+    const byId = new Map(matrix.map((entry) => [entry.appId, entry]));
+
+    expect(matrix).toHaveLength(adminAppManifest.length);
+    expect(byId.get("operations-overview")).toMatchObject({
+      defaultCapabilities: expect.arrayContaining(["view", "inspect"]),
+      dangerousCapabilities: expect.arrayContaining(["execute"]),
+      resultType: "workspace-app",
+      riskBoundary: "repo-only-ui",
+      uiState: "requires-review",
+      uiStateLabel: "Review suggestions"
+    });
+    expect(byId.get("accounts-resources")).toMatchObject({
+      defaultCapabilities: expect.arrayContaining(["view", "inspect"]),
+      dangerousCapabilities: expect.arrayContaining(["execute", "administer"]),
+      futureCapabilities: expect.arrayContaining(["execute", "configure", "administer"]),
+      uiState: "requires-review"
+    });
+    expect(byId.get("usage-channels")).toMatchObject({
+      approvalBoundary: expect.stringContaining("Risk A"),
+      defaultCapabilities: expect.arrayContaining(["view", "inspect"]),
+      dangerousCapabilities: expect.arrayContaining(["execute"]),
+      uiState: "requires-review"
+    });
+    expect(byId.get("planned.platform-development")).toMatchObject({
+      resultType: "planned-app",
+      riskBoundary: "risk-a-before-execution",
+      uiState: "planned",
+      uiStateLabel: "Planned gate"
+    });
+    expect(byId.get("planned.system-settings")).toMatchObject({
+      dangerousCapabilities: expect.arrayContaining(["configure", "administer"]),
+      uiState: "planned"
+    });
+    expect(byId.get("privileged.key-management")).toMatchObject({
+      riskBoundary: "future-contract-required",
+      uiState: "disabled",
+      uiStateLabel: "Capability disabled"
+    });
+
+    matrix.forEach((entry) => {
+      expect(entry.defaultCapabilities.length).toBeGreaterThan(0);
+      expect(entry.dangerousCapabilities.length).toBeGreaterThan(0);
+      expect(entry.futureCapabilities.length).toBeGreaterThan(0);
+      expect(entry.forbiddenFields).toEqual(expect.arrayContaining(["token", "credential", "SQLite row"]));
+      expect(entry.productionImpact).not.toBe("execute");
+      expect(JSON.stringify({
+        approvalBoundary: entry.approvalBoundary,
+        routeTarget: entry.routeTarget,
+        uiStateLabel: entry.uiStateLabel,
+        uiStateSummary: entry.uiStateSummary
+      })).not.toMatch(forbiddenSearchTextPattern);
+    });
+  });
+
+  test("promotes privileged capability boundaries only after super-admin fresh MFA", () => {
+    const operatorMatrix = getAdminAppCapabilityBoundaryMatrix(DEFAULT_ADMIN_CAPABILITY_CONTEXT);
+    const superAdminMatrix = getAdminAppCapabilityBoundaryMatrix(SUPER_ADMIN_CAPABILITY_CONTEXT);
+    const superAdminFreshMfaMatrix = getAdminAppCapabilityBoundaryMatrix(SUPER_ADMIN_FRESH_MFA_CAPABILITY_CONTEXT);
+
+    expect(operatorMatrix.find((entry) => entry.appId === "privileged.audit-center")).toMatchObject({
+      registeredApiHooks: [],
+      uiState: "disabled"
+    });
+    expect(superAdminMatrix.find((entry) => entry.appId === "privileged.audit-center")).toMatchObject({
+      registeredApiHooks: ["admin.auditSummary"],
+      requiredDetailApiHooks: [],
+      uiState: "requires-approval"
+    });
+    expect(superAdminFreshMfaMatrix.find((entry) => entry.appId === "privileged.audit-center")).toMatchObject({
+      registeredApiHooks: ["admin.auditSummary"],
+      requiredDetailApiHooks: ["admin.auditDetail"],
+      uiState: "requires-approval"
+    });
   });
 
   test("builds a safe navigation-library search index from whitelisted summary fields", () => {

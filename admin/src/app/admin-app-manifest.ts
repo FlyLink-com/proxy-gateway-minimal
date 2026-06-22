@@ -58,6 +58,16 @@ export type AdminAppCapability =
   | "configure"
   | "develop"
   | "administer";
+export type AdminCapabilityUiState =
+  | "readonly"
+  | "requires-review"
+  | "requires-approval"
+  | "disabled"
+  | "planned";
+export type AdminCapabilityRiskBoundary =
+  | "repo-only-ui"
+  | "risk-a-before-execution"
+  | "future-contract-required";
 
 export type AdminCapabilityContext = {
   role: AdminOperatorRole;
@@ -197,6 +207,27 @@ export type AdminAppSearchIndexEntry = {
   searchText: string;
 };
 
+export type AdminAppCapabilityBoundaryEntry = {
+  appId: string;
+  title: string;
+  resultType: AdminAppEntryType;
+  routeTarget: string;
+  defaultCapabilities: AdminAppCapability[];
+  dangerousCapabilities: AdminAppCapability[];
+  futureCapabilities: AdminAppCapability[];
+  currentCapabilities: AdminAppCapability[];
+  uiState: AdminCapabilityUiState;
+  uiStateLabel: string;
+  uiStateSummary: string;
+  approvalBoundary: string;
+  riskBoundary: AdminCapabilityRiskBoundary;
+  productionImpact: AdminAppProductionImpact;
+  riskTier: AdminAppRiskTier;
+  forbiddenFields: string[];
+  registeredApiHooks: string[];
+  requiredDetailApiHooks: string[];
+};
+
 export type AdminNavigationLibraryModuleRecovery = {
   action: "restore-module";
   consumesCanvasSpaceWhenHidden: false;
@@ -310,6 +341,58 @@ const ROLE_RANK: Record<AdminOperatorRole, number> = {
   operator: 0,
   admin: 1,
   superAdmin: 2
+};
+
+const ADMIN_APP_CAPABILITY_ORDER: AdminAppCapability[] = [
+  "view",
+  "inspect",
+  "comment",
+  "suggest-action",
+  "dry-run",
+  "execute",
+  "configure",
+  "develop",
+  "administer"
+];
+
+const DEFAULT_CAPABILITY_SET = new Set<AdminAppCapability>(["view", "inspect"]);
+const REVIEW_CAPABILITY_SET = new Set<AdminAppCapability>(["comment", "suggest-action", "dry-run"]);
+const DANGEROUS_CAPABILITY_SET = new Set<AdminAppCapability>([
+  "execute",
+  "configure",
+  "develop",
+  "administer"
+]);
+
+const DANGEROUS_CAPABILITIES_BY_CATEGORY: Record<WorkbenchCategory, AdminAppCapability[]> = {
+  "audit-workflow": ["execute", "administer"],
+  configuration: ["configure", "administer"],
+  management: ["execute", "administer"],
+  monitoring: ["execute"],
+  "platform-tools": ["develop", "execute"]
+};
+
+const CAPABILITY_UI_COPY: Record<AdminCapabilityUiState, { label: string; summary: string }> = {
+  disabled: {
+    label: "Capability disabled",
+    summary: "Hidden for the current operator capability context."
+  },
+  planned: {
+    label: "Planned gate",
+    summary: "Locked until the future contract, tests, and validation exist."
+  },
+  readonly: {
+    label: "Supervision view",
+    summary: "Safe supervision view only."
+  },
+  "requires-approval": {
+    label: "Approval required",
+    summary: "Controlled execution requires approval before it can run."
+  },
+  "requires-review": {
+    label: "Review suggestions",
+    summary: "Operators can inspect evidence and prepare suggestions without mutation."
+  }
 };
 
 const DEFAULT_ACCESS_POLICY: AdminAppAccessPolicy = {
@@ -962,6 +1045,118 @@ export function getRegisteredAdminApiHookIds(
       ];
     })
   )).sort();
+}
+
+export function getAdminAppCapabilityBoundaryMatrix(
+  context: AdminCapabilityContext = DEFAULT_ADMIN_CAPABILITY_CONTEXT,
+  apps: readonly AdminAppManifest[] = adminAppManifest
+): AdminAppCapabilityBoundaryEntry[] {
+  return apps.map((app) => createAdminAppCapabilityBoundaryEntry(app, context));
+}
+
+function createAdminAppCapabilityBoundaryEntry(
+  app: AdminAppManifest,
+  context: AdminCapabilityContext
+): AdminAppCapabilityBoundaryEntry {
+  const access = accessPolicyForApp(app);
+  const registered = isAdminAppRegisteredForContext(app, context);
+  const uiState = capabilityUiStateForApp(app, context);
+  const uiCopy = CAPABILITY_UI_COPY[uiState];
+  const dangerousCapabilities = dangerousCapabilitiesForApp(app);
+
+  return {
+    appId: app.id,
+    approvalBoundary: approvalBoundaryForApp(app),
+    currentCapabilities: uniqueCapabilities(app.safety.capabilities),
+    dangerousCapabilities,
+    defaultCapabilities: defaultCapabilitiesForApp(app),
+    forbiddenFields: [...app.safety.forbiddenFields],
+    futureCapabilities: futureCapabilitiesForApp(app),
+    productionImpact: app.safety.productionImpact,
+    registeredApiHooks: registered ? [...access.registeredApiHooks].sort() : [],
+    requiredDetailApiHooks: registered && (!access.detailRequiresFreshMfa || context.freshMfa)
+      ? [...access.detailApiHooks].sort()
+      : [],
+    resultType: entryTypeForApp(app.kind),
+    riskBoundary: riskBoundaryForApp(app, registered),
+    riskTier: app.safety.riskTier,
+    routeTarget: routeTargetForApp(app),
+    title: app.label,
+    uiState,
+    uiStateLabel: uiCopy.label,
+    uiStateSummary: uiCopy.summary
+  };
+}
+
+function capabilityUiStateForApp(
+  app: AdminAppManifest,
+  context: AdminCapabilityContext
+): AdminCapabilityUiState {
+  if (!isAdminAppRegisteredForContext(app, context)) {
+    return "disabled";
+  }
+  if (app.status === "planned") {
+    return "planned";
+  }
+  if (app.status === "locked" || app.safety.productionImpact === "gated") {
+    return "requires-approval";
+  }
+  if (app.safety.capabilities.some((capability) => DANGEROUS_CAPABILITY_SET.has(capability))) {
+    return "requires-approval";
+  }
+  if (app.safety.capabilities.some((capability) => REVIEW_CAPABILITY_SET.has(capability))) {
+    return "requires-review";
+  }
+  return "readonly";
+}
+
+function defaultCapabilitiesForApp(app: AdminAppManifest): AdminAppCapability[] {
+  const defaultCapabilities = app.safety.capabilities.filter((capability) => DEFAULT_CAPABILITY_SET.has(capability));
+  return defaultCapabilities.length ? uniqueCapabilities(defaultCapabilities) : ["view"];
+}
+
+function dangerousCapabilitiesForApp(app: AdminAppManifest): AdminAppCapability[] {
+  return uniqueCapabilities([
+    ...app.safety.capabilities.filter((capability) => DANGEROUS_CAPABILITY_SET.has(capability)),
+    ...(DANGEROUS_CAPABILITIES_BY_CATEGORY[app.category] ?? ["execute"])
+  ]);
+}
+
+function futureCapabilitiesForApp(app: AdminAppManifest): AdminAppCapability[] {
+  const currentCapabilities = new Set(app.safety.capabilities);
+  const futureCapabilities = ADMIN_APP_CAPABILITY_ORDER.filter((capability) => (
+    !currentCapabilities.has(capability) &&
+    (REVIEW_CAPABILITY_SET.has(capability) || DANGEROUS_CAPABILITY_SET.has(capability))
+  ));
+  return futureCapabilities.length ? uniqueCapabilities(futureCapabilities) : ["execute"];
+}
+
+function riskBoundaryForApp(
+  app: AdminAppManifest,
+  registered: boolean
+): AdminCapabilityRiskBoundary {
+  if (!registered) {
+    return "future-contract-required";
+  }
+  if (app.safety.productionImpact === "gated") {
+    return "risk-a-before-execution";
+  }
+  if (app.status === "locked") {
+    return "future-contract-required";
+  }
+  return "repo-only-ui";
+}
+
+function approvalBoundaryForApp(app: AdminAppManifest) {
+  if (app.safety.productionImpact === "gated" || app.safety.riskTier === "A") {
+    return "Risk A runbook and explicit operator approval are required before execution.";
+  }
+  return "Repo-only UI and tests may review safe summaries; any future execution path must pass a Risk A gate.";
+}
+
+function uniqueCapabilities(capabilities: AdminAppCapability[]) {
+  const allowed = new Set(capabilities);
+  return ADMIN_APP_CAPABILITY_ORDER.filter((capability) => allowed.has(capability));
 }
 
 export function createNavigationLibrarySearchIndex(apps: readonly AdminAppManifest[] = adminAppManifest): AdminAppSearchIndexEntry[] {

@@ -110,6 +110,42 @@ module registry. `GCC-79` must consume `resultType`, `capabilities`,
 `productionImpact`, and `forbiddenFields` when defining capability and
 permission boundaries.
 
+## Capability Boundary Matrix Contract
+
+`GCC-79` keeps capability planning in the protected Admin frontend manifest. It
+does not create an auth schema, role database, backend permission model, or
+production execution path. The React source of truth is
+`getAdminAppCapabilityBoundaryMatrix()` in
+`admin/src/app/admin-app-manifest.ts`.
+
+Every app receives a reviewable capability boundary entry with:
+
+| Field | Contract |
+| --- | --- |
+| `defaultCapabilities` | Safe baseline capabilities, currently `view` and/or `inspect`. |
+| `dangerousCapabilities` | Capabilities that would become sensitive if wired to live actions, such as `execute`, `configure`, `develop`, or `administer`. |
+| `futureCapabilities` | Deferred capability slots reserved for later backend and product contracts. |
+| `uiState` | One of `readonly`, `requires-review`, `requires-approval`, `disabled`, or `planned`. |
+| `riskBoundary` | `repo-only-ui`, `risk-a-before-execution`, or `future-contract-required`. |
+| `registeredApiHooks` / `requiredDetailApiHooks` | Safe hook identifiers only, scoped by operator capability and fresh MFA state. |
+
+The matrix is a UI and planning contract only:
+
+- `readonly` means a supervision view; no mutation affordance is implied.
+- `requires-review` means safe evidence review and suggested next actions only.
+- `requires-approval` means controlled execution cannot run without a separate
+  approval path.
+- `disabled` means the app is not registered for the current capability
+  context.
+- `planned` means the future route remains locked until its object model, data
+  source, redaction boundary, tests, validation, and backend contract exist.
+
+Any later implementation that turns `execute`, live `configure`, `develop`, or
+`administer` into real provider, runtime, auth, schema, node, DNS, Nginx,
+systemd, firewall, subscription, or customer-impacting behavior must leave this
+repo-only UI lane and become Risk A work with read-only inventory, runbook,
+approval, staging/validation, and rollback evidence.
+
 ## Workspace Layout Preset Contract
 
 Workspace modules use a browser-console layout preset model instead of
