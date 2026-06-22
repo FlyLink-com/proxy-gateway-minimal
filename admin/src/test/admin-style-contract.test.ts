@@ -90,11 +90,11 @@ describe("admin style token contract", () => {
       "--admin-plugin-screen-max-height-mobile: clamp(280px",
       "--admin-plugin-field-height: 26px",
       "--admin-plugin-field-gap: 6px",
-      "--admin-radius-control: 10px",
-      "--admin-radius-panel: 12px",
-      "--admin-radius-card: 12px",
-      "--admin-radius-chrome: 16px",
-      "--admin-radius-floating: 12px",
+      "--admin-radius-control: 8px",
+      "--admin-radius-panel: 8px",
+      "--admin-radius-card: 8px",
+      "--admin-radius-chrome: 14px",
+      "--admin-radius-floating: 18px",
       "--admin-radius-icon: 8px",
       "--admin-density-compact-card-padding: 12px",
       "--admin-density-normal-card-padding: 16px",
@@ -355,10 +355,16 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-fixture-preview-banner")).toContain("var(--admin-info-bg)");
     expect(selectorBlock(".admin-overview-metric-grid")).toContain("repeat(4, minmax(0, 1fr))");
     expect(styles).not.toContain(".admin-overview-metric-card");
-    expect(selectorBlock(".admin-overview-section-card")).toContain("min-height: 520px");
+    expect(selectorBlock(".admin-overview-section-card")).toContain("min-height: 326px");
+    expect(selectorBlock(".admin-overview-handoff")).toContain("min-height: 166px");
+    expect(selectorBlock(".admin-overview-handoff-strip")).toContain("repeat(3, minmax(0, 1fr))");
     expect(selectorBlock(".admin-overview-section-card")).toContain("align-content: start");
     expect(styles).toMatch(/^\.admin-overview-action-card\s*\{[\s\S]*text-align: left;/m);
     expect(selectorBlock(".admin-overview-table-row")).toContain("grid-template-columns: minmax(0, 1fr) minmax(96px, 0.5fr) minmax(132px, 0.7fr)");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] .admin-blueprint-module-board")).toContain("repeat(3, minmax(0, 1fr))");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] [data-module-nav-id=\"risk-queue\"]")).toContain("min-height: 326px");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] [data-module-nav-id=\"next-actions\"]")).toContain("grid-column: 3");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] [data-module-nav-id=\"owner-handoff\"]")).toContain("min-height: 166px");
     expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("border: 1px dashed");
     expect(styles).not.toContain(".admin-blueprint-card-switches");
     expect(styles).not.toContain(".admin-blueprint-module-dock");
@@ -565,7 +571,12 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("contain: layout paint");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("box-shadow: none");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("backdrop-filter: none");
-    expect(styles).toContain('min-height: min(680px, var(--admin-plugin-screen-max-height))');
+    expect(selectorBlock(".admin-blueprint-page-summary")).toContain("min-width: 0");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"portalRequests\"] [data-module-nav-id=\"account-overview\"]")).toContain("grid-column: 1 / span 2");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"portalRequests\"] [data-module-nav-id=\"resource-orders\"]")).toContain("grid-column: 3");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"portalRequests\"] [data-module-nav-id=\"quota-usage\"]")).toContain("min-height: 166px");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"usage-ledger\"]")).toContain("min-height: 326px");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"freshness\"]")).toContain("grid-row: 2");
     expect(selectorBlock(".admin-blueprint-module-panel::before")).toContain("width: 0");
     expect(selectorBlock(".admin-blueprint-module-panel::before")).toContain("background: var(--admin-plugin-accent)");
     expect(selectorBlock(".admin-blueprint-module-panel:hover")).toContain("border-color: var(--workbench-category-border");

@@ -82,7 +82,8 @@ describe("admin navigation", () => {
     expect(pageSubNavigation.dashboard.map((item) => item.label)).toEqual([
       "Health Summary",
       "Risk Queue",
-      "Next Actions"
+      "Next Actions",
+      "Owner Handoff"
     ]);
     expect(pageSubNavigation.portalRequests.map((item) => item.label)).toEqual([
       "Account Directory",

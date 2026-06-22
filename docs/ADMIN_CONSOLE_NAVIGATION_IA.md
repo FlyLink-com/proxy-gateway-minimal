@@ -29,6 +29,10 @@ dictionary is the source of truth for deciding whether a card belongs to
 `Overview`, `User Operations`, `Platform Monitoring`, `Audit & Cases`,
 `Platform Development`, or `System Settings`.
 
+For page-level UI copy, module titles, visible states, hidden design-only
+planning text, and the next visual implementation checklist, use
+`docs/ADMIN_CONSOLE_UI_CONTENT_MATRIX.md`.
+
 For the expanded relationship model and backend DTO contract, use
 `docs/ADMIN_CONSOLE_RELATIONSHIP_DRAFT.md` and
 `docs/ADMIN_BACKEND_DTO_CONTRACT.md`. Those documents record User Management,

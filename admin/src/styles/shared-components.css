@@ -304,7 +304,7 @@
 .case-row {
   width: 100%;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr);
   gap: var(--admin-row-gap);
   align-items: center;
   text-align: left;
@@ -362,21 +362,30 @@
 
 .case-row-main strong,
 .case-row-main small,
-.case-reason,
 .case-linked-item strong,
 .case-timeline-event strong {
   overflow-wrap: anywhere;
 }
 
+.case-reason {
+  grid-column: 2;
+  justify-self: start;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
 .case-severity {
-  min-width: 34px;
+  min-width: max-content;
   height: 28px;
   border-radius: var(--admin-radius-pill);
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  padding: 0 10px;
   font-size: 12px;
   font-weight: 800;
+  white-space: nowrap;
 }
 
 .case-severity-critical {

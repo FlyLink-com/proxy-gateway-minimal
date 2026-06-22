@@ -187,6 +187,14 @@ export const pageSubNavigation: Record<AdminPage, PageSubNavigationItem[]> = {
       mode: "preview",
       owner: "Overview",
       targetId: "dashboard-next-actions"
+    },
+    {
+      id: "owner-handoff",
+      label: "Owner Handoff",
+      description: "Compact route strips for the owner pages that continue the review.",
+      mode: "preview",
+      owner: "Overview",
+      targetId: "dashboard-owner-handoff"
     }
   ],
   portalRequests: [

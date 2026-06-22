@@ -109,7 +109,7 @@ describe("admin ui primitives", () => {
   });
 
 
-  test("renders fixed panel frame chrome with status and hide control", () => {
+  test("renders fixed panel frame chrome without design-review metadata by default", () => {
     const onHide = vi.fn();
 
     render(
@@ -141,14 +141,35 @@ describe("admin ui primitives", () => {
     expect(screen.queryByLabelText("Health Summary plugin display controls")).toBeNull();
     expect(screen.queryByRole("button", { name: "Health Summary Large plugin display" })).toBeNull();
     expect(screen.getByRole("button", { name: "Health Summary hide module" })).not.toBeNull();
-    expect(screen.getByLabelText("2 primary fields")).not.toBeNull();
+    expect(screen.queryByLabelText("2 primary fields")).toBeNull();
     expect(screen.queryByText("Platform health label")).toBeNull();
     expect(screen.queryByText("Risk counter")).toBeNull();
-    expect(screen.getByText("Preview")).not.toBeNull();
+    expect(screen.queryByText("Overview metric widget set")).toBeNull();
+    expect(screen.queryByText("Preview")).toBeNull();
     expect(screen.getByText("Panel content")).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Health Summary hide module" }));
     expect(onHide).toHaveBeenCalled();
+  });
+
+  test("renders design-review metadata only when explicitly requested", () => {
+    render(
+      <PanelFrame
+        ariaLabel="Monitoring design metadata contract"
+        category="monitoring"
+        containerLabel="Overview metric widget set"
+        fieldLabels={["Platform health label", "Risk counter"]}
+        ownerMode="preview"
+        showDesignMetadata
+        title="Health Summary"
+      />
+    );
+
+    expect(screen.getByText("Overview metric widget set")).not.toBeNull();
+    expect(screen.getByLabelText("2 primary fields")).not.toBeNull();
+    expect(screen.getByText("Preview")).not.toBeNull();
+    expect(screen.queryByText("Platform health label")).toBeNull();
+    expect(screen.queryByText("Risk counter")).toBeNull();
   });
 
   test("renders privileged gate as a reusable shell safety surface", () => {

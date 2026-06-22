@@ -250,6 +250,7 @@
   }
 
   .admin-overview-metric-grid,
+  .admin-overview-handoff-strip,
   .ops-metric-grid,
   .admin-static-card-grid,
   .dashboard-mini-metrics,
@@ -575,6 +576,7 @@
   .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id] {
     grid-column: auto;
     grid-row: auto;
+    height: auto;
     min-height: 0;
   }
 

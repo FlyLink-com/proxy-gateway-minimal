@@ -4,20 +4,27 @@ import {
 } from "./admin-console-page-frame";
 import {
   DataTable,
-  ObjectTimeline,
+  MetricCard,
   QuotaMeter,
   SafeRef,
   StatusChip
 } from "../components/primitives";
+import {
+  Activity,
+  Gauge,
+  History,
+  Users
+} from "lucide-react";
 
 export const accountsResourcesBlueprint: BlueprintPage = {
   page: "portalRequests",
   ariaLabel: "Accounts & Resources page header",
   kicker: "User Operations / Accounts & Resources",
   title: "Accounts & Resources",
-  description: "Decision owner for user accounts, resources, orders, subscription artifacts, quota, lifecycle, and safe history context.",
+  description: "Decision owner for accounts, resources, orders, quotas, lifecycle, and history.",
   statusLabel: "Decision owner",
   statusTone: "info",
+  summary: <AccountsResourcesSummary />,
   modules: [
     {
       navId: "account-overview",
@@ -193,6 +200,41 @@ export const accountsResourcesBlueprint: BlueprintPage = {
   ]
 };
 
+function AccountsResourcesSummary() {
+  return (
+    <div className="ops-metric-grid" aria-label="Accounts & Resources summary metrics">
+      <MetricCard
+        detail="Enabled 3 · Review 1 · Disabled 1"
+        icon={<Users aria-hidden="true" />}
+        label="Accounts"
+        tone="info"
+        value="5"
+      />
+      <MetricCard
+        detail="Delivered 1 · Pending 1 · Expired 1"
+        icon={<Activity aria-hidden="true" />}
+        label="Orders"
+        tone="success"
+        value="3"
+      />
+      <MetricCard
+        detail="Measured usage · audit note gate"
+        icon={<Gauge aria-hidden="true" />}
+        label="Quota"
+        tone="warning"
+        value="72%"
+      />
+      <MetricCard
+        detail="Active, paused, expired, revoked"
+        icon={<History aria-hidden="true" />}
+        label="Lifecycle"
+        tone="neutral"
+        value="4 lanes"
+      />
+    </div>
+  );
+}
+
 export function PortalRequestsPage({
   fixturePreviewEnabled = false
 }: {
@@ -222,6 +264,11 @@ const accountRows: AccountDirectoryRow[] = [
 function AccountDirectoryContent() {
   return (
     <div className="admin-operator-content" aria-label="Account Directory static operator content">
+      <div className="admin-overview-pill-row" aria-label="Account Directory filters">
+        <StatusChip label="All 5" tone="info" />
+        <StatusChip label="Review 1" tone="warning" />
+        <StatusChip label="Disabled 1" tone="neutral" />
+      </div>
       <div className="admin-static-status-row" aria-label="Account Directory state coverage">
         <StatusChip label="Readonly" tone="neutral" />
         <StatusChip label="Needs review" tone="warning" />
@@ -259,12 +306,26 @@ const resourceOrderRows: ResourceOrderRow[] = [
 function ResourceOrdersContent() {
   return (
     <div className="admin-operator-content" aria-label="Resources and Orders static operator content">
+      <div className="admin-owner-route-list" aria-label="Accounts and Resources owner panel routes">
+        <article className="admin-owner-route-card">
+          <div className="admin-owner-route-card-head">
+            <strong>Resources & Orders</strong>
+            <StatusChip label="Owner" tone="info" />
+          </div>
+          <p>Owns entitlement, artifact lifecycle, and delivery state review.</p>
+        </article>
+        <article className="admin-owner-route-card">
+          <div className="admin-owner-route-card-head">
+            <strong>Quota & Lifecycle</strong>
+            <StatusChip label="Review gate" tone="warning" />
+          </div>
+          <p>Quota changes and pause/archive decisions stay locked behind reviewed backend gates.</p>
+        </article>
+      </div>
       <DataTable
         ariaLabel="Resources and Orders static table"
         columns={[
-          { header: "Order", key: "order", render: (row: ResourceOrderRow) => <SafeRef value={row.orderRef} /> },
-          { header: "Plan", key: "plan", render: (row) => row.plan },
-          { header: "Artifact", key: "artifact", render: (row) => <SafeRef value={row.artifactRef} /> },
+          { header: "Order", key: "order", render: (row: ResourceOrderRow) => <><SafeRef value={row.orderRef} /> · {row.plan}</> },
           {
             header: "Lifecycle",
             key: "lifecycle",
@@ -290,39 +351,31 @@ function ResourceOrdersContent() {
 
 function QuotaUsageContent() {
   return (
-    <div className="admin-static-card-grid admin-static-card-grid-compact" aria-label="Quota and Usage static operator content">
-      <article className="admin-static-card">
+    <div className="admin-owner-compact-panel" aria-label="Quota and Usage static operator content">
+      <div className="admin-owner-compact-head">
         <span>Quota policy</span>
         <strong>82% used</strong>
         <QuotaMeter ariaLabel="ord_safe_101 quota usage 82 percent" value={82} />
+      </div>
+      <p>Usage evidence is available, but quota decisions remain page-owned and readonly here.</p>
+      <div className="admin-static-status-row">
         <StatusChip label="Near quota" tone="warning" />
-      </article>
-      <article className="admin-static-card">
-        <span>Collection source</span>
-        <strong>3 / 3 channels</strong>
-        <p>Usage evidence is available, but quota decisions remain page-owned and readonly here.</p>
-        <StatusChip label="Measured" tone="success" />
-      </article>
-      <article className="admin-static-card admin-static-card-muted">
-        <span>Review gate</span>
-        <strong>Quota edits locked</strong>
-        <p>Future edits require a review note and reviewed backend update contract.</p>
+        <StatusChip label="3 / 3 channels measured" tone="success" />
         <StatusChip label="Planned / locked" tone="neutral" />
-      </article>
+      </div>
     </div>
   );
 }
 
 function LifecycleContent() {
   return (
-    <div className="admin-static-card-grid" aria-label="Lifecycle static operator content">
+    <div className="admin-owner-handoff-list" aria-label="Lifecycle static operator content">
       {[
-        ["Account active", "Account state is separate from order and artifact lifecycle.", "success"],
-        ["Order paused", "Pause is a lifecycle review state, not a collector state.", "warning"],
-        ["Artifact revoked", "Revocation is separate from runtime credential availability.", "neutral"],
-        ["Archive candidate", "Archive remains a review target until a Risk A gate approves execution.", "danger"]
+        ["Account active", "Separate from order and artifact lifecycle.", "success"],
+        ["Order paused", "Review state only; no collector decision.", "warning"],
+        ["Archive candidate", "Execution waits for a Risk A gate.", "danger"]
       ].map(([title, body, tone]) => (
-        <article className="admin-static-card" key={title}>
+        <article className="admin-owner-handoff-item" key={title}>
           <span>Lifecycle lane</span>
           <strong>{title}</strong>
           <p>{body}</p>
@@ -336,31 +389,18 @@ function LifecycleContent() {
 function HistoryEventsContent() {
   return (
     <div className="admin-operator-content" aria-label="History and Events static operator content">
-      <ObjectTimeline
-        events={[
-          {
-            ref: "event-safe-001",
-            actionLabel: "Quota evidence updated",
-            objectRef: "ord_safe_101",
-            objectType: "order",
-            occurredAtLabel: "12m ago",
-            severity: "warning",
-            sourceLabel: "Usage & Channels",
-            summary: "Order moved into quota review"
-          },
-          {
-            ref: "event-safe-002",
-            actionLabel: "Receipt pending",
-            objectRef: "artifact_safe_pending",
-            objectType: "artifact",
-            occurredAtLabel: "18m ago",
-            severity: "info",
-            sourceLabel: "Receipt collector",
-            summary: "Receipt evidence is not durable yet"
-          }
-        ]}
-        title="Safe computed history"
-      />
+      <div className="admin-owner-handoff-list" aria-label="Safe computed history">
+        <article className="admin-owner-handoff-item">
+          <span>Safe computed history</span>
+          <strong>Quota evidence updated</strong>
+          <p><SafeRef value="ord_safe_101" /> moved into quota review from Usage & Channels evidence.</p>
+        </article>
+        <article className="admin-owner-handoff-item">
+          <span>Receipt context</span>
+          <strong>Receipt pending</strong>
+          <p><SafeRef value="artifact_safe_pending" /> has no durable history write yet.</p>
+        </article>
+      </div>
       <div className="admin-static-status-row" aria-label="History and Events backend states">
         <StatusChip label="Restricted backend locked" tone="neutral" />
         <StatusChip label="Note write unavailable" tone="warning" />

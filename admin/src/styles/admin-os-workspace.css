@@ -199,6 +199,10 @@
   gap: 16px;
 }
 
+.admin-blueprint-page-summary {
+  min-width: 0;
+}
+
 .admin-overview-section-card,
 .admin-overview-action-card {
   border: 1px solid var(--admin-border);
@@ -230,7 +234,7 @@
   gap: 12px;
   align-content: start;
   grid-auto-rows: max-content;
-  min-height: 520px;
+  min-height: 326px;
   padding: 18px;
 }
 
@@ -298,12 +302,104 @@
   appearance: none;
   color: inherit;
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   justify-items: start;
-  gap: 10px;
-  min-height: 116px;
-  padding: 14px;
+  column-gap: 12px;
+  row-gap: 4px;
+  min-height: 56px;
+  padding: 10px 14px;
   text-align: left;
   text-decoration: none;
+}
+
+.admin-overview-action-card > .dashboard-status-badge {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+}
+
+.admin-overview-handoff {
+  display: grid;
+  gap: 14px;
+  min-height: 166px;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-panel);
+  background: var(--admin-surface);
+  box-shadow: var(--admin-shadow-panel);
+  padding: 18px;
+}
+
+.admin-overview-handoff-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  min-width: 0;
+}
+
+.admin-overview-handoff-card {
+  appearance: none;
+  min-width: 0;
+  min-height: 62px;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-control);
+  background: var(--admin-surface);
+  color: inherit;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 3px;
+  padding: 10px 14px;
+  text-align: left;
+  text-decoration: none;
+}
+
+button.admin-overview-handoff-card {
+  cursor: pointer;
+  transition:
+    background var(--admin-ease),
+    border-color var(--admin-ease),
+    box-shadow var(--admin-ease);
+}
+
+button.admin-overview-handoff-card:hover,
+button.admin-overview-handoff-card:focus-visible {
+  border-color: var(--admin-info-border);
+  background: var(--admin-hover-surface);
+  box-shadow: var(--admin-shadow-hover);
+}
+
+.admin-overview-handoff-card strong,
+.admin-overview-handoff-card span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-overview-handoff-card strong {
+  color: var(--admin-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.admin-overview-handoff-card span {
+  color: var(--admin-text-soft);
+  display: -webkit-box;
+  font-size: 12px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+}
+
+.admin-overview-handoff-card .dashboard-status-badge {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+}
+
+.admin-overview-handoff-card-muted {
+  background: var(--admin-surface-muted);
 }
 
 button.admin-overview-action-card {
@@ -323,6 +419,92 @@ button.admin-overview-action-card:focus-visible {
 
 .admin-overview-action-card-muted {
   background: var(--admin-surface-muted);
+}
+
+.admin-owner-route-list,
+.admin-owner-handoff-list,
+.admin-owner-mini-list,
+.admin-owner-compact-panel {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-owner-route-card,
+.admin-owner-handoff-item,
+.admin-owner-mini-row,
+.admin-owner-compact-panel {
+  min-width: 0;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-control);
+  background: var(--admin-surface);
+  padding: 11px 12px;
+}
+
+.admin-owner-route-card,
+.admin-owner-handoff-item,
+.admin-owner-compact-panel {
+  align-content: start;
+}
+
+.admin-owner-route-card,
+.admin-owner-handoff-item {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-owner-route-card-head,
+.admin-owner-compact-head,
+.admin-owner-mini-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-owner-route-card strong,
+.admin-owner-handoff-item strong,
+.admin-owner-compact-head strong,
+.admin-owner-mini-row strong {
+  min-width: 0;
+  color: var(--admin-text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-owner-route-card p,
+.admin-owner-handoff-item p,
+.admin-owner-compact-panel p {
+  margin: 0;
+  color: var(--admin-text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.admin-owner-handoff-item span:first-child,
+.admin-owner-compact-head span:first-child,
+.admin-owner-mini-row span {
+  min-width: 0;
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.admin-owner-mini-row {
+  min-height: 40px;
+}
+
+.admin-owner-mini-row span {
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .page-anchor-target {
@@ -564,7 +746,7 @@ button.admin-overview-action-card:focus-visible {
 
 .admin-blueprint-page-hero {
   display: grid;
-  gap: 14px;
+  gap: 8px;
 }
 
 .admin-blueprint-page-hero p {
@@ -578,6 +760,10 @@ button.admin-overview-action-card:focus-visible {
   color: var(--admin-muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.admin-blueprint-page-hero p:last-child {
+  max-width: 620px;
 }
 
 .admin-blueprint-page-hero h1 {
@@ -634,11 +820,11 @@ button.admin-overview-action-card:focus-visible {
 }
 
 .admin-blueprint-page[data-page="dashboard"] .admin-blueprint-module-board {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-board {
-  grid-template-columns: minmax(300px, 0.95fr) minmax(380px, 1.2fr) minmax(260px, 0.75fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-board {
@@ -651,57 +837,87 @@ button.admin-overview-action-card:focus-visible {
 
 .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="risk-queue"] {
   grid-column: 1 / span 2;
-  min-height: 520px;
+  min-height: 326px;
 }
 
 .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="next-actions"] {
-  grid-column: 3 / span 2;
-  min-height: 520px;
+  grid-column: 3;
+  min-height: 326px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="owner-handoff"] {
+  grid-column: 1 / -1;
+  min-height: 166px;
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="account-overview"] {
-  grid-column: 1;
-  grid-row: 1 / span 3;
-  min-height: min(680px, var(--admin-plugin-screen-max-height));
+  grid-column: 1 / span 2;
+  grid-row: 1;
+  height: 326px;
+  min-height: 326px;
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="resource-orders"] {
-  grid-column: 2;
-  grid-row: 1 / span 3;
-  min-height: min(680px, var(--admin-plugin-screen-max-height));
+  grid-column: 3;
+  grid-row: 1;
+  height: 326px;
+  min-height: 326px;
 }
 
-.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="quota-usage"],
-.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="lifecycle"],
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="quota-usage"] {
+  grid-column: 1;
+  grid-row: 2;
+  height: 220px;
+  min-height: 166px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="lifecycle"] {
+  grid-column: 2;
+  grid-row: 2;
+  height: 220px;
+  min-height: 166px;
+}
+
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="history-events"] {
   grid-column: 3;
+  grid-row: 2;
+  height: 220px;
+  min-height: 166px;
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="freshness"] {
   grid-column: 1;
-  grid-row: 1;
+  grid-row: 2;
+  height: 220px;
+  min-height: 166px;
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="channel-coverage"] {
   grid-column: 2;
-  grid-row: 1;
+  grid-row: 2;
+  height: 220px;
+  min-height: 166px;
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="receipts-collectors"] {
   grid-column: 3;
-  grid-row: 1;
+  grid-row: 2;
+  height: 220px;
+  min-height: 166px;
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="usage-ledger"] {
   grid-column: 1 / span 2;
-  grid-row: 2;
-  min-height: 560px;
+  grid-row: 1;
+  height: 326px;
+  min-height: 326px;
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="collection-anomalies"] {
   grid-column: 3;
-  grid-row: 2;
-  min-height: 560px;
+  grid-row: 1;
+  height: 326px;
+  min-height: 326px;
 }
 
 .admin-blueprint-module-panel {

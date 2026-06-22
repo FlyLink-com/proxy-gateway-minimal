@@ -38,7 +38,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
     ariaLabel: "Operations Overview page header",
     kicker: "Overview / Operations Overview",
     title: "Operations Overview",
-    description: "First-screen operator view for platform health, computed risk routing, and next owner page. It summarizes; it does not own account, quota, channel, or receipt ledgers.",
+    description: "Health, risk routing, and next action only; detail ledgers stay on owner pages.",
     statusLabel: "Summary and routing",
     statusTone: "info",
     modules: [
@@ -141,6 +141,37 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
         ],
         nextStep: "Wire panel routes to section-level deep links after page modules are finalized.",
         actions: undefined
+      },
+      {
+        navId: "owner-handoff",
+        container: {
+          category: "audit-workflow",
+          container: "Owner page handoff strip",
+          dataAdapter: "Static route contract now; later computed owner-page attention signals.",
+          layoutPolicy: "Compact full-width handoff strip below the primary dashboard panels.",
+          performanceBoundary: "No owner-page ledger mount inside the overview route strip.",
+          interactionModel: "Open owner page only; no production write or case close action."
+        },
+        content: <OverviewOwnerHandoff onNavigate={onNavigate} />,
+        purpose: "Make the next owner-page boundary visible without repeating detailed collections on the overview page.",
+        contentFields: [
+          "Accounts & Resources · decision owner",
+          "Usage & Channels · evidence owner",
+          "Audit & Cases · planned"
+        ],
+        states: [
+          "Ready route",
+          "Evidence route",
+          "Locked future area"
+        ],
+        uiSurface: "operations-handoff",
+        ownership: "Overview owns routing only; owner pages hold the durable detail.",
+        boundaries: [
+          "No duplicated owner-page ledger",
+          "No case close workflow",
+          "No production execution"
+        ],
+        nextStep: "Attach computed attention signals after owner pages expose section-level route ids."
       }
     ]
   };
@@ -296,6 +327,34 @@ function OverviewRouteCards({ onNavigate }: { onNavigate?: (page: AdminPage) => 
           <StatusChip label="LOCKED" tone="neutral" />
           <strong>Audit & Cases locked</strong>
           <span>Future durable case workflow remains gated.</span>
+        </article>
+      </div>
+    </section>
+  );
+}
+
+function OverviewOwnerHandoff({ onNavigate }: { onNavigate?: (page: AdminPage) => void }) {
+  return (
+    <section className="admin-overview-handoff" aria-label="Overview owner handoff">
+      <div className="admin-overview-section-heading">
+        <h3>Owner Page Handoff</h3>
+        <p>Continue review on the page that owns the detail collection.</p>
+      </div>
+      <div className="admin-overview-handoff-strip">
+        <button className="admin-overview-handoff-card" type="button" onClick={() => onNavigate?.("portalRequests")}>
+          <strong>Accounts & Resources</strong>
+          <span>Decision owner for accounts, orders, quotas, and lifecycle.</span>
+          <StatusChip label="Decision owner" tone="info" />
+        </button>
+        <button className="admin-overview-handoff-card" type="button" onClick={() => onNavigate?.("usageMonitor")}>
+          <strong>Usage & Channels</strong>
+          <span>Evidence owner for collection freshness, coverage, receipts, and anomalies.</span>
+          <StatusChip label="Evidence owner" tone="success" />
+        </button>
+        <article className="admin-overview-handoff-card admin-overview-handoff-card-muted">
+          <strong>Audit & Cases</strong>
+          <span>Durable history and case workflow remain gated until the backend contract lands.</span>
+          <StatusChip label="Planned" tone="neutral" />
         </article>
       </div>
     </section>

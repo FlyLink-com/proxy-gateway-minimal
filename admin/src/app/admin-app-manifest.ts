@@ -341,7 +341,7 @@ const PAGE_APP_DEFINITIONS: Record<AdminPage, {
     appId: "operations-overview",
     capabilities: ["view", "inspect", "suggest-action"],
     category: "monitoring",
-    coreViews: ["health summary", "risk queue", "next action routing"],
+    coreViews: ["health summary", "risk queue", "next action routing", "owner handoff"],
     iconKey: "grid",
     primaryObjects: ["platform health", "risk case", "activity event", "channel summary"],
     role: "overview",
@@ -357,6 +357,7 @@ const PAGE_APP_DEFINITIONS: Record<AdminPage, {
       [
         "dashboard#dashboard-health-summary",
         "dashboard#dashboard-risk-queue",
+        "dashboard#dashboard-owner-handoff",
         "usageMonitor#platform-monitoring-freshness",
         "usageMonitor#platform-monitoring-channel-coverage"
       ],
@@ -461,6 +462,7 @@ const PLUGIN_ICON_KEYS: Record<string, string> = {
   "history-events": "history",
   lifecycle: "refresh",
   "next-actions": "route",
+  "owner-handoff": "route",
   "quota-usage": "gauge",
   "receipts-collectors": "package",
   "resource-orders": "boxes",
@@ -477,6 +479,7 @@ const PLUGIN_TONES: Record<string, string> = {
   "history-events": "nav-app-tone-slate",
   lifecycle: "nav-app-tone-violet",
   "next-actions": "nav-app-tone-indigo",
+  "owner-handoff": "nav-app-tone-indigo",
   "quota-usage": "nav-app-tone-lime",
   "receipts-collectors": "nav-app-tone-teal",
   "resource-orders": "nav-app-tone-teal",
@@ -493,6 +496,7 @@ const PLUGIN_ZH_NAMES: Record<string, string> = {
   "history-events": "历史与事件",
   lifecycle: "生命周期",
   "next-actions": "后续行动",
+  "owner-handoff": "所有权交接",
   "quota-usage": "配额与使用情况",
   "receipts-collectors": "收据和采集器",
   "resource-orders": "资源与订单",
@@ -509,6 +513,7 @@ const PLUGIN_PRIMARY_OBJECTS: Record<string, string[]> = {
   "history-events": ["object history", "case candidate", "restricted event"],
   lifecycle: ["account lifecycle", "order pause", "expiry", "archive candidate"],
   "next-actions": ["review route", "owner page", "operator action"],
+  "owner-handoff": ["owner page", "decision route", "evidence route", "planned case route"],
   "quota-usage": ["quota policy", "edited limit", "total usage", "quota risk"],
   "receipts-collectors": ["receipt state", "collector availability", "safe diagnostic"],
   "resource-orders": ["order", "resource", "entitlement", "subscription artifact"],
@@ -525,6 +530,7 @@ const PLUGIN_CATEGORIES: Record<string, WorkbenchCategory> = {
   "history-events": "audit-workflow",
   lifecycle: "management",
   "next-actions": "audit-workflow",
+  "owner-handoff": "audit-workflow",
   "quota-usage": "configuration",
   "receipts-collectors": "platform-tools",
   "resource-orders": "management",
@@ -572,6 +578,15 @@ const PLUGIN_SOURCE_CONTRACTS: Record<string, AdminAppSourceContract> = {
     ["risk-case-summary", "gate-summary", "activity-event-summary"],
     ["dashboard#dashboard-next-actions", "dashboard#dashboard-risk-queue"],
     ["risk-case", "gate-summary", "next-safe-action"]
+  ),
+  "owner-handoff": sourceContract(
+    ["risk-case-summary", "gate-summary", "activity-event-summary"],
+    [
+      "dashboard#dashboard-owner-handoff",
+      "portalRequests#user-supervision-account-overview",
+      "usageMonitor#platform-monitoring-freshness"
+    ],
+    ["owner-route", "decision-owner", "evidence-owner"]
   ),
   "quota-usage": sourceContract(
     ["quota-policy-summary", "usage-rollup-summary", "usage-ledger-summary"],

@@ -99,13 +99,13 @@ describe("admin app manifest", () => {
     expect(getWorkspacePageApp("usageMonitor")?.owner.area).toBe("Platform Monitoring");
     expect(getWorkspacePageApp("dashboard")?.catalog).toMatchObject({
       appId: "operations-overview",
-      coreViews: ["health summary", "risk queue", "next action routing"],
+      coreViews: expect.arrayContaining(["health summary", "risk queue", "next action routing", "owner handoff"]),
       enName: "Operations Overview",
       primaryObjects: expect.arrayContaining(["platform health", "risk case"]),
       searchableFields: expect.arrayContaining(["overview", "health", "risk"]),
       sourceContract: {
         dataSourceRefs: expect.arrayContaining(["platform-health-summary", "risk-case-summary"]),
-        drilldownTargets: expect.arrayContaining(["dashboard#dashboard-risk-queue"]),
+        drilldownTargets: expect.arrayContaining(["dashboard#dashboard-risk-queue", "dashboard#dashboard-owner-handoff"]),
         evidenceRoutes: expect.arrayContaining(["risk-case"]),
         transformBoundary: "display-only"
       },

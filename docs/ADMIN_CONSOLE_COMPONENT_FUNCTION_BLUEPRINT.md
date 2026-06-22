@@ -23,6 +23,8 @@ Use it after:
 - `docs/ADMIN_CONSOLE_CONCEPT_REQUIREMENTS_MATRIX.md`
 - `docs/ADMIN_CONSOLE_OVERVIEW_FIGMA_SPEC.md`
 - `docs/ADMIN_CONSOLE_NAVIGATION_IA.md`
+- `docs/ADMIN_CONSOLE_UI_CONTENT_MATRIX.md`
+- `docs/ADMIN_CONSOLE_UI_LAYOUT_EFFECT_MATRIX.md`
 - `docs/ADMIN_CONSOLE_UI_PROMPT_TRACEABILITY.md`
 - `docs/ADMIN_UI_GITHUB_REFERENCE_STUDY.md`
 
@@ -117,6 +119,11 @@ The current content-layer contract covers the active Admin pages, shared
 workbench primitives, and case candidate labels through
 `admin/src/test/admin-english-copy-contract.test.ts`; User Portal remains a
 separate self-service surface and is not part of this Admin copy contract.
+For the page-by-page split between visible UI copy, support-state copy, and
+design-only planning copy, use `docs/ADMIN_CONSOLE_UI_CONTENT_MATRIX.md`.
+For page layout, module priority, visual hierarchy, surface treatment,
+responsive behavior, and visual QA gates, use
+`docs/ADMIN_CONSOLE_UI_LAYOUT_EFFECT_MATRIX.md`.
 
 ## Page Map
 

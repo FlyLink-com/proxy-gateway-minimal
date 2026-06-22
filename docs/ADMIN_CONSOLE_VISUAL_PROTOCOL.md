@@ -13,12 +13,28 @@ Last updated: 2026-06-18, America/Los_Angeles.
 >   credential, subscription URL, raw config/log/env, SQLite row, or
 >   customer-data actions.
 
-This document freezes the visual protocol for the New Admin OS after the
-browser-desktop workspace skeleton in PR #330. It is the Gate 0 source of truth
-for spacing, surface hierarchy, App Library density, plugin dimensions,
-typography, icon treatment, and responsive behavior.
+This document freezes the shared visual protocol for the Admin Console. It is
+the Gate 0 source of truth for spacing, surface hierarchy, typography, icon
+treatment, responsive behavior, and approved surface effects.
 
-Use this before implementing:
+For page-specific layout, module priority, visual-effect acceptance, and
+Browser/Chrome evidence requirements, use
+`docs/ADMIN_CONSOLE_UI_LAYOUT_EFFECT_MATRIX.md`. That matrix keeps the current
+implementation target aligned with the structured Admin workbench and must not
+be used to revive older App Library / browser-OS experiments as the primary
+page model.
+
+Current implementation target:
+
+- `docs/ADMIN_CONSOLE_UI_CONTENT_MATRIX.md` decides visible page content.
+- `docs/ADMIN_CONSOLE_UI_LAYOUT_EFFECT_MATRIX.md` decides page layout, panel
+  priority, visual QA gates, and whether a concept is current or legacy.
+- This protocol supplies reusable tokens and visual rules only. Older
+  App Library, dock, plugin canvas, drag/resize/minimize, and browser-desktop
+  language is legacy/future exploration unless the layout/effect matrix
+  explicitly reactivates it for the current phase.
+
+Use this before implementing token or primitive changes:
 
 - `GCC-74` app map and control-plane application list;
 - `GCC-75` App Manifest and app authoring standard;
@@ -33,17 +49,19 @@ style contract tests.
 
 ## Design Goal
 
-The Admin surface is a browser desktop / control-plane workspace:
+The current Admin surface is a structured operator workbench:
 
 ```text
-status bar
-  -> workspace appbar / dock
-  -> App Library launcher
-  -> plugin canvas
+protected shell
+  -> compact page context
+  -> page-owned summary
+  -> one-level operational panels
+  -> drawer/popover/detail surfaces only when needed
 ```
 
 The visual system should feel modern, technical, and calm. It should not feel
-like a scroll-modal prototype, a nested-card dashboard, or a template collage.
+like a scroll-modal prototype, a nested-card dashboard, a template collage, or
+an unfinished browser-OS experiment.
 
 ## Coordinate System
 

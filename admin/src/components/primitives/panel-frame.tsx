@@ -24,6 +24,7 @@ export type PanelFrameProps = {
   notes?: ReactNode;
   onHide?: () => void;
   ownerMode: "preview" | "owner";
+  showDesignMetadata?: boolean;
   title: string;
   tone?: MetricTone;
 };
@@ -53,11 +54,13 @@ export function PanelFrame({
   notes,
   onHide,
   ownerMode,
+  showDesignMetadata = false,
   title,
   tone = ownerMode === "preview" ? "neutral" : "info"
 }: PanelFrameProps) {
   const showDraftChrome = chrome === "draft";
   const showFixturePreview = showDraftChrome && fixturePreview;
+  const showPanelMeta = showDesignMetadata || Boolean(onHide);
 
   return (
     <section
@@ -86,26 +89,32 @@ export function PanelFrame({
             <span className="workbench-category-pill">{CATEGORY_LABEL[category]}</span>
             <div>
               <h3>{title}</h3>
-              <small>{containerLabel}</small>
+              {showDesignMetadata ? <small>{containerLabel}</small> : null}
             </div>
           </div>
-          <div className="admin-blueprint-module-panel-meta">
-            <span className="admin-blueprint-panel-field-count" aria-label={`${fieldLabels.length} primary fields`}>
-              {fieldLabels.length}
-            </span>
-            <StatusChip label={ownerMode === "preview" ? "Preview" : "Owner"} tone={tone} />
-            {onHide ? (
-              <button
-                aria-label={`${title} hide module`}
-                className="admin-blueprint-panel-tool-trigger"
-                onClick={onHide}
-                title={`${title} hide module`}
-                type="button"
-              >
-                <EyeOff aria-hidden="true" />
-              </button>
-            ) : null}
-          </div>
+          {showPanelMeta ? (
+            <div className="admin-blueprint-module-panel-meta">
+              {showDesignMetadata ? (
+                <>
+                  <span className="admin-blueprint-panel-field-count" aria-label={`${fieldLabels.length} primary fields`}>
+                    {fieldLabels.length}
+                  </span>
+                  <StatusChip label={ownerMode === "preview" ? "Preview" : "Owner"} tone={tone} />
+                </>
+              ) : null}
+              {onHide ? (
+                <button
+                  aria-label={`${title} hide module`}
+                  className="admin-blueprint-panel-tool-trigger"
+                  onClick={onHide}
+                  title={`${title} hide module`}
+                  type="button"
+                >
+                  <EyeOff aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+          ) : null}
         </div>
       ) : (
         <>

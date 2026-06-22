@@ -795,7 +795,12 @@ Current architecture priorities:
   truth is `admin/src/app/admin-app-manifest.ts`. App Registry / YAML import is
   future design only and must not be treated as an implemented runtime registry
   or upload flow. See `docs/ADMIN_CONSOLE_REBUILD_BASELINE.md`,
+  `docs/ADMIN_CONSOLE_FRONTEND_DESIGN_INDEX.md`,
+  `docs/ADMIN_CONSOLE_DESIGN_COMPLETION_CHECKLIST.md`,
+  `docs/ADMIN_CONSOLE_NEXT_STAGE_EXECUTION_CHECKLIST.md`,
   `docs/ADMIN_CONSOLE_NAVIGATION_IA.md`,
+  `docs/ADMIN_CONSOLE_UI_CONTENT_MATRIX.md`,
+  `docs/ADMIN_CONSOLE_UI_LAYOUT_EFFECT_MATRIX.md`,
   `docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md`,
   `docs/ADMIN_CONSOLE_APP_MAP.md`,
   `docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md`,

@@ -40,7 +40,8 @@ describe("admin dashboard page", () => {
     expect(sectionAnchorOrder()).toEqual([
       "dashboard-health-summary",
       "dashboard-risk-queue",
-      "dashboard-next-actions"
+      "dashboard-next-actions",
+      "dashboard-owner-handoff"
     ]);
 
     expect(screen.queryByLabelText("Operations Overview page navigation")).toBeNull();
@@ -72,7 +73,7 @@ describe("admin dashboard page", () => {
     expect(screen.queryByText("Platform health · summary state")).toBeNull();
     expect(screen.queryByText("First-screen operator view for platform health, risk routing, and the next owner page.")).toBeNull();
     expect(screen.getByRole("heading", { name: "Risk Queue" })).not.toBeNull();
-    expect(screen.getAllByLabelText("Audit / Workflow panel").length).toBe(2);
+    expect(screen.getAllByLabelText("Audit / Workflow panel").length).toBe(3);
     expect(screen.getByText("Computed review candidates. No case close, approval, or mutation action here.")).not.toBeNull();
     expect(screen.getByText("All 18")).not.toBeNull();
     expect(screen.getByText("High 5")).not.toBeNull();
@@ -82,6 +83,10 @@ describe("admin dashboard page", () => {
     expect(screen.getByRole("heading", { name: "Next Actions" })).not.toBeNull();
     expect(screen.getByLabelText("Overview owner page routing content")).not.toBeNull();
     expect(screen.getByText("Audit & Cases locked")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Owner Page Handoff" })).not.toBeNull();
+    expect(screen.getByLabelText("Overview owner handoff")).not.toBeNull();
+    expect(screen.getByText("Decision owner for accounts, orders, quotas, and lifecycle.")).not.toBeNull();
+    expect(screen.getByText("Evidence owner for collection freshness, coverage, receipts, and anomalies.")).not.toBeNull();
     expect(screen.queryByText("Audit Center")).toBeNull();
     expect(screen.queryByText("Log Access")).toBeNull();
     expect(screen.queryByText("Key Management")).toBeNull();
@@ -119,6 +124,7 @@ describe("admin dashboard page", () => {
     expect(screen.getByText("2m 14s · stale threshold visible")).not.toBeNull();
     expect(screen.getByText("Order traffic over limit")).not.toBeNull();
     expect(screen.getAllByText("Accounts & Resources").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("Overview owner handoff")).not.toBeNull();
     expect(screen.queryByText("Overview summarizes and routes; owner pages hold detailed collections.")).toBeNull();
     expect(onRiskCountChange).toHaveBeenCalledWith(2);
 
@@ -188,7 +194,8 @@ describe("admin dashboard page", () => {
 
     expect(sectionAnchorOrder()).toEqual([
       "dashboard-risk-queue",
-      "dashboard-next-actions"
+      "dashboard-next-actions",
+      "dashboard-owner-handoff"
     ]);
     expect(document.querySelector("#dashboard-health-summary")).toBeNull();
     expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-panel");
@@ -226,10 +233,12 @@ describe("admin dashboard page", () => {
     expect(sectionAnchorOrder()).toEqual([
       "dashboard-health-summary",
       "dashboard-risk-queue",
-      "dashboard-next-actions"
+      "dashboard-next-actions",
+      "dashboard-owner-handoff"
     ]);
     expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-panel");
     expect(document.querySelector("#dashboard-next-actions")?.className).toContain("admin-blueprint-module-panel");
+    expect(document.querySelector("#dashboard-owner-handoff")?.className).toContain("admin-blueprint-module-panel");
   });
 
   test("resets pre-visual-foundation layout cache to the current default modules", () => {
@@ -256,7 +265,8 @@ describe("admin dashboard page", () => {
     expect(sectionAnchorOrder()).toEqual([
       "dashboard-health-summary",
       "dashboard-risk-queue",
-      "dashboard-next-actions"
+      "dashboard-next-actions",
+      "dashboard-owner-handoff"
     ]);
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-size")).toBeNull();
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-height")).toBeNull();
@@ -264,6 +274,7 @@ describe("admin dashboard page", () => {
     expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-size")).toBeNull();
     expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-height")).toBeNull();
     expect(document.querySelector("#dashboard-next-actions")).not.toBeNull();
+    expect(document.querySelector("#dashboard-owner-handoff")).not.toBeNull();
   });
 });
 

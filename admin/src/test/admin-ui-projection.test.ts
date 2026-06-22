@@ -15,7 +15,7 @@ describe("admin UI projection", () => {
       subNavigation: pageSubNavigation[blueprint.page]
     });
 
-    expect(panels).toHaveLength(3);
+    expect(panels).toHaveLength(4);
     expect(panels[0]).toEqual({
       actions: blueprint.modules[0].actions,
       ariaLabel: "Monitoring panel",
@@ -79,11 +79,13 @@ describe("admin UI projection", () => {
 
     expect(panels.map((panel) => panel.navId)).toEqual([
       "health-summary",
-      "next-actions"
+      "next-actions",
+      "owner-handoff"
     ]);
     expect(panels.map((panel) => panel.targetId)).toEqual([
       "dashboard-health-summary",
-      "dashboard-next-actions"
+      "dashboard-next-actions",
+      "dashboard-owner-handoff"
     ]);
   });
 
@@ -98,7 +100,7 @@ describe("admin UI projection", () => {
       subNavigation: pageSubNavigation[blueprint.page]
     });
 
-    expect(panels.map((panel) => panel.chrome)).toEqual(["operator", "operator", "operator"]);
+    expect(panels.map((panel) => panel.chrome)).toEqual(["operator", "operator", "operator", "operator"]);
     expect(panels.some((panel) => panel.fixturePreview)).toBe(false);
     expect(JSON.stringify(panels)).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_/i);
   });

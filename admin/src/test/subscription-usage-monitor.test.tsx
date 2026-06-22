@@ -47,7 +47,9 @@ describe("subscription usage monitor page", () => {
     expect(document.querySelector("#platform-monitoring-freshness")?.getAttribute("data-ui-role")).toBe("panel");
     expect(screen.getAllByLabelText("Monitoring panel").length).toBe(4);
     expect(screen.getByLabelText("Platform Tools panel")).not.toBeNull();
-    expect(screen.getAllByText("Safe diagnostics entry panel").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Safe diagnostics entry panel")).toBeNull();
+    expect(document.querySelectorAll(".admin-blueprint-panel-field-count")).toHaveLength(0);
+    expect(document.querySelectorAll(".admin-blueprint-module-title small")).toHaveLength(0);
     expect(screen.getByLabelText("Collection Freshness static operator content")).not.toBeNull();
     expect(screen.getByText("Collection state")).not.toBeNull();
     expect(screen.getAllByText("Collector disabled").length).toBeGreaterThanOrEqual(1);
@@ -59,7 +61,7 @@ describe("subscription usage monitor page", () => {
     expect(screen.getByText("Degraded")).not.toBeNull();
     expect(screen.getByText("51%")).not.toBeNull();
     expect(screen.getAllByText("Pending receipt").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByLabelText("Route Latency static table")).not.toBeNull();
+    expect(screen.getByLabelText("Route latency compact rows")).not.toBeNull();
     expect(screen.getByText("route_safe_sgp_backup")).not.toBeNull();
     expect(screen.getByText("146 ms")).not.toBeNull();
     expect(screen.getAllByText("Stale").length).toBeGreaterThanOrEqual(1);
@@ -74,11 +76,10 @@ describe("subscription usage monitor page", () => {
     expect(screen.getByRole("heading", { name: "Receipts & Collectors" })).not.toBeNull();
     expect(screen.getByLabelText("Receipts and Collectors static operator content")).not.toBeNull();
     expect(screen.getByText("Receipt gaps stay visible without exposing protected runtime material.")).not.toBeNull();
-    expect(screen.getByLabelText("Agent Status static table")).not.toBeNull();
+    expect(screen.getByLabelText("Receipt and collector compact diagnostics")).not.toBeNull();
     expect(screen.getByText("agent_safe_sgp_02")).not.toBeNull();
     expect(screen.getByText("4m ago")).not.toBeNull();
-    expect(screen.getByLabelText("Inspection Runs static table")).not.toBeNull();
-    expect(screen.getByText("route-latency-sample")).not.toBeNull();
+    expect(document.body.textContent ?? "").toContain("route-latency-sample");
     expect(screen.getAllByText("route_safe_tuic_recovery").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Collectors · availability")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);

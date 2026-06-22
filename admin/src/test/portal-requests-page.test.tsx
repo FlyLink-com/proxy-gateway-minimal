@@ -48,7 +48,9 @@ describe("portal requests page", () => {
     expect(screen.getAllByLabelText("Management panel").length).toBe(3);
     expect(screen.getByLabelText("Configuration panel")).not.toBeNull();
     expect(screen.getByLabelText("Audit / Workflow panel")).not.toBeNull();
-    expect(screen.getAllByText("Quota policy panel").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Quota policy panel")).toBeNull();
+    expect(document.querySelectorAll(".admin-blueprint-panel-field-count")).toHaveLength(0);
+    expect(document.querySelectorAll(".admin-blueprint-module-title small")).toHaveLength(0);
     expect(screen.getByLabelText("Account Directory static operator content")).not.toBeNull();
     expect(screen.getByLabelText("Account Directory static table")).not.toBeNull();
     expect(screen.getByText("acct_safe_014")).not.toBeNull();

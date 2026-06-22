@@ -1,6 +1,6 @@
 # Admin Console Figma Mirror
 
-Last updated: 2026-06-21, America/Los_Angeles.
+Last updated: 2026-06-22, America/Los_Angeles.
 
 > Status:
 > - Source Figma file:
@@ -16,6 +16,11 @@ Last updated: 2026-06-21, America/Los_Angeles.
 This document is the bridge between the Figma canvas, the React Admin console,
 and visual QA. The mirror is not a second product surface. It is a reviewable
 design artifact that must stay aligned with the local Admin page contracts.
+For the current frontend design handoff entrypoint, active Figma frame, copy
+pack, React implementation targets, and validation checklist, use
+`docs/ADMIN_CONSOLE_FRONTEND_DESIGN_INDEX.md`.
+For page layout, visual hierarchy, responsive evidence, and browser screenshot
+acceptance criteria, use `docs/ADMIN_CONSOLE_UI_LAYOUT_EFFECT_MATRIX.md`.
 
 ## Current Connector Evidence
 
@@ -31,6 +36,7 @@ Observed current canvas:
 | Active page mirror frames | `01 Operations Overview / 1600x1024`, `02 Accounts & Resources / 1600x1024`, `03 Usage & Channels / 1600x1024` |
 | Safety/review frames | `04 State & Safety Matrix`, `05 GCC-103 Review Addendum / 1600x1024` |
 | Implementation capture frames | `06 Current Implementation / Operations Overview / 1600w full-content capture`, `07 Current Implementation / Accounts & Resources / 1600w full-content capture`, `08 Current Implementation / Usage & Channels / 1600w full-content capture` |
+| Refined visual draft frames | `09 Layout Effect Draft v1 / 1600x1024`, `09 Layout Effect Draft v1.1 / 1600x1024`, `09 Layout Effect Draft v1.2 Text Rhythm / 1600x1024`, `10 Layout Effect Draft v1.3 Accounts & Resources / 1600x1024`, `11 Layout Effect Draft v1.3 Usage & Channels / 1600x1024` |
 | React-visible implementation baseline | Three active Admin pages: `Operations Overview`, `Accounts & Resources`, `Usage & Channels` |
 
 Previous source mismatch:
@@ -51,6 +57,37 @@ Write attempt:
 | Desktop evidence | Figma Desktop opens the canonical multi-frame file. The Share button shows a Full-seat upgrade prompt; do not continue that prompt through automation. |
 | Connector result | `get_metadata` can read the canonical file, `use_figma` can execute, and a shared plugin data write probe succeeded on page `0:1`. |
 | Required action | Use the canonical handoff file for future Figma mirror and visual QA work. Avoid Share or seat/billing prompts unless the operator explicitly approves that action. |
+
+GCC-122 audit update, 2026-06-22:
+
+| Evidence | Finding |
+| --- | --- |
+| `use_figma` read-only inventory | Page `0:1` originally contained `14` top-level frames, including active page mirrors `2:81`, `2:189`, `2:309`, current implementation captures `17:2`, `22:2`, `23:2`, and refined visual draft `99:2`. |
+| Operations visual state | `99:2` is the accepted refined direction for the Operations workbench shell, status bar, metric cards, risk queue, next actions, and owner handoff. |
+| Accounts visual state | `104:2` was created as a refined Accounts desktop draft using the `99:2` shell, density, status bar, panel rhythm, and page-owned copy. |
+| Usage visual state | `104:226` was created as a refined Usage desktop draft using the `99:2` shell, density, status bar, panel rhythm, and evidence-owner copy. |
+| Gate result | Figma/page/visual completion is still in progress until the refined drafts pass user review, component-state placement, narrow QA, and Figma-to-code mapping. |
+
+GCC-122 first-review cleanup:
+
+| Evidence | Finding |
+| --- | --- |
+| Visible-copy scan | `preview`, draft/prototype wording, raw-log wording, and account-directory non-account rows were removed from the three refined desktop drafts. |
+| Layer-name scan | `104:2` and `104:226` now report `0` stale cloned `Risk Queue`, `Next Actions`, `Owner Page Handoff`, and old metric layer names. |
+| Screenshot evidence | Cleaned desktop screenshots were saved locally under `tmp/figma-gcc122-refined-*-cleaned.png`. |
+| Remaining gate | Component states, responsive/narrow QA, and Figma-to-code mapping moved into explicit evidence frames; user review and browser verification remain open. |
+
+GCC-122 design-evidence frames:
+
+| Frame | Node ID | Purpose | Local screenshot |
+| --- | --- | --- | --- |
+| `12 GCC-122 Component State Placement / 1600x1024` | `115:2` | Maps required shared-primitive states to active page placement and records open implementation decisions. | `tmp/figma-gcc122-component-state-placement-115-2.png` |
+| `13 GCC-122 Responsive QA Strategy / 1600x1024` | `116:2` | Defines the `1024px` and `768px` collapse strategy before React/CSS polish. | `tmp/figma-gcc122-responsive-qa-116-2.png` |
+| `14 GCC-122 Figma-to-code Mapping / 1600x1024` | `117:2` | Maps Figma component sets to React surfaces, CSS/token responsibility, and next gates. | `tmp/figma-gcc122-figma-to-code-mapping-117-2.png` |
+
+These evidence frames are review and implementation handoff material. They are
+not operator-facing Admin UI pages and must not be rendered as normal console
+content.
 
 Follow-up component mirror evidence:
 

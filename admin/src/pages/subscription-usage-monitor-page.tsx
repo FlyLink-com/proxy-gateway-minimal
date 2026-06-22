@@ -12,9 +12,9 @@ import {
 } from "../components/primitives";
 import {
   Activity,
-  Gauge,
+  AlertTriangle,
+  Database,
   RadioTower,
-  ReceiptText
 } from "lucide-react";
 
 export const usageChannelsBlueprint: BlueprintPage = {
@@ -22,9 +22,10 @@ export const usageChannelsBlueprint: BlueprintPage = {
   ariaLabel: "Usage & Channels page header",
   kicker: "Platform Monitoring / Usage & Channels",
   title: "Usage & Channels",
-  description: "Evidence owner for usage collection trust, channel coverage, receipts, collectors, and collection anomalies.",
+  description: "Evidence owner for freshness, coverage, usage ledger, receipts, and anomalies.",
   statusLabel: "Evidence owner",
   statusTone: "info",
+  summary: <UsageChannelsSummary />,
   modules: [
     {
       navId: "freshness",
@@ -204,6 +205,41 @@ export const usageChannelsBlueprint: BlueprintPage = {
   ]
 };
 
+function UsageChannelsSummary() {
+  return (
+    <div className="ops-metric-grid" aria-label="Usage & Channels summary metrics">
+      <MetricCard
+        detail="Observed 2m · threshold 5m"
+        icon={<Activity aria-hidden="true" />}
+        label="Freshness"
+        tone="success"
+        value="Fresh"
+      />
+      <MetricCard
+        detail="Measured channels · 1 delayed"
+        icon={<RadioTower aria-hidden="true" />}
+        label="Coverage"
+        tone="info"
+        value="24 / 25"
+      />
+      <MetricCard
+        detail="Safe rows · diagnostics locked"
+        icon={<Database aria-hidden="true" />}
+        label="Usage"
+        tone="neutral"
+        value="42.8GB"
+      />
+      <MetricCard
+        detail="Delay, zero usage, missing receipt"
+        icon={<AlertTriangle aria-hidden="true" />}
+        label="Anomalies"
+        tone="warning"
+        value="4"
+      />
+    </div>
+  );
+}
+
 export function SubscriptionUsageMonitorPage({
   fixturePreviewEnabled = false
 }: {
@@ -220,35 +256,13 @@ export function SubscriptionUsageMonitorPage({
 function FreshnessContent() {
   return (
     <div className="admin-operator-content" aria-label="Collection Freshness static operator content">
-      <div className="ops-metric-grid ops-metric-grid-compact">
-        <MetricCard
-          detail="Latest safe monitor sample"
-          icon={<Activity aria-hidden="true" />}
-          label="Collection state"
-          tone="success"
-          value="Fresh"
-        />
-        <MetricCard
-          detail="Stale threshold 5m"
-          icon={<Gauge aria-hidden="true" />}
-          label="Observed age"
-          tone="info"
-          value="2m"
-        />
-        <MetricCard
-          detail="Kept distinct from true zero"
-          icon={<RadioTower aria-hidden="true" />}
-          label="Unknown rows"
-          tone="warning"
-          value="2"
-        />
-        <MetricCard
-          detail="Layout remains stable"
-          icon={<ReceiptText aria-hidden="true" />}
-          label="Disconnected"
-          tone="neutral"
-          value="0"
-        />
+      <div className="admin-owner-compact-panel">
+        <div className="admin-owner-compact-head">
+          <span>Collection state</span>
+          <strong>Fresh</strong>
+          <StatusChip label="Observed 2m" tone="success" />
+        </div>
+        <p>Latest safe monitor sample is inside the 5 minute stale threshold.</p>
       </div>
       <div className="admin-static-status-row" aria-label="Freshness state taxonomy">
         <StatusChip label="Fresh" tone="success" />
@@ -355,6 +369,14 @@ const routeLatencyRows: RouteLatencyRow[] = [
 function ChannelCoverageContent() {
   return (
     <div className="admin-operator-content" aria-label="Channel Coverage static operator content">
+      <div className="admin-owner-compact-panel">
+        <div className="admin-owner-compact-head">
+          <span>Channel coverage</span>
+          <strong>24 / 25</strong>
+          <StatusChip label="Measured" tone="success" />
+        </div>
+        <p>Coverage rows show safe channel refs only; runtime material and raw collector output stay hidden.</p>
+      </div>
       <DataTable
         ariaLabel="Channel Coverage static table"
         columns={[
@@ -369,10 +391,7 @@ function ChannelCoverageContent() {
               />
             )
           },
-          { header: "Issued", key: "issued", render: (row) => row.issued },
-          { header: "Measured", key: "measured", render: (row) => row.measured },
           { header: "Utilization", key: "utilization", render: (row) => row.utilization },
-          { header: "Error rate", key: "errorRate", render: (row) => row.errorRate },
           {
             header: "Receipt",
             key: "receipt",
@@ -382,35 +401,20 @@ function ChannelCoverageContent() {
                 tone={row.receipt === "Healthy" ? "success" : row.receipt === "Pending receipt" ? "warning" : "danger"}
               />
             )
-          },
-          { header: "Last measured", key: "lastMeasured", render: (row) => row.lastMeasured }
+          }
         ]}
         getRowKey={(row) => row.channelRef}
         rows={channelCoverageRows}
       />
-      <DataTable
-        ariaLabel="Route Latency static table"
-        columns={[
-          { header: "Route", key: "route", render: (row: RouteLatencyRow) => <><SafeRef value={row.routeRef} /> · {row.routeType}</> },
-          { header: "Path", key: "path", render: (row) => `${row.source} -> ${row.target}` },
-          { header: "p50", key: "p50", render: (row) => row.p50 },
-          { header: "p95", key: "p95", render: (row) => row.p95 },
-          { header: "p99", key: "p99", render: (row) => row.p99 },
-          { header: "Samples", key: "samples", render: (row) => row.samples },
-          {
-            header: "State",
-            key: "state",
-            render: (row) => (
-              <StatusChip
-                label={row.state}
-                tone={row.state === "Fresh" ? "success" : row.state === "Stale" ? "warning" : "neutral"}
-              />
-            )
-          }
-        ]}
-        getRowKey={(row) => row.routeRef}
-        rows={routeLatencyRows}
-      />
+      <div className="admin-owner-mini-list" aria-label="Route latency compact rows">
+        {routeLatencyRows.slice(0, 2).map((row) => (
+          <article className="admin-owner-mini-row" key={row.routeRef}>
+            <span><SafeRef value={row.routeRef} /> · {row.routeType}</span>
+            <strong>{row.p95}</strong>
+            <StatusChip label={row.state} tone={row.state === "Fresh" ? "success" : row.state === "Stale" ? "warning" : "neutral"} />
+          </article>
+        ))}
+      </div>
     </div>
   );
 }
@@ -583,87 +587,36 @@ function CollectionAnomaliesContent() {
 function ReceiptsCollectorsContent() {
   return (
     <div className="admin-operator-content" aria-label="Receipts and Collectors static operator content">
-      <div className="admin-static-card-grid">
-        <article className="admin-static-card">
+      <div className="admin-owner-handoff-list">
+        <article className="admin-owner-handoff-item">
           <span>Receipt state</span>
           <strong>2 pending</strong>
           <p>Receipt gaps stay visible without exposing protected runtime material.</p>
           <StatusChip label="Pending receipt" tone="warning" />
         </article>
-        <article className="admin-static-card">
+        <article className="admin-owner-handoff-item">
           <span>Collector state</span>
           <strong>1 disabled</strong>
           <p>Collector availability is evidence, not an account or order lifecycle decision.</p>
           <StatusChip label="Collector disabled" tone="danger" />
         </article>
-        <article className="admin-static-card admin-static-card-muted">
-          <span>Diagnostics</span>
-          <strong>Locked</strong>
-          <p>Future diagnostics require no-secret contracts and redaction tests before activation.</p>
-          <StatusChip label="Readonly" tone="neutral" />
-        </article>
       </div>
-      <DataTable
-        ariaLabel="Agent Status static table"
-        columns={[
-          { header: "Agent / node", key: "agent", render: (row: AgentStatusRow) => <><SafeRef value={row.agentRef} /> · <SafeRef value={row.nodeRef} /></> },
-          { header: "Version", key: "version", render: (row) => row.version },
-          { header: "Heartbeat", key: "heartbeat", render: (row) => row.heartbeat },
-          {
-            header: "Desired state",
-            key: "desired",
-            render: (row) => (
-              <StatusChip
-                label={row.desiredStatePull}
-                tone={row.desiredStatePull === "Current" ? "success" : row.desiredStatePull === "Delayed" ? "warning" : "neutral"}
-              />
-            )
-          },
-          {
-            header: "Receipt push",
-            key: "receiptPush",
-            render: (row) => (
-              <StatusChip
-                label={row.receiptPush}
-                tone={row.receiptPush === "Ready" ? "success" : row.receiptPush === "Pending" ? "warning" : "neutral"}
-              />
-            )
-          },
-          {
-            header: "Collector",
-            key: "collector",
-            render: (row) => (
-              <StatusChip
-                label={row.collectorState}
-                tone={row.collectorState === "Ready" ? "success" : row.collectorState === "Delayed" ? "warning" : "danger"}
-              />
-            )
-          }
-        ]}
-        getRowKey={(row) => row.agentRef}
-        rows={agentStatusRows}
-      />
-      <DataTable
-        ariaLabel="Inspection Runs static table"
-        columns={[
-          { header: "Check", key: "check", render: (row: InspectionRunRow) => row.checkName },
-          {
-            header: "Result",
-            key: "result",
-            render: (row) => (
-              <StatusChip
-                label={row.latestResult}
-                tone={row.latestResult === "Pass" ? "success" : row.latestResult === "Warning" ? "warning" : "danger"}
-              />
-            )
-          },
-          { header: "Duration", key: "duration", render: (row) => row.duration },
-          { header: "Next run", key: "nextRun", render: (row) => row.nextRun },
-          { header: "Owner object", key: "owner", render: (row) => <SafeRef value={row.ownerObject} /> }
-        ]}
-        getRowKey={(row) => `${row.checkName}:${row.ownerObject}`}
-        rows={inspectionRunRows}
-      />
+      <div className="admin-owner-mini-list" aria-label="Receipt and collector compact diagnostics">
+        {agentStatusRows.slice(0, 2).map((row) => (
+          <article className="admin-owner-mini-row" key={row.agentRef}>
+            <span><SafeRef value={row.agentRef} /> · <SafeRef value={row.nodeRef} /></span>
+            <strong>{row.heartbeat}</strong>
+            <StatusChip label={row.collectorState} tone={row.collectorState === "Ready" ? "success" : row.collectorState === "Delayed" ? "warning" : "danger"} />
+          </article>
+        ))}
+        {inspectionRunRows.slice(-1).map((row) => (
+          <article className="admin-owner-mini-row" key={`${row.checkName}:${row.ownerObject}`}>
+            <span>{row.checkName} · <SafeRef value={row.ownerObject} /></span>
+            <strong>{row.duration}</strong>
+            <StatusChip label={row.latestResult} tone={row.latestResult === "Pass" ? "success" : row.latestResult === "Warning" ? "warning" : "danger"} />
+          </article>
+        ))}
+      </div>
     </div>
   );
 }

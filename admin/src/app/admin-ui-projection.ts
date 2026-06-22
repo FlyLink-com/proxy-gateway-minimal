@@ -40,6 +40,7 @@ export type BlueprintPage = {
   description: string;
   statusLabel: string;
   statusTone: MetricTone;
+  summary?: ReactNode;
   modules: BlueprintModule[];
 };
 

@@ -51,11 +51,11 @@
   --admin-danger-border: #fecaca;
   --admin-neutral-bg: #f1f5f9;
   --admin-neutral-fg: #334155;
-  --admin-radius-control: 10px;
-  --admin-radius-panel: 12px;
-  --admin-radius-card: 12px;
-  --admin-radius-chrome: 16px;
-  --admin-radius-floating: 12px;
+  --admin-radius-control: 8px;
+  --admin-radius-panel: 8px;
+  --admin-radius-card: 8px;
+  --admin-radius-chrome: 14px;
+  --admin-radius-floating: 18px;
   --admin-radius-tile: 8px;
   --admin-radius-icon: 8px;
   --admin-radius-pill: 999px;

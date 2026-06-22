@@ -129,7 +129,14 @@ export function AdminConsolePageFrame({
       <header className="admin-blueprint-page-hero" aria-label={blueprint.ariaLabel}>
         <p>{blueprint.kicker}</p>
         <h1>{blueprint.title}</h1>
+        {blueprint.page === "dashboard" ? <p>{blueprint.description}</p> : null}
       </header>
+
+      {blueprint.summary ? (
+        <section className="admin-blueprint-page-summary" aria-label={`${blueprint.title} summary metrics`}>
+          {blueprint.summary}
+        </section>
+      ) : null}
 
       <div className="admin-blueprint-module-board" aria-label={`${blueprint.title} module layout`}>
         {panelViewModels.length > 0 ? panelViewModels.map((panel) => (
