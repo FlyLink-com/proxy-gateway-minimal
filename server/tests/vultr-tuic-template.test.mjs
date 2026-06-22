@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -6,6 +7,7 @@ import { loadProxyConfig } from "../services/config.mjs";
 import { generateClashSubscription } from "../services/clash-subscription.mjs";
 
 const rootDir = resolve(fileURLToPath(new URL("../../", import.meta.url)));
+const retiredPortalDomain = "portal.globalcirclecat.icu";
 
 test("Vultr TUIC template carries client parameters required by the managed listener", () => {
   const proxyConfig = loadProxyConfig({
@@ -272,4 +274,11 @@ test("production proxy config uses the SGP domain for SGP VLESS client server ho
 
   const sgpVless = proxyConfig.servers.find((server) => server.name === "channel-sgp-a-vless-reality-tcp");
   assert.equal(sgpVless?.host, "sgp.gccwebos.com");
+});
+
+test("active proxy configs do not reference the retired SGP portal domain", () => {
+  for (const fileName of ["proxy-servers.json", "proxy-servers.vultr-multichannel.template.json"]) {
+    const content = readFileSync(resolve(rootDir, "config", fileName), "utf8");
+    assert.doesNotMatch(content, new RegExp(retiredPortalDomain.replaceAll(".", "\\.")), fileName);
+  }
 });

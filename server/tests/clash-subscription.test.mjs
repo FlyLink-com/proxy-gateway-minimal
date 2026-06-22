@@ -116,11 +116,11 @@ test("generateClashSubscription protects node domains from fake-ip self-routing"
       },
       {
         name: "singapore-hy2",
-        host: "portal.globalcirclecat.icu",
+        host: "sgp.gccwebos.com",
         port: 10443,
         protocol: "hysteria2",
         password: "synthetic-hy2-secret",
-        sni: "globalcirclecat.icu",
+        sni: "sgp.gccwebos.com",
         alpn: ["h3"]
       }
     ]
@@ -129,10 +129,11 @@ test("generateClashSubscription protects node domains from fake-ip self-routing"
   assert.match(yaml, /dns:\n  enable: true\n  enhanced-mode: fake-ip/);
   assert.match(yaml, /fake-ip-filter:\n(?:    - .+\n)+/);
   assert.match(yaml, /  - "\+\.globalcirclecat\.cloud"/);
-  assert.match(yaml, /  - "\+\.globalcirclecat\.icu"/);
+  assert.match(yaml, /  - "\+\.gccwebos\.com"/);
   assert.match(yaml, /  - "sub\.globalcirclecat\.cloud"/);
-  assert.match(yaml, /  - "portal\.globalcirclecat\.icu"/);
-  assert.match(yaml, /rules:\n  - DOMAIN,sub\.globalcirclecat\.cloud,DIRECT\n  - DOMAIN,portal\.globalcirclecat\.icu,DIRECT\n  - DOMAIN-SUFFIX,globalcirclecat\.cloud,DIRECT\n  - DOMAIN-SUFFIX,globalcirclecat\.icu,DIRECT\n  - MATCH,GLOBAL/);
+  assert.match(yaml, /  - "sgp\.gccwebos\.com"/);
+  assert.match(yaml, /rules:\n  - DOMAIN,sub\.globalcirclecat\.cloud,DIRECT\n  - DOMAIN,sgp\.gccwebos\.com,DIRECT\n  - DOMAIN-SUFFIX,globalcirclecat\.cloud,DIRECT\n  - DOMAIN-SUFFIX,gccwebos\.com,DIRECT\n  - MATCH,GLOBAL/);
+  assert.doesNotMatch(yaml, /globalcirclecat\.icu/);
   assert.doesNotMatch(yaml, /- DIRECT\n/);
 });
 
