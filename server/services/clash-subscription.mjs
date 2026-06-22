@@ -217,7 +217,8 @@ function clashProxy(server, index) {
     host: requireText(server.host, "server"),
     port: requirePort(server.port),
     qualityClass: metadataToken(server.qualityClass || server.quality || server.channelQuality),
-    channelRole: metadataToken(server.channelRole || server.role)
+    channelRole: metadataToken(server.channelRole || server.role),
+    autoEligible: optionalBoolField(server, "autoEligible", "auto-eligible") !== false
   };
 
   if (protocol === "ss") {
@@ -274,6 +275,7 @@ function clashProxy(server, index) {
     disableSni: optionalBoolField(server, "disableSni", "disable-sni"),
     reduceRtt: optionalBoolField(server, "reduceRtt", "reduce-rtt"),
     requestTimeout: optionalRawField(server, "requestTimeout", "request-timeout"),
+    heartbeatInterval: optionalRawField(server, "heartbeatInterval", "heartbeat-interval"),
     maxUdpRelayPacketSize: optionalRawField(server, "maxUdpRelayPacketSize", "max-udp-relay-packet-size"),
     fastOpen: optionalBoolField(server, "fastOpen", "fast-open"),
     skipCertVerify: optionalBoolField(server, "skipCertVerify", "skip-cert-verify"),
@@ -465,6 +467,10 @@ function qualityGroupServers(servers, qualityClasses) {
   return servers.filter((server) => allowed.has(server.qualityClass));
 }
 
+function autoGroupServers(servers) {
+  return servers.filter((server) => server.autoEligible !== false);
+}
+
 function pushProxy(lines, server) {
   lines.push(
     `  - name: ${yamlQuote(server.name)}`,
@@ -509,6 +515,7 @@ function pushProxy(lines, server) {
     pushOptionalBool(lines, "disable-sni", server.disableSni);
     pushOptionalBool(lines, "reduce-rtt", server.reduceRtt);
     pushOptionalRaw(lines, "request-timeout", server.requestTimeout);
+    pushOptionalRaw(lines, "heartbeat-interval", server.heartbeatInterval);
     pushOptionalRaw(lines, "max-udp-relay-packet-size", server.maxUdpRelayPacketSize);
     pushOptionalBool(lines, "fast-open", server.fastOpen);
     pushOptionalBool(lines, "skip-cert-verify", server.skipCertVerify);
@@ -615,11 +622,11 @@ function pushInlineGlobalGroup(lines, servers) {
 
   if (servers.length > 0) {
     lines.push("      - AUTO");
-    if (qualityGroupServers(servers, ["weak-network", "long-haul", "high-loss"]).length > 0) {
-      lines.push("      - WEAK-NETWORK");
-    }
     if (qualityGroupServers(servers, ["stable"]).length > 0) {
       lines.push("      - STABLE");
+    }
+    if (qualityGroupServers(servers, ["weak-network", "long-haul", "high-loss"]).length > 0) {
+      lines.push("      - WEAK-NETWORK");
     }
     lines.push("      - FALLBACK");
   }
@@ -645,7 +652,7 @@ export function generateMihomoRenderTemplate(proxyConfig, options = {}) {
   lines.push("proxy-groups:");
 
   if (servers.length > 0) {
-    pushProxyGroup(lines, { name: "AUTO", type: "url-test", servers });
+    pushProxyGroup(lines, { name: "AUTO", type: "url-test", servers: autoGroupServers(servers) });
     pushProxyGroup(lines, {
       name: "WEAK-NETWORK",
       type: "url-test",
@@ -733,7 +740,7 @@ export function generateClashSubscription(proxyConfig, options = {}) {
   lines.push("proxy-groups:");
 
   if (servers.length > 0) {
-    pushProxyGroup(lines, { name: "AUTO", type: "url-test", servers });
+    pushProxyGroup(lines, { name: "AUTO", type: "url-test", servers: autoGroupServers(servers) });
     pushProxyGroup(lines, {
       name: "WEAK-NETWORK",
       type: "url-test",
@@ -755,12 +762,14 @@ export function generateClashSubscription(proxyConfig, options = {}) {
   );
 
   if (servers.length > 0) {
-    lines.push("      - AUTO");
-    if (qualityGroupServers(servers, ["weak-network", "long-haul", "high-loss"]).length > 0) {
-      lines.push("      - WEAK-NETWORK");
+    if (autoGroupServers(servers).length > 0) {
+      lines.push("      - AUTO");
     }
     if (qualityGroupServers(servers, ["stable"]).length > 0) {
       lines.push("      - STABLE");
+    }
+    if (qualityGroupServers(servers, ["weak-network", "long-haul", "high-loss"]).length > 0) {
+      lines.push("      - WEAK-NETWORK");
     }
     lines.push("      - FALLBACK");
   }
