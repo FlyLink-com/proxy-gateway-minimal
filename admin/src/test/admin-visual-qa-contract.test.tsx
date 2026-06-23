@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "../App";
+import { getAdminPageCompositionContract } from "../app/admin-ui-contract";
 import { pageSubNavigation, pageTitles, type AdminPage } from "../app/navigation";
 import { ADMIN_VISUAL_QA_AXES } from "../design/figma-mirror";
 import { DashboardPage } from "../pages/dashboard-page";
@@ -72,6 +73,9 @@ describe("admin visual QA contract", () => {
     expect(workspace?.getAttribute("data-ui-role")).toBe("workspace");
     expect(workspace?.getAttribute("data-page-id")).toBe(page);
     expect(workspace?.getAttribute("data-layout")).toBe(expectedLayout);
+    expect(workspace?.getAttribute("data-composition-contract")).toBe("page-composition");
+    expect(workspace?.getAttribute("data-overflow-policy")).toBe(getAdminPageCompositionContract(page).overflowPolicy);
+    expect(workspace?.getAttribute("data-first-viewport-strategy")).toBe(getAdminPageCompositionContract(page).firstViewportStrategy);
     expect(workspace?.getAttribute("data-mobile-projection")).toBe("single-column-review-flow");
     expect(workspace?.getAttribute("data-required-blocks")).toMatch(/page-title|primary-panel/);
 
@@ -97,6 +101,8 @@ describe("admin visual QA contract", () => {
     }
 
     const panels = Array.from(document.querySelectorAll("[data-ui-role='panel']"));
+    expect(Number(workspace?.getAttribute("data-active-module-count"))).toBe(panels.length);
+    expect(Number(workspace?.getAttribute("data-active-module-limit"))).toBeGreaterThanOrEqual(panels.length);
     expect(panels).toHaveLength(visibleSections.length);
     expect(panels.map((panel) => panel.getAttribute("data-module-nav-id"))).toEqual(
       visibleSections.map((section) => section.id)
@@ -134,6 +140,8 @@ describe("admin visual QA contract", () => {
       fireEvent.click(within(sectionNav).getByRole("button", { name: `Open ${lastSubPage.label} subpage` }));
 
       const nextPanels = Array.from(document.querySelectorAll("[data-ui-role='panel']"));
+      expect(Number(workspace?.getAttribute("data-active-module-count"))).toBe(nextPanels.length);
+      expect(Number(workspace?.getAttribute("data-active-module-limit"))).toBeGreaterThanOrEqual(nextPanels.length);
       expect(nextPanels).toHaveLength(lastSections.length);
       expect(nextPanels.map((panel) => panel.getAttribute("data-module-nav-id"))).toEqual(
         lastSections.map((section) => section.id)

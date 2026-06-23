@@ -127,4 +127,30 @@ describe("admin OS UI contract", () => {
       expect(contract.forbiddenSurfaces).toEqual(ADMIN_PRIVILEGED_SURFACE_IDS);
     });
   });
+
+  test("declares page composition budgets so overflow moves to subpages or pagination", () => {
+    expect(ADMIN_UI_CONTRACT.pageCompositionContracts.dashboard).toMatchObject({
+      activeModuleLimit: 3,
+      firstViewportStrategy: "overview-summary",
+      overflowPolicy: "overview-summary-only",
+      requiresSubpages: false,
+      subpageModuleLimit: 0
+    });
+
+    expect(ADMIN_UI_CONTRACT.pageCompositionContracts.portalRequests).toMatchObject({
+      activeModuleLimit: 2,
+      firstViewportStrategy: "owner-subpage",
+      overflowPolicy: "subpage-or-pagination",
+      requiresSubpages: true,
+      subpageModuleLimit: 2
+    });
+
+    expect(ADMIN_UI_CONTRACT.pageCompositionContracts.usageMonitor).toMatchObject({
+      activeModuleLimit: 2,
+      firstViewportStrategy: "owner-subpage",
+      overflowPolicy: "subpage-or-pagination",
+      requiresSubpages: true,
+      subpageModuleLimit: 2
+    });
+  });
 });

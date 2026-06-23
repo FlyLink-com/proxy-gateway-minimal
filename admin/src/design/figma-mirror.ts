@@ -145,6 +145,11 @@ export const ADMIN_FIGMA_PAGINATION_STANDARD = {
     "system-search",
     "action-chips"
   ],
+  compositionLimits: {
+    maxOverviewModulesWithoutSubpages: 3,
+    maxOwnerModulesPerSubpage: 2,
+    ownerPagesRequireSubpages: true
+  },
   requiredStates: [
     "default",
     "current",

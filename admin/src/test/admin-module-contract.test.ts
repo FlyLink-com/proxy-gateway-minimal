@@ -4,6 +4,7 @@ import {
   createAdminModuleContracts,
   findAdminModuleContractIssues
 } from "../app/admin-module-contract";
+import { ADMIN_UI_CONTRACT } from "../app/admin-ui-contract";
 import { getAdminAppMap } from "../app/admin-app-manifest";
 import { pageSubNavigation, pageWorkbenchContracts } from "../app/navigation";
 import { ADMIN_FIGMA_PAGINATION_STANDARD } from "../design/figma-mirror";
@@ -99,6 +100,39 @@ describe("admin module contract", () => {
       blueprint.modules.forEach((module) => {
         expect(module.uiSurface).toBeTruthy();
         expect(module.containmentStrategy).toBeTruthy();
+      });
+    });
+  });
+
+  test("keeps page composition inside the active module budget", () => {
+    adminBlueprints.forEach((blueprint) => {
+      const composition = ADMIN_UI_CONTRACT.pageCompositionContracts[blueprint.page];
+
+      expect(composition.page).toBe(blueprint.page);
+
+      if (!composition.requiresSubpages) {
+        expect(blueprint.subPages ?? []).toEqual([]);
+        expect(blueprint.modules.length).toBeLessThanOrEqual(composition.activeModuleLimit);
+        return;
+      }
+
+      expect(blueprint.subPages?.length ?? 0).toBeGreaterThan(0);
+
+      const assignedModuleIds = new Map<string, string[]>();
+      blueprint.subPages?.forEach((subPage) => {
+        expect(subPage.moduleNavIds.length).toBeLessThanOrEqual(composition.subpageModuleLimit);
+        expect(subPage.moduleNavIds.length).toBeLessThanOrEqual(composition.activeModuleLimit);
+
+        subPage.moduleNavIds.forEach((navId) => {
+          assignedModuleIds.set(navId, [
+            ...(assignedModuleIds.get(navId) ?? []),
+            subPage.id
+          ]);
+        });
+      });
+
+      blueprint.modules.forEach((module) => {
+        expect(assignedModuleIds.get(module.navId)).toEqual([expect.any(String)]);
       });
     });
   });

@@ -40,6 +40,24 @@ export type AdminPageContract = {
   forbiddenSurfaces: readonly AdminPrivilegedSurfaceId[];
 };
 
+export type AdminPageFirstViewportStrategy =
+  | "overview-summary"
+  | "owner-subpage";
+
+export type AdminPageOverflowPolicy =
+  | "overview-summary-only"
+  | "subpage-or-pagination";
+
+export type AdminPageCompositionContract = {
+  contractId: "page-composition";
+  page: AdminPage;
+  requiresSubpages: boolean;
+  activeModuleLimit: number;
+  subpageModuleLimit: number;
+  firstViewportStrategy: AdminPageFirstViewportStrategy;
+  overflowPolicy: AdminPageOverflowPolicy;
+};
+
 export type AdminUiContract = {
   appShell: {
     contractId: "app-shell";
@@ -121,6 +139,7 @@ export type AdminUiContract = {
     };
   };
   pageContracts: Readonly<Record<AdminPage, AdminPageContract>>;
+  pageCompositionContracts: Readonly<Record<AdminPage, AdminPageCompositionContract>>;
   styleLayers: readonly [
     "tokens",
     "base",
@@ -232,6 +251,35 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
       ]
     }
   },
+  pageCompositionContracts: {
+    dashboard: {
+      activeModuleLimit: 3,
+      contractId: "page-composition",
+      firstViewportStrategy: "overview-summary",
+      overflowPolicy: "overview-summary-only",
+      page: "dashboard",
+      requiresSubpages: false,
+      subpageModuleLimit: 0
+    },
+    portalRequests: {
+      activeModuleLimit: 2,
+      contractId: "page-composition",
+      firstViewportStrategy: "owner-subpage",
+      overflowPolicy: "subpage-or-pagination",
+      page: "portalRequests",
+      requiresSubpages: true,
+      subpageModuleLimit: 2
+    },
+    usageMonitor: {
+      activeModuleLimit: 2,
+      contractId: "page-composition",
+      firstViewportStrategy: "owner-subpage",
+      overflowPolicy: "subpage-or-pagination",
+      page: "usageMonitor",
+      requiresSubpages: true,
+      subpageModuleLimit: 2
+    }
+  },
   pageFrame: {
     contractId: "page-frame",
     density: "normal",
@@ -278,4 +326,8 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
 
 export function getAdminPageContract(page: AdminPage): AdminPageContract {
   return ADMIN_UI_CONTRACT.pageContracts[page];
+}
+
+export function getAdminPageCompositionContract(page: AdminPage): AdminPageCompositionContract {
+  return ADMIN_UI_CONTRACT.pageCompositionContracts[page];
 }

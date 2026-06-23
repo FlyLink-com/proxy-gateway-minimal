@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { ADMIN_UI_CONTRACT, getAdminPageContract } from "../app/admin-ui-contract";
+import {
+  ADMIN_UI_CONTRACT,
+  getAdminPageCompositionContract,
+  getAdminPageContract
+} from "../app/admin-ui-contract";
 import {
   type AdminPage,
   pageSubNavigation
@@ -45,6 +49,7 @@ export function AdminConsolePageFrame({
 }) {
   const subNavigation = pageSubNavigation[blueprint.page];
   const pageContract = getAdminPageContract(blueprint.page);
+  const pageComposition = getAdminPageCompositionContract(blueprint.page);
   const subPages = blueprint.subPages ?? [];
   const hasSubPages = subPages.length > 0;
   const moduleNavSignature = blueprint.modules.map((module) => module.navId).join("|");
@@ -176,6 +181,11 @@ export function AdminConsolePageFrame({
       data-mobile-standard-status={pageContract.mobileStandardStatus}
       data-responsive-standard="desktop-tablet"
       data-active-subpage={activeSubPage?.id}
+      data-active-module-count={panelViewModels.length}
+      data-active-module-limit={pageComposition.activeModuleLimit}
+      data-composition-contract={pageComposition.contractId}
+      data-first-viewport-strategy={pageComposition.firstViewportStrategy}
+      data-overflow-policy={pageComposition.overflowPolicy}
       data-page={blueprint.page}
       data-page-id={pageContract.page}
       data-required-blocks={pageContract.requiredBlocks.join(" ")}

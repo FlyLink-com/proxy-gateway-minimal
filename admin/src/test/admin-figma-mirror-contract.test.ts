@@ -284,6 +284,11 @@ describe("admin Figma mirror contract", () => {
       "system-search",
       "action-chips"
     ]));
+    expect(ADMIN_FIGMA_PAGINATION_STANDARD.compositionLimits).toEqual({
+      maxOverviewModulesWithoutSubpages: 3,
+      maxOwnerModulesPerSubpage: 2,
+      ownerPagesRequireSubpages: true
+    });
     expect(ADMIN_FIGMA_PAGINATION_STANDARD.acceptance).toEqual(expect.arrayContaining([
       "Each long card names pagination, route split, or bounded internal scroll before implementation.",
       "Mobile is not accepted from desktop reuse until a dedicated mobile standard frame is approved."
