@@ -3,6 +3,7 @@ import {
   type BlueprintPage
 } from "./admin-console-page-frame";
 import {
+  DataCardPagination,
   DataTable,
   ObjectTimeline,
   QuotaMeter,
@@ -18,6 +19,37 @@ export const accountsResourcesBlueprint: BlueprintPage = {
   description: "Decision owner for user accounts, resources, orders, subscription artifacts, quota, lifecycle, and safe history context.",
   statusLabel: "Decision owner",
   statusTone: "info",
+  subPages: [
+    {
+      id: "account-inventory",
+      label: "Account Inventory",
+      owner: "User Operations",
+      description: "Account directory and owned resources for the selected account scope.",
+      moduleNavIds: [
+        "account-overview",
+        "resource-orders"
+      ]
+    },
+    {
+      id: "quota-lifecycle",
+      label: "Quota & Lifecycle",
+      owner: "User Operations",
+      description: "Quota policy, account lifecycle, order pause, expiry, and archive review.",
+      moduleNavIds: [
+        "quota-usage",
+        "lifecycle"
+      ]
+    },
+    {
+      id: "history-events",
+      label: "History & Events",
+      owner: "User Operations",
+      description: "Safe computed history and future restricted case context.",
+      moduleNavIds: [
+        "history-events"
+      ]
+    }
+  ],
   modules: [
     {
       navId: "account-overview",
@@ -30,6 +62,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         interactionModel: "Selection and review planning now; create/disable requires later backend contract."
       },
       content: <AccountDirectoryContent />,
+      containmentStrategy: "pagination",
       purpose: "Directory of safe account refs, risk state, resource count, and review state.",
       contentFields: [
         "Account ref · safe id",
@@ -64,6 +97,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         interactionModel: "Inspect and plan lifecycle review; no raw subscription output."
       },
       content: <ResourceOrdersContent />,
+      containmentStrategy: "pagination",
       purpose: "Group resources, orders, entitlements, and subscription artifact safe refs under the owning account.",
       contentFields: [
         "Order ref · safe id",
@@ -98,6 +132,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         interactionModel: "Review policy and prepare edit; save action waits for a reviewed update gate."
       },
       content: <QuotaUsageContent />,
+      containmentStrategy: "not-applicable",
       purpose: "Own quota policy decisions while using usage collection only as evidence.",
       contentFields: [
         "Default quota · policy value",
@@ -132,6 +167,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         interactionModel: "Review and dry-run planning only before approved mutation flows."
       },
       content: <LifecycleContent />,
+      containmentStrategy: "route-split",
       purpose: "Plan account, order, artifact, expiry, revocation, pause, and archive states in one owner page.",
       contentFields: [
         "Account · lifecycle state",
@@ -167,6 +203,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         interactionModel: "Read-only context; no note write or case close actions."
       },
       content: <HistoryEventsContent />,
+      containmentStrategy: "pagination",
       purpose: "Show safe computed events and case candidates until durable restricted case history exists.",
       contentFields: [
         "Event · safe label",
@@ -237,6 +274,11 @@ function AccountDirectoryContent() {
           { header: "Risk", key: "risk", render: (row) => row.risk }
         ]}
         getRowKey={(row) => row.accountRef}
+        pagination={{
+          ariaLabel: "Account Directory pagination",
+          itemLabel: "accounts",
+          pageSize: 3
+        }}
         rows={accountRows}
       />
     </div>
@@ -277,6 +319,11 @@ function ResourceOrdersContent() {
           }
         ]}
         getRowKey={(row) => row.orderRef}
+        pagination={{
+          ariaLabel: "Resources and Orders pagination",
+          itemLabel: "orders",
+          pageSize: 3
+        }}
         rows={resourceOrderRows}
       />
       <div className="admin-static-status-row" aria-label="Resources and Orders safety states">
@@ -360,6 +407,12 @@ function HistoryEventsContent() {
           }
         ]}
         title="Safe computed history"
+      />
+      <DataCardPagination
+        ariaLabel="History and Events pagination"
+        itemLabel="events"
+        pageSize={2}
+        totalItems={2}
       />
       <div className="admin-static-status-row" aria-label="History and Events backend states">
         <StatusChip label="Restricted backend locked" tone="neutral" />

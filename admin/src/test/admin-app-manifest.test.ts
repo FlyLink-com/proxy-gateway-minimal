@@ -3,8 +3,8 @@ import {
   ADMIN_APP_AUTHORING_STANDARD,
   adminAppManifest,
   adminAppAuthoringManifest,
-  createNavigationLibrarySearchDocument,
-  createNavigationLibrarySearchIndex,
+  createAdminAppSearchDocument,
+  createAdminAppSearchIndex,
   DEFAULT_ADMIN_CAPABILITY_CONTEXT,
   getAdminAppCapabilityBoundaryMatrix,
   getCapabilityScopedAdminAppMap,
@@ -128,7 +128,7 @@ describe("admin app manifest", () => {
       plugin: {
         allowedControls: ["hide"],
         navId: "usage-ledger",
-        settingsEntry: "navigationLibrary",
+        settingsEntry: "panelSettings",
         states: ["visible", "hidden"]
       },
       route: {
@@ -501,8 +501,8 @@ describe("admin app manifest", () => {
     });
   });
 
-  test("builds a safe navigation-library search index from whitelisted summary fields", () => {
-    const index = createNavigationLibrarySearchIndex();
+  test("builds a safe system-search search index from whitelisted summary fields", () => {
+    const index = createAdminAppSearchIndex();
     const usageLedger = index.find((entry) => entry.appId === "plugin.usage-ledger");
     const operationsOverview = index.find((entry) => entry.appId === "operations-overview");
 
@@ -528,8 +528,8 @@ describe("admin app manifest", () => {
     });
   });
 
-  test("classifies navigation-library results and exposes module recovery without canvas allocation", () => {
-    const index = createNavigationLibrarySearchIndex();
+  test("classifies system-search results and exposes module recovery without canvas allocation", () => {
+    const index = createAdminAppSearchIndex();
     const operationsOverview = index.find((entry) => entry.appId === "operations-overview");
     const usageLedger = index.find((entry) => entry.appId === "plugin.usage-ledger");
     const adminApi = index.find((entry) => entry.appId === "utility.admin-api");
@@ -537,27 +537,27 @@ describe("admin app manifest", () => {
 
     expect(operationsOverview).toMatchObject({
       dataBoundary: "safe-summary-only",
-      libraryGroup: "workspace-pages",
+      catalogGroup: "workspace-pages",
       productionImpact: "read-only",
       resultType: "workspace-app"
     });
     expect(usageLedger).toMatchObject({
       dataBoundary: "safe-summary-only",
-      libraryGroup: "plugins",
+      catalogGroup: "plugins",
       moduleRecovery: {
         action: "restore-module",
         consumesCanvasSpaceWhenHidden: false,
-        source: "navigation-library"
+        source: "system-search"
       },
       productionImpact: "read-only",
       resultType: "plugin-module"
     });
     expect(adminApi).toMatchObject({
-      libraryGroup: "console-settings",
+      catalogGroup: "console-settings",
       resultType: "system-action"
     });
     expect(platformDevelopment).toMatchObject({
-      libraryGroup: "planned-apps",
+      catalogGroup: "planned-apps",
       resultType: "planned-app"
     });
 
@@ -568,11 +568,11 @@ describe("admin app manifest", () => {
     });
   });
 
-  test("builds the navigation-library search index from an explicit safe document", () => {
+  test("builds the system-search search index from an explicit safe document", () => {
     const usageLedger = getPluginApp("usage-ledger", "usageMonitor");
     expect(usageLedger).toBeDefined();
 
-    const document = createNavigationLibrarySearchDocument(usageLedger!);
+    const document = createAdminAppSearchDocument(usageLedger!);
 
     expect(document).toEqual({
       aliases: usageLedger!.aliases,
@@ -580,7 +580,7 @@ describe("admin app manifest", () => {
       capabilities: usageLedger!.safety.capabilities,
       category: usageLedger!.category,
       label: usageLedger!.label,
-      libraryGroup: usageLedger!.library.group,
+      catalogGroup: usageLedger!.library.group,
       ownerArea: usageLedger!.owner.area,
       routeTarget: "usageMonitor#platform-monitoring-usage-ledger",
       safeDescription: usageLedger!.description,
@@ -591,7 +591,7 @@ describe("admin app manifest", () => {
     expect(JSON.stringify(document)).not.toMatch(forbiddenSearchTextPattern);
   });
 
-  test("redacts unsafe navigation-library search document fields before indexing", () => {
+  test("redacts unsafe system-search search document fields before indexing", () => {
     const baseline = getWorkspacePageApp("dashboard");
     expect(baseline).toBeDefined();
     const unsafeApp = {
@@ -615,8 +615,8 @@ describe("admin app manifest", () => {
       }
     } satisfies typeof baseline;
 
-    const document = createNavigationLibrarySearchDocument(unsafeApp);
-    const [indexEntry] = createNavigationLibrarySearchIndex([unsafeApp]);
+    const document = createAdminAppSearchDocument(unsafeApp);
+    const [indexEntry] = createAdminAppSearchIndex([unsafeApp]);
     const indexedText = JSON.stringify({
       document,
       indexEntry: {

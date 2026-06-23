@@ -129,7 +129,7 @@ export const ADMIN_UI_REFERENCE_SOURCES: AdminUiReferenceSource[] = [
 
 export const ADMIN_UI_SURFACE_REFERENCES: AdminUiSurfaceReference[] = [
   {
-    implementationTarget: "WorkspaceSidebar + NavigationLibrary command/search surface",
+    implementationTarget: "WorkspaceSidebar + system search command surface",
     key: "navigation-command",
     label: "Navigation command library",
     page: "shell",

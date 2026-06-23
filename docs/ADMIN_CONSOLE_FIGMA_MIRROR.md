@@ -1,6 +1,6 @@
 # Admin Console Figma Mirror
 
-Last updated: 2026-06-21, America/Los_Angeles.
+Last updated: 2026-06-22, America/Los_Angeles.
 
 > Status:
 > - Source Figma file:
@@ -19,18 +19,20 @@ design artifact that must stay aligned with the local Admin page contracts.
 
 ## Current Connector Evidence
 
-Figma metadata and `use_figma` access succeeded on 2026-06-21 for canonical
+Figma metadata and `use_figma` access succeeded on 2026-06-22 for canonical
 file `oZuKNtGPhP6oOQ0MSzpfvn`.
 
 Observed current canvas:
 
 | Item | Current value |
 | --- | --- |
-| Top-level page | `Admin UI Handoff` |
+| Top-level pages | `Admin UI Handoff`; `Admin Component Mirror v1` |
 | Canonical build/order frame | `00 Contract & Build Order`, `1600 x 1024` |
 | Active page mirror frames | `01 Operations Overview / 1600x1024`, `02 Accounts & Resources / 1600x1024`, `03 Usage & Channels / 1600x1024` |
 | Safety/review frames | `04 State & Safety Matrix`, `05 GCC-103 Review Addendum / 1600x1024` |
 | Implementation capture frames | `06 Current Implementation / Operations Overview / 1600w full-content capture`, `07 Current Implementation / Accounts & Resources / 1600w full-content capture`, `08 Current Implementation / Usage & Channels / 1600w full-content capture` |
+| GCC-122 gate frames | `12 GCC-122 Component State Placement / 1600x1024`, `13 GCC-122 Responsive QA Strategy / 1600x1024`, `14 GCC-122 Figma-to-code Mapping / 1600x1024`, `15 GCC-122 Stage Review Evidence Source Rule / 1600x1024`, `16 GCC-122 PR #364 Review Packet / 1600x1024`, `17 GCC-122 Review Findings And Next Gates / 1600x1024`, `18 GCC-122 P0 Gate Hardening / 1600x1024`, `19 GCC-122 Pagination Standard / 1600x1024` |
+| Implementation capture sizing | The `06` / `07` / `08` captures are reference-only full-content captures, not accepted standard page sizes: `1600x1457`, `1600x2346`, and `1600x1650`. |
 | React-visible implementation baseline | Three active Admin pages: `Operations Overview`, `Accounts & Resources`, `Usage & Channels` |
 
 Previous source mismatch:
@@ -63,7 +65,7 @@ Follow-up component mirror evidence:
 | Observed variable collections / variables | `4` collections / `57` variables |
 | Observed text styles / effect styles | `6` text styles / `3` effect styles |
 | Observed paint styles | `0` |
-| Next task line | `Admin React/CSS grammar alignment from Figma Component Mirror v1` |
+| Next task line | `Admin React/CSS grammar alignment from Figma Component Mirror v1` plus `GCC-122` pagination/mobile-pending contract alignment. |
 
 Do not infer from the previous blocker that the React Admin UI is unavailable.
 That blocker was scoped to using the wrong one-page file key and the earlier
@@ -82,6 +84,18 @@ The canonical local contract is `ADMIN_FIGMA_MIRROR_PAGES` in
 | `03 Usage & Channels / 1600x1024` | Page mirror | `usageMonitor` / `Usage & Channels` |
 | `04 State & Safety Matrix` | Safety and boundary matrix | All three active pages |
 | `05 GCC-103 Review Addendum / 1600x1024` | Visual QA / review addendum | Figma, DOM, Browser, style-token, and safe-data evidence |
+
+Additional GCC-122 gate frames are tracked separately from
+`ADMIN_FIGMA_MIRROR_PAGES` because they are implementation gates rather than
+page mirrors. The current hard gate is
+`ADMIN_FIGMA_PAGINATION_STANDARD`, mapped to Figma node `157:2`:
+
+| Gate frame | Role | Local contract |
+| --- | --- | --- |
+| `13 GCC-122 Responsive QA Strategy / 1600x1024` | Desktop/tablet responsive acceptance and mobile boundary. | `ADMIN_UI_CONTRACT.viewportTargets.tabletReview` and `mobilePending` |
+| `14 GCC-122 Figma-to-code Mapping / 1600x1024` | Page/component mapping acceptance. | `admin/src/design/figma-parity.ts` and Figma mirror tests |
+| `18 GCC-122 P0 Gate Hardening / 1600x1024` | P0 acceptance rows for mapping, responsive, and state placement. | `admin/src/test/admin-figma-mirror-contract.test.ts` |
+| `19 GCC-122 Pagination Standard / 1600x1024` | Pagination, route split, bounded internal scroll, and no page-level scroll wall. | `ADMIN_FIGMA_PAGINATION_STANDARD` and module `containmentStrategy` |
 
 ## Page Ownership Rules
 
@@ -200,7 +214,8 @@ The matrix intentionally records current gaps instead of hiding them:
   `data-figma-component`, `data-ui-surface`, owner-mode, and workbench-category
   hooks for browser evidence.
 - `DataRow`: choose one mobile safe-ref strategy: local horizontal scroll or
-  stacked row.
+  stacked row. This is now blocked on a dedicated accepted mobile standard
+  instead of being treated as complete desktop reuse.
 - `TopBar`: confirm compact search behavior is token-owned, not page-owned.
 - `SidebarNavigation`: tablet behavior is token-owned, contract-covered, and
   has `GCC-120` browser evidence for 768 and 1024-class viewports.
@@ -237,6 +252,50 @@ as an open Draft gate. Follow-on PRs #356, #357, and #358 extended the same
 baseline with Navigation Library safe indexing, workspace layout presets, and
 the Admin capability boundary matrix.
 
+## GCC-122 Pagination And Mobile Boundary
+
+`GCC-122` changes the active implementation boundary:
+
+- Desktop `1600x1024` remains the primary web design target.
+- Tablet `1024x768` is an accepted responsive check target.
+- Mobile is `pending-dedicated-standard`; do not report mobile as completed
+  until a dedicated Figma mobile frame is accepted.
+- Long tables/lists must declare one of `pagination`, `route-split`, or
+  `bounded-internal-scroll` before implementation.
+- Pagination belongs inside the data card. Do not add floating page-level
+  pagination or duplicate header controls.
+- If a page exceeds the standard viewport, move content to a subpage or
+  paginated list rather than stacking more panels into the same page.
+
+Current local implementation hooks:
+
+| Contract | Purpose |
+| --- | --- |
+| `admin/src/design/figma-mirror.ts` | Exports `ADMIN_FIGMA_PAGINATION_STANDARD` for node `157:2` and adds `pagination-containment` to the visual QA axes. |
+| `admin/src/design/grammar/layout.ts` | Replaces the old mobile projection with `mobileStandardStatus: "pending-dedicated-standard"`. |
+| `admin/src/app/admin-ui-contract.ts` | Adds `tabletReview` and `mobilePending` viewport contracts. |
+| `admin/src/app/admin-ui-projection.ts` | Projects every module's `containmentStrategy` and binds non-trivial strategies to node `157:2`. |
+| `admin/src/app/admin-module-contract.ts` | Fails contract checks when a module lacks a containment strategy. |
+| `admin/src/components/primitives/panel-frame.tsx` | Emits `data-containment-strategy` and `data-pagination-standard-node-id`. |
+
+Current module containment map:
+
+| Page | Module | Strategy |
+| --- | --- | --- |
+| `Operations Overview` | `Health Summary` | `not-applicable` |
+| `Operations Overview` | `Risk Queue` | `pagination` |
+| `Operations Overview` | `Next Actions` | `not-applicable` |
+| `Accounts & Resources` | `Account Directory` | `pagination` |
+| `Accounts & Resources` | `Resources & Orders` | `pagination` |
+| `Accounts & Resources` | `Quota & Usage` | `not-applicable` |
+| `Accounts & Resources` | `Lifecycle` | `route-split` |
+| `Accounts & Resources` | `History & Events` | `pagination` |
+| `Usage & Channels` | `Collection Freshness` | `not-applicable` |
+| `Usage & Channels` | `Channel Coverage` | `pagination` |
+| `Usage & Channels` | `Usage Ledger` | `pagination` |
+| `Usage & Channels` | `Collection Anomalies` | `pagination` |
+| `Usage & Channels` | `Receipts & Collectors` | `pagination` |
+
 ## Visual QA Evidence Axes
 
 Every future visual QA pass should record these axes:
@@ -244,9 +303,11 @@ Every future visual QA pass should record these axes:
 1. Figma mirror status.
 2. DOM contract status.
 3. Browser desktop viewport status.
-4. Browser mobile or narrow viewport status.
-5. Style-token regression status.
-6. Safe-data boundary status.
+4. Browser tablet viewport status.
+5. Mobile standard status, currently `pending-dedicated-standard`.
+6. Pagination containment status.
+7. Style-token regression status.
+8. Safe-data boundary status.
 
 The automated contract for these axes is covered by
 `admin/src/test/admin-figma-mirror-contract.test.ts` and
@@ -260,7 +321,9 @@ The automated contract for these axes is covered by
 3. Update only the canonical `oZuKNtGPhP6oOQ0MSzpfvn` Figma file. Do not use
    the older one-page Requirements Map file for active mirror work.
 4. Run focused Admin tests for the mirror and visual QA contracts.
-5. Run Browser or Chrome viewport checks against `#/fixture-preview`.
+5. Run Browser or Chrome viewport checks against `#/fixture-preview` for
+   desktop/tablet. Do not promote mobile from historical overflow check to
+   accepted standard without a dedicated Figma mobile frame.
 6. Record the exact validation commands before marking the visual task done.
 
 ## Hard Stops

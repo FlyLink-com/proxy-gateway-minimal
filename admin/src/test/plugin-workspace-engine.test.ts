@@ -8,7 +8,7 @@ import {
 } from "../app/plugin-workspace-engine";
 
 describe("plugin workspace engine", () => {
-  test("creates the workspace layout state required by the navigation library recovery contract", () => {
+  test("creates the workspace layout state required by the module visibility recovery contract", () => {
     const layout = createDefaultModuleLayout("dashboard", [
       { appId: "plugin.risk-queue", navId: "risk-queue" },
       { appId: "plugin.next-actions", navId: "next-actions" }

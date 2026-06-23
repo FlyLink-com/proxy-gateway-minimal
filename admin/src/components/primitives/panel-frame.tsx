@@ -17,7 +17,9 @@ export type PanelFrameProps = {
   chrome?: "draft" | "operator";
   className?: string;
   containerLabel: string;
+  dataContainmentStrategy?: string;
   dataModuleNavId?: string;
+  dataPaginationStandardNodeId?: string;
   dataUiSurfaceRole?: string;
   density?: AdminUiDensity;
   fieldLabels: string[];
@@ -27,6 +29,7 @@ export type PanelFrameProps = {
   onHide?: () => void;
   onSizePresetChange?: (sizePreset: WorkspaceModuleVisibleSizePreset) => void;
   ownerMode: "preview" | "owner";
+  showDesignMetadata?: boolean;
   sizePreset?: WorkspaceModuleVisibleSizePreset;
   title: string;
   tone?: MetricTone;
@@ -49,7 +52,9 @@ export function PanelFrame({
   chrome = "draft",
   className,
   containerLabel,
+  dataContainmentStrategy,
   dataModuleNavId,
+  dataPaginationStandardNodeId,
   dataUiSurfaceRole,
   density = ADMIN_UI_CONTRACT.pluginFrame.density,
   fieldLabels,
@@ -59,6 +64,7 @@ export function PanelFrame({
   onHide,
   onSizePresetChange,
   ownerMode,
+  showDesignMetadata = false,
   sizePreset,
   title,
   tone = ownerMode === "preview" ? "neutral" : "info"
@@ -107,9 +113,11 @@ export function PanelFrame({
       )}
       data-density={density}
       data-chrome={chrome}
+      data-containment-strategy={dataContainmentStrategy}
       data-figma-component="PanelFrame"
       data-module-nav-id={dataModuleNavId}
       data-owner-mode={ownerMode}
+      data-pagination-standard-node-id={dataPaginationStandardNodeId}
       data-size-preset={sizePreset}
       data-ui-role="panel"
       data-ui-surface="panel-frame"
@@ -124,14 +132,18 @@ export function PanelFrame({
             <span className="workbench-category-pill">{CATEGORY_LABEL[category]}</span>
             <div>
               <h3>{title}</h3>
-              <small>{containerLabel}</small>
+              {showDesignMetadata ? <small>{containerLabel}</small> : null}
             </div>
           </div>
           <div className="admin-blueprint-module-panel-meta">
-            <span className="admin-blueprint-panel-field-count" aria-label={`${fieldLabels.length} primary fields`}>
-              {fieldLabels.length}
-            </span>
-            <StatusChip label={ownerMode === "preview" ? "Preview" : "Owner"} tone={tone} />
+            {showDesignMetadata ? (
+              <>
+                <span className="admin-blueprint-panel-field-count" aria-label={`${fieldLabels.length} primary fields`}>
+                  {fieldLabels.length}
+                </span>
+                <StatusChip label={ownerMode === "preview" ? "Preview" : "Owner"} tone={tone} />
+              </>
+            ) : null}
             {layoutPresetControls}
             {hideControl}
           </div>

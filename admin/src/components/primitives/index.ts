@@ -1,4 +1,5 @@
 export { DataTable, type DataTableColumn } from "./data-table";
+export { DataCardPagination, type DataCardPaginationProps } from "./data-card-pagination";
 export { DataSourceBadge, type DataSourceBadgeState } from "./data-source-badge";
 export { EmptyState } from "./empty-state";
 export {
@@ -28,9 +29,7 @@ export { SectionPanel } from "./section-panel";
 export { StateFeedback, type StateFeedbackChrome, type StateFeedbackTone } from "./state-feedback";
 export { StatusChip } from "./status-chip";
 export {
-  NavigationLibrary,
   WorkspaceSidebar,
-  type NavigationLibraryProps,
   type WorkspaceSidebarBrand,
   type WorkspaceSidebarPinnedRoute,
   type WorkspaceSidebarProps

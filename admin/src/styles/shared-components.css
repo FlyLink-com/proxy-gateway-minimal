@@ -354,6 +354,12 @@
   white-space: normal;
 }
 
+.case-workbench-footer .data-card-pagination {
+  border-top: 0;
+  flex: 1 1 220px;
+  padding-top: 0;
+}
+
 .case-row-main {
   min-width: 0;
   display: grid;

@@ -62,21 +62,6 @@ describe("admin style token contract", () => {
       "--admin-sidebar-width: 240px",
       "--admin-sidebar-offset: 0px",
       "--admin-sidebar-gap: 0px",
-      "--admin-library-width: 640px",
-      "--admin-library-left: calc(var(--admin-sidebar-offset) + var(--admin-sidebar-width) + var(--admin-sidebar-gap))",
-      "--admin-library-top: calc(var(--admin-sidebar-offset) + 50px)",
-      "--admin-library-max-height: min(500px",
-      "--admin-library-padding: 10px",
-      "--admin-library-gap: 8px",
-      "--admin-library-cell-width: 72px",
-      "--admin-library-page-cell-width: 120px",
-      "--admin-library-page-columns: 3",
-      "--admin-library-module-columns: 5",
-      "--admin-library-utility-columns: 5",
-      "--admin-library-tile-height: 58px",
-      "--admin-library-icon-size: 28px",
-      "--admin-library-icon-size-large: 32px",
-      "--admin-library-bottom: calc(var(--admin-mobile-nav-bottom) + var(--admin-mobile-nav-height) + 12px)",
       "--admin-plugin-grid-min: 260px",
       "--admin-plugin-grid-row-unit: 32px",
       "--admin-plugin-gap: 16px",
@@ -189,23 +174,6 @@ describe("admin style token contract", () => {
       "--admin-sidebar-gap",
       "--admin-app-icon-size",
       "--admin-sidebar-route-icon-size",
-      "--admin-library-width",
-      "--admin-library-left",
-      "--admin-library-top",
-      "--admin-library-bottom",
-      "--admin-library-max-height",
-      "--admin-library-padding",
-      "--admin-library-gap",
-      "--admin-library-grid-column-gap",
-      "--admin-library-grid-row-gap",
-      "--admin-library-cell-width",
-      "--admin-library-page-cell-width",
-      "--admin-library-page-columns",
-      "--admin-library-module-columns",
-      "--admin-library-utility-columns",
-      "--admin-library-tile-height",
-      "--admin-library-icon-size",
-      "--admin-library-icon-size-large",
       "--admin-plugin-grid-min",
       "--admin-plugin-grid-row-unit",
       "--admin-plugin-small-columns",
@@ -256,9 +224,6 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-shell::before")).toContain("var(--admin-noise-opacity)");
     expect(selectorBlock(".admin-shell::after")).toContain("display: none");
     expect(selectorBlock(":root")).toContain("--admin-sidebar-width: 240px");
-    expect(selectorBlock(":root")).toContain("--admin-library-width: 640px");
-    expect(selectorBlock(":root")).toContain("--admin-library-left: calc(var(--admin-sidebar-offset) + var(--admin-sidebar-width) + var(--admin-sidebar-gap))");
-    expect(selectorBlock(":root")).toContain("--admin-library-max-height: min(500px");
     expect(selectorBlock(":root")).toContain("--admin-mobile-nav-width: 960px");
     expect(selectorBlock(":root")).toContain("--admin-shadow-floating-2k: 0 12px 28px");
     expect(selectorBlock(".app-sidebar")).toContain("width: var(--admin-sidebar-width)");
@@ -293,7 +258,6 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".operator-account-summary")).toContain("var(--admin-radius-pill)");
     expect(selectorBlock(".operator-account-summary")).toContain("min-height: var(--admin-touch-target-min)");
     expect(selectorBlock(".operator-account-avatar")).toContain("background: #0891b2");
-    expect(selectorBlock(".nav-library-utility-grid")).toContain("repeat(var(--admin-library-utility-columns), minmax(0, var(--admin-library-cell-width)))");
     expect(styles).not.toContain(".admin-blueprint-page-tools");
     expect(styles).not.toContain(".admin-blueprint-module-count");
     expect(styles).not.toContain(".admin-blueprint-console-header");
@@ -345,6 +309,23 @@ describe("admin style token contract", () => {
     expect(styles).not.toContain("--admin-plugin-resize-handle");
   });
 
+  test("keeps subpage plugin layouts within the Figma viewport protocol", () => {
+    expect(selectorBlock(".admin-blueprint-subpage-button")).toContain("min-height: 64px");
+    expect(selectorBlock(".admin-blueprint-subpage-button")).toContain("grid-template-columns: minmax(0, 1fr) auto");
+    expect(selectorBlock(".admin-blueprint-subpage-description")).toContain("text-overflow: ellipsis");
+    expect(selectorBlock(".admin-blueprint-subpage-description")).toContain("white-space: nowrap");
+    expect(selectorBlock(".admin-blueprint-page[data-subpage-mode=\"true\"] .admin-blueprint-module-board"))
+      .toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+    expect(selectorBlock(".admin-blueprint-page[data-subpage-mode=\"true\"] [data-module-nav-id=\"usage-ledger\"]"))
+      .toContain("min-height: 0");
+    expect(selectorBlock(".admin-blueprint-page[data-subpage-mode=\"true\"] .admin-blueprint-module-panel[data-size-preset=\"standard\"]"))
+      .toContain("block-size: var(--admin-plugin-height-tall)");
+    expect(selectorBlock(".admin-blueprint-page[data-subpage-mode=\"true\"] .admin-blueprint-module-panel[data-size-preset=\"standard\"]"))
+      .toContain("max-block-size: var(--admin-plugin-height-tall)");
+    expect(selectorBlock(".admin-blueprint-page[data-subpage-mode=\"true\"] .admin-blueprint-module-panel[data-size-preset=\"full\"]"))
+      .toContain("block-size: min(520px, var(--admin-plugin-screen-max-height))");
+  });
+
   test("keeps design-draft module containers visually typed and scannable", () => {
     expect(selectorBlock(".workbench-category-pill")).toContain("background: transparent");
     expect(selectorBlock(".workbench-category-pill::before")).toContain("background: currentColor");
@@ -373,6 +354,10 @@ describe("admin style token contract", () => {
     expect(styles).not.toContain(".admin-blueprint-module-card-compact");
     expect(styles).not.toContain(".admin-blueprint-module-gate");
     expect(styles).not.toContain(".admin-blueprint-library-next");
+    expect(styles).not.toContain("--admin-library-");
+    expect(styles).not.toContain(".nav-library-");
+    expect(styles).not.toContain(".nav-planned-menu");
+    expect(styles).not.toContain(".nav-planned-list");
   });
 
   test("keeps page source status badges responsive", () => {
@@ -381,33 +366,16 @@ describe("admin style token contract", () => {
     expect(styles).toContain(".page-header-status-stack .data-source-badge");
   });
 
-  test("keeps navigation library search and account chrome compact", () => {
-    expect(selectorBlock(".nav-library-toolbar")).toContain("minmax(0, 1fr)");
-    expect(selectorBlock(".nav-library-search")).toContain("var(--admin-radius-pill)");
-    expect(selectorBlock(".nav-library-search input")).toContain("width: 100%");
-    expect(selectorBlock(".nav-library-search input:focus-visible,\n.search-box input:focus-visible")).toContain("outline: 2px solid transparent");
-    expect(selectorBlock(".nav-library-result-count")).toContain("var(--admin-radius-pill)");
-    expect(selectorBlock(".nav-library-toolbar")).toContain("position: static");
+  test("keeps system search and account chrome compact", () => {
     expect(selectorBlock(".top-bar-search")).toContain("width: min(420px, 42vw)");
     expect(selectorBlock(".top-bar-search input")).toContain("min-height: var(--admin-control-height)");
     expect(selectorBlock(".search-box input")).toContain("min-height: var(--admin-control-height)");
-    expect(selectorBlock(".nav-library-search input")).toContain("min-height: var(--admin-control-height)");
-    expect(selectorBlock(".nav-library-utilities")).toContain("order: 1");
-    expect(selectorBlock(".nav-library-pages")).toContain("order: 2");
-    expect(selectorBlock(".nav-library-panel-apps")).toContain("order: 3");
-    expect(selectorBlock(".nav-library-utilities")).toContain("background: transparent");
-    expect(selectorBlock(".nav-library-utility")).toContain("text-align: center");
-    expect(selectorBlock(".nav-library-utility")).toContain("box-shadow: none");
-    expect(styles).not.toContain(".nav-library-connection .connection-widget-popover");
     expect(selectorBlock(".operator-account-summary")).toContain("min-height: var(--admin-touch-target-min)");
     expect(selectorBlock(".operator-account-copy small")).toContain("white-space: nowrap");
-    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-utility-grid,[\s\S]*\.nav-library-grid,[\s\S]*\.nav-library-grid-modules\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.top-bar-search\s*\{[\s\S]*display: none;/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.top-bar-actions > \.dashboard-status-badge\s*\{[\s\S]*display: none;/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.operator-account-summary\s*\{[\s\S]*width: var\(--admin-touch-target-min\);/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.operator-account-summary > svg,[\s\S]*\.operator-account-copy\s*\{[\s\S]*display: none;/m);
-    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-planned-apps \.nav-library-grid\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/m);
-    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-planned-apps \.nav-planned-item span\s*\{[\s\S]*white-space: normal;/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.admin-blueprint-module-panel-meta\s*\{[\s\S]*justify-items: start;/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.admin-blueprint-page\s*\{[\s\S]*gap: 12px;/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.admin-blueprint-page-hero\s*\{[\s\S]*gap: 6px;/m);
@@ -422,45 +390,14 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".nav-item")).toContain("display: inline-flex");
     expect(selectorBlock(".nav-item-icon")).toContain("width: 0");
     expect(selectorBlock(".nav-primary-list")).toContain("display: flex");
-    expect(selectorBlock(".nav-planned-menu")).toContain("position: relative");
-    expect(selectorBlock(".nav-planned-summary")).toContain("min-height: var(--admin-touch-target-min)");
-    expect(selectorBlock(".nav-planned-summary")).toContain("list-style: none");
-    expect(selectorBlock(".nav-planned-list")).toContain("position: fixed");
-    expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-library-left)");
-    expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-library-top)");
-    expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-library-width)");
-    expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-library-max-height)");
-    expect(selectorBlock(".nav-planned-list")).toContain("overflow-y: auto");
-    expect(selectorBlock(".nav-planned-list")).toContain("backdrop-filter: none");
-    expect(selectorBlock(".nav-planned-list")).toContain("contain: layout paint");
-    expect(selectorBlock(".nav-planned-list")).toContain("var(--admin-shadow-floating-2k)");
-    expect(selectorBlock(".nav-planned-list")).toContain("box-shadow: var(--admin-shadow-floating-2k)");
-    expect(selectorBlock(".nav-library-toolbar")).toContain("display: grid");
-    expect(selectorBlock(".nav-library-search")).toContain("display: flex");
-    expect(selectorBlock(".nav-library-utilities")).toContain("border: 0");
-    expect(selectorBlock(".nav-library-heading")).toContain("font-size: 11px");
-    expect(selectorBlock(".nav-library-heading")).toContain("text-transform: none");
-    expect(selectorBlock(".nav-library-utility")).toContain("grid-template-columns: minmax(0, 1fr)");
-    expect(selectorBlock(".nav-library-utility")).toContain("padding: 6px 4px");
-    expect(selectorBlock(".nav-library-group")).toContain("display: grid");
-    expect(selectorBlock(".nav-library-grid")).toContain("repeat(var(--admin-library-page-columns), minmax(0, var(--admin-library-page-cell-width)))");
-    expect(selectorBlock(".nav-library-grid")).toContain("align-items: start");
-    expect(selectorBlock(".nav-library-grid")).toContain("justify-content: start");
-    expect(selectorBlock(".nav-library-grid-modules")).toContain("repeat(var(--admin-library-module-columns), minmax(0, var(--admin-library-cell-width)))");
-    expect(selectorBlock(".nav-library-utility-grid")).toContain("repeat(var(--admin-library-utility-columns), minmax(0, var(--admin-library-cell-width)))");
-    expect(selectorBlock(".nav-library-utility-grid")).toContain("align-items: start");
-    expect(selectorBlock(".nav-library-utility-grid")).toContain("justify-content: start");
-    expect(selectorBlock(".nav-planned-item")).toContain("grid-template-columns: 1fr");
-    expect(selectorBlock(".nav-planned-item")).toContain("var(--admin-library-tile-height)");
-    expect(selectorBlock(".nav-planned-item-module")).toContain("transparent");
     expect(selectorBlock(".nav-app-icon")).toContain("background: var(--nav-app-a)");
     expect(selectorBlock(".nav-app-icon")).toContain("var(--admin-radius-icon)");
     expect(selectorBlock(".nav-app-icon")).toContain("0 0 0 1px rgba(255, 255, 255, 0.32)");
     expect(selectorBlock(".nav-app-icon::after")).toContain("display: none");
+    expect(selectorBlock(".nav-app-icon")).toContain("var(--admin-app-icon-size)");
     expect(selectorBlock(".nav-app-icon svg")).toContain("position: relative");
     expect(selectorBlock(".nav-app-tone-emerald")).toContain("--nav-app-a: #059669");
     expect(selectorBlock(".nav-app-tone-indigo")).toContain("--nav-app-a: #4f46e5");
-    expect(selectorBlock(".nav-app-icon")).toContain("var(--admin-library-icon-size)");
     expect(selectorBlock(".nav-route-icon")).toContain("var(--admin-sidebar-route-icon-size)");
     expect(selectorBlock(".nav-item-icon.nav-route-icon svg")).toContain("width: 16px");
     expect(selectorBlock(".nav-item-icon.nav-route-icon svg")).toContain("height: 16px");
@@ -488,8 +425,6 @@ describe("admin style token contract", () => {
   test("keeps admin touch targets on the grammar minimum token", () => {
     [
       ".nav-item",
-      ".nav-planned-summary",
-      ".nav-library-search",
       ".top-bar-search",
       ".operator-account-summary",
       ".top-search-shell",
@@ -523,7 +458,7 @@ describe("admin style token contract", () => {
     expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.new-console-row-head\s*\{\s*display: none;/m);
   });
 
-  test("keeps account and navigation library detail popovers closed until opened", () => {
+  test("keeps account and connection detail popovers closed until opened", () => {
     expect(styles).toMatch(/\.operator-account-menu:not\(\[open\]\)\s*>\s*\.operator-account-popover,[\s\S]*\.connection-widget:not\(\[open\]\)\s*>\s*\.connection-widget-popover\s*\{\s*display: none;/m);
   });
 
@@ -543,14 +478,10 @@ describe("admin style token contract", () => {
   test("keeps the mobile admin shell focused on active navigation and compact actions", () => {
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.top-bar-actions\s*\{[\s\S]*display: flex;[\s\S]*flex-wrap: wrap;/m);
     expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.operator-account-summary\s*\{[\s\S]*min-height: var\(--admin-touch-target-min\);/m);
-    expect(styles).toMatch(/@media \(max-width: 620px\) \{[\s\S]*\.nav-library-search\s*\{[\s\S]*min-height: var\(--admin-touch-target-min\);/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.app-sidebar\s*\{[\s\S]*bottom: 8px;/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-primary-list\s*\{[\s\S]*display: flex;/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-primary-list\s*\{[\s\S]*flex: 1 1 auto;[\s\S]*width: auto;/m);
-    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-planned-menu,[\s\S]*\.sidebar-safety-footer\s*\{[\s\S]*flex: 0 0 var\(--admin-touch-target-min\);/m);
-    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-planned-summary,[\s\S]*\.sidebar-safety-summary\s*\{[\s\S]*width: var\(--admin-touch-target-min\);/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-list\s*\{[\s\S]*gap: var\(--admin-mobile-nav-gap\);/m);
-    expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.nav-planned-count\s*\{[\s\S]*right: 0;/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-summary\s*\{[\s\S]*min-height: var\(--admin-touch-target-min\);/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-summary span,[\s\S]*\.sidebar-safety-summary strong\s*\{[\s\S]*display: none;/m);
     expect(styles).toMatch(/@media \(max-width: 860px\) \{[\s\S]*\.sidebar-safety-detail\s*\{[\s\S]*display: none;/m);
@@ -575,8 +506,6 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-panel::before")).toContain("width: 0");
     expect(selectorBlock(".admin-blueprint-module-panel::before")).toContain("background: var(--admin-plugin-accent)");
     expect(selectorBlock(".admin-blueprint-module-panel:hover")).toContain("border-color: var(--workbench-category-border");
-    expect(selectorBlock(".nav-library-search")).toContain("box-shadow: none");
-    expect(selectorBlock(".nav-library-search input")).toContain("font-weight: 500");
     expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("background: var(--admin-surface-muted)");
     expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("box-shadow: none");
     expect(selectorBlock(".admin-blueprint-empty-workbench")).not.toContain("radial-gradient");

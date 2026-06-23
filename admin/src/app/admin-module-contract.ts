@@ -1,5 +1,8 @@
 import { type WorkbenchCategory } from "../components/primitives";
-import { type BlueprintPage } from "./admin-ui-projection";
+import {
+  type AdminContentContainmentStrategy,
+  type BlueprintPage
+} from "./admin-ui-projection";
 import {
   getAdminAppMap,
   type AdminAppManifest,
@@ -23,7 +26,9 @@ export type AdminModuleContract = {
   owner: string;
   ownerMode: PageSubNavigationMode;
   category: WorkbenchCategory;
+  containmentStrategy: AdminContentContainmentStrategy;
   manifestId: string;
+  paginationStandardNodeId?: "157:2";
   sourceContract: AdminAppSourceContract;
 };
 
@@ -35,7 +40,8 @@ export type AdminModuleContractIssueCode =
   | "manifest-target-mismatch"
   | "manifest-owner-mode-mismatch"
   | "manifest-category-mismatch"
-  | "missing-source-contract";
+  | "missing-source-contract"
+  | "missing-containment-strategy";
 
 export type AdminModuleContractIssue = {
   code: AdminModuleContractIssueCode;
@@ -65,11 +71,13 @@ export function createAdminModuleContracts(
 
       contracts.push({
         category: module.container.category,
+        containmentStrategy: module.containmentStrategy,
         label: navItem.label,
         manifestId: plugin.id,
         navId: module.navId,
         owner: navItem.owner,
         ownerMode: navItem.mode,
+        paginationStandardNodeId: module.containmentStrategy === "not-applicable" ? undefined : "157:2",
         page: blueprint.page,
         pageRole: pageContract.role,
         sourceContract: plugin.catalog.sourceContract,
@@ -104,6 +112,10 @@ export function findAdminModuleContractIssues(
       if (!navItem || !pageContract.sectionIds.includes(module.navId)) {
         issues.push(issue("missing-navigation-module", blueprint.page, module.navId, "Blueprint module is not registered in pageSubNavigation/pageWorkbenchContracts."));
         return;
+      }
+
+      if (!module.containmentStrategy) {
+        issues.push(issue("missing-containment-strategy", blueprint.page, module.navId, "Blueprint module must declare pagination, route-split, bounded internal scroll, or not-applicable."));
       }
 
       const plugin = pluginsByPageAndNavId.get(moduleKey(blueprint.page, module.navId));

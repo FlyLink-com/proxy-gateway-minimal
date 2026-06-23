@@ -23,6 +23,7 @@ export type BlueprintModule = {
   navId: string;
   container: WorkbenchContainerSpec;
   content?: ReactNode;
+  containmentStrategy: AdminContentContainmentStrategy;
   purpose: string;
   contentFields: string[];
   states: string[];
@@ -31,6 +32,20 @@ export type BlueprintModule = {
   nextStep: string;
   actions?: ReactNode;
   uiSurface: AdminUiSurfaceKey;
+};
+
+export type AdminContentContainmentStrategy =
+  | "not-applicable"
+  | "pagination"
+  | "route-split"
+  | "bounded-internal-scroll";
+
+export type BlueprintSubPage = {
+  id: string;
+  label: string;
+  owner: string;
+  description: string;
+  moduleNavIds: string[];
 };
 
 export type BlueprintPage = {
@@ -42,6 +57,7 @@ export type BlueprintPage = {
   statusLabel: string;
   statusTone: MetricTone;
   modules: BlueprintModule[];
+  subPages?: BlueprintSubPage[];
 };
 
 export type BlueprintPanelViewModel = {
@@ -51,11 +67,13 @@ export type BlueprintPanelViewModel = {
   chrome: "draft" | "operator";
   className: string;
   content?: ReactNode;
+  containmentStrategy: BlueprintModule["containmentStrategy"];
   containerLabel: string;
   fieldLabels: string[];
   fixturePreview?: AdminFixturePreviewPanel;
   navId: string;
   ownerMode: "preview" | "owner";
+  paginationStandardNodeId?: "157:2";
   sizePreset: WorkspaceModuleVisibleSizePreset;
   targetId: string;
   title: string;
@@ -101,10 +119,12 @@ export function projectBlueprintPanelViewModels({
       chrome,
       className: "",
       content: module.content,
+      containmentStrategy: module.containmentStrategy,
       containerLabel: module.container.container,
       fieldLabels: module.contentFields,
       navId: module.navId,
       ownerMode: navItem?.mode === "preview" ? "preview" : "owner",
+      paginationStandardNodeId: module.containmentStrategy === "not-applicable" ? undefined : "157:2",
       sizePreset: layout.sizePreset,
       targetId: navItem?.targetId ?? module.navId,
       title: navItem?.label ?? module.navId,

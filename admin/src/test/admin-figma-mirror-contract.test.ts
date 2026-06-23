@@ -12,6 +12,7 @@ import {
   ADMIN_FIGMA_FILE_KEY,
   ADMIN_FIGMA_MIRROR_CONTRACT_VERSION,
   ADMIN_FIGMA_MIRROR_PAGES,
+  ADMIN_FIGMA_PAGINATION_STANDARD,
   ADMIN_FIGMA_REQUIRED_PAGE_NAMES,
   ADMIN_FIGMA_SOURCE_URL,
   ADMIN_FIGMA_WRITE_ACCESS_CHECK,
@@ -242,9 +243,50 @@ describe("admin Figma mirror contract", () => {
       "figma-mirror",
       "dom-contract",
       "browser-desktop",
-      "browser-mobile",
+      "browser-tablet",
+      "mobile-standard-pending",
+      "pagination-containment",
       "style-token-regression",
       "safe-data-boundary"
     ]);
+  });
+
+  test("records the GCC-122 pagination and route-split gate from Figma", () => {
+    expect(ADMIN_FIGMA_PAGINATION_STANDARD).toMatchObject({
+      nodeId: "157:2",
+      name: "19 GCC-122 Pagination Standard / 1600x1024",
+      status: "current",
+      frameSize: "1600x1024",
+      mobileStatus: "pending-dedicated-standard",
+      role: "implementation-gate"
+    });
+    expect(ADMIN_FIGMA_PAGINATION_STANDARD.requiredViewports).toEqual([
+      "1600",
+      "1280",
+      "1024",
+      "768"
+    ]);
+    expect(ADMIN_FIGMA_PAGINATION_STANDARD.containmentStrategies).toEqual([
+      "pagination",
+      "route-split",
+      "bounded-internal-scroll"
+    ]);
+    expect(ADMIN_FIGMA_PAGINATION_STANDARD.usePaginationFor).toEqual(expect.arrayContaining([
+      "users",
+      "orders",
+      "usage-ledgers",
+      "audit-events",
+      "candidate-queues"
+    ]));
+    expect(ADMIN_FIGMA_PAGINATION_STANDARD.doNotPaginate).toEqual(expect.arrayContaining([
+      "health-cards",
+      "kpi-summaries",
+      "system-search",
+      "action-chips"
+    ]));
+    expect(ADMIN_FIGMA_PAGINATION_STANDARD.acceptance).toEqual(expect.arrayContaining([
+      "Each long card names pagination, route split, or bounded internal scroll before implementation.",
+      "Mobile is not accepted from desktop reuse until a dedicated mobile standard frame is approved."
+    ]));
   });
 });

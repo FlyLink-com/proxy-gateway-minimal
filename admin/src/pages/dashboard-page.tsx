@@ -2,6 +2,7 @@ import { Activity, AlertTriangle, Clock3, RadioTower } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { type AdminPage } from "../app/navigation";
 import {
+  DataCardPagination,
   MetricCard,
   type MetricTone,
   StatusChip
@@ -53,6 +54,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           interactionModel: "Read-only summary with owner-page routing."
         },
         content: <OverviewHealthSummary />,
+        containmentStrategy: "not-applicable",
         purpose: "Summarize platform health without owning the account, quota, channel, or receipt detail collections.",
         contentFields: [
           "Platform health · summary state",
@@ -86,6 +88,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           interactionModel: "Select and route only; no close, approve, or mutation actions."
         },
         content: <OverviewRiskCandidates />,
+        containmentStrategy: "pagination",
         purpose: "Show the highest-priority computed review candidates and the owner page that should handle them.",
         contentFields: [
           "Severity · high / medium / low",
@@ -120,6 +123,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           interactionModel: "Open owner page or future gated workflow entry."
         },
         content: <OverviewRouteCards onNavigate={onNavigate} />,
+        containmentStrategy: "not-applicable",
         purpose: "Route operators to Accounts & Resources or Usage & Channels instead of repeating those collections here.",
         contentFields: [
           "Owner page · action route",
@@ -270,6 +274,12 @@ function OverviewRiskCandidates() {
           </article>
         ))}
       </div>
+      <DataCardPagination
+        ariaLabel="Risk Queue pagination"
+        itemLabel="items"
+        pageSize={4}
+        totalItems={overviewRiskItems.length}
+      />
     </section>
   );
 }
