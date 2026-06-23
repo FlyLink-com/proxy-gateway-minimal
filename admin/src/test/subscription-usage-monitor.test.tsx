@@ -51,14 +51,14 @@ describe("subscription usage monitor page", () => {
     expect(screen.getAllByLabelText("Monitoring panel").length).toBe(2);
     expect(screen.queryByLabelText("Platform Tools panel")).toBeNull();
     expect(screen.queryByText("Safe diagnostics entry panel")).toBeNull();
-    expect(screen.getByLabelText("Collection Freshness static operator content")).not.toBeNull();
+    expect(screen.getByLabelText("Collection Freshness runtime projection content")).not.toBeNull();
     expect(screen.getByText("Collection state")).not.toBeNull();
     expect(screen.getAllByText("Collector disabled").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Latest usage · observed age")).toBeNull();
     expect(screen.queryByText("Evidence owner for usage collection trust, channel coverage, receipts, collectors, and collection anomalies.")).toBeNull();
     expect(screen.getByRole("heading", { name: "Collection Anomalies" })).not.toBeNull();
     expect(screen.getByRole("navigation", { name: "Collection Anomalies pagination" })).not.toBeNull();
-    expect(screen.getByText("1-6 of 6 items")).not.toBeNull();
+    expect(screen.getByText("1-3 of 3 items")).not.toBeNull();
     expect(screen.getAllByText("Receipt / collection pending").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole("heading", { name: "Channel Coverage" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Usage Ledger" })).toBeNull();
@@ -108,12 +108,14 @@ describe("subscription usage monitor page", () => {
     expect(screen.getByRole("heading", { name: "Usage Ledger" })).not.toBeNull();
     expect(screen.getByRole("button", { name: "Usage Ledger hide module" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Channel Coverage hide module" })).toBeNull();
-    expect(screen.getByLabelText("Usage Ledger static table")).not.toBeNull();
+    expect(screen.queryByLabelText("Usage Ledger static table")).toBeNull();
+    expect(screen.getByLabelText("Usage Ledger runtime projection table")).not.toBeNull();
     expect(screen.getByRole("navigation", { name: "Usage Ledger pagination" })).not.toBeNull();
-    expect(screen.getByText("1-6 of 6 rows")).not.toBeNull();
-    expect(screen.getAllByText("Collected 0B").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("1-4 of 4 rows")).not.toBeNull();
+    expect(screen.getAllByText("Measured zero").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Not collected").length).toBeGreaterThanOrEqual(1);
-    expect(screen.queryByText("Traffic · upload / download / total")).toBeNull();
+    expect(screen.getByText("Traffic · upload / download / total")).not.toBeNull();
+    expect(screen.getByText("1 KB up / 2 KB down / 3 KB total")).not.toBeNull();
 
     expect(document.querySelectorAll(".admin-blueprint-module-notes")).toHaveLength(0);
     document.querySelectorAll(".admin-blueprint-module-notes").forEach((notes) => {
@@ -132,20 +134,21 @@ describe("subscription usage monitor page", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open Usage Ledger subpage" }));
 
-    expect(screen.getByText("54 GB / 50 GB")).not.toBeNull();
-    expect(screen.getAllByText(/108% used/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("42.5 GB / 50 GB")).not.toBeNull();
-    expect(screen.getAllByText(/85% used/).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Over limit").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Near quota").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("True 0 B").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Collection stale").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("1 KB up / 2 KB down / 3 KB total")).not.toBeNull();
+    expect(screen.getByText("0 B up / 0 B down / 1.17 KB total")).not.toBeNull();
+    expect(screen.getAllByText("Measured").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Measured zero").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Collector disabled").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Receipt / collection pending").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Not collected").length).toBeGreaterThanOrEqual(1);
 
     fireEvent.click(screen.getByRole("button", { name: "Open Collection Trust subpage" }));
 
-    expect(screen.getByLabelText("Collection anomaly candidates count 6")).not.toBeNull();
+    expect(screen.getByLabelText("Collection anomaly candidates count 3")).not.toBeNull();
+    expect(screen.getByText("1-3 of 3 items")).not.toBeNull();
+    expect(screen.getAllByText("Over limit").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Receipt / collection pending").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("True 0 B").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Usage evidence needs review").length).toBeGreaterThanOrEqual(1);
 
     const renderedText = document.body.textContent ?? "";
     expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|yaml|edgecred_/i);
@@ -165,6 +168,7 @@ describe("subscription usage monitor page", () => {
     expect(screen.getAllByText("route_safe_tuic_recovery").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("agent_safe_sgp_02").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("route-latency-sample").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Missing receipt").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Pending receipt").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByRole("table").length).toBeGreaterThanOrEqual(2);
 
