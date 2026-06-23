@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { findSensitivePatternFindings } from "./check-project-state.mjs";
 
 const DEFAULT_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -28,19 +29,6 @@ const VALIDATION_COMMANDS = [
   "npm run admin:test",
   "npm run admin:build"
 ];
-
-const SENSITIVE_PATTERNS = [
-  { type: "private-key", pattern: /-----BEGIN [A-Z ]*PRIVATE KEY-----/i },
-  { type: "token", pattern: /\btoken=[A-Za-z0-9._~+/=-]{8,}/i },
-  { type: "password", pattern: /\bpassword\s*=\s*[^,\s"']{4,}/i },
-  { type: "api-key", pattern: /\bapi[_-]?key\s*=\s*[^,\s"']{8,}/i },
-  { type: "subscription-url", pattern: /\bhttps?:\/\/[^\s"']+[?&]token=[A-Za-z0-9._~+/=-]{8,}/i },
-  { type: "proxy-uri", pattern: /\b(?:ss|vless|vmess|trojan|hysteria2|tuic):\/\/[A-Za-z0-9+/=_:;,.?&%#@-]{8,}/i }
-];
-
-function isPlaceholderLine(line) {
-  return /<[^>]+>|\[redacted\]|\[REDACTED\]|\.\.\.|example\.(?:com|invalid)|placeholder|dummy|fake|sample/i.test(line);
-}
 
 function readJson(rootDir, path, errors) {
   const fullPath = join(rootDir, path);
@@ -79,28 +67,6 @@ function parseGitStatus(gitStatusText = "") {
     dirty: changedFiles.length > 0,
     changedFiles
   };
-}
-
-function collectSensitiveFindings(rootDir, paths) {
-  const findings = [];
-  for (const path of paths) {
-    const fullPath = join(rootDir, path);
-    if (!existsSync(fullPath)) {
-      continue;
-    }
-    const lines = readFileSync(fullPath, "utf8").split(/\r?\n/);
-    for (const [index, line] of lines.entries()) {
-      if (isPlaceholderLine(line)) {
-        continue;
-      }
-      for (const { type, pattern } of SENSITIVE_PATTERNS) {
-        if (pattern.test(line)) {
-          findings.push({ path, line: index + 1, type });
-        }
-      }
-    }
-  }
-  return findings;
 }
 
 function sourceDocsFrom(...states) {
@@ -147,7 +113,7 @@ export function buildAgentBrief({
     ...docsToReadFirst,
     ...sourceDocsFrom(currentState, lanesState, tasksState)
   ].filter((path) => path.endsWith(".md") || path.endsWith(".json"));
-  const sensitiveFindings = collectSensitiveFindings(rootDir, [...new Set(guardedPaths)]);
+  const sensitiveFindings = findSensitivePatternFindings(rootDir, [...new Set(guardedPaths)]);
   for (const finding of sensitiveFindings) {
     errors.push(`${finding.path}:${finding.line}: sensitive ${finding.type} pattern matched`);
   }
