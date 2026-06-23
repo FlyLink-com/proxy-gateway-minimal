@@ -184,6 +184,19 @@ describe("admin dashboard page", () => {
     expect(document.querySelector("#dashboard-health-summary")).not.toBeNull();
   });
 
+  test("uses system-search empty copy when every overview module is hidden", () => {
+    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Health Summary hide module" }));
+    fireEvent.click(screen.getByRole("button", { name: "Risk Queue hide module" }));
+    fireEvent.click(screen.getByRole("button", { name: "Next Actions hide module" }));
+
+    expect(screen.getByRole("status").textContent).toContain("No modules are visible.");
+    expect(screen.getByRole("status").textContent).toContain("Use system search or page controls to restore modules.");
+    expect(document.body.textContent ?? "").not.toMatch(/Navigation Library|App Library|Module Library/i);
+    expect(screen.queryByRole("button", { name: /Open .* module/ })).toBeNull();
+  });
+
   test("persists fixed panel visibility locally across remounts", () => {
     render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
 

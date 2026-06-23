@@ -156,8 +156,8 @@ describe("admin Figma mirror contract", () => {
       "MetricCard",
       "StatusChip",
       "DataTable / DataRow",
-      "TopBar",
-      "Sidebar / Navigation Library",
+      "TopBar / System Search",
+      "Sidebar / Primary Routes",
       "PrivilegedGate",
       "EmptyState / Loading / Stale / Error"
     ]);
@@ -166,8 +166,8 @@ describe("admin Figma mirror contract", () => {
       "MetricCard",
       "StatusChip",
       "DataTable / DataRow",
-      "TopBar",
-      "Sidebar / Navigation Library",
+      "TopBar / System Search",
+      "Sidebar / Primary Routes",
       "PrivilegedGate",
       "EmptyState / Loading / Stale / Error"
     ]);

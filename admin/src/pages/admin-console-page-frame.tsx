@@ -241,9 +241,9 @@ export function AdminConsolePageFrame({
         )) : (
           <EmptyState
             className="admin-blueprint-empty-workbench"
-            description="Open Navigation Library to restore modules."
+            description="Use system search or page controls to restore modules."
             role="status"
-            title="All plugins are hidden."
+            title="No modules are visible."
           />
         )}
       </div>

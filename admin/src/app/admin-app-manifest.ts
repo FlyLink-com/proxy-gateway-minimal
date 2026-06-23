@@ -1623,7 +1623,7 @@ function createUtilityApp({
       category: "configuration",
       coreViews,
       enName: label,
-      followUpTask: "GCC-77 Navigation Library search and safe indexing",
+      followUpTask: "GCC-77 System Search route indexing and safe discovery",
       primaryObjects,
       safetyBoundary: "Console utility only; no business-object ownership or production mutation.",
       searchableFields,

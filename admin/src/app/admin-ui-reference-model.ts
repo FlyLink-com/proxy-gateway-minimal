@@ -14,7 +14,7 @@ export type AdminUiIntegrationMode =
   | "study-architecture-only";
 
 export type AdminUiSurfaceKey =
-  | "navigation-command"
+  | "system-search"
   | "operations-health"
   | "operations-risk"
   | "operations-routing"
@@ -59,7 +59,7 @@ export const ADMIN_UI_REFERENCE_SOURCES: AdminUiReferenceSource[] = [
     sourceUrl: "https://ui.shadcn.com/docs/installation/vite",
     stackFit: "native-react",
     useFor: [
-      "navigation command library",
+      "system search and route discovery",
       "buttons and badges",
       "dialogs, sheets, popovers",
       "forms, tables, tabs, empty states"
@@ -129,9 +129,9 @@ export const ADMIN_UI_REFERENCE_SOURCES: AdminUiReferenceSource[] = [
 
 export const ADMIN_UI_SURFACE_REFERENCES: AdminUiSurfaceReference[] = [
   {
-    implementationTarget: "WorkspaceSidebar + system search command surface",
-    key: "navigation-command",
-    label: "Navigation command library",
+    implementationTarget: "TopBar system search + workspace route index",
+    key: "system-search",
+    label: "System search route index",
     page: "shell",
     primaryReference: "shadcn-ui",
     supportingReferences: ["arco-design-pro", "ant-design-pro"]
