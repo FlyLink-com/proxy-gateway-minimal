@@ -89,7 +89,7 @@ describe("subscription usage monitor page", () => {
     expect(screen.getAllByText("Stale").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Measured channels · count")).toBeNull();
     expect(screen.getByRole("heading", { name: "Receipts & Collectors" })).not.toBeNull();
-    expect(screen.getAllByText("Safe diagnostics entry panel").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("Safe diagnostics entry panel")).toBeNull();
     expect(screen.getByLabelText("Receipts and Collectors static operator content")).not.toBeNull();
     expect(screen.getByText("Receipt gaps stay visible without exposing protected runtime material.")).not.toBeNull();
     expect(screen.getByLabelText("Agent Status static table")).not.toBeNull();

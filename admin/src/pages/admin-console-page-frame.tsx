@@ -172,6 +172,7 @@ export function AdminConsolePageFrame({
       className="page-stack admin-blueprint-page"
       data-density={pageContract.density}
       data-layout={pageContract.layout}
+      data-mobile-projection="single-column-review-flow"
       data-mobile-standard-status={pageContract.mobileStandardStatus}
       data-responsive-standard="desktop-tablet"
       data-active-subpage={activeSubPage?.id}

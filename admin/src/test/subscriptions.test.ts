@@ -665,8 +665,13 @@ describe("portal access request admin page", () => {
     expect(screen.queryByText("Page design notes")).toBeNull();
     expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Resources & Orders" })).not.toBeNull();
+    expect(screen.queryByRole("heading", { name: "Quota & Usage" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Lifecycle" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "History & Events" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open Quota & Lifecycle subpage" }));
     expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Lifecycle" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Open History & Events subpage" }));
     expect(screen.getByRole("heading", { name: "History & Events" })).not.toBeNull();
     expect(screen.queryByText("User resource supervision")).toBeNull();
     expect(screen.queryByText("Controlled delivery preview")).toBeNull();

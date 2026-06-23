@@ -15,8 +15,9 @@ export type DataTableState = {
 };
 
 export type DataTablePagination = {
-  ariaLabel: string;
+  ariaLabel?: string;
   itemLabel?: string;
+  label?: string;
   pageSize: number;
 };
 
@@ -24,6 +25,7 @@ export function DataTable<Row>({
   ariaLabel,
   className = "",
   columns,
+  density,
   getRowKey,
   getRowLabel,
   onRowSelect,
@@ -35,6 +37,7 @@ export function DataTable<Row>({
   ariaLabel: string;
   className?: string;
   columns: Array<DataTableColumn<Row>>;
+  density?: "compact" | "normal";
   getRowKey: (row: Row) => Key;
   getRowLabel?: (row: Row) => string;
   onRowSelect?: (row: Row) => void;
@@ -43,7 +46,15 @@ export function DataTable<Row>({
   selectedRowKey?: Key | null;
   state?: DataTableState;
 }) {
-  const classes = ["new-console-table", className].filter(Boolean).join(" ");
+  const shellClass = [
+    "new-console-table-frame",
+    density === "compact" ? "new-console-table-shell-compact" : ""
+  ].filter(Boolean).join(" ");
+  const classes = [
+    "new-console-table",
+    density === "compact" ? "new-console-table-compact" : "",
+    className
+  ].filter(Boolean).join(" ");
   const selectable = onRowSelect !== undefined;
   const [page, setPage] = useState(1);
   const pageSize = pagination ? Math.max(1, pagination.pageSize) : rows.length || 1;
@@ -62,7 +73,7 @@ export function DataTable<Row>({
   }, [currentPage, page]);
 
   return (
-    <div className="new-console-table-frame">
+    <div className={shellClass}>
       <div className={classes} role="table" aria-label={ariaLabel} aria-busy={state?.tone === "loading" ? true : undefined}>
         <div className="new-console-row new-console-row-head" role="row">
           {columns.map((column) => (
@@ -121,9 +132,12 @@ export function DataTable<Row>({
         <DataCardPagination
           ariaLabel={pagination.ariaLabel}
           itemLabel={pagination.itemLabel}
+          label={pagination.label}
           onPageChange={setPage}
           page={currentPage}
           pageSize={pageSize}
+          summaryFormat={pagination.label && !pagination.ariaLabel ? "showing" : "range"}
+          controlLabels={pagination.label && !pagination.ariaLabel ? "short" : "subject"}
           totalItems={rows.length}
         />
       ) : null}

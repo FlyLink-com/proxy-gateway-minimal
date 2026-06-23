@@ -39,7 +39,7 @@ export type AdminAppLayoutSize = "large" | "medium" | "compact" | "icon-only" | 
 export type AdminAppRuntimeState = "normal" | "warning" | "blocked" | "readonly" | "planned" | "needs-config";
 export type AdminAppVisibility = "pinned" | "library" | "hidden" | "locked";
 export type AdminAppDataBoundary = "safe-summary-only";
-export type AdminNavigationLibraryGroup =
+export type AdminAppCatalogGroup =
   | "workspace-pages"
   | "plugins"
   | "console-settings"
@@ -160,7 +160,7 @@ export type AdminAppManifest = {
     action: AdminAppRouteAction;
   };
   library: {
-    group: AdminNavigationLibraryGroup;
+    group: AdminAppCatalogGroup;
     order: number;
     defaultPinned: boolean;
     searchableText: string[];
@@ -168,7 +168,7 @@ export type AdminAppManifest = {
   plugin?: {
     navId: string;
     ownerMode: PageSubNavigationItem["mode"];
-    settingsEntry: "inline" | "navigationLibrary" | "both" | "none";
+    settingsEntry: "inline" | "panelSettings" | "both" | "none";
     allowedControls: Array<"hide" | "pin" | "layout" | "reorder" | "compact" | "expand" | "reset">;
     states: string[];
     boundaries: string[];
@@ -190,8 +190,8 @@ export type AdminAppSearchIndexEntry = {
   aliases: string[];
   dataBoundary: AdminAppDataBoundary;
   forbiddenFields: string[];
-  libraryGroup: AdminNavigationLibraryGroup;
-  moduleRecovery?: AdminNavigationLibraryModuleRecovery;
+  catalogGroup: AdminAppCatalogGroup;
+  moduleRecovery?: AdminAppCatalogModuleRecovery;
   ownerArea: string;
   pageId?: AdminPage;
   moduleNavId?: string;
@@ -228,13 +228,13 @@ export type AdminAppCapabilityBoundaryEntry = {
   requiredDetailApiHooks: string[];
 };
 
-export type AdminNavigationLibraryModuleRecovery = {
+export type AdminAppCatalogModuleRecovery = {
   action: "restore-module";
   consumesCanvasSpaceWhenHidden: false;
-  source: "navigation-library";
+  source: "system-search";
 };
 
-export type NavigationLibrarySearchDocument = {
+export type AdminAppSearchDocument = {
   appId: string;
   label: string;
   zhName: string;
@@ -245,7 +245,7 @@ export type NavigationLibrarySearchDocument = {
   routeTarget: string;
   capabilities: AdminAppCapability[];
   searchableFields: string[];
-  libraryGroup: AdminNavigationLibraryGroup;
+  catalogGroup: AdminAppCatalogGroup;
   status: AdminAppStatus;
 };
 
@@ -1159,9 +1159,9 @@ function uniqueCapabilities(capabilities: AdminAppCapability[]) {
   return ADMIN_APP_CAPABILITY_ORDER.filter((capability) => allowed.has(capability));
 }
 
-export function createNavigationLibrarySearchIndex(apps: readonly AdminAppManifest[] = adminAppManifest): AdminAppSearchIndexEntry[] {
+export function createAdminAppSearchIndex(apps: readonly AdminAppManifest[] = adminAppManifest): AdminAppSearchIndexEntry[] {
   return apps.map((app) => {
-    const searchDocument = createNavigationLibrarySearchDocument(app);
+    const searchDocument = createAdminAppSearchDocument(app);
     const searchableParts = [
       searchDocument.appId,
       searchDocument.label,
@@ -1173,7 +1173,7 @@ export function createNavigationLibrarySearchIndex(apps: readonly AdminAppManife
       ...searchDocument.searchableFields,
       searchDocument.status,
       ...searchDocument.capabilities,
-      searchDocument.libraryGroup,
+      searchDocument.catalogGroup,
       searchDocument.routeTarget
     ];
     return {
@@ -1185,13 +1185,13 @@ export function createNavigationLibrarySearchIndex(apps: readonly AdminAppManife
         ? searchDocument.safeDescription
         : "Available in the protected console workspace.",
       forbiddenFields: [...app.safety.forbiddenFields],
-      libraryGroup: searchDocument.libraryGroup,
+      catalogGroup: searchDocument.catalogGroup,
       moduleNavId: app.plugin?.navId,
       moduleRecovery: app.kind === "plugin"
         ? {
             action: "restore-module",
             consumesCanvasSpaceWhenHidden: false,
-            source: "navigation-library"
+            source: "system-search"
           }
         : undefined,
       ownerArea: app.owner.area,
@@ -1210,14 +1210,14 @@ export function createNavigationLibrarySearchIndex(apps: readonly AdminAppManife
   });
 }
 
-export function createNavigationLibrarySearchDocument(app: AdminAppManifest): NavigationLibrarySearchDocument {
+export function createAdminAppSearchDocument(app: AdminAppManifest): AdminAppSearchDocument {
   return {
     aliases: app.aliases.map(sanitizeSafeSearchText),
     appId: sanitizeSafeSearchText(app.id),
     capabilities: app.safety.capabilities.map(sanitizeSafeSearchText) as AdminAppCapability[],
     category: sanitizeSafeSearchText(app.category) as WorkbenchCategory,
     label: sanitizeSafeSearchText(app.label),
-    libraryGroup: sanitizeSafeSearchText(app.library.group) as AdminNavigationLibraryGroup,
+    catalogGroup: sanitizeSafeSearchText(app.library.group) as AdminAppCatalogGroup,
     ownerArea: sanitizeSafeSearchText(app.owner.area),
     routeTarget: sanitizeSafeSearchText(routeTargetForApp(app)),
     safeDescription: sanitizeSafeSearchText(app.description),
@@ -1238,7 +1238,7 @@ export function matchesAppSearch(entry: Pick<AdminAppSearchIndexEntry, "searchTe
 
 function createAdminAppMap(apps: readonly AdminAppManifest[]): AdminAppMap {
   const byId = Object.fromEntries(apps.map((app) => [app.id, app])) as Record<string, AdminAppManifest>;
-  const byGroup = (group: AdminNavigationLibraryGroup) => (
+  const byGroup = (group: AdminAppCatalogGroup) => (
     apps
       .filter((app) => app.library.group === group)
       .sort((a, b) => a.library.order - b.library.order)
@@ -1258,7 +1258,7 @@ function createAdminAppMap(apps: readonly AdminAppManifest[]): AdminAppMap {
     plannedApps: byGroup("planned-apps"),
     plugins,
     pluginsByPage,
-    searchIndex: createNavigationLibrarySearchIndex(apps),
+    searchIndex: createAdminAppSearchIndex(apps),
     utilities: byGroup("console-settings"),
     workspacePages: byGroup("workspace-pages")
   };
@@ -1444,7 +1444,7 @@ function createPluginApps(): AdminAppManifest[] {
           ],
           navId: module.id,
           ownerMode: module.mode,
-          settingsEntry: "navigationLibrary",
+          settingsEntry: "panelSettings",
           states: ["visible", "hidden"]
         },
         route: {

@@ -29,6 +29,7 @@ export type PanelFrameProps = {
   onHide?: () => void;
   onSizePresetChange?: (sizePreset: WorkspaceModuleVisibleSizePreset) => void;
   ownerMode: "preview" | "owner";
+  showDesignMetadata?: boolean;
   sizePreset?: WorkspaceModuleVisibleSizePreset;
   title: string;
   tone?: MetricTone;
@@ -63,6 +64,7 @@ export function PanelFrame({
   onHide,
   onSizePresetChange,
   ownerMode,
+  showDesignMetadata = false,
   sizePreset,
   title,
   tone = ownerMode === "preview" ? "neutral" : "info"
@@ -130,14 +132,18 @@ export function PanelFrame({
             <span className="workbench-category-pill">{CATEGORY_LABEL[category]}</span>
             <div>
               <h3>{title}</h3>
-              <small>{containerLabel}</small>
+              {showDesignMetadata ? <small>{containerLabel}</small> : null}
             </div>
           </div>
           <div className="admin-blueprint-module-panel-meta">
-            <span className="admin-blueprint-panel-field-count" aria-label={`${fieldLabels.length} primary fields`}>
-              {fieldLabels.length}
-            </span>
-            <StatusChip label={ownerMode === "preview" ? "Preview" : "Owner"} tone={tone} />
+            {showDesignMetadata ? (
+              <>
+                <span className="admin-blueprint-panel-field-count" aria-label={`${fieldLabels.length} primary fields`}>
+                  {fieldLabels.length}
+                </span>
+                <StatusChip label={ownerMode === "preview" ? "Preview" : "Owner"} tone={tone} />
+              </>
+            ) : null}
             {layoutPresetControls}
             {hideControl}
           </div>

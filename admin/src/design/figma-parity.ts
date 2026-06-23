@@ -295,24 +295,17 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
   {
     a11yRules: [
       "Pinned route buttons expose aria-current when active.",
-      "Navigation library trigger and search input have explicit names."
+      "Sidebar routes and system search have explicit names."
     ],
     cssTokens: [
       "--admin-sidebar-width",
       "--admin-sidebar-route-icon-size",
-      "--admin-library-width",
-      "--admin-library-top",
-      "--admin-library-max-height",
-      "--admin-library-padding",
-      "--admin-library-gap",
-      "--admin-library-cell-width",
-      "--admin-library-tile-height",
-      "--admin-library-icon-size",
+      "--admin-app-icon-size",
       "--admin-mobile-nav-height"
     ],
     figmaComponentSet: "SidebarNavigation",
     figmaVariableCollections: ["shell", "density", "semantic-color", "radius"],
-    figmaVariantProperties: ["route=active|inactive|planned", "library=open|closed", "viewport=desktop|mobile"],
+    figmaVariantProperties: ["route=active|inactive|planned", "viewport=desktop|mobile"],
     grammarRoles: ["system", "control"],
     hierarchyRoles: ["context", "action"],
     nextLinearIssue: "GCC-119",
@@ -325,21 +318,20 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
     ],
     react: {
       primarySurface: "src/components/primitives/workspace-sidebar.tsx#WorkspaceSidebar",
-      propContract: ["brand", "pinnedApps", "navigationLibrary", "plannedRoutes", "safetyGate"],
-      propValues: ["active", "planned", "open", "closed"],
+      propContract: ["brand", "pinnedApps", "plannedRoutes", "safetyGate"],
+      propValues: ["active", "planned"],
       supportingSurfaces: [
-        "src/components/primitives/workspace-sidebar.tsx#NavigationLibrary",
         "src/components/layout/app-sidebar.tsx#AppSidebar"
       ]
     },
     responsiveRules: [
       "Sidebar owns desktop navigation; mobile navigation stays a separate projection.",
-      "Navigation library scrolling is local and must not scroll the body horizontally."
+      "System search owns lookup and remains outside the sidebar."
     ],
     stateSemantics: [
       "active marks the current owner page",
       "planned marks unavailable future routes",
-      "library search filters route, panel, and utility entries"
+      "system search filters route, panel, and utility entries"
     ]
   },
   {

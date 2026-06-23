@@ -142,8 +142,7 @@ export const ADMIN_FIGMA_PAGINATION_STANDARD = {
     "health-cards",
     "kpi-summaries",
     "tiny-status-groups",
-    "app-library",
-    "navigation-library",
+    "system-search",
     "action-chips"
   ],
   requiredStates: [

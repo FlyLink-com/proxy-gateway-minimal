@@ -281,7 +281,7 @@ describe("admin Figma mirror contract", () => {
     expect(ADMIN_FIGMA_PAGINATION_STANDARD.doNotPaginate).toEqual(expect.arrayContaining([
       "health-cards",
       "kpi-summaries",
-      "navigation-library",
+      "system-search",
       "action-chips"
     ]));
     expect(ADMIN_FIGMA_PAGINATION_STANDARD.acceptance).toEqual(expect.arrayContaining([

@@ -1308,6 +1308,126 @@ button.admin-overview-action-card:focus-visible {
   line-height: 1.45;
 }
 
+.admin-search-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-search-summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 1px solid var(--admin-info-border);
+  border-radius: var(--admin-radius-control);
+  background: var(--admin-info-bg);
+  color: var(--admin-info-fg);
+  padding: 10px 12px;
+}
+
+.admin-search-summary strong {
+  color: var(--admin-text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.admin-search-summary span {
+  min-width: 0;
+  color: var(--admin-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.admin-search-result-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.admin-search-result-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-card);
+  background: #ffffff;
+  box-shadow: none;
+  padding: 14px;
+}
+
+.admin-search-result-main {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.admin-search-result-meta,
+.admin-search-result-tags {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.admin-search-result-meta span,
+.admin-search-result-tags span {
+  border: 1px solid var(--admin-border);
+  border-radius: 999px;
+  background: var(--admin-surface-muted);
+  color: var(--admin-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 4px 8px;
+}
+
+.admin-search-result-card h2 {
+  margin: 0;
+  color: var(--admin-text);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.admin-search-result-card p {
+  margin: 0;
+  color: var(--admin-text-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.admin-search-result-action {
+  min-height: var(--admin-touch-target-min);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-control);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.admin-search-result-action:not(.admin-search-result-action-disabled):hover {
+  border-color: var(--admin-accent);
+  color: var(--admin-accent);
+}
+
+.admin-search-result-action-disabled {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--admin-muted);
+}
+
 
 
 

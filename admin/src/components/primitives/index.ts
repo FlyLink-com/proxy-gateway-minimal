@@ -29,9 +29,7 @@ export { SectionPanel } from "./section-panel";
 export { StateFeedback, type StateFeedbackChrome, type StateFeedbackTone } from "./state-feedback";
 export { StatusChip } from "./status-chip";
 export {
-  NavigationLibrary,
   WorkspaceSidebar,
-  type NavigationLibraryProps,
   type WorkspaceSidebarBrand,
   type WorkspaceSidebarPinnedRoute,
   type WorkspaceSidebarProps

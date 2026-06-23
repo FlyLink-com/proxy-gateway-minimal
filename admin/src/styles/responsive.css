@@ -52,7 +52,6 @@
   .brand-name,
   .brand-subtitle,
   .nav-item-copy,
-  .nav-planned-summary > span:first-of-type,
   .sidebar-safety-summary strong {
     display: none;
   }
@@ -80,7 +79,6 @@
     height: 34px;
   }
 
-  .nav-planned-summary,
   .sidebar-safety-summary {
     width: var(--admin-touch-target-min);
     padding: 0;
@@ -88,49 +86,10 @@
     place-items: center;
   }
 
-  .nav-planned-menu,
   .sidebar-safety-footer {
     flex: 0 0 var(--admin-touch-target-min);
     width: var(--admin-touch-target-min);
     min-width: var(--admin-touch-target-min);
-  }
-
-  .nav-planned-list {
-    position: fixed;
-    left: 12px;
-    right: 12px;
-    bottom: var(--admin-library-bottom);
-    width: auto;
-    max-height: calc(100dvh - 96px);
-    overflow-x: hidden;
-    overflow-y: auto;
-    transform: none;
-  }
-
-  .nav-library-grid,
-  .nav-library-grid-modules {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .nav-library-utility-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .nav-planned-item {
-    min-height: 68px;
-    padding: 8px 6px;
-    font-size: 10px;
-  }
-
-  .nav-planned-item svg {
-    width: 22px;
-    height: 22px;
-  }
-
-  .nav-planned-count {
-    position: absolute;
-    top: -6px;
-    right: 0;
   }
 
   .sidebar-safety-summary {
@@ -337,37 +296,6 @@
     min-width: min(260px, calc(100vw - 24px));
   }
 
-  .nav-library-toolbar {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .nav-library-search {
-    min-height: var(--admin-touch-target-min);
-  }
-
-  .nav-library-utility-grid,
-  .nav-library-grid,
-  .nav-library-grid-modules {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .nav-library-planned-apps .nav-library-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .nav-library-planned-apps .nav-planned-item span {
-    overflow-wrap: normal;
-    white-space: normal;
-  }
-
-  .nav-library-utility {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .nav-library-utility small {
-    display: none;
-  }
-
   .top-search-shell {
     width: var(--admin-touch-target-min);
     flex: 0 0 var(--admin-touch-target-min);
@@ -538,11 +466,6 @@
   .admin-blueprint-page[data-page] [data-module-nav-id] .admin-fixture-preview-row {
     min-height: 0;
     padding: 10px;
-  }
-
-  .nav-library-grid,
-  .nav-library-grid-modules {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .usage-timeseries-layout {
