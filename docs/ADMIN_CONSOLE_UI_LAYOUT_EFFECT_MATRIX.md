@@ -1,6 +1,6 @@
 # Admin Console UI Layout And Effect Matrix
 
-Last updated: 2026-06-22, America/Los_Angeles.
+Last updated: 2026-06-24, America/Los_Angeles.
 
 > Status:
 > - Type: UI layout, visual effect, and visual QA matrix
@@ -22,15 +22,24 @@ and component rules from the earlier Admin OS exploration where they improve
 quality, but do not reintroduce the older App Library / browser-OS experiment
 as the current implementation target.
 
-## GCC-122 Current Visual Work Queue
+## Current Visual Source
 
-The 2026-06-22 Figma audit found that `09 Layout Effect Draft v1.2 Text Rhythm
-/ 1600x1024` is the refined visual protocol for `Operations Overview`. The
-first refined desktop drafts for `Accounts & Resources` and `Usage & Channels`
-now exist as `104:2` and `104:226`; they still need review, state placement,
-and responsive QA before implementation treats them as final.
+The 2026-06-24 Figma pass confirmed `06 AI Exploration` as the current desktop
+visual source. The three accepted Visual Polish frames are:
 
-The follow-up GCC-122 evidence frames are:
+| Page | Current node | Current role |
+| --- | --- | --- |
+| `Operations Overview` | `373:716` | Current desktop visual/layout source. |
+| `Accounts & Resources` | `373:866` | Current desktop visual/layout source. |
+| `Usage & Channels` | `373:1016` | Current desktop visual/layout source. |
+
+The earlier `99:2`, `104:2`, and `104:226` drafts are superseded. The `365:8`,
+`365:52`, and `365:96` AI Candidate Baseline frames remain reference only.
+Implementation should not continue from those older frames unless a review asks
+for historical comparison.
+
+The follow-up design-evidence frames remain useful for component/state and
+responsive strategy, but they do not override the Visual Polish geometry:
 
 - `115:2` `12 GCC-122 Component State Placement / 1600x1024`;
 - `116:2` `13 GCC-122 Responsive QA Strategy / 1600x1024`;
@@ -38,11 +47,11 @@ The follow-up GCC-122 evidence frames are:
 
 | Priority | Work item | Acceptance |
 | --- | --- | --- |
-| 1 | Review `104:2` Accounts desktop draft. | Confirms the same compact sidebar, top status bar, page title rhythm, one-level panels, and semantic chips as `99:2`; keeps account/order/quota ownership. |
-| 2 | Review `104:226` Usage desktop draft. | Confirms the same shell and density; keeps freshness, coverage, usage ledger, receipt/collector, and anomaly ownership distinct from account decisions. |
-| 3 | Place required component states on the refined pages. | `115:2` maps loading, empty, stale/error, locked/planned, focus, and safe-ref overflow states to shared primitives and records open implementation decisions. |
-| 4 | Collect visual QA evidence after review changes. | `116:2` records the `1024px` and `768px` strategy; follow-up browser screenshots must prove no overlap, clipped text, nested-card clutter, or accidental wrapping. |
-| 5 | Map Figma to code before implementation. | `117:2` maps Figma component sets to React surfaces, CSS/token responsibility, and next gates without authorizing backend or runtime work. |
+| 1 | Reverse-standardize docs and React/CSS from `373:716`, `373:866`, `373:1016`. | Current layout, density, and visible/hidden content rules are documented before code polish. |
+| 2 | Implement visual parity from the Visual Polish geometry. | Browser output matches ShellRail, TopBar, metric row, primary panels, and lower evidence row. |
+| 3 | Preserve component/state contracts. | `115:2` remains the state-placement reference; state surfaces are hidden until a real state mode needs them. |
+| 4 | Collect visual QA evidence after implementation. | Browser screenshots at desktop and narrow widths prove no overlap, clipped text, nested-card clutter, or accidental wrapping. |
+| 5 | Keep Figma-to-code mapping aligned. | `117:2` maps Figma component sets to React surfaces, CSS/token responsibility, and next gates without authorizing backend or runtime work. |
 
 ## Source Stack
 
@@ -96,14 +105,35 @@ console, not a draft page. The design target is:
 - English UI copy as the current active interface language;
 - no secrets, raw operational material, or production action affordances.
 
+## Standard Extraction Matrix
+
+Use the Visual Polish pages as page baselines and extract only stable design
+language into shared standards:
+
+| Source layer | Current role | Extraction rule |
+| --- | --- | --- |
+| `Operations Overview` composition | Page-specific operator summary and routing flow. | Keep Risk Queue, Next Actions, Review Candidates, and operations evidence as Overview-owned patterns. Do not clone them into Accounts or Usage. |
+| `Accounts & Resources` composition | Page-specific account/resource supervision flow. | Keep Account Directory, Resources & Orders, Lifecycle, and account history under the Accounts owner page. |
+| `Usage & Channels` composition | Page-specific measurement and channel-evidence flow. | Keep Collection Freshness, Channel Coverage, Usage Ledger, anomalies, and collector evidence under Usage. |
+| ShellRail + TopBar | Shared shell protocol. | Extract as reusable chrome and route/search context. |
+| Metric cards | Shared visual container with page-specific metrics. | Reuse lane structure, tone, icon slot, value/detail rhythm, and bounded trend slot; do not reuse metric meaning without a data contract. |
+| Panel frames | Shared surface protocol with page-specific bodies. | Reuse surface, header, border, radius, focus, and state behavior; page body layout stays owner-specific. |
+| Tables/queues | Shared row/density/overflow language. | Reuse safe-row and selection behavior; columns and actions remain page-owned. |
+| Curves/charts | Visual evidence slots only. | Do not treat static curves as approved time-series logic. Require source, window, aggregation, threshold, and empty/stale behavior before implementation. |
+
+This prevents the AI-generated page content from becoming accidental global UI
+law while preserving the visual quality improvements that should be shared.
+
 ## Layout Coordinate Matrix
 
 | Area | Desktop target | Narrow target | Rule |
 | --- | --- | --- | --- |
-| Primary frame | `1600 x 1024` Figma and desktop QA frame. | `1024`, `768`, and mobile review widths. | Desktop is the primary closeout target; mobile is a safe review projection, not desktop squeezed down. |
-| Canvas | Max `1520px`, centered with `24px` desktop gutter. | `12px` gutter under mobile thresholds. | Do not let wide screens stretch tables and cards past scan-friendly width. |
-| Grid | 12-column mental model with `16px` module gaps. | Collapse to 1 column for page-owned sections. | The grid is a design constraint; implementation may use CSS grid/flex as long as visual order is stable. |
-| Panel rhythm | 8px radius, 1px border, low shadow. | Same visual language, fewer columns. | Avoid card-inside-card separation. Use header, table, divider, drawer, or tabs instead. |
+| Primary frame | Current Visual Polish frames are `1600 x 908` visible inside a named `1600x1024` stage; ShellRail remains `224 x 1024`. | `1024`, `768`, and mobile review widths. | Desktop is the primary closeout target; mobile is a safe review projection, not desktop squeezed down. |
+| ShellRail | `224px` fixed left rail, dark glass, route ownership only. | Collapses or becomes compact navigation by separate review. | No AppLibrary, NavigationLibrary, dock, or desktop window model. |
+| TopBar | `x=252`, `y=24`, `1296 x 58`; centered `340 x 40` System Search. | Search becomes compact only when a narrow design approves it. | Search is a form/result surface, not an app drawer. |
+| Metric row | Four `300 x 150` metric cards at `x=276/592/908/1224`, `y=102`. | Collapse to stacked cards only after narrow review. | Values and status chips must not wrap or collide. |
+| Primary panels | Three `416 x 260` panels at `x=252/692/1132`; Operations/Accounts `y=300`, Usage `y=288`. | Collapse by owner page, not by mixing unrelated modules. | Avoid card-inside-card separation. Use header, table, divider, drawer, or tabs instead. |
+| Lower evidence row | Chart/event-log surfaces start near `y=596`, `628 x 280`. | Converts to tabs or stacked evidence sections. | Evidence rows stay read-only and safe-ref only. |
 | Detail content | Drawer, popover, expanded row, or section detail. | Drill-in card or stacked detail. | Do not add long explanatory paragraphs to the main canvas. |
 | Hidden/draft content | Developer/design-review only. | Same. | Field counts, design adapter copy, purpose, ownership, and next-step copy should not be normal UI content. |
 
@@ -111,9 +141,9 @@ console, not a draft page. The design target is:
 
 | Page | Desktop layout | First-screen priority | Secondary content | Narrow/mobile projection | Hard layout boundary |
 | --- | --- | --- | --- | --- | --- |
-| `Operations Overview` | Metric row, risk queue, next actions. Use summary panels only. | Health, risk count, freshness, channel coverage, top review candidate, owner-page route. | Locked future areas may appear as muted route targets only. | Single review flow: status summary, risk queue, next action. | No account/resource table, no usage ledger, no channel ledger, no lifecycle controls. |
-| `Accounts & Resources` | Account directory and selected account context first; resources/orders as the main table; quota/lifecycle/history as owner-page panels. | Account selection, resource/order table, quota risk, lifecycle status. | Safe history preview and disabled future actions. | Account selector, selected account summary, one table/detail section at a time. | No collector activation, channel diagnostics, route latency, or runtime controls. |
-| `Usage & Channels` | Freshness strip first; channel coverage and ledger as primary evidence; anomalies and receipts/collectors as diagnostic panels. | Freshness, measured/missing channels, usage ledger evidence, anomaly count. | Receipt/collector diagnostics and route latency placeholders when safe. | Freshness status, channel status, ledger/anomaly switcher, diagnostics drill-in. | No quota ownership, account disable, order archive, or artifact lifecycle decisions. |
+| `Operations Overview` | TopBar, four metrics, `Risk Queue`, `Next Actions`, `Review Candidates`, lower operations metrics/event evidence. | Health, risk count, freshness, channel coverage, top review candidate, owner-page route. | Locked future areas may appear as muted route targets only. | Single review flow: status summary, risk queue, next action. | No account/resource table, no usage ledger, no channel ledger, no lifecycle controls. |
+| `Accounts & Resources` | TopBar, four account/resource metrics, `Account Directory`, `Resources & Orders`, `Lifecycle`, lower account metrics/event evidence. | Account selection, resource/order status, quota pressure, lifecycle warning. | Safe history preview and disabled future actions. | Account selector, selected account summary, one table/detail section at a time. | No collector activation, channel diagnostics, route latency, or runtime controls. |
+| `Usage & Channels` | TopBar, four usage/channel metrics, `Collection Freshness`, `Channel Coverage`, `Usage Ledger`, lower usage metrics/event evidence. | Freshness, measured/missing channels, usage ledger evidence, anomaly count. | Receipt/collector diagnostics and route latency placeholders when safe. | Freshness status, channel status, ledger/anomaly switcher, diagnostics drill-in. | No quota ownership, account disable, order archive, or artifact lifecycle decisions. |
 | `Audit & Cases` | Locked slot only. | Locked state and entry gate only. | None until durable case/history exists. | Locked state only. | No route promotion, note write, close/reopen, or object history UI. |
 | `Platform Development` | Locked slot only. | Locked state and entry gate only. | None until safe tooling contracts exist. | Locked state only. | No node provisioning, runtime apply, or platform tool execution. |
 | `System Settings` | Locked slot only. | Locked state and entry gate only. | None until private settings boundary exists. | Locked state only. | No auth-model change, public settings route, or production mutation. |
@@ -140,11 +170,11 @@ console, not a draft page. The design target is:
 
 | UI layer | Desired effect | Required treatment | Reject |
 | --- | --- | --- | --- |
-| App background | Calm technical workspace. | Light blue-gray base, subtle texture/grid only if it stays quiet. | Visible drafting grid, decorative blobs, bokeh, radial empty-state decoration. |
-| Shell/status bar | Stable protected console context. | Sticky, compact, minimal controls, clear operator/environment state. | Search dominating the page, crowded button clusters, page-specific business tables. |
-| Page header | Orientation without hero weight. | Compact kicker/title/status; page job is clear but not oversized. | Hero-scale typography inside workbench pages. |
+| App background | Calm technical workspace. | Dark blue gradient/glass shell with subtle depth; no decorative texture competing with data. | Visible drafting grid, decorative blobs, bokeh, radial empty-state decoration. |
+| Shell/status bar | Stable protected console context. | ShellRail plus TopBar; compact route/search/operator controls. | Search dominating the page, crowded button clusters, page-specific business tables. |
+| Page header | Hidden in current Visual Polish pages. | Route identity lives in ShellRail and TopBar; explanatory titles stay in docs or state feedback. | Hero-scale typography inside workbench pages. |
 | Panels | Crisp one-level surfaces. | 8px radius, 1px token border, restrained low shadow. | Nested floating cards, muddy multi-layer shadows, heavy glass effects. |
-| Metric cards | Scan-first summary. | Strong value, short label, semantic tone, bounded trend space. | Overdecorated icon gradients, huge numbers that break layout, fake trends. |
+| Metric cards | Scan-first summary. | Strong value, short label, semantic tone, bounded trend slot. | Overdecorated icon gradients, huge numbers that break layout, fake trends or unlabeled curves. |
 | Tables | Operational comparison. | Dense rows, safe refs, clear headers, stable overflow behavior. | Spreadsheet clutter, clipped refs, hidden columns without mobile strategy. |
 | Queues | Review priority. | Severity/state chips, bounded rows, selected row state. | Durable case actions before backend exists. |
 | Chips | State language. | Semantic color plus text/icon; no color-only meaning. | High-saturation palette overload or status ambiguity. |
@@ -183,7 +213,7 @@ checks; it is not a substitute for browser screenshots.
 
 | Axis | Evidence to collect | Pass condition |
 | --- | --- | --- |
-| Figma page mirror | `01`, `02`, `03` active page frames and component mirror page. | Page structure and shared primitives match the matrix; no older one-page file is used. |
+| Figma page mirror | `06 AI Exploration` Visual Polish frames `373:716`, `373:866`, `373:1016`, plus component mirror/reference pages. | Page structure and shared primitives match the matrix; no older one-page file or superseded draft is used as current source. |
 | DOM grammar | `data-page-id`, `data-layout`, `data-density`, `data-ui-role`, `data-mobile-projection`, `data-figma-component`. | Rendered pages expose the expected grammar hooks for QA. |
 | Desktop screenshot | `1600px` and a common desktop width such as `1366px`. | No overlap, no draft chrome, no nested-card visual clutter, no wide stretching. |
 | Narrow screenshot | `1024px` and `768px`. | Sections collapse predictably and tables remain readable. |

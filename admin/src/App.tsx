@@ -16,6 +16,7 @@ import {
   createLocalUserPortalClient
 } from "./features/user-portal/user-portal-client";
 import { AdminSetupPage } from "./pages/admin-setup-page";
+import { AdminSearchResultsPage } from "./pages/admin-search-results-page";
 import { DashboardPage } from "./pages/dashboard-page";
 import { PortalRequestsPage } from "./pages/portal-requests-page";
 import { SubscriptionUsageMonitorPage } from "./pages/subscription-usage-monitor-page";
@@ -68,6 +69,11 @@ export function App() {
     setRoute("admin");
   }
 
+  function navigateAdminPage(page: AdminPage) {
+    setActivePage(page);
+    setSearch("");
+  }
+
   if (route === "site") {
     return <CompanySitePage />;
   }
@@ -98,15 +104,15 @@ export function App() {
       activePage={activePage}
       search={search}
       onSearchChange={setSearch}
-      onNavigate={setActivePage}
-      onOpenPortal={openPortal}
-      onOpenSite={openSite}
-      riskNotificationCount={riskNotificationCount}
-      connectionPanel={connectionPanel}
-      connectionConfigured={adminApiConfigured}
+      onNavigate={navigateAdminPage}
     >
       {fixturePreviewEnabled ? <FixturePreviewBanner /> : null}
-      {renderPage(activePage, setActivePage, setRiskNotificationCount, fixturePreviewEnabled)}
+      {search.trim() ? (
+        <AdminSearchResultsPage
+          searchQuery={search}
+          onNavigate={navigateAdminPage}
+        />
+      ) : renderPage(activePage, navigateAdminPage, setRiskNotificationCount, fixturePreviewEnabled)}
     </AdminLayout>
   );
 }

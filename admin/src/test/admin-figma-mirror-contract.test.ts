@@ -37,9 +37,9 @@ describe("admin Figma mirror contract", () => {
     expect(ADMIN_FIGMA_SOURCE_URL).toBe("https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn");
     expect(ADMIN_FIGMA_REQUIRED_PAGE_NAMES).toEqual([
       "00 Contract & Build Order",
-      "01 Operations Overview / 1600x1024",
-      "02 Accounts & Resources / 1600x1024",
-      "03 Usage & Channels / 1600x1024",
+      "AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024",
+      "AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024",
+      "AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024",
       "04 State & Safety Matrix",
       "05 GCC-103 Review Addendum / 1600x1024"
     ]);
@@ -56,6 +56,8 @@ describe("admin Figma mirror contract", () => {
       expect(matchingMirror).toHaveLength(1);
       expect(matchingMirror[0].name).toContain(pageTitles[navItem.id]);
       expect(matchingMirror[0].frameSize).toBe(ADMIN_UI_CONTRACT.viewportTargets.desktopWorkbench.frame);
+      expect(matchingMirror[0].nodeId).toMatch(/^373:/);
+      expect(matchingMirror[0].visibleFrameSize).toBe("1600x908");
       expect(matchingMirror[0].status).toBe("current");
     });
   });
@@ -98,7 +100,14 @@ describe("admin Figma mirror contract", () => {
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.componentSystemMirror).toBe("current");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedTopLevelPage).toBe("Admin UI Handoff");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedComponentMirrorPage).toBe("Admin Component Mirror v1");
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedFrames).toContain("01 Operations Overview / 1600x1024");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.checkedAt).toBe("2026-06-24");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedVisualSourcePage).toBe("06 AI Exploration");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedVisualSourceNodes).toEqual([
+      "373:716",
+      "373:866",
+      "373:1016"
+    ]);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedFrames).toContain("AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedFrames).toContain("08 Current Implementation / Usage & Channels / 1600w full-content capture");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalComponentSetCount).toBe(8);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalComponentNodeCount).toBe(41);
@@ -156,7 +165,7 @@ describe("admin Figma mirror contract", () => {
       "StatusChip",
       "DataTable / DataRow",
       "TopBar",
-      "Sidebar / Navigation Library",
+      "ShellRail / Primary Routes",
       "PrivilegedGate",
       "EmptyState / Loading / Stale / Error"
     ]);
@@ -166,7 +175,7 @@ describe("admin Figma mirror contract", () => {
       "StatusChip",
       "DataTable / DataRow",
       "TopBar",
-      "Sidebar / Navigation Library",
+      "ShellRail / Primary Routes",
       "PrivilegedGate",
       "EmptyState / Loading / Stale / Error"
     ]);

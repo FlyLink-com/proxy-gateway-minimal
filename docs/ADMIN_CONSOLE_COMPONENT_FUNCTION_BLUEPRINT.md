@@ -60,32 +60,42 @@ future components, but they are not all current delivery scope.
 
 ## Visual Style Baseline
 
-The first Admin rebuild style pass standardizes the console as a light,
-international operator workbench. It is inspired by the approved concept image
-and Horizon/NobleUI-style dashboard direction, but remains code-native and
-project-specific.
+The current Admin rebuild style pass standardizes the console as a protected
+operator workbench with a dark glass shell and light evidence surfaces. It is
+inspired by the approved concept image, the reviewed `06 AI Exploration`
+Visual Polish pages, and Horizon/NobleUI-style dashboard density, but remains
+code-native and project-specific.
 
 | Style area | Baseline |
 | --- | --- |
-| Background | Light blue-gray app background with white surfaces; no dark shell and no heavy decorative gradients. |
+| Background | Subtle blue-gray workspace with dark glass ShellRail/TopBar context and light evidence surfaces; no heavy decorative gradients. |
 | Surfaces | White or very light raised panels, 1px borders, low shadows, and `8px` panel/control radius. |
-| Navigation | Left shell, page subnav, top-bar links, and route/action cards use one compact card rhythm: 8px radius, 1px border, icon/marker slot, blue selected/owner state, and muted locked or preview states. |
-| Top bar | Sticky white translucent command bar with search, environment, alerts, operator, and connection controls. |
+| Navigation | ShellRail, page subnav, top-bar links, and route/action cards use one compact rhythm: 8px radius where applicable, icon/marker slot, selected/owner state, and muted locked states. |
+| Top bar | Glass command bar with System Search, environment, alerts, operator, and route context. |
 | Widgets | Metric cards, section panels, subnav links, and container cards share the same border/radius/shadow system. |
 | Design-draft modules | Container cards expose typed category chips, a `Design adapter` stage, category connector bars, and counted content/state/boundary slots. |
 | Palette | Blue is the primary interaction color; green, amber, red, neutral, and slate are semantic only. |
 | Typography | Inter/system UI stack, no negative letter spacing, compact labels, readable dashboard titles. |
 | Motion | Short hover/focus transitions only; no decorative animation in the design-draft layer. |
 
+The three Visual Polish pages define page composition for the three active
+routes only. They do not turn every page-local panel grouping into a reusable
+component. Reusable standards are extracted from their visual language:
+ShellRail/TopBar chrome, panel surface treatment, metric-card density, table
+row rhythm, status-chip semantics, focus/motion behavior, and safe data
+visualization slots.
+
 The visual contract is guarded by `admin/src/test/admin-style-contract.test.ts`
 so later UI work does not drift back into one-off rough styling.
 Phase 4 frontend quality work now uses
 `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md` as the Gate 0 source for exact spacing,
-radius, shadow, App Library density, plugin geometry, icon sizing, and
-responsive behavior before implementation sub-agents continue.
+radius, shadow, System Search density, route-card density, module geometry,
+icon sizing, and responsive behavior before implementation sub-agents
+continue.
 `docs/ADMIN_CONSOLE_APP_MAP.md` and `admin/src/app/admin-app-manifest.ts`
-define the active workspace apps, plugin apps, console utilities, planned apps,
-safe search fields, and follow-up task ownership used by the App Library.
+define the active workspace apps, module panels, console utilities, planned
+apps, safe search fields, and follow-up task ownership used by System Search
+and primary routes.
 GCC-75 app authoring work uses
 `docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md`,
 `ADMIN_APP_AUTHORING_STANDARD`, and `adminAppAuthoringManifest` to standardize
@@ -144,7 +154,7 @@ whole roadmap into one implementation batch.
 | Wave | Component/design focus | Current output |
 | --- | --- | --- |
 | Closed: GCC-109 / GCC-103 | Operations Overview, Accounts & Resources, Usage & Channels, shell states, locked slots, and the relationship map for future pages. | Docs/Figma handoff boundary is documented. |
-| Closed: GCC-110 | Capability-gated registration for routes, App Library entries, search, command results, notifications, and frontend data hooks. | Tests prove non-super-admin absence before privileged UI work. |
+| Closed: GCC-110 | Capability-gated registration for routes, System Search entries, command results, notifications, and frontend data hooks. | Tests prove non-super-admin absence before privileged UI work. |
 | Closed: GCC-111 | Platform Monitoring details: route latency, agent status, inspection summaries, channel health, and receipt freshness. | Static Usage & Channels UI and fixture preview are on `master`; backend DTO still pending. |
 | Current: GCC-101 / GCC-112 | DTO fields, redaction, retention, MFA, and forbidden response behavior. | Backend design first in `docs/ADMIN_BACKEND_DTO_CONTRACT.md`; implementation risk rises if auth/schema/retention changes start. |
 | Deferred: GCC-113 / GCC-114 | Super-admin Key/Audit/Log fixtures; User Management and Order Management top-level split decision. | Backlog until dependencies are settled. |
@@ -202,6 +212,23 @@ only when the page contract marks that concern as `previewOnly` or
 dictionary, navigation IA, tests, and risk classification before implementing
 the UI.
 
+## Component Reuse Boundary
+
+The current AI-assisted Figma pages are page baselines. Their visual language is
+reusable; their page-local business assemblies are not automatically reusable.
+
+| Layer | Reusable now | Not reusable without a new component review |
+| --- | --- | --- |
+| Shell chrome | ShellRail, TopBar, System Search sizing, protected-console context, operator/account slot. | A bottom appbar, AppLibrary, desktop windowing, freeform resize, or OS-style dock. |
+| Surface system | Panel radius, border, low shadow, accent bars, compact header tools, safe empty/loading/stale/error surfaces. | Nested page-specific card stacks or one-off panel decorations copied between pages. |
+| Metric language | Label/value/detail lanes, tone, icon slot, bounded trend slot, compact status chip. | Business-specific metric definitions, thresholds, or trend calculations. |
+| Row/table language | Safe-ref display, dense row rhythm, selected/focus state, stable overflow strategy. | A page-specific Account Directory, Risk Queue, Usage Ledger, or Lifecycle panel. |
+| Motion/focus | Hover, focus, selected, menu/open state treatment, reduced-motion fallback. | Decorative animation or animated chart meaning without a data contract. |
+| Curves/charts | A reserved visual slot and accessibility requirement. | Any production trend meaning before time window, aggregation, threshold, and DTO ownership are defined. |
+
+Before a page-local pattern becomes shared, it must have a primitive name,
+props/state contract, token ownership, accessibility rule, and a test/QA hook.
+
 ## Shared Component Inventory
 
 ### Shell Components
@@ -221,11 +248,11 @@ the UI.
 | --- | --- | --- | --- | --- | --- |
 | `PageHeader` | Page title, responsibility, freshness, safety line. | Title, subtitle, refresh status, action slot. | loading, disconnected, stale, ready | Copy and freshness rendering. | P0 |
 | `SectionPanel` | Single-level page section. | Header, helper text, action slot, body, stable empty state. | loading, empty, error, ready | No nested-card regression. | P0 |
-| `MetricCard` | Operator KPI card. | Icon, label, value, note, sparkline, semantic tone. | success, info, warning, danger, neutral, disconnected | Values do not imply action. | P0 |
+| `MetricCard` | Operator KPI card. | Icon, label, value, note, bounded trend slot, semantic tone. | success, info, warning, danger, neutral, disconnected | Values and trend slots do not imply action or production trend meaning. | P0 |
 | `StatusChip` | Stable state language. | Label, tone, optional icon, compact size. | normal, warning, danger, muted, disabled | State taxonomy consistency. | P0 |
 | `QuotaMeter` | Used/limit and channel coverage. | Ratio, used/total, overage, source, measured channels. | within, near, over, unmetered, uncollected | Zero/stale/unknown separation. | P0 |
 | `DataFreshness` | Shows collection trust. | Last observed, generated time, P95/age label, stale threshold. | fresh, stale, missing, disabled | `0 B` not treated as fresh. | P1 |
-| `Sparkline` | Tiny bounded trend. | SVG line/bar, empty state, semantic color. | positive, neutral, warning, danger, no-data | No fake production values. | P1 |
+| `Sparkline` | Tiny bounded trend slot. | SVG line/bar, empty state, semantic color, text equivalent. | positive, neutral, warning, danger, no-data | No fake production values; no product meaning until time window, aggregation, and threshold semantics are defined. | P1 |
 | `DataTable` | Dense operator table. | Header, row, sort-ready columns, overflow, empty/loading/error rows. | loading, empty, error, ready | Mobile/desktop no overlap. | P0 |
 | `SafeRef` | Displays non-secret refs. | Short display, optional safe copy, type icon. | account, order, artifact, channel, credential-ref | No raw material. | P0 |
 | `RiskQueue` | Selectable review candidates. | Severity filters, counts, row selection, reason taxonomy. | none, filtered-empty, selected, loading | No action buttons before durable cases. | P0 |
@@ -265,7 +292,7 @@ the UI.
 | Usage cards | Upload/download/total, measured orders, zero usage, over-limit. | Usage monitor aggregates. | Trend windows partial. | Time-window aggregate endpoint. |
 | Channel coverage cards | Issued/measured/missing channels and receipt blockers. | Usage rows and bindings. | First-class channel rollup missing. | Channel coverage endpoint. |
 | Route latency ledger | Source, target, route type, p50, p95, p99, sample count, and stale state. | Future route health rollup. | Backend route latency DTO missing. | Route latency endpoint or safe monitoring aggregate. |
-| Usage chart | Trend by account/order/channel. | Usage series when available. | History may be sparse. | Durable time-series query. |
+| Usage chart | Trend by account/order/channel. | Visual slot only until usage series semantics are approved. | Time window, aggregation, zero/stale handling, and threshold rules are not complete. | Durable time-series query with safe DTO and accessibility text. |
 | Collection anomaly queue | Stale usage, true zero, not-collected, collector disabled, missing receipt, and quota-risk evidence for correlation. | Warnings and derived selectors. | Backend anomaly summaries optional. | Durable cases or anomaly endpoint. |
 | Channel ledger | Channel status, traffic, freshness, receipt, utilization, order count. | Aggregated usage rows. | Error rate/req-s fields missing. | Channel health rollup. |
 | Order usage ledger | Account, order, plan, issued channels, safe binding coverage, usage, warnings. | Usage monitor rows. | Works for first slice. | Add pagination/export only after privacy review. |
@@ -410,13 +437,14 @@ Rules:
 - 2026-06-16: The first Overview concept-parity slice was coded in
   `admin/src/pages/dashboard-page.tsx` and shared primitives. The page header now
   renders `Refreshed at HH:mm:ss` from safe monitor timestamps, the four metric cards
-  include bounded SVG sparklines from current safe aggregates, and early concept
+  include bounded SVG trend slots from then-current safe fixture aggregates, and early concept
   parity explored detailed timeline/channel preview panels. Durable Case/history
   storage, manual refresh, request/error-rate channel metrics, and production
   collector/runtime activation remain future gated work. This entry is
   historical and superseded by the P2.5 ownership cleanup below: detailed
   timeline and owner-page preview panels are no longer current Overview
-  implementation targets.
+  implementation targets, and the trend slots do not complete the current
+  time-series/aggregation protocol.
 - 2026-06-16: The P2.2 Overview parity slice made the workbench selectable
   across computed cases and concept-sourced account/channel rows. The case queue
   exposed a disabled `View all cases` footer so the durable case inbox was

@@ -1,6 +1,6 @@
 # Admin Console Visual Protocol
 
-Last updated: 2026-06-18, America/Los_Angeles.
+Last updated: 2026-06-24, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-82 under GCC-81 / GCC-42
@@ -31,21 +31,23 @@ Current implementation target:
   priority, visual QA gates, and whether a concept is current or legacy.
 - This protocol supplies reusable tokens and visual rules only. Older
   App Library, dock, plugin canvas, drag/resize/minimize, and browser-desktop
-  language is legacy/future exploration unless the layout/effect matrix
-  explicitly reactivates it for the current phase.
+  language is superseded exploration unless the layout/effect matrix
+  explicitly reactivates it for a future phase. The current phase uses System
+  Search, Sidebar / Primary Routes, page-owned modules, and bounded
+  subpages/pagination.
 
 Use this before implementing token or primitive changes:
 
 - `GCC-74` app map and control-plane application list;
 - `GCC-75` App Manifest and app authoring standard;
 - `GCC-76` plugin container template;
-- `GCC-77` App Library search and safe indexing;
-- `GCC-78` workspace drag/resize/minimize engine;
+- `GCC-77` System Search route indexing and safe discovery;
+- `GCC-78` workspace preset/restore model;
 - `GCC-79` permission capability matrix.
 
 No downstream task should invent new radius, shadow, typography, icon size,
-App Library density, or plugin geometry without updating this protocol and its
-style contract tests.
+System Search density, route-card density, or module geometry without updating
+this protocol and its style contract tests.
 
 ## Design Goal
 
@@ -59,9 +61,59 @@ protected shell
   -> drawer/popover/detail surfaces only when needed
 ```
 
-The visual system should feel modern, technical, and calm. It should not feel
-like a scroll-modal prototype, a nested-card dashboard, a template collage, or
-an unfinished browser-OS experiment.
+The visual system should feel modern, technical, and calm. The current accepted
+desktop direction is a dark glass operator shell with restrained light data
+surfaces. It should not feel like a scroll-modal prototype, a nested-card
+dashboard, a template collage, or an unfinished browser-OS experiment.
+
+## Current Accepted Desktop Baseline
+
+The current desktop source is `06 AI Exploration` in the canonical Figma file:
+
+| Page | Node | Role |
+| --- | --- | --- |
+| `Operations Overview` | `373:716` | Current Visual Polish source. |
+| `Accounts & Resources` | `373:866` | Current Visual Polish source. |
+| `Usage & Channels` | `373:1016` | Current Visual Polish source. |
+
+These frames supersede the older `99:2`, `104:2`, and `104:226` layout drafts
+for implementation. The old frames remain useful as history only.
+
+Current geometry contract:
+
+| Element | Contract |
+| --- | --- |
+| Visible polished frame | `1600 x 908` inside the named `1600x1024` design stage. |
+| ShellRail | `x=0`, `y=0`, `224 x 1024`; dark translucent glass. |
+| Content start | `x=252`; keeps a `28px` gutter after ShellRail. |
+| TopBar | `x=252`, `y=24`, `1296 x 58`; glass chrome with `16px` radius. |
+| System Search | `340 x 40`, centered in TopBar; normal search form/result surface. |
+| Metric cards | Four `300 x 150` cards at `x=276/592/908/1224`, `y=102`. |
+| Primary panels | Three `416 x 260` panels at `x=252/692/1132`; Operations/Accounts `y=300`, Usage `y=288`. |
+| Lower evidence | Chart/event-log panels begin near `y=596`, `628 x 280`. |
+
+Hidden Figma nodes for page title/subtitle, System Search badges,
+StateFeedback, PrivilegedGate, and page-local split boundary are design
+evidence only. They should not appear in normal operator UI unless a future
+state or review mode explicitly activates them.
+
+## Baseline Scope And Reuse Boundary
+
+The three Visual Polish pages are the accepted desktop page baseline, not a
+completed universal component library. Treat them as follows:
+
+| Layer | Reuse rule |
+| --- | --- |
+| Page structure | Page-specific. `Operations Overview`, `Accounts & Resources`, and `Usage & Channels` may use different panel composition because each page owns different work. Do not promote a page-specific panel group into a generic component without a separate component review. |
+| Visual shell | Reusable. ShellRail, TopBar, System Search density, glass treatment, content gutter, and protected-console context form the shared shell protocol. |
+| Surface style | Reusable. White/light panels, 8px radius, 1px token borders, low shadow, restrained accent bars, compact icon slots, and bounded text rhythm are reusable style rules. |
+| Component behavior | Reusable only after explicit primitive mapping. Metric card, status chip, panel frame, table row, state feedback, and privileged gate behavior must map to shared primitives before reuse. |
+| Business content | Page-owned. Risk queues, account directories, lifecycle panels, usage ledgers, channel coverage, and collector evidence stay on their owner pages. |
+| Trend/curve visuals | Visual slot only until a data contract exists. The current lines/sparklines show where trend evidence may live; they do not define a metric window, aggregation rule, threshold rule, or backend DTO. |
+
+The reusable design protocol is the motion, density, card/surface language, and
+state treatment extracted from the pages. The exact business card inventory in
+the AI-generated pages is not itself a reusable UI system.
 
 ## Coordinate System
 
@@ -69,7 +121,7 @@ an unfinished browser-OS experiment.
 | --- | --- |
 | Spacing | Use a 4px base rhythm and 8px visible control rhythm. Prefer `8`, `12`, `16`, `24`, and `32` px steps. |
 | Canvas grid | Use a subtle 32px workspace grid through `--admin-canvas-grid-size`. The grid is texture only, not a visible drafting layer. |
-| Canvas width | Keep the main canvas bounded by `--admin-canvas-max-width: 1520px`. |
+| Canvas width | Use the accepted `1600px` design frame with content bounded by the ShellRail and TopBar coordinates above. |
 | Canvas gutter | Desktop gutter is `24px`; mobile gutter is `12px`. |
 | Workbench gap | Plugin/module gaps use `16px`. |
 | Plugin row unit | Workspace plugin layout uses a `32px` row unit before richer drag/resize behavior. |
@@ -83,15 +135,27 @@ card surfaces just to create separation.
 | --- | --- | --- | --- |
 | Controls | `8px` | `--admin-border` or `--admin-border-strong` | no raised shadow by default |
 | Panels/cards/plugins | `8px` | `--admin-border` / category accent where needed | low shadow only |
-| Workspace chrome | `14px` | `--admin-chrome-border` | `--admin-shadow-chrome-2k` |
-| Floating library/popovers | `18px` | `--admin-glass-border` or `--admin-border` | `--admin-shadow-floating-2k` / popover shadow |
+| Workspace chrome | `16px` for TopBar, `16px` ShellRail glass | `--admin-chrome-border` or 0.5px translucent white border | restrained dark-glass elevation |
+| Floating search/popovers | `18px` | `--admin-glass-border` or `--admin-border` | `--admin-shadow-floating-2k` / popover shadow |
 | Pills | `999px` | semantic or neutral border | no heavy shadow |
 
 Allowed effects:
 
-- low-opacity blue/teal workspace tint;
+- dark blue glass shell gradient and low-opacity blue/teal workspace tint;
 - thin hairline borders where it improves 2K clarity;
-- single solid app-icon fills with restrained shadow.
+- single solid app-icon fills with restrained shadow;
+- translucent TopBar/ShellRail treatment when contrast remains clear.
+
+Motion rules:
+
+- use short `120ms` to `180ms` transitions for hover, focus, selected, and
+  menu/open states;
+- animate opacity, transform, or border color only when it improves state
+  recognition;
+- do not animate layout size, table row height, chart data, or background
+  decoration in normal operator mode;
+- respect reduced-motion and keep all state changes understandable without
+  animation.
 
 Disallowed effects:
 
@@ -111,7 +175,7 @@ Disallowed effects:
 | --- | --- |
 | Body and table copy | System/Inter stack, normal to medium weight, readable line height. |
 | Utility labels | 10-12px, `600`, uppercase only for short chrome labels. |
-| App/library tile labels | 12px, `600` or `700`, centered or compact; avoid mid-word breaks. |
+| Route/search tile labels | 12px, `600` or `700`, centered or compact; avoid mid-word breaks. |
 | Navigation labels | 12-13px, `700` to `800`, no negative letter spacing. |
 | Page titles | 16px in status bar, larger inside page headers only when the page owns a real title area. |
 | Metric values | Use bounded `clamp(...)`; do not break numeric values mid-word. |
@@ -119,13 +183,33 @@ Disallowed effects:
 Default rule: use stronger weight sparingly. Heavy labels should identify
 navigation, active app state, or primary metrics, not every piece of copy.
 
+## Trend And Curve Protocol
+
+The current Visual Polish curves are placeholders for evidence density, not a
+completed data-visualization contract. A trend, sparkline, or chart can move
+from visual placeholder to product UI only when these fields are defined:
+
+| Requirement | Rule |
+| --- | --- |
+| Metric owner | The page/module owns the metric and the route for deeper inspection. |
+| Time window | Declare the window, such as latest sample, 5 minutes, 1 hour, 24 hours, or rolling period. |
+| Aggregation | Declare latest, count, average, P95, sum, ratio, or rolling comparison. |
+| Empty/unknown handling | Missing, stale, zero, disabled, and not-collected are separate states. |
+| Threshold semantics | Color and line style come from a documented threshold or state, not decoration. |
+| Source boundary | Data comes from safe summaries or approved DTOs; no raw logs, URLs, tokens, credentials, or config. |
+| Accessibility | Every curve has a text equivalent and does not rely on color alone. |
+
+Until this contract exists, curves may remain as static visual slots in Figma
+and fixture previews, but implementation must not infer production meaning
+from their shape.
+
 ## App Icons
 
 | Location | Size |
 | --- | --- |
-| App Library icon | `30px` |
-| Large App Library icon | `34px` |
-| Dock/appbar icon | `32px` |
+| System Search icon | `30px` |
+| Large route/action icon | `34px` |
+| Primary route icon | `32px` |
 | Nav item icon slot | `32px` |
 | Top bar app icon | `30px` |
 
@@ -137,29 +221,29 @@ Icon treatment:
 - do not use iOS-6 style glossy highlights;
 - do not use multi-stop gradients for every tile.
 
-## App Library Protocol
+## System Search And Primary Routes Protocol
 
-The App Library is a system launcher/menu, not a scroll dialog.
+System Search is a top-bar route/object search surface, not an app drawer,
+scroll dialog, or browser desktop. Sidebar / Primary Routes is the persistent
+navigation surface for active pages and locked planned slots.
 
 | Rule | Value |
 | --- | --- |
-| Width | `760px`, capped by viewport gutter |
-| Max height | `min(560px, viewport-safe height)` |
-| Padding | `12px` |
-| Group gap | `10px` |
-| Tile height | `64px` |
-| Page app columns | `3` columns, `132px` cells |
-| Plugin/module columns | `6` columns, `78px` cells |
-| Utility columns | `5` columns, `78px` cells |
-| Mobile grid | collapse launcher grids to `2` columns at the small breakpoint |
+| Top-bar search height | `40px` standard, icon-first when idle or constrained |
+| Search result surface | Page-owned result list or lightweight popover; never a long scroll drawer |
+| Primary route card | Compact height, `8px` radius, icon/marker slot, selected owner state |
+| Module restore | System Search or page-local controls dispatch route/page target ids |
+| Planned slots | Searchable only as gated/planned entries; not executable |
+| Mobile behavior | Use compact search entry and page-owned result flow; do not reuse desktop grids |
 
 Required structure:
 
-1. Search stays inside App Library.
-2. Utilities appear before workspace pages.
-3. Workspace pages appear before plugin/card apps.
+1. Search stays in the top-bar System Search entry and result page/popover.
+2. Sidebar / Primary Routes owns page navigation.
+3. Page-owned modules stay under their owner page and subpage.
 4. Planned apps stay grouped and visually quieter.
-5. Hidden plugins recover from App Library and should not occupy canvas space.
+5. Hidden modules recover from System Search or page-local controls and should
+   not occupy canvas space.
 
 ## Plugin Container Protocol
 
@@ -186,7 +270,7 @@ Display states:
 - `medium`: spans two columns and is the default for substantial modules;
 - `small`: spans one column and must still expose title, status, and restore
   logic;
-- `hidden`: removed from canvas, recoverable from App Library;
+- `hidden`: removed from canvas, recoverable from System Search or page-local controls;
 - `readonly`: visible but without mutation controls;
 - `planned`: visibly gated and not treated as active functionality.
 
@@ -198,20 +282,20 @@ the plugin.
 
 | Element | Rule |
 | --- | --- |
-| Status bar | `48px` minimum height; sticky; minimal page context and operator/environment controls only. |
-| Search | Collapsed to icon when idle; expands in place when active. Search should not dominate the status bar. |
-| Workspace appbar | Bottom dock at `58px` height and `960px` max width. |
-| Brand | Keep brand compact in the appbar; do not rebuild a traditional tall sidebar. |
-| Account/operator | Right-side status context only; detailed settings belong in App Library or future settings app. |
+| Status bar | Current TopBar is `58px` high at `x=252`, `y=24`; it holds System Search, environment, alert, operator, and route context only. |
+| Search | `340 x 40` centered System Search. It is a normal form/result entry, not AppLibrary, NavigationLibrary, or an app drawer. |
+| Workspace appbar | Not active in the current product model. Do not implement a bottom dock or appbar from older OS exploration. |
+| Brand | Keep brand compact in ShellRail; do not add a second brand/header block in the content area. |
+| Account/operator | Right-side status context only; detailed settings belong in future settings or account-detail surfaces. |
 
 ## Responsive Protocol
 
 | Breakpoint | Rule |
 | --- | --- |
-| Wide desktop | Canvas maxes at `1520px`; App Library centers above appbar. |
+| Wide desktop | Canvas maxes at `1520px`; System Search stays in the top bar and result surfaces stay page-owned. |
 | Under 980px | Plugin cards collapse to one-column ownership where needed; metadata shifts left. |
-| Under 860px | Appbar stays compact near the bottom; planned/safety controls become icon-first. |
-| Under 620px | App Library grids become two columns; controls wrap; plugin tools align left. |
+| Under 860px | ShellRail and TopBar need a separate compact projection; planned/safety controls become icon-first. |
+| Under 620px | Search becomes compact; controls wrap; module tools align left. |
 | Under 520px | Dense table headers may hide and rows must stay horizontally safe. |
 
 Responsive CSS is only a safety layer for the desktop workbench while the web
@@ -225,7 +309,7 @@ status bar
   -> compact page identity
   -> priority section switcher
   -> one active review card / drill-in detail
-  -> compact appbar and App Library recovery
+  -> compact primary routes and System Search recovery
 ```
 
 Mobile must preserve route ownership, capability gates, and redaction rules,
@@ -260,7 +344,8 @@ outside the grammar contract.
 Before a Phase 4 implementation PR is ready, verify:
 
 1. New styles use existing `--admin-*` tokens or add protocol-approved tokens.
-2. App Library keeps launcher density and includes search.
+2. System Search keeps compact search/result density and uses the safe route
+   index.
 3. Plugin controls are local to the plugin header/menu.
 4. Hidden/minimized plugins do not occupy canvas space.
 5. No duplicate editor controls exist at both canvas and plugin level.
@@ -295,8 +380,8 @@ Style-contract candidates for follow-up PRs:
   gradients;
 - keep typography bans for `10.5px`, literal `650`, `750`, `900`, and negative
   letter spacing;
-- require App Library, plugin, status bar, and appbar geometry to match the
-  tokenized protocol.
+- require System Search, module panel, status bar, and primary-route geometry
+  to match the tokenized protocol.
 
 ## Validation
 

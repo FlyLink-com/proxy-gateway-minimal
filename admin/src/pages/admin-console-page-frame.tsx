@@ -22,6 +22,7 @@ import {
 } from "../app/admin-ui-projection";
 import {
   EmptyState,
+  PageSubNav,
   PanelFrame
 } from "../components/primitives";
 
@@ -42,18 +43,22 @@ export function AdminConsolePageFrame({
 }) {
   const subNavigation = pageSubNavigation[blueprint.page];
   const pageContract = getAdminPageContract(blueprint.page);
+  const usesRoutedModules = blueprint.page !== "dashboard";
   const moduleNavSignature = blueprint.modules.map((module) => module.navId).join("|");
+  const firstModuleNavId = subNavigation[0]?.id ?? blueprint.modules[0]?.navId ?? "";
   const defaultModuleLayout = useMemo(() => createDefaultModuleLayout(blueprint.modules), [moduleNavSignature]);
   const initialWorkspaceLayout = useMemo(
     () => loadWorkspaceLayout(blueprint.page, blueprint.modules, defaultModuleLayout),
     [blueprint.page, defaultModuleLayout, moduleNavSignature]
   );
   const [moduleLayout, setModuleLayout] = useState<ModuleLayoutMap>(() => initialWorkspaceLayout.moduleLayout);
+  const [activeModuleNavId, setActiveModuleNavId] = useState(firstModuleNavId);
 
   useEffect(() => {
     const nextLayout = loadWorkspaceLayout(blueprint.page, blueprint.modules, defaultModuleLayout);
     setModuleLayout(nextLayout.moduleLayout);
-  }, [blueprint.page, defaultModuleLayout, moduleNavSignature]);
+    setActiveModuleNavId(firstModuleNavId);
+  }, [blueprint.page, defaultModuleLayout, firstModuleNavId, moduleNavSignature]);
 
   useEffect(() => {
     const snapshot = { moduleLayout };
@@ -100,6 +105,7 @@ export function AdminConsolePageFrame({
           current[match.navId] ?? defaultModuleLayout[match.navId] ?? defaultModuleLayoutState()
         )
       }));
+      setActiveModuleNavId(match.navId);
     };
 
     window.addEventListener("admin-open-module", handleOpenModule);
@@ -113,6 +119,9 @@ export function AdminConsolePageFrame({
     moduleLayout,
     subNavigation
   });
+  const routedPanelViewModels = usesRoutedModules
+    ? panelViewModels.filter((panel) => panel.navId === activeModuleNavId)
+    : panelViewModels;
 
   return (
     <div
@@ -138,8 +147,17 @@ export function AdminConsolePageFrame({
         </section>
       ) : null}
 
+      {usesRoutedModules ? (
+        <PageSubNav
+          activeId={activeModuleNavId}
+          ariaLabel={`${blueprint.title} sections`}
+          items={subNavigation}
+          onSelect={(item) => setActiveModuleNavId(item.id)}
+        />
+      ) : null}
+
       <div className="admin-blueprint-module-board" aria-label={`${blueprint.title} module layout`}>
-        {panelViewModels.length > 0 ? panelViewModels.map((panel) => (
+        {routedPanelViewModels.length > 0 ? routedPanelViewModels.map((panel) => (
           <PanelFrame
             actions={panel.actions}
             ariaLabel={panel.ariaLabel}
@@ -160,13 +178,13 @@ export function AdminConsolePageFrame({
             {panel.content}
           </PanelFrame>
         )) : (
-          <EmptyState
-            className="admin-blueprint-empty-workbench"
-            description="Open Navigation Library to restore modules."
-            role="status"
-            title="All plugins are hidden."
-          />
-        )}
+        <EmptyState
+          className="admin-blueprint-empty-workbench"
+          description="Use system search or page controls to restore a module."
+          role="status"
+          title="No modules are visible."
+        />
+      )}
       </div>
     </div>
   );

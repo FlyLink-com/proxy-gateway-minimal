@@ -163,7 +163,7 @@ at all:
 
 - no sidebar or planned-app entry;
 - no hidden route;
-- no App Library launcher;
+- no System Search entry, primary-route item, or module restore launcher;
 - no global-search or command-palette result;
 - no notification deep link;
 - no frontend API call for key, audit, or raw/ephemeral log data.

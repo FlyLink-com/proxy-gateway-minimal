@@ -135,7 +135,6 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
           { label: "Sensitive boundary", tone: "danger" }
         ],
         rows: [
-          { label: "ord_safe_101", value: "Active", meta: "Delivered · review usage", tone: "success" },
           { label: "ord_safe_102", value: "Pending", meta: "Receipt pending · wait", tone: "warning" },
           { label: "ord_safe_103", value: "Expired", meta: "Revoked · archive review", tone: "neutral" }
         ],
@@ -210,7 +209,6 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
           { label: "Route latency", tone: "info" }
         ],
         rows: [
-          { label: "channel_safe_jp_vless", value: "Healthy", meta: "64% utilization · p95 88 ms", tone: "success" },
           { label: "channel_safe_sgp_hy2", value: "Degraded", meta: "Pending receipt · route stale", tone: "warning" },
           { label: "route_safe_tuic_recovery", value: "No sample", meta: "missing receipt blocker", tone: "danger" }
         ],
@@ -243,8 +241,6 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
           { label: "No mutation", tone: "neutral" }
         ],
         rows: [
-          { label: "Delay warning", value: "Observed age exceeds threshold", meta: "route evidence to owner page", tone: "warning" },
-          { label: "True zero usage", value: "Different from not collected", meta: "visually distinct", tone: "info" },
           { label: "Missing receipt", value: "Channel remains gated", meta: "matching applied receipt required", tone: "danger" },
           { label: "Forbidden here", value: "No quota edit, order pause/archive, or artifact lifecycle.", tone: "danger" }
         ],
@@ -260,7 +256,6 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
           { label: "Inspection warning", tone: "warning" }
         ],
         rows: [
-          { label: "Receipt state", value: "Pending receipt", meta: "2 pending · 1 missing", tone: "warning" },
           { label: "agent_safe_sgp_02", value: "Delayed", meta: "heartbeat 4m · receipt push pending", tone: "warning" },
           { label: "route-latency-sample", value: "Blocked", meta: "owner route_safe_tuic_recovery", tone: "danger" }
         ],

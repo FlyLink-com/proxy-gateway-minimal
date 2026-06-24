@@ -7,11 +7,15 @@ export type PageSubNavItem = {
 };
 
 export function PageSubNav({
+  activeId,
   ariaLabel,
-  items
+  items,
+  onSelect
 }: {
+  activeId?: string;
   ariaLabel: string;
   items: PageSubNavItem[];
+  onSelect?: (item: PageSubNavItem) => void;
 }) {
   if (items.length === 0) {
     return null;
@@ -21,20 +25,23 @@ export function PageSubNav({
     <nav className="page-subnav" aria-label={ariaLabel}>
       <div className="page-subnav-scroll">
         {items.map((item) => (
-          <a
+          <button
+            aria-current={item.id === activeId ? "page" : undefined}
             aria-label={item.label}
             className={`page-subnav-link page-subnav-link-${item.mode ?? "owner"}`}
             data-mode={item.mode ?? "owner"}
-            href={`#${item.targetId}`}
+            data-state={item.id === activeId ? "active" : "idle"}
             key={item.id}
+            onClick={() => onSelect?.(item)}
             title={item.description}
+            type="button"
           >
             <span className="page-subnav-card-head">
               <span className="page-subnav-marker" aria-hidden="true" />
               <span>{item.label}</span>
             </span>
             <span className="page-subnav-mode">{modeLabel(item.mode)}</span>
-          </a>
+          </button>
         ))}
       </div>
     </nav>

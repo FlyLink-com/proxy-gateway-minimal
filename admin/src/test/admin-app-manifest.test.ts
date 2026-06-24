@@ -3,8 +3,8 @@ import {
   ADMIN_APP_AUTHORING_STANDARD,
   adminAppManifest,
   adminAppAuthoringManifest,
-  createNavigationLibrarySearchDocument,
-  createNavigationLibrarySearchIndex,
+  createAdminRegistrySearchDocument,
+  createAdminRegistrySearchIndex,
   DEFAULT_ADMIN_CAPABILITY_CONTEXT,
   getCapabilityScopedAdminAppMap,
   getAdminAppAuthoringManifest,
@@ -127,7 +127,7 @@ describe("admin app manifest", () => {
       plugin: {
         allowedControls: ["hide"],
         navId: "usage-ledger",
-        settingsEntry: "navigationLibrary",
+        settingsEntry: "pageSubnav",
         states: ["visible", "hidden"]
       },
       route: {
@@ -423,8 +423,8 @@ describe("admin app manifest", () => {
     }
   });
 
-  test("builds a safe navigation-library search index from whitelisted summary fields", () => {
-    const index = createNavigationLibrarySearchIndex();
+  test("builds a safe admin registry search index from whitelisted summary fields", () => {
+    const index = createAdminRegistrySearchIndex();
     const usageLedger = index.find((entry) => entry.appId === "plugin.usage-ledger");
     const operationsOverview = index.find((entry) => entry.appId === "operations-overview");
 
@@ -450,11 +450,11 @@ describe("admin app manifest", () => {
     });
   });
 
-  test("builds the navigation-library search index from an explicit safe document", () => {
+  test("builds the admin registry search index from an explicit safe document", () => {
     const usageLedger = getPluginApp("usage-ledger", "usageMonitor");
     expect(usageLedger).toBeDefined();
 
-    const document = createNavigationLibrarySearchDocument(usageLedger!);
+    const document = createAdminRegistrySearchDocument(usageLedger!);
 
     expect(document).toEqual({
       aliases: usageLedger!.aliases,
@@ -462,7 +462,7 @@ describe("admin app manifest", () => {
       capabilities: usageLedger!.safety.capabilities,
       category: usageLedger!.category,
       label: usageLedger!.label,
-      libraryGroup: usageLedger!.library.group,
+      registryGroup: usageLedger!.library.group,
       ownerArea: usageLedger!.owner.area,
       routeTarget: "usageMonitor#platform-monitoring-usage-ledger",
       safeDescription: usageLedger!.description,
@@ -473,7 +473,7 @@ describe("admin app manifest", () => {
     expect(JSON.stringify(document)).not.toMatch(forbiddenSearchTextPattern);
   });
 
-  test("redacts unsafe navigation-library search document fields before indexing", () => {
+  test("redacts unsafe admin registry search document fields before indexing", () => {
     const baseline = getWorkspacePageApp("dashboard");
     expect(baseline).toBeDefined();
     const unsafeApp = {
@@ -497,8 +497,8 @@ describe("admin app manifest", () => {
       }
     } satisfies typeof baseline;
 
-    const document = createNavigationLibrarySearchDocument(unsafeApp);
-    const [indexEntry] = createNavigationLibrarySearchIndex([unsafeApp]);
+    const document = createAdminRegistrySearchDocument(unsafeApp);
+    const [indexEntry] = createAdminRegistrySearchIndex([unsafeApp]);
     const indexedText = JSON.stringify({ document, indexEntry });
 
     expect(document.aliases).toContain("[redacted unsafe search text]");

@@ -48,7 +48,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           category: "monitoring",
           container: "Overview metric widget set",
           dataAdapter: "Static design draft now; later safe platform overview and usage freshness summaries.",
-          layoutPolicy: "Fixed monitoring panel; operators can hide it and restore it from navigation.",
+          layoutPolicy: "Fixed monitoring panel; operators inspect it in the page workspace and recover it through System Search.",
           performanceBoundary: "Independent widget render; no owner-page table or ledger mount.",
           interactionModel: "Read-only summary with owner-page routing."
         },
@@ -115,7 +115,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           category: "audit-workflow",
           container: "Operator routing widget",
           dataAdapter: "Static route contract now; later page contract and computed attention signals.",
-          layoutPolicy: "Fixed panel surface; operators can hide it from the workbench and restore it from navigation.",
+          layoutPolicy: "Fixed panel surface; operators inspect it in the page workspace and recover it through System Search.",
           performanceBoundary: "No backend write path and no owner-page data fetch inside this widget.",
           interactionModel: "Open owner page or future gated workflow entry."
         },

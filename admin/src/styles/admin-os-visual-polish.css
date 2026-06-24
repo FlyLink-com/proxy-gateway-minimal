@@ -1,0 +1,666 @@
+.admin-shell {
+  --admin-bg: #14295c;
+  --admin-surface: rgba(255, 255, 255, 0.18);
+  --admin-surface-muted: rgba(255, 255, 255, 0.12);
+  --admin-surface-raised: rgba(255, 255, 255, 0.22);
+  --admin-border: rgba(255, 255, 255, 0.25);
+  --admin-border-hairline: rgba(255, 255, 255, 0.16);
+  --admin-border-strong: rgba(255, 255, 255, 0.35);
+  --admin-text: #f8fbff;
+  --admin-text-soft: #e0ebfa;
+  --admin-muted: #a6b8d9;
+  --admin-subtle: #7890b8;
+  --admin-hover-surface: rgba(255, 255, 255, 0.22);
+  --admin-selected-surface: rgba(255, 255, 255, 0.3);
+  --admin-success-bg: rgba(34, 197, 94, 0.18);
+  --admin-success-fg: #86efac;
+  --admin-success-border: rgba(134, 239, 172, 0.42);
+  --admin-info-bg: rgba(59, 130, 246, 0.18);
+  --admin-info-fg: #bfdbfe;
+  --admin-info-border: rgba(191, 219, 254, 0.38);
+  --admin-warning-bg: rgba(245, 158, 11, 0.18);
+  --admin-warning-fg: #fde68a;
+  --admin-warning-border: rgba(253, 230, 138, 0.42);
+  --admin-danger-bg: rgba(239, 68, 68, 0.18);
+  --admin-danger-fg: #fecaca;
+  --admin-danger-border: rgba(254, 202, 202, 0.42);
+  --admin-neutral-bg: rgba(148, 163, 184, 0.18);
+  --admin-neutral-fg: #cbd5e1;
+  --admin-focus-ring: rgba(147, 197, 253, 0.62);
+  --admin-sidebar-width: 224px;
+  --admin-sidebar-gap: 0px;
+  --admin-statusbar-height: 58px;
+  --admin-canvas-max-width: none;
+  --admin-content-padding: 20px 37px 32px 28px;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 78% -10%, rgba(96, 165, 250, 0.26), transparent 34%),
+    radial-gradient(circle at 18% 16%, rgba(45, 212, 191, 0.16), transparent 28%),
+    linear-gradient(180deg, #152a60 0%, #23478f 55%, #3261ae 100%);
+}
+
+.admin-shell::before {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 32px 32px;
+  opacity: 1;
+}
+
+.app-sidebar {
+  top: 0;
+  bottom: auto;
+  left: 0;
+  width: 224px;
+  height: 100vh;
+  padding: 28px 20px 32px;
+  gap: 28px;
+  border: 0.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--admin-text);
+  box-shadow: 0 1px 8px rgba(0, 10, 51, 0.18);
+  backdrop-filter: blur(20px);
+}
+
+.app-sidebar::before {
+  content: "";
+  display: block;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+
+.brand {
+  min-height: 56px;
+  padding: 0 0 0 0;
+}
+
+.brand-name {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.brand-subtitle {
+  margin-top: 2px;
+  color: #d9e5f7;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.nav-primary-list,
+.nav-planned-sidebar-list {
+  gap: 6px;
+}
+
+.nav-item,
+.nav-item-planned,
+.nav-item-planned:disabled {
+  min-height: 34px;
+  gap: 10px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: #99adcc;
+  padding: 8px 12px;
+  font-weight: 500;
+}
+
+.nav-item:hover,
+.nav-item-active {
+  background: rgba(255, 255, 255, 0.3);
+  color: #ffffff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.38);
+}
+
+.nav-item-icon,
+.nav-item-icon.nav-route-icon {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 999px;
+  background: currentColor;
+  box-shadow: none;
+}
+
+.nav-item-icon svg,
+.nav-item-icon.nav-route-icon svg,
+.nav-item-planned .nav-item-icon svg {
+  display: none;
+}
+
+.nav-item-copy {
+  color: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.nav-item-active .nav-item-copy {
+  font-weight: 600;
+}
+
+.nav-item-planned,
+.nav-item-planned:disabled {
+  color: #d9e5f7;
+}
+
+.nav-item-gate-pill,
+.sidebar-safety-footer {
+  display: none;
+}
+
+.admin-main {
+  min-height: 100vh;
+  margin-left: 224px;
+}
+
+.top-bar {
+  width: auto;
+  min-height: 58px;
+  margin: 24px 37px 0 28px;
+  padding: 0 16px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  border: 0.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 1px 4px rgba(0, 10, 51, 0.18);
+  backdrop-filter: blur(20px);
+  top: 24px;
+  color: var(--admin-text);
+}
+
+.top-bar-heading {
+  display: none;
+}
+
+.top-bar-search {
+  grid-column: 2;
+  justify-self: center;
+  width: 340px;
+  min-height: 40px;
+  margin: 0;
+  padding: 0 14px;
+  border: 0.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #a6b8d9;
+  box-shadow: inset 0 1px 4px rgba(255, 255, 255, 0.25);
+  backdrop-filter: blur(10px);
+}
+
+.top-bar-search svg {
+  color: #a6b8d9;
+}
+
+.top-bar-search input {
+  min-height: 38px;
+  color: #ffffff;
+  font-size: 13px;
+}
+
+.top-bar-search input::placeholder {
+  color: #a6b8d9;
+  opacity: 1;
+}
+
+.top-bar-search:focus-within {
+  border-color: rgba(255, 255, 255, 0.5);
+  box-shadow:
+    inset 0 1px 4px rgba(255, 255, 255, 0.25),
+    0 0 0 3px rgba(147, 197, 253, 0.22);
+}
+
+.top-bar-actions {
+  grid-column: 3;
+  justify-self: end;
+  gap: 10px;
+}
+
+.top-bar .dashboard-status-badge,
+.operator-account-summary {
+  min-height: 36px;
+  border: 0.5px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  box-shadow: none;
+  backdrop-filter: blur(6px);
+}
+
+.operator-account-avatar {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.operator-account-copy strong,
+.operator-account-copy small,
+.operator-account-summary > svg {
+  color: #ffffff;
+}
+
+.operator-account-copy small {
+  color: #d9e5f7;
+}
+
+.operator-account-popover,
+.top-menu-popover {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(21, 42, 96, 0.94);
+  color: #ffffff;
+  backdrop-filter: blur(18px);
+}
+
+.admin-content {
+  max-width: none;
+  margin: 0;
+  padding: var(--admin-content-padding);
+  color: var(--admin-text);
+}
+
+.admin-blueprint-page {
+  gap: 24px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"],
+.admin-blueprint-page[data-page="usageMonitor"] {
+  position: relative;
+  gap: 37px;
+}
+
+.admin-blueprint-page-hero {
+  display: none;
+}
+
+.page-subnav {
+  border: 0.5px solid rgba(255, 255, 255, 0.22);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  backdrop-filter: blur(14px);
+  padding: 8px;
+}
+
+.page-subnav-scroll {
+  gap: 8px;
+}
+
+.page-subnav-link {
+  min-height: 34px;
+  border-radius: 999px;
+  background: transparent;
+  color: #cbdaf4;
+  padding: 0 12px;
+}
+
+.page-subnav-link[data-state="active"] {
+  background: rgba(255, 255, 255, 0.24);
+  color: #ffffff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.42),
+    0 0 0 1px rgba(255, 255, 255, 0.28);
+}
+
+.page-subnav-mode {
+  display: none;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] .page-subnav,
+.admin-blueprint-page[data-page="usageMonitor"] .page-subnav {
+  position: absolute;
+  top: 158px;
+  left: 24px;
+  right: 24px;
+  z-index: 4;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] .page-subnav-scroll,
+.admin-blueprint-page[data-page="usageMonitor"] .page-subnav-scroll {
+  gap: 6px;
+  overflow: hidden;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] .page-subnav-link,
+.admin-blueprint-page[data-page="usageMonitor"] .page-subnav-link {
+  min-height: 24px;
+  border: 0.5px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #d9e5f7;
+  font-size: 11px;
+  line-height: 16px;
+  padding: 0 10px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] .page-subnav-link[data-state="active"],
+.admin-blueprint-page[data-page="usageMonitor"] .page-subnav-link[data-state="active"] {
+  background: rgba(255, 255, 255, 0.26);
+  color: #ffffff;
+}
+
+.admin-blueprint-page-summary {
+  padding-left: 24px;
+}
+
+.admin-overview-metric-grid,
+.ops-metric-grid {
+  grid-template-columns: repeat(4, minmax(0, 300px));
+  justify-content: start;
+  gap: 16px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid {
+  gap: 16px;
+}
+
+.ops-metric-card,
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-card {
+  min-height: 150px;
+  border: 0.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 1px 8px rgba(0, 10, 51, 0.2);
+  backdrop-filter: blur(20px);
+  padding: 16px;
+}
+
+.ops-metric-card > span,
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-card > span {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.ops-metric-card strong,
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-card strong {
+  color: #ffffff;
+  font-size: 20px;
+  line-height: 26px;
+}
+
+.ops-metric-card small,
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-card small {
+  color: #d9e5f7;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ops-metric-icon,
+.ops-metric-success .ops-metric-icon,
+.ops-metric-info .ops-metric-icon,
+.ops-metric-warning .ops-metric-icon,
+.ops-metric-danger .ops-metric-icon,
+.ops-metric-neutral .ops-metric-icon {
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+}
+
+.admin-blueprint-module-board {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 416px), 416px));
+  gap: 24px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-blueprint-module-board,
+.admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-board,
+.admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-board {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 416px), 416px));
+}
+
+.admin-blueprint-page[data-page] [data-module-nav-id] {
+  grid-column: auto;
+  min-height: 260px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="health-summary"] {
+  grid-column: 1 / -1;
+  min-height: 150px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  padding: 0 0 0 24px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="health-summary"]:hover {
+  border-color: transparent;
+  background: transparent;
+}
+
+.admin-blueprint-module-panel,
+.admin-blueprint-module-panel[data-chrome="operator"] {
+  min-height: 260px;
+  border: 0.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.6),
+    0 1px 8px rgba(0, 10, 51, 0.18);
+  backdrop-filter: blur(20px);
+  padding: 22px;
+  gap: 14px;
+}
+
+.admin-blueprint-module-panel:hover,
+.admin-blueprint-module-panel[data-chrome="operator"]:hover {
+  border-color: rgba(255, 255, 255, 0.48);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.admin-blueprint-module-panel-head {
+  align-items: center;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-panel,
+.admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-panel {
+  height: 260px;
+  min-height: 260px;
+  max-height: 260px;
+  overflow: hidden;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] .admin-operator-content,
+.admin-blueprint-page[data-page="usageMonitor"] .admin-operator-content {
+  gap: 10px;
+  overflow: hidden;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] .new-console-table-shell,
+.admin-blueprint-page[data-page="usageMonitor"] .new-console-table-shell {
+  gap: 5px;
+  max-height: 112px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] .new-console-table,
+.admin-blueprint-page[data-page="usageMonitor"] .new-console-table {
+  gap: 5px;
+  overflow: hidden;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] .new-console-row,
+.admin-blueprint-page[data-page="usageMonitor"] .new-console-row {
+  gap: 7px;
+  min-width: 0;
+  min-height: 30px;
+  border-radius: 8px;
+  padding: 5px 8px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] .new-console-row-head,
+.admin-blueprint-page[data-page="usageMonitor"] .new-console-row-head {
+  min-height: 18px;
+  font-size: 10px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] .data-card-pagination,
+.admin-blueprint-page[data-page="usageMonitor"] .data-card-pagination {
+  min-height: 28px;
+  padding: 3px 6px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] .data-card-pagination-range,
+.admin-blueprint-page[data-page="usageMonitor"] .data-card-pagination-range,
+.admin-blueprint-page[data-page="portalRequests"] .data-card-pagination-button,
+.admin-blueprint-page[data-page="usageMonitor"] .data-card-pagination-button,
+.admin-blueprint-page[data-page="portalRequests"] .data-card-pagination-page,
+.admin-blueprint-page[data-page="usageMonitor"] .data-card-pagination-page {
+  min-height: 22px;
+  font-size: 10px;
+  padding: 0 6px;
+}
+
+.admin-blueprint-module-title h3 {
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.admin-blueprint-module-title small,
+.admin-fixture-preview-row dt,
+.admin-fixture-preview-row dd span {
+  color: #a6b8d9;
+}
+
+.admin-fixture-preview-row {
+  border: 0.5px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.admin-fixture-preview-row dd strong,
+.admin-overview-section-heading h3,
+.admin-overview-action-card strong,
+.admin-overview-handoff-card strong,
+.admin-search-result-card h2 {
+  color: #ffffff;
+}
+
+.admin-overview-section-card,
+.admin-overview-action-card,
+.admin-overview-handoff,
+.admin-overview-handoff-card,
+.admin-search-result-card,
+.admin-search-summary,
+.admin-blueprint-empty-workbench {
+  border-color: rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.14);
+  color: #ffffff;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 1px 6px rgba(0, 10, 51, 0.12);
+  backdrop-filter: blur(14px);
+}
+
+.admin-search-result-card p,
+.admin-search-summary span,
+.admin-overview-section-heading p,
+.admin-overview-action-card span:last-child,
+.admin-overview-handoff-card span {
+  color: #d9e5f7;
+}
+
+.admin-blueprint-panel-tool-trigger {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.1);
+  color: #d9e5f7;
+}
+
+.admin-blueprint-panel-tool-trigger:hover {
+  border-color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+@media (max-width: 1120px) {
+  .admin-shell {
+    --admin-content-padding: 14px;
+  }
+
+  .app-sidebar {
+    display: none;
+  }
+
+  .admin-main {
+    margin-left: 0;
+  }
+
+  .top-bar {
+    margin: 12px;
+    grid-template-columns: minmax(0, 1fr) auto;
+    top: 12px;
+  }
+
+  .top-bar-search {
+    grid-column: 1;
+    justify-self: stretch;
+    width: 100%;
+  }
+
+  .top-bar-actions {
+    grid-column: 2;
+  }
+
+  .admin-content {
+    padding: var(--admin-content-padding);
+  }
+
+  .admin-blueprint-page-summary {
+    padding-left: 0;
+  }
+
+  .admin-overview-metric-grid,
+  .ops-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-blueprint-module-board,
+  .admin-blueprint-page[data-page="dashboard"] .admin-blueprint-module-board,
+  .admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-board,
+  .admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-board {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .top-bar {
+    min-height: 52px;
+    grid-template-columns: 1fr auto;
+    padding: 0 10px;
+  }
+
+  .top-bar-search {
+    display: flex;
+    min-width: 0;
+  }
+
+  .top-bar-actions > .dashboard-status-badge:not(:last-of-type),
+  .operator-account-copy {
+    display: none;
+  }
+
+  .admin-overview-metric-grid,
+  .ops-metric-grid {
+    grid-template-columns: 1fr;
+  }
+}

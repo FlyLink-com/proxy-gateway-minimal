@@ -17,6 +17,8 @@ export type AdminFigmaMirrorPage = {
   role: "requirements-map" | "page-mirror" | "visual-qa-ledger";
   frameName: string;
   frameSize: "1600x1024";
+  nodeId?: string;
+  visibleFrameSize?: "1600x908";
   mapsToPages: AdminPage[];
   acceptance: string[];
 };
@@ -35,37 +37,46 @@ export const ADMIN_FIGMA_MIRROR_PAGES: readonly AdminFigmaMirrorPage[] = [
     ]
   },
   {
-    name: "01 Operations Overview / 1600x1024",
+    name: "AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024",
     status: "current",
     role: "page-mirror",
-    frameName: "01 Operations Overview / 1600x1024",
+    frameName: "AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024",
     frameSize: "1600x1024",
+    nodeId: "373:716",
+    visibleFrameSize: "1600x908",
     mapsToPages: ["dashboard"],
     acceptance: [
+      "Uses the accepted 2026-06-24 Visual Polish desktop geometry",
       "Mirrors summary-and-routing only",
       "Does not mirror account/resource ledgers, object timelines, or channel ledgers as Overview-owned content"
     ]
   },
   {
-    name: "02 Accounts & Resources / 1600x1024",
+    name: "AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024",
     status: "current",
     role: "page-mirror",
-    frameName: "02 Accounts & Resources / 1600x1024",
+    frameName: "AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024",
     frameSize: "1600x1024",
+    nodeId: "373:866",
+    visibleFrameSize: "1600x908",
     mapsToPages: ["portalRequests"],
     acceptance: [
+      "Uses the accepted 2026-06-24 Visual Polish desktop geometry",
       "Owns account, resource, order, quota, lifecycle, and history-entry panels",
       "Shows safe refs only and no executable account/order mutation controls"
     ]
   },
   {
-    name: "03 Usage & Channels / 1600x1024",
+    name: "AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024",
     status: "current",
     role: "page-mirror",
-    frameName: "03 Usage & Channels / 1600x1024",
+    frameName: "AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024",
     frameSize: "1600x1024",
+    nodeId: "373:1016",
+    visibleFrameSize: "1600x908",
     mapsToPages: ["usageMonitor"],
     acceptance: [
+      "Uses the accepted 2026-06-24 Visual Polish desktop geometry",
       "Owns collection freshness, channel coverage, usage ledger, anomalies, and receipt panels",
       "Does not own quota edits, order pause/archive, subscription artifact lifecycle, or runtime apply"
     ]
@@ -112,19 +123,24 @@ export const ADMIN_FIGMA_WRITE_ACCESS_CHECK = {
 } as const;
 
 export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {
-  checkedAt: "2026-06-21",
+  checkedAt: "2026-06-24",
   sourceFile: ADMIN_FIGMA_FILE_KEY,
   pageLevelHandoff: "current",
   componentSystemMirror: "current",
   observedTopLevelPage: "Admin UI Handoff",
   observedComponentMirrorPage: "Admin Component Mirror v1",
+  observedVisualSourcePage: "06 AI Exploration",
+  observedVisualSourceNodes: ["373:716", "373:866", "373:1016"],
   observedFrames: [
     "00 Contract & Build Order",
+    "AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024",
+    "AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024",
+    "AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024",
+    "04 State & Safety Matrix",
+    "05 GCC-103 Review Addendum / 1600x1024",
     "01 Operations Overview / 1600x1024",
     "02 Accounts & Resources / 1600x1024",
     "03 Usage & Channels / 1600x1024",
-    "04 State & Safety Matrix",
-    "05 GCC-103 Review Addendum / 1600x1024",
     "06 Current Implementation / Operations Overview / 1600w full-content capture",
     "07 Current Implementation / Accounts & Resources / 1600w full-content capture",
     "08 Current Implementation / Usage & Channels / 1600w full-content capture"
@@ -185,7 +201,7 @@ export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {
     "StatusChip",
     "DataTable / DataRow",
     "TopBar",
-    "Sidebar / Navigation Library",
+    "ShellRail / Primary Routes",
     "PrivilegedGate",
     "EmptyState / Loading / Stale / Error"
   ],
@@ -195,7 +211,7 @@ export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {
     "StatusChip",
     "DataTable / DataRow",
     "TopBar",
-    "Sidebar / Navigation Library",
+    "ShellRail / Primary Routes",
     "PrivilegedGate",
     "EmptyState / Loading / Stale / Error"
   ],

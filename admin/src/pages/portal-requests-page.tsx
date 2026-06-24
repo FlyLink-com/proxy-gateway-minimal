@@ -268,10 +268,6 @@ function AccountDirectoryContent() {
         <StatusChip label="All 5" tone="info" />
         <StatusChip label="Review 1" tone="warning" />
         <StatusChip label="Disabled 1" tone="neutral" />
-      </div>
-      <div className="admin-static-status-row" aria-label="Account Directory state coverage">
-        <StatusChip label="Readonly" tone="neutral" />
-        <StatusChip label="Needs review" tone="warning" />
         <StatusChip label="Disabled account" tone="neutral" />
         <StatusChip label="Backend action locked" tone="danger" />
       </div>
@@ -283,7 +279,9 @@ function AccountDirectoryContent() {
           { header: "Resources", key: "resources", render: (row) => row.resources },
           { header: "Risk", key: "risk", render: (row) => row.risk }
         ]}
+        density="compact"
         getRowKey={(row) => row.accountRef}
+        pagination={{ label: "Account Directory table pagination", pageSize: 2 }}
         rows={accountRows}
       />
     </div>
@@ -306,21 +304,10 @@ const resourceOrderRows: ResourceOrderRow[] = [
 function ResourceOrdersContent() {
   return (
     <div className="admin-operator-content" aria-label="Resources and Orders static operator content">
-      <div className="admin-owner-route-list" aria-label="Accounts and Resources owner panel routes">
-        <article className="admin-owner-route-card">
-          <div className="admin-owner-route-card-head">
-            <strong>Resources & Orders</strong>
-            <StatusChip label="Owner" tone="info" />
-          </div>
-          <p>Owns entitlement, artifact lifecycle, and delivery state review.</p>
-        </article>
-        <article className="admin-owner-route-card">
-          <div className="admin-owner-route-card-head">
-            <strong>Quota & Lifecycle</strong>
-            <StatusChip label="Review gate" tone="warning" />
-          </div>
-          <p>Quota changes and pause/archive decisions stay locked behind reviewed backend gates.</p>
-        </article>
+      <div className="admin-static-status-row" aria-label="Accounts and Resources owner panel routes">
+        <StatusChip label="Lifecycle owner" tone="info" />
+        <StatusChip label="Delivery review only" tone="neutral" />
+        <StatusChip label="Quota gate separate" tone="warning" />
       </div>
       <DataTable
         ariaLabel="Resources and Orders static table"
@@ -337,7 +324,9 @@ function ResourceOrdersContent() {
             )
           }
         ]}
+        density="compact"
         getRowKey={(row) => row.orderRef}
+        pagination={{ label: "Resources and Orders table pagination", pageSize: 2 }}
         rows={resourceOrderRows}
       />
       <div className="admin-static-status-row" aria-label="Resources and Orders safety states">

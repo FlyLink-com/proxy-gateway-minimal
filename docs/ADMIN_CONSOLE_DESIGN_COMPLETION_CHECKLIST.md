@@ -1,6 +1,6 @@
 # Admin Console Design Completion Checklist
 
-Last updated: 2026-06-22, America/Los_Angeles.
+Last updated: 2026-06-24, America/Los_Angeles.
 
 > Status:
 > - Type: Figma/page/visual/component-state design completion gate
@@ -14,9 +14,10 @@ Last updated: 2026-06-22, America/Los_Angeles.
 >   customer-data actions.
 
 This checklist is the current gate before starting the next Admin frontend
-implementation lane. The frontend design direction is accepted, but the design
-is not complete until the Figma pages, visual rhythm, component states, and
-Figma-to-code QA checks below are closed.
+implementation lane. The desktop Figma page-design source is accepted, but
+implementation is not complete until visual rhythm, component states,
+Figma-to-code QA, browser QA, responsive/mobile projection, and accessibility
+checks below are closed.
 
 Use this document after `docs/ADMIN_CONSOLE_FRONTEND_DESIGN_INDEX.md` and before
 `docs/ADMIN_CONSOLE_NEXT_STAGE_EXECUTION_CHECKLIST.md`.
@@ -27,9 +28,36 @@ Use this document after `docs/ADMIN_CONSOLE_FRONTEND_DESIGN_INDEX.md` and before
 | --- | --- |
 | Design direction | Accepted. Continue with the protected Admin Console model, not the browser-OS experiment. |
 | Active pages | `Operations Overview`, `Accounts & Resources`, `Usage & Channels`. |
-| Figma source | Canonical file is `GlobalCircle AI Admin UI Handoff - 2026-06-19`; refined frames are `99:2`, `104:2`, and `104:226`. |
-| Current phase | Design completion and visual QA, not backend integration or runtime projection. |
+| Figma source | Canonical file is `GlobalCircle AI Admin UI Handoff - 2026-06-19`; current desktop Visual Polish frames are `373:716`, `373:866`, and `373:1016` under `06 AI Exploration` (`365:2`). |
+| Figma Site role | Optional demo/click-flow review surface only; it is not a design completion gate, source of truth, or implementation target. |
+| Current phase | Desktop design source accepted; reverse-standardize docs and React/CSS from the Visual Polish frames before backend integration or runtime projection. |
 | Deferred work | `Usage & Channels` runtime projection, backend DTOs, auth/schema/runtime work, and privileged surfaces. |
+
+## Visual Polish Acceptance, 2026-06-24
+
+The user-reviewed `06 AI Exploration` page is now the current desktop design
+source for the three active Admin pages.
+
+| Page | Current frame | Design status | Implementation consequence |
+| --- | --- | --- | --- |
+| `Operations Overview` | `373:716` | Accepted Visual Polish source. | Implement from this geometry/copy, not `99:2` or `365:8`. |
+| `Accounts & Resources` | `373:866` | Accepted Visual Polish source. | Implement from this geometry/copy, not `104:2` or `365:52`. |
+| `Usage & Channels` | `373:1016` | Accepted Visual Polish source. | Implement from this geometry/copy, not `104:226` or `365:96`. |
+
+Current visual decisions:
+
+- remove the visible page title/subtitle/header chip block from normal
+  operator UI;
+- keep route identity in ShellRail and TopBar context;
+- keep System Search as a normal top-bar search form/result surface;
+- do not render AppLibrary, NavigationLibrary, desktop dock, or freeform
+  browser-OS windowing as the current product model;
+- use the dark glass shell, compact metric row, three-panel primary row, and
+  lower evidence row as the desktop baseline.
+
+This acceptance completes the current desktop Figma page-design source. It does
+not complete React/CSS implementation, browser QA, responsive/mobile design,
+backend DTO wiring, or runtime projection.
 
 ## GCC-122 Figma Audit, 2026-06-22
 
@@ -42,7 +70,7 @@ but this pass only inspected page coverage and local screenshot evidence.
 | Top-level page map | `0:1 Admin UI Handoff` contains `14` top-level frames. | Verified. | Keep this file as the only active mirror source. |
 | Original active page mirrors | `2:81` Operations, `2:189` Accounts, `2:309` Usage. | Present and ownership-correct. | Migrate Accounts and Usage to the refined visual protocol. |
 | Current implementation captures | `17:2`, `22:2`, `23:2`. | Present. | Use as implementation baseline evidence, not as final design polish. |
-| Refined visual drafts | `99:2` Operations, `104:2` Accounts, `104:226` Usage. | Initial desktop drafts present. | Complete component-state placement, narrow QA, and user review. |
+| Refined visual drafts | `99:2` Operations, `104:2` Accounts, `104:226` Usage. | Superseded draft lineage. | Keep for rationale only; current implementation source is `373:716`, `373:866`, `373:1016`. |
 | State and safety matrix | `2:427` `04 State & Safety Matrix`. | Present. | Still needs page-level state placement and responsive visual QA. |
 
 GCC-122 cleanup pass after first review:
@@ -78,13 +106,17 @@ GCC-122 design-evidence pass:
 
 Audit conclusion:
 
-- `Operations Overview` has an accepted refined visual direction in `99:2`.
-- `Accounts & Resources` and `Usage & Channels` now have first refined desktop
-  drafts in `104:2` and `104:226`, cloned from the accepted `99:2` protocol and
-  rewritten to their page ownership.
+- `Operations Overview`, `Accounts & Resources`, and `Usage & Channels` have
+  accepted desktop Visual Polish frames in `373:716`, `373:866`, and
+  `373:1016`.
+- The earlier `99:2`, `104:2`, and `104:226` drafts are superseded and should
+  not drive implementation except as historical design rationale.
 - Component-state placement, responsive strategy, and Figma-to-code mapping now
-  have explicit evidence frames. The design is not complete until these frames
-  pass user review and are validated against browser implementation evidence.
+  have explicit evidence frames. They remain implementation and QA gates after
+  the desktop page-design source decision.
+- 2026-06-24 update: live Figma metadata for `365:2` confirmed the current
+  Visual Polish frames. The prior `240:2` metadata caveat no longer blocks the
+  desktop design-source decision.
 - This gate does not authorize backend integration, runtime projection,
   production work, auth/schema changes, or sensitive-data exposure.
 
@@ -99,9 +131,14 @@ Audit conclusion:
 | G5 Figma-to-code parity | Component names, React targets, CSS tokens, grammar hooks, and visual QA expectations match. | `docs/ADMIN_CONSOLE_FIGMA_MIRROR.md`, `admin/src/design/figma-parity.ts`. |
 | G6 Accessibility baseline | Visible focus, accessible names, semantic state labels, and non-color-only status are designed before implementation. | Visual QA notes and follow-up tests. |
 | G7 Sensitive-data boundary | Figma, fixtures, screenshots, tests, and docs contain no token, credential, subscription URL, raw config/log/env, SQLite row, or customer-private data. | Review notes and diff checks. |
+| G8 Evidence boundary | Figma design, GitHub implementation, and Linear task acceptance remain separated and traceable; Site evidence is demo-only. | `docs/ADMIN_CONSOLE_FRONTEND_DESIGN_INDEX.md` and `docs/ADMIN_CONSOLE_FIGMA_MIRROR.md`. |
+| G9 Current Figma canvas verification | The currently opened Figma design file still contains the accepted active-page frames and design-evidence frames before implementation starts. | 2026-06-24 connector metadata for `365:2`, plus follow-up browser QA during implementation. |
+| G10 Reuse boundary | Page-specific AI-generated assemblies are not treated as shared components; only documented shell, surface, metric, row, state, motion, and focus protocols are reusable. | `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md`, `docs/ADMIN_CONSOLE_UI_LAYOUT_EFFECT_MATRIX.md`, and `docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md`. |
+| G11 Trend logic boundary | Curves, sparklines, and chart slots are marked visual-only until source, time window, aggregation, threshold, empty/stale behavior, and accessibility text are defined. | `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md` and future DTO/selector task evidence. |
 
-The design is not complete if any gate still has unresolved page ownership,
-copy, spacing, state, or accessibility questions.
+The desktop Figma page-design source is accepted. The overall delivery remains
+incomplete until React/CSS implementation, browser visual QA, responsive/mobile
+projection, component state mapping, and accessibility checks pass.
 
 ## Page-Level Completion
 
@@ -113,6 +150,7 @@ Must show:
 - health, risk, freshness, and coverage metrics;
 - risk queue with route ownership;
 - next actions that route to owner pages;
+- review candidates panel and lower evidence strip;
 - no account/resource/usage ledgers as owned detail;
 - concise English operator copy only.
 
@@ -129,9 +167,8 @@ Must show:
 
 - account directory;
 - resources and orders;
-- quota and usage summary;
 - lifecycle review;
-- history and events preview;
+- account metrics and safe event log;
 - no collector/runtime/channel diagnostics as owned detail.
 
 Design gaps to close:
@@ -148,8 +185,8 @@ Must show:
 - collection freshness;
 - channel coverage;
 - usage ledger;
-- receipts and collectors;
-- collection anomalies;
+- usage metrics;
+- usage and channel event log;
 - no account disable, quota mutation, or lifecycle ownership.
 
 Design gaps to close:
@@ -180,7 +217,8 @@ for the target page exist in Figma and are mapped to shared primitives.
 
 Before design completion is accepted:
 
-1. Desktop review at `1600 x 1024` shows no overlap, clipped text, floating
+1. Desktop review of the Visual Polish frames (`1600 x 908` visible inside the
+   `1600x1024` stage) shows no overlap, clipped text, floating
    cards, nested-card clutter, or excessive empty space.
 2. Narrow review at `1024px` keeps navigation, page title, primary cards, and
    tables readable.
@@ -196,8 +234,15 @@ Before design completion is accepted:
    plan.
 9. Design-only words such as `draft`, `preview`, `page design explanation`, or
    `prototype` do not appear in operator UI.
-10. No sensitive material appears in Figma, fixtures, screenshots, tests, docs,
+10. Page-local business panel assemblies are not promoted into shared
+    primitives unless they have a primitive name, state/props contract, token
+    ownership, accessibility rule, and QA hook.
+11. Curves and sparklines are either marked visual-only or backed by an
+    approved time-series/aggregation contract with text equivalents.
+12. No sensitive material appears in Figma, fixtures, screenshots, tests, docs,
     or UI.
+13. Figma Site, if used, is checked only as a demo/click-flow surface and does
+    not replace canonical `/design` frame evidence.
 
 ## Handoff To Implementation
 

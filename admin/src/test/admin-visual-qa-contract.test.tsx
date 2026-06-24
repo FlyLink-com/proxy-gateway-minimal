@@ -1,7 +1,7 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "../App";
-import { pageSubNavigation, type AdminPage } from "../app/navigation";
+import { pageSubNavigation, pageTitles, type AdminPage } from "../app/navigation";
 import { ADMIN_VISUAL_QA_AXES } from "../design/figma-mirror";
 import { DashboardPage } from "../pages/dashboard-page";
 import { PortalRequestsPage } from "../pages/portal-requests-page";
@@ -32,7 +32,7 @@ describe("admin visual QA contract", () => {
     expect(document.querySelector("[data-ui-surface='privileged-gate']")?.getAttribute("data-gate-state")).toBe("gated");
     expect(document.querySelector(".admin-content")).not.toBeNull();
     expect(screen.getByLabelText("Workspace sidebar")).not.toBeNull();
-    expect(screen.getByLabelText("Open navigation library")).not.toBeNull();
+    expect(screen.queryByLabelText("Open navigation library")).toBeNull();
     expect(screen.getByLabelText("Operator account")).not.toBeNull();
     expect(screen.getByLabelText("Admin fixture preview status")).not.toBeNull();
     expect(screen.queryByLabelText("Console status bar")).toBeNull();
@@ -75,13 +75,26 @@ describe("admin visual QA contract", () => {
     expect(workspace?.getAttribute("data-mobile-projection")).toBe("single-column-review-flow");
     expect(workspace?.getAttribute("data-required-blocks")).toMatch(/page-title|primary-panel/);
 
+    const pageSections = pageSubNavigation[page];
+    const visibleSections = page === "dashboard" ? pageSections : pageSections.slice(0, 1);
+
+    if (page === "dashboard") {
+      expect(screen.queryByRole("navigation", { name: `${pageTitles[page]} sections` })).toBeNull();
+    } else {
+      const sectionNav = screen.getByRole("navigation", { name: `${pageTitles[page]} sections` });
+      pageSections.forEach((section) => {
+        expect(within(sectionNav).getByRole("button", { name: section.label })).not.toBeNull();
+      });
+      expect(within(sectionNav).getByRole("button", { name: pageSections[0].label }).getAttribute("aria-current")).toBe("page");
+    }
+
     const panels = Array.from(document.querySelectorAll("[data-ui-role='panel']"));
-    expect(panels).toHaveLength(pageSubNavigation[page].length);
+    expect(panels).toHaveLength(visibleSections.length);
     expect(panels.map((panel) => panel.getAttribute("data-module-nav-id"))).toEqual(
-      pageSubNavigation[page].map((section) => section.id)
+      visibleSections.map((section) => section.id)
     );
     expect(panels.map((panel) => panel.id)).toEqual(
-      pageSubNavigation[page].map((section) => section.targetId)
+      visibleSections.map((section) => section.targetId)
     );
 
     panels.forEach((panel) => {
@@ -105,6 +118,18 @@ describe("admin visual QA contract", () => {
       expect(panel.querySelector(".admin-blueprint-panel-display-controls")).toBeNull();
       expect(panel.querySelector(".admin-blueprint-module-notes")).toBeNull();
     });
+
+    if (page !== "dashboard") {
+      const lastSection = pageSections[pageSections.length - 1];
+      const sectionNav = screen.getByRole("navigation", { name: `${pageTitles[page]} sections` });
+      fireEvent.click(within(sectionNav).getByRole("button", { name: lastSection.label }));
+
+      const nextPanels = Array.from(document.querySelectorAll("[data-ui-role='panel']"));
+      expect(nextPanels).toHaveLength(1);
+      expect(nextPanels[0].getAttribute("data-module-nav-id")).toBe(lastSection.id);
+      expect(nextPanels[0].id).toBe(lastSection.targetId);
+      expect(within(sectionNav).getByRole("button", { name: lastSection.label }).getAttribute("aria-current")).toBe("page");
+    }
 
     expect(document.querySelector(".admin-blueprint-edit-zone")).toBeNull();
     expect(document.querySelector(".admin-blueprint-module-dock")).toBeNull();

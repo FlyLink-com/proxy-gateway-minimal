@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { PortalRequestsPage } from "../pages/portal-requests-page";
 
@@ -27,49 +27,69 @@ describe("portal requests page", () => {
     expect(screen.queryByText("Module Library")).toBeNull();
     expect(screen.queryByText("Page design notes")).toBeNull();
     expect(document.querySelector(".admin-blueprint-edit-zone")).toBeNull();
-    expect(sectionAnchorOrder()).toEqual([
-      "user-supervision-account-overview",
-      "user-supervision-resource-orders",
-      "user-supervision-quota-usage",
-      "user-supervision-lifecycle",
-      "user-supervision-history-events"
-    ]);
+    const sectionNav = screen.getByRole("navigation", { name: "Accounts & Resources sections" });
+    expect(within(sectionNav).getByRole("button", { name: "Account Directory" }).getAttribute("aria-current")).toBe("page");
+    expect(within(sectionNav).getByRole("button", { name: "Resources & Orders" })).not.toBeNull();
+    expect(within(sectionNav).getByRole("button", { name: "Quota & Usage" })).not.toBeNull();
+    expect(within(sectionNav).getByRole("button", { name: "Lifecycle" })).not.toBeNull();
+    expect(within(sectionNav).getByRole("button", { name: "History & Events" })).not.toBeNull();
+    expect(sectionAnchorOrder()).toEqual(["user-supervision-account-overview"]);
 
     expect(screen.queryByLabelText("Accounts & Resources page navigation")).toBeNull();
     expect(screen.queryByLabelText("Accounts & Resources card controls")).toBeNull();
     expect(screen.getByRole("button", { name: "Account Directory hide module" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Resources & Orders hide module" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Quota & Usage hide module" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Lifecycle hide module" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "History & Events hide module" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Resources & Orders hide module" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Quota & Usage hide module" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Lifecycle hide module" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "History & Events hide module" })).toBeNull();
 
     expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();
     expect(document.querySelector("#user-supervision-account-overview")?.getAttribute("data-ui-role")).toBe("panel");
-    expect(screen.getAllByLabelText("Management panel").length).toBe(3);
-    expect(screen.getByLabelText("Configuration panel")).not.toBeNull();
-    expect(screen.getByLabelText("Audit / Workflow panel")).not.toBeNull();
+    expect(screen.getByLabelText("Management panel")).not.toBeNull();
     expect(screen.queryByText("Quota policy panel")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-panel-field-count")).toHaveLength(0);
     expect(document.querySelectorAll(".admin-blueprint-module-title small")).toHaveLength(0);
     expect(screen.getByLabelText("Account Directory static operator content")).not.toBeNull();
-    expect(screen.getByLabelText("Account Directory static table")).not.toBeNull();
+    expect(screen.getByLabelText("Account Directory static table").className).toContain("new-console-table-compact");
     expect(screen.getByText("acct_safe_014")).not.toBeNull();
     expect(screen.getByText("Disabled account")).not.toBeNull();
     expect(screen.queryByText("Account ref · safe id")).toBeNull();
     expect(screen.queryByText("Decision owner for user accounts, resources, orders, subscription artifacts, quota, lifecycle, and safe history context.")).toBeNull();
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "Resources & Orders" }));
+    expect(within(sectionNav).getByRole("button", { name: "Resources & Orders" }).getAttribute("aria-current")).toBe("page");
+    expect(sectionAnchorOrder()).toEqual(["user-supervision-resource-orders"]);
     expect(screen.getByRole("heading", { name: "Resources & Orders" })).not.toBeNull();
-    expect(screen.getByLabelText("Resources and Orders static table")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Resources & Orders hide module" })).not.toBeNull();
+    expect(screen.getByLabelText("Resources and Orders static table").className).toContain("new-console-table-compact");
     expect(screen.getByText("ord_safe_102")).not.toBeNull();
     expect(screen.getByText("Pending receipt")).not.toBeNull();
     expect(screen.queryByText("Artifact · safe ref presence")).toBeNull();
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "Quota & Usage" }));
+    expect(within(sectionNav).getByRole("button", { name: "Quota & Usage" }).getAttribute("aria-current")).toBe("page");
+    expect(sectionAnchorOrder()).toEqual(["user-supervision-quota-usage"]);
     expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Quota & Usage hide module" })).not.toBeNull();
+    expect(screen.getByLabelText("Configuration panel")).not.toBeNull();
     expect(screen.getByText("82% used")).not.toBeNull();
     expect(screen.getByLabelText("ord_safe_101 quota usage 82 percent")).not.toBeNull();
     expect(screen.queryByText("Default quota · policy value")).toBeNull();
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "Lifecycle" }));
+    expect(within(sectionNav).getByRole("button", { name: "Lifecycle" }).getAttribute("aria-current")).toBe("page");
+    expect(sectionAnchorOrder()).toEqual(["user-supervision-lifecycle"]);
     expect(screen.getByRole("heading", { name: "Lifecycle" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Lifecycle hide module" })).not.toBeNull();
     expect(screen.getAllByText("Archive candidate").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Order · pause / expiry candidate")).toBeNull();
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "History & Events" }));
+    expect(within(sectionNav).getByRole("button", { name: "History & Events" }).getAttribute("aria-current")).toBe("page");
+    expect(sectionAnchorOrder()).toEqual(["user-supervision-history-events"]);
     expect(screen.getByRole("heading", { name: "History & Events" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "History & Events hide module" })).not.toBeNull();
+    expect(screen.getByLabelText("Audit / Workflow panel")).not.toBeNull();
     expect(screen.getByText("Safe computed history")).not.toBeNull();
     expect(screen.getByText("Restricted backend locked")).not.toBeNull();
     expect(screen.queryByText("Audit · future entry slot")).toBeNull();
@@ -80,7 +100,6 @@ describe("portal requests page", () => {
 
     const renderedText = document.body.textContent ?? "";
     expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|raw token|raw credential|password|secret-value|sqlite-row-value/i);
-    expect(screen.getAllByRole("table").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole("button", { name: /Generate delivery preview|Save quota|Approve|Disable|Archive/i })).toBeNull();
     expect(screen.queryByLabelText("Controlled delivery preview")).toBeNull();
     expect(screen.queryByLabelText("Traffic quota")).toBeNull();
@@ -92,13 +111,17 @@ describe("portal requests page", () => {
     expect(screen.getByLabelText("Account Directory fixture preview")).not.toBeNull();
     expect(screen.queryByText("Safe account refs, resource count, risk state, and last safe event.")).toBeNull();
     expect(screen.getAllByText("acct_demo_02").length).toBeGreaterThanOrEqual(1);
+    const sectionNav = screen.getByRole("navigation", { name: "Accounts & Resources sections" });
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "Resources & Orders" }));
     expect(screen.getAllByText("ord_safe_102").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("ord_safe_103").length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "Quota & Usage" }));
     expect(screen.queryByText("Quota edits remain disabled.")).toBeNull();
 
     const renderedText = document.body.textContent ?? "";
     expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|raw token|secret-value|password|edgecred_/i);
-    expect(screen.getAllByRole("table").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole("button", { name: /Generate delivery preview|Save quota|Approve|Disable|Archive/i })).toBeNull();
   });
 });

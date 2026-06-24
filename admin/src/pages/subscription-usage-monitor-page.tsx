@@ -318,54 +318,6 @@ const channelCoverageRows: ChannelCoverageRow[] = [
   }
 ];
 
-type RouteLatencyRow = {
-  p50: string;
-  p95: string;
-  p99: string;
-  routeRef: string;
-  routeType: "Primary" | "Fallback" | "Recovery";
-  samples: string;
-  source: string;
-  state: "Fresh" | "Stale" | "No sample";
-  target: string;
-};
-
-const routeLatencyRows: RouteLatencyRow[] = [
-  {
-    p50: "42 ms",
-    p95: "88 ms",
-    p99: "131 ms",
-    routeRef: "route_safe_jp_primary",
-    routeType: "Primary",
-    samples: "820",
-    source: "ingress_jp",
-    state: "Fresh",
-    target: "egress_jp"
-  },
-  {
-    p50: "67 ms",
-    p95: "146 ms",
-    p99: "212 ms",
-    routeRef: "route_safe_sgp_backup",
-    routeType: "Fallback",
-    samples: "240",
-    source: "ingress_sgp",
-    state: "Stale",
-    target: "egress_sgp"
-  },
-  {
-    p50: "N/A",
-    p95: "N/A",
-    p99: "N/A",
-    routeRef: "route_safe_tuic_recovery",
-    routeType: "Recovery",
-    samples: "0",
-    source: "ingress_tuic",
-    state: "No sample",
-    target: "egress_pending"
-  }
-];
-
 function ChannelCoverageContent() {
   return (
     <div className="admin-operator-content" aria-label="Channel Coverage static operator content">
@@ -376,6 +328,11 @@ function ChannelCoverageContent() {
           <StatusChip label="Measured" tone="success" />
         </div>
         <p>Coverage rows show safe channel refs only; runtime material and raw collector output stay hidden.</p>
+        <div className="admin-static-status-row" aria-label="Route latency compact rows">
+          <SafeRef value="route_safe_jp_primary" />
+          <strong>88 ms</strong>
+          <StatusChip label="Fresh" tone="success" />
+        </div>
       </div>
       <DataTable
         ariaLabel="Channel Coverage static table"
@@ -403,18 +360,11 @@ function ChannelCoverageContent() {
             )
           }
         ]}
+        density="compact"
         getRowKey={(row) => row.channelRef}
+        pagination={{ label: "Channel Coverage table pagination", pageSize: 2 }}
         rows={channelCoverageRows}
       />
-      <div className="admin-owner-mini-list" aria-label="Route latency compact rows">
-        {routeLatencyRows.slice(0, 2).map((row) => (
-          <article className="admin-owner-mini-row" key={row.routeRef}>
-            <span><SafeRef value={row.routeRef} /> · {row.routeType}</span>
-            <strong>{row.p95}</strong>
-            <StatusChip label={row.state} tone={row.state === "Fresh" ? "success" : row.state === "Stale" ? "warning" : "neutral"} />
-          </article>
-        ))}
-      </div>
     </div>
   );
 }
@@ -454,7 +404,9 @@ function UsageLedgerContent() {
             )
           }
         ]}
+        density="compact"
         getRowKey={(row) => `${row.accountRef}:${row.orderRef}:${row.channelRef}`}
+        pagination={{ label: "Usage Ledger table pagination", pageSize: 2 }}
         rows={usageLedgerRows}
       />
     </div>
@@ -579,6 +531,7 @@ function CollectionAnomaliesContent() {
       description="Classifies evidence only; quota and lifecycle decisions remain on Accounts & Resources."
       footer={<span className="panel-link panel-link-disabled">Durable case close workflow locked</span>}
       items={anomalyItems}
+      previewLimit={1}
       title="Anomaly candidates"
     />
   );
@@ -602,7 +555,7 @@ function ReceiptsCollectorsContent() {
         </article>
       </div>
       <div className="admin-owner-mini-list" aria-label="Receipt and collector compact diagnostics">
-        {agentStatusRows.slice(0, 2).map((row) => (
+        {agentStatusRows.slice(0, 1).map((row) => (
           <article className="admin-owner-mini-row" key={row.agentRef}>
             <span><SafeRef value={row.agentRef} /> · <SafeRef value={row.nodeRef} /></span>
             <strong>{row.heartbeat}</strong>

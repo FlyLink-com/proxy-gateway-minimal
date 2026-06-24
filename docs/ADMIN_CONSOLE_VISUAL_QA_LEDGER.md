@@ -49,7 +49,8 @@ Figma connector evidence on 2026-06-21:
 | --- | --- |
 | Source file metadata | Read succeeded for `https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19`. |
 | Current top-level page | `Admin UI Handoff`. |
-| Current mirror frames | `00 Contract & Build Order`, `01 Operations Overview / 1600x1024`, `02 Accounts & Resources / 1600x1024`, `03 Usage & Channels / 1600x1024`, `04 State & Safety Matrix`, `05 GCC-103 Review Addendum / 1600x1024`. |
+| Current visual source frames | `06 AI Exploration`: `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024` (`373:716`), `AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024` (`373:866`), `AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024` (`373:1016`). |
+| Historical page mirror frames | `01 Operations Overview / 1600x1024`, `02 Accounts & Resources / 1600x1024`, `03 Usage & Channels / 1600x1024`; keep for ownership lineage only. |
 | Implementation captures | `06 Current Implementation / Operations Overview / 1600w full-content capture`, `07 Current Implementation / Accounts & Resources / 1600w full-content capture`, `08 Current Implementation / Usage & Channels / 1600w full-content capture`. |
 | Previous mismatch | The earlier recorded `EvQXTtJ2XnRfcGxRLTRt0B` file is a one-page Requirements Map, not the canonical multi-frame handoff file. |
 | Connector-reported seat | `Dev / developer`. |
@@ -98,7 +99,7 @@ GCC-119 implementation alignment status:
 | --- | --- |
 | Shared state feedback | Current: `StateFeedback` is a first-class primitive with `empty`, `loading`, `stale`, and `error` tones, named `status` / `alert` roles, chrome variants, and stable DOM hooks. |
 | Empty and table states | Current: `EmptyState` delegates to `StateFeedback`; `DataTableState` renders through `StateFeedback` while preserving table `row` / `cell` semantics. |
-| QA DOM hooks | Current: `MetricCard`, `StatusChip`, `TopBar`, `WorkspaceSidebar`, and `NavigationLibrary` expose stable `data-figma-component` / `data-ui-surface` hooks for GCC-120 viewport checks. |
+| QA DOM hooks | Current: `MetricCard`, `StatusChip`, `TopBar`, `WorkspaceSidebar`, System Search, and primary-route surfaces expose stable `data-figma-component` / `data-ui-surface` hooks for GCC-120 viewport checks. |
 | Overview metric normalization | Current: `Operations Overview` metric cards now render through shared `MetricCard` hooks, not the old page-local metric-card contract. |
 | PanelFrame hooks | Current: `PanelFrame` exposes stable `data-figma-component`, `data-ui-surface`, owner-mode, and workbench-category hooks across operator and draft panels. |
 | Privileged gate extraction | Current: shell production guard renders through the `PrivilegedGate` primitive with explicit state and capability attributes. |
@@ -126,13 +127,13 @@ GCC-117 shell interaction check on 2026-06-21:
 
 | Browser viewport | Surfaces checked | Global horizontal overflow | Sensitive text boundary | Console errors | Result |
 | --- | --- | --- | --- | --- | --- |
-| `1440 x 900` | Navigation library open, navigation-library search for `usage`, operator account menu, production action guard | No | Pass | 0 | Pass |
-| `390 x 844` | Navigation library open, navigation-library search for `usage`, operator account menu, production action guard | No | Pass | 0 | Pass |
+| `1440 x 900` | System Search open/search for `usage`, primary routes, operator account menu, production action guard | No | Pass | 0 | Pass |
+| `390 x 844` | System Search open/search for `usage`, primary routes, operator account menu, production action guard | No | Pass | 0 | Pass |
 
 Observed interaction details:
 
-- Navigation library result count changed from `24` to `8` after searching
-  `usage`, and the visible results stayed route/panel scoped.
+- System Search result count changed from `24` to `8` after searching `usage`,
+  and the visible results stayed route/panel scoped.
 - Operator account popover stayed within viewport on desktop and mobile.
 - Production action guard summary is visible on mobile; its expanded detail is
   responsive-hidden at `390 x 844` and did not create overflow.

@@ -9,11 +9,6 @@ type AdminLayoutProps = {
   search: string;
   onSearchChange: (value: string) => void;
   onNavigate: (page: AdminPage) => void;
-  onOpenPortal: () => void;
-  onOpenSite: () => void;
-  riskNotificationCount?: number;
-  connectionPanel?: ReactNode;
-  connectionConfigured?: boolean;
   children: ReactNode;
 };
 
@@ -22,11 +17,6 @@ export function AdminLayout({
   search,
   onSearchChange,
   onNavigate,
-  onOpenPortal,
-  onOpenSite,
-  riskNotificationCount = 0,
-  connectionPanel,
-  connectionConfigured = false,
   children
 }: AdminLayoutProps) {
   return (
@@ -38,14 +28,7 @@ export function AdminLayout({
     >
       <AppSidebar
         activePage={activePage}
-        search={search}
-        onSearchChange={onSearchChange}
         onNavigate={onNavigate}
-        onOpenPortal={onOpenPortal}
-        onOpenSite={onOpenSite}
-        riskNotificationCount={riskNotificationCount}
-        connectionPanel={connectionPanel}
-        connectionConfigured={connectionConfigured}
       />
       <div className="admin-main">
         <TopBar

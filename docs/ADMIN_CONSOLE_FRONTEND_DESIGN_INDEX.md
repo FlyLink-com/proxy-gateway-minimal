@@ -1,6 +1,6 @@
 # Admin Console Frontend Design Index
 
-Last updated: 2026-06-22, America/Los_Angeles.
+Last updated: 2026-06-24, America/Los_Angeles.
 
 > Status:
 > - Type: Frontend design source index and implementation handoff map
@@ -23,36 +23,80 @@ boundaries must not be crossed.
 | Item | Current value |
 | --- | --- |
 | Canonical Figma file | <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19> |
-| Current refined visual references | `09 Layout Effect Draft v1.2 Text Rhythm / 1600x1024`, `10 Layout Effect Draft v1.3 Accounts & Resources / 1600x1024`, `11 Layout Effect Draft v1.3 Usage & Channels / 1600x1024` |
-| Current frame nodes | `99:2`, `104:2`, `104:226` |
-| Direct review URL | <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19?node-id=99-2> |
-| Local screenshot evidence | `tmp/figma-admin-layout-effect-draft-v1-2-text-rhythm-final.png` |
-| Design posture | Figma is the visual source; Git stores design contracts, implementation code, QA records, and optional review screenshots. |
+| Current refined visual references | `06 AI Exploration`: `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024`, `AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024`, `AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024` |
+| Current frame nodes | `373:716`, `373:866`, `373:1016` |
+| Direct review URL | <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19?node-id=365-2> |
+| Local screenshot evidence | None required for this sync; Figma connector metadata is the current evidence. |
+| Current Figma Site | <https://www.figma.com/site/fGP4xsj27bbcYRGnzIa3DO/Untitled> |
+| Design-source boundary sync | `15 Design Source Boundary / 1600x1024`, node `240:2`, written through Figma connector on 2026-06-23. |
+| Design posture | Figma design is the frontend design repository and visual contract source; GitHub stores runnable implementation, tests, contracts, docs, and QA evidence; Figma Site is optional demo/click-flow review only. |
 
-The `tmp/` screenshot is local review evidence only. It is not the canonical
-design source and should not be treated as a permanent Git asset unless a
-separate visual baseline decision adds screenshots to the repository.
+The `06 AI Exploration` Visual Polish frames are the current desktop design
+source for the three active Admin pages. Local screenshots are review evidence
+only and must not replace the canonical Figma design frames.
+
+Scope rule:
+
+- The three Visual Polish pages are page baselines for the active routes, not a
+  completed universal component library.
+- Reusable standards are the extracted visual protocol: ShellRail/TopBar
+  chrome, System Search density, surface/card treatment, metric lane rhythm,
+  row/table density, state semantics, focus, and motion.
+- Page-local assemblies such as Risk Queue, Account Directory, Lifecycle,
+  Usage Ledger, Channel Coverage, and collector evidence stay page-owned unless
+  a separate component contract promotes them.
+- Curves, sparklines, and chart-like lines are visual evidence slots until a
+  source, time window, aggregation, threshold, empty/stale behavior, and
+  accessibility contract exists.
+
+## Three-Party Evidence Boundary
+
+Use this boundary when reviewing design work or handing tasks between agents.
+Local browser screenshots and local development servers are useful reference
+evidence, but the reviewable source chain is Figma, GitHub, and Linear.
+
+| Surface | Owns | Does not own | Current evidence |
+| --- | --- | --- | --- |
+| Figma design | Frontend design repository: page frames, component specs, visual baselines, copy/state contracts, and design acceptance notes. | Runtime frontend code, backend data, production authority, or secrets. | Canonical design file `oZuKNtGPhP6oOQ0MSzpfvn`; active Visual Polish frames `373:716`, `373:866`, `373:1016`; design-evidence frames remain reference material. |
+| GitHub | Runnable Admin React/CSS/tests, design contracts, validation records, and PR review history. | Unreviewed visual decisions that bypass Figma and the design docs. | Current branch `codex/admin-figma-mirror-visual-qa`; Draft PR #364 tracks the visual review packet. |
+| Linear | Task gates, review ownership, phase acceptance, and next-stage sequencing. | Code, design source of truth, production approval, or secret storage. | GCC Admin UI task line and acceptance notes. |
+
+Figma Site is a fourth optional review surface, not a source of truth. It may
+host a clickable demo after a design is accepted, but it must not replace the
+canonical Figma `/design` file, GitHub implementation, or Linear acceptance
+trail. The current Site link above is initialized for future demo use only.
+
+Connector update, 2026-06-24: live Figma metadata for node `365:2` confirmed
+page `06 AI Exploration` and the three active Visual Polish frames listed
+above. The previous `99:2`, `104:2`, and `104:226` frames are now historical
+draft lineage, not the current implementation source.
 
 ## Current Figma Coverage
 
-The canonical file now contains both the original page mirrors and a refined
-visual draft. They have different roles:
+The canonical file contains original mirrors, prior refined drafts, baseline AI
+candidates, and the current Visual Polish frames. They have different roles:
 
 | Surface | Node | Role | Current design status |
 | --- | --- | --- | --- |
-| `01 Operations Overview / 1600x1024` | `2:81` | Original page mirror and ownership map. | Superseded visually by `99:2`, still useful for page content lineage. |
-| `02 Accounts & Resources / 1600x1024` | `2:189` | Original page mirror and ownership map. | Superseded visually by `104:2`, still useful for page content lineage. |
-| `03 Usage & Channels / 1600x1024` | `2:309` | Original page mirror and ownership map. | Superseded visually by `104:226`, still useful for page content lineage. |
+| `01 Operations Overview / 1600x1024` | `2:81` | Original page mirror and ownership map. | Superseded visually by `373:716`, still useful for page content lineage. |
+| `02 Accounts & Resources / 1600x1024` | `2:189` | Original page mirror and ownership map. | Superseded visually by `373:866`, still useful for page content lineage. |
+| `03 Usage & Channels / 1600x1024` | `2:309` | Original page mirror and ownership map. | Superseded visually by `373:1016`, still useful for page content lineage. |
 | `04 State & Safety Matrix` | `2:427` | Required state and safety coverage. | Present, but page-level state placement still needs visual QA. |
 | `06` / `07` / `08` current implementation captures | `17:2`, `22:2`, `23:2` | React-visible implementation baseline. | Evidence only; do not treat as final visual design. |
-| `09 Layout Effect Draft v1.2 Text Rhythm / 1600x1024` | `99:2` | Refined workbench visual protocol. | Accepted direction for Operations. |
-| `10 Layout Effect Draft v1.3 Accounts & Resources / 1600x1024` | `104:2` | Refined Accounts desktop draft. | First review cleanup complete; needs component states and responsive QA. |
-| `11 Layout Effect Draft v1.3 Usage & Channels / 1600x1024` | `104:226` | Refined Usage desktop draft. | First review cleanup complete; needs component states and responsive QA. |
+| `09 Layout Effect Draft v1.2 Text Rhythm / 1600x1024` | `99:2` | Prior refined workbench protocol. | Superseded by `373:716`; keep as lineage only. |
+| `10 Layout Effect Draft v1.3 Accounts & Resources / 1600x1024` | `104:2` | Prior Accounts desktop draft. | Superseded by `373:866`; keep as lineage only. |
+| `11 Layout Effect Draft v1.3 Usage & Channels / 1600x1024` | `104:226` | Prior Usage desktop draft. | Superseded by `373:1016`; keep as lineage only. |
+| `AI Candidate Baseline / Operations Overview / 1600x1024` | `365:8` | Baseline AI candidate. | Reference only; hidden contract/footer areas are not current visible UI. |
+| `AI Candidate Baseline / Accounts & Resources / 1600x1024` | `365:52` | Baseline AI candidate. | Reference only; hidden contract/footer areas are not current visible UI. |
+| `AI Candidate Baseline / Usage & Channels / 1600x1024` | `365:96` | Baseline AI candidate. | Reference only; hidden contract/footer areas are not current visible UI. |
+| `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024` | `373:716` | Current Operations desktop design. | Accepted current source for visual/layout implementation. |
+| `AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024` | `373:866` | Current Accounts desktop design. | Accepted current source for visual/layout implementation. |
+| `AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024` | `373:1016` | Current Usage desktop design. | Accepted current source for visual/layout implementation. |
 
-Implementation must not infer that all active pages are accepted just because
-the first refined desktop drafts now exist. The next design work is to review
-`104:2` and `104:226`, place missing component states, and collect narrow/
-responsive QA before frontend implementation treats them as final.
+Implementation must now treat `373:716`, `373:866`, and `373:1016` as the
+current desktop design source. It must not continue implementing from the older
+`99:2`, `104:2`, or `104:226` drafts unless a review explicitly references
+them as historical rationale.
 
 First-review cleanup completed on 2026-06-22:
 
@@ -99,6 +143,10 @@ Do not implement from old screenshots, older single-page Figma files, or the
 earlier App Library / browser-OS experiment unless a new IA/design decision
 explicitly reopens that direction.
 
+Do not implement from Figma Site. The Figma MCP/connector is a design-context
+bridge for the canonical `/design` file; it is not a frontend runtime, not a
+replacement for React/Admin code, and not a source for production UI behavior.
+
 ## Design Requirements
 
 The current frontend design work must satisfy these requirements:
@@ -123,6 +171,13 @@ The current frontend design work must satisfy these requirements:
 10. No token, credential, subscription URL, raw config/log/env, SQLite row,
     edge material, or customer-private data may appear in Figma, docs,
     fixtures, tests, screenshots, or UI.
+11. Figma Site, if used, stays demo-only; implementation must be approved from
+    the Figma design frames and this GitHub design index.
+12. The visible operator page no longer includes a large hero/page-title block;
+    page identity is carried by the ShellRail route state and TopBar context.
+13. System Search is a normal top-bar form/result surface. AppLibrary,
+    NavigationLibrary, app drawer, dock, drag/resize/windowing, and OS desktop
+    behavior are not part of the current Admin implementation target.
 
 ## Current Page Design Content
 
@@ -130,12 +185,13 @@ The current frontend design work must satisfy these requirements:
 
 | Area | Required content | Current Figma intent |
 | --- | --- | --- |
-| Top status | Search, `Production read-only`, `Summary route`, `No write actions`, operator role. | Protected console context and safe global chrome. |
-| Page header | `Overview / Operations Overview`, `Operations Overview`, short operator summary. | Orientation without hero weight. |
-| Metric cards | Health, risk cases, collection freshness, channel coverage. | Four fixed text lanes with value, concise note, owner chip, and trend slot. |
+| ShellRail | Brand, primary routes, planned route group. | Compact route ownership; no separate app drawer. |
+| TopBar | Center System Search, environment, alert, operator, route pill. | Protected console context and safe global chrome. |
+| Metric cards | Platform health, risk cases, collection freshness, channel coverage. | Four fixed `300 x 150` lanes with value, concise note, owner chip, and trend slot. |
 | Risk Queue | Level, object, owner, seen, action. | Main operator review queue; overview routes rather than owning detail. |
-| Next Actions | Route to Accounts/Usage; locked Audit route. | Compact owner-page handoff, not a duplicate ledger. |
-| Owner Page Handoff | Accounts, Usage, Audit ownership strips. | Bottom route ownership reminder with short copy. |
+| Next Actions | Route to owner pages; locked future work stays gated. | Compact owner-page handoff, not a duplicate ledger. |
+| Review Candidates | Candidate evidence and route ownership. | Bounded review panel, not a durable case-management UI. |
+| Lower evidence strip | Operations metrics and event log. | Read-only signal trend and recent event context. |
 
 ### Accounts & Resources
 
@@ -143,9 +199,9 @@ The current frontend design work must satisfy these requirements:
 | --- | --- |
 | Account Directory | Account refs, state, linked resources, risk, last safe activity. |
 | Resources & Orders | Order/resource/artifact safe refs, plan, lifecycle, delivery state. |
-| Quota & Usage | Quota policy, used/total, measured channel count, review note. |
 | Lifecycle | Account/order/artifact lifecycle review and future dry-run split. |
-| History & Events | Safe computed event preview until durable history exists. |
+| Account Metrics | Active account, resource order, quota pressure, and lifecycle warning trend. |
+| Account Event Log | Safe computed event preview until durable history exists. |
 
 ### Usage & Channels
 
@@ -154,8 +210,8 @@ The current frontend design work must satisfy these requirements:
 | Collection Freshness | Generated time, observed age, stale/unknown state, threshold. |
 | Channel Coverage | Issued/measured/missing channels, blockers, utilization, latency. |
 | Usage Ledger | Account/order/channel usage rows with safe refs and collected time. |
-| Collection Anomalies | Delay, zero usage, collection gap, missing receipt, owner handoff. |
-| Receipts & Collectors | Receipt freshness, collector state, heartbeat/diagnostic availability. |
+| Usage Metrics | Freshness, coverage, and anomaly trend evidence. |
+| Usage & Channel Event Log | Delay, zero usage, collection gap, missing receipt, and owner handoff context. |
 
 ## Frontend Implementation Targets
 
@@ -178,23 +234,23 @@ The current frontend design work must satisfy these requirements:
 
 ## UI Copy Pack For Current Figma Frame
 
-Use this copy pack for the first frontend pass from the v1.2 frame.
+Use this copy pack for the first frontend pass from the Visual Polish frames.
 
 | Surface | Copy |
 | --- | --- |
 | Brand | `GlobalCircle AI`, `Proxy Gateway` |
-| Search | `Search users, orders, channels, cases...` |
-| Status chips | `Production read-only`, `Summary route`, `No write actions` |
+| Search | Operations: `Search users, orders, channels, cases, or events...`; Accounts: `Search accounts, orders, subscriptions, or lifecycle...`; Usage: `Search usage, channels, collectors, or receipts...` |
+| Status chips | Environment, alert count, operator, and route pill in TopBar only. |
 | Operator | `Operator`, `Safe review` |
-| Sidebar active | `Overview`, `Accounts`, `Usage` |
-| Sidebar planned | `Audit`, `Platform`, `Settings`, state `Plan` |
-| Page title | `Operations Overview` |
-| Page subtitle | `Operator summary for health, risk routing, and owner-page handoff.` |
-| Header chips | `3 modules active`, `Read-only route` |
+| Sidebar active | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` |
+| Sidebar planned | `Audit & Cases`, `Platform Development`, `System Settings` |
+| Page title | Hidden in the visible Visual Polish pages; route identity lives in shell chrome. |
+| Page subtitle | Hidden in the visible Visual Polish pages; supporting explanation stays in docs or state feedback. |
+| Header chips | Removed from normal operator UI. |
 | Metrics | `Health / Good / Ready / No source errors`; `Risk cases / 18 / +6 yesterday / High 4 · Med 9 · Low 5`; `Freshness / 2m 14s / P95 age / Threshold 5m`; `Coverage / 98.6% / 24 / 25 measured / 1 delayed` |
 | Risk Queue | `Level`, `Object`, `Owner`, `Seen`, `Action`; rows route to `Accounts`, `Usage`, or `Audit` |
 | Next Actions | `Accounts & Resources`, `Usage & Channels`, `Audit & Cases`; actions `Open`, `Locked` |
-| Owner Page Handoff | `Accounts & Resources / Directory · orders · quota / Decision`; `Usage & Channels / Freshness · coverage · receipts / Evidence`; `Audit & Cases / History · review workflow / Planned` |
+| Review Candidates | Bounded candidate rows with owner route and severity state. |
 
 Copy must stay short enough to fit the v1.2 text lanes. If a label needs a
 paragraph, move the detail to docs, tooltip, drawer, or state feedback.
@@ -210,13 +266,19 @@ paragraph, move the detail to docs, tooltip, drawer, or state feedback.
 | Color semantics | Blue = navigation/action, green = healthy, amber = delayed/review, red = risk, slate/gray = neutral/planned. |
 | Typography | Integer font sizes, no negative letter spacing, heavy weight only for nav, title, and primary metrics. |
 | Actions | Overview routes to owner pages; it does not duplicate owner-page ledgers or mutation actions. |
-| Responsive | Desktop target is `1600 x 1024`; narrow/mobile are separate safe review projections. |
+| Visual frame | Current Figma nodes are named `1600x1024` but the visible polished frame is `1600 x 908`; ShellRail remains `224 x 1024`. |
+| Chrome geometry | ShellRail `0/0/224/1024`; TopBar `252/24/1296/58`; System Search `340 x 40` centered in TopBar. |
+| Metric geometry | Four cards at `276/592/908/1224`, `y=102`, `300 x 150`; chips sit inside the upper-right metric region. |
+| Panel geometry | Three primary panels at `x=252/692/1132`, `416 x 260`; Operations/Accounts `y=300`, Usage `y=288`. |
+| Lower evidence | Chart/event-log panels begin near `y=596`, each `628 x 280`. |
+| Responsive | Desktop target is the current Visual Polish geometry; `1024px`, `768px`, and mobile are separate safe review projections. |
 
 ## Validation Checklist
 
 Before marking a frontend UI pass ready:
 
-1. Figma review uses the canonical file and current frame `99:2`.
+1. Figma review uses the canonical file and current frames `373:716`,
+   `373:866`, and `373:1016`.
 2. Implemented UI matches the page ownership model from Navigation IA.
 3. Visible copy matches the UI content matrix and this copy pack.
 4. Design-only copy is not rendered in normal operator mode.

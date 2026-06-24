@@ -61,6 +61,6 @@ describe("admin UI reference model", () => {
     expect(getAdminUiSurfaceReference("usage-ledger")?.primaryReference).toBe("tremor");
     expect(getAdminUiSurfaceReference("account-directory")?.primaryReference).toBe("ant-design-pro");
     expect(getAdminUiSurfaceReference("resource-orders")?.supportingReferences).toContain("arco-design-pro");
-    expect(getAdminUiSurfaceReference("navigation-command")?.primaryReference).toBe("shadcn-ui");
+    expect(getAdminUiSurfaceReference("navigation-and-search")?.primaryReference).toBe("shadcn-ui");
   });
 });

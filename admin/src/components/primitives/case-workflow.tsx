@@ -52,7 +52,8 @@ export function RiskQueue({
   emptyDescription = "No active candidates match the current filters.",
   emptyFilterTitle = "No matching cases",
   emptyFilterDescription = "No active candidates match the current risk filter.",
-  footer
+  footer,
+  previewLimit
 }: {
   title: string;
   description: string;
@@ -65,12 +66,15 @@ export function RiskQueue({
   emptyFilterTitle?: string;
   emptyFilterDescription?: string;
   footer?: ReactNode;
+  previewLimit?: number;
 }) {
   const [severityFilter, setSeverityFilter] = useState<RiskFilterKey>("all");
   const counts = useMemo(() => riskFilterCounts(items), [items]);
   const visibleItems = useMemo(() => (
     items.filter((item) => riskMatchesFilter(item, severityFilter))
   ), [items, severityFilter]);
+  const previewItems = previewLimit ? visibleItems.slice(0, previewLimit) : visibleItems;
+  const hiddenPreviewCount = Math.max(visibleItems.length - previewItems.length, 0);
 
   return (
     <section className="case-workbench-card" aria-label={title}>
@@ -107,7 +111,7 @@ export function RiskQueue({
             <RiskQueueState title={emptyFilterTitle} description={emptyFilterDescription} />
           ) : (
             <div className="case-queue-list">
-              {visibleItems.map((item) => (
+              {previewItems.map((item) => (
                 onSelect ? (
                   <button
                     aria-pressed={item.ref === selectedRef}
@@ -124,6 +128,11 @@ export function RiskQueue({
                   </article>
                 )
               ))}
+              {hiddenPreviewCount > 0 ? (
+                <span className="case-preview-note">
+                  {hiddenPreviewCount} more candidates are routed to the detail page.
+                </span>
+              ) : null}
             </div>
           )}
         </>

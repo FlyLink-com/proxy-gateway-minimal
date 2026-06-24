@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "../App";
@@ -228,39 +228,17 @@ describe("admin navigation", () => {
     expect(within(workspaceSidebar).getByRole("button", { name: "Operations Overview" })).not.toBeNull();
     expect(within(workspaceSidebar).getByRole("button", { name: "Accounts & Resources" })).not.toBeNull();
     expect(within(workspaceSidebar).getByRole("button", { name: "Usage & Channels" })).not.toBeNull();
-    expect(within(workspaceSidebar).getByLabelText("Open navigation library").closest("details")?.hasAttribute("open")).toBe(false);
-    fireEvent.click(within(workspaceSidebar).getByLabelText("Open navigation library"));
-    const navigationLibraryMenu = within(workspaceSidebar).getByLabelText("Open navigation library").closest("details");
-    expect(navigationLibraryMenu?.hasAttribute("open")).toBe(true);
-    const navigationLibrarySearch = within(workspaceSidebar).getByLabelText("Search navigation library");
-    expect(navigationLibrarySearch).not.toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(navigationLibrarySearch));
-    fireEvent.change(navigationLibrarySearch, { target: { value: "quota" } });
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(navigationLibraryMenu?.hasAttribute("open")).toBe(false);
-    expect((navigationLibrarySearch as HTMLInputElement).value).toBe("");
-    fireEvent.click(within(workspaceSidebar).getByLabelText("Open navigation library"));
-    await waitFor(() => expect(navigationLibraryMenu?.hasAttribute("open")).toBe(true));
-    await waitFor(() => expect(document.activeElement).toBe(navigationLibrarySearch));
-    fireEvent.change(navigationLibrarySearch, { target: { value: "admin api" } });
-    fireEvent.pointerDown(document.body);
-    await waitFor(() => expect(navigationLibraryMenu?.hasAttribute("open")).toBe(false));
-    expect((navigationLibrarySearch as HTMLInputElement).value).toBe("");
-    fireEvent.click(within(workspaceSidebar).getByLabelText("Open navigation library"));
-    expect(navigationLibraryMenu?.hasAttribute("open")).toBe(true);
-    expect(within(workspaceSidebar).getByLabelText("Console settings")).not.toBeNull();
-    expect(within(workspaceSidebar).getByLabelText("Admin API connection settings")).not.toBeNull();
-    expect(within(workspaceSidebar).queryByText("Admin API connection")).toBeNull();
-    expect(within(workspaceSidebar).getByRole("button", { name: "Preview site Public shell" })).not.toBeNull();
-    expect(within(workspaceSidebar).getByRole("button", { name: "Open user portal User view" })).not.toBeNull();
-    expect(within(workspaceSidebar).getByLabelText("Panels")).not.toBeNull();
-    expect(within(workspaceSidebar).getByRole("button", { name: /Health Summary/ })).not.toBeNull();
-    expect(within(workspaceSidebar).getByRole("button", { name: /Quota & Usage/ })).not.toBeNull();
-    expect(within(workspaceSidebar).getByRole("button", { name: /Usage Ledger/ })).not.toBeNull();
-    expect(within(workspaceSidebar).getByLabelText("Platform Development planned")).not.toBeNull();
-    expect(within(workspaceSidebar).getByLabelText("System Settings planned")).not.toBeNull();
-    expect(within(workspaceSidebar).getByLabelText("About planned")).not.toBeNull();
-    expect(within(workspaceSidebar).queryByLabelText("Audit & Cases planned")).toBeNull();
+    expect(within(workspaceSidebar).queryByLabelText("Open navigation library")).toBeNull();
+    expect(within(workspaceSidebar).queryByLabelText("Search navigation library")).toBeNull();
+    expect(workspaceSidebar.textContent).not.toContain("Navigation library");
+    expect(workspaceSidebar.textContent).not.toContain("Console settings");
+    expect(workspaceSidebar.textContent).not.toContain("Panels");
+    expect(workspaceSidebar.textContent).not.toContain("Preview site");
+    expect(workspaceSidebar.textContent).not.toContain("Open user portal");
+    expect(within(workspaceSidebar).getByLabelText("Platform Development planned gate")).not.toBeNull();
+    expect(within(workspaceSidebar).getByLabelText("System Settings planned gate")).not.toBeNull();
+    expect(within(workspaceSidebar).getByLabelText("About planned gate")).not.toBeNull();
+    expect(within(workspaceSidebar).queryByLabelText("Audit & Cases planned gate")).toBeNull();
     expect(workspaceSidebar.textContent).not.toMatch(/Audit & Cases|Key Management|Audit Center|Log Access/);
     expect(within(workspaceSidebar).getByText("Risk A gated").closest("details")?.hasAttribute("open")).toBe(false);
     expect(workspaceSidebar.textContent).not.toContain("Platform health and risk");
@@ -272,6 +250,14 @@ describe("admin navigation", () => {
     expect(screen.getByRole("button", { name: "Operations Overview" }).getAttribute("aria-current")).toBe("page");
     expect(screen.queryByRole("button", { name: "Audit & Cases" })).toBeNull();
     expect(screen.getByLabelText("Operator account")).not.toBeNull();
+    const topSearch = screen.getByRole("search", { name: "Search Admin Console" });
+    fireEvent.change(within(topSearch).getByLabelText("Search users, orders, channels, cases, or events"), { target: { value: "account" } });
+    expect(within(topSearch).getByDisplayValue("account")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Search Results" })).not.toBeNull();
+    expect(screen.getByRole("status", { name: "Admin system search results" }).textContent).toContain("results");
+    expect(screen.queryByLabelText("Search navigation library")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Usage Ledger" })).not.toBeNull();
     expect(screen.queryByLabelText("Console status bar")).toBeNull();
     expect(document.querySelector(".admin-content")?.textContent).not.toContain("Admin API connection");
   });
@@ -292,18 +278,38 @@ describe("admin navigation", () => {
     expect(screen.queryByText("Collection trust, channel health, and data anomalies")).toBeNull();
     expect(screen.queryByLabelText("Usage & Channels page navigation")).toBeNull();
     expect(screen.queryByLabelText("Usage & Channels card controls")).toBeNull();
+    const usageSections = screen.getByRole("navigation", { name: "Usage & Channels sections" });
+    expect(within(usageSections).getByRole("button", { name: "Collection Freshness" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("button", { name: "Collection Freshness hide module" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Channel Coverage hide module" })).toBeNull();
+    fireEvent.click(within(usageSections).getByRole("button", { name: "Channel Coverage" }));
     expect(screen.getByRole("button", { name: "Channel Coverage hide module" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Collection Freshness hide module" })).toBeNull();
+    fireEvent.click(within(usageSections).getByRole("button", { name: "Usage Ledger" }));
     expect(screen.getByRole("button", { name: "Usage Ledger hide module" })).not.toBeNull();
+    fireEvent.click(within(usageSections).getByRole("button", { name: "Collection Anomalies" }));
     expect(screen.getByRole("button", { name: "Collection Anomalies hide module" })).not.toBeNull();
+    fireEvent.click(within(usageSections).getByRole("button", { name: "Receipts & Collectors" }));
     expect(screen.getByRole("button", { name: "Receipts & Collectors hide module" })).not.toBeNull();
     expect(screen.getByLabelText("Usage & Channels module layout").textContent).not.toContain("Generated time, delay threshold");
+    fireEvent.click(within(usageSections).getByRole("button", { name: "Collection Freshness" }));
+    const topSearch = screen.getByRole("search", { name: "Search Admin Console" });
+    const topSearchInput = within(topSearch).getByLabelText("Search users, orders, channels, cases, or events");
+    fireEvent.change(topSearchInput, { target: { value: "账户" } });
+    expect(within(topSearch).getByDisplayValue("账户")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Search Results" })).not.toBeNull();
+    expect(screen.getByRole("status", { name: "Admin system search results" }).textContent).toContain("results");
+    expect(screen.getByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Usage Ledger" })).not.toBeNull();
+    expect(screen.queryByRole("heading", { name: "Collection Freshness" })).toBeNull();
+    expect(screen.queryByLabelText("Search navigation library")).toBeNull();
+    expect(screen.queryByLabelText("Open navigation library")).toBeNull();
+    fireEvent.change(topSearchInput, { target: { value: "" } });
+    expect(screen.getByRole("heading", { name: "Collection Freshness" })).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Collection Freshness hide module" }));
     expect(screen.queryByRole("heading", { name: "Collection Freshness" })).toBeNull();
-    const usageWorkspaceSidebar = screen.getByLabelText("Workspace sidebar");
-    fireEvent.click(within(usageWorkspaceSidebar).getByLabelText("Open navigation library"));
-    fireEvent.click(within(usageWorkspaceSidebar).getByRole("button", { name: /Collection Freshness/ }));
-    expect(screen.getByRole("heading", { name: "Collection Freshness" })).not.toBeNull();
+    expect(screen.queryByLabelText("Open navigation library")).toBeNull();
     expect(screen.getByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
   });
@@ -340,17 +346,24 @@ describe("admin navigation", () => {
     expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
     expect(screen.queryByLabelText("Accounts & Resources page navigation")).toBeNull();
     expect(screen.queryByLabelText("Accounts & Resources card controls")).toBeNull();
+    const accountSections = screen.getByRole("navigation", { name: "Accounts & Resources sections" });
+    expect(within(accountSections).getByRole("button", { name: "Account Directory" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByRole("button", { name: "Account Directory hide module" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Resources & Orders hide module" })).toBeNull();
+    fireEvent.click(within(accountSections).getByRole("button", { name: "Resources & Orders" }));
     expect(screen.getByRole("button", { name: "Resources & Orders hide module" })).not.toBeNull();
+    fireEvent.click(within(accountSections).getByRole("button", { name: "Quota & Usage" }));
     expect(screen.getByRole("button", { name: "Quota & Usage hide module" })).not.toBeNull();
+    fireEvent.click(within(accountSections).getByRole("button", { name: "Lifecycle" }));
     expect(screen.getByRole("button", { name: "Lifecycle hide module" })).not.toBeNull();
+    fireEvent.click(within(accountSections).getByRole("button", { name: "History & Events" }));
     expect(screen.getByRole("button", { name: "History & Events hide module" })).not.toBeNull();
     expect(screen.getByLabelText("Accounts & Resources module layout").textContent).not.toContain("Safe account refs");
     expect(screen.getByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
   });
 
-  test("uses navigation library search as a command palette for pages, panels, and settings", async () => {
+  test("keeps account menu in the top bar without a navigation library utility layer", async () => {
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
@@ -360,93 +373,8 @@ describe("admin navigation", () => {
     render(createElement(App));
 
     expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
-    const workspaceSidebar = screen.getByLabelText("Workspace sidebar");
-    fireEvent.click(within(workspaceSidebar).getByLabelText("Open navigation library"));
-    const librarySearch = within(workspaceSidebar).getByLabelText("Search navigation library");
-    fireEvent.change(librarySearch, { target: { value: "channel" } });
-
-    const workspacePages = within(workspaceSidebar).getByLabelText("Workspace pages");
-    const panelApps = within(workspaceSidebar).getByLabelText("Panels");
-    expect(within(workspacePages).getByText("Usage & Channels")).not.toBeNull();
-    expect(panelApps.textContent).toContain("Channel Coverage");
-    expect(panelApps.textContent).toContain("Usage Ledger");
-    expect(within(workspaceSidebar).queryByText("Risk notifications")).toBeNull();
-    expect(within(workspaceSidebar).getByLabelText(/navigation library results/)).not.toBeNull();
-
-    fireEvent.change(librarySearch, { target: { value: "admin api" } });
-    expect(within(workspaceSidebar).getByLabelText("Console settings").textContent).toContain("Admin API");
-    expect(within(workspaceSidebar).queryByText("Risk notifications")).toBeNull();
-    expect(within(workspaceSidebar).queryByText("Usage Ledger")).toBeNull();
-
-    fireEvent.change(librarySearch, { target: { value: "channel" } });
-
-    fireEvent.click(within(workspacePages).getByRole("button", { name: /Usage & Channels/ }));
-
-    expect(await screen.findByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
-    expect((within(workspaceSidebar).getByLabelText("Search navigation library") as HTMLInputElement).value).toBe("");
-    expect(screen.getByRole("button", { name: "Usage & Channels" }).getAttribute("aria-current")).toBe("page");
-  });
-
-  test("opens cross-page modules from the navigation map route", async () => {
-    saveAdminSession({
-      baseUrl: "http://127.0.0.1:3456",
-      consoleToken: "admin_console_ref"
-    });
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input))));
-
-    render(createElement(App));
-
-    expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
-    const workspaceSidebar = screen.getByLabelText("Workspace sidebar");
-    fireEvent.click(within(workspaceSidebar).getByLabelText("Open navigation library"));
-    const librarySearch = within(workspaceSidebar).getByLabelText("Search navigation library");
-    fireEvent.change(librarySearch, { target: { value: "quota" } });
-
-    const panelApps = within(workspaceSidebar).getByLabelText("Panels");
-    fireEvent.click(within(panelApps).getByRole("button", { name: /Quota & Usage/ }));
-
-    expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Accounts & Resources" }).getAttribute("aria-current")).toBe("page");
-    expect((within(workspaceSidebar).getByLabelText("Search navigation library") as HTMLInputElement).value).toBe("");
-  });
-
-  test("routes the risk notification badge back to the operations dashboard", async () => {
-    saveAdminSession({
-      baseUrl: "http://127.0.0.1:3456",
-      consoleToken: "admin_console_ref"
-    });
-    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({})));
-
-    render(createElement(App));
-
-    expect(await screen.findByLabelText("Operator account")).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Usage & Channels" }));
-    expect(await screen.findByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
-
-    const workspaceSidebar = screen.getByLabelText("Workspace sidebar");
-    fireEvent.click(within(workspaceSidebar).getByLabelText("Open navigation library"));
-    fireEvent.click(within(workspaceSidebar).getByRole("button", { name: "Risk notifications 0" }));
-
-    expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Operations Overview" }).getAttribute("aria-current")).toBe("page");
-  });
-
-  test("opens read-only environment from navigation library and account menu from the top bar", async () => {
-    saveAdminSession({
-      baseUrl: "http://127.0.0.1:3456",
-      consoleToken: "admin_console_ref"
-    });
-    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input))));
-
-    render(createElement(App));
-
-    expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
-    const workspaceSidebar = screen.getByLabelText("Workspace sidebar");
-    fireEvent.click(within(workspaceSidebar).getByLabelText("Open navigation library"));
-    fireEvent.click(within(workspaceSidebar).getByLabelText("Environment status"));
-    expect(screen.getByText("Production read-only supervision")).not.toBeNull();
-    expect(screen.getByText(/Production actions require a Risk A gate/)).not.toBeNull();
+    expect(screen.queryByLabelText("Open navigation library")).toBeNull();
+    expect(screen.queryByLabelText("Environment status")).toBeNull();
 
     fireEvent.click(screen.getByLabelText("Operator account"));
     expect(screen.getAllByText("operator").length).toBeGreaterThanOrEqual(1);

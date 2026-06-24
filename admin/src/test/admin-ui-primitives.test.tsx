@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { TopBar } from "../components/layout/top-bar";
 import {
   DataTable,
   DataSourceBadge,
@@ -17,7 +18,6 @@ import {
   SectionPanel,
   StateFeedback,
   StatusChip,
-  NavigationLibrary,
   WorkspaceSidebar
 } from "../components/primitives";
 
@@ -26,6 +26,27 @@ afterEach(() => {
 });
 
 describe("admin ui primitives", () => {
+  test("renders top bar search as a system-scoped form control", () => {
+    const onSearchChange = vi.fn();
+    const { rerender } = render(
+      <TopBar activePage="dashboard" search="" onSearchChange={onSearchChange} />
+    );
+
+    const searchForm = screen.getByRole("search", { name: "Search Admin Console" });
+    const input = screen.getByLabelText("Search users, orders, channels, cases, or events");
+    const searchControl = input.closest(".top-bar-search");
+    expect(searchForm).toBe(searchControl);
+    expect(searchControl?.getAttribute("data-search-scope")).toBe("system");
+    expect(searchControl?.getAttribute("data-search-state")).toBe("idle");
+
+    fireEvent.change(input, { target: { value: "quota" } });
+    expect(onSearchChange).toHaveBeenCalledWith("quota");
+
+    rerender(<TopBar activePage="dashboard" search="quota" onSearchChange={onSearchChange} />);
+    const activeControl = screen.getByLabelText("Search users, orders, channels, cases, or events").closest(".top-bar-search");
+    expect(activeControl?.getAttribute("data-search-state")).toBe("active");
+  });
+
   test("renders metric cards with the existing dashboard card contract", () => {
     render(
       <MetricCard
@@ -247,7 +268,7 @@ describe("admin ui primitives", () => {
     expect(screen.getByText("Account Directory")).not.toBeNull();
   });
 
-  test("renders workspace sidebar chrome with primary routes and navigation library slot", () => {
+  test("renders workspace sidebar chrome with primary routes and no navigation library slot", () => {
     const onNavigate = vi.fn();
 
     render(
@@ -257,7 +278,6 @@ describe("admin ui primitives", () => {
           name: "GlobalCircle AI",
           subtitle: "Proxy Gateway"
         }}
-        navigationLibrary={<button type="button">Navigation library</button>}
         pinnedApps={[
           {
             active: true,
@@ -289,48 +309,12 @@ describe("admin ui primitives", () => {
     expect(within(sidebar).getByText("GlobalCircle AI")).not.toBeNull();
     expect(within(sidebar).getByLabelText("Primary workspace routes")).not.toBeNull();
     expect(within(sidebar).getByRole("button", { name: "Operations Overview" }).getAttribute("aria-current")).toBe("page");
-    expect(within(sidebar).getByRole("button", { name: "Navigation library" })).not.toBeNull();
+    expect(within(sidebar).queryByRole("button", { name: "Navigation library" })).toBeNull();
     expect(within(sidebar).getByRole("button", { name: "Risk A gated" })).not.toBeNull();
 
     fireEvent.click(within(sidebar).getByRole("button", { name: "Accounts & Resources" }));
 
     expect(onNavigate).toHaveBeenCalledWith("users");
-  });
-
-  test("renders navigation library chrome with search, grouped routes, and empty state", () => {
-    const onSearchChange = vi.fn();
-
-    render(
-      <NavigationLibrary
-        emptyState={<span>No matching routes, panels, or settings.</span>}
-        open
-        plannedApps={<div>System Settings</div>}
-        panels={<button type="button">Health Summary</button>}
-        resultCount={4}
-        search="health"
-        totalCount={24}
-        utilities={<button type="button">Risk notifications</button>}
-        workspacePages={<button type="button">Operations Overview</button>}
-        onSearchChange={onSearchChange}
-      />
-    );
-
-    const trigger = screen.getByLabelText("Open navigation library");
-    expect(trigger.closest("details")?.getAttribute("data-ui-contract")).toBe("app-shell");
-    expect(trigger.closest("details")?.getAttribute("data-figma-component")).toBe("SidebarNavigation");
-    expect(trigger.closest("details")?.getAttribute("data-ui-surface")).toBe("navigation-library");
-    expect(trigger.closest("details")?.getAttribute("data-density")).toBe("normal");
-    expect(trigger.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByLabelText("24 navigation library entries")).not.toBeNull();
-    expect(screen.getByLabelText("4 navigation library results")).not.toBeNull();
-    expect(screen.getByLabelText("Console settings")).not.toBeNull();
-    expect(screen.getByLabelText("Workspace pages")).not.toBeNull();
-    expect(screen.getByLabelText("Panels")).not.toBeNull();
-    expect(screen.getByLabelText("Planned routes")).not.toBeNull();
-
-    fireEvent.change(screen.getByLabelText("Search navigation library"), { target: { value: "quota" } });
-
-    expect(onSearchChange).toHaveBeenCalledWith("quota");
   });
 
   test("renders data source badges with explicit source state", () => {
@@ -370,6 +354,7 @@ describe("admin ui primitives", () => {
           { key: "order", header: "Linked order", render: (row) => <SafeRef value={row.order} /> },
           { key: "risk", header: "Risk state", render: (row) => <StatusChip label={row.risk} tone="success" /> }
         ]}
+        density="compact"
         getRowKey={(row) => row.order}
         rows={[{ account: "user_001", order: "order_2048", risk: "Normal" }]}
       />
@@ -377,10 +362,45 @@ describe("admin ui primitives", () => {
 
     const table = screen.getByRole("table", { name: "Accounts and resources supervision table" });
     expect(table.className).toContain("new-console-table");
+    expect(table.className).toContain("new-console-table-compact");
+    expect(table.parentElement?.className).toContain("new-console-table-shell-compact");
     expect(screen.getByRole("columnheader", { name: "User account" })).not.toBeNull();
     expect(screen.getByRole("cell", { name: "user_001" })).not.toBeNull();
     expect(screen.getByRole("cell", { name: "order_2048" })).not.toBeNull();
     expect(screen.getAllByRole("row")).toHaveLength(2);
+  });
+
+  test("contains long data tables with reusable data card pagination", () => {
+    render(
+      <DataTable
+        ariaLabel="Paginated accounts table"
+        columns={[
+          { key: "account", header: "User account", render: (row) => <SafeRef value={row.account} /> },
+          { key: "order", header: "Linked order", render: (row) => <SafeRef value={row.order} /> }
+        ]}
+        getRowKey={(row) => row.order}
+        pagination={{ label: "Accounts table pagination", pageSize: 2 }}
+        rows={[
+          { account: "user_001", order: "order_2048" },
+          { account: "user_002", order: "order_2049" },
+          { account: "user_003", order: "order_2050" }
+        ]}
+      />
+    );
+
+    const pagination = screen.getByRole("navigation", { name: "Accounts table pagination" });
+    expect(pagination.getAttribute("data-figma-component")).toBe("DataCardPagination");
+    expect(pagination.getAttribute("data-ui-surface")).toBe("data-card-pagination");
+    expect(within(pagination).getByText("Showing 1-2 of 3")).not.toBeNull();
+    expect(within(pagination).getByText("Page 1 / 2")).not.toBeNull();
+    expect(screen.queryByText("user_003")).toBeNull();
+
+    fireEvent.click(within(pagination).getByRole("button", { name: "Next" }));
+
+    expect(within(pagination).getByText("Showing 3-3 of 3")).not.toBeNull();
+    expect(within(pagination).getByText("Page 2 / 2")).not.toBeNull();
+    expect(screen.getByText("user_003")).not.toBeNull();
+    expect(screen.queryByText("user_001")).toBeNull();
   });
 
   test("renders data table state rows without dropping headers", () => {

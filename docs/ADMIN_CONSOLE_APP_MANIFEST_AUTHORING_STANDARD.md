@@ -27,7 +27,7 @@ Every application manifest must carry:
 
 | Field | Purpose |
 | --- | --- |
-| `appId` | Stable id used by App Library, search, layout, permissions, tests, and future deep links. |
+| `appId` | Stable id used by System Search, layout, permissions, tests, and future deep links. |
 | `title` | Canonical English UI label. |
 | `subtitle` | Chinese planning label for product/IA review. |
 | `icon` | Stable icon key, not a direct component snapshot. |
@@ -64,7 +64,7 @@ browsing, or production action execution.
 
 | Type | Meaning | Examples |
 | --- | --- | --- |
-| `workspace-app` | First-class appbar page entry. | Operations Overview, Accounts & Resources, Usage & Channels. |
+| `workspace-app` | First-class workspace page entry owned by ShellRail and TopBar. | Operations Overview, Accounts & Resources, Usage & Channels. |
 | `plugin-module` | Restorable page module hosted by a workspace app. | Quota & Usage, Usage Ledger, Collection Freshness. |
 | `system-action` | Console utility or launcher that does not own business objects. | Production environment, Admin API, Preview site. |
 | `planned-app` | Locked future application slot. | Audit & Cases, Platform Development, System Settings. |
@@ -76,8 +76,8 @@ browsing, or production action execution.
 | `large` | First-class workspace app or expanded plugin surface. |
 | `medium` | Default plugin/module size. |
 | `compact` | Dense plugin view that still shows title and status. |
-| `icon-only` | Appbar/App Library launcher or locked utility. |
-| `hidden` | Removed from the canvas and recoverable from App Library. |
+| `icon-only` | Compact route/action launcher or locked utility. |
+| `hidden` | Removed from the canvas and recoverable from System Search or page-local controls. |
 
 ## Runtime States
 
@@ -132,7 +132,8 @@ must never include those forbidden field names or raw values.
 4. Let `adminAppAuthoringManifest` derive the authoring entry.
 5. Add or update tests in `admin/src/test/admin-app-manifest.test.ts`.
 6. If the app has visible UI routing, add a focused navigation or page test.
-7. Do not add a second hardcoded array in App Library or page code.
+7. Do not add a second hardcoded array in System Search, route-index, or page
+   code.
 
 ## Validation
 
@@ -142,7 +143,7 @@ For manifest-only changes:
 npm run admin:test -- src/test/admin-app-manifest.test.ts
 ```
 
-For App Library or route consumption changes:
+For System Search or route consumption changes:
 
 ```powershell
 npm run admin:test -- src/test/navigation.test.ts

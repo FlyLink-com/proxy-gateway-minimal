@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
 import { SubscriptionUsageMonitorPage } from "../pages/subscription-usage-monitor-page";
 
@@ -27,26 +27,25 @@ describe("subscription usage monitor page", () => {
     expect(screen.queryByText("Module Library")).toBeNull();
     expect(screen.queryByText("Page design notes")).toBeNull();
     expect(document.querySelector(".admin-blueprint-edit-zone")).toBeNull();
-    expect(sectionAnchorOrder()).toEqual([
-      "platform-monitoring-freshness",
-      "platform-monitoring-channel-coverage",
-      "platform-monitoring-usage-ledger",
-      "platform-monitoring-anomalies",
-      "platform-monitoring-receipts-collectors"
-    ]);
+    const sectionNav = screen.getByRole("navigation", { name: "Usage & Channels sections" });
+    expect(within(sectionNav).getByRole("button", { name: "Collection Freshness" }).getAttribute("aria-current")).toBe("page");
+    expect(within(sectionNav).getByRole("button", { name: "Channel Coverage" })).not.toBeNull();
+    expect(within(sectionNav).getByRole("button", { name: "Usage Ledger" })).not.toBeNull();
+    expect(within(sectionNav).getByRole("button", { name: "Collection Anomalies" })).not.toBeNull();
+    expect(within(sectionNav).getByRole("button", { name: "Receipts & Collectors" })).not.toBeNull();
+    expect(sectionAnchorOrder()).toEqual(["platform-monitoring-freshness"]);
 
     expect(screen.queryByLabelText("Usage & Channels page navigation")).toBeNull();
     expect(screen.queryByLabelText("Usage & Channels card controls")).toBeNull();
     expect(screen.getByRole("button", { name: "Collection Freshness hide module" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Channel Coverage hide module" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Usage Ledger hide module" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Collection Anomalies hide module" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Receipts & Collectors hide module" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Channel Coverage hide module" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Usage Ledger hide module" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Collection Anomalies hide module" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Receipts & Collectors hide module" })).toBeNull();
 
     expect(screen.getByRole("heading", { name: "Collection Freshness" })).not.toBeNull();
     expect(document.querySelector("#platform-monitoring-freshness")?.getAttribute("data-ui-role")).toBe("panel");
-    expect(screen.getAllByLabelText("Monitoring panel").length).toBe(4);
-    expect(screen.getByLabelText("Platform Tools panel")).not.toBeNull();
+    expect(screen.getByLabelText("Monitoring panel")).not.toBeNull();
     expect(screen.queryByText("Safe diagnostics entry panel")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-panel-field-count")).toHaveLength(0);
     expect(document.querySelectorAll(".admin-blueprint-module-title small")).toHaveLength(0);
@@ -55,30 +54,56 @@ describe("subscription usage monitor page", () => {
     expect(screen.getAllByText("Collector disabled").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Latest usage · observed age")).toBeNull();
     expect(screen.queryByText("Evidence owner for usage collection trust, channel coverage, receipts, collectors, and collection anomalies.")).toBeNull();
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "Channel Coverage" }));
+    expect(within(sectionNav).getByRole("button", { name: "Channel Coverage" }).getAttribute("aria-current")).toBe("page");
+    expect(sectionAnchorOrder()).toEqual(["platform-monitoring-channel-coverage"]);
     expect(screen.getByRole("heading", { name: "Channel Coverage" })).not.toBeNull();
-    expect(screen.getByLabelText("Channel Coverage static table")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Channel Coverage hide module" })).not.toBeNull();
+    expect(screen.getByLabelText("Channel Coverage static table").className).toContain("new-console-table-compact");
     expect(screen.getAllByText("channel_safe_sgp_hy2").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Degraded")).not.toBeNull();
     expect(screen.getByText("51%")).not.toBeNull();
     expect(screen.getAllByText("Pending receipt").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByLabelText("Route latency compact rows")).not.toBeNull();
-    expect(screen.getByText("route_safe_sgp_backup")).not.toBeNull();
-    expect(screen.getByText("146 ms")).not.toBeNull();
-    expect(screen.getAllByText("Stale").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("route_safe_jp_primary")).not.toBeNull();
+    expect(screen.getByText("88 ms")).not.toBeNull();
+    expect(screen.getAllByText("Fresh").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Measured channels · count")).toBeNull();
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "Usage Ledger" }));
+    expect(within(sectionNav).getByRole("button", { name: "Usage Ledger" }).getAttribute("aria-current")).toBe("page");
+    expect(sectionAnchorOrder()).toEqual(["platform-monitoring-usage-ledger"]);
     expect(screen.getByRole("heading", { name: "Usage Ledger" })).not.toBeNull();
-    expect(screen.getByLabelText("Usage Ledger static table")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Usage Ledger hide module" })).not.toBeNull();
+    expect(screen.getByLabelText("Usage Ledger static table").className).toContain("new-console-table-compact");
     expect(screen.getByText("Measured zero")).not.toBeNull();
+    const usageLedgerPagination = screen.getByRole("navigation", { name: "Usage Ledger table pagination" });
+    expect(within(usageLedgerPagination).getByText("Showing 1-2 of 4")).not.toBeNull();
+    expect(screen.queryByText("Not collected")).toBeNull();
+    fireEvent.click(within(usageLedgerPagination).getByRole("button", { name: "Next" }));
+    expect(within(usageLedgerPagination).getByText("Showing 3-4 of 4")).not.toBeNull();
     expect(screen.getByText("Not collected")).not.toBeNull();
     expect(screen.queryByText("Traffic · upload / download / total")).toBeNull();
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "Collection Anomalies" }));
+    expect(within(sectionNav).getByRole("button", { name: "Collection Anomalies" }).getAttribute("aria-current")).toBe("page");
+    expect(sectionAnchorOrder()).toEqual(["platform-monitoring-anomalies"]);
     expect(screen.getByRole("heading", { name: "Collection Anomalies" })).not.toBeNull();
-    expect(screen.getAllByText("Missing receipt").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("button", { name: "Collection Anomalies hide module" })).not.toBeNull();
+    expect(screen.getByText("3 more candidates are routed to the detail page.")).not.toBeNull();
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "Receipts & Collectors" }));
+    expect(within(sectionNav).getByRole("button", { name: "Receipts & Collectors" }).getAttribute("aria-current")).toBe("page");
+    expect(sectionAnchorOrder()).toEqual(["platform-monitoring-receipts-collectors"]);
     expect(screen.getByRole("heading", { name: "Receipts & Collectors" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Receipts & Collectors hide module" })).not.toBeNull();
+    expect(screen.getByLabelText("Platform Tools panel")).not.toBeNull();
     expect(screen.getByLabelText("Receipts and Collectors static operator content")).not.toBeNull();
     expect(screen.getByText("Receipt gaps stay visible without exposing protected runtime material.")).not.toBeNull();
     expect(screen.getByLabelText("Receipt and collector compact diagnostics")).not.toBeNull();
-    expect(screen.getByText("agent_safe_sgp_02")).not.toBeNull();
-    expect(screen.getByText("4m ago")).not.toBeNull();
+    expect(screen.getByText("agent_safe_jp_01")).not.toBeNull();
+    expect(screen.getByText("31s ago")).not.toBeNull();
     expect(document.body.textContent ?? "").toContain("route-latency-sample");
     expect(screen.getAllByText("route_safe_tuic_recovery").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Collectors · availability")).toBeNull();
@@ -89,7 +114,6 @@ describe("subscription usage monitor page", () => {
 
     const renderedText = document.body.textContent ?? "";
     expect(renderedText).not.toMatch(/subscriptionUrl|token=|secret-value|password|yaml|edgecred_/i);
-    expect(screen.getAllByRole("table").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole("img", { name: /usage chart/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Apply filters|Create|Disable|Pause|Archive|Activate|Apply/i })).toBeNull();
   });
@@ -99,18 +123,26 @@ describe("subscription usage monitor page", () => {
 
     expect(screen.getByLabelText("Collection Freshness fixture preview")).not.toBeNull();
     expect(screen.queryByText("Issued vs measured vs missing receipt blockers.")).toBeNull();
-    expect(screen.getAllByText("sgp-hy2 · receipt pending").length).toBeGreaterThanOrEqual(1);
+    const sectionNav = screen.getByRole("navigation", { name: "Usage & Channels sections" });
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "Channel Coverage" }));
     expect(screen.getAllByText("Route latency").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("route_safe_tuic_recovery").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Pending receipt").length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "Usage Ledger" }));
+    expect(screen.getAllByText("sgp-hy2 · receipt pending").length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "Collection Anomalies" }));
+    expect(screen.getAllByText("Missing receipt").length).toBeGreaterThanOrEqual(1);
+
+    fireEvent.click(within(sectionNav).getByRole("button", { name: "Receipts & Collectors" }));
     expect(screen.getAllByText("agent_safe_sgp_02").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("route-latency-sample").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Missing receipt").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Pending receipt").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("Raw runtime config and logs are excluded.")).toBeNull();
 
     const renderedText = document.body.textContent ?? "";
     expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|yaml|edgecred_/i);
-    expect(screen.getAllByRole("table").length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole("button", { name: /Apply filters|Create|Disable|Pause|Archive|Activate|Apply/i })).toBeNull();
   });
 });

@@ -301,6 +301,13 @@
   margin-top: 14px;
 }
 
+.case-preview-note {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
 .case-row {
   width: 100%;
   display: grid;

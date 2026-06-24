@@ -5,7 +5,8 @@ Last updated: 2026-06-21, America/Los_Angeles.
 > Status:
 > - Source Figma file:
 >   <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19>
-> - Target frame: `01 Operations Overview / 1600x1024`
+> - Current target frame: `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024` (`373:716`)
+> - Historical source frame: `01 Operations Overview / 1600x1024`
 > - Risk: C for this design spec; follow-up Admin UI code work is B
 > - Production impact: None
 > - Execution authority: Does not authorize production, AWS, Vultr, DNS,
@@ -14,9 +15,10 @@ Last updated: 2026-06-21, America/Los_Angeles.
 >   customer-data actions
 
 This document preserves the concept-image design intent for the `总览 / 运营控制台`
-first screen. The canonical Figma handoff frame is now
-`01 Operations Overview / 1600x1024` in the multi-frame handoff file. The
-broader Figma mirror contract and the current 2026-06-21 connector evidence are
+first screen. The current implementation target is the 2026-06-24 Visual Polish
+frame `373:716`; the older `01 Operations Overview / 1600x1024` frame remains
+lineage evidence for ownership and content boundaries only. The broader Figma
+mirror contract and the current connector evidence are
 tracked in `docs/ADMIN_CONSOLE_FIGMA_MIRROR.md` and
 `admin/src/design/figma-mirror.ts`.
 
@@ -50,7 +52,7 @@ not a public customer surface.
 
 | Item | Value |
 | --- | --- |
-| Frame name | `Overview Console / 1600x1024` |
+| Frame name | `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024` |
 | Size | `1600 x 1024` |
 | Background | `#F8FAFC` |
 | App shell | Sidebar + top bar + content workbench |

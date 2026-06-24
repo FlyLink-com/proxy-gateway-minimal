@@ -10,15 +10,23 @@ type TopBarProps = {
 };
 
 const PAGE_STATUS_LABEL: Record<AdminPage, string> = {
-  dashboard: "Summary and routing",
-  portalRequests: "Decision owner",
-  usageMonitor: "Evidence owner"
+  dashboard: "Operations",
+  portalRequests: "Accounts",
+  usageMonitor: "Usage"
+};
+
+const PAGE_SEARCH_PLACEHOLDER: Record<AdminPage, string> = {
+  dashboard: "Search users, orders, channels...",
+  portalRequests: "Search accounts, orders, lifecycle...",
+  usageMonitor: "Search usage, channels, receipts..."
 };
 
 export function TopBar({ activePage, search, onSearchChange }: TopBarProps) {
   const pageContext = pageContexts[activePage];
   const pageApp = getWorkspacePageApp(activePage);
   const PageIcon = pageApp?.icon;
+  const searchActive = search.trim().length > 0;
+
   return (
     <header className="top-bar" data-figma-component="TopBar" data-ui-surface="top-bar">
       <div className="top-bar-heading">
@@ -32,19 +40,28 @@ export function TopBar({ activePage, search, onSearchChange }: TopBarProps) {
           <strong className="top-bar-page-title">{pageTitles[activePage]}</strong>
         </div>
       </div>
-      <label className="top-bar-search">
+      <form
+        className={cn("top-bar-search", searchActive ? "top-bar-search-active" : "")}
+        aria-label="Search Admin Console"
+        data-search-state={searchActive ? "active" : "idle"}
+        data-search-scope="system"
+        role="search"
+        onSubmit={(event) => event.preventDefault()}
+      >
         <Search aria-hidden="true" />
-        <span className="sr-only">Search accounts, orders, channels, cases</span>
+        <label className="sr-only" htmlFor="top-bar-system-search">Search users, orders, channels, cases, or events</label>
         <input
-          aria-label="Search accounts, orders, channels, cases"
+          id="top-bar-system-search"
+          aria-label="Search users, orders, channels, cases, or events"
           onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Search accounts, orders, channels, cases"
+          placeholder={PAGE_SEARCH_PLACEHOLDER[activePage]}
           value={search}
         />
-      </label>
+      </form>
       <div className="top-bar-actions" role="group" aria-label="Operator account controls">
-        <span className="dashboard-status-badge dashboard-status-info">{PAGE_STATUS_LABEL[activePage]}</span>
+        <span className="dashboard-status-badge dashboard-status-success">Production</span>
         <span className="dashboard-status-badge dashboard-status-warning">Risk A gated</span>
+        <span className="dashboard-status-badge dashboard-status-info">{PAGE_STATUS_LABEL[activePage]}</span>
         <details className="operator-account-menu">
           <summary className="operator-account-summary" aria-label="Operator account">
             <span className="operator-account-avatar" aria-hidden="true">

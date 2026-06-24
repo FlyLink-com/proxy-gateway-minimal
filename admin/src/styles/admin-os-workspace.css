@@ -15,10 +15,12 @@
 }
 
 .page-subnav-link {
+  appearance: none;
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-control);
   background: var(--admin-surface-muted);
   color: var(--admin-text);
+  cursor: pointer;
   display: inline-grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -42,6 +44,13 @@
   background: var(--admin-hover-surface);
   box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
   transform: translateY(-1px);
+}
+
+.page-subnav-link[data-state="active"] {
+  border-color: var(--admin-info-border);
+  background: #ffffff;
+  box-shadow: inset 3px 0 0 var(--admin-accent);
+  color: var(--admin-accent-strong);
 }
 
 .page-subnav-link[data-mode="owner"]:hover,
@@ -421,7 +430,6 @@ button.admin-overview-action-card:focus-visible {
   background: var(--admin-surface-muted);
 }
 
-.admin-owner-route-list,
 .admin-owner-handoff-list,
 .admin-owner-mini-list,
 .admin-owner-compact-panel {
@@ -430,7 +438,10 @@ button.admin-overview-action-card:focus-visible {
   min-width: 0;
 }
 
-.admin-owner-route-card,
+.admin-owner-handoff-list {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+}
+
 .admin-owner-handoff-item,
 .admin-owner-mini-row,
 .admin-owner-compact-panel {
@@ -441,19 +452,16 @@ button.admin-overview-action-card:focus-visible {
   padding: 11px 12px;
 }
 
-.admin-owner-route-card,
 .admin-owner-handoff-item,
 .admin-owner-compact-panel {
   align-content: start;
 }
 
-.admin-owner-route-card,
 .admin-owner-handoff-item {
   display: grid;
   gap: 6px;
 }
 
-.admin-owner-route-card-head,
 .admin-owner-compact-head,
 .admin-owner-mini-row {
   display: flex;
@@ -463,7 +471,6 @@ button.admin-overview-action-card:focus-visible {
   min-width: 0;
 }
 
-.admin-owner-route-card strong,
 .admin-owner-handoff-item strong,
 .admin-owner-compact-head strong,
 .admin-owner-mini-row strong {
@@ -477,13 +484,16 @@ button.admin-overview-action-card:focus-visible {
   white-space: nowrap;
 }
 
-.admin-owner-route-card p,
 .admin-owner-handoff-item p,
 .admin-owner-compact-panel p {
   margin: 0;
   color: var(--admin-text-soft);
+  display: -webkit-box;
   font-size: 12px;
   line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .admin-owner-handoff-item span:first-child,
@@ -670,6 +680,65 @@ button.admin-overview-action-card:focus-visible {
   color: var(--admin-text-soft);
 }
 
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid {
+  align-items: start;
+  gap: 12px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-card {
+  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  grid-template-areas:
+    "icon label"
+    "icon value"
+    "footer footer";
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 4px;
+  min-height: 118px;
+  padding: 12px 14px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-card > span {
+  grid-area: label;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-card strong {
+  grid-area: value;
+  font-size: clamp(23px, 1.85vw, 29px);
+  line-height: 1.05;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-card small {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-footer {
+  grid-area: footer;
+  grid-template-columns: minmax(0, 1fr) 76px;
+  gap: 8px;
+  align-items: center;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-trend {
+  width: 76px;
+  height: 26px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-icon {
+  grid-area: icon;
+  width: 32px;
+  height: 32px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
 .dashboard-grid {
   display: grid;
   gap: 16px;
@@ -769,10 +838,143 @@ button.admin-overview-action-card:focus-visible {
 .admin-blueprint-page-hero h1 {
   margin: 0;
   color: var(--admin-text);
-  font-size: 30px;
+  font-size: 26px;
   font-weight: 700;
   letter-spacing: 0;
+  line-height: 1.18;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-blueprint-page-hero {
+  gap: 6px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-blueprint-page-hero p {
+  font-size: 13px;
   line-height: 1.35;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-blueprint-page-hero p:first-child {
+  font-size: 12px;
+}
+
+.admin-search-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.admin-search-summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 1px solid var(--admin-info-border);
+  border-radius: var(--admin-radius-control);
+  background: var(--admin-info-bg);
+  color: var(--admin-info-fg);
+  padding: 10px 12px;
+}
+
+.admin-search-summary strong {
+  color: var(--admin-text);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.admin-search-summary span {
+  min-width: 0;
+  color: var(--admin-text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.admin-search-result-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.admin-search-result-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-card);
+  background: #ffffff;
+  box-shadow: none;
+  padding: 14px;
+}
+
+.admin-search-result-main {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.admin-search-result-meta,
+.admin-search-result-tags {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.admin-search-result-meta span,
+.admin-search-result-tags span {
+  border: 1px solid var(--admin-border);
+  border-radius: 999px;
+  background: var(--admin-surface-muted);
+  color: var(--admin-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 4px 8px;
+}
+
+.admin-search-result-card h2 {
+  margin: 0;
+  color: var(--admin-text);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.admin-search-result-card p {
+  margin: 0;
+  color: var(--admin-text-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.admin-search-result-action {
+  min-height: var(--admin-touch-target-min);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-control);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 12px;
+}
+
+.admin-search-result-action:not(.admin-search-result-action-disabled):hover {
+  border-color: var(--admin-accent);
+  color: var(--admin-accent);
+}
+
+.admin-search-result-action-disabled {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--admin-muted);
 }
 
 
@@ -816,130 +1018,112 @@ button.admin-overview-action-card:focus-visible {
   grid-auto-flow: row;
   grid-auto-rows: auto;
   gap: 16px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .admin-blueprint-page[data-page="dashboard"] .admin-blueprint-module-board {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
 }
 
 .admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-board {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-board {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
 }
 
 .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="health-summary"] {
   grid-column: 1 / -1;
+  order: 1;
 }
 
 .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="risk-queue"] {
   grid-column: 1 / span 2;
   min-height: 326px;
+  order: 2;
 }
 
 .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="next-actions"] {
-  grid-column: 3;
   min-height: 326px;
+  order: 3;
 }
 
 .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="owner-handoff"] {
   grid-column: 1 / -1;
   min-height: 166px;
+  order: 4;
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="account-overview"] {
   grid-column: 1 / span 2;
-  grid-row: 1;
-  height: 326px;
   min-height: 326px;
+  order: 1;
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="resource-orders"] {
-  grid-column: 3;
-  grid-row: 1;
-  height: 326px;
   min-height: 326px;
+  order: 2;
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="quota-usage"] {
-  grid-column: 1;
-  grid-row: 2;
-  height: 220px;
   min-height: 166px;
+  order: 3;
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="lifecycle"] {
-  grid-column: 2;
-  grid-row: 2;
-  height: 220px;
   min-height: 166px;
+  order: 4;
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="history-events"] {
-  grid-column: 3;
-  grid-row: 2;
-  height: 220px;
   min-height: 166px;
+  order: 5;
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="freshness"] {
-  grid-column: 1;
-  grid-row: 2;
-  height: 220px;
   min-height: 166px;
+  order: 2;
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="channel-coverage"] {
-  grid-column: 2;
-  grid-row: 2;
-  height: 220px;
   min-height: 166px;
+  order: 4;
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="receipts-collectors"] {
-  grid-column: 3;
-  grid-row: 2;
-  height: 220px;
   min-height: 166px;
+  order: 3;
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="usage-ledger"] {
   grid-column: 1 / span 2;
-  grid-row: 1;
-  height: 326px;
   min-height: 326px;
+  order: 1;
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="collection-anomalies"] {
-  grid-column: 3;
-  grid-row: 1;
-  height: 326px;
   min-height: 326px;
+  order: 5;
 }
 
 .admin-blueprint-module-panel {
   --admin-plugin-accent: var(--workbench-category-color, var(--admin-accent));
   position: relative;
-  overflow: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
+  overflow: visible;
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-panel);
   background: #ffffff;
   box-shadow: none;
   backdrop-filter: none;
-  contain: layout paint;
+  contain: layout;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   grid-auto-rows: max-content;
   gap: 12px;
   align-content: start;
   align-items: start;
-  max-block-size: var(--admin-plugin-screen-max-height);
+  max-block-size: none;
   min-width: 0;
   padding: 16px;
   scroll-margin-top: 96px;
@@ -998,6 +1182,13 @@ button.admin-overview-action-card:focus-visible {
 .admin-blueprint-module-panel[data-chrome="operator"]:hover .admin-blueprint-panel-tool-trigger-floating,
 .admin-blueprint-module-panel[data-chrome="operator"]:focus-within .admin-blueprint-panel-tool-trigger-floating {
   opacity: 1;
+}
+
+.admin-blueprint-module-panel > .case-workbench-card {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
 }
 
 .admin-blueprint-module-panel-head {
@@ -1285,6 +1476,38 @@ button.admin-overview-action-card:focus-visible {
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="collection-anomalies"] .admin-fixture-preview-row {
   grid-template-columns: minmax(0, 1fr);
   padding: 14px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="resource-orders"] .admin-fixture-preview,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="channel-coverage"] .admin-fixture-preview,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="collection-anomalies"] .admin-fixture-preview,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="receipts-collectors"] .admin-fixture-preview {
+  gap: 6px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="resource-orders"] .admin-fixture-preview-rows,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="channel-coverage"] .admin-fixture-preview-rows,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="collection-anomalies"] .admin-fixture-preview-rows,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="receipts-collectors"] .admin-fixture-preview-rows {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 6px;
+}
+
+.admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="resource-orders"] .admin-fixture-preview-row,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="channel-coverage"] .admin-fixture-preview-row,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="collection-anomalies"] .admin-fixture-preview-row,
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="receipts-collectors"] .admin-fixture-preview-row {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  padding: 6px 8px;
+}
+
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="channel-coverage"] .admin-fixture-preview-row {
+  min-height: 0;
+}
+
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="collection-anomalies"] .admin-fixture-preview-rows {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
 }
 
 .admin-fixture-preview-row dt {
@@ -1688,6 +1911,16 @@ button.admin-overview-action-card:focus-visible {
   padding-bottom: 2px;
 }
 
+.new-console-table-shell {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.new-console-table-shell-compact {
+  gap: 6px;
+}
+
 .new-console-row {
   display: grid;
   grid-template-columns: minmax(110px, 1fr) minmax(110px, 1fr) minmax(120px, 0.9fr) auto;
@@ -1704,6 +1937,17 @@ button.admin-overview-action-card:focus-visible {
     box-shadow 160ms ease;
 }
 
+.new-console-table-compact {
+  gap: 7px;
+  padding-bottom: 0;
+}
+
+.new-console-table-compact .new-console-row {
+  border-radius: var(--admin-radius-control);
+  gap: 8px;
+  padding: 7px 9px;
+}
+
 .new-console-row-head {
   border: 0;
   background: transparent;
@@ -1711,6 +1955,12 @@ button.admin-overview-action-card:focus-visible {
   font-size: 12px;
   font-weight: 800;
   padding-bottom: 0;
+}
+
+.new-console-table-compact .new-console-row-head {
+  font-size: 11px;
+  padding-bottom: 0;
+  padding-top: 0;
 }
 
 .new-console-row > span {
@@ -1779,6 +2029,74 @@ button.admin-overview-action-card:focus-visible {
 .new-console-state-stale {
   border-color: var(--admin-warning-border);
   background: var(--admin-warning-bg);
+}
+
+.data-card-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-control);
+  background: var(--admin-surface-muted);
+  color: var(--admin-text-soft);
+  padding: 8px 10px;
+}
+
+.new-console-table-shell-compact .data-card-pagination {
+  padding: 6px 8px;
+}
+
+.data-card-pagination-range {
+  min-width: 0;
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.data-card-pagination-controls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.data-card-pagination-button {
+  min-height: var(--admin-touch-target-min);
+  border: 1px solid var(--admin-border-strong);
+  border-radius: var(--admin-radius-control);
+  background: var(--admin-surface);
+  color: var(--admin-text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 10px;
+}
+
+.data-card-pagination-button:hover:not(:disabled),
+.data-card-pagination-button:focus-visible {
+  border-color: var(--admin-info-border);
+  box-shadow: var(--admin-focus-ring);
+}
+
+.data-card-pagination-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.data-card-pagination-page {
+  min-height: var(--admin-touch-target-min);
+  border-radius: var(--admin-radius-pill);
+  background: var(--admin-selected-surface);
+  color: var(--admin-accent);
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 10px;
+  white-space: nowrap;
 }
 
 .new-console-channel-table .new-console-row {
