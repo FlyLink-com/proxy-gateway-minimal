@@ -357,7 +357,7 @@ test("generateClashSubscription emits long-haul quality groups without leaking m
     yaml,
     /name: STABLE\n    type: fallback\n    url: "https:\/\/www\.gstatic\.com\/generate_204"\n    interval: 300\n    proxies:\n      - "ss-stable"/
   );
-  assert.match(yaml, /name: GLOBAL\n    type: select\n    proxies:\n      - AUTO\n      - WEAK-NETWORK\n      - STABLE\n      - FALLBACK/);
+  assert.match(yaml, /name: GLOBAL\n    type: select\n    proxies:\n      - AUTO\n      - STABLE\n      - WEAK-NETWORK\n      - FALLBACK/);
   assert.doesNotMatch(yaml, /qualityClass|weak-network|channelRole|baseline|candidate/);
 });
 

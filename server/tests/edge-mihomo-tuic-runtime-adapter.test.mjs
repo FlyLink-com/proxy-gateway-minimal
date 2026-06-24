@@ -53,7 +53,7 @@ function materialFor(ref) {
   return {
     credentialRef: ref,
     uuid: `${ref}_uuid`,
-    password: `${ref}_password`
+    password: Buffer.from(`${ref}_password`, "utf8").toString("base64")
   };
 }
 
@@ -130,10 +130,10 @@ test("Mihomo TUIC adapter writes candidate config and activates after validation
   assert.match(candidateConfig, /certificate: "\/etc\/mihomo\/server\.crt"/);
   assert.match(candidateConfig, /private-key: "\/etc\/mihomo\/server\.key"/);
   assert.match(candidateConfig, /users:/);
-  assert.match(candidateConfig, /"order_ref_new_uuid": "order_ref_new_password"/);
-  assert.match(candidateConfig, /"order_ref_rotate_uuid": "order_ref_rotate_password"/);
-  assert.match(candidateConfig, /"order_ref_same_uuid": "order_ref_same_password"/);
-  assert.doesNotMatch(JSON.stringify(report), /order_ref_new_password|order_ref_rotate_password|order_ref_same_password/);
+  assert.match(candidateConfig, new RegExp(`"order_ref_new_uuid": "${materialFor("order_ref_new").password}"`));
+  assert.match(candidateConfig, new RegExp(`"order_ref_rotate_uuid": "${materialFor("order_ref_rotate").password}"`));
+  assert.match(candidateConfig, new RegExp(`"order_ref_same_uuid": "${materialFor("order_ref_same").password}"`));
+  assert.doesNotMatch(JSON.stringify(report), /b3JkZXJfcmVmX25ld19wYXNzd29yZA==|b3JkZXJfcmVmX3JvdGF0ZV9wYXNzd29yZA==|b3JkZXJfcmVmX3NhbWVfcGFzc3dvcmQ=/);
 });
 
 test("Mihomo TUIC adapter stops before backup and restart when config test fails", () => {
@@ -203,4 +203,41 @@ test("Mihomo TUIC adapter fails closed when protected material lookup fails", ()
   assert.equal(report.runtimeReceipt.status, "failed");
   assert.equal(report.runtimeReceipt.mutation, false);
   assert.doesNotMatch(JSON.stringify(report), /uuid|password|candidate config/i);
+});
+
+test("Mihomo TUIC adapter fails closed before candidate config when password material is not base64", () => {
+  const calls = [];
+  const adapter = createMihomoTuicExplicitRestartAdapter({
+    serviceName: "mihomo-tuic.service",
+    resolveCredentialMaterial: (credentialRef) => ({
+      credentialRef,
+      uuid: "11111111-1111-4111-8111-111111111111",
+      password: "not-a-base64-tuic-password"
+    }),
+    writeCandidateConfig: () => {
+      calls.push("writeCandidateConfig");
+      throw new Error("candidate config must not be written with invalid TUIC material");
+    },
+    runConfigTest: () => {
+      calls.push("runConfigTest");
+      return { exitCode: 0 };
+    },
+    restartService: () => {
+      calls.push("restartService");
+      return { ok: true };
+    }
+  });
+
+  const report = buildCredentialReconciliationApplyPlan({
+    desiredState: reconciliationState(),
+    inputPath: "desired-state.json",
+    executeProductionMutation: true,
+    runtimeAdapter: adapter
+  });
+
+  assert.equal(report.ok, false);
+  assert.equal(report.runtimeReceipt.status, "failed");
+  assert.equal(report.runtimeReceipt.mutation, false);
+  assert.deepEqual(calls, []);
+  assert.doesNotMatch(JSON.stringify(report), /not-a-base64-tuic-password|11111111-1111-4111-8111-111111111111/);
 });

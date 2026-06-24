@@ -49,7 +49,7 @@ test("Mihomo TUIC host runtime adapter writes candidate, tests config, backs up,
       },
       resolveCredentialMaterial: () => ({
         uuid: "11111111-1111-4111-8111-111111111111",
-        password: "synthetic-host-password"
+        password: Buffer.from("synthetic-host-password", "utf8").toString("base64")
       }),
       commandRunner(command, args) {
         calls.push([command, ...args]);
@@ -119,7 +119,7 @@ test("Mihomo TUIC host runtime adapter retries listener validation after restart
       },
       resolveCredentialMaterial: () => ({
         uuid: "11111111-1111-4111-8111-111111111111",
-        password: "synthetic-host-password"
+        password: Buffer.from("synthetic-host-password", "utf8").toString("base64")
       }),
       commandRunner(command, args) {
         calls.push([command, ...args]);
@@ -173,7 +173,7 @@ test("Mihomo TUIC host runtime adapter stops before backup when config test fail
       },
       resolveCredentialMaterial: () => ({
         uuid: "11111111-1111-4111-8111-111111111111",
-        password: "synthetic-host-password"
+        password: Buffer.from("synthetic-host-password", "utf8").toString("base64")
       }),
       commandRunner(command, args) {
         calls.push([command, ...args]);

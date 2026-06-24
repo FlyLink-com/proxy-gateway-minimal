@@ -8,6 +8,19 @@ function text(value) {
   return String(value ?? "").trim();
 }
 
+function isStrictBase64Text(value) {
+  const raw = text(value);
+  if (!raw || raw.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw)) {
+    return false;
+  }
+  try {
+    const decoded = Buffer.from(raw, "base64");
+    return decoded.length > 0 && decoded.toString("base64") === raw;
+  } catch {
+    return false;
+  }
+}
+
 function bool(value) {
   return value === true;
 }
@@ -54,7 +67,7 @@ function resolveRuntimeUsers(actions, resolveCredentialMaterial) {
     }
     const uuid = text(material.uuid);
     const password = text(material.password);
-    if (!uuid || !password) {
+    if (!uuid || !isStrictBase64Text(password)) {
       return null;
     }
     users.push({ credentialRef, uuid, password });
