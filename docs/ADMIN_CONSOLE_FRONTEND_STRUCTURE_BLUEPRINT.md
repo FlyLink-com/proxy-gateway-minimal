@@ -45,9 +45,9 @@ Phase 1 does not implement React, wire new backend APIs, perform Browser QA,
 create production actions, or introduce new runtime authority.
 
 Current follow-up React work keeps that boundary: it implements only the local
-Admin shell, App Library, plugin container rules, and persisted browser layout
-preferences. It does not add backend authority, production mutation, schema
-migration, or sensitive runtime data exposure.
+Admin shell, System Search, primary-route ownership, module container rules,
+and safe browser layout preferences. It does not add backend authority,
+production mutation, schema migration, or sensitive runtime data exposure.
 
 The 2026-06-20 to 2026-06-21 Admin sequence closed the relationship model,
 capability-gated frontend registration, and static Platform Monitoring
@@ -111,15 +111,15 @@ summary workbench. Owner pages should prefer collapsible sections, saved
 filters, detail drawers, and lazy-mounted widgets so management and monitoring
 logic remains predictable.
 
-The current React implementation treats each visible module as a plugin app:
-the App Library is the restore/search entrypoint, the plugin card header owns
-display controls, and `admin/src/app/plugin-workspace-engine.ts` owns the
-shared local layout rules for visibility, restore, discrete size/height changes,
-drag reordering, and pointer resize distance. Page frames should not invent
-their own editor panels or module-specific layout semantics.
+The current React implementation treats each visible module as a bounded
+workspace module: System Search is the safe discovery/recovery entrypoint, the
+module header owns display controls, and `admin/src/app/plugin-workspace-engine.ts`
+owns shared local layout rules for visibility, restore, discrete size/height
+changes, drag reordering, and pointer resize distance. Page frames should not
+invent their own editor panels or module-specific layout semantics.
 `admin/src/app/admin-app-manifest.ts` is now the concrete App Map source for
-workspace pages, plugin apps, console utilities, planned apps, and safe App
-Library search fields; `docs/ADMIN_CONSOLE_APP_MAP.md` documents that contract.
+workspace pages, module apps, console utilities, planned apps, and safe System
+Search fields; `docs/ADMIN_CONSOLE_APP_MAP.md` documents that contract.
 New app entries should also follow
 `docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md`, which freezes the
 required authoring fields, entry types, layout sizes, runtime states, and
@@ -132,7 +132,7 @@ CSS overrides:
 
 | Target | Primary frame | Layout model | Current rule |
 | --- | --- | --- | --- |
-| Web / desktop workbench | `1600 x 1024` first, then tablet-safe collapse | Multi-column operator workspace with page-owned modules, App Library recovery, and dense evidence widgets. | This is the primary design and implementation target for the current Admin UI closeout. |
+| Web / desktop workbench | `1600 x 1024` first, then tablet-safe collapse | Multi-column operator workspace with page-owned modules, System Search recovery, primary routes, and dense evidence widgets. | This is the primary design and implementation target for the current Admin UI closeout. |
 | Mobile review mode | `390 x 844` first, with `375 x 667` as the small-height guard | Single-column review flow for quick status, risk, and owner-page handoff. | Must be designed as a separate projection, not by reusing the desktop column map, plugin grid, card density, or page scroll plan. |
 
 The current mobile CSS may keep the page safe from clipping while the web
@@ -142,7 +142,7 @@ work must define its own information architecture before implementation:
 1. top status summary and current page identity;
 2. page-local priority tabs or compact section switcher;
 3. one active review card at a time with drill-in details;
-4. bottom navigation and App Library recovery that do not cover content;
+4. bottom navigation and route/search recovery that do not cover content;
 5. safe empty/stale/disconnected states;
 6. no hidden privileged key, audit, log, raw URL, token, credential, raw log, or
    customer-private data surfaces.
@@ -191,8 +191,8 @@ The container model also defines the first visual style baseline:
   (`--admin-desktop-*`, `--admin-statusbar-*`, `--admin-dock-*`) so future
   pages do not restyle the operator desktop one component at a time.
 - Phase 4 visual work must follow `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md`
-  before adding App Library, plugin, workspace, chrome, or drag/resize
-  behaviors.
+  before adding System Search, route launchers, module workspace, chrome, or
+  layout-preset behavior.
 - Sidebar navigation, page-local subnavigation, top-bar route links, and
   route/action cards share one nav-card format: compact height, 8px radius, 1px
   border, icon or marker slot, blue owner/selected state, and muted preview or
@@ -271,7 +271,7 @@ creating immediate route sprawl:
 | Platform Monitoring, route latency, agent status, inspection summaries | `Usage & Channels` sections | Current static UI expansion under existing modules; backend DTO ownership remains pending. |
 | Account & Permissions | `System Settings` / future permission panel | Document as scoped operator-permission content; do not change auth model in this wave. |
 | About | Future safe system-info panel | Can be designed as a low-risk surface after build/version DTO fields are defined. |
-| Key Management | Privileged, not registered for non-super-admin | No route, App Library entry, search source, command result, notification link, hidden DOM, or API call for non-super-admin users. |
+| Key Management | Privileged, not registered for non-super-admin | No route, System Search entry, primary-route item, module restore launcher, command result, notification link, hidden DOM, or API call for non-super-admin users. |
 | Audit Center | Privileged, separate from normal risk/case summaries | Normal operators may see risks/anomalies, not audit rows or raw history. |
 | Log Access | Privileged ephemeral view session | No raw log UI in normal monitoring; no cache/search/localStorage fixture for raw logs. |
 
@@ -535,7 +535,7 @@ implementation:
 | Active pages | `AdminPage` in `admin/src/app/navigation.ts` | Current routes: `dashboard`, `portalRequests`, `usageMonitor`. |
 | Page-local sections | `pageSubNavigation` in `admin/src/app/navigation.ts` | Section IDs must match page content anchors and tests. |
 | Ownership boundary | `pageWorkbenchContracts` in `admin/src/app/navigation.ts` | Update docs, contract, tests, and QA together if ownership changes. |
-| App and plugin registry | `admin/src/app/admin-app-manifest.ts` | Search, App Library grouping, safe route targets, and plugin restore metadata must come from the manifest. |
+| App and plugin registry | `admin/src/app/admin-app-manifest.ts` | System Search grouping, safe route targets, and module restore metadata must come from the manifest. |
 | Expanded relationship model | `docs/ADMIN_CONSOLE_RELATIONSHIP_DRAFT.md` | Use as sequencing and Figma handoff input; do not convert every surface into an active route in one wave. |
 | Workspace layout engine | `admin/src/app/plugin-workspace-engine.ts` and `admin/src/app/plugin-layout-store.ts` | Keep hide/restore/resize/reorder behavior pure and tested before adding richer drag or persistence features. |
 | Plugin container primitive | `admin/src/components/primitives/plugin-container.tsx` | Card-level controls belong in the plugin header; no separate page-level editor card. |

@@ -162,12 +162,12 @@
       ]
     },
     {
-      "id": "B-admin-os-gcc-77-app-library-search",
+      "id": "B-admin-os-gcc-77-system-search",
       "risk": "B",
       "status": "backlog-admin-ui-follow-up",
       "lane": "subscription-control-plane",
-      "title": "Implement GCC-77 App Library search and safe indexing",
-      "goal": "Build App Library search from explicit safe manifest fields instead of scraping rendered UI or exposing unsafe backend/raw material, after the manifest boundary is stable.",
+      "title": "Implement GCC-77 System Search safe discovery",
+      "goal": "Build System Search from explicit safe manifest fields instead of scraping rendered UI or exposing unsafe backend/raw material, after the manifest boundary is stable.",
       "allowedFiles": [
         "admin/src/**/*",
         "docs/ADMIN_CONSOLE_APP_MAP.md",
@@ -225,7 +225,7 @@
       "status": "in-progress-docs-state",
       "lane": "subscription-control-plane",
       "title": "Track GCC-82 Admin OS visual protocol",
-      "goal": "Keep the Phase 4 Gate 0 visual protocol as the docs/design source for spacing, surface hierarchy, App Library density, plugin dimensions, chrome behavior, responsive rules, and downstream implementation checklist.",
+      "goal": "Keep the Phase 4 Gate 0 visual protocol as the docs/design source for spacing, surface hierarchy, System Search density, route-card density, module dimensions, chrome behavior, responsive rules, and downstream implementation checklist.",
       "allowedFiles": [
         "docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md",
         "docs/ADMIN_CONSOLE_APP_MAP.md",

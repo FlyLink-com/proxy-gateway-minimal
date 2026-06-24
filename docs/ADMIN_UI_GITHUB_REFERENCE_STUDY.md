@@ -178,8 +178,8 @@ Design translation:
 - Admin workspace apps behave like first-class console applications.
 - Page modules behave like local plugins/panels with explicit ownership,
   display state, restore path, and safe search metadata.
-- App Library should evolve toward a searchable console library, not a scroll
-  dialog.
+- System Search should evolve toward safe console discovery and recovery, not a
+  scroll dialog or second navigation tree.
 - Usage and channel views should learn from Grafana's panel/explore/alert
   workflow, while keeping our backend summaries as the authority.
 - Alerts and risk queues should route to account, order, channel, collector,
@@ -349,7 +349,7 @@ For this project, the useful extraction is:
 | Dashboard | Workspace app such as Operations Overview, Accounts & Resources, or Usage & Channels. |
 | Panel | Plugin app/module with local controls, display state, and restore path. |
 | Data source | Backend summary/API domain such as accounts, orders, usage ledger, channels, collectors, receipts, or gates. |
-| Variables/filter bar | Safe search and scoped filters inside App Library or page-level toolbars. |
+| Variables/filter bar | Safe search and scoped filters inside System Search or page-level toolbars. |
 | Alerting | Risk queues and anomaly routing, not production execution. |
 | Explore | Drilldown from overview to safe account/order/channel evidence. |
 | Plugin ecosystem | Future reviewed Admin app manifest/YAML mechanism after approval, not arbitrary runtime upload. |
@@ -363,11 +363,11 @@ Implementation backlog derived from the Grafana read:
 | Need | Admin OS rule | Follow-up scope |
 | --- | --- | --- |
 | Source-backed panels | Every plugin panel should name the safe backend summary or display-only data source it visualizes. | Manifest-level `sourceContract` now records `dataSourceRefs`, drilldown targets, evidence routes, and a display-only transform boundary; next UI work should consume it. |
-| Safe filters | Filters behave like dashboard variables, preserving page context without bypassing backend permission checks. | Define page/filter scope before adding richer App Library or evidence search. |
+| Safe filters | Filters behave like dashboard variables, preserving page context without bypassing backend permission checks. | Define page/filter scope before adding richer System Search or evidence search. |
 | Display transforms | Frontend transforms may format, group, sort, and unit-convert; quota, lifecycle, and risk decisions remain backend/domain-owned. | Keep `display transform only` language in component contracts and tests. |
 | Alert routing | Risk items route to account, order, channel, collector, receipt, or gate evidence. | Add `evidenceLink`/`sourcePanelId` only after the target evidence surface exists. |
 | Explore | Explore is a safe evidence drawer or page drilldown, not arbitrary SQL, log, config, or data-source browsing. | Start with read-only account/order/channel drilldown from existing safe summaries. |
-| Library taxonomy | App Library can gain tags, folders, recent/favorite state, and hidden-plugin state once the manifest search contract is explicit. | Build on the current static manifest; do not introduce a runtime plugin market. |
+| Discovery taxonomy | System Search can gain tags, folders, recent/favorite state, and hidden-module state once the manifest search contract is explicit. | Build on the current static manifest; do not introduce a runtime plugin market. |
 
 ## Page Mapping
 

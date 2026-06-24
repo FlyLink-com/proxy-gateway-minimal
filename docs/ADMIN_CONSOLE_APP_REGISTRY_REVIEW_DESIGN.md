@@ -37,7 +37,7 @@ The first safe implementation path is:
 1. Keep all executable React components bundled in the repository.
 2. Let YAML reference only approved component and capability keys.
 3. Review and register YAML through a backend registry before it can appear in
-   App Library.
+   System Search, primary routes, or page-owned module listings.
 4. Enforce user and API permissions at runtime through backend authorization.
 
 Do not let uploaded YAML carry arbitrary JavaScript, CSS, URLs, secrets, raw
@@ -49,7 +49,7 @@ runtime config, or direct backend routes.
 | --- | --- | --- |
 | App authoring standard | `docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md` | Defines the fields a YAML app must satisfy. |
 | App map | `admin/src/app/admin-app-manifest.ts` | Becomes the bundled internal registry seed. |
-| App Library | Current React App Library | Reads published app entries, not raw uploads. |
+| System Search / primary routes | Current React shell discovery and route index | Reads published app entries, not raw uploads. |
 | Workspace layout | Local plugin workspace engine | Uses published app ids and user layout preferences. |
 | Permissions | Current protected Admin session boundary | Adds app capability checks before API access. |
 | Audit | Current docs/test discipline | Records upload, review, publish, disable, archive, and rollback events. |
@@ -80,15 +80,15 @@ stateDiagram-v2
 
 | State | Meaning | UI visibility | Runtime authority |
 | --- | --- | --- | --- |
-| `uploaded` | File accepted into an isolated draft area. | Hidden from App Library. | None. |
-| `quarantined` | Stored for validation and review. | Hidden from App Library. | None. |
-| `schema-valid` | YAML shape and required fields passed validation. | Hidden from App Library. | None. |
+| `uploaded` | File accepted into an isolated draft area. | Hidden from System Search and primary routes. | None. |
+| `quarantined` | Stored for validation and review. | Hidden from System Search and primary routes. | None. |
+| `schema-valid` | YAML shape and required fields passed validation. | Hidden from System Search and primary routes. | None. |
 | `security-reviewed` | Components, capabilities, routes, and forbidden fields reviewed. | Review console only. | None. |
 | `approved` | Platform administrator approved this version. | Ready to publish. | None until published. |
 | `published` | Registry record is active for allowed roles. | Visible by role. | Still requires API permission. |
 | `disabled` | Existing version is stopped without deleting history. | Hidden or disabled marker. | None. |
 | `archived` | Version is retained for audit and rollback history. | Hidden from normal users. | None. |
-| `rejected` | Upload failed review. | Hidden from App Library. | None. |
+| `rejected` | Upload failed review. | Hidden from System Search and primary routes. | None. |
 
 ## Required Review Gates
 
@@ -356,7 +356,7 @@ review storage, permission checks, tests, and operator review flows exist.
 | 2. YAML parser dry-run | Local CLI or test helper parses YAML into canonical safe JSON without persistence. | B | Parser tests cover valid, invalid, and malicious examples. |
 | 3. Review queue model | Backend review state and audit model design. | A if schema/auth changes. | Separate approval before DB/schema/auth work. |
 | 4. Upload quarantine | Admin-only upload endpoint or CLI command stores pending drafts. | A if auth/schema/runtime touched. | Upload does not publish and cannot render. |
-| 5. Publication registry | Approved versions become visible to App Library by role. | A if permissions/schema touched. | Published entries remain backend-gated. |
+| 5. Publication registry | Approved versions become visible to System Search, primary routes, or module lists by role. | A if permissions/schema touched. | Published entries remain backend-gated. |
 | 6. Export/import packages | Signed app packages for controlled migration. | A/B depending on storage and signature scope. | Signature, digest, rollback, and audit are mandatory. |
 
 ## Acceptance Rules For Future Work
@@ -369,8 +369,8 @@ complete:
 3. Uploaded YAML cannot execute code.
 4. Uploaded YAML cannot declare arbitrary URLs.
 5. Upload, review, publish, disable, archive, and rollback produce audit events.
-6. App Library reads only published registry entries or bundled internal seed
-   entries.
+6. System Search, primary routes, and module lists read only published registry
+   entries or bundled internal seed entries.
 7. Operator role visibility is checked separately from backend API authority.
 8. Sensitive fields are rejected without echoing raw submitted values.
 9. High-risk capabilities remain blocked until a separate A-tier approval

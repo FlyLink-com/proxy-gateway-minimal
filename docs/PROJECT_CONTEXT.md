@@ -789,10 +789,10 @@ Current architecture priorities:
   planned slots until their data sources, redaction boundaries, tests, and
   validation exist. Current Admin OS task-state is: GCC-74 app map,
   GCC-75 manifest authoring, and GCC-82 visual protocol are active
-  docs/design-state lines; GCC-76 plugin container template, GCC-77 App Library
-  search/safe indexing, and GCC-78 workspace drag/resize/minimize engine remain
-  backlog/follow-up implementation lines. The current app metadata source of
-  truth is `admin/src/app/admin-app-manifest.ts`. App Registry / YAML import is
+  docs/design-state lines; GCC-76 module container template, GCC-77 System
+  Search safe discovery, and GCC-78 workspace layout preset/restore model
+  remain backlog/follow-up implementation lines. The current app metadata
+  source of truth is `admin/src/app/admin-app-manifest.ts`. App Registry / YAML import is
   future design only and must not be treated as an implemented runtime registry
   or upload flow. See `docs/ADMIN_CONSOLE_REBUILD_BASELINE.md`,
   `docs/ADMIN_CONSOLE_NAVIGATION_IA.md`,

@@ -79,11 +79,12 @@ The visual contract is guarded by `admin/src/test/admin-style-contract.test.ts`
 so later UI work does not drift back into one-off rough styling.
 Phase 4 frontend quality work now uses
 `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md` as the Gate 0 source for exact spacing,
-radius, shadow, App Library density, plugin geometry, icon sizing, and
-responsive behavior before implementation sub-agents continue.
+radius, shadow, System Search density, route-card density, module geometry,
+icon sizing, and responsive behavior before implementation sub-agents continue.
 `docs/ADMIN_CONSOLE_APP_MAP.md` and `admin/src/app/admin-app-manifest.ts`
 define the active workspace apps, plugin apps, console utilities, planned apps,
-safe search fields, and follow-up task ownership used by the App Library.
+safe System Search fields, and follow-up task ownership used by System Search
+and primary routes.
 GCC-75 app authoring work uses
 `docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md`,
 `ADMIN_APP_AUTHORING_STANDARD`, and `adminAppAuthoringManifest` to standardize
@@ -137,7 +138,7 @@ whole roadmap into one implementation batch.
 | Wave | Component/design focus | Current output |
 | --- | --- | --- |
 | Closed: GCC-109 / GCC-103 | Operations Overview, Accounts & Resources, Usage & Channels, shell states, locked slots, and the relationship map for future pages. | Docs/Figma handoff boundary is documented. |
-| Closed: GCC-110 | Capability-gated registration for routes, App Library entries, search, command results, notifications, and frontend data hooks. | Tests prove non-super-admin absence before privileged UI work. |
+| Closed: GCC-110 | Capability-gated registration for routes, System Search entries, command results, notifications, and frontend data hooks. | Tests prove non-super-admin absence before privileged UI work. |
 | Closed: GCC-111 | Platform Monitoring details: route latency, agent status, inspection summaries, channel health, and receipt freshness. | Static Usage & Channels UI and fixture preview are on `master`; backend DTO still pending. |
 | Current: GCC-101 / GCC-112 | DTO fields, redaction, retention, MFA, and forbidden response behavior. | Backend design first in `docs/ADMIN_BACKEND_DTO_CONTRACT.md`; implementation risk rises if auth/schema/retention changes start. |
 | Deferred: GCC-113 / GCC-114 | Super-admin Key/Audit/Log fixtures; User Management and Order Management top-level split decision. | Backlog until dependencies are settled. |

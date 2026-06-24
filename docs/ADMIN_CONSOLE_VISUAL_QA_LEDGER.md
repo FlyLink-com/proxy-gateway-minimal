@@ -81,7 +81,7 @@ GCC-122 standard status:
 | --- | --- |
 | Pagination standard frame | Current: `19 GCC-122 Pagination Standard / 1600x1024`, node `157:2`. |
 | Pagination contract | Long tables/lists must declare one of `pagination`, `route-split`, or `bounded-internal-scroll` before implementation. |
-| Non-paginated surfaces | Health cards, KPI summaries, tiny status groups, navigation/app library, and action chips are explicitly non-paginated. |
+| Non-paginated surfaces | Health cards, KPI summaries, tiny status groups, primary navigation, System Search result rows, and action chips are explicitly non-paginated. |
 | Mobile standard | Mobile is `pending-dedicated-standard`; desktop and tablet remain current implementation targets. |
 | Local contract mirror | `admin/src/design/figma-mirror.ts` exports `ADMIN_FIGMA_PAGINATION_STANDARD` and the QA axis `pagination-containment`. |
 | DOM contract hook | `PanelFrame` receives `data-containment-strategy`; long-content modules bind `data-pagination-standard-node-id="157:2"`. |
@@ -111,7 +111,7 @@ GCC-119 implementation alignment status:
 | --- | --- |
 | Shared state feedback | Current: `StateFeedback` is a first-class primitive with `empty`, `loading`, `stale`, and `error` tones, named `status` / `alert` roles, chrome variants, and stable DOM hooks. |
 | Empty and table states | Current: `EmptyState` delegates to `StateFeedback`; `DataTableState` renders through `StateFeedback` while preserving table `row` / `cell` semantics. |
-| QA DOM hooks | Current: `MetricCard`, `StatusChip`, `TopBar`, `WorkspaceSidebar`, and `NavigationLibrary` expose stable `data-figma-component` / `data-ui-surface` hooks for GCC-120 viewport checks. |
+| QA DOM hooks | Current: `MetricCard`, `StatusChip`, `TopBar`, `WorkspaceSidebar`, and System Search / primary-route surfaces expose stable `data-figma-component` / `data-ui-surface` hooks for GCC-120 viewport checks. |
 | Overview metric normalization | Current: `Operations Overview` metric cards now render through shared `MetricCard` hooks, not the old page-local metric-card contract. |
 | PanelFrame hooks | Current: `PanelFrame` exposes stable `data-figma-component`, `data-ui-surface`, owner-mode, and workbench-category hooks across operator and draft panels. |
 | Privileged gate extraction | Current: shell production guard renders through the `PrivilegedGate` primitive with explicit state and capability attributes. |
@@ -155,13 +155,15 @@ GCC-117 shell interaction check on 2026-06-21:
 
 | Browser viewport | Surfaces checked | Global horizontal overflow | Sensitive text boundary | Console errors | Result |
 | --- | --- | --- | --- | --- | --- |
-| `1440 x 900` | Navigation library open, navigation-library search for `usage`, operator account menu, production action guard | No | Pass | 0 | Pass |
-| `390 x 844` | Navigation library open, navigation-library search for `usage`, operator account menu, production action guard | No | Pass | 0 | Pass |
+| `1440 x 900` | Historical Navigation Library open/search check for `usage`, operator account menu, production action guard | No | Pass | 0 | Pass |
+| `390 x 844` | Historical Navigation Library open/search check for `usage`, operator account menu, production action guard | No | Pass | 0 | Pass |
 
 Observed interaction details:
 
-- Navigation library result count changed from `24` to `8` after searching
-  `usage`, and the visible results stayed route/panel scoped.
+- Historical Navigation Library result count changed from `24` to `8` after
+  searching `usage`, and the visible results stayed route/panel scoped. This is
+  retained as old evidence only; current implementation work uses System
+  Search.
 - Operator account popover stayed within viewport on desktop and mobile.
 - Production action guard summary is visible on mobile; its expanded detail is
   responsive-hidden at `390 x 844` and did not create overflow.
@@ -174,9 +176,9 @@ listener on `127.0.0.1:5173`:
 
 | Browser viewport | Pages checked | Panel counts | Shared surface hooks | Shell interactions | Global horizontal overflow | Visual overlap candidates | Unnamed controls | Sensitive text boundary | Console errors | Result |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `1280 x 800` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | Navigation library search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Pass |
-| `768 x 1024` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | Navigation library search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Pass |
-| `360 x 740` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | Navigation library search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Pass |
+| `1280 x 800` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | Historical Navigation Library search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Pass |
+| `768 x 1024` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | Historical Navigation Library search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Pass |
+| `360 x 740` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | Historical Navigation Library search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Pass |
 
 Observed state/surface details:
 
