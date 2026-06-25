@@ -43,6 +43,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         interactionModel: "Inspect trust state and route evidence to owner pages."
       },
       content: <FreshnessContent />,
+      containmentStrategy: "not-applicable",
       actions: <StatusChip label="Fresh" tone="success" />,
       purpose: "Inspect whether usage collection is fresh enough to trust downstream quota and risk decisions.",
       contentFields: [
@@ -78,6 +79,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         interactionModel: "Inspect missing coverage and prepare evidence handoff."
       },
       content: <ChannelCoverageContent />,
+      containmentStrategy: "pagination",
       actions: <StatusChip label="Covered" tone="success" />,
       purpose: "Compare issued channels, measured channels, missing channels, and receipt blockers.",
       contentFields: [
@@ -114,6 +116,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         interactionModel: "Read-only measurement evidence with safe refs."
       },
       content: <UsageLedgerContent />,
+      containmentStrategy: "pagination",
       actions: <StatusChip label="Locked" tone="success" />,
       purpose: "Provide evidence rows for account, order, channel, and measured traffic correlation.",
       contentFields: [
@@ -149,6 +152,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         interactionModel: "Classify and route evidence; no false-positive close yet."
       },
       content: <CollectionAnomaliesContent />,
+      containmentStrategy: "pagination",
       purpose: "Classify delayed collection, true zero usage, not collected, disabled collector, and missing receipt candidates.",
       contentFields: [
         "Reason · anomaly type",
@@ -184,6 +188,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         interactionModel: "Show evidence availability; no raw logs, config, or runtime apply."
       },
       content: <ReceiptsCollectorsContent />,
+      containmentStrategy: "pagination",
       purpose: "Show whether receipt and collector evidence is available for safe operator decisions.",
       contentFields: [
         "Receipt freshness",

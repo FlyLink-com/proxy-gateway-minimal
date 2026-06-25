@@ -18,6 +18,7 @@ export type BlueprintModule = {
   navId: string;
   container: WorkbenchContainerSpec;
   content?: ReactNode;
+  containmentStrategy: AdminContentContainmentStrategy;
   purpose: string;
   contentFields: string[];
   states: string[];
@@ -27,6 +28,12 @@ export type BlueprintModule = {
   actions?: ReactNode;
   uiSurface: AdminUiSurfaceKey;
 };
+
+export type AdminContentContainmentStrategy =
+  | "not-applicable"
+  | "pagination"
+  | "route-split"
+  | "bounded-internal-scroll";
 
 export type BlueprintPage = {
   page: AdminPage;

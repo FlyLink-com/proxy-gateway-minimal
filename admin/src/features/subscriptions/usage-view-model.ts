@@ -30,6 +30,57 @@ type UsageRowInput = CollectionStatusInput & {
   warnings?: string[];
 };
 
+export type UsageRuntimeSource = {
+  generatedAt: string;
+  items: SubscriptionUsageMonitorRow[];
+  nowMs?: number;
+};
+
+export type UsageRuntimeFreshness = {
+  collectorDisabledRows: number;
+  disconnectedRows: number;
+  latestObservedAtLabel: string;
+  staleRows: number;
+  state: "Fresh" | "Needs review" | "Unknown";
+  tone: UsageViewTone;
+  unknownRows: number;
+};
+
+export type UsageRuntimeLedgerRow = {
+  accountRef: string;
+  channelRef: string;
+  collectedAt: string;
+  collection: "Measured" | "Measured zero" | "Not collected" | "Collector disabled" | "Stale";
+  collectionTone: UsageViewTone;
+  orderRef: string;
+  traffic: string;
+};
+
+export type UsageRuntimeAnomalyItem = {
+  objectRef: string;
+  objectType: string;
+  reasonLabel: string;
+  ref: string;
+  severity: "critical" | "warning" | "info" | "neutral";
+  severityLabel: string;
+  title: string;
+};
+
+export type UsageRuntimeViewModel = {
+  anomalyItems: UsageRuntimeAnomalyItem[];
+  freshness: UsageRuntimeFreshness;
+  generatedAt: string;
+  generatedAtLabel: string;
+  ledgerRows: UsageRuntimeLedgerRow[];
+  safety: {
+    mutationAllowed: false;
+    rawEdgeCredentialReturned: false;
+    rawSecretReturned: false;
+    rawSubscriptionUrlReturned: false;
+    summaryOnly: true;
+  };
+};
+
 const COLLECTION_STATUSES = new Set<SubscriptionUsageCollectionStatus>([
   "collector_disabled",
   "not_collected",
@@ -181,6 +232,26 @@ export function warningLabel(value: string): string {
   return labels[normalized] ?? "Operational warning";
 }
 
+export function buildUsageRuntimeViewModel(source: UsageRuntimeSource): UsageRuntimeViewModel {
+  const nowMs = source.nowMs ?? Date.now();
+  const rows = [...source.items];
+
+  return {
+    anomalyItems: anomalyItemsFromRows(rows),
+    freshness: buildFreshness(rows, nowMs),
+    generatedAt: source.generatedAt,
+    generatedAtLabel: relativeAgeLabel(source.generatedAt, nowMs),
+    ledgerRows: rows.map((row) => ledgerRow(row, nowMs)),
+    safety: {
+      mutationAllowed: false,
+      rawEdgeCredentialReturned: false,
+      rawSecretReturned: false,
+      rawSubscriptionUrlReturned: false,
+      summaryOnly: true
+    }
+  };
+}
+
 function anomaly(label: string, tone: UsageAnomalyTone): UsageAnomalyReason {
   return {
     label,
@@ -206,4 +277,129 @@ function hasUnconfirmedUsageBinding(row: UsageRowInput): boolean {
   return (row.edgeCredentialBindings ?? []).some((binding) => (
     !binding.credentialRefPresent || !binding.materialDigestPresent
   ));
+}
+
+function buildFreshness(rows: SubscriptionUsageMonitorRow[], nowMs: number): UsageRuntimeFreshness {
+  const normalizedRows = rows.map((row) => normalizeCollectionStatus(row));
+  const staleRows = normalizedRows.filter((status) => status === "stale").length;
+  const unknownRows = normalizedRows.filter((status) => status === "not_collected").length;
+  const collectorDisabledRows = normalizedRows.filter((status) => status === "collector_disabled").length;
+  const disconnectedRows = rows.filter((row) => hasUnconfirmedBinding(row)).length;
+  const latestObservedAt = latestTimestamp(rows.map((row) => row.lastUsageObservedAt));
+  const needsReview = staleRows > 0 || unknownRows > 0 || collectorDisabledRows > 0 || disconnectedRows > 0;
+
+  return {
+    collectorDisabledRows,
+    disconnectedRows,
+    latestObservedAtLabel: relativeAgeLabel(latestObservedAt, nowMs),
+    staleRows,
+    state: rows.length === 0 ? "Unknown" : needsReview ? "Needs review" : "Fresh",
+    tone: rows.length === 0 ? "neutral" : needsReview ? "warning" : "success",
+    unknownRows
+  };
+}
+
+function ledgerRow(row: SubscriptionUsageMonitorRow, nowMs: number): UsageRuntimeLedgerRow {
+  const collection = ledgerCollection(row);
+  return {
+    accountRef: safeRef(row.accountId || row.portalUserRef),
+    channelRef: safeRef(firstChannelRef(row)),
+    collectedAt: relativeAgeLabel(row.lastUsageObservedAt, nowMs),
+    collection: collection.label,
+    collectionTone: collection.tone,
+    orderRef: safeRef(row.issuanceRequestId),
+    traffic: `${formatBytes(row.uploadBytes)} up / ${formatBytes(row.downloadBytes)} down / ${formatBytes(row.usedBytes)} total`
+  };
+}
+
+function anomalyItemsFromRows(rows: SubscriptionUsageMonitorRow[]): UsageRuntimeAnomalyItem[] {
+  return rows
+    .map((row) => {
+      const reason = usageAnomalyReason(row);
+      return reason ? anomalyItem(row, reason) : null;
+    })
+    .filter((item): item is UsageRuntimeAnomalyItem => item !== null)
+    .sort((left, right) => {
+      const leftRank = anomalyPriority(left.reasonLabel);
+      const rightRank = anomalyPriority(right.reasonLabel);
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      return left.objectRef.localeCompare(right.objectRef);
+    });
+}
+
+function anomalyItem(row: SubscriptionUsageMonitorRow, reason: UsageAnomalyReason): UsageRuntimeAnomalyItem {
+  const severity = anomalySeverity(reason.tone);
+  return {
+    objectRef: safeRef(row.issuanceRequestId),
+    objectType: "order",
+    reasonLabel: reason.label,
+    ref: `usage-anomaly:${safeRef(row.issuanceRequestId)}:${reason.label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+    severity,
+    severityLabel: severityLabel(severity),
+    title: "Usage evidence needs review"
+  };
+}
+
+function ledgerCollection(row: CollectionStatusInput): {
+  label: UsageRuntimeLedgerRow["collection"];
+  tone: UsageViewTone;
+} {
+  const status = normalizeCollectionStatus(row);
+  if (status === "collector_disabled") return { label: "Collector disabled", tone: "danger" };
+  if (status === "measured") return { label: "Measured", tone: "success" };
+  if (status === "measured_zero") return { label: "Measured zero", tone: "info" };
+  if (status === "stale") return { label: "Stale", tone: "warning" };
+  return { label: "Not collected", tone: "warning" };
+}
+
+function anomalySeverity(tone: UsageAnomalyTone): UsageRuntimeAnomalyItem["severity"] {
+  if (tone === "critical") return "critical";
+  if (tone === "warning") return "warning";
+  return "info";
+}
+
+function severityLabel(severity: UsageRuntimeAnomalyItem["severity"]): string {
+  if (severity === "critical") return "High";
+  if (severity === "warning") return "Medium";
+  if (severity === "info") return "Low";
+  return "Info";
+}
+
+function firstChannelRef(row: SubscriptionUsageMonitorRow): string {
+  return row.issuedChannels[0]
+    ?? row.channelUsages[0]?.channelRef
+    ?? row.edgeCredentialBindings[0]?.channelRef
+    ?? row.nodeId
+    ?? "channel_not_recorded";
+}
+
+function latestTimestamp(values: Array<string | null | undefined>): string | null {
+  const timestamps = values
+    .map((value) => timestamp(value))
+    .filter((value) => value > 0);
+  if (timestamps.length === 0) return null;
+  return new Date(Math.max(...timestamps)).toISOString();
+}
+
+function relativeAgeLabel(value: string | null | undefined, nowMs: number): string {
+  const valueMs = timestamp(value);
+  if (valueMs <= 0) return "No trusted sample";
+  const diffMs = Math.max(0, nowMs - valueMs);
+  if (diffMs < 60_000) return "just now";
+  const minutes = Math.max(1, Math.round(diffMs / 60_000));
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
+}
+
+function safeRef(value: string | null | undefined): string {
+  const normalized = value?.trim();
+  return normalized && normalized.length > 0 ? normalized : "Not recorded";
+}
+
+function timestamp(value: string | null | undefined): number {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }

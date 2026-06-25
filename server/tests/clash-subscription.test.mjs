@@ -34,6 +34,14 @@ function sampleConfig() {
   };
 }
 
+function proxyGroupBlock(yaml, name) {
+  const marker = `  - name: ${name}\n`;
+  const start = yaml.indexOf(marker);
+  assert.notEqual(start, -1, `expected proxy group ${name}`);
+  const next = yaml.indexOf("\n  - name: ", start + marker.length);
+  return yaml.slice(start, next === -1 ? yaml.length : next);
+}
+
 function fakeState(overrides = {}) {
   return {
     rootDir: new URL("../../", import.meta.url).pathname,
@@ -108,11 +116,11 @@ test("generateClashSubscription protects node domains from fake-ip self-routing"
       },
       {
         name: "singapore-hy2",
-        host: "portal.globalcirclecat.icu",
+        host: "sgp.gccwebos.com",
         port: 10443,
         protocol: "hysteria2",
         password: "synthetic-hy2-secret",
-        sni: "globalcirclecat.icu",
+        sni: "sgp.gccwebos.com",
         alpn: ["h3"]
       }
     ]
@@ -121,10 +129,11 @@ test("generateClashSubscription protects node domains from fake-ip self-routing"
   assert.match(yaml, /dns:\n  enable: true\n  enhanced-mode: fake-ip/);
   assert.match(yaml, /fake-ip-filter:\n(?:    - .+\n)+/);
   assert.match(yaml, /  - "\+\.globalcirclecat\.cloud"/);
-  assert.match(yaml, /  - "\+\.globalcirclecat\.icu"/);
+  assert.match(yaml, /  - "\+\.gccwebos\.com"/);
   assert.match(yaml, /  - "sub\.globalcirclecat\.cloud"/);
-  assert.match(yaml, /  - "portal\.globalcirclecat\.icu"/);
-  assert.match(yaml, /rules:\n  - DOMAIN,sub\.globalcirclecat\.cloud,DIRECT\n  - DOMAIN,portal\.globalcirclecat\.icu,DIRECT\n  - DOMAIN-SUFFIX,globalcirclecat\.cloud,DIRECT\n  - DOMAIN-SUFFIX,globalcirclecat\.icu,DIRECT\n  - MATCH,GLOBAL/);
+  assert.match(yaml, /  - "sgp\.gccwebos\.com"/);
+  assert.match(yaml, /rules:\n  - DOMAIN,sub\.globalcirclecat\.cloud,DIRECT\n  - DOMAIN,sgp\.gccwebos\.com,DIRECT\n  - DOMAIN-SUFFIX,globalcirclecat\.cloud,DIRECT\n  - DOMAIN-SUFFIX,gccwebos\.com,DIRECT\n  - MATCH,GLOBAL/);
+  assert.doesNotMatch(yaml, /globalcirclecat\.icu/);
   assert.doesNotMatch(yaml, /- DIRECT\n/);
 });
 
@@ -269,6 +278,7 @@ test("generateClashSubscription emits Hysteria2 and TUIC candidate YAML", () => 
         disableSni: false,
         reduceRtt: true,
         requestTimeout: 8000,
+        heartbeatInterval: 10000,
         maxUdpRelayPacketSize: 1500,
         fastOpen: true,
         skipCertVerify: false,
@@ -306,6 +316,7 @@ test("generateClashSubscription emits Hysteria2 and TUIC candidate YAML", () => 
   assert.match(yaml, /disable-sni: false/);
   assert.match(yaml, /reduce-rtt: true/);
   assert.match(yaml, /request-timeout: 8000/);
+  assert.match(yaml, /heartbeat-interval: 10000/);
   assert.match(yaml, /max-udp-relay-packet-size: 1500/);
   assert.match(yaml, /fast-open: true/);
   assert.match(yaml, /skip-cert-verify: false/);
@@ -359,6 +370,69 @@ test("generateClashSubscription emits long-haul quality groups without leaking m
   );
   assert.match(yaml, /name: GLOBAL\n    type: select\n    proxies:\n      - AUTO\n      - STABLE\n      - WEAK-NETWORK\n      - FALLBACK/);
   assert.doesNotMatch(yaml, /qualityClass|weak-network|channelRole|baseline|candidate/);
+});
+
+test("generateClashSubscription keeps auto-ineligible channels out of AUTO while leaving manual fallback paths", () => {
+  const yaml = generateClashSubscription({
+    servers: [
+      {
+        name: "vless-stable",
+        host: "stable.example.test",
+        port: 8443,
+        protocol: "vless",
+        uuid: "11111111-1111-4111-8111-111111111111",
+        udp: true,
+        tls: true,
+        serverName: "www.example.test",
+        network: "tcp",
+        flow: "xtls-rprx-vision",
+        qualityClass: "stable",
+        realityOpts: {
+          publicKey: "synthetic-public-key",
+          shortId: "synthetic-short-id"
+        }
+      },
+      {
+        name: "sgp-hy2-high-loss",
+        host: "sgp.example.test",
+        port: 10443,
+        protocol: "hysteria2",
+        password: "hy2-secret",
+        qualityClass: "high-loss",
+        autoEligible: false
+      },
+      {
+        name: "sgp-tuic-canary",
+        host: "sgp.example.test",
+        port: 443,
+        protocol: "tuic",
+        uuid: "22222222-2222-4222-8222-222222222222",
+        password: "tuic-secret",
+        qualityClass: "weak-network",
+        autoEligible: false
+      }
+    ]
+  });
+
+  assert.match(
+    yaml,
+    /name: AUTO\n    type: url-test\n    url: "https:\/\/www\.gstatic\.com\/generate_204"\n    interval: 300\n    proxies:\n      - "vless-stable"/
+  );
+  const autoGroup = proxyGroupBlock(yaml, "AUTO");
+  assert.doesNotMatch(autoGroup, /sgp-hy2-high-loss|sgp-tuic-canary/);
+  assert.match(
+    yaml,
+    /name: WEAK-NETWORK\n    type: url-test\n    url: "https:\/\/www\.gstatic\.com\/generate_204"\n    interval: 300\n    tolerance: 50\n    proxies:\n      - "sgp-hy2-high-loss"\n      - "sgp-tuic-canary"/
+  );
+  assert.match(
+    yaml,
+    /name: FALLBACK\n    type: fallback\n    url: "https:\/\/www\.gstatic\.com\/generate_204"\n    interval: 300\n    proxies:\n      - "vless-stable"\n      - "sgp-hy2-high-loss"\n      - "sgp-tuic-canary"/
+  );
+  assert.match(
+    yaml,
+    /name: GLOBAL\n    type: select\n    proxies:\n      - AUTO\n      - STABLE\n      - WEAK-NETWORK\n      - FALLBACK\n      - "vless-stable"\n      - "sgp-hy2-high-loss"\n      - "sgp-tuic-canary"/
+  );
+  assert.doesNotMatch(yaml, /autoEligible|auto-eligible/);
 });
 
 test("generateClashProviderSubscription emits an auto-updating provider profile without inline secrets", () => {

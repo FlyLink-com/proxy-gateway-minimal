@@ -6,6 +6,7 @@ import {
 } from "../app/admin-module-contract";
 import { getAdminAppMap } from "../app/admin-app-manifest";
 import { pageSubNavigation, pageWorkbenchContracts } from "../app/navigation";
+import { ADMIN_FIGMA_PAGINATION_STANDARD } from "../design/figma-mirror";
 import { overviewBlueprint } from "../pages/dashboard-page";
 import { accountsResourcesBlueprint } from "../pages/portal-requests-page";
 import { usageChannelsBlueprint } from "../pages/subscription-usage-monitor-page";
@@ -59,6 +60,39 @@ describe("admin module contract", () => {
       expect(contract.sourceContract.drilldownTargets).toContain(`${contract.page}#${contract.targetId}`);
       expect(contract.sourceContract.evidenceRoutes.length).toBeGreaterThan(0);
       expect(contract.sourceContract.transformBoundary).toBe("display-only");
+      expect([
+        "not-applicable",
+        ...ADMIN_FIGMA_PAGINATION_STANDARD.containmentStrategies
+      ]).toContain(contract.containmentStrategy);
+      if (contract.containmentStrategy === "not-applicable") {
+        expect(contract.paginationStandardNodeId).toBeUndefined();
+      } else {
+        expect(contract.paginationStandardNodeId).toBe(ADMIN_FIGMA_PAGINATION_STANDARD.nodeId);
+      }
+    });
+  });
+
+  test("declares containment strategy for every module before long content implementation", () => {
+    const contracts = createAdminModuleContracts(adminBlueprints);
+
+    expect(Object.fromEntries(contracts.map((contract) => [
+      `${contract.page}:${contract.navId}`,
+      contract.containmentStrategy
+    ]))).toEqual({
+      "dashboard:health-summary": "not-applicable",
+      "dashboard:risk-queue": "pagination",
+      "dashboard:next-actions": "not-applicable",
+      "dashboard:review-candidates": "pagination",
+      "portalRequests:account-overview": "pagination",
+      "portalRequests:resource-orders": "pagination",
+      "portalRequests:quota-usage": "not-applicable",
+      "portalRequests:lifecycle": "route-split",
+      "portalRequests:history-events": "pagination",
+      "usageMonitor:freshness": "not-applicable",
+      "usageMonitor:channel-coverage": "pagination",
+      "usageMonitor:usage-ledger": "pagination",
+      "usageMonitor:collection-anomalies": "pagination",
+      "usageMonitor:receipts-collectors": "pagination"
     });
   });
 
@@ -66,6 +100,7 @@ describe("admin module contract", () => {
     adminBlueprints.forEach((blueprint) => {
       blueprint.modules.forEach((module) => {
         expect(module.uiSurface).toBeTruthy();
+        expect(module.containmentStrategy).toBeTruthy();
       });
     });
   });

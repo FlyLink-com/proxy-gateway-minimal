@@ -109,6 +109,71 @@ export const ADMIN_FIGMA_MIRROR_PAGES: readonly AdminFigmaMirrorPage[] = [
 
 export const ADMIN_FIGMA_REQUIRED_PAGE_NAMES = ADMIN_FIGMA_MIRROR_PAGES.map((page) => page.name);
 
+export const ADMIN_FIGMA_PAGINATION_STANDARD = {
+  nodeId: "157:2",
+  name: "19 GCC-122 Pagination Standard / 1600x1024",
+  status: "current",
+  frameSize: "1600x1024",
+  role: "implementation-gate",
+  requiredViewports: [
+    "1600",
+    "1280",
+    "1024",
+    "768"
+  ],
+  mobileStatus: "pending-dedicated-standard",
+  containmentStrategies: [
+    "pagination",
+    "route-split",
+    "bounded-internal-scroll"
+  ],
+  prohibitedStrategies: [
+    "page-level-scroll-wall",
+    "floating-page-level-pager",
+    "duplicated-header-pagination"
+  ],
+  usePaginationFor: [
+    "users",
+    "orders",
+    "subscriptions",
+    "channel-tables",
+    "usage-ledgers",
+    "audit-events",
+    "receipts",
+    "candidate-queues"
+  ],
+  splitRouteFor: [
+    "details",
+    "diagnosis",
+    "drill-down",
+    "resolver-flows",
+    "high-context-review"
+  ],
+  doNotPaginate: [
+    "health-cards",
+    "kpi-summaries",
+    "tiny-status-groups",
+    "system-search",
+    "action-chips"
+  ],
+  requiredStates: [
+    "default",
+    "current",
+    "disabled",
+    "loading",
+    "empty",
+    "error",
+    "unknown-total",
+    "filtered-reset"
+  ],
+  acceptance: [
+    "Each long card names pagination, route split, or bounded internal scroll before implementation.",
+    "Pagination stays inside the data card; no floating page-level pager or duplicated header controls.",
+    "If a page exceeds the standard viewport, move content to a subpage or paginated list.",
+    "Mobile is not accepted from desktop reuse until a dedicated mobile standard frame is approved."
+  ]
+} as const;
+
 export const ADMIN_FIGMA_WRITE_ACCESS_CHECK = {
   checkedAt: "2026-06-21",
   status: "ready",

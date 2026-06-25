@@ -131,7 +131,8 @@
       "id": "channel_sgp_a_vless_reality_tcp",
       "name": "channel-sgp-a-vless-reality-tcp",
       "provider": "vultr",
-      "physicalNodeRef": "vultr-sgp-a",
+      "physicalNodeRef": "node-sgp-a",
+      "nodeRef": "node-sgp-a",
       "subscriptionBundleRef": "vultr-production-a",
       "displayName": "Vultr Singapore VLESS Reality TCP stable candidate",
       "region": "sgp",
@@ -172,7 +173,8 @@
       "id": "channel_sgp_a_hy2",
       "name": "channel-sgp-a-hy2",
       "provider": "vultr",
-      "physicalNodeRef": "vultr-sgp-a",
+      "physicalNodeRef": "node-sgp-a",
+      "nodeRef": "node-sgp-a",
       "subscriptionBundleRef": "vultr-production-a",
       "displayName": "Vultr Singapore Hysteria2 weak-network candidate",
       "region": "sgp",
@@ -223,7 +225,8 @@
       "id": "channel_sgp_a_tuic",
       "name": "channel-sgp-a-tuic",
       "provider": "vultr",
-      "physicalNodeRef": "vultr-sgp-a",
+      "physicalNodeRef": "node-sgp-a",
+      "nodeRef": "node-sgp-a",
       "subscriptionBundleRef": "vultr-production-a",
       "displayName": "Vultr Singapore TUIC canary",
       "region": "sgp",
@@ -265,7 +268,7 @@
   "pingHosts": [
     "sub.globalcirclecat.cloud",
     "portal.globalcirclecat.cloud",
-    "portal.globalcirclecat.icu"
+    "portal.gccwebos.com"
   ],
   "nginx": {
     "host": "sub.globalcirclecat.cloud",

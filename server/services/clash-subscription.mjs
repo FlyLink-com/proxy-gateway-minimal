@@ -26,7 +26,7 @@ const DEFAULT_PROVIDER_HEALTH_INTERVAL = 300;
 const CONTROLLED_NODE_DOMAIN_SUFFIXES = [
   "globalcirclecat.com",
   "globalcirclecat.cloud",
-  "globalcirclecat.icu"
+  "gccwebos.com"
 ];
 const INACTIVE_PROVIDER_STATUSES = new Set([
   "disabled",

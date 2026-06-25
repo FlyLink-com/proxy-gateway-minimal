@@ -7,7 +7,7 @@ import {
 } from "../design/grammar/hierarchy";
 import {
   type AdminLayoutArchetype,
-  type AdminMobileProjection
+  type AdminMobileStandardStatus
 } from "../design/grammar/layout";
 
 export type AdminUiDensity = AdminDensityMode;
@@ -34,9 +34,10 @@ export type AdminPageContract = {
   page: AdminPage;
   layout: AdminLayoutArchetype;
   density: AdminUiDensity;
+  mobileProjection: "single-column-review-flow";
   hierarchy: readonly AdminHierarchyRole[];
   requiredBlocks: readonly AdminPageRequiredBlock[];
-  mobileProjection: AdminMobileProjection;
+  mobileStandardStatus: AdminMobileStandardStatus;
   forbiddenSurfaces: readonly AdminPrivilegedSurfaceId[];
 };
 
@@ -100,11 +101,17 @@ export type AdminUiContract = {
       layoutModel: "multi-column-workbench";
       implementationMode: "primary-web-design";
     };
-    mobileReview: {
-      contractId: "mobile-review";
+    tabletReview: {
+      contractId: "tablet-review";
+      frame: "1024x768";
+      layoutModel: "contained-reflow";
+      implementationMode: "accepted-responsive-check";
+    };
+    mobilePending: {
+      contractId: "mobile-pending";
       frame: "390x844";
-      layoutModel: "single-column-review-flow";
-      implementationMode: "separate-mobile-projection";
+      layoutModel: "not-yet-defined";
+      implementationMode: "blocked-until-dedicated-standard";
       forbiddenLayoutReuse: readonly [
         "desktop-column-map",
         "desktop-plugin-grid",
@@ -153,8 +160,14 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
       implementationMode: "primary-web-design",
       layoutModel: "multi-column-workbench"
     },
-    mobileReview: {
-      contractId: "mobile-review",
+    tabletReview: {
+      contractId: "tablet-review",
+      frame: "1024x768",
+      implementationMode: "accepted-responsive-check",
+      layoutModel: "contained-reflow"
+    },
+    mobilePending: {
+      contractId: "mobile-pending",
       forbiddenLayoutReuse: [
         "desktop-column-map",
         "desktop-plugin-grid",
@@ -162,8 +175,8 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
         "desktop-page-scroll-plan"
       ],
       frame: "390x844",
-      implementationMode: "separate-mobile-projection",
-      layoutModel: "single-column-review-flow"
+      implementationMode: "blocked-until-dedicated-standard",
+      layoutModel: "not-yet-defined"
     }
   },
   pageContracts: {
@@ -173,6 +186,7 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
       hierarchy: ["metric", "context", "state", "action", "evidence"],
       layout: "dashboard",
       mobileProjection: "single-column-review-flow",
+      mobileStandardStatus: "pending-dedicated-standard",
       page: "dashboard",
       requiredBlocks: [
         "page-title",
@@ -190,6 +204,7 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
       hierarchy: ["context", "state", "evidence", "action", "detail"],
       layout: "table",
       mobileProjection: "single-column-review-flow",
+      mobileStandardStatus: "pending-dedicated-standard",
       page: "portalRequests",
       requiredBlocks: [
         "page-title",
@@ -207,6 +222,7 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
       hierarchy: ["metric", "context", "state", "evidence", "detail"],
       layout: "dashboard",
       mobileProjection: "single-column-review-flow",
+      mobileStandardStatus: "pending-dedicated-standard",
       page: "usageMonitor",
       requiredBlocks: [
         "page-title",

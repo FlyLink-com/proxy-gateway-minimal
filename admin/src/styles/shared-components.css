@@ -361,6 +361,67 @@
   white-space: normal;
 }
 
+.data-card-pagination {
+  align-items: center;
+  background: var(--admin-surface-muted);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-md);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.data-card-pagination-summary {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.data-card-pagination-summary strong,
+.data-card-pagination-summary span {
+  overflow-wrap: anywhere;
+}
+
+.data-card-pagination-page {
+  color: var(--admin-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.data-card-pagination-controls {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+}
+
+.data-card-pagination-button {
+  align-items: center;
+  background: var(--admin-surface);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-sm);
+  color: var(--admin-fg);
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  min-height: var(--admin-touch-target-min);
+  min-width: var(--admin-touch-target-min);
+}
+
+.data-card-pagination-button:disabled {
+  color: var(--admin-muted);
+  cursor: not-allowed;
+  opacity: 0.56;
+}
+
+.case-workbench-footer .data-card-pagination {
+  border-top: 0;
+  flex: 1 1 220px;
+  padding-top: 0;
+}
+
 .case-row-main {
   min-width: 0;
   display: grid;
