@@ -15,8 +15,6 @@ import {
   validatePackageApplyPlanEnvelope,
   buildPackageImportDryRunReport,
   buildPackageInspectReport,
-  buildPackageSelfCheckReport,
-  buildTlsMaterialPreflightReport,
   buildPackageScriptSpawn,
   buildCliCommandMap,
   buildCliHelp,
@@ -47,7 +45,6 @@ function cliAdapters(overrides = {}) {
     runPackageImportDryRun: async () => 0,
     runPackageApply: async () => 0,
     runPackageInspect: async () => 0,
-    runPackageSelfCheck: async () => 0,
     runInstallConfigure: async () => 0,
     startServer: async () => 0,
     confirmRiskAExecution: async () => false,
@@ -512,86 +509,6 @@ test("gccgw edge credentials reconciliation commands stay redacted and gated", a
   assert.equal(approvedApply.redacted, true);
 });
 
-test("gccgw edge tls-material preflight checks redacted runtime certificate readiness", async () => {
-  const safeInput = {
-    runtime: "mihomo-tuic",
-    channelRef: "channel-sgp-a-tuic",
-    host: "sgp.gccwebos.com",
-    listener: {
-      certificate: "/etc/mihomo/tls/sgp.gccwebos.com/fullchain.pem",
-      privateKey: "/etc/mihomo/tls/sgp.gccwebos.com/privkey.pem"
-    },
-    materialSource: {
-      certificate: "/etc/mihomo/tls/sgp.gccwebos.com/fullchain.pem",
-      privateKey: "/etc/mihomo/tls/sgp.gccwebos.com/privkey.pem"
-    },
-    certificate: {
-      dnsNames: ["sgp.gccwebos.com"],
-      keyPairMatches: true
-    },
-    fileAccess: {
-      certificateReadableByService: true,
-      privateKeyReadableByService: true
-    }
-  };
-  const report = buildTlsMaterialPreflightReport(safeInput);
-  assert.equal(report.ok, true);
-  assert.equal(report.redacted, true);
-  assert.doesNotMatch(JSON.stringify(report), /\/etc\/|privkey|fullchain/i);
-
-  assert.deepEqual(resolveCliCommand([
-    "edge",
-    "tls-material",
-    "preflight",
-    "--input",
-    "tls-material.json",
-    "--json"
-  ]), {
-    kind: "edge-tls-material-preflight",
-    inputPath: "tls-material.json",
-    format: "json"
-  });
-
-  const commands = listCliCommands();
-  const tlsCommand = commands.find((command) => command.command === "gccgw edge tls-material preflight");
-  assert.equal(tlsCommand.riskTier, "B");
-  assert.equal(tlsCommand.mode, "dry-run");
-
-  let stdout = "";
-  const exitCode = await runProxyGatewayCli([
-    "edge",
-    "tls-material",
-    "preflight",
-    "--input",
-    "tls-material.json",
-    "--json"
-  ], {
-    readJsonFile: (path) => {
-      assert.equal(path, "tls-material.json");
-      return safeInput;
-    },
-    runNodeScript: async () => {
-      throw new Error("node script must not run for TLS material preflight");
-    },
-    runPackageScript: async () => {
-      throw new Error("package script must not run for TLS material preflight");
-    },
-    startServer: async () => {
-      throw new Error("server must not start for TLS material preflight");
-    },
-    writeStdout: (value) => {
-      stdout += value;
-    },
-    writeStderr: () => {}
-  });
-
-  assert.equal(exitCode, 0);
-  const parsed = JSON.parse(stdout);
-  assert.equal(parsed.type, "gccgw_edge_tls_material_preflight");
-  assert.equal(parsed.ok, true);
-  assert.doesNotMatch(JSON.stringify(parsed), /\/etc\/|privkey|fullchain|subscriptionUrl|token|rawConfig/i);
-});
-
 test("gccgw CLI resolves node and subscription facade commands to existing safe handlers", () => {
   assert.deepEqual(resolveCliCommand(["node", "inspect", "--config", "config/proxy-servers.json", "--json"]), {
     kind: "node-inspect",
@@ -991,83 +908,6 @@ test("gccgw CLI resolves package inspect as a read-only package command", async 
   assert.equal(exitCode, 0);
   assert.deepEqual(called, {
     kind: "package-inspect",
-    packageDir: "deployments/production-template",
-    format: "json"
-  });
-});
-
-test("gccgw package self-check builds a redacted release readiness summary", () => {
-  const report = buildPackageSelfCheckReport({
-    packageName: "production-template",
-    files: productionPackageFiles()
-  });
-
-  assert.equal(report.type, "gccgw_package_self_check");
-  assert.equal(report.generatedBy, "gccgw package self-check");
-  assert.equal(report.ok, true);
-  assert.equal(report.riskTier, "C");
-  assert.equal(report.mutation, false);
-  assert.equal(report.productionAuthority, false);
-  assert.equal(report.redacted, true);
-  assert.equal(report.checks.packageInspect.ok, true);
-  assert.equal(report.checks.requiredComponentsPresent.ok, true);
-  assert.equal(report.checks.secretValuesAbsent.ok, true);
-  assert.equal(report.nextGate.command, "gccgw package import <package-dir> --dry-run --json");
-  assert.doesNotMatch(JSON.stringify(report), /subscriptionUrl|artifactSecret|CONSOLE_TOKEN|SS_PASSWORD|owner@example|do-not-store-this/i);
-});
-
-test("gccgw package self-check fails closed when package inspection fails", () => {
-  const report = buildPackageSelfCheckReport({
-    packageName: "dirty-runtime-export",
-    files: productionPackageFiles({
-      ".proxy-gateway/console-token": "must-not-echo"
-    })
-  });
-
-  assert.equal(report.ok, false);
-  assert.equal(report.checks.packageInspect.ok, false);
-  assert.ok(report.blockers.some((blocker) => blocker.code === "package_inspection_failed"));
-  assert.doesNotMatch(JSON.stringify(report), /must-not-echo|CONSOLE_TOKEN|SS_PASSWORD/i);
-});
-
-test("gccgw CLI resolves package self-check as a read-only package command", async () => {
-  assert.deepEqual(resolveCliCommand(["package", "self-check", "deployments/production-template", "--json"]), {
-    kind: "package-self-check",
-    packageDir: "deployments/production-template",
-    format: "json"
-  });
-
-  const commands = listCliCommands();
-  const selfCheckCommand = commands.find((command) => command.command === "gccgw package self-check");
-  assert.equal(selfCheckCommand.riskTier, "C");
-  assert.equal(selfCheckCommand.mode, "read-only");
-  assert.ok(selfCheckCommand.sourceDocs.includes("docs/PRODUCTION_INPUT_PACKAGE_FORMAT.md"));
-
-  let called = null;
-  const exitCode = await runProxyGatewayCli(["package", "self-check", "deployments/production-template", "--json"], {
-    runPackageSelfCheck: async (command) => {
-      called = command;
-      return 0;
-    },
-    runPackageInspect: async () => {
-      throw new Error("inspect adapter must not run directly for package self-check");
-    },
-    runNodeScript: async () => {
-      throw new Error("node script must not run for package self-check");
-    },
-    runPackageScript: async () => {
-      throw new Error("npm package script must not run for package self-check");
-    },
-    startServer: async () => {
-      throw new Error("server must not start for package self-check");
-    },
-    writeStdout: () => {},
-    writeStderr: () => {}
-  });
-
-  assert.equal(exitCode, 0);
-  assert.deepEqual(called, {
-    kind: "package-self-check",
     packageDir: "deployments/production-template",
     format: "json"
   });

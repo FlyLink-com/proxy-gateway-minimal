@@ -15,7 +15,6 @@ import {
   buildInstallPreflightReport,
   buildPackageImportDryRunReport,
   buildPackageInspectReport,
-  buildPackageSelfCheckReport,
   buildReleaseStatusReport,
   redactNetworkStatus,
   runProxyGatewayCli
@@ -184,18 +183,6 @@ async function runPackageInspect(command) {
   if (!files) return 1;
 
   const report = buildPackageInspectReport({
-    packageName: packageNameFromDir(command.packageDir),
-    files
-  });
-  writeReport(report, command.format);
-  return report.ok ? 0 : 1;
-}
-
-async function runPackageSelfCheck(command) {
-  const files = readPackageInputFiles(command, "package self-check");
-  if (!files) return 1;
-
-  const report = buildPackageSelfCheckReport({
     packageName: packageNameFromDir(command.packageDir),
     files
   });
@@ -619,7 +606,6 @@ try {
     runPackageImportDryRun,
     runPackageApply,
     runPackageInspect,
-    runPackageSelfCheck,
     runInstallConfigure,
     runEdgeMaterialHandoffPreflight,
     readJsonFile: readJsonFileInsideRoot,

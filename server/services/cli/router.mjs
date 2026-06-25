@@ -16,10 +16,7 @@ import {
   buildTuicCredentialLifecycleApplyPlan,
   buildTuicCredentialLifecyclePlan
 } from "../edge/tuic-credential-lifecycle.mjs";
-import { buildTlsMaterialPreflightReport } from "../edge/tls-material-preflight.mjs";
 import { inspectProductionArtifactBoundary } from "../platform/production-artifact-boundary.mjs";
-
-export { buildTlsMaterialPreflightReport };
 
 const DOMAIN_SOURCE_DOCS = {
   admin: ["docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"],
@@ -114,11 +111,9 @@ const SPECIAL_COMMAND_ENTRIES = [
   ["package apply", null, "package", "A", "execution-gated", "Apply a reviewed production input package to the local host"],
   ["package import", null, "package", "B", "dry-run", "Build a redacted production input package import plan without mutating the host"],
   ["package inspect", null, "package", "C", "read-only", "Inspect a redacted production input package without importing it"],
-  ["package self-check", null, "package", "C", "read-only", "Run a redacted package self-check before cloud upload or host import"],
   ["install configure", null, "install", "B", "dry-run", "Build a redacted install configuration plan without writing host files"],
   ["install plan", null, "install", "C", "read-only", "Show the server installation sequence without touching the host"],
   ["install preflight", null, "install", "C", "read-only", "Check server bootstrap prerequisites without mutating the host"],
-  ["edge tls-material preflight", null, "edge", "B", "dry-run", "Check TLS certificate material readiness with redacted output", ["docs/CONTROL_DATA_PLANE_INTERCONNECT_CONTRACT.md", "docs/NODE_ONBOARDING_RUNBOOK.md"]],
   ["edge credentials reconcile-plan", null, "edge", "B", "dry-run", "Build a redacted edge credential desired-state reconciliation plan", ["docs/EDGE_CREDENTIAL_RECONCILIATION_GATEWAY_DESIGN.md", "docs/ALIYUN_LOCAL_EDGE_LIFECYCLE_IMPLEMENTATION_PLAN.md"]],
   ["edge credentials apply", null, "edge", "A", "execution-gated", "Apply a reviewed edge credential desired-state reconciliation plan on a node", ["docs/EDGE_CREDENTIAL_RECONCILIATION_GATEWAY_DESIGN.md", "docs/PRODUCTION_EDGE_FLEET.md"]],
   ["edge material-handoff preflight", null, "edge", "B", "dry-run", "Check protected material readiness for a registered data-plane node without printing material", ["docs/CONTROL_DATA_PLANE_INTERCONNECT_CONTRACT.md", "docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md"]],
@@ -691,85 +686,6 @@ export function buildPackageInspectReport({
       riskTier: phase.riskTier,
       mutation: phase.mutation === true
     })),
-    redacted: true
-  };
-}
-
-export function buildPackageSelfCheckReport({
-  packageName = "unknown",
-  files = {}
-} = {}) {
-  const inspect = buildPackageInspectReport({ packageName, files });
-  const blockers = [];
-
-  if (!inspect.ok) {
-    blockers.push({
-      code: "package_inspection_failed",
-      detail: "Run gccgw package inspect and resolve required package checks before package self-check can pass."
-    });
-  }
-
-  const requiredComponentCount = Array.isArray(inspect.components)
-    ? inspect.components.filter((component) => component.required === true).length
-    : 0;
-  const presentRequiredComponentCount = Array.isArray(inspect.components)
-    ? inspect.components.filter((component) => component.required === true && component.present === true && component.schemaOk === true).length
-    : 0;
-
-  const checks = {
-    packageInspect: {
-      ok: inspect.ok === true,
-      required: true
-    },
-    requiredComponentsPresent: {
-      ok: inspect.checks?.requiredComponentsPresent?.ok === true && inspect.checks?.componentSchemas?.ok === true,
-      required: true,
-      requiredCount: requiredComponentCount,
-      presentCount: presentRequiredComponentCount
-    },
-    secretValuesAbsent: {
-      ok: inspect.checks?.envValuesAbsent?.ok === true
-        && inspect.checks?.metadataFlagsSafe?.ok === true
-        && inspect.checks?.noForbiddenFields?.ok === true,
-      required: true
-    },
-    productionArtifactBoundary: {
-      ok: inspect.checks?.productionArtifactBoundary?.ok === true,
-      required: true,
-      blockerCount: inspect.productionArtifactBoundary?.blockerCount ?? 0,
-      reviewRequiredCount: inspect.productionArtifactBoundary?.reviewRequiredCount ?? 0
-    },
-    registrationPolicySafe: {
-      ok: inspect.checks?.registrationPolicyNoCustomerFields?.ok === true
-        && inspect.checks?.registrationPlanRefsKnown?.ok === true
-        && inspect.checks?.nodeRefsSafe?.ok === true,
-      required: true
-    }
-  };
-
-  return {
-    type: "gccgw_package_self_check",
-    generatedBy: "gccgw package self-check",
-    ok: blockers.length === 0 && Object.values(checks).every((check) => check.required !== true || check.ok === true),
-    packageName: String(packageName || "unknown"),
-    riskTier: "C",
-    mutation: false,
-    productionAuthority: false,
-    summary: {
-      componentCount: Array.isArray(inspect.components) ? inspect.components.length : 0,
-      requiredComponentCount,
-      presentRequiredComponentCount,
-      forbiddenFindingCount: Array.isArray(inspect.forbiddenFindings) ? inspect.forbiddenFindings.length : 0,
-      importPhaseCount: Array.isArray(inspect.importPhases) ? inspect.importPhases.length : 0
-    },
-    checks,
-    blockers,
-    nextGate: {
-      command: "gccgw package import <package-dir> --dry-run --json",
-      riskTier: "B",
-      mutation: false,
-      requiresProductionAuthority: false
-    },
     redacted: true
   };
 }
@@ -2019,7 +1935,6 @@ Usage:
   gccgw install preflight [--json]
   gccgw edge credentials reconcile-plan --input <desired-state.json> [--json]
   gccgw edge credentials apply --input <desired-state.json> --execute-production-mutation [--json]
-  gccgw edge tls-material preflight --input <tls-material.json> [--json]
   gccgw edge material-handoff preflight --dry-run --node-ref <node-ref> --control-db <control.sqlite> --material-file <protected-material.json> [--json]
   gccgw edge tuic-credentials plan --input <desired-state.json> [--json]
   gccgw edge tuic-credentials apply --input <desired-state.json> --execute-production-mutation [--json]
@@ -2030,7 +1945,6 @@ Usage:
   gccgw node disable --dry-run <node-id> [--reason <text>] [--json]
   gccgw install bootstrap --config-plan <reviewed-install-configure-plan.json> --execute-production-mutation --apply
   gccgw package inspect <package-dir> [--json]
-  gccgw package self-check <package-dir> [--json]
   gccgw package import <package-dir> --dry-run [--json]
   gccgw package apply <package-dir> --import-plan <reviewed-package-import-plan.json> --config-plan <reviewed-install-configure-plan.json> --execute-production-mutation --apply
   gccgw self check
@@ -2067,12 +1981,10 @@ Common commands:
   gccgw install preflight --json
   gccgw edge credentials reconcile-plan --input desired-state.json --json
   gccgw edge credentials apply --input reviewed-desired-state.json --execute-production-mutation --json
-  gccgw edge tls-material preflight --input tls-material.json --json
   gccgw edge material-handoff preflight --dry-run --node-ref edge-node-sgp-a --control-db /opt/gccgw/control.sqlite --material-file /opt/gccgw/protected-material.json --json
   gccgw edge tuic-credentials plan --input desired-state.json --json
   gccgw edge tuic-credentials apply --input reviewed-desired-state.json --execute-production-mutation --json
   gccgw package inspect deployments/production-template --json
-  gccgw package self-check deployments/production-template --json
   gccgw package import deployments/production-template --dry-run --json
   gccgw package apply deployments/production-template --import-plan reviewed-package-import-plan.json --config-plan reviewed-install-configure-plan.json --execute-production-mutation --apply
   gccgw node inspect --json
@@ -2237,13 +2149,6 @@ export function resolveCliCommand(argv = []) {
       format: args.includes("--json") ? "json" : "text"
     };
   }
-  if (args[0] === "package" && args[1] === "self-check") {
-    return {
-      kind: "package-self-check",
-      packageDir: positionalArgs(args, 2)[0],
-      format: args.includes("--json") ? "json" : "text"
-    };
-  }
   if (args[0] === "package" && args[1] === "import") {
     const packageDir = positionalArgs(args, 2)[0];
     if (args.includes("--dry-run")) {
@@ -2308,17 +2213,6 @@ export function resolveCliCommand(argv = []) {
       };
     }
     throw new Error(`Unknown gccgw edge credentials command: ${mode || ""}`.trim());
-  }
-  if (args[0] === "edge" && args[1] === "tls-material") {
-    const mode = args[2];
-    if (mode === "preflight") {
-      return {
-        kind: "edge-tls-material-preflight",
-        inputPath: optionValue(args, "--input") || positionalArgs(args, 3)[0],
-        format: args.includes("--json") ? "json" : "text"
-      };
-    }
-    throw new Error(`Unknown gccgw edge tls-material command: ${mode || ""}`.trim());
   }
   if (args[0] === "edge" && args[1] === "material-handoff") {
     const mode = args[2];
@@ -2602,7 +2496,6 @@ export async function runProxyGatewayCli(argv, {
   runPackageImportDryRun,
   runPackageApply,
   runPackageInspect,
-  runPackageSelfCheck,
   runInstallConfigure,
   runEdgeMaterialHandoffPreflight,
   readJsonFile,
@@ -2653,9 +2546,6 @@ export async function runProxyGatewayCli(argv, {
     }
     if (command.kind === "package-inspect") {
       return await runPackageInspect(command);
-    }
-    if (command.kind === "package-self-check") {
-      return await runPackageSelfCheck(command);
     }
     if (command.kind === "package-import-dry-run") {
       return await runPackageImportDryRun(command);
@@ -2721,11 +2611,6 @@ export async function runProxyGatewayCli(argv, {
         inputPath: command.inputPath,
         executeProductionMutation: command.executeProductionMutation
       });
-      writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
-      return report.ok ? 0 : 1;
-    }
-    if (command.kind === "edge-tls-material-preflight") {
-      const report = buildTlsMaterialPreflightReport(command.inputPath ? readJsonFile(command.inputPath) : {});
       writeStdout(command.format === "json" ? `${JSON.stringify(report, null, 2)}\n` : `${JSON.stringify(report, null, 2)}\n`);
       return report.ok ? 0 : 1;
     }
