@@ -60,7 +60,7 @@ control-console pattern source. The local mapping is:
 | Dashboard | Workspace app: `operations-overview`, `accounts-resources`, `usage-channels`, and future gated workspaces. |
 | Panel | Plugin app/module owned by one workspace page. |
 | Data source | Safe backend summary/API domain such as accounts, orders, usage ledger, channels, collectors, receipts, or gates. |
-| Library | Manifest-backed System Search index, page/module recovery, and future safe tags/folders. |
+| Search index | Manifest-backed System Search documents for page, section, and planned-slot discovery. |
 | Alert | Risk queue or anomaly item that routes to safe evidence, not production execution. |
 | Explore | Read-only drilldown from overview to account, order, channel, collector, receipt, or gate evidence. |
 
@@ -70,9 +70,9 @@ subscription material, token, credential, or production action APIs.
 
 ## System Search Boundary
 
-System Search is the top-bar search, route discovery, and hidden-module
-recovery surface. It is not a remote plugin market, not an app drawer, and not
-an authorization layer.
+System Search is the top-bar search and route-discovery surface. It is not a
+remote plugin market, not an app drawer, not a hidden-module recovery surface,
+and not an authorization layer.
 
 Future search work should define an explicit `SystemSearchDocument` shape
 instead of scraping rendered UI labels. The document may include only:
@@ -127,9 +127,11 @@ runtime mutation, or arbitrary external data-source configuration.
 | Accounts & Resources | `account-overview`, `resource-orders`, `quota-usage`, `lifecycle`, `history-events` |
 | Usage & Channels | `freshness`, `channel-coverage`, `usage-ledger`, `collection-anomalies`, `receipts-collectors` |
 
-Module controls are local to the module header/menu. System Search or
-page-local controls restore hidden modules by dispatching the manifest
-`route.page` and `route.targetId`.
+Module controls are local to the owning page surface. The current baseline does
+not expose hidden-module restore, dock, AppLibrary, NavigationLibrary, or
+freeform workspace controls. System Search may route to a page or approved
+section by dispatching the manifest `route.page` and `route.targetId`; it must
+not mutate module visibility or layout state.
 
 ## Console Utilities
 

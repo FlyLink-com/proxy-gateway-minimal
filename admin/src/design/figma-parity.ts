@@ -9,7 +9,7 @@ export const ADMIN_FIGMA_REACT_PARITY_REQUIRED_COMPONENTS = [
   "PanelFrame",
   "DataRow",
   "TopBar",
-  "SidebarNavigation",
+  "ShellRail",
   "PrivilegedGate",
   "StateFeedback"
 ] as const;
@@ -268,7 +268,7 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
     hierarchyRoles: ["context", "state", "action"],
     nextLinearIssue: "GCC-119",
     openGaps: [
-      "Confirm compact-search behavior is represented by tokens instead of page-local CSS."
+      "Confirm adaptive search behavior is represented by tokens instead of page-local CSS and never overlaps the right action cluster."
     ],
     qaEvidence: [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Figma Mirror Evidence",
@@ -284,7 +284,7 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
     },
     responsiveRules: [
       "Top bar height and control sizing are shell-owned tokens.",
-      "Search and account controls must collapse without overlapping page title."
+      "Search and account controls must collapse without reintroducing the hidden page-heading cluster."
     ],
     stateSemantics: [
       "page status chips describe page ownership",
@@ -305,14 +305,14 @@ export const ADMIN_FIGMA_REACT_PARITY_MATRIX = [
       "--admin-statusbar-height",
       "--admin-mobile-nav-height"
     ],
-    figmaComponentSet: "SidebarNavigation",
+    figmaComponentSet: "ShellRail",
     figmaVariableCollections: ["shell", "density", "semantic-color", "radius"],
-    figmaVariantProperties: ["route=active|inactive|planned", "viewport=desktop|mobile"],
+    figmaVariantProperties: ["activeRoute=operations|accounts|usage", "route=active|inactive|planned", "viewport=desktop|icon-rail|drawer"],
     grammarRoles: ["system", "control"],
     hierarchyRoles: ["context", "action"],
     nextLinearIssue: "GCC-119",
     openGaps: [
-      "Tablet navigation behavior is token-owned and contract-covered; GCC-120 browser evidence now covers 768 and 1024-class viewports before PR #355 Ready review."
+      "Hidden functional navigation scroll is token-owned and viewport-bound; browser evidence must cover 1024-class and 1280-class rail behavior before Ready review."
     ],
     qaEvidence: [
       "docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md#Current Figma Mirror Evidence",

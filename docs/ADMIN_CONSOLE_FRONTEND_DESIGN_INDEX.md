@@ -23,11 +23,11 @@ boundaries must not be crossed.
 | Item | Current value |
 | --- | --- |
 | Canonical Figma file | <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19> |
-| Current clean baseline project | <https://www.figma.com/design/NefQiIMOPIBU28TIYcwQFE> |
+| Candidate clean baseline project | <https://www.figma.com/design/NefQiIMOPIBU28TIYcwQFE> |
 | Current refined visual references | `06 AI Exploration`: `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024`, `AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024`, `AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024` |
 | Current frame nodes | `373:716`, `373:866`, `373:1016` |
 | Direct review URL | <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19?node-id=365-2> |
-| Clean baseline role | `NefQiIMOPIBU28TIYcwQFE` is the current working design baseline for rules, component contract, product baseline frames, Figma-to-React mapping, and evidence gates. The original handoff file remains the source evidence and lineage record. |
+| Clean baseline role | `NefQiIMOPIBU28TIYcwQFE` is the intended forward cleanup baseline, but current connector metadata only verifies `00 Index & Project Map`. Until the planned pages are populated and re-verified, the original handoff file remains the verified source evidence and lineage record. |
 | Local screenshot evidence | None required for this sync; Figma connector metadata is the current evidence. |
 | Current Figma Site | <https://www.figma.com/site/fGP4xsj27bbcYRGnzIa3DO/Untitled> |
 | Design-source boundary sync | `15 Design Source Boundary / 1600x1024`, node `240:2`, written through Figma connector on 2026-06-23. |
@@ -82,13 +82,14 @@ Frontend implementation must use breakpoint-driven layout adaptation, not
 whole-frame scaling or baseline-only coordinates.
 
 Baseline project update, 2026-06-25: the clean Figma baseline project
-`NefQiIMOPIBU28TIYcwQFE` was created from the accepted `06 AI Exploration`
-source. It contains `00 Index & Project Map`, `01 Design Rules V1-Polish`,
+`NefQiIMOPIBU28TIYcwQFE` was created as the forward cleanup target for the
+accepted `06 AI Exploration` source. Current connector metadata verifies only
+`00 Index & Project Map`; the intended pages are `01 Design Rules V1-Polish`,
 `02 Component Contract`, `03 Product Baseline Frames`,
 `04 Figma-to-React Mapping`, `90 Evidence Gates`, and
-`99 Archive / Source Handoff`. Use this file as the current working baseline
-for frontend design review and implementation handoff. Use the original
-handoff file only as the source evidence and historical canvas.
+`99 Archive / Source Handoff`. Do not use this file as the implementation
+baseline until those pages are populated and re-verified. Use the original
+handoff file as the verified source evidence and historical canvas.
 
 ## Current Figma Coverage
 
@@ -97,7 +98,7 @@ candidates, and the current Visual Polish frames. They have different roles:
 
 | Surface | Node | Role | Current design status |
 | --- | --- | --- | --- |
-| Clean baseline project | `NefQiIMOPIBU28TIYcwQFE` | Current working Admin UI design baseline. | Use for design rules, component contract, product baseline frames, Figma-to-React mapping, and evidence gates. |
+| Candidate clean baseline project | `NefQiIMOPIBU28TIYcwQFE` | Intended clean Admin UI design baseline; currently only the index page is connector-verified. | Populate and re-verify before using for implementation handoff. |
 | `01 Operations Overview / 1600x1024` | `2:81` | Original page mirror and ownership map. | Superseded visually by `373:716`, still useful for page content lineage. |
 | `02 Accounts & Resources / 1600x1024` | `2:189` | Original page mirror and ownership map. | Superseded visually by `373:866`, still useful for page content lineage. |
 | `03 Usage & Channels / 1600x1024` | `2:309` | Original page mirror and ownership map. | Superseded visually by `373:1016`, still useful for page content lineage. |

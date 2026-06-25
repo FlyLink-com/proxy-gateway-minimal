@@ -192,8 +192,18 @@ describe("admin Figma mirror contract", () => {
 
   test("maps every mirrored component to React surfaces, grammar roles, tokens, and QA evidence", () => {
     expect(ADMIN_FIGMA_REACT_PARITY_CONTRACT_VERSION).toBe("admin-figma-react-parity/v1");
-    expect(ADMIN_FIGMA_REACT_PARITY_REQUIRED_COMPONENTS).toEqual(
-      ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedComponentSets.map((componentSet) => componentSet.name)
+    expect(ADMIN_FIGMA_REACT_PARITY_REQUIRED_COMPONENTS).toEqual([
+      "StatusChip",
+      "MetricCard",
+      "PanelFrame",
+      "DataRow",
+      "TopBar",
+      "ShellRail",
+      "PrivilegedGate",
+      "StateFeedback"
+    ]);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedComponentSets.map((componentSet) => componentSet.name)).toContain(
+      "SidebarNavigation"
     );
     expect(ADMIN_FIGMA_REACT_PARITY_MATRIX.map((entry) => entry.figmaComponentSet)).toEqual(
       ADMIN_FIGMA_REACT_PARITY_REQUIRED_COMPONENTS

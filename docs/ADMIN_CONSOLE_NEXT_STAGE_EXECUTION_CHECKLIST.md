@@ -27,7 +27,7 @@ or app-map documents.
 | Product posture | Protected operator console for supervision, operations, maintenance, and future platform development. |
 | Active pages | `Operations Overview`, `Accounts & Resources`, `Usage & Channels`. |
 | Planned slots | `Audit & Cases`, `Platform Development`, `System Settings`. |
-| Visual source | Clean baseline project `NefQiIMOPIBU28TIYcwQFE`, backed by the canonical Figma `/design` file, `06 AI Exploration` (`365:2`), and current Visual Polish source frames `373:716`, `373:866`, `373:1016`. |
+| Visual source | Canonical Figma `/design` file `oZuKNtGPhP6oOQ0MSzpfvn`, `06 AI Exploration` (`365:2`), and current Visual Polish source frames `373:716`, `373:866`, `373:1016`. Candidate clean baseline project `NefQiIMOPIBU28TIYcwQFE` is pending population beyond its index page. |
 | Git role | Runnable Admin implementation, source index, design contracts, implementation mapping, QA records, and validation evidence. |
 | Figma Site role | Optional demo/click-flow review surface only; not a source of truth or implementation target. |
 | Linear role | Task gates, review ownership, phase acceptance, and next-stage sequencing. |
@@ -52,9 +52,11 @@ Before starting the execution order below:
    sensitive material enters the frontend baseline.
 5. Figma Site evidence, if present, is demo-only and must not replace canonical
    `/design` frames or GitHub validation.
-6. The current clean baseline project `NefQiIMOPIBU28TIYcwQFE` has been
-   created from node `365:2`; do not rely on stale `99:2`, `104:2`, or
-   `104:226` frame IDs for new implementation work.
+6. The candidate clean baseline project `NefQiIMOPIBU28TIYcwQFE` has been
+   created from node `365:2`, but connector metadata currently verifies only
+   its index page. Do not use it as an implementation source until its planned
+   pages are populated and re-verified; do not rely on stale `99:2`, `104:2`,
+   or `104:226` frame IDs for new implementation work.
 
 ## Unified Local Task Tree, 2026-06-24
 
@@ -64,9 +66,9 @@ runtime work into the frontend design completion gate.
 
 | Line | Owns | Current role | Completion boundary |
 | --- | --- | --- | --- |
-| Admin design baseline | Figma visual standard, page ownership, layout density, component states, and responsive rules. | Clean baseline project `NefQiIMOPIBU28TIYcwQFE` is now the working baseline; `373:716`, `373:866`, and `373:1016` remain the source frames behind it. | Complete for desktop page-design source; still requires implementation, browser QA, and responsive/mobile follow-up. |
+| Admin design baseline | Figma visual standard, page ownership, layout density, component states, and responsive rules. | Verified source remains `373:716`, `373:866`, and `373:1016` plus rule node `501:488`; clean baseline project `NefQiIMOPIBU28TIYcwQFE` is pending population beyond its index page. | Complete for desktop page-design source; still requires clean-baseline population, implementation, browser QA, and responsive/mobile follow-up. |
 | Admin React/CSS implementation | Shared primitives, shell chrome, page-owned panels, and visual parity tests. | Next active line: reverse-standardize from the accepted Visual Polish baseline; it must not invent layout rules outside the design docs. | Complete only after browser QA and Admin test/build validation pass. |
-| `GCC-77` System Search | Safe top-bar search, result routing, planned/locked slots, and hidden-module recovery. | Frontend sub-lane, not AppLibrary or NavigationLibrary. | Complete only when it reads explicit safe manifest/search documents and does not index rendered UI or unsafe backend material. |
+| `GCC-77` System Search | Safe top-bar search, result routing, and planned/locked slots. | Frontend sub-lane, not AppLibrary, NavigationLibrary, module recovery, or OS windowing. | Complete only when it reads explicit safe manifest/search documents and does not index rendered UI or unsafe backend material. |
 | Server/TLS/TUIC preflight | Edge/runtime preflight helpers, templates, and CLI tests. | Separate backend/runtime support line. | Review and validate separately from Admin UI; production use remains gated by the normal A-tier rules. |
 | Research report inputs | External UI/system research and review notes. | Reference material only. | Promote into `docs/` only when a specific design or implementation decision depends on it. |
 
@@ -75,14 +77,18 @@ scratch output, but keep task artifacts until their owning line is reviewed.
 
 Current design rule: the older browser-OS/AppLibrary experiment is not an
 active surface. Search is a normal System Search form/result experience in the
-Admin shell, and module recovery belongs to System Search or page-local
-controls.
+Admin shell. Module recovery, hidden-module restore, dock/appbar, and
+freeform windowing are not active product surfaces in this baseline.
 
 Current stage order:
 
-1. Treat `NefQiIMOPIBU28TIYcwQFE` as the working Admin UI design baseline.
-2. Use `373:716`, `373:866`, and `373:1016` as source evidence behind that baseline, not as a reason to re-import old draft residue.
-3. Normalize layout, density, component states, and responsive standards from the clean baseline project.
+1. Treat `373:716`, `373:866`, `373:1016`, and rule node `501:488` as the
+   verified Admin UI design source.
+2. Populate and re-verify `NefQiIMOPIBU28TIYcwQFE` before promoting it to the
+   working Admin UI design baseline.
+3. Normalize layout, density, component states, and responsive standards from
+   the verified Visual Polish source and then mirror them into the clean
+   baseline project.
 4. Reverse-standardize React/CSS from the accepted design rules.
 5. Complete `GCC-77` System Search as a safe frontend sub-lane.
 6. Review server/TLS/TUIC changes separately with their own validation.
@@ -91,10 +97,10 @@ Current stage order:
 
 | Order | Lane | Risk | Primary goal | Must finish before |
 | --- | --- | --- | --- | --- |
-| 1 | `GCC-77` System Search safe discovery | B | Build a safe system-search result model from approved manifest fields and page ownership metadata. | Workspace restore and capability actions. |
-| 2 | `GCC-78` Workspace preset and restore | B | Stabilize visible, hidden, pinned, and size behavior as predictable workspace presets. | Capability matrix and richer layout behavior. |
-| 3 | `GCC-79` Capability matrix | B | Define which frontend capabilities are visible, gated, planned, disabled, or absent for the current operator context. | Any privileged Admin surface promotion. |
-| 4 | Usage runtime projection v1 | B | Move `Usage & Channels` toward a view-model projection for usage, freshness, coverage, and anomalies. | Real backend DTO wiring. |
+| 1 | `GCC-77` System Search safe discovery | B | Build a safe system-search result model from approved manifest fields and page ownership metadata. | Capability matrix and richer route discovery. |
+| 2 | `GCC-79` Capability matrix | B | Define which frontend capabilities are visible, gated, planned, disabled, or absent for the current operator context. | Any privileged Admin surface promotion. |
+| 3 | Usage runtime projection v1 | B | Move `Usage & Channels` toward a view-model projection for usage, freshness, coverage, and anomalies. | Real backend DTO wiring. |
+| Deferred | `GCC-78` Workspace preset and restore | B | Retired/deferred under the current baseline; no hidden/restore/preset/windowing UI is active. | Requires a new approved design gate before reactivation. |
 
 Before Lane 1 implementation, align the current UI shell with the accepted
 Visual Polish geometry: ShellRail, TopBar, System Search, metric row, primary
@@ -139,28 +145,33 @@ rendered UI text or unsafe backend/raw material.
 
 ### Goal
 
-Replace experimental drag/resize behavior with stable workspace layout presets
-and recovery controls that fit a browser-based control console.
+Retired for the current baseline. The previous goal to replace experimental
+drag/resize behavior with workspace presets is no longer part of the active
+Admin UI lane. Current pages use page-owned sections, ShellRail route state,
+System Search routing, pagination, and responsive page splits.
 
 ### Scope
 
 | Area | Required outcome |
 | --- | --- |
-| Layout state | `visible`, `hidden`, `pinned`, `compact`, `standard`, `expanded`. |
-| Restore model | Hidden modules can be recovered from System Search or page-local controls. |
-| Size model | Use named sizes first; defer freeform resize unless the layout engine can enforce constraints. |
-| Persistence | Local UI preference only until a separate storage design is approved. |
-| Safety | Layout state stores ids and preferences only, never runtime data or sensitive material. |
+| Layout state | No active per-module visibility, hidden, pinned, compact, standard, expanded, or freeform-size state. |
+| Restore model | No hidden-module recovery from System Search, page-local controls, AppLibrary, NavigationLibrary, dock, or appbar. |
+| Size model | Use fixed page-owned sections, responsive breakpoints, pagination, route split, or bounded internal scroll only. |
+| Persistence | No local layout preference persistence in the current baseline. |
+| Safety | If a later design reintroduces layout preferences, it must remain ids/preferences only and pass a separate gate. |
 
 ### Acceptance
 
-1. Hiding or compacting a module does not leave broken whitespace.
-2. Restored modules return to the correct owner page.
-3. Size changes use named presets with stable responsive constraints.
-4. Workspace state cannot store secrets, raw API responses, logs, config, env,
+1. No visible hide, restore, edit-layout, drag, resize, dock, appbar, or
+   NavigationLibrary affordance appears in the Admin UI.
+2. System Search routes only to approved pages, sections, and planned slots.
+3. Page overflow is handled by pagination, route split, or bounded internal
+   scroll, not by per-card window controls.
+4. No layout state stores secrets, raw API responses, logs, config, env,
    SQLite rows, subscription URLs, or customer-private data.
 5. Desktop and narrow viewport screenshots show no overlap or clipped controls.
-6. Tests cover visible/hidden/restore and size-preset behavior.
+6. Tests cover absence of hide/restore/resize controls and safe System Search
+   result filtering.
 
 ## Lane 3: GCC-79 Capability Matrix
 
@@ -247,9 +258,10 @@ Before opening the next implementation PR, review these points:
    review.
 3. `Usage & Channels` owns freshness, coverage, usage ledger, collectors, and
    collection anomalies.
-4. System Search is a safe search/recovery layer, not a new OS runtime.
-5. Workspace behavior is preset-based and constraint-based, not freeform
-   windowing.
+4. System Search is a safe route/search layer, not recovery, AppLibrary,
+   NavigationLibrary, or a new OS runtime.
+5. Workspace behavior is page-owned, responsive, and paginated/split as needed;
+   it is not preset-based freeform windowing.
 6. Capability matrix only affects frontend visibility/copy until backend
    authority is separately approved.
 7. Visual changes still follow Figma and

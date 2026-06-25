@@ -48,7 +48,7 @@ Previous source mismatch:
 | --- | --- |
 | `EvQXTtJ2XnRfcGxRLTRt0B` | Older one-page Requirements Map used during early handoff. Do not use it as the active mirror source. |
 | `oZuKNtGPhP6oOQ0MSzpfvn` | Canonical multi-frame Admin UI Handoff file. |
-| `NefQiIMOPIBU28TIYcwQFE` | Clean Admin UI baseline project created from the accepted Visual Polish source. Use it as the current working design baseline; keep `oZuKNtGPhP6oOQ0MSzpfvn` as original source evidence. |
+| `NefQiIMOPIBU28TIYcwQFE` | Candidate clean Admin UI baseline project created for forward cleanup. Current connector-visible content is only `00 Index & Project Map`; do not treat it as a complete working baseline until the planned pages below are populated and re-verified. |
 
 Write attempt:
 
@@ -60,14 +60,19 @@ Write attempt:
 | User-reported Figma UI access | Full access for the connected account. |
 | Desktop evidence | Figma Desktop opens the canonical multi-frame file. The Share button shows a Full-seat upgrade prompt; do not continue that prompt through automation. |
 | Connector result | `get_metadata` can read the canonical file, `use_figma` can execute, and a shared plugin data write probe succeeded on page `0:1`. |
-| Required action | Use the clean baseline project for forward design review and implementation handoff; use the canonical handoff file as source evidence and lineage. Avoid Share or seat/billing prompts unless the operator explicitly approves that action. |
+| Required action | Keep using the canonical handoff file and Visual Polish nodes as the current verified source evidence. Use the clean baseline project only after its planned pages are populated and connector metadata verifies them. Avoid Share or seat/billing prompts unless the operator explicitly approves that action. |
 
 ## Clean Baseline Project, 2026-06-25
 
-The user accepted `NefQiIMOPIBU28TIYcwQFE` as the Admin UI working baseline.
-This file exists to stop future agents from mixing old draft frames, local
-implementation captures, and legacy AppLibrary/browser-OS experiments into the
-active product design.
+The user accepted `NefQiIMOPIBU28TIYcwQFE` as the intended clean Admin UI
+baseline target. This file exists to stop future agents from mixing old draft
+frames, local implementation captures, and legacy AppLibrary/browser-OS
+experiments into the active product design.
+
+Connector check on 2026-06-25 currently exposes only one top-level page,
+`00 Index & Project Map`, with four rule-card frames. The pages below are the
+required target structure for the clean baseline project, not verified current
+content until a later Figma metadata pass sees them.
 
 | Page | Role |
 | --- | --- |
@@ -79,9 +84,12 @@ active product design.
 | `90 Evidence Gates` | Figma/GitHub/browser acceptance checks before implementation is marked complete. |
 | `99 Archive / Source Handoff` | Source handoff notes and legacy rules that must not be copied forward. |
 
-Boundary: the clean baseline project is the current working design baseline.
-It is not proof that the React implementation has already reached parity, and
-it does not authorize backend DTO wiring, auth/schema changes, production
+Boundary: the clean baseline project is the intended forward cleanup baseline,
+but the verified implementation source remains the canonical handoff file
+`oZuKNtGPhP6oOQ0MSzpfvn`, node `365:2`, and the Visual Polish source frames
+`373:716`, `373:866`, and `373:1016` until the clean project is populated. It
+is not proof that the React implementation has already reached parity, and it
+does not authorize backend DTO wiring, auth/schema changes, production
 operations, or sensitive data exposure.
 
 Historical GCC-122 audit update, 2026-06-22:
@@ -410,9 +418,12 @@ The matrix intentionally records current gaps instead of hiding them:
   hooks for browser evidence.
 - `DataRow`: choose one mobile safe-ref strategy: local horizontal scroll or
   stacked row.
-- `TopBar`: confirm compact search behavior is token-owned, not page-owned.
-- `SidebarNavigation`: tablet behavior is token-owned, contract-covered, and
-  has `GCC-120` browser evidence for 768 and 1024-class viewports.
+- `TopBar`: confirm adaptive search behavior is token-owned, not page-owned,
+  and never overlaps the right action cluster.
+- `ShellRail`: hidden functional navigation scroll, planned-route gate, and
+  icon-rail/drawer breakpoints must stay token-owned and contract-covered.
+  Historical mirror evidence may still mention `SidebarNavigation`, but no
+  active React/Figma-to-code mapping should use it as a current component name.
 - `PrivilegedGate`: the shell production guard is now a first-class primitive;
   future super-admin detail surfaces remain contract-only until backend
   authority exists.

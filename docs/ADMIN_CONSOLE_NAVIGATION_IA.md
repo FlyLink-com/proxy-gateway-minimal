@@ -81,38 +81,39 @@ boundaries:
 The visible shell subtitle remains `Proxy Gateway`. Page labels carry the
 operator-console responsibility split.
 
-## Navigation Library Safe Index Contract
+## System Search Safe Index Contract
 
-`Navigation Library` is the protected console launcher, search, and recovery
-surface. It is not an OS app drawer and must not behave like a large scrolling
-modal that duplicates page content.
+System Search is the protected top-bar search and routing surface. It is not an
+AppLibrary, NavigationLibrary, OS app drawer, command-center modal, or module
+recovery library. It must behave like a normal form/result surface that searches
+approved Admin pages, sections, planned slots, and safe summary metadata.
 
-The React source of truth is `admin/src/app/admin-app-manifest.ts`. Its
-`createNavigationLibrarySearchIndex()` output is the reviewable contract for
-safe search and recovery. Every entry must be a safe summary record with these
-properties:
+The React source of truth is `admin/src/app/admin-search-index.ts`. Its
+`createAdminSearchResults()` output is the reviewable contract for safe search.
+Every entry must be a safe summary record with these properties:
 
 | Field | Contract |
 | --- | --- |
-| `resultType` | One of `workspace-app`, `plugin-module`, `system-action`, or `planned-app`. |
-| `libraryGroup` | One of `workspace-pages`, `plugins`, `console-settings`, or `planned-apps`. |
+| `type` | One of `page`, `section`, or `planned`. |
+| `page` / `navId` / `targetId` | Approved route and section identifiers only. |
 | `dataBoundary` | Always `safe-summary-only` in this phase. |
 | `productionImpact` | `read-only`, `none`, or `gated`; never direct production mutation. |
 | `forbiddenFields` | Explicit policy labels for forbidden raw fields. These labels are not searchable payload. |
-| `moduleRecovery` | Present only for `plugin-module` entries. Recovery source is `navigation-library`, action is `restore-module`, and hidden modules consume no canvas space. |
+| `statusLabel` / `owner` | Human-readable page or section context; not permission authority. |
 
-Search payload is limited to sanitized label, alias, owner area, category,
-route target, safe description, approved searchable fields, status,
-capabilities, and group. The searchable payload must not include tokens,
+Search payload is limited to sanitized label, alias, owner area, route target,
+safe description, approved searchable fields, section status, and planned-slot
+context. The searchable payload must not include tokens,
 credentials, subscription URLs, auth headers, raw session/env/config/log text,
 SQLite rows, raw runtime endpoints, raw subscription material, customer-private
 identity/contact fields, raw operator notes, raw error stacks, or unredacted
 case evidence.
 
-`GCC-78` must consume `moduleRecovery` instead of inventing a separate hidden
-module registry. `GCC-79` must consume `resultType`, `capabilities`,
-`productionImpact`, and `forbiddenFields` when defining capability and
-permission boundaries.
+Current implementation must not reintroduce AppLibrary, NavigationLibrary,
+module restore, hidden-module recovery, dock, app drawer, or OS windowing
+surfaces. Future capability planning may consume search result `type`, route
+target, owner, status, and safe boundary metadata, but it must not treat search
+results as permission or production authority.
 
 ## Capability Boundary Matrix Contract
 
@@ -150,11 +151,14 @@ systemd, firewall, subscription, or customer-impacting behavior must leave this
 repo-only UI lane and become Risk A work with read-only inventory, runbook,
 approval, staging/validation, and rollback evidence.
 
-## Workspace Layout Preset Contract
+## Retired Workspace Layout Preset Boundary
 
-Workspace modules use a browser-console layout preset model instead of
-desktop-OS freeform drag or edge resize behavior. The local client state is a
-safe UI preference record:
+The older workspace layout preset and hidden-module recovery model is retired
+for the current Admin visual baseline. Current pages use fixed page-owned
+sections, route-level ownership, System Search, and responsive/pagination
+contracts instead of editable desktop-style modules.
+
+The historical preset model used this shape:
 
 | Field | Contract |
 | --- | --- |
@@ -167,17 +171,16 @@ safe UI preference record:
 | `order` | Stable page-local ordering hint. |
 | `updatedAt` | Client preference update marker, not operational evidence. |
 
-The current implementation stores this state only in browser local storage and
-does not create a server schema, production database index, realtime sync
-channel, or cross-user preference model. `hidden` is represented both as
-`visible: false` and `sizePreset: hidden`; restoring a hidden module from
-Navigation Library returns it to `standard`.
+The current implementation must not expose this model as live UI and must not
+create a server schema, production database index, realtime sync channel, or
+cross-user preference model for it. `hidden`, `pinned`, and `sizePreset` are
+historical review vocabulary only unless a later approved design gate
+reintroduces them with explicit page ownership and tests.
 
-Panel controls live in the module header/floating header affordance. They must
-offer preset changes and hide behavior without reintroducing an edit workspace
-switch, module dock, drag handle, free x/y coordinates, arbitrary width/height
-fields, or resize handles. Narrow screens collapse through the existing
-responsive single-column projection.
+Panel controls must not offer hide, restore, drag, free x/y coordinates,
+arbitrary width/height fields, edit workspace switches, module docks, or resize
+handles in the current baseline. Narrow screens collapse through the approved
+responsive/page-split strategy, not through per-card window management.
 
 ## Current Wave Boundary
 
