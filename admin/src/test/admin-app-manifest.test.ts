@@ -55,8 +55,7 @@ describe("admin app manifest", () => {
       "large",
       "medium",
       "compact",
-      "icon-only",
-      "hidden"
+      "icon-only"
     ]);
     expect(ADMIN_APP_AUTHORING_STANDARD.states).toEqual([
       "normal",
@@ -99,13 +98,13 @@ describe("admin app manifest", () => {
     expect(getWorkspacePageApp("usageMonitor")?.owner.area).toBe("Platform Monitoring");
     expect(getWorkspacePageApp("dashboard")?.catalog).toMatchObject({
       appId: "operations-overview",
-      coreViews: expect.arrayContaining(["health summary", "risk queue", "next action routing", "owner handoff"]),
+      coreViews: expect.arrayContaining(["health summary", "risk queue", "next action routing", "review candidates"]),
       enName: "Operations Overview",
       primaryObjects: expect.arrayContaining(["platform health", "risk case"]),
       searchableFields: expect.arrayContaining(["overview", "health", "risk"]),
       sourceContract: {
         dataSourceRefs: expect.arrayContaining(["platform-health-summary", "risk-case-summary"]),
-        drilldownTargets: expect.arrayContaining(["dashboard#dashboard-risk-queue", "dashboard#dashboard-owner-handoff"]),
+        drilldownTargets: expect.arrayContaining(["dashboard#dashboard-risk-queue", "dashboard#dashboard-review-candidates"]),
         evidenceRoutes: expect.arrayContaining(["risk-case"]),
         transformBoundary: "display-only"
       },
@@ -113,7 +112,7 @@ describe("admin app manifest", () => {
     });
   });
 
-  test("registers page modules as plugins with safe restore routes", () => {
+  test("registers page modules as plugins with safe page-subnav routes", () => {
     const expectedPluginCount = Object.values(pageSubNavigation)
       .reduce((count, modules) => count + modules.length, 0);
 
@@ -125,10 +124,10 @@ describe("admin app manifest", () => {
         group: "plugins"
       },
       plugin: {
-        allowedControls: ["hide"],
+        allowedControls: [],
         navId: "usage-ledger",
         settingsEntry: "pageSubnav",
-        states: ["visible", "hidden"]
+        states: ["active"]
       },
       route: {
         action: "openPlugin",
@@ -162,7 +161,6 @@ describe("admin app manifest", () => {
       "planned.audit-workflow",
       "planned.platform-development",
       "planned.system-settings",
-      "planned.about",
       "privileged.key-management",
       "privileged.audit-center",
       "privileged.log-access"
@@ -194,17 +192,16 @@ describe("admin app manifest", () => {
     const operatorSearchText = operatorMap.searchIndex.map((entry) => entry.searchText).join(" ");
 
     expect(operatorMap.plannedApps.map((app) => app.id)).toEqual([
+      "planned.audit-workflow",
       "planned.platform-development",
-      "planned.system-settings",
-      "planned.about"
+      "planned.system-settings"
     ]);
     expect(operatorIds).not.toEqual(expect.arrayContaining([
-      "planned.audit-workflow",
       "privileged.key-management",
       "privileged.audit-center",
       "privileged.log-access"
     ]));
-    expect(operatorSearchText).not.toMatch(/key management|audit center|log access|audit & cases/i);
+    expect(operatorSearchText).not.toMatch(/key management|audit center|log access/i);
     expect(getRegisteredAdminApiHookIds(DEFAULT_ADMIN_CAPABILITY_CONTEXT)).toEqual([]);
 
     const adminMap = getCapabilityScopedAdminAppMap({ freshMfa: false, role: "admin" });
@@ -340,7 +337,7 @@ describe("admin app manifest", () => {
     expect(byId.get("plugin.quota-usage")).toMatchObject({
       entryType: "plugin-module",
       layoutDefaults: {
-        allowedSizes: ["large", "medium", "compact", "hidden"],
+        allowedSizes: ["large", "medium", "compact"],
         size: "medium",
         visibility: "library"
       },

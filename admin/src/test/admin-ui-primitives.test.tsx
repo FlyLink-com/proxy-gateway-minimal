@@ -38,6 +38,12 @@ describe("admin ui primitives", () => {
     expect(searchForm).toBe(searchControl);
     expect(searchControl?.getAttribute("data-search-scope")).toBe("system");
     expect(searchControl?.getAttribute("data-search-state")).toBe("idle");
+    expect(input.getAttribute("placeholder")).toBe("Search users, orders, channels...");
+    expect(screen.getByText("Production")).not.toBeNull();
+    expect(screen.getByLabelText("Risk A gate status")).not.toBeNull();
+    expect(screen.getAllByText("Operator").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Operations")).not.toBeNull();
+    expect(screen.queryByText("Risk A gated")).toBeNull();
 
     fireEvent.change(input, { target: { value: "quota" } });
     expect(onSearchChange).toHaveBeenCalledWith("quota");
@@ -45,6 +51,16 @@ describe("admin ui primitives", () => {
     rerender(<TopBar activePage="dashboard" search="quota" onSearchChange={onSearchChange} />);
     const activeControl = screen.getByLabelText("Search users, orders, channels, cases, or events").closest(".top-bar-search");
     expect(activeControl?.getAttribute("data-search-state")).toBe("active");
+
+    rerender(<TopBar activePage="portalRequests" search="" onSearchChange={onSearchChange} />);
+    expect(screen.getByLabelText("Search users, orders, channels, cases, or events").getAttribute("placeholder")).toBe(
+      "Search accounts, orders, lifecycle..."
+    );
+
+    rerender(<TopBar activePage="usageMonitor" search="" onSearchChange={onSearchChange} />);
+    expect(screen.getByLabelText("Search users, orders, channels, cases, or events").getAttribute("placeholder")).toBe(
+      "Search usage, channels, receipts..."
+    );
   });
 
   test("renders metric cards with the existing dashboard card contract", () => {
@@ -53,6 +69,7 @@ describe("admin ui primitives", () => {
         detail="1 eligible channels"
         icon={<span aria-hidden="true">i</span>}
         label="Platform health"
+        status={{ label: "Ready", tone: "success" }}
         tone="success"
         value="Good"
       />
@@ -66,6 +83,7 @@ describe("admin ui primitives", () => {
     expect(card?.getAttribute("data-ui-surface")).toBe("metric-card");
     expect(screen.getByText("Good")).not.toBeNull();
     expect(screen.getByText("1 eligible channels")).not.toBeNull();
+    expect(card?.querySelector(":scope > [data-figma-component='StatusChip']")?.textContent).toBe("Ready");
   });
 
   test("renders status chips through the dashboard status badge classes", () => {
@@ -131,8 +149,6 @@ describe("admin ui primitives", () => {
 
 
   test("renders fixed panel frame chrome without design-review metadata by default", () => {
-    const onHide = vi.fn();
-
     render(
       <PanelFrame
         ariaLabel="Monitoring container contract"
@@ -140,7 +156,6 @@ describe("admin ui primitives", () => {
         className="custom-panel"
         containerLabel="Overview metric widget set"
         fieldLabels={["Platform health label", "Risk counter"]}
-        onHide={onHide}
         title="Health Summary"
         ownerMode="preview"
       >
@@ -161,16 +176,13 @@ describe("admin ui primitives", () => {
     expect(panel.getAttribute("data-height")).toBeNull();
     expect(screen.queryByLabelText("Health Summary plugin display controls")).toBeNull();
     expect(screen.queryByRole("button", { name: "Health Summary Large plugin display" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Health Summary hide module" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Health Summary hide module" })).toBeNull();
     expect(screen.queryByLabelText("2 primary fields")).toBeNull();
     expect(screen.queryByText("Platform health label")).toBeNull();
     expect(screen.queryByText("Risk counter")).toBeNull();
     expect(screen.queryByText("Overview metric widget set")).toBeNull();
     expect(screen.queryByText("Preview")).toBeNull();
     expect(screen.getByText("Panel content")).not.toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Health Summary hide module" }));
-    expect(onHide).toHaveBeenCalled();
   });
 
   test("renders design-review metadata only when explicitly requested", () => {
@@ -303,11 +315,17 @@ describe("admin ui primitives", () => {
     const sidebar = screen.getByLabelText("Workspace sidebar");
     expect(sidebar.className).toContain("workspace-sidebar");
     expect(sidebar.getAttribute("data-ui-contract")).toBe("app-shell");
-    expect(sidebar.getAttribute("data-figma-component")).toBe("SidebarNavigation");
+    expect(sidebar.getAttribute("data-figma-component")).toBe("ShellRail");
     expect(sidebar.getAttribute("data-ui-surface")).toBe("workspace-sidebar");
     expect(sidebar.getAttribute("data-density")).toBe("normal");
     expect(within(sidebar).getByText("GlobalCircle AI")).not.toBeNull();
     expect(within(sidebar).getByLabelText("Primary workspace routes")).not.toBeNull();
+    const navigation = within(sidebar).getByLabelText("Workspace navigation");
+    expect(navigation.getAttribute("data-ui-role")).toBe("workspace-navigation-scrollport");
+    expect(navigation.getAttribute("tabindex")).toBe("0");
+    expect(within(navigation).getByLabelText("Primary workspace routes")).not.toBeNull();
+    expect(within(navigation).queryByText("GlobalCircle AI")).toBeNull();
+    expect(within(navigation).queryByRole("button", { name: "Risk A gated" })).toBeNull();
     expect(within(sidebar).getByRole("button", { name: "Operations Overview" }).getAttribute("aria-current")).toBe("page");
     expect(within(sidebar).queryByRole("button", { name: "Navigation library" })).toBeNull();
     expect(within(sidebar).getByRole("button", { name: "Risk A gated" })).not.toBeNull();
@@ -315,6 +333,72 @@ describe("admin ui primitives", () => {
     fireEvent.click(within(sidebar).getByRole("button", { name: "Accounts & Resources" }));
 
     expect(onNavigate).toHaveBeenCalledWith("users");
+  });
+
+  test("supports keyboard paging on the workspace navigation scrollport", () => {
+    render(
+      <WorkspaceSidebar
+        brand={{
+          mark: "GC",
+          name: "GlobalCircle AI",
+          subtitle: "Proxy Gateway"
+        }}
+        pinnedApps={[
+          {
+            active: true,
+            icon: <span aria-hidden="true">O</span>,
+            id: "overview",
+            label: "Operations Overview",
+            onClick: vi.fn(),
+            tone: "nav-app-tone-blue"
+          },
+          {
+            active: false,
+            icon: <span aria-hidden="true">U</span>,
+            id: "users",
+            label: "Accounts & Resources",
+            onClick: vi.fn(),
+            tone: "nav-app-tone-green"
+          }
+        ]}
+        plannedRoutes={
+          <>
+            <button className="nav-item-planned" type="button">
+              Audit & Cases
+            </button>
+            <button className="nav-item-planned" type="button">
+              Platform Development
+            </button>
+            <button className="nav-item-planned" type="button">
+              System Settings
+            </button>
+          </>
+        }
+      />
+    );
+
+    const navigation = screen.getByLabelText("Workspace navigation");
+    const scrollBy = vi.fn();
+    const scrollTo = vi.fn();
+    Object.defineProperty(navigation, "clientHeight", { configurable: true, value: 224 });
+    Object.defineProperty(navigation, "scrollHeight", { configurable: true, value: 256 });
+    Object.defineProperty(navigation, "scrollBy", { configurable: true, value: scrollBy });
+    Object.defineProperty(navigation, "scrollTo", { configurable: true, value: scrollTo });
+
+    fireEvent.keyDown(navigation, { key: "PageDown" });
+    expect(scrollBy).toHaveBeenLastCalledWith({ top: 200, behavior: "auto" });
+
+    fireEvent.keyDown(navigation, { key: "ArrowDown" });
+    expect(scrollBy).toHaveBeenLastCalledWith({ top: 34, behavior: "auto" });
+
+    fireEvent.keyDown(navigation, { key: "PageUp" });
+    expect(scrollBy).toHaveBeenLastCalledWith({ top: -200, behavior: "auto" });
+
+    fireEvent.keyDown(navigation, { key: "End" });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 256, behavior: "auto" });
+
+    fireEvent.keyDown(navigation, { key: "Home" });
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "auto" });
   });
 
   test("renders data source badges with explicit source state", () => {

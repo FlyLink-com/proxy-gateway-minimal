@@ -2,9 +2,12 @@ import {
   AdminConsolePageFrame,
   type BlueprintPage
 } from "./admin-console-page-frame";
+import { ADMIN_EVIDENCE_SURFACE_CONTRACTS } from "../app/admin-evidence-contract";
 import {
-  DataTable,
+  EvidenceChartPanel,
+  EvidenceLogPanel,
   MetricCard,
+  type MetricTone,
   RiskQueue,
   SafeRef,
   StatusChip,
@@ -26,6 +29,8 @@ export const usageChannelsBlueprint: BlueprintPage = {
   statusLabel: "Evidence owner",
   statusTone: "info",
   summary: <UsageChannelsSummary />,
+  evidence: <UsageChannelsEvidence />,
+  overviewModuleIds: ["freshness", "channel-coverage", "usage-ledger"],
   modules: [
     {
       navId: "freshness",
@@ -38,6 +43,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         interactionModel: "Inspect trust state and route evidence to owner pages."
       },
       content: <FreshnessContent />,
+      actions: <StatusChip label="Fresh" tone="success" />,
       purpose: "Inspect whether usage collection is fresh enough to trust downstream quota and risk decisions.",
       contentFields: [
         "Generated · monitor time",
@@ -72,6 +78,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         interactionModel: "Inspect missing coverage and prepare evidence handoff."
       },
       content: <ChannelCoverageContent />,
+      actions: <StatusChip label="Covered" tone="success" />,
       purpose: "Compare issued channels, measured channels, missing channels, and receipt blockers.",
       contentFields: [
         "Channel safe ref · health state",
@@ -107,6 +114,7 @@ export const usageChannelsBlueprint: BlueprintPage = {
         interactionModel: "Read-only measurement evidence with safe refs."
       },
       content: <UsageLedgerContent />,
+      actions: <StatusChip label="Locked" tone="success" />,
       purpose: "Provide evidence rows for account, order, channel, and measured traffic correlation.",
       contentFields: [
         "Account · safe ref",
@@ -205,6 +213,58 @@ export const usageChannelsBlueprint: BlueprintPage = {
   ]
 };
 
+function UsageChannelsEvidence() {
+  return (
+    <>
+      <EvidenceChartPanel
+        ariaLabel="Usage Metrics evidence panel"
+        contract={ADMIN_EVIDENCE_SURFACE_CONTRACTS.usageMetrics}
+        description="Safe collection evidence for freshness, coverage, measured usage, and anomalies."
+        series={[
+          { label: "Freshness", tone: "success", values: [93, 94, 95, 96, 98, 98, 99] },
+          { label: "Coverage", tone: "info", values: [27, 27, 28, 28, 29, 29, 29] },
+          { label: "Anomalies", tone: "warning", values: [1, 1, 1, 2, 2, 2, 3] }
+        ]}
+        stats={[
+          { label: "Observed age", tone: "success", value: "2m" },
+          { label: "Coverage", tone: "info", value: "24/25" },
+          { label: "Anomalies", tone: "warning", value: "4" }
+        ]}
+        title="Usage Metrics"
+      />
+      <EvidenceLogPanel
+        ariaLabel="Usage and Channel Event Log evidence panel"
+        contract={ADMIN_EVIDENCE_SURFACE_CONTRACTS.usageChannelEventLog}
+        description="Collector and channel facts remain read-only and redacted at this layer."
+        entries={[
+          {
+            detail: "Measured usage sample is inside the freshness threshold for the primary channel.",
+            source: "collection freshness",
+            time: "12:24",
+            title: "Fresh sample observed",
+            tone: "success"
+          },
+          {
+            detail: "One route remains delayed; owner page keeps the anomaly visible without runtime apply.",
+            source: "channel coverage",
+            time: "12:08",
+            title: "Delayed route retained",
+            tone: "warning"
+          },
+          {
+            detail: "Receipt gap is recorded as evidence only; no raw logs or runtime material is exposed.",
+            source: "receipt collector",
+            time: "11:48",
+            title: "Receipt evidence pending",
+            tone: "danger"
+          }
+        ]}
+        title="Usage & Channel Event Log"
+      />
+    </>
+  );
+}
+
 function UsageChannelsSummary() {
   return (
     <div className="ops-metric-grid" aria-label="Usage & Channels summary metrics">
@@ -256,159 +316,132 @@ export function SubscriptionUsageMonitorPage({
 function FreshnessContent() {
   return (
     <div className="admin-operator-content" aria-label="Collection Freshness static operator content">
-      <div className="admin-owner-compact-panel">
-        <div className="admin-owner-compact-head">
-          <span>Collection state</span>
-          <strong>Fresh</strong>
-          <StatusChip label="Observed 2m" tone="success" />
-        </div>
-        <p>Latest safe monitor sample is inside the 5 minute stale threshold.</p>
-      </div>
-      <div className="admin-static-status-row" aria-label="Freshness state taxonomy">
-        <StatusChip label="Fresh" tone="success" />
-        <StatusChip label="Stale" tone="warning" />
-        <StatusChip label="Unknown" tone="neutral" />
-        <StatusChip label="Collector disabled" tone="danger" />
-      </div>
+      <UsageOwnerRows
+        footer="Freshness lane"
+        rows={[
+          {
+            label: "hk-01",
+            meta: "Age 2m 14s · SLO 5m",
+            rightMeta: "State OK",
+            statusLabel: "Fresh",
+            actionLabel: "Open",
+            tone: "success"
+          },
+          {
+            label: "hk-02",
+            meta: "Age 4m 10s · SLO 5m",
+            rightMeta: "State OK",
+            statusLabel: "Fresh",
+            actionLabel: "Open",
+            tone: "success"
+          }
+        ]}
+        subtitle="Usage collection age and SLO"
+      />
     </div>
   );
 }
-
-type ChannelCoverageRow = {
-  channelRef: string;
-  errorRate: string;
-  issued: string;
-  lastMeasured: string;
-  measured: string;
-  state: "Healthy" | "Degraded" | "Blocked";
-  receipt: "Healthy" | "Pending receipt" | "Missing receipt";
-  utilization: string;
-};
-
-const channelCoverageRows: ChannelCoverageRow[] = [
-  {
-    channelRef: "channel_safe_jp_vless",
-    errorRate: "0.2%",
-    issued: "12 orders",
-    lastMeasured: "2m ago",
-    measured: "12 measured",
-    receipt: "Healthy",
-    state: "Healthy",
-    utilization: "64%"
-  },
-  {
-    channelRef: "channel_safe_sgp_hy2",
-    errorRate: "1.8%",
-    issued: "6 orders",
-    lastMeasured: "7m ago",
-    measured: "4 measured",
-    receipt: "Pending receipt",
-    state: "Degraded",
-    utilization: "51%"
-  },
-  {
-    channelRef: "channel_safe_sgp_tuic",
-    errorRate: "N/A",
-    issued: "3 orders",
-    lastMeasured: "No trusted sample",
-    measured: "0 measured",
-    receipt: "Missing receipt",
-    state: "Blocked",
-    utilization: "Unknown"
-  }
-];
 
 function ChannelCoverageContent() {
   return (
     <div className="admin-operator-content" aria-label="Channel Coverage static operator content">
-      <div className="admin-owner-compact-panel">
-        <div className="admin-owner-compact-head">
-          <span>Channel coverage</span>
-          <strong>24 / 25</strong>
-          <StatusChip label="Measured" tone="success" />
-        </div>
-        <p>Coverage rows show safe channel refs only; runtime material and raw collector output stay hidden.</p>
-        <div className="admin-static-status-row" aria-label="Route latency compact rows">
-          <SafeRef value="route_safe_jp_primary" />
-          <strong>88 ms</strong>
-          <StatusChip label="Fresh" tone="success" />
-        </div>
-      </div>
-      <DataTable
-        ariaLabel="Channel Coverage static table"
-        columns={[
-          { header: "Channel", key: "channel", render: (row: ChannelCoverageRow) => <SafeRef value={row.channelRef} /> },
+      <UsageOwnerRows
+        footer="Coverage lane"
+        rows={[
           {
-            header: "Health",
-            key: "state",
-            render: (row) => (
-              <StatusChip
-                label={row.state}
-                tone={row.state === "Healthy" ? "success" : row.state === "Degraded" ? "warning" : "danger"}
-              />
-            )
+            label: "hk-01",
+            meta: "Measured Yes · Gap None",
+            rightMeta: "State OK",
+            statusLabel: "Covered",
+            actionLabel: "Open",
+            tone: "success"
           },
-          { header: "Utilization", key: "utilization", render: (row) => row.utilization },
           {
-            header: "Receipt",
-            key: "receipt",
-            render: (row) => (
-              <StatusChip
-                label={row.receipt}
-                tone={row.receipt === "Healthy" ? "success" : row.receipt === "Pending receipt" ? "warning" : "danger"}
-              />
-            )
+            label: "sg-02",
+            meta: "Measured Yes · Gap None",
+            rightMeta: "State OK",
+            statusLabel: "Covered",
+            actionLabel: "Open",
+            tone: "success"
           }
         ]}
-        density="compact"
-        getRowKey={(row) => row.channelRef}
-        pagination={{ label: "Channel Coverage table pagination", pageSize: 2 }}
-        rows={channelCoverageRows}
+        subtitle="Measured channels and gaps"
       />
     </div>
   );
 }
 
-type UsageLedgerRow = {
-  accountRef: string;
-  channelRef: string;
-  collection: "Measured" | "Measured zero" | "Not collected" | "Collector disabled";
-  orderRef: string;
-  traffic: string;
-};
-
-const usageLedgerRows: UsageLedgerRow[] = [
-  { accountRef: "acct_safe_001", orderRef: "ord_safe_101", channelRef: "channel_safe_jp_vless", traffic: "42.8 GB", collection: "Measured" },
-  { accountRef: "acct_safe_014", orderRef: "ord_safe_102", channelRef: "channel_safe_sgp_hy2", traffic: "0 B", collection: "Measured zero" },
-  { accountRef: "acct_safe_022", orderRef: "ord_safe_103", channelRef: "channel_safe_sgp_tuic", traffic: "Unknown", collection: "Collector disabled" },
-  { accountRef: "acct_safe_030", orderRef: "ord_safe_104", channelRef: "channel_safe_pending", traffic: "Unknown", collection: "Not collected" }
-];
-
 function UsageLedgerContent() {
   return (
     <div className="admin-operator-content" aria-label="Usage Ledger static operator content">
-      <DataTable
-        ariaLabel="Usage Ledger static table"
-        columns={[
-          { header: "Account / order", key: "account", render: (row: UsageLedgerRow) => <><SafeRef value={row.accountRef} /> · <SafeRef value={row.orderRef} /></> },
-          { header: "Channel", key: "channel", render: (row) => <SafeRef value={row.channelRef} /> },
-          { header: "Traffic", key: "traffic", render: (row) => row.traffic },
+      <UsageOwnerRows
+        footer="Ledger"
+        rows={[
           {
-            header: "Collection",
-            key: "collection",
-            render: (row) => (
-              <StatusChip
-                label={row.collection}
-                tone={row.collection === "Measured" ? "success" : row.collection === "Measured zero" ? "info" : row.collection === "Not collected" ? "warning" : "danger"}
-              />
-            )
+            label: "acct_001",
+            meta: "Order ord_2048 · Traffic 42.8GB",
+            rightMeta: "State Locked",
+            statusLabel: "OK",
+            actionLabel: "Open",
+            tone: "success"
+          },
+          {
+            label: "acct_002",
+            meta: "Order ord_2047 · Traffic 18.6GB",
+            rightMeta: "State Measured",
+            statusLabel: "OK",
+            actionLabel: "Open",
+            tone: "info"
           }
         ]}
-        density="compact"
-        getRowKey={(row) => `${row.accountRef}:${row.orderRef}:${row.channelRef}`}
-        pagination={{ label: "Usage Ledger table pagination", pageSize: 2 }}
-        rows={usageLedgerRows}
+        subtitle="Account/order traffic ledger"
       />
+    </div>
+  );
+}
+
+function UsageOwnerRows({
+  footer,
+  rows,
+  subtitle
+}: {
+  footer: string;
+  rows: Array<{
+    actionLabel: string;
+    label: string;
+    meta: string;
+    rightMeta: string;
+    statusLabel: string;
+    tone: MetricTone;
+  }>;
+  subtitle: string;
+}) {
+  return (
+    <div className="admin-operator-content admin-panel-compact-card" aria-label={`${footer} preview rows`}>
+      <p className="admin-panel-compact-subtitle">{subtitle}</p>
+      <div className="admin-compact-row-list">
+        {rows.map((row) => (
+          <article
+            className={`admin-compact-data-row admin-compact-data-row-${row.tone}`}
+            data-figma-component="DataRowCompact"
+            data-state-tone={row.tone}
+            data-ui-surface="compact-row"
+            key={row.label}
+          >
+            <span className="admin-compact-data-row-main">
+              <strong>{row.label}</strong>
+              <span className="admin-compact-data-row-detail">{row.meta}</span>
+            </span>
+            <span className="admin-compact-data-row-meta">{row.rightMeta}</span>
+            <span className="admin-compact-data-row-status">{row.statusLabel}</span>
+            <span className="admin-compact-data-row-action">{row.actionLabel}</span>
+          </article>
+        ))}
+      </div>
+      <div className="admin-overview-panel-footer">
+        <span>{footer}</span>
+        <span aria-hidden="true">•••</span>
+      </div>
     </div>
   );
 }

@@ -1,17 +1,13 @@
 import { describe, expect, test } from "vitest";
 import { pageSubNavigation } from "../app/navigation";
-import { createDefaultModuleLayout } from "../app/plugin-layout-store";
 import { projectBlueprintPanelViewModels } from "../app/admin-ui-projection";
 import { overviewBlueprint } from "../pages/dashboard-page";
 
 describe("admin UI projection", () => {
   test("projects full page blueprints into light panel render models", () => {
     const blueprint = overviewBlueprint();
-    const defaultLayout = createDefaultModuleLayout(blueprint.modules);
     const panels = projectBlueprintPanelViewModels({
       blueprint,
-      defaultModuleLayout: defaultLayout,
-      moduleLayout: defaultLayout,
       subNavigation: pageSubNavigation[blueprint.page]
     });
 
@@ -62,41 +58,32 @@ describe("admin UI projection", () => {
     expect(projectedText).not.toContain("Summarize platform health without owning");
   });
 
-  test("omits hidden modules while preserving restored panel identity", () => {
+  test("projects all modules because local panel hiding is no longer part of the UI contract", () => {
     const blueprint = overviewBlueprint();
-    const defaultLayout = createDefaultModuleLayout(blueprint.modules);
     const panels = projectBlueprintPanelViewModels({
       blueprint,
-      defaultModuleLayout: defaultLayout,
-      moduleLayout: {
-        ...defaultLayout,
-        "risk-queue": {
-          visible: false
-        }
-      },
       subNavigation: pageSubNavigation[blueprint.page]
     });
 
     expect(panels.map((panel) => panel.navId)).toEqual([
       "health-summary",
+      "risk-queue",
       "next-actions",
-      "owner-handoff"
+      "review-candidates"
     ]);
     expect(panels.map((panel) => panel.targetId)).toEqual([
       "dashboard-health-summary",
+      "dashboard-risk-queue",
       "dashboard-next-actions",
-      "dashboard-owner-handoff"
+      "dashboard-review-candidates"
     ]);
   });
 
   test("keeps dashboard projection in operator chrome without fixture preview rows", () => {
     const blueprint = overviewBlueprint();
-    const defaultLayout = createDefaultModuleLayout(blueprint.modules);
     const panels = projectBlueprintPanelViewModels({
       blueprint,
-      defaultModuleLayout: defaultLayout,
       fixturePreviewEnabled: true,
-      moduleLayout: defaultLayout,
       subNavigation: pageSubNavigation[blueprint.page]
     });
 

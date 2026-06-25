@@ -87,7 +87,7 @@ Current geometry contract:
 | ShellRail | `x=0`, `y=0`, `224 x 1024`; dark translucent glass. |
 | Content start | `x=252`; keeps a `28px` gutter after ShellRail. |
 | TopBar | `x=252`, `y=24`, `1296 x 58`; glass chrome with `16px` radius. |
-| System Search | `340 x 40`, centered in TopBar; normal search form/result surface. |
+| System Search | `40px` high, adaptive width: `230px` narrow contract and `379px` wide contract while the right cluster stays right-aligned. |
 | Metric cards | Four `300 x 150` cards at `x=276/592/908/1224`, `y=102`. |
 | Primary panels | Three `416 x 260` panels at `x=252/692/1132`; Operations/Accounts `y=300`, Usage `y=288`. |
 | Lower evidence | Chart/event-log panels begin near `y=596`, `628 x 280`. |
@@ -123,8 +123,8 @@ the AI-generated pages is not itself a reusable UI system.
 | Canvas grid | Use a subtle 32px workspace grid through `--admin-canvas-grid-size`. The grid is texture only, not a visible drafting layer. |
 | Canvas width | Use the accepted `1600px` design frame with content bounded by the ShellRail and TopBar coordinates above. |
 | Canvas gutter | Desktop gutter is `24px`; mobile gutter is `12px`. |
-| Workbench gap | Plugin/module gaps use `16px`. |
-| Plugin row unit | Workspace plugin layout uses a `32px` row unit before richer drag/resize behavior. |
+| Workbench gap | Page panel/module gaps use `16px` minimum and the Visual Polish panel row uses the breakpoint-specific `24px` baseline. |
+| Compact row unit | Primary panel rows use `DataRowCompact` at `44px` height inside fixed `PanelFrame` bodies; no freeform drag or resize behavior is active. |
 
 ## Surface Hierarchy
 
@@ -232,7 +232,7 @@ navigation surface for active pages and locked planned slots.
 | Top-bar search height | `40px` standard, icon-first when idle or constrained |
 | Search result surface | Page-owned result list or lightweight popover; never a long scroll drawer |
 | Primary route card | Compact height, `8px` radius, icon/marker slot, selected owner state |
-| Module restore | System Search or page-local controls dispatch route/page target ids |
+| Route recovery | System Search or page-local controls dispatch route/page target ids |
 | Planned slots | Searchable only as gated/planned entries; not executable |
 | Mobile behavior | Use compact search entry and page-owned result flow; do not reuse desktop grids |
 
@@ -242,48 +242,45 @@ Required structure:
 2. Sidebar / Primary Routes owns page navigation.
 3. Page-owned modules stay under their owner page and subpage.
 4. Planned apps stay grouped and visually quieter.
-5. Hidden modules recover from System Search or page-local controls and should
-   not occupy canvas space.
+5. Omitted or planned surfaces route to their owning page/subpage; do not
+   render a hidden-module library, recovery drawer, or desktop-style window
+   state in the current product model.
 
-## Plugin Container Protocol
+## Page Panel Protocol
 
-Plugins are manageable workspace applications. A plugin owns its header tools,
-display state, and restore path.
+Panels are page-owned operator surfaces, not freeform desktop applications. A
+panel owns its header status, compact rows, local route/action affordance, and
+state feedback. Layout changes are expressed as route/subpage split,
+pagination, or bounded local scroll.
 
 | Token | Value |
 | --- | --- |
-| Min grid width | `260px` |
-| Gap | `16px` |
-| Padding | `15px` |
-| Header gap | `12px` |
-| Small height | `128px` |
-| Medium height | `168px` |
-| Tall height | `252px` |
-| Resize handle | `22px` |
-| Field height | `26px` |
-| Field gap | `6px` |
+| Primary panel width | `416px` baseline, reduced by breakpoint rules |
+| Primary panel height | `260px` |
+| Panel gap | `24px` baseline |
+| Compact row | `372 x 44` inside the panel body |
+| Header status/action slot | Right-aligned inside panel chrome |
+| Freeform sizing controls | Not active; do not render handles or controls |
+| Canvas hiding/minimize controls | Not active; route omitted content to owner page/subpage |
 
 Display states:
 
-- `large`: spans three plugin columns and is reserved for primary workbench
-  modules;
-- `medium`: spans two columns and is the default for substantial modules;
-- `small`: spans one column and must still expose title, status, and restore
-  logic;
-- `hidden`: removed from canvas, recoverable from System Search or page-local controls;
+- `visible`: shown in the page-owned first-screen grid;
 - `readonly`: visible but without mutation controls;
-- `planned`: visibly gated and not treated as active functionality.
+- `planned`: visibly gated and not treated as active functionality;
+- `out-of-first-screen`: moved to a page-owned subpage, drawer, or pagination
+  surface instead of hidden/minimized on the canvas.
 
-Plugin controls belong in the plugin header or local menu. Do not create a
-separate page-level editor card that duplicates controls already present on
-the plugin.
+Panel controls belong in the panel header, body, or local owner page. Do not
+create a separate page-level editor card that duplicates controls already
+present on the panel.
 
 ## Chrome Protocol
 
 | Element | Rule |
 | --- | --- |
 | Status bar | Current TopBar is `58px` high at `x=252`, `y=24`; it holds System Search, environment, alert, operator, and route context only. |
-| Search | `340 x 40` centered System Search. It is a normal form/result entry, not AppLibrary, NavigationLibrary, or an app drawer. |
+| Search | Adaptive System Search: `40px` high, `230px` narrow contract, `379px` wide contract, normal form/result entry, not AppLibrary, NavigationLibrary, or an app drawer. |
 | Workspace appbar | Not active in the current product model. Do not implement a bottom dock or appbar from older OS exploration. |
 | Brand | Keep brand compact in ShellRail; do not add a second brand/header block in the content area. |
 | Account/operator | Right-side status context only; detailed settings belong in future settings or account-detail surfaces. |
@@ -346,9 +343,10 @@ Before a Phase 4 implementation PR is ready, verify:
 1. New styles use existing `--admin-*` tokens or add protocol-approved tokens.
 2. System Search keeps compact search/result density and uses the safe route
    index.
-3. Plugin controls are local to the plugin header/menu.
-4. Hidden/minimized plugins do not occupy canvas space.
-5. No duplicate editor controls exist at both canvas and plugin level.
+3. Panel status and local actions are scoped to the panel header/body.
+4. Omitted or planned panels route through System Search, subpage, drawer, or
+   pagination instead of hidden/minimized canvas state.
+5. No duplicate editor controls exist at both canvas and panel level.
 6. Typography avoids non-integer micro sizes and excessive weights.
 7. App icons use solid tone treatment and consistent sizing.
 8. Desktop and mobile screenshots match this protocol.

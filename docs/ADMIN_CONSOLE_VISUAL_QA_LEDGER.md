@@ -88,7 +88,7 @@ GCC-118 parity status:
 
 | Check | Result |
 | --- | --- |
-| Required component families | `StatusChip`, `MetricCard`, `PanelFrame`, `DataRow`, `TopBar`, `SidebarNavigation`, `PrivilegedGate`, `StateFeedback`. |
+| Required current component families | `StatusChip`, `MetricCard`, `PanelFrame`, `DataRowCompact`, `TopBar`, `ShellRail`, `PrivilegedGate`, `StateFeedback`, `EvidenceSurface`. Historical mirror evidence may still list deprecated `SidebarNavigation` for lineage only. |
 | Design-to-code mapping | Current: each required Figma component set maps to a React or contract surface, CSS tokens, grammar roles, state semantics, responsive rules, a11y rules, and current QA evidence references. |
 | Current implementation gaps | Recorded in `admin/src/design/figma-parity.ts` and `docs/ADMIN_CONSOLE_FIGMA_MIRROR.md`; handoff continues through `GCC-119` before visual evidence closes in `GCC-120`. |
 | Ready gate | `PR #355` remains Draft until `GCC-118`, `GCC-119`, and `GCC-120` are complete. |
@@ -121,21 +121,22 @@ on `127.0.0.1:5173`:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `1600 x 1024` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | No | 0 | 0 | Pass | 0 | Pass |
 | `1440 x 900` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | No | 0 | 0 | Pass | 0 | Pass |
-| `390 x 844` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | No | 0 | 0 | Pass | 0 | Pass |
+| `390 x 844` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | No | 0 | 0 | Pass | 0 | Overflow-safety pass; mobile design pending |
 
 GCC-117 shell interaction check on 2026-06-21:
 
 | Browser viewport | Surfaces checked | Global horizontal overflow | Sensitive text boundary | Console errors | Result |
 | --- | --- | --- | --- | --- | --- |
 | `1440 x 900` | System Search open/search for `usage`, primary routes, operator account menu, production action guard | No | Pass | 0 | Pass |
-| `390 x 844` | System Search open/search for `usage`, primary routes, operator account menu, production action guard | No | Pass | 0 | Pass |
+| `390 x 844` | System Search open/search for `usage`, primary routes, operator account menu, production action guard | No | Pass | 0 | Overflow-safety pass; mobile design pending |
 
 Observed interaction details:
 
 - System Search result count changed from `24` to `8` after searching `usage`,
   and the visible results stayed route/panel scoped.
-- Operator account popover stayed within viewport on desktop and mobile.
-- Production action guard summary is visible on mobile; its expanded detail is
+- Operator account popover stayed within viewport on desktop and narrow safety
+  viewports.
+- Production action guard summary is visible on narrow safety viewports; its expanded detail is
   responsive-hidden at `390 x 844` and did not create overflow.
 - Browser screenshots were generated during each checked state for visual
   inspection; no screenshot artifact was committed.
@@ -146,9 +147,9 @@ listener on `127.0.0.1:5173`:
 
 | Browser viewport | Pages checked | Panel counts | Shared surface hooks | Shell interactions | Global horizontal overflow | Visual overlap candidates | Unnamed controls | Sensitive text boundary | Console errors | Result |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `1280 x 800` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | Navigation library search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Pass |
-| `768 x 1024` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | Navigation library search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Pass |
-| `360 x 740` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | Navigation library search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Pass |
+| `1280 x 800` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | System Search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Pass |
+| `768 x 1024` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | System Search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Tablet/narrow safety pass; final compact projection pending |
+| `360 x 740` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `3`, `5`, `5` | `PanelFrame` matched all panels; Overview had `4` `MetricCard` hooks; `PrivilegedGate` present | System Search for `usage` returned `8`; operator account and production gate stayed in viewport | No | 0 panel overlaps | 0 | Pass | 0 | Overflow-safety pass; mobile design pending |
 
 Observed state/surface details:
 
@@ -197,8 +198,8 @@ Page-local navigation observed:
 | Page | Navigation labels observed |
 | --- | --- |
 | `Operations Overview` | `Health Summary`, `Risk Queue`, `Next Actions` |
-| `Accounts & Resources` | `Account Directory`, `Resources & Orders`, `Quota & Usage`, `Lifecycle`, `History & Events` |
-| `Usage & Channels` | `Collection Freshness`, `Channel Coverage`, `Usage Ledger`, `Collection Anomalies`, `Receipts & Collectors` |
+| `Accounts & Resources` | First-screen Visual Polish row: `Account Directory`, `Resources & Orders`, `Lifecycle`. Quota and history are follow-up/evidence surfaces outside the primary three-panel row. |
+| `Usage & Channels` | First-screen Visual Polish row: `Collection Freshness`, `Channel Coverage`, `Usage Ledger`. Collection anomalies and receipts/collectors are follow-up/evidence surfaces outside the primary three-panel row. |
 
 ## Concept Alignment Checks
 
@@ -211,7 +212,7 @@ Page-local navigation observed:
 | OV-11 | Risk cases metric | Risk count and trend. | `Risk candidates` now follows the canonical handoff card pattern and routes only; it does not mount a case workflow. | Pass |
 | OV-12 | Collection freshness metric | Freshness/P95-style latency card. | `Freshness P95` renders the safe age summary with stale-threshold wording. | Pass |
 | OV-13 | Channel coverage metric | Channel coverage card. | `Channel coverage` renders aggregate-only coverage copy. | Pass |
-| OV-20 | Risk queue | Severity filters and selectable risk rows. | `Risk Queue` renders the handoff-style filters and bounded rows. No case close, approval, or mutation action is present. | Pass |
+| OV-20 | Risk queue | Bounded safe review rows. | `Risk Queue` renders two compact safe-ref rows with owner-route metadata. No severity filter row, case close, approval, or mutation action is present. | Pass |
 | OV-30 | User/resources preview | User, order, quota, risk status table. | Routed out of Overview. The owning implementation is `Accounts & Resources`; Overview may show only next-action routing or aggregate signals. | Pass by intentional routing |
 | OV-40 | Object timeline | Object filters, object chain, safe event list. | Routed out of Overview. Full durable history belongs to future `Audit & Cases`; interim history entry points stay under owner pages. | Pass by intentional routing |
 | OV-50 | Traffic/channel preview | Status filters and channel ledger. | Routed out of Overview. The owning implementation is `Usage & Channels`; Overview keeps only freshness/coverage metrics and route action. | Pass by intentional routing |
@@ -220,9 +221,18 @@ Page-local navigation observed:
 
 | Page | Expected role | Current result | QA status |
 | --- | --- | --- | --- |
-| `Operations Overview` | Summary-and-routing dashboard that sends deep work to the owning page. | The page renders operator-chrome panels with four metric cards, `Risk Queue`, and `Next Actions`. Draft-only field counts, `Preview` / `Owner` chips, and nested fixture preview rows are suppressed on Overview. Account/resource ledgers, object timelines, and channel ledgers are intentionally absent from Overview. Legacy service/order/activity/warning/recent-activity detail panels are also removed. | Pass |
-| `User Operations / Accounts & Resources` | Own user accounts, resources, orders, quota, lifecycle, and history/event entry points. | Page header, safety note, resource data badge, sub-navigation, account directory, resource/order section, quota section, lifecycle summary, history/events cases, controlled delivery preview, and safe refs render in page-local ownership order. | Pass |
-| `Platform Monitoring / Usage & Channels` | Own collection freshness, channel coverage, usage ledger, collection anomaly queue, receipt/collector entry points. | Page header, read-only safety note, data badge, sub-navigation, freshness, channel health, usage ledger with filters/curves/activity/order table, collection anomalies with case queue and anomaly queue, and a real receipts/collectors panel render. | Pass |
+| `Operations Overview` | Summary-and-routing dashboard that sends deep work to the owning page. | The page renders operator-chrome panels with four metric cards, `Risk Queue`, `Next Actions`, and `Review Candidates`. Draft-only field counts, `Preview` / `Owner` chips, and nested fixture preview rows are suppressed on Overview. Account/resource ledgers, object timelines, and channel ledgers are intentionally absent from Overview. Legacy service/order/activity/warning/recent-activity detail panels are also removed. | Pass |
+| `User Operations / Accounts & Resources` | Own user accounts, resources, orders, quota, lifecycle, and history/event entry points. | The first-screen primary row now follows the Visual Polish contract with three `416 x 260` panels: `Account Directory`, `Resources & Orders`, and `Lifecycle`. Each panel uses two compact `DataRowCompact` rows with safe refs and right-aligned state/action text; legacy tables and filter bars are not part of the primary row. | Pass |
+| `Platform Monitoring / Usage & Channels` | Own collection freshness, channel coverage, usage ledger, collection anomaly queue, receipt/collector entry points. | The first-screen primary row now follows the Visual Polish contract with three `416 x 260` panels: `Collection Freshness`, `Channel Coverage`, and `Usage Ledger`. Each panel uses compact measured-state rows; collection anomalies and receipts remain follow-up/evidence surfaces outside the primary row. | Pass |
+
+Primary panel visual contract, 2026-06-25:
+
+| Check | Required result |
+| --- | --- |
+| Shared geometry | Three primary panels per active page, `416 x 260`, aligned to the Figma Visual Polish row. |
+| Row grammar | Two `DataRowCompact` rows per primary panel, bounded inside the panel body; no floating table/list fragments. |
+| Removed residue | No retired hide/visibility button, AppLibrary/NavigationLibrary recovery text, code-development instruction chip, or old short-card layout inside the primary row. |
+| Page ownership | Operations routes to owner pages; Accounts owns account/resource/lifecycle; Usage owns freshness/coverage/ledger. |
 
 ## Responsive Checks
 
@@ -230,7 +240,7 @@ Page-local navigation observed:
 | --- | --- | --- |
 | Browser split viewport `584px` | Three pages have no global horizontal overflow, no Han copy, and render active navigation. | Pass |
 | Desktop override `1440 x 900` | Three pages have no global horizontal overflow, no Han copy, and render active navigation. | Pass |
-| Mobile sub-navigation | Sub-nav uses horizontal scrolling inside its own container instead of widening the page. | Pass |
+| Narrow safety sub-navigation | Sub-nav uses horizontal scrolling inside its own container instead of widening the page. This is not final mobile IA completion. | Pass |
 | Tables and refs | Long safe refs and table content stay inside their scroll/row containers. | Covered by Admin tests and Browser overflow check. |
 
 ## Intentional Deviations

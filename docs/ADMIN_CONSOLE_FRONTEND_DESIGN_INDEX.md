@@ -1,6 +1,6 @@
 # Admin Console Frontend Design Index
 
-Last updated: 2026-06-24, America/Los_Angeles.
+Last updated: 2026-06-25, America/Los_Angeles.
 
 > Status:
 > - Type: Frontend design source index and implementation handoff map
@@ -23,9 +23,11 @@ boundaries must not be crossed.
 | Item | Current value |
 | --- | --- |
 | Canonical Figma file | <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19> |
+| Current clean baseline project | <https://www.figma.com/design/NefQiIMOPIBU28TIYcwQFE> |
 | Current refined visual references | `06 AI Exploration`: `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024`, `AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024`, `AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024` |
 | Current frame nodes | `373:716`, `373:866`, `373:1016` |
 | Direct review URL | <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19?node-id=365-2> |
+| Clean baseline role | `NefQiIMOPIBU28TIYcwQFE` is the current working design baseline for rules, component contract, product baseline frames, Figma-to-React mapping, and evidence gates. The original handoff file remains the source evidence and lineage record. |
 | Local screenshot evidence | None required for this sync; Figma connector metadata is the current evidence. |
 | Current Figma Site | <https://www.figma.com/site/fGP4xsj27bbcYRGnzIa3DO/Untitled> |
 | Design-source boundary sync | `15 Design Source Boundary / 1600x1024`, node `240:2`, written through Figma connector on 2026-06-23. |
@@ -57,7 +59,7 @@ evidence, but the reviewable source chain is Figma, GitHub, and Linear.
 
 | Surface | Owns | Does not own | Current evidence |
 | --- | --- | --- | --- |
-| Figma design | Frontend design repository: page frames, component specs, visual baselines, copy/state contracts, and design acceptance notes. | Runtime frontend code, backend data, production authority, or secrets. | Canonical design file `oZuKNtGPhP6oOQ0MSzpfvn`; active Visual Polish frames `373:716`, `373:866`, `373:1016`; design-evidence frames remain reference material. |
+| Figma design | Frontend design repository: page frames, component specs, visual baselines, responsive rules, copy/state contracts, and design acceptance notes. | Runtime frontend code, backend data, production authority, or secrets. | Canonical design file `oZuKNtGPhP6oOQ0MSzpfvn`; active Visual Polish frames `373:716`, `373:866`, `373:1016`; rule source `501:488`; responsive Visual Polish frames for LG/MD/SM are part of the current design source. |
 | GitHub | Runnable Admin React/CSS/tests, design contracts, validation records, and PR review history. | Unreviewed visual decisions that bypass Figma and the design docs. | Current branch `codex/admin-figma-mirror-visual-qa`; Draft PR #364 tracks the visual review packet. |
 | Linear | Task gates, review ownership, phase acceptance, and next-stage sequencing. | Code, design source of truth, production approval, or secret storage. | GCC Admin UI task line and acceptance notes. |
 
@@ -71,6 +73,23 @@ page `06 AI Exploration` and the three active Visual Polish frames listed
 above. The previous `99:2`, `104:2`, and `104:226` frames are now historical
 draft lineage, not the current implementation source.
 
+Connector update, 2026-06-25: live Figma metadata confirmed `V1 Design Rules ·
+Master Reference` at node `501:488` and `12` responsive Visual Polish frames
+under `06 AI Exploration`: baseline `1600px`, `LG-1440`, `MD-1280`, and
+`SM-1024` for `Operations Overview`, `Accounts & Resources`, and
+`Usage & Channels`. These rules supersede old single-frame fixed extraction.
+Frontend implementation must use breakpoint-driven layout adaptation, not
+whole-frame scaling or baseline-only coordinates.
+
+Baseline project update, 2026-06-25: the clean Figma baseline project
+`NefQiIMOPIBU28TIYcwQFE` was created from the accepted `06 AI Exploration`
+source. It contains `00 Index & Project Map`, `01 Design Rules V1-Polish`,
+`02 Component Contract`, `03 Product Baseline Frames`,
+`04 Figma-to-React Mapping`, `90 Evidence Gates`, and
+`99 Archive / Source Handoff`. Use this file as the current working baseline
+for frontend design review and implementation handoff. Use the original
+handoff file only as the source evidence and historical canvas.
+
 ## Current Figma Coverage
 
 The canonical file contains original mirrors, prior refined drafts, baseline AI
@@ -78,6 +97,7 @@ candidates, and the current Visual Polish frames. They have different roles:
 
 | Surface | Node | Role | Current design status |
 | --- | --- | --- | --- |
+| Clean baseline project | `NefQiIMOPIBU28TIYcwQFE` | Current working Admin UI design baseline. | Use for design rules, component contract, product baseline frames, Figma-to-React mapping, and evidence gates. |
 | `01 Operations Overview / 1600x1024` | `2:81` | Original page mirror and ownership map. | Superseded visually by `373:716`, still useful for page content lineage. |
 | `02 Accounts & Resources / 1600x1024` | `2:189` | Original page mirror and ownership map. | Superseded visually by `373:866`, still useful for page content lineage. |
 | `03 Usage & Channels / 1600x1024` | `2:309` | Original page mirror and ownership map. | Superseded visually by `373:1016`, still useful for page content lineage. |
@@ -94,9 +114,56 @@ candidates, and the current Visual Polish frames. They have different roles:
 | `AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024` | `373:1016` | Current Usage desktop design. | Accepted current source for visual/layout implementation. |
 
 Implementation must now treat `373:716`, `373:866`, and `373:1016` as the
-current desktop design source. It must not continue implementing from the older
-`99:2`, `104:2`, or `104:226` drafts unless a review explicitly references
-them as historical rationale.
+current desktop visual source, `501:488` as the current rule source, and the
+LG/MD/SM Visual Polish frames as responsive acceptance evidence. It must not
+continue implementing from the older `99:2`, `104:2`, or `104:226` drafts
+unless a review explicitly references them as historical rationale.
+
+Local sync status, 2026-06-24:
+
+- Shell chrome, page summary metrics, primary panel geometry, and the lower
+  evidence row are now represented in local React/CSS.
+- The desktop Visual Polish card geometry is tokenized in
+  `admin/src/styles/admin-os-visual-polish.css` and guarded by
+  `admin/src/test/admin-style-contract.test.ts`: metric cards `300 x 150`,
+  primary panels `416 x 260`, metric-to-panel gap `48`, and lower evidence
+  panels `628 x 280`.
+- The lower evidence row maps to local `EvidenceSurface` DOM hooks and the
+  `evidence-row` surface role. This is a page-level visual evidence slot, not a
+  new navigation library, app library, or freeform OS windowing model.
+- Metrics evidence surfaces must be structurally identical across Operations,
+  Accounts, and Usage: chart header, right-aligned time range, legend row,
+  plot/grid/axis, and bottom x-axis. They must not render page-local bottom
+  stat cards or rely on route-specific CSS to hide/show chart subregions.
+- The curve shapes are safe static design evidence. The local contract now
+  records source name, sampling window, aggregation, threshold, empty/stale
+  behavior, redaction mode, and backend adapter state, but all panels remain
+  `design-static` until reviewed read-only DTOs are approved.
+- First-screen primary panels are now a three-page shared rule, not page-local
+  improvisation: each active route uses exactly three `416 x 260` panels with
+  compact `DataRowCompact` rows. Operations uses `Risk Queue`, `Next Actions`,
+  `Review Candidates`; Accounts uses `Account Directory`, `Resources & Orders`,
+  `Lifecycle`; Usage uses `Collection Freshness`, `Channel Coverage`,
+  `Usage Ledger`.
+- The primary panel bodies must not show the retired hide/visibility action,
+  AppLibrary/NavigationLibrary recovery text, severity filter bars, old table
+  controls, or code-development instruction chips. Those are draft residue, not
+  Visual Polish UI.
+
+Evidence data-contract status:
+
+| Surface | Owner page | Contract state | Backend state |
+| --- | --- | --- | --- |
+| `operationsMetrics` | `dashboard` | `design-static` | `pending-contract` |
+| `operationsEventLog` | `dashboard` | `design-static` | `pending-contract` |
+| `accountMetrics` | `portalRequests` | `design-static` | `pending-contract` |
+| `accountEventLog` | `portalRequests` | `design-static` | `pending-contract` |
+| `usageMetrics` | `usageMonitor` | `design-static` | `pending-contract` |
+| `usageChannelEventLog` | `usageMonitor` | `design-static` | `pending-contract` |
+
+The contract lives in `admin/src/app/admin-evidence-contract.ts` and is
+verified by `admin/src/test/admin-evidence-contract.test.tsx`. It is a guard
+against accidental real-data assumptions, not a backend integration.
 
 First-review cleanup completed on 2026-06-22:
 
@@ -187,7 +254,7 @@ The current frontend design work must satisfy these requirements:
 | --- | --- | --- |
 | ShellRail | Brand, primary routes, planned route group. | Compact route ownership; no separate app drawer. |
 | TopBar | Center System Search, environment, alert, operator, route pill. | Protected console context and safe global chrome. |
-| Metric cards | Platform health, risk cases, collection freshness, channel coverage. | Four fixed `300 x 150` lanes with value, concise note, owner chip, and trend slot. |
+| Metric cards | Platform health, risk cases, collection freshness, channel coverage. | Four baseline `300 x 150` lanes with value, concise note, owner chip, and trend slot; breakpoint rules resize to LG/MD widths and SM `2 x 2` layout. |
 | Risk Queue | Level, object, owner, seen, action. | Main operator review queue; overview routes rather than owning detail. |
 | Next Actions | Route to owner pages; locked future work stays gated. | Compact owner-page handoff, not a duplicate ledger. |
 | Review Candidates | Candidate evidence and route ownership. | Bounded review panel, not a durable case-management UI. |
@@ -225,6 +292,7 @@ The current frontend design work must satisfy these requirements:
 | Status chip | `admin/src/components/primitives/status-chip.tsx` | Text plus semantic color; no color-only meaning. |
 | Panel frame | `admin/src/components/primitives/panel-frame.tsx` | One visible surface layer; no nested card clutter. |
 | Risk/data row | `admin/src/components/primitives/data-table.tsx` | Table/queue rows with stable overflow strategy. |
+| Evidence surface | `admin/src/components/primitives/evidence-surface.tsx`, `admin/src/app/admin-evidence-contract.ts` | Page-level lower evidence row with static trend/event slots and explicit data-boundary metadata. |
 | State feedback | `admin/src/components/primitives/state-feedback.tsx` and `empty-state.tsx` | Empty, loading, stale, and error states. |
 | Privileged gate | `admin/src/components/primitives/privileged-gate.tsx` | Planned/locked/sensitive areas; no hidden unauthorized routes. |
 | Overview page | `admin/src/pages/dashboard-page.tsx` | Implement from the v1.2 Operations Overview design first. |
@@ -239,7 +307,7 @@ Use this copy pack for the first frontend pass from the Visual Polish frames.
 | Surface | Copy |
 | --- | --- |
 | Brand | `GlobalCircle AI`, `Proxy Gateway` |
-| Search | Operations: `Search users, orders, channels, cases, or events...`; Accounts: `Search accounts, orders, subscriptions, or lifecycle...`; Usage: `Search usage, channels, collectors, or receipts...` |
+| Search | Accessible label stays system-wide: `Search users, orders, channels, cases, or events`. Visible placeholders are page-shortened to avoid TopBar clipping: Operations `Search users, orders, channels...`; Accounts `Search accounts, orders, lifecycle...`; Usage `Search usage, channels, receipts...`. |
 | Status chips | Environment, alert count, operator, and route pill in TopBar only. |
 | Operator | `Operator`, `Safe review` |
 | Sidebar active | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` |
@@ -261,17 +329,19 @@ paragraph, move the detail to docs, tooltip, drawer, or state feedback.
 | --- | --- |
 | Text rhythm | No forced sidebar wraps, no floating text in large empty cards, no chip/text collisions. |
 | Metric cards | Fixed lanes for label, value, note, detail, owner chip, and trend. |
-| Surfaces | White/light panels, low shadow, 1px border, controlled radius. |
-| Grid | Background grid stays subtle and never competes with text. |
+| Surfaces | Deep-blue glass panels, low shadow, 0.5px/1px border, controlled radius; use shared scene glass tokens instead of one-off rgba values. |
+| Grid | Background grid stays faint, tokenized, and below the glass layer; it must never read as a visible desktop grid or compete with text. |
 | Color semantics | Blue = navigation/action, green = healthy, amber = delayed/review, red = risk, slate/gray = neutral/planned. |
 | Typography | Integer font sizes, no negative letter spacing, heavy weight only for nav, title, and primary metrics. |
 | Actions | Overview routes to owner pages; it does not duplicate owner-page ledgers or mutation actions. |
 | Visual frame | Current Figma nodes are named `1600x1024` but the visible polished frame is `1600 x 908`; ShellRail remains `224 x 1024`. |
-| Chrome geometry | ShellRail `0/0/224/1024`; TopBar `252/24/1296/58`; System Search `340 x 40` centered in TopBar. |
-| Metric geometry | Four cards at `276/592/908/1224`, `y=102`, `300 x 150`; chips sit inside the upper-right metric region. |
-| Panel geometry | Three primary panels at `x=252/692/1132`, `416 x 260`; Operations/Accounts `y=300`, Usage `y=288`. |
-| Lower evidence | Chart/event-log panels begin near `y=596`, each `628 x 280`. |
-| Responsive | Desktop target is the current Visual Polish geometry; `1024px`, `768px`, and mobile are separate safe review projections. |
+| Chrome geometry | Baseline: ShellRail `0/0/224/1024`; TopBar `252/24/1296/58`. TopBar search is adaptive: do not hard-code `340px`; use the `501:488` rule of a `230px` narrow contract and `379px` wide contract while the right cluster stays right-aligned. |
+| Metric geometry | Baseline: four cards at `276/592/908/1224`, `y=102`, `300 x 150`; chips sit inside the upper-right metric region. LG/MD/SM card widths are rule-driven. |
+| Panel geometry | Baseline: three primary panels at `x=252/692/1132`, `416 x 260`; Operations/Accounts `y=300`, Usage `y=288`. LG/MD reduce width; SM shows two columns and routes the third panel through subpage/pagination. |
+| Panel rows | Primary panel body rows use `DataRowCompact`: two rows per panel, row width `372`, row height `44`, main/detail text left-aligned, status/action text right-aligned. Do not use legacy `DataTable`, fixture preview rows, or page-specific short-card layouts inside the first-screen primary row. |
+| Lower evidence | Baseline: chart/event-log panels begin near `y=596`, each `628 x 280`. Metrics charts use one shared `header + time range + legend + plot/grid/axis` structure across all three active pages; no bottom stat cards. Chart area width is `card.width - 56`; chart area height is `card.height - 80`; EventLog rows use columns `16 / 82 / 130 / 290`. |
+| Chart scales | Operations uses `Platform Metrics` with `Freshness / Coverage / Risk` and y-axis `99 / 56 / 12`; Accounts uses `Account Metrics` with `Active / Orders / Quota` and y-axis `12 / 6.5 / 1.0`; Usage uses `Usage Metrics` with `Freshness / Coverage / Anomalies` and y-axis `99 / 50 / 1.0`. Time range pills are fixed `26px` slots with `4px` gaps and the `1h` slot highlighted. |
+| Responsive | Current scope is `1600`, `1440`, `1280`, and `1024` Figma rules. Widths below `1024px` remain out of scope/pending, not completed mobile design. |
 
 ## Validation Checklist
 

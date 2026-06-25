@@ -65,12 +65,11 @@ describe("admin navigation", () => {
       "Platform Monitoring",
       "Audit & Cases",
       "Platform Development",
-      "System Settings",
-      "About"
+      "System Settings"
     ]);
     expect(activeSections.map((section) => section.id)).toEqual(navSections.map((section) => section.id));
-    expect(plannedSections.map((section) => section.label)).toEqual(["Audit & Cases", "Platform Development", "System Settings", "About"]);
-    expect(plannedSections.map((section) => section.items)).toEqual([[], [], [], []]);
+    expect(plannedSections.map((section) => section.label)).toEqual(["Audit & Cases", "Platform Development", "System Settings"]);
+    expect(plannedSections.map((section) => section.items)).toEqual([[], [], []]);
     expect(navSections.map((section) => section.label)).not.toContain("Audit & Cases");
     expect(navSections.map((section) => section.label)).not.toContain("Platform Development");
     expect(navSections.map((section) => section.label)).not.toContain("System Settings");
@@ -83,7 +82,7 @@ describe("admin navigation", () => {
       "Health Summary",
       "Risk Queue",
       "Next Actions",
-      "Owner Handoff"
+      "Review Candidates"
     ]);
     expect(pageSubNavigation.portalRequests.map((item) => item.label)).toEqual([
       "Account Directory",
@@ -206,7 +205,7 @@ describe("admin navigation", () => {
     expect(screen.getByText("GCC-104 safe fixture preview")).not.toBeNull();
     expect(screen.queryByLabelText("Risk Queue fixture preview")).toBeNull();
     expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-chrome")).toBe("operator");
-    expect(screen.getAllByText("Order traffic over limit").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("case_012").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByRole("heading", { name: "Connect Admin API" })).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
     expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_/i);
@@ -231,24 +230,24 @@ describe("admin navigation", () => {
     expect(within(workspaceSidebar).queryByLabelText("Open navigation library")).toBeNull();
     expect(within(workspaceSidebar).queryByLabelText("Search navigation library")).toBeNull();
     expect(workspaceSidebar.textContent).not.toContain("Navigation library");
+    expect(within(workspaceSidebar).getByLabelText("Audit & Cases planned gate")).not.toBeNull();
     expect(workspaceSidebar.textContent).not.toContain("Console settings");
     expect(workspaceSidebar.textContent).not.toContain("Panels");
     expect(workspaceSidebar.textContent).not.toContain("Preview site");
     expect(workspaceSidebar.textContent).not.toContain("Open user portal");
     expect(within(workspaceSidebar).getByLabelText("Platform Development planned gate")).not.toBeNull();
     expect(within(workspaceSidebar).getByLabelText("System Settings planned gate")).not.toBeNull();
-    expect(within(workspaceSidebar).getByLabelText("About planned gate")).not.toBeNull();
-    expect(within(workspaceSidebar).queryByLabelText("Audit & Cases planned gate")).toBeNull();
-    expect(workspaceSidebar.textContent).not.toMatch(/Audit & Cases|Key Management|Audit Center|Log Access/);
+    expect(within(workspaceSidebar).queryByLabelText("About planned gate")).toBeNull();
+    expect(workspaceSidebar.textContent).not.toMatch(/Key Management|Audit Center|Log Access/);
     expect(within(workspaceSidebar).getByText("Risk A gated").closest("details")?.hasAttribute("open")).toBe(false);
     expect(workspaceSidebar.textContent).not.toContain("Platform health and risk");
     expect(workspaceSidebar.textContent).not.toContain("Accounts, resources, and quotas");
     expect(workspaceSidebar.textContent).not.toContain("Usage collection and channels");
     expect(workspaceSidebar.textContent).not.toContain("Waiting for the GCC-55 durable Case/history backend contract.");
-    expect(screen.getByText("Proxy Gateway Admin")).not.toBeNull();
+    expect(screen.getByText("Proxy Gateway")).not.toBeNull();
     expect(screen.queryByText("Platform health, risk summary, and recent activity")).toBeNull();
     expect(screen.getByRole("button", { name: "Operations Overview" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.queryByRole("button", { name: "Audit & Cases" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Audit & Cases planned gate" })).not.toBeNull();
     expect(screen.getByLabelText("Operator account")).not.toBeNull();
     const topSearch = screen.getByRole("search", { name: "Search Admin Console" });
     fireEvent.change(within(topSearch).getByLabelText("Search users, orders, channels, cases, or events"), { target: { value: "account" } });
@@ -278,21 +277,18 @@ describe("admin navigation", () => {
     expect(screen.queryByText("Collection trust, channel health, and data anomalies")).toBeNull();
     expect(screen.queryByLabelText("Usage & Channels page navigation")).toBeNull();
     expect(screen.queryByLabelText("Usage & Channels card controls")).toBeNull();
-    const usageSections = screen.getByRole("navigation", { name: "Usage & Channels sections" });
-    expect(within(usageSections).getByRole("button", { name: "Collection Freshness" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("button", { name: "Collection Freshness hide module" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Channel Coverage hide module" })).toBeNull();
-    fireEvent.click(within(usageSections).getByRole("button", { name: "Channel Coverage" }));
-    expect(screen.getByRole("button", { name: "Channel Coverage hide module" })).not.toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Usage & Channels sections" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Collection Freshness" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Channel Coverage" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Usage Ledger" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Collection Freshness hide module" })).toBeNull();
-    fireEvent.click(within(usageSections).getByRole("button", { name: "Usage Ledger" }));
-    expect(screen.getByRole("button", { name: "Usage Ledger hide module" })).not.toBeNull();
-    fireEvent.click(within(usageSections).getByRole("button", { name: "Collection Anomalies" }));
-    expect(screen.getByRole("button", { name: "Collection Anomalies hide module" })).not.toBeNull();
-    fireEvent.click(within(usageSections).getByRole("button", { name: "Receipts & Collectors" }));
-    expect(screen.getByRole("button", { name: "Receipts & Collectors hide module" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Channel Coverage hide module" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Usage Ledger hide module" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Collection Anomalies" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Receipts & Collectors" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Collection Anomalies hide module" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Receipts & Collectors hide module" })).toBeNull();
     expect(screen.getByLabelText("Usage & Channels module layout").textContent).not.toContain("Generated time, delay threshold");
-    fireEvent.click(within(usageSections).getByRole("button", { name: "Collection Freshness" }));
     const topSearch = screen.getByRole("search", { name: "Search Admin Console" });
     const topSearchInput = within(topSearch).getByLabelText("Search users, orders, channels, cases, or events");
     fireEvent.change(topSearchInput, { target: { value: "账户" } });
@@ -307,8 +303,9 @@ describe("admin navigation", () => {
     expect(screen.queryByLabelText("Open navigation library")).toBeNull();
     fireEvent.change(topSearchInput, { target: { value: "" } });
     expect(screen.getByRole("heading", { name: "Collection Freshness" })).not.toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Collection Freshness hide module" }));
-    expect(screen.queryByRole("heading", { name: "Collection Freshness" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Channel Coverage" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Usage Ledger" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Collection Freshness hide module" })).toBeNull();
     expect(screen.queryByLabelText("Open navigation library")).toBeNull();
     expect(screen.getByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
@@ -331,7 +328,7 @@ describe("admin navigation", () => {
     expect(screen.queryByRole("button", { name: /Provisioning|Subscriptions|Nodes/ })).toBeNull();
   });
 
-  test("renders user supervision subnavigation before account resource sections", async () => {
+  test("renders Accounts & Resources as the Visual Polish three-panel owner page", async () => {
     saveAdminSession({
       baseUrl: "http://127.0.0.1:3456",
       consoleToken: "admin_console_ref"
@@ -346,18 +343,21 @@ describe("admin navigation", () => {
     expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
     expect(screen.queryByLabelText("Accounts & Resources page navigation")).toBeNull();
     expect(screen.queryByLabelText("Accounts & Resources card controls")).toBeNull();
-    const accountSections = screen.getByRole("navigation", { name: "Accounts & Resources sections" });
-    expect(within(accountSections).getByRole("button", { name: "Account Directory" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("button", { name: "Account Directory hide module" })).not.toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Accounts & Resources sections" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Resources & Orders" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Lifecycle" })).not.toBeNull();
+    expect(document.querySelectorAll("[data-figma-component='DataRowCompact'][data-ui-surface='compact-row']")).toHaveLength(6);
+    expect(screen.getByText("user_001")).not.toBeNull();
+    expect(screen.getByText("ord_2048")).not.toBeNull();
+    expect(screen.getByText("pause_check")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Account Directory hide module" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Resources & Orders hide module" })).toBeNull();
-    fireEvent.click(within(accountSections).getByRole("button", { name: "Resources & Orders" }));
-    expect(screen.getByRole("button", { name: "Resources & Orders hide module" })).not.toBeNull();
-    fireEvent.click(within(accountSections).getByRole("button", { name: "Quota & Usage" }));
-    expect(screen.getByRole("button", { name: "Quota & Usage hide module" })).not.toBeNull();
-    fireEvent.click(within(accountSections).getByRole("button", { name: "Lifecycle" }));
-    expect(screen.getByRole("button", { name: "Lifecycle hide module" })).not.toBeNull();
-    fireEvent.click(within(accountSections).getByRole("button", { name: "History & Events" }));
-    expect(screen.getByRole("button", { name: "History & Events hide module" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Quota & Usage hide module" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Lifecycle hide module" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "History & Events hide module" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Quota & Usage" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "History & Events" })).toBeNull();
     expect(screen.getByLabelText("Accounts & Resources module layout").textContent).not.toContain("Safe account refs");
     expect(screen.getByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
@@ -377,7 +377,7 @@ describe("admin navigation", () => {
     expect(screen.queryByLabelText("Environment status")).toBeNull();
 
     fireEvent.click(screen.getByLabelText("Operator account"));
-    expect(screen.getAllByText("operator").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Operator").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Production supervision only.")).not.toBeNull();
     expect(screen.getByText("Runtime changes require a Risk A gate.")).not.toBeNull();
   });

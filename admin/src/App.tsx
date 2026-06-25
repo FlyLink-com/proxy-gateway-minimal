@@ -143,10 +143,10 @@ function FixturePreviewBanner() {
   return (
     <aside className="admin-fixture-preview-banner" aria-label="Admin fixture preview status">
       <div>
-        <strong>Fixture preview</strong>
+        <strong>Preview data</strong>
         <span>{ADMIN_FIXTURE_PREVIEW_DATA.generatedLabel}</span>
       </div>
-      <p>Safe synthetic data only. No production Admin API is connected, and mutation workflows remain locked.</p>
+      <p>Synthetic data only · production mutations locked.</p>
     </aside>
   );
 }

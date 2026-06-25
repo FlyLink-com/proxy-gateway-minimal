@@ -35,7 +35,7 @@ import { type WorkbenchCategory } from "../components/primitives";
 export type AdminAppKind = "page" | "plugin" | "utility" | "planned";
 export type AdminAppStatus = "active" | "planned" | "locked";
 export type AdminAppEntryType = "workspace-app" | "plugin-module" | "planned-app" | "system-action";
-export type AdminAppLayoutSize = "large" | "medium" | "compact" | "icon-only" | "hidden";
+export type AdminAppLayoutSize = "large" | "medium" | "compact" | "icon-only";
 export type AdminAppRuntimeState = "normal" | "warning" | "blocked" | "readonly" | "planned" | "needs-config";
 export type AdminAppVisibility = "pinned" | "library" | "hidden" | "locked";
 export type AdminAppDataBoundary = "safe-summary-only";
@@ -159,7 +159,7 @@ export type AdminAppManifest = {
     navId: string;
     ownerMode: PageSubNavigationItem["mode"];
     settingsEntry: "inline" | "pageSubnav" | "both" | "none";
-    allowedControls: Array<"hide" | "pin" | "layout" | "reorder" | "compact" | "expand" | "reset">;
+    allowedControls: Array<"pin" | "layout" | "reorder" | "compact" | "expand" | "reset">;
     states: string[];
     boundaries: string[];
   };
@@ -238,7 +238,7 @@ export const ADMIN_APP_AUTHORING_STANDARD = Object.freeze({
     "forbiddenFields"
   ],
   entryTypes: ["workspace-app", "plugin-module", "planned-app", "system-action"],
-  layoutSizes: ["large", "medium", "compact", "icon-only", "hidden"],
+  layoutSizes: ["large", "medium", "compact", "icon-only"],
   states: ["normal", "warning", "blocked", "readonly", "planned", "needs-config"],
   forbiddenFields: forbiddenSearchFieldLabels()
 } satisfies {
@@ -341,7 +341,7 @@ const PAGE_APP_DEFINITIONS: Record<AdminPage, {
     appId: "operations-overview",
     capabilities: ["view", "inspect", "suggest-action"],
     category: "monitoring",
-    coreViews: ["health summary", "risk queue", "next action routing", "owner handoff"],
+    coreViews: ["health summary", "risk queue", "next action routing", "review candidates"],
     iconKey: "grid",
     primaryObjects: ["platform health", "risk case", "activity event", "channel summary"],
     role: "overview",
@@ -357,7 +357,7 @@ const PAGE_APP_DEFINITIONS: Record<AdminPage, {
       [
         "dashboard#dashboard-health-summary",
         "dashboard#dashboard-risk-queue",
-        "dashboard#dashboard-owner-handoff",
+        "dashboard#dashboard-review-candidates",
         "usageMonitor#platform-monitoring-freshness",
         "usageMonitor#platform-monitoring-channel-coverage"
       ],
@@ -462,7 +462,7 @@ const PLUGIN_ICON_KEYS: Record<string, string> = {
   "history-events": "history",
   lifecycle: "refresh",
   "next-actions": "route",
-  "owner-handoff": "route",
+  "review-candidates": "route",
   "quota-usage": "gauge",
   "receipts-collectors": "package",
   "resource-orders": "boxes",
@@ -479,7 +479,7 @@ const PLUGIN_TONES: Record<string, string> = {
   "history-events": "nav-app-tone-slate",
   lifecycle: "nav-app-tone-violet",
   "next-actions": "nav-app-tone-indigo",
-  "owner-handoff": "nav-app-tone-indigo",
+  "review-candidates": "nav-app-tone-indigo",
   "quota-usage": "nav-app-tone-lime",
   "receipts-collectors": "nav-app-tone-teal",
   "resource-orders": "nav-app-tone-teal",
@@ -496,7 +496,7 @@ const PLUGIN_ZH_NAMES: Record<string, string> = {
   "history-events": "历史与事件",
   lifecycle: "生命周期",
   "next-actions": "后续行动",
-  "owner-handoff": "所有权交接",
+  "review-candidates": "审查候选",
   "quota-usage": "配额与使用情况",
   "receipts-collectors": "收据和采集器",
   "resource-orders": "资源与订单",
@@ -513,7 +513,7 @@ const PLUGIN_PRIMARY_OBJECTS: Record<string, string[]> = {
   "history-events": ["object history", "case candidate", "restricted event"],
   lifecycle: ["account lifecycle", "order pause", "expiry", "archive candidate"],
   "next-actions": ["review route", "owner page", "operator action"],
-  "owner-handoff": ["owner page", "decision route", "evidence route", "planned case route"],
+  "review-candidates": ["review candidate", "owner route", "review signal", "safe ref"],
   "quota-usage": ["quota policy", "edited limit", "total usage", "quota risk"],
   "receipts-collectors": ["receipt state", "collector availability", "safe diagnostic"],
   "resource-orders": ["order", "resource", "entitlement", "subscription artifact"],
@@ -530,7 +530,7 @@ const PLUGIN_CATEGORIES: Record<string, WorkbenchCategory> = {
   "history-events": "audit-workflow",
   lifecycle: "management",
   "next-actions": "audit-workflow",
-  "owner-handoff": "audit-workflow",
+  "review-candidates": "audit-workflow",
   "quota-usage": "configuration",
   "receipts-collectors": "platform-tools",
   "resource-orders": "management",
@@ -579,14 +579,14 @@ const PLUGIN_SOURCE_CONTRACTS: Record<string, AdminAppSourceContract> = {
     ["dashboard#dashboard-next-actions", "dashboard#dashboard-risk-queue"],
     ["risk-case", "gate-summary", "next-safe-action"]
   ),
-  "owner-handoff": sourceContract(
+  "review-candidates": sourceContract(
     ["risk-case-summary", "gate-summary", "activity-event-summary"],
     [
-      "dashboard#dashboard-owner-handoff",
+      "dashboard#dashboard-review-candidates",
       "portalRequests#user-supervision-account-overview",
       "usageMonitor#platform-monitoring-freshness"
     ],
-    ["owner-route", "decision-owner", "evidence-owner"]
+    ["review-candidate", "owner-route", "safe-ref"]
   ),
   "quota-usage": sourceContract(
     ["quota-policy-summary", "usage-rollup-summary", "usage-ledger-summary"],
@@ -1187,13 +1187,13 @@ function createPluginApps(): AdminAppManifest[] {
           category: pluginCategoryForModule(module),
           coreViews: [
             module.label,
-            `${pageTitles[adminPage]} panel restore route`,
-            "fixed panel visibility"
+            `${pageTitles[adminPage]} page-subnav route`,
+            "fixed panel surface"
           ],
           enName: module.label,
           followUpTask: "GCC-76 panel container template and GCC-78 workspace engine",
           primaryObjects: PLUGIN_PRIMARY_OBJECTS[module.id] ?? [module.owner, module.label],
-          safetyBoundary: "Safe summary only; panel controls affect local visibility, not runtime state.",
+          safetyBoundary: "Safe summary only; page-subnav routes affect focus, not runtime state.",
           searchableFields: [
             module.id,
             module.label,
@@ -1234,7 +1234,7 @@ function createPluginApps(): AdminAppManifest[] {
           role: pageDefinition.role
         },
         plugin: {
-          allowedControls: ["hide"],
+          allowedControls: [],
           boundaries: [
             "safe-summary-only",
             "no production mutation",
@@ -1243,7 +1243,7 @@ function createPluginApps(): AdminAppManifest[] {
           navId: module.id,
           ownerMode: module.mode,
           settingsEntry: "pageSubnav",
-          states: ["visible", "hidden"]
+          states: ["active"]
         },
         route: {
           action: "openPlugin",
@@ -1316,11 +1316,6 @@ function createPlannedApps(): AdminAppManifest[] {
           redaction: "safe-summary-only",
           riskTier: "A"
         },
-        access: section.id === "audit-workflow"
-          ? accessPolicy({
-            minimumRole: "superAdmin"
-          })
-          : undefined,
         status: "planned",
         tone: definition.tone
       } satisfies AdminAppManifest;
@@ -1508,7 +1503,7 @@ function layoutDefaultsForApp(app: AdminAppManifest): AdminAppLayoutDefaults {
 
   if (app.kind === "plugin") {
     return {
-      allowedSizes: ["large", "medium", "compact", "hidden"],
+      allowedSizes: ["large", "medium", "compact"],
       defaultPinned: false,
       size: "medium",
       visibility: "library"
@@ -1525,7 +1520,7 @@ function layoutDefaultsForApp(app: AdminAppManifest): AdminAppLayoutDefaults {
   }
 
   return {
-    allowedSizes: ["icon-only", "hidden"],
+    allowedSizes: ["icon-only"],
     defaultPinned: false,
     size: "icon-only",
     visibility: "library"

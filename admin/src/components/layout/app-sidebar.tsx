@@ -63,7 +63,7 @@ export function AppSidebar({
       brand={{
         mark: "GC",
         name: "GlobalCircle AI",
-        subtitle: "Proxy Gateway Admin"
+        subtitle: "Proxy Gateway"
       }}
       pinnedApps={pinnedApps}
       plannedRoutes={plannedSidebarRoutes}

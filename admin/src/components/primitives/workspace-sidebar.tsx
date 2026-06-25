@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type KeyboardEvent, type ReactNode } from "react";
 import { ADMIN_UI_CONTRACT } from "../../app/admin-ui-contract";
 import { cn } from "../../lib/utils";
 
@@ -39,7 +39,7 @@ export function WorkspaceSidebar({
       className={cn("app-sidebar workspace-sidebar", className)}
       aria-label={ariaLabel}
       data-density={ADMIN_UI_CONTRACT.appShell.density}
-      data-figma-component="SidebarNavigation"
+      data-figma-component="ShellRail"
       data-ui-contract={ADMIN_UI_CONTRACT.appShell.contractId}
       data-ui-surface="workspace-sidebar"
     >
@@ -51,7 +51,13 @@ export function WorkspaceSidebar({
         </div>
       </div>
 
-      <nav className="nav-list">
+      <nav
+        aria-label="Workspace navigation"
+        className="nav-list"
+        data-ui-role="workspace-navigation-scrollport"
+        onKeyDown={handleWorkspaceNavigationKeyDown}
+        tabIndex={0}
+      >
         <div className="nav-primary-list" aria-label="Primary workspace routes">
           {pinnedApps.map((app) => (
             <button
@@ -80,4 +86,48 @@ export function WorkspaceSidebar({
       {safetyGate}
     </aside>
   );
+}
+
+function handleWorkspaceNavigationKeyDown(event: KeyboardEvent<HTMLElement>) {
+  if (event.altKey || event.ctrlKey || event.defaultPrevented || event.metaKey) {
+    return;
+  }
+
+  const scrollport = event.currentTarget;
+  const pageStep = Math.max(scrollport.clientHeight - 24, 48);
+
+  if (event.key === "PageDown") {
+    event.preventDefault();
+    scrollport.scrollBy({ top: pageStep, behavior: "auto" });
+    return;
+  }
+
+  if (event.key === "PageUp") {
+    event.preventDefault();
+    scrollport.scrollBy({ top: -pageStep, behavior: "auto" });
+    return;
+  }
+
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    scrollport.scrollBy({ top: 34, behavior: "auto" });
+    return;
+  }
+
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    scrollport.scrollBy({ top: -34, behavior: "auto" });
+    return;
+  }
+
+  if (event.key === "Home") {
+    event.preventDefault();
+    scrollport.scrollTo({ top: 0, behavior: "auto" });
+    return;
+  }
+
+  if (event.key === "End") {
+    event.preventDefault();
+    scrollport.scrollTo({ top: scrollport.scrollHeight, behavior: "auto" });
+  }
 }

@@ -2,9 +2,12 @@ import {
   AdminConsolePageFrame,
   type BlueprintPage
 } from "./admin-console-page-frame";
+import { ADMIN_EVIDENCE_SURFACE_CONTRACTS } from "../app/admin-evidence-contract";
 import {
-  DataTable,
+  EvidenceChartPanel,
+  EvidenceLogPanel,
   MetricCard,
+  type MetricTone,
   QuotaMeter,
   SafeRef,
   StatusChip
@@ -25,6 +28,8 @@ export const accountsResourcesBlueprint: BlueprintPage = {
   statusLabel: "Decision owner",
   statusTone: "info",
   summary: <AccountsResourcesSummary />,
+  evidence: <AccountsResourcesEvidence />,
+  overviewModuleIds: ["account-overview", "resource-orders", "lifecycle"],
   modules: [
     {
       navId: "account-overview",
@@ -37,6 +42,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         interactionModel: "Selection and review planning now; create/disable requires later backend contract."
       },
       content: <AccountDirectoryContent />,
+      actions: <StatusChip label="Active" tone="success" />,
       purpose: "Directory of safe account refs, risk state, resource count, and review state.",
       contentFields: [
         "Account ref · safe id",
@@ -71,6 +77,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         interactionModel: "Inspect and plan lifecycle review; no raw subscription output."
       },
       content: <ResourceOrdersContent />,
+      actions: <StatusChip label="Synced" tone="success" />,
       purpose: "Group resources, orders, entitlements, and subscription artifact safe refs under the owning account.",
       contentFields: [
         "Order ref · safe id",
@@ -139,6 +146,7 @@ export const accountsResourcesBlueprint: BlueprintPage = {
         interactionModel: "Review and dry-run planning only before approved mutation flows."
       },
       content: <LifecycleContent />,
+      actions: <StatusChip label="Watch" tone="warning" />,
       purpose: "Plan account, order, artifact, expiry, revocation, pause, and archive states in one owner page.",
       contentFields: [
         "Account · lifecycle state",
@@ -200,6 +208,58 @@ export const accountsResourcesBlueprint: BlueprintPage = {
   ]
 };
 
+function AccountsResourcesEvidence() {
+  return (
+    <>
+      <EvidenceChartPanel
+        ariaLabel="Account Metrics evidence panel"
+        contract={ADMIN_EVIDENCE_SURFACE_CONTRACTS.accountMetrics}
+        description="Decision owner evidence for accounts, resources, quota, and lifecycle states."
+        series={[
+          { label: "Active", tone: "success", values: [11, 12, 12, 12, 12, 12, 12] },
+          { label: "Orders", tone: "info", values: [8, 9, 10, 10, 10, 10, 10] },
+          { label: "Quota", tone: "warning", values: [1, 3, 4, 4, 4, 4, 4] }
+        ]}
+        stats={[
+          { label: "Accounts", tone: "info", value: "5" },
+          { label: "Orders", tone: "success", value: "3" },
+          { label: "Quota review", tone: "warning", value: "1" }
+        ]}
+        title="Account Metrics"
+      />
+      <EvidenceLogPanel
+        ariaLabel="Account Event Log evidence panel"
+        contract={ADMIN_EVIDENCE_SURFACE_CONTRACTS.accountEventLog}
+        description="Safe account/resource transitions without raw identity, token, or artifact material."
+        entries={[
+          {
+            detail: "Quota review routed from usage evidence; no account mutation is enabled.",
+            source: "quota review",
+            time: "12:26",
+            title: "Quota evidence attached",
+            tone: "warning"
+          },
+          {
+            detail: "Resource order delivery state is visible with subscription output hidden.",
+            source: "resource order",
+            time: "12:10",
+            title: "Order state reviewed",
+            tone: "info"
+          },
+          {
+            detail: "Lifecycle review lane keeps archive and disable actions gated.",
+            source: "lifecycle",
+            time: "11:52",
+            title: "Lifecycle gate locked",
+            tone: "neutral"
+          }
+        ]}
+        title="Account Event Log"
+      />
+    </>
+  );
+}
+
 function AccountsResourcesSummary() {
   return (
     <div className="ops-metric-grid" aria-label="Accounts & Resources summary metrics">
@@ -248,93 +308,59 @@ export function PortalRequestsPage({
   );
 }
 
-type AccountDirectoryRow = {
-  accountRef: string;
-  state: "Enabled" | "Review" | "Disabled";
-  resources: string;
-  risk: "Normal" | "Quota review" | "Lifecycle locked";
-};
-
-const accountRows: AccountDirectoryRow[] = [
-  { accountRef: "acct_safe_001", state: "Enabled", resources: "3 active", risk: "Normal" },
-  { accountRef: "acct_safe_014", state: "Review", resources: "2 active", risk: "Quota review" },
-  { accountRef: "acct_safe_022", state: "Disabled", resources: "1 expired", risk: "Lifecycle locked" }
-];
-
 function AccountDirectoryContent() {
   return (
-    <div className="admin-operator-content" aria-label="Account Directory static operator content">
-      <div className="admin-overview-pill-row" aria-label="Account Directory filters">
-        <StatusChip label="All 5" tone="info" />
-        <StatusChip label="Review 1" tone="warning" />
-        <StatusChip label="Disabled 1" tone="neutral" />
-        <StatusChip label="Disabled account" tone="neutral" />
-        <StatusChip label="Backend action locked" tone="danger" />
-      </div>
-      <DataTable
-        ariaLabel="Account Directory static table"
-        columns={[
-          { header: "Account", key: "account", render: (row: AccountDirectoryRow) => <SafeRef value={row.accountRef} /> },
-          { header: "State", key: "state", render: (row) => <StatusChip label={row.state} tone={row.state === "Enabled" ? "success" : row.state === "Review" ? "warning" : "neutral"} /> },
-          { header: "Resources", key: "resources", render: (row) => row.resources },
-          { header: "Risk", key: "risk", render: (row) => row.risk }
-        ]}
-        density="compact"
-        getRowKey={(row) => row.accountRef}
-        pagination={{ label: "Account Directory table pagination", pageSize: 2 }}
-        rows={accountRows}
-      />
-    </div>
+    <PanelCompactRows
+      ariaLabel="Account Directory static operator content"
+      footer="Directory"
+      rows={[
+        {
+          actionLabel: "Open",
+          detail: "Order ord_2048 · Plan standard",
+          label: "user_001",
+          meta: "Risk Med",
+          statusLabel: "Active",
+          tone: "info"
+        },
+        {
+          actionLabel: "Open",
+          detail: "Order ord_2047 · Plan trial",
+          label: "user_002",
+          meta: "Risk Low",
+          statusLabel: "Active",
+          tone: "success"
+        }
+      ]}
+      subtitle="Users and account-level resources"
+    />
   );
 }
 
-type ResourceOrderRow = {
-  artifactRef: string;
-  lifecycle: "Active" | "Pending receipt" | "Expired";
-  orderRef: string;
-  plan: string;
-};
-
-const resourceOrderRows: ResourceOrderRow[] = [
-  { orderRef: "ord_safe_101", plan: "standard · 30d", artifactRef: "artifact_safe_101", lifecycle: "Active" },
-  { orderRef: "ord_safe_102", plan: "trial · 7d", artifactRef: "artifact_safe_pending", lifecycle: "Pending receipt" },
-  { orderRef: "ord_safe_103", plan: "standard · 30d", artifactRef: "artifact_safe_expired", lifecycle: "Expired" }
-];
-
 function ResourceOrdersContent() {
   return (
-    <div className="admin-operator-content" aria-label="Resources and Orders static operator content">
-      <div className="admin-static-status-row" aria-label="Accounts and Resources owner panel routes">
-        <StatusChip label="Lifecycle owner" tone="info" />
-        <StatusChip label="Delivery review only" tone="neutral" />
-        <StatusChip label="Quota gate separate" tone="warning" />
-      </div>
-      <DataTable
-        ariaLabel="Resources and Orders static table"
-        columns={[
-          { header: "Order", key: "order", render: (row: ResourceOrderRow) => <><SafeRef value={row.orderRef} /> · {row.plan}</> },
-          {
-            header: "Lifecycle",
-            key: "lifecycle",
-            render: (row) => (
-              <StatusChip
-                label={row.lifecycle}
-                tone={row.lifecycle === "Active" ? "success" : row.lifecycle === "Pending receipt" ? "warning" : "neutral"}
-              />
-            )
-          }
-        ]}
-        density="compact"
-        getRowKey={(row) => row.orderRef}
-        pagination={{ label: "Resources and Orders table pagination", pageSize: 2 }}
-        rows={resourceOrderRows}
-      />
-      <div className="admin-static-status-row" aria-label="Resources and Orders safety states">
-        <StatusChip label="Subscription output hidden" tone="danger" />
-        <StatusChip label="Protected material blocked" tone="danger" />
-        <StatusChip label="Empty result preserves table" tone="info" />
-      </div>
-    </div>
+    <PanelCompactRows
+      ariaLabel="Resources and Orders static operator content"
+      footer="Resource list"
+      rows={[
+        {
+          actionLabel: "Open",
+          detail: "Sub sub_8192 · Channel hk-01",
+          label: "ord_2048",
+          meta: "State Live",
+          statusLabel: "Synced",
+          tone: "success"
+        },
+        {
+          actionLabel: "Open",
+          detail: "Sub sub_8191 · Channel sg-01",
+          label: "ord_2047",
+          meta: "State Pending",
+          statusLabel: "Watch",
+          tone: "warning"
+        }
+      ]}
+      subtitle="Order to subscription mapping"
+    />
   );
 }
 
@@ -358,19 +384,78 @@ function QuotaUsageContent() {
 
 function LifecycleContent() {
   return (
-    <div className="admin-owner-handoff-list" aria-label="Lifecycle static operator content">
-      {[
-        ["Account active", "Separate from order and artifact lifecycle.", "success"],
-        ["Order paused", "Review state only; no collector decision.", "warning"],
-        ["Archive candidate", "Execution waits for a Risk A gate.", "danger"]
-      ].map(([title, body, tone]) => (
-        <article className="admin-owner-handoff-item" key={title}>
-          <span>Lifecycle lane</span>
-          <strong>{title}</strong>
-          <p>{body}</p>
-          <StatusChip label={title} tone={tone as "success" | "warning" | "danger" | "neutral"} />
-        </article>
-      ))}
+    <PanelCompactRows
+      ariaLabel="Lifecycle static operator content"
+      footer="Lifecycle subpage"
+      rows={[
+        {
+          actionLabel: "Open",
+          detail: "Account user_002 · Order ord_2047",
+          label: "pause_check",
+          meta: "When Now",
+          statusLabel: "Review",
+          tone: "warning"
+        },
+        {
+          actionLabel: "Open",
+          detail: "Account user_003 · Order ord_2046",
+          label: "archive_due",
+          meta: "When 2d",
+          statusLabel: "Due",
+          tone: "neutral"
+        }
+      ]}
+      subtitle="Page-local lifecycle status"
+    />
+  );
+}
+
+type CompactPanelRow = {
+  actionLabel: string;
+  detail: string;
+  label: string;
+  meta: string;
+  statusLabel: string;
+  tone: MetricTone;
+};
+
+function PanelCompactRows({
+  ariaLabel,
+  footer,
+  rows,
+  subtitle
+}: {
+  ariaLabel: string;
+  footer: string;
+  rows: CompactPanelRow[];
+  subtitle: string;
+}) {
+  return (
+    <div className="admin-operator-content admin-panel-compact-card" aria-label={ariaLabel}>
+      <p className="admin-panel-compact-subtitle">{subtitle}</p>
+      <div className="admin-compact-row-list" aria-label={`${footer} compact rows`}>
+        {rows.map((row) => (
+          <article
+            className={`admin-compact-data-row admin-compact-data-row-${row.tone}`}
+            data-figma-component="DataRowCompact"
+            data-state-tone={row.tone}
+            data-ui-surface="compact-row"
+            key={row.label}
+          >
+            <span className="admin-compact-data-row-main">
+              <strong>{row.label}</strong>
+              <span className="admin-compact-data-row-detail">{row.detail}</span>
+            </span>
+            <span className="admin-compact-data-row-meta">{row.meta}</span>
+            <span className="admin-compact-data-row-status">{row.statusLabel}</span>
+            <span className="admin-compact-data-row-action">{row.actionLabel}</span>
+          </article>
+        ))}
+      </div>
+      <div className="admin-overview-panel-footer" aria-hidden="true">
+        <span>{footer}</span>
+        <span>•••</span>
+      </div>
     </div>
   );
 }

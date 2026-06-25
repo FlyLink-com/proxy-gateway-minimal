@@ -61,7 +61,6 @@ export const ADMIN_COMPONENT_GRAMMAR: Record<AdminComponentRoleGroup, AdminCompo
     owns: [
       "navigation",
       "search",
-      "hide-module",
       "owner-page-route"
     ],
     role: "control"

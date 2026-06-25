@@ -65,22 +65,21 @@ export type AdminUiContract = {
     ];
     density: AdminUiDensity;
   };
-  pluginFrame: {
+  panelFrame: {
     contractId: "panel-frame";
     owns: readonly [
       "panel-surface",
       "panel-header",
       "panel-toolbar",
-      "hide-action",
       "panel-state-chrome"
     ];
-    forbiddenPluginResponsibilities: readonly [
+    forbiddenPanelResponsibilities: readonly [
       "outer-panel-border",
       "outer-panel-radius",
       "outer-panel-shadow",
       "panel-header-layout",
-      "panel-resize-controls",
-      "panel-hide-controls",
+      "freeform-window-controls",
+      "hide-restore-module-controls",
       "loading-error-empty-chrome"
     ];
     density: AdminUiDensity;
@@ -233,23 +232,22 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
       "error-state"
     ]
   },
-  pluginFrame: {
+  panelFrame: {
     contractId: "panel-frame",
     density: "normal",
-    forbiddenPluginResponsibilities: [
+    forbiddenPanelResponsibilities: [
       "outer-panel-border",
       "outer-panel-radius",
       "outer-panel-shadow",
       "panel-header-layout",
-      "panel-resize-controls",
-      "panel-hide-controls",
+      "freeform-window-controls",
+      "hide-restore-module-controls",
       "loading-error-empty-chrome"
     ],
     owns: [
       "panel-surface",
       "panel-header",
       "panel-toolbar",
-      "hide-action",
       "panel-state-chrome"
     ]
   },

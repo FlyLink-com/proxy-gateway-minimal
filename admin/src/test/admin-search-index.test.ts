@@ -11,7 +11,7 @@ const blueprints = [
 ];
 
 describe("admin system search index", () => {
-  test("searches across pages and modules with domain aliases", () => {
+  test("searches across pages and page sections with domain aliases", () => {
     const results = createAdminSearchResults({ blueprints, query: "账户" });
     const resultIds = results.map((result) => result.id);
 
@@ -21,6 +21,15 @@ describe("admin system search index", () => {
       "usageMonitor:usage-ledger"
     ]));
     expect(resultIds).not.toContain("usageMonitor:freshness");
+    expect(results.find((result) => result.id === "portalRequests:account-overview")).toMatchObject({
+      statusLabel: "Owner section",
+      type: "section"
+    });
+    expect(results.find((result) => result.id === "usageMonitor:usage-ledger")).toMatchObject({
+      statusLabel: "Owner section",
+      type: "section"
+    });
+    expect(results.map((result) => result.type)).not.toContain("module");
   });
 
   test("keeps planned console routes searchable without promoting them to pages", () => {

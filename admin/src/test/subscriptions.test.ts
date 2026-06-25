@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createAdminApiClient, type AdminApiClient } from "../features/subscriptions/api-client";
 import { loadAdminSession, saveAdminSession } from "../features/subscriptions/admin-session";
 import type {
@@ -660,21 +660,19 @@ describe("portal access request admin page", () => {
     expect(screen.queryByLabelText("Accounts & Resources status dashboard")).toBeNull();
     expect(screen.getByLabelText("Accounts & Resources module layout")).not.toBeNull();
     expect(screen.queryByLabelText("Accounts & Resources card controls")).toBeNull();
-    expect(screen.getByRole("button", { name: "Account Directory hide module" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Account Directory hide module" })).toBeNull();
     expect(screen.queryByText(/not the finished management panel/)).toBeNull();
     expect(screen.queryByText("Page design notes")).toBeNull();
     expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();
-    expect(screen.queryByRole("heading", { name: "Resources & Orders" })).toBeNull();
-    const accountSections = screen.getByRole("navigation", { name: "Accounts & Resources sections" });
-
-    fireEvent.click(within(accountSections).getByRole("button", { name: "Resources & Orders" }));
     expect(screen.getByRole("heading", { name: "Resources & Orders" })).not.toBeNull();
-    fireEvent.click(within(accountSections).getByRole("button", { name: "Quota & Usage" }));
-    expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
-    fireEvent.click(within(accountSections).getByRole("button", { name: "Lifecycle" }));
     expect(screen.getByRole("heading", { name: "Lifecycle" })).not.toBeNull();
-    fireEvent.click(within(accountSections).getByRole("button", { name: "History & Events" }));
-    expect(screen.getByRole("heading", { name: "History & Events" })).not.toBeNull();
+    expect(screen.queryByRole("heading", { name: "Quota & Usage" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "History & Events" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Accounts & Resources sections" })).toBeNull();
+    expect(document.querySelectorAll("[data-figma-component='DataRowCompact'][data-ui-surface='compact-row']")).toHaveLength(6);
+    expect(screen.getByText("user_001")).not.toBeNull();
+    expect(screen.getByText("ord_2048")).not.toBeNull();
+    expect(screen.getByText("pause_check")).not.toBeNull();
     expect(screen.queryByText("User resource supervision")).toBeNull();
     expect(screen.queryByText("Controlled delivery preview")).toBeNull();
     expect(screen.queryByText("Traffic quota")).toBeNull();

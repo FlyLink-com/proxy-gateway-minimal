@@ -212,17 +212,19 @@
   min-width: 0;
 }
 
-.admin-overview-section-card,
-.admin-overview-action-card {
-  border: 1px solid var(--admin-border);
-  border-radius: var(--admin-radius-panel);
-  background: var(--admin-surface);
-  box-shadow: var(--admin-shadow-panel);
+.admin-overview-compact-stack {
+  display: grid;
+  gap: 12px;
+  align-content: start;
   min-width: 0;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
 }
 
-.admin-overview-section-heading h3,
-.admin-overview-action-card strong {
+.admin-overview-section-heading h3 {
   margin: 0;
   color: var(--admin-text);
   font-size: 15px;
@@ -230,21 +232,11 @@
   line-height: 1.35;
 }
 
-.admin-overview-section-heading p,
-.admin-overview-action-card span:last-child {
+.admin-overview-section-heading p {
   margin: 0;
   color: var(--admin-text-soft);
   font-size: 12px;
   line-height: 1.45;
-}
-
-.admin-overview-section-card {
-  display: grid;
-  gap: 12px;
-  align-content: start;
-  grid-auto-rows: max-content;
-  min-height: 326px;
-  padding: 18px;
 }
 
 .admin-overview-section-heading {
@@ -265,168 +257,117 @@
   gap: 8px;
 }
 
-.admin-overview-table-list {
+.admin-compact-row-list {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   align-content: start;
   min-width: 0;
 }
 
-.admin-overview-table-row {
+.admin-compact-data-row {
+  appearance: none;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-control);
   background: var(--admin-surface);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(96px, 0.5fr) minmax(132px, 0.7fr);
-  gap: 10px;
-  align-items: center;
-  min-height: 36px;
-  padding: 9px 10px;
-}
-
-.admin-overview-table-row span,
-.admin-overview-table-row strong {
-  min-width: 0;
-  color: var(--admin-text-soft);
-  font-size: 12px;
-  line-height: 1.35;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.admin-overview-table-row strong {
-  color: var(--admin-text);
-  font-weight: 700;
-}
-
-.admin-overview-action-list {
-  display: grid;
-  gap: 12px;
-  align-content: start;
-  min-width: 0;
-}
-
-.admin-overview-action-card {
-  appearance: none;
   color: inherit;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
   align-items: center;
-  justify-items: start;
   column-gap: 12px;
   row-gap: 4px;
-  min-height: 56px;
-  padding: 10px 14px;
+  padding: 9px 10px;
   text-align: left;
   text-decoration: none;
 }
 
-.admin-overview-action-card > .dashboard-status-badge {
-  grid-row: 1 / span 2;
-  grid-column: 2;
-}
-
-.admin-overview-handoff {
-  display: grid;
-  gap: 14px;
-  min-height: 166px;
-  border: 1px solid var(--admin-border);
-  border-radius: var(--admin-radius-panel);
-  background: var(--admin-surface);
-  box-shadow: var(--admin-shadow-panel);
-  padding: 18px;
-}
-
-.admin-overview-handoff-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  min-width: 0;
-}
-
-.admin-overview-handoff-card {
-  appearance: none;
-  min-width: 0;
-  min-height: 62px;
-  border: 1px solid var(--admin-border);
-  border-radius: var(--admin-radius-control);
-  background: var(--admin-surface);
-  color: inherit;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  column-gap: 12px;
-  row-gap: 3px;
-  padding: 10px 14px;
-  text-align: left;
-  text-decoration: none;
-}
-
-button.admin-overview-handoff-card {
+.admin-compact-data-row[data-clickable="true"] {
   cursor: pointer;
   transition:
-    background var(--admin-ease),
     border-color var(--admin-ease),
+    background var(--admin-ease),
     box-shadow var(--admin-ease);
 }
 
-button.admin-overview-handoff-card:hover,
-button.admin-overview-handoff-card:focus-visible {
+.admin-compact-data-row[data-clickable="true"]:hover,
+.admin-compact-data-row[data-clickable="true"]:focus-visible {
   border-color: var(--admin-info-border);
   background: var(--admin-hover-surface);
   box-shadow: var(--admin-shadow-hover);
 }
 
-.admin-overview-handoff-card strong,
-.admin-overview-handoff-card span {
+.admin-compact-data-row-main {
+  min-width: 0;
+  display: grid;
+  align-items: center;
+  gap: 2px;
+}
+
+.admin-compact-data-row-main strong,
+.admin-compact-data-row-meta,
+.admin-compact-data-row-detail,
+.admin-compact-data-row-status,
+.admin-compact-data-row-action {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.admin-overview-handoff-card strong {
+.admin-compact-data-row-main strong {
   color: var(--admin-text);
   font-size: 13px;
   font-weight: 700;
+  line-height: 1.25;
 }
 
-.admin-overview-handoff-card span {
+.admin-compact-data-row-meta,
+.admin-compact-data-row-detail,
+.admin-compact-data-row-status,
+.admin-compact-data-row-action {
   color: var(--admin-text-soft);
-  display: -webkit-box;
   font-size: 12px;
   line-height: 1.35;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  white-space: normal;
 }
 
-.admin-overview-handoff-card .dashboard-status-badge {
-  grid-row: 1 / span 2;
-  grid-column: 2;
+.admin-compact-data-row-detail {
+  grid-column: auto;
 }
 
-.admin-overview-handoff-card-muted {
-  background: var(--admin-surface-muted);
+.admin-compact-data-row-status {
+  color: currentColor;
+  font-weight: 700;
 }
 
-button.admin-overview-action-card {
-  cursor: pointer;
-  transition:
-    border-color var(--admin-ease),
-    background var(--admin-ease),
-    box-shadow var(--admin-ease);
+.admin-compact-data-row-success .admin-compact-data-row-status {
+  color: var(--admin-success-fg);
 }
 
-button.admin-overview-action-card:hover,
-button.admin-overview-action-card:focus-visible {
-  border-color: var(--admin-info-border);
-  background: var(--admin-hover-surface);
-  box-shadow: var(--admin-shadow-hover);
+.admin-compact-data-row-info .admin-compact-data-row-status {
+  color: var(--admin-info-fg);
 }
 
-.admin-overview-action-card-muted {
+.admin-compact-data-row-warning .admin-compact-data-row-status {
+  color: var(--admin-warning-fg);
+}
+
+.admin-compact-data-row-danger .admin-compact-data-row-status {
+  color: var(--admin-danger-fg);
+}
+
+.admin-compact-data-row-neutral .admin-compact-data-row-status {
+  color: var(--admin-text-soft);
+}
+
+.admin-compact-data-row-meta,
+.admin-compact-data-row-status,
+.admin-compact-data-row-action {
+  justify-self: end;
+}
+
+.admin-compact-data-row-muted {
   background: var(--admin-surface-muted);
 }
 
@@ -533,6 +474,7 @@ button.admin-overview-action-card:focus-visible {
 }
 
 .ops-metric-card {
+  position: relative;
   min-height: 156px;
   border: 1px solid var(--admin-border);
   border-radius: var(--admin-radius-panel);
@@ -542,6 +484,11 @@ button.admin-overview-action-card:focus-visible {
   grid-template-rows: auto auto 1fr auto;
   gap: 8px;
   box-shadow: var(--admin-shadow-card);
+}
+
+.ops-metric-card > .dashboard-status-badge {
+  justify-self: start;
+  width: max-content;
 }
 
 .ops-metric-card > span {
@@ -686,17 +633,17 @@ button.admin-overview-action-card:focus-visible {
 }
 
 .admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-card {
-  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto auto;
   grid-template-areas:
-    "icon label"
-    "icon value"
-    "footer footer";
-  align-items: center;
-  column-gap: 10px;
-  row-gap: 4px;
+    "label"
+    "value"
+    "footer";
+  align-items: start;
+  column-gap: 0;
+  row-gap: 10px;
   min-height: 118px;
-  padding: 12px 14px;
+  padding: 16px;
 }
 
 .admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-card > span {
@@ -729,9 +676,7 @@ button.admin-overview-action-card:focus-visible {
 }
 
 .admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-icon {
-  grid-area: icon;
-  width: 32px;
-  height: 32px;
+  display: none;
 }
 
 .admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-icon svg {
@@ -982,12 +927,6 @@ button.admin-overview-action-card:focus-visible {
 
 
 
-.admin-blueprint-panel-tool-trigger:focus-visible {
-  outline: 3px solid var(--admin-focus-ring);
-  outline-offset: 2px;
-}
-
-
 
 
 
@@ -1022,15 +961,12 @@ button.admin-overview-action-card:focus-visible {
 }
 
 .admin-blueprint-page[data-page="dashboard"] .admin-blueprint-module-board {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-board {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
-}
-
+.admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-board,
 .admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-board {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="health-summary"] {
@@ -1039,71 +975,71 @@ button.admin-overview-action-card:focus-visible {
 }
 
 .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="risk-queue"] {
-  grid-column: 1 / span 2;
-  min-height: 326px;
+  grid-column: auto;
+  min-height: 260px;
   order: 2;
 }
 
 .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="next-actions"] {
-  min-height: 326px;
+  min-height: 260px;
   order: 3;
 }
 
-.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="owner-handoff"] {
-  grid-column: 1 / -1;
-  min-height: 166px;
+.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="review-candidates"] {
+  grid-column: auto;
+  min-height: 260px;
   order: 4;
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="account-overview"] {
-  grid-column: 1 / span 2;
-  min-height: 326px;
+  grid-column: auto;
+  min-height: 260px;
   order: 1;
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="resource-orders"] {
-  min-height: 326px;
+  min-height: 260px;
   order: 2;
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="quota-usage"] {
-  min-height: 166px;
+  min-height: 260px;
   order: 3;
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="lifecycle"] {
-  min-height: 166px;
-  order: 4;
+  min-height: 260px;
+  order: 3;
 }
 
 .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id="history-events"] {
-  min-height: 166px;
+  min-height: 260px;
   order: 5;
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="freshness"] {
-  min-height: 166px;
-  order: 2;
-}
-
-.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="channel-coverage"] {
-  min-height: 166px;
-  order: 4;
-}
-
-.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="receipts-collectors"] {
-  min-height: 166px;
-  order: 3;
-}
-
-.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="usage-ledger"] {
-  grid-column: 1 / span 2;
-  min-height: 326px;
+  min-height: 260px;
   order: 1;
 }
 
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="channel-coverage"] {
+  min-height: 260px;
+  order: 2;
+}
+
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="receipts-collectors"] {
+  min-height: 260px;
+  order: 4;
+}
+
+.admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="usage-ledger"] {
+  grid-column: auto;
+  min-height: 260px;
+  order: 3;
+}
+
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="collection-anomalies"] {
-  min-height: 326px;
+  min-height: 260px;
   order: 5;
 }
 
@@ -1168,22 +1104,6 @@ button.admin-overview-action-card:focus-visible {
   background: transparent;
 }
 
-.admin-blueprint-module-panel[data-chrome="operator"] .admin-blueprint-panel-tool-trigger-floating {
-  position: absolute;
-  z-index: 2;
-  top: 8px;
-  right: 8px;
-  border-color: rgba(148, 163, 184, 0.26);
-  background: rgba(255, 255, 255, 0.92);
-  box-shadow: var(--admin-shadow-panel);
-  opacity: 0;
-}
-
-.admin-blueprint-module-panel[data-chrome="operator"]:hover .admin-blueprint-panel-tool-trigger-floating,
-.admin-blueprint-module-panel[data-chrome="operator"]:focus-within .admin-blueprint-panel-tool-trigger-floating {
-  opacity: 1;
-}
-
 .admin-blueprint-module-panel > .case-workbench-card {
   border: 0;
   border-radius: 0;
@@ -1221,36 +1141,6 @@ button.admin-overview-action-card:focus-visible {
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
-}
-
-.admin-blueprint-panel-tool-trigger {
-  appearance: none;
-  width: var(--admin-touch-target-min);
-  height: var(--admin-touch-target-min);
-  border: 1px solid rgba(148, 163, 184, 0.22);
-  border-radius: var(--admin-radius-pill);
-  background: transparent;
-  color: var(--admin-muted);
-  cursor: pointer;
-  display: inline-grid;
-  place-items: center;
-  padding: 0;
-  transition:
-    background var(--admin-ease),
-    border-color var(--admin-ease),
-    color var(--admin-ease);
-}
-
-.admin-blueprint-panel-tool-trigger:hover {
-  border-color: var(--workbench-category-border, var(--admin-info-border));
-  background: var(--workbench-category-bg, var(--admin-hover-surface));
-  color: var(--workbench-category-color, var(--admin-accent));
-}
-
-.admin-blueprint-panel-tool-trigger svg {
-  width: 16px;
-  height: 16px;
-  stroke-width: 2;
 }
 
 .admin-blueprint-module-panel > .admin-blueprint-actions {
@@ -1374,34 +1264,38 @@ button.admin-overview-action-card:focus-visible {
 }
 
 .admin-fixture-preview-banner {
-  border: 1px solid var(--admin-info-border);
-  border-radius: var(--admin-radius-control);
-  background: var(--admin-info-bg);
+  border: 0.5px solid var(--admin-info-border);
+  border-radius: var(--admin-radius-pill);
+  background: color-mix(in srgb, var(--admin-info-bg) 72%, transparent);
   color: var(--admin-info-fg);
-  display: grid;
-  gap: 6px;
-  padding: 12px 14px;
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-self: start;
+  max-width: min(100%, 720px);
+  padding: 6px 10px;
 }
 
 .admin-fixture-preview-banner > div {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .admin-fixture-preview-banner strong {
   color: var(--admin-text);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .admin-fixture-preview-banner span,
 .admin-fixture-preview-banner p {
   margin: 0;
   color: var(--admin-text-soft);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
-  line-height: 1.4;
+  line-height: 1.3;
 }
 
 .admin-fixture-preview {
@@ -1473,6 +1367,7 @@ button.admin-overview-action-card:focus-visible {
 }
 
 .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="next-actions"] .admin-fixture-preview-row,
+.admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="review-candidates"] .admin-fixture-preview-row,
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="collection-anomalies"] .admin-fixture-preview-row {
   grid-template-columns: minmax(0, 1fr);
   padding: 14px;

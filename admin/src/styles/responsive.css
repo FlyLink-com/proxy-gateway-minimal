@@ -198,7 +198,6 @@
   }
 
   .admin-overview-metric-grid,
-  .admin-overview-handoff-strip,
   .ops-metric-grid,
   .admin-static-card-grid,
   .dashboard-mini-metrics,
@@ -665,15 +664,6 @@
 
   .case-row {
     grid-template-columns: auto minmax(0, 1fr);
-  }
-
-  .admin-overview-table-row {
-    grid-template-columns: 1fr;
-  }
-
-  .admin-overview-table-row span,
-  .admin-overview-table-row strong {
-    white-space: normal;
   }
 
   .case-reason {

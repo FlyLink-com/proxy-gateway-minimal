@@ -5,18 +5,6 @@ import {
   pageSubNavigation
 } from "../app/navigation";
 import {
-  createDefaultModuleLayout,
-  defaultModuleLayoutState,
-  isWorkspaceLayoutForModules,
-  loadWorkspaceLayout,
-  persistWorkspaceLayout,
-  type ModuleLayoutMap
-} from "../app/plugin-layout-store";
-import {
-  hideModuleLayoutState,
-  restoreModuleLayoutState
-} from "../app/plugin-workspace-engine";
-import {
   projectBlueprintPanelViewModels,
   type BlueprintPage
 } from "../app/admin-ui-projection";
@@ -43,39 +31,16 @@ export function AdminConsolePageFrame({
 }) {
   const subNavigation = pageSubNavigation[blueprint.page];
   const pageContract = getAdminPageContract(blueprint.page);
-  const usesRoutedModules = blueprint.page !== "dashboard";
+  const overviewModuleIds = blueprint.overviewModuleIds ?? [];
+  const usesOverviewModules = overviewModuleIds.length > 0;
+  const usesRoutedModules = blueprint.page !== "dashboard" && !usesOverviewModules;
   const moduleNavSignature = blueprint.modules.map((module) => module.navId).join("|");
   const firstModuleNavId = subNavigation[0]?.id ?? blueprint.modules[0]?.navId ?? "";
-  const defaultModuleLayout = useMemo(() => createDefaultModuleLayout(blueprint.modules), [moduleNavSignature]);
-  const initialWorkspaceLayout = useMemo(
-    () => loadWorkspaceLayout(blueprint.page, blueprint.modules, defaultModuleLayout),
-    [blueprint.page, defaultModuleLayout, moduleNavSignature]
-  );
-  const [moduleLayout, setModuleLayout] = useState<ModuleLayoutMap>(() => initialWorkspaceLayout.moduleLayout);
   const [activeModuleNavId, setActiveModuleNavId] = useState(firstModuleNavId);
 
   useEffect(() => {
-    const nextLayout = loadWorkspaceLayout(blueprint.page, blueprint.modules, defaultModuleLayout);
-    setModuleLayout(nextLayout.moduleLayout);
     setActiveModuleNavId(firstModuleNavId);
-  }, [blueprint.page, defaultModuleLayout, firstModuleNavId, moduleNavSignature]);
-
-  useEffect(() => {
-    const snapshot = { moduleLayout };
-    if (!isWorkspaceLayoutForModules(snapshot, blueprint.modules)) {
-      return;
-    }
-    persistWorkspaceLayout(blueprint.page, snapshot);
-  }, [blueprint.page, moduleLayout, moduleNavSignature]);
-
-  const hideModuleLayout = (navId: string) => {
-    setModuleLayout((current) => ({
-      ...current,
-      [navId]: hideModuleLayoutState(
-        current[navId] ?? defaultModuleLayout[navId] ?? defaultModuleLayoutState()
-      )
-    }));
-  };
+  }, [blueprint.page, firstModuleNavId, moduleNavSignature]);
 
   const moduleRestoreTargets = useMemo(() => blueprint.modules.map((module) => {
     const navItem = subNavigation.find((item) => item.id === module.navId);
@@ -99,28 +64,22 @@ export function AdminConsolePageFrame({
       if (!match) {
         return;
       }
-      setModuleLayout((current) => ({
-        ...current,
-        [match.navId]: restoreModuleLayoutState(
-          current[match.navId] ?? defaultModuleLayout[match.navId] ?? defaultModuleLayoutState()
-        )
-      }));
       setActiveModuleNavId(match.navId);
     };
 
     window.addEventListener("admin-open-module", handleOpenModule);
     return () => window.removeEventListener("admin-open-module", handleOpenModule);
-  }, [blueprint.page, defaultModuleLayout, moduleRestoreTargets]);
+  }, [blueprint.page, moduleRestoreTargets]);
 
   const panelViewModels = projectBlueprintPanelViewModels({
     blueprint,
-    defaultModuleLayout,
     fixturePreviewEnabled,
-    moduleLayout,
     subNavigation
   });
   const routedPanelViewModels = usesRoutedModules
     ? panelViewModels.filter((panel) => panel.navId === activeModuleNavId)
+    : usesOverviewModules
+      ? panelViewModels.filter((panel) => overviewModuleIds.includes(panel.navId))
     : panelViewModels;
 
   return (
@@ -171,7 +130,6 @@ export function AdminConsolePageFrame({
             fixturePreview={panel.fixturePreview}
             id={panel.targetId}
             key={panel.navId}
-            onHide={() => hideModuleLayout(panel.navId)}
             ownerMode={panel.ownerMode}
             title={panel.title}
           >
@@ -180,12 +138,18 @@ export function AdminConsolePageFrame({
         )) : (
         <EmptyState
           className="admin-blueprint-empty-workbench"
-          description="Use system search or page controls to restore a module."
+          description="System search can route to available page-owned sections after the page contract exposes them."
           role="status"
-          title="No modules are visible."
+          title="No page panels are available."
         />
       )}
       </div>
+
+      {blueprint.evidence ? (
+        <section className="admin-blueprint-lower-evidence-grid" aria-label={`${blueprint.title} evidence surfaces`}>
+          {blueprint.evidence}
+        </section>
+      ) : null}
     </div>
   );
 }

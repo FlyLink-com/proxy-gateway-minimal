@@ -9,7 +9,7 @@ import { type BlueprintPage } from "./admin-ui-projection";
 
 export type AdminSearchResult = {
   id: string;
-  type: "page" | "module" | "planned";
+  type: "page" | "section" | "planned";
   title: string;
   description: string;
   eyebrow: string;
@@ -30,7 +30,7 @@ const MODULE_SEARCH_ALIASES: Record<string, string[]> = {
   "health-summary": ["health", "summary", "risk", "freshness", "coverage", "健康", "概况", "总览", "风险", "新鲜度", "覆盖"],
   "risk-queue": ["risk", "case", "queue", "review", "incident", "风险", "案件", "队列", "审查", "异常"],
   "next-actions": ["action", "next", "route", "handoff", "operator", "行动", "后续", "路由", "交接", "操作员"],
-  "owner-handoff": ["owner", "handoff", "routing", "next page", "所有者", "交接", "归属", "路由", "下一页"],
+  "review-candidates": ["review", "candidate", "risk", "owner route", "safe ref", "审查", "候选", "风险", "归属", "路由"],
   "account-overview": ["account", "accounts", "user", "directory", "create", "disable", "账户", "账号", "用户", "目录", "创建", "禁用"],
   "resource-orders": ["resource", "resources", "order", "orders", "subscription", "artifact", "资源", "订单", "订阅", "产物"],
   "quota-usage": ["quota", "traffic", "usage", "limit", "overage", "配额", "额度", "流量", "用量", "超额"],
@@ -87,7 +87,7 @@ function createAdminSearchCandidates(blueprints: BlueprintPage[]) {
       type: "page"
     });
 
-    const moduleResults = blueprint.modules.map((module) => {
+    const sectionResults = blueprint.modules.map((module) => {
       const navItem = pageSubNavigation[blueprint.page].find((item) => item.id === module.navId);
       return createSearchCandidate({
         description: navItem?.description ?? module.purpose,
@@ -116,14 +116,14 @@ function createAdminSearchCandidates(blueprints: BlueprintPage[]) {
           module.boundaries,
           module.nextStep
         ],
-        statusLabel: navItem?.mode === "preview" ? "Preview module" : "Owner module",
+        statusLabel: navItem?.mode === "preview" ? "Preview section" : "Owner section",
         targetId: navItem?.targetId ?? module.navId,
         title: navItem?.label ?? module.navId,
-        type: "module"
+        type: "section"
       });
     });
 
-    return [pageResult, ...moduleResults];
+    return [pageResult, ...sectionResults];
   });
 
   const plannedCandidates = consoleSections

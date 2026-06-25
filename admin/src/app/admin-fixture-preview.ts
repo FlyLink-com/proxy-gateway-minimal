@@ -78,16 +78,14 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
         ]
       },
       "risk-queue": {
-        summary: "Computed review candidates. No case close, approval, or mutation action here.",
+        summary: "Cases ranked by owner route.",
         chips: [
-          { label: "All 18", tone: "info" },
-          { label: "High 5", tone: "danger" }
+          { label: "Open", tone: "info" },
+          { label: "Review", tone: "warning" }
         ],
         rows: [
-          { label: "Order traffic over limit", value: "12 affected", meta: "Accounts & Resources", tone: "danger" },
-          { label: "Collection delay", value: "6 affected", meta: "Usage & Channels", tone: "warning" },
-          { label: "Receipt missing", value: "3 affected", meta: "Usage & Channels", tone: "danger" },
-          { label: "Future durable case", value: "Locked", meta: "restricted workflow", tone: "neutral" }
+          { label: "case_012", value: "SLA 4m", meta: "Order ord_2048 · Owner Usage", tone: "info" },
+          { label: "case_017", value: "SLA 12m", meta: "Order ord_2047 · Owner Accounts", tone: "warning" }
         ],
         safetyNotes: [
           "Candidates are bounded synthetic summaries.",
@@ -95,19 +93,33 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
         ]
       },
       "next-actions": {
-        summary: "Route operators to the page that owns the detailed collection.",
+        summary: "Route handoff for reviewers.",
         chips: [
-          { label: "Owner routes", tone: "info" },
-          { label: "Future area locked", tone: "neutral" }
+          { label: "Ready", tone: "success" },
+          { label: "Queued", tone: "info" }
         ],
         rows: [
-          { label: "Open Accounts & Resources", value: "Account/order/quota/lifecycle decisions are owned there.", tone: "info" },
-          { label: "Open Usage & Channels", value: "Usage collection trust, channel coverage, receipts, and anomalies are owned there.", tone: "info" },
-          { label: "Restricted workflow locked", value: "Durable case/history backend contract is not ready.", tone: "neutral" }
+          { label: "handoff", value: "Due Now", meta: "Route Accounts · Owner Operator", tone: "success" },
+          { label: "refresh", value: "Due 8m", meta: "Route Usage · Owner Collector", tone: "info" }
         ],
         safetyNotes: [
           "Future restricted workflow and Platform Development areas remain planned.",
           "Preview routing does not execute production actions."
+        ]
+      },
+      "review-candidates": {
+        summary: "Items requiring operator check.",
+        chips: [
+          { label: "Review", tone: "warning" },
+          { label: "Watch", tone: "warning" }
+        ],
+        rows: [
+          { label: "ord_2048", value: "Age 14m", meta: "Issue delay · Signal P95", tone: "warning" },
+          { label: "acct_002", value: "Age 1h", meta: "Issue quota · Signal 90%", tone: "warning" }
+        ],
+        safetyNotes: [
+          "Review candidates are safe refs only.",
+          "Durable case workflow remains outside Overview."
         ]
       }
     },

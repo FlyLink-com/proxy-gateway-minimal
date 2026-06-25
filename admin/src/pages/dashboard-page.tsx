@@ -1,10 +1,12 @@
 import { Activity, AlertTriangle, Clock3, RadioTower } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
+import { ADMIN_EVIDENCE_SURFACE_CONTRACTS } from "../app/admin-evidence-contract";
 import { type AdminPage } from "../app/navigation";
 import {
+  EvidenceChartPanel,
+  EvidenceLogPanel,
   MetricCard,
-  type MetricTone,
-  StatusChip
+  type MetricTone
 } from "../components/primitives";
 import {
   AdminConsolePageFrame,
@@ -41,6 +43,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
     description: "Health, risk routing, and next action only; detail ledgers stay on owner pages.",
     statusLabel: "Summary and routing",
     statusTone: "info",
+    evidence: <OperationsEvidence />,
     modules: [
       {
         navId: "health-summary",
@@ -81,7 +84,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           category: "audit-workflow",
           container: "Review candidate queue widget",
           dataAdapter: "Static candidate taxonomy now; later computed safe risk candidates and durable case handoff.",
-          layoutPolicy: "Hideable summary queue; detailed restricted workflow is not registered for normal operators.",
+          layoutPolicy: "Page-owned summary queue; detailed restricted workflow is not registered for normal operators.",
           performanceBoundary: "Queue rows stay bounded and do not mount object history by default.",
           interactionModel: "Select and route only; no close, approve, or mutation actions."
         },
@@ -143,32 +146,33 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
         actions: undefined
       },
       {
-        navId: "owner-handoff",
+        navId: "review-candidates",
         container: {
           category: "audit-workflow",
-          container: "Owner page handoff strip",
-          dataAdapter: "Static route contract now; later computed owner-page attention signals.",
-          layoutPolicy: "Compact full-width handoff strip below the primary dashboard panels.",
-          performanceBoundary: "No owner-page ledger mount inside the overview route strip.",
-          interactionModel: "Open owner page only; no production write or case close action."
+          container: "Review candidate widget",
+          dataAdapter: "Static candidate taxonomy now; later computed review candidates and owner-route signals.",
+          layoutPolicy: "Fixed compact panel beside Risk Queue and Next Actions.",
+          performanceBoundary: "Candidate rows stay bounded and do not mount object history by default.",
+          interactionModel: "Route to owner page only; no close, approve, or mutation actions."
         },
-        content: <OverviewOwnerHandoff onNavigate={onNavigate} />,
-        purpose: "Make the next owner-page boundary visible without repeating detailed collections on the overview page.",
+        content: <OverviewReviewCandidates onNavigate={onNavigate} />,
+        purpose: "Keep a bounded list of review candidates without turning Overview into the durable case workflow.",
         contentFields: [
-          "Accounts & Resources · decision owner",
-          "Usage & Channels · evidence owner",
-          "Audit & Cases · planned"
+          "Candidate · safe ref",
+          "Issue · owner signal",
+          "Age · review freshness",
+          "Route · page target"
         ],
         states: [
-          "Ready route",
-          "Evidence route",
-          "Locked future area"
+          "Review",
+          "Watch",
+          "Open"
         ],
-        uiSurface: "operations-handoff",
-        ownership: "Overview owns routing only; owner pages hold the durable detail.",
+        uiSurface: "operations-review-candidates",
+        ownership: "Overview owns candidate surfacing only; owner pages hold the durable detail.",
         boundaries: [
-          "No duplicated owner-page ledger",
-          "No case close workflow",
+          "No durable case close workflow",
+          "No object timeline",
           "No production execution"
         ],
         nextStep: "Attach computed attention signals after owner pages expose section-level route ids."
@@ -177,48 +181,102 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
   };
 }
 
+function OperationsEvidence() {
+  return (
+    <>
+      <EvidenceChartPanel
+        ariaLabel="Platform Metrics evidence panel"
+        contract={ADMIN_EVIDENCE_SURFACE_CONTRACTS.operationsMetrics}
+        description="Bounded first-screen evidence for health, risk routing, and collection freshness."
+        series={[
+          { label: "Freshness", tone: "success", values: [58, 54, 62, 49, 46, 38, 36] },
+          { label: "Coverage", tone: "info", values: [82, 78, 84, 83, 88, 93, 99] },
+          { label: "Risk", tone: "warning", values: [12, 18, 20, 17, 15, 14, 16] }
+        ]}
+        stats={[
+          { label: "Health state", tone: "success", value: "OK" },
+          { label: "Risk total", tone: "danger", value: "18 total" },
+          { label: "Freshness age", tone: "info", value: "2m p95" }
+        ]}
+        title="Platform Metrics"
+      />
+      <EvidenceLogPanel
+        ariaLabel="Platform Event Log evidence panel"
+        contract={ADMIN_EVIDENCE_SURFACE_CONTRACTS.operationsEventLog}
+        description="Safe routing facts only; owner-page ledgers stay outside Operations Overview."
+        entries={[
+          {
+            detail: "Risk candidates refreshed; quota and receipt evidence remains on owner pages.",
+            source: "safe summary",
+            time: "12:30",
+            title: "Risk queue updated",
+            tone: "warning"
+          },
+          {
+            detail: "Accounts & Resources remains the decision owner for quota and lifecycle review.",
+            source: "route contract",
+            time: "12:18",
+            title: "Owner route verified",
+            tone: "info"
+          },
+          {
+            detail: "Usage & Channels exposes freshness and channel coverage evidence without mutation actions.",
+            source: "evidence contract",
+            time: "12:04",
+            title: "Collection evidence fresh",
+            tone: "success"
+          }
+        ]}
+        title="Platform Event Log"
+      />
+    </>
+  );
+}
+
 function OverviewHealthSummary() {
   return (
     <div className="admin-operator-content" aria-label="Operations Overview static health content">
       <div className="admin-overview-metric-grid" aria-label="Operations Overview metric cards">
         <OverviewMetricCard
-          body="Good · reviewable · latest source safe"
+          body="Ready for review"
           icon={<Activity aria-hidden="true" />}
+          statusLabel="Good"
+          statusTone="success"
           title="Platform health"
           tone="success"
           trend={[72, 74, 73, 76, 77, 79, 81]}
           value="Good"
         />
         <OverviewMetricCard
-          body="18 total · 5 high · routes only"
+          body="High 4 · Med 9"
           icon={<AlertTriangle aria-hidden="true" />}
-          title="Risk candidates"
+          statusLabel="Review"
+          statusTone="danger"
+          title="Risk cases"
           tone="danger"
           trend={[6, 8, 7, 10, 12, 15, 18]}
           value="18"
         />
         <OverviewMetricCard
-          body="2m 14s · stale threshold visible"
+          body="P95 sample age"
           icon={<Clock3 aria-hidden="true" />}
-          title="Freshness P95"
+          statusLabel="Good"
+          statusTone="info"
+          title="Freshness"
           tone="info"
           trend={[180, 172, 160, 148, 140, 136, 134]}
           value="2m 14s"
         />
         <OverviewMetricCard
-          body="98.6% · aggregate only"
+          body="Available share"
           icon={<RadioTower aria-hidden="true" />}
-          title="Channel coverage"
+          statusLabel="Good"
+          statusTone="success"
+          title="Coverage"
           tone="success"
           trend={[96, 97, 97.4, 98, 98.2, 98.5, 98.6]}
           value="98.6%"
         />
-      </div>
-      <div className="admin-static-status-row" aria-label="Overview source states">
-        <StatusChip label="Readonly" tone="neutral" />
-        <StatusChip label="Stale guard visible" tone="warning" />
-        <StatusChip label="Disconnected keeps layout" tone="info" />
-        <StatusChip label="No production action" tone="danger" />
       </div>
     </div>
   );
@@ -227,6 +285,8 @@ function OverviewHealthSummary() {
 function OverviewMetricCard({
   body,
   icon,
+  statusLabel,
+  statusTone,
   title,
   tone,
   trend,
@@ -234,6 +294,8 @@ function OverviewMetricCard({
 }: {
   body: string;
   icon: ReactNode;
+  statusLabel: string;
+  statusTone: MetricTone;
   title: string;
   tone: MetricTone;
   trend: number[];
@@ -244,6 +306,10 @@ function OverviewMetricCard({
       detail={body}
       icon={icon}
       label={title}
+      status={{
+        label: statusLabel,
+        tone: statusTone
+      }}
       tone={tone}
       trend={{
         ariaLabel: `${title} safe trend`,
@@ -256,50 +322,185 @@ function OverviewMetricCard({
 
 const overviewRiskItems = [
   {
-    ref: "risk-over-limit",
-    title: "Order traffic over limit",
-    count: "12 affected",
-    owner: "Accounts & Resources"
+    actionLabel: "Open",
+    detail: "Order ord_2048 · Owner Usage",
+    meta: "SLA 4m",
+    ref: "case_012",
+    statusLabel: "Open",
+    title: "case_012",
+    tone: "info"
   },
   {
-    ref: "risk-collection-delay",
-    title: "Collection delay",
-    count: "6 affected",
-    owner: "Usage & Channels"
-  },
-  {
-    ref: "risk-receipt-missing",
-    title: "Receipt missing",
-    count: "3 affected",
-    owner: "Usage & Channels"
-  },
-  {
-    ref: "risk-case-locked",
-    title: "Future durable case",
-    count: "Locked",
-    owner: "Audit & Cases"
+    actionLabel: "Open",
+    detail: "Order ord_2047 · Owner Accounts",
+    meta: "SLA 12m",
+    ref: "case_017",
+    statusLabel: "Review",
+    title: "case_017",
+    tone: "warning"
   }
-];
+] satisfies Array<{
+  actionLabel: string;
+  detail: string;
+  meta: string;
+  ref: string;
+  statusLabel: string;
+  title: string;
+  tone: MetricTone;
+}>;
+
+const overviewNextActionItems = [
+  {
+    actionLabel: "Open",
+    detail: "Route Accounts · Owner Operator",
+    meta: "Due Now",
+    ref: "handoff",
+    statusLabel: "Ready",
+    title: "handoff",
+    tone: "success",
+    target: "portalRequests"
+  },
+  {
+    actionLabel: "Open",
+    detail: "Route Usage · Owner Collector",
+    meta: "Due 8m",
+    ref: "refresh",
+    statusLabel: "Queued",
+    title: "refresh",
+    tone: "info",
+    target: "usageMonitor"
+  }
+] satisfies Array<{
+  actionLabel: string;
+  detail: string;
+  meta: string;
+  ref: string;
+  statusLabel: string;
+  title: string;
+  tone: MetricTone;
+  target: AdminPage;
+}>;
+
+const overviewReviewCandidateItems = [
+  {
+    actionLabel: "Open",
+    detail: "Issue delay · Signal P95",
+    meta: "Age 14m",
+    ref: "ord_2048",
+    statusLabel: "Review",
+    title: "ord_2048",
+    tone: "warning",
+    target: "usageMonitor"
+  },
+  {
+    actionLabel: "Open",
+    detail: "Issue quota · Signal 90%",
+    meta: "Age 1h",
+    ref: "acct_002",
+    statusLabel: "Watch",
+    title: "acct_002",
+    tone: "warning",
+    target: "portalRequests"
+  }
+] satisfies Array<{
+  actionLabel: string;
+  detail: string;
+  meta: string;
+  ref: string;
+  statusLabel: string;
+  title: string;
+  tone: MetricTone;
+  target: AdminPage;
+}>;
+
+function DashboardCompactRow({
+  actionLabel = "Open",
+  detail,
+  label,
+  meta,
+  muted = false,
+  onClick,
+  statusLabel,
+  tone
+}: {
+  actionLabel?: string;
+  detail: string;
+  label: string;
+  meta?: string;
+  muted?: boolean;
+  onClick?: () => void;
+  statusLabel: string;
+  tone: MetricTone;
+}) {
+  const className = [
+    "admin-compact-data-row",
+    `admin-compact-data-row-${tone}`,
+    muted ? "admin-compact-data-row-muted" : ""
+  ].filter(Boolean).join(" ");
+
+  const rowContent = (
+    <>
+      <span className="admin-compact-data-row-main">
+        <strong>{label}</strong>
+        <span className="admin-compact-data-row-detail">{detail}</span>
+      </span>
+      {meta ? <span className="admin-compact-data-row-meta">{meta}</span> : null}
+      <span className="admin-compact-data-row-status">{statusLabel}</span>
+      <span className="admin-compact-data-row-action">{actionLabel}</span>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        className={className}
+        data-clickable="true"
+        data-figma-component="DataRowCompact"
+        data-state-tone={tone}
+        data-ui-surface="compact-row"
+        type="button"
+        onClick={onClick}
+      >
+        {rowContent}
+      </button>
+    );
+  }
+
+  return (
+    <article
+      className={className}
+      data-figma-component="DataRowCompact"
+      data-state-tone={tone}
+      data-ui-surface="compact-row"
+    >
+      {rowContent}
+    </article>
+  );
+}
 
 function OverviewRiskCandidates() {
   return (
-    <section className="admin-overview-section-card" aria-label="Risk Queue">
+    <section className="admin-overview-compact-stack" aria-label="Risk Queue">
       <div className="admin-overview-section-heading">
-        <h3>Risk Queue</h3>
-        <p>Computed review candidates. No case close, approval, or mutation action here.</p>
+        <h3>Risk queue</h3>
+        <p>Cases ranked by owner route</p>
       </div>
-      <div className="admin-overview-pill-row" aria-label="Risk Queue filters">
-        <StatusChip label="All 18" tone="info" />
-        <StatusChip label="High 5" tone="danger" />
-      </div>
-      <div className="admin-overview-table-list" aria-label="Risk Queue rows">
+      <div className="admin-compact-row-list" aria-label="Risk Queue rows">
         {overviewRiskItems.map((item) => (
-          <article className="admin-overview-table-row" key={item.ref}>
-            <span>{item.title}</span>
-            <strong>{item.count}</strong>
-            <span>{item.owner}</span>
-          </article>
+          <DashboardCompactRow
+            actionLabel={item.actionLabel}
+            detail={item.detail}
+            key={item.ref}
+            label={item.title}
+            meta={item.meta}
+            statusLabel={item.statusLabel}
+            tone={item.tone}
+          />
         ))}
+      </div>
+      <div className="admin-overview-panel-footer" aria-hidden="true">
+        <span>Queue actions</span>
+        <span>•••</span>
       </div>
     </section>
   );
@@ -307,55 +508,57 @@ function OverviewRiskCandidates() {
 
 function OverviewRouteCards({ onNavigate }: { onNavigate?: (page: AdminPage) => void }) {
   return (
-    <section className="admin-overview-section-card" aria-label="Overview owner page routing content">
+    <section className="admin-overview-compact-stack" aria-label="Overview owner page routing content">
       <div className="admin-overview-section-heading">
-        <h3>Next Actions</h3>
-        <p>Route operators to the page that owns the detailed collection.</p>
+        <h3>Next actions</h3>
+        <p>Route handoff for reviewers</p>
       </div>
-      <div className="admin-overview-action-list">
-        <button className="admin-overview-action-card" type="button" onClick={() => onNavigate?.("portalRequests")}>
-          <StatusChip label="INFO" tone="info" />
-          <strong>Open Accounts & Resources</strong>
-          <span>Account/order/quota/lifecycle decisions are owned there.</span>
-        </button>
-        <button className="admin-overview-action-card" type="button" onClick={() => onNavigate?.("usageMonitor")}>
-          <StatusChip label="INFO" tone="info" />
-          <strong>Open Usage & Channels</strong>
-          <span>Usage collection trust, channel coverage, receipts, and anomalies are owned there.</span>
-        </button>
-        <article className="admin-overview-action-card admin-overview-action-card-muted">
-          <StatusChip label="LOCKED" tone="neutral" />
-          <strong>Audit & Cases locked</strong>
-          <span>Future durable case workflow remains gated.</span>
-        </article>
+      <div className="admin-compact-row-list" aria-label="Overview routing rows">
+        {overviewNextActionItems.map((item) => (
+          <DashboardCompactRow
+            actionLabel={item.actionLabel}
+            detail={item.detail}
+            key={item.ref}
+            label={item.title}
+            meta={item.meta}
+            onClick={() => onNavigate?.(item.target)}
+            statusLabel={item.statusLabel}
+            tone={item.tone}
+          />
+        ))}
+      </div>
+      <div className="admin-overview-panel-footer" aria-hidden="true">
+        <span>Action lane</span>
+        <span>•••</span>
       </div>
     </section>
   );
 }
 
-function OverviewOwnerHandoff({ onNavigate }: { onNavigate?: (page: AdminPage) => void }) {
+function OverviewReviewCandidates({ onNavigate }: { onNavigate?: (page: AdminPage) => void }) {
   return (
-    <section className="admin-overview-handoff" aria-label="Overview owner handoff">
+    <section className="admin-overview-compact-stack" aria-label="Overview review candidates">
       <div className="admin-overview-section-heading">
-        <h3>Owner Page Handoff</h3>
-        <p>Continue review on the page that owns the detail collection.</p>
+        <h3>Review candidates</h3>
+        <p>Items requiring operator check</p>
       </div>
-      <div className="admin-overview-handoff-strip">
-        <button className="admin-overview-handoff-card" type="button" onClick={() => onNavigate?.("portalRequests")}>
-          <strong>Accounts & Resources</strong>
-          <span>Decision owner for accounts, orders, quotas, and lifecycle.</span>
-          <StatusChip label="Decision owner" tone="info" />
-        </button>
-        <button className="admin-overview-handoff-card" type="button" onClick={() => onNavigate?.("usageMonitor")}>
-          <strong>Usage & Channels</strong>
-          <span>Evidence owner for collection freshness, coverage, receipts, and anomalies.</span>
-          <StatusChip label="Evidence owner" tone="success" />
-        </button>
-        <article className="admin-overview-handoff-card admin-overview-handoff-card-muted">
-          <strong>Audit & Cases</strong>
-          <span>Durable history and case workflow remain gated until the backend contract lands.</span>
-          <StatusChip label="Planned" tone="neutral" />
-        </article>
+      <div className="admin-compact-row-list" aria-label="Overview review candidate rows">
+        {overviewReviewCandidateItems.map((item) => (
+          <DashboardCompactRow
+            actionLabel={item.actionLabel}
+            detail={item.detail}
+            key={item.ref}
+            label={item.title}
+            meta={item.meta}
+            onClick={() => onNavigate?.(item.target)}
+            statusLabel={item.statusLabel}
+            tone={item.tone}
+          />
+        ))}
+      </div>
+      <div className="admin-overview-panel-footer" aria-hidden="true">
+        <span>Candidate list</span>
+        <span>•••</span>
       </div>
     </section>
   );

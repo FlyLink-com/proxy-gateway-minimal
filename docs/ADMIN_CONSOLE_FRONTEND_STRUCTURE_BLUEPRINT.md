@@ -106,21 +106,22 @@ flowchart TD
 | Audit / Workflow | Review candidates, object history, cases, work orders, and routing. | Risk queue, history preview, future durable cases. |
 | Platform Tools | Safe diagnostics, channel tools, node onboarding, dry-run utilities. | Receipts/collectors diagnostics entry, future platform tools. |
 
-Overview may use draggable, hideable, and reorderable widgets because it is a
-summary workbench. Owner pages should prefer collapsible sections, saved
-filters, detail drawers, and lazy-mounted widgets so management and monitoring
-logic remains predictable.
+Overview is a summary-and-routing surface, not a draggable desktop. All active
+pages use fixed page-owned panels, route/subpage ownership, bounded local
+scroll, and deterministic responsive rules. If content no longer fits the
+first screen, split it into a page-owned subpage, detail drawer, or paginated
+section instead of adding hideable or reorderable widgets.
 
 The current React implementation treats each visible module as a page-owned
-panel: System Search and page-local controls are the restore/search entrypoint,
-the module header owns display controls, and
-`admin/src/app/plugin-workspace-engine.ts` owns the shared local layout rules
-for visibility, restore, and named size presets. Page frames should not invent
-their own editor panels, global app drawers, or module-specific layout
-semantics.
+panel: System Search and page-local controls are discovery/routing entrypoints,
+and `admin/src/app/admin-ui-projection.ts`,
+`admin/src/app/navigation.ts`, and `admin/src/app/admin-search-index.ts` own the
+projection, route, and safe search contracts. Page frames must not invent editor
+panels, global app drawers, AppLibrary/NavigationLibrary surfaces, or
+drag/resize/minimize semantics.
 `admin/src/app/admin-app-manifest.ts` is now the concrete App Map source for
-workspace pages, plugin apps, console utilities, planned apps, and safe App
-Library search fields; `docs/ADMIN_CONSOLE_APP_MAP.md` documents that contract.
+workspace pages, page modules, console utilities, planned slots, and safe
+System Search fields; `docs/ADMIN_CONSOLE_APP_MAP.md` documents that contract.
 New app entries should also follow
 `docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md`, which freezes the
 required authoring fields, entry types, layout sizes, runtime states, and
@@ -542,8 +543,8 @@ implementation:
 | Ownership boundary | `pageWorkbenchContracts` in `admin/src/app/navigation.ts` | Update docs, contract, tests, and QA together if ownership changes. |
 | App and module registry | `admin/src/app/admin-app-manifest.ts` | System Search indexing, safe route targets, and module restore metadata must come from the manifest. |
 | Expanded relationship model | `docs/ADMIN_CONSOLE_RELATIONSHIP_DRAFT.md` | Use as sequencing and Figma handoff input; do not convert every surface into an active route in one wave. |
-| Workspace layout engine | `admin/src/app/plugin-workspace-engine.ts` and `admin/src/app/plugin-layout-store.ts` | Keep hide/restore/resize/reorder behavior pure and tested before adding richer drag or persistence features. |
-| Plugin container primitive | `admin/src/components/primitives/plugin-container.tsx` | Card-level controls belong in the plugin header; no separate page-level editor card. |
+| Page panel projection | `admin/src/app/admin-ui-projection.ts`, `admin/src/components/primitives/panel-frame.tsx` | Keep page-owned panel order, route targets, bounded rows, and subpage split rules deterministic; do not reintroduce hide/restore/resize/reorder engines. |
+| Panel container primitive | `admin/src/components/primitives/panel-frame.tsx` | Card-level status and local actions belong in the panel header/body; no separate page-level editor card. |
 | Shared UI modules | `docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md` | Phase 2 design-system work should refine component states before broad implementation. |
 | Visual QA | `docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md` | Phase 3 implementation should verify rendered pages against this structure. |
 

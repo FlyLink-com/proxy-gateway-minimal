@@ -1,6 +1,5 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { WORKSPACE_LAYOUT_VERSION } from "../app/plugin-layout-store";
 import { DashboardPage } from "../pages/dashboard-page";
 
 const WORKSPACE_LAYOUT_STORAGE_KEY = "globalcircle-admin-workspace-layout-v1";
@@ -41,13 +40,13 @@ describe("admin dashboard page", () => {
       "dashboard-health-summary",
       "dashboard-risk-queue",
       "dashboard-next-actions",
-      "dashboard-owner-handoff"
+      "dashboard-review-candidates"
     ]);
 
     expect(screen.queryByLabelText("Operations Overview page navigation")).toBeNull();
     expect(screen.queryByLabelText("Operations Overview card controls")).toBeNull();
-    expect(screen.getByRole("button", { name: "Health Summary hide module" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Risk Queue hide module" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Health Summary hide module" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Risk Queue hide module" })).toBeNull();
     expect(screen.queryByLabelText("Risk Queue plugin display controls")).toBeNull();
     expect(screen.queryByRole("button", { name: "Risk Queue Large plugin display" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Risk Queue Medium plugin display" })).toBeNull();
@@ -62,31 +61,61 @@ describe("admin dashboard page", () => {
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-owner-mode")).toBe("preview");
     expect(screen.queryByText("Overview metric widget set")).toBeNull();
     expect(screen.getByLabelText("Operations Overview static health content")).not.toBeNull();
+    expect(screen.getByLabelText("Operations Overview evidence surfaces")).not.toBeNull();
+    expect(screen.getByLabelText("Platform Metrics evidence panel")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Platform Metrics" })).not.toBeNull();
+    expect(screen.getByRole("img", { name: "Platform Metrics safe trend" })).not.toBeNull();
+    expect(screen.getByLabelText("Platform Event Log evidence panel")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Platform Event Log" })).not.toBeNull();
+    expect(screen.getByText("Risk queue updated")).not.toBeNull();
+    expect(screen.getByText("Owner route verified")).not.toBeNull();
+    expect(screen.getByText("Collection evidence fresh")).not.toBeNull();
+    expect(screen.queryByText("Design static")).toBeNull();
+    expect(screen.queryByText("7-point design placeholder")).toBeNull();
+    expect(screen.queryByText("safe-summary-only")).toBeNull();
+    expect(screen.queryByText("safe-events-only")).toBeNull();
+    expect(document.querySelectorAll("[data-figma-component='EvidenceSurface'][data-ui-surface='evidence-row']")).toHaveLength(2);
     expect(document.querySelectorAll("#dashboard-health-summary [data-figma-component='MetricCard'][data-ui-surface='metric-card']")).toHaveLength(4);
+    expect(document.querySelectorAll("#dashboard-health-summary [data-figma-component='MetricCard'] > [data-figma-component='StatusChip'][data-ui-surface='status-chip']")).toHaveLength(4);
+    expect(document.querySelector("#dashboard-health-summary .admin-static-status-row")).toBeNull();
+    expect(screen.queryByLabelText("Overview source states")).toBeNull();
     expect(document.querySelectorAll("#dashboard-health-summary .admin-overview-metric-card")).toHaveLength(0);
+    expect(document.querySelectorAll(".admin-overview-section-card")).toHaveLength(0);
+    expect(document.querySelectorAll(".admin-overview-table-row")).toHaveLength(0);
+    expect(document.querySelectorAll(".admin-overview-action-card")).toHaveLength(0);
+    expect(document.querySelectorAll(".admin-overview-handoff")).toHaveLength(0);
+    expect(document.querySelectorAll(".admin-overview-handoff-card")).toHaveLength(0);
+    expect(document.querySelectorAll("[data-figma-component='DataRowCompact'][data-ui-surface='compact-row']")).toHaveLength(6);
     expect(screen.getByText("Platform health")).not.toBeNull();
-    expect(screen.getByText("Good")).not.toBeNull();
-    expect(screen.getByText("Good · reviewable · latest source safe")).not.toBeNull();
-    expect(screen.getByText("Channel coverage")).not.toBeNull();
+    expect(screen.getAllByText("Good").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Ready for review")).not.toBeNull();
+    expect(screen.getAllByText("Coverage").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("98.6%")).not.toBeNull();
-    expect(screen.getByText("Disconnected keeps layout")).not.toBeNull();
+    expect(screen.queryByText("Readonly")).toBeNull();
+    expect(screen.queryByText("Stale guard visible")).toBeNull();
+    expect(screen.queryByText("Disconnected keeps layout")).toBeNull();
+    expect(screen.queryByText("No production action")).toBeNull();
     expect(screen.queryByText("Platform health · summary state")).toBeNull();
     expect(screen.queryByText("First-screen operator view for platform health, risk routing, and the next owner page.")).toBeNull();
-    expect(screen.getByRole("heading", { name: "Risk Queue" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Risk queue" })).not.toBeNull();
     expect(screen.getAllByLabelText("Audit / Workflow panel").length).toBe(3);
-    expect(screen.getByText("Computed review candidates. No case close, approval, or mutation action here.")).not.toBeNull();
-    expect(screen.getByText("All 18")).not.toBeNull();
-    expect(screen.getByText("High 5")).not.toBeNull();
-    expect(screen.getByText("Order traffic over limit")).not.toBeNull();
-    expect(screen.getByText("12 affected")).not.toBeNull();
+    expect(screen.getByText("Cases ranked by owner route")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "All 18" })).toBeNull();
+    expect(screen.getByText("case_012")).not.toBeNull();
+    expect(screen.getByText("SLA 4m")).not.toBeNull();
+    expect(screen.getByText("case_017")).not.toBeNull();
     expect(screen.queryByText("Reason · quota / delay / receipt")).toBeNull();
-    expect(screen.getByRole("heading", { name: "Next Actions" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Next actions" })).not.toBeNull();
     expect(screen.getByLabelText("Overview owner page routing content")).not.toBeNull();
-    expect(screen.getByText("Audit & Cases locked")).not.toBeNull();
-    expect(screen.getByRole("heading", { name: "Owner Page Handoff" })).not.toBeNull();
-    expect(screen.getByLabelText("Overview owner handoff")).not.toBeNull();
-    expect(screen.getByText("Decision owner for accounts, orders, quotas, and lifecycle.")).not.toBeNull();
-    expect(screen.getByText("Evidence owner for collection freshness, coverage, receipts, and anomalies.")).not.toBeNull();
+    expect(screen.getByText("Route handoff for reviewers")).not.toBeNull();
+    expect(screen.getByText("handoff")).not.toBeNull();
+    expect(screen.getByText("refresh")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Review candidates" })).not.toBeNull();
+    expect(screen.getByLabelText("Overview review candidates")).not.toBeNull();
+    expect(screen.getByText("Items requiring operator check")).not.toBeNull();
+    expect(screen.getByText("ord_2048")).not.toBeNull();
+    expect(screen.getByText("acct_002")).not.toBeNull();
+    expect(screen.queryByText("Owner Page Handoff")).toBeNull();
     expect(screen.queryByText("Audit Center")).toBeNull();
     expect(screen.queryByText("Log Access")).toBeNull();
     expect(screen.queryByText("Key Management")).toBeNull();
@@ -100,8 +129,8 @@ describe("admin dashboard page", () => {
       expect(notes.hasAttribute("open")).toBe(false);
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /Open Accounts & Resources/ }));
-    fireEvent.click(screen.getByRole("button", { name: /Open Usage & Channels/ }));
+    fireEvent.click(screen.getByRole("button", { name: /handoff/ }));
+    fireEvent.click(screen.getByRole("button", { name: /refresh/ }));
 
     expect(onNavigate).toHaveBeenCalledWith("portalRequests");
     expect(onNavigate).toHaveBeenCalledWith("usageMonitor");
@@ -121,10 +150,10 @@ describe("admin dashboard page", () => {
     expect(screen.queryByLabelText("Health Summary fixture preview")).toBeNull();
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-chrome")).toBe("operator");
     expect(screen.queryByText("Metric cards for platform health, risk candidates, freshness, and channel coverage.")).toBeNull();
-    expect(screen.getByText("2m 14s · stale threshold visible")).not.toBeNull();
-    expect(screen.getByText("Order traffic over limit")).not.toBeNull();
-    expect(screen.getAllByText("Accounts & Resources").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByLabelText("Overview owner handoff")).not.toBeNull();
+    expect(screen.getByText("P95 sample age")).not.toBeNull();
+    expect(screen.getByText("case_012")).not.toBeNull();
+    expect(screen.getByText("handoff")).not.toBeNull();
+    expect(screen.getByLabelText("Overview review candidates")).not.toBeNull();
     expect(screen.queryByText("Overview summarizes and routes; owner pages hold detailed collections.")).toBeNull();
     expect(onRiskCountChange).toHaveBeenCalledWith(2);
 
@@ -134,7 +163,7 @@ describe("admin dashboard page", () => {
     expect(screen.queryByRole("button", { name: /Approve|Disable|Archive|Apply/i })).toBeNull();
   });
 
-  test("supports fixed panel hiding and restoring without sizing or drag controls", () => {
+  test("does not render legacy panel hiding, sizing, or drag controls", () => {
     render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
 
     expect(screen.queryByRole("switch", { name: "Edit workspace" })).toBeNull();
@@ -149,80 +178,27 @@ describe("admin dashboard page", () => {
     expect(document.querySelector(".admin-blueprint-panel-display-controls")).toBeNull();
     expect(document.querySelector(".admin-blueprint-module-dock")).toBeNull();
     expect(screen.queryByRole("button", { name: "Next Actions move plugin" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Risk Queue hide module" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Health Summary hide module" })).toBeNull();
     expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-panel");
-
-    fireEvent.click(screen.getByRole("button", { name: "Risk Queue hide module" }));
-    expect(document.querySelector("#dashboard-risk-queue")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Open Risk Queue module" })).toBeNull();
-
-    fireEvent(window, new CustomEvent("admin-open-module", {
-      detail: {
-        page: "dashboard",
-        targetId: "dashboard-risk-queue"
-      }
-    }));
+    expect(document.querySelector("#dashboard-health-summary")).not.toBeNull();
     expect(document.querySelector("#dashboard-risk-queue")).not.toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Health Summary hide module" }));
-    expect(document.querySelector("#dashboard-health-summary")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Open Health Summary module" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Show Health Summary in workspace" })).toBeNull();
-
-    fireEvent(window, new CustomEvent("admin-open-module", {
-      detail: {
-        page: "dashboard",
-        targetId: "dashboard-health-summary"
-      }
-    }));
-    expect(document.querySelector("#dashboard-health-summary")).not.toBeNull();
   });
 
-  test("persists fixed panel visibility locally across remounts", () => {
-    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
-
-    fireEvent.click(screen.getByRole("button", { name: "Health Summary hide module" }));
-
-    expect(window.localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY)).toContain("health-summary");
-    const storedLayout = JSON.parse(window.localStorage.getItem(WORKSPACE_LAYOUT_STORAGE_KEY) ?? "{}");
-    expect(storedLayout.dashboard.moduleOrder).toBeUndefined();
-    expect(storedLayout.dashboard.moduleLayout["health-summary"]).toEqual({
-      visible: false
-    });
-    cleanup();
-
-    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
-
-    expect(sectionAnchorOrder()).toEqual([
-      "dashboard-risk-queue",
-      "dashboard-next-actions",
-      "dashboard-owner-handoff"
-    ]);
-    expect(document.querySelector("#dashboard-health-summary")).toBeNull();
-    expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-panel");
-
-    fireEvent(window, new CustomEvent("admin-open-module", {
-      detail: {
-        page: "dashboard",
-        targetId: "dashboard-health-summary"
-      }
-    }));
-    expect(document.querySelector("#dashboard-health-summary")).not.toBeNull();
-  });
-
-  test("merges stored workspace layout with the current module list", () => {
+  test("ignores stale workspace visibility cache from the retired hide-module UI", () => {
     window.localStorage.setItem(WORKSPACE_LAYOUT_STORAGE_KEY, JSON.stringify({
       dashboard: {
-        version: WORKSPACE_LAYOUT_VERSION,
+        version: 4,
         moduleOrder: ["missing-module", "risk-queue"],
         moduleLayout: {
           "missing-module": {
             visible: true
           },
           "next-actions": {
-            visible: true
+            visible: false
           },
           "risk-queue": {
-            visible: true
+            visible: false
           }
         }
       }
@@ -234,11 +210,11 @@ describe("admin dashboard page", () => {
       "dashboard-health-summary",
       "dashboard-risk-queue",
       "dashboard-next-actions",
-      "dashboard-owner-handoff"
+      "dashboard-review-candidates"
     ]);
     expect(document.querySelector("#dashboard-risk-queue")?.className).toContain("admin-blueprint-module-panel");
     expect(document.querySelector("#dashboard-next-actions")?.className).toContain("admin-blueprint-module-panel");
-    expect(document.querySelector("#dashboard-owner-handoff")?.className).toContain("admin-blueprint-module-panel");
+    expect(document.querySelector("#dashboard-review-candidates")?.className).toContain("admin-blueprint-module-panel");
   });
 
   test("resets pre-visual-foundation layout cache to the current default modules", () => {
@@ -266,7 +242,7 @@ describe("admin dashboard page", () => {
       "dashboard-health-summary",
       "dashboard-risk-queue",
       "dashboard-next-actions",
-      "dashboard-owner-handoff"
+      "dashboard-review-candidates"
     ]);
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-size")).toBeNull();
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-height")).toBeNull();
@@ -274,7 +250,7 @@ describe("admin dashboard page", () => {
     expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-size")).toBeNull();
     expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-height")).toBeNull();
     expect(document.querySelector("#dashboard-next-actions")).not.toBeNull();
-    expect(document.querySelector("#dashboard-owner-handoff")).not.toBeNull();
+    expect(document.querySelector("#dashboard-review-candidates")).not.toBeNull();
   });
 });
 

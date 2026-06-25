@@ -18,7 +18,7 @@ export type AdminUiSurfaceKey =
   | "operations-health"
   | "operations-risk"
   | "operations-routing"
-  | "operations-handoff"
+  | "operations-review-candidates"
   | "account-directory"
   | "resource-orders"
   | "quota-usage"
@@ -162,12 +162,12 @@ export const ADMIN_UI_SURFACE_REFERENCES: AdminUiSurfaceReference[] = [
     supportingReferences: ["arco-design-pro"]
   },
   {
-    implementationTarget: "Operations Overview owner handoff strip",
-    key: "operations-handoff",
-    label: "Operations owner handoff",
+    implementationTarget: "Operations Overview review candidates panel",
+    key: "operations-review-candidates",
+    label: "Operations review candidates",
     page: "dashboard",
-    primaryReference: "shadcn-ui",
-    supportingReferences: ["ant-design-pro", "arco-design-pro"]
+    primaryReference: "tremor",
+    supportingReferences: ["ant-design-pro", "shadcn-ui"]
   },
   {
     implementationTarget: "Accounts & Resources account directory",

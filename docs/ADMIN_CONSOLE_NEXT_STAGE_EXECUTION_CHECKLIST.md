@@ -1,6 +1,6 @@
 # Admin Console Next Stage Execution Checklist
 
-Last updated: 2026-06-24, America/Los_Angeles.
+Last updated: 2026-06-25, America/Los_Angeles.
 
 > Status:
 > - Type: Admin frontend next-stage execution checklist
@@ -27,7 +27,7 @@ or app-map documents.
 | Product posture | Protected operator console for supervision, operations, maintenance, and future platform development. |
 | Active pages | `Operations Overview`, `Accounts & Resources`, `Usage & Channels`. |
 | Planned slots | `Audit & Cases`, `Platform Development`, `System Settings`. |
-| Visual source | Canonical Figma `/design` file, `06 AI Exploration` (`365:2`), and current Visual Polish frames `373:716`, `373:866`, `373:1016`; design-evidence frames `115:2`, `116:2`, `117:2` remain reference gates. |
+| Visual source | Clean baseline project `NefQiIMOPIBU28TIYcwQFE`, backed by the canonical Figma `/design` file, `06 AI Exploration` (`365:2`), and current Visual Polish source frames `373:716`, `373:866`, `373:1016`. |
 | Git role | Runnable Admin implementation, source index, design contracts, implementation mapping, QA records, and validation evidence. |
 | Figma Site role | Optional demo/click-flow review surface only; not a source of truth or implementation target. |
 | Linear role | Task gates, review ownership, phase acceptance, and next-stage sequencing. |
@@ -52,9 +52,9 @@ Before starting the execution order below:
    sensitive material enters the frontend baseline.
 5. Figma Site evidence, if present, is demo-only and must not replace canonical
    `/design` frames or GitHub validation.
-6. The current Figma canvas has been reverified at node `365:2`; do not rely
-   on stale `99:2`, `104:2`, or `104:226` frame IDs for new implementation
-   work.
+6. The current clean baseline project `NefQiIMOPIBU28TIYcwQFE` has been
+   created from node `365:2`; do not rely on stale `99:2`, `104:2`, or
+   `104:226` frame IDs for new implementation work.
 
 ## Unified Local Task Tree, 2026-06-24
 
@@ -64,7 +64,7 @@ runtime work into the frontend design completion gate.
 
 | Line | Owns | Current role | Completion boundary |
 | --- | --- | --- | --- |
-| Admin design baseline | Figma visual standard, page ownership, layout density, component states, and responsive rules. | `373:716`, `373:866`, and `373:1016` are now the accepted desktop design source. | Complete for desktop page-design source; still requires implementation, browser QA, and responsive/mobile follow-up. |
+| Admin design baseline | Figma visual standard, page ownership, layout density, component states, and responsive rules. | Clean baseline project `NefQiIMOPIBU28TIYcwQFE` is now the working baseline; `373:716`, `373:866`, and `373:1016` remain the source frames behind it. | Complete for desktop page-design source; still requires implementation, browser QA, and responsive/mobile follow-up. |
 | Admin React/CSS implementation | Shared primitives, shell chrome, page-owned panels, and visual parity tests. | Next active line: reverse-standardize from the accepted Visual Polish baseline; it must not invent layout rules outside the design docs. | Complete only after browser QA and Admin test/build validation pass. |
 | `GCC-77` System Search | Safe top-bar search, result routing, planned/locked slots, and hidden-module recovery. | Frontend sub-lane, not AppLibrary or NavigationLibrary. | Complete only when it reads explicit safe manifest/search documents and does not index rendered UI or unsafe backend material. |
 | Server/TLS/TUIC preflight | Edge/runtime preflight helpers, templates, and CLI tests. | Separate backend/runtime support line. | Review and validate separately from Admin UI; production use remains gated by the normal A-tier rules. |
@@ -80,11 +80,12 @@ controls.
 
 Current stage order:
 
-1. Treat `373:716`, `373:866`, and `373:1016` as the accepted desktop visual baseline.
-2. Normalize layout, density, component states, and responsive standards from those frames.
-3. Reverse-standardize React/CSS from the accepted design rules.
-4. Complete `GCC-77` System Search as a safe frontend sub-lane.
-5. Review server/TLS/TUIC changes separately with their own validation.
+1. Treat `NefQiIMOPIBU28TIYcwQFE` as the working Admin UI design baseline.
+2. Use `373:716`, `373:866`, and `373:1016` as source evidence behind that baseline, not as a reason to re-import old draft residue.
+3. Normalize layout, density, component states, and responsive standards from the clean baseline project.
+4. Reverse-standardize React/CSS from the accepted design rules.
+5. Complete `GCC-77` System Search as a safe frontend sub-lane.
+6. Review server/TLS/TUIC changes separately with their own validation.
 
 ## Execution Order
 

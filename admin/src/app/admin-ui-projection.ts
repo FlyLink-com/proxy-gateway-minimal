@@ -9,10 +9,6 @@ import {
   type AdminFixturePreviewPanel
 } from "./admin-fixture-preview";
 import {
-  defaultModuleLayoutState,
-  type ModuleLayoutMap
-} from "./plugin-layout-store";
-import {
   type MetricTone,
   type WorkbenchCategory,
   type WorkbenchContainerSpec
@@ -41,6 +37,8 @@ export type BlueprintPage = {
   statusLabel: string;
   statusTone: MetricTone;
   summary?: ReactNode;
+  evidence?: ReactNode;
+  overviewModuleIds?: string[];
   modules: BlueprintModule[];
 };
 
@@ -63,9 +61,7 @@ export type BlueprintPanelViewModel = {
 
 export type BlueprintPanelProjectionInput = {
   blueprint: BlueprintPage;
-  defaultModuleLayout: ModuleLayoutMap;
   fixturePreviewEnabled?: boolean;
-  moduleLayout: ModuleLayoutMap;
   subNavigation: PageSubNavigationItem[];
 };
 
@@ -79,19 +75,13 @@ const CATEGORY_LABEL: Record<WorkbenchCategory, string> = {
 
 export function projectBlueprintPanelViewModels({
   blueprint,
-  defaultModuleLayout,
   fixturePreviewEnabled = false,
-  moduleLayout,
   subNavigation
 }: BlueprintPanelProjectionInput): BlueprintPanelViewModel[] {
   const chrome: BlueprintPanelViewModel["chrome"] = blueprint.page === "dashboard" ? "operator" : "draft";
 
   return blueprint.modules.flatMap((module) => {
     const navItem = subNavigation.find((item) => item.id === module.navId);
-    const layout = moduleLayout[module.navId] ?? defaultModuleLayout[module.navId] ?? defaultModuleLayoutState();
-    if (!layout.visible) {
-      return [];
-    }
 
     const basePanel: BlueprintPanelViewModel = {
       actions: module.actions,

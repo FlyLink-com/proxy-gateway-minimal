@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { StatusChip } from "./status-chip";
 
 export type MetricTone = "success" | "warning" | "danger" | "info" | "neutral";
 
@@ -8,6 +9,7 @@ export function MetricCard({
   detail,
   tone,
   icon,
+  status,
   trend
 }: {
   label: string;
@@ -15,6 +17,10 @@ export function MetricCard({
   detail: string;
   tone: MetricTone;
   icon: ReactNode;
+  status?: {
+    label: string;
+    tone: MetricTone;
+  };
   trend?: {
     ariaLabel?: string;
     values: number[];
@@ -28,6 +34,7 @@ export function MetricCard({
       data-ui-surface="metric-card"
     >
       <div className="ops-metric-icon" data-ui-slot="metric-icon">{icon}</div>
+      {status ? <StatusChip label={status.label} tone={status.tone} /> : null}
       <span>{label}</span>
       <strong>{value}</strong>
       <div className={trend ? "ops-metric-footer" : "ops-metric-footer ops-metric-footer-single"}>

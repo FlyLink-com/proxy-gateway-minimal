@@ -1,4 +1,3 @@
-import { EyeOff } from "lucide-react";
 import { type ReactNode } from "react";
 import { type AdminFixturePreviewPanel } from "../../app/admin-fixture-preview";
 import { ADMIN_UI_CONTRACT, type AdminUiDensity } from "../../app/admin-ui-contract";
@@ -22,7 +21,6 @@ export type PanelFrameProps = {
   fixturePreview?: AdminFixturePreviewPanel;
   id?: string;
   notes?: ReactNode;
-  onHide?: () => void;
   ownerMode: "preview" | "owner";
   showDesignMetadata?: boolean;
   title: string;
@@ -47,12 +45,11 @@ export function PanelFrame({
   containerLabel,
   dataModuleNavId,
   dataUiSurfaceRole,
-  density = ADMIN_UI_CONTRACT.pluginFrame.density,
+  density = ADMIN_UI_CONTRACT.panelFrame.density,
   fieldLabels,
   fixturePreview,
   id,
   notes,
-  onHide,
   ownerMode,
   showDesignMetadata = false,
   title,
@@ -60,7 +57,6 @@ export function PanelFrame({
 }: PanelFrameProps) {
   const showDraftChrome = chrome === "draft";
   const showFixturePreview = showDraftChrome && fixturePreview;
-  const showPanelMeta = showDesignMetadata || Boolean(onHide);
 
   return (
     <section
@@ -79,7 +75,7 @@ export function PanelFrame({
       data-ui-role="panel"
       data-ui-surface="panel-frame"
       data-ui-surface-role={dataUiSurfaceRole}
-      data-ui-contract={ADMIN_UI_CONTRACT.pluginFrame.contractId}
+      data-ui-contract={ADMIN_UI_CONTRACT.panelFrame.contractId}
       data-workbench-category={category}
       id={id}
     >
@@ -92,45 +88,19 @@ export function PanelFrame({
               {showDesignMetadata ? <small>{containerLabel}</small> : null}
             </div>
           </div>
-          {showPanelMeta ? (
+          {actions ? (
+            <div className="admin-blueprint-module-panel-actions">{actions}</div>
+          ) : showDesignMetadata ? (
             <div className="admin-blueprint-module-panel-meta">
-              {showDesignMetadata ? (
-                <>
-                  <span className="admin-blueprint-panel-field-count" aria-label={`${fieldLabels.length} primary fields`}>
-                    {fieldLabels.length}
-                  </span>
-                  <StatusChip label={ownerMode === "preview" ? "Preview" : "Owner"} tone={tone} />
-                </>
-              ) : null}
-              {onHide ? (
-                <button
-                  aria-label={`${title} hide module`}
-                  className="admin-blueprint-panel-tool-trigger"
-                  onClick={onHide}
-                  title={`${title} hide module`}
-                  type="button"
-                >
-                  <EyeOff aria-hidden="true" />
-                </button>
-              ) : null}
+              <span className="admin-blueprint-panel-field-count" aria-label={`${fieldLabels.length} primary fields`}>
+                {fieldLabels.length}
+              </span>
+              <StatusChip label={ownerMode === "preview" ? "Preview" : "Owner"} tone={tone} />
             </div>
           ) : null}
         </div>
       ) : (
-        <>
-          <span className="sr-only">{title}</span>
-          {onHide ? (
-            <button
-              aria-label={`${title} hide module`}
-              className="admin-blueprint-panel-tool-trigger admin-blueprint-panel-tool-trigger-floating"
-              onClick={onHide}
-              title={`${title} hide module`}
-              type="button"
-            >
-              <EyeOff aria-hidden="true" />
-            </button>
-          ) : null}
-        </>
+        <span className="sr-only">{title}</span>
       )}
       {showFixturePreview ? (
         <div
@@ -157,7 +127,6 @@ export function PanelFrame({
           </dl>
         </div>
       ) : null}
-      {actions ? <div className="admin-blueprint-actions">{actions}</div> : null}
       {children}
       {notes}
     </section>

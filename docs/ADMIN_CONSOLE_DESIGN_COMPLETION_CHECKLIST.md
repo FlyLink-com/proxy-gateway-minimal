@@ -201,12 +201,12 @@ Design gaps to close:
 | Component | Required states before implementation |
 | --- | --- |
 | `TopBar` | normal, focused search, collapsed search, environment readonly, alert count, operator menu. |
-| `SidebarNavigation` | active, inactive, planned, locked, collapsed, focus, narrow. |
+| `ShellRail` | active route, inactive route, planned slot, locked slot, focused scrollport, narrow/icon-only rail. |
 | `PageFrame` | normal, readonly, loading, empty, gated, narrow. |
 | `MetricCard` | normal, healthy, warning, danger, unknown, loading, compact, trend available, trend absent. |
 | `StatusChip` | neutral, success, warning, danger, info, planned, readonly, locked. |
 | `PanelFrame` | normal, dense, empty, loading, stale, error, locked, overflow. |
-| `DataTable` / `DataRow` | normal, hover, focus, selected, empty, loading, stale, error, long safe-ref overflow. |
+| `DataRowCompact` | normal, hover, focus, selected, disabled, flagged, long safe-ref overflow. |
 | `StateFeedback` | empty, loading, stale, error, readonly, gated, no source. |
 | `PrivilegedGate` | planned, locked, disabled, absent, requires review, unavailable. |
 

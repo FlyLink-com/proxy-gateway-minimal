@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 
 const styles = readCssWithImports("src/styles.css");
+const visualPolishStyles = readCssWithImports("src/styles/admin-os-visual-polish.css");
 const adminOsStyles = [
   "src/styles/tokens.css",
   "src/styles/base.css",
@@ -39,8 +40,12 @@ function readCssWithImports(filePath: string, seen = new Set<string>()): string 
 }
 
 function selectorBlock(selector: string) {
+  return selectorBlockFrom(styles, selector);
+}
+
+function selectorBlockFrom(css: string, selector: string) {
   const pattern = new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`, "m");
-  return styles.match(pattern)?.[1] ?? "";
+  return css.match(pattern)?.[1] ?? "";
 }
 
 describe("admin style token contract", () => {
@@ -274,7 +279,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-board")).toContain("grid-auto-flow: row");
     expect(selectorBlock(".admin-blueprint-module-board")).toContain("grid-auto-rows: auto");
     expect(selectorBlock(".admin-blueprint-module-board")).toContain("align-items: start");
-    expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] .admin-blueprint-module-board")).toContain("repeat(auto-fit, minmax(min(100%, 420px), 1fr))");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] .admin-blueprint-module-board")).toContain("repeat(3, minmax(0, 1fr))");
     expect(styles).not.toContain(".admin-blueprint-workspace-toolbar");
     expect(styles).not.toContain(".admin-blueprint-window-tool");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("var(--workbench-category-color");
@@ -287,15 +292,11 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-panel")).not.toContain("overscroll-behavior: contain");
     expect(selectorBlock(".admin-blueprint-module-panel")).not.toContain("scrollbar-gutter: stable");
     expect(selectorBlock(".admin-blueprint-module-panel-head")).toContain("display: flex");
-    expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("display: inline-grid");
-    expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("width: var(--admin-touch-target-min)");
-    expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("height: var(--admin-touch-target-min)");
-    expect(selectorBlock(".admin-blueprint-panel-tool-trigger:hover")).toContain("var(--workbench-category-bg");
     expect(selectorBlock(".admin-blueprint-panel-field-count")).toContain("display: inline-grid");
     expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("background: transparent");
     expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("border: 0");
     expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("max-block-size: none");
-    expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"] .admin-blueprint-panel-tool-trigger-floating")).toContain("position: absolute");
+    expect(styles).not.toContain(".admin-blueprint-panel-tool-trigger");
     expect(styles).not.toContain(".admin-blueprint-card-menu");
     expect(styles).not.toContain(".admin-blueprint-card-tool-trigger");
     expect(styles).not.toContain(".admin-blueprint-module-card");
@@ -305,6 +306,361 @@ describe("admin style token contract", () => {
     expect(styles).not.toContain("admin-blueprint-card-resize");
     expect(styles).not.toContain("admin-blueprint-module-card-resizing");
     expect(styles).not.toContain("--admin-plugin-resize-handle");
+  });
+
+  test("keeps the Figma Visual Polish background quiet and tokenized", () => {
+    const shellBlock = selectorBlockFrom(visualPolishStyles, ".admin-shell");
+    const sceneGridBlock = selectorBlockFrom(visualPolishStyles, ".admin-shell::before");
+
+    [
+      "--admin-scene-bg-top",
+      "--admin-scene-bg-mid",
+      "--admin-scene-bg-bottom",
+      "--admin-scene-grid-line",
+      "--admin-scene-grid-opacity",
+      "--admin-scene-ambient-blue",
+      "--admin-scene-ambient-cyan",
+      "--admin-scene-glass",
+      "--admin-scene-border",
+      "--admin-scene-border-strong"
+    ].forEach((token) => {
+      expect(shellBlock).toContain(token);
+    });
+
+    expect(shellBlock).toContain("--admin-scene-bg-top: #152a60");
+    expect(shellBlock).toContain("--admin-scene-bg-mid: #23478f");
+    expect(shellBlock).toContain("--admin-scene-bg-bottom: #3261ae");
+    expect(shellBlock).toContain("--admin-scene-glass: rgba(255, 255, 255, 0.18)");
+    expect(shellBlock).toContain("--admin-scene-border: rgba(255, 255, 255, 0.28)");
+    expect(shellBlock).toContain("--admin-scene-border-strong: rgba(255, 255, 255, 0.35)");
+    expect(shellBlock).toContain("--admin-success-bg: rgba(74, 222, 128, 0.15)");
+    expect(shellBlock).toContain("--admin-info-bg: rgba(96, 165, 250, 0.15)");
+    expect(shellBlock).toContain("--admin-warning-bg: rgba(251, 191, 36, 0.15)");
+    expect(shellBlock).toContain("--admin-danger-bg: rgba(242, 89, 89, 0.15)");
+    expect(shellBlock).toContain("var(--admin-scene-bg-top)");
+    expect(shellBlock).toContain("var(--admin-scene-bg-mid)");
+    expect(shellBlock).toContain("var(--admin-scene-bg-bottom)");
+    expect(sceneGridBlock).toContain("var(--admin-scene-grid-line)");
+    expect(sceneGridBlock).toContain("opacity: var(--admin-scene-grid-opacity)");
+    expect(sceneGridBlock).not.toContain("rgba(255, 255, 255, 0.035) 1px");
+    expect(sceneGridBlock).not.toContain("opacity: 1");
+  });
+
+  test("keeps the Figma Visual Polish shell navigation and top bar geometry", () => {
+    const sidebarBlock = selectorBlockFrom(visualPolishStyles, ".app-sidebar");
+    const brandMarkBlock = selectorBlockFrom(visualPolishStyles, ".brand-mark");
+    const navListBlock = selectorBlockFrom(visualPolishStyles, ".nav-list");
+    const navListFocusBlock = selectorBlockFrom(visualPolishStyles, ".nav-list:focus-visible");
+    const navListScrollbarBlock = selectorBlockFrom(visualPolishStyles, ".nav-list::-webkit-scrollbar");
+    const navItemBlock = selectorBlockFrom(visualPolishStyles, ".nav-item,\n.nav-item-planned,\n.nav-item-planned:disabled");
+    const navIconBlock = selectorBlockFrom(visualPolishStyles, ".nav-item-icon,\n.nav-item-icon.nav-route-icon");
+    const activeNavIconBlock = selectorBlockFrom(visualPolishStyles, ".nav-item-active .nav-item-icon,\n.nav-item-active .nav-item-icon.nav-route-icon");
+    const plannedNavIconBlock = selectorBlockFrom(visualPolishStyles, ".nav-item-planned .nav-item-icon,\n.nav-item-planned .nav-item-icon.nav-route-icon");
+    const topBarBlock = selectorBlockFrom(visualPolishStyles, ".top-bar");
+    const searchBlock = selectorBlockFrom(visualPolishStyles, ".top-bar-search");
+    const searchIconBlock = selectorBlockFrom(visualPolishStyles, ".top-bar-search svg");
+    const searchInputBlock = selectorBlockFrom(visualPolishStyles, ".top-bar-search input");
+    const actionsBlock = selectorBlockFrom(visualPolishStyles, ".top-bar-actions");
+    const topBarBadgeBlock = selectorBlockFrom(visualPolishStyles, ".top-bar .dashboard-status-badge,\n.top-bar-notification-indicator,\n.operator-account-summary");
+    const notificationBlock = selectorBlockFrom(visualPolishStyles, ".top-bar-notification-indicator");
+    const notificationDotBlock = selectorBlockFrom(visualPolishStyles, ".top-bar-notification-dot");
+    const operatorMenuBlock = selectorBlockFrom(visualPolishStyles, ".operator-account-menu");
+
+    expect(sidebarBlock).toContain("width: 224px");
+    expect(sidebarBlock).toContain("height: 100vh");
+    expect(sidebarBlock).toContain("height: 100dvh");
+    expect(sidebarBlock).toContain("max-height: 100dvh");
+    expect(sidebarBlock).toContain("padding: 28px 20px 32px");
+    expect(sidebarBlock).toContain("overflow: hidden");
+    expect(visualPolishStyles).not.toContain(".app-sidebar::after");
+    expect(visualPolishStyles).not.toContain(".workspace-sidebar-scrollport");
+    expect(brandMarkBlock).toContain("display: none");
+    expect(navListBlock).toContain("display: flex");
+    expect(navListBlock).toContain("flex: 1 1 auto");
+    expect(navListBlock).toContain("flex-direction: column");
+    expect(navListBlock).toContain("width: 100%");
+    expect(navListBlock).toContain("gap: 96px");
+    expect(navListBlock).toContain("min-height: 0");
+    expect(navListBlock).toContain("overflow-y: auto");
+    expect(navListBlock).toContain("overflow-x: hidden");
+    expect(navListBlock).toContain("overscroll-behavior: contain");
+    expect(navListBlock).toContain("scrollbar-width: none");
+    expect(navListBlock).not.toContain("scrollbar-gutter: stable");
+    expect(navListFocusBlock).toContain("outline: 1px solid rgba(147, 197, 253, 0.7)");
+    expect(navListFocusBlock).toContain("outline-offset: 4px");
+    expect(navListScrollbarBlock).toContain("width: 0");
+    expect(navListScrollbarBlock).toContain("height: 0");
+    expect(navItemBlock).toContain("justify-content: flex-start");
+    expect(navItemBlock).toContain("width: 100%");
+    expect(navIconBlock).toContain("background: #38bdf8");
+    expect(activeNavIconBlock).toContain("background: #93c5fd");
+    expect(plannedNavIconBlock).toContain("background: #64748b");
+    expect(plannedNavIconBlock).toContain("opacity: 0.6");
+    expect(topBarBlock).toContain("width: var(--admin-visual-topbar-width)");
+    expect(topBarBlock).toContain("max-width: calc(100vw - var(--admin-sidebar-width) - 28px)");
+    expect(topBarBlock).toContain("margin: 24px 0 0 28px");
+    expect(topBarBlock).toContain("height: var(--admin-statusbar-height)");
+    expect(topBarBlock).toContain("grid-template-columns:");
+    expect(topBarBlock).toContain("var(--admin-topbar-left-zone-width)");
+    expect(topBarBlock).toContain("minmax(var(--admin-topbar-search-min-width), var(--admin-topbar-search-max-width))");
+    expect(topBarBlock).toContain("minmax(16px, 1fr)");
+    expect(topBarBlock).toContain("var(--admin-topbar-right-cluster-width)");
+    expect(topBarBlock).toContain("border: 0.5px solid var(--admin-scene-border-strong)");
+    expect(searchBlock).toContain("grid-column: 2");
+    expect(searchBlock).toContain("justify-self: stretch");
+    expect(searchBlock).toContain("width: 100%");
+    expect(searchBlock).toContain("max-width: var(--admin-topbar-search-max-width)");
+    expect(searchBlock).toContain("min-width: 0");
+    expect(searchBlock).toContain("display: flex");
+    expect(searchBlock).toContain("gap: var(--admin-topbar-search-placeholder-gap)");
+    expect(searchBlock).toContain("overflow: hidden");
+    expect(searchIconBlock).toContain("flex: 0 0 var(--admin-topbar-search-icon-size)");
+    expect(searchInputBlock).toContain("width: 100%");
+    expect(searchInputBlock).toContain("min-width: 0");
+    expect(searchInputBlock).toContain("overflow: hidden");
+    expect(searchInputBlock).toContain("text-overflow: ellipsis");
+    expect(searchInputBlock).toContain("white-space: nowrap");
+    expect(actionsBlock).toContain("grid-column: 4");
+    expect(actionsBlock).toContain("width: var(--admin-topbar-right-cluster-width)");
+    expect(actionsBlock).toContain("var(--admin-topbar-action-pill-width)");
+    expect(actionsBlock).toContain("var(--admin-topbar-notification-size)");
+    expect(actionsBlock).toContain("gap: var(--admin-topbar-action-gap)");
+    expect(topBarBadgeBlock).toContain("background: rgba(255, 255, 255, 0.12)");
+    expect(notificationBlock).toContain("width: var(--admin-topbar-notification-size)");
+    expect(notificationBlock).toContain("background: rgba(255, 255, 255, 0.1)");
+    expect(notificationBlock).toContain("position: relative");
+    expect(notificationDotBlock).toContain("width: 8px");
+    expect(notificationDotBlock).toContain("height: 8px");
+    expect(notificationDotBlock).toContain("background: #4ade80");
+    expect(notificationDotBlock).toContain("box-shadow: none");
+    expect(operatorMenuBlock).toContain("width: var(--admin-topbar-action-pill-width)");
+    expect(topBarBlock).toContain("backdrop-filter: blur(40px)");
+    expect(topBarBlock).toContain("0 8px 16px rgba(0, 10, 51, 0.18)");
+  });
+
+  test("keeps the Figma Visual Polish card layout geometry tokenized", () => {
+    const shellBlock = selectorBlockFrom(visualPolishStyles, ".admin-shell");
+    const metricGridBlock = selectorBlockFrom(visualPolishStyles, ".admin-overview-metric-grid,\n.ops-metric-grid");
+    const metricCardBlock = selectorBlockFrom(visualPolishStyles, ".ops-metric-card,\n.admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-metric-grid .ops-metric-card");
+    const routedPageStackBlock = selectorBlockFrom(
+      visualPolishStyles,
+      ".admin-blueprint-page[data-page=\"portalRequests\"],\n.admin-blueprint-page[data-page=\"usageMonitor\"]"
+    );
+    const moduleBoardBlock = selectorBlockFrom(visualPolishStyles, ".admin-blueprint-module-board");
+    const routedModuleBoardBlock = selectorBlockFrom(
+      visualPolishStyles,
+      ".admin-blueprint-page[data-page=\"dashboard\"] .admin-blueprint-module-board,\n.admin-blueprint-page[data-page=\"portalRequests\"] .admin-blueprint-module-board,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-blueprint-module-board"
+    );
+    const dashboardHealthSummaryBlock = selectorBlockFrom(visualPolishStyles, ".admin-blueprint-page[data-page=\"dashboard\"] [data-module-nav-id=\"health-summary\"]");
+    const modulePanelBlock = selectorBlockFrom(visualPolishStyles, ".admin-blueprint-module-panel,\n.admin-blueprint-module-panel[data-chrome=\"operator\"]");
+    const evidenceGridBlock = selectorBlockFrom(visualPolishStyles, ".admin-blueprint-lower-evidence-grid");
+    const pageOwnedEvidenceGridBlock = selectorBlockFrom(
+      visualPolishStyles,
+      ".admin-blueprint-page[data-page=\"portalRequests\"] .admin-blueprint-lower-evidence-grid,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-blueprint-lower-evidence-grid"
+    );
+    const evidencePanelBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-panel");
+    const evidenceChartPanelBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-panel-chart");
+    const evidenceLogPanelBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-panel-log");
+    const evidenceChartHeaderBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart-header");
+    const evidenceChartTitleBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart-title h2");
+    const evidenceChartLegendBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart-legend");
+    const evidenceChartLegendItemBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart-legend > span");
+    const evidenceChartLegendDotBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart-legend i");
+    const evidenceChartBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart");
+    const evidenceChartShellBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart-shell");
+    const evidenceTimeRangeBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-time-range");
+    const evidenceTimeRangeItemBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-time-range > *");
+    const evidenceAxisBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-axis");
+    const evidenceAxisItemBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-axis > *");
+    const evidenceChartGridLineBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart-grid line");
+    const evidenceChartAxesBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart-axes");
+    const evidenceChartAxisLineBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart-axis-line");
+    const evidenceChartAxisTickBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart-axis-tick");
+    const evidenceChartYLabelBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart-y-label");
+    const evidenceChartLineBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart-line");
+    const evidenceLogListBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-log-list");
+    const evidenceLogEntryBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-log-entry");
+    const evidenceLogTitleBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-log-entry strong");
+    const evidenceLogDetailBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-log-entry p");
+    const metricStatusChipBlock = selectorBlockFrom(
+      visualPolishStyles,
+      ".ops-metric-card > .dashboard-status-badge,\n.admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-metric-grid .ops-metric-card > .dashboard-status-badge"
+    );
+    const statusChipBlock = selectorBlockFrom(visualPolishStyles, ".dashboard-status-badge[data-figma-component=\"StatusChip\"]");
+    const statusChipDotBlock = selectorBlockFrom(
+      visualPolishStyles,
+      ".dashboard-status-badge[data-figma-component=\"StatusChip\"]::before,\n.top-bar .dashboard-status-success::before"
+    );
+    const successChipDotBlock = selectorBlockFrom(
+      visualPolishStyles,
+      ".dashboard-status-success[data-figma-component=\"StatusChip\"]::before,\n.top-bar .dashboard-status-success::before"
+    );
+    const sharedCompactRowBlock = selectorBlockFrom(
+      visualPolishStyles,
+      ".admin-blueprint-page[data-page=\"dashboard\"] .admin-compact-data-row,\n.admin-blueprint-page[data-page=\"portalRequests\"] .admin-compact-data-row,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-compact-data-row"
+    );
+
+    [
+      "--admin-visual-design-width: 1600px",
+      "--admin-visual-topbar-width: 1296px",
+      "--admin-status-chip-height: 24px",
+      "--admin-status-chip-min-width: 72px",
+      "--admin-topbar-left-zone-width: 385px",
+      "--admin-topbar-search-min-width: 230px",
+      "--admin-topbar-search-max-width: 379px",
+      "--admin-topbar-right-cluster-width: 424px",
+      "--admin-visual-metric-card-width: clamp(240px, 18.75vw, 300px)",
+      "--admin-visual-metric-card-height: clamp(120px, 9.375vw, 150px)",
+      "--admin-visual-metric-gap: clamp(12px, 1vw, 16px)",
+      "--admin-visual-panel-width: clamp(332px, 26vw, 416px)",
+      "--admin-visual-panel-height: clamp(208px, 16.25vw, 260px)",
+      "--admin-visual-panel-gap: clamp(18px, 1.5vw, 24px)",
+      "--admin-visual-panel-row-gap: clamp(32px, 3vw, 48px)",
+      "--admin-visual-evidence-width: clamp(502px, 39.25vw, 628px)",
+      "--admin-visual-evidence-height: clamp(224px, 17.5vw, 280px)",
+      "--admin-visual-evidence-gap: clamp(28px, 2.5vw, 40px)",
+      "--admin-visual-evidence-top-offset: 12px",
+      "--admin-visual-kpi-to-panel-gap: 48px",
+      "--admin-visual-panel-to-evidence-gap: 36px",
+      "--admin-evidence-chart-line-weight: 2.5",
+      "--admin-evidence-time-range-gap: 4px",
+      "--admin-evidence-time-range-pill-width: 26px",
+      "--admin-evidence-time-range-right-inset: 24px",
+      "--admin-evidence-axis-label-gap: 8px",
+      "--admin-evidence-axis-left-gutter: 48px"
+    ].forEach((expectedToken) => {
+      expect(shellBlock).toContain(expectedToken);
+    });
+
+    expect(metricGridBlock).toContain("repeat(4, var(--admin-visual-metric-card-width))");
+    expect(metricGridBlock).toContain("gap: var(--admin-visual-metric-gap)");
+    expect(metricCardBlock).toContain("width: var(--admin-visual-metric-card-width)");
+    expect(metricCardBlock).toContain("height: var(--admin-visual-metric-card-height)");
+    expect(metricCardBlock).toContain("position: relative");
+    expect(metricCardBlock).toContain("border: 0.5px solid var(--admin-scene-border-strong)");
+    expect(metricCardBlock).toContain("background: var(--admin-scene-glass)");
+    expect(metricCardBlock).toContain("backdrop-filter: blur(40px)");
+    expect(metricCardBlock).toContain("0 8px 16px rgba(0, 10, 51, 0.18)");
+    expect(statusChipBlock).toContain("min-width: var(--admin-status-chip-min-width)");
+    expect(statusChipBlock).toContain("height: var(--admin-status-chip-height)");
+    expect(statusChipBlock).toContain("border: 0.5px solid var(--admin-scene-border-strong)");
+    expect(statusChipBlock).toContain("backdrop-filter: blur(8px)");
+    expect(statusChipDotBlock).toContain("content: \"\"");
+    expect(statusChipDotBlock).toContain("opacity: 1");
+    expect(statusChipDotBlock).toContain("box-shadow: none");
+    expect(successChipDotBlock).toContain("background: #4ade80");
+    expect(metricStatusChipBlock).toContain("position: absolute");
+    expect(metricStatusChipBlock).toContain("top: 14px");
+    expect(metricStatusChipBlock).toContain("right: clamp(18px, 2.25vw, 36px)");
+    expect(metricStatusChipBlock).toContain("width: max-content");
+    expect(metricStatusChipBlock).toContain("min-width: var(--admin-status-chip-min-width)");
+    expect(metricStatusChipBlock).toContain("height: var(--admin-status-chip-height)");
+    expect(metricStatusChipBlock).toContain("min-height: var(--admin-status-chip-height)");
+    expect(metricStatusChipBlock).toContain("border: 0.5px solid var(--admin-scene-border-strong)");
+    expect(metricStatusChipBlock).toContain("backdrop-filter: blur(8px)");
+    expect(sharedCompactRowBlock).toContain("min-height: 44px");
+    expect(moduleBoardBlock).toContain("grid-template-columns: repeat(3, var(--admin-visual-panel-width))");
+    expect(moduleBoardBlock).toContain("column-gap: var(--admin-visual-panel-gap)");
+    expect(moduleBoardBlock).toContain("row-gap: var(--admin-visual-panel-row-gap)");
+    expect(routedPageStackBlock).toContain("gap: 0");
+    expect(routedModuleBoardBlock).toContain("grid-template-columns: repeat(3, var(--admin-visual-panel-width))");
+    expect(visualPolishStyles).toContain(
+      ".admin-blueprint-page[data-page=\"portalRequests\"] .admin-blueprint-module-board,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-blueprint-module-board {\n  margin-top: var(--admin-visual-kpi-to-panel-gap);\n}"
+    );
+    expect(visualPolishStyles).toContain(
+      ".admin-blueprint-page[data-page=\"usageMonitor\"] .admin-blueprint-module-board {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  max-width: var(--admin-visual-topbar-width);"
+    );
+    expect(
+      selectorBlockFrom(
+        visualPolishStyles,
+        ".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"freshness\"],\n.admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"channel-coverage\"],\n.admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"usage-ledger\"]"
+      )
+    ).toContain("height: var(--admin-visual-panel-height)");
+    expect(dashboardHealthSummaryBlock).toContain("height: var(--admin-visual-metric-card-height)");
+    expect(dashboardHealthSummaryBlock).toContain("max-height: var(--admin-visual-metric-card-height)");
+    expect(modulePanelBlock).toContain("width: var(--admin-visual-panel-width)");
+    expect(modulePanelBlock).toContain("height: var(--admin-visual-panel-height)");
+    expect(modulePanelBlock).toContain("box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18)");
+    expect(evidenceGridBlock).toContain("grid-template-columns: repeat(2, var(--admin-visual-evidence-width))");
+    expect(evidenceGridBlock).toContain("gap: var(--admin-visual-evidence-gap)");
+    expect(evidenceGridBlock).toContain("margin-top: var(--admin-visual-evidence-top-offset)");
+    expect(pageOwnedEvidenceGridBlock).toContain("margin-top: var(--admin-visual-panel-to-evidence-gap)");
+    expect(evidencePanelBlock).toContain("width: var(--admin-visual-evidence-width)");
+    expect(evidencePanelBlock).toContain("height: var(--admin-visual-evidence-height)");
+    expect(evidencePanelBlock).toContain("border: 0.5px solid var(--admin-scene-border)");
+    expect(evidencePanelBlock).toContain("box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18)");
+    expect(evidencePanelBlock).not.toContain("0 14px 30px");
+    expect(evidenceChartPanelBlock).toContain("gap: 0");
+    expect(evidenceChartPanelBlock).toContain("padding: 0");
+    expect(evidenceLogPanelBlock).toContain("gap: 10px");
+    expect(evidenceLogPanelBlock).toContain("padding: 16px 20px");
+    expect(evidenceChartHeaderBlock).toContain("grid-template-columns: minmax(0, 1fr) auto");
+    expect(evidenceChartHeaderBlock).toContain("height: 32px");
+    expect(evidenceChartHeaderBlock).toContain("background: rgba(255, 255, 255, 0.08)");
+    expect(evidenceChartTitleBlock).toContain("font-size: 11px");
+    expect(evidenceChartTitleBlock).toContain("text-overflow: ellipsis");
+    expect(evidenceChartLegendBlock).toContain("padding: 5px 44px 0");
+    expect(evidenceChartLegendBlock).toContain("gap: 34px");
+    expect(evidenceChartLegendItemBlock).toContain("font-size: 9px");
+    expect(evidenceChartLegendDotBlock).toContain("background: var(--admin-evidence-tone)");
+    expect(evidenceChartBlock).toContain("min-height: 148px");
+    expect(evidenceChartBlock).toContain("height: 100%");
+    expect(evidenceChartShellBlock).toContain("grid-template-rows: minmax(0, 1fr) auto");
+    expect(evidenceChartShellBlock).toContain("flex: 1 1 auto");
+    expect(evidenceChartShellBlock).toContain("min-width: 0");
+    expect(evidenceChartShellBlock).toContain("padding: 0 12px 8px 0");
+    expect(evidenceTimeRangeBlock).toContain("display: grid");
+    expect(evidenceTimeRangeBlock).toContain("grid-template-columns: repeat(7, var(--admin-evidence-time-range-pill-width))");
+    expect(evidenceTimeRangeBlock).toContain("justify-content: end");
+    expect(evidenceTimeRangeBlock).toContain("gap: var(--admin-evidence-time-range-gap)");
+    expect(evidenceTimeRangeBlock).toContain("padding-right: var(--admin-evidence-time-range-right-inset)");
+    expect(evidenceTimeRangeItemBlock).toContain("width: var(--admin-evidence-time-range-pill-width)");
+    expect(evidenceTimeRangeItemBlock).toContain("height: 20px");
+    expect(evidenceTimeRangeItemBlock).toContain("min-width: 0");
+    expect(evidenceTimeRangeItemBlock).toContain("white-space: nowrap");
+    expect(selectorBlockFrom(visualPolishStyles, ".admin-evidence-time-range > :nth-child(4)")).toContain(
+      "background: rgba(255, 255, 255, 0.18)"
+    );
+    expect(evidenceAxisBlock).toContain("grid-template-columns: repeat(6, minmax(0, 1fr))");
+    expect(evidenceAxisBlock).toContain("gap: var(--admin-evidence-axis-label-gap)");
+    expect(evidenceAxisBlock).toContain("padding-left: var(--admin-evidence-axis-left-gutter)");
+    expect(evidenceAxisItemBlock).toContain("text-overflow: ellipsis");
+    expect(evidenceAxisItemBlock).toContain("white-space: nowrap");
+    expect(evidenceChartGridLineBlock).toContain("stroke: rgba(255, 255, 255, 0.16)");
+    expect(evidenceChartGridLineBlock).toContain("stroke-width: 0.75");
+    expect(evidenceChartGridLineBlock).toContain("vector-effect: non-scaling-stroke");
+    expect(evidenceChartAxesBlock).toContain("pointer-events: none");
+    expect(evidenceChartAxisLineBlock).toContain("stroke: rgba(224, 235, 250, 0.62)");
+    expect(evidenceChartAxisLineBlock).toContain("stroke-width: 0.75");
+    expect(evidenceChartAxisTickBlock).toContain("stroke: rgba(224, 235, 250, 0.62)");
+    expect(evidenceChartYLabelBlock).toContain("fill: #bfd1eb");
+    expect(evidenceChartYLabelBlock).toContain("font-size: 10px");
+    expect(evidenceChartLineBlock).toContain("filter: none");
+    expect(evidenceChartLineBlock).toContain("stroke-width: var(--admin-evidence-chart-line-weight)");
+    expect(evidenceLogListBlock).toContain("grid-template-rows: repeat(3, minmax(0, 1fr))");
+    expect(evidenceLogListBlock).toContain("min-height: 0");
+    expect(evidenceLogEntryBlock).toContain("grid-template-columns: 42px 8px minmax(0, 1fr)");
+    expect(evidenceLogEntryBlock).toContain("min-height: 0");
+    expect(evidenceLogEntryBlock).toContain("overflow: hidden");
+    expect(evidenceLogTitleBlock).toContain("white-space: nowrap");
+    expect(evidenceLogDetailBlock).toContain("line-height: 14px");
+    expect(visualPolishStyles).toMatch(/\.admin-evidence-log-entry p\s*\{[\s\S]*-webkit-line-clamp: 1;/m);
+    expect(visualPolishStyles).not.toContain(".admin-evidence-contract-strip");
+    expect(visualPolishStyles).not.toContain(".admin-evidence-stat-grid");
+    expect(visualPolishStyles).not.toContain("admin-blueprint-page[data-page=\"usageMonitor\"] .admin-evidence-panel-chart");
+    expect(visualPolishStyles).toContain("--admin-evidence-tone: #33d480");
+    expect(visualPolishStyles).toContain("--admin-evidence-tone: #66a6fa");
+    expect(visualPolishStyles).toContain("--admin-evidence-tone: #f59e0d");
+    expect(visualPolishStyles).toContain("--admin-evidence-tone: #f25959");
+  });
+
+  test("keeps the Figma Visual Polish responsive breakpoint contract explicit", () => {
+    expect(visualPolishStyles).toMatch(/@media \(min-width: 1920px\) \{[\s\S]*--admin-visual-metric-card-width: 360px;[\s\S]*--admin-visual-metric-gap: 16px;[\s\S]*--admin-visual-panel-width: 512px;[\s\S]*--admin-visual-evidence-width: 802px;[\s\S]*--admin-visual-topbar-width: 1644px;/m);
+    expect(visualPolishStyles).toMatch(/@media \(max-width: 1440px\) and \(min-width: 1281px\) \{[\s\S]*--admin-visual-metric-card-width: 260px;[\s\S]*--admin-visual-panel-width: 360px;[\s\S]*--admin-visual-evidence-width: 574px;[\s\S]*--admin-visual-topbar-width: 1188px;/m);
+    expect(visualPolishStyles).toMatch(/@media \(max-width: 1280px\) and \(min-width: 1025px\) \{[\s\S]*--admin-sidebar-width: 64px;[\s\S]*--admin-visual-metric-card-width: 256px;[\s\S]*--admin-visual-panel-width: 360px;[\s\S]*--admin-visual-evidence-width: 564px;[\s\S]*--admin-visual-topbar-width: 1168px;/m);
+    expect(visualPolishStyles).toMatch(/@media \(max-width: 1024px\) \{[\s\S]*--admin-content-padding: 24px;[\s\S]*--admin-visual-metric-card-width: 460px;[\s\S]*--admin-visual-panel-width: 470px;[\s\S]*--admin-visual-evidence-width: 976px;[\s\S]*--admin-visual-topbar-width: 976px;/m);
+    expect(visualPolishStyles).toMatch(/@media \(max-width: 1024px\) \{[\s\S]*\.admin-overview-metric-grid,[\s\S]*\.ops-metric-grid\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 460px\)\);/m);
+    expect(visualPolishStyles).toMatch(/@media \(max-width: 1024px\) \{[\s\S]*\.admin-blueprint-module-board,[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 470px\)\);/m);
   });
 
   test("keeps design-draft module containers visually typed and scannable", () => {
@@ -321,20 +677,31 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-fixture-preview")).toContain("display: grid");
     expect(selectorBlock(".admin-fixture-preview-row")).toContain("grid-template-columns: minmax(120px, 0.34fr) minmax(0, 1fr)");
     expect(selectorBlock(".admin-fixture-preview-banner")).toContain("var(--admin-info-bg)");
+    expect(selectorBlock(".admin-fixture-preview-banner")).toContain("display: inline-flex");
     expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"collection-anomalies\"] .admin-fixture-preview-rows")).toContain("minmax(min(100%, 220px), 1fr)");
     expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"channel-coverage\"] .admin-fixture-preview-row")).toContain("min-height: 0");
     expect(selectorBlock(".admin-overview-metric-grid")).toContain("repeat(4, minmax(0, 1fr))");
     expect(styles).not.toContain(".admin-overview-metric-card");
-    expect(selectorBlock(".admin-overview-section-card")).toContain("min-height: 326px");
-    expect(selectorBlock(".admin-overview-handoff")).toContain("min-height: 166px");
-    expect(selectorBlock(".admin-overview-handoff-strip")).toContain("repeat(3, minmax(0, 1fr))");
-    expect(selectorBlock(".admin-overview-section-card")).toContain("align-content: start");
-    expect(styles).toMatch(/^\.admin-overview-action-card\s*\{[\s\S]*text-align: left;/m);
-    expect(selectorBlock(".admin-overview-table-row")).toContain("grid-template-columns: minmax(0, 1fr) minmax(96px, 0.5fr) minmax(132px, 0.7fr)");
-    expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] .admin-blueprint-module-board")).toContain("repeat(auto-fit, minmax(min(100%, 420px), 1fr))");
-    expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] [data-module-nav-id=\"risk-queue\"]")).toContain("min-height: 326px");
+    expect(selectorBlock(".admin-overview-compact-stack")).toContain("border: 0");
+    expect(selectorBlock(".admin-overview-compact-stack")).toContain("background: transparent");
+    expect(selectorBlock(".admin-compact-row-list")).toContain("display: grid");
+    expect(selectorBlock(".admin-compact-data-row")).toContain("grid-template-columns: minmax(0, 1fr) auto auto auto");
+    expect(selectorBlock(".admin-compact-data-row")).toContain("text-align: left");
+    expect(selectorBlock(".admin-compact-data-row-status")).toContain("font-weight: 700");
+    expect(selectorBlock(".admin-panel-compact-card")).toContain("display: grid");
+    expect(selectorBlockFrom(styles, ".admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-compact-stack,\n.admin-panel-compact-card")).toContain("grid-template-rows: auto minmax(0, 1fr) auto");
+    expect(selectorBlockFrom(styles, ".admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-compact-stack,\n.admin-panel-compact-card")).toContain("max-height: calc(var(--admin-visual-panel-height) - 44px)");
+    expect(styles).not.toContain(".admin-overview-filter-row");
+    expect(styles).not.toContain(".admin-risk-filter-chip");
+    expect(selectorBlockFrom(styles, ".admin-blueprint-page[data-page=\"dashboard\"] .admin-compact-data-row,\n.admin-blueprint-page[data-page=\"portalRequests\"] .admin-compact-data-row,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-compact-data-row")).toContain("border: 0.5px solid var(--admin-scene-border)");
+    expect(selectorBlockFrom(styles, ".admin-blueprint-page[data-page=\"dashboard\"] .admin-compact-data-row,\n.admin-blueprint-page[data-page=\"portalRequests\"] .admin-compact-data-row,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-compact-data-row")).toContain("grid-template-columns: minmax(0, 1fr) auto auto auto");
+    expect(selectorBlockFrom(styles, ".admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-panel-footer,\n.admin-panel-compact-card .admin-overview-panel-footer")).toContain("justify-content: space-between");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-metric-grid .ops-metric-icon")).toContain("display: none");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] .admin-blueprint-module-board")).toContain("repeat(3, minmax(0, 1fr))");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] [data-module-nav-id=\"risk-queue\"]")).toContain("min-height: 260px");
     expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] [data-module-nav-id=\"next-actions\"]")).toContain("order: 3");
-    expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] [data-module-nav-id=\"owner-handoff\"]")).toContain("min-height: 166px");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] [data-module-nav-id=\"review-candidates\"]")).toContain("min-height: 260px");
+    expect(styles).not.toContain("data-module-nav-id=\"owner-handoff\"");
     expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("border: 1px dashed");
     expect(styles).not.toContain(".admin-blueprint-card-switches");
     expect(styles).not.toContain(".admin-blueprint-module-dock");
@@ -433,7 +800,6 @@ describe("admin style token contract", () => {
       ".icon-button,\n.protected-console,\n.console-tools-summary",
       ".top-menu-action",
       ".page-subnav-link",
-      ".admin-blueprint-panel-tool-trigger",
       ".channel-status-filter",
       ".object-timeline-tab"
     ].forEach((selector) => {
@@ -441,8 +807,6 @@ describe("admin style token contract", () => {
       expect(block).not.toMatch(/(?:min-height|height|width|min-width):\s*(?:3[0-9]|4[0-3])px/);
     });
 
-    expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("width: var(--admin-touch-target-min)");
-    expect(selectorBlock(".admin-blueprint-panel-tool-trigger")).toContain("height: var(--admin-touch-target-min)");
     expect(selectorBlock(".page-subnav-link")).toContain("min-height: var(--admin-touch-target-min)");
     expect(selectorBlock(".channel-status-filter")).toContain("min-height: var(--admin-touch-target-min)");
     expect(selectorBlock(".object-timeline-tab")).toContain("min-height: var(--admin-touch-target-min)");
@@ -523,11 +887,15 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-search-summary span")).toContain("overflow-wrap: anywhere");
     expect(selectorBlock(".admin-search-result-list")).toContain("repeat(auto-fit, minmax(min(100%, 360px), 1fr))");
     expect(selectorBlock(".admin-search-result-card")).toContain("grid-template-columns: minmax(0, 1fr) auto");
-    expect(selectorBlock(".admin-blueprint-page[data-page=\"portalRequests\"] [data-module-nav-id=\"account-overview\"]")).toContain("grid-column: 1 / span 2");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"portalRequests\"] [data-module-nav-id=\"account-overview\"]")).toContain("grid-column: auto");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"portalRequests\"] [data-module-nav-id=\"account-overview\"]")).toContain("min-height: 260px");
     expect(selectorBlock(".admin-blueprint-page[data-page=\"portalRequests\"] [data-module-nav-id=\"resource-orders\"]")).toContain("order: 2");
-    expect(selectorBlock(".admin-blueprint-page[data-page=\"portalRequests\"] [data-module-nav-id=\"quota-usage\"]")).toContain("min-height: 166px");
-    expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"usage-ledger\"]")).toContain("min-height: 326px");
-    expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"freshness\"]")).toContain("order: 2");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"portalRequests\"] [data-module-nav-id=\"lifecycle\"]")).toContain("min-height: 260px");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"usage-ledger\"]")).toContain("grid-column: auto");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"usage-ledger\"]")).toContain("min-height: 260px");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"freshness\"]")).toContain("order: 1");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"channel-coverage\"]")).toContain("order: 2");
+    expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"usage-ledger\"]")).toContain("order: 3");
     expect(selectorBlock(".admin-blueprint-module-panel > .case-workbench-card")).toContain("border: 0");
     expect(selectorBlock(".admin-blueprint-module-panel::before")).toContain("width: 0");
     expect(selectorBlock(".admin-blueprint-module-panel::before")).toContain("background: var(--admin-plugin-accent)");

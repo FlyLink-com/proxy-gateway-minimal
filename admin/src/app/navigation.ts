@@ -125,15 +125,6 @@ export const consoleSections: ConsoleSection[] = [
     responsibility: "Own private operator preferences and local console configuration.",
     entryGate: "Waiting for a private settings boundary, explicit non-goals, and validation.",
     items: []
-  },
-  {
-    id: "about",
-    label: "About",
-    description: "Version and release notes",
-    status: "planned",
-    responsibility: "Own version, created time, build time, update notes, and compatibility summaries.",
-    entryGate: "Waiting for safe version, build, and changelog fields.",
-    items: []
   }
 ];
 
@@ -189,12 +180,12 @@ export const pageSubNavigation: Record<AdminPage, PageSubNavigationItem[]> = {
       targetId: "dashboard-next-actions"
     },
     {
-      id: "owner-handoff",
-      label: "Owner Handoff",
-      description: "Compact route strips for the owner pages that continue the review.",
+      id: "review-candidates",
+      label: "Review Candidates",
+      description: "Bounded review candidates with owner-route signals and safe refs.",
       mode: "preview",
       owner: "Overview",
-      targetId: "dashboard-owner-handoff"
+      targetId: "dashboard-review-candidates"
     }
   ],
   portalRequests: [

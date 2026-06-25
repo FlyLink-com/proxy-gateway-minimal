@@ -39,7 +39,7 @@ describe("admin module contract", () => {
       "dashboard:health-summary:dashboard-health-summary",
       "dashboard:risk-queue:dashboard-risk-queue",
       "dashboard:next-actions:dashboard-next-actions",
-      "dashboard:owner-handoff:dashboard-owner-handoff",
+      "dashboard:review-candidates:dashboard-review-candidates",
       "portalRequests:account-overview:user-supervision-account-overview",
       "portalRequests:resource-orders:user-supervision-resource-orders",
       "portalRequests:quota-usage:user-supervision-quota-usage",

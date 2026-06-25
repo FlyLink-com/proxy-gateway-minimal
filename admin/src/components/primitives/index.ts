@@ -2,6 +2,15 @@ export { DataCardPagination, DataTable, type DataTableColumn, type DataTablePagi
 export { DataSourceBadge, type DataSourceBadgeState } from "./data-source-badge";
 export { EmptyState } from "./empty-state";
 export {
+  EvidenceChartPanel,
+  EvidenceLogPanel,
+  type EvidenceLogEntry,
+  type EvidenceSeries,
+  type EvidenceSurfaceDataContract,
+  type EvidenceStat,
+  type EvidenceTone
+} from "./evidence-surface";
+export {
   ObjectChain,
   ObjectTimeline,
   RiskQueue,

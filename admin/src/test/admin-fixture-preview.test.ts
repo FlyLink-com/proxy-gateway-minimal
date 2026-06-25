@@ -25,17 +25,16 @@ describe("admin fixture preview", () => {
 
     const dashboardRiskQueue = getAdminFixturePreviewPanel("dashboard", "risk-queue");
     expect(dashboardRiskQueue.rows.map((row) => row.value)).toEqual([
-      "12 affected",
-      "6 affected",
-      "3 affected",
-      "Locked"
+      "SLA 4m",
+      "SLA 12m"
     ]);
-    expect(dashboardRiskQueue.rows.map((row) => row.meta)).toContain("Accounts & Resources");
+    expect(dashboardRiskQueue.rows.map((row) => row.label)).toEqual(["case_012", "case_017"]);
+    expect(dashboardRiskQueue.rows.map((row) => row.meta)).toContain("Order ord_2048 · Owner Usage");
 
     const moduleCount = Object.values(ADMIN_FIXTURE_PREVIEW_DATA.modules)
       .flatMap((modules) => Object.values(modules))
       .length;
-    expect(moduleCount).toBe(13);
+    expect(moduleCount).toBe(14);
     expect(JSON.stringify(ADMIN_FIXTURE_PREVIEW_DATA)).not.toMatch(forbiddenFixtureTextPattern);
   });
 });

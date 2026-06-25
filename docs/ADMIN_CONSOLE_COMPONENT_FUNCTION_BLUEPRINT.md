@@ -235,9 +235,9 @@ props/state contract, token ownership, accessibility rule, and a test/QA hook.
 
 | Component | Purpose | Required functions | Current source | Future source | Phase |
 | --- | --- | --- | --- | --- | --- |
-| `AdminShell` | App frame with sidebar, top bar, and content area. | Active route rendering, locked slots, responsive shell, no-public-Admin signal. | `AdminLayout`, `AppSidebar`, `TopBar`. | Shared shell package inside `admin/src/components/layout`. | P0 |
-| `SidebarNavigation` | Shows active and locked console areas. | Active item, disabled locked entry, entry-gate text, icon alignment. | `admin/src/app/navigation.ts`. | Feature gate metadata and permission summary. | P0 |
-| `TopSearch` | Search users, orders, channels, cases, events. | Input shell, page-aware placeholder, active-page command results, empty state. | Top bar local command palette over active navigation items. | Safe global search endpoint or page adapters. | P2 |
+| `AdminShell` | App frame with ShellRail, top bar, and content area. | Active route rendering, locked slots, responsive shell, no-public-Admin signal. | `AdminLayout`, `AppSidebar`, `TopBar`. | Shared shell package inside `admin/src/components/layout`. | P0 |
+| `ShellRail` | Shows active workspace routes and locked/planned console areas. | Active item, disabled locked entry, entry-gate text, hidden functional navigation scrollport, icon alignment. | `admin/src/components/primitives/workspace-sidebar.tsx`, `admin/src/app/navigation.ts`. | Feature gate metadata and permission summary. | P0 |
+| `SystemSearch` | Search pages, modules, planned slots, and safe object aliases. | Input shell, route-aware placeholder, system result list, empty state, safe target ids. | `TopBar`, `admin/src/app/admin-search-index.ts`. | Safe global search endpoint or page adapters. | P2 |
 | `EnvironmentPill` | Shows current environment and protected state. | Read-only environment label, status dot, Risk A gate menu. | Read-only top bar environment menu. | Private settings/environment profile summary. | P1 |
 | `NotificationButton` | Shows risk/case count. | Badge count, click back to the Overview risk surface. | Computed dashboard risk candidates routed through the shell. | Durable case inbox with filtered route. | P2 |
 | `OperatorMenu` | Shows safe operator identity. | Safe display name, help, shield, settings entry. | Read-only top bar operator menu. | Operator profile/permission summary. | P2 |
@@ -253,7 +253,7 @@ props/state contract, token ownership, accessibility rule, and a test/QA hook.
 | `QuotaMeter` | Used/limit and channel coverage. | Ratio, used/total, overage, source, measured channels. | within, near, over, unmetered, uncollected | Zero/stale/unknown separation. | P0 |
 | `DataFreshness` | Shows collection trust. | Last observed, generated time, P95/age label, stale threshold. | fresh, stale, missing, disabled | `0 B` not treated as fresh. | P1 |
 | `Sparkline` | Tiny bounded trend slot. | SVG line/bar, empty state, semantic color, text equivalent. | positive, neutral, warning, danger, no-data | No fake production values; no product meaning until time window, aggregation, and threshold semantics are defined. | P1 |
-| `DataTable` | Dense operator table. | Header, row, sort-ready columns, overflow, empty/loading/error rows. | loading, empty, error, ready | Mobile/desktop no overlap. | P0 |
+| `DataRowCompact` | First-screen primary panel row. | Main/detail text, right-aligned state/action text, safe ref compression, bounded row rhythm. | normal, hover, focus, selected, disabled, flagged | Fits inside `416 x 260` `PanelFrame` bodies without floating table fragments. | P0 |
 | `SafeRef` | Displays non-secret refs. | Short display, optional safe copy, type icon. | account, order, artifact, channel, credential-ref | No raw material. | P0 |
 | `RiskQueue` | Selectable review candidates. | Severity filters, counts, row selection, reason taxonomy. | none, filtered-empty, selected, loading | No action buttons before durable cases. | P0 |
 | `ObjectChain` | Linked account/order/artifact/channel path. | Type chips, selected object, safe refs. | partial, complete, missing | No raw URL/material. | P1 |
