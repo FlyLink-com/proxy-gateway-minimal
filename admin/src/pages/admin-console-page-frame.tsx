@@ -90,6 +90,7 @@ export function AdminConsolePageFrame({
   });
   const hasExplicitSectionRoute = controlledActiveModuleNavId !== undefined;
   const opensRoutedSection = usesOverviewModules && !overviewModuleIds.includes(activeModuleNavId);
+  const showsFocusedSection = hasExplicitSectionRoute || opensRoutedSection;
   const routedPanelViewModels = hasExplicitSectionRoute
     ? panelViewModels.filter((panel) => panel.navId === activeModuleNavId)
     : opensRoutedSection
@@ -118,13 +119,13 @@ export function AdminConsolePageFrame({
         {blueprint.page === "dashboard" ? <p>{blueprint.description}</p> : null}
       </header>
 
-      {blueprint.summary ? (
+      {blueprint.summary && !showsFocusedSection ? (
         <section className="admin-blueprint-page-summary" aria-label={`${blueprint.title} summary metrics`}>
           {blueprint.summary}
         </section>
       ) : null}
 
-      {usesRoutedModules || hasExplicitSectionRoute || opensRoutedSection ? (
+      {usesRoutedModules && !showsFocusedSection ? (
         <PageSubNav
           activeId={activeModuleNavId}
           ariaLabel={`${blueprint.title} sections`}

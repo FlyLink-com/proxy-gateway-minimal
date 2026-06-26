@@ -347,8 +347,8 @@ describe("admin navigation", () => {
     render(createElement(App));
 
     expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
-    expect(screen.getByRole("navigation", { name: "Accounts & Resources sections" })).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Quota & Usage" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("region", { name: "Accounts & Resources summary metrics" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Accounts & Resources sections" })).toBeNull();
     expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
     expect(screen.queryByRole("heading", { name: "Account Directory" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Resources & Orders" })).toBeNull();
@@ -357,11 +357,13 @@ describe("admin navigation", () => {
     expect(screen.queryByLabelText("Open navigation library")).toBeNull();
     expect(screen.queryByText("Module Library")).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Account Directory" }));
+    window.location.hash = "#/admin/accounts/account-overview";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
 
     expect(window.location.hash).toBe("#/admin/accounts/account-overview");
-    expect(screen.getByRole("button", { name: "Account Directory" }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();
+    expect(screen.queryByRole("region", { name: "Accounts & Resources summary metrics" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Accounts & Resources sections" })).toBeNull();
+    expect(await screen.findByRole("heading", { name: "Account Directory" })).not.toBeNull();
     expect(screen.queryByRole("heading", { name: "Quota & Usage" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Resources & Orders" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Lifecycle" })).toBeNull();
@@ -372,6 +374,7 @@ describe("admin navigation", () => {
 
     expect(window.location.hash).toBe("#/admin/accounts");
     expect(screen.queryByRole("navigation", { name: "Accounts & Resources sections" })).toBeNull();
+    expect(screen.getByRole("region", { name: "Accounts & Resources summary metrics" })).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Resources & Orders" })).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Lifecycle" })).not.toBeNull();
@@ -400,7 +403,8 @@ describe("admin navigation", () => {
 
     expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
     expect(window.location.hash).toBe("#/admin/accounts/quota-usage");
-    expect(screen.getByRole("button", { name: "Quota & Usage" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("region", { name: "Accounts & Resources summary metrics" })).toBeNull();
+    expect(screen.queryByRole("navigation", { name: "Accounts & Resources sections" })).toBeNull();
     expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
     expect(screen.queryByRole("heading", { name: "Search Results" })).toBeNull();
     expect(screen.queryByLabelText("Open navigation library")).toBeNull();
