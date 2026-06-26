@@ -110,6 +110,38 @@ Local target:
 http://127.0.0.1:5173/
 ```
 
+Clean-baseline Browser check on 2026-06-25 used the active Figma baseline file
+`NefQiIMOPIBU28TIYcwQFE` and the local Admin console at `127.0.0.1:5173`.
+The Browser viewport was calibrated by CSS viewport width because the current
+Browser session reported a non-default device-pixel ratio.
+
+| Browser CSS viewport | Pages checked | TopBar contract | ShellRail / navigation | Cards and panels | Evidence charts | Legacy residue | Global horizontal overflow | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `1600 x 1024` | `Operations Overview`, `Accounts & Resources`, `Usage & Channels` | `1296 x 58` at `x=252`; route-aware search stayed unclipped. | `224 x 1024` shell rail; old `.app-sidebar::after` visual scrollbar absent; nav scrollport is real `overflow-y: auto`. | Four `300 x 150` KPI cards, three `416 x 260` primary panels, two `628 x 280` evidence panels on Operations; Accounts and Usage follow the same baseline slots. | SVG chart shell present with axis labels and 19 line/grid primitives. | No `AppLibrary`, `NavigationLibrary`, hidden-card control, or old development chips. | No | Pass |
+| `1280 x 800` | `Operations Overview` breakpoint sweep | `1168 x 58` at `x=88`; search stayed unclipped. | Icon-only `64px` shell rail; nav scrollport remains real `overflow-y: auto`. | KPI row compacts to `120px` height; primary panels stay in three columns with `360 x 260` cards. | Chart evidence panel remains bounded at `564 x 224`. | No legacy residue detected. | No | Pass |
+| `1024 x 768` | `Operations Overview` breakpoint sweep | `976 x 58` at `x=24`; search stayed unclipped. | Overlay-drawer state: sidebar hidden by design, with no fake visual scrollbar. | Primary panels split into two-column then stacked flow; no horizontal overflow. | Evidence panels stack full width under the primary panels. | No legacy residue detected. | No | Pass |
+
+Route-level 1600px evidence:
+
+| Route | Active route observed | Primary layout evidence | Screenshot artifact |
+| --- | --- | --- | --- |
+| `Operations Overview` | `Operations Overview` | Four KPI cards at `300 x 150`; primary panels at `416 x 260`; evidence panels at `628 x 280`. | `output/playwright/admin-baseline-route-operations-overview-1600x1024.png` |
+| `Accounts & Resources` | `Accounts & Resources` | Same TopBar and four-card KPI slot; primary panels are `Account Directory`, `Resources & Orders`, and `Lifecycle`. | `output/playwright/admin-baseline-route-accounts-resources-1600x1024.png` |
+| `Usage & Channels` | `Usage & Channels` | Same TopBar and four-card KPI slot; primary panels are `Collection Freshness`, `Channel Coverage`, and `Usage Ledger`. | `output/playwright/admin-baseline-route-usage-channels-1600x1024.png` |
+
+Observed details:
+
+- The current React/CSS page is now using the dark blue Visual Polish baseline,
+  not the former light AppLibrary / NavigationLibrary prototype.
+- Search is a normal route-aware system search input; no AppLibrary candidate
+  popover appeared in the checked states.
+- The hidden-card control and old development-state chips are absent in DOM and
+  screenshots.
+- Browser `fullPage` screenshots in this session produced unusable blank
+  artifacts under the calibrated DPR state, so current visual evidence uses
+  viewport screenshots plus DOM-coordinate checks. Screenshot files remain under
+  ignored `output/playwright/` and are not committed.
+
 GCC-117 Browser check on 2026-06-21 after Figma Component Mirror Phase 2 used
 `http://127.0.0.1:5173/#/fixture-preview` and the existing local Vite listener
 on `127.0.0.1:5173`:
