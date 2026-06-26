@@ -52,10 +52,19 @@ describe("portal requests page", () => {
     expect(screen.queryByText("Quota policy panel")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-panel-field-count")).toHaveLength(0);
     expect(document.querySelectorAll(".admin-blueprint-module-title small")).toHaveLength(0);
-    expect(screen.getByLabelText("Account Directory static operator content")).not.toBeNull();
-    expect(screen.getByLabelText("Resources and Orders static operator content")).not.toBeNull();
-    expect(screen.getByLabelText("Lifecycle static operator content")).not.toBeNull();
+    expect(screen.getByLabelText("Account Directory owner model content")).not.toBeNull();
+    expect(screen.getByLabelText("Resources and Orders owner model content")).not.toBeNull();
+    expect(screen.getByLabelText("Lifecycle owner model content")).not.toBeNull();
+    expect(screen.queryByLabelText("Account Directory static operator content")).toBeNull();
+    expect(screen.queryByLabelText("Resources and Orders static operator content")).toBeNull();
+    expect(screen.queryByLabelText("Lifecycle static operator content")).toBeNull();
     expect(document.querySelectorAll("[data-figma-component='DataRowCompact'][data-ui-surface='compact-row']")).toHaveLength(6);
+    expect(ownerModelRouteScopes()).toEqual([
+      "portalRequests#user-supervision-account-overview",
+      "portalRequests#user-supervision-resource-orders",
+      "portalRequests#user-supervision-lifecycle"
+    ]);
+    expect(ownerModelResultWindows()).toEqual(["1-2/2", "1-2/2", "1-2/2"]);
     expect(screen.getByLabelText("Accounts & Resources evidence surfaces")).not.toBeNull();
     expect(screen.getByLabelText("Account Metrics evidence panel")).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Account Metrics" })).not.toBeNull();
@@ -124,4 +133,14 @@ describe("portal requests page", () => {
 function sectionAnchorOrder() {
   return Array.from(document.querySelectorAll(".page-anchor-group"))
     .map((element) => element.id);
+}
+
+function ownerModelRouteScopes() {
+  return Array.from(document.querySelectorAll("[data-query-schema='admin-table-query-state/v1']"))
+    .map((element) => element.getAttribute("data-route-scope"));
+}
+
+function ownerModelResultWindows() {
+  return Array.from(document.querySelectorAll("[data-query-schema='admin-table-query-state/v1']"))
+    .map((element) => element.getAttribute("data-result-window"));
 }

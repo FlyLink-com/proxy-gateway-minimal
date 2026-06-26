@@ -9,16 +9,37 @@ import { type BlueprintPage } from "./admin-ui-projection";
 
 export type AdminSearchResult = {
   id: string;
+  capabilityState: "available" | "read-only" | "planned";
   type: "page" | "section" | "planned";
   title: string;
   description: string;
   eyebrow: string;
+  group: "Active pages" | "Page sections" | "Planned routes";
+  matchedField: string;
+  objectType: "page" | "owner section" | "overview section" | "planned route";
   owner: string;
+  routeTarget: string;
   statusLabel: string;
   page?: AdminPage;
   navId?: string;
   targetId?: string;
 };
+
+type AdminSearchField = {
+  field: string;
+  value: unknown;
+};
+
+type AdminSearchCandidate = Omit<AdminSearchResult, "matchedField"> & {
+  searchFields: Array<{
+    field: string;
+    value: string;
+  }>;
+  searchText: string;
+};
+
+const UNSAFE_SEARCH_TEXT_PATTERN =
+  /https?:\/\/|subscription\s*url|token|secret|credential|password|raw\s+(?:runtime\s+)?config|raw\s+logs?|raw\s+sqlite|sqlite\s+row|private\s+key|auth\s+header|bearer|env\b/i;
 
 const PAGE_SEARCH_ALIASES: Record<AdminPage, string[]> = {
   dashboard: ["overview", "operations", "health", "risk", "action", "owner", "总览", "概览", "运营", "健康", "风险", "行动"],
@@ -60,27 +81,35 @@ export function createAdminSearchResults({
   }
 
   return createAdminSearchCandidates(blueprints)
-    .filter((candidate) => candidate.searchText.includes(normalizedQuery))
-    .map(({ searchText: _searchText, ...result }) => result);
+    .map((candidate) => {
+      const matchedField = candidate.searchFields.find(({ value }) => value.includes(normalizedQuery))?.field;
+      return matchedField ? { ...candidate, matchedField } : null;
+    })
+    .filter((candidate): candidate is AdminSearchCandidate & { matchedField: string } => candidate !== null)
+    .map(({ searchFields: _searchFields, searchText: _searchText, ...result }) => result);
 }
 
 function createAdminSearchCandidates(blueprints: BlueprintPage[]) {
   const activeCandidates = blueprints.flatMap((blueprint) => {
     const pageResult = createSearchCandidate({
+      capabilityState: "available",
       description: blueprint.description,
       eyebrow: pageContexts[blueprint.page].eyebrow,
+      group: "Active pages",
       id: `${blueprint.page}:page`,
+      objectType: "page",
       owner: pageContexts[blueprint.page].eyebrow,
       page: blueprint.page,
-      searchParts: [
-        blueprint.page,
-        pageTitles[blueprint.page],
-        blueprint.title,
-        blueprint.description,
-        blueprint.kicker,
-        blueprint.statusLabel,
-        pageContexts[blueprint.page].description,
-        PAGE_SEARCH_ALIASES[blueprint.page]
+      routeTarget: pageTitles[blueprint.page],
+      searchFields: [
+        { field: "Route", value: blueprint.page },
+        { field: "Page", value: pageTitles[blueprint.page] },
+        { field: "Title", value: blueprint.title },
+        { field: "Description", value: blueprint.description },
+        { field: "Kicker", value: blueprint.kicker },
+        { field: "Status", value: blueprint.statusLabel },
+        { field: "Context", value: pageContexts[blueprint.page].description },
+        { field: "Alias", value: PAGE_SEARCH_ALIASES[blueprint.page] }
       ],
       statusLabel: "Page",
       title: blueprint.title,
@@ -90,31 +119,35 @@ function createAdminSearchCandidates(blueprints: BlueprintPage[]) {
     const sectionResults = blueprint.modules.map((module) => {
       const navItem = pageSubNavigation[blueprint.page].find((item) => item.id === module.navId);
       return createSearchCandidate({
+        capabilityState: navItem?.mode === "preview" ? "read-only" : "available",
         description: navItem?.description ?? module.purpose,
         eyebrow: pageTitles[blueprint.page],
+        group: "Page sections",
         id: `${blueprint.page}:${module.navId}`,
         navId: module.navId,
+        objectType: navItem?.mode === "preview" ? "overview section" : "owner section",
         owner: navItem?.owner ?? pageContexts[blueprint.page].eyebrow,
         page: blueprint.page,
-        searchParts: [
-          blueprint.page,
-          pageTitles[blueprint.page],
-          module.navId,
-          module.uiSurface,
-          module.container.category,
-          module.container.container,
-          module.container.layoutPolicy,
-          module.container.interactionModel,
-          navItem?.label,
-          navItem?.description,
-          navItem?.owner,
-          MODULE_SEARCH_ALIASES[module.navId],
-          module.purpose,
-          module.contentFields,
-          module.states,
-          module.ownership,
-          module.boundaries,
-          module.nextStep
+        routeTarget: navItem?.targetId ?? module.navId,
+        searchFields: [
+          { field: "Route", value: blueprint.page },
+          { field: "Page", value: pageTitles[blueprint.page] },
+          { field: "Section", value: module.navId },
+          { field: "Surface", value: module.uiSurface },
+          { field: "Category", value: module.container.category },
+          { field: "Container", value: module.container.container },
+          { field: "Layout", value: module.container.layoutPolicy },
+          { field: "Interaction", value: module.container.interactionModel },
+          { field: "Label", value: navItem?.label },
+          { field: "Description", value: navItem?.description },
+          { field: "Owner", value: navItem?.owner },
+          { field: "Alias", value: MODULE_SEARCH_ALIASES[module.navId] },
+          { field: "Purpose", value: module.purpose },
+          { field: "Content", value: module.contentFields },
+          { field: "State", value: module.states },
+          { field: "Ownership", value: module.ownership },
+          { field: "Boundary", value: module.boundaries },
+          { field: "Next step", value: module.nextStep }
         ],
         statusLabel: navItem?.mode === "preview" ? "Preview section" : "Owner section",
         targetId: navItem?.targetId ?? module.navId,
@@ -129,16 +162,20 @@ function createAdminSearchCandidates(blueprints: BlueprintPage[]) {
   const plannedCandidates = consoleSections
     .filter((section) => section.status === "planned")
     .map((section) => createSearchCandidate({
+      capabilityState: "planned",
       description: section.responsibility,
       eyebrow: "Planned",
+      group: "Planned routes",
       id: `planned:${section.id}`,
+      objectType: "planned route",
       owner: "Roadmap",
-      searchParts: [
-        section.id,
-        section.label,
-        section.description,
-        section.responsibility,
-        section.entryGate
+      routeTarget: "Roadmap gate",
+      searchFields: [
+        { field: "Page", value: section.label },
+        { field: "Route", value: section.id },
+        { field: "Description", value: section.description },
+        { field: "Responsibility", value: section.responsibility },
+        { field: "Gate", value: section.entryGate }
       ],
       statusLabel: "Planned",
       title: section.label,
@@ -148,14 +185,33 @@ function createAdminSearchCandidates(blueprints: BlueprintPage[]) {
   return [...activeCandidates, ...plannedCandidates];
 }
 
-function createSearchCandidate(result: AdminSearchResult & { searchParts: unknown[] }) {
-  const { searchParts, ...searchResult } = result;
+function createSearchCandidate(result: Omit<AdminSearchResult, "matchedField"> & { searchFields: AdminSearchField[] }): AdminSearchCandidate {
+  const { searchFields, ...searchResult } = result;
+  const safeSearchFields = searchFields.flatMap(({ field, value }) => normalizeSearchFieldValues(value)
+    .filter(isSafeSearchText)
+    .map((safeValue) => ({
+      field,
+      value: safeValue.toLocaleLowerCase()
+    })));
+
   return {
     ...searchResult,
-    searchText: searchParts
-      .flat()
-      .filter(Boolean)
-      .join(" ")
-      .toLocaleLowerCase()
+    searchFields: safeSearchFields,
+    searchText: safeSearchFields.map(({ value }) => value).join(" ")
   };
+}
+
+function normalizeSearchFieldValues(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(normalizeSearchFieldValues);
+  }
+  if (value === null || value === undefined) {
+    return [];
+  }
+  const normalized = String(value).trim();
+  return normalized ? [normalized] : [];
+}
+
+function isSafeSearchText(value: string) {
+  return !UNSAFE_SEARCH_TEXT_PATTERN.test(value);
 }

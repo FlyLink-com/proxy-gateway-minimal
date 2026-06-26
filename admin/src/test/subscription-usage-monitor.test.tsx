@@ -53,7 +53,8 @@ describe("subscription usage monitor page", () => {
     expect(screen.queryByText("Safe diagnostics entry panel")).toBeNull();
     expect(document.querySelectorAll(".admin-blueprint-panel-field-count")).toHaveLength(0);
     expect(document.querySelectorAll(".admin-blueprint-module-title small")).toHaveLength(0);
-    expect(screen.getByLabelText("Collection Freshness static operator content")).not.toBeNull();
+    expect(screen.getByLabelText("Collection Freshness owner model content")).not.toBeNull();
+    expect(screen.queryByLabelText("Collection Freshness static operator content")).toBeNull();
     expect(screen.getByLabelText("Usage & Channels evidence surfaces")).not.toBeNull();
     expect(screen.getByLabelText("Usage Metrics evidence panel")).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Usage Metrics" })).not.toBeNull();
@@ -72,6 +73,12 @@ describe("subscription usage monitor page", () => {
     expect(screen.getByText("Freshness lane")).not.toBeNull();
     expect(screen.getByText("Coverage lane")).not.toBeNull();
     expect(screen.getByText("Ledger")).not.toBeNull();
+    expect(ownerModelRouteScopes()).toEqual([
+      "usageMonitor#platform-monitoring-freshness",
+      "usageMonitor#platform-monitoring-channel-coverage",
+      "usageMonitor#platform-monitoring-usage-ledger"
+    ]);
+    expect(ownerModelResultWindows()).toEqual(["1-2/2", "1-2/2", "1-2/2"]);
     expect(screen.queryByText("Latest usage · observed age")).toBeNull();
     expect(screen.queryByText("Evidence owner for usage collection trust, channel coverage, receipts, collectors, and collection anomalies.")).toBeNull();
     expect(screen.queryByText("Measured channels · count")).toBeNull();
@@ -115,4 +122,14 @@ describe("subscription usage monitor page", () => {
 function sectionAnchorOrder() {
   return Array.from(document.querySelectorAll(".page-anchor-group"))
     .map((element) => element.id);
+}
+
+function ownerModelRouteScopes() {
+  return Array.from(document.querySelectorAll("[data-query-schema='admin-table-query-state/v1']"))
+    .map((element) => element.getAttribute("data-route-scope"));
+}
+
+function ownerModelResultWindows() {
+  return Array.from(document.querySelectorAll("[data-query-schema='admin-table-query-state/v1']"))
+    .map((element) => element.getAttribute("data-result-window"));
 }

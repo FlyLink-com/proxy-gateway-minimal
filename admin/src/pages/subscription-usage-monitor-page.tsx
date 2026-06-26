@@ -2,12 +2,15 @@ import {
   AdminConsolePageFrame,
   type BlueprintPage
 } from "./admin-console-page-frame";
+import {
+  createUsageChannelsOwnerPageModel,
+  type UsageOwnerSection
+} from "../app/usage-channels-owner-model";
 import { ADMIN_EVIDENCE_SURFACE_CONTRACTS } from "../app/admin-evidence-contract";
 import {
   EvidenceChartPanel,
   EvidenceLogPanel,
   MetricCard,
-  type MetricTone,
   RiskQueue,
   SafeRef,
   StatusChip,
@@ -218,6 +221,8 @@ export const usageChannelsBlueprint: BlueprintPage = {
   ]
 };
 
+const usageChannelsOwnerPageModel = createUsageChannelsOwnerPageModel(usageChannelsBlueprint);
+
 function UsageChannelsEvidence() {
   return (
     <>
@@ -320,112 +325,41 @@ export function SubscriptionUsageMonitorPage({
 
 function FreshnessContent() {
   return (
-    <div className="admin-operator-content" aria-label="Collection Freshness static operator content">
-      <UsageOwnerRows
-        footer="Freshness lane"
-        rows={[
-          {
-            label: "hk-01",
-            meta: "Age 2m 14s · SLO 5m",
-            rightMeta: "State OK",
-            statusLabel: "Fresh",
-            actionLabel: "Open",
-            tone: "success"
-          },
-          {
-            label: "hk-02",
-            meta: "Age 4m 10s · SLO 5m",
-            rightMeta: "State OK",
-            statusLabel: "Fresh",
-            actionLabel: "Open",
-            tone: "success"
-          }
-        ]}
-        subtitle="Usage collection age and SLO"
-      />
+    <div className="admin-operator-content" aria-label="Collection Freshness owner model content">
+      <UsageOwnerRows section={getUsageOwnerSection("freshness")} />
     </div>
   );
 }
 
 function ChannelCoverageContent() {
   return (
-    <div className="admin-operator-content" aria-label="Channel Coverage static operator content">
-      <UsageOwnerRows
-        footer="Coverage lane"
-        rows={[
-          {
-            label: "hk-01",
-            meta: "Measured Yes · Gap None",
-            rightMeta: "State OK",
-            statusLabel: "Covered",
-            actionLabel: "Open",
-            tone: "success"
-          },
-          {
-            label: "sg-02",
-            meta: "Measured Yes · Gap None",
-            rightMeta: "State OK",
-            statusLabel: "Covered",
-            actionLabel: "Open",
-            tone: "success"
-          }
-        ]}
-        subtitle="Measured channels and gaps"
-      />
+    <div className="admin-operator-content" aria-label="Channel Coverage owner model content">
+      <UsageOwnerRows section={getUsageOwnerSection("channel-coverage")} />
     </div>
   );
 }
 
 function UsageLedgerContent() {
   return (
-    <div className="admin-operator-content" aria-label="Usage Ledger static operator content">
-      <UsageOwnerRows
-        footer="Ledger"
-        rows={[
-          {
-            label: "acct_001",
-            meta: "Order ord_2048 · Traffic 42.8GB",
-            rightMeta: "State Locked",
-            statusLabel: "OK",
-            actionLabel: "Open",
-            tone: "success"
-          },
-          {
-            label: "acct_002",
-            meta: "Order ord_2047 · Traffic 18.6GB",
-            rightMeta: "State Measured",
-            statusLabel: "OK",
-            actionLabel: "Open",
-            tone: "info"
-          }
-        ]}
-        subtitle="Account/order traffic ledger"
-      />
+    <div className="admin-operator-content" aria-label="Usage Ledger owner model content">
+      <UsageOwnerRows section={getUsageOwnerSection("usage-ledger")} />
     </div>
   );
 }
 
-function UsageOwnerRows({
-  footer,
-  rows,
-  subtitle
-}: {
-  footer: string;
-  rows: Array<{
-    actionLabel: string;
-    label: string;
-    meta: string;
-    rightMeta: string;
-    statusLabel: string;
-    tone: MetricTone;
-  }>;
-  subtitle: string;
-}) {
+function UsageOwnerRows({ section }: { section: UsageOwnerSection }) {
   return (
-    <div className="admin-operator-content admin-panel-compact-card" aria-label={`${footer} preview rows`}>
-      <p className="admin-panel-compact-subtitle">{subtitle}</p>
+    <div
+      className="admin-operator-content admin-panel-compact-card"
+      aria-label={`${section.footer} preview rows`}
+      data-query-page={section.query.page}
+      data-query-schema={section.query.schemaVersion}
+      data-result-window={`${section.resultWindow.firstItem}-${section.resultWindow.lastItem}/${section.resultWindow.totalItems}`}
+      data-route-scope={section.query.routeScope}
+    >
+      <p className="admin-panel-compact-subtitle">{section.subtitle}</p>
       <div className="admin-compact-row-list">
-        {rows.map((row) => (
+        {section.rows.map((row) => (
           <article
             className={`admin-compact-data-row admin-compact-data-row-${row.tone}`}
             data-figma-component="DataRowCompact"
@@ -444,11 +378,19 @@ function UsageOwnerRows({
         ))}
       </div>
       <div className="admin-overview-panel-footer">
-        <span>{footer}</span>
+        <span>{section.footer}</span>
         <span aria-hidden="true">•••</span>
       </div>
     </div>
   );
+}
+
+function getUsageOwnerSection(navId: string): UsageOwnerSection {
+  const section = usageChannelsOwnerPageModel.visibleSections.find((candidate) => candidate.navId === navId);
+  if (!section) {
+    throw new Error(`Usage owner section is not registered: ${navId}`);
+  }
+  return section;
 }
 
 const anomalyItems: RiskQueueItem[] = [

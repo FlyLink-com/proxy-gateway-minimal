@@ -62,6 +62,12 @@ export function AdminSearchResultsPage({
     }, 0);
   }
 
+  const capabilityLabels = {
+    available: "Available",
+    "read-only": "Read only",
+    planned: "Planned"
+  };
+
   return (
     <div
       className="page-stack admin-search-page"
@@ -75,8 +81,8 @@ export function AdminSearchResultsPage({
       </header>
 
       <section className="admin-search-summary" aria-label="Admin system search results" role="status">
-        <strong>{results.length} results</strong>
-        <span>for "{searchQuery.trim()}" across Admin Console</span>
+        <strong>{results.length} safe results</strong>
+        <span>for "{searchQuery.trim()}" across Admin Console system search</span>
       </section>
 
       {results.length > 0 ? (
@@ -84,18 +90,24 @@ export function AdminSearchResultsPage({
           {results.map((result) => (
             <article
               className="admin-search-result-card"
+              data-capability-state={result.capabilityState}
               data-result-type={result.type}
               key={result.id}
             >
               <div className="admin-search-result-main">
                 <div className="admin-search-result-meta">
+                  <span>{result.group}</span>
                   <span>{result.eyebrow}</span>
+                  <span>{result.objectType}</span>
                   <span>{result.statusLabel}</span>
+                  <span>{capabilityLabels[result.capabilityState]}</span>
                 </div>
                 <h2>{result.title}</h2>
                 <p>{result.description}</p>
                 <div className="admin-search-result-tags" aria-label={`${result.title} search ownership`}>
                   <span>{result.owner}</span>
+                  <span>Route: {result.routeTarget}</span>
+                  <span>Matched: {result.matchedField}</span>
                   {result.navId ? <span>{result.navId}</span> : null}
                 </div>
               </div>

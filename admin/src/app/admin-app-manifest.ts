@@ -1416,7 +1416,7 @@ function createUtilityApp({
       category: "configuration",
       coreViews,
       enName: label,
-      followUpTask: "GCC-77 System Search safe discovery and indexing",
+      followUpTask: "GCC-124 System Search safe discovery contract",
       primaryObjects,
       safetyBoundary: "Console utility only; no business-object ownership or production mutation.",
       searchableFields,

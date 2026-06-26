@@ -2,12 +2,15 @@ import {
   AdminConsolePageFrame,
   type BlueprintPage
 } from "./admin-console-page-frame";
+import {
+  createAccountsResourcesOwnerPageModel,
+  type AccountsResourceOwnerSection
+} from "../app/accounts-resources-owner-model";
 import { ADMIN_EVIDENCE_SURFACE_CONTRACTS } from "../app/admin-evidence-contract";
 import {
   EvidenceChartPanel,
   EvidenceLogPanel,
   MetricCard,
-  type MetricTone,
   QuotaMeter,
   SafeRef,
   StatusChip
@@ -213,6 +216,8 @@ export const accountsResourcesBlueprint: BlueprintPage = {
   ]
 };
 
+const accountsResourcesOwnerPageModel = createAccountsResourcesOwnerPageModel(accountsResourcesBlueprint);
+
 function AccountsResourcesEvidence() {
   return (
     <>
@@ -315,57 +320,17 @@ export function PortalRequestsPage({
 
 function AccountDirectoryContent() {
   return (
-    <PanelCompactRows
-      ariaLabel="Account Directory static operator content"
-      footer="Directory"
-      rows={[
-        {
-          actionLabel: "Open",
-          detail: "Order ord_2048 · Plan standard",
-          label: "user_001",
-          meta: "Risk Med",
-          statusLabel: "Active",
-          tone: "info"
-        },
-        {
-          actionLabel: "Open",
-          detail: "Order ord_2047 · Plan trial",
-          label: "user_002",
-          meta: "Risk Low",
-          statusLabel: "Active",
-          tone: "success"
-        }
-      ]}
-      subtitle="Users and account-level resources"
-    />
+    <div className="admin-operator-content" aria-label="Account Directory owner model content">
+      <PanelCompactRows section={getAccountsResourceOwnerSection("account-overview")} />
+    </div>
   );
 }
 
 function ResourceOrdersContent() {
   return (
-    <PanelCompactRows
-      ariaLabel="Resources and Orders static operator content"
-      footer="Resource list"
-      rows={[
-        {
-          actionLabel: "Open",
-          detail: "Sub sub_8192 · Channel hk-01",
-          label: "ord_2048",
-          meta: "State Live",
-          statusLabel: "Synced",
-          tone: "success"
-        },
-        {
-          actionLabel: "Open",
-          detail: "Sub sub_8191 · Channel sg-01",
-          label: "ord_2047",
-          meta: "State Pending",
-          statusLabel: "Watch",
-          tone: "warning"
-        }
-      ]}
-      subtitle="Order to subscription mapping"
-    />
+    <div className="admin-operator-content" aria-label="Resources and Orders owner model content">
+      <PanelCompactRows section={getAccountsResourceOwnerSection("resource-orders")} />
+    </div>
   );
 }
 
@@ -389,57 +354,25 @@ function QuotaUsageContent() {
 
 function LifecycleContent() {
   return (
-    <PanelCompactRows
-      ariaLabel="Lifecycle static operator content"
-      footer="Lifecycle subpage"
-      rows={[
-        {
-          actionLabel: "Open",
-          detail: "Account user_002 · Order ord_2047",
-          label: "pause_check",
-          meta: "When Now",
-          statusLabel: "Review",
-          tone: "warning"
-        },
-        {
-          actionLabel: "Open",
-          detail: "Account user_003 · Order ord_2046",
-          label: "archive_due",
-          meta: "When 2d",
-          statusLabel: "Due",
-          tone: "neutral"
-        }
-      ]}
-      subtitle="Page-local lifecycle status"
-    />
+    <div className="admin-operator-content" aria-label="Lifecycle owner model content">
+      <PanelCompactRows section={getAccountsResourceOwnerSection("lifecycle")} />
+    </div>
   );
 }
 
-type CompactPanelRow = {
-  actionLabel: string;
-  detail: string;
-  label: string;
-  meta: string;
-  statusLabel: string;
-  tone: MetricTone;
-};
-
-function PanelCompactRows({
-  ariaLabel,
-  footer,
-  rows,
-  subtitle
-}: {
-  ariaLabel: string;
-  footer: string;
-  rows: CompactPanelRow[];
-  subtitle: string;
-}) {
+function PanelCompactRows({ section }: { section: AccountsResourceOwnerSection }) {
   return (
-    <div className="admin-operator-content admin-panel-compact-card" aria-label={ariaLabel}>
-      <p className="admin-panel-compact-subtitle">{subtitle}</p>
-      <div className="admin-compact-row-list" aria-label={`${footer} compact rows`}>
-        {rows.map((row) => (
+    <div
+      className="admin-operator-content admin-panel-compact-card"
+      aria-label={`${section.footer} preview rows`}
+      data-query-page={section.query.page}
+      data-query-schema={section.query.schemaVersion}
+      data-result-window={`${section.resultWindow.firstItem}-${section.resultWindow.lastItem}/${section.resultWindow.totalItems}`}
+      data-route-scope={section.query.routeScope}
+    >
+      <p className="admin-panel-compact-subtitle">{section.subtitle}</p>
+      <div className="admin-compact-row-list" aria-label={`${section.footer} compact rows`}>
+        {section.rows.map((row) => (
           <article
             className={`admin-compact-data-row admin-compact-data-row-${row.tone}`}
             data-figma-component="DataRowCompact"
@@ -458,11 +391,19 @@ function PanelCompactRows({
         ))}
       </div>
       <div className="admin-overview-panel-footer" aria-hidden="true">
-        <span>{footer}</span>
+        <span>{section.footer}</span>
         <span>•••</span>
       </div>
     </div>
   );
+}
+
+function getAccountsResourceOwnerSection(navId: string): AccountsResourceOwnerSection {
+  const section = accountsResourcesOwnerPageModel.visibleSections.find((candidate) => candidate.navId === navId);
+  if (!section) {
+    throw new Error(`Accounts resource owner section is not registered: ${navId}`);
+  }
+  return section;
 }
 
 function HistoryEventsContent() {

@@ -1,7 +1,15 @@
 import { Activity, AlertTriangle, Clock3, RadioTower } from "lucide-react";
 import { useEffect, type ReactNode } from "react";
 import { ADMIN_EVIDENCE_SURFACE_CONTRACTS } from "../app/admin-evidence-contract";
+import { ADMIN_TABLE_QUERY_STATE_SCHEMA } from "../app/admin-table-query-state";
 import { type AdminPage } from "../app/navigation";
+import {
+  createOperationsOverviewOwnerPageModel,
+  OPERATIONS_OVERVIEW_OWNER_MODEL_SCHEMA,
+  type OperationsOverviewMetric,
+  type OperationsOverviewOwnerPageModel,
+  type OperationsOverviewSection
+} from "../app/operations-overview-owner-model";
 import {
   EvidenceChartPanel,
   EvidenceLogPanel,
@@ -35,7 +43,7 @@ export function DashboardPage({
 }
 
 export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPage {
-  return {
+  const blueprint: BlueprintPage = {
     page: "dashboard",
     ariaLabel: "Operations Overview page header",
     kicker: "Overview / Operations Overview",
@@ -55,7 +63,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           performanceBoundary: "Independent widget render; no owner-page table or ledger mount.",
           interactionModel: "Read-only summary with owner-page routing."
         },
-        content: <OverviewHealthSummary />,
+        content: null,
         containmentStrategy: "not-applicable",
         purpose: "Summarize platform health without owning the account, quota, channel, or receipt detail collections.",
         contentFields: [
@@ -89,7 +97,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           performanceBoundary: "Queue rows stay bounded and do not mount object history by default.",
           interactionModel: "Select and route only; no close, approve, or mutation actions."
         },
-        content: <OverviewRiskCandidates />,
+        content: null,
         containmentStrategy: "pagination",
         purpose: "Show the highest-priority computed review candidates and the owner page that should handle them.",
         contentFields: [
@@ -124,7 +132,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           performanceBoundary: "No backend write path and no owner-page data fetch inside this widget.",
           interactionModel: "Open owner page or future gated workflow entry."
         },
-        content: <OverviewRouteCards onNavigate={onNavigate} />,
+        content: null,
         containmentStrategy: "not-applicable",
         purpose: "Route operators to Accounts & Resources or Usage & Channels instead of repeating those collections here.",
         contentFields: [
@@ -158,7 +166,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
           performanceBoundary: "Candidate rows stay bounded and do not mount object history by default.",
           interactionModel: "Route to owner page only; no close, approve, or mutation actions."
         },
-        content: <OverviewReviewCandidates onNavigate={onNavigate} />,
+        content: null,
         containmentStrategy: "pagination",
         purpose: "Keep a bounded list of review candidates without turning Overview into the durable case workflow.",
         contentFields: [
@@ -182,6 +190,15 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): Bluep
         nextStep: "Attach computed attention signals after owner pages expose section-level route ids."
       }
     ]
+  };
+  const ownerModel = createOperationsOverviewOwnerPageModel(blueprint);
+
+  return {
+    ...blueprint,
+    modules: blueprint.modules.map((module) => ({
+      ...module,
+      content: renderOperationsOverviewModule(module.navId, ownerModel, onNavigate)
+    }))
   };
 }
 
@@ -237,185 +254,109 @@ function OperationsEvidence() {
   );
 }
 
-function OverviewHealthSummary() {
+function renderOperationsOverviewModule(
+  navId: string,
+  ownerModel: OperationsOverviewOwnerPageModel,
+  onNavigate?: (page: AdminPage) => void
+) {
+  const section = ownerModel.visibleSections.find((candidate) => candidate.navId === navId);
+  if (!section) {
+    return null;
+  }
+
+  switch (navId) {
+    case "health-summary":
+      return <OverviewHealthSummary section={section} />;
+    case "risk-queue":
+      return <OverviewRiskCandidates section={section} />;
+    case "next-actions":
+      return <OverviewRouteCards onNavigate={onNavigate} section={section} />;
+    case "review-candidates":
+      return <OverviewReviewCandidates onNavigate={onNavigate} section={section} />;
+    default:
+      return null;
+  }
+}
+
+function OverviewHealthSummary({ section }: { section: OperationsOverviewSection }) {
   return (
-    <div className="admin-operator-content" aria-label="Operations Overview static health content">
+    <div
+      className="admin-operator-content"
+      aria-label="Operations Overview owner model content"
+      {...ownerModelDataAttributes(section)}
+    >
       <div className="admin-overview-metric-grid" aria-label="Operations Overview metric cards">
-        <OverviewMetricCard
-          body="Ready for review"
-          icon={<Activity aria-hidden="true" />}
-          statusLabel="Good"
-          statusTone="success"
-          title="Platform health"
-          tone="success"
-          trend={[72, 74, 73, 76, 77, 79, 81]}
-          value="Good"
-        />
-        <OverviewMetricCard
-          body="High 4 · Med 9"
-          icon={<AlertTriangle aria-hidden="true" />}
-          statusLabel="Review"
-          statusTone="danger"
-          title="Risk cases"
-          tone="danger"
-          trend={[6, 8, 7, 10, 12, 15, 18]}
-          value="18"
-        />
-        <OverviewMetricCard
-          body="P95 sample age"
-          icon={<Clock3 aria-hidden="true" />}
-          statusLabel="Good"
-          statusTone="info"
-          title="Freshness"
-          tone="info"
-          trend={[180, 172, 160, 148, 140, 136, 134]}
-          value="2m 14s"
-        />
-        <OverviewMetricCard
-          body="Available share"
-          icon={<RadioTower aria-hidden="true" />}
-          statusLabel="Good"
-          statusTone="success"
-          title="Coverage"
-          tone="success"
-          trend={[96, 97, 97.4, 98, 98.2, 98.5, 98.6]}
-          value="98.6%"
-        />
+        {section.metrics.map((metric) => (
+          <OverviewMetricCard
+            icon={iconForOperationsMetric(metric)}
+            key={metric.title}
+            metric={metric}
+          />
+        ))}
       </div>
     </div>
   );
 }
 
 function OverviewMetricCard({
-  body,
   icon,
-  statusLabel,
-  statusTone,
-  title,
-  tone,
-  trend,
-  value
+  metric
 }: {
-  body: string;
   icon: ReactNode;
-  statusLabel: string;
-  statusTone: MetricTone;
-  title: string;
-  tone: MetricTone;
-  trend: number[];
-  value: string;
+  metric: OperationsOverviewMetric;
 }) {
   return (
     <MetricCard
-      detail={body}
+      detail={metric.body}
       icon={icon}
-      label={title}
+      label={metric.title}
       status={{
-        label: statusLabel,
-        tone: statusTone
+        label: metric.statusLabel,
+        tone: metric.statusTone
       }}
-      tone={tone}
+      tone={metric.tone}
       trend={{
-        ariaLabel: `${title} safe trend`,
-        values: trend
+        ariaLabel: `${metric.title} safe trend`,
+        values: metric.trend
       }}
-      value={value}
+      value={metric.value}
     />
   );
 }
 
-const overviewRiskItems = [
-  {
-    actionLabel: "Open",
-    detail: "Order ord_2048 · Owner Usage",
-    meta: "SLA 4m",
-    ref: "case_012",
-    statusLabel: "Open",
-    title: "case_012",
-    tone: "info"
-  },
-  {
-    actionLabel: "Open",
-    detail: "Order ord_2047 · Owner Accounts",
-    meta: "SLA 12m",
-    ref: "case_017",
-    statusLabel: "Review",
-    title: "case_017",
-    tone: "warning"
+function iconForOperationsMetric(metric: OperationsOverviewMetric) {
+  switch (metric.title) {
+    case "Platform health":
+      return <Activity aria-hidden="true" />;
+    case "Risk cases":
+      return <AlertTriangle aria-hidden="true" />;
+    case "Freshness":
+      return <Clock3 aria-hidden="true" />;
+    case "Coverage":
+      return <RadioTower aria-hidden="true" />;
+    default:
+      return <Activity aria-hidden="true" />;
   }
-] satisfies Array<{
-  actionLabel: string;
-  detail: string;
-  meta: string;
-  ref: string;
-  statusLabel: string;
-  title: string;
-  tone: MetricTone;
-}>;
+}
 
-const overviewNextActionItems = [
-  {
-    actionLabel: "Open",
-    detail: "Route Accounts · Owner Operator",
-    meta: "Due Now",
-    ref: "handoff",
-    statusLabel: "Ready",
-    title: "handoff",
-    tone: "success",
-    target: "portalRequests"
-  },
-  {
-    actionLabel: "Open",
-    detail: "Route Usage · Owner Collector",
-    meta: "Due 8m",
-    ref: "refresh",
-    statusLabel: "Queued",
-    title: "refresh",
-    tone: "info",
-    target: "usageMonitor"
-  }
-] satisfies Array<{
-  actionLabel: string;
-  detail: string;
-  meta: string;
-  ref: string;
-  statusLabel: string;
-  title: string;
-  tone: MetricTone;
-  target: AdminPage;
-}>;
+function ownerModelDataAttributes(section: OperationsOverviewSection): Record<string, string> {
+  const attributes: Record<string, string> = {
+    "data-owner-model-schema": OPERATIONS_OVERVIEW_OWNER_MODEL_SCHEMA,
+    "data-section-nav-id": section.navId
+  };
 
-const overviewReviewCandidateItems = [
-  {
-    actionLabel: "Open",
-    detail: "Issue delay · Signal P95",
-    meta: "Age 14m",
-    ref: "ord_2048",
-    statusLabel: "Review",
-    title: "ord_2048",
-    tone: "warning",
-    target: "usageMonitor"
-  },
-  {
-    actionLabel: "Open",
-    detail: "Issue quota · Signal 90%",
-    meta: "Age 1h",
-    ref: "acct_002",
-    statusLabel: "Watch",
-    title: "acct_002",
-    tone: "warning",
-    target: "portalRequests"
+  if (section.query && section.resultWindow) {
+    attributes["data-query-schema"] = ADMIN_TABLE_QUERY_STATE_SCHEMA;
+    attributes["data-result-window"] = formatResultWindow(section.resultWindow);
+    attributes["data-route-scope"] = section.query.routeScope;
   }
-] satisfies Array<{
-  actionLabel: string;
-  detail: string;
-  meta: string;
-  ref: string;
-  statusLabel: string;
-  title: string;
-  tone: MetricTone;
-  target: AdminPage;
-}>;
+
+  return attributes;
+}
+
+function formatResultWindow(resultWindow: NonNullable<OperationsOverviewSection["resultWindow"]>) {
+  return `${resultWindow.firstItem}-${resultWindow.lastItem}/${resultWindow.totalItems}`;
+}
 
 function DashboardCompactRow({
   actionLabel = "Open",
@@ -482,20 +423,24 @@ function DashboardCompactRow({
   );
 }
 
-function OverviewRiskCandidates() {
+function OverviewRiskCandidates({ section }: { section: OperationsOverviewSection }) {
   return (
-    <section className="admin-overview-compact-stack" aria-label="Risk Queue">
+    <section
+      className="admin-overview-compact-stack"
+      aria-label="Risk Queue"
+      {...ownerModelDataAttributes(section)}
+    >
       <div className="admin-overview-section-heading">
         <h3>Risk queue</h3>
-        <p>Cases ranked by owner route</p>
+        <p>{section.subtitle}</p>
       </div>
       <div className="admin-compact-row-list" aria-label="Risk Queue rows">
-        {overviewRiskItems.map((item) => (
+        {section.rows.map((item) => (
           <DashboardCompactRow
             actionLabel={item.actionLabel}
             detail={item.detail}
-            key={item.ref}
-            label={item.title}
+            key={item.label}
+            label={item.label}
             meta={item.meta}
             statusLabel={item.statusLabel}
             tone={item.tone}
@@ -503,65 +448,85 @@ function OverviewRiskCandidates() {
         ))}
       </div>
       <div className="admin-overview-panel-footer" aria-hidden="true">
-        <span>Queue actions</span>
+        <span>{section.footer}</span>
         <span>•••</span>
       </div>
     </section>
   );
 }
 
-function OverviewRouteCards({ onNavigate }: { onNavigate?: (page: AdminPage) => void }) {
+function OverviewRouteCards({
+  onNavigate,
+  section
+}: {
+  onNavigate?: (page: AdminPage) => void;
+  section: OperationsOverviewSection;
+}) {
   return (
-    <section className="admin-overview-compact-stack" aria-label="Overview owner page routing content">
+    <section
+      className="admin-overview-compact-stack"
+      aria-label="Overview owner page routing content"
+      {...ownerModelDataAttributes(section)}
+    >
       <div className="admin-overview-section-heading">
         <h3>Next actions</h3>
-        <p>Route handoff for reviewers</p>
+        <p>{section.subtitle}</p>
       </div>
       <div className="admin-compact-row-list" aria-label="Overview routing rows">
-        {overviewNextActionItems.map((item) => (
+        {section.rows.map((item) => (
           <DashboardCompactRow
             actionLabel={item.actionLabel}
             detail={item.detail}
-            key={item.ref}
-            label={item.title}
+            key={item.label}
+            label={item.label}
             meta={item.meta}
-            onClick={() => onNavigate?.(item.target)}
+            onClick={item.target ? () => onNavigate?.(item.target as AdminPage) : undefined}
             statusLabel={item.statusLabel}
             tone={item.tone}
           />
         ))}
       </div>
       <div className="admin-overview-panel-footer" aria-hidden="true">
-        <span>Action lane</span>
+        <span>{section.footer}</span>
         <span>•••</span>
       </div>
     </section>
   );
 }
 
-function OverviewReviewCandidates({ onNavigate }: { onNavigate?: (page: AdminPage) => void }) {
+function OverviewReviewCandidates({
+  onNavigate,
+  section
+}: {
+  onNavigate?: (page: AdminPage) => void;
+  section: OperationsOverviewSection;
+}) {
   return (
-    <section className="admin-overview-compact-stack" aria-label="Overview review candidates">
+    <section
+      className="admin-overview-compact-stack"
+      aria-label="Overview review candidates"
+      {...ownerModelDataAttributes(section)}
+    >
       <div className="admin-overview-section-heading">
         <h3>Review candidates</h3>
-        <p>Items requiring operator check</p>
+        <p>{section.subtitle}</p>
       </div>
       <div className="admin-compact-row-list" aria-label="Overview review candidate rows">
-        {overviewReviewCandidateItems.map((item) => (
+        {section.rows.map((item) => (
           <DashboardCompactRow
             actionLabel={item.actionLabel}
             detail={item.detail}
-            key={item.ref}
-            label={item.title}
+            key={item.label}
+            label={item.label}
             meta={item.meta}
-            onClick={() => onNavigate?.(item.target)}
+            onClick={item.target ? () => onNavigate?.(item.target as AdminPage) : undefined}
             statusLabel={item.statusLabel}
             tone={item.tone}
           />
         ))}
       </div>
       <div className="admin-overview-panel-footer" aria-hidden="true">
-        <span>Candidate list</span>
+        <span>{section.footer}</span>
         <span>•••</span>
       </div>
     </section>

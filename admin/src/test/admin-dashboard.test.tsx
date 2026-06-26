@@ -1,5 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
+import { ADMIN_TABLE_QUERY_STATE_SCHEMA } from "../app/admin-table-query-state";
+import { OPERATIONS_OVERVIEW_OWNER_MODEL_SCHEMA } from "../app/operations-overview-owner-model";
 import { DashboardPage } from "../pages/dashboard-page";
 
 const WORKSPACE_LAYOUT_STORAGE_KEY = "globalcircle-admin-workspace-layout-v1";
@@ -60,7 +62,7 @@ describe("admin dashboard page", () => {
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-surface")).toBe("panel-frame");
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-owner-mode")).toBe("preview");
     expect(screen.queryByText("Overview metric widget set")).toBeNull();
-    expect(screen.getByLabelText("Operations Overview static health content")).not.toBeNull();
+    expect(screen.getByLabelText("Operations Overview owner model content")).not.toBeNull();
     expect(screen.getByLabelText("Operations Overview evidence surfaces")).not.toBeNull();
     expect(screen.getByLabelText("Platform Metrics evidence panel")).not.toBeNull();
     expect(screen.getByRole("heading", { name: "Platform Metrics" })).not.toBeNull();
@@ -161,6 +163,32 @@ describe("admin dashboard page", () => {
     expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|yaml|edgecred_/i);
     expect(screen.queryByRole("table")).toBeNull();
     expect(screen.queryByRole("button", { name: /Approve|Disable|Archive|Apply/i })).toBeNull();
+  });
+
+  test("renders visible Operations modules from the unified owner/query model", () => {
+    render(<DashboardPage onNavigate={vi.fn()} onRiskCountChange={vi.fn()} />);
+
+    expect(document.querySelectorAll(
+      `[data-owner-model-schema='${OPERATIONS_OVERVIEW_OWNER_MODEL_SCHEMA}']`
+    )).toHaveLength(4);
+    expect(screen.getByLabelText("Operations Overview owner model content")).not.toBeNull();
+    expect(screen.queryByLabelText("Operations Overview static health content")).toBeNull();
+
+    const riskQueue = document.querySelector("#dashboard-risk-queue [data-owner-model-schema]");
+    const reviewCandidates = document.querySelector("#dashboard-review-candidates [data-owner-model-schema]");
+    const healthSummary = document.querySelector("#dashboard-health-summary [data-owner-model-schema]");
+    const nextActions = document.querySelector("#dashboard-next-actions [data-owner-model-schema]");
+
+    expect(healthSummary?.getAttribute("data-section-nav-id")).toBe("health-summary");
+    expect(nextActions?.getAttribute("data-section-nav-id")).toBe("next-actions");
+    expect(healthSummary?.hasAttribute("data-query-schema")).toBe(false);
+    expect(nextActions?.hasAttribute("data-query-schema")).toBe(false);
+    expect(riskQueue?.getAttribute("data-query-schema")).toBe(ADMIN_TABLE_QUERY_STATE_SCHEMA);
+    expect(riskQueue?.getAttribute("data-route-scope")).toBe("dashboard#dashboard-risk-queue");
+    expect(riskQueue?.getAttribute("data-result-window")).toBe("1-2/2");
+    expect(reviewCandidates?.getAttribute("data-query-schema")).toBe(ADMIN_TABLE_QUERY_STATE_SCHEMA);
+    expect(reviewCandidates?.getAttribute("data-route-scope")).toBe("dashboard#dashboard-review-candidates");
+    expect(reviewCandidates?.getAttribute("data-result-window")).toBe("1-2/2");
   });
 
   test("does not render legacy panel hiding, sizing, or drag controls", () => {
