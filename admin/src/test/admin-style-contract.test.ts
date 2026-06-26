@@ -400,16 +400,14 @@ describe("admin style token contract", () => {
     expect(topBarBlock).toContain("max-width: calc(100vw - var(--admin-sidebar-width) - 28px)");
     expect(topBarBlock).toContain("margin: 24px 0 0 28px");
     expect(topBarBlock).toContain("height: var(--admin-statusbar-height)");
-    expect(topBarBlock).toContain("grid-template-columns:");
-    expect(topBarBlock).toContain("var(--admin-topbar-left-zone-width)");
-    expect(topBarBlock).toContain("minmax(var(--admin-topbar-search-min-width), var(--admin-topbar-search-max-width))");
-    expect(topBarBlock).toContain("minmax(16px, 1fr)");
-    expect(topBarBlock).toContain("var(--admin-topbar-right-cluster-width)");
+    expect(topBarBlock).toContain("display: block");
     expect(topBarBlock).toContain("border: 0.5px solid var(--admin-scene-border-strong)");
-    expect(searchBlock).toContain("grid-column: 2");
-    expect(searchBlock).toContain("justify-self: stretch");
-    expect(searchBlock).toContain("width: 100%");
-    expect(searchBlock).toContain("max-width: var(--admin-topbar-search-max-width)");
+    expect(searchBlock).toContain("position: absolute");
+    expect(searchBlock).toContain("top: 9px");
+    expect(searchBlock).toContain("left: var(--admin-topbar-search-left)");
+    expect(searchBlock).toContain("right: var(--admin-topbar-search-right)");
+    expect(searchBlock).toContain("width: auto");
+    expect(searchBlock).toContain("max-width: none");
     expect(searchBlock).toContain("min-width: 0");
     expect(searchBlock).toContain("display: flex");
     expect(searchBlock).toContain("gap: var(--admin-topbar-search-placeholder-gap)");
@@ -420,7 +418,9 @@ describe("admin style token contract", () => {
     expect(searchInputBlock).toContain("overflow: hidden");
     expect(searchInputBlock).toContain("text-overflow: ellipsis");
     expect(searchInputBlock).toContain("white-space: nowrap");
-    expect(actionsBlock).toContain("grid-column: 4");
+    expect(actionsBlock).toContain("position: absolute");
+    expect(actionsBlock).toContain("top: 11px");
+    expect(actionsBlock).toContain("right: 16px");
     expect(actionsBlock).toContain("width: var(--admin-topbar-right-cluster-width)");
     expect(actionsBlock).toContain("var(--admin-topbar-action-pill-width)");
     expect(actionsBlock).toContain("var(--admin-topbar-notification-size)");
@@ -480,6 +480,7 @@ describe("admin style token contract", () => {
     const evidenceChartLineBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-chart-line");
     const evidenceLogListBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-log-list");
     const evidenceLogEntryBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-log-entry");
+    const evidenceLogStatusBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-log-status");
     const evidenceLogTitleBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-log-entry strong");
     const evidenceLogDetailBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-log-entry p");
     const metricStatusChipBlock = selectorBlockFrom(
@@ -505,9 +506,8 @@ describe("admin style token contract", () => {
       "--admin-visual-topbar-width: 1296px",
       "--admin-status-chip-height: 24px",
       "--admin-status-chip-min-width: 72px",
-      "--admin-topbar-left-zone-width: 385px",
-      "--admin-topbar-search-min-width: 230px",
-      "--admin-topbar-search-max-width: 379px",
+      "--admin-topbar-search-left: 385px",
+      "--admin-topbar-search-right: calc(var(--admin-topbar-right-cluster-width) + 32px)",
       "--admin-topbar-right-cluster-width: 424px",
       "--admin-visual-metric-card-width: clamp(240px, 18.75vw, 300px)",
       "--admin-visual-metric-card-height: clamp(120px, 9.375vw, 150px)",
@@ -639,9 +639,14 @@ describe("admin style token contract", () => {
     expect(evidenceChartLineBlock).toContain("stroke-width: var(--admin-evidence-chart-line-weight)");
     expect(evidenceLogListBlock).toContain("grid-template-rows: repeat(3, minmax(0, 1fr))");
     expect(evidenceLogListBlock).toContain("min-height: 0");
-    expect(evidenceLogEntryBlock).toContain("grid-template-columns: 42px 8px minmax(0, 1fr)");
+    expect(evidenceLogEntryBlock).toContain("grid-template-columns: 52px 40px 150px minmax(0, 1fr)");
+    expect(evidenceLogEntryBlock).toContain("border-bottom: 0.5px solid rgba(255, 255, 255, 0.12)");
+    expect(evidenceLogEntryBlock).toContain("background: transparent");
+    expect(evidenceLogEntryBlock).toContain("padding: 0 16px");
     expect(evidenceLogEntryBlock).toContain("min-height: 0");
     expect(evidenceLogEntryBlock).toContain("overflow: hidden");
+    expect(evidenceLogStatusBlock).toContain("color: var(--admin-evidence-tone)");
+    expect(evidenceLogStatusBlock).toContain("text-transform: uppercase");
     expect(evidenceLogTitleBlock).toContain("white-space: nowrap");
     expect(evidenceLogDetailBlock).toContain("line-height: 14px");
     expect(visualPolishStyles).toMatch(/\.admin-evidence-log-entry p\s*\{[\s\S]*-webkit-line-clamp: 1;/m);
@@ -660,6 +665,7 @@ describe("admin style token contract", () => {
     expect(visualPolishStyles).toMatch(/@media \(max-width: 1280px\) and \(min-width: 1025px\) \{[\s\S]*--admin-sidebar-width: 64px;[\s\S]*--admin-visual-metric-card-width: 256px;[\s\S]*--admin-visual-panel-width: 360px;[\s\S]*--admin-visual-evidence-width: 564px;[\s\S]*--admin-visual-topbar-width: 1168px;/m);
     expect(visualPolishStyles).toMatch(/@media \(max-width: 1024px\) \{[\s\S]*--admin-content-padding: 24px;[\s\S]*--admin-visual-metric-card-width: 460px;[\s\S]*--admin-visual-panel-width: 470px;[\s\S]*--admin-visual-evidence-width: 976px;[\s\S]*--admin-visual-topbar-width: 976px;/m);
     expect(visualPolishStyles).toMatch(/@media \(max-width: 1024px\) \{[\s\S]*\.admin-overview-metric-grid,[\s\S]*\.ops-metric-grid\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 460px\)\);/m);
+    expect(visualPolishStyles).toMatch(/@media \(max-width: 1024px\) \{[\s\S]*\.admin-blueprint-page\[data-page="dashboard"\] \[data-module-nav-id="health-summary"\]\s*\{[\s\S]*height: calc\(\(var\(--admin-visual-metric-card-height\) \* 2\) \+ var\(--admin-visual-metric-gap\)\);/m);
     expect(visualPolishStyles).toMatch(/@media \(max-width: 1024px\) \{[\s\S]*\.admin-blueprint-module-board,[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 470px\)\);/m);
   });
 
@@ -685,16 +691,18 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-overview-compact-stack")).toContain("border: 0");
     expect(selectorBlock(".admin-overview-compact-stack")).toContain("background: transparent");
     expect(selectorBlock(".admin-compact-row-list")).toContain("display: grid");
-    expect(selectorBlock(".admin-compact-data-row")).toContain("grid-template-columns: minmax(0, 1fr) auto auto auto");
+    expect(selectorBlock(".admin-compact-data-row")).toContain(
+      "grid-template-columns: minmax(0, 1fr) minmax(42px, auto) minmax(42px, auto) minmax(30px, auto)"
+    );
     expect(selectorBlock(".admin-compact-data-row")).toContain("text-align: left");
     expect(selectorBlock(".admin-compact-data-row-status")).toContain("font-weight: 700");
     expect(selectorBlock(".admin-panel-compact-card")).toContain("display: grid");
-    expect(selectorBlockFrom(styles, ".admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-compact-stack,\n.admin-panel-compact-card")).toContain("grid-template-rows: auto minmax(0, 1fr) auto");
+    expect(selectorBlockFrom(styles, ".admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-compact-stack,\n.admin-panel-compact-card")).toContain("grid-template-rows: auto auto auto");
     expect(selectorBlockFrom(styles, ".admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-compact-stack,\n.admin-panel-compact-card")).toContain("max-height: calc(var(--admin-visual-panel-height) - 44px)");
     expect(styles).not.toContain(".admin-overview-filter-row");
     expect(styles).not.toContain(".admin-risk-filter-chip");
     expect(selectorBlockFrom(styles, ".admin-blueprint-page[data-page=\"dashboard\"] .admin-compact-data-row,\n.admin-blueprint-page[data-page=\"portalRequests\"] .admin-compact-data-row,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-compact-data-row")).toContain("border: 0.5px solid var(--admin-scene-border)");
-    expect(selectorBlockFrom(styles, ".admin-blueprint-page[data-page=\"dashboard\"] .admin-compact-data-row,\n.admin-blueprint-page[data-page=\"portalRequests\"] .admin-compact-data-row,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-compact-data-row")).toContain("grid-template-columns: minmax(0, 1fr) auto auto auto");
+    expect(selectorBlockFrom(styles, ".admin-blueprint-page[data-page=\"dashboard\"] .admin-compact-data-row,\n.admin-blueprint-page[data-page=\"portalRequests\"] .admin-compact-data-row,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-compact-data-row")).toContain("grid-template-columns: minmax(0, 1fr) minmax(42px, auto) minmax(42px, auto) minmax(30px, auto)");
     expect(selectorBlockFrom(styles, ".admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-panel-footer,\n.admin-panel-compact-card .admin-overview-panel-footer")).toContain("justify-content: space-between");
     expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-metric-grid .ops-metric-icon")).toContain("display: none");
     expect(selectorBlock(".admin-blueprint-page[data-page=\"dashboard\"] .admin-blueprint-module-board")).toContain("repeat(3, minmax(0, 1fr))");

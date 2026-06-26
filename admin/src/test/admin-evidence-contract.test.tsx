@@ -144,5 +144,8 @@ describe("admin evidence surface contracts", () => {
       "x0 y0 width-card height36 natural-title live-after-title"
     );
     expect(logSurfaces[0].querySelectorAll(".admin-evidence-log-entry")).toHaveLength(3);
+    const logStatuses = Array.from(logSurfaces[0].querySelectorAll(".admin-evidence-log-status")).map((item) => item.textContent);
+    expect(logStatuses).toHaveLength(3);
+    expect(logStatuses.every((status) => /^(OK|INFO|WARN|ERROR|SAFE)$/.test(status ?? ""))).toBe(true);
   });
 });

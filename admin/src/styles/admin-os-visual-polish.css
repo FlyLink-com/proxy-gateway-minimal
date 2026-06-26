@@ -46,9 +46,8 @@
   --admin-status-chip-height: 24px;
   --admin-status-chip-min-width: 72px;
   --admin-visual-topbar-width: 1296px;
-  --admin-topbar-left-zone-width: 385px;
-  --admin-topbar-search-min-width: 230px;
-  --admin-topbar-search-max-width: 379px;
+  --admin-topbar-search-left: 385px;
+  --admin-topbar-search-right: calc(var(--admin-topbar-right-cluster-width) + 32px);
   --admin-topbar-right-cluster-width: 424px;
   --admin-topbar-action-pill-width: 120px;
   --admin-topbar-notification-size: 34px;
@@ -277,15 +276,8 @@
   min-height: 58px;
   height: var(--admin-statusbar-height);
   margin: 24px 0 0 28px;
-  padding: 0 16px 0 0;
-  display: grid;
-  grid-template-columns:
-    var(--admin-topbar-left-zone-width)
-    minmax(var(--admin-topbar-search-min-width), var(--admin-topbar-search-max-width))
-    minmax(16px, 1fr)
-    var(--admin-topbar-right-cluster-width);
-  align-items: center;
-  gap: 0;
+  padding: 0 16px;
+  display: block;
   border: 0.5px solid var(--admin-scene-border-strong);
   border-radius: 16px;
   background: var(--admin-scene-glass);
@@ -302,10 +294,12 @@
 }
 
 .top-bar-search {
-  grid-column: 2;
-  justify-self: stretch;
-  width: 100%;
-  max-width: var(--admin-topbar-search-max-width);
+  position: absolute;
+  top: 9px;
+  left: var(--admin-topbar-search-left);
+  right: var(--admin-topbar-search-right);
+  width: auto;
+  max-width: none;
   min-width: 0;
   min-height: 40px;
   margin: 0;
@@ -353,7 +347,9 @@
 }
 
 .top-bar-actions {
-  grid-column: 4;
+  position: absolute;
+  top: 11px;
+  right: 16px;
   width: var(--admin-topbar-right-cluster-width);
   display: grid;
   grid-template-columns:
@@ -362,7 +358,6 @@
     var(--admin-topbar-action-pill-width)
     var(--admin-topbar-action-pill-width);
   align-items: center;
-  justify-self: end;
   gap: var(--admin-topbar-action-gap);
 }
 
@@ -714,8 +709,8 @@
   min-height: 0;
   height: 100%;
   max-height: calc(var(--admin-visual-panel-height) - 44px);
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 20px;
+  grid-template-rows: auto auto auto;
+  gap: 14px;
   overflow: hidden;
   padding: 0;
 }
@@ -745,6 +740,9 @@
 .admin-blueprint-page[data-page="portalRequests"] .admin-compact-row-list,
 .admin-blueprint-page[data-page="usageMonitor"] .admin-compact-row-list {
   gap: 20px;
+  grid-auto-rows: 44px;
+  min-height: 108px;
+  overflow: hidden;
 }
 
 .admin-blueprint-page[data-page="dashboard"] .admin-compact-data-row,
@@ -754,7 +752,7 @@
   border: 0.5px solid var(--admin-scene-border);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.08);
-  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(42px, auto) minmax(42px, auto) minmax(30px, auto);
   column-gap: 8px;
   row-gap: 0;
   padding: 7px 10px;
@@ -1380,7 +1378,7 @@
 .admin-evidence-log-list {
   display: grid;
   flex: 1 1 auto;
-  gap: 8px;
+  gap: 0;
   grid-template-rows: repeat(3, minmax(0, 1fr));
   list-style: none;
   margin: 0;
@@ -1389,16 +1387,18 @@
 }
 
 .admin-evidence-log-entry {
-  border: 0.5px solid var(--admin-scene-border);
-  border-radius: 12px;
-  background: var(--admin-scene-glass-muted);
+  border: 0;
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0;
+  background: transparent;
   display: grid;
-  grid-template-columns: 42px 8px minmax(0, 1fr);
+  grid-template-columns: 52px 40px 150px minmax(0, 1fr);
   gap: 8px;
+  align-items: center;
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  padding: 7px 10px;
+  padding: 0 16px;
 }
 
 .admin-evidence-log-time {
@@ -1408,13 +1408,15 @@
   line-height: 16px;
 }
 
-.admin-evidence-log-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--admin-evidence-tone);
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--admin-evidence-tone) 18%, transparent);
-  margin-top: 5px;
+.admin-evidence-log-status {
+  color: var(--admin-evidence-tone);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 12px;
+  min-width: 0;
+  overflow: hidden;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .admin-evidence-log-entry strong {
@@ -1422,12 +1424,12 @@
   display: block;
   font-size: 12px;
   line-height: 16px;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.admin-evidence-log-entry small,
 .admin-evidence-log-entry p {
   color: #cbdaf4;
   font-size: 10px;
@@ -1458,6 +1460,7 @@
     --admin-visual-panel-width: 360px;
     --admin-visual-evidence-width: 574px;
     --admin-visual-topbar-width: 1188px;
+    --admin-topbar-search-left: 353px;
   }
 }
 
@@ -1469,6 +1472,7 @@
     --admin-visual-panel-width: 360px;
     --admin-visual-evidence-width: 564px;
     --admin-visual-topbar-width: 1168px;
+    --admin-topbar-search-left: 347px;
   }
 
   .app-sidebar {
@@ -1510,6 +1514,7 @@
     --admin-visual-panel-width: 470px;
     --admin-visual-evidence-width: 976px;
     --admin-visual-topbar-width: 976px;
+    --admin-topbar-search-left: 290px;
   }
 
   .app-sidebar {
@@ -1523,19 +1528,15 @@
   .top-bar {
     margin: 12px 24px 0;
     max-width: calc(100vw - 48px);
-    grid-template-columns: minmax(0, 1fr) auto;
     top: 12px;
   }
 
   .top-bar-search {
-    grid-column: 1;
-    justify-self: end;
-    width: 100%;
-    max-width: var(--admin-topbar-search-min-width);
+    min-width: 0;
   }
 
   .top-bar-actions {
-    grid-column: 2;
+    right: 16px;
   }
 
   .admin-content {
@@ -1544,6 +1545,10 @@
 
   .admin-blueprint-page-summary {
     padding-left: 0;
+  }
+
+  .admin-blueprint-page[data-page="dashboard"] .admin-blueprint-page-summary {
+    min-height: calc((var(--admin-visual-metric-card-height) * 2) + var(--admin-visual-metric-gap));
   }
 
   .admin-blueprint-lower-evidence-grid {
@@ -1557,6 +1562,11 @@
     grid-template-columns: repeat(2, minmax(0, 460px));
   }
 
+  .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="health-summary"] {
+    height: calc((var(--admin-visual-metric-card-height) * 2) + var(--admin-visual-metric-gap));
+    max-height: calc((var(--admin-visual-metric-card-height) * 2) + var(--admin-visual-metric-gap));
+  }
+
   .admin-blueprint-module-board,
   .admin-blueprint-page[data-page="dashboard"] .admin-blueprint-module-board,
   .admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-board,
@@ -1568,12 +1578,11 @@
 @media (max-width: 620px) {
   .top-bar {
     min-height: 52px;
-    grid-template-columns: 1fr auto;
     padding: 0 10px;
   }
 
   .top-bar-search {
-    display: flex;
+    display: none;
     min-width: 0;
   }
 
@@ -1588,10 +1597,10 @@
   }
 
   .admin-evidence-log-entry {
-    grid-template-columns: 1fr;
+    grid-template-columns: 46px 38px minmax(0, 1fr);
   }
 
-  .admin-evidence-log-dot {
-    display: none;
+  .admin-evidence-log-entry p {
+    grid-column: 3;
   }
 }

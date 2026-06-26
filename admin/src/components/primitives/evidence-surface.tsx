@@ -254,14 +254,15 @@ export function EvidenceLogPanel({
       <EvidencePanelHeader description={description} title={title} />
       <ol className="admin-evidence-log-list" aria-label={`${title} safe event stream`}>
         {entries.map((entry) => (
-          <li className={`admin-evidence-log-entry admin-evidence-tone-${entry.tone ?? "neutral"}`} key={`${entry.time}:${entry.title}`}>
+          <li
+            aria-label={`${entry.time} ${statusLabelForTone(entry.tone)} ${entry.title}. ${entry.detail}. Source: ${entry.source}`}
+            className={`admin-evidence-log-entry admin-evidence-tone-${entry.tone ?? "neutral"}`}
+            key={`${entry.time}:${entry.title}`}
+          >
             <span className="admin-evidence-log-time">{entry.time}</span>
-            <span className="admin-evidence-log-dot" aria-hidden="true" />
-            <div>
-              <strong>{entry.title}</strong>
-              <small>{entry.source}</small>
-              <p>{entry.detail}</p>
-            </div>
+            <span className="admin-evidence-log-status">{statusLabelForTone(entry.tone)}</span>
+            <strong title={entry.source}>{entry.title}</strong>
+            <p>{entry.detail}</p>
           </li>
         ))}
       </ol>
@@ -329,6 +330,22 @@ function formatAxisValue(value: number) {
   }
 
   return value.toFixed(1);
+}
+
+function statusLabelForTone(tone: EvidenceTone = "neutral") {
+  switch (tone) {
+    case "success":
+      return "OK";
+    case "info":
+      return "INFO";
+    case "warning":
+      return "WARN";
+    case "danger":
+      return "ERROR";
+    case "neutral":
+    default:
+      return "SAFE";
+  }
 }
 
 function slugify(value: string) {
