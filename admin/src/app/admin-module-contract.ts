@@ -16,6 +16,7 @@ import {
   pageSubNavigation,
   pageWorkbenchContracts
 } from "./navigation";
+import { ADMIN_PAGINATION_STANDARD } from "./admin-ui-standards";
 
 export type AdminModuleContract = {
   page: AdminPage;
@@ -28,7 +29,7 @@ export type AdminModuleContract = {
   category: WorkbenchCategory;
   containmentStrategy: AdminContentContainmentStrategy;
   manifestId: string;
-  paginationStandardNodeId?: "157:2";
+  paginationStandardId?: typeof ADMIN_PAGINATION_STANDARD.id;
   sourceContract: AdminAppSourceContract;
 };
 
@@ -77,7 +78,7 @@ export function createAdminModuleContracts(
         navId: module.navId,
         owner: navItem.owner,
         ownerMode: navItem.mode,
-        paginationStandardNodeId: module.containmentStrategy === "not-applicable" ? undefined : "157:2",
+        paginationStandardId: module.containmentStrategy === "not-applicable" ? undefined : ADMIN_PAGINATION_STANDARD.id,
         page: blueprint.page,
         pageRole: pageContract.role,
         sourceContract: plugin.catalog.sourceContract,

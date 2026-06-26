@@ -306,14 +306,20 @@ function AccountsResourcesSummary() {
 }
 
 export function PortalRequestsPage({
-  fixturePreviewEnabled = false
+  activeModuleNavId,
+  fixturePreviewEnabled = false,
+  onActiveModuleNavIdChange
 }: {
+  activeModuleNavId?: string;
   fixturePreviewEnabled?: boolean;
+  onActiveModuleNavIdChange?: (navId: string) => void;
 }) {
   return (
     <AdminConsolePageFrame
+      activeModuleNavId={activeModuleNavId}
       blueprint={accountsResourcesBlueprint}
       fixturePreviewEnabled={fixturePreviewEnabled}
+      onActiveModuleNavIdChange={onActiveModuleNavIdChange}
     />
   );
 }

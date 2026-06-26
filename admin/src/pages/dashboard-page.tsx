@@ -27,7 +27,7 @@ export function DashboardPage({
   onRiskCountChange
 }: {
   fixturePreviewEnabled?: boolean;
-  onNavigate?: (page: AdminPage) => void;
+  onNavigate?: (page: AdminPage, navId?: string) => void;
   onRiskCountChange?: (count: number) => void;
 }) {
   useEffect(() => {
@@ -42,7 +42,7 @@ export function DashboardPage({
   );
 }
 
-export function overviewBlueprint(onNavigate?: (page: AdminPage) => void): BlueprintPage {
+export function overviewBlueprint(onNavigate?: (page: AdminPage, navId?: string) => void): BlueprintPage {
   const blueprint: BlueprintPage = {
     page: "dashboard",
     ariaLabel: "Operations Overview page header",
@@ -257,7 +257,7 @@ function OperationsEvidence() {
 function renderOperationsOverviewModule(
   navId: string,
   ownerModel: OperationsOverviewOwnerPageModel,
-  onNavigate?: (page: AdminPage) => void
+  onNavigate?: (page: AdminPage, navId?: string) => void
 ) {
   const section = ownerModel.visibleSections.find((candidate) => candidate.navId === navId);
   if (!section) {
@@ -459,7 +459,7 @@ function OverviewRouteCards({
   onNavigate,
   section
 }: {
-  onNavigate?: (page: AdminPage) => void;
+  onNavigate?: (page: AdminPage, navId?: string) => void;
   section: OperationsOverviewSection;
 }) {
   return (
@@ -480,7 +480,7 @@ function OverviewRouteCards({
             key={item.label}
             label={item.label}
             meta={item.meta}
-            onClick={item.target ? () => onNavigate?.(item.target as AdminPage) : undefined}
+            onClick={item.target ? () => onNavigate?.(item.target as AdminPage, item.targetNavId) : undefined}
             statusLabel={item.statusLabel}
             tone={item.tone}
           />
@@ -498,7 +498,7 @@ function OverviewReviewCandidates({
   onNavigate,
   section
 }: {
-  onNavigate?: (page: AdminPage) => void;
+  onNavigate?: (page: AdminPage, navId?: string) => void;
   section: OperationsOverviewSection;
 }) {
   return (
@@ -519,7 +519,7 @@ function OverviewReviewCandidates({
             key={item.label}
             label={item.label}
             meta={item.meta}
-            onClick={item.target ? () => onNavigate?.(item.target as AdminPage) : undefined}
+            onClick={item.target ? () => onNavigate?.(item.target as AdminPage, item.targetNavId) : undefined}
             statusLabel={item.statusLabel}
             tone={item.tone}
           />

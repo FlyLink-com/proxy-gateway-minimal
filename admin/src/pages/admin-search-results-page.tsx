@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { type KeyboardEvent, useMemo } from "react";
 import { type AdminPage } from "../app/navigation";
 import {
   createAdminSearchResults,
@@ -13,7 +13,7 @@ export function AdminSearchResultsPage({
   onNavigate
 }: {
   searchQuery: string;
-  onNavigate: (page: AdminPage) => void;
+  onNavigate: (page: AdminPage, navId?: string) => void;
 }) {
   const normalizedQuery = normalizeAdminSearchQuery(searchQuery);
   const blueprints = useMemo(() => [
@@ -39,7 +39,7 @@ export function AdminSearchResultsPage({
       return;
     }
 
-    onNavigate(page);
+    onNavigate(page, navId);
 
     if (!targetId) {
       return;
@@ -60,6 +60,18 @@ export function AdminSearchResultsPage({
         });
       }, 0);
     }, 0);
+  }
+
+  function handleSearchResultKeyDown(
+    event: KeyboardEvent<HTMLElement>,
+    result: Parameters<typeof openSearchResult>[0]
+  ) {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+
+    event.preventDefault();
+    openSearchResult(result);
   }
 
   const capabilityLabels = {
@@ -91,8 +103,13 @@ export function AdminSearchResultsPage({
             <article
               className="admin-search-result-card"
               data-capability-state={result.capabilityState}
+              data-clickable={result.page ? "true" : "false"}
               data-result-type={result.type}
               key={result.id}
+              onClick={result.page ? () => openSearchResult(result) : undefined}
+              onKeyDown={result.page ? (event) => handleSearchResultKeyDown(event, result) : undefined}
+              role={result.page ? "button" : undefined}
+              tabIndex={result.page ? 0 : undefined}
             >
               <div className="admin-search-result-main">
                 <div className="admin-search-result-meta">
@@ -112,13 +129,11 @@ export function AdminSearchResultsPage({
                 </div>
               </div>
               {result.page ? (
-                <button
+                <span
                   className="admin-search-result-action"
-                  onClick={() => openSearchResult(result)}
-                  type="button"
                 >
                   Open
-                </button>
+                </span>
               ) : (
                 <span className="admin-search-result-action admin-search-result-action-disabled">
                   Planned

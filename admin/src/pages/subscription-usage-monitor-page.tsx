@@ -311,14 +311,20 @@ function UsageChannelsSummary() {
 }
 
 export function SubscriptionUsageMonitorPage({
-  fixturePreviewEnabled = false
+  activeModuleNavId,
+  fixturePreviewEnabled = false,
+  onActiveModuleNavIdChange
 }: {
+  activeModuleNavId?: string;
   fixturePreviewEnabled?: boolean;
+  onActiveModuleNavIdChange?: (navId: string) => void;
 }) {
   return (
     <AdminConsolePageFrame
+      activeModuleNavId={activeModuleNavId}
       blueprint={usageChannelsBlueprint}
       fixturePreviewEnabled={fixturePreviewEnabled}
+      onActiveModuleNavIdChange={onActiveModuleNavIdChange}
     />
   );
 }

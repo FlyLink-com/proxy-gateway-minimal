@@ -134,8 +134,8 @@ describe("admin dashboard page", () => {
     fireEvent.click(screen.getByRole("button", { name: /handoff/ }));
     fireEvent.click(screen.getByRole("button", { name: /refresh/ }));
 
-    expect(onNavigate).toHaveBeenCalledWith("portalRequests");
-    expect(onNavigate).toHaveBeenCalledWith("usageMonitor");
+    expect(onNavigate).toHaveBeenCalledWith("portalRequests", "account-overview");
+    expect(onNavigate).toHaveBeenCalledWith("usageMonitor", "freshness");
     expect(onRiskCountChange).toHaveBeenCalledWith(0);
     expect(document.body.textContent ?? "").not.toMatch(/subscriptionUrl|Bearer|token=|secret|password|yaml/i);
     expect(screen.queryByRole("table")).toBeNull();

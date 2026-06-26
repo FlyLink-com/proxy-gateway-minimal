@@ -4,7 +4,7 @@ import {
   createAdminSafeReadProjections,
   findAdminSafeReadProjectionIssues
 } from "../app/admin-safe-read-projection";
-import { ADMIN_FIGMA_PAGINATION_STANDARD } from "../design/figma-mirror";
+import { ADMIN_PAGINATION_STANDARD } from "../app/admin-ui-standards";
 import { overviewBlueprint } from "../pages/dashboard-page";
 import { accountsResourcesBlueprint } from "../pages/portal-requests-page";
 import { usageChannelsBlueprint } from "../pages/subscription-usage-monitor-page";
@@ -43,7 +43,7 @@ describe("admin safe read projection", () => {
       defaultPageSize: 10,
       maxPageSize: 100,
       required: true,
-      standardNodeId: ADMIN_FIGMA_PAGINATION_STANDARD.nodeId
+      standardId: ADMIN_PAGINATION_STANDARD.id
     });
     expect(byKey["portalRequests:lifecycle"].query.routeSplitRequired).toBe(true);
     expect(byKey["dashboard:health-summary"].query.pagination.required).toBe(false);

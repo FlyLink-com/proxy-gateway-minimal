@@ -5,6 +5,11 @@ export type AdminPage =
   | "portalRequests"
   | "usageMonitor";
 
+export type AdminPageRouteTarget = {
+  page: AdminPage;
+  navId?: string;
+};
+
 export type NavItem = {
   id: AdminPage;
   label: string;
@@ -137,6 +142,63 @@ export const pageTitles: Record<AdminPage, string> = {
   portalRequests: "Accounts & Resources",
   usageMonitor: "Usage & Channels"
 };
+
+export const adminPageRouteSlugs: Record<AdminPage, string> = {
+  dashboard: "operations",
+  portalRequests: "accounts",
+  usageMonitor: "usage"
+};
+
+const adminPageByRouteSlug = Object.fromEntries(
+  Object.entries(adminPageRouteSlugs).map(([page, slug]) => [slug, page])
+) as Record<string, AdminPage>;
+
+export function parseAdminRouteHash(hash: string): AdminPageRouteTarget | null {
+  const normalizedHash = hash.trim();
+  if (!normalizedHash.startsWith("#/admin")) {
+    return null;
+  }
+
+  const [pageSegment, navSegment] = normalizedHash
+    .replace(/^#\/admin\/?/, "")
+    .split("/")
+    .map((segment) => decodeURIComponent(segment.trim()))
+    .filter(Boolean);
+
+  const page = pageFromRouteSegment(pageSegment);
+  if (!page) {
+    return { page: "dashboard" };
+  }
+
+  const navId = navSegment && isPageSubNavigationId(page, navSegment)
+    ? navSegment
+    : undefined;
+
+  return { navId, page };
+}
+
+export function formatAdminRouteHash(page: AdminPage, navId?: string) {
+  const pageSlug = adminPageRouteSlugs[page];
+  const sectionSuffix = navId && isPageSubNavigationId(page, navId)
+    ? `/${encodeURIComponent(navId)}`
+    : "";
+
+  return `#/admin/${pageSlug}${sectionSuffix}`;
+}
+
+export function isPageSubNavigationId(page: AdminPage, navId: string) {
+  return pageSubNavigation[page].some((item) => item.id === navId);
+}
+
+function pageFromRouteSegment(segment?: string): AdminPage | undefined {
+  if (!segment) {
+    return undefined;
+  }
+  if (segment === "dashboard" || segment === "portalRequests" || segment === "usageMonitor") {
+    return segment;
+  }
+  return adminPageByRouteSlug[segment];
+}
 
 export const pageContexts: Record<AdminPage, { eyebrow: string; description: string }> = {
   dashboard: {

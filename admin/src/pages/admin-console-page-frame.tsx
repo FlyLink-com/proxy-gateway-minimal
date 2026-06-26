@@ -23,11 +23,15 @@ type OpenModuleEventDetail = {
 };
 
 export function AdminConsolePageFrame({
+  activeModuleNavId: controlledActiveModuleNavId,
   blueprint,
-  fixturePreviewEnabled = false
+  fixturePreviewEnabled = false,
+  onActiveModuleNavIdChange
 }: {
+  activeModuleNavId?: string;
   blueprint: BlueprintPage;
   fixturePreviewEnabled?: boolean;
+  onActiveModuleNavIdChange?: (navId: string) => void;
 }) {
   const subNavigation = pageSubNavigation[blueprint.page];
   const pageContract = getAdminPageContract(blueprint.page);
@@ -36,11 +40,19 @@ export function AdminConsolePageFrame({
   const usesRoutedModules = blueprint.page !== "dashboard" && !usesOverviewModules;
   const moduleNavSignature = blueprint.modules.map((module) => module.navId).join("|");
   const firstModuleNavId = subNavigation[0]?.id ?? blueprint.modules[0]?.navId ?? "";
-  const [activeModuleNavId, setActiveModuleNavId] = useState(firstModuleNavId);
+  const [uncontrolledActiveModuleNavId, setUncontrolledActiveModuleNavId] = useState(firstModuleNavId);
+  const activeModuleNavId = controlledActiveModuleNavId ?? uncontrolledActiveModuleNavId;
+
+  function setActiveModuleNavId(navId: string) {
+    setUncontrolledActiveModuleNavId(navId);
+    onActiveModuleNavIdChange?.(navId);
+  }
 
   useEffect(() => {
-    setActiveModuleNavId(firstModuleNavId);
-  }, [blueprint.page, firstModuleNavId, moduleNavSignature]);
+    if (controlledActiveModuleNavId === undefined) {
+      setUncontrolledActiveModuleNavId(firstModuleNavId);
+    }
+  }, [blueprint.page, controlledActiveModuleNavId, firstModuleNavId, moduleNavSignature]);
 
   const moduleRestoreTargets = useMemo(() => blueprint.modules.map((module) => {
     const navItem = subNavigation.find((item) => item.id === module.navId);
@@ -76,7 +88,13 @@ export function AdminConsolePageFrame({
     fixturePreviewEnabled,
     subNavigation
   });
-  const routedPanelViewModels = usesRoutedModules
+  const hasExplicitSectionRoute = controlledActiveModuleNavId !== undefined;
+  const opensRoutedSection = usesOverviewModules && !overviewModuleIds.includes(activeModuleNavId);
+  const routedPanelViewModels = hasExplicitSectionRoute
+    ? panelViewModels.filter((panel) => panel.navId === activeModuleNavId)
+    : opensRoutedSection
+    ? panelViewModels.filter((panel) => panel.navId === activeModuleNavId)
+    : usesRoutedModules
     ? panelViewModels.filter((panel) => panel.navId === activeModuleNavId)
     : usesOverviewModules
       ? panelViewModels.filter((panel) => overviewModuleIds.includes(panel.navId))
@@ -106,7 +124,7 @@ export function AdminConsolePageFrame({
         </section>
       ) : null}
 
-      {usesRoutedModules ? (
+      {usesRoutedModules || hasExplicitSectionRoute || opensRoutedSection ? (
         <PageSubNav
           activeId={activeModuleNavId}
           ariaLabel={`${blueprint.title} sections`}

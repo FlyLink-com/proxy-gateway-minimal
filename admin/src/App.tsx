@@ -3,7 +3,11 @@ import {
   ADMIN_FIXTURE_PREVIEW_DATA,
   isAdminFixturePreviewEnabled
 } from "./app/admin-fixture-preview";
-import { type AdminPage } from "./app/navigation";
+import {
+  formatAdminRouteHash,
+  parseAdminRouteHash,
+  type AdminPage
+} from "./app/navigation";
 import { AdminLayout } from "./components/layout/admin-layout";
 import {
   loadAdminSession
@@ -34,8 +38,12 @@ function routeFromHash(): AppRoute {
 }
 
 export function App() {
+  const initialAdminRoute = parseAdminRouteHash(window.location.hash);
   const [route, setRoute] = useState<AppRoute>(() => routeFromHash());
-  const [activePage, setActivePage] = useState<AdminPage>("dashboard");
+  const [activePage, setActivePage] = useState<AdminPage>(initialAdminRoute?.page ?? "dashboard");
+  const [activeSectionByPage, setActiveSectionByPage] = useState<Partial<Record<AdminPage, string>>>(() => (
+    initialAdminRoute?.navId ? { [initialAdminRoute.page]: initialAdminRoute.navId } : {}
+  ));
   const [search, setSearch] = useState("");
   const [riskNotificationCount, setRiskNotificationCount] = useState(0);
   const [adminSession, setAdminSession] = useState(() => loadAdminSession());
@@ -48,7 +56,22 @@ export function App() {
 
   useEffect(() => {
     function syncRoute() {
-      setRoute(routeFromHash());
+      const nextRoute = routeFromHash();
+      const nextAdminRoute = parseAdminRouteHash(window.location.hash);
+      setRoute(nextRoute);
+      if (nextRoute === "admin" && nextAdminRoute) {
+        setActivePage(nextAdminRoute.page);
+        setActiveSectionByPage((current) => {
+          const next = { ...current };
+          if (nextAdminRoute.navId) {
+            next[nextAdminRoute.page] = nextAdminRoute.navId;
+          } else {
+            delete next[nextAdminRoute.page];
+          }
+          return next;
+        });
+        setSearch("");
+      }
     }
     window.addEventListener("hashchange", syncRoute);
     return () => window.removeEventListener("hashchange", syncRoute);
@@ -69,9 +92,19 @@ export function App() {
     setRoute("admin");
   }
 
-  function navigateAdminPage(page: AdminPage) {
+  function navigateAdminPage(page: AdminPage, navId?: string) {
     setActivePage(page);
+    setActiveSectionByPage((current) => {
+      const next = { ...current };
+      if (navId) {
+        next[page] = navId;
+      } else {
+        delete next[page];
+      }
+      return next;
+    });
     setSearch("");
+    window.location.hash = formatAdminRouteHash(page, navId);
   }
 
   if (route === "site") {
@@ -112,16 +145,31 @@ export function App() {
           searchQuery={search}
           onNavigate={navigateAdminPage}
         />
-      ) : renderPage(activePage, navigateAdminPage, setRiskNotificationCount, fixturePreviewEnabled)}
+      ) : renderPage(
+        activePage,
+        navigateAdminPage,
+        setRiskNotificationCount,
+        fixturePreviewEnabled,
+        activeSectionByPage[activePage],
+        (navId) => {
+          setActiveSectionByPage((current) => ({
+            ...current,
+            [activePage]: navId
+          }));
+          window.location.hash = formatAdminRouteHash(activePage, navId);
+        }
+      )}
     </AdminLayout>
   );
 }
 
 function renderPage(
   activePage: AdminPage,
-  onNavigate: (page: AdminPage) => void,
+  onNavigate: (page: AdminPage, navId?: string) => void,
   onRiskCountChange: (count: number) => void,
-  fixturePreviewEnabled: boolean
+  fixturePreviewEnabled: boolean,
+  activeModuleNavId?: string,
+  onActiveModuleNavIdChange?: (navId: string) => void
 ) {
   switch (activePage) {
     case "dashboard":
@@ -133,9 +181,21 @@ function renderPage(
         />
       );
     case "portalRequests":
-      return <PortalRequestsPage fixturePreviewEnabled={fixturePreviewEnabled} />;
+      return (
+        <PortalRequestsPage
+          activeModuleNavId={activeModuleNavId}
+          fixturePreviewEnabled={fixturePreviewEnabled}
+          onActiveModuleNavIdChange={onActiveModuleNavIdChange}
+        />
+      );
     case "usageMonitor":
-      return <SubscriptionUsageMonitorPage fixturePreviewEnabled={fixturePreviewEnabled} />;
+      return (
+        <SubscriptionUsageMonitorPage
+          activeModuleNavId={activeModuleNavId}
+          fixturePreviewEnabled={fixturePreviewEnabled}
+          onActiveModuleNavIdChange={onActiveModuleNavIdChange}
+        />
+      );
   }
 }
 

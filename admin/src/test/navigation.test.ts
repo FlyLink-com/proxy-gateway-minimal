@@ -4,9 +4,11 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "../App";
 import {
   consoleSections,
+  formatAdminRouteHash,
   navItems,
   navSections,
   pageContexts,
+  parseAdminRouteHash,
   pageSubNavigation,
   pageTitles,
   pageWorkbenchContracts
@@ -109,6 +111,28 @@ describe("admin navigation", () => {
       .toMatch(/collection delay/i);
     expect(pageSubNavigation.usageMonitor.map((item) => item.description).join(" "))
       .not.toMatch(/subscription lifecycle|order pause|archive candidate|quota ownership/i);
+  });
+
+  test("formats and parses page section deep links for Admin owner pages", () => {
+    expect(formatAdminRouteHash("portalRequests", "quota-usage")).toBe("#/admin/accounts/quota-usage");
+    expect(formatAdminRouteHash("usageMonitor", "collection-anomalies")).toBe("#/admin/usage/collection-anomalies");
+    expect(formatAdminRouteHash("dashboard")).toBe("#/admin/operations");
+
+    expect(parseAdminRouteHash("#/admin/accounts/quota-usage")).toEqual({
+      navId: "quota-usage",
+      page: "portalRequests"
+    });
+    expect(parseAdminRouteHash("#/admin/usage/collection-anomalies")).toEqual({
+      navId: "collection-anomalies",
+      page: "usageMonitor"
+    });
+    expect(parseAdminRouteHash("#/admin/operations")).toEqual({
+      page: "dashboard"
+    });
+    expect(parseAdminRouteHash("#/admin/accounts/not-a-section")).toEqual({
+      page: "portalRequests"
+    });
+    expect(parseAdminRouteHash("#/portal")).toBeNull();
   });
 
   test("defines page contracts for front-end ownership and decision boundaries", () => {
@@ -308,6 +332,79 @@ describe("admin navigation", () => {
     expect(screen.queryByRole("button", { name: "Collection Freshness hide module" })).toBeNull();
     expect(screen.queryByLabelText("Open navigation library")).toBeNull();
     expect(screen.getByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  test("opens page-owned sections from Admin deep links without restoring AppLibrary behavior", async () => {
+    saveAdminSession({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "admin_console_ref"
+    });
+    const fetcher = vi.fn(async () => jsonResponse({}));
+    vi.stubGlobal("fetch", fetcher);
+    window.location.hash = "#/admin/accounts/quota-usage";
+
+    render(createElement(App));
+
+    expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
+    expect(screen.getByRole("navigation", { name: "Accounts & Resources sections" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Quota & Usage" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
+    expect(screen.queryByRole("heading", { name: "Account Directory" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Resources & Orders" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Lifecycle" })).toBeNull();
+    expect(screen.getByLabelText("Quota and Usage static operator content")).not.toBeNull();
+    expect(screen.queryByLabelText("Open navigation library")).toBeNull();
+    expect(screen.queryByText("Module Library")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Account Directory" }));
+
+    expect(window.location.hash).toBe("#/admin/accounts/account-overview");
+    expect(screen.getByRole("button", { name: "Account Directory" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();
+    expect(screen.queryByRole("heading", { name: "Quota & Usage" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Resources & Orders" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Lifecycle" })).toBeNull();
+
+    fireEvent.click(within(screen.getByLabelText("Workspace sidebar")).getByRole("button", {
+      name: "Accounts & Resources"
+    }));
+
+    expect(window.location.hash).toBe("#/admin/accounts");
+    expect(screen.queryByRole("navigation", { name: "Accounts & Resources sections" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Account Directory" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Resources & Orders" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Lifecycle" })).not.toBeNull();
+    expect(screen.queryByRole("heading", { name: "Quota & Usage" })).toBeNull();
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  test("opens system search results as page section routes", async () => {
+    saveAdminSession({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "admin_console_ref"
+    });
+    const fetcher = vi.fn(async () => jsonResponse({}));
+    vi.stubGlobal("fetch", fetcher);
+
+    render(createElement(App));
+
+    expect(await screen.findByRole("heading", { name: "Operations Overview" })).not.toBeNull();
+    const topSearch = screen.getByRole("search", { name: "Search Admin Console" });
+    fireEvent.change(within(topSearch).getByLabelText("Search users, orders, channels, cases, or events"), {
+      target: { value: "quota" }
+    });
+
+    expect(screen.getByRole("heading", { name: "Search Results" })).not.toBeNull();
+    fireEvent.click(screen.getByRole("heading", { name: "Quota & Usage" }));
+
+    expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
+    expect(window.location.hash).toBe("#/admin/accounts/quota-usage");
+    expect(screen.getByRole("button", { name: "Quota & Usage" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { name: "Quota & Usage" })).not.toBeNull();
+    expect(screen.queryByRole("heading", { name: "Search Results" })).toBeNull();
+    expect(screen.queryByLabelText("Open navigation library")).toBeNull();
+    expect(screen.queryByText("Module Library")).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
   });
 

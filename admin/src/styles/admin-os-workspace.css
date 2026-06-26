@@ -856,6 +856,20 @@
   padding: 14px;
 }
 
+.admin-search-result-card[data-clickable="true"] {
+  cursor: pointer;
+}
+
+.admin-search-result-card[data-clickable="true"]:focus-visible {
+  outline: 2px solid var(--admin-accent);
+  outline-offset: 2px;
+}
+
+.admin-search-result-card[data-clickable="true"]:hover .admin-search-result-action {
+  border-color: var(--admin-accent);
+  color: var(--admin-accent);
+}
+
 .admin-search-result-main {
   display: grid;
   min-width: 0;

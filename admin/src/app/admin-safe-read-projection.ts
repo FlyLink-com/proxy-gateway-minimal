@@ -21,7 +21,7 @@ import {
   type PageWorkbenchRole
 } from "./navigation";
 import { type AdminUiSurfaceKey } from "./admin-ui-reference-model";
-import { ADMIN_FIGMA_PAGINATION_STANDARD } from "../design/figma-mirror";
+import { ADMIN_PAGINATION_STANDARD } from "./admin-ui-standards";
 
 export const ADMIN_SAFE_READ_PROJECTION_SCHEMA = "admin-safe-read-projection/v1";
 
@@ -33,7 +33,7 @@ export type AdminSafeReadPagination = {
   defaultPageSize: 10;
   maxPageSize: 100;
   required: boolean;
-  standardNodeId?: typeof ADMIN_FIGMA_PAGINATION_STANDARD.nodeId;
+  standardId?: typeof ADMIN_PAGINATION_STANDARD.id;
 };
 
 export type AdminSafeReadQueryModel = {
@@ -208,11 +208,11 @@ export function findAdminSafeReadProjectionIssues(
       ));
     }
 
-    if (projection.query.pagination.required && projection.query.pagination.standardNodeId !== ADMIN_FIGMA_PAGINATION_STANDARD.nodeId) {
+    if (projection.query.pagination.required && projection.query.pagination.standardId !== ADMIN_PAGINATION_STANDARD.id) {
       issues.push(issue(
         "missing-pagination-standard",
         projection,
-        "Long or split modules must be attached to the Figma pagination standard."
+        "Long or split modules must be attached to the Admin pagination standard."
       ));
     }
 
@@ -227,10 +227,10 @@ function createQueryModel(containmentStrategy: AdminContentContainmentStrategy):
     boundedScrollRequired: containmentStrategy === "bounded-internal-scroll",
     filterKeys: ["state", "tone", "owner", "route"],
     pagination: {
-      defaultPageSize: 10,
-      maxPageSize: 100,
+      defaultPageSize: ADMIN_PAGINATION_STANDARD.defaultPageSize,
+      maxPageSize: ADMIN_PAGINATION_STANDARD.maxPageSize,
       required: requiresContainedData,
-      standardNodeId: requiresContainedData ? ADMIN_FIGMA_PAGINATION_STANDARD.nodeId : undefined
+      standardId: requiresContainedData ? ADMIN_PAGINATION_STANDARD.id : undefined
     },
     routeSplitRequired: containmentStrategy === "route-split",
     sortKeys: ["updatedAt", "state", "safeRef"]

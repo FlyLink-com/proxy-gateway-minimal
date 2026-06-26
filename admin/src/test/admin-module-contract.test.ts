@@ -5,8 +5,8 @@ import {
   findAdminModuleContractIssues
 } from "../app/admin-module-contract";
 import { getAdminAppMap } from "../app/admin-app-manifest";
+import { ADMIN_PAGINATION_STANDARD } from "../app/admin-ui-standards";
 import { pageSubNavigation, pageWorkbenchContracts } from "../app/navigation";
-import { ADMIN_FIGMA_PAGINATION_STANDARD } from "../design/figma-mirror";
 import { overviewBlueprint } from "../pages/dashboard-page";
 import { accountsResourcesBlueprint } from "../pages/portal-requests-page";
 import { usageChannelsBlueprint } from "../pages/subscription-usage-monitor-page";
@@ -62,12 +62,12 @@ describe("admin module contract", () => {
       expect(contract.sourceContract.transformBoundary).toBe("display-only");
       expect([
         "not-applicable",
-        ...ADMIN_FIGMA_PAGINATION_STANDARD.containmentStrategies
+        ...ADMIN_PAGINATION_STANDARD.containmentStrategies
       ]).toContain(contract.containmentStrategy);
       if (contract.containmentStrategy === "not-applicable") {
-        expect(contract.paginationStandardNodeId).toBeUndefined();
+        expect(contract.paginationStandardId).toBeUndefined();
       } else {
-        expect(contract.paginationStandardNodeId).toBe(ADMIN_FIGMA_PAGINATION_STANDARD.nodeId);
+        expect(contract.paginationStandardId).toBe(ADMIN_PAGINATION_STANDARD.id);
       }
     });
   });

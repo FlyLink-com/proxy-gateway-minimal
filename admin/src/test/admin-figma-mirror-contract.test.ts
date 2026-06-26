@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, test } from "vitest";
 import { ADMIN_UI_CONTRACT } from "../app/admin-ui-contract";
@@ -28,11 +28,41 @@ import {
 
 const tokenCss = readFileSync(resolve("src/styles/tokens.css"), "utf8").replace(/\r\n?/g, "\n");
 
+const runtimeSourceRoots = [
+  "src/app",
+  "src/components",
+  "src/pages"
+] as const;
+
+function listSourceFiles(directory: string): string[] {
+  return readdirSync(resolve(directory)).flatMap((entry) => {
+    const entryPath = `${directory}/${entry}`;
+    const stats = statSync(resolve(entryPath));
+    if (stats.isDirectory()) {
+      return listSourceFiles(entryPath);
+    }
+    return /\.(?:ts|tsx)$/.test(entry) ? [entryPath] : [];
+  });
+}
+
 function surfacePath(surface: string) {
   return surface.split("#")[0];
 }
 
 describe("admin Figma mirror contract", () => {
+  test("keeps Figma mirror metadata out of runtime Admin source", () => {
+    const offendingImports = runtimeSourceRoots
+      .flatMap((root) => listSourceFiles(root))
+      .flatMap((filePath) => {
+        const source = readFileSync(resolve(filePath), "utf8").replace(/\r\n?/g, "\n");
+        return source.match(/from\s+["'][^"']*design\/figma-(?:mirror|parity)["']/)
+          ? [filePath]
+          : [];
+      });
+
+    expect(offendingImports).toEqual([]);
+  });
+
   test("declares the current Figma source and required mirror frames", () => {
     expect(ADMIN_FIGMA_MIRROR_CONTRACT_VERSION).toBe("admin-figma-mirror/v1");
     expect(ADMIN_FIGMA_FILE_KEY).toBe("NefQiIMOPIBU28TIYcwQFE");

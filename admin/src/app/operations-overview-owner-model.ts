@@ -33,6 +33,7 @@ export type OperationsOverviewRow = {
   meta: string;
   statusLabel: string;
   target?: AdminPage;
+  targetNavId?: string;
   tone: MetricTone;
 };
 
@@ -147,6 +148,7 @@ const OPERATIONS_OVERVIEW_SECTIONS: Record<string, {
         meta: "Due Now",
         statusLabel: "Ready",
         target: "portalRequests",
+        targetNavId: "account-overview",
         tone: "success"
       },
       {
@@ -156,6 +158,7 @@ const OPERATIONS_OVERVIEW_SECTIONS: Record<string, {
         meta: "Due 8m",
         statusLabel: "Queued",
         target: "usageMonitor",
+        targetNavId: "freshness",
         tone: "info"
       }
     ],
@@ -171,6 +174,7 @@ const OPERATIONS_OVERVIEW_SECTIONS: Record<string, {
         meta: "Age 14m",
         statusLabel: "Review",
         target: "usageMonitor",
+        targetNavId: "collection-anomalies",
         tone: "warning"
       },
       {
@@ -180,6 +184,7 @@ const OPERATIONS_OVERVIEW_SECTIONS: Record<string, {
         meta: "Age 1h",
         statusLabel: "Watch",
         target: "portalRequests",
+        targetNavId: "quota-usage",
         tone: "warning"
       }
     ],
