@@ -1,6 +1,6 @@
 # Admin Console Visual Protocol
 
-Last updated: 2026-06-24, America/Los_Angeles.
+Last updated: 2026-06-25, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-82 under GCC-81 / GCC-42
@@ -68,16 +68,19 @@ dashboard, a template collage, or an unfinished browser-OS experiment.
 
 ## Current Accepted Desktop Baseline
 
-The current desktop source is `06 AI Exploration` in the canonical Figma file:
+The current desktop source is the clean Figma baseline file
+`NefQiIMOPIBU28TIYcwQFE`:
 
 | Page | Node | Role |
 | --- | --- | --- |
-| `Operations Overview` | `373:716` | Current Visual Polish source. |
-| `Accounts & Resources` | `373:866` | Current Visual Polish source. |
-| `Usage & Channels` | `373:1016` | Current Visual Polish source. |
+| `Operations Overview` | `24:5` | Current route baseline card. |
+| `Accounts & Resources` | `24:35` | Current route baseline card. |
+| `Usage & Channels` | `24:65` | Current route baseline card. |
 
-These frames supersede the older `99:2`, `104:2`, and `104:226` layout drafts
-for implementation. The old frames remain useful as history only.
+These cards supersede the older `373:*`, `99:*`, `104:*`, `365:*`, and
+`501:*` layout/rule drafts for implementation. Old frames remain useful as
+history only unless a rule is copied into the clean baseline and accepted
+there.
 
 Current geometry contract:
 
@@ -99,7 +102,7 @@ state or review mode explicitly activates them.
 
 ## Baseline Scope And Reuse Boundary
 
-The three Visual Polish pages are the accepted desktop page baseline, not a
+The three clean-baseline route cards are the accepted desktop page baseline, not a
 completed universal component library. Treat them as follows:
 
 | Layer | Reuse rule |
@@ -185,7 +188,7 @@ navigation, active app state, or primary metrics, not every piece of copy.
 
 ## Trend And Curve Protocol
 
-The current Visual Polish curves are placeholders for evidence density, not a
+The current clean-baseline curves are placeholders for evidence density, not a
 completed data-visualization contract. A trend, sparkline, or chart can move
 from visual placeholder to product UI only when these fields are defined:
 

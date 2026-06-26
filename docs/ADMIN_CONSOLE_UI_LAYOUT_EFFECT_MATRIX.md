@@ -1,6 +1,6 @@
 # Admin Console UI Layout And Effect Matrix
 
-Last updated: 2026-06-24, America/Los_Angeles.
+Last updated: 2026-06-25, America/Los_Angeles.
 
 > Status:
 > - Type: UI layout, visual effect, and visual QA matrix
@@ -16,27 +16,28 @@ The content matrix decides what each page and module may say. This matrix
 decides how those modules should be arranged, how the interface should feel,
 and how visual QA should judge the next Admin UI design pass.
 
-The target is a structured Admin workbench aligned with the canonical Figma
-handoff and React page contracts. Reuse the approved token, density, geometry,
-and component rules from the earlier Admin OS exploration where they improve
-quality, but do not reintroduce the older App Library / browser-OS experiment
-as the current implementation target.
+The target is a structured Admin workbench aligned with the clean Figma
+baseline and React page contracts. Reuse only the token, density, geometry,
+and component rules that have been copied into the active baseline. Do not
+reintroduce the older App Library / browser-OS experiment as the current
+implementation target.
 
 ## Current Visual Source
 
-The 2026-06-24 Figma pass confirmed `06 AI Exploration` as the current desktop
-visual source. The three accepted Visual Polish frames are:
+The 2026-06-25 Figma pass promoted the clean baseline file
+`NefQiIMOPIBU28TIYcwQFE` as the current visual source. The three accepted route
+baseline cards are:
 
 | Page | Current node | Current role |
 | --- | --- | --- |
-| `Operations Overview` | `373:716` | Current desktop visual/layout source. |
-| `Accounts & Resources` | `373:866` | Current desktop visual/layout source. |
-| `Usage & Channels` | `373:1016` | Current desktop visual/layout source. |
+| `Operations Overview` | `24:5` | Current route baseline card. |
+| `Accounts & Resources` | `24:35` | Current route baseline card. |
+| `Usage & Channels` | `24:65` | Current route baseline card. |
 
-The earlier `99:2`, `104:2`, and `104:226` drafts are superseded. The `365:8`,
-`365:52`, and `365:96` AI Candidate Baseline frames remain reference only.
-Implementation should not continue from those older frames unless a review asks
-for historical comparison.
+The earlier `373:*`, `99:*`, `104:*`, `365:*`, and `501:*` frames are
+superseded lineage. Implementation should not continue from those older frames
+unless a review copies the needed rule into the clean baseline and accepts it
+there.
 
 The follow-up design-evidence frames remain useful for component/state and
 responsive strategy, but they do not override the Visual Polish geometry:
@@ -47,9 +48,9 @@ responsive strategy, but they do not override the Visual Polish geometry:
 
 | Priority | Work item | Acceptance |
 | --- | --- | --- |
-| 1 | Reverse-standardize docs and React/CSS from `373:716`, `373:866`, `373:1016`. | Current layout, density, and visible/hidden content rules are documented before code polish. |
-| 2 | Implement visual parity from the Visual Polish geometry. | Browser output matches ShellRail, TopBar, metric row, primary panels, and lower evidence row. |
-| 3 | Preserve component/state contracts. | `115:2` remains the state-placement reference; state surfaces are hidden until a real state mode needs them. |
+| 1 | Reverse-standardize docs and React/CSS from `24:5`, `24:35`, and `24:65`. | Current layout, density, and visible/hidden content rules are documented before code polish. |
+| 2 | Implement visual parity from the clean baseline geometry. | Browser output matches ShellRail, TopBar, metric row, primary panels, and lower evidence row. |
+| 3 | Preserve component/state contracts. | `02 Component Contract` in the clean baseline is the active state-placement reference; state surfaces are hidden until a real state mode needs them. |
 | 4 | Collect visual QA evidence after implementation. | Browser screenshots at desktop and narrow widths prove no overlap, clipped text, nested-card clutter, or accidental wrapping. |
 | 5 | Keep Figma-to-code mapping aligned. | `117:2` maps Figma component sets to React surfaces, CSS/token responsibility, and next gates without authorizing backend or runtime work. |
 
@@ -172,7 +173,7 @@ law while preserving the visual quality improvements that should be shared.
 | --- | --- | --- | --- |
 | App background | Calm technical workspace. | Dark blue gradient/glass shell with subtle depth; no decorative texture competing with data. | Visible drafting grid, decorative blobs, bokeh, radial empty-state decoration. |
 | Shell/status bar | Stable protected console context. | ShellRail plus TopBar; compact route/search/operator controls. | Search dominating the page, crowded button clusters, page-specific business tables. |
-| Page header | Hidden in current Visual Polish pages. | Route identity lives in ShellRail and TopBar; explanatory titles stay in docs or state feedback. | Hero-scale typography inside workbench pages. |
+| Page header | Hidden in current clean-baseline pages. | Route identity lives in ShellRail and TopBar; explanatory titles stay in docs or state feedback. | Hero-scale typography inside workbench pages. |
 | Panels | Crisp one-level surfaces. | 8px radius, 1px token border, restrained low shadow. | Nested floating cards, muddy multi-layer shadows, heavy glass effects. |
 | Metric cards | Scan-first summary. | Strong value, short label, semantic tone, bounded trend slot. | Overdecorated icon gradients, huge numbers that break layout, fake trends or unlabeled curves. |
 | Tables | Operational comparison. | Dense rows, safe refs, clear headers, stable overflow behavior. | Spreadsheet clutter, clipped refs, hidden columns without mobile strategy. |
@@ -213,7 +214,7 @@ checks; it is not a substitute for browser screenshots.
 
 | Axis | Evidence to collect | Pass condition |
 | --- | --- | --- |
-| Figma page mirror | `06 AI Exploration` Visual Polish frames `373:716`, `373:866`, `373:1016`, plus component mirror/reference pages. | Page structure and shared primitives match the matrix; no older one-page file or superseded draft is used as current source. |
+| Figma page mirror | Clean baseline route cards `24:5`, `24:35`, `24:65`, plus `01 Design Rules V1-Polish`, `02 Component Contract`, `04 Figma-to-React Mapping`, and `90 Evidence Gates`. | Page structure and shared primitives match the matrix; no older one-page file or superseded draft is used as current source. |
 | DOM grammar | `data-page-id`, `data-layout`, `data-density`, `data-ui-role`, `data-mobile-projection`, `data-figma-component`. | Rendered pages expose the expected grammar hooks for QA. |
 | Desktop screenshot | `1600px` and a common desktop width such as `1366px`. | No overlap, no draft chrome, no nested-card visual clutter, no wide stretching. |
 | Narrow screenshot | `1024px` and `768px`. | Sections collapse predictably and tables remain readable. |

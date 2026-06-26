@@ -1,11 +1,13 @@
 # Admin Console Overview Figma Spec
 
-Last updated: 2026-06-21, America/Los_Angeles.
+Last updated: 2026-06-25, America/Los_Angeles.
 
 > Status:
-> - Source Figma file:
+> - Archived source Figma file:
 >   <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19>
-> - Current target frame: `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024` (`373:716`)
+> - Current target frame: `Product Baseline / Operations Overview` (`24:5`) in
+>   `NefQiIMOPIBU28TIYcwQFE`
+> - Archived target frame: `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024` (`373:716`)
 > - Historical source frame: `01 Operations Overview / 1600x1024`
 > - Risk: C for this design spec; follow-up Admin UI code work is B
 > - Production impact: None
@@ -15,10 +17,11 @@ Last updated: 2026-06-21, America/Los_Angeles.
 >   customer-data actions
 
 This document preserves the concept-image design intent for the `总览 / 运营控制台`
-first screen. The current implementation target is the 2026-06-24 Visual Polish
-frame `373:716`; the older `01 Operations Overview / 1600x1024` frame remains
-lineage evidence for ownership and content boundaries only. The broader Figma
-mirror contract and the current connector evidence are
+first screen as historical rationale. The current implementation target is the
+clean baseline route card `24:5`; the 2026-06-24 Visual Polish frame `373:716`
+and the older `01 Operations Overview / 1600x1024` frame remain lineage
+evidence for ownership and content boundaries only. The broader Figma mirror
+contract and the current connector evidence are
 tracked in `docs/ADMIN_CONSOLE_FIGMA_MIRROR.md` and
 `admin/src/design/figma-mirror.ts`.
 

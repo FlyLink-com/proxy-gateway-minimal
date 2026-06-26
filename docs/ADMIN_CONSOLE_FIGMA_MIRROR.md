@@ -4,9 +4,9 @@ Last updated: 2026-06-25, America/Los_Angeles.
 
 > Status:
 > - Source Figma file:
+>   <https://www.figma.com/design/NefQiIMOPIBU28TIYcwQFE/GlobalCircle-AI-Admin-UI-Baseline---2026-06-25>
+> - Archived source handoff:
 >   <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19>
-> - Clean baseline Figma project:
->   <https://www.figma.com/design/NefQiIMOPIBU28TIYcwQFE>
 > - Local contract: `admin/src/design/figma-mirror.ts`
 > - Risk: C for this mirror document; follow-up Admin UI code work is B
 > - Production impact: None
@@ -15,454 +15,127 @@ Last updated: 2026-06-25, America/Los_Angeles.
 >   credential, subscription URL, raw config/log/env, SQLite row, or
 >   customer-data actions
 
-This document is the bridge between the Figma canvas, the React Admin console,
-and visual QA. The mirror is not a second product surface. It is a reviewable
-design artifact that must stay aligned with the local Admin page contracts.
-For the current frontend design handoff entrypoint, active Figma frame, copy
-pack, React implementation targets, and validation checklist, use
-`docs/ADMIN_CONSOLE_FRONTEND_DESIGN_INDEX.md`.
-For page layout, visual hierarchy, responsive evidence, and browser screenshot
+This document is the current bridge between the Figma baseline, the React Admin
+console, and visual QA. The mirror is not a second product surface. It records
+which Figma source is allowed to drive implementation, which older material is
+archive-only, and which local code/tests must stay aligned.
+
+For the active design handoff entrypoint, use
+`docs/ADMIN_CONSOLE_FRONTEND_DESIGN_INDEX.md`. For page layout and browser
 acceptance criteria, use `docs/ADMIN_CONSOLE_UI_LAYOUT_EFFECT_MATRIX.md`.
 
-## Current Connector Evidence
-
-Figma metadata and `use_figma` access succeeded on 2026-06-21 for canonical
-file `oZuKNtGPhP6oOQ0MSzpfvn`.
-
-Observed current canvas:
+## Current Source Boundary
 
 | Item | Current value |
 | --- | --- |
-| Top-level page | `Admin UI Handoff` |
-| Canonical build/order frame | `00 Contract & Build Order`, `1600 x 1024` |
-| Historical page mirror frames | `01 Operations Overview / 1600x1024`, `02 Accounts & Resources / 1600x1024`, `03 Usage & Channels / 1600x1024`; ownership lineage only. |
-| Safety/review frames | `04 State & Safety Matrix`, `05 GCC-103 Review Addendum / 1600x1024` |
-| Implementation capture frames | `06 Current Implementation / Operations Overview / 1600w full-content capture`, `07 Current Implementation / Accounts & Resources / 1600w full-content capture`, `08 Current Implementation / Usage & Channels / 1600w full-content capture` |
-| Refined visual draft frames | `09 Layout Effect Draft v1 / 1600x1024`, `09 Layout Effect Draft v1.1 / 1600x1024`, `09 Layout Effect Draft v1.2 Text Rhythm / 1600x1024`, `10 Layout Effect Draft v1.3 Accounts & Resources / 1600x1024`, `11 Layout Effect Draft v1.3 Usage & Channels / 1600x1024` |
-| Current Visual Polish frames | `06 AI Exploration`: `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024`, `AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024`, `AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024` |
-| React-visible implementation baseline | Three active Admin pages: `Operations Overview`, `Accounts & Resources`, `Usage & Channels` |
+| Active Figma file | `NefQiIMOPIBU28TIYcwQFE` |
+| Active Figma name | `GlobalCircle AI Admin UI Baseline - 2026-06-25` |
+| Active route baseline cards | `24:5` Operations Overview, `24:35` Accounts & Resources, `24:65` Usage & Channels |
+| Active page set | `00 Index & Project Map`, `01 Design Rules V1-Polish`, `02 Component Contract`, `03 Product Baseline Frames`, `04 Figma-to-React Mapping`, `90 Evidence Gates`, `99 Archive / Source Handoff` |
+| Archived file | `oZuKNtGPhP6oOQ0MSzpfvn`; keep for lineage only |
+| Deprecated directions | AppLibrary, NavigationLibrary, dock/appbar, hidden-module restore, drag/resize/windowing, and old current-implementation capture frames |
 
-Previous source mismatch:
+Implementation must not use the archived handoff or old `373:*`, `99:*`, or
+`104:*` nodes as the current source. If a rule from the archive is still useful,
+copy it into the active baseline and review it there before implementing it.
 
-| File key | Finding |
+## Connector Evidence
+
+Figma connector access on 2026-06-25 can read and write the active baseline.
+The baseline was populated with the seven pages above, and a read-back scan
+confirmed that every page contains content.
+
+Known local evidence:
+
+| Evidence | Result |
 | --- | --- |
-| `EvQXTtJ2XnRfcGxRLTRt0B` | Older one-page Requirements Map used during early handoff. Do not use it as the active mirror source. |
-| `oZuKNtGPhP6oOQ0MSzpfvn` | Canonical multi-frame Admin UI Handoff file. |
-| `NefQiIMOPIBU28TIYcwQFE` | Candidate clean Admin UI baseline project created for forward cleanup. Current connector-visible content is only `00 Index & Project Map`; do not treat it as a complete working baseline until the planned pages below are populated and re-verified. |
+| `admin/src/design/figma-mirror.ts` | Uses `NefQiIMOPIBU28TIYcwQFE` as `ADMIN_FIGMA_FILE_KEY` and records `oZuKNtGPhP6oOQ0MSzpfvn` as archive. |
+| Contract test | `admin/src/test/admin-figma-mirror-contract.test.ts` verifies the active file key, route cards, component contract cards, and visual QA axes. |
+| Screenshot QA | `output/playwright/admin-new-baseline-qa-1600x1024.png`, `output/playwright/admin-new-baseline-qa-1280x800.png`, and `output/playwright/admin-new-baseline-qa-1024x768.png` were captured during the first visual QA pass. |
 
-Write attempt:
-
-| Field | Result |
-| --- | --- |
-| Date | 2026-06-21 |
-| Attempted operation | Read canonical handoff metadata, execute `use_figma`, and write a shared-plugin-data probe. |
-| Connector-reported seat | `Dev / developer`. |
-| User-reported Figma UI access | Full access for the connected account. |
-| Desktop evidence | Figma Desktop opens the canonical multi-frame file. The Share button shows a Full-seat upgrade prompt; do not continue that prompt through automation. |
-| Connector result | `get_metadata` can read the canonical file, `use_figma` can execute, and a shared plugin data write probe succeeded on page `0:1`. |
-| Required action | Keep using the canonical handoff file and Visual Polish nodes as the current verified source evidence. Use the clean baseline project only after its planned pages are populated and connector metadata verifies them. Avoid Share or seat/billing prompts unless the operator explicitly approves that action. |
-
-## Clean Baseline Project, 2026-06-25
-
-The user accepted `NefQiIMOPIBU28TIYcwQFE` as the intended clean Admin UI
-baseline target. This file exists to stop future agents from mixing old draft
-frames, local implementation captures, and legacy AppLibrary/browser-OS
-experiments into the active product design.
-
-Connector check on 2026-06-25 currently exposes only one top-level page,
-`00 Index & Project Map`, with four rule-card frames. The pages below are the
-required target structure for the clean baseline project, not verified current
-content until a later Figma metadata pass sees them.
-
-| Page | Role |
-| --- | --- |
-| `00 Index & Project Map` | Entry map and baseline/source boundary. |
-| `01 Design Rules V1-Polish` | Current visual rules for shell, TopBar, cards, panels, charts, responsive behavior, and deleted legacy UI. |
-| `02 Component Contract` | Reusable component contract for ShellRail, TopBar, MetricCard, StatusChip, PanelFrame, DataRowCompact, EvidenceSurface, PrivilegedGate, and StateFeedback. |
-| `03 Product Baseline Frames` | Editable baseline frames for `Operations Overview`, `Accounts & Resources`, and `Usage & Channels`. |
-| `04 Figma-to-React Mapping` | Design-to-code bridge for the Admin React/CSS implementation. |
-| `90 Evidence Gates` | Figma/GitHub/browser acceptance checks before implementation is marked complete. |
-| `99 Archive / Source Handoff` | Source handoff notes and legacy rules that must not be copied forward. |
-
-Boundary: the clean baseline project is the intended forward cleanup baseline,
-but the verified implementation source remains the canonical handoff file
-`oZuKNtGPhP6oOQ0MSzpfvn`, node `365:2`, and the Visual Polish source frames
-`373:716`, `373:866`, and `373:1016` until the clean project is populated. It
-is not proof that the React implementation has already reached parity, and it
-does not authorize backend DTO wiring, auth/schema changes, production
-operations, or sensitive data exposure.
-
-Historical GCC-122 audit update, 2026-06-22:
-
-| Evidence | Finding |
-| --- | --- |
-| `use_figma` read-only inventory | Page `0:1` originally contained `14` top-level frames, including active page mirrors `2:81`, `2:189`, `2:309`, current implementation captures `17:2`, `22:2`, `23:2`, and refined visual draft `99:2`. |
-| Operations visual state | `99:2` was the accepted refined direction at that time. It is now superseded by `373:716`. |
-| Accounts visual state | `104:2` was created as a refined Accounts desktop draft using the `99:2` shell. It is now superseded by `373:866`. |
-| Usage visual state | `104:226` was created as a refined Usage desktop draft using the `99:2` shell. It is now superseded by `373:1016`. |
-| Gate result | Historical only. The current desktop visual source moved to the 2026-06-24 Visual Polish frames; component-state placement, narrow QA, and Figma-to-code mapping remain follow-up implementation gates. |
-
-GCC-122 first-review cleanup:
-
-| Evidence | Finding |
-| --- | --- |
-| Visible-copy scan | `preview`, draft/prototype wording, raw-log wording, and account-directory non-account rows were removed from the three refined desktop drafts. |
-| Layer-name scan | `104:2` and `104:226` now report `0` stale cloned `Risk Queue`, `Next Actions`, `Review Candidates`, and old metric layer names. |
-| Screenshot evidence | Cleaned desktop screenshots were saved locally under `tmp/figma-gcc122-refined-*-cleaned.png`. |
-| Remaining gate | Component states, responsive/narrow QA, and Figma-to-code mapping moved into explicit evidence frames; user review and browser verification remain open. |
-
-GCC-122 design-evidence frames:
-
-| Frame | Node ID | Purpose | Local screenshot |
-| --- | --- | --- | --- |
-| `12 GCC-122 Component State Placement / 1600x1024` | `115:2` | Maps required shared-primitive states to active page placement and records open implementation decisions. | `tmp/figma-gcc122-component-state-placement-115-2.png` |
-| `13 GCC-122 Responsive QA Strategy / 1600x1024` | `116:2` | Defines the `1024px` and `768px` collapse strategy before React/CSS polish. | `tmp/figma-gcc122-responsive-qa-116-2.png` |
-| `14 GCC-122 Figma-to-code Mapping / 1600x1024` | `117:2` | Maps Figma component sets to React surfaces, CSS/token responsibility, and next gates. | `tmp/figma-gcc122-figma-to-code-mapping-117-2.png` |
-
-These evidence frames are review and implementation handoff material. They are
-not operator-facing Admin UI pages and must not be rendered as normal console
-content.
-
-## Figma Site Boundary, 2026-06-23
-
-The connected Figma account can read and write design-file artifacts through
-the Figma connector, but the current Figma Site is not the canonical mirror.
-
-| Item | Current finding |
-| --- | --- |
-| Site URL | <https://www.figma.com/site/fGP4xsj27bbcYRGnzIa3DO/Untitled> |
-| Intended role | Optional demo/click-flow and stakeholder review surface after a design is accepted. |
-| Non-role | Not a design source of truth, not a React implementation target, not a runtime frontend, and not a replacement for GitHub code. |
-| Chrome/Desktop evidence | The Site editor was initialized as a blank Site with `Home`, `Primary`, `Desktop`, and `Mobile` surfaces; an empty preview is expected until content is intentionally added. |
-| Connector boundary | Figma MCP access should target the canonical `/design` file. Site keys may not expose the same metadata/write path through the design-file connector. |
-
-Do not treat a blank or inaccessible Site as evidence that the canonical Admin
-design file is blocked. Continue using
-`oZuKNtGPhP6oOQ0MSzpfvn` and its reviewed frames for design-to-code work.
-
-## Current Visual Polish Source, 2026-06-24
-
-The accepted desktop design source has moved from the earlier refined drafts to
-the user-reviewed `06 AI Exploration` Visual Polish frames.
-
-These frames are page baselines for the three active routes. They are not a
-universal component library by themselves. Reusable standards are extracted
-from shell chrome, surface/card treatment, metric lanes, row density, state
-semantics, focus/motion behavior, and safe trend slots. Page-local business
-assemblies and static curve shapes require separate component/data contracts
-before they become reusable implementation primitives.
-
-| Page | Current Figma node | Current role | Supersedes |
-| --- | --- | --- | --- |
-| `Operations Overview` | `373:716` | Current desktop visual/layout source. | `99:2`, `365:8` |
-| `Accounts & Resources` | `373:866` | Current desktop visual/layout source. | `104:2`, `365:52` |
-| `Usage & Channels` | `373:1016` | Current desktop visual/layout source. | `104:226`, `365:96` |
-| `V1 Design Rules · Master Reference` | `501:488` | Current rule source for visual polish, responsive breakpoints, TopBar formulas, card sizing, chart/event-log internals, and design-to-code QA gates. | Earlier single-frame geometry notes |
-
-Shared baseline geometry observed in the current `1600px` frames:
-
-- visible polished frame is `1600 x 908` inside the `1600x1024` design stage;
-- ShellRail is `224 x 1024`;
-- TopBar is `1296 x 58` at `x=252`, `y=24`;
-- System Search is a normal top-bar form/result entry. Its visible baseline
-  frame may show a `340 x 40` search surface, but rule node `501:488` now
-  supersedes fixed extraction: search width must adapt between the `230px`
-  narrow contract and `379px` wide contract while the right cluster remains
-  right-aligned;
-- metric cards are four `300 x 150` cards starting at `x=276`, `592`, `908`,
-  and `1224`, `y=102`;
-- primary panels are three `416 x 260` panels at `x=252`, `692`, and `1132`;
-- lower chart/event-log evidence surfaces begin near `y=596` and use
-  `628 x 280` panels.
-
-Responsive rule coverage added 2026-06-25:
-
-- `LG-1440`, `MD-1280`, and `SM-1024` Visual Polish frames exist for all three
-  current pages, making `12` rule-bearing frames total.
-- The frontend must use breakpoint-driven layout adaptation, not screenshot-like
-  whole-frame scaling and not baseline pixel copy.
-- `MD-1280` collapses ShellRail to an icon-only rail; `SM-1024` treats ShellRail
-  as an overlay/drawer projection and moves third panels into subpage or bounded
-  pagination rather than forcing horizontal overflow.
-- `ChartCard` internals use `card.width - 56` for chart area width,
-  `card.height - 80` for chart area height, right-aligned time ranges, and
-  visible x/y axes.
-- Metrics chart panels share one structure across Operations, Accounts, and
-  Usage: header, right-aligned time range, legend row, plot/grid/axis, and
-  bottom x-axis. Do not add page-local bottom stat cards or hide them on only
-  one route.
-- `EventLog` internals use a flat 4-column row contract with x positions
-  `16 / 82 / 130 / 290`, divider width `card.width - 32`, and description
-  width `card.width - 290 - 16`.
-
-Local implementation sync, 2026-06-24:
-
-- React now renders the lower evidence row through
-  `src/components/primitives/evidence-surface.tsx`.
-- The local primitive is named `EvidenceSurface` in DOM QA hooks because the
-  Visual Polish frames expose these as lower evidence surfaces, not as one of
-  the eight mirrored Figma component sets.
-- `Operations Overview`, `Accounts & Resources`, and `Usage & Channels` each
-  render one bounded trend evidence panel and one safe event-log evidence panel
-  at page level.
-- The metrics evidence panel is a chart-only panel in the current Visual
-  Polish grammar. It must not use the older `Evidence badge + visible
-  description + compressed chart + bottom stats` structure, and it must not use
-  page-specific CSS overrides to make Usage differ from Operations or Accounts.
-- Each rendered evidence panel is bound to
-  `admin/src/app/admin-evidence-contract.ts`, which records the owner page,
-  Figma node, surface key, panel kind, source name, sampling window,
-  aggregation, threshold, empty/stale behavior, redaction mode, and backend
-  adapter state.
-- The current evidence contract state is `design-static` with
-  `pending-contract` backend adapters. It validates the visual/data boundary
-  and DOM QA hooks, but it does not connect real time-series DTOs or runtime
-  event streams.
-- These panels are read-only visual evidence. They do not register as
-  AppLibrary/NavigationLibrary items, draggable windows, mutable modules, or
-  production data adapters.
-
-Local primary-panel sync, 2026-06-25:
-
-- The three active Visual Polish pages now share the same first-screen primary
-  panel contract in local React/CSS: three panels at `x=252`, `692`, and
-  `1132`, each `416 x 260`, rendered as bounded glass `PanelFrame` surfaces.
-- Primary panel bodies use compact page-owned rows matching the Visual Polish
-  `DataRowCompact` pattern: two rows per panel, row width `372`, row height
-  `44`, and status/action text aligned to the row right edge.
-- `Operations Overview` keeps `Risk Queue`, `Next Actions`, and
-  `Review Candidates`. `Owner Page Handoff` is not the current Figma label and
-  must not be reintroduced as the third Overview panel.
-- `Accounts & Resources` keeps `Account Directory`, `Resources & Orders`, and
-  `Lifecycle` in the first-screen primary row. Quota and history remain
-  owner-page follow-up/evidence surfaces, not replacements for the three-panel
-  Visual Polish row.
-- `Usage & Channels` keeps `Collection Freshness`, `Channel Coverage`, and
-  `Usage Ledger` in the first-screen primary row. The earlier short-card
-  `326px` / `166px` local layout is obsolete for this Visual Polish pass.
-
-Visible page title/subtitle text, `Badge / System Search`, `Badge / System
-Search Only`, `StateFeedback`, `PrivilegedGate`, and page-local split boundary
-nodes are hidden in the Visual Polish frames. They remain design evidence or
-future state contracts, not visible operator UI. The older AppLibrary,
-NavigationLibrary, dock, desktop-windowing, and freeform resize directions are
-not part of the current mirror target.
-
-## Design-Source Boundary Sync, 2026-06-23
-
-| Item | Current finding |
-| --- | --- |
-| Written evidence frame | `15 Design Source Boundary / 1600x1024` |
-| Node ID | `240:2` |
-| Purpose | Records the current evidence boundary: Figma design owns visual contracts, GitHub owns runnable implementation and validation, Linear owns task gates, and Figma Site is demo-only. |
-| Local docs synchronized | `ADMIN_CONSOLE_FRONTEND_DESIGN_INDEX`, `ADMIN_CONSOLE_FIGMA_MIRROR`, `ADMIN_CONSOLE_DESIGN_COMPLETION_CHECKLIST`, `ADMIN_CONSOLE_NEXT_STAGE_EXECUTION_CHECKLIST`. |
-
-Resolved by 2026-06-24 connector metadata against node `365:2`: the current
-design source is `06 AI Exploration` with Visual Polish frames `373:716`,
-`373:866`, and `373:1016`. The older refined frame IDs (`99:2`, `104:2`,
-`104:226`) are retained as historical reference only.
-
-Follow-up component mirror evidence:
-
-| Item | Current value |
-| --- | --- |
-| Page-level handoff | Current. The canonical file contains multi-frame page mirrors and implementation captures. |
-| Component-system mirror | Current. The required component-system batch now exists on page `Admin Component Mirror v1`. |
-| Observed component sets | `8`: `StatusChip`, `MetricCard`, `PanelFrame`, `DataRow`, `TopBar`, `SidebarNavigation`, `PrivilegedGate`, `StateFeedback` |
-| Observed component nodes / variants | `41` component nodes / `41` variants |
-| Observed variable collections / variables | `4` collections / `57` variables |
-| Observed text styles / effect styles | `6` text styles / `3` effect styles |
-| Observed paint styles | `0` |
-| Next task line | `Admin React/CSS grammar alignment from Figma Component Mirror v1` |
-
-Do not infer from the previous blocker that the React Admin UI is unavailable.
-That blocker was scoped to using the wrong one-page file key and the earlier
-`use_figma` permission probe against that key.
+The output screenshots are local QA artifacts and are intentionally ignored by
+Git. They help review the live browser state but do not replace the Figma
+baseline.
 
 ## Required Mirror Pages
 
 The canonical local contract is `ADMIN_FIGMA_MIRROR_PAGES` in
 `admin/src/design/figma-mirror.ts`.
 
-| Frame | Role | Maps to React page |
+| Frame | Node | Role | Maps to React |
+| --- | --- | --- | --- |
+| `00 Index & Project Map` | `0:1` | Source boundary and review order | All active pages |
+| `01 Design Rules V1-Polish` | `2:2` | Shared visual and responsive rules | All active pages |
+| `02 Component Contract` | `2:3` | Reusable shell, surface, row, gate, and feedback responsibilities | Shared primitives |
+| `Product Baseline / Operations Overview` | `24:5` | Active Operations route baseline | `dashboard` |
+| `Product Baseline / Accounts & Resources` | `24:35` | Active Accounts route baseline | `portalRequests` |
+| `Product Baseline / Usage & Channels` | `24:65` | Active Usage route baseline | `usageMonitor` |
+| `04 Figma-to-React Mapping` | `2:5` | Route/component/token/QA hook bridge | All active pages |
+| `90 Evidence Gates` | `2:6` | Figma/GitHub/browser acceptance gates | All active pages |
+| `99 Archive / Source Handoff` | `2:7` | Archived source and deprecated concepts | Lineage only |
+
+## Component Contract Cards
+
+The active Figma baseline currently records component responsibilities as
+contract cards, not as a finished Figma component-set library.
+
+| Contract card | Node | Local responsibility |
 | --- | --- | --- |
-| `00 Contract & Build Order` | Contract and build-order map | All three active pages |
-| `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024` | Current visual source | `dashboard` / `Operations Overview` |
-| `AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024` | Current visual source | `portalRequests` / `Accounts & Resources` |
-| `AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024` | Current visual source | `usageMonitor` / `Usage & Channels` |
-| `01 Operations Overview / 1600x1024` | Historical page mirror | `dashboard` / `Operations Overview` |
-| `02 Accounts & Resources / 1600x1024` | Historical page mirror | `portalRequests` / `Accounts & Resources` |
-| `03 Usage & Channels / 1600x1024` | Historical page mirror | `usageMonitor` / `Usage & Channels` |
-| `04 State & Safety Matrix` | Safety and boundary matrix | All three active pages |
-| `05 GCC-103 Review Addendum / 1600x1024` | Visual QA / review addendum | Figma, DOM, Browser, style-token, and safe-data evidence |
+| `ShellRail` | `23:5` | Route ownership, planned slots, responsive nav behavior |
+| `TopBar` | `23:11` | System Search, environment, operator, route context |
+| `MetricCard` | `23:17` | Summary value, trend slot, tone pairing |
+| `StatusChip` | `23:23` | Semantic state chip, dot, label |
+| `PanelFrame` | `23:29` | One-level operator panel chrome |
+| `DataRowCompact` | `23:35` | Bounded compact row inside primary panels |
+| `EvidenceSurface` | `23:41` | Lower trend/event-log evidence slots |
+| `StateFeedback` | `23:47` | Empty/loading/stale/error feedback |
+| `PrivilegedGate` | `23:53` | Read-only/gated/blocked safety surface |
+| `Deprecated / SidebarNavigation` | `23:59` | Archive notice; do not implement as active component |
+
+React/CSS may already have shared primitives for these concepts, but parity is
+not complete until browser visual QA confirms the rendered UI follows the
+baseline. Page-specific AI-generated assemblies are not reusable components
+unless they are promoted through this contract.
 
 ## Page Ownership Rules
 
-The mirror must follow the same ownership model as the React implementation:
-
 - `Operations Overview` is summary and routing only.
 - `Accounts & Resources` owns account, resource, order, quota, lifecycle, and
-  history-entry panels.
+  safe history-entry review.
 - `Usage & Channels` owns collection freshness, channel coverage, usage ledger,
   collection anomalies, and receipt/collector evidence.
 - Future `Audit & Cases`, `Platform Development`, `System Settings`, and
-  `About` areas remain planned until their backend and UI contracts exist.
+  `About` areas remain planned until their UI and backend contracts exist.
 
-The mirror must not reintroduce the older App Library / OS experiment as an
-implementation target. The current web implementation is a structured Admin
-workbench: System Search owns safe discovery/recovery, Sidebar / Primary
-Routes owns page navigation, and page-owned modules/panels own local controls.
+The mirror must not reintroduce AppLibrary, NavigationLibrary, desktop dock,
+freeform resize, hidden-widget restore, or OS-style windowing.
 
-Current implementation alignment:
+## Design-To-Code Mapping
 
-- `Operations Overview` uses operator chrome for its visible modules:
-  `dashboard-health-summary`, `dashboard-risk-queue`, and
-  `dashboard-next-actions`, plus the Figma V1 `dashboard-review-candidates`
-  panel.
-- Operator chrome keeps panel IDs, ownership hooks, and hide/restore events,
-  but removes draft-only field counts, `Preview` / `Owner` chips, and nested
-  fixture preview rows from the visible dashboard surface.
-- The `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024`
-  frame (`373:716`) is the current top-level visual/layout reference:
-  metric cards, `Risk Queue`, `Next Actions`, and `Review Candidates`. The older
-  `01 Operations Overview / 1600x1024` mirror remains lineage evidence only.
-  Owner-page ledgers stay out of Overview.
+| Figma concept | React/CSS target |
+| --- | --- |
+| `ShellRail` | `src/components/primitives/workspace-sidebar.tsx`, route metadata, nav CSS |
+| `TopBar` | `src/components/layout/top-bar.tsx`, System Search contracts |
+| `MetricCard` | `src/components/primitives/metric-card.tsx` |
+| `StatusChip` | `src/components/primitives/status-chip.tsx` |
+| `PanelFrame` | `src/components/primitives/panel-frame.tsx` |
+| `DataRowCompact` | compact row grammar in page-owned panels |
+| `EvidenceSurface` | `src/components/primitives/evidence-surface.tsx`, `src/app/admin-evidence-contract.ts` |
+| `StateFeedback` | `src/components/primitives/state-feedback.tsx`, empty/table state surfaces |
+| `PrivilegedGate` | `src/components/primitives/privileged-gate.tsx` and shell safety surfaces |
 
-## Component Mirror Progress
-
-The current Figma source now has the required component-system batch for this
-phase. The next Admin UI task is to align the React/CSS grammar with these
-components instead of reopening page-level direction.
-
-Completed component mirrors:
-
-- `PanelFrame`
-- `MetricCard`
-- `StatusChip`
-- `DataTable / DataRow`
-- `TopBar`
-- `Sidebar / Primary Routes`
-- `PrivilegedGate`
-- `EmptyState / Loading / Stale / Error`
-
-Pending component mirrors:
-
-- None for this phase.
-
-Observed Figma component sets:
-
-| Component set | Node ID | Variants |
-| --- | --- | --- |
-| `StatusChip` | `69:20` | `5` |
-| `MetricCard` | `73:42` | `5` |
-| `PanelFrame` | `74:178` | `8` |
-| `DataRow` | `75:107` | `5` |
-| `TopBar` | `79:88` | `4` |
-| `SidebarNavigation` | `82:212` | `6` |
-| `PrivilegedGate` | `83:62` | `4` |
-| `StateFeedback` | `84:73` | `4` |
-
-Phase 2 Figma validation evidence:
-
-- `use_figma` created `TopBar`, `SidebarNavigation`, `PrivilegedGate`, and
-  `StateFeedback` component sets.
-- Final Figma inventory reported `8` component sets, `41` component nodes,
-  `41` variants, `4` variable collections, `57` variables, `6` text styles,
-  and `3` effect styles.
-- Screenshot checks covered the four Phase 2 component sets. During that pass,
-  `SidebarNavigation`, `PrivilegedGate`, and `StateFeedback` variant grids were
-  resized after overlap detection so the canvas shows the complete variant
-  library.
-
-Required variant groups:
-
-- Semantic status: success, info, warning, danger, neutral, stale.
-- Panel state: default, loading, empty, stale, error.
-- Metric priority: stable, attention, critical, unavailable.
-- Data-row interaction: default, hover, selected, disabled, flagged.
-- Privileged gate state: hidden, gated, fresh-MFA-required, unavailable.
-
-This task line should reuse the existing React grammar and tokens from
-`admin/src/design/grammar/*`, `admin/src/app/admin-ui-contract.ts`, and
-`admin/src/styles/tokens.css`. It must not create a second naming system in
-Figma.
-
-## GCC-118 Design-To-Code Parity Matrix
-
-`GCC-118` is the first hard gate before shared-component implementation
-alignment. The local contract is
-`admin/src/design/figma-parity.ts`, and the regression coverage lives in
-`admin/src/test/admin-figma-mirror-contract.test.ts`.
-
-This matrix makes the implicit handoff explicit:
-
-| Component set | React surface | CSS / grammar responsibility | Next gate |
-| --- | --- | --- | --- |
-| `StatusChip` | `src/components/primitives/status-chip.tsx` | Semantic status tokens, visible text state, no color-only meaning. | `GCC-119` |
-| `MetricCard` | `src/components/primitives/metric-card.tsx` | Metric priority, trend evidence, card density/radius/shadow tokens. Overview metrics now use this primitive. | `GCC-119` |
-| `PanelFrame` | `src/components/primitives/panel-frame.tsx` | Panel chrome ownership, header layout, density, hide affordance, state chrome. | `GCC-119` |
-| `DataRow` | `src/components/primitives/data-table.tsx` | Row interaction, table state rows, safe-ref overflow boundary. | `GCC-119` |
-| `TopBar` | `src/components/layout/top-bar.tsx` | Shell height, system search, page-short placeholder copy, account controls, route status pill, Risk A notice dot. | `GCC-119` |
-| `ShellRail` | `src/components/primitives/workspace-sidebar.tsx` | Sidebar primary-route state, hidden functional navigation scrollport, planned-route gate, and route ownership metadata. Replaces active use of deprecated `SidebarNavigation`. | `GCC-119` |
-| `PrivilegedGate` | `src/components/primitives/privileged-gate.tsx`, `admin-ui-contract`, `admin-app-manifest`, and shell safety surfaces | Hidden/gated/fresh-MFA/unavailable semantics and production-action guard copy. | `GCC-119` |
-| `StateFeedback` | `src/components/primitives/state-feedback.tsx`, `empty-state.tsx`, and `DataTableState` | Loading, empty, stale, error, status/alert role, redacted detail. | `GCC-119` |
-
-The matrix intentionally records current gaps instead of hiding them:
-
-- `StatusChip`: decide whether `stale` becomes an explicit React tone or stays
-  warning copy.
-- `MetricCard`: Overview-specific metric markup now routes through the shared
-  primitive; `GCC-120` must visually verify its density in the page frame.
-- `PanelFrame`: shared panel chrome now exposes stable
-  `data-figma-component`, `data-ui-surface`, owner-mode, and workbench-category
-  hooks for browser evidence.
-- `DataRow`: choose one mobile safe-ref strategy: local horizontal scroll or
-  stacked row.
-- `TopBar`: confirm adaptive search behavior is token-owned, not page-owned,
-  and never overlaps the right action cluster.
-- `ShellRail`: hidden functional navigation scroll, planned-route gate, and
-  icon-rail/drawer breakpoints must stay token-owned and contract-covered.
-  Historical mirror evidence may still mention `SidebarNavigation`, but no
-  active React/Figma-to-code mapping should use it as a current component name.
-- `PrivilegedGate`: the shell production guard is now a first-class primitive;
-  future super-admin detail surfaces remain contract-only until backend
-  authority exists.
-- `StateFeedback`: consolidate empty, loading, stale, and error presentation
-  into one explicit mapping.
-
-GCC-119 implementation alignment started from the shared primitives rather than
-page-local rewrites:
-
-- `StateFeedback` is now a first-class primitive with `empty`, `loading`,
-  `stale`, and `error` tones, named `status` / `alert` roles, chrome variants,
-  and a stable `data-ui-surface="state-feedback"` hook.
-- `EmptyState` now delegates to `StateFeedback` while retaining the existing
-  workstream and case chrome class names.
-- `DataTableState` now accepts the shared state-feedback tones and renders state
-  content through `StateFeedback` inside the existing table cell.
-- `MetricCard`, `StatusChip`, `TopBar`, `WorkspaceSidebar`, and
-  System Search / primary-route surfaces now expose stable
-  `data-figma-component` / `data-ui-surface` hooks for GCC-120 browser
-  evidence.
-- Overview health metrics now render through `MetricCard` instead of the old
-  page-local `admin-overview-metric-card` contract.
-- `PanelFrame` now exposes stable Figma/DOM hooks for owner mode, surface, and
-  workbench category.
-- `PrivilegedGate` is now a first-class primitive for the shell production
-  action guard; it does not add production authority or backend write behavior.
-
-`PR #355` should stay Draft until the linked Linear review gates for the parity
-matrix, `GCC-119` implementation alignment, and `GCC-120` breakpoint/state
-evidence are accepted.
+Current evidence contracts use baseline route cards `24:5`, `24:35`, and
+`24:65` as their Figma source anchors. Old Visual Polish IDs are no longer
+active source anchors.
 
 ## Visual QA Evidence Axes
 
-Every future visual QA pass should record these axes:
+Every visual QA pass should record:
 
-1. Figma mirror status.
+1. Figma baseline status.
 2. DOM contract status.
 3. Browser desktop viewport status.
-4. Browser mobile or narrow viewport status.
+4. Browser responsive viewport status.
 5. Style-token regression status.
 6. Safe-data boundary status.
 
@@ -473,15 +146,15 @@ The automated contract for these axes is covered by
 ## Update Procedure
 
 1. Update `admin/src/design/figma-mirror.ts` first when page names, frame names,
-   or mirror ownership changes.
-2. Update this document and `docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md`.
-3. Update only the canonical `oZuKNtGPhP6oOQ0MSzpfvn` Figma file. Do not use
-   the older one-page Requirements Map file for active mirror work.
-4. Follow `06 AI Exploration` Visual Polish frames for desktop geometry until a
-   newer accepted design stage supersedes them.
-5. Run focused Admin tests for the mirror and visual QA contracts.
-6. Run Browser or Chrome viewport checks against `#/fixture-preview`.
-7. Record the exact validation commands before marking the visual task done.
+   source boundaries, or mirror ownership change.
+2. Update this document, `docs/ADMIN_CONSOLE_FRONTEND_DESIGN_INDEX.md`, and
+   `docs/ADMIN_CONSOLE_VISUAL_QA_LEDGER.md`.
+3. Update only the active baseline file `NefQiIMOPIBU28TIYcwQFE` for current
+   design work. Do not use the older handoff file as an implementation source.
+4. Run focused Admin tests for the mirror and visual QA contracts.
+5. Run Browser or Chrome viewport checks against the local Admin app before
+   marking a visual task done.
+6. Record exact validation commands and results.
 
 ## Hard Stops
 

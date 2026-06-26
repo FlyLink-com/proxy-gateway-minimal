@@ -27,7 +27,7 @@ or app-map documents.
 | Product posture | Protected operator console for supervision, operations, maintenance, and future platform development. |
 | Active pages | `Operations Overview`, `Accounts & Resources`, `Usage & Channels`. |
 | Planned slots | `Audit & Cases`, `Platform Development`, `System Settings`. |
-| Visual source | Canonical Figma `/design` file `oZuKNtGPhP6oOQ0MSzpfvn`, `06 AI Exploration` (`365:2`), and current Visual Polish source frames `373:716`, `373:866`, `373:1016`. Candidate clean baseline project `NefQiIMOPIBU28TIYcwQFE` is pending population beyond its index page. |
+| Visual source | Canonical Figma `/design` file `NefQiIMOPIBU28TIYcwQFE`, `GlobalCircle AI Admin UI Baseline - 2026-06-25`; active route baseline cards are `24:5`, `24:35`, and `24:65`. The older handoff file `oZuKNtGPhP6oOQ0MSzpfvn` is archive/lineage only. |
 | Git role | Runnable Admin implementation, source index, design contracts, implementation mapping, QA records, and validation evidence. |
 | Figma Site role | Optional demo/click-flow review surface only; not a source of truth or implementation target. |
 | Linear role | Task gates, review ownership, phase acceptance, and next-stage sequencing. |
@@ -52,11 +52,12 @@ Before starting the execution order below:
    sensitive material enters the frontend baseline.
 5. Figma Site evidence, if present, is demo-only and must not replace canonical
    `/design` frames or GitHub validation.
-6. The candidate clean baseline project `NefQiIMOPIBU28TIYcwQFE` has been
-   created from node `365:2`, but connector metadata currently verifies only
-   its index page. Do not use it as an implementation source until its planned
-   pages are populated and re-verified; do not rely on stale `99:2`, `104:2`,
-   or `104:226` frame IDs for new implementation work.
+6. The clean baseline project `NefQiIMOPIBU28TIYcwQFE` has populated Index,
+   Design Rules, Component Contract, Product Baseline, Figma-to-React Mapping,
+   Evidence Gates, and Archive pages. Use it as the current implementation
+   source boundary; do not rely on stale `373:*`, `99:2`, `104:2`, or
+   `104:226` frame IDs for new implementation work unless the rule is copied
+   into the clean baseline and re-accepted there.
 
 ## Unified Local Task Tree, 2026-06-24
 
@@ -66,8 +67,8 @@ runtime work into the frontend design completion gate.
 
 | Line | Owns | Current role | Completion boundary |
 | --- | --- | --- | --- |
-| Admin design baseline | Figma visual standard, page ownership, layout density, component states, and responsive rules. | Verified source remains `373:716`, `373:866`, and `373:1016` plus rule node `501:488`; clean baseline project `NefQiIMOPIBU28TIYcwQFE` is pending population beyond its index page. | Complete for desktop page-design source; still requires clean-baseline population, implementation, browser QA, and responsive/mobile follow-up. |
-| Admin React/CSS implementation | Shared primitives, shell chrome, page-owned panels, and visual parity tests. | Next active line: reverse-standardize from the accepted Visual Polish baseline; it must not invent layout rules outside the design docs. | Complete only after browser QA and Admin test/build validation pass. |
+| Admin design baseline | Figma visual standard, page ownership, layout density, component states, and responsive rules. | Verified source is now the clean baseline project `NefQiIMOPIBU28TIYcwQFE` with route baseline cards `24:5`, `24:35`, and `24:65`. | Complete for source-boundary setup; still requires implementation, browser QA, and responsive/mobile follow-up. |
+| Admin React/CSS implementation | Shared primitives, shell chrome, page-owned panels, and visual parity tests. | Next active line: reverse-standardize from the accepted clean baseline; it must not invent layout rules outside the design docs. | Complete only after browser QA and Admin test/build validation pass. |
 | `GCC-77` System Search | Safe top-bar search, result routing, and planned/locked slots. | Frontend sub-lane, not AppLibrary, NavigationLibrary, module recovery, or OS windowing. | Complete only when it reads explicit safe manifest/search documents and does not index rendered UI or unsafe backend material. |
 | Server/TLS/TUIC preflight | Edge/runtime preflight helpers, templates, and CLI tests. | Separate backend/runtime support line. | Review and validate separately from Admin UI; production use remains gated by the normal A-tier rules. |
 | Research report inputs | External UI/system research and review notes. | Reference material only. | Promote into `docs/` only when a specific design or implementation decision depends on it. |
@@ -82,14 +83,11 @@ freeform windowing are not active product surfaces in this baseline.
 
 Current stage order:
 
-1. Treat `373:716`, `373:866`, `373:1016`, and rule node `501:488` as the
-   verified Admin UI design source.
-2. Populate and re-verify `NefQiIMOPIBU28TIYcwQFE` before promoting it to the
-   working Admin UI design baseline.
+1. Treat `NefQiIMOPIBU28TIYcwQFE` as the verified Admin UI design source.
+2. Treat `24:5`, `24:35`, and `24:65` as the active route baseline cards.
 3. Normalize layout, density, component states, and responsive standards from
-   the verified Visual Polish source and then mirror them into the clean
-   baseline project.
-4. Reverse-standardize React/CSS from the accepted design rules.
+   the clean baseline project only.
+4. Reverse-standardize React/CSS from the accepted clean-baseline design rules.
 5. Complete `GCC-77` System Search as a safe frontend sub-lane.
 6. Review server/TLS/TUIC changes separately with their own validation.
 

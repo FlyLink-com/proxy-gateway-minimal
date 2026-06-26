@@ -1,6 +1,6 @@
 # Admin Console Design Completion Checklist
 
-Last updated: 2026-06-24, America/Los_Angeles.
+Last updated: 2026-06-25, America/Los_Angeles.
 
 > Status:
 > - Type: Figma/page/visual/component-state design completion gate
@@ -28,21 +28,21 @@ Use this document after `docs/ADMIN_CONSOLE_FRONTEND_DESIGN_INDEX.md` and before
 | --- | --- |
 | Design direction | Accepted. Continue with the protected Admin Console model, not the browser-OS experiment. |
 | Active pages | `Operations Overview`, `Accounts & Resources`, `Usage & Channels`. |
-| Figma source | Canonical file is `GlobalCircle AI Admin UI Handoff - 2026-06-19`; current desktop Visual Polish frames are `373:716`, `373:866`, and `373:1016` under `06 AI Exploration` (`365:2`). |
+| Figma source | Canonical file is `GlobalCircle AI Admin UI Baseline - 2026-06-25` (`NefQiIMOPIBU28TIYcwQFE`); current route baseline cards are `24:5`, `24:35`, and `24:65`. |
 | Figma Site role | Optional demo/click-flow review surface only; it is not a design completion gate, source of truth, or implementation target. |
-| Current phase | Desktop design source accepted; reverse-standardize docs and React/CSS from the Visual Polish frames before backend integration or runtime projection. |
+| Current phase | Clean baseline source accepted; reverse-standardize docs and React/CSS from the new baseline before backend integration or runtime projection. |
 | Deferred work | `Usage & Channels` runtime projection, backend DTOs, auth/schema/runtime work, and privileged surfaces. |
 
-## Visual Polish Acceptance, 2026-06-24
+## Clean Baseline Acceptance, 2026-06-25
 
-The user-reviewed `06 AI Exploration` page is now the current desktop design
+The user-reviewed clean baseline project is now the current desktop design
 source for the three active Admin pages.
 
 | Page | Current frame | Design status | Implementation consequence |
 | --- | --- | --- | --- |
-| `Operations Overview` | `373:716` | Accepted Visual Polish source. | Implement from this geometry/copy, not `99:2` or `365:8`. |
-| `Accounts & Resources` | `373:866` | Accepted Visual Polish source. | Implement from this geometry/copy, not `104:2` or `365:52`. |
-| `Usage & Channels` | `373:1016` | Accepted Visual Polish source. | Implement from this geometry/copy, not `104:226` or `365:96`. |
+| `Operations Overview` | `24:5` | Accepted clean-baseline route card. | Implement from the clean baseline; old `373:716`, `99:2`, and `365:8` are lineage only. |
+| `Accounts & Resources` | `24:35` | Accepted clean-baseline route card. | Implement from the clean baseline; old `373:866`, `104:2`, and `365:52` are lineage only. |
+| `Usage & Channels` | `24:65` | Accepted clean-baseline route card. | Implement from the clean baseline; old `373:1016`, `104:226`, and `365:96` are lineage only. |
 
 Current visual decisions:
 
@@ -55,22 +55,22 @@ Current visual decisions:
 - use the dark glass shell, compact metric row, three-panel primary row, and
   lower evidence row as the desktop baseline.
 
-This acceptance completes the current desktop Figma page-design source. It does
+This acceptance completes the current Figma page-design source boundary. It does
 not complete React/CSS implementation, browser QA, responsive/mobile design,
 backend DTO wiring, or runtime projection.
 
 ## GCC-122 Figma Audit, 2026-06-22
 
-This audit used the canonical Figma file `oZuKNtGPhP6oOQ0MSzpfvn` and a
+This historical audit used the former Figma handoff file `oZuKNtGPhP6oOQ0MSzpfvn` and a
 read-only `use_figma` inventory of page `0:1`. Figma write capability exists,
 but this pass only inspected page coverage and local screenshot evidence.
 
 | Area | Figma evidence | Status | Required follow-up |
 | --- | --- | --- | --- |
-| Top-level page map | `0:1 Admin UI Handoff` contains `14` top-level frames. | Verified. | Keep this file as the only active mirror source. |
+| Top-level page map | `0:1 Admin UI Handoff` contains `14` top-level frames. | Verified historically. | Archive/lineage only; do not use as the active mirror source. |
 | Original active page mirrors | `2:81` Operations, `2:189` Accounts, `2:309` Usage. | Present and ownership-correct. | Migrate Accounts and Usage to the refined visual protocol. |
 | Current implementation captures | `17:2`, `22:2`, `23:2`. | Present. | Use as implementation baseline evidence, not as final design polish. |
-| Refined visual drafts | `99:2` Operations, `104:2` Accounts, `104:226` Usage. | Superseded draft lineage. | Keep for rationale only; current implementation source is `373:716`, `373:866`, `373:1016`. |
+| Refined visual drafts | `99:2` Operations, `104:2` Accounts, `104:226` Usage. | Superseded draft lineage. | Keep for rationale only; current implementation source is the clean baseline cards `24:5`, `24:35`, `24:65`. |
 | State and safety matrix | `2:427` `04 State & Safety Matrix`. | Present. | Still needs page-level state placement and responsive visual QA. |
 
 GCC-122 cleanup pass after first review:
@@ -106,17 +106,16 @@ GCC-122 design-evidence pass:
 
 Audit conclusion:
 
-- `Operations Overview`, `Accounts & Resources`, and `Usage & Channels` have
-  accepted desktop Visual Polish frames in `373:716`, `373:866`, and
-  `373:1016`.
+- `Operations Overview`, `Accounts & Resources`, and `Usage & Channels` now
+  have accepted clean-baseline route cards in `24:5`, `24:35`, and `24:65`.
 - The earlier `99:2`, `104:2`, and `104:226` drafts are superseded and should
   not drive implementation except as historical design rationale.
 - Component-state placement, responsive strategy, and Figma-to-code mapping now
   have explicit evidence frames. They remain implementation and QA gates after
   the desktop page-design source decision.
-- 2026-06-24 update: live Figma metadata for `365:2` confirmed the current
-  Visual Polish frames. The prior `240:2` metadata caveat no longer blocks the
-  desktop design-source decision.
+- Historical 2026-06-24 update: live Figma metadata for `365:2` confirmed the
+  Visual Polish frames that were current at that time. The clean baseline now
+  supersedes them as the implementation source.
 - This gate does not authorize backend integration, runtime projection,
   production work, auth/schema changes, or sensitive-data exposure.
 
@@ -132,7 +131,7 @@ Audit conclusion:
 | G6 Accessibility baseline | Visible focus, accessible names, semantic state labels, and non-color-only status are designed before implementation. | Visual QA notes and follow-up tests. |
 | G7 Sensitive-data boundary | Figma, fixtures, screenshots, tests, and docs contain no token, credential, subscription URL, raw config/log/env, SQLite row, or customer-private data. | Review notes and diff checks. |
 | G8 Evidence boundary | Figma design, GitHub implementation, and Linear task acceptance remain separated and traceable; Site evidence is demo-only. | `docs/ADMIN_CONSOLE_FRONTEND_DESIGN_INDEX.md` and `docs/ADMIN_CONSOLE_FIGMA_MIRROR.md`. |
-| G9 Current Figma canvas verification | The currently opened Figma design file still contains the accepted active-page frames and design-evidence frames before implementation starts. | 2026-06-24 connector metadata for `365:2`, plus follow-up browser QA during implementation. |
+| G9 Current Figma canvas verification | The currently opened Figma design file still contains the accepted active-page cards and design-evidence pages before implementation starts. | 2026-06-25 connector evidence for `NefQiIMOPIBU28TIYcwQFE`, plus follow-up browser QA during implementation. |
 | G10 Reuse boundary | Page-specific AI-generated assemblies are not treated as shared components; only documented shell, surface, metric, row, state, motion, and focus protocols are reusable. | `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md`, `docs/ADMIN_CONSOLE_UI_LAYOUT_EFFECT_MATRIX.md`, and `docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md`. |
 | G11 Trend logic boundary | Curves, sparklines, and chart slots are marked visual-only until source, time window, aggregation, threshold, empty/stale behavior, and accessibility text are defined. | `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md` and future DTO/selector task evidence. |
 

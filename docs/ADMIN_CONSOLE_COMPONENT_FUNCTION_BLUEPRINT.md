@@ -1,6 +1,6 @@
 # Admin Console Component And Function Blueprint
 
-Last updated: 2026-06-21, Asia/Shanghai.
+Last updated: 2026-06-25, America/Los_Angeles.
 
 > Status:
 > - Product Design brief: locked from the current concept image, existing
@@ -62,9 +62,9 @@ future components, but they are not all current delivery scope.
 
 The current Admin rebuild style pass standardizes the console as a protected
 operator workbench with a dark glass shell and light evidence surfaces. It is
-inspired by the approved concept image, the reviewed `06 AI Exploration`
-Visual Polish pages, and Horizon/NobleUI-style dashboard density, but remains
-code-native and project-specific.
+driven by the clean Figma baseline `NefQiIMOPIBU28TIYcwQFE`, which carries
+forward only the reviewed rules that survived from the concept image and
+earlier Visual Polish exploration. It remains code-native and project-specific.
 
 | Style area | Baseline |
 | --- | --- |
@@ -78,9 +78,9 @@ code-native and project-specific.
 | Typography | Inter/system UI stack, no negative letter spacing, compact labels, readable dashboard titles. |
 | Motion | Short hover/focus transitions only; no decorative animation in the design-draft layer. |
 
-The three Visual Polish pages define page composition for the three active
-routes only. They do not turn every page-local panel grouping into a reusable
-component. Reusable standards are extracted from their visual language:
+The three clean-baseline route cards define page composition for the three
+active routes only. They do not turn every page-local panel grouping into a
+reusable component. Reusable standards are extracted from their visual language:
 ShellRail/TopBar chrome, panel surface treatment, metric-card density, table
 row rhythm, status-chip semantics, focus/motion behavior, and safe data
 visualization slots.

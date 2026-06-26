@@ -1,6 +1,6 @@
 # Admin Console UI Content Matrix
 
-Last updated: 2026-06-24, America/Los_Angeles.
+Last updated: 2026-06-25, America/Los_Angeles.
 
 > Status:
 > - Type: UI design copy and implementation matrix
@@ -70,25 +70,25 @@ separate it into these layers:
 | `Platform Development` | Planned/locked | Future no-secret platform tools and diagnostics. | Locked slot only. | Not an active route. | Keep out of active UI until safe tool contracts exist. |
 | `System Settings` | Planned/locked | Private console settings, environment profiles, permissions, and safety policy. | Locked slot only. | Not an active route. | Keep out of active UI until private settings boundaries exist. |
 
-## Current Visual Polish Visible Mapping
+## Current Clean Baseline Visible Mapping
 
-The accepted `06 AI Exploration` Visual Polish frames define the current
-desktop first-screen content. The fuller ownership matrices below remain the
-domain backlog, but they must not be rendered as extra first-screen cards until
-a subpage, drawer, or route split is designed.
+The accepted clean baseline route cards define the current desktop first-screen
+content. The fuller ownership matrices below remain the domain backlog, but
+they must not be rendered as extra first-screen cards until a subpage, drawer,
+or route split is designed.
 
 | Page | Current frame | Visible first-screen content |
 | --- | --- | --- |
-| `Operations Overview` | `373:716` | ShellRail, TopBar System Search, four metrics, `Risk Queue`, `Next Actions`, `Review Candidates`, lower Operations metrics/event evidence. |
-| `Accounts & Resources` | `373:866` | ShellRail, TopBar System Search, four account/resource metrics, `Account Directory`, `Resources & Orders`, `Lifecycle`, lower Account metrics/event evidence. |
-| `Usage & Channels` | `373:1016` | ShellRail, TopBar System Search, four usage/channel metrics, `Collection Freshness`, `Channel Coverage`, `Usage Ledger`, lower Usage metrics/event evidence. |
+| `Operations Overview` | `24:5` | ShellRail, TopBar System Search, four metrics, `Risk Queue`, `Next Actions`, `Review Candidates`, lower Operations metrics/event evidence. |
+| `Accounts & Resources` | `24:35` | ShellRail, TopBar System Search, four account/resource metrics, `Account Directory`, `Resources & Orders`, `Lifecycle`, lower Account metrics/event evidence. |
+| `Usage & Channels` | `24:65` | ShellRail, TopBar System Search, four usage/channel metrics, `Collection Freshness`, `Channel Coverage`, `Usage Ledger`, lower Usage metrics/event evidence. |
 
 Current compression rules:
 
 1. Page title/subtitle/header badges are hidden in normal operator UI.
 2. `Quota & Usage`, `History & Events`, `Collection Anomalies`, and
    `Receipts & Collectors` remain valid domain modules, but the current
-   Visual Polish first screen expresses them through metrics, event evidence,
+   clean-baseline first screen expresses them through metrics, event evidence,
    later subpages, drawers, or future route splits.
 3. System Search is normal top-bar search. It must not open AppLibrary,
    NavigationLibrary, dock, or browser-OS surfaces.

@@ -126,10 +126,10 @@ describe("admin visual QA contract", () => {
 
   test("keeps automated QA coverage aligned with the Figma mirror evidence axes", () => {
     expect(ADMIN_VISUAL_QA_AXES).toEqual(expect.arrayContaining([
-      "figma-mirror",
+      "figma-baseline",
       "dom-contract",
       "browser-desktop",
-      "browser-mobile",
+      "browser-responsive",
       "style-token-regression",
       "safe-data-boundary"
     ]));

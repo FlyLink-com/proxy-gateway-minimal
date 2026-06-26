@@ -1,6 +1,6 @@
 # Admin Console Visual QA Ledger
 
-Last updated: 2026-06-21, America/Los_Angeles.
+Last updated: 2026-06-25, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-68
@@ -43,36 +43,33 @@ Source references:
 
 ## Current Figma Mirror Evidence
 
-Figma connector evidence on 2026-06-21:
+Figma connector evidence for the active baseline on 2026-06-25:
 
 | Check | Result |
 | --- | --- |
-| Source file metadata | Read succeeded for `https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19`. |
-| Current top-level page | `Admin UI Handoff`. |
-| Current visual source frames | `06 AI Exploration`: `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024` (`373:716`), `AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024` (`373:866`), `AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024` (`373:1016`). |
-| Historical page mirror frames | `01 Operations Overview / 1600x1024`, `02 Accounts & Resources / 1600x1024`, `03 Usage & Channels / 1600x1024`; keep for ownership lineage only. |
-| Implementation captures | `06 Current Implementation / Operations Overview / 1600w full-content capture`, `07 Current Implementation / Accounts & Resources / 1600w full-content capture`, `08 Current Implementation / Usage & Channels / 1600w full-content capture`. |
-| Previous mismatch | The earlier recorded `EvQXTtJ2XnRfcGxRLTRt0B` file is a one-page Requirements Map, not the canonical multi-frame handoff file. |
+| Source file metadata | Active file is `https://www.figma.com/design/NefQiIMOPIBU28TIYcwQFE/GlobalCircle-AI-Admin-UI-Baseline---2026-06-25`. |
+| Current top-level pages | `00 Index & Project Map`, `01 Design Rules V1-Polish`, `02 Component Contract`, `03 Product Baseline Frames`, `04 Figma-to-React Mapping`, `90 Evidence Gates`, and `99 Archive / Source Handoff`. |
+| Current visual source frames | `Product Baseline / Operations Overview` (`24:5`), `Product Baseline / Accounts & Resources` (`24:35`), and `Product Baseline / Usage & Channels` (`24:65`). |
+| Historical page mirror frames | Older `373:*`, `99:*`, and `104:*` frames are archive/lineage only unless their rule is copied into the clean baseline and re-accepted. |
+| Implementation captures | Local screenshots remain browser QA evidence only and do not replace the active Figma baseline. |
+| Previous mismatch | The earlier one-page Requirements Map and the former multi-frame handoff are not active implementation sources. |
 | Connector-reported seat | `Dev / developer`. |
 | User-reported Figma UI access | Full access for the connected account. |
-| Desktop evidence | Figma Desktop opens the canonical multi-frame file. The Share button shows a Full-seat upgrade prompt; do not continue that prompt through automation. |
-| Write probe | `use_figma` succeeded on the canonical file and wrote safe shared plugin data under `adminos.mcpWriteProbe` on page `0:1`. |
-| Next action | Use the canonical handoff file for future Figma mirror and visual QA work. Avoid Share or seat/billing prompts unless the operator explicitly approves that action. |
+| Desktop evidence | Figma Desktop and connector access can read and update the clean baseline file. |
+| Write probe | `use_figma` populated the clean baseline pages and read-back confirmed every page contains content. |
+| Next action | Use the clean baseline file for future Figma mirror and visual QA work. Keep the former handoff as archive/lineage only. |
 
 Component-system mirror status:
 
 | Check | Result |
 | --- | --- |
-| Page-level handoff | Current: the canonical file has page mirrors, safety/review frames, and implementation captures. |
-| Component-system mirror | Current: the required component-system batch exists on page `Admin Component Mirror v1`. |
-| Observed component sets | `8`: `StatusChip`, `MetricCard`, `PanelFrame`, `DataRow`, `TopBar`, `SidebarNavigation`, `PrivilegedGate`, `StateFeedback` |
-| Observed component nodes / variants | `41` component nodes / `41` variants |
-| Observed variable collections / variables | `4` collections / `57` variables |
-| Observed text styles / effect styles | `6` text styles / `3` effect styles |
-| Observed paint styles | `0` |
-| Pending component mirrors | None for this phase. |
-| Phase 2 screenshot evidence | `TopBar`, `SidebarNavigation`, `PrivilegedGate`, and `StateFeedback` screenshots generated successfully; three newly added variant grids were resized after overlap detection. |
-| Next task line | `Admin React/CSS grammar alignment from Figma Component Mirror v1` |
+| Page-level handoff | Current: the clean baseline has source boundary, design rules, component contract, product baseline cards, mapping, evidence gates, and archive pages. |
+| Component-system mirror | Current: component responsibilities are contract cards on `02 Component Contract`; they are not yet a full Figma component-set library. |
+| Observed contract cards | `ShellRail`, `TopBar`, `MetricCard`, `StatusChip`, `PanelFrame`, `DataRowCompact`, `EvidenceSurface`, `StateFeedback`, `PrivilegedGate`, `Deprecated / SidebarNavigation` |
+| Observed component nodes / variants | `0` component-set variants in the clean baseline; current output is a design contract, not a reusable Figma library. |
+| Pending component mirrors | None for source-boundary setup; React/CSS visual parity and browser QA remain open. |
+| Phase 2 screenshot evidence | New baseline screenshots were captured under `output/playwright/` for 1600, 1280, and 1024 widths. |
+| Next task line | `Admin React/CSS source-boundary cleanup and browser visual QA against the clean baseline` |
 
 Local mirror contract added:
 
@@ -88,7 +85,7 @@ GCC-118 parity status:
 
 | Check | Result |
 | --- | --- |
-| Required current component families | `StatusChip`, `MetricCard`, `PanelFrame`, `DataRowCompact`, `TopBar`, `ShellRail`, `PrivilegedGate`, `StateFeedback`, `EvidenceSurface`. Historical mirror evidence may still list deprecated `SidebarNavigation` for lineage only. |
+| Required current component families | `StatusChip`, `MetricCard`, `PanelFrame`, `DataRowCompact`, `TopBar`, `ShellRail`, `PrivilegedGate`, `StateFeedback`, `EvidenceSurface`. Deprecated `SidebarNavigation` is lineage only. |
 | Design-to-code mapping | Current: each required Figma component set maps to a React or contract surface, CSS tokens, grammar roles, state semantics, responsive rules, a11y rules, and current QA evidence references. |
 | Current implementation gaps | Recorded in `admin/src/design/figma-parity.ts` and `docs/ADMIN_CONSOLE_FIGMA_MIRROR.md`; handoff continues through `GCC-119` before visual evidence closes in `GCC-120`. |
 | Ready gate | `PR #355` remains Draft until `GCC-118`, `GCC-119`, and `GCC-120` are complete. |
@@ -208,8 +205,8 @@ Page-local navigation observed:
 | SH-01 | Shell and brand | Left rail with GlobalCircle AI identity and protected operator context. | Sidebar shows brand, grouped navigation, locked future slots, and safety footer. | Pass |
 | SH-02 | Navigation | Overview, user supervision, platform monitoring, audit/cases, platform development, and settings. | Active real pages remain limited to `Operations Overview`, `Accounts & Resources`, and `Usage & Channels`; planned areas are locked. | Pass |
 | SH-03 | Top search | Search users, orders, channels, cases, or events. | Top search is route-aware and searches active console pages; global object search is a later data-contract gap. | Partial |
-| OV-10 | Platform health metric | Health card with status, note, and sparkline. | `Platform health` now follows the canonical handoff card pattern: status pill, title, and safe summary copy. | Pass |
-| OV-11 | Risk cases metric | Risk count and trend. | `Risk candidates` now follows the canonical handoff card pattern and routes only; it does not mount a case workflow. | Pass |
+| OV-10 | Platform health metric | Health card with status, note, and sparkline. | `Platform health` follows the clean-baseline metric pattern: status pill, title, and safe summary copy. | Pass |
+| OV-11 | Risk cases metric | Risk count and trend. | `Risk candidates` follows the clean-baseline metric pattern and routes only; it does not mount a case workflow. | Pass |
 | OV-12 | Collection freshness metric | Freshness/P95-style latency card. | `Freshness P95` renders the safe age summary with stale-threshold wording. | Pass |
 | OV-13 | Channel coverage metric | Channel coverage card. | `Channel coverage` renders aggregate-only coverage copy. | Pass |
 | OV-20 | Risk queue | Bounded safe review rows. | `Risk Queue` renders two compact safe-ref rows with owner-route metadata. No severity filter row, case close, approval, or mutation action is present. | Pass |

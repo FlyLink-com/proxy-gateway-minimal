@@ -8,6 +8,8 @@ import {
   pageTitles
 } from "../app/navigation";
 import {
+  ADMIN_FIGMA_ARCHIVE_FILE_KEY,
+  ADMIN_FIGMA_ARCHIVE_SOURCE_URL,
   ADMIN_FIGMA_COMPONENT_MIRROR_STATUS,
   ADMIN_FIGMA_FILE_KEY,
   ADMIN_FIGMA_MIRROR_CONTRACT_VERSION,
@@ -33,15 +35,20 @@ function surfacePath(surface: string) {
 describe("admin Figma mirror contract", () => {
   test("declares the current Figma source and required mirror frames", () => {
     expect(ADMIN_FIGMA_MIRROR_CONTRACT_VERSION).toBe("admin-figma-mirror/v1");
-    expect(ADMIN_FIGMA_FILE_KEY).toBe("oZuKNtGPhP6oOQ0MSzpfvn");
-    expect(ADMIN_FIGMA_SOURCE_URL).toBe("https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn");
+    expect(ADMIN_FIGMA_FILE_KEY).toBe("NefQiIMOPIBU28TIYcwQFE");
+    expect(ADMIN_FIGMA_SOURCE_URL).toBe("https://www.figma.com/design/NefQiIMOPIBU28TIYcwQFE");
+    expect(ADMIN_FIGMA_ARCHIVE_FILE_KEY).toBe("oZuKNtGPhP6oOQ0MSzpfvn");
+    expect(ADMIN_FIGMA_ARCHIVE_SOURCE_URL).toBe("https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn");
     expect(ADMIN_FIGMA_REQUIRED_PAGE_NAMES).toEqual([
-      "00 Contract & Build Order",
-      "AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024",
-      "AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024",
-      "AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024",
-      "04 State & Safety Matrix",
-      "05 GCC-103 Review Addendum / 1600x1024"
+      "00 Index & Project Map",
+      "01 Design Rules V1-Polish",
+      "02 Component Contract",
+      "Product Baseline / Operations Overview",
+      "Product Baseline / Accounts & Resources",
+      "Product Baseline / Usage & Channels",
+      "04 Figma-to-React Mapping",
+      "90 Evidence Gates",
+      "99 Archive / Source Handoff"
     ]);
     expect(new Set(ADMIN_FIGMA_REQUIRED_PAGE_NAMES).size).toBe(ADMIN_FIGMA_REQUIRED_PAGE_NAMES.length);
   });
@@ -56,8 +63,7 @@ describe("admin Figma mirror contract", () => {
       expect(matchingMirror).toHaveLength(1);
       expect(matchingMirror[0].name).toContain(pageTitles[navItem.id]);
       expect(matchingMirror[0].frameSize).toBe(ADMIN_UI_CONTRACT.viewportTargets.desktopWorkbench.frame);
-      expect(matchingMirror[0].nodeId).toMatch(/^373:/);
-      expect(matchingMirror[0].visibleFrameSize).toBe("1600x908");
+      expect(matchingMirror[0].nodeId).toMatch(/^24:/);
       expect(matchingMirror[0].status).toBe("current");
     });
   });
@@ -78,116 +84,126 @@ describe("admin Figma mirror contract", () => {
 
   test("records the current Figma connector write path and remaining Share prompt guard", () => {
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.status).toBe("ready");
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.checkedAt).toBe("2026-06-21");
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.attemptedOperation).toContain("shared-plugin-data probe");
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.checkedAt).toBe("2026-06-25");
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.attemptedOperation).toContain("new clean baseline");
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.connectorReportedSeat).toBe("Dev / developer");
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.userReportedAccess).toMatch(/reported Full access/i);
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.desktopEvidence).toMatch(/canonical multi-page/i);
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.desktopEvidence).toMatch(/Full-seat upgrade prompt/i);
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.sourceFileMismatch).toMatch(/Previous recorded file key/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.desktopEvidence).toMatch(/clean GlobalCircle AI Admin UI Baseline/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.sourceFileMismatch).toMatch(/archive lineage/i);
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.sourceFileMismatch).toContain(ADMIN_FIGMA_FILE_KEY);
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("get_metadata");
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("use_figma can execute");
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("write probe succeeded");
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.diagnosticResult).toContain("all seven baseline pages");
     expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.connectorMessage).toMatch(/use_figma succeeded/i);
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/canonical handoff file/i);
-    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/seat\/billing prompts/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/clean baseline file/i);
+    expect(ADMIN_FIGMA_WRITE_ACCESS_CHECK.nextStep).toMatch(/archive or lineage only/i);
   });
 
-  test("records current component mirror progress and closes the Figma component gap", () => {
+  test("records current clean-baseline component contract progress", () => {
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.sourceFile).toBe(ADMIN_FIGMA_FILE_KEY);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.pageLevelHandoff).toBe("current");
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.componentSystemMirror).toBe("current");
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedTopLevelPage).toBe("Admin UI Handoff");
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedComponentMirrorPage).toBe("Admin Component Mirror v1");
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.checkedAt).toBe("2026-06-24");
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedVisualSourcePage).toBe("06 AI Exploration");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.archiveFile).toBe(ADMIN_FIGMA_ARCHIVE_FILE_KEY);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.pageLevelHandoff).toBe("current-clean-baseline");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.componentSystemMirror).toBe("contract-baseline");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedTopLevelPage).toBe("00 Index & Project Map");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedComponentMirrorPage).toBe("02 Component Contract");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.checkedAt).toBe("2026-06-25");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedVisualSourcePage).toBe("03 Product Baseline Frames");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedVisualSourceNodes).toEqual([
-      "373:716",
-      "373:866",
-      "373:1016"
+      "24:5",
+      "24:35",
+      "24:65"
     ]);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedFrames).toContain("AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024");
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedFrames).toContain("08 Current Implementation / Usage & Channels / 1600w full-content capture");
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalComponentSetCount).toBe(8);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalComponentNodeCount).toBe(41);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariantCount).toBe(41);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariableCollectionCount).toBe(4);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariableCount).toBe(57);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalTextStyleCount).toBe(6);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedFrames).toContain("Product Baseline / Operations Overview");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedFrames).toContain("90 Evidence Gates");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalComponentSetCount).toBe(0);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalComponentNodeCount).toBe(0);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariantCount).toBe(0);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariableCollectionCount).toBe(0);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalVariableCount).toBe(0);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalTextStyleCount).toBe(0);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalPaintStyleCount).toBe(0);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalEffectStyleCount).toBe(3);
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedLocalEffectStyleCount).toBe(0);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedComponentSets).toEqual([
       {
-        name: "StatusChip",
-        nodeId: "69:20",
-        variantCount: 5
-      },
-      {
-        name: "MetricCard",
-        nodeId: "73:42",
-        variantCount: 5
-      },
-      {
-        name: "PanelFrame",
-        nodeId: "74:178",
-        variantCount: 8
-      },
-      {
-        name: "DataRow",
-        nodeId: "75:107",
-        variantCount: 5
+        name: "ShellRail",
+        nodeId: "23:5",
+        variantCount: 0
       },
       {
         name: "TopBar",
-        nodeId: "79:88",
-        variantCount: 4
+        nodeId: "23:11",
+        variantCount: 0
       },
       {
-        name: "SidebarNavigation",
-        nodeId: "82:212",
-        variantCount: 6
+        name: "MetricCard",
+        nodeId: "23:17",
+        variantCount: 0
       },
       {
-        name: "PrivilegedGate",
-        nodeId: "83:62",
-        variantCount: 4
+        name: "StatusChip",
+        nodeId: "23:23",
+        variantCount: 0
+      },
+      {
+        name: "PanelFrame",
+        nodeId: "23:29",
+        variantCount: 0
+      },
+      {
+        name: "DataRowCompact",
+        nodeId: "23:35",
+        variantCount: 0
+      },
+      {
+        name: "EvidenceSurface",
+        nodeId: "23:41",
+        variantCount: 0
       },
       {
         name: "StateFeedback",
-        nodeId: "84:73",
-        variantCount: 4
+        nodeId: "23:47",
+        variantCount: 0
+      },
+      {
+        name: "PrivilegedGate",
+        nodeId: "23:53",
+        variantCount: 0
+      },
+      {
+        name: "Deprecated / SidebarNavigation",
+        nodeId: "23:59",
+        variantCount: 0
       }
     ]);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.requiredComponentMirrors).toEqual([
-      "PanelFrame",
+      "ShellRail",
+      "TopBar",
       "MetricCard",
       "StatusChip",
-      "DataTable / DataRow",
-      "TopBar",
-      "ShellRail / Primary Routes",
+      "PanelFrame",
+      "DataRowCompact",
+      "EvidenceSurface",
       "PrivilegedGate",
-      "EmptyState / Loading / Stale / Error"
+      "StateFeedback"
     ]);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.completedComponentMirrors).toEqual([
-      "PanelFrame",
+      "ShellRail",
+      "TopBar",
       "MetricCard",
       "StatusChip",
-      "DataTable / DataRow",
-      "TopBar",
-      "ShellRail / Primary Routes",
+      "PanelFrame",
+      "DataRowCompact",
+      "EvidenceSurface",
       "PrivilegedGate",
-      "EmptyState / Loading / Stale / Error"
+      "StateFeedback"
     ]);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.pendingComponentMirrors).toEqual([]);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.requiredVariantGroups).toContain("semantic-status");
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.figmaValidationEvidence).toEqual([
-      "use_figma created MetricCard, PanelFrame, and DataRow component sets on Admin Component Mirror v1.",
-      "use_figma created TopBar, SidebarNavigation, PrivilegedGate, and StateFeedback component sets on Admin Component Mirror v1.",
-      "Final Figma inventory reported 8 component sets, 41 component nodes, 41 variants, 4 variable collections, 57 variables, 6 text styles, and 3 effect styles.",
-      "Figma screenshot checks covered TopBar, SidebarNavigation, PrivilegedGate, and StateFeedback; SidebarNavigation, PrivilegedGate, and StateFeedback variant grids were resized after overlap detection."
+      "use_figma populated the clean baseline Index, Design Rules, Component Contract, Product Baseline Frames, Mapping, Evidence Gates, and Archive pages.",
+      "Read-back inventory reported all seven pages populated.",
+      "Light layout scan found no card text overflow.",
+      "No stale Source file: oZuKNtGPhP6oOQ0MSzpfvn source-of-truth wording remains."
     ]);
-    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.nextTaskLine).toBe("Admin React/CSS grammar alignment from Figma Component Mirror v1");
+    expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.nextTaskLine).toBe("Admin React/CSS source-boundary cleanup and browser visual QA against the clean baseline");
   });
 
   test("maps every mirrored component to React surfaces, grammar roles, tokens, and QA evidence", () => {
@@ -203,7 +219,7 @@ describe("admin Figma mirror contract", () => {
       "StateFeedback"
     ]);
     expect(ADMIN_FIGMA_COMPONENT_MIRROR_STATUS.observedComponentSets.map((componentSet) => componentSet.name)).toContain(
-      "SidebarNavigation"
+      "Deprecated / SidebarNavigation"
     );
     expect(ADMIN_FIGMA_REACT_PARITY_MATRIX.map((entry) => entry.figmaComponentSet)).toEqual(
       ADMIN_FIGMA_REACT_PARITY_REQUIRED_COMPONENTS
@@ -258,10 +274,10 @@ describe("admin Figma mirror contract", () => {
 
   test("defines the complete visual QA evidence axes", () => {
     expect(ADMIN_VISUAL_QA_AXES).toEqual([
-      "figma-mirror",
+      "figma-baseline",
       "dom-contract",
       "browser-desktop",
-      "browser-mobile",
+      "browser-responsive",
       "style-token-regression",
       "safe-data-boundary"
     ]);

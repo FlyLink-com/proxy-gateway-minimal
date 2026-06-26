@@ -1,6 +1,6 @@
 # Admin Console Frontend Structure Blueprint
 
-Last updated: 2026-06-24, America/Los_Angeles.
+Last updated: 2026-06-25, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-73 under GCC-42
@@ -192,10 +192,10 @@ The container model also defines the first visual style baseline:
   ShellRail, TopBar, System Search, and page-owned panel surfaces each use
   dedicated tokens so future pages do not restyle the operator console one
   component at a time.
-- The current accepted Figma baseline is `06 AI Exploration`: `373:716`,
-  `373:866`, and `373:1016`. Older bottom shelf, dock, AppLibrary,
-  NavigationLibrary, and freeform windowing language is historical exploration,
-  not the current implementation target.
+- The current accepted Figma baseline is `NefQiIMOPIBU28TIYcwQFE`:
+  `24:5`, `24:35`, and `24:65`. Older `373:*` Visual Polish frames, bottom
+  shelf, dock, AppLibrary, NavigationLibrary, and freeform windowing language
+  are historical exploration, not the current implementation target.
 - Phase 4 visual work must follow `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md`
   before adding System Search, module panels, workspace chrome, or richer
   layout behaviors.

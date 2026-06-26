@@ -2,107 +2,158 @@ import { type AdminPage } from "../app/navigation";
 
 export const ADMIN_FIGMA_MIRROR_CONTRACT_VERSION = "admin-figma-mirror/v1";
 
-export const ADMIN_FIGMA_FILE_KEY = "oZuKNtGPhP6oOQ0MSzpfvn";
+export const ADMIN_FIGMA_FILE_KEY = "NefQiIMOPIBU28TIYcwQFE";
+
+export const ADMIN_FIGMA_ARCHIVE_FILE_KEY = "oZuKNtGPhP6oOQ0MSzpfvn";
 
 export const ADMIN_FIGMA_SOURCE_URL = `https://www.figma.com/design/${ADMIN_FIGMA_FILE_KEY}`;
+
+export const ADMIN_FIGMA_ARCHIVE_SOURCE_URL = `https://www.figma.com/design/${ADMIN_FIGMA_ARCHIVE_FILE_KEY}`;
 
 export type AdminFigmaMirrorPageStatus =
   | "current"
   | "required"
-  | "blocked";
+  | "blocked"
+  | "archive";
 
 export type AdminFigmaMirrorPage = {
   name: string;
   status: AdminFigmaMirrorPageStatus;
-  role: "requirements-map" | "page-mirror" | "visual-qa-ledger";
+  role:
+    | "requirements-map"
+    | "design-rules"
+    | "component-contract"
+    | "page-mirror"
+    | "implementation-map"
+    | "visual-qa-ledger"
+    | "archive";
   frameName: string;
   frameSize: "1600x1024";
   nodeId?: string;
-  visibleFrameSize?: "1600x908";
   mapsToPages: AdminPage[];
   acceptance: string[];
 };
 
 export const ADMIN_FIGMA_MIRROR_PAGES: readonly AdminFigmaMirrorPage[] = [
   {
-    name: "00 Contract & Build Order",
+    name: "00 Index & Project Map",
     status: "current",
     role: "requirements-map",
-    frameName: "00 Contract & Build Order",
+    frameName: "00 Index & Project Map",
     frameSize: "1600x1024",
+    nodeId: "0:1",
     mapsToPages: ["dashboard", "portalRequests", "usageMonitor"],
     acceptance: [
-      "Defines the build order, current risk posture, and safe-data boundary",
-      "Does not override React page ownership or production authority"
+      "Names NefQiIMOPIBU28TIYcwQFE as the active baseline",
+      "Marks the old handoff file as archive and lineage only",
+      "Defines the review order from rules to evidence gates"
     ]
   },
   {
-    name: "AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024",
+    name: "01 Design Rules V1-Polish",
+    status: "current",
+    role: "design-rules",
+    frameName: "01 Design Rules V1-Polish",
+    frameSize: "1600x1024",
+    nodeId: "2:2",
+    mapsToPages: ["dashboard", "portalRequests", "usageMonitor"],
+    acceptance: [
+      "Defines source boundary, ShellRail, TopBar, breakpoints, surface rules, System Search, evidence slots, and forbidden legacy residue",
+      "Does not authorize backend, runtime, production, or sensitive-data work"
+    ]
+  },
+  {
+    name: "02 Component Contract",
+    status: "current",
+    role: "component-contract",
+    frameName: "02 Component Contract",
+    frameSize: "1600x1024",
+    nodeId: "2:3",
+    mapsToPages: ["dashboard", "portalRequests", "usageMonitor"],
+    acceptance: [
+      "Defines ShellRail, TopBar, MetricCard, StatusChip, PanelFrame, DataRowCompact, EvidenceSurface, StateFeedback, and PrivilegedGate responsibilities",
+      "Keeps SidebarNavigation, AppLibrary, NavigationLibrary, dock, drag-resize, and hidden-widget restore deprecated"
+    ]
+  },
+  {
+    name: "Product Baseline / Operations Overview",
     status: "current",
     role: "page-mirror",
-    frameName: "AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024",
+    frameName: "Product Baseline / Operations Overview",
     frameSize: "1600x1024",
-    nodeId: "373:716",
-    visibleFrameSize: "1600x908",
+    nodeId: "24:5",
     mapsToPages: ["dashboard"],
     acceptance: [
-      "Uses the accepted 2026-06-24 Visual Polish desktop geometry",
-      "Mirrors summary-and-routing only",
-      "Does not mirror account/resource ledgers, object timelines, or channel ledgers as Overview-owned content"
+      "Owns the Operations Overview first screen",
+      "Defines four summary metrics, Risk Queue, Next Actions, Review Candidates, and lower Operations evidence",
+      "Routes to owner pages and does not own account/resource ledgers, usage ledgers, or runtime actions"
     ]
   },
   {
-    name: "AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024",
+    name: "Product Baseline / Accounts & Resources",
     status: "current",
     role: "page-mirror",
-    frameName: "AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024",
+    frameName: "Product Baseline / Accounts & Resources",
     frameSize: "1600x1024",
-    nodeId: "373:866",
-    visibleFrameSize: "1600x908",
+    nodeId: "24:35",
     mapsToPages: ["portalRequests"],
     acceptance: [
-      "Uses the accepted 2026-06-24 Visual Polish desktop geometry",
-      "Owns account, resource, order, quota, lifecycle, and history-entry panels",
-      "Shows safe refs only and no executable account/order mutation controls"
+      "Owns the Accounts & Resources first screen",
+      "Defines account/resource metrics, Account Directory, Resources & Orders, Lifecycle, and lower account evidence",
+      "Shows safe refs only and no executable account, order, quota, or lifecycle mutation controls"
     ]
   },
   {
-    name: "AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024",
+    name: "Product Baseline / Usage & Channels",
     status: "current",
     role: "page-mirror",
-    frameName: "AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024",
+    frameName: "Product Baseline / Usage & Channels",
     frameSize: "1600x1024",
-    nodeId: "373:1016",
-    visibleFrameSize: "1600x908",
+    nodeId: "24:65",
     mapsToPages: ["usageMonitor"],
     acceptance: [
-      "Uses the accepted 2026-06-24 Visual Polish desktop geometry",
-      "Owns collection freshness, channel coverage, usage ledger, anomalies, and receipt panels",
+      "Owns the Usage & Channels first screen",
+      "Defines freshness, coverage, usage, anomaly metrics, Collection Freshness, Channel Coverage, Usage Ledger, and lower usage evidence",
       "Does not own quota edits, order pause/archive, subscription artifact lifecycle, or runtime apply"
     ]
   },
   {
-    name: "04 State & Safety Matrix",
+    name: "04 Figma-to-React Mapping",
     status: "current",
-    role: "visual-qa-ledger",
-    frameName: "04 State & Safety Matrix",
+    role: "implementation-map",
+    frameName: "04 Figma-to-React Mapping",
     frameSize: "1600x1024",
+    nodeId: "2:5",
     mapsToPages: ["dashboard", "portalRequests", "usageMonitor"],
     acceptance: [
-      "Records risk boundaries and safe-data rules",
-      "Keeps production and credential hard stops visible"
+      "Maps routes, components, tokens, CSS ownership, and QA hooks to React implementation surfaces",
+      "Prevents old handoff, AppLibrary, and OS/windowing behavior from re-entering code as current standard"
     ]
   },
   {
-    name: "05 GCC-103 Review Addendum / 1600x1024",
+    name: "90 Evidence Gates",
     status: "current",
     role: "visual-qa-ledger",
-    frameName: "05 GCC-103 Review Addendum / 1600x1024",
+    frameName: "90 Evidence Gates",
     frameSize: "1600x1024",
+    nodeId: "2:6",
     mapsToPages: ["dashboard", "portalRequests", "usageMonitor"],
     acceptance: [
-      "Records Figma mirror, DOM contract, Browser viewport, and validation-command evidence",
-      "Keeps review deltas visible until resolved"
+      "Records Figma, runtime screenshot, viewport, System Search, no-legacy-residue, and safe-data gates",
+      "Keeps PR readiness blocked until browser visual QA and source-boundary cleanup pass"
+    ]
+  },
+  {
+    name: "99 Archive / Source Handoff",
+    status: "archive",
+    role: "archive",
+    frameName: "99 Archive / Source Handoff",
+    frameSize: "1600x1024",
+    nodeId: "2:7",
+    mapsToPages: ["dashboard", "portalRequests", "usageMonitor"],
+    acceptance: [
+      "Records the old handoff file and superseded OS/AppLibrary concepts as archive only",
+      "Requires any reused old rule to be copied into the active baseline before implementation"
     ]
   }
 ];
@@ -112,14 +163,13 @@ export const ADMIN_FIGMA_REQUIRED_PAGE_NAMES = ADMIN_FIGMA_MIRROR_PAGES.map((pag
 export const ADMIN_FIGMA_PAGINATION_STANDARD = {
   nodeId: "157:2",
   name: "19 GCC-122 Pagination Standard / 1600x1024",
-  status: "current",
+  status: "archive-lineage",
   frameSize: "1600x1024",
   role: "implementation-gate",
   requiredViewports: [
     "1600",
     "1280",
-    "1024",
-    "768"
+    "1024"
   ],
   mobileStatus: "pending-dedicated-standard",
   containmentStrategies: [
@@ -175,110 +225,120 @@ export const ADMIN_FIGMA_PAGINATION_STANDARD = {
 } as const;
 
 export const ADMIN_FIGMA_WRITE_ACCESS_CHECK = {
-  checkedAt: "2026-06-21",
+  checkedAt: "2026-06-25",
   status: "ready",
-  attemptedOperation: "Read canonical handoff metadata, execute use_figma, and write a shared-plugin-data probe",
+  attemptedOperation: "Read the new clean baseline metadata, update the Index source boundary, and populate the planned baseline pages with use_figma.",
   connectorReportedSeat: "Dev / developer",
   userReportedAccess: "User reported Full access in Figma UI.",
-  desktopEvidence: "Figma Desktop opens the canonical multi-page GlobalCircle AI Admin UI Handoff file; Share shows a Full-seat upgrade prompt and must not be continued by automation.",
-  sourceFileMismatch: "Previous recorded file key resolved to a one-page Requirements Map; the canonical handoff file is the multi-frame oZuKNtGPhP6oOQ0MSzpfvn file.",
-  diagnosticResult: "get_metadata can read the canonical handoff file, use_figma can execute, and a shared plugin data write probe succeeded.",
-  connectorMessage: "use_figma succeeded on page 0:1 with adminos.mcpWriteProbe.",
-  nextStep: "Use the canonical handoff file for future Figma mirror and visual QA work. Avoid Share or seat/billing prompts unless the operator explicitly approves that action."
+  desktopEvidence: "Figma Desktop and connector access can read and update the clean GlobalCircle AI Admin UI Baseline file.",
+  sourceFileMismatch: "The previous canonical handoff file is now archive lineage; the active source boundary is NefQiIMOPIBU28TIYcwQFE.",
+  diagnosticResult: "use_figma populated all seven baseline pages and a read-back scan confirmed every page contains content.",
+  connectorMessage: "use_figma succeeded on Index, Design Rules, Component Contract, Product Baseline Frames, Mapping, Evidence Gates, and Archive pages.",
+  nextStep: "Use the clean baseline file for future Figma mirror and visual QA work. Treat the old handoff file as archive or lineage only."
 } as const;
 
 export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {
-  checkedAt: "2026-06-24",
+  checkedAt: "2026-06-25",
   sourceFile: ADMIN_FIGMA_FILE_KEY,
-  pageLevelHandoff: "current",
-  componentSystemMirror: "current",
-  observedTopLevelPage: "Admin UI Handoff",
-  observedComponentMirrorPage: "Admin Component Mirror v1",
-  observedVisualSourcePage: "06 AI Exploration",
-  observedVisualSourceNodes: ["373:716", "373:866", "373:1016"],
+  archiveFile: ADMIN_FIGMA_ARCHIVE_FILE_KEY,
+  pageLevelHandoff: "current-clean-baseline",
+  componentSystemMirror: "contract-baseline",
+  observedTopLevelPage: "00 Index & Project Map",
+  observedComponentMirrorPage: "02 Component Contract",
+  observedVisualSourcePage: "03 Product Baseline Frames",
+  observedVisualSourceNodes: ["24:5", "24:35", "24:65"],
   observedFrames: [
-    "00 Contract & Build Order",
-    "AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024",
-    "AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024",
-    "AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024",
-    "04 State & Safety Matrix",
-    "05 GCC-103 Review Addendum / 1600x1024",
-    "01 Operations Overview / 1600x1024",
-    "02 Accounts & Resources / 1600x1024",
-    "03 Usage & Channels / 1600x1024",
-    "06 Current Implementation / Operations Overview / 1600w full-content capture",
-    "07 Current Implementation / Accounts & Resources / 1600w full-content capture",
-    "08 Current Implementation / Usage & Channels / 1600w full-content capture"
+    "00 Index & Project Map",
+    "01 Design Rules V1-Polish",
+    "02 Component Contract",
+    "Product Baseline / Operations Overview",
+    "Product Baseline / Accounts & Resources",
+    "Product Baseline / Usage & Channels",
+    "04 Figma-to-React Mapping",
+    "90 Evidence Gates",
+    "99 Archive / Source Handoff"
   ],
-  observedLocalComponentSetCount: 8,
-  observedLocalComponentNodeCount: 41,
-  observedLocalVariantCount: 41,
-  observedLocalVariableCollectionCount: 4,
-  observedLocalVariableCount: 57,
-  observedLocalTextStyleCount: 6,
+  observedLocalComponentSetCount: 0,
+  observedLocalComponentNodeCount: 0,
+  observedLocalVariantCount: 0,
+  observedLocalVariableCollectionCount: 0,
+  observedLocalVariableCount: 0,
+  observedLocalTextStyleCount: 0,
   observedLocalPaintStyleCount: 0,
-  observedLocalEffectStyleCount: 3,
+  observedLocalEffectStyleCount: 0,
   observedComponentSets: [
     {
-      name: "StatusChip",
-      nodeId: "69:20",
-      variantCount: 5
-    },
-    {
-      name: "MetricCard",
-      nodeId: "73:42",
-      variantCount: 5
-    },
-    {
-      name: "PanelFrame",
-      nodeId: "74:178",
-      variantCount: 8
-    },
-    {
-      name: "DataRow",
-      nodeId: "75:107",
-      variantCount: 5
+      name: "ShellRail",
+      nodeId: "23:5",
+      variantCount: 0
     },
     {
       name: "TopBar",
-      nodeId: "79:88",
-      variantCount: 4
+      nodeId: "23:11",
+      variantCount: 0
     },
     {
-      name: "SidebarNavigation",
-      nodeId: "82:212",
-      variantCount: 6
+      name: "MetricCard",
+      nodeId: "23:17",
+      variantCount: 0
     },
     {
-      name: "PrivilegedGate",
-      nodeId: "83:62",
-      variantCount: 4
+      name: "StatusChip",
+      nodeId: "23:23",
+      variantCount: 0
+    },
+    {
+      name: "PanelFrame",
+      nodeId: "23:29",
+      variantCount: 0
+    },
+    {
+      name: "DataRowCompact",
+      nodeId: "23:35",
+      variantCount: 0
+    },
+    {
+      name: "EvidenceSurface",
+      nodeId: "23:41",
+      variantCount: 0
     },
     {
       name: "StateFeedback",
-      nodeId: "84:73",
-      variantCount: 4
+      nodeId: "23:47",
+      variantCount: 0
+    },
+    {
+      name: "PrivilegedGate",
+      nodeId: "23:53",
+      variantCount: 0
+    },
+    {
+      name: "Deprecated / SidebarNavigation",
+      nodeId: "23:59",
+      variantCount: 0
     }
   ],
   requiredComponentMirrors: [
-    "PanelFrame",
+    "ShellRail",
+    "TopBar",
     "MetricCard",
     "StatusChip",
-    "DataTable / DataRow",
-    "TopBar",
-    "ShellRail / Primary Routes",
+    "PanelFrame",
+    "DataRowCompact",
+    "EvidenceSurface",
     "PrivilegedGate",
-    "EmptyState / Loading / Stale / Error"
+    "StateFeedback"
   ],
   completedComponentMirrors: [
-    "PanelFrame",
+    "ShellRail",
+    "TopBar",
     "MetricCard",
     "StatusChip",
-    "DataTable / DataRow",
-    "TopBar",
-    "ShellRail / Primary Routes",
+    "PanelFrame",
+    "DataRowCompact",
+    "EvidenceSurface",
     "PrivilegedGate",
-    "EmptyState / Loading / Stale / Error"
+    "StateFeedback"
   ],
   pendingComponentMirrors: [],
   requiredVariantGroups: [
@@ -289,19 +349,19 @@ export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {
     "privileged-gate-state"
   ],
   figmaValidationEvidence: [
-    "use_figma created MetricCard, PanelFrame, and DataRow component sets on Admin Component Mirror v1.",
-    "use_figma created TopBar, SidebarNavigation, PrivilegedGate, and StateFeedback component sets on Admin Component Mirror v1.",
-    "Final Figma inventory reported 8 component sets, 41 component nodes, 41 variants, 4 variable collections, 57 variables, 6 text styles, and 3 effect styles.",
-    "Figma screenshot checks covered TopBar, SidebarNavigation, PrivilegedGate, and StateFeedback; SidebarNavigation, PrivilegedGate, and StateFeedback variant grids were resized after overlap detection."
+    "use_figma populated the clean baseline Index, Design Rules, Component Contract, Product Baseline Frames, Mapping, Evidence Gates, and Archive pages.",
+    "Read-back inventory reported all seven pages populated.",
+    "Light layout scan found no card text overflow.",
+    "No stale Source file: oZuKNtGPhP6oOQ0MSzpfvn source-of-truth wording remains."
   ],
-  nextTaskLine: "Admin React/CSS grammar alignment from Figma Component Mirror v1"
+  nextTaskLine: "Admin React/CSS source-boundary cleanup and browser visual QA against the clean baseline"
 } as const;
 
 export const ADMIN_VISUAL_QA_AXES = [
-  "figma-mirror",
+  "figma-baseline",
   "dom-contract",
   "browser-desktop",
-  "browser-mobile",
+  "browser-responsive",
   "style-token-regression",
   "safe-data-boundary"
 ] as const;

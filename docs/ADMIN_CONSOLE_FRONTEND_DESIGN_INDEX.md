@@ -22,20 +22,20 @@ boundaries must not be crossed.
 
 | Item | Current value |
 | --- | --- |
-| Canonical Figma file | <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19> |
-| Candidate clean baseline project | <https://www.figma.com/design/NefQiIMOPIBU28TIYcwQFE> |
-| Current refined visual references | `06 AI Exploration`: `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024`, `AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024`, `AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024` |
-| Current frame nodes | `373:716`, `373:866`, `373:1016` |
-| Direct review URL | <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19?node-id=365-2> |
-| Clean baseline role | `NefQiIMOPIBU28TIYcwQFE` is the intended forward cleanup baseline, but current connector metadata only verifies `00 Index & Project Map`. Until the planned pages are populated and re-verified, the original handoff file remains the verified source evidence and lineage record. |
-| Local screenshot evidence | None required for this sync; Figma connector metadata is the current evidence. |
+| Canonical Figma file | <https://www.figma.com/design/NefQiIMOPIBU28TIYcwQFE/GlobalCircle-AI-Admin-UI-Baseline---2026-06-25> |
+| Archived source handoff | <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19> |
+| Current refined visual references | Clean baseline pages: `01 Design Rules V1-Polish`, `02 Component Contract`, `03 Product Baseline Frames`, `04 Figma-to-React Mapping`, `90 Evidence Gates`, and `99 Archive / Source Handoff`. |
+| Current product baseline nodes | `24:5` Operations Overview, `24:35` Accounts & Resources, `24:65` Usage & Channels. |
+| Direct review URL | <https://www.figma.com/design/NefQiIMOPIBU28TIYcwQFE/GlobalCircle-AI-Admin-UI-Baseline---2026-06-25?node-id=0-1> |
+| Clean baseline role | `NefQiIMOPIBU28TIYcwQFE` is now the active Admin UI design baseline. The old handoff file remains archive/lineage only unless a rule is explicitly copied into this baseline and reviewed there. |
+| Local screenshot evidence | `output/playwright/admin-new-baseline-qa-1600x1024.png`, `output/playwright/admin-new-baseline-qa-1280x800.png`, and `output/playwright/admin-new-baseline-qa-1024x768.png` were captured for the first visual QA pass. |
 | Current Figma Site | <https://www.figma.com/site/fGP4xsj27bbcYRGnzIa3DO/Untitled> |
 | Design-source boundary sync | `15 Design Source Boundary / 1600x1024`, node `240:2`, written through Figma connector on 2026-06-23. |
 | Design posture | Figma design is the frontend design repository and visual contract source; GitHub stores runnable implementation, tests, contracts, docs, and QA evidence; Figma Site is optional demo/click-flow review only. |
 
-The `06 AI Exploration` Visual Polish frames are the current desktop design
-source for the three active Admin pages. Local screenshots are review evidence
-only and must not replace the canonical Figma design frames.
+The clean baseline project is the current design source for the three active
+Admin pages. Local screenshots are review evidence only and must not replace
+the canonical Figma design frames.
 
 Scope rule:
 
@@ -59,7 +59,7 @@ evidence, but the reviewable source chain is Figma, GitHub, and Linear.
 
 | Surface | Owns | Does not own | Current evidence |
 | --- | --- | --- | --- |
-| Figma design | Frontend design repository: page frames, component specs, visual baselines, responsive rules, copy/state contracts, and design acceptance notes. | Runtime frontend code, backend data, production authority, or secrets. | Canonical design file `oZuKNtGPhP6oOQ0MSzpfvn`; active Visual Polish frames `373:716`, `373:866`, `373:1016`; rule source `501:488`; responsive Visual Polish frames for LG/MD/SM are part of the current design source. |
+| Figma design | Frontend design repository: page frames, component specs, visual baselines, responsive rules, copy/state contracts, and design acceptance notes. | Runtime frontend code, backend data, production authority, or secrets. | Canonical design file `NefQiIMOPIBU28TIYcwQFE`; active product baseline cards `24:5`, `24:35`, `24:65`; old handoff file is archive/lineage only. |
 | GitHub | Runnable Admin React/CSS/tests, design contracts, validation records, and PR review history. | Unreviewed visual decisions that bypass Figma and the design docs. | Current branch `codex/admin-figma-mirror-visual-qa`; Draft PR #364 tracks the visual review packet. |
 | Linear | Task gates, review ownership, phase acceptance, and next-stage sequencing. | Code, design source of truth, production approval, or secret storage. | GCC Admin UI task line and acceptance notes. |
 
@@ -68,37 +68,39 @@ host a clickable demo after a design is accepted, but it must not replace the
 canonical Figma `/design` file, GitHub implementation, or Linear acceptance
 trail. The current Site link above is initialized for future demo use only.
 
-Connector update, 2026-06-24: live Figma metadata for node `365:2` confirmed
-page `06 AI Exploration` and the three active Visual Polish frames listed
-above. The previous `99:2`, `104:2`, and `104:226` frames are now historical
-draft lineage, not the current implementation source.
+Historical connector update, 2026-06-24: live Figma metadata for node `365:2`
+confirmed page `06 AI Exploration` and the three Visual Polish frames that were
+current at that time. The previous `99:2`, `104:2`, and `104:226` frames became
+historical draft lineage.
 
-Connector update, 2026-06-25: live Figma metadata confirmed `V1 Design Rules ·
-Master Reference` at node `501:488` and `12` responsive Visual Polish frames
-under `06 AI Exploration`: baseline `1600px`, `LG-1440`, `MD-1280`, and
-`SM-1024` for `Operations Overview`, `Accounts & Resources`, and
-`Usage & Channels`. These rules supersede old single-frame fixed extraction.
-Frontend implementation must use breakpoint-driven layout adaptation, not
-whole-frame scaling or baseline-only coordinates.
+Historical connector update, 2026-06-25: live Figma metadata also confirmed
+`V1 Design Rules · Master Reference` at node `501:488` and `12` responsive
+Visual Polish frames under `06 AI Exploration`. Those rules were used as input
+for the clean baseline, but the current implementation source is now
+`NefQiIMOPIBU28TIYcwQFE`. Frontend implementation must use breakpoint-driven
+layout adaptation, not whole-frame scaling or baseline-only coordinates.
 
 Baseline project update, 2026-06-25: the clean Figma baseline project
-`NefQiIMOPIBU28TIYcwQFE` was created as the forward cleanup target for the
-accepted `06 AI Exploration` source. Current connector metadata verifies only
-`00 Index & Project Map`; the intended pages are `01 Design Rules V1-Polish`,
-`02 Component Contract`, `03 Product Baseline Frames`,
-`04 Figma-to-React Mapping`, `90 Evidence Gates`, and
-`99 Archive / Source Handoff`. Do not use this file as the implementation
-baseline until those pages are populated and re-verified. Use the original
-handoff file as the verified source evidence and historical canvas.
+`NefQiIMOPIBU28TIYcwQFE` is populated and re-verified. It now owns the active
+source boundary through `00 Index & Project Map`, reusable rules through
+`01 Design Rules V1-Polish`, component responsibilities through
+`02 Component Contract`, route baselines through `03 Product Baseline Frames`,
+implementation mapping through `04 Figma-to-React Mapping`, PR gates through
+`90 Evidence Gates`, and lineage through `99 Archive / Source Handoff`.
+The original handoff file is historical canvas only.
 
 ## Current Figma Coverage
 
-The canonical file contains original mirrors, prior refined drafts, baseline AI
-candidates, and the current Visual Polish frames. They have different roles:
+The active clean baseline contains the source boundary, rule cards, component
+contract cards, route baseline cards, implementation mapping, evidence gates,
+and archive page. Older handoff frames have different lineage roles:
 
 | Surface | Node | Role | Current design status |
 | --- | --- | --- | --- |
-| Candidate clean baseline project | `NefQiIMOPIBU28TIYcwQFE` | Intended clean Admin UI design baseline; currently only the index page is connector-verified. | Populate and re-verify before using for implementation handoff. |
+| Clean baseline project | `NefQiIMOPIBU28TIYcwQFE` | Active Admin UI design baseline. | Use for implementation handoff and visual QA. |
+| `Product Baseline / Operations Overview` | `24:5` | Active Operations route baseline card. | Current source for page ownership and first-screen modules. |
+| `Product Baseline / Accounts & Resources` | `24:35` | Active Accounts route baseline card. | Current source for page ownership and first-screen modules. |
+| `Product Baseline / Usage & Channels` | `24:65` | Active Usage route baseline card. | Current source for page ownership and first-screen modules. |
 | `01 Operations Overview / 1600x1024` | `2:81` | Original page mirror and ownership map. | Superseded visually by `373:716`, still useful for page content lineage. |
 | `02 Accounts & Resources / 1600x1024` | `2:189` | Original page mirror and ownership map. | Superseded visually by `373:866`, still useful for page content lineage. |
 | `03 Usage & Channels / 1600x1024` | `2:309` | Original page mirror and ownership map. | Superseded visually by `373:1016`, still useful for page content lineage. |
@@ -110,15 +112,15 @@ candidates, and the current Visual Polish frames. They have different roles:
 | `AI Candidate Baseline / Operations Overview / 1600x1024` | `365:8` | Baseline AI candidate. | Reference only; hidden contract/footer areas are not current visible UI. |
 | `AI Candidate Baseline / Accounts & Resources / 1600x1024` | `365:52` | Baseline AI candidate. | Reference only; hidden contract/footer areas are not current visible UI. |
 | `AI Candidate Baseline / Usage & Channels / 1600x1024` | `365:96` | Baseline AI candidate. | Reference only; hidden contract/footer areas are not current visible UI. |
-| `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024` | `373:716` | Current Operations desktop design. | Accepted current source for visual/layout implementation. |
-| `AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024` | `373:866` | Current Accounts desktop design. | Accepted current source for visual/layout implementation. |
-| `AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024` | `373:1016` | Current Usage desktop design. | Accepted current source for visual/layout implementation. |
+| `AI Candidate V1 / Operations Overview / Visual Polish / 1600x1024` | `373:716` | Archived Operations desktop exploration. | Lineage only; not an active implementation source. |
+| `AI Candidate V1 / Accounts & Resources / Visual Polish / 1600x1024` | `373:866` | Archived Accounts desktop exploration. | Lineage only; not an active implementation source. |
+| `AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024` | `373:1016` | Archived Usage desktop exploration. | Lineage only; not an active implementation source. |
 
-Implementation must now treat `373:716`, `373:866`, and `373:1016` as the
-current desktop visual source, `501:488` as the current rule source, and the
-LG/MD/SM Visual Polish frames as responsive acceptance evidence. It must not
-continue implementing from the older `99:2`, `104:2`, or `104:226` drafts
-unless a review explicitly references them as historical rationale.
+Implementation must now treat `NefQiIMOPIBU28TIYcwQFE` as the current design
+source and `24:5`, `24:35`, and `24:65` as the active route baseline cards.
+The older `373:716`, `373:866`, `373:1016`, `99:2`, `104:2`, and `104:226`
+nodes remain lineage only unless a review explicitly copies their rule into
+the clean baseline and re-accepts it there.
 
 Local sync status, 2026-06-24:
 
@@ -348,8 +350,8 @@ paragraph, move the detail to docs, tooltip, drawer, or state feedback.
 
 Before marking a frontend UI pass ready:
 
-1. Figma review uses the canonical file and current frames `373:716`,
-   `373:866`, and `373:1016`.
+1. Figma review uses the canonical clean baseline file and current route
+   baseline cards `24:5`, `24:35`, and `24:65`.
 2. Implemented UI matches the page ownership model from Navigation IA.
 3. Visible copy matches the UI content matrix and this copy pack.
 4. Design-only copy is not rendered in normal operator mode.
