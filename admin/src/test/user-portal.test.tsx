@@ -2,11 +2,13 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "../App";
+import { UserRegistrationPage } from "../features/user-portal/user-registration-page";
 import { UserPortalPage } from "../features/user-portal/user-portal-page";
 import { createTotpCode } from "../features/user-portal/totp-preview";
 import {
   createHttpUserPortalClient,
   createLocalUserPortalClient,
+  PORTAL_REGISTRATION_SESSION_STORAGE_KEY,
   type PortalAuthInput,
   type PortalAuthenticatorBinding,
   type PortalAuthenticatorEnrollment,
@@ -17,6 +19,9 @@ import {
   type PortalPasskeyBinding,
   type PortalPasskeyExport,
   type PortalRefreshSubscriptionInput,
+  type PortalRegistrationEmailVerificationChallenge,
+  type PortalRegistrationInput,
+  type PortalRegistrationResult,
   type PortalSession,
   type PortalSupportRequest,
   type PortalSupportRequestInput,
@@ -27,6 +32,7 @@ import {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   window.location.hash = "";
   vi.restoreAllMocks();
 });
@@ -46,6 +52,47 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
         noAdminApi: true,
         noPublicAuthActivated: true,
         noRawCodeReturned: true
+      }
+    })),
+    requestRegistrationEmailVerification: vi.fn(async (): Promise<PortalRegistrationEmailVerificationChallenge> => ({
+      status: "requested",
+      verificationRef: "reg_email_preview",
+      expiresInSeconds: 600,
+      safety: {
+        noAdminApi: true,
+        noAccountCreated: true,
+        noPublicAuthActivated: true,
+        noRawCodeReturned: true,
+        noRawEmailReturned: true
+      }
+    })),
+    registerTrialAccount: vi.fn(async (_input: PortalRegistrationInput): Promise<PortalRegistrationResult> => ({
+      status: "registered",
+      accountId: "acct_registration_preview",
+      session: {
+        status: "authenticated_preview",
+        sessionRef: "portal_session_registration_preview",
+        userRef: "acct_registration_preview",
+        displayName: "local-user@example.test",
+        authMode: "password",
+        registeredAt: "2026-07-01T00:00:00.000Z",
+        safety: {
+          noAdminApi: true,
+          noPublicAuthActivated: true,
+          noRawPasswordReturned: true
+        }
+      },
+      trial: {
+        durationDays: 7,
+        validUntil: "2026-07-07T00:00:00.000Z",
+        accessRequestStatus: "pending_admin_review"
+      },
+      safety: {
+        noAdminApi: true,
+        noPaymentActivation: true,
+        noPublicAdmin: true,
+        noRawCustomerDataReturned: true,
+        rawPasswordReturned: false
       }
     })),
     authenticate: vi.fn(async (input: PortalAuthInput): Promise<PortalSession> => ({
@@ -320,35 +367,29 @@ async function submitPortalLogin(accountId = "user_safe_ref", password = "user-p
 }
 
 describe("user portal route", () => {
-  test("opens a separate customer portal without Admin navigation", async () => {
+  test("does not expose the customer portal from the Admin app shell", async () => {
     render(createElement(App));
 
-    expect(screen.getByRole("heading", { name: "Connect Admin API" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Admin Login" })).not.toBeNull();
+    expect(screen.queryByText(/Console token/i)).toBeNull();
     expect(screen.queryByLabelText("Admin navigation")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open user portal" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "账号登录" })).toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Open user portal" }));
+    window.location.hash = "#/portal";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
 
-    expect(await screen.findByRole("heading", { name: "账号登录" })).not.toBeNull();
-    expect(screen.getByText("使用账户密码登录。可在个人中心开启身份验证器和通行密钥。")).not.toBeNull();
-    expect(screen.getByLabelText("账户 ID")).not.toBeNull();
-    expect(screen.getByLabelText("密码")).not.toBeNull();
-    expect(screen.getByLabelText("防机器人校验")).not.toBeNull();
-    expect(screen.getByRole("button", { name: "登录" })).not.toBeNull();
-    expect(screen.queryByRole("group", { name: "登录方式" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "入口 Token" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "身份验证器" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "密码登录" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "邮箱验证码" })).toBeNull();
-    expect(screen.queryByLabelText("邮箱")).toBeNull();
-    expect(screen.queryByLabelText("入口令牌")).toBeNull();
-    expect(screen.queryByLabelText("TOTP 密钥")).toBeNull();
-    expect(screen.queryByLabelText("动态验证码")).toBeNull();
+    expect(screen.getByRole("heading", { name: "Admin Login" })).not.toBeNull();
+    expect(screen.queryByRole("heading", { name: "账号登录" })).toBeNull();
     expect(screen.queryByLabelText("Admin navigation")).toBeNull();
   });
 
-  test("opens a separate local preview route that can complete a browser login", async () => {
-    window.location.hash = "#/portal-preview";
-    render(createElement(App));
+  test("keeps local customer portal preview as a portal-only surface", async () => {
+    render(createElement(UserPortalPage, {
+      portalClient: createLocalUserPortalClient({
+        demoSubscriptionUrl: "https://sub.example.test/import/local-preview-visible-once"
+      })
+    }));
 
     expect(await screen.findByRole("heading", { name: "账号登录" })).not.toBeNull();
 
@@ -359,9 +400,12 @@ describe("user portal route", () => {
     expect(screen.queryByLabelText("Admin navigation")).toBeNull();
   });
 
-  test("lets a signed-in portal user leave back to account login", async () => {
-    window.location.hash = "#/portal-preview";
-    render(createElement(App));
+  test("lets a signed-in portal-only user leave back to account login", async () => {
+    render(createElement(UserPortalPage, {
+      portalClient: createLocalUserPortalClient({
+        demoSubscriptionUrl: "https://sub.example.test/import/local-preview-visible-once"
+      })
+    }));
 
     await enterPortal();
 
@@ -377,6 +421,53 @@ describe("user portal route", () => {
 });
 
 describe("user portal product surface", () => {
+  test("uses the saved public-site language preference on registration and login entry pages", async () => {
+    window.localStorage.setItem("gccwebos-site-locale", "en");
+    const issueHumanChallenge = vi.fn(async (): Promise<PortalHumanVerificationChallenge> => ({
+      challengeId: "phc_registration_locale",
+      prompt: "8 + 5 = ?",
+      expiresInSeconds: 180
+    }));
+
+    render(createElement(UserRegistrationPage, {
+      portalClient: portalClient({ issueHumanChallenge })
+    }));
+
+    expect(document.documentElement.lang).toBe("en");
+    expect(document.title).toBe("GCC WebOS - Registration");
+    expect(screen.getByRole("heading", { name: "Register for a 7-day trial" })).not.toBeNull();
+    expect(screen.getByLabelText("Email address")).not.toBeNull();
+    expect(screen.getByLabelText("Password")).not.toBeNull();
+    expect(screen.getByLabelText("Confirm password")).not.toBeNull();
+    expect(screen.getByLabelText("Email verification code")).not.toBeNull();
+    expect(screen.queryByLabelText("Name or team")).toBeNull();
+    expect(screen.queryByLabelText("Plan interest")).toBeNull();
+    expect(screen.queryByLabelText("Anti-bot check")).toBeNull();
+    expect(screen.getByRole("button", { name: "Send email code" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Register for 7-day trial" })).not.toBeNull();
+    expect(issueHumanChallenge).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "中" }));
+
+    expect(window.localStorage.getItem("gccwebos-site-locale")).toBe("zh");
+    expect(document.documentElement.lang).toBe("zh-CN");
+    expect(document.title).toBe("GCC WebOS - 用户注册");
+    expect(screen.getByRole("heading", { name: "注册领取 7 天试用" })).not.toBeNull();
+
+    cleanup();
+    window.localStorage.setItem("gccwebos-site-locale", "en");
+    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+
+    expect(document.documentElement.lang).toBe("en");
+    expect(document.title).toBe("GCC WebOS - Account sign in");
+    expect(screen.getByRole("heading", { name: "Account sign in" })).not.toBeNull();
+    expect(screen.getByText("Sign in with your account password. Authenticator and passkey setup stays in the personal center.")).not.toBeNull();
+    expect(screen.getByLabelText("Account ID")).not.toBeNull();
+    expect(screen.getByLabelText("Password")).not.toBeNull();
+    expect(screen.getByLabelText("Anti-bot check")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Loading check" })).not.toBeNull();
+  });
+
   test("renders one normal account login method instead of three login tabs", async () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
@@ -397,6 +488,13 @@ describe("user portal product surface", () => {
     expect(screen.queryByLabelText("TOTP 密钥")).toBeNull();
     expect(screen.queryByLabelText("动态验证码")).toBeNull();
     expect(screen.queryByText("获取验证码")).toBeNull();
+  });
+
+  test("links account login to self-service registration in the same portal", async () => {
+    render(createElement(UserPortalPage, { portalClient: portalClient() }));
+
+    const registrationLink = screen.getByRole("link", { name: "注册领取 7 天试用" });
+    expect(registrationLink.getAttribute("href")).toBe("/portal/register/");
   });
 
   test("loads a portal-issued anti-bot math challenge instead of submitting a fallback challenge", async () => {
@@ -587,6 +685,10 @@ describe("user portal product surface", () => {
     expect(binding.status).toBe("bound_preview");
     expect(binding.method).toBe("totp");
     expect(binding.safety.noRawSecretReturned).toBe(true);
+
+    await expect(client.startAuthenticatorEnrollment({
+      userRef: "user_safe_ref"
+    })).rejects.toThrow("此账户已绑定身份验证器。");
   });
 
   test("passes password login contract through local client without rendering the raw password", async () => {
@@ -691,6 +793,162 @@ describe("user portal product surface", () => {
     expect(session.authMode).toBe("token");
     expect(session.safety.noAdminApi).toBe(true);
     expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  test("http portal client submits registration without echoing collected form fields", async () => {
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (String(input) === "/api/portal/registration/email-verification") {
+        expect(JSON.parse(String(init?.body))).toEqual({
+          email: "local-user@example.test"
+        });
+        return new Response(JSON.stringify({
+          verification: {
+            status: "requested",
+            verificationRef: "reg_email_1",
+            expiresInSeconds: 600,
+            safety: {
+              noRawCodeReturned: true,
+              noRawEmailReturned: true
+            }
+          }
+        }), { status: 201, headers: { "Content-Type": "application/json" } });
+      }
+      expect(String(input)).toBe("/api/portal/registration");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        email: "local-user@example.test",
+        password: "register-passphrase-1",
+        emailVerification: {
+          verificationRef: "reg_email_1",
+          code: "246810"
+        }
+      });
+      return new Response(JSON.stringify({
+        registration: {
+          accountId: "acct_registration_1",
+          status: "registered",
+          trial: {
+            durationDays: 7,
+            validUntil: "2026-07-07T09:00:00.000Z",
+            accessRequestStatus: "pending_admin_review"
+          },
+          safety: {
+            noRawCustomerDataReturned: true,
+            rawPasswordReturned: false
+          }
+        },
+        session: {
+          sessionRef: "portal_session_registration_1",
+          accountId: "acct_registration_1",
+          authMethod: "password",
+          issuedAt: "2026-07-01T09:00:00.000Z"
+        }
+      }), { status: 201, headers: { "Content-Type": "application/json" } });
+    });
+    const client = createHttpUserPortalClient({ fetchFn });
+
+    const verification = await client.requestRegistrationEmailVerification({
+      email: "local-user@example.test"
+    });
+
+    const result = await client.registerTrialAccount({
+      email: "local-user@example.test",
+      password: "register-passphrase-1",
+      emailVerification: {
+        verificationRef: verification.verificationRef,
+        code: "246810"
+      }
+    });
+
+    expect(result.accountId).toBe("acct_registration_1");
+    expect(result.status).toBe("registered");
+    expect(result.session.userRef).toBe("acct_registration_1");
+    expect(result.session.authMode).toBe("password");
+    expect(result.trial.durationDays).toBe(7);
+    expect(JSON.stringify(result)).not.toContain("local-user@example.test");
+    expect(JSON.stringify(result)).not.toContain("register-passphrase-1");
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+  });
+
+  test("registration page creates a trial account and stores the portal session", async () => {
+    const requestRegistrationEmailVerification = vi.fn(async (): Promise<PortalRegistrationEmailVerificationChallenge> => ({
+      status: "requested",
+      verificationRef: "reg_email_1",
+      expiresInSeconds: 600,
+      safety: {
+        noAdminApi: true,
+        noAccountCreated: true,
+        noPublicAuthActivated: true,
+        noRawCodeReturned: true,
+        noRawEmailReturned: true
+      }
+    }));
+    const registerTrialAccount = vi.fn(async (_input: PortalRegistrationInput): Promise<PortalRegistrationResult> => ({
+      status: "registered",
+      accountId: "acct_registration_1",
+      session: {
+        status: "authenticated_preview",
+        sessionRef: "portal_session_registration_1",
+        userRef: "acct_registration_1",
+        displayName: "acct_registration_1",
+        authMode: "password",
+        registeredAt: "2026-07-01T09:00:00.000Z",
+        safety: {
+          noAdminApi: true,
+          noPublicAuthActivated: true,
+          noRawPasswordReturned: true
+        }
+      },
+      trial: {
+        durationDays: 7,
+        validUntil: "2026-07-07T09:00:00.000Z",
+        accessRequestStatus: "pending_admin_review"
+      },
+      safety: {
+        noAdminApi: true,
+        noPaymentActivation: true,
+        noPublicAdmin: true,
+        noRawCustomerDataReturned: true,
+        rawPasswordReturned: false
+      }
+    }));
+    const client = portalClient({
+      requestRegistrationEmailVerification,
+      registerTrialAccount
+    });
+    render(createElement(UserRegistrationPage, { portalClient: client }));
+
+    fireEvent.change(screen.getByLabelText("电子邮箱"), { target: { value: "local-user@example.test" } });
+    fireEvent.change(screen.getByLabelText("密码"), { target: { value: "register-passphrase-1" } });
+    fireEvent.change(screen.getByLabelText("确认密码"), { target: { value: "register-passphrase-1" } });
+    fireEvent.click(screen.getByRole("button", { name: "发送邮箱验证码" }));
+
+    await waitFor(() => {
+      expect(requestRegistrationEmailVerification).toHaveBeenCalledWith({
+        email: "local-user@example.test"
+      });
+    });
+    fireEvent.change(screen.getByLabelText("邮箱验证码"), { target: { value: "246810" } });
+    fireEvent.click(screen.getByRole("button", { name: "注册领取 7 天试用" }));
+
+    await waitFor(() => {
+      expect(registerTrialAccount).toHaveBeenCalledWith({
+        email: "local-user@example.test",
+        password: "register-passphrase-1",
+        emailVerification: {
+          verificationRef: "reg_email_1",
+          code: "246810"
+        }
+      });
+    });
+    expect(screen.getByRole("heading", { name: "注册完成" })).not.toBeNull();
+    expect(screen.queryByLabelText("电子邮箱")).toBeNull();
+    expect(screen.queryByLabelText("密码")).toBeNull();
+    expect(screen.queryByText("register-passphrase-1")).toBeNull();
+    const persisted = window.sessionStorage.getItem(PORTAL_REGISTRATION_SESSION_STORAGE_KEY);
+    expect(persisted).not.toBeNull();
+    expect(persisted ?? "").toContain("acct_registration_1");
+    expect(persisted ?? "").not.toContain("register-passphrase-1");
+    expect(screen.getByRole("link", { name: "进入用户面板" }).getAttribute("href")).toBe("/portal/");
   });
 
   test("http portal client posts password login to backend and maps TOTP challenges", async () => {

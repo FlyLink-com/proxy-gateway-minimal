@@ -401,6 +401,38 @@ describe("admin ui primitives", () => {
     expect(scrollTo).toHaveBeenLastCalledWith({ top: 0, behavior: "auto" });
   });
 
+  test("keeps single-item pinned route groups visible in the sidebar", () => {
+    render(
+      <WorkspaceSidebar
+        brand={{
+          mark: "GC",
+          name: "GlobalCircle AI",
+          subtitle: "Proxy Gateway"
+        }}
+        pinnedApps={[]}
+        pinnedAppGroups={[
+          {
+            id: "monitoring",
+            label: "Monitoring",
+            items: [{
+              active: true,
+              icon: <span aria-hidden="true">O</span>,
+              id: "overview",
+              label: "Operations Overview",
+              onClick: vi.fn(),
+              tone: "nav-app-tone-blue"
+            }]
+          }
+        ]}
+      />
+    );
+
+    const sidebar = screen.getByLabelText("Workspace sidebar");
+    expect(within(sidebar).getByLabelText("Monitoring routes")).not.toBeNull();
+    expect(within(sidebar).getByText("Monitoring")).not.toBeNull();
+    expect(within(sidebar).getByRole("button", { name: "Operations Overview" })).not.toBeNull();
+  });
+
   test("renders data source badges with explicit source state", () => {
     render(
       <DataSourceBadge
@@ -452,6 +484,25 @@ describe("admin ui primitives", () => {
     expect(screen.getByRole("cell", { name: "user_001" })).not.toBeNull();
     expect(screen.getByRole("cell", { name: "order_2048" })).not.toBeNull();
     expect(screen.getAllByRole("row")).toHaveLength(2);
+  });
+
+  test("pads fixed visual row slots without adding business rows", () => {
+    render(
+      <DataTable
+        ariaLabel="Fixed visual row table"
+        columns={[
+          { key: "account", header: "User account", render: (row) => <SafeRef value={row.account} /> },
+          { key: "order", header: "Linked order", render: (row) => <SafeRef value={row.order} /> }
+        ]}
+        fixedRowCount={3}
+        getRowKey={(row) => row.order}
+        rows={[{ account: "user_001", order: "order_2048" }]}
+      />
+    );
+
+    expect(screen.getAllByRole("row")).toHaveLength(2);
+    expect(document.querySelectorAll(".new-console-row-placeholder")).toHaveLength(2);
+    expect(document.querySelector(".new-console-row-placeholder")?.getAttribute("role")).toBe("presentation");
   });
 
   test("contains long data tables with reusable data card pagination", () => {

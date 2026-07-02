@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import {
   consoleSections,
+  navItems,
   pageSubNavigation,
   pageTitles,
   type AdminPage,
@@ -58,6 +59,16 @@ export type AdminAppCapability =
   | "configure"
   | "develop"
   | "administer";
+export type AdminAppOwnerArea =
+  | "Monitoring"
+  | "Management"
+  | "Logs & Audit"
+  | "Operations Overview"
+  | "Accounts & Resources"
+  | "Usage & Channels"
+  | "Audit & Cases"
+  | "Platform Development"
+  | "System Settings";
 
 export type AdminCapabilityContext = {
   role: AdminOperatorRole;
@@ -141,7 +152,7 @@ export type AdminAppManifest = {
   owner: {
     page?: AdminPage;
     sectionId?: string;
-    area: "Overview" | "User Operations" | "Platform Monitoring" | "System Settings";
+    area: AdminAppOwnerArea;
     role: PageWorkbenchRole | "utility" | "planned";
   };
   route: {
@@ -426,6 +437,132 @@ const PAGE_APP_DEFINITIONS: Record<AdminPage, {
     ),
     zhName: "使用情况和渠道",
     tone: "nav-app-tone-cyan"
+  },
+  userManagement: {
+    aliases: ["user management", "users", "account admin", "create user", "disable user"],
+    appId: "user-management",
+    capabilities: ["view", "inspect", "comment", "suggest-action", "dry-run"],
+    category: "management",
+    coreViews: ["user table", "account status filters", "safe user detail", "create user gate", "disable user gate"],
+    iconKey: "users",
+    primaryObjects: ["user account", "account status", "plan assignment", "risk state"],
+    role: "decision-owner",
+    searchableFields: ["user", "account", "email", "plan", "status", "risk", "created", "last access"],
+    sourceContract: sourceContract(
+      ["user-account-summary", "user-risk-summary", "account-plan-summary"],
+      ["userManagement#user-management-table", "userManagement#user-management-detail"],
+      ["user-account-ref", "account-status", "safe-user-audit-ref"]
+    ),
+    zhName: "用户管理",
+    tone: "nav-app-tone-emerald"
+  },
+  orderManagement: {
+    aliases: ["order management", "orders", "create order", "delivery", "subscription artifact"],
+    appId: "order-management",
+    capabilities: ["view", "inspect", "comment", "suggest-action", "dry-run"],
+    category: "management",
+    coreViews: ["order table", "delivery state filters", "quota summary", "subscription artifact gate"],
+    iconKey: "clipboard",
+    primaryObjects: ["order", "resource order", "subscription artifact", "delivery state"],
+    role: "decision-owner",
+    searchableFields: ["order", "account ref", "plan", "quota", "status", "lifecycle", "delivery"],
+    sourceContract: sourceContract(
+      ["order-summary", "resource-order-summary", "subscription-artifact-summary", "delivery-state-summary"],
+      ["orderManagement#order-management-table", "orderManagement#order-management-detail"],
+      ["order-ref", "account-ref", "safe-artifact-ref", "delivery-state"]
+    ),
+    zhName: "订单管理",
+    tone: "nav-app-tone-blue"
+  },
+  userAccessLogs: {
+    aliases: ["user access logs", "access logs", "login logs", "audit access"],
+    appId: "user-access-logs",
+    capabilities: ["view", "inspect", "comment"],
+    category: "audit-workflow",
+    coreViews: ["access log table", "event filters", "detail panel", "CSV export gate"],
+    iconKey: "history",
+    primaryObjects: ["access event", "user ref", "session ref", "audit event"],
+    role: "evidence-owner",
+    searchableFields: ["access", "login", "event", "user ref", "ip region", "device", "result"],
+    sourceContract: sourceContract(
+      ["user-access-event-summary", "redacted-session-summary"],
+      ["userAccessLogs#user-access-log-table", "userAccessLogs#user-access-log-detail"],
+      ["access-event", "safe-user-ref", "redacted-session-ref"]
+    ),
+    zhName: "用户访问日志",
+    tone: "nav-app-tone-slate"
+  },
+  userOperationLogs: {
+    aliases: ["user operation logs", "operator logs", "action logs", "operation audit"],
+    appId: "user-operation-logs",
+    capabilities: ["view", "inspect", "comment"],
+    category: "audit-workflow",
+    coreViews: ["operation log table", "operator filters", "object filters", "result filters"],
+    iconKey: "history",
+    primaryObjects: ["operation event", "operator ref", "object ref", "audit event"],
+    role: "evidence-owner",
+    searchableFields: ["operation", "operator", "action", "object id", "result", "time range"],
+    sourceContract: sourceContract(
+      ["user-operation-event-summary", "operator-action-summary"],
+      ["userOperationLogs#user-operation-log-table", "userOperationLogs#user-operation-log-detail"],
+      ["operation-event", "safe-operator-ref", "safe-object-ref"]
+    ),
+    zhName: "用户操作日志",
+    tone: "nav-app-tone-slate"
+  },
+  nodeHealth: {
+    aliases: ["node health", "health monitor", "heartbeat", "diagnostic"],
+    appId: "node-health",
+    capabilities: ["view", "inspect", "suggest-action", "dry-run"],
+    category: "monitoring",
+    coreViews: ["node summary metrics", "node health table", "diagnostic route", "heartbeat state"],
+    iconKey: "activity",
+    primaryObjects: ["node", "heartbeat", "health state", "diagnostic state"],
+    role: "evidence-owner",
+    searchableFields: ["node", "health", "heartbeat", "region", "protocol", "latency", "offline", "degraded"],
+    sourceContract: sourceContract(
+      ["node-health-summary", "node-heartbeat-summary", "node-diagnostic-summary"],
+      ["nodeHealth#node-health-table", "nodeHealth#node-health-detail"],
+      ["node-ref", "heartbeat-state", "health-state", "diagnostic-state"]
+    ),
+    zhName: "节点健康",
+    tone: "nav-app-tone-cyan"
+  },
+  nodeLogs: {
+    aliases: ["node logs", "redacted logs", "severity", "runtime logs"],
+    appId: "node-logs",
+    capabilities: ["view", "inspect", "comment"],
+    category: "monitoring",
+    coreViews: ["redacted log table", "severity filters", "node filters", "safe export gate"],
+    iconKey: "history",
+    primaryObjects: ["node log event", "node ref", "severity", "redacted message"],
+    role: "evidence-owner",
+    searchableFields: ["node", "logs", "severity", "message", "log id", "time range"],
+    sourceContract: sourceContract(
+      ["redacted-node-log-summary", "node-severity-summary"],
+      ["nodeLogs#node-log-table", "nodeLogs#node-log-detail"],
+      ["node-ref", "log-event", "severity-state", "redacted-message"]
+    ),
+    zhName: "节点日志",
+    tone: "nav-app-tone-slate"
+  },
+  nodeBandwidth: {
+    aliases: ["node bandwidth", "bandwidth inspector", "traffic", "throughput"],
+    appId: "node-bandwidth",
+    capabilities: ["view", "inspect", "suggest-action"],
+    category: "monitoring",
+    coreViews: ["bandwidth metrics", "bandwidth trend", "active anomalies", "node activity"],
+    iconKey: "gauge",
+    primaryObjects: ["node", "bandwidth sample", "traffic summary", "throughput anomaly"],
+    role: "evidence-owner",
+    searchableFields: ["node", "bandwidth", "traffic", "upload", "download", "throughput", "anomaly"],
+    sourceContract: sourceContract(
+      ["node-bandwidth-summary", "node-traffic-trend", "node-bandwidth-anomaly-summary"],
+      ["nodeBandwidth#node-bandwidth-trend", "nodeBandwidth#node-bandwidth-anomalies"],
+      ["node-ref", "bandwidth-sample", "traffic-summary", "anomaly-state"]
+    ),
+    zhName: "节点带宽",
+    tone: "nav-app-tone-blue"
   }
 };
 
@@ -834,25 +971,6 @@ const UTILITY_APPS: AdminAppManifest[] = [
     tone: "nav-app-tone-blue"
   }),
   createUtilityApp({
-    aliases: ["user portal", "portal", "user view"],
-    capabilities: ["view"],
-    coreViews: ["user portal launcher"],
-    description: "Open the user-facing portal view.",
-    iconKey: "external",
-    id: "utility.user-portal",
-    label: "Open user portal",
-    order: 40,
-    primaryObjects: ["user portal", "customer view"],
-    searchableFields: ["user portal", "portal", "user view"],
-    sourceContract: sourceContract(
-      ["user-portal-link-summary"],
-      ["utility.user-portal"],
-      ["external-safe-link"]
-    ),
-    zhName: "打开用户门户",
-    tone: "nav-app-tone-cyan"
-  }),
-  createUtilityApp({
     aliases: ["connection", "admin api", "configured", "local settings"],
     capabilities: ["view", "configure"],
     coreViews: ["Admin API connection widget", "local console settings"],
@@ -860,7 +978,7 @@ const UTILITY_APPS: AdminAppManifest[] = [
     iconKey: "settings",
     id: "utility.admin-api",
     label: "Admin API",
-    order: 50,
+    order: 40,
     primaryObjects: ["Admin API connection", "local console setting"],
     searchableFields: ["admin api", "connection", "configured", "local settings"],
     sourceContract: sourceContract(
@@ -1045,11 +1163,7 @@ function createAdminAppMap(apps: readonly AdminAppManifest[]): AdminAppMap {
   const pluginsByPage = (Object.keys(pageSubNavigation) as AdminPage[]).reduce<Record<AdminPage, AdminAppManifest[]>>((acc, page) => {
     acc[page] = plugins.filter((app) => app.route.page === page);
     return acc;
-  }, {
-    dashboard: [],
-    portalRequests: [],
-    usageMonitor: []
-  });
+  }, {} as Record<AdminPage, AdminAppManifest[]>);
 
   return {
     byId,
@@ -1460,13 +1574,20 @@ function createUtilityApp({
 }
 
 function pageOwnerArea(page: AdminPage) {
-  if (page === "dashboard") return "Overview";
-  if (page === "portalRequests") return "User Operations";
-  return "Platform Monitoring";
+  if (page === "dashboard" || page === "portalRequests" || page === "usageMonitor") {
+    return "Monitoring";
+  }
+  if (page === "userManagement" || page === "orderManagement" || page === "nodeHealth" || page === "nodeBandwidth") {
+    return "Management";
+  }
+  if (page === "userAccessLogs" || page === "userOperationLogs" || page === "nodeLogs") {
+    return "Logs & Audit";
+  }
+  return "Monitoring";
 }
 
 function pageOrder(page: AdminPage) {
-  const pages: AdminPage[] = ["dashboard", "portalRequests", "usageMonitor"];
+  const pages = navItems.map((item) => item.id);
   return pages.indexOf(page);
 }
 

@@ -57,7 +57,7 @@ describe("admin table query state", () => {
     expect(projection).toBeTruthy();
     const state = createAdminTableQueryState(projection!, {
       filters: {
-        owner: "Platform Monitoring",
+        owner: "Usage & Channels",
         route: "raw logs",
         state: "measured",
         unsafe: "token"
@@ -74,7 +74,7 @@ describe("admin table query state", () => {
     expect(state.pageSize).toBe(100);
     expect(state.sort).toEqual({ direction: "desc", key: "updatedAt" });
     expect(state.filters).toEqual({
-      owner: "Platform Monitoring",
+      owner: "Usage & Channels",
       route: "usageMonitor#platform-monitoring-usage-ledger",
       state: "measured",
       tone: "all"

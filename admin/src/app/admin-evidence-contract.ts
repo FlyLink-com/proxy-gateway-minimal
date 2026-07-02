@@ -10,7 +10,7 @@ export type AdminEvidenceSurfaceKey =
   | "usageChannelEventLog";
 
 export type AdminEvidenceSurfaceContract = EvidenceSurfaceDataContract & {
-  figmaNodeId: "24:5" | "24:35" | "24:65";
+  figmaNodeId: "2:92" | "2:262" | "2:432";
   key: AdminEvidenceSurfaceKey;
   ownerPage: AdminPage;
   panelKind: "trend" | "event-log";
@@ -24,7 +24,7 @@ const STATIC_STALE_STATE = "render stale/unknown copy without mutation or lifecy
 
 export const ADMIN_EVIDENCE_SURFACE_CONTRACTS: Record<AdminEvidenceSurfaceKey, AdminEvidenceSurfaceContract> = {
   accountEventLog: evidenceContract({
-    figmaNodeId: "24:35",
+    figmaNodeId: "2:262",
     key: "accountEventLog",
     ownerPage: "portalRequests",
     panelKind: "event-log",
@@ -32,7 +32,7 @@ export const ADMIN_EVIDENCE_SURFACE_CONTRACTS: Record<AdminEvidenceSurfaceKey, A
     sourceName: "safe account/resource event facts"
   }),
   accountMetrics: evidenceContract({
-    figmaNodeId: "24:35",
+    figmaNodeId: "2:262",
     key: "accountMetrics",
     ownerPage: "portalRequests",
     panelKind: "trend",
@@ -40,7 +40,7 @@ export const ADMIN_EVIDENCE_SURFACE_CONTRACTS: Record<AdminEvidenceSurfaceKey, A
     sourceName: "safe account/resource summary facts"
   }),
   operationsEventLog: evidenceContract({
-    figmaNodeId: "24:5",
+    figmaNodeId: "2:92",
     key: "operationsEventLog",
     ownerPage: "dashboard",
     panelKind: "event-log",
@@ -48,7 +48,7 @@ export const ADMIN_EVIDENCE_SURFACE_CONTRACTS: Record<AdminEvidenceSurfaceKey, A
     sourceName: "safe operations routing events"
   }),
   operationsMetrics: evidenceContract({
-    figmaNodeId: "24:5",
+    figmaNodeId: "2:92",
     key: "operationsMetrics",
     ownerPage: "dashboard",
     panelKind: "trend",
@@ -56,7 +56,7 @@ export const ADMIN_EVIDENCE_SURFACE_CONTRACTS: Record<AdminEvidenceSurfaceKey, A
     sourceName: "safe operations summary facts"
   }),
   usageChannelEventLog: evidenceContract({
-    figmaNodeId: "24:65",
+    figmaNodeId: "2:432",
     key: "usageChannelEventLog",
     ownerPage: "usageMonitor",
     panelKind: "event-log",
@@ -64,7 +64,7 @@ export const ADMIN_EVIDENCE_SURFACE_CONTRACTS: Record<AdminEvidenceSurfaceKey, A
     sourceName: "safe usage/channel event facts"
   }),
   usageMetrics: evidenceContract({
-    figmaNodeId: "24:65",
+    figmaNodeId: "2:432",
     key: "usageMetrics",
     ownerPage: "usageMonitor",
     panelKind: "trend",

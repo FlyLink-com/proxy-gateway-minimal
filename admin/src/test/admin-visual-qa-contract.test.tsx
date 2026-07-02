@@ -82,17 +82,26 @@ describe("admin visual QA contract", () => {
         : page === "usageMonitor"
           ? pageSections.slice(0, 3)
           : pageSections.filter((section) => ["account-overview", "resource-orders", "lifecycle"].includes(section.id));
+    const expectedPanelSections =
+      page === "dashboard"
+        ? visibleSections.filter((section) => section.id !== "health-summary")
+        : visibleSections;
 
     expect(screen.queryByRole("navigation", { name: `${pageTitles[page]} sections` })).toBeNull();
 
     const panels = Array.from(document.querySelectorAll("[data-ui-role='panel']"));
-    expect(panels).toHaveLength(visibleSections.length);
+    expect(panels).toHaveLength(expectedPanelSections.length);
     expect(panels.map((panel) => panel.getAttribute("data-module-nav-id"))).toEqual(
-      visibleSections.map((section) => section.id)
+      expectedPanelSections.map((section) => section.id)
     );
     expect(panels.map((panel) => panel.id)).toEqual(
-      visibleSections.map((section) => section.targetId)
+      expectedPanelSections.map((section) => section.targetId)
     );
+
+    if (page === "dashboard") {
+      expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-role")).toBe("summary");
+      expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-surface")).toBe("summary-metrics");
+    }
 
     panels.forEach((panel) => {
       expect(panel.getAttribute("data-ui-contract")).toBe("panel-frame");

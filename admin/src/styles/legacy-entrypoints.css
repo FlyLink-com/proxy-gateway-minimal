@@ -425,6 +425,38 @@
   margin-bottom: 28px;
 }
 
+.portal-locale-switch {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin: -16px 0 10px;
+}
+
+.portal-locale-switch button {
+  min-width: 34px;
+  min-height: 30px;
+  border: 1px solid #d8dde8;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #64748b;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.portal-locale-switch button:hover,
+.portal-locale-switch button:focus-visible {
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.portal-locale-switch button[aria-pressed="true"] {
+  border-color: #20d5e8;
+  background: #20d5e8;
+  color: #06111f;
+}
+
 .portal-auth-header h1 {
   margin: 12px 0 20px;
   color: #000000;
@@ -519,6 +551,7 @@
 }
 
 .portal-auth-form input,
+.portal-auth-form select,
 .portal-auth-code-row input,
 .portal-form-grid input,
 .portal-form-grid select,
@@ -613,10 +646,83 @@
   min-height: 44px;
 }
 
+.portal-auth-secondary-action {
+  border: 1px solid rgba(213, 229, 255, 0.24);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f8fbff;
+}
+
 .portal-auth-switch {
   text-align: center;
   margin: 24px 0 0;
   font-size: 14px;
+}
+
+.portal-registration-result {
+  display: grid;
+  gap: 10px;
+}
+
+.portal-registration-result label,
+.portal-inline-error,
+.portal-inline-success {
+  color: rgba(229, 238, 255, 0.72);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.portal-registration-result input {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid rgba(213, 229, 255, 0.22);
+  border-radius: 14px;
+  background: rgba(9, 17, 34, 0.36);
+  color: #f8fbff;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 0 14px;
+}
+
+.portal-registration-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: rgba(221, 231, 248, 0.76);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.portal-registration-meta span {
+  border: 1px solid rgba(213, 229, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  padding: 7px 10px;
+}
+
+.portal-registration-login-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 16px;
+  text-decoration: none;
+}
+
+.portal-inline-error {
+  border: 1px solid rgba(255, 91, 91, 0.32);
+  border-radius: 12px;
+  background: rgba(255, 91, 91, 0.12);
+  color: #ffd6d6;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.portal-inline-success {
+  border: 1px solid rgba(71, 231, 148, 0.26);
+  border-radius: 12px;
+  background: rgba(71, 231, 148, 0.1);
+  color: #c8ffe1;
+  margin: 0;
+  padding: 10px 12px;
 }
 
 .portal-use-shell {

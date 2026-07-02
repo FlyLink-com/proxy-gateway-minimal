@@ -26,7 +26,7 @@ export type AdminFixturePreviewPanel = {
 
 type AdminFixturePreviewData = {
   generatedLabel: string;
-  modules: Record<AdminPage, Record<string, AdminFixturePreviewPanel>>;
+  modules: Partial<Record<AdminPage, Record<string, AdminFixturePreviewPanel>>>;
   riskNotificationCount: number;
   schemaVersion: "admin-fixture-preview/v1";
 };
@@ -49,9 +49,17 @@ export function isAdminFixturePreviewHash(hash: string) {
 
 export function isAdminFixturePreviewEnabled(
   env: AdminFixturePreviewEnv = viteEnv,
-  hash = typeof window === "undefined" ? "" : window.location.hash
+  hash = readCurrentHash()
 ) {
-  return previewFlagEnabled(env.VITE_ADMIN_FIXTURE_PREVIEW) || isAdminFixturePreviewHash(hash);
+  return previewFlagEnabled(env.VITE_ADMIN_FIXTURE_PREVIEW)
+    || isAdminFixturePreviewHash(hash);
+}
+
+function readCurrentHash() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.location.hash;
 }
 
 export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
@@ -282,5 +290,5 @@ export const ADMIN_FIXTURE_PREVIEW_DATA: AdminFixturePreviewData = {
 };
 
 export function getAdminFixturePreviewPanel(page: AdminPage, navId: string) {
-  return ADMIN_FIXTURE_PREVIEW_DATA.modules[page][navId];
+  return ADMIN_FIXTURE_PREVIEW_DATA.modules[page]?.[navId];
 }

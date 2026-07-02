@@ -4,8 +4,10 @@ import {
 } from "./admin-console-page-frame";
 import {
   createUsageChannelsOwnerPageModel,
+  type UsageOwnerRow,
   type UsageOwnerSection
 } from "../app/usage-channels-owner-model";
+import { type SubscriptionUsageMonitor } from "../features/subscriptions/types";
 import { ADMIN_EVIDENCE_SURFACE_CONTRACTS } from "../app/admin-evidence-contract";
 import {
   EvidenceChartPanel,
@@ -26,7 +28,7 @@ import {
 export const usageChannelsBlueprint: BlueprintPage = {
   page: "usageMonitor",
   ariaLabel: "Usage & Channels page header",
-  kicker: "Platform Monitoring / Usage & Channels",
+  kicker: "Usage & Channels / Evidence Owner",
   title: "Usage & Channels",
   description: "Evidence owner for freshness, coverage, usage ledger, receipts, and anomalies.",
   statusLabel: "Evidence owner",
@@ -123,8 +125,8 @@ export const usageChannelsBlueprint: BlueprintPage = {
       actions: <StatusChip label="Locked" tone="success" />,
       purpose: "Provide evidence rows for account, order, channel, and measured traffic correlation.",
       contentFields: [
-        "Account · safe ref",
-        "Order · safe ref",
+        "User/account · safe ref",
+        "Order count · measured / pending",
         "Channel · safe ref",
         "Traffic · upload / download / total",
         "Collected · timestamp"
@@ -275,34 +277,107 @@ function UsageChannelsEvidence() {
   );
 }
 
-function UsageChannelsSummary() {
+function UsageChannelsSummary({ monitor }: { monitor?: SubscriptionUsageMonitor }) {
+  if (monitor) {
+    const usage = monitor.aggregates.usage;
+    const userAggregates = monitor.userAggregates ?? [];
+    const hasUserAggregates = userAggregates.length > 0;
+    const measuredUsers = userAggregates.filter((aggregate) => aggregate.usageMeasured).length;
+    const pendingUsers = userAggregates.length - measuredUsers;
+    const pending = hasUserAggregates ? pendingUsers : usage.unmeasuredOrders + usage.zeroUsageOrders;
+    return (
+      <div className="ops-metric-grid" aria-label="Usage & Channels summary metrics">
+        <MetricCard
+          detail="Generated"
+          icon={<Activity aria-hidden="true" />}
+          label="Freshness"
+          status={{
+            label: monitor.safety.usageCollectorConfigured === false ? "Locked" : "Live",
+            tone: monitor.safety.usageCollectorConfigured === false ? "warning" : "success"
+          }}
+          tone={monitor.safety.usageCollectorConfigured === false ? "warning" : "success"}
+          value={formatUsageDateTime(monitor.generatedAt)}
+        />
+        <MetricCard
+          detail={hasUserAggregates ? "Measured users" : "Measured orders"}
+          icon={<RadioTower aria-hidden="true" />}
+          label="Coverage"
+          status={{
+            label: pending > 0 ? "Review" : "Covered",
+            tone: pending > 0 ? "warning" : "success"
+          }}
+          tone={pending > 0 ? "warning" : "success"}
+          value={hasUserAggregates ? `${measuredUsers}/${userAggregates.length}` : `${usage.measuredOrders}/${monitor.aggregates.total}`}
+        />
+        <MetricCard
+          detail="Measured traffic"
+          icon={<Database aria-hidden="true" />}
+          label="Usage ledger"
+          status={{
+            label: monitor.safety.realByteUsageMeasured ? "Measured" : "Summary",
+            tone: "info"
+          }}
+          tone="info"
+          value={formatUsageBytes(usage.totalUsedBytes)}
+        />
+        <MetricCard
+          detail="Warnings or pending"
+          icon={<AlertTriangle aria-hidden="true" />}
+          label="Anomalies"
+          status={{
+            label: monitor.aggregates.withWarnings > 0 ? "Review" : "Clear",
+            tone: monitor.aggregates.withWarnings > 0 ? "warning" : "success"
+          }}
+          tone={monitor.aggregates.withWarnings > 0 ? "warning" : "success"}
+          value={String(monitor.aggregates.withWarnings + usage.unmeasuredOrders)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="ops-metric-grid" aria-label="Usage & Channels summary metrics">
       <MetricCard
-        detail="Observed 2m · threshold 5m"
+        detail="SLO 5m"
         icon={<Activity aria-hidden="true" />}
         label="Freshness"
+        status={{
+          label: "Good",
+          tone: "success"
+        }}
         tone="success"
-        value="Fresh"
+        value="2m 14s"
       />
       <MetricCard
-        detail="Measured channels · 1 delayed"
+        detail="Available share"
         icon={<RadioTower aria-hidden="true" />}
         label="Coverage"
-        tone="info"
-        value="24 / 25"
+        status={{
+          label: "Good",
+          tone: "success"
+        }}
+        tone="success"
+        value="98.6%"
       />
       <MetricCard
-        detail="Safe rows · diagnostics locked"
+        detail="Measured traffic"
         icon={<Database aria-hidden="true" />}
-        label="Usage"
-        tone="neutral"
+        label="Usage ledger"
+        status={{
+          label: "Measured",
+          tone: "info"
+        }}
+        tone="info"
         value="42.8GB"
       />
       <MetricCard
-        detail="Delay, zero usage, missing receipt"
+        detail="Delay or missing"
         icon={<AlertTriangle aria-hidden="true" />}
         label="Anomalies"
+        status={{
+          label: "Review",
+          tone: "warning"
+        }}
         tone="warning"
         value="4"
       />
@@ -313,59 +388,82 @@ function UsageChannelsSummary() {
 export function SubscriptionUsageMonitorPage({
   activeModuleNavId,
   fixturePreviewEnabled = false,
+  monitor,
   onActiveModuleNavIdChange
 }: {
   activeModuleNavId?: string;
   fixturePreviewEnabled?: boolean;
+  monitor?: SubscriptionUsageMonitor;
   onActiveModuleNavIdChange?: (navId: string) => void;
 }) {
   return (
     <AdminConsolePageFrame
       activeModuleNavId={activeModuleNavId}
-      blueprint={usageChannelsBlueprint}
+      blueprint={usageChannelsBlueprintForMonitor(monitor)}
       fixturePreviewEnabled={fixturePreviewEnabled}
       onActiveModuleNavIdChange={onActiveModuleNavIdChange}
     />
   );
 }
 
-function FreshnessContent() {
+function FreshnessContent({ monitor }: { monitor?: SubscriptionUsageMonitor }) {
   return (
     <div className="admin-operator-content" aria-label="Collection Freshness owner model content">
-      <UsageOwnerRows section={getUsageOwnerSection("freshness")} />
+      <UsageOwnerRows
+        section={getUsageOwnerSection("freshness")}
+        rows={monitor ? usageFreshnessRows(monitor) : undefined}
+        subtitle={monitor ? "Live collection status from Admin usage monitor" : undefined}
+      />
     </div>
   );
 }
 
-function ChannelCoverageContent() {
+function ChannelCoverageContent({ monitor }: { monitor?: SubscriptionUsageMonitor }) {
   return (
     <div className="admin-operator-content" aria-label="Channel Coverage owner model content">
-      <UsageOwnerRows section={getUsageOwnerSection("channel-coverage")} />
+      <UsageOwnerRows
+        section={getUsageOwnerSection("channel-coverage")}
+        rows={monitor ? usageCoverageRows(monitor) : undefined}
+        subtitle={monitor ? "Live issued and measured channel coverage" : undefined}
+      />
     </div>
   );
 }
 
-function UsageLedgerContent() {
+function UsageLedgerContent({ monitor }: { monitor?: SubscriptionUsageMonitor }) {
   return (
     <div className="admin-operator-content" aria-label="Usage Ledger owner model content">
-      <UsageOwnerRows section={getUsageOwnerSection("usage-ledger")} />
+      <UsageOwnerRows
+        section={getUsageOwnerSection("usage-ledger")}
+        rows={monitor ? usageLedgerRows(monitor) : undefined}
+        subtitle={monitor ? "Live user traffic ledger aggregated from order measurements" : undefined}
+      />
     </div>
   );
 }
 
-function UsageOwnerRows({ section }: { section: UsageOwnerSection }) {
+function UsageOwnerRows({
+  rows,
+  section,
+  subtitle
+}: {
+  rows?: UsageOwnerRow[];
+  section: UsageOwnerSection;
+  subtitle?: string;
+}) {
+  const visibleRows = rows ?? section.rows;
   return (
     <div
       className="admin-operator-content admin-panel-compact-card"
       aria-label={`${section.footer} preview rows`}
       data-query-page={section.query.page}
       data-query-schema={section.query.schemaVersion}
-      data-result-window={`${section.resultWindow.firstItem}-${section.resultWindow.lastItem}/${section.resultWindow.totalItems}`}
+      data-result-window={`1-${visibleRows.length}/${visibleRows.length}`}
       data-route-scope={section.query.routeScope}
     >
-      <p className="admin-panel-compact-subtitle">{section.subtitle}</p>
+      <p className="admin-panel-compact-subtitle">{subtitle ?? section.subtitle}</p>
       <div className="admin-compact-row-list">
-        {section.rows.map((row) => (
+        {visibleRows.map((row) => (
           <article
             className={`admin-compact-data-row admin-compact-data-row-${row.tone}`}
             data-figma-component="DataRowCompact"
@@ -379,7 +477,6 @@ function UsageOwnerRows({ section }: { section: UsageOwnerSection }) {
             </span>
             <span className="admin-compact-data-row-meta">{row.rightMeta}</span>
             <span className="admin-compact-data-row-status">{row.statusLabel}</span>
-            <span className="admin-compact-data-row-action">{row.actionLabel}</span>
           </article>
         ))}
       </div>
@@ -389,6 +486,128 @@ function UsageOwnerRows({ section }: { section: UsageOwnerSection }) {
       </div>
     </div>
   );
+}
+
+function usageChannelsBlueprintForMonitor(monitor?: SubscriptionUsageMonitor): BlueprintPage {
+  if (!monitor) {
+    return usageChannelsBlueprint;
+  }
+
+  return {
+    ...usageChannelsBlueprint,
+    summary: <UsageChannelsSummary monitor={monitor} />,
+    modules: usageChannelsBlueprint.modules.map((module) => {
+      if (module.navId === "freshness") {
+        return { ...module, content: <FreshnessContent monitor={monitor} /> };
+      }
+      if (module.navId === "channel-coverage") {
+        return { ...module, content: <ChannelCoverageContent monitor={monitor} /> };
+      }
+      if (module.navId === "usage-ledger") {
+        return { ...module, content: <UsageLedgerContent monitor={monitor} /> };
+      }
+      return module;
+    })
+  };
+}
+
+function usageFreshnessRows(monitor: SubscriptionUsageMonitor): UsageOwnerRow[] {
+  const usage = monitor.aggregates.usage;
+  return [
+    {
+      actionLabel: "Open",
+      label: "Generated",
+      meta: formatUsageDateTime(monitor.generatedAt),
+      rightMeta: `${usage.measuredOrders} measured / ${usage.unmeasuredOrders} pending`,
+      statusLabel: monitor.safety.usageCollectorConfigured === false ? "Collector locked" : "Live",
+      tone: monitor.safety.usageCollectorConfigured === false ? "warning" : "success"
+    },
+    {
+      actionLabel: "Open",
+      label: "Warnings",
+      meta: `${monitor.aggregates.withWarnings} rows with warnings`,
+      rightMeta: `${usage.zeroUsageOrders} zero usage`,
+      statusLabel: monitor.aggregates.withWarnings > 0 ? "Review" : "Clear",
+      tone: monitor.aggregates.withWarnings > 0 ? "warning" : "success"
+    }
+  ];
+}
+
+function usageCoverageRows(monitor: SubscriptionUsageMonitor): UsageOwnerRow[] {
+  const rows = monitor.items.flatMap((item) => (
+    item.issuedChannels.map((channelRef) => {
+      const measured = item.channelUsages.some((usage) => usage.channelRef === channelRef && usage.lastObservedAt);
+      return {
+        actionLabel: "Open",
+        label: channelRef,
+        meta: `${item.accountId} · ${measured ? "measured" : "pending"}`,
+        rightMeta: item.nodeId,
+        statusLabel: measured ? "Covered" : "Pending",
+        tone: measured ? "success" : "warning"
+      } satisfies UsageOwnerRow;
+    })
+  ));
+  return rows.length > 0 ? rows.slice(0, 3) : [{
+    actionLabel: "Open",
+    label: "No issued channels",
+    meta: "No safe channel summaries returned",
+    rightMeta: "",
+    statusLabel: "Empty",
+    tone: "neutral"
+  }];
+}
+
+function usageLedgerRows(monitor: SubscriptionUsageMonitor): UsageOwnerRow[] {
+  if (monitor.userAggregates?.length) {
+    return monitor.userAggregates.slice(0, 3).map((aggregate) => ({
+      actionLabel: "Open",
+      label: aggregate.portalUserRef || aggregate.accountId,
+      meta: `${aggregate.orderCount} ${aggregate.orderCount === 1 ? "order" : "orders"} · ${formatUsageBytes(aggregate.usedBytes)} / ${formatUsageBytes(aggregate.trafficLimitBytes)}`,
+      rightMeta: aggregate.plans.join(", "),
+      statusLabel: usageStatusLabel(aggregate.collectionStatus),
+      tone: aggregate.collectionStatus === "measured" ? "info" : "warning"
+    }));
+  }
+
+  const rows = monitor.items.map((item) => ({
+    actionLabel: "Open",
+    label: item.accountId,
+    meta: `${item.issuanceRequestId} · ${formatUsageBytes(item.usedBytes)} / ${formatUsageBytes(item.trafficLimitBytes)}`,
+    rightMeta: item.plan,
+    statusLabel: usageStatusLabel(item.collectionStatus),
+    tone: item.collectionStatus === "measured" ? "info" : "warning"
+  } satisfies UsageOwnerRow));
+  return rows.length > 0 ? rows.slice(0, 3) : [{
+    actionLabel: "Open",
+    label: "No usage rows",
+    meta: "No safe order usage summaries returned",
+    rightMeta: "",
+    statusLabel: "Empty",
+    tone: "neutral"
+  }];
+}
+
+function usageStatusLabel(status: string) {
+  if (status === "measured") return "Measured";
+  if (status === "measured_zero") return "Zero";
+  if (status === "stale") return "Stale";
+  if (status === "collector_disabled") return "Collector off";
+  return "Pending";
+}
+
+function formatUsageDateTime(value: string | null | undefined) {
+  if (!value) return "No sample";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Invalid date";
+  return date.toISOString().slice(0, 16).replace("T", " ");
+}
+
+function formatUsageBytes(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0GB";
+  }
+  const gib = value / (1024 ** 3);
+  return `${gib.toFixed(gib >= 10 ? 0 : 1)}GB`;
 }
 
 function getUsageOwnerSection(navId: string): UsageOwnerSection {

@@ -107,8 +107,15 @@ describe("admin OS UI contract", () => {
   test("declares page-level grammar contracts for active Admin surfaces", () => {
     expect(Object.keys(ADMIN_UI_CONTRACT.pageContracts).sort()).toEqual([
       "dashboard",
+      "nodeBandwidth",
+      "nodeHealth",
+      "nodeLogs",
+      "orderManagement",
       "portalRequests",
-      "usageMonitor"
+      "usageMonitor",
+      "userAccessLogs",
+      "userManagement",
+      "userOperationLogs"
     ]);
 
     expect(getAdminPageContract("dashboard")).toMatchObject({
@@ -121,6 +128,18 @@ describe("admin OS UI contract", () => {
       page: "portalRequests"
     });
     expect(getAdminPageContract("usageMonitor").requiredBlocks).toContain("evidence-row");
+    expect(getAdminPageContract("userManagement")).toMatchObject({
+      layout: "table",
+      page: "userManagement"
+    });
+    expect(getAdminPageContract("userAccessLogs")).toMatchObject({
+      layout: "table",
+      page: "userAccessLogs"
+    });
+    expect(getAdminPageContract("nodeBandwidth")).toMatchObject({
+      layout: "dashboard",
+      page: "nodeBandwidth"
+    });
 
     Object.values(ADMIN_UI_CONTRACT.pageContracts).forEach((contract) => {
       expect(contract.density).toBe("normal");

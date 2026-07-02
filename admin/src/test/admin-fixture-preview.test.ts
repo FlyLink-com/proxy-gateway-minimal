@@ -19,17 +19,23 @@ describe("admin fixture preview", () => {
     expect(isAdminFixturePreviewHash("#/portal-preview")).toBe(false);
   });
 
+  test("does not treat local inspection as fixture preview", () => {
+    expect(isAdminFixturePreviewEnabled({}, "")).toBe(false);
+    expect(isAdminFixturePreviewEnabled({ VITE_ADMIN_FIXTURE_PREVIEW: "false" }, "")).toBe(false);
+  });
+
   test("keeps fixture preview data bounded and safe to render", () => {
     expect(ADMIN_FIXTURE_PREVIEW_DATA.schemaVersion).toBe("admin-fixture-preview/v1");
     expect(ADMIN_FIXTURE_PREVIEW_DATA.riskNotificationCount).toBe(2);
 
     const dashboardRiskQueue = getAdminFixturePreviewPanel("dashboard", "risk-queue");
-    expect(dashboardRiskQueue.rows.map((row) => row.value)).toEqual([
+    expect(dashboardRiskQueue).toBeDefined();
+    expect(dashboardRiskQueue!.rows.map((row) => row.value)).toEqual([
       "SLA 4m",
       "SLA 12m"
     ]);
-    expect(dashboardRiskQueue.rows.map((row) => row.label)).toEqual(["case_012", "case_017"]);
-    expect(dashboardRiskQueue.rows.map((row) => row.meta)).toContain("Order ord_2048 · Owner Usage");
+    expect(dashboardRiskQueue!.rows.map((row) => row.label)).toEqual(["case_012", "case_017"]);
+    expect(dashboardRiskQueue!.rows.map((row) => row.meta)).toContain("Order ord_2048 · Owner Usage");
 
     const moduleCount = Object.values(ADMIN_FIXTURE_PREVIEW_DATA.modules)
       .flatMap((modules) => Object.values(modules))

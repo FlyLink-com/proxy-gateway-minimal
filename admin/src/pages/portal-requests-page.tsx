@@ -1,18 +1,24 @@
 import {
+  useState,
+  type ReactNode
+} from "react";
+import {
   AdminConsolePageFrame,
   type BlueprintPage
 } from "./admin-console-page-frame";
 import {
   createAccountsResourcesOwnerPageModel,
-  type AccountsResourceOwnerSection
+  type AccountsResourceDetailDrawer,
+  type AccountsResourceOwnerSection,
+  type AccountsResourceTableRow
 } from "../app/accounts-resources-owner-model";
 import { ADMIN_EVIDENCE_SURFACE_CONTRACTS } from "../app/admin-evidence-contract";
 import {
+  DataTable,
+  type DataTableColumn,
   EvidenceChartPanel,
   EvidenceLogPanel,
   MetricCard,
-  QuotaMeter,
-  SafeRef,
   StatusChip
 } from "../components/primitives";
 import {
@@ -25,7 +31,7 @@ import {
 export const accountsResourcesBlueprint: BlueprintPage = {
   page: "portalRequests",
   ariaLabel: "Accounts & Resources page header",
-  kicker: "User Operations / Accounts & Resources",
+  kicker: "Accounts & Resources / Owner Page",
   title: "Accounts & Resources",
   description: "Decision owner for accounts, resources, orders, quotas, lifecycle, and history.",
   statusLabel: "Decision owner",
@@ -274,32 +280,48 @@ function AccountsResourcesSummary() {
   return (
     <div className="ops-metric-grid" aria-label="Accounts & Resources summary metrics">
       <MetricCard
-        detail="Enabled 3 · Review 1 · Disabled 1"
+        detail="Enabled accounts"
         icon={<Users aria-hidden="true" />}
-        label="Accounts"
-        tone="info"
+        label="Active accounts"
+        status={{
+          label: "Good",
+          tone: "success"
+        }}
+        tone="success"
         value="5"
       />
       <MetricCard
-        detail="Delivered 1 · Pending 1 · Expired 1"
+        detail="Open orders"
         icon={<Activity aria-hidden="true" />}
-        label="Orders"
+        label="Resource orders"
+        status={{
+          label: "Good",
+          tone: "success"
+        }}
         tone="success"
+        value="12"
+      />
+      <MetricCard
+        detail="Review required"
+        icon={<Gauge aria-hidden="true" />}
+        label="Quota pressure"
+        status={{
+          label: "Review",
+          tone: "warning"
+        }}
+        tone="warning"
         value="3"
       />
       <MetricCard
-        detail="Measured usage · audit note gate"
-        icon={<Gauge aria-hidden="true" />}
-        label="Quota"
-        tone="warning"
-        value="72%"
-      />
-      <MetricCard
-        detail="Active, paused, expired, revoked"
+        detail="Expiring / locked"
         icon={<History aria-hidden="true" />}
-        label="Lifecycle"
-        tone="neutral"
-        value="4 lanes"
+        label="Lifecycle warnings"
+        status={{
+          label: "Review",
+          tone: "warning"
+        }}
+        tone="warning"
+        value="4"
       />
     </div>
   );
@@ -325,43 +347,41 @@ export function PortalRequestsPage({
 }
 
 function AccountDirectoryContent() {
+  const section = getAccountsResourceOwnerSection("account-overview");
   return (
     <div className="admin-operator-content" aria-label="Account Directory owner model content">
-      <PanelCompactRows section={getAccountsResourceOwnerSection("account-overview")} />
+      <PanelCompactRows section={section} />
     </div>
   );
 }
 
 function ResourceOrdersContent() {
+  const section = getAccountsResourceOwnerSection("resource-orders");
   return (
     <div className="admin-operator-content" aria-label="Resources and Orders owner model content">
-      <PanelCompactRows section={getAccountsResourceOwnerSection("resource-orders")} />
+      <PanelCompactRows section={section} />
     </div>
   );
 }
 
 function QuotaUsageContent() {
+  const section = getAccountsResourceOwnerSection("quota-usage");
   return (
-    <div className="admin-owner-compact-panel" aria-label="Quota and Usage static operator content">
-      <div className="admin-owner-compact-head">
-        <span>Quota policy</span>
-        <strong>82% used</strong>
-        <QuotaMeter ariaLabel="ord_safe_101 quota usage 82 percent" value={82} />
-      </div>
-      <p>Usage evidence is available, but quota decisions remain page-owned and readonly here.</p>
-      <div className="admin-static-status-row">
-        <StatusChip label="Near quota" tone="warning" />
-        <StatusChip label="3 / 3 channels measured" tone="success" />
-        <StatusChip label="Planned / locked" tone="neutral" />
-      </div>
+    <div className="admin-operator-content" aria-label="Quota and Usage owner model content">
+      {section.table && section.detailDrawer ? (
+        <AccountsResourceTableWorkspace section={section} />
+      ) : (
+        <PanelCompactRows section={section} />
+      )}
     </div>
   );
 }
 
 function LifecycleContent() {
+  const section = getAccountsResourceOwnerSection("lifecycle");
   return (
     <div className="admin-operator-content" aria-label="Lifecycle owner model content">
-      <PanelCompactRows section={getAccountsResourceOwnerSection("lifecycle")} />
+      <PanelCompactRows section={section} />
     </div>
   );
 }
@@ -392,7 +412,6 @@ function PanelCompactRows({ section }: { section: AccountsResourceOwnerSection }
             </span>
             <span className="admin-compact-data-row-meta">{row.meta}</span>
             <span className="admin-compact-data-row-status">{row.statusLabel}</span>
-            <span className="admin-compact-data-row-action">{row.actionLabel}</span>
           </article>
         ))}
       </div>
@@ -404,8 +423,216 @@ function PanelCompactRows({ section }: { section: AccountsResourceOwnerSection }
   );
 }
 
+function AccountsResourceTableWorkspace({ section }: { section: AccountsResourceOwnerSection }) {
+  const table = section.table;
+  const initialRow = table?.rows[0];
+  const [selectedRow, setSelectedRow] = useState<AccountsResourceTableRow | undefined>(initialRow);
+
+  if (!table || !selectedRow) {
+    return <PanelCompactRows section={section} />;
+  }
+
+  return (
+    <div
+      className="admin-account-directory-workspace admin-owner-table-workspace"
+      data-owner-model-schema={accountsResourcesOwnerPageModel.schemaVersion}
+      data-query-page={section.query.page}
+      data-query-schema={section.query.schemaVersion}
+      data-result-window={`${section.resultWindow.firstItem}-${section.resultWindow.lastItem}/${section.resultWindow.totalItems}`}
+      data-route-scope={section.query.routeScope}
+      data-ui-surface="account-directory-workspace"
+    >
+      <DataTable<AccountsResourceTableRow>
+        ariaLabel={table.ariaLabel}
+        columns={createAccountsResourceTableColumns(table.columns)}
+        density="compact"
+        getRowKey={(row) => row.label}
+        getRowLabel={(row) => `${row.label} ${getAccountsResourceRowKind(section.navId)} row`}
+        onRowSelect={setSelectedRow}
+        pagination={{
+          label: `${table.ariaLabel} pagination`,
+          pageSize: table.pageSize,
+          showWhenSinglePage: true
+        }}
+        rows={table.rows}
+        selectedRowKey={selectedRow.label}
+      />
+      <AccountsResourceDetailDrawer
+        drawer={section.detailDrawer}
+        section={section}
+        selectedRow={selectedRow}
+      />
+    </div>
+  );
+}
+
+function createAccountsResourceTableColumns(
+  columns: readonly string[]
+): Array<DataTableColumn<AccountsResourceTableRow>> {
+  return columns.map((column) => ({
+    header: column,
+    key: column.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    render: (row) => renderAccountsResourceTableCell(column, row)
+  }));
+}
+
+function renderAccountsResourceTableCell(column: string, row: AccountsResourceTableRow): ReactNode {
+  if (column === "Event") {
+    return <strong>{row.label}</strong>;
+  }
+  if (column === "Policy") {
+    return <strong>{row.label}</strong>;
+  }
+  if (column === "Decision") {
+    return <strong>{row.label}</strong>;
+  }
+  if (column === "Account") {
+    return <strong>{row.account ?? row.label}</strong>;
+  }
+  if (column === "Order") {
+    return <strong>{row.order ?? row.label}</strong>;
+  }
+  if (column === "Object") {
+    return row.objectRef ?? "—";
+  }
+  if (column === "Source") {
+    return row.source ?? "—";
+  }
+  if (column === "Case") {
+    return row.caseLabel ?? "—";
+  }
+  if (column === "State") {
+    return <StatusChip label={row.state} tone={row.tone} />;
+  }
+  if (column === "Resources") {
+    return row.resourceCount ?? "—";
+  }
+  if (column === "Risk") {
+    return row.risk ?? "—";
+  }
+  if (column === "Subscription") {
+    return row.subscription ?? "—";
+  }
+  if (column === "Channel") {
+    return row.channel ?? "—";
+  }
+  if (column === "Window") {
+    return row.window ?? "—";
+  }
+  if (column === "Activity") {
+    return row.activity;
+  }
+  if (column === "Usage") {
+    return row.usage ?? "—";
+  }
+  return "—";
+}
+
+function AccountsResourceDetailDrawer({
+  drawer,
+  section,
+  selectedRow
+}: {
+  drawer?: AccountsResourceDetailDrawer;
+  section: AccountsResourceOwnerSection;
+  selectedRow: AccountsResourceTableRow;
+}) {
+  const fields = createAccountsResourceDetailFields(section.navId, selectedRow);
+
+  return (
+    <aside
+      aria-label={drawer?.ariaLabel ?? "Account Directory detail drawer"}
+      className={`admin-account-detail-drawer admin-account-detail-drawer-${selectedRow.tone}`}
+      data-figma-component="DetailDrawer"
+      data-state-tone={selectedRow.tone}
+      data-ui-surface="account-detail-drawer"
+    >
+      <div className="admin-account-detail-drawer-head">
+        <span>Readonly detail</span>
+        <strong>{selectedRow.label}</strong>
+      </div>
+      <p>{drawer?.description ?? "Read-only account context for safe review planning."}</p>
+      <dl>
+        {fields.map((field) => (
+          <DetailField key={field.label} label={field.label} value={field.value} />
+        ))}
+      </dl>
+    </aside>
+  );
+}
+
+function createAccountsResourceDetailFields(navId: string, selectedRow: AccountsResourceTableRow) {
+  if (navId === "resource-orders") {
+    return [
+      { label: "Order", value: selectedRow.label },
+      { label: "Subscription", value: selectedRow.subscription ?? "Unknown" },
+      { label: "Channel", value: selectedRow.channel ?? "Unknown" },
+      { label: "State", value: selectedRow.state }
+    ];
+  }
+
+  if (navId === "lifecycle") {
+    return [
+      { label: "Decision", value: selectedRow.label },
+      { label: "Account", value: selectedRow.account ?? "Unknown" },
+      { label: "Order", value: selectedRow.order ?? "Unknown" },
+      { label: "State", value: selectedRow.state }
+    ];
+  }
+
+  if (navId === "quota-usage") {
+    return [
+      { label: "Policy", value: selectedRow.label },
+      { label: "Account", value: selectedRow.account ?? "Unknown" },
+      { label: "Order", value: selectedRow.order ?? "Unknown" },
+      { label: "State", value: selectedRow.state }
+    ];
+  }
+
+  if (navId === "history-events") {
+    return [
+      { label: "Event", value: selectedRow.label },
+      { label: "Object", value: selectedRow.objectRef ?? "Unknown" },
+      { label: "Source", value: selectedRow.source ?? "Unknown" },
+      { label: "State", value: selectedRow.state }
+    ];
+  }
+
+  return [
+    { label: "Account", value: selectedRow.label },
+    { label: "State", value: selectedRow.state },
+    { label: "Resources", value: selectedRow.resourceCount ?? "Unknown" },
+    { label: "Risk", value: selectedRow.risk ?? "Unknown" }
+  ];
+}
+
+function getAccountsResourceRowKind(navId: string) {
+  if (navId === "resource-orders") {
+    return "resource order";
+  }
+  if (navId === "lifecycle") {
+    return "lifecycle";
+  }
+  if (navId === "quota-usage") {
+    return "quota policy";
+  }
+  if (navId === "history-events") {
+    return "history event";
+  }
+  return "account";
+}
+
+function DetailField({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="admin-account-detail-field">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
 function getAccountsResourceOwnerSection(navId: string): AccountsResourceOwnerSection {
-  const section = accountsResourcesOwnerPageModel.visibleSections.find((candidate) => candidate.navId === navId);
+  const section = accountsResourcesOwnerPageModel.allSections.find((candidate) => candidate.navId === navId);
   if (!section) {
     throw new Error(`Accounts resource owner section is not registered: ${navId}`);
   }
@@ -413,25 +640,14 @@ function getAccountsResourceOwnerSection(navId: string): AccountsResourceOwnerSe
 }
 
 function HistoryEventsContent() {
+  const section = getAccountsResourceOwnerSection("history-events");
   return (
-    <div className="admin-operator-content" aria-label="History and Events static operator content">
-      <div className="admin-owner-handoff-list" aria-label="Safe computed history">
-        <article className="admin-owner-handoff-item">
-          <span>Safe computed history</span>
-          <strong>Quota evidence updated</strong>
-          <p><SafeRef value="ord_safe_101" /> moved into quota review from Usage & Channels evidence.</p>
-        </article>
-        <article className="admin-owner-handoff-item">
-          <span>Receipt context</span>
-          <strong>Receipt pending</strong>
-          <p><SafeRef value="artifact_safe_pending" /> has no durable history write yet.</p>
-        </article>
-      </div>
-      <div className="admin-static-status-row" aria-label="History and Events backend states">
-        <StatusChip label="Restricted backend locked" tone="neutral" />
-        <StatusChip label="Note write unavailable" tone="warning" />
-        <StatusChip label="Evidence redacted" tone="danger" />
-      </div>
+    <div className="admin-operator-content" aria-label="History and Events owner model content">
+      {section.table && section.detailDrawer ? (
+        <AccountsResourceTableWorkspace section={section} />
+      ) : (
+        <PanelCompactRows section={section} />
+      )}
     </div>
   );
 }

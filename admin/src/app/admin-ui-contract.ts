@@ -216,6 +216,42 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
         "owner-action"
       ]
     },
+    userManagement: {
+      density: "normal",
+      forbiddenSurfaces: ADMIN_PRIVILEGED_SURFACE_IDS,
+      hierarchy: ["context", "state", "action", "detail", "evidence"],
+      layout: "table",
+      mobileProjection: "single-column-review-flow",
+      mobileStandardStatus: "pending-dedicated-standard",
+      page: "userManagement",
+      requiredBlocks: [
+        "page-title",
+        "page-context",
+        "summary",
+        "primary-panel",
+        "status-chip",
+        "state-preview",
+        "evidence-row"
+      ]
+    },
+    orderManagement: {
+      density: "normal",
+      forbiddenSurfaces: ADMIN_PRIVILEGED_SURFACE_IDS,
+      hierarchy: ["context", "state", "action", "detail", "evidence"],
+      layout: "table",
+      mobileProjection: "single-column-review-flow",
+      mobileStandardStatus: "pending-dedicated-standard",
+      page: "orderManagement",
+      requiredBlocks: [
+        "page-title",
+        "page-context",
+        "summary",
+        "primary-panel",
+        "status-chip",
+        "state-preview",
+        "evidence-row"
+      ]
+    },
     usageMonitor: {
       density: "normal",
       forbiddenSurfaces: ADMIN_PRIVILEGED_SURFACE_IDS,
@@ -224,6 +260,96 @@ export const ADMIN_UI_CONTRACT: AdminUiContract = {
       mobileProjection: "single-column-review-flow",
       mobileStandardStatus: "pending-dedicated-standard",
       page: "usageMonitor",
+      requiredBlocks: [
+        "page-title",
+        "page-context",
+        "summary",
+        "primary-panel",
+        "status-chip",
+        "state-preview",
+        "evidence-row"
+      ]
+    },
+    userAccessLogs: {
+      density: "normal",
+      forbiddenSurfaces: ADMIN_PRIVILEGED_SURFACE_IDS,
+      hierarchy: ["context", "state", "detail", "evidence"],
+      layout: "table",
+      mobileProjection: "single-column-review-flow",
+      mobileStandardStatus: "pending-dedicated-standard",
+      page: "userAccessLogs",
+      requiredBlocks: [
+        "page-title",
+        "page-context",
+        "summary",
+        "primary-panel",
+        "status-chip",
+        "state-preview",
+        "evidence-row"
+      ]
+    },
+    userOperationLogs: {
+      density: "normal",
+      forbiddenSurfaces: ADMIN_PRIVILEGED_SURFACE_IDS,
+      hierarchy: ["context", "state", "detail", "evidence"],
+      layout: "table",
+      mobileProjection: "single-column-review-flow",
+      mobileStandardStatus: "pending-dedicated-standard",
+      page: "userOperationLogs",
+      requiredBlocks: [
+        "page-title",
+        "page-context",
+        "summary",
+        "primary-panel",
+        "status-chip",
+        "state-preview",
+        "evidence-row"
+      ]
+    },
+    nodeHealth: {
+      density: "normal",
+      forbiddenSurfaces: ADMIN_PRIVILEGED_SURFACE_IDS,
+      hierarchy: ["metric", "context", "state", "detail", "evidence"],
+      layout: "table",
+      mobileProjection: "single-column-review-flow",
+      mobileStandardStatus: "pending-dedicated-standard",
+      page: "nodeHealth",
+      requiredBlocks: [
+        "page-title",
+        "page-context",
+        "summary",
+        "primary-panel",
+        "status-chip",
+        "state-preview",
+        "evidence-row"
+      ]
+    },
+    nodeLogs: {
+      density: "normal",
+      forbiddenSurfaces: ADMIN_PRIVILEGED_SURFACE_IDS,
+      hierarchy: ["context", "state", "detail", "evidence"],
+      layout: "table",
+      mobileProjection: "single-column-review-flow",
+      mobileStandardStatus: "pending-dedicated-standard",
+      page: "nodeLogs",
+      requiredBlocks: [
+        "page-title",
+        "page-context",
+        "summary",
+        "primary-panel",
+        "status-chip",
+        "state-preview",
+        "evidence-row"
+      ]
+    },
+    nodeBandwidth: {
+      density: "normal",
+      forbiddenSurfaces: ADMIN_PRIVILEGED_SURFACE_IDS,
+      hierarchy: ["metric", "context", "state", "detail", "evidence"],
+      layout: "dashboard",
+      mobileProjection: "single-column-review-flow",
+      mobileStandardStatus: "pending-dedicated-standard",
+      page: "nodeBandwidth",
       requiredBlocks: [
         "page-title",
         "page-context",

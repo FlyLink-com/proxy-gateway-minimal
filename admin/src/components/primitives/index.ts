@@ -1,4 +1,4 @@
-export { DataCardPagination, DataTable, type DataTableColumn, type DataTablePagination } from "./data-table";
+export { DataCardPagination, DataTable, type DataTableColumn, type DataTablePagination, type DataTableState } from "./data-table";
 export { DataSourceBadge, type DataSourceBadgeState } from "./data-source-badge";
 export { EmptyState } from "./empty-state";
 export {
@@ -39,6 +39,7 @@ export { StatusChip } from "./status-chip";
 export {
   WorkspaceSidebar,
   type WorkspaceSidebarBrand,
+  type WorkspaceSidebarPinnedGroup,
   type WorkspaceSidebarPinnedRoute,
   type WorkspaceSidebarProps
 } from "./workspace-sidebar";

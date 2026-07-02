@@ -46,6 +46,7 @@ export type BlueprintPage = {
   summary?: ReactNode;
   evidence?: ReactNode;
   overviewModuleIds?: string[];
+  workspaceModuleIds?: string[];
   modules: BlueprintModule[];
 };
 

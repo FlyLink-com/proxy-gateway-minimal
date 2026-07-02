@@ -78,8 +78,8 @@ describe("admin safe read projection", () => {
       uiSurface: "usage-ledger"
     });
     expect(usageLedger?.allowedDisplayFields).toEqual([
-      "Account · safe ref",
-      "Order · safe ref",
+      "User/account · safe ref",
+      "Order count · measured / pending",
       "Channel · safe ref",
       "Traffic · upload / download / total",
       "Collected · timestamp"

@@ -4,6 +4,10 @@ import {
   type AdminSafeReadProjection
 } from "./admin-safe-read-projection";
 import {
+  createAdminSafeReadPageModel,
+  type AdminSafeReadPageModel
+} from "./admin-safe-read-page-model";
+import {
   createAdminTableQueryState,
   findAdminTableQueryStateIssues,
   projectAdminTableResultWindow,
@@ -47,6 +51,7 @@ export type UsageDeferredSection = {
 export type UsageChannelsOwnerPageModel = {
   schemaVersion: typeof USAGE_CHANNELS_OWNER_MODEL_SCHEMA;
   page: AdminPage;
+  safeReadModel: AdminSafeReadPageModel;
   visibleSections: UsageOwnerSection[];
   deferredSections: UsageDeferredSection[];
 };
@@ -112,21 +117,21 @@ const USAGE_OWNER_ROWS: Record<string, {
       {
         actionLabel: "Open",
         label: "acct_001",
-        meta: "Order ord_2048 · Traffic 42.8GB",
-        rightMeta: "State Locked",
-        statusLabel: "OK",
-        tone: "success"
+        meta: "42.8GB locked",
+        rightMeta: "",
+        statusLabel: "Locked",
+        tone: "info"
       },
       {
         actionLabel: "Open",
         label: "acct_002",
-        meta: "Order ord_2047 · Traffic 18.6GB",
-        rightMeta: "State Measured",
-        statusLabel: "OK",
+        meta: "18.6GB",
+        rightMeta: "",
+        statusLabel: "Measured",
         tone: "info"
       }
     ],
-    subtitle: "Account/order traffic ledger"
+    subtitle: "User traffic ledger"
   }
 };
 
@@ -134,9 +139,10 @@ const UNSAFE_USAGE_OWNER_TEXT_PATTERN =
   /https?:\/\/|subscriptionUrl|subscription\s*url|token|secret|password|credential|edgecred_|raw\s*logs?|sqlite/i;
 
 export function createUsageChannelsOwnerPageModel(blueprint: BlueprintPage): UsageChannelsOwnerPageModel {
+  const safeReadModel = createAdminSafeReadPageModel(blueprint);
   const projections = createAdminSafeReadProjections([blueprint]);
   const projectionsByNavId = new Map(projections.map((projection) => [projection.navId, projection]));
-  const visibleNavIds = blueprint.overviewModuleIds ?? blueprint.modules.map((module) => module.navId);
+  const visibleNavIds = safeReadModel.visibleSectionIds;
   const visibleSections = visibleNavIds.flatMap((navId) => {
     const projection = projectionsByNavId.get(navId);
     const rowSet = USAGE_OWNER_ROWS[navId];
@@ -146,7 +152,7 @@ export function createUsageChannelsOwnerPageModel(blueprint: BlueprintPage): Usa
     return [createUsageOwnerSection(projection, rowSet)];
   });
   const deferredSections = blueprint.modules
-    .filter((module) => !visibleNavIds.includes(module.navId))
+    .filter((module) => safeReadModel.deferredSectionIds.includes(module.navId))
     .flatMap((module) => {
       const projection = projectionsByNavId.get(module.navId);
       return projection ? [{
@@ -159,6 +165,7 @@ export function createUsageChannelsOwnerPageModel(blueprint: BlueprintPage): Usa
   return {
     deferredSections,
     page: blueprint.page,
+    safeReadModel,
     schemaVersion: USAGE_CHANNELS_OWNER_MODEL_SCHEMA,
     visibleSections
   };

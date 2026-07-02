@@ -253,6 +253,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".top-bar")).toContain("backdrop-filter: none");
     expect(selectorBlock(".admin-content")).toContain("var(--admin-content-padding)");
     expect(selectorBlock(".admin-content")).toContain("var(--admin-canvas-max-width)");
+    expect(selectorBlock(".admin-shell[data-shell-topbar=\"disabled\"] .admin-content")).toContain("padding-top: 24px");
     expect(selectorBlock(".dashboard-panel")).toContain("var(--admin-radius-panel)");
     expect(selectorBlock(".dashboard-panel")).toContain("var(--admin-shadow-panel)");
     expect(selectorBlock(".primary-button")).toContain("var(--admin-accent)");
@@ -287,14 +288,14 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("grid-auto-rows: max-content");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("align-content: start");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("max-block-size: none");
-    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("overflow: visible");
+    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("overflow: hidden");
     expect(selectorBlock(".admin-blueprint-module-panel")).not.toContain("overflow-y: auto");
     expect(selectorBlock(".admin-blueprint-module-panel")).not.toContain("overscroll-behavior: contain");
     expect(selectorBlock(".admin-blueprint-module-panel")).not.toContain("scrollbar-gutter: stable");
     expect(selectorBlock(".admin-blueprint-module-panel-head")).toContain("display: flex");
     expect(selectorBlock(".admin-blueprint-panel-field-count")).toContain("display: inline-grid");
-    expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("background: transparent");
-    expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("border: 0");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("background: var(--admin-scene-glass");
+    expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("border: 0.5px solid var(--admin-scene-border");
     expect(selectorBlock(".admin-blueprint-module-panel[data-chrome=\"operator\"]")).toContain("max-block-size: none");
     expect(styles).not.toContain(".admin-blueprint-panel-tool-trigger");
     expect(styles).not.toContain(".admin-blueprint-card-menu");
@@ -350,6 +351,10 @@ describe("admin style token contract", () => {
     const sidebarBlock = selectorBlockFrom(visualPolishStyles, ".app-sidebar");
     const brandMarkBlock = selectorBlockFrom(visualPolishStyles, ".brand-mark");
     const navListBlock = selectorBlockFrom(visualPolishStyles, ".nav-list");
+    const navSidebarGroupBlock = selectorBlockFrom(visualPolishStyles, ".nav-sidebar-group");
+    const navSectionHeadingBlock = selectorBlockFrom(visualPolishStyles, ".nav-sidebar-group .nav-section-heading");
+    const navSectionLabelBlock = selectorBlockFrom(visualPolishStyles, ".nav-sidebar-group .nav-section-label");
+    const navSubitemBlock = selectorBlockFrom(visualPolishStyles, ".nav-item-subitem");
     const navListFocusBlock = selectorBlockFrom(visualPolishStyles, ".nav-list:focus-visible");
     const navListScrollbarBlock = selectorBlockFrom(visualPolishStyles, ".nav-list::-webkit-scrollbar");
     const navItemBlock = selectorBlockFrom(visualPolishStyles, ".nav-item,\n.nav-item-planned,\n.nav-item-planned:disabled");
@@ -379,13 +384,20 @@ describe("admin style token contract", () => {
     expect(navListBlock).toContain("flex: 1 1 auto");
     expect(navListBlock).toContain("flex-direction: column");
     expect(navListBlock).toContain("width: 100%");
-    expect(navListBlock).toContain("gap: 96px");
+    expect(navListBlock).toContain("gap: 12px");
     expect(navListBlock).toContain("min-height: 0");
     expect(navListBlock).toContain("overflow-y: auto");
     expect(navListBlock).toContain("overflow-x: hidden");
     expect(navListBlock).toContain("overscroll-behavior: contain");
     expect(navListBlock).toContain("scrollbar-width: none");
     expect(navListBlock).not.toContain("scrollbar-gutter: stable");
+    expect(navSidebarGroupBlock).toContain("gap: 6px");
+    expect(navSectionHeadingBlock).toContain("align-items: flex-start");
+    expect(navSectionHeadingBlock).toContain("justify-content: flex-start");
+    expect(navSectionHeadingBlock).toContain("min-height: 22px");
+    expect(navSectionHeadingBlock).toContain("padding: 4px 12px 0");
+    expect(navSectionLabelBlock).toContain("text-align: left");
+    expect(navSubitemBlock).toContain("padding-left: 12px");
     expect(navListFocusBlock).toContain("outline: 1px solid rgba(147, 197, 253, 0.7)");
     expect(navListFocusBlock).toContain("outline-offset: 4px");
     expect(navListScrollbarBlock).toContain("width: 0");
@@ -396,18 +408,21 @@ describe("admin style token contract", () => {
     expect(activeNavIconBlock).toContain("background: #93c5fd");
     expect(plannedNavIconBlock).toContain("background: #64748b");
     expect(plannedNavIconBlock).toContain("opacity: 0.6");
-    expect(topBarBlock).toContain("width: var(--admin-visual-topbar-width)");
+    expect(topBarBlock).toContain("width: var(--admin-monitoring-topbar-width)");
     expect(topBarBlock).toContain("max-width: calc(100vw - var(--admin-sidebar-width) - 28px)");
     expect(topBarBlock).toContain("margin: 24px 0 0 28px");
     expect(topBarBlock).toContain("height: var(--admin-statusbar-height)");
-    expect(topBarBlock).toContain("display: block");
+    expect(topBarBlock).toContain("display: grid");
+    expect(topBarBlock).toContain("grid-template-columns:");
+    expect(topBarBlock).toContain("var(--admin-topbar-search-grid-offset)");
+    expect(topBarBlock).toContain("var(--admin-topbar-search-width)");
+    expect(topBarBlock).toContain("minmax(0, 1fr)");
     expect(topBarBlock).toContain("border: 0.5px solid var(--admin-scene-border-strong)");
-    expect(searchBlock).toContain("position: absolute");
-    expect(searchBlock).toContain("top: 9px");
-    expect(searchBlock).toContain("left: var(--admin-topbar-search-left)");
-    expect(searchBlock).toContain("right: var(--admin-topbar-search-right)");
-    expect(searchBlock).toContain("width: auto");
-    expect(searchBlock).toContain("max-width: none");
+    expect(searchBlock).toContain("grid-column: 2");
+    expect(searchBlock).toContain("justify-self: stretch");
+    expect(searchBlock).toContain("position: static");
+    expect(searchBlock).toContain("width: 100%");
+    expect(searchBlock).toContain("max-width: var(--admin-topbar-search-max-width)");
     expect(searchBlock).toContain("min-width: 0");
     expect(searchBlock).toContain("display: flex");
     expect(searchBlock).toContain("gap: var(--admin-topbar-search-placeholder-gap)");
@@ -418,9 +433,9 @@ describe("admin style token contract", () => {
     expect(searchInputBlock).toContain("overflow: hidden");
     expect(searchInputBlock).toContain("text-overflow: ellipsis");
     expect(searchInputBlock).toContain("white-space: nowrap");
-    expect(actionsBlock).toContain("position: absolute");
-    expect(actionsBlock).toContain("top: 11px");
-    expect(actionsBlock).toContain("right: 16px");
+    expect(actionsBlock).toContain("grid-column: 4");
+    expect(actionsBlock).toContain("justify-self: end");
+    expect(actionsBlock).toContain("position: static");
     expect(actionsBlock).toContain("width: var(--admin-topbar-right-cluster-width)");
     expect(actionsBlock).toContain("var(--admin-topbar-action-pill-width)");
     expect(actionsBlock).toContain("var(--admin-topbar-notification-size)");
@@ -442,21 +457,45 @@ describe("admin style token contract", () => {
     const shellBlock = selectorBlockFrom(visualPolishStyles, ".admin-shell");
     const metricGridBlock = selectorBlockFrom(visualPolishStyles, ".admin-overview-metric-grid,\n.ops-metric-grid");
     const metricCardBlock = selectorBlockFrom(visualPolishStyles, ".ops-metric-card,\n.admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-metric-grid .ops-metric-card");
-    const routedPageStackBlock = selectorBlockFrom(
+    const monitoringPageStackBlock = selectorBlockFrom(
       visualPolishStyles,
-      ".admin-blueprint-page[data-page=\"portalRequests\"],\n.admin-blueprint-page[data-page=\"usageMonitor\"]"
+      ".admin-blueprint-page[data-page=\"dashboard\"],\n.admin-blueprint-page[data-page=\"portalRequests\"],\n.admin-blueprint-page[data-page=\"usageMonitor\"]"
     );
     const moduleBoardBlock = selectorBlockFrom(visualPolishStyles, ".admin-blueprint-module-board");
     const routedModuleBoardBlock = selectorBlockFrom(
       visualPolishStyles,
       ".admin-blueprint-page[data-page=\"dashboard\"] .admin-blueprint-module-board,\n.admin-blueprint-page[data-page=\"portalRequests\"] .admin-blueprint-module-board,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-blueprint-module-board"
     );
+    const monitoringMetricGridBlock = selectorBlockFrom(
+      visualPolishStyles,
+      ".admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-metric-grid,\n.admin-blueprint-page[data-page=\"portalRequests\"] .ops-metric-grid,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .ops-metric-grid"
+    );
+    const monitoringMetricCardBlock = selectorBlockFrom(
+      visualPolishStyles,
+      ".admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-metric-grid .ops-metric-card,\n.admin-blueprint-page[data-page=\"portalRequests\"] .ops-metric-grid .ops-metric-card,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .ops-metric-grid .ops-metric-card"
+    );
+    const dashboardMetricGridOverrideBlock = selectorBlockFrom(
+      visualPolishStyles,
+      ".admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-metric-grid"
+    );
     const dashboardHealthSummaryBlock = selectorBlockFrom(visualPolishStyles, ".admin-blueprint-page[data-page=\"dashboard\"] [data-module-nav-id=\"health-summary\"]");
     const modulePanelBlock = selectorBlockFrom(visualPolishStyles, ".admin-blueprint-module-panel,\n.admin-blueprint-module-panel[data-chrome=\"operator\"]");
+    const monitoringPanelBlock = selectorBlockFrom(
+      visualPolishStyles,
+      ".admin-blueprint-page[data-page=\"dashboard\"] .admin-blueprint-module-panel,\n.admin-blueprint-page[data-page=\"portalRequests\"] .admin-blueprint-module-panel,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-blueprint-module-panel"
+    );
     const evidenceGridBlock = selectorBlockFrom(visualPolishStyles, ".admin-blueprint-lower-evidence-grid");
     const pageOwnedEvidenceGridBlock = selectorBlockFrom(
       visualPolishStyles,
       ".admin-blueprint-page[data-page=\"portalRequests\"] .admin-blueprint-lower-evidence-grid,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-blueprint-lower-evidence-grid"
+    );
+    const monitoringEvidenceGridBlock = selectorBlockFrom(
+      visualPolishStyles,
+      ".admin-blueprint-page[data-page=\"dashboard\"] .admin-blueprint-lower-evidence-grid,\n.admin-blueprint-page[data-page=\"portalRequests\"] .admin-blueprint-lower-evidence-grid,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-blueprint-lower-evidence-grid"
+    );
+    const monitoringEvidencePanelBlock = selectorBlockFrom(
+      visualPolishStyles,
+      ".admin-blueprint-page[data-page=\"dashboard\"] .admin-evidence-panel,\n.admin-blueprint-page[data-page=\"portalRequests\"] .admin-evidence-panel,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-evidence-panel"
     );
     const evidencePanelBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-panel");
     const evidenceChartPanelBlock = selectorBlockFrom(visualPolishStyles, ".admin-evidence-panel-chart");
@@ -507,6 +546,10 @@ describe("admin style token contract", () => {
       "--admin-status-chip-height: 24px",
       "--admin-status-chip-min-width: 72px",
       "--admin-topbar-search-left: 385px",
+      "--admin-topbar-horizontal-padding: 16px",
+      "--admin-topbar-search-grid-offset: calc(var(--admin-topbar-search-left) - var(--admin-topbar-horizontal-padding))",
+      "--admin-topbar-search-width: 340px",
+      "--admin-topbar-search-max-width: 340px",
       "--admin-topbar-search-right: calc(var(--admin-topbar-right-cluster-width) + 32px)",
       "--admin-topbar-right-cluster-width: 424px",
       "--admin-visual-metric-card-width: clamp(240px, 18.75vw, 300px)",
@@ -521,7 +564,12 @@ describe("admin style token contract", () => {
       "--admin-visual-evidence-gap: clamp(28px, 2.5vw, 40px)",
       "--admin-visual-evidence-top-offset: 12px",
       "--admin-visual-kpi-to-panel-gap: 48px",
+      "--admin-visual-dashboard-kpi-to-panel-gap: 24px",
       "--admin-visual-panel-to-evidence-gap: 36px",
+      "--admin-backend-read-content-width: min(calc(var(--admin-visual-topbar-width) * 0.9), 100%)",
+      "--admin-backend-read-panel-gap: 14px",
+      "--admin-backend-read-monitor-panel-height: var(--admin-visual-panel-height)",
+      "--admin-monitoring-topbar-width: var(--admin-backend-read-content-width)",
       "--admin-evidence-chart-line-weight: 2.5",
       "--admin-evidence-time-range-gap: 4px",
       "--admin-evidence-time-range-pill-width: 26px",
@@ -562,31 +610,56 @@ describe("admin style token contract", () => {
     expect(moduleBoardBlock).toContain("grid-template-columns: repeat(3, var(--admin-visual-panel-width))");
     expect(moduleBoardBlock).toContain("column-gap: var(--admin-visual-panel-gap)");
     expect(moduleBoardBlock).toContain("row-gap: var(--admin-visual-panel-row-gap)");
-    expect(routedPageStackBlock).toContain("gap: 0");
-    expect(routedModuleBoardBlock).toContain("grid-template-columns: repeat(3, var(--admin-visual-panel-width))");
+    expect(monitoringPageStackBlock).toContain("position: relative");
+    expect(monitoringPageStackBlock).toContain("gap: 0");
+    expect(monitoringPageStackBlock).toContain("max-width: var(--admin-backend-read-content-width)");
+    expect(monitoringPageStackBlock).toContain("width: var(--admin-backend-read-content-width)");
+    expect(monitoringMetricGridBlock).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
+    expect(monitoringMetricGridBlock).toContain("max-width: var(--admin-backend-read-content-width)");
+    expect(monitoringMetricGridBlock).toContain("gap: var(--admin-backend-read-panel-gap)");
+    expect(monitoringMetricCardBlock).toContain("width: auto");
+    expect(monitoringMetricCardBlock).toContain("min-width: 0");
+    expect(dashboardMetricGridOverrideBlock).toContain("gap: var(--admin-backend-read-panel-gap)");
     expect(visualPolishStyles).toContain(
-      ".admin-blueprint-page[data-page=\"portalRequests\"] .admin-blueprint-module-board,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-blueprint-module-board {\n  margin-top: var(--admin-visual-kpi-to-panel-gap);\n}"
+      ".admin-blueprint-page[data-page=\"dashboard\"] .admin-overview-metric-grid .ops-metric-card {\n  width: auto;\n  min-width: 0;\n}"
+    );
+    expect(routedModuleBoardBlock).toContain("grid-template-columns: repeat(3, minmax(0, 1fr))");
+    expect(routedModuleBoardBlock).toContain("max-width: var(--admin-backend-read-content-width)");
+    expect(routedModuleBoardBlock).toContain("column-gap: var(--admin-backend-read-panel-gap)");
+    expect(routedModuleBoardBlock).toContain("row-gap: var(--admin-backend-read-panel-gap)");
+    expect(visualPolishStyles).toContain(
+      ".admin-blueprint-page[data-page=\"dashboard\"] .admin-blueprint-module-board {\n  margin-top: var(--admin-backend-read-panel-gap);\n}"
     );
     expect(visualPolishStyles).toContain(
-      ".admin-blueprint-page[data-page=\"usageMonitor\"] .admin-blueprint-module-board {\n  grid-template-columns: repeat(3, minmax(0, 1fr));\n  max-width: var(--admin-visual-topbar-width);"
+      ".admin-blueprint-page[data-page=\"portalRequests\"] .admin-blueprint-module-board,\n.admin-blueprint-page[data-page=\"usageMonitor\"] .admin-blueprint-module-board {\n  margin-top: var(--admin-backend-read-panel-gap);\n}"
     );
     expect(
       selectorBlockFrom(
         visualPolishStyles,
         ".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"freshness\"],\n.admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"channel-coverage\"],\n.admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"usage-ledger\"]"
       )
-    ).toContain("height: var(--admin-visual-panel-height)");
+    ).toContain("height: var(--admin-backend-read-monitor-panel-height)");
     expect(dashboardHealthSummaryBlock).toContain("height: var(--admin-visual-metric-card-height)");
     expect(dashboardHealthSummaryBlock).toContain("max-height: var(--admin-visual-metric-card-height)");
     expect(modulePanelBlock).toContain("width: var(--admin-visual-panel-width)");
     expect(modulePanelBlock).toContain("height: var(--admin-visual-panel-height)");
+    expect(monitoringPanelBlock).toContain("width: auto");
+    expect(monitoringPanelBlock).toContain("height: var(--admin-backend-read-monitor-panel-height)");
+    expect(monitoringPanelBlock).toContain("padding: 16px");
     expect(modulePanelBlock).toContain("box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18)");
     expect(evidenceGridBlock).toContain("grid-template-columns: repeat(2, var(--admin-visual-evidence-width))");
     expect(evidenceGridBlock).toContain("gap: var(--admin-visual-evidence-gap)");
     expect(evidenceGridBlock).toContain("margin-top: var(--admin-visual-evidence-top-offset)");
+    expect(monitoringEvidenceGridBlock).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+    expect(monitoringEvidenceGridBlock).toContain("max-width: var(--admin-backend-read-content-width)");
+    expect(monitoringEvidenceGridBlock).toContain("width: var(--admin-backend-read-content-width)");
+    expect(monitoringEvidenceGridBlock).toContain("gap: var(--admin-backend-read-panel-gap)");
+    expect(monitoringEvidenceGridBlock).toContain("margin-top: var(--admin-visual-panel-to-evidence-gap)");
     expect(pageOwnedEvidenceGridBlock).toContain("margin-top: var(--admin-visual-panel-to-evidence-gap)");
     expect(evidencePanelBlock).toContain("width: var(--admin-visual-evidence-width)");
     expect(evidencePanelBlock).toContain("height: var(--admin-visual-evidence-height)");
+    expect(monitoringEvidencePanelBlock).toContain("width: auto");
+    expect(monitoringEvidencePanelBlock).toContain("min-width: 0");
     expect(evidencePanelBlock).toContain("border: 0.5px solid var(--admin-scene-border)");
     expect(evidencePanelBlock).toContain("box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18)");
     expect(evidencePanelBlock).not.toContain("0 14px 30px");
@@ -639,7 +712,7 @@ describe("admin style token contract", () => {
     expect(evidenceChartLineBlock).toContain("stroke-width: var(--admin-evidence-chart-line-weight)");
     expect(evidenceLogListBlock).toContain("grid-template-rows: repeat(3, minmax(0, 1fr))");
     expect(evidenceLogListBlock).toContain("min-height: 0");
-    expect(evidenceLogEntryBlock).toContain("grid-template-columns: 52px 40px 150px minmax(0, 1fr)");
+    expect(evidenceLogEntryBlock).toContain("grid-template-columns: 52px 40px 164px minmax(0, 1fr)");
     expect(evidenceLogEntryBlock).toContain("border-bottom: 0.5px solid rgba(255, 255, 255, 0.12)");
     expect(evidenceLogEntryBlock).toContain("background: transparent");
     expect(evidenceLogEntryBlock).toContain("padding: 0 16px");
@@ -649,7 +722,7 @@ describe("admin style token contract", () => {
     expect(evidenceLogStatusBlock).toContain("text-transform: uppercase");
     expect(evidenceLogTitleBlock).toContain("white-space: nowrap");
     expect(evidenceLogDetailBlock).toContain("line-height: 14px");
-    expect(visualPolishStyles).toMatch(/\.admin-evidence-log-entry p\s*\{[\s\S]*-webkit-line-clamp: 1;/m);
+    expect(visualPolishStyles).toMatch(/\.admin-evidence-log-entry p\s*\{[\s\S]*-webkit-line-clamp: 2;/m);
     expect(visualPolishStyles).not.toContain(".admin-evidence-contract-strip");
     expect(visualPolishStyles).not.toContain(".admin-evidence-stat-grid");
     expect(visualPolishStyles).not.toContain("admin-blueprint-page[data-page=\"usageMonitor\"] .admin-evidence-panel-chart");
@@ -666,6 +739,7 @@ describe("admin style token contract", () => {
     expect(visualPolishStyles).toMatch(/@media \(max-width: 1024px\) \{[\s\S]*--admin-content-padding: 24px;[\s\S]*--admin-visual-metric-card-width: 460px;[\s\S]*--admin-visual-panel-width: 470px;[\s\S]*--admin-visual-evidence-width: 976px;[\s\S]*--admin-visual-topbar-width: 976px;/m);
     expect(visualPolishStyles).toMatch(/@media \(max-width: 1024px\) \{[\s\S]*\.admin-overview-metric-grid,[\s\S]*\.ops-metric-grid\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 460px\)\);/m);
     expect(visualPolishStyles).toMatch(/@media \(max-width: 1024px\) \{[\s\S]*\.admin-blueprint-page\[data-page="dashboard"\] \[data-module-nav-id="health-summary"\]\s*\{[\s\S]*height: calc\(\(var\(--admin-visual-metric-card-height\) \* 2\) \+ var\(--admin-visual-metric-gap\)\);/m);
+    expect(visualPolishStyles).toMatch(/@media \(max-width: 1024px\) \{[\s\S]*\.admin-blueprint-page\[data-page="dashboard"\] \.admin-blueprint-lower-evidence-grid,[\s\S]*\.admin-blueprint-page\[data-page="usageMonitor"\] \.admin-blueprint-lower-evidence-grid\s*\{[\s\S]*grid-template-columns: 1fr;[\s\S]*max-width: none;[\s\S]*width: 100%;/m);
     expect(visualPolishStyles).toMatch(/@media \(max-width: 1024px\) \{[\s\S]*\.admin-blueprint-module-board,[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 470px\)\);/m);
   });
 
@@ -841,6 +915,265 @@ describe("admin style token contract", () => {
     expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.new-console-row-head\s*\{\s*display: none;/m);
   });
 
+  test("keeps backend table pagination pinned to the bottom row", () => {
+    expect(selectorBlock(".admin-audit-read-page")).toContain("gap: 14px");
+    expect(selectorBlock(".admin-audit-read-page")).toContain("--admin-backend-read-table-card-height: 637px");
+    expect(selectorBlock(".admin-audit-read-page")).toContain("width: min(calc(var(--admin-visual-topbar-width) * 0.9), 100%)");
+    expect(selectorBlock(".admin-audit-read-header")).toContain("border-radius: 12px");
+    expect(selectorBlock(".admin-audit-read-header")).toContain("min-height: 36px");
+    expect(selectorBlock(".admin-audit-read-filter-row")).toContain("gap: 10px");
+    expect(styles).toMatch(/\.admin-audit-read-filter-row\s*\{[\s\S]*border-radius: 14px;[\s\S]*min-height: 50px;/m);
+    expect(styles).toMatch(/\.admin-audit-read-filter-row\s*\{[^}]*overflow: hidden;[^}]*white-space: nowrap;/m);
+    expect(styles).not.toMatch(/\.admin-audit-read-filter-row\s*\{[^}]*overflow-x: auto;/m);
+    expect(styles).not.toContain(".admin-audit-read-filter-row::-webkit-scrollbar");
+    expect(selectorBlock(".admin-audit-read-body")).toContain("grid-template-columns: minmax(0, 846px) minmax(252px, 306px)");
+    expect(selectorBlock(".admin-audit-read-body")).toContain("align-items: stretch");
+    expect(selectorBlock(".admin-audit-read-body")).toContain("min-height: 0");
+    expect(selectorBlock(".admin-audit-read-table-card")).toContain("height: var(--admin-backend-read-table-card-height)");
+    expect(selectorBlock(".admin-audit-read-table-card")).toContain("min-height: var(--admin-backend-read-table-card-height)");
+    expect(visualPolishStyles).toMatch(/\.admin-audit-read-detail-panel\s*\{\s*align-content: start;[\s\S]*height: var\(--admin-backend-read-table-card-height\);[\s\S]*min-height: var\(--admin-backend-read-table-card-height\);[\s\S]*padding: 18px;/m);
+    expect(selectorBlock(".admin-audit-read-detail-panel")).not.toContain("overflow-y");
+    expect(selectorBlock(".admin-audit-read-detail-panel")).not.toContain("scrollbar-width");
+    expect(selectorBlock(".admin-audit-read-table-card .new-console-table-shell")).toContain("align-content: stretch");
+    expect(selectorBlock(".admin-audit-read-table-card .new-console-table-shell")).toContain("gap: 0");
+    expect(selectorBlock(".admin-audit-read-table-card .new-console-table")).toContain("overflow-x: auto");
+    expect(selectorBlock(".admin-audit-read-table-card .new-console-table")).toContain("overflow-y: hidden");
+    expect(selectorBlock(".admin-audit-read-table-card .data-card-pagination")).toContain("flex-direction: row");
+    expect(selectorBlock(".admin-audit-read-table-card .data-card-pagination")).toContain("flex-wrap: nowrap");
+    expect(selectorBlock(".admin-audit-read-table-card .data-card-pagination-range")).toContain("overflow: hidden");
+    expect(selectorBlock(".admin-audit-read-table-card .data-card-pagination-range")).toContain("white-space: nowrap");
+    expect(selectorBlock(".admin-audit-read-table-card .data-card-pagination-controls")).toContain("height: 24px");
+    expect(selectorBlock(".admin-audit-read-table-card .data-card-pagination-controls")).toContain("width: auto");
+    expect(selectorBlock(".admin-audit-read-table-card .data-card-pagination-button,\n.admin-audit-read-table-card .data-card-pagination-page")).toContain("min-height: 24px");
+    expect(selectorBlock(".admin-audit-read-table-card .new-console-row")).toContain("min-width: var(--admin-backend-table-scroll-width, 100%)");
+    expect(selectorBlock(".admin-audit-read-table-card .new-console-row-placeholder")).toContain("pointer-events: none");
+    expect(styles).toMatch(/\.admin-audit-read-table-card \.new-console-table::-webkit-scrollbar\s*\{[\s\S]*height: 8px;/m);
+  });
+
+  test("keeps backend table column grids inside the fixed card width", () => {
+    const fixedCardWidth = 846;
+    const rowInlinePadding = 32;
+    const fiveColumnGaps = 60;
+    const maxColumnWidth = fixedCardWidth - rowInlinePadding - fiveColumnGaps;
+    const tableRowSelectors = [
+      ".admin-audit-table-operation .new-console-row",
+      ".admin-node-health-table .new-console-row",
+      ".admin-node-logs-table .new-console-row",
+      ".admin-node-bandwidth-table .new-console-row",
+      ".admin-user-management-table .new-console-row",
+      ".admin-order-management-table .new-console-row"
+    ];
+
+    for (const selector of tableRowSelectors) {
+      const gridTemplateColumns = selectorBlock(selector).match(/grid-template-columns:\s*([^;]+)/)?.[1] ?? "";
+      const minimumColumnWidth = (gridTemplateColumns.replace(/minmax\((\d+)px,[^)]+\)/g, "$1px").match(/\d+px/g) ?? [])
+        .reduce((sum, value) => sum + Number.parseInt(value, 10), 0);
+
+      expect(minimumColumnWidth).toBeLessThanOrEqual(maxColumnWidth);
+    }
+
+    expect(visualPolishStyles).not.toMatch(/\.admin-user-management-table\s*\{[^}]*padding:\s*14px/m);
+  });
+
+  test("keeps User Access Logs on the V2 source-rule table split", () => {
+    expect(selectorBlock(".admin-audit-read-page[data-page=\"userAccessLogs\"] .admin-audit-read-actions button:first-child")).toContain("width: 144px");
+    expect(selectorBlock(".admin-audit-read-page[data-page=\"userAccessLogs\"] .admin-audit-read-actions button:last-child")).toContain("width: 129px");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-audit-table-access")).toContain("padding: 0");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-audit-table-access")).toContain("--admin-backend-table-scroll-width: max(100%, 860px)");
+    expect(selectorBlock(".admin-audit-table-access .new-console-table-shell")).toContain("grid-template-rows: minmax(0, 1fr) 34px");
+    expect(selectorBlock(".admin-audit-table-access .new-console-table-shell")).toContain("height: 100%");
+    expect(selectorBlock(".admin-audit-read-table-card .new-console-table")).toContain("align-content: start");
+    expect(selectorBlock(".admin-audit-table-access .new-console-table")).toContain("grid-template-rows: 40px repeat(20, 28px)");
+    expect(selectorBlock(".admin-audit-table-access .new-console-table")).toContain("grid-auto-rows: 28px");
+    expect(selectorBlock(".admin-audit-table-access .new-console-table")).toContain("height: auto");
+    expect(selectorBlock(".admin-audit-table-access .new-console-table")).toContain("padding-bottom: 0");
+    expect(selectorBlock(".admin-audit-table-access .new-console-row")).toContain("grid-template-columns: repeat(5, minmax(0, 1fr))");
+    expect(selectorBlock(".admin-audit-table-access .new-console-row")).toContain("column-gap: 12px");
+    expect(selectorBlock(".admin-audit-table-access .new-console-row")).toContain("padding: 0 16px");
+    expect(selectorBlock(".admin-audit-table-access .new-console-row > span")).toContain("padding: 0");
+    expect(selectorBlock(".admin-audit-table-access .data-card-pagination")).toContain("height: 34px");
+    expect(selectorBlock(".admin-audit-read-page[data-page=\"userAccessLogs\"] .admin-audit-read-detail-panel h2")).toContain("font-size: 18px");
+    expect(selectorBlock(".admin-audit-read-page[data-page=\"userAccessLogs\"] .admin-audit-read-detail-field dd")).toContain("text-align: right");
+  });
+
+  test("keeps User Operation Logs on the V2 source-rule table split", () => {
+    expect(selectorBlock(".admin-audit-read-header")).toContain("rgba(255, 255, 255, 0.35)");
+    expect(selectorBlock(".admin-audit-read-breadcrumb")).toContain("font-size: 13px");
+    expect(selectorBlock(".admin-audit-read-breadcrumb")).toContain("font-weight: 600");
+    expect(selectorBlock(".admin-audit-read-page[data-page=\"userOperationLogs\"] .admin-audit-read-actions button:first-child")).toContain("width: 140px");
+    expect(selectorBlock(".admin-audit-read-page[data-page=\"userOperationLogs\"] .admin-audit-read-actions button:last-child")).toContain("width: 125px");
+    expect(selectorBlock(".admin-audit-read-page[data-page=\"userOperationLogs\"] .admin-audit-read-filter-row")).toContain("justify-content: space-between");
+    expect(selectorBlock(".admin-audit-read-page[data-page=\"userOperationLogs\"] .admin-audit-read-filter-row button")).toContain("flex: 1 1 132px");
+    expect(selectorBlock(".admin-audit-read-page[data-page=\"userOperationLogs\"] .admin-audit-read-filter-row button")).toContain("max-width: 162px");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-audit-table-operation")).toContain("padding: 0");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-audit-table-operation")).toContain("--admin-backend-table-scroll-width: max(100%, 940px)");
+    expect(selectorBlock(".admin-audit-table-operation .new-console-table-shell")).toContain("grid-template-rows: minmax(0, 1fr) 34px");
+    expect(selectorBlock(".admin-audit-table-operation .new-console-table-shell")).toContain("height: 100%");
+    expect(selectorBlock(".admin-audit-table-operation .new-console-table")).toContain("grid-template-rows: 40px repeat(20, 28px)");
+    expect(selectorBlock(".admin-audit-table-operation .new-console-table")).toContain("grid-auto-rows: 28px");
+    expect(selectorBlock(".admin-audit-table-operation .new-console-table")).toContain("height: auto");
+    expect(selectorBlock(".admin-audit-table-operation .new-console-table")).toContain("padding-bottom: 0");
+    expect(selectorBlock(".admin-audit-table-operation .new-console-row")).toContain("grid-template-columns: 76px 86px 104px 84px 82px minmax(260px, 1fr)");
+    expect(selectorBlock(".admin-audit-table-operation .new-console-row")).toContain("column-gap: 12px");
+    expect(selectorBlock(".admin-audit-table-operation .new-console-row")).toContain("padding: 0 16px");
+    expect(selectorBlock(".admin-audit-table-operation .new-console-row > span")).toContain("padding: 0");
+    expect(selectorBlock(".admin-audit-table-operation .new-console-row:not(.new-console-row-head) > span")).toContain("font-size: 11px");
+    expect(selectorBlock(".admin-audit-table-operation .new-console-row:not(.new-console-row-head) > span:last-child")).toContain("font-weight: 500");
+    expect(selectorBlock(".admin-audit-table-operation .data-card-pagination")).toContain("height: 34px");
+    expect(selectorBlock(".admin-audit-table-operation .dashboard-status-badge")).toContain("max-width: 104px");
+    expect(selectorBlock(".admin-audit-table-operation .dashboard-status-badge")).toContain("font-size: 11px");
+    expect(selectorBlock(".admin-audit-read-page[data-page=\"userOperationLogs\"] .admin-audit-read-detail-panel h2")).toContain("font-size: 18px");
+    expect(selectorBlock(".admin-audit-read-page[data-page=\"userOperationLogs\"] .admin-audit-read-detail-field dd")).toContain("font-weight: 600");
+  });
+
+  test("keeps User Management on the Figma user table and gated detail split", () => {
+    expect(selectorBlock(".admin-user-management-read-page .admin-audit-read-actions button:first-child")).toContain("width: 150px");
+    expect(selectorBlock(".admin-user-management-read-page .admin-audit-read-filter-row")).toContain("gap: 10px");
+    expect(selectorBlock(".admin-user-management-read-page .admin-audit-read-filter-row")).toContain("padding: 0 14px");
+    expect(selectorBlock(".admin-user-management-read-page .admin-audit-read-filter-row label")).toContain("flex: 1 1 300px");
+    expect(selectorBlock(".admin-user-management-read-page .admin-audit-read-filter-row button")).toContain("flex: 1 1 132px");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-user-management-table")).toContain("padding: 0");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-user-management-table")).toContain("--admin-backend-table-scroll-width: max(100%, 920px)");
+    expect(selectorBlock(".admin-user-management-table .new-console-table-shell")).toContain("grid-template-rows: minmax(0, 1fr) 34px");
+    expect(selectorBlock(".admin-user-management-table .new-console-table-shell")).toContain("height: 100%");
+    expect(selectorBlock(".admin-user-management-table .new-console-table")).toContain("grid-template-rows: 40px repeat(20, 28px)");
+    expect(selectorBlock(".admin-user-management-table .new-console-table")).toContain("grid-auto-rows: 28px");
+    expect(selectorBlock(".admin-user-management-table .new-console-table")).toContain("height: auto");
+    expect(selectorBlock(".admin-user-management-table .new-console-table")).toContain("padding-bottom: 0");
+    expect(selectorBlock(".admin-user-management-table .new-console-row")).toContain("grid-template-columns: 126px minmax(172px, 1fr) 142px 88px 94px 84px");
+    expect(selectorBlock(".admin-user-management-table .new-console-row")).toContain("column-gap: 12px");
+    expect(selectorBlock(".admin-user-management-table .new-console-row")).toContain("padding: 0 16px");
+    expect(selectorBlock(".admin-user-management-table .new-console-row:not(.new-console-row-head)")).toContain("min-height: 28px");
+    expect(selectorBlock(".admin-user-management-table .new-console-row > span")).toContain("font-size: 11px");
+    expect(selectorBlock(".admin-user-management-table .new-console-row > span:nth-child(2)")).toContain("font-size: 11px");
+    expect(selectorBlock(".admin-user-management-table .dashboard-status-badge")).toContain("height: 24px");
+    expect(selectorBlock(".admin-user-management-table .data-card-pagination")).toContain("height: 34px");
+    expect(selectorBlock(".admin-user-management-detail-panel")).toContain("grid-template-rows: none");
+    expect(selectorBlock(".admin-user-management-detail-panel")).toContain("min-height: var(--admin-backend-read-table-card-height)");
+    expect(selectorBlock(".admin-user-management-detail-panel")).toContain("overflow-x: hidden");
+    expect(selectorBlock(".admin-user-management-detail-panel")).toContain("overflow-y: auto");
+    expect(selectorBlock(".admin-user-management-detail-panel")).toContain("scrollbar-width: thin");
+    expect(selectorBlock(".admin-user-management-detail-panel h2")).toContain("font-size: 18px");
+    expect(selectorBlock(".admin-user-management-detail-panel .admin-audit-read-detail-field dd")).toContain("justify-content: flex-end");
+    expect(selectorBlock(".admin-user-management-detail-panel .admin-audit-read-detail-field dd")).toContain("overflow-wrap: anywhere");
+    expect(selectorBlock(".admin-user-management-actions")).toContain("align-self: end");
+    expect(selectorBlock(".admin-user-management-actions button")).toContain("height: 40px");
+    expect(selectorBlock(".admin-user-management-actions button[data-tone=\"danger\"]")).toContain("border-color: rgba(242, 89, 89, 0.28)");
+    expect(selectorBlock(".admin-user-management-inline-action-state")).toContain("grid-template-columns: minmax(88px, auto) minmax(0, 1fr) auto auto");
+    expect(selectorBlock(".admin-user-management-inline-action-state")).toContain("padding: 8px 10px");
+  });
+
+  test("keeps Order Management on the Figma order table and gated evidence split", () => {
+    expect(selectorBlock(".admin-order-management-read-page .admin-audit-read-actions button:first-child")).toContain("width: 162px");
+    expect(selectorBlock(".admin-order-management-read-page .admin-audit-read-filter-row")).toContain("gap: 10px");
+    expect(selectorBlock(".admin-order-management-read-page .admin-audit-read-filter-row")).toContain("padding: 0 14px");
+    expect(selectorBlock(".admin-order-management-read-page .admin-audit-read-filter-row label")).toContain("flex: 1 1 300px");
+    expect(selectorBlock(".admin-order-management-read-page .admin-audit-read-filter-row button")).toContain("flex: 1 1 132px");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-order-management-table")).toContain("padding: 0");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-order-management-table")).toContain("--admin-backend-table-scroll-width: max(100%, 920px)");
+    expect(selectorBlock(".admin-order-management-table .new-console-table-shell")).toContain("grid-template-rows: minmax(0, 1fr) 34px");
+    expect(selectorBlock(".admin-order-management-table .new-console-table-shell")).toContain("height: 100%");
+    expect(selectorBlock(".admin-order-management-table .new-console-table")).toContain("grid-template-rows: 40px repeat(20, 28px)");
+    expect(selectorBlock(".admin-order-management-table .new-console-table")).toContain("grid-auto-rows: 28px");
+    expect(selectorBlock(".admin-order-management-table .new-console-table")).toContain("height: auto");
+    expect(selectorBlock(".admin-order-management-table .new-console-table")).toContain("padding-bottom: 0");
+    expect(selectorBlock(".admin-order-management-table .new-console-row")).toContain("grid-template-columns: 112px minmax(170px, 1fr) 108px 92px 108px 96px");
+    expect(selectorBlock(".admin-order-management-table .new-console-row")).toContain("column-gap: 12px");
+    expect(selectorBlock(".admin-order-management-table .new-console-row")).toContain("padding: 0 16px");
+    expect(selectorBlock(".admin-order-management-table .new-console-row > span")).toContain("font-size: 11px");
+    expect(selectorBlock(".admin-order-management-table .new-console-row > span:nth-child(2),\n.admin-order-management-table .new-console-row > span:nth-child(3)")).toContain("font-size: 11px");
+    expect(selectorBlock(".admin-order-management-table .dashboard-status-badge")).toContain("height: 24px");
+    expect(selectorBlock(".admin-order-management-table .data-card-pagination")).toContain("height: 34px");
+    expect(selectorBlock(".admin-order-management-detail-panel")).toContain("grid-template-rows: auto auto 1fr");
+    expect(selectorBlock(".admin-order-management-detail-panel h2")).toContain("font-size: 18px");
+    expect(selectorBlock(".admin-order-management-detail-panel .admin-audit-read-detail-field dd")).toContain("justify-content: flex-end");
+    expect(selectorBlock(".admin-order-management-actions")).toContain("align-self: end");
+    expect(selectorBlock(".admin-order-management-actions button")).toContain("height: 42px");
+  });
+
+  test("keeps Node Health on the Figma health table and detail split", () => {
+    expect(selectorBlock(".admin-audit-read-actions button")).toContain("white-space: nowrap");
+    expect(selectorBlock(".admin-node-health-read-page .admin-audit-read-actions button:first-child")).toContain("width: 124px");
+    expect(selectorBlock(".admin-node-health-read-page .admin-audit-read-actions button:last-child")).toContain("width: 112px");
+    expect(selectorBlock(".admin-node-health-read-page .admin-audit-read-filter-row label")).toContain("flex: 1 1 300px");
+    expect(selectorBlock(".admin-node-health-read-page .admin-audit-read-filter-row button")).toContain("flex: 1 1 132px");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-node-health-table")).toContain("padding: 0");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-node-health-table")).toContain("--admin-backend-table-scroll-width: max(100%, 900px)");
+    expect(selectorBlock(".admin-node-health-table .new-console-table-shell")).toContain("grid-template-rows: minmax(0, 1fr) 34px");
+    expect(selectorBlock(".admin-node-health-table .new-console-table-shell")).toContain("height: 100%");
+    expect(selectorBlock(".admin-node-health-table .new-console-table")).toContain("grid-template-rows: 40px repeat(20, 28px)");
+    expect(selectorBlock(".admin-node-health-table .new-console-table")).toContain("grid-auto-rows: 28px");
+    expect(selectorBlock(".admin-node-health-table .new-console-table")).toContain("height: auto");
+    expect(selectorBlock(".admin-node-health-table .new-console-table")).toContain("padding-bottom: 0");
+    expect(selectorBlock(".admin-node-health-table .new-console-row")).toContain("grid-template-columns: 132px 104px 104px 104px 110px minmax(130px, 1fr)");
+    expect(selectorBlock(".admin-node-health-table .new-console-row")).toContain("column-gap: 12px");
+    expect(selectorBlock(".admin-node-health-table .new-console-row")).toContain("padding: 0 16px");
+    expect(selectorBlock(".admin-node-health-table .new-console-row > span")).toContain("font-size: 11px");
+    expect(selectorBlock(".admin-node-health-table .new-console-row > span:nth-child(2)")).toContain("font-size: 11px");
+    expect(selectorBlock(".admin-node-health-table .dashboard-status-badge")).toContain("height: 24px");
+    expect(selectorBlock(".admin-node-health-table .data-card-pagination")).toContain("height: 34px");
+    expect(selectorBlock(".admin-node-health-detail-panel h2")).toContain("font-size: 18px");
+    expect(selectorBlock(".admin-node-health-detail-panel .admin-audit-read-detail-field dd")).toContain("justify-content: flex-end");
+    expect(selectorBlock(".admin-node-health-actions button")).toContain("height: 36px");
+  });
+
+  test("keeps Node Logs on the Figma log table and redacted detail split", () => {
+    expect(selectorBlock(".admin-node-logs-read-page .admin-audit-read-actions button:first-child")).toContain("width: 124px");
+    expect(selectorBlock(".admin-node-logs-read-page .admin-audit-read-actions button:last-child")).toContain("width: 112px");
+    expect(selectorBlock(".admin-node-logs-read-page .admin-audit-read-filter-row")).toContain("gap: 10px");
+    expect(selectorBlock(".admin-node-logs-read-page .admin-audit-read-filter-row")).toContain("padding: 0 14px");
+    expect(selectorBlock(".admin-node-logs-read-page .admin-audit-read-filter-row label")).toContain("flex: 1 1 300px");
+    expect(selectorBlock(".admin-node-logs-read-page .admin-audit-read-filter-row button")).toContain("flex: 1 1 132px");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-node-logs-table")).toContain("padding: 0");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-node-logs-table")).toContain("--admin-backend-table-scroll-width: max(100%, 940px)");
+    expect(selectorBlock(".admin-node-logs-table .new-console-table-shell")).toContain("grid-template-rows: minmax(0, 1fr) 34px");
+    expect(selectorBlock(".admin-node-logs-table .new-console-table-shell")).toContain("height: 100%");
+    expect(selectorBlock(".admin-node-logs-table .new-console-table")).toContain("grid-template-rows: 40px repeat(20, 28px)");
+    expect(selectorBlock(".admin-node-logs-table .new-console-table")).toContain("grid-auto-rows: 28px");
+    expect(selectorBlock(".admin-node-logs-table .new-console-table")).toContain("height: auto");
+    expect(selectorBlock(".admin-node-logs-table .new-console-table")).toContain("padding-bottom: 0");
+    expect(selectorBlock(".admin-node-logs-table .new-console-row")).toContain("grid-template-columns: 76px 96px 118px 86px 76px minmax(210px, 1fr)");
+    expect(selectorBlock(".admin-node-logs-table .new-console-row")).toContain("column-gap: 12px");
+    expect(selectorBlock(".admin-node-logs-table .new-console-row")).toContain("padding: 0 16px");
+    expect(selectorBlock(".admin-node-logs-table .new-console-row > span")).toContain("font-size: 11px");
+    expect(selectorBlock(".admin-node-logs-table .new-console-row > span:nth-child(2)")).toContain("font-size: 11px");
+    expect(selectorBlock(".admin-node-logs-table .dashboard-status-badge")).toContain("height: 24px");
+    expect(selectorBlock(".admin-node-log-message")).toContain("text-overflow: ellipsis");
+    expect(selectorBlock(".admin-node-logs-table .data-card-pagination")).toContain("height: 34px");
+    expect(selectorBlock(".admin-node-logs-detail-panel h2")).toContain("font-size: 18px");
+    expect(selectorBlock(".admin-node-logs-detail-panel .admin-audit-read-detail-field dd")).toContain("justify-content: flex-end");
+    expect(selectorBlock(".admin-node-log-system-note p")).toContain("font-size: 11px");
+  });
+
+  test("keeps Node Bandwidth on the Figma bandwidth table and utilization detail split", () => {
+    expect(selectorBlock(".admin-node-bandwidth-read-page .admin-audit-read-actions button:first-child")).toContain("width: 124px");
+    expect(selectorBlock(".admin-node-bandwidth-read-page .admin-audit-read-actions button:last-child")).toContain("width: 112px");
+    expect(selectorBlock(".admin-node-bandwidth-read-page .admin-audit-read-filter-row")).toContain("gap: 10px");
+    expect(selectorBlock(".admin-node-bandwidth-read-page .admin-audit-read-filter-row")).toContain("padding: 0 14px");
+    expect(selectorBlock(".admin-node-bandwidth-read-page .admin-audit-read-filter-row label")).toContain("flex: 1 1 300px");
+    expect(selectorBlock(".admin-node-bandwidth-read-page .admin-audit-read-filter-row button")).toContain("flex: 1 1 132px");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-node-bandwidth-table")).toContain("padding: 0");
+    expect(selectorBlock(".admin-audit-read-table-card.admin-node-bandwidth-table")).toContain("--admin-backend-table-scroll-width: max(100%, 900px)");
+    expect(selectorBlock(".admin-node-bandwidth-table .new-console-table-shell")).toContain("grid-template-rows: minmax(0, 1fr) 34px");
+    expect(selectorBlock(".admin-node-bandwidth-table .new-console-table-shell")).toContain("height: 100%");
+    expect(selectorBlock(".admin-node-bandwidth-table .new-console-table")).toContain("grid-template-rows: 40px repeat(20, 28px)");
+    expect(selectorBlock(".admin-node-bandwidth-table .new-console-table")).toContain("grid-auto-rows: 28px");
+    expect(selectorBlock(".admin-node-bandwidth-table .new-console-table")).toContain("height: auto");
+    expect(selectorBlock(".admin-node-bandwidth-table .new-console-table")).toContain("padding-bottom: 0");
+    expect(selectorBlock(".admin-node-bandwidth-table .new-console-row")).toContain("grid-template-columns: 132px 104px 104px 104px 110px minmax(130px, 1fr)");
+    expect(selectorBlock(".admin-node-bandwidth-table .new-console-row")).toContain("column-gap: 12px");
+    expect(selectorBlock(".admin-node-bandwidth-table .new-console-row")).toContain("padding: 0 16px");
+    expect(selectorBlock(".admin-node-bandwidth-table .new-console-row > span")).toContain("font-size: 11px");
+    expect(selectorBlock(".admin-node-bandwidth-table .new-console-row > span:nth-child(2),\n.admin-node-bandwidth-table .new-console-row > span:nth-child(5)")).toContain("font-size: 11px");
+    expect(selectorBlock(".admin-node-bandwidth-table .dashboard-status-badge")).toContain("height: 24px");
+    expect(selectorBlock(".admin-node-bandwidth-table .data-card-pagination")).toContain("height: 34px");
+    expect(selectorBlock(".admin-node-bandwidth-detail-panel h2")).toContain("font-size: 18px");
+    expect(selectorBlock(".admin-node-bandwidth-detail-panel .admin-audit-read-detail-field dd")).toContain("justify-content: flex-end");
+    expect(selectorBlock(".admin-node-bandwidth-util-track")).toContain("height: 8px");
+    expect(selectorBlock(".admin-node-bandwidth-util-fill[data-state-tone=\"danger\"]")).toContain("background: #f25959");
+    expect(selectorBlock(".admin-node-bandwidth-traffic-window .admin-audit-read-detail-field dt,\n.admin-node-bandwidth-traffic-window .admin-audit-read-detail-field dd")).toContain("font-size: 12px");
+  });
+
   test("keeps account and connection detail popovers closed until opened", () => {
     expect(styles).toMatch(/\.operator-account-menu:not\(\[open\]\)\s*>\s*\.operator-account-popover,[\s\S]*\.connection-widget:not\(\[open\]\)\s*>\s*\.connection-widget-popover\s*\{\s*display: none;/m);
   });
@@ -883,10 +1216,11 @@ describe("admin style token contract", () => {
   test("keeps the 2k visual foundation polished without adding a component-library dependency", () => {
     expect(styles).not.toContain("@tailwind");
     expect(styles).not.toContain("ant-");
-    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("background: #ffffff");
+    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("background: var(--admin-scene-glass");
     expect(selectorBlock(".admin-blueprint-module-panel")).toContain("contain: layout");
-    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("box-shadow: none");
-    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("backdrop-filter: none");
+    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18)");
+    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("backdrop-filter: blur(20px)");
+    expect(selectorBlock(".admin-blueprint-module-panel")).toContain("overflow: hidden");
     expect(adminOsStyles).not.toMatch(/(?:^|\n)\s*height:\s*(?:220|326)px;/);
     expect(selectorBlock(".admin-blueprint-page-summary")).toContain("min-width: 0");
     expect(selectorBlock(".admin-search-page")).toContain("display: flex");
@@ -897,6 +1231,9 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-search-result-card")).toContain("grid-template-columns: minmax(0, 1fr) auto");
     expect(selectorBlock(".admin-blueprint-page[data-page=\"portalRequests\"] [data-module-nav-id=\"account-overview\"]")).toContain("grid-column: auto");
     expect(selectorBlock(".admin-blueprint-page[data-page=\"portalRequests\"] [data-module-nav-id=\"account-overview\"]")).toContain("min-height: 260px");
+    expect(selectorBlock(".admin-account-directory-workspace")).toContain("grid-template-columns: minmax(0, 1fr)");
+    expect(selectorBlock(".admin-account-detail-drawer")).toContain("border: 1px solid var(--admin-border)");
+    expect(selectorBlock(".admin-account-detail-field")).toContain("grid-template-columns: minmax(72px, 0.42fr) minmax(0, 1fr)");
     expect(selectorBlock(".admin-blueprint-page[data-page=\"portalRequests\"] [data-module-nav-id=\"resource-orders\"]")).toContain("order: 2");
     expect(selectorBlock(".admin-blueprint-page[data-page=\"portalRequests\"] [data-module-nav-id=\"lifecycle\"]")).toContain("min-height: 260px");
     expect(selectorBlock(".admin-blueprint-page[data-page=\"usageMonitor\"] [data-module-nav-id=\"usage-ledger\"]")).toContain("grid-column: auto");
@@ -907,7 +1244,8 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-blueprint-module-panel > .case-workbench-card")).toContain("border: 0");
     expect(selectorBlock(".admin-blueprint-module-panel::before")).toContain("width: 0");
     expect(selectorBlock(".admin-blueprint-module-panel::before")).toContain("background: var(--admin-plugin-accent)");
-    expect(selectorBlock(".admin-blueprint-module-panel:hover")).toContain("border-color: var(--workbench-category-border");
+    expect(selectorBlock(".admin-blueprint-module-panel:hover")).toContain("border-color: rgba(255, 255, 255, 0.48)");
+    expect(selectorBlock(".admin-blueprint-module-panel:hover")).toContain("background: var(--admin-scene-glass-strong");
     expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("background: var(--admin-surface-muted)");
     expect(selectorBlock(".admin-blueprint-empty-workbench")).toContain("box-shadow: none");
     expect(selectorBlock(".admin-blueprint-empty-workbench")).not.toContain("radial-gradient");
@@ -930,7 +1268,7 @@ describe("admin style token contract", () => {
     expect(publicSiteStyles).not.toMatch(/letter-spacing:\s*0\.0[6-8]em/);
     expect(responsiveStyles).toMatch(/\.site-effect-flow,[\s\S]*\.site-orbit,[\s\S]*\.site-terminal-card:hover/);
 
-    expect(faviconSvg).toContain("GlobalCircle AI Proxy Gateway");
+    expect(faviconSvg).toContain("GCC WebOS secure access");
     expect(faviconSvg).toContain("<circle cx=\"32\" cy=\"32\"");
     expect(faviconSvg).not.toContain("M18 22h15");
   });

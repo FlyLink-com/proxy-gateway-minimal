@@ -138,6 +138,84 @@
   min-width: 0;
 }
 
+.admin-account-directory-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  min-width: 0;
+}
+
+.admin-account-detail-drawer {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-card);
+  background: var(--admin-surface-muted);
+  color: var(--admin-text);
+  padding: 12px;
+}
+
+.admin-account-detail-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-account-detail-drawer-head span {
+  color: var(--admin-muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-transform: uppercase;
+}
+
+.admin-account-detail-drawer-head strong,
+.admin-account-detail-field dd {
+  min-width: 0;
+  color: var(--admin-text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.admin-account-detail-drawer p {
+  margin: 0;
+  color: var(--admin-text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.admin-account-detail-drawer dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.admin-account-detail-field {
+  display: grid;
+  grid-template-columns: minmax(72px, 0.42fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.admin-account-detail-field dt {
+  color: var(--admin-muted);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.admin-account-detail-field dd {
+  margin: 0;
+}
+
 .admin-static-status-row {
   display: flex;
   align-items: center;
@@ -1060,12 +1138,12 @@
 .admin-blueprint-module-panel {
   --admin-plugin-accent: var(--workbench-category-color, var(--admin-accent));
   position: relative;
-  overflow: visible;
-  border: 1px solid var(--admin-border);
-  border-radius: var(--admin-radius-panel);
-  background: #ffffff;
-  box-shadow: none;
-  backdrop-filter: none;
+  overflow: hidden;
+  border: 0.5px solid var(--admin-scene-border, var(--admin-border));
+  border-radius: 16px;
+  background: var(--admin-scene-glass, rgba(255, 255, 255, 0.18));
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(20px);
   contain: layout;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1092,21 +1170,22 @@
 }
 
 .admin-blueprint-module-panel:hover {
-  border-color: var(--workbench-category-border, var(--admin-info-border));
-  background: color-mix(in srgb, var(--workbench-category-bg, #ffffff) 16%, #ffffff);
+  border-color: rgba(255, 255, 255, 0.48);
+  background: var(--admin-scene-glass-strong, rgba(255, 255, 255, 0.17));
 }
 
 .admin-blueprint-module-panel[data-chrome="operator"] {
-  overflow: visible;
-  overflow-y: visible;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
+  overflow: hidden;
+  overflow-y: hidden;
+  border: 0.5px solid var(--admin-scene-border, var(--admin-border));
+  border-radius: 16px;
+  background: var(--admin-scene-glass, rgba(255, 255, 255, 0.18));
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(20px);
   contain: layout;
-  gap: 0;
+  gap: 14px;
   max-block-size: none;
-  padding: 0;
+  padding: 22px;
 }
 
 .admin-blueprint-module-panel[data-chrome="operator"]::before {
@@ -1114,8 +1193,8 @@
 }
 
 .admin-blueprint-module-panel[data-chrome="operator"]:hover {
-  border-color: transparent;
-  background: transparent;
+  border-color: rgba(255, 255, 255, 0.48);
+  background: var(--admin-scene-glass-strong, rgba(255, 255, 255, 0.17));
 }
 
 .admin-blueprint-module-panel > .case-workbench-card {

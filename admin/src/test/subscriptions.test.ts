@@ -2,7 +2,13 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { createElement } from "react";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createAdminApiClient, type AdminApiClient } from "../features/subscriptions/api-client";
-import { loadAdminSession, saveAdminSession } from "../features/subscriptions/admin-session";
+import {
+  clearAdminSession,
+  createDefaultAdminSession,
+  isLocalAdminInspectionSessionEnabled,
+  loadAdminSession,
+  saveAdminSession
+} from "../features/subscriptions/admin-session";
 import type {
   AliyunGateDecisionPacket,
   AliyunGateEvidenceSummary,
@@ -26,6 +32,7 @@ import type {
   CleanEdgeReadinessSummary,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
+  NodeBandwidthSummary,
   SubscriptionUsageMonitor,
   SubscriptionTenant
 } from "../features/subscriptions/types";
@@ -43,7 +50,7 @@ function jsonResponse(body: unknown, init: ResponseInit = {}) {
 }
 
 describe("admin API client", () => {
-  test("lists tenants with bearer auth and normalized base URL", async () => {
+  test("lists tenants with protected cookie auth and normalized base URL", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse({
         items: [
@@ -63,7 +70,6 @@ describe("admin API client", () => {
     );
     const client = createAdminApiClient({
       baseUrl: "http://127.0.0.1:3456/",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -75,7 +81,8 @@ describe("admin API client", () => {
     );
     const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     const init = firstCall[1];
-    expect((init.headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect((init.headers as Headers).get("authorization")).toBeNull();
+    expect(init.credentials).toBe("same-origin");
     expect(tenants).toHaveLength(1);
     expect(tenants[0].nodeName).toBe("aws-singapore-blue");
   });
@@ -84,7 +91,6 @@ describe("admin API client", () => {
     const fetchMock = vi.fn(async () => jsonResponse({ items: [] }));
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -96,23 +102,25 @@ describe("admin API client", () => {
     );
   });
 
-  test("does not send bearer token to untrusted cross-origin API base URLs", async () => {
+  test("does not send bearer tokens to cross-origin API base URLs", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ items: [] }));
     const client = createAdminApiClient({
       baseUrl: "https://evil.example",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
-    await expect(client.listTenants()).rejects.toThrow(/not sent|not trusted/i);
-    expect(fetchMock).not.toHaveBeenCalled();
+    await client.listTenants();
+
+    const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(firstCall[0]).toBe("https://evil.example/api/admin/subscriptions");
+    expect(firstCall[1].credentials).toBe("same-origin");
+    expect((firstCall[1].headers as Headers).get("authorization")).toBeNull();
   });
 
-  test("allows bearer token for loopback development API base URLs", async () => {
+  test("uses protected cookie semantics for loopback development API base URLs", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({ items: [] }));
     const client = createAdminApiClient({
       baseUrl: "http://127.0.0.1:3456",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -120,7 +128,232 @@ describe("admin API client", () => {
 
     const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
     expect(firstCall[0]).toBe("http://127.0.0.1:3456/api/admin/subscriptions");
-    expect((firstCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect(firstCall[1].credentials).toBe("same-origin");
+    expect((firstCall[1].headers as Headers).get("authorization")).toBeNull();
+  });
+
+  test("lists platform accounts and entitlements through protected read-only routes", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/admin/platform/accounts")) {
+        return jsonResponse({
+          items: [
+            {
+              createdAt: "2026-05-26T10:00:00.000Z",
+              displayName: "Acme Ops",
+              email: "ops@example.com",
+              entitlementCount: 1,
+              id: "acct_001",
+              organization: "Acme Research",
+              status: "active",
+              type: "platform_account_summary",
+              updatedAt: "2026-05-26T10:15:00.000Z",
+              usableEntitlementCount: 1
+            }
+          ]
+        });
+      }
+      if (url.endsWith("/api/admin/platform/entitlements")) {
+        return jsonResponse({
+          items: [
+            {
+              accountId: "acct_001",
+              id: "ent_001",
+              plan: "Pilot",
+              status: "active",
+              type: "platform_entitlement_summary",
+              usable: true
+            }
+          ]
+        });
+      }
+      return jsonResponse({}, { status: 404 });
+    });
+    const client = createAdminApiClient({
+      baseUrl: "",
+      fetcher: fetchMock
+    });
+
+    const accounts = await client.listPlatformAccounts();
+    const entitlements = await client.listPlatformEntitlements();
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/accounts",
+      expect.objectContaining({ headers: expect.any(Headers) })
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/entitlements",
+      expect.objectContaining({ headers: expect.any(Headers) })
+    );
+    const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((firstCall[1].headers as Headers).get("authorization")).toBeNull();
+    expect(accounts[0]).toMatchObject({ id: "acct_001", type: "platform_account_summary" });
+    expect(entitlements[0]).toMatchObject({ accountId: "acct_001", type: "platform_entitlement_summary" });
+  });
+
+  test("lists node bandwidth summaries through the protected platform route", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/admin/platform/node-bandwidth?nodeId=channel-sgp-a&bucket=minute")) {
+        return jsonResponse({
+          nodeBandwidth: nodeBandwidthSummary()
+        });
+      }
+      return jsonResponse({}, { status: 404 });
+    });
+    const client = createAdminApiClient({
+      baseUrl: "",
+      fetcher: fetchMock
+    });
+
+    const summary = await client.listNodeBandwidthSummary({
+      nodeId: "channel-sgp-a",
+      bucket: "minute"
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/node-bandwidth?nodeId=channel-sgp-a&bucket=minute",
+      expect.objectContaining({ headers: expect.any(Headers) })
+    );
+    const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((firstCall[1].headers as Headers).get("authorization")).toBeNull();
+    expect(summary.type).toBe("node_bandwidth_summary");
+    expect(summary.items[0]).toMatchObject({
+      nodeId: "channel-sgp-a",
+      currentTotalBps: 800,
+      utilizationState: "warning"
+    });
+    expect(JSON.stringify(summary)).not.toMatch(/edgecred_|password|token=|https?:\/\/|rawConfig/i);
+  });
+
+  test("mutates platform accounts through local user lifecycle routes", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url.endsWith("/api/admin/platform/accounts") && method === "POST") {
+        return jsonResponse({
+          account: {
+            createdAt: "2026-05-26T10:00:00.000Z",
+            displayName: "User Alpha",
+            email: "alpha@example.com",
+            entitlementCount: 0,
+            id: "acct_lifecycle_1",
+            organization: "Alpha Account",
+            status: "active",
+            type: "platform_account_summary",
+            updatedAt: "2026-05-26T10:00:00.000Z",
+            usableEntitlementCount: 0
+          },
+          mutation: { action: "account_created", auditRequired: true }
+        });
+      }
+      if (url.endsWith("/api/admin/platform/accounts/acct_lifecycle_1") && method === "PATCH") {
+        return jsonResponse({
+          account: {
+            createdAt: "2026-05-26T10:00:00.000Z",
+            displayName: "User Beta",
+            email: "alpha@example.com",
+            entitlementCount: 0,
+            id: "acct_lifecycle_1",
+            organization: "Alpha Account",
+            status: "suspended",
+            type: "platform_account_summary",
+            updatedAt: "2026-05-26T10:05:00.000Z",
+            usableEntitlementCount: 0
+          },
+          mutation: { action: "account_updated", auditRequired: true }
+        });
+      }
+      if (url.endsWith("/api/admin/platform/accounts/acct_lifecycle_1/disable") && method === "POST") {
+        return jsonResponse({
+          account: {
+            createdAt: "2026-05-26T10:00:00.000Z",
+            displayName: "User Beta",
+            email: "alpha@example.com",
+            entitlementCount: 0,
+            id: "acct_lifecycle_1",
+            organization: "Alpha Account",
+            status: "disabled",
+            type: "platform_account_summary",
+            updatedAt: "2026-05-26T10:10:00.000Z",
+            usableEntitlementCount: 0
+          },
+          mutation: { action: "account_disabled", auditRequired: true }
+        });
+      }
+      if (url.endsWith("/api/admin/platform/accounts/acct_lifecycle_1/delete-dry-run") && method === "POST") {
+        return jsonResponse({
+          deletion: {
+            accountId: "acct_lifecycle_1",
+            hardDeleteAvailable: false,
+            nextAction: "retain_auditable_account_or_disable_only",
+            state: "blocked",
+            safety: {
+              accountDeleted: false,
+              entitlementsDeleted: false,
+              runtimeMutation: false
+            }
+          }
+        });
+      }
+      return jsonResponse({}, { status: 404 });
+    });
+    const client = createAdminApiClient({
+      baseUrl: "",
+      fetcher: fetchMock
+    });
+
+    await expect(client.createPlatformAccount({
+      approvalRef: "approval_create_1",
+      displayName: "User Alpha",
+      email: "alpha@example.com",
+      operatorRef: "operator_safe_1",
+      organization: "Alpha Account",
+      status: "active"
+    })).resolves.toMatchObject({ account: { id: "acct_lifecycle_1" } });
+    await expect(client.updatePlatformAccount("acct_lifecycle_1", {
+      approvalRef: "approval_edit_1",
+      displayName: "User Beta",
+      operatorRef: "operator_safe_1",
+      reason: "profile correction",
+      status: "suspended"
+    })).resolves.toMatchObject({ account: { status: "suspended" } });
+    await expect(client.disablePlatformAccount("acct_lifecycle_1", {
+      approvalRef: "approval_disable_1",
+      operatorRef: "operator_safe_1",
+      reason: "reviewed abuse report"
+    })).resolves.toMatchObject({ account: { status: "disabled" } });
+    await expect(client.previewPlatformAccountDeletion("acct_lifecycle_1", {
+      approvalRef: "approval_delete_1",
+      operatorRef: "operator_safe_1",
+      reason: "retention review"
+    })).resolves.toMatchObject({
+      hardDeleteAvailable: false,
+      nextAction: "retain_auditable_account_or_disable_only"
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/accounts",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          approvalRef: "approval_create_1",
+          displayName: "User Alpha",
+          email: "alpha@example.com",
+          operatorRef: "operator_safe_1",
+          organization: "Alpha Account",
+          status: "active"
+        }),
+        headers: expect.any(Headers)
+      })
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/accounts/acct_lifecycle_1/delete-dry-run",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.any(Headers)
+      })
+    );
   });
 
   test("does not surface sensitive backend error messages", async () => {
@@ -135,7 +368,6 @@ describe("admin API client", () => {
     );
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -164,7 +396,6 @@ describe("admin API client", () => {
     );
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
     const input = {
@@ -223,7 +454,6 @@ describe("admin API client", () => {
     }));
     const client = createAdminApiClient({
       baseUrl: "http://127.0.0.1:3456",
-      consoleToken: "secret",
       fetcher
     });
 
@@ -232,6 +462,61 @@ describe("admin API client", () => {
     expect(items[0].plan).toBe("trial");
     const firstCall = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     expect(firstCall[0]).toBe("http://127.0.0.1:3456/api/admin/platform/portal-access-requests");
+  });
+
+  test("lists portal access request pages through the protected Admin route", async () => {
+    const fetcher = vi.fn(async () => jsonResponse({
+      items: [{
+        id: "pareq_page_21",
+        type: "portal_access_request_summary",
+        portalUserRef: "user_safe_ref_21",
+        plan: "monthly",
+        planLabel: "Monthly",
+        durationDays: 30,
+        status: "pending_admin_review",
+        nextAction: "admin_review_required",
+        submittedAt: "2026-06-30T00:00:00.000Z",
+        updatedAt: "2026-06-30T00:00:00.000Z",
+        reviewedAt: null,
+        reviewedByRef: null,
+        safeReasonCode: null,
+        priorTrialState: "not_applicable",
+        entitlementRef: null,
+        accessGrantRef: null,
+        safety: {
+          noSubscriptionUrl: true,
+          noRawCustomerData: true,
+          noRawHandoffMaterial: true,
+          noEntitlementCreated: true,
+          noRuntimeMutation: true,
+          noProductionMutation: true
+        }
+      }],
+      pageInfo: {
+        limit: 20,
+        nextOffset: 40,
+        offset: 20,
+        previousOffset: 0,
+        returnedRows: 1,
+        totalRows: 41
+      }
+    }));
+    const client = createAdminApiClient({
+      baseUrl: "http://127.0.0.1:3456",
+      fetcher
+    });
+
+    const page = await client.listPortalAccessRequestPage({
+      limit: 20,
+      offset: 20,
+      status: "pending_admin_review"
+    });
+
+    expect(page.items[0].id).toBe("pareq_page_21");
+    expect(page.pageInfo.totalRows).toBe(41);
+    const firstCall = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect(firstCall[0]).toBe("http://127.0.0.1:3456/api/admin/platform/portal-access-requests?limit=20&offset=20&status=pending_admin_review");
+    expect((firstCall[1].headers as Headers).get("authorization")).toBeNull();
   });
 
   test("previews portal access request approval without returning subscription material", async () => {
@@ -271,7 +556,6 @@ describe("admin API client", () => {
     }));
     const client = createAdminApiClient({
       baseUrl: "http://127.0.0.1:3456",
-      consoleToken: "secret",
       fetcher
     });
 
@@ -320,7 +604,6 @@ describe("admin API client", () => {
     }));
     const client = createAdminApiClient({
       baseUrl: "http://127.0.0.1:3456",
-      consoleToken: "secret",
       fetcher
     });
 
@@ -352,7 +635,6 @@ describe("admin API client", () => {
       .mockResolvedValueOnce(jsonResponse({ evidence: aliyunGateEvidence("ready_for_gate_packet", "ready_for_artifact_issuance_gate") }));
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -398,7 +680,6 @@ describe("admin API client", () => {
     const fetchMock = vi.fn(async () => jsonResponse({ channelSystem: channelSystemDecisionFlow() }));
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -409,7 +690,7 @@ describe("admin API client", () => {
       expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
     );
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBeNull();
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSystemReviewInput());
     expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential/i);
     expect(channelSystem.flowStatus).toBe("approval_ready");
@@ -420,7 +701,6 @@ describe("admin API client", () => {
     const fetchMock = vi.fn(async () => jsonResponse({ channelRuntimeEvidence: channelRuntimeEvidenceBridge() }));
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -431,7 +711,7 @@ describe("admin API client", () => {
       expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
     );
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBeNull();
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelRuntimeEvidenceBridgeInput());
     expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
     expect(bridge.mode).toBe("channel-runtime-evidence-bridge");
@@ -442,7 +722,6 @@ describe("admin API client", () => {
     const fetchMock = vi.fn(async () => jsonResponse({ channelLabTargetDecision: channelLabTargetDecision() }));
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -453,7 +732,7 @@ describe("admin API client", () => {
       expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
     );
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBeNull();
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelLabTargetInventoryInput());
     expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
     expect(decision.mode).toBe("channel-lab-target-decision");
@@ -464,7 +743,6 @@ describe("admin API client", () => {
     const fetchMock = vi.fn(async () => jsonResponse({ cleanEdgeReadiness: cleanEdgeReadinessSummary() }));
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -475,7 +753,7 @@ describe("admin API client", () => {
       expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
     );
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBeNull();
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(cleanEdgeReadinessInput());
     expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
     expect(summary.mode).toBe("clean-edge-readiness-summary");
@@ -489,7 +767,6 @@ describe("admin API client", () => {
     }));
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -500,7 +777,7 @@ describe("admin API client", () => {
       expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
     );
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBeNull();
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionOutputDraftInput());
     expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
     expect(draft.mode).toBe("channel-subscription-output-draft");
@@ -514,7 +791,6 @@ describe("admin API client", () => {
     }));
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -527,7 +803,7 @@ describe("admin API client", () => {
       expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
     );
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBeNull();
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionActivationReadinessInput());
     expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
     expect(readiness.mode).toBe("channel-subscription-activation-readiness");
@@ -541,7 +817,6 @@ describe("admin API client", () => {
     }));
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -554,7 +829,7 @@ describe("admin API client", () => {
       expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
     );
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBeNull();
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionActivationHandoffInput());
     expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
     expect(handoff.mode).toBe("channel-subscription-activation-handoff-packet");
@@ -569,7 +844,6 @@ describe("admin API client", () => {
     }));
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -582,7 +856,7 @@ describe("admin API client", () => {
       expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
     );
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBeNull();
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionActivationFlowInput());
     expect(JSON.stringify(reviewCall[1].body)).not.toMatch(/secret\.example|token=|subscriptionUrl|credential|\"host\"|\"port\"/i);
     expect(flow.mode).toBe("channel-subscription-activation-flow");
@@ -598,7 +872,6 @@ describe("admin API client", () => {
     }));
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -611,7 +884,7 @@ describe("admin API client", () => {
       expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
     );
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBeNull();
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionActivationRecordTemplateInput());
     expect(String(reviewCall[1].body)).not.toMatch(/secret\.example|token=|https?:\/\/|\"host\"|\"port\"/i);
     expect(template.mode).toBe("channel-subscription-activation-record-template");
@@ -627,7 +900,6 @@ describe("admin API client", () => {
     }));
     const client = createAdminApiClient({
       baseUrl: "",
-      consoleToken: "console-secret",
       fetcher: fetchMock
     });
 
@@ -640,7 +912,7 @@ describe("admin API client", () => {
       expect.objectContaining({ method: "POST", headers: expect.any(Headers) })
     );
     const reviewCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
-    expect((reviewCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect((reviewCall[1].headers as Headers).get("authorization")).toBeNull();
     expect(JSON.parse(String(reviewCall[1].body))).toEqual(channelSubscriptionActivationPackageInput());
     expect(String(reviewCall[1].body)).not.toMatch(/secret\.example|token=|https?:\/\/|\"host\"|\"port\"/i);
     expect(activationPackage.mode).toBe("channel-subscription-activation-package");
@@ -656,7 +928,7 @@ describe("portal access request admin page", () => {
     render(createElement(PortalRequestsPage));
 
     expect(screen.getByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
-    expect(screen.getByText("User Operations / Accounts & Resources")).not.toBeNull();
+    expect(screen.getByText("Accounts & Resources / Owner Page")).not.toBeNull();
     expect(screen.queryByLabelText("Accounts & Resources status dashboard")).toBeNull();
     expect(screen.getByLabelText("Accounts & Resources module layout")).not.toBeNull();
     expect(screen.queryByLabelText("Accounts & Resources card controls")).toBeNull();
@@ -669,10 +941,17 @@ describe("portal access request admin page", () => {
     expect(screen.queryByRole("heading", { name: "Quota & Usage" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "History & Events" })).toBeNull();
     expect(screen.queryByRole("navigation", { name: "Accounts & Resources sections" })).toBeNull();
+    expect(screen.queryByRole("table", { name: "Account Directory table" })).toBeNull();
+    expect(screen.queryByLabelText("Account Directory detail drawer")).toBeNull();
+    expect(screen.queryByRole("table", { name: "Resources & Orders table" })).toBeNull();
+    expect(screen.queryByLabelText("Resources & Orders detail drawer")).toBeNull();
+    expect(screen.queryByRole("table", { name: "Lifecycle table" })).toBeNull();
+    expect(screen.queryByLabelText("Lifecycle detail drawer")).toBeNull();
     expect(document.querySelectorAll("[data-figma-component='DataRowCompact'][data-ui-surface='compact-row']")).toHaveLength(6);
-    expect(screen.getByText("user_001")).not.toBeNull();
-    expect(screen.getByText("ord_2048")).not.toBeNull();
-    expect(screen.getByText("pause_check")).not.toBeNull();
+    expect(document.querySelectorAll(".admin-panel-compact-card .admin-compact-data-row-action")).toHaveLength(0);
+    expect(screen.getAllByText("acct_001").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("ord_2048").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("sub_8192").length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText("User resource supervision")).toBeNull();
     expect(screen.queryByText("Controlled delivery preview")).toBeNull();
     expect(screen.queryByText("Traffic quota")).toBeNull();
@@ -681,32 +960,115 @@ describe("portal access request admin page", () => {
 });
 
 describe("admin session", () => {
-  test("persists local API base URL and console token in session storage", () => {
+  test("persists protected session state without legacy console token", () => {
     sessionStorage.clear();
 
     saveAdminSession({
-      baseUrl: "http://127.0.0.1:3456/",
-      consoleToken: "secret"
+      authMode: "protectedSession",
+      baseUrl: "http://127.0.0.1:3456/"
     });
 
     expect(loadAdminSession()).toEqual({
-      baseUrl: "http://127.0.0.1:3456/",
-      consoleToken: "secret"
+      authMode: "protectedSession",
+      baseUrl: "http://127.0.0.1:3456/"
     });
+    expect(sessionStorage.getItem("proxy-gateway-admin-session") ?? "").not.toMatch(/secret|consoleToken/i);
   });
 
   test("preserves blank API base URL for same-origin proxy use", () => {
     sessionStorage.clear();
 
     saveAdminSession({
-      baseUrl: "",
-      consoleToken: "secret"
+      baseUrl: ""
     });
 
     expect(loadAdminSession()).toEqual({
-      baseUrl: "",
-      consoleToken: "secret"
+      baseUrl: ""
     });
+  });
+
+  test("opens protected session for local inspection without enabling production hosts", () => {
+    const localLocation = { hostname: "127.0.0.1", protocol: "http:" };
+
+    expect(isLocalAdminInspectionSessionEnabled(
+      { MODE: "production" },
+      localLocation
+    )).toBe(true);
+    expect(createDefaultAdminSession(
+      { MODE: "production", VITE_ADMIN_API_BASE_URL: "" },
+      localLocation
+    )).toEqual({
+      authMode: "protectedSession",
+      baseUrl: ""
+    });
+    expect(createDefaultAdminSession(
+      { MODE: "development", VITE_ADMIN_API_BASE_URL: "http://127.0.0.1:3456" },
+      localLocation
+    )).toEqual({
+      authMode: "protectedSession",
+      baseUrl: ""
+    });
+    expect(isLocalAdminInspectionSessionEnabled(
+      { MODE: "production", VITE_ADMIN_LOCAL_INSPECTION: "false" },
+      localLocation
+    )).toBe(false);
+    expect(isLocalAdminInspectionSessionEnabled(
+      { MODE: "test" },
+      localLocation
+    )).toBe(false);
+    expect(isLocalAdminInspectionSessionEnabled(
+      { MODE: "production" },
+      { hostname: "admin.gccwebos.com", protocol: "https:" }
+    )).toBe(false);
+  });
+
+  test("keeps production public hosts on same-origin API when local env base leaks into the build", () => {
+    expect(createDefaultAdminSession(
+      { MODE: "production", VITE_ADMIN_API_BASE_URL: "http://127.0.0.1:3456" },
+      { hostname: "admin.gccwebos.com", protocol: "https:" }
+    )).toEqual({
+      baseUrl: ""
+    });
+  });
+
+  test("can keep local inspection blocked in stored session state", () => {
+    sessionStorage.clear();
+
+    saveAdminSession({
+      baseUrl: "http://127.0.0.1:3456",
+      localInspectionBlocked: true
+    });
+    expect(loadAdminSession()).toEqual({
+      baseUrl: "http://127.0.0.1:3456",
+      localInspectionBlocked: true
+    });
+    expect(loadAdminSession().authMode).toBeUndefined();
+  });
+
+  test("drops a stored loopback API base on production public hosts", () => {
+    sessionStorage.clear();
+
+    saveAdminSession({
+      authMode: "protectedSession",
+      baseUrl: "http://127.0.0.1:3456"
+    });
+
+    expect(loadAdminSession(
+      { MODE: "production" },
+      { hostname: "admin.gccwebos.com", protocol: "https:" }
+    )).toEqual({
+      authMode: "protectedSession",
+      baseUrl: ""
+    });
+  });
+
+  test("clears rejected sessions without injecting sensitive fields", () => {
+    sessionStorage.clear();
+
+    const cleared = clearAdminSession({ blockLocalInspection: true });
+
+    expect(cleared.baseUrl).toMatch(/^$|^http:\/\//);
+    expect(sessionStorage.getItem("proxy-gateway-admin-session") ?? "").not.toMatch(/secret|consoleToken|password/i);
   });
 });
 
@@ -774,6 +1136,106 @@ function subscriptionUsageMonitor(): SubscriptionUsageMonitor {
       rawSecretReturned: false,
       rawCustomerNetworkDataReturned: false,
       mutationAllowed: false
+    }
+  };
+}
+
+function nodeBandwidthSummary(): NodeBandwidthSummary {
+  return {
+    type: "node_bandwidth_summary",
+    generatedAt: "2026-06-30T10:06:00.000Z",
+    filters: {
+      nodeId: "channel-sgp-a",
+      from: "",
+      to: "",
+      bucket: "minute"
+    },
+    aggregates: {
+      totalNodes: 1,
+      measuredNodes: 1,
+      unmeasuredNodes: 0,
+      warningNodes: 1,
+      totalBytes: 1400,
+      uploadBytes: 300,
+      downloadBytes: 1100,
+      peakTotalBps: 800,
+      byNode: {
+        "channel-sgp-a": 1400
+      },
+      byPhysicalNode: {
+        "node-sgp-a": 1400
+      }
+    },
+    items: [
+      {
+        nodeId: "channel-sgp-a",
+        channelRef: "channel-sgp-a",
+        physicalNodeRef: "node-sgp-a",
+        providerRef: "vultr",
+        region: "Singapore",
+        protocol: "hysteria2",
+        runtimeAdapter: "remote-data-plane-handoff",
+        lifecycle: "active",
+        status: "configured",
+        subscriptionEligible: true,
+        configured: true,
+        capacityBps: 1000,
+        utilizationPercent: 80,
+        utilizationState: "warning",
+        activeOrderCount: 1,
+        measuredOrderCount: 1,
+        sampleCount: 2,
+        uploadBytes: 300,
+        downloadBytes: 1100,
+        totalBytes: 1400,
+        currentUploadBps: 160,
+        currentDownloadBps: 640,
+        currentTotalBps: 800,
+        peakUploadBps: 160,
+        peakDownloadBps: 640,
+        peakTotalBps: 800,
+        lastObservedAt: "2026-06-30T10:05:10.000Z",
+        collectionStatus: "measured",
+        warnings: ["utilization_high"]
+      }
+    ],
+    series: {
+      type: "node_bandwidth_timeseries",
+      range: {
+        from: null,
+        to: null,
+        bucket: "minute"
+      },
+      points: [
+        {
+          bucketStart: "2026-06-30T10:05:00.000Z",
+          nodeId: "channel-sgp-a",
+          channelRef: "channel-sgp-a",
+          uploadBytes: 300,
+          downloadBytes: 1100,
+          totalBytes: 1400,
+          peakTotalBps: 800,
+          sampleCount: 2
+        }
+      ],
+      safety: {
+        summaryOnly: true,
+        rawEdgeCredentialReturned: false,
+        rawRuntimePayloadReturned: false,
+        rawSecretReturned: false,
+        mutationAllowed: false
+      }
+    },
+    safety: {
+      summaryOnly: true,
+      adminOnly: true,
+      nodeLevelRows: true,
+      rawEdgeCredentialReturned: false,
+      rawRuntimePayloadReturned: false,
+      rawSecretReturned: false,
+      rawSubscriptionUrlReturned: false,
+      mutationAllowed: false,
+      usageCollectorConfigured: true
     }
   };
 }
@@ -859,8 +1321,95 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     reviewChannelLabTargetDecision: async () => channelLabTargetDecision(),
     reviewCleanEdgeReadiness: async () => cleanEdgeReadinessSummary(),
     previewProvisioningForm: async () => provisioningFormPreview(),
+    listPlatformAccounts: async () => [],
+    createPlatformAccount: async (input) => ({
+      account: {
+        createdAt: "2026-06-15T00:00:00.000Z",
+        displayName: input.displayName,
+        email: input.email,
+        entitlementCount: 0,
+        id: "acct_stub",
+        organization: input.organization,
+        status: input.status ?? "active",
+        type: "platform_account_summary",
+        updatedAt: "2026-06-15T00:00:00.000Z",
+        usableEntitlementCount: 0
+      },
+      mutation: {
+        action: "create",
+        approvalRef: input.approvalRef,
+        operatorRef: input.operatorRef,
+        reason: input.reason
+      }
+    }),
+    updatePlatformAccount: async (accountId, input) => ({
+      account: {
+        createdAt: "2026-06-15T00:00:00.000Z",
+        displayName: input.displayName ?? "Account Stub",
+        email: input.email ?? "[REDACTED_EMAIL]",
+        entitlementCount: 0,
+        id: accountId,
+        organization: input.organization ?? null,
+        status: input.status ?? "active",
+        type: "platform_account_summary",
+        updatedAt: "2026-06-15T00:00:00.000Z",
+        usableEntitlementCount: 0
+      },
+      mutation: {
+        accountId,
+        action: "update",
+        approvalRef: input.approvalRef,
+        operatorRef: input.operatorRef,
+        reason: input.reason
+      }
+    }),
+    disablePlatformAccount: async (accountId, input) => ({
+      account: {
+        createdAt: "2026-06-15T00:00:00.000Z",
+        displayName: "Account Stub",
+        email: "[REDACTED_EMAIL]",
+        entitlementCount: 0,
+        id: accountId,
+        organization: null,
+        status: "disabled",
+        type: "platform_account_summary",
+        updatedAt: "2026-06-15T00:00:00.000Z",
+        usableEntitlementCount: 0
+      },
+      mutation: {
+        accountId,
+        action: "disable",
+        approvalRef: input.approvalRef,
+        operatorRef: input.operatorRef,
+        reason: input.reason
+      }
+    }),
+    previewPlatformAccountDeletion: async (accountId) => ({
+      accountId,
+      hardDeleteAvailable: false,
+      nextAction: "retain_auditable_account_or_disable_only",
+      safety: {
+        accountDeleted: false,
+        entitlementsDeleted: false,
+        runtimeMutation: false
+      },
+      state: "blocked"
+    }),
+    listPlatformEntitlements: async () => [],
     listPortalAccessRequests: async () => [],
+    listPortalAccessRequestPage: async () => ({
+      items: [],
+      pageInfo: {
+        limit: 20,
+        nextOffset: null,
+        offset: 0,
+        previousOffset: null,
+        returnedRows: 0,
+        totalRows: 0
+      }
+    }),
     listSubscriptionUsageMonitor: async () => subscriptionUsageMonitor(),
+    listNodeBandwidthSummary: async () => nodeBandwidthSummary(),
     previewPortalAccessRequestApproval: async () => ({
       ok: true,
       mode: "portal-access-request-approval-preview" as const,

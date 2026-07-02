@@ -10,11 +10,13 @@ export function PageSubNav({
   activeId,
   ariaLabel,
   items,
+  modeLabels,
   onSelect
 }: {
   activeId?: string;
   ariaLabel: string;
   items: PageSubNavItem[];
+  modeLabels?: Record<"owner" | "preview", string>;
   onSelect?: (item: PageSubNavItem) => void;
 }) {
   if (items.length === 0) {
@@ -40,7 +42,7 @@ export function PageSubNav({
               <span className="page-subnav-marker" aria-hidden="true" />
               <span>{item.label}</span>
             </span>
-            <span className="page-subnav-mode">{modeLabel(item.mode)}</span>
+            <span className="page-subnav-mode">{modeLabel(item.mode, modeLabels)}</span>
           </button>
         ))}
       </div>
@@ -48,6 +50,9 @@ export function PageSubNav({
   );
 }
 
-function modeLabel(mode: PageSubNavItem["mode"]) {
+function modeLabel(mode: PageSubNavItem["mode"], modeLabels?: Record<"owner" | "preview", string>) {
+  if (modeLabels) {
+    return modeLabels[mode ?? "owner"];
+  }
   return mode === "preview" ? "Preview" : "Owner";
 }

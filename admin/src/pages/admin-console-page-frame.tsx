@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ADMIN_UI_CONTRACT, getAdminPageContract } from "../app/admin-ui-contract";
+import { useOptionalAdminLocale } from "../app/admin-locale";
 import {
   type AdminPage,
   pageSubNavigation
@@ -16,12 +17,6 @@ import {
 
 export type { BlueprintModule, BlueprintPage } from "../app/admin-ui-projection";
 
-type OpenModuleEventDetail = {
-  navId?: string;
-  page?: AdminPage;
-  targetId?: string;
-};
-
 export function AdminConsolePageFrame({
   activeModuleNavId: controlledActiveModuleNavId,
   blueprint,
@@ -35,11 +30,23 @@ export function AdminConsolePageFrame({
 }) {
   const subNavigation = pageSubNavigation[blueprint.page];
   const pageContract = getAdminPageContract(blueprint.page);
+  const adminLocale = useOptionalAdminLocale();
+  const pageFrameCopy = adminLocale?.copy.pageFrame;
+  const localizedTitle = adminLocale?.copy.topBar.pageTitles[blueprint.page] ?? blueprint.title;
+  const localizedContext = adminLocale?.copy.topBar.contexts[blueprint.page];
+  const localizedKicker = adminLocale ? `${localizedTitle} / ${localizedContext}` : blueprint.kicker;
+  const localizedDescription = pageFrameCopy?.pageDescriptions[blueprint.page] ?? blueprint.description;
+  const localizedHeaderAriaLabel = pageFrameCopy?.pageHeaderAriaLabels[blueprint.page] ?? blueprint.ariaLabel;
+  const localizedSubNavigation = subNavigation.map((item) => ({
+    ...item,
+    ...(pageFrameCopy?.sections[blueprint.page]?.[item.id] ?? {})
+  }));
   const overviewModuleIds = blueprint.overviewModuleIds ?? [];
-  const usesOverviewModules = overviewModuleIds.length > 0;
+  const workspaceModuleIds = blueprint.workspaceModuleIds ?? overviewModuleIds;
+  const usesOverviewModules = overviewModuleIds.length > 0 || workspaceModuleIds.length > 0;
   const usesRoutedModules = blueprint.page !== "dashboard" && !usesOverviewModules;
   const moduleNavSignature = blueprint.modules.map((module) => module.navId).join("|");
-  const firstModuleNavId = subNavigation[0]?.id ?? blueprint.modules[0]?.navId ?? "";
+  const firstModuleNavId = localizedSubNavigation[0]?.id ?? blueprint.modules[0]?.navId ?? "";
   const [uncontrolledActiveModuleNavId, setUncontrolledActiveModuleNavId] = useState(firstModuleNavId);
   const activeModuleNavId = controlledActiveModuleNavId ?? uncontrolledActiveModuleNavId;
 
@@ -54,51 +61,19 @@ export function AdminConsolePageFrame({
     }
   }, [blueprint.page, controlledActiveModuleNavId, firstModuleNavId, moduleNavSignature]);
 
-  const moduleRestoreTargets = useMemo(() => blueprint.modules.map((module) => {
-    const navItem = subNavigation.find((item) => item.id === module.navId);
-    return {
-      navId: module.navId,
-      targetId: navItem?.targetId ?? module.navId
-    };
-  }), [blueprint.modules, subNavigation]);
-
-  useEffect(() => {
-    const handleOpenModule = (event: Event) => {
-      const detail = (event as CustomEvent<OpenModuleEventDetail>).detail;
-      if (detail?.page !== blueprint.page) {
-        return;
-      }
-      const match = moduleRestoreTargets.find((target) => (
-        target.navId === detail.navId ||
-        target.navId === detail.targetId ||
-        target.targetId === detail.targetId
-      ));
-      if (!match) {
-        return;
-      }
-      setActiveModuleNavId(match.navId);
-    };
-
-    window.addEventListener("admin-open-module", handleOpenModule);
-    return () => window.removeEventListener("admin-open-module", handleOpenModule);
-  }, [blueprint.page, moduleRestoreTargets]);
-
   const panelViewModels = projectBlueprintPanelViewModels({
     blueprint,
     fixturePreviewEnabled,
-    subNavigation
+    subNavigation: localizedSubNavigation
   });
-  const hasExplicitSectionRoute = controlledActiveModuleNavId !== undefined;
-  const opensRoutedSection = usesOverviewModules && !overviewModuleIds.includes(activeModuleNavId);
-  const showsFocusedSection = hasExplicitSectionRoute || opensRoutedSection;
+  const hasExplicitSectionRoute = controlledActiveModuleNavId !== undefined && usesRoutedModules;
+  const showsFocusedSection = hasExplicitSectionRoute;
   const routedPanelViewModels = hasExplicitSectionRoute
-    ? panelViewModels.filter((panel) => panel.navId === activeModuleNavId)
-    : opensRoutedSection
     ? panelViewModels.filter((panel) => panel.navId === activeModuleNavId)
     : usesRoutedModules
     ? panelViewModels.filter((panel) => panel.navId === activeModuleNavId)
     : usesOverviewModules
-      ? panelViewModels.filter((panel) => overviewModuleIds.includes(panel.navId))
+      ? panelViewModels.filter((panel) => workspaceModuleIds.includes(panel.navId))
     : panelViewModels;
 
   return (
@@ -113,14 +88,14 @@ export function AdminConsolePageFrame({
       data-ui-contract={ADMIN_UI_CONTRACT.pageFrame.contractId}
       data-ui-role="workspace"
     >
-      <header className="admin-blueprint-page-hero" aria-label={blueprint.ariaLabel}>
-        <p>{blueprint.kicker}</p>
-        <h1>{blueprint.title}</h1>
-        {blueprint.page === "dashboard" ? <p>{blueprint.description}</p> : null}
+      <header className="admin-blueprint-page-hero" aria-label={localizedHeaderAriaLabel}>
+        <p>{localizedKicker}</p>
+        <h1>{localizedTitle}</h1>
+        {blueprint.page === "dashboard" ? <p>{localizedDescription}</p> : null}
       </header>
 
       {blueprint.summary && !showsFocusedSection ? (
-        <section className="admin-blueprint-page-summary" aria-label={`${blueprint.title} summary metrics`}>
+        <section className="admin-blueprint-page-summary" aria-label={`${localizedTitle} ${pageFrameCopy?.summaryMetricsSuffix ?? "summary metrics"}`}>
           {blueprint.summary}
         </section>
       ) : null}
@@ -128,13 +103,14 @@ export function AdminConsolePageFrame({
       {usesRoutedModules && !showsFocusedSection ? (
         <PageSubNav
           activeId={activeModuleNavId}
-          ariaLabel={`${blueprint.title} sections`}
-          items={subNavigation}
+          ariaLabel={`${localizedTitle} ${pageFrameCopy?.sectionsSuffix ?? "sections"}`}
+          items={localizedSubNavigation}
+          modeLabels={pageFrameCopy?.modeLabels}
           onSelect={(item) => setActiveModuleNavId(item.id)}
         />
       ) : null}
 
-      <div className="admin-blueprint-module-board" aria-label={`${blueprint.title} module layout`}>
+      <div className="admin-blueprint-module-board" aria-label={`${localizedTitle} ${pageFrameCopy?.moduleLayoutSuffix ?? "module layout"}`}>
         {routedPanelViewModels.length > 0 ? routedPanelViewModels.map((panel) => (
           <PanelFrame
             actions={panel.actions}
@@ -157,15 +133,15 @@ export function AdminConsolePageFrame({
         )) : (
         <EmptyState
           className="admin-blueprint-empty-workbench"
-          description="System search can route to available page-owned sections after the page contract exposes them."
+          description={pageFrameCopy?.emptyWorkbenchDescription ?? "System search can route to available page-owned sections after the page contract exposes them."}
           role="status"
-          title="No page panels are available."
+          title={pageFrameCopy?.emptyWorkbenchTitle ?? "No page panels are available."}
         />
       )}
       </div>
 
-      {blueprint.evidence ? (
-        <section className="admin-blueprint-lower-evidence-grid" aria-label={`${blueprint.title} evidence surfaces`}>
+      {blueprint.evidence && !showsFocusedSection ? (
+        <section className="admin-blueprint-lower-evidence-grid" aria-label={`${localizedTitle} ${pageFrameCopy?.evidenceSurfacesSuffix ?? "evidence surfaces"}`}>
           {blueprint.evidence}
         </section>
       ) : null}

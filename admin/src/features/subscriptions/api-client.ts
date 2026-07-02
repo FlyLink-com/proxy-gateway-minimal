@@ -24,13 +24,23 @@ import type {
   ChannelSystemReviewInput,
   CleanEdgeReadinessInput,
   CleanEdgeReadinessSummary,
+  CreatePlatformAccountInput,
   CreateSubscriptionInput,
   CreateSubscriptionResult,
+  NodeBandwidthFilters,
+  NodeBandwidthSummary,
   PortalAccessApprovalPreview,
   PortalAccessApprovalPreviewInput,
+  PortalAccessRequestPage,
+  PortalAccessRequestPageFilters,
   PortalAccessRequestSummary,
   PortalAccessTrafficLimitUpdate,
   PortalAccessTrafficLimitUpdateInput,
+  PlatformAccountDeletionPreview,
+  PlatformAccountMutationInput,
+  PlatformAccountMutationResult,
+  PlatformAccountSummary,
+  PlatformEntitlementSummary,
   ProvisioningFormInput,
   ProvisioningFormPreview,
   ProviderFirewallEvidenceInput,
@@ -41,15 +51,16 @@ import type {
   SubscriptionUsageMonitor,
   SubscriptionUsageMonitorFilters,
   SubscriptionTenant,
-  TempLinkResult
+  TempLinkResult,
+  UpdatePlatformAccountInput
 } from "./types";
-import { adminAuthOriginPolicy, normalizeBaseUrl } from "./api-origin-policy";
+import { normalizeBaseUrl } from "./api-origin-policy";
 
 type Fetcher = typeof fetch;
 
 export type AdminApiClientOptions = {
+  authMode?: "protectedSession";
   baseUrl: string;
-  consoleToken: string;
   fetcher?: Fetcher;
 };
 
@@ -67,15 +78,15 @@ function apiUrl(baseUrl: string, path: string) {
   return `${normalizeBaseUrl(baseUrl)}${path}`;
 }
 
-function queryString(filters: SubscriptionUsageMonitorFilters) {
+function queryString<T extends Record<string, number | string | undefined>>(filters: T) {
   const params = new URLSearchParams();
   const entries = Object.entries(filters) as Array<
-    [keyof SubscriptionUsageMonitorFilters, string | undefined]
+    [keyof T, number | string | undefined]
   >;
   for (const [key, value] of entries) {
-    const normalized = value?.trim() ?? "";
+    const normalized = String(value ?? "").trim();
     if (normalized) {
-      params.set(key, normalized);
+      params.set(String(key), normalized);
     }
   }
   const query = params.toString();
@@ -93,7 +104,7 @@ async function parseJson(response: Response) {
 }
 
 function messageForStatus(status: number) {
-  if (status === 401) return "Console token is missing or invalid.";
+  if (status === 401) return "Admin session is missing or expired.";
   if (status === 403) return "This source is not allowed to use admin APIs.";
   if (status === 404) return "Admin API is not reachable here. Use local backend access or an SSH tunnel.";
   return `Admin API request failed with HTTP ${status}.`;
@@ -104,23 +115,19 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
   const baseUrl = normalizeBaseUrl(options.baseUrl);
 
   async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    if (!options.consoleToken.trim()) {
-      throw new AdminApiError("Console token is required.", 0);
-    }
-    const authPolicy = adminAuthOriginPolicy(baseUrl);
-    if (!authPolicy.trusted) {
-      throw new AdminApiError(authPolicy.reason || "Admin API base URL is not trusted for console token use.", 0);
-    }
-
     const headers = new Headers(init.headers);
-    headers.set("authorization", `Bearer ${options.consoleToken}`);
+    headers.delete("authorization");
     if (init.body && !headers.has("content-type")) {
       headers.set("content-type", "application/json");
     }
 
     let response: Response;
     try {
-      response = await fetcher(apiUrl(baseUrl, path), { ...init, headers });
+      response = await fetcher(apiUrl(baseUrl, path), {
+        ...init,
+        credentials: "same-origin",
+        headers
+      });
     } catch (error) {
       throw new AdminApiError(error instanceof Error ? error.message : "Admin API request failed.", 0);
     }
@@ -191,12 +198,69 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
         )
       ).items;
     },
+    listPortalAccessRequestPage: async (filters: PortalAccessRequestPageFilters = {}) =>
+      request<PortalAccessRequestPage>(
+        `/api/admin/platform/portal-access-requests${queryString(filters)}`
+      ),
+    listPlatformAccounts: async (status?: string) => {
+      const query = status ? `?status=${encodeURIComponent(status)}` : "";
+      return (
+        await request<{ items: PlatformAccountSummary[] }>(
+          `/api/admin/platform/accounts${query}`
+        )
+      ).items;
+    },
+    createPlatformAccount: async (input: CreatePlatformAccountInput) =>
+      request<PlatformAccountMutationResult>("/api/admin/platform/accounts", {
+        method: "POST",
+        body: JSON.stringify(input)
+      }),
+    updatePlatformAccount: async (accountId: string, input: UpdatePlatformAccountInput) =>
+      request<PlatformAccountMutationResult>(
+        `/api/admin/platform/accounts/${encodeURIComponent(accountId)}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(input)
+        }
+      ),
+    disablePlatformAccount: async (accountId: string, input: PlatformAccountMutationInput) =>
+      request<PlatformAccountMutationResult>(
+        `/api/admin/platform/accounts/${encodeURIComponent(accountId)}/disable`,
+        {
+          method: "POST",
+          body: JSON.stringify(input)
+        }
+      ),
+    previewPlatformAccountDeletion: async (accountId: string, input: PlatformAccountMutationInput) =>
+      (
+        await request<{ deletion: PlatformAccountDeletionPreview }>(
+          `/api/admin/platform/accounts/${encodeURIComponent(accountId)}/delete-dry-run`,
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).deletion,
+    listPlatformEntitlements: async (accountId?: string) => {
+      const query = accountId ? `?accountId=${encodeURIComponent(accountId)}` : "";
+      return (
+        await request<{ items: PlatformEntitlementSummary[] }>(
+          `/api/admin/platform/entitlements${query}`
+        )
+      ).items;
+    },
     listSubscriptionUsageMonitor: async (filters: SubscriptionUsageMonitorFilters = {}) =>
       (
         await request<{ monitor: SubscriptionUsageMonitor }>(
           `/api/admin/platform/subscription-usage-monitor${queryString(filters)}`
         )
       ).monitor,
+    listNodeBandwidthSummary: async (filters: NodeBandwidthFilters = {}) =>
+      (
+        await request<{ nodeBandwidth: NodeBandwidthSummary }>(
+          `/api/admin/platform/node-bandwidth${queryString(filters)}`
+        )
+      ).nodeBandwidth,
     previewPortalAccessRequestApproval: async (
       requestRef: string,
       input: PortalAccessApprovalPreviewInput

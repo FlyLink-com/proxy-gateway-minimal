@@ -4,6 +4,10 @@ import {
   type AdminSafeReadProjection
 } from "./admin-safe-read-projection";
 import {
+  createAdminSafeReadPageModel,
+  type AdminSafeReadPageModel
+} from "./admin-safe-read-page-model";
+import {
   createAdminTableQueryState,
   findAdminTableQueryStateIssues,
   projectAdminTableResultWindow,
@@ -58,6 +62,7 @@ export type OperationsOverviewDeferredSection = {
 export type OperationsOverviewOwnerPageModel = {
   schemaVersion: typeof OPERATIONS_OVERVIEW_OWNER_MODEL_SCHEMA;
   page: AdminPage;
+  safeReadModel: AdminSafeReadPageModel;
   visibleSections: OperationsOverviewSection[];
   deferredSections: OperationsOverviewDeferredSection[];
 };
@@ -89,18 +94,18 @@ const OPERATIONS_OVERVIEW_SECTIONS: Record<string, {
       {
         body: "High 4 · Med 9",
         statusLabel: "Review",
-        statusTone: "danger",
+        statusTone: "warning",
         title: "Risk cases",
-        tone: "danger",
+        tone: "warning",
         trend: [6, 8, 7, 10, 12, 15, 18],
         value: "18"
       },
       {
         body: "P95 sample age",
         statusLabel: "Good",
-        statusTone: "info",
+        statusTone: "success",
         title: "Freshness",
-        tone: "info",
+        tone: "success",
         trend: [180, 172, 160, 148, 140, 136, 134],
         value: "2m 14s"
       },
@@ -205,9 +210,10 @@ export function createOperationsOverviewOwnerPageModel(
   blueprintOrFactory: BlueprintPage | (() => BlueprintPage)
 ): OperationsOverviewOwnerPageModel {
   const blueprint = typeof blueprintOrFactory === "function" ? blueprintOrFactory() : blueprintOrFactory;
+  const safeReadModel = createAdminSafeReadPageModel(blueprint);
   const projections = createAdminSafeReadProjections([blueprint]);
   const projectionsByNavId = new Map(projections.map((projection) => [projection.navId, projection]));
-  const visibleNavIds = blueprint.overviewModuleIds ?? blueprint.modules.map((module) => module.navId);
+  const visibleNavIds = safeReadModel.visibleSectionIds;
   const visibleSections = visibleNavIds.flatMap((navId) => {
     const projection = projectionsByNavId.get(navId);
     const section = OPERATIONS_OVERVIEW_SECTIONS[navId];
@@ -217,7 +223,7 @@ export function createOperationsOverviewOwnerPageModel(
     return [createOperationsSection(projection, section)];
   });
   const deferredSections = blueprint.modules
-    .filter((module) => !visibleNavIds.includes(module.navId))
+    .filter((module) => safeReadModel.deferredSectionIds.includes(module.navId))
     .flatMap((module) => {
       const projection = projectionsByNavId.get(module.navId);
       return projection ? [{
@@ -230,6 +236,7 @@ export function createOperationsOverviewOwnerPageModel(
   return {
     deferredSections,
     page: blueprint.page,
+    safeReadModel,
     schemaVersion: OPERATIONS_OVERVIEW_OWNER_MODEL_SCHEMA,
     visibleSections
   };

@@ -78,7 +78,14 @@ describe("admin app manifest", () => {
     expect(getWorkspacePageApps().map((app) => app.id)).toEqual([
       "operations-overview",
       "accounts-resources",
-      "usage-channels"
+      "usage-channels",
+      "user-management",
+      "order-management",
+      "node-health",
+      "node-bandwidth",
+      "user-access-logs",
+      "user-operation-logs",
+      "node-logs"
     ]);
 
     expect(getWorkspacePageApp("dashboard")).toMatchObject({
@@ -94,8 +101,16 @@ describe("admin app manifest", () => {
         redaction: "safe-summary-only"
       }
     });
-    expect(getWorkspacePageApp("portalRequests")?.owner.area).toBe("User Operations");
-    expect(getWorkspacePageApp("usageMonitor")?.owner.area).toBe("Platform Monitoring");
+    expect(getWorkspacePageApp("dashboard")?.owner.area).toBe("Monitoring");
+    expect(getWorkspacePageApp("portalRequests")?.owner.area).toBe("Monitoring");
+    expect(getWorkspacePageApp("usageMonitor")?.owner.area).toBe("Monitoring");
+    expect(getWorkspacePageApp("userManagement")?.owner.area).toBe("Management");
+    expect(getWorkspacePageApp("orderManagement")?.owner.area).toBe("Management");
+    expect(getWorkspacePageApp("nodeHealth")?.owner.area).toBe("Management");
+    expect(getWorkspacePageApp("nodeBandwidth")?.owner.area).toBe("Management");
+    expect(getWorkspacePageApp("userAccessLogs")?.owner.area).toBe("Logs & Audit");
+    expect(getWorkspacePageApp("userOperationLogs")?.owner.area).toBe("Logs & Audit");
+    expect(getWorkspacePageApp("nodeLogs")?.owner.area).toBe("Logs & Audit");
     expect(getWorkspacePageApp("dashboard")?.catalog).toMatchObject({
       appId: "operations-overview",
       coreViews: expect.arrayContaining(["health summary", "risk queue", "next action routing", "review candidates"]),
@@ -142,7 +157,7 @@ describe("admin app manifest", () => {
       enName: "Quota & Usage",
       followUpTask: "GCC-76 panel container template and GCC-78 workspace engine",
       primaryObjects: expect.arrayContaining(["quota policy", "total usage", "quota risk"]),
-      searchableFields: expect.arrayContaining(["quota-usage", "Quota & Usage", "User Operations"]),
+      searchableFields: expect.arrayContaining(["quota-usage", "Quota & Usage", "Accounts & Resources"]),
       sourceContract: {
         dataSourceRefs: expect.arrayContaining(["quota-policy-summary", "usage-rollup-summary"]),
         drilldownTargets: expect.arrayContaining([
@@ -158,9 +173,6 @@ describe("admin app manifest", () => {
 
   test("keeps planned apps locked and utilities separate from business pages", () => {
     expect(getPlannedApps().map((app) => app.id)).toEqual([
-      "planned.audit-workflow",
-      "planned.platform-development",
-      "planned.system-settings",
       "privileged.key-management",
       "privileged.audit-center",
       "privileged.log-access"
@@ -170,14 +182,14 @@ describe("admin app manifest", () => {
       "utility.risk-notifications",
       "utility.environment",
       "utility.preview-site",
-      "utility.user-portal",
       "utility.admin-api"
     ]);
+    expect(getUtilityApps().map((app) => app.id)).not.toContain("utility.user-portal");
     expect(adminAppManifest.every((app) => app.safety.redaction === "safe-summary-only")).toBe(true);
-    expect(getPlannedApps().find((app) => app.id === "planned.platform-development")?.catalog).toMatchObject({
-      category: "platform-tools",
-      primaryObjects: expect.arrayContaining(["node", "channel candidate", "dry-run packet"]),
-      zhName: "平台开发"
+    expect(getWorkspacePageApp("nodeHealth")?.catalog).toMatchObject({
+      category: "monitoring",
+      primaryObjects: expect.arrayContaining(["node", "heartbeat"]),
+      zhName: "节点健康"
     });
     expect(getUtilityApps().find((app) => app.id === "utility.admin-api")?.catalog).toMatchObject({
       coreViews: ["Admin API connection widget", "local console settings"],
@@ -191,11 +203,7 @@ describe("admin app manifest", () => {
     const operatorIds = Object.keys(operatorMap.byId).sort();
     const operatorSearchText = operatorMap.searchIndex.map((entry) => entry.searchText).join(" ");
 
-    expect(operatorMap.plannedApps.map((app) => app.id)).toEqual([
-      "planned.audit-workflow",
-      "planned.platform-development",
-      "planned.system-settings"
-    ]);
+    expect(operatorMap.plannedApps.map((app) => app.id)).toEqual([]);
     expect(operatorIds).not.toEqual(expect.arrayContaining([
       "privileged.key-management",
       "privileged.audit-center",
@@ -206,7 +214,6 @@ describe("admin app manifest", () => {
 
     const adminMap = getCapabilityScopedAdminAppMap({ freshMfa: false, role: "admin" });
     expect(Object.keys(adminMap.byId)).not.toEqual(expect.arrayContaining([
-      "planned.audit-workflow",
       "privileged.key-management",
       "privileged.audit-center",
       "privileged.log-access"
@@ -215,7 +222,6 @@ describe("admin app manifest", () => {
 
     const superAdminMap = getCapabilityScopedAdminAppMap(SUPER_ADMIN_CAPABILITY_CONTEXT);
     expect(superAdminMap.plannedApps.map((app) => app.id)).toEqual(expect.arrayContaining([
-      "planned.audit-workflow",
       "privileged.key-management",
       "privileged.audit-center",
       "privileged.log-access"
@@ -249,10 +255,16 @@ describe("admin app manifest", () => {
     expect(appMap.workspacePages.map((app) => app.id)).toEqual([
       "operations-overview",
       "accounts-resources",
-      "usage-channels"
+      "usage-channels",
+      "user-management",
+      "order-management",
+      "node-health",
+      "node-bandwidth",
+      "user-access-logs",
+      "user-operation-logs",
+      "node-logs"
     ]);
     expect(appMap.utilities.map((app) => app.library.group)).toEqual([
-      "console-settings",
       "console-settings",
       "console-settings",
       "console-settings",
@@ -334,6 +346,18 @@ describe("admin app manifest", () => {
       subtitle: "使用情况和渠道",
       title: "Usage & Channels"
     });
+    expect(byId.get("user-management")).toMatchObject({
+      entryType: "workspace-app",
+      primaryObject: "user account",
+      subtitle: "用户管理",
+      title: "User Management"
+    });
+    expect(byId.get("node-bandwidth")).toMatchObject({
+      entryType: "workspace-app",
+      primaryObject: "node",
+      subtitle: "节点带宽",
+      title: "Node Bandwidth"
+    });
     expect(byId.get("plugin.quota-usage")).toMatchObject({
       entryType: "plugin-module",
       layoutDefaults: {
@@ -349,17 +373,7 @@ describe("admin app manifest", () => {
       }],
       visibility: "library"
     });
-    expect(byId.get("planned.platform-development")).toMatchObject({
-      entryType: "planned-app",
-      layoutDefaults: {
-        allowedSizes: ["icon-only"],
-        size: "icon-only",
-        visibility: "locked"
-      },
-      riskTier: "A",
-      state: "planned",
-      visibility: "locked"
-    });
+    expect(byId.get("planned.platform-development")).toBeUndefined();
     expect(byId.get("utility.admin-api")).toMatchObject({
       entryType: "system-action",
       layoutDefaults: {
@@ -430,7 +444,7 @@ describe("admin app manifest", () => {
       pageId: "usageMonitor",
       resultType: "plugin",
       routeTarget: "usageMonitor#platform-monitoring-usage-ledger",
-      searchableFields: expect.arrayContaining(["usage-ledger", "Usage Ledger", "Platform Monitoring"])
+      searchableFields: expect.arrayContaining(["usage-ledger", "Usage Ledger", "Usage & Channels"])
     });
     expect(operationsOverview).toMatchObject({
       pageId: "dashboard",
@@ -463,7 +477,7 @@ describe("admin app manifest", () => {
       ownerArea: usageLedger!.owner.area,
       routeTarget: "usageMonitor#platform-monitoring-usage-ledger",
       safeDescription: usageLedger!.description,
-      searchableFields: expect.arrayContaining(["usage-ledger", "Usage Ledger", "Platform Monitoring"]),
+      searchableFields: expect.arrayContaining(["usage-ledger", "Usage Ledger", "Usage & Channels"]),
       status: usageLedger!.status,
       zhName: usageLedger!.catalog.zhName
     });

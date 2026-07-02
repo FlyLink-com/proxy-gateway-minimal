@@ -104,6 +104,94 @@ export type ProvisioningFormPreview = {
   };
 };
 
+export type PlatformAccountSummary = {
+  createdAt: string | null;
+  displayName: string | null;
+  email: string | null;
+  entitlementCount: number;
+  id: string;
+  leadId?: string | null;
+  organization: string | null;
+  status: string;
+  type: "platform_account_summary" | string;
+  updatedAt: string | null;
+  usableEntitlementCount: number;
+};
+
+export type PlatformAccountMutationInput = {
+  approvalRef: string;
+  operatorRef: string;
+  reason?: string;
+};
+
+export type CreatePlatformAccountInput = PlatformAccountMutationInput & {
+  displayName: string;
+  email: string;
+  organization: string;
+  status?: string;
+};
+
+export type UpdatePlatformAccountInput = PlatformAccountMutationInput & {
+  displayName?: string;
+  email?: string;
+  organization?: string;
+  status?: string;
+};
+
+export type PlatformAccountMutationResult = {
+  account: PlatformAccountSummary;
+  credential?: {
+    summary?: Record<string, unknown>;
+  };
+  initialCredential?: {
+    accountId: string;
+    delivery?: string;
+    initialPassword: string;
+    mustRotate: boolean;
+    safety?: Record<string, unknown>;
+    type: "portal_initial_password_handoff" | string;
+    visibleOnce: boolean;
+  };
+  mutation: {
+    accountId?: string;
+    action: string;
+    approvalRef?: string;
+    auditRequired?: boolean;
+    operatorRef?: string;
+    reason?: string;
+    safety?: Record<string, unknown>;
+    submittedAt?: string;
+  };
+};
+
+export type PlatformAccountDeletionPreview = {
+  accountId: string;
+  accountStatus?: string;
+  activeEntitlementCount?: number;
+  entitlementCount?: number;
+  hardDeleteAvailable: false;
+  nextAction: string;
+  safety: {
+    accountDeleted: boolean;
+    entitlementsDeleted: boolean;
+    runtimeMutation: boolean;
+  };
+  state: "blocked" | string;
+};
+
+export type PlatformEntitlementSummary = {
+  accountId: string;
+  createdAt?: string | null;
+  id: string;
+  plan: string | null;
+  quota?: Record<string, unknown> | null;
+  status: string;
+  type: "platform_entitlement_summary" | string;
+  updatedAt?: string | null;
+  usable: boolean;
+  validUntil?: string | null;
+};
+
 export type PortalAccessRequestPlan = "trial" | "monthly" | "yearly";
 
 export type PortalAccessRequestStatus =
@@ -155,6 +243,27 @@ export type PortalAccessRequestSummary = {
     noRuntimeMutation: boolean;
     noProductionMutation: boolean;
   };
+};
+
+export type AdminListPageInfo = {
+  limit: number;
+  nextOffset: number | null;
+  offset: number;
+  previousOffset: number | null;
+  returnedRows: number;
+  totalRows: number;
+};
+
+export type PortalAccessRequestPageFilters = {
+  limit?: number;
+  offset?: number;
+  portalUserRef?: string;
+  status?: PortalAccessRequestStatus | string;
+};
+
+export type PortalAccessRequestPage = {
+  items: PortalAccessRequestSummary[];
+  pageInfo: AdminListPageInfo;
 };
 
 export type PortalAccessTrafficLimitUpdateInput = {
@@ -279,6 +388,32 @@ export type SubscriptionUsageMonitorRow = {
   warnings: string[];
 };
 
+export type SubscriptionUsageUserAggregate = {
+  accountId: string;
+  portalUserRef: string;
+  orderCount: number;
+  measuredOrders: number;
+  unmeasuredOrders: number;
+  zeroUsageOrders: number;
+  plans: string[];
+  issuedChannels: string[];
+  trafficLimitBytes: number;
+  usedBytes: number;
+  uploadBytes: number;
+  downloadBytes: number;
+  collectionStatus: SubscriptionUsageCollectionStatus;
+  usageMeasured: boolean;
+  lastUsageObservedAt: string | null;
+  channelUsages: Array<{
+    channelRef: string;
+    usedBytes: number;
+    uploadBytes: number;
+    downloadBytes: number;
+    lastObservedAt: string | null;
+  }>;
+  warnings: string[];
+};
+
 export type SubscriptionUsageTimeseriesPoint = {
   bucketStart: string;
   accountId: string;
@@ -349,11 +484,13 @@ export type SubscriptionUsageMonitor = {
     };
   };
   items: SubscriptionUsageMonitorRow[];
+  userAggregates?: SubscriptionUsageUserAggregate[];
   series: SubscriptionUsageTimeseries;
   safety: {
     summaryOnly: boolean;
     realByteUsageMeasured: boolean;
     orderLevelRows: boolean;
+    userAggregatedRows?: boolean;
     channelUsageBreakdownIncluded: boolean;
     rawSubscriptionUrlReturned: boolean;
     rawSecretReturned: boolean;
@@ -361,6 +498,117 @@ export type SubscriptionUsageMonitor = {
     rawEdgeCredentialReturned?: boolean;
     usageCollectorConfigured?: boolean;
     mutationAllowed: boolean;
+  };
+};
+
+export type NodeBandwidthFilters = {
+  nodeId?: string;
+  from?: string;
+  to?: string;
+  bucket?: "minute" | "hour" | "day" | string;
+};
+
+export type NodeBandwidthCollectionStatus =
+  | "collector_disabled"
+  | "not_collected"
+  | "measured_zero"
+  | "measured"
+  | "stale";
+
+export type NodeBandwidthUtilizationState =
+  | "unknown"
+  | "normal"
+  | "warning"
+  | "critical";
+
+export type NodeBandwidthSummaryRow = {
+  nodeId: string;
+  channelRef: string;
+  physicalNodeRef: string;
+  providerRef: string;
+  region: string;
+  protocol: string;
+  runtimeAdapter: string;
+  lifecycle: string;
+  status: string;
+  subscriptionEligible: boolean;
+  configured: boolean;
+  capacityBps: number;
+  utilizationPercent: number;
+  utilizationState: NodeBandwidthUtilizationState;
+  activeOrderCount: number;
+  measuredOrderCount: number;
+  sampleCount: number;
+  uploadBytes: number;
+  downloadBytes: number;
+  totalBytes: number;
+  currentUploadBps: number;
+  currentDownloadBps: number;
+  currentTotalBps: number;
+  peakUploadBps: number;
+  peakDownloadBps: number;
+  peakTotalBps: number;
+  lastObservedAt: string | null;
+  collectionStatus: NodeBandwidthCollectionStatus;
+  warnings: string[];
+};
+
+export type NodeBandwidthTimeseriesPoint = {
+  bucketStart: string;
+  nodeId: string;
+  channelRef: string;
+  uploadBytes: number;
+  downloadBytes: number;
+  totalBytes: number;
+  peakTotalBps: number;
+  sampleCount: number;
+};
+
+export type NodeBandwidthTimeseries = {
+  type: "node_bandwidth_timeseries";
+  range: {
+    from: string | null;
+    to: string | null;
+    bucket: "minute" | "hour" | "day" | string;
+  };
+  points: NodeBandwidthTimeseriesPoint[];
+  safety: {
+    summaryOnly: boolean;
+    rawEdgeCredentialReturned: boolean;
+    rawRuntimePayloadReturned: boolean;
+    rawSecretReturned: boolean;
+    mutationAllowed: boolean;
+  };
+};
+
+export type NodeBandwidthSummary = {
+  type: "node_bandwidth_summary";
+  generatedAt: string;
+  filters: Required<NodeBandwidthFilters>;
+  aggregates: {
+    totalNodes: number;
+    measuredNodes: number;
+    unmeasuredNodes: number;
+    warningNodes: number;
+    totalBytes: number;
+    uploadBytes: number;
+    downloadBytes: number;
+    peakTotalBps: number;
+    byNode: Record<string, number>;
+    byPhysicalNode: Record<string, number>;
+  };
+  items: NodeBandwidthSummaryRow[];
+  series: NodeBandwidthTimeseries;
+  safety: {
+    summaryOnly: boolean;
+    adminOnly: boolean;
+    nodeLevelRows: boolean;
+    rawEdgeCredentialReturned: boolean;
+    rawRuntimePayloadReturned: boolean;
+    rawSecretReturned: boolean;
+    rawSubscriptionUrlReturned: boolean;
+    mutationAllowed: boolean;
+    usageCollectorConfigured?: boolean;
   };
 };
 

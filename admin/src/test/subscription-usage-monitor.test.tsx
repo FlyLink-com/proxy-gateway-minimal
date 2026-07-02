@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
+import { type SubscriptionUsageMonitor } from "../features/subscriptions/types";
 import { SubscriptionUsageMonitorPage } from "../pages/subscription-usage-monitor-page";
 
 afterEach(() => {
@@ -11,7 +12,7 @@ describe("subscription usage monitor page", () => {
     render(<SubscriptionUsageMonitorPage />);
 
     expect(screen.getByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
-    expect(screen.getByText("Platform Monitoring / Usage & Channels")).not.toBeNull();
+    expect(screen.getByText("Usage & Channels / Evidence Owner")).not.toBeNull();
     expect(screen.getByLabelText("Usage & Channels page header")).not.toBeNull();
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-page-id")).toBe("usageMonitor");
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-layout")).toBe("dashboard");
@@ -65,7 +66,8 @@ describe("subscription usage monitor page", () => {
     expect(document.querySelectorAll("[data-figma-component='EvidenceSurface'][data-ui-surface='evidence-row']")).toHaveLength(2);
     expect(screen.getByText("Usage collection age and SLO")).not.toBeNull();
     expect(screen.getByText("Measured channels and gaps")).not.toBeNull();
-    expect(screen.getByText("Account/order traffic ledger")).not.toBeNull();
+    expect(screen.getByText("User traffic ledger")).not.toBeNull();
+    expect(document.querySelectorAll(".admin-panel-compact-card .admin-compact-data-row-action")).toHaveLength(0);
     expect(screen.getAllByText("hk-01")).toHaveLength(2);
     expect(screen.getByText("sg-02")).not.toBeNull();
     expect(screen.getByText("acct_001")).not.toBeNull();
@@ -117,6 +119,32 @@ describe("subscription usage monitor page", () => {
     expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|yaml|edgecred_/i);
     expect(screen.queryByRole("button", { name: /Apply filters|Create|Disable|Pause|Archive|Activate|Apply/i })).toBeNull();
   });
+
+  test("renders live usage monitor summaries when supplied by the Admin API", () => {
+    render(<SubscriptionUsageMonitorPage monitor={liveUsageMonitor()} />);
+
+    expect(screen.getAllByText("2026-06-05 08:00").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("1 measured / 1 pending")).not.toBeNull();
+    expect(screen.getByText("chan_safe_alpha")).not.toBeNull();
+    expect(screen.getByText("acct_live_001")).not.toBeNull();
+    expect(screen.getByText("ord_live_001 · 3.0GB / 10GB")).not.toBeNull();
+    expect(screen.queryByText("42.8GB locked")).toBeNull();
+
+    const renderedText = document.body.textContent ?? "";
+    expect(renderedText).not.toMatch(/subscriptionUrl|token=|secret-value|password|yaml|edgecred_|tenant_hidden|node_hidden/i);
+  });
+
+  test("renders Usage Ledger rows by user aggregate when the API supplies user rollups", () => {
+    render(<SubscriptionUsageMonitorPage monitor={liveUsageMonitorWithUserAggregate()} />);
+
+    expect(screen.getByText("acct_live_rollup")).not.toBeNull();
+    expect(screen.getByText("2 orders · 6.0GB / 30GB")).not.toBeNull();
+    expect(screen.getByText("monthly, yearly")).not.toBeNull();
+    expect(screen.queryByText("ord_live_001 · 3.0GB / 10GB")).toBeNull();
+
+    const renderedText = document.body.textContent ?? "";
+    expect(renderedText).not.toMatch(/subscriptionUrl|token=|secret-value|password|yaml|edgecred_|tenant_hidden|node_hidden/i);
+  });
 });
 
 function sectionAnchorOrder() {
@@ -132,4 +160,182 @@ function ownerModelRouteScopes() {
 function ownerModelResultWindows() {
   return Array.from(document.querySelectorAll("[data-query-schema='admin-table-query-state/v1']"))
     .map((element) => element.getAttribute("data-result-window"));
+}
+
+function liveUsageMonitor(): SubscriptionUsageMonitor {
+  return {
+    type: "subscription_usage_monitor",
+    generatedAt: "2026-06-05T08:00:00.000Z",
+    filters: {
+      accountId: "",
+      bucket: "",
+      from: "",
+      nodeId: "",
+      plan: "",
+      status: "",
+      to: "",
+      warning: ""
+    },
+    aggregates: {
+      activeRecently: 1,
+      blocked: 0,
+      byNode: { node_safe_001: 2 },
+      byPlan: { Pilot: 2 },
+      highRefresh: 0,
+      inactive: 0,
+      neverSeen: 0,
+      seen: 1,
+      total: 2,
+      usage: {
+        byUsageChannel: { chan_safe_alpha: 3221225472 },
+        measuredOrders: 1,
+        nearLimitOrders: 0,
+        overLimitOrders: 0,
+        totalDownloadBytes: 2147483648,
+        totalUploadBytes: 1073741824,
+        totalUsedBytes: 3221225472,
+        unmeasuredOrders: 1,
+        zeroUsageOrders: 0
+      },
+      warnings: { not_collected: 1 },
+      withWarnings: 1
+    },
+    items: [
+      {
+        accountId: "acct_live_001",
+        activityLevel: "active_recently",
+        artifactFirstSeenAt: null,
+        artifactLastSeenAt: null,
+        artifactRef: "artifact_safe_001",
+        artifactStatus: "active",
+        channelUsages: [
+          {
+            channelRef: "chan_safe_alpha",
+            downloadBytes: 2147483648,
+            lastObservedAt: "2026-06-05T07:58:00.000Z",
+            uploadBytes: 1073741824,
+            usedBytes: 3221225472
+          }
+        ],
+        collectionStatus: "measured",
+        downloadBytes: 2147483648,
+        edgeCredentialBindings: [
+          {
+            channelRef: "chan_safe_alpha",
+            credentialRefPresent: true,
+            materialDigestPresent: true,
+            usageMeasured: true
+          }
+        ],
+        entitlementId: "ent_safe_001",
+        issuedChannels: ["chan_safe_alpha"],
+        issuanceRequestId: "ord_live_001",
+        lastRefreshAt: "2026-06-05T07:55:00.000Z",
+        lastUsageObservedAt: "2026-06-05T07:58:00.000Z",
+        linkStatus: "active",
+        nodeId: "node_safe_001",
+        plan: "Pilot",
+        portalUserRef: "acct_live_001",
+        quantity: 1,
+        refreshCount: 2,
+        tenantExpiresAt: "2026-06-26T00:00:00.000Z",
+        tenantRef: "tenant_safe_001",
+        tenantStatus: "active",
+        trafficLimitBytes: 10737418240,
+        uploadBytes: 1073741824,
+        usageMeasured: true,
+        usageStatus: "measured",
+        usedBytes: 3221225472,
+        validUntil: "2026-06-26T00:00:00.000Z",
+        warnings: []
+      }
+    ],
+    series: {
+      type: "subscription_usage_timeseries",
+      aggregates: {
+        byAccount: { acct_live_001: 3221225472 },
+        byChannel: { chan_safe_alpha: 3221225472 },
+        byOrder: { ord_live_001: 3221225472 },
+        pointCount: 1,
+        seriesCount: 1,
+        totalDownloadBytes: 2147483648,
+        totalUploadBytes: 1073741824,
+        totalUsedBytes: 3221225472
+      },
+      points: [
+        {
+          accountId: "acct_live_001",
+          bucketStart: "2026-06-05T07:00:00.000Z",
+          channelRef: "chan_safe_alpha",
+          downloadBytes: 2147483648,
+          issuanceRequestId: "ord_live_001",
+          plan: "Pilot",
+          portalUserRef: "acct_live_001",
+          uploadBytes: 1073741824,
+          usedBytes: 3221225472
+        }
+      ],
+      range: {
+        bucket: "hour",
+        from: "2026-06-05T07:00:00.000Z",
+        to: "2026-06-05T08:00:00.000Z"
+      },
+      safety: {
+        channelBreakdownIncluded: true,
+        mutationAllowed: false,
+        orderScoped: true,
+        rawEdgeCredentialReturned: false,
+        rawSecretReturned: false,
+        rawSubscriptionUrlReturned: false,
+        summaryOnly: true
+      }
+    },
+    safety: {
+      channelUsageBreakdownIncluded: true,
+      mutationAllowed: false,
+      orderLevelRows: true,
+      rawCustomerNetworkDataReturned: false,
+      rawEdgeCredentialReturned: false,
+      rawSecretReturned: false,
+      rawSubscriptionUrlReturned: false,
+      realByteUsageMeasured: true,
+      summaryOnly: true,
+      usageCollectorConfigured: true
+    }
+  };
+}
+
+function liveUsageMonitorWithUserAggregate(): SubscriptionUsageMonitor {
+  return {
+    ...liveUsageMonitor(),
+    userAggregates: [
+      {
+        accountId: "acct_live_rollup",
+        channelUsages: [
+          {
+            channelRef: "chan_safe_alpha",
+            downloadBytes: 4294967296,
+            lastObservedAt: "2026-06-05T07:58:00.000Z",
+            uploadBytes: 2147483648,
+            usedBytes: 6442450944
+          }
+        ],
+        collectionStatus: "measured",
+        downloadBytes: 4294967296,
+        issuedChannels: ["chan_safe_alpha"],
+        lastUsageObservedAt: "2026-06-05T07:58:00.000Z",
+        measuredOrders: 2,
+        orderCount: 2,
+        plans: ["monthly", "yearly"],
+        portalUserRef: "acct_live_rollup",
+        trafficLimitBytes: 32212254720,
+        unmeasuredOrders: 0,
+        uploadBytes: 2147483648,
+        usageMeasured: true,
+        usedBytes: 6442450944,
+        warnings: [],
+        zeroUsageOrders: 0
+      }
+    ]
+  };
 }

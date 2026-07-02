@@ -22,6 +22,8 @@ import { ModalFrame } from "../../components/modal-frame";
 import { copyText } from "../../lib/clipboard";
 import { errorMessage } from "../../lib/errors";
 import { cn } from "../../lib/utils";
+import { PublicLocaleSwitch, usePublicLocalePreference } from "./public-locale-switch";
+import { PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "./user-portal-client";
 import type {
   PortalAuthenticatorEnrollment,
   PortalClientId,
@@ -161,6 +163,59 @@ const supportCategories: Array<{ id: PortalSupportCategory; label: string }> = [
     label: "其他问题"
   }
 ];
+
+const portalAuthEntryCopy = {
+  en: {
+    documentTitle: "GCC WebOS - Account sign in",
+    language: "Language",
+    secondFactorAria: "Second-factor verification",
+    secondFactorTitle: "Second-factor verification",
+    secondFactorDescription: "This account has enhanced verification enabled. Complete one bound factor to enter the user center.",
+    authenticatorCode: "Authenticator code",
+    verifying: "Verifying",
+    verifyAuthenticator: "Verify authenticator",
+    passkeyBackup: "Passkey backup content",
+    passkeyPlaceholder: "Paste the exported passkey backup content",
+    usePasskey: "Use passkey",
+    returnToLogin: "Back to account sign in",
+    loginAria: "User sign in",
+    loginTitle: "Account sign in",
+    loginDescription: "Sign in with your account password. Authenticator and passkey setup stays in the personal center.",
+    accountId: "Account ID",
+    password: "Password",
+    robot: "Anti-bot check",
+    robotLoading: "Loading check...",
+    honeypot: "Company name",
+    loadingCheck: "Loading check",
+    signIn: "Sign in",
+    registerTrial: "Register for a 7-day trial"
+  },
+  zh: {
+    documentTitle: "GCC WebOS - 账号登录",
+    language: "语言",
+    secondFactorAria: "二次验证",
+    secondFactorTitle: "二次验证",
+    secondFactorDescription: "此账号已开启增强验证。完成一个已绑定因子后才会进入用户中心。",
+    authenticatorCode: "身份验证器验证码",
+    verifying: "验证中",
+    verifyAuthenticator: "验证身份验证器",
+    passkeyBackup: "通行密钥备份内容",
+    passkeyPlaceholder: "粘贴导出的通行密钥备份内容",
+    usePasskey: "使用通行密钥",
+    returnToLogin: "返回账号登录",
+    loginAria: "用户登录",
+    loginTitle: "账号登录",
+    loginDescription: "使用账户密码登录。可在个人中心开启身份验证器和通行密钥。",
+    accountId: "账户 ID",
+    password: "密码",
+    robot: "防机器人校验",
+    robotLoading: "正在加载校验...",
+    honeypot: "公司名称",
+    loadingCheck: "加载校验中",
+    signIn: "登录",
+    registerTrial: "注册领取 7 天试用"
+  }
+} as const;
 
 function selectedPlan(planId: PortalPlanId) {
   return plans.find((plan) => plan.id === planId) ?? plans[0];
@@ -447,6 +502,8 @@ export function UserPortalPage({
   portalClient: UserPortalClient;
   onBackToAdmin?: () => void;
 }) {
+  const { locale, setLocale } = usePublicLocalePreference();
+  const authCopy = portalAuthEntryCopy[locale];
   const [portalSession, setPortalSession] = useState<PortalSession | null>(null);
   const [accountId, setAccountId] = useState("");
   const [password, setPassword] = useState("");
@@ -495,6 +552,13 @@ export function UserPortalPage({
 
   const userDisplayName = portalSession?.displayName ?? (accountId.trim() || "Portal User");
   const registrationDate = portalSession?.registeredAt ?? new Date("2026-05-31T00:00:00.000Z").toISOString();
+
+  useEffect(() => {
+    if (!portalSession) {
+      document.title = authCopy.documentTitle;
+    }
+  }, [authCopy.documentTitle, portalSession]);
+
   const selectedOrder = useMemo(
     () => orderRows.find((row) => row.requestRef === selectedOrderRef) ?? orderRows[0] ?? null,
     [orderRows, selectedOrderRef]
@@ -581,6 +645,24 @@ export function UserPortalPage({
     setHistorySummary(portalState.historySummary ?? subscriptionRequests.flatMap((request) => request.historySummary ?? []));
     setActiveView("subscription");
   }
+
+  useEffect(() => {
+    if (portalSession) return;
+    const rawSession = window.sessionStorage.getItem(PORTAL_REGISTRATION_SESSION_STORAGE_KEY);
+    if (!rawSession) return;
+    window.sessionStorage.removeItem(PORTAL_REGISTRATION_SESSION_STORAGE_KEY);
+    try {
+      const session = JSON.parse(rawSession) as PortalSession;
+      if (!session || typeof session.userRef !== "string") {
+        throw new Error("invalid registration session");
+      }
+      void hydratePortalSession(session).catch((caughtError) => {
+        setAuthError(errorMessage(caughtError, "注册会话载入失败，请重新登录。"));
+      });
+    } catch {
+      setAuthError("注册会话载入失败，请重新登录。");
+    }
+  }, [portalSession]);
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -952,15 +1034,16 @@ export function UserPortalPage({
     const hasPasskey = secondFactorChallenge.availableFactors.includes("passkey");
     return (
       <main className="portal-auth-shell">
-        <section className="portal-auth-card" aria-label="二次验证">
+        <section className="portal-auth-card" aria-label={authCopy.secondFactorAria}>
+          <PublicLocaleSwitch ariaLabel={authCopy.language} locale={locale} onLocaleChange={setLocale} />
           <div className="portal-auth-header">
-            <h1>二次验证</h1>
-            <p>此账号已开启增强验证。完成一个已绑定因子后才会进入用户中心。</p>
+            <h1>{authCopy.secondFactorTitle}</h1>
+            <p>{authCopy.secondFactorDescription}</p>
           </div>
 
           {hasAuthenticator ? (
             <form className="portal-auth-form" onSubmit={submitAuthenticatorSecondFactor}>
-              <label htmlFor="portal-second-factor-code">身份验证器验证码</label>
+              <label htmlFor="portal-second-factor-code">{authCopy.authenticatorCode}</label>
               <input
                 id="portal-second-factor-code"
                 value={secondFactorCode}
@@ -970,7 +1053,7 @@ export function UserPortalPage({
                 required
               />
               <button className="portal-auth-submit" type="submit" disabled={secondFactorPending || secondFactorCode.length !== 6}>
-                {secondFactorPending ? "验证中" : "验证身份验证器"}
+                {secondFactorPending ? authCopy.verifying : authCopy.verifyAuthenticator}
               </button>
             </form>
           ) : null}
@@ -978,13 +1061,13 @@ export function UserPortalPage({
           <div className="portal-second-factor-actions">
             {hasPasskey ? (
               <form className="portal-passkey-form" onSubmit={submitPasskeySecondFactor}>
-                <label htmlFor="portal-passkey-proof">通行密钥备份内容</label>
+                <label htmlFor="portal-passkey-proof">{authCopy.passkeyBackup}</label>
                 <textarea
                   id="portal-passkey-proof"
                   value={passkeyProof}
                   onChange={(event) => setPasskeyProof(event.target.value)}
                   autoComplete="off"
-                  placeholder="粘贴导出的通行密钥备份内容"
+                  placeholder={authCopy.passkeyPlaceholder}
                   required
                 />
                 <button
@@ -992,12 +1075,12 @@ export function UserPortalPage({
                   type="submit"
                   disabled={secondFactorPending || !passkeyProof.trim()}
                 >
-                  {secondFactorPending ? "验证中" : "使用通行密钥"}
+                  {secondFactorPending ? authCopy.verifying : authCopy.usePasskey}
                 </button>
               </form>
             ) : null}
             <button className="portal-secondary-button" type="button" disabled={secondFactorPending} onClick={returnToPasswordLogin}>
-              返回账号登录
+              {authCopy.returnToLogin}
             </button>
           </div>
 
@@ -1011,14 +1094,15 @@ export function UserPortalPage({
     const canSubmitPasswordLogin = humanChallengeReady && !humanChallengeLoading;
     return (
       <main className="portal-auth-shell">
-        <section className="portal-auth-card" aria-label="用户登录">
+        <section className="portal-auth-card" aria-label={authCopy.loginAria}>
+          <PublicLocaleSwitch ariaLabel={authCopy.language} locale={locale} onLocaleChange={setLocale} />
           <div className="portal-auth-header">
-            <h1>账号登录</h1>
-            <p>使用账户密码登录。可在个人中心开启身份验证器和通行密钥。</p>
+            <h1>{authCopy.loginTitle}</h1>
+            <p>{authCopy.loginDescription}</p>
           </div>
 
           <form className="portal-auth-form" onSubmit={submitAuth}>
-            <label htmlFor="portal-account-id">账户 ID</label>
+            <label htmlFor="portal-account-id">{authCopy.accountId}</label>
             <input
               id="portal-account-id"
               value={accountId}
@@ -1027,7 +1111,7 @@ export function UserPortalPage({
               required
             />
 
-            <label htmlFor="portal-password">密码</label>
+            <label htmlFor="portal-password">{authCopy.password}</label>
             <input
               id="portal-password"
               type="password"
@@ -1037,19 +1121,19 @@ export function UserPortalPage({
               required
             />
 
-            <label htmlFor="portal-robot-check">防机器人校验</label>
+            <label htmlFor="portal-robot-check">{authCopy.robot}</label>
             <input
               id="portal-robot-check"
               value={robotAnswer}
               onChange={(event) => setRobotAnswer(event.target.value)}
               inputMode="numeric"
               autoComplete="off"
-              placeholder={humanChallengeLoading ? "正在加载校验..." : humanChallenge.prompt}
+              placeholder={humanChallengeLoading ? authCopy.robotLoading : humanChallenge.prompt}
               disabled={!canSubmitPasswordLogin}
               required
             />
 
-            <label className="portal-honeypot" htmlFor="portal-company">公司名称</label>
+            <label className="portal-honeypot" htmlFor="portal-company">{authCopy.honeypot}</label>
             <input
               id="portal-company"
               name="portal-company"
@@ -1064,8 +1148,9 @@ export function UserPortalPage({
             {authError ? <div className="alert alert-error">{authError}</div> : null}
 
             <button className="portal-auth-submit" type="submit" disabled={!canSubmitPasswordLogin}>
-              {humanChallengeLoading ? "加载校验中" : "登录"}
+              {humanChallengeLoading ? authCopy.loadingCheck : authCopy.signIn}
             </button>
+            <a className="portal-auth-switch" href="/portal/register/">{authCopy.registerTrial}</a>
           </form>
         </section>
       </main>
@@ -1680,10 +1765,10 @@ function SecuritySetupDialog({
           <button
             className="portal-security-action"
             type="button"
-            disabled={authenticatorPending}
+            disabled={authenticatorPending || authenticatorBound}
             onClick={onBindAuthenticator}
           >
-            {authenticatorBound ? "重新绑定身份验证器" : "绑定身份验证器"}
+            {authenticatorBound ? "身份验证器已绑定" : "绑定身份验证器"}
           </button>
         </div>
 
@@ -1876,10 +1961,10 @@ function ProfilePanel({
             <button
               className="portal-security-action"
               type="button"
-              disabled={authenticatorPending}
+              disabled={authenticatorPending || authenticatorBound}
               onClick={startAuthenticatorEnrollment}
             >
-              {authenticatorBound ? "重新绑定身份验证器" : "绑定身份验证器"}
+              {authenticatorBound ? "身份验证器已绑定" : "绑定身份验证器"}
             </button>
           </div>
 

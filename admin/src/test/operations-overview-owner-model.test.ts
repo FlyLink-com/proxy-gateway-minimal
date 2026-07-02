@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { ADMIN_TABLE_QUERY_STATE_SCHEMA } from "../app/admin-table-query-state";
+import { ADMIN_SAFE_READ_PAGE_MODEL_SCHEMA } from "../app/admin-safe-read-page-model";
 import {
   createOperationsOverviewOwnerPageModel,
   findOperationsOverviewOwnerPageModelIssues,
@@ -20,6 +21,9 @@ describe("Operations Overview owner model", () => {
       "review-candidates"
     ]);
     expect(model.deferredSections).toEqual([]);
+    expect(model.safeReadModel.schemaVersion).toBe(ADMIN_SAFE_READ_PAGE_MODEL_SCHEMA);
+    expect(model.safeReadModel.visibleSectionIds).toEqual(model.visibleSections.map((section) => section.navId));
+    expect(model.safeReadModel.deferredSectionIds).toEqual([]);
   });
 
   test("attaches table query-state only to sections that need bounded paging", () => {

@@ -47,6 +47,10 @@
   --admin-status-chip-min-width: 72px;
   --admin-visual-topbar-width: 1296px;
   --admin-topbar-search-left: 385px;
+  --admin-topbar-horizontal-padding: 16px;
+  --admin-topbar-search-grid-offset: calc(var(--admin-topbar-search-left) - var(--admin-topbar-horizontal-padding));
+  --admin-topbar-search-width: 340px;
+  --admin-topbar-search-max-width: 340px;
   --admin-topbar-search-right: calc(var(--admin-topbar-right-cluster-width) + 32px);
   --admin-topbar-right-cluster-width: 424px;
   --admin-topbar-action-pill-width: 120px;
@@ -72,7 +76,12 @@
   --admin-visual-evidence-gap: clamp(28px, 2.5vw, 40px);
   --admin-visual-evidence-top-offset: 12px;
   --admin-visual-kpi-to-panel-gap: 48px;
+  --admin-visual-dashboard-kpi-to-panel-gap: 24px;
   --admin-visual-panel-to-evidence-gap: 36px;
+  --admin-backend-read-content-width: min(calc(var(--admin-visual-topbar-width) * 0.9), 100%);
+  --admin-backend-read-panel-gap: 14px;
+  --admin-backend-read-monitor-panel-height: var(--admin-visual-panel-height);
+  --admin-monitoring-topbar-width: var(--admin-backend-read-content-width);
   --admin-evidence-chart-line-weight: 2.5;
   --admin-evidence-time-range-gap: 4px;
   --admin-evidence-time-range-pill-width: 26px;
@@ -150,7 +159,39 @@
 
 .nav-primary-list,
 .nav-planned-sidebar-list {
+  gap: 12px;
+}
+
+.nav-sidebar-group {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
+}
+
+.nav-sidebar-group .nav-section-heading {
+  align-items: flex-start;
+  display: flex;
+  justify-content: flex-start;
+  min-height: 22px;
+  padding: 4px 12px 0;
+  text-align: left;
+}
+
+.nav-sidebar-group .nav-section-label {
+  color: #d9e5f7;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: left;
+}
+
+.nav-sidebar-group .nav-section-items {
+  display: grid;
+  gap: 4px;
+}
+
+.nav-item-subitem {
+  padding-left: 12px;
 }
 
 .nav-list {
@@ -160,7 +201,7 @@
   align-items: stretch;
   justify-content: flex-start;
   width: 100%;
-  gap: 96px;
+  gap: 12px;
   min-height: 0;
   max-height: calc(100dvh - 144px);
   overflow-x: hidden;
@@ -197,6 +238,7 @@
   color: #99adcc;
   padding: 8px 12px;
   font-weight: 500;
+  text-align: left;
 }
 
 .nav-item:hover,
@@ -271,13 +313,19 @@
 }
 
 .top-bar {
-  width: var(--admin-visual-topbar-width);
+  width: var(--admin-monitoring-topbar-width);
   max-width: calc(100vw - var(--admin-sidebar-width) - 28px);
   min-height: 58px;
   height: var(--admin-statusbar-height);
   margin: 24px 0 0 28px;
-  padding: 0 16px;
-  display: block;
+  padding: 0 var(--admin-topbar-horizontal-padding);
+  display: grid;
+  grid-template-columns:
+    minmax(0, var(--admin-topbar-search-grid-offset))
+    minmax(0, var(--admin-topbar-search-width))
+    minmax(0, 1fr)
+    var(--admin-topbar-right-cluster-width);
+  align-items: center;
   border: 0.5px solid var(--admin-scene-border-strong);
   border-radius: 16px;
   background: var(--admin-scene-glass);
@@ -294,12 +342,11 @@
 }
 
 .top-bar-search {
-  position: absolute;
-  top: 9px;
-  left: var(--admin-topbar-search-left);
-  right: var(--admin-topbar-search-right);
-  width: auto;
-  max-width: none;
+  grid-column: 2;
+  justify-self: stretch;
+  position: static;
+  width: 100%;
+  max-width: var(--admin-topbar-search-max-width);
   min-width: 0;
   min-height: 40px;
   margin: 0;
@@ -347,9 +394,9 @@
 }
 
 .top-bar-actions {
-  position: absolute;
-  top: 11px;
-  right: 16px;
+  grid-column: 4;
+  justify-self: end;
+  position: static;
   width: var(--admin-topbar-right-cluster-width);
   display: grid;
   grid-template-columns:
@@ -483,6 +530,27 @@
   backdrop-filter: blur(18px);
 }
 
+.operator-language-row {
+  border-top-color: rgba(255, 255, 255, 0.2);
+}
+
+.operator-language-row > span {
+  color: #cbdaf4;
+}
+
+.operator-language-button {
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+}
+
+.operator-language-button:hover,
+.operator-language-button-active {
+  border-color: rgba(34, 211, 238, 0.75);
+  background: rgba(34, 211, 238, 0.22);
+  color: #ffffff;
+}
+
 .admin-content {
   max-width: none;
   margin: 0;
@@ -490,14 +558,12 @@
   color: var(--admin-text);
 }
 
-.admin-blueprint-page {
-  gap: 24px;
+.admin-shell[data-shell-topbar="disabled"] .admin-content {
+  padding-top: 24px;
 }
 
-.admin-blueprint-page[data-page="portalRequests"],
-.admin-blueprint-page[data-page="usageMonitor"] {
-  position: relative;
-  gap: 0;
+.admin-blueprint-page {
+  gap: 24px;
 }
 
 .admin-blueprint-page-hero {
@@ -581,6 +647,38 @@
   padding-left: 24px;
 }
 
+.admin-blueprint-page[data-page="dashboard"],
+.admin-blueprint-page[data-page="portalRequests"],
+.admin-blueprint-page[data-page="usageMonitor"] {
+  position: relative;
+  gap: 0;
+  max-width: var(--admin-backend-read-content-width);
+  width: var(--admin-backend-read-content-width);
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-blueprint-page-summary,
+.admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-page-summary,
+.admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-page-summary {
+  max-width: var(--admin-backend-read-content-width);
+  padding-left: 0;
+  width: var(--admin-backend-read-content-width);
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid,
+.admin-blueprint-page[data-page="portalRequests"] .ops-metric-grid,
+.admin-blueprint-page[data-page="usageMonitor"] .ops-metric-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  max-width: var(--admin-backend-read-content-width);
+  gap: var(--admin-backend-read-panel-gap);
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-card,
+.admin-blueprint-page[data-page="portalRequests"] .ops-metric-grid .ops-metric-card,
+.admin-blueprint-page[data-page="usageMonitor"] .ops-metric-grid .ops-metric-card {
+  width: auto;
+  min-width: 0;
+}
+
 .admin-overview-metric-grid,
 .ops-metric-grid {
   grid-template-columns: repeat(4, var(--admin-visual-metric-card-width));
@@ -589,7 +687,7 @@
 }
 
 .admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid {
-  gap: var(--admin-visual-metric-gap);
+  gap: var(--admin-backend-read-panel-gap);
 }
 
 .ops-metric-card,
@@ -606,6 +704,11 @@
     0 8px 16px rgba(0, 10, 51, 0.18);
   backdrop-filter: blur(40px);
   padding: 16px;
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-card {
+  width: auto;
+  min-width: 0;
 }
 
 .ops-metric-card > .dashboard-status-badge,
@@ -652,6 +755,20 @@
   font-weight: 500;
 }
 
+.admin-blueprint-page .ops-metric-footer,
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-footer {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.admin-blueprint-page .ops-metric-trend,
+.admin-blueprint-page[data-page="dashboard"] .admin-overview-metric-grid .ops-metric-trend {
+  display: none;
+}
+
+.admin-blueprint-page .ops-metric-icon {
+  display: none;
+}
+
 .ops-metric-icon,
 .ops-metric-success .ops-metric-icon,
 .ops-metric-info .ops-metric-icon,
@@ -672,12 +789,19 @@
 .admin-blueprint-page[data-page="dashboard"] .admin-blueprint-module-board,
 .admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-board,
 .admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-board {
-  grid-template-columns: repeat(3, var(--admin-visual-panel-width));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  column-gap: var(--admin-backend-read-panel-gap);
+  row-gap: var(--admin-backend-read-panel-gap);
+  max-width: var(--admin-backend-read-content-width);
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-blueprint-module-board {
+  margin-top: var(--admin-backend-read-panel-gap);
 }
 
 .admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-board,
 .admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-board {
-  margin-top: var(--admin-visual-kpi-to-panel-gap);
+  margin-top: var(--admin-backend-read-panel-gap);
 }
 
 .admin-blueprint-page[data-page] [data-module-nav-id] {
@@ -861,6 +985,16 @@
   overflow: hidden;
 }
 
+.admin-blueprint-page[data-page="dashboard"] .admin-blueprint-module-panel,
+.admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-panel,
+.admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-panel {
+  width: auto;
+  height: var(--admin-backend-read-monitor-panel-height);
+  min-height: var(--admin-backend-read-monitor-panel-height);
+  max-height: var(--admin-backend-read-monitor-panel-height);
+  padding: 16px;
+}
+
 .admin-blueprint-page[data-page="portalRequests"] .admin-operator-content,
 .admin-blueprint-page[data-page="usageMonitor"] .admin-operator-content {
   gap: 10px;
@@ -981,21 +1115,16 @@
   color: #d9e5f7;
 }
 
-.admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-board {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  max-width: var(--admin-visual-topbar-width);
-}
-
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="freshness"],
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="channel-coverage"],
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="usage-ledger"] {
   grid-column: auto;
-  width: var(--admin-visual-panel-width);
-  height: var(--admin-visual-panel-height);
-  min-height: var(--admin-visual-panel-height);
-  max-height: var(--admin-visual-panel-height);
-  padding: 22px;
-  gap: 14px;
+  width: auto;
+  height: var(--admin-backend-read-monitor-panel-height);
+  min-height: var(--admin-backend-read-monitor-panel-height);
+  max-height: var(--admin-backend-read-monitor-panel-height);
+  padding: 16px;
+  gap: var(--admin-backend-read-panel-gap);
 }
 
 .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id="freshness"] {
@@ -1103,6 +1232,16 @@
   padding-left: 0;
 }
 
+.admin-blueprint-page[data-page="dashboard"] .admin-blueprint-lower-evidence-grid,
+.admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-lower-evidence-grid,
+.admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-lower-evidence-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  max-width: var(--admin-backend-read-content-width);
+  width: var(--admin-backend-read-content-width);
+  gap: var(--admin-backend-read-panel-gap);
+  margin-top: var(--admin-visual-panel-to-evidence-gap);
+}
+
 .admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-lower-evidence-grid,
 .admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-lower-evidence-grid {
   margin-top: var(--admin-visual-panel-to-evidence-gap);
@@ -1125,6 +1264,13 @@
   overflow: hidden;
   padding: 20px;
   backdrop-filter: blur(20px);
+}
+
+.admin-blueprint-page[data-page="dashboard"] .admin-evidence-panel,
+.admin-blueprint-page[data-page="portalRequests"] .admin-evidence-panel,
+.admin-blueprint-page[data-page="usageMonitor"] .admin-evidence-panel {
+  width: auto;
+  min-width: 0;
 }
 
 .admin-evidence-panel-chart {
@@ -1392,7 +1538,7 @@
   border-radius: 0;
   background: transparent;
   display: grid;
-  grid-template-columns: 52px 40px 150px minmax(0, 1fr);
+  grid-template-columns: 52px 40px 164px minmax(0, 1fr);
   gap: 8px;
   align-items: center;
   min-height: 0;
@@ -1440,7 +1586,7 @@
   display: -webkit-box;
   margin: 1px 0 0;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
+  -webkit-line-clamp: 2;
   overflow: hidden;
 }
 
@@ -1557,6 +1703,14 @@
     padding-left: 0;
   }
 
+  .admin-blueprint-page[data-page="dashboard"] .admin-blueprint-lower-evidence-grid,
+  .admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-lower-evidence-grid,
+  .admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-lower-evidence-grid {
+    grid-template-columns: 1fr;
+    max-width: none;
+    width: 100%;
+  }
+
   .admin-overview-metric-grid,
   .ops-metric-grid {
     grid-template-columns: repeat(2, minmax(0, 460px));
@@ -1602,5 +1756,2127 @@
 
   .admin-evidence-log-entry p {
     grid-column: 3;
+  }
+}
+
+.admin-safe-read-page {
+  gap: 20px;
+}
+
+.admin-safe-read-toolbar {
+  align-items: center;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(280px, 1fr) auto auto;
+  max-width: min(100%, var(--admin-visual-content-width));
+}
+
+.admin-safe-read-toolbar label,
+.admin-safe-read-toolbar input,
+.admin-safe-read-toolbar button,
+.admin-safe-read-toolbar > span {
+  min-width: 0;
+}
+
+.admin-safe-read-toolbar input {
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  color: rgba(224, 235, 250, 0.92);
+  font: inherit;
+  height: 40px;
+  overflow: hidden;
+  padding: 0 18px;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.admin-safe-read-toolbar button,
+.admin-safe-read-toolbar > span {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.14);
+  border: 0.5px solid rgba(255, 255, 255, 0.32);
+  border-radius: 999px;
+  color: #fff;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 700;
+  height: 36px;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.admin-safe-read-toolbar button {
+  opacity: 0.72;
+}
+
+.admin-safe-read-metrics {
+  display: grid;
+  gap: var(--admin-visual-metric-gap);
+  grid-template-columns: repeat(4, var(--admin-visual-metric-card-width));
+  max-width: var(--admin-visual-content-width);
+}
+
+.admin-safe-read-workspace {
+  display: grid;
+  gap: var(--admin-visual-panel-gap);
+  grid-template-columns: minmax(0, 1fr) 360px;
+  max-width: var(--admin-visual-content-width);
+}
+
+.admin-safe-read-table-card,
+.admin-safe-read-side-panel {
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 16px;
+  color: #fff;
+  min-width: 0;
+}
+
+.admin-safe-read-table-card {
+  padding: 20px;
+}
+
+.admin-safe-read-table-card header {
+  margin-bottom: 16px;
+}
+
+.admin-safe-read-table-card h2,
+.admin-safe-read-side-panel h2 {
+  color: #fff;
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.2;
+  margin: 0;
+}
+
+.admin-safe-read-table-card p,
+.admin-safe-read-side-panel p {
+  color: rgba(224, 235, 250, 0.82);
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 6px 0 0;
+}
+
+.admin-safe-read-table-card .new-console-table-shell {
+  max-height: 440px;
+  overflow: auto;
+}
+
+.admin-safe-read-table-card .new-console-table {
+  min-width: 820px;
+}
+
+.admin-safe-read-side-panels {
+  display: grid;
+  gap: 16px;
+  grid-auto-rows: minmax(132px, auto);
+}
+
+.admin-safe-read-side-panel {
+  padding: 18px;
+}
+
+.admin-safe-read-side-panel > span {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.14);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: rgba(224, 235, 250, 0.92);
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 800;
+  height: 24px;
+  margin-bottom: 12px;
+  padding: 0 10px;
+}
+
+.admin-audit-read-page {
+  --admin-backend-read-table-card-height: 637px;
+  gap: 14px;
+  max-width: 100%;
+  width: min(calc(var(--admin-visual-topbar-width) * 0.9), 100%);
+}
+
+.admin-audit-read-header,
+.admin-audit-read-filter-row,
+.admin-audit-read-table-card,
+.admin-audit-read-detail-panel {
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 16px;
+  color: #fff;
+  min-width: 0;
+}
+
+.admin-audit-read-header {
+  align-items: center;
+  border: 0.5px solid rgba(255, 255, 255, 0.35);
+  border-radius: 12px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.admin-audit-read-breadcrumb {
+  align-items: center;
+  color: #e0ebfa;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 8px;
+  line-height: 18px;
+  min-width: 0;
+}
+
+.admin-audit-read-breadcrumb span[aria-hidden="true"] {
+  color: #a6b8d6;
+  font-weight: 400;
+}
+
+.admin-audit-read-title {
+  min-width: 0;
+}
+
+.admin-audit-read-title p {
+  color: rgba(224, 235, 250, 0.74);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 16px;
+  margin: 0 0 2px;
+}
+
+.admin-audit-read-title h1 {
+  color: #fff;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0;
+  line-height: 26px;
+  margin: 0;
+}
+
+.admin-audit-read-actions,
+.admin-audit-read-filter-row {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-audit-read-actions button,
+.admin-audit-read-filter-row button,
+.admin-audit-read-filter-row input {
+  background: rgba(255, 255, 255, 0.14);
+  border: 0.5px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  color: rgba(248, 251, 255, 0.94);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  height: 34px;
+  min-width: 0;
+  padding: 0 12px;
+}
+
+.admin-audit-read-actions button {
+  font-size: 11px;
+  height: 28px;
+  padding: 0 12px;
+  white-space: nowrap;
+}
+
+.admin-audit-read-actions button:disabled,
+.admin-audit-read-filter-row button:disabled,
+.admin-audit-read-filter-row input:disabled {
+  opacity: 1;
+}
+
+.admin-audit-read-filter-row {
+  border-radius: 14px;
+  gap: 10px;
+  min-height: 50px;
+  overflow: hidden;
+  padding: 0 14px;
+  white-space: nowrap;
+}
+
+.admin-audit-read-filter-row label {
+  flex: 1 1 300px;
+  min-width: 220px;
+}
+
+.admin-audit-read-filter-row input {
+  width: 100%;
+}
+
+.admin-audit-read-filter-row button,
+.admin-audit-read-filter-row input {
+  height: 34px;
+}
+
+.admin-audit-read-filter-row button {
+  flex: 1 1 132px;
+  max-width: 162px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-audit-read-table-card .new-console-table::-webkit-scrollbar {
+  height: 8px;
+}
+
+.admin-audit-read-table-card .new-console-table::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+}
+
+.admin-audit-read-table-card .new-console-table::-webkit-scrollbar-thumb {
+  background: rgba(224, 235, 250, 0.36);
+  background-clip: padding-box;
+  border: 2px solid transparent;
+  border-radius: 999px;
+}
+
+.admin-audit-read-page[data-page="userOperationLogs"] .admin-audit-read-actions button:first-child {
+  width: 140px;
+}
+
+.admin-audit-read-page[data-page="userOperationLogs"] .admin-audit-read-actions button:last-child {
+  width: 125px;
+}
+
+.admin-node-health-read-page .admin-audit-read-actions button:first-child {
+  width: 124px;
+}
+
+.admin-node-health-read-page .admin-audit-read-actions button:last-child {
+  width: 112px;
+}
+
+.admin-node-logs-read-page .admin-audit-read-actions button:first-child {
+  width: 124px;
+}
+
+.admin-node-logs-read-page .admin-audit-read-actions button:last-child {
+  width: 112px;
+}
+
+.admin-node-bandwidth-read-page .admin-audit-read-actions button:first-child {
+  width: 124px;
+}
+
+.admin-node-bandwidth-read-page .admin-audit-read-actions button:last-child {
+  width: 112px;
+}
+
+.admin-user-management-read-page .admin-audit-read-actions button:first-child {
+  width: 150px;
+}
+
+.admin-order-management-read-page .admin-audit-read-actions button:first-child {
+  width: 162px;
+}
+
+.admin-audit-read-page[data-page="userOperationLogs"] .admin-audit-read-filter-row {
+  justify-content: space-between;
+}
+
+.admin-audit-read-page[data-page="userOperationLogs"] .admin-audit-read-filter-row button {
+  flex: 1 1 132px;
+  max-width: 162px;
+}
+
+.admin-audit-read-page[data-page="userOperationLogs"] .admin-audit-read-filter-row button:last-child {
+  flex: 0 0 72px;
+}
+
+.admin-node-health-read-page .admin-audit-read-filter-row label {
+  flex: 1 1 300px;
+  min-width: 220px;
+}
+
+.admin-node-health-read-page .admin-audit-read-filter-row button {
+  flex: 1 1 132px;
+  max-width: 162px;
+}
+
+.admin-node-health-read-page .admin-audit-read-filter-row button:last-child {
+  flex-basis: auto;
+}
+
+.admin-node-logs-read-page .admin-audit-read-filter-row {
+  gap: 10px;
+  padding: 0 14px;
+}
+
+.admin-node-logs-read-page .admin-audit-read-filter-row label {
+  flex: 1 1 300px;
+  min-width: 220px;
+}
+
+.admin-node-logs-read-page .admin-audit-read-filter-row button {
+  flex: 1 1 132px;
+  max-width: 162px;
+}
+
+.admin-node-logs-read-page .admin-audit-read-filter-row button:last-child {
+  flex: 0 0 72px;
+}
+
+.admin-node-bandwidth-read-page .admin-audit-read-filter-row {
+  gap: 10px;
+  padding: 0 14px;
+}
+
+.admin-node-bandwidth-read-page .admin-audit-read-filter-row label {
+  flex: 1 1 300px;
+  min-width: 220px;
+}
+
+.admin-node-bandwidth-read-page .admin-audit-read-filter-row button {
+  flex: 1 1 132px;
+  max-width: 162px;
+}
+
+.admin-node-bandwidth-read-page .admin-audit-read-filter-row button:last-child {
+  flex: 0 0 72px;
+}
+
+.admin-user-management-read-page .admin-audit-read-filter-row {
+  gap: 10px;
+  padding: 0 14px;
+}
+
+.admin-user-management-read-page .admin-audit-read-filter-row label {
+  flex: 1 1 300px;
+  min-width: 220px;
+}
+
+.admin-user-management-read-page .admin-audit-read-filter-row button {
+  flex: 1 1 132px;
+  max-width: 162px;
+}
+
+.admin-order-management-read-page .admin-audit-read-filter-row {
+  gap: 10px;
+  padding: 0 14px;
+}
+
+.admin-order-management-read-page .admin-audit-read-filter-row label {
+  flex: 1 1 300px;
+  min-width: 220px;
+}
+
+.admin-order-management-read-page .admin-audit-read-filter-row button {
+  flex: 1 1 132px;
+  max-width: 162px;
+}
+
+.admin-audit-read-page[data-page="userAccessLogs"] .admin-audit-read-actions button:first-child {
+  width: 144px;
+}
+
+.admin-audit-read-page[data-page="userAccessLogs"] .admin-audit-read-actions button:last-child {
+  width: 129px;
+}
+
+.admin-audit-read-body {
+  align-items: stretch;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 846px) minmax(252px, 306px);
+  min-height: 0;
+}
+
+.admin-audit-read-table-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: var(--admin-backend-read-table-card-height);
+  min-height: var(--admin-backend-read-table-card-height);
+  overflow: hidden;
+  padding: 16px;
+}
+
+.admin-audit-read-table-card.admin-audit-table-operation {
+  --admin-backend-table-scroll-width: max(100%, 940px);
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
+}
+
+.admin-audit-read-table-card.admin-audit-table-access {
+  --admin-backend-table-scroll-width: max(100%, 860px);
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
+}
+
+.admin-audit-read-table-card header {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+
+.admin-audit-read-table-card h2,
+.admin-audit-read-detail-panel h2,
+.admin-audit-read-detail-panel h3 {
+  color: #fff;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin: 0;
+}
+
+.admin-audit-read-table-card h2 {
+  font-size: 16px;
+  line-height: 22px;
+}
+
+.admin-audit-read-table-card p,
+.admin-audit-read-detail-panel p,
+.admin-audit-read-detail-panel li {
+  color: rgba(224, 235, 250, 0.82);
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.admin-audit-read-table-card .new-console-table-shell {
+  align-content: stretch;
+  gap: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.admin-audit-read-table-card .new-console-table {
+  align-content: start;
+  gap: 0;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-color: rgba(224, 235, 250, 0.42) rgba(255, 255, 255, 0.08);
+  scrollbar-width: thin;
+}
+
+.admin-audit-table-access .new-console-table-shell {
+  align-content: stretch;
+  grid-template-rows: minmax(0, 1fr) 34px;
+  height: 100%;
+}
+
+.admin-audit-table-access .new-console-table {
+  background: rgba(255, 255, 255, 0.12);
+  grid-auto-rows: 28px;
+  grid-template-rows: 40px repeat(20, 28px);
+  height: auto;
+  padding-bottom: 0;
+}
+
+.admin-audit-table-operation .new-console-table-shell {
+  align-content: stretch;
+  grid-template-rows: minmax(0, 1fr) 34px;
+  height: 100%;
+}
+
+.admin-audit-table-operation .new-console-table {
+  background: rgba(255, 255, 255, 0.12);
+  grid-auto-rows: 28px;
+  grid-template-rows: 40px repeat(20, 28px);
+  height: auto;
+  padding-bottom: 0;
+}
+
+.admin-node-health-table .new-console-table-shell {
+  align-content: stretch;
+  grid-template-rows: minmax(0, 1fr) 34px;
+  height: 100%;
+}
+
+.admin-node-health-table .new-console-table {
+  background: rgba(255, 255, 255, 0.12);
+  grid-auto-rows: 28px;
+  grid-template-rows: 40px repeat(20, 28px);
+  height: auto;
+  padding-bottom: 0;
+}
+
+.admin-node-logs-table .new-console-table-shell {
+  align-content: stretch;
+  grid-template-rows: minmax(0, 1fr) 34px;
+  height: 100%;
+}
+
+.admin-node-logs-table .new-console-table {
+  background: rgba(255, 255, 255, 0.12);
+  grid-auto-rows: 28px;
+  grid-template-rows: 40px repeat(20, 28px);
+  height: auto;
+  padding-bottom: 0;
+}
+
+.admin-node-bandwidth-table .new-console-table-shell {
+  align-content: stretch;
+  grid-template-rows: minmax(0, 1fr) 34px;
+  height: 100%;
+}
+
+.admin-node-bandwidth-table .new-console-table {
+  background: rgba(255, 255, 255, 0.12);
+  grid-auto-rows: 28px;
+  grid-template-rows: 40px repeat(20, 28px);
+  height: auto;
+  padding-bottom: 0;
+}
+
+.admin-user-management-table .new-console-table-shell {
+  align-content: stretch;
+  grid-template-rows: minmax(0, 1fr) 34px;
+  height: 100%;
+}
+
+.admin-user-management-table .new-console-table {
+  background: rgba(255, 255, 255, 0.12);
+  grid-auto-rows: 28px;
+  grid-template-rows: 40px repeat(20, 28px);
+  height: auto;
+  padding-bottom: 0;
+}
+
+.admin-order-management-table .new-console-table-shell {
+  align-content: stretch;
+  grid-template-rows: minmax(0, 1fr) 34px;
+  height: 100%;
+}
+
+.admin-order-management-table .new-console-table {
+  background: rgba(255, 255, 255, 0.12);
+  grid-auto-rows: 28px;
+  grid-template-rows: 40px repeat(20, 28px);
+  height: auto;
+  padding-bottom: 0;
+}
+
+.admin-audit-read-table-card .new-console-row {
+  border: 0;
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0;
+  box-shadow: none;
+  gap: 0;
+  min-height: 28px;
+  min-width: var(--admin-backend-table-scroll-width, 100%);
+  padding: 0;
+}
+
+.admin-audit-read-table-card .new-console-row-head {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(224, 235, 250, 0.92);
+  font-size: 11px;
+  font-weight: 800;
+  min-height: 40px;
+  text-transform: uppercase;
+}
+
+.admin-audit-read-table-card .new-console-row > span {
+  align-items: center;
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-audit-read-table-card .new-console-row > span > * {
+  min-width: 0;
+}
+
+.admin-audit-read-table-card .new-console-row-placeholder {
+  pointer-events: none;
+}
+
+.admin-audit-read-table-card .dashboard-status-badge {
+  height: 22px;
+  min-height: 22px;
+  min-width: 64px;
+  padding: 0 9px;
+}
+
+.admin-audit-read-table-card .data-card-pagination {
+  align-items: center;
+  flex-direction: row;
+  flex-wrap: nowrap;
+}
+
+.admin-audit-read-table-card .data-card-pagination-range {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-audit-read-table-card .data-card-pagination-controls {
+  height: 24px;
+  justify-content: flex-end;
+  width: auto;
+}
+
+.admin-audit-read-table-card .data-card-pagination-button,
+.admin-audit-read-table-card .data-card-pagination-page {
+  height: 24px;
+  line-height: 14px;
+  min-height: 24px;
+}
+
+.admin-audit-table-access .new-console-row {
+  column-gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  padding: 0 16px;
+}
+
+.admin-audit-table-access .new-console-row > span {
+  padding: 0;
+}
+
+.admin-audit-table-access .new-console-row-head {
+  min-height: 40px;
+}
+
+.admin-audit-table-access .dashboard-status-badge {
+  height: 24px;
+  min-height: 24px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.admin-audit-table-access .data-card-pagination {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 0;
+  height: 34px;
+  padding: 0 12px;
+}
+
+.admin-audit-table-access .data-card-pagination-button {
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  height: 24px;
+  line-height: 14px;
+}
+
+.admin-audit-table-operation .new-console-row {
+  column-gap: 12px;
+  grid-template-columns: 76px 86px 104px 84px 82px minmax(260px, 1fr);
+  padding: 0 16px;
+}
+
+.admin-audit-table-operation .new-console-row > span {
+  padding: 0;
+}
+
+.admin-audit-table-operation .new-console-row:not(.new-console-row-head) > span {
+  color: #eaf2ff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.admin-audit-table-operation .new-console-row:not(.new-console-row-head) > span:last-child {
+  color: #fff;
+  font-weight: 500;
+}
+
+.admin-audit-table-operation .new-console-row:not(.new-console-row-head) {
+  background: rgba(255, 255, 255, 0.18);
+  border-bottom: 0;
+}
+
+.admin-audit-table-operation .dashboard-status-badge {
+  font-size: 11px;
+  line-height: 16px;
+  max-width: 104px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-audit-table-operation .data-card-pagination {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 0;
+  height: 34px;
+  padding: 0 12px;
+}
+
+.admin-audit-table-operation .data-card-pagination-range {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-audit-table-operation .data-card-pagination-button {
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  height: 24px;
+  line-height: 14px;
+}
+
+.admin-audit-table-operation .data-card-pagination-page {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+}
+
+.admin-audit-read-table-card.admin-node-health-table {
+  --admin-backend-table-scroll-width: max(100%, 900px);
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
+}
+
+.admin-audit-read-table-card.admin-node-logs-table {
+  --admin-backend-table-scroll-width: max(100%, 940px);
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
+}
+
+.admin-audit-read-table-card.admin-node-bandwidth-table {
+  --admin-backend-table-scroll-width: max(100%, 900px);
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
+}
+
+.admin-audit-read-table-card.admin-user-management-table {
+  --admin-backend-table-scroll-width: max(100%, 920px);
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
+}
+
+.admin-audit-read-table-card.admin-order-management-table {
+  --admin-backend-table-scroll-width: max(100%, 920px);
+  grid-template-rows: minmax(0, 1fr);
+  padding: 0;
+}
+
+.admin-node-health-table .new-console-row {
+  column-gap: 12px;
+  grid-template-columns: 132px 104px 104px 104px 110px minmax(130px, 1fr);
+  padding: 0 16px;
+}
+
+.admin-node-logs-table .new-console-row {
+  column-gap: 12px;
+  grid-template-columns: 76px 96px 118px 86px 76px minmax(210px, 1fr);
+  padding: 0 16px;
+}
+
+.admin-node-bandwidth-table .new-console-row {
+  column-gap: 12px;
+  grid-template-columns: 132px 104px 104px 104px 110px minmax(130px, 1fr);
+  padding: 0 16px;
+}
+
+.admin-user-management-table .new-console-row {
+  column-gap: 12px;
+  grid-template-columns: 126px minmax(172px, 1fr) 142px 88px 94px 84px;
+  padding: 0 16px;
+}
+
+.admin-order-management-table .new-console-row {
+  column-gap: 12px;
+  grid-template-columns: 112px minmax(170px, 1fr) 108px 92px 108px 96px;
+  padding: 0 16px;
+}
+
+.admin-node-health-table .new-console-row > span {
+  color: #d9e5f7;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 15px;
+  padding: 0;
+}
+
+.admin-node-logs-table .new-console-row > span {
+  color: #d9e5f7;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 15px;
+  padding: 0;
+}
+
+.admin-node-bandwidth-table .new-console-row > span {
+  color: #d9e5f7;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 15px;
+  padding: 0;
+}
+
+.admin-user-management-table .new-console-row > span {
+  color: #d9e5f7;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 15px;
+  padding: 0;
+}
+
+.admin-order-management-table .new-console-row > span {
+  color: #d9e5f7;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 15px;
+  padding: 0;
+}
+
+.admin-node-health-table .new-console-row > span:nth-child(2) {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.admin-node-logs-table .new-console-row > span:nth-child(2) {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.admin-node-bandwidth-table .new-console-row > span:nth-child(2),
+.admin-node-bandwidth-table .new-console-row > span:nth-child(5) {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.admin-user-management-table .new-console-row > span:nth-child(2) {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.admin-order-management-table .new-console-row > span:nth-child(2),
+.admin-order-management-table .new-console-row > span:nth-child(3) {
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+}
+
+.admin-node-health-table .new-console-row:not(.new-console-row-head) {
+  background: rgba(255, 255, 255, 0.18);
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.28);
+}
+
+.admin-node-logs-table .new-console-row:not(.new-console-row-head) {
+  background: rgba(255, 255, 255, 0.18);
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.28);
+}
+
+.admin-node-bandwidth-table .new-console-row:not(.new-console-row-head) {
+  background: rgba(255, 255, 255, 0.18);
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.28);
+}
+
+.admin-user-management-table .new-console-row:not(.new-console-row-head) {
+  background: rgba(255, 255, 255, 0.18);
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.28);
+  min-height: 28px;
+}
+
+.admin-order-management-table .new-console-row:not(.new-console-row-head) {
+  background: rgba(255, 255, 255, 0.18);
+  border-bottom: 0.5px solid rgba(255, 255, 255, 0.28);
+}
+
+.admin-node-health-table .dashboard-status-badge {
+  font-size: 11px;
+  height: 24px;
+  line-height: 16px;
+  min-height: 24px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.admin-node-logs-table .dashboard-status-badge {
+  font-size: 11px;
+  height: 24px;
+  line-height: 16px;
+  min-height: 24px;
+  min-width: 0;
+  max-width: 132px;
+  overflow: hidden;
+  padding: 0 10px;
+  text-overflow: ellipsis;
+}
+
+.admin-node-bandwidth-table .dashboard-status-badge {
+  font-size: 11px;
+  height: 24px;
+  line-height: 16px;
+  min-height: 24px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.admin-user-management-table .dashboard-status-badge {
+  font-size: 11px;
+  height: 24px;
+  line-height: 16px;
+  min-height: 24px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.admin-order-management-table .dashboard-status-badge {
+  font-size: 11px;
+  height: 24px;
+  line-height: 16px;
+  min-height: 24px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.admin-node-log-message {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-node-health-table .data-card-pagination {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 0;
+  height: 34px;
+  padding: 0 12px;
+}
+
+.admin-node-logs-table .data-card-pagination {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 0;
+  height: 34px;
+  padding: 0 12px;
+}
+
+.admin-node-bandwidth-table .data-card-pagination {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 0;
+  height: 34px;
+  padding: 0 12px;
+}
+
+.admin-user-management-table .data-card-pagination {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 0;
+  height: 34px;
+  padding: 0 12px;
+}
+
+.admin-order-management-table .data-card-pagination {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0;
+  border-radius: 0;
+  height: 34px;
+  padding: 0 12px;
+}
+
+.admin-node-health-table .data-card-pagination-range {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-node-logs-table .data-card-pagination-range {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-node-bandwidth-table .data-card-pagination-range {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-user-management-table .data-card-pagination-range {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-order-management-table .data-card-pagination-range {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-node-health-table .data-card-pagination-button {
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  height: 24px;
+  line-height: 14px;
+}
+
+.admin-node-logs-table .data-card-pagination-button {
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  height: 24px;
+  line-height: 14px;
+}
+
+.admin-node-bandwidth-table .data-card-pagination-button {
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  height: 24px;
+  line-height: 14px;
+}
+
+.admin-user-management-table .data-card-pagination-button {
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  height: 24px;
+  line-height: 14px;
+}
+
+.admin-order-management-table .data-card-pagination-button {
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  height: 24px;
+  line-height: 14px;
+}
+
+.admin-audit-read-ref {
+  color: #d9e5f7;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-audit-read-detail-panel {
+  align-content: start;
+  display: grid;
+  gap: 16px;
+  height: var(--admin-backend-read-table-card-height);
+  min-height: var(--admin-backend-read-table-card-height);
+  padding: 18px;
+}
+
+.admin-audit-read-detail-panel header {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-audit-read-detail-panel header > span {
+  color: rgba(166, 184, 217, 0.92);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 16px;
+  text-transform: uppercase;
+}
+
+.admin-audit-read-detail-panel h2 {
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.admin-audit-read-page[data-page="userOperationLogs"] .admin-audit-read-detail-panel {
+  gap: 10px;
+  padding: 16px;
+}
+
+.admin-audit-read-page[data-page="userAccessLogs"] .admin-audit-read-detail-panel {
+  gap: 14px;
+  padding: 16px;
+}
+
+.admin-node-health-detail-panel {
+  gap: 10px;
+  padding: 16px;
+}
+
+.admin-node-logs-detail-panel {
+  gap: 10px;
+  padding: 16px;
+}
+
+.admin-node-bandwidth-detail-panel {
+  gap: 10px;
+  padding: 16px;
+}
+
+.admin-user-management-detail-panel {
+  gap: 9px;
+  grid-template-rows: none;
+  height: var(--admin-backend-read-table-card-height);
+  min-height: var(--admin-backend-read-table-card-height);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 14px;
+  scrollbar-width: thin;
+}
+
+.admin-order-management-detail-panel {
+  gap: 10px;
+  grid-template-rows: auto auto 1fr;
+  padding: 16px;
+}
+
+.admin-audit-read-page[data-page="userOperationLogs"] .admin-audit-read-detail-panel h2 {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.admin-node-health-detail-panel h2 {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.admin-node-logs-detail-panel h2 {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.admin-node-bandwidth-detail-panel h2 {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.admin-user-management-detail-panel h2 {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.admin-order-management-detail-panel h2 {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 24px;
+}
+
+.admin-audit-read-page[data-page="userAccessLogs"] .admin-audit-read-detail-panel h2 {
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 24px;
+}
+
+.admin-audit-read-page[data-page="userOperationLogs"] .admin-audit-read-detail-panel header p,
+.admin-audit-read-page[data-page="userOperationLogs"] .admin-audit-read-detail-panel p,
+.admin-audit-read-page[data-page="userAccessLogs"] .admin-audit-read-detail-panel header p,
+.admin-audit-read-page[data-page="userAccessLogs"] .admin-audit-read-detail-panel p {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-audit-read-page[data-page="userOperationLogs"] .admin-audit-read-detail-field dt {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-audit-read-page[data-page="userAccessLogs"] .admin-audit-read-detail-field dt {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.admin-audit-read-page[data-page="userOperationLogs"] .admin-audit-read-detail-field dd {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+}
+
+.admin-node-health-detail-panel .admin-audit-read-detail-field dt {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-node-logs-detail-panel .admin-audit-read-detail-field dt {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-node-bandwidth-detail-panel .admin-audit-read-detail-field dt {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-user-management-detail-panel .admin-audit-read-detail-field dt {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-order-management-detail-panel .admin-audit-read-detail-field dt {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-node-health-detail-panel .admin-audit-read-detail-field dd {
+  align-items: center;
+  color: #fff;
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  justify-content: flex-end;
+  line-height: 16px;
+  text-align: right;
+}
+
+.admin-node-logs-detail-panel .admin-audit-read-detail-field dd {
+  align-items: center;
+  color: #fff;
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  justify-content: flex-end;
+  line-height: 16px;
+  text-align: right;
+}
+
+.admin-node-bandwidth-detail-panel .admin-audit-read-detail-field dd {
+  align-items: center;
+  color: #fff;
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  justify-content: flex-end;
+  line-height: 16px;
+  text-align: right;
+}
+
+.admin-user-management-detail-panel .admin-audit-read-detail-field dd {
+  align-items: center;
+  color: #fff;
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  justify-content: flex-end;
+  line-height: 16px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.admin-order-management-detail-panel .admin-audit-read-detail-field dd {
+  align-items: center;
+  color: #fff;
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  justify-content: flex-end;
+  line-height: 16px;
+  text-align: right;
+}
+
+.admin-user-management-detail-panel .dashboard-status-badge {
+  font-size: 11px;
+  height: 24px;
+  line-height: 16px;
+  min-height: 24px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.admin-order-management-detail-panel .dashboard-status-badge {
+  font-size: 11px;
+  height: 24px;
+  line-height: 16px;
+  min-height: 24px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.admin-node-health-detail-panel .dashboard-status-badge {
+  font-size: 11px;
+  height: 24px;
+  line-height: 16px;
+  min-height: 24px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.admin-node-logs-detail-panel .dashboard-status-badge {
+  font-size: 11px;
+  height: 24px;
+  line-height: 16px;
+  min-height: 24px;
+  min-width: 0;
+  max-width: 132px;
+  overflow: hidden;
+  padding: 0 10px;
+  text-overflow: ellipsis;
+}
+
+.admin-audit-read-page[data-page="userAccessLogs"] .admin-audit-read-detail-field dd {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: right;
+}
+
+.admin-audit-read-detail-panel h3 {
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.admin-node-health-detail-panel h3 {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  margin: 0;
+}
+
+.admin-node-log-system-note {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-node-log-system-note h3 {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  margin: 0;
+}
+
+.admin-node-log-system-note p {
+  color: #d9e5f7;
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 15px;
+}
+
+.admin-node-bandwidth-detail-panel header {
+  gap: 2px;
+}
+
+.admin-node-bandwidth-detail-panel header p {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-node-bandwidth-util-section,
+.admin-node-bandwidth-traffic-window {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-node-bandwidth-util-section h3,
+.admin-node-bandwidth-traffic-window h3 {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 16px;
+  margin: 0;
+}
+
+.admin-node-bandwidth-util-track {
+  background: rgba(255, 255, 255, 0.08);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 8px;
+  height: 8px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.admin-node-bandwidth-util-fill {
+  display: block;
+  height: 100%;
+}
+
+.admin-node-bandwidth-util-fill[data-state-tone="success"] {
+  background: #4ade80;
+}
+
+.admin-node-bandwidth-util-fill[data-state-tone="warning"] {
+  background: #fbbf24;
+}
+
+.admin-node-bandwidth-util-fill[data-state-tone="danger"] {
+  background: #f25959;
+}
+
+.admin-node-bandwidth-util-section p {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-node-bandwidth-traffic-window .admin-audit-read-detail-field dt,
+.admin-node-bandwidth-traffic-window .admin-audit-read-detail-field dd {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-user-management-actions {
+  align-self: end;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+}
+
+.admin-order-management-actions {
+  align-self: end;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+}
+
+.admin-user-management-actions button {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: #fff;
+  display: flex;
+  font-size: 13px;
+  font-weight: 600;
+  height: 40px;
+  justify-content: flex-start;
+  line-height: 18px;
+  min-width: 0;
+  padding: 0 14px;
+  text-align: left;
+}
+
+.admin-order-management-actions button {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: #fff;
+  display: flex;
+  font-size: 13px;
+  font-weight: 600;
+  height: 42px;
+  justify-content: flex-start;
+  line-height: 18px;
+  min-width: 0;
+  padding: 0 14px;
+  text-align: left;
+}
+
+.admin-order-management-usage-evidence {
+  border-top: 0.5px solid rgba(255, 255, 255, 0.22);
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 12px;
+}
+
+.admin-order-management-usage-evidence header {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.admin-order-management-usage-evidence h3 {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 18px;
+  margin: 0;
+}
+
+.admin-order-management-usage-evidence dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.admin-order-management-usage-evidence div {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(92px, 0.8fr) minmax(0, 1fr);
+  min-width: 0;
+}
+
+.admin-order-management-usage-evidence dt,
+.admin-order-management-usage-evidence dd {
+  color: #e0ebfa;
+  font-size: 12px;
+  line-height: 16px;
+  margin: 0;
+  min-width: 0;
+}
+
+.admin-order-management-usage-evidence dt {
+  font-weight: 500;
+  opacity: 0.82;
+}
+
+.admin-order-management-usage-evidence dd {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.admin-user-management-actions button[data-tone="danger"] {
+  background: rgba(242, 89, 89, 0.15);
+  border-color: rgba(242, 89, 89, 0.28);
+}
+
+.admin-user-management-read-page {
+  gap: 14px;
+  width: min(calc(var(--admin-visual-topbar-width) * 0.9), 100%);
+}
+
+.admin-user-management-read-page .admin-audit-read-header {
+  border-radius: 12px;
+  min-height: 36px;
+  padding: 0 12px;
+}
+
+.admin-user-management-read-page .admin-audit-read-filter-row {
+  border-radius: 14px;
+  gap: 10px;
+  min-height: 50px;
+  padding: 0 14px;
+}
+
+.admin-user-management-read-page .admin-audit-read-filter-row input,
+.admin-user-management-read-page .admin-audit-read-filter-row button {
+  font-size: 11px;
+  height: 34px;
+  padding: 0 12px;
+}
+
+.admin-user-management-read-page .admin-audit-read-actions button {
+  font-size: 11px;
+  height: 28px;
+  padding: 0 12px;
+}
+
+.admin-user-management-read-page .admin-audit-read-filter-row label {
+  flex-basis: 300px;
+  min-width: 220px;
+}
+
+.admin-user-management-read-page .admin-audit-read-filter-row button {
+  flex-basis: 132px;
+  max-width: 162px;
+}
+
+.admin-user-management-read-page .admin-audit-read-body {
+  align-items: start;
+  gap: 14px;
+  grid-template-columns: minmax(0, 846px) minmax(252px, 306px);
+  min-height: 0;
+}
+
+.admin-user-management-detail-panel {
+  align-self: start;
+  border-radius: 14px;
+  gap: 9px;
+  grid-template-rows: none;
+  height: var(--admin-backend-read-table-card-height);
+  min-height: var(--admin-backend-read-table-card-height);
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 14px;
+  scrollbar-width: thin;
+}
+
+.admin-user-management-detail-panel h2 {
+  font-size: 18px;
+  line-height: 24px;
+}
+
+.admin-user-management-detail-panel .admin-audit-read-detail-field {
+  gap: 7px;
+  grid-template-columns: 98px minmax(0, 1fr);
+}
+
+.admin-user-management-detail-panel .admin-audit-read-detail-field dt,
+.admin-user-management-detail-panel .admin-audit-read-detail-field dd {
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.admin-user-management-detail-panel .admin-audit-read-detail-field dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-user-management-detail-panel .dashboard-status-badge {
+  font-size: 11px;
+  height: 24px;
+  line-height: 16px;
+  min-height: 24px;
+}
+
+.admin-user-management-crud-gates {
+  display: grid;
+  gap: 7px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+}
+
+.admin-user-management-crud-gates h3 {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  grid-column: 1 / -1;
+  line-height: 16px;
+  margin: 0;
+}
+
+.admin-user-management-crud-action {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.14);
+  border: 0.5px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  color: #fff;
+  display: flex;
+  font-size: 11px;
+  font-weight: 800;
+  height: 28px;
+  justify-content: center;
+  line-height: 14px;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.admin-user-management-crud-action[data-operation="delete"] {
+  background: rgba(242, 89, 89, 0.16);
+  border-color: rgba(242, 89, 89, 0.3);
+}
+
+.admin-user-management-dry-run-panel {
+  background: rgba(14, 31, 59, 0.52);
+  border: 0.5px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+}
+
+.admin-user-management-dry-run-panel header {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.admin-user-management-dry-run-panel h3 {
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 18px;
+  margin: 0;
+}
+
+.admin-user-management-dry-run-panel p {
+  color: rgba(224, 235, 250, 0.84);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 15px;
+  margin: 0;
+}
+
+.admin-user-management-dry-run-panel dl {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  min-width: 0;
+}
+
+.admin-user-management-dry-run-panel .admin-audit-read-detail-field {
+  grid-template-columns: 56px minmax(0, 1fr);
+}
+
+.admin-user-management-inline-edit-form {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-user-management-inline-edit-form .admin-audit-read-detail-field dd {
+  min-width: 0;
+}
+
+.admin-user-management-inline-edit-form input,
+.admin-user-management-inline-edit-form select {
+  background: rgba(255, 255, 255, 0.12);
+  border: 0.5px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  color: #fff;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  height: 28px;
+  line-height: 16px;
+  min-width: 0;
+  padding: 0 8px;
+  width: 100%;
+}
+
+.admin-user-management-inline-edit-form select option {
+  background: #17366a;
+  color: #fff;
+}
+
+.admin-user-management-inline-action-state {
+  align-items: center;
+  background: rgba(14, 31, 59, 0.28);
+  border: 0.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 10px;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: minmax(88px, auto) minmax(0, 1fr) auto auto;
+  min-width: 0;
+  padding: 8px 10px;
+}
+
+.admin-user-management-inline-action-state strong,
+.admin-user-management-inline-action-state span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-user-management-inline-action-state strong {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 16px;
+}
+
+.admin-user-management-inline-action-state span {
+  color: rgba(224, 235, 250, 0.84);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 15px;
+}
+
+.admin-user-management-inline-action-state button {
+  background: rgba(255, 255, 255, 0.14);
+  border: 0.5px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  height: 26px;
+  line-height: 14px;
+  min-width: 56px;
+  padding: 0 9px;
+}
+
+.admin-user-management-lifecycle-panel {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  gap: 8px;
+  padding: 0;
+}
+
+.admin-user-management-lifecycle-panel header {
+  border-top: 0.5px solid rgba(255, 255, 255, 0.16);
+  padding-top: 8px;
+}
+
+.admin-user-management-dry-run-actions {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+}
+
+.admin-user-management-dry-run-actions button {
+  background: rgba(255, 255, 255, 0.14);
+  border: 0.5px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  height: 30px;
+  line-height: 16px;
+  min-width: 0;
+  padding: 0 9px;
+}
+
+.admin-user-management-dry-run-actions button:disabled {
+  background: rgba(242, 89, 89, 0.14);
+  border-color: rgba(242, 89, 89, 0.24);
+  opacity: 1;
+}
+
+.admin-user-management-lifecycle-fields {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.admin-user-management-lifecycle-fields label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.admin-user-management-lifecycle-fields span {
+  color: rgba(224, 235, 250, 0.78);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 12px;
+  text-transform: uppercase;
+}
+
+.admin-user-management-lifecycle-fields input,
+.admin-user-management-lifecycle-fields select {
+  background: rgba(255, 255, 255, 0.12);
+  border: 0.5px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  height: 28px;
+  line-height: 16px;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.admin-user-management-lifecycle-fields select option {
+  background: #17366a;
+  color: #fff;
+}
+
+.admin-user-management-lifecycle-preview {
+  background: rgba(14, 31, 59, 0.62);
+  border: 0.5px solid rgba(255, 196, 61, 0.26);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px;
+}
+
+.admin-user-management-lifecycle-preview strong {
+  color: #fff;
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.admin-user-management-lifecycle-preview span,
+.admin-user-management-lifecycle-state {
+  color: rgba(224, 235, 250, 0.86);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 15px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-user-management-lifecycle-state[data-tone="danger"] {
+  color: #ff8f8f;
+}
+
+.admin-node-health-detail-panel section {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-node-health-performance-list .admin-audit-read-detail-field dt,
+.admin-node-health-performance-list .admin-audit-read-detail-field dd {
+  color: #e0ebfa;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+}
+
+.admin-node-health-actions {
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
+}
+
+.admin-node-health-actions button {
+  background: rgba(255, 255, 255, 0.18);
+  border: 0.5px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  color: #fff;
+  flex: 1 1 0;
+  font-size: 13px;
+  font-weight: 700;
+  height: 36px;
+  min-width: 0;
+  padding: 0 10px;
+}
+
+.admin-audit-read-detail-panel dl,
+.admin-audit-read-detail-panel ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+  padding: 0;
+}
+
+.admin-audit-read-detail-field {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 108px minmax(0, 1fr);
+  min-width: 0;
+}
+
+.admin-audit-read-detail-field dt {
+  color: rgba(166, 184, 217, 0.92);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-audit-read-detail-field dd {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-audit-read-detail-panel li {
+  list-style: none;
+  padding-left: 14px;
+  position: relative;
+}
+
+.admin-audit-read-detail-panel li::before {
+  background: #60a5fa;
+  border-radius: 999px;
+  content: "";
+  height: 5px;
+  left: 0;
+  position: absolute;
+  top: 7px;
+  width: 5px;
+}
+
+.admin-audit-read-gate.sidebar-safety-footer {
+  display: block;
+  margin-top: auto;
+}
+
+.admin-audit-read-gate .sidebar-safety-summary {
+  border-radius: 12px;
+}
+
+@media (max-width: 1280px) {
+  .admin-safe-read-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-safe-read-workspace,
+  .admin-audit-read-body {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-audit-read-detail-panel {
+    min-height: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .admin-safe-read-toolbar,
+  .admin-audit-read-header,
+  .admin-audit-read-filter-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-audit-read-header,
+  .admin-audit-read-filter-row {
+    align-items: stretch;
+    display: grid;
+    padding: 14px;
+  }
+
+  .admin-audit-read-actions,
+  .admin-audit-read-filter-row {
+    flex-wrap: wrap;
+  }
+
+  .admin-audit-table-access .new-console-row {
+    grid-template-columns: 132px 132px 132px 104px 112px;
+    min-width: 680px;
+  }
+
+  .admin-audit-table-operation .new-console-row {
+    grid-template-columns: 108px 124px 128px 104px 112px minmax(140px, 1fr);
+    min-width: 720px;
   }
 }

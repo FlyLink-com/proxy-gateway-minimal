@@ -680,7 +680,8 @@
   }
 
   .company-site-header,
-  .company-site-actions {
+  .company-site-actions,
+  .company-site-footer {
     align-items: stretch;
     flex-direction: column;
   }
@@ -884,5 +885,372 @@
   .site-signal-card:hover {
     box-shadow: none;
     transform: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  .company-site-header {
+    padding-inline: 32px;
+  }
+
+  .company-site-hero {
+    padding-inline: 32px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+    padding-block: 64px;
+  }
+
+  .company-site-dashboard {
+    max-width: 640px;
+  }
+
+  .company-site-trust-strip {
+    padding-inline: 32px;
+  }
+
+  .company-site-section,
+  .company-site-how,
+  .company-site-pricing,
+  .company-site-faq {
+    padding-inline: 32px;
+  }
+
+  .company-site-intake {
+    grid-template-columns: 320px minmax(0, 1fr);
+  }
+
+  .company-site-intake-panel {
+    padding: 56px;
+  }
+
+  .company-site-footer {
+    padding-inline: 32px;
+  }
+}
+
+@media (max-width: 860px) {
+  .company-site-nav,
+  .company-site-header-actions .company-site-secondary {
+    display: none;
+  }
+
+  .company-site-menu-button {
+    display: grid;
+    place-items: center;
+  }
+
+  .company-site-header {
+    min-height: 56px;
+    padding-inline: 20px;
+  }
+
+  .company-site-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 36px;
+    min-height: auto;
+    padding: 40px 20px 48px;
+  }
+
+  .company-site-hero h1 {
+    font-size: 36px;
+    line-height: 1.1;
+  }
+
+  .company-site-hero-copy > p {
+    font-size: 15px;
+  }
+
+  .company-site-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 120px;
+  }
+
+  .company-site-actions .company-site-primary,
+  .company-site-actions .company-site-secondary {
+    width: auto;
+  }
+
+  .company-site-hero-trust {
+    gap: 16px;
+    padding-top: 0;
+  }
+
+  .company-site-dashboard {
+    min-height: auto;
+    border-radius: 10px;
+  }
+
+  .company-site-connection-row,
+  .company-site-region-row,
+  .company-site-device-row,
+  .company-site-subscription-row > div:first-child {
+    gap: 10px;
+  }
+
+  .company-site-connection-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .company-site-connection-row > div:last-child {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .company-site-trust-strip {
+    min-height: auto;
+    padding: 24px 20px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .company-site-trust-item {
+    justify-content: flex-start;
+    font-size: 13px;
+  }
+
+  .company-site-section,
+  .company-site-how,
+  .company-site-pricing,
+  .company-site-faq {
+    padding: 48px 20px;
+  }
+
+  .company-site-info-hero {
+    padding: 48px 20px 56px;
+  }
+
+  .company-site-info-hero-grid,
+  .company-site-info-cards,
+  .company-site-info-section-list {
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-info-hero-grid {
+    gap: 28px;
+    margin-top: 32px;
+  }
+
+  .company-site-info-copy h1 {
+    font-size: 36px;
+    line-height: 1.12;
+  }
+
+  .company-site-info-copy p {
+    font-size: 15px;
+  }
+
+  .company-site-info-body {
+    padding: 36px 20px 48px;
+  }
+
+  .company-site-info-card {
+    min-height: 0;
+  }
+
+  .company-site-section-heading {
+    margin-bottom: 32px;
+    text-align: left;
+  }
+
+  .company-site-section-heading h2 {
+    font-size: 28px;
+  }
+
+  .company-site-capabilities,
+  .company-site-steps,
+  .company-site-plan-grid,
+  .company-site-plan-grid[data-plan-count="1"],
+  .company-site-plan-grid[data-plan-count="2"],
+  .company-site-payment-strip,
+  .company-site-faq-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-billing-toggle {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .company-site-plan-card {
+    min-height: 0;
+    padding: 24px;
+  }
+
+  .company-site-intake {
+    min-height: 0;
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-intake-rail {
+    min-height: 0;
+    padding: 32px 20px;
+  }
+
+  .company-site-intake-rail small {
+    display: none;
+  }
+
+  .company-site-intake-panel {
+    padding: 40px 20px 48px;
+  }
+
+  .company-site-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-contact-form .company-site-primary {
+    width: 100%;
+  }
+
+  .company-site-footer {
+    grid-template-columns: 1fr;
+    padding: 40px 20px;
+  }
+
+  .company-site-footer-links {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 32px;
+  }
+
+  .company-site-footer-bottom {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 520px) {
+  .company-site-shell {
+    overflow-x: hidden;
+  }
+
+  .company-site-header {
+    align-items: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    flex-direction: row;
+    gap: 12px;
+    padding-inline: 20px;
+  }
+
+  .company-site-brand {
+    min-width: 0;
+  }
+
+  .company-site-brand strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .company-site-header-actions {
+    flex: 0 0 auto;
+    gap: 6px;
+  }
+
+  .company-site-menu-button {
+    display: none;
+  }
+
+  .company-site-language-switch {
+    min-height: 34px;
+  }
+
+  .company-site-language-switch button {
+    min-width: 30px;
+    min-height: 28px;
+    font-size: 12px;
+  }
+
+  .company-site-header-actions .company-site-primary.compact {
+    width: auto;
+    max-width: 112px;
+    padding-inline: 12px;
+    font-size: 13px;
+  }
+
+  .company-site-primary,
+  .company-site-secondary,
+  .company-site-plan-action {
+    width: auto;
+  }
+
+  .company-site-hero,
+  .company-site-hero-copy,
+  .company-site-dashboard {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .company-site-hero {
+    overflow: hidden;
+  }
+
+  .company-site-hero h1,
+  .company-site-hero-copy > p {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .company-site-shell[data-locale="zh"] .company-site-hero h1 {
+    line-break: anywhere;
+    word-break: break-all;
+  }
+
+  .company-site-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-actions .company-site-primary,
+  .company-site-actions .company-site-secondary {
+    width: 100%;
+  }
+
+  .company-site-hero-trust {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .company-site-dashboard-top,
+  .company-site-region-row,
+  .company-site-device-row,
+  .company-site-subscription-row {
+    padding-inline: 16px;
+  }
+
+  .company-site-region-row,
+  .company-site-device-row,
+  .company-site-subscription-row > div:first-child {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .company-site-dashboard-top strong,
+  .company-site-region-row strong,
+  .company-site-device-row strong,
+  .company-site-subscription-row span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .company-site-region-row a,
+  .company-site-device-row > span {
+    align-self: flex-start;
+    gap: 6px;
+  }
+
+  .company-site-footer {
+    align-items: stretch;
+    flex-direction: initial;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .company-site-faq-item summary svg {
+    transition: none;
   }
 }

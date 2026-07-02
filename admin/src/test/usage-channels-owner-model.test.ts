@@ -4,6 +4,7 @@ import {
   findUsageChannelsOwnerPageModelIssues,
   USAGE_CHANNELS_OWNER_MODEL_SCHEMA
 } from "../app/usage-channels-owner-model";
+import { ADMIN_SAFE_READ_PAGE_MODEL_SCHEMA } from "../app/admin-safe-read-page-model";
 import { ADMIN_TABLE_QUERY_STATE_SCHEMA } from "../app/admin-table-query-state";
 import { usageChannelsBlueprint } from "../pages/subscription-usage-monitor-page";
 
@@ -22,6 +23,9 @@ describe("Usage & Channels owner page model", () => {
       "collection-anomalies",
       "receipts-collectors"
     ]);
+    expect(model.safeReadModel.schemaVersion).toBe(ADMIN_SAFE_READ_PAGE_MODEL_SCHEMA);
+    expect(model.safeReadModel.visibleSectionIds).toEqual(model.visibleSections.map((section) => section.navId));
+    expect(model.safeReadModel.deferredSectionIds).toEqual(model.deferredSections.map((section) => section.navId));
   });
 
   test("attaches every visible section to the shared table query-state contract", () => {
@@ -52,17 +56,17 @@ describe("Usage & Channels owner page model", () => {
       expect.objectContaining({
         actionLabel: "Open",
         label: "acct_001",
-        meta: "Order ord_2048 · Traffic 42.8GB",
-        rightMeta: "State Locked",
-        statusLabel: "OK",
-        tone: "success"
+        meta: "42.8GB locked",
+        rightMeta: "",
+        statusLabel: "Locked",
+        tone: "info"
       }),
       expect.objectContaining({
         actionLabel: "Open",
         label: "acct_002",
-        meta: "Order ord_2047 · Traffic 18.6GB",
-        rightMeta: "State Measured",
-        statusLabel: "OK",
+        meta: "18.6GB",
+        rightMeta: "",
+        statusLabel: "Measured",
         tone: "info"
       })
     ]);

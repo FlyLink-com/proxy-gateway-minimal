@@ -46,7 +46,7 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage, navId?: string)
   const blueprint: BlueprintPage = {
     page: "dashboard",
     ariaLabel: "Operations Overview page header",
-    kicker: "Overview / Operations Overview",
+    kicker: "Operations Overview / Operator Control Surface",
     title: "Operations Overview",
     description: "Health, risk routing, and next action only; detail ledgers stay on owner pages.",
     statusLabel: "Summary and routing",
@@ -192,9 +192,13 @@ export function overviewBlueprint(onNavigate?: (page: AdminPage, navId?: string)
     ]
   };
   const ownerModel = createOperationsOverviewOwnerPageModel(blueprint);
+  const healthSummary = ownerModel.visibleSections.find((section) => section.navId === "health-summary");
 
   return {
     ...blueprint,
+    overviewModuleIds: ["health-summary", "risk-queue", "next-actions", "review-candidates"],
+    workspaceModuleIds: ["risk-queue", "next-actions", "review-candidates"],
+    summary: healthSummary ? <OverviewHealthSummary section={healthSummary} /> : undefined,
     modules: blueprint.modules.map((module) => ({
       ...module,
       content: renderOperationsOverviewModule(module.navId, ownerModel, onNavigate)
@@ -281,8 +285,12 @@ function renderOperationsOverviewModule(
 function OverviewHealthSummary({ section }: { section: OperationsOverviewSection }) {
   return (
     <div
-      className="admin-operator-content"
+      className="page-anchor-group admin-operator-content admin-overview-health-summary"
+      id={section.targetId}
       aria-label="Operations Overview owner model content"
+      data-figma-component="MetricGroup"
+      data-ui-role="summary"
+      data-ui-surface="summary-metrics"
       {...ownerModelDataAttributes(section)}
     >
       <div className="admin-overview-metric-grid" aria-label="Operations Overview metric cards">
@@ -391,13 +399,13 @@ function DashboardCompactRow({
       </span>
       {meta ? <span className="admin-compact-data-row-meta">{meta}</span> : null}
       <span className="admin-compact-data-row-status">{statusLabel}</span>
-      <span className="admin-compact-data-row-action">{actionLabel}</span>
     </>
   );
 
   if (onClick) {
     return (
       <button
+        aria-label={[label, detail, meta, statusLabel, actionLabel].filter(Boolean).join(" · ")}
         className={className}
         data-clickable="true"
         data-figma-component="DataRowCompact"

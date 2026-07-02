@@ -4,9 +4,6 @@ import {
   createAdminSearchResults,
   normalizeAdminSearchQuery
 } from "../app/admin-search-index";
-import { overviewBlueprint } from "./dashboard-page";
-import { accountsResourcesBlueprint } from "./portal-requests-page";
-import { usageChannelsBlueprint } from "./subscription-usage-monitor-page";
 
 export function AdminSearchResultsPage({
   searchQuery,
@@ -16,15 +13,9 @@ export function AdminSearchResultsPage({
   onNavigate: (page: AdminPage, navId?: string) => void;
 }) {
   const normalizedQuery = normalizeAdminSearchQuery(searchQuery);
-  const blueprints = useMemo(() => [
-    overviewBlueprint(),
-    accountsResourcesBlueprint,
-    usageChannelsBlueprint
-  ], []);
   const results = useMemo(() => createAdminSearchResults({
-    blueprints,
     query: searchQuery
-  }), [blueprints, searchQuery]);
+  }), [searchQuery]);
 
   function openSearchResult({
     navId,
@@ -46,19 +37,14 @@ export function AdminSearchResultsPage({
     }
 
     window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent("admin-open-module", {
-        detail: {
-          navId,
-          page,
-          targetId
-        }
-      }));
-      window.setTimeout(() => {
-        document.getElementById(targetId)?.scrollIntoView({
-          block: "start",
-          behavior: "smooth"
-        });
-      }, 0);
+      const target = document.getElementById(targetId);
+      if (typeof target?.scrollIntoView !== "function") {
+        return;
+      }
+      target.scrollIntoView({
+        block: "start",
+        behavior: "smooth"
+      });
     }, 0);
   }
 
@@ -89,7 +75,7 @@ export function AdminSearchResultsPage({
       <header className="admin-blueprint-page-hero" aria-label="Admin system search header">
         <p>System Search</p>
         <h1>Search Results</h1>
-        <p>Search across active pages, modules, ownership boundaries, and planned console routes.</p>
+        <p>Search across safe objects, active pages, modules, ownership boundaries, and planned console routes.</p>
       </header>
 
       <section className="admin-search-summary" aria-label="Admin system search results" role="status">
@@ -122,6 +108,8 @@ export function AdminSearchResultsPage({
                 <h2>{result.title}</h2>
                 <p>{result.description}</p>
                 <div className="admin-search-result-tags" aria-label={`${result.title} search ownership`}>
+                  <span>{result.businessArea}</span>
+                  {result.safeId ? <span>Safe ID: {result.safeId}</span> : null}
                   <span>{result.owner}</span>
                   <span>Route: {result.routeTarget}</span>
                   <span>Matched: {result.matchedField}</span>

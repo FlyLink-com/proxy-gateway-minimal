@@ -1,10 +1,11 @@
-import QRCode from "qrcode";
 import {
   createOtpauthUri,
   formatBase32Secret,
   randomBase32Secret,
   verifyTotpCode
 } from "./totp-preview";
+
+export const PORTAL_REGISTRATION_SESSION_STORAGE_KEY = "gccwebos-portal-registration-session";
 
 export type PortalAuthMode = "email" | "authenticator" | "token" | "password" | "passkey";
 export type PortalPlanId = "trial" | "monthly" | "yearly";
@@ -14,7 +15,7 @@ export type PortalSubscriptionLifecycle = "pending" | "active" | "expired" | "di
 export type PortalEmailCodePurpose = "login";
 export type PortalSecondFactorKind = "authenticator" | "passkey";
 export type PortalSupportCategory = "subscription" | "client_import" | "account_security" | "other";
-export type PortalHumanChallengeScope = "portal_login";
+export type PortalHumanChallengeScope = "portal_login" | "portal_registration";
 export type PortalInitialAccount = {
   userRef: string;
   displayName: string;
@@ -113,6 +114,52 @@ export type PortalEmailCodeRequestInput = {
   purpose: PortalEmailCodePurpose;
   email: string;
   humanVerification: PortalHumanVerificationInput;
+};
+
+export type PortalRegistrationInput = {
+  email: string;
+  password: string;
+  emailVerification?: PortalRegistrationEmailVerificationProof;
+};
+
+export type PortalRegistrationEmailVerificationInput = {
+  email: string;
+};
+
+export type PortalRegistrationEmailVerificationProof = {
+  verificationRef: string;
+  code: string;
+};
+
+export type PortalRegistrationEmailVerificationChallenge = {
+  status: "requested" | "simulated";
+  verificationRef: string;
+  expiresInSeconds: number;
+  safety: {
+    noAdminApi: true;
+    noAccountCreated: true;
+    noPublicAuthActivated: true;
+    noRawCodeReturned: true;
+    noRawEmailReturned: true;
+  };
+};
+
+export type PortalRegistrationResult = {
+  status: "registered";
+  accountId: string;
+  session: PortalSession;
+  trial: {
+    durationDays: number;
+    validUntil: string;
+    accessRequestStatus: string;
+  };
+  safety: {
+    noAdminApi: true;
+    noPaymentActivation: true;
+    noPublicAdmin: true;
+    noRawCustomerDataReturned: true;
+    rawPasswordReturned: false;
+  };
 };
 
 export type PortalEmailCodeChallenge = {
@@ -308,6 +355,10 @@ export type PortalPasskeyExport = {
 export type UserPortalClient = {
   issueHumanChallenge(input?: PortalHumanChallengeRequestInput): Promise<PortalHumanVerificationChallenge>;
   requestEmailCode(input: PortalEmailCodeRequestInput): Promise<PortalEmailCodeChallenge>;
+  requestRegistrationEmailVerification(
+    input: PortalRegistrationEmailVerificationInput
+  ): Promise<PortalRegistrationEmailVerificationChallenge>;
+  registerTrialAccount(input: PortalRegistrationInput): Promise<PortalRegistrationResult>;
   authenticate(input: PortalAuthInput): Promise<PortalAuthResult>;
   completeSecondFactor(input: PortalCompleteSecondFactorInput): Promise<PortalSession>;
   fetchCurrentState(input: { userRef: string; sessionRef?: string }): Promise<PortalUserState>;
@@ -339,6 +390,15 @@ export type HttpUserPortalClientOptions = {
   fetchFn?: typeof fetch;
   now?: () => Date;
 };
+
+async function createQrDataUri(otpauthUri: string) {
+  const { default: QRCode } = await import("qrcode");
+  return QRCode.toDataURL(otpauthUri, {
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 208
+  });
+}
 
 function portalError(message: string) {
   return new Error(message);
@@ -428,6 +488,76 @@ function mapBackendHumanChallenge(raw: Record<string, unknown>, now: () => Date)
       noPublicAdmin: true,
       noRawAnswerReturned: true
     }
+  };
+}
+
+function normalizeDeviceCount(value: number) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(1, Math.min(20, Math.trunc(value)));
+}
+
+function normalizeRegion(value: string) {
+  const region = requiredText(value, "请选择主要区域。").trim().toLowerCase();
+  if (!/^[a-z][a-z0-9_-]{1,31}$/.test(region)) {
+    throw portalError("主要区域无效。");
+  }
+  return region;
+}
+
+function mapRegistrationResult(body: Record<string, unknown>): PortalRegistrationResult {
+  const registration = (body.registration ?? {}) as Record<string, unknown>;
+  const trial = (registration.trial ?? {}) as Record<string, unknown>;
+  const session = (body.session ?? {}) as Record<string, unknown>;
+  const accountId = requiredText(registration.accountId as string | undefined, "注册结果无效。");
+  return {
+    status: "registered",
+    accountId,
+    session: sessionSummary(
+      requiredText(String(session.accountId ?? accountId), "注册会话无效。"),
+      authModeFromBackend(session.authMethod as string | undefined, "password"),
+      String(session.issuedAt ?? new Date().toISOString()),
+      String(session.displayName ?? session.accountId ?? accountId),
+      typeof session.sessionRef === "string" ? session.sessionRef : undefined
+    ),
+    trial: {
+      durationDays: normalizeOrderDurationDays(Number(trial.durationDays ?? 7), 7),
+      validUntil: requiredText(trial.validUntil as string | undefined, "试用有效期无效。"),
+      accessRequestStatus: String(trial.accessRequestStatus ?? "pending_admin_review")
+    },
+    safety: {
+      noAdminApi: true,
+      noPaymentActivation: true,
+      noPublicAdmin: true,
+      noRawCustomerDataReturned: true,
+      rawPasswordReturned: false
+    }
+  };
+}
+
+function mapRegistrationEmailVerification(
+  body: Record<string, unknown>
+): PortalRegistrationEmailVerificationChallenge {
+  const verification = (body.verification ?? {}) as Record<string, unknown>;
+  return {
+    status: String(verification.status ?? "requested") === "simulated" ? "simulated" : "requested",
+    verificationRef: requiredText(verification.verificationRef as string | undefined, "邮箱验证码请求无效。"),
+    expiresInSeconds: Number(verification.expiresInSeconds ?? 600),
+    safety: {
+      noAdminApi: true,
+      noAccountCreated: true,
+      noPublicAuthActivated: true,
+      noRawCodeReturned: true,
+      noRawEmailReturned: true
+    }
+  };
+}
+
+function registrationEmailVerificationProof(
+  input: PortalRegistrationInput["emailVerification"] | undefined
+): PortalRegistrationEmailVerificationProof {
+  return {
+    verificationRef: requiredText(input?.verificationRef, "请先发送邮箱验证码。"),
+    code: requiredText(input?.code, "请输入邮箱验证码。")
   };
 }
 
@@ -738,6 +868,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
     secret: string;
     userRef: string;
   }>();
+  const registrationEntryAccounts = new Map<string, string>();
   const secondFactorChallenges = new Map<string, {
     availableFactors: PortalSecondFactorKind[];
     expiresAt: string;
@@ -842,6 +973,9 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
 
   async function startLocalAuthenticatorEnrollment(userRefInput: string): Promise<PortalAuthenticatorEnrollment> {
     const userRef = requiredText(userRefInput, "用户会话无效。");
+    if (accountSecurity.get(userRef)?.authenticatorSecret) {
+      throw portalError("此账户已绑定身份验证器。");
+    }
     const issuedAt = now();
     const secret = options.totpSecretFactory?.() ?? randomBase32Secret();
     const issuer = "GCC Gateway Portal";
@@ -863,11 +997,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       accountLabel,
       manualKey: formatBase32Secret(secret),
       otpauthUri,
-      qrDataUri: await QRCode.toDataURL(otpauthUri, {
-        errorCorrectionLevel: "M",
-        margin: 1,
-        width: 208
-      }),
+      qrDataUri: await createQrDataUri(otpauthUri),
       expiresInSeconds: 300,
       issuedAt: issuedAt.toISOString(),
       safety: {
@@ -890,6 +1020,54 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         throw portalError("邮箱验证码用途无效。");
       }
       throw portalError("邮箱验证码登录尚未启用。");
+    },
+
+    async requestRegistrationEmailVerification(input) {
+      const email = requiredEmail(input.email);
+      return {
+        status: "simulated",
+        verificationRef: stableRef("reg_email", email),
+        expiresInSeconds: 600,
+        safety: {
+          noAdminApi: true,
+          noAccountCreated: true,
+          noPublicAuthActivated: true,
+          noRawCodeReturned: true,
+          noRawEmailReturned: true
+        }
+      };
+    },
+
+    async registerTrialAccount(input) {
+      const email = requiredEmail(input.email);
+      const password = requiredText(input.password, "请输入密码。");
+      registrationEmailVerificationProof(input.emailVerification);
+      const issuedAt = now();
+      const accountId = stableRef("acct", email);
+      initialAccounts.set(accountId, {
+        userRef: accountId,
+        displayName: email,
+        issuedAt: issuedAt.toISOString(),
+        previewPassword: password,
+        requireSecuritySetup: false
+      });
+      return {
+        status: "registered",
+        accountId,
+        session: sessionSummary(accountId, "password", issuedAt.toISOString(), email, stableRef("portal_session", email)),
+        trial: {
+          durationDays: 7,
+          validUntil: expiresAtFromDays(issuedAt, 7),
+          accessRequestStatus: "pending_admin_review"
+        },
+        safety: {
+          noAdminApi: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true,
+          noRawCustomerDataReturned: true,
+          rawPasswordReturned: false
+        }
+      };
     },
 
     async authenticate(input) {
@@ -917,7 +1095,15 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         return sessionSummary(accountId, input.mode, issuedAt.toISOString());
       }
       if (input.mode === "password") {
-        const accountId = requiredText(input.accountId, "请输入账户 ID。");
+        const loginRef = requiredText(input.accountId, "请输入账户 ID。");
+        const normalizedEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginRef.trim())
+          ? loginRef.trim().toLowerCase()
+          : null;
+        const accountId = initialAccounts.has(loginRef)
+          ? loginRef
+          : normalizedEmail
+            ? stableRef("acct", normalizedEmail)
+            : loginRef;
         const account = initialAccounts.get(accountId);
         if (!account || requiredText(input.password, "请输入密码。") !== account.previewPassword) {
           throw portalError("账户或密码无效。");
@@ -931,7 +1117,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       const entryToken = requiredText(input.entryToken, "请输入入口令牌。");
       requiredText(input.encryptedTotpSecret, "请输入 TOTP 密钥。");
       requiredText(input.totpCode, "请输入动态验证码。");
-      return sessionSummary(stableRef("portal_user", entryToken), input.mode, issuedAt.toISOString());
+      return sessionSummary(registrationEntryAccounts.get(entryToken) ?? stableRef("portal_user", entryToken), input.mode, issuedAt.toISOString());
     },
 
     async completeSecondFactor(input) {
@@ -992,6 +1178,9 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
 
     async confirmAuthenticatorEnrollment(input) {
       const userRef = requiredText(input.userRef, "用户会话无效。");
+      if (accountSecurity.get(userRef)?.authenticatorSecret) {
+        throw portalError("此账户已绑定身份验证器。");
+      }
       const enrollmentRef = requiredText(input.enrollmentRef, "身份验证器绑定会话无效。");
       const enrollment = authenticatorEnrollments.get(enrollmentRef);
       if (!enrollment || enrollment.userRef !== userRef) {
@@ -1392,6 +1581,29 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
       throw portalError("邮箱验证码登录尚未启用。");
     },
 
+    async requestRegistrationEmailVerification(input) {
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/registration/email-verification"), {
+        method: "POST",
+        body: JSON.stringify({
+          email: requiredEmail(input.email)
+        })
+      });
+      return mapRegistrationEmailVerification(body);
+    },
+
+    async registerTrialAccount(input) {
+      const emailVerification = registrationEmailVerificationProof(input.emailVerification);
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/registration"), {
+        method: "POST",
+        body: JSON.stringify({
+          email: requiredEmail(input.email),
+          password: requiredText(input.password, "请输入密码。"),
+          emailVerification
+        })
+      });
+      return mapRegistrationResult(body);
+    },
+
     async authenticate(input) {
       if (input.mode === "email") {
         verifiedHuman(input.humanVerification);
@@ -1533,11 +1745,7 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
         accountLabel: String(enrollment.accountLabel ?? userRef),
         manualKey: requiredText(enrollment.manualKey, "身份验证器绑定结果无效。"),
         otpauthUri,
-        qrDataUri: await QRCode.toDataURL(otpauthUri, {
-          errorCorrectionLevel: "M",
-          margin: 1,
-          width: 208
-        }),
+        qrDataUri: await createQrDataUri(otpauthUri),
         expiresInSeconds: Number(enrollment.expiresInSeconds ?? 300),
         issuedAt: enrollment.issuedAt ?? now().toISOString(),
         safety: {

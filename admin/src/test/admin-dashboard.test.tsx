@@ -19,7 +19,7 @@ describe("admin dashboard page", () => {
     render(<DashboardPage onNavigate={onNavigate} onRiskCountChange={onRiskCountChange} />);
 
     expect(screen.getByRole("heading", { name: "Operations Overview" })).not.toBeNull();
-    expect(screen.getByText("Overview / Operations Overview")).not.toBeNull();
+    expect(screen.getByText("Operations Overview / Operator Control Surface")).not.toBeNull();
     expect(screen.getByLabelText("Operations Overview page header")).not.toBeNull();
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-ui-contract")).toBe("page-frame");
     expect(document.querySelector(".admin-blueprint-page")?.getAttribute("data-density")).toBe("normal");
@@ -55,12 +55,12 @@ describe("admin dashboard page", () => {
     expect(screen.queryByRole("button", { name: "Risk Queue Small plugin display" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Risk Queue resize plugin display" })).toBeNull();
 
-    expect(screen.getByLabelText("Monitoring panel")).not.toBeNull();
-    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-role")).toBe("panel");
-    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-chrome")).toBe("operator");
-    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-figma-component")).toBe("PanelFrame");
-    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-surface")).toBe("panel-frame");
-    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-owner-mode")).toBe("preview");
+    expect(screen.getByLabelText("Operations Overview summary metrics")).not.toBeNull();
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-role")).toBe("summary");
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-chrome")).toBeNull();
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-figma-component")).toBe("MetricGroup");
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-surface")).toBe("summary-metrics");
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-owner-mode")).toBeNull();
     expect(screen.queryByText("Overview metric widget set")).toBeNull();
     expect(screen.getByLabelText("Operations Overview owner model content")).not.toBeNull();
     expect(screen.getByLabelText("Operations Overview evidence surfaces")).not.toBeNull();
@@ -88,6 +88,7 @@ describe("admin dashboard page", () => {
     expect(document.querySelectorAll(".admin-overview-handoff")).toHaveLength(0);
     expect(document.querySelectorAll(".admin-overview-handoff-card")).toHaveLength(0);
     expect(document.querySelectorAll("[data-figma-component='DataRowCompact'][data-ui-surface='compact-row']")).toHaveLength(6);
+    expect(document.querySelectorAll(".admin-overview-compact-stack .admin-compact-data-row-action")).toHaveLength(0);
     expect(screen.getByText("Platform health")).not.toBeNull();
     expect(screen.getAllByText("Good").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Ready for review")).not.toBeNull();
@@ -150,7 +151,8 @@ describe("admin dashboard page", () => {
     render(<DashboardPage fixturePreviewEnabled onNavigate={vi.fn()} onRiskCountChange={onRiskCountChange} />);
 
     expect(screen.queryByLabelText("Health Summary fixture preview")).toBeNull();
-    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-chrome")).toBe("operator");
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-role")).toBe("summary");
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-surface")).toBe("summary-metrics");
     expect(screen.queryByText("Metric cards for platform health, risk candidates, freshness, and channel coverage.")).toBeNull();
     expect(screen.getByText("P95 sample age")).not.toBeNull();
     expect(screen.getByText("case_012")).not.toBeNull();
@@ -176,7 +178,7 @@ describe("admin dashboard page", () => {
 
     const riskQueue = document.querySelector("#dashboard-risk-queue [data-owner-model-schema]");
     const reviewCandidates = document.querySelector("#dashboard-review-candidates [data-owner-model-schema]");
-    const healthSummary = document.querySelector("#dashboard-health-summary [data-owner-model-schema]");
+    const healthSummary = document.querySelector("#dashboard-health-summary");
     const nextActions = document.querySelector("#dashboard-next-actions [data-owner-model-schema]");
 
     expect(healthSummary?.getAttribute("data-section-nav-id")).toBe("health-summary");
@@ -274,7 +276,7 @@ describe("admin dashboard page", () => {
     ]);
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-size")).toBeNull();
     expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-height")).toBeNull();
-    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-surface")).toBe("panel-frame");
+    expect(document.querySelector("#dashboard-health-summary")?.getAttribute("data-ui-surface")).toBe("summary-metrics");
     expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-size")).toBeNull();
     expect(document.querySelector("#dashboard-risk-queue")?.getAttribute("data-height")).toBeNull();
     expect(document.querySelector("#dashboard-next-actions")).not.toBeNull();
