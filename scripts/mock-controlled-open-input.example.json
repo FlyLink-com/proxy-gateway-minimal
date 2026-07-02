@@ -17,7 +17,7 @@
       "trafficGb": 100,
       "seats": 3
     },
-    "validUntil": "2026-06-29T00:00:00.000Z"
+    "validUntil": "2027-06-29T00:00:00.000Z"
   },
   "accessGrant": {
     "entryRef": "entry-dynamic-a1",
