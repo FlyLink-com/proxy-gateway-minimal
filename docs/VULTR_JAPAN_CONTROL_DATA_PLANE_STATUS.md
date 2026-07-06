@@ -1,6 +1,6 @@
 # Vultr Japan Control / Data-Plane Status
 
-Last updated: 2026-06-13, UTC.
+Last updated: 2026-07-06, UTC.
 
 > Status:
 > - Type: Active docs/status baseline
@@ -28,6 +28,11 @@ Vultr Japan + Vultr Singapore:
   no new traffic activation or runtime mutation without a separate A-tier gate
 ```
 
+Current production client-facing domains for this lane are under
+`gccwebos.com`. For JP QUIC-based protocols, the rendered client host/SNI and
+the runtime certificate SAN must stay aligned; a subscription render proof alone
+is not enough if the runtime service still presents an older certificate.
+
 Aliyun control-center, clean-start, promotion, Aegis, and gate records are now
 historical evidence unless a future task explicitly requests Aliyun archaeology,
 rollback review, or code/API compatibility migration. Do not treat Aliyun as the
@@ -40,6 +45,8 @@ This file is an orientation and risk-boundary document. It does not replace:
 - `docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md` for the architecture.
 - `docs/production-replacement-records/2026-06-09-vultr-sgp-multichannel-runtime-closeout.md`
   and later records for completed production gates.
+- `docs/production-replacement-records/2026-07-06-jp-tuic-hy2-cert-domain-alignment.md`
+  for the JP TUIC/Hysteria2 runtime certificate-domain drift fix.
 - Live host, DNS, service, endpoint, SQLite, backup, and runtime verification
   before any new Risk A operation.
 
@@ -68,6 +75,7 @@ Control-plane host identity: verified
 Data-plane candidate identities: verified
 DNS and public boundary: verified
 Service, SQLite, backup, and endpoint posture: verified as applicable
+QUIC runtime certificate SAN: aligned with rendered host/SNI where applicable
 Secrets/customer data: not printed or copied into Git
 Rollback or exit owner: named
 ```

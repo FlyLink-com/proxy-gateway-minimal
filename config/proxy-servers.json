@@ -266,12 +266,11 @@
     }
   ],
   "pingHosts": [
-    "sub.globalcirclecat.cloud",
-    "portal.globalcirclecat.cloud",
+    "sub.gccwebos.com",
     "portal.gccwebos.com"
   ],
   "nginx": {
-    "host": "sub.globalcirclecat.cloud",
+    "host": "sub.gccwebos.com",
     "ports": [
       80,
       443

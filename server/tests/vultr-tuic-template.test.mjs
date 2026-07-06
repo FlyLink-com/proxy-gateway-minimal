@@ -8,6 +8,10 @@ import { generateClashSubscription } from "../services/clash-subscription.mjs";
 
 const rootDir = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 const retiredPortalDomain = "portal.globalcirclecat.icu";
+const retiredCloudDomains = [
+  "sub.globalcirclecat.cloud",
+  "portal.globalcirclecat.cloud"
+];
 
 test("Vultr TUIC template carries client parameters required by the managed listener", () => {
   const proxyConfig = loadProxyConfig({
@@ -272,7 +276,13 @@ test("production proxy config uses the SGP domain for SGP VLESS client server ho
     }
   });
 
+  const jpHy2 = proxyConfig.servers.find((server) => server.name === "channel-vultr-a-hy2");
+  const jpTuic = proxyConfig.servers.find((server) => server.name === "channel-vultr-a-tuic");
   const sgpVless = proxyConfig.servers.find((server) => server.name === "channel-sgp-a-vless-reality-tcp");
+  assert.equal(jpHy2?.host, "jp.gccwebos.com");
+  assert.equal(jpHy2?.sni, "jp.gccwebos.com");
+  assert.equal(jpTuic?.host, "jp.gccwebos.com");
+  assert.equal(jpTuic?.sni, "jp.gccwebos.com");
   assert.equal(sgpVless?.host, "sgp.gccwebos.com");
 });
 
@@ -280,5 +290,16 @@ test("active proxy configs do not reference the retired SGP portal domain", () =
   for (const fileName of ["proxy-servers.json", "proxy-servers.vultr-multichannel.template.json"]) {
     const content = readFileSync(resolve(rootDir, "config", fileName), "utf8");
     assert.doesNotMatch(content, new RegExp(retiredPortalDomain.replaceAll(".", "\\.")), fileName);
+  }
+});
+
+test("active proxy configs do not retain retired globalcirclecat.cloud public domains", () => {
+  for (const fileName of ["proxy-servers.json", "proxy-servers.vultr-multichannel.template.json"]) {
+    const content = readFileSync(resolve(rootDir, "config", fileName), "utf8");
+    for (const domain of retiredCloudDomains) {
+      assert.doesNotMatch(content, new RegExp(domain.replaceAll(".", "\\.")), `${fileName}:${domain}`);
+    }
+    assert.match(content, /"sub\.gccwebos\.com"/, fileName);
+    assert.match(content, /"portal\.gccwebos\.com"/, fileName);
   }
 });

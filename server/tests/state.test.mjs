@@ -490,7 +490,7 @@ test("createRuntimeState wires env-gated edge credential lifecycle services", ()
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_ref",
       accessGrantRef: "grant_state_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: "2099-07-05T00:00:00.000Z"
     });
 
     const edgeOrders = state.platform.portalAccessRequests.listEdgeCredentialOrders();
@@ -541,7 +541,7 @@ test("createRuntimeState restores persisted edge orders into lifecycle desired s
       plan: "monthly",
       status: "active",
       validFrom: now,
-      validUntil: "2026-07-05T00:00:00.000Z",
+      validUntil: "2099-07-05T00:00:00.000Z",
       createdAt: now,
       updatedAt: now
     });
@@ -1134,7 +1134,7 @@ test("createRuntimeState wires env-gated Mihomo TUIC host adapter for edge lifec
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_host_ref",
       accessGrantRef: "grant_state_host_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: "2099-07-05T00:00:00.000Z"
     });
 
     assert.equal(delivered.safety.noRuntimeMutation, false);
@@ -1218,7 +1218,7 @@ test("createRuntimeState wires env-gated Sing-box SS host adapter for edge lifec
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_sing_box_ref",
       accessGrantRef: "grant_state_sing_box_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: "2099-07-05T00:00:00.000Z"
     });
 
     assert.equal(delivered.safety.noRuntimeMutation, false);
@@ -1289,7 +1289,7 @@ test("createRuntimeState wires env-gated Xray VLESS Reality host adapter for edg
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_xray_ref",
       accessGrantRef: "grant_state_xray_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: "2099-07-05T00:00:00.000Z"
     });
 
     assert.equal(delivered.safety.noRuntimeMutation, false);
@@ -1360,7 +1360,7 @@ test("createRuntimeState wires env-gated Hysteria2 host adapter for edge lifecyc
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_hy2_ref",
       accessGrantRef: "grant_state_hy2_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: "2099-07-05T00:00:00.000Z"
     });
 
     assert.equal(delivered.safety.noRuntimeMutation, false);

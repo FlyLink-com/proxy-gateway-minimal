@@ -1,5 +1,11 @@
 # Production Replacement Index
 
+## Current Vultr Runtime Records
+
+| Document | Purpose | Status | When to read |
+| --- | --- | --- | --- |
+| `docs/production-replacement-records/2026-07-06-jp-tuic-hy2-cert-domain-alignment.md` | JP TUIC/Hysteria2 runtime certificate-domain alignment record after `jp.gccwebos.com` clients saw x509/SNI failures from an older runtime certificate. | Risk A execution record; production mutation already completed under explicit operator approval, with no DNS, Nginx, control-plane, subscription token, SQLite, firewall, or credential-output change. | Read before changing JP TUIC/Hysteria2 rendered host/SNI, runtime certificate paths, or troubleshooting QUIC/TLS verification failures. |
+
 ## Current Node-Image Readiness Record
 
 | Document | Purpose | Status | When to read |

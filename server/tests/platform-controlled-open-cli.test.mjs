@@ -26,7 +26,7 @@ function inputFixture(overrides = {}) {
     entitlement: {
       plan: "pilot",
       status: "active",
-      validUntil: "2026-06-28T18:30:00.000Z",
+      validUntil: "2099-06-28T18:30:00.000Z",
       quota: {
         trafficGb: 50,
         seats: 2
