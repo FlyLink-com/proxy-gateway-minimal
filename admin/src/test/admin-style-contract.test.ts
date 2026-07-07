@@ -528,7 +528,7 @@ describe("admin style token contract", () => {
     expect(publicSiteStyles).not.toMatch(/letter-spacing:\s*0\.0[6-8]em/);
     expect(responsiveStyles).toMatch(/\.site-effect-flow,[\s\S]*\.site-orbit,[\s\S]*\.site-terminal-card:hover/);
 
-    expect(faviconSvg).toContain("GlobalCircle AI Proxy Gateway");
+    expect(faviconSvg).toContain("GCC WebOS secure access");
     expect(faviconSvg).toContain("<circle cx=\"32\" cy=\"32\"");
     expect(faviconSvg).not.toContain("M18 22h15");
   });
