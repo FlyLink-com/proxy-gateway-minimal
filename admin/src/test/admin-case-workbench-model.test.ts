@@ -144,7 +144,7 @@ describe("admin case workbench model", () => {
           }
         ]
       })
-    ]);
+    ], { nowMs: Date.parse("2026-06-15T00:00:00.000Z") });
 
     expect(cases.map((item) => item.reasonCode)).toEqual([
       "over_limit",

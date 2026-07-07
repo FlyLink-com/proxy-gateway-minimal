@@ -1,6 +1,6 @@
 # Admin Console Next Stage Execution Checklist
 
-Last updated: 2026-06-25, America/Los_Angeles.
+Last updated: 2026-06-26, America/Los_Angeles.
 
 > Status:
 > - Type: Admin frontend next-stage execution checklist
@@ -27,7 +27,7 @@ or app-map documents.
 | Product posture | Protected operator console for supervision, operations, maintenance, and future platform development. |
 | Active pages | `Operations Overview`, `Accounts & Resources`, `Usage & Channels`. |
 | Planned slots | `Audit & Cases`, `Platform Development`, `System Settings`. |
-| Visual source | Canonical Figma `/design` file `NefQiIMOPIBU28TIYcwQFE`, `GlobalCircle AI Admin UI Baseline - 2026-06-25`; active route baseline cards are `24:5`, `24:35`, and `24:65`. The older handoff file `oZuKNtGPhP6oOQ0MSzpfvn` is archive/lineage only. |
+| Visual source | Canonical Figma `/design` file `NefQiIMOPIBU28TIYcwQFE`, `GlobalCircle AI Admin UI Baseline - 2026-06-25`; active route baseline frames are `2:92`, `2:262`, and `2:432`. The older handoff file `oZuKNtGPhP6oOQ0MSzpfvn` is archive/lineage only. |
 | Git role | Runnable Admin implementation, source index, design contracts, implementation mapping, QA records, and validation evidence. |
 | Figma Site role | Optional demo/click-flow review surface only; not a source of truth or implementation target. |
 | Linear role | Task gates, review ownership, phase acceptance, and next-stage sequencing. |
@@ -67,8 +67,8 @@ runtime work into the frontend design completion gate.
 
 | Line | Owns | Current role | Completion boundary |
 | --- | --- | --- | --- |
-| Admin design baseline | Figma visual standard, page ownership, layout density, component states, and responsive rules. | Verified source is now the clean baseline project `NefQiIMOPIBU28TIYcwQFE` with route baseline cards `24:5`, `24:35`, and `24:65`. | Complete for source-boundary setup; still requires implementation, browser QA, and responsive/mobile follow-up. |
-| Admin React/CSS implementation | Shared primitives, shell chrome, page-owned panels, and visual parity tests. | Next active line: reverse-standardize from the accepted clean baseline; it must not invent layout rules outside the design docs. | Complete only after browser QA and Admin test/build validation pass. |
+| Admin design baseline | Figma visual standard, page ownership, layout density, component states, and responsive rules. | Verified source is now the clean baseline project `NefQiIMOPIBU28TIYcwQFE` with route baseline frames `2:92`, `2:262`, and `2:432`. | Phase 1 source boundary and route/page structure are frozen in `ADMIN_FIGMA_BASELINE_FREEZE`; changes require updating Figma, local constants, tests, and docs together. |
+| Admin React/CSS implementation | Shared primitives, shell chrome, page-owned panels, and visual parity tests. | Next active line: build on the frozen clean baseline; it must not invent layout rules outside the design docs. | Complete only after browser QA and Admin test/build validation pass for the specific implementation lane. |
 | `GCC-77` System Search | Safe top-bar search, result routing, and planned/locked slots. | Frontend sub-lane, not AppLibrary, NavigationLibrary, module recovery, or OS windowing. | Complete only when it reads explicit safe manifest/search documents and does not index rendered UI or unsafe backend material. |
 | Server/TLS/TUIC preflight | Edge/runtime preflight helpers, templates, and CLI tests. | Separate backend/runtime support line. | Review and validate separately from Admin UI; production use remains gated by the normal A-tier rules. |
 | Research report inputs | External UI/system research and review notes. | Reference material only. | Promote into `docs/` only when a specific design or implementation decision depends on it. |
@@ -81,10 +81,23 @@ active surface. Search is a normal System Search form/result experience in the
 Admin shell. Module recovery, hidden-module restore, dock/appbar, and
 freeform windowing are not active product surfaces in this baseline.
 
+Deferred cleanup boundary:
+
+- Allowed to defer: retired CSS residue, old component names, duplicated design
+  notes, unused visual helper code, and non-rendered AppLibrary or
+  NavigationLibrary wording that is already frozen out by tests.
+- Not allowed to defer: any runtime dependency on AppLibrary,
+  NavigationLibrary, hidden-module restore, old section routes, old search
+  result dispatch, mixed page ownership, or tests that still treat retired
+  behavior as the expected path.
+- New feature work may proceed before the final cleanup pass only when it uses
+  `ShellRail`, `TopBar`, System Search, active route pages, and the clean
+  baseline frame ownership as its integration boundary.
+
 Current stage order:
 
 1. Treat `NefQiIMOPIBU28TIYcwQFE` as the verified Admin UI design source.
-2. Treat `24:5`, `24:35`, and `24:65` as the active route baseline cards.
+2. Treat `2:92`, `2:262`, and `2:432` as the active route baseline frames.
 3. Normalize layout, density, component states, and responsive standards from
    the clean baseline project only.
 4. Reverse-standardize React/CSS from the accepted clean-baseline design rules.
@@ -100,29 +113,40 @@ Current stage order:
 | 3 | Usage runtime projection v1 | B | Move `Usage & Channels` toward a view-model projection for usage, freshness, coverage, and anomalies. | Real backend DTO wiring. |
 | Deferred | `GCC-78` Workspace preset and restore | B | Retired/deferred under the current baseline; no hidden/restore/preset/windowing UI is active. | Requires a new approved design gate before reactivation. |
 
-Before Lane 1 implementation, align the current UI shell with the accepted
-Visual Polish geometry: ShellRail, TopBar, System Search, metric row, primary
-panel row, and lower evidence row. Do not reopen the older browser-OS/
-AppLibrary direction as a separate product surface in these lanes. Search and
-recovery now belong to System Search, ShellRail / Primary Routes, and
-page-local controls; there is no active Navigation Library or App Library
-product surface.
+Before Lane 1 implementation, align the current UI shell with the frozen
+baseline:
+
+1. Keep `ShellRail` as the only primary route surface.
+2. Keep `TopBar` as the only System Search, status, and account surface.
+3. Keep `System Search` as normal search, not AppLibrary or NavigationLibrary.
+4. Keep first-screen pages page-owned:
+   - `Operations Overview`: health metrics summary plus `Risk Queue`,
+     `Next Actions`, and `Review Candidates` workspace panels.
+   - `Accounts & Resources`: `Account Directory`, `Resources & Orders`, and
+     `Lifecycle` workspace panels.
+   - `Usage & Channels`: `Collection Freshness`, `Channel Coverage`, and
+     `Usage Ledger` workspace panels.
+5. Keep page section deep links disabled until section contracts are designed:
+   legacy section URLs normalize back to their owning first-screen page.
+6. Keep old AppLibrary, NavigationLibrary, hidden-module restore, dock/appbar,
+   drag/resize, and OS windowing behavior frozen out unless a later Figma gate
+   explicitly reintroduces them.
 
 ## Lane 1: GCC-77 System Search Safe Discovery
 
 ### Goal
 
 Create a controlled navigation/search layer that helps operators find pages,
-modules, safe refs, planned areas, and recovery actions without indexing
-rendered UI text or unsafe backend/raw material.
+modules, typed safe business objects, safe refs, and planned areas without
+indexing rendered UI text or unsafe backend/raw material.
 
 ### Scope
 
 | Area | Required outcome |
 | --- | --- |
-| Search source | Explicit safe manifest fields, route metadata, page ownership, and approved tags. |
-| Result types | Page, module, planned slot, recovery action, safe diagnostic route, documentation hint. |
-| Result fields | `id`, `label`, `type`, `ownerPage`, `route`, `status`, `tags`, `description`, `safetyLevel`. |
+| Search source | Explicit safe manifest fields, typed safe object documents, route metadata, page ownership, and approved tags. |
+| Result types | Page, module, typed safe object, planned slot, safe diagnostic route, documentation hint. |
+| Result fields | `id`, `label`, `type`, `safeId`, `businessArea`, `ownerPage`, `route`, `status`, `tags`, `description`, `safetyLevel`. |
 | Empty state | Clear no-result message with safe fallback to active pages. |
 | Locked/planned state | Planned areas remain visible only as gated/locked results. |
 | Redaction | No token, credential, subscription URL, raw config/log/env, SQLite row, or customer-private data. |
@@ -131,13 +155,13 @@ rendered UI text or unsafe backend/raw material.
 
 1. Search never reads or indexes secrets, raw logs, raw config, raw env,
    SQLite rows, subscription URLs, credentials, or customer-private data.
-2. Search results route to active pages or planned locked slots only.
+2. Search results route to active pages, page-owned safe object contexts, or planned locked slots only.
 3. `Operations Overview`, `Accounts & Resources`, and `Usage & Channels`
    remain the active page anchors.
 4. Planned slots are discoverable but not executable.
 5. Keyboard focus is visible, named, and testable.
-6. Tests cover result filtering, planned-slot handling, empty state, and
-   redaction boundaries.
+6. Tests cover result filtering, typed object lookup, planned-slot handling,
+   empty state, and redaction boundaries.
 
 ## Lane 2: GCC-78 Workspace Preset And Restore
 

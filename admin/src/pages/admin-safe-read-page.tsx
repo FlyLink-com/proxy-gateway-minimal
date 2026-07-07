@@ -12,6 +12,12 @@ import {
 import { pageContexts, pageTitles, type AdminPage } from "../app/navigation";
 import type {
   AdminListPageInfo,
+  AdminPaymentOrderSummary,
+  AdminPaymentRefundApprovalInput,
+  AdminPaymentRefundApprovalResult,
+  AdminPaymentRefundQuoteInput,
+  AdminPaymentRefundQuoteResult,
+  CreatePlatformEntitlementInput,
   NodeBandwidthSummary,
   NodeBandwidthSummaryRow,
   NodeBandwidthUtilizationState,
@@ -292,6 +298,7 @@ type UserManagementDeletionPreview = {
 };
 
 export type UserManagementLifecycleHandlers = {
+  createEntitlement?: (userId: string, input: CreatePlatformEntitlementInput) => Promise<PlatformEntitlementSummary>;
   create: (
     input: UserManagementLifecycleMutationInput & {
       displayName: string;
@@ -303,6 +310,19 @@ export type UserManagementLifecycleHandlers = {
   disable: (userId: string, input: UserManagementDeletePreviewInput) => Promise<void>;
   previewDelete: (userId: string, input: UserManagementDeletePreviewInput) => Promise<UserManagementDeletionPreview>;
 };
+
+type UserManagementEntitlementPreset = {
+  days: number;
+  label: string;
+  plan: string;
+  trafficGb: number;
+};
+
+const USER_MANAGEMENT_ENTITLEMENT_PRESETS: UserManagementEntitlementPreset[] = [
+  { days: 30, label: "基础月付", plan: "monthly_basic", trafficGb: 50 },
+  { days: 30, label: "标准月付", plan: "monthly_plus", trafficGb: 100 },
+  { days: 365, label: "年度套餐", plan: "yearly", trafficGb: 200 }
+];
 
 type OrderManagementRow = {
   accountRef: string;
@@ -317,6 +337,11 @@ type OrderManagementRow = {
   lifecycleTone: MetricTone;
   orderId: string;
   planLevel: string;
+  refundAmountLabel?: string;
+  refundBlockReason?: string;
+  refundEligible?: boolean;
+  refundRemainingDaysLabel?: string;
+  refundStatus?: string;
   status: string;
   statusTone: MetricTone;
   usageEvidence: OrderManagementUsageEvidence;
@@ -334,6 +359,7 @@ type OrderManagementPageConfig = {
     onPageChange?: (page: number) => void | Promise<void>;
     pageSize: number;
     previousLabel: string;
+    rangeLabel?: (range: { firstVisibleRow: number; lastVisibleRow: number; totalRows: number }) => ReactNode;
     showPageSummary: boolean;
     showWhenSinglePage: boolean;
     totalRows?: number;
@@ -374,15 +400,21 @@ export type OrderManagementLifecycleHandlers = {
     requestRef: string,
     input: PortalAccessTrafficLimitUpdateInput
   ) => Promise<PortalAccessTrafficLimitUpdate>;
+  quoteRefund: (
+    orderRef: string,
+    input: AdminPaymentRefundQuoteInput
+  ) => Promise<AdminPaymentRefundQuoteResult>;
+  approveRefund: (
+    orderRef: string,
+    input: AdminPaymentRefundApprovalInput
+  ) => Promise<AdminPaymentRefundApprovalResult>;
 };
-
-type OrderManagementOperation = "approval-preview" | "traffic-limit";
 
 const SAFE_READ_PAGE_CONFIGS: Partial<Record<AdminPage, SafeReadPageConfig>> = {
   userManagement: {
     figmaNodeId: "59:4",
     primaryActionLabel: "Create User",
-    queryPlaceholder: "Search User ID, name, email...",
+    queryPlaceholder: "Search login email, plan, status...",
     metrics: [
       { label: "Users", value: "5", meta: "Enabled 3 · Review 1 · Disabled 1", tone: "good" },
       { label: "Plans", value: "3", meta: "Standard, trial, enterprise", tone: "info" },
@@ -390,7 +422,7 @@ const SAFE_READ_PAGE_CONFIGS: Partial<Record<AdminPage, SafeReadPageConfig>> = {
       { label: "Access", value: "24h", meta: "Recent safe access window", tone: "neutral" }
     ],
     table: {
-      columns: ["User ID", "Display Name", "Email", "Plan", "Status", "Risk", "Last Access", "Actions"],
+      columns: ["Login Email", "Plan", "Status", "Risk", "Created", "Last Access", "Actions"],
       rows: [
         ["user_001", "Global Operator", "redacted", "standard", "Enabled", "Low", "13:42", "View"],
         ["user_002", "Review Account", "redacted", "trial", "Review", "Watch", "12:10", "View"],
@@ -404,11 +436,11 @@ const SAFE_READ_PAGE_CONFIGS: Partial<Record<AdminPage, SafeReadPageConfig>> = {
   },
   orderManagement: {
     figmaNodeId: "58:4",
-    primaryActionLabel: "Create Order",
+    primaryActionLabel: "Export Records",
     queryPlaceholder: "Search order ID, account ref, plan...",
     metrics: [
-      { label: "Total Orders", value: "1,248", meta: "Registry volume", tone: "good" },
-      { label: "Pending Actions", value: "18", meta: "Review delivery or lifecycle", tone: "warning" },
+      { label: "Total Records", value: "1,248", meta: "Ledger volume", tone: "good" },
+      { label: "Pending Actions", value: "18", meta: "Review payment or refund", tone: "warning" },
       { label: "Suspended", value: "4", meta: "Paused or blocked", tone: "danger" },
       { label: "Delivery", value: "97%", meta: "Visible safe state only", tone: "info" }
     ],
@@ -421,8 +453,8 @@ const SAFE_READ_PAGE_CONFIGS: Partial<Record<AdminPage, SafeReadPageConfig>> = {
       ]
     },
     panels: [
-      { label: "Order mutations", status: "Locked", detail: "Order create, pause, archive, and subscription artifact changes need a reviewed backend task.", tone: "warning" },
-      { label: "Safe projection", status: "Ready", detail: "Rows carry account/order refs and delivery state only.", tone: "good" }
+      { label: "Record actions", status: "Locked", detail: "Refund, adjustment, and export controls need a reviewed backend task.", tone: "warning" },
+      { label: "Safe projection", status: "Ready", detail: "Rows carry account refs, order refs, payment state, and delivery state only.", tone: "good" }
     ]
   },
   userAccessLogs: {
@@ -550,12 +582,13 @@ const USER_MANAGEMENT_PAGE_CONFIG: UserManagementPageConfig = {
     showPageSummary: false,
     showWhenSinglePage: true
   },
-  queryPlaceholder: "Search User ID, name, email...",
+  queryPlaceholder: "Search login email, plan, status...",
   tableAriaLabel: "User Management redacted table",
   rows: [
     createUserManagementRow({
       createdDate: "2026-01-18",
-      displayName: "User Alpha",
+      displayName: "alpha@example.test",
+      email: "alpha@example.test",
       id: "user_management_001",
       lastAccess: "2026-01-18 13:42",
       plan: "Pro",
@@ -567,7 +600,8 @@ const USER_MANAGEMENT_PAGE_CONFIG: UserManagementPageConfig = {
     }),
     createUserManagementRow({
       createdDate: "2026-01-18",
-      displayName: "User Beta",
+      displayName: "beta@example.test",
+      email: "beta@example.test",
       id: "user_management_002",
       lastAccess: "2026-01-18 13:21",
       plan: "Team",
@@ -579,7 +613,8 @@ const USER_MANAGEMENT_PAGE_CONFIG: UserManagementPageConfig = {
     }),
     createUserManagementRow({
       createdDate: "2026-01-18",
-      displayName: "User Gamma",
+      displayName: "gamma@example.test",
+      email: "gamma@example.test",
       id: "user_management_003",
       lastAccess: "2026-01-18 12:58",
       plan: "Pro",
@@ -591,7 +626,8 @@ const USER_MANAGEMENT_PAGE_CONFIG: UserManagementPageConfig = {
     }),
     createUserManagementRow({
       createdDate: "2026-01-18",
-      displayName: "User Delta",
+      displayName: "delta@example.test",
+      email: "delta@example.test",
       id: "user_management_004",
       lastAccess: "2026-01-18 12:20",
       plan: "Team",
@@ -603,7 +639,8 @@ const USER_MANAGEMENT_PAGE_CONFIG: UserManagementPageConfig = {
     }),
     createUserManagementRow({
       createdDate: "2026-01-18",
-      displayName: "User Epsilon",
+      displayName: "epsilon@example.test",
+      email: "epsilon@example.test",
       id: "user_management_005",
       lastAccess: "2026-01-18 11:44",
       plan: "Pro",
@@ -615,7 +652,8 @@ const USER_MANAGEMENT_PAGE_CONFIG: UserManagementPageConfig = {
     }),
     createUserManagementRow({
       createdDate: "2026-01-18",
-      displayName: "User Zeta",
+      displayName: "zeta@example.test",
+      email: "zeta@example.test",
       id: "user_management_006",
       lastAccess: "2026-01-18 11:12",
       plan: "Team",
@@ -627,7 +665,8 @@ const USER_MANAGEMENT_PAGE_CONFIG: UserManagementPageConfig = {
     }),
     createUserManagementRow({
       createdDate: "2026-01-18",
-      displayName: "User Eta",
+      displayName: "eta@example.test",
+      email: "eta@example.test",
       id: "user_management_007",
       lastAccess: "2026-01-18 10:58",
       plan: "Pro",
@@ -639,7 +678,8 @@ const USER_MANAGEMENT_PAGE_CONFIG: UserManagementPageConfig = {
     }),
     createUserManagementRow({
       createdDate: "2026-01-18",
-      displayName: "User Theta",
+      displayName: "theta@example.test",
+      email: "theta@example.test",
       id: "user_management_008",
       lastAccess: "2026-01-18 10:31",
       plan: "Team",
@@ -653,78 +693,79 @@ const USER_MANAGEMENT_PAGE_CONFIG: UserManagementPageConfig = {
 };
 
 const ORDER_MANAGEMENT_PAGE_CONFIG: OrderManagementPageConfig = {
-  actionLabel: "Create Order · Gated",
-  detailAriaLabel: "Order Management redacted detail panel",
+  actionLabel: "导出记录",
+  detailAriaLabel: "订单记录详情",
   figmaNodeId: "58:4",
-  filters: ["Status", "Plan", "Lifecycle", "Delivery"],
+  filters: ["状态", "套餐", "周期", "交付"],
   pagination: {
-    nextLabel: "Next",
+    nextLabel: "下一页",
     pageSize: SAFE_READ_TABLE_FIXED_ROW_COUNT,
-    previousLabel: "Prev",
+    previousLabel: "上一页",
+    rangeLabel: ({ firstVisibleRow, lastVisibleRow, totalRows }) => `显示 ${firstVisibleRow}-${lastVisibleRow} / ${totalRows.toLocaleString("zh-CN")}`,
     showPageSummary: false,
     showWhenSinglePage: true
   },
-  queryPlaceholder: "Search ID, account ref, or lifecycle…",
-  tableAriaLabel: "Order Management redacted table",
+  queryPlaceholder: "搜索订单号、账户或状态…",
+  tableAriaLabel: "订单记录列表",
   usageSummary: {
     measuredOrders: 0,
     pendingOrders: 4,
-    sourceLabel: "Fixture order ledger",
+    sourceLabel: "订单核对记录",
     totalOrders: 4,
-    totalUsedLabel: "Not observed",
+    totalUsedLabel: "暂无记录",
     userAggregateCount: 0
   },
   rows: [
     createOrderManagementRow({
       accountRef: "enterprise_alpha_01",
-      assignedQuota: "120 / 1d",
-      delivery: "Delivered",
+      assignedQuota: "120 GB / 天",
+      delivery: "已开通",
       deliveryTone: "success",
       id: "order_management_4029",
-      lifecycle: "Active",
+      lifecycle: "使用中",
       lifecycleTone: "success",
       orderId: "ORD-4029",
-      planLevel: "Tier 3 / Pro",
-      status: "Active",
+      planLevel: "专业套餐",
+      status: "生效",
       statusTone: "success"
     }),
     createOrderManagementRow({
       accountRef: "enterprise_alpha_01",
-      assignedQuota: "120 / 1d",
-      delivery: "Pending",
+      assignedQuota: "120 GB / 天",
+      delivery: "待开通",
       deliveryTone: "warning",
       id: "order_management_4030",
-      lifecycle: "Trial",
+      lifecycle: "试用中",
       lifecycleTone: "warning",
       orderId: "ORD-4030",
-      planLevel: "Tier 3 / Pro",
-      status: "Paused",
+      planLevel: "专业套餐",
+      status: "待处理",
       statusTone: "warning"
     }),
     createOrderManagementRow({
       accountRef: "enterprise_alpha_01",
-      assignedQuota: "120 / 1d",
-      delivery: "Blocked",
+      assignedQuota: "120 GB / 天",
+      delivery: "需处理",
       deliveryTone: "danger",
       id: "order_management_4031",
-      lifecycle: "Suspended",
+      lifecycle: "已暂停",
       lifecycleTone: "danger",
       orderId: "ORD-4031",
-      planLevel: "Tier 3 / Pro",
-      status: "Disabled",
+      planLevel: "专业套餐",
+      status: "已停用",
       statusTone: "danger"
     }),
     createOrderManagementRow({
       accountRef: "enterprise_alpha_01",
-      assignedQuota: "120 / 1d",
-      delivery: "Delivered",
+      assignedQuota: "120 GB / 天",
+      delivery: "已开通",
       deliveryTone: "success",
       id: "order_management_4032",
-      lifecycle: "Expiring",
+      lifecycle: "即将到期",
       lifecycleTone: "warning",
       orderId: "ORD-4032",
-      planLevel: "Tier 3 / Pro",
-      status: "Active",
+      planLevel: "专业套餐",
+      status: "生效",
       statusTone: "success"
     })
   ]
@@ -1976,6 +2017,7 @@ export function AdminSafeReadPage({
   page,
   orderManagementLifecycle,
   orderManagementPageInfo,
+  orderManagementPayments,
   onOrderManagementPageChange,
   orderManagementRequests,
   orderManagementUsageMonitor,
@@ -1988,6 +2030,7 @@ export function AdminSafeReadPage({
   page: AdminPage;
   orderManagementLifecycle?: OrderManagementLifecycleHandlers;
   orderManagementPageInfo?: AdminListPageInfo;
+  orderManagementPayments?: AdminPaymentOrderSummary[];
   orderManagementUsageMonitor?: SubscriptionUsageMonitor;
   nodeBandwidthSummary?: NodeBandwidthSummary;
   onOrderManagementPageChange?: (page: number) => void | Promise<void>;
@@ -2024,7 +2067,13 @@ export function AdminSafeReadPage({
   }
 
   if (page === "orderManagement") {
-    const orderManagementConfig = orderManagementRequests !== undefined
+    const orderManagementConfig = orderManagementPayments !== undefined
+      ? createOrderManagementPageConfigFromPaymentOrders(
+        orderManagementPayments,
+        orderManagementPageInfo,
+        onOrderManagementPageChange
+      )
+      : orderManagementRequests !== undefined
       ? createOrderManagementPageConfigFromPortalAccessRequests(
         orderManagementRequests,
         orderManagementPageInfo,
@@ -2136,6 +2185,7 @@ function isAuditLogPage(page: AdminPage): page is "userAccessLogs" | "userOperat
 function createUserManagementRow(input: {
   createdDate: string;
   displayName: string;
+  email: string;
   id: string;
   lastAccess: string;
   plan: string;
@@ -2148,15 +2198,14 @@ function createUserManagementRow(input: {
   const row: UserManagementRow = {
     ...input,
     detail: { fields: [] },
-    email: "[REDACTED_EMAIL]",
     planTone: "info"
   };
 
   row.detail.fields = [
-    { label: "User ID", value: row.userId },
-    { label: "Display Name", value: row.displayName },
-    { label: "Email", value: row.email },
-    { label: "Plan", value: row.plan },
+    { label: "Login Email", value: row.email },
+    { label: "账户权益", value: row.plan },
+    { label: "可用时间", value: "按账户权益记录" },
+    { label: "共享月流量", value: "按套餐档位" },
     { label: "Status", tone: row.statusTone, value: row.status },
     { label: "Risk Level", tone: row.riskTone, value: row.risk },
     { label: "Created Date", value: row.createdDate },
@@ -2168,6 +2217,7 @@ function createUserManagementRow(input: {
 
 function createOrderManagementRow(input: {
   accountRef: string;
+  additionalDetailFields?: NodeHealthField[];
   assignedQuota: string;
   delivery: string;
   deliveryTone: MetricTone;
@@ -2176,6 +2226,11 @@ function createOrderManagementRow(input: {
   lifecycleTone: MetricTone;
   orderId: string;
   planLevel: string;
+  refundAmountLabel?: string;
+  refundBlockReason?: string;
+  refundEligible?: boolean;
+  refundRemainingDaysLabel?: string;
+  refundStatus?: string;
   status: string;
   statusTone: MetricTone;
   usageEvidence?: OrderManagementUsageEvidence;
@@ -2187,15 +2242,16 @@ function createOrderManagementRow(input: {
   };
 
   row.detail.fields = [
-    { label: "Order ID", value: row.orderId },
-    { label: "Account Ref", value: row.accountRef },
-    { label: "Plan Level", value: row.planLevel },
-    { label: "Assigned Quota", value: row.assignedQuota },
-    { label: "Used Traffic", value: row.usageEvidence.usedLimitLabel },
-    { label: "Usage Collection", tone: row.usageEvidence.collectionTone, value: row.usageEvidence.collectionLabel },
-    { label: "Last Usage", value: row.usageEvidence.lastObservedLabel },
-    { label: "Lifecycle", tone: row.lifecycleTone, value: row.lifecycle },
-    { label: "Delivery", tone: row.deliveryTone, value: row.delivery }
+    { label: "订单号", value: row.orderId },
+    { label: "账户", value: row.accountRef },
+    { label: "套餐", value: formatOrderPlanLabel(row.planLevel) },
+    { label: "额度", value: formatOrderQuotaLabel(row.assignedQuota) },
+    ...(input.additionalDetailFields ?? []),
+    { label: "已用流量", value: row.usageEvidence.usedLimitLabel },
+    { label: "用量记录", tone: row.usageEvidence.collectionTone, value: row.usageEvidence.collectionLabel },
+    { label: "最近使用", value: row.usageEvidence.lastObservedLabel },
+    { label: "订阅状态", tone: row.lifecycleTone, value: row.lifecycle },
+    { label: "开通状态", tone: row.deliveryTone, value: row.delivery }
   ];
 
   return row;
@@ -2203,15 +2259,15 @@ function createOrderManagementRow(input: {
 
 function defaultOrderManagementUsageEvidence(assignedQuota: string): OrderManagementUsageEvidence {
   return {
-    collectionLabel: "Not connected",
+    collectionLabel: "暂无用量记录",
     collectionTone: "neutral",
-    lastObservedLabel: "Not observed",
-    orderCountLabel: "1 order · 0 measured",
-    sourceLabel: "Order management fixture",
-    uploadDownloadLabel: "0 B up / 0 B down",
-    usageRatioLabel: "No measured usage",
-    userTotalLabel: "No user aggregate",
-    usedLimitLabel: `Not observed / ${assignedQuota}`
+    lastObservedLabel: "暂无记录",
+    orderCountLabel: "1 个订单 · 暂无用量",
+    sourceLabel: "订单核对记录",
+    uploadDownloadLabel: "上传 0 B / 下载 0 B",
+    usageRatioLabel: "暂无用量",
+    userTotalLabel: "暂无账户合计",
+    usedLimitLabel: `暂无用量 / ${formatOrderQuotaLabel(assignedQuota)}`
   };
 }
 
@@ -2379,6 +2435,263 @@ function createOrderManagementPageConfigFromPortalAccessRequests(
   };
 }
 
+function createOrderManagementPageConfigFromPaymentOrders(
+  payments: readonly AdminPaymentOrderSummary[],
+  pageInfo?: AdminListPageInfo,
+  onPageChange?: (page: number) => void | Promise<void>
+): OrderManagementPageConfig {
+  const pageSize = pageInfo?.limit ?? ORDER_MANAGEMENT_PAGE_CONFIG.pagination.pageSize;
+  const currentPage = pageInfo ? Math.floor(pageInfo.offset / Math.max(1, pageSize)) + 1 : undefined;
+  return {
+    ...ORDER_MANAGEMENT_PAGE_CONFIG,
+    pagination: {
+      ...ORDER_MANAGEMENT_PAGE_CONFIG.pagination,
+      currentPage,
+      displayTotalRows: pageInfo?.totalRows ?? payments.length,
+      onPageChange,
+      pageSize,
+      totalRows: pageInfo?.totalRows
+    },
+    rows: payments.map(createOrderManagementRowFromPaymentOrder),
+    usageSummary: paymentOrderUsageSummary(payments)
+  };
+}
+
+function createOrderManagementRowFromPaymentOrder(order: AdminPaymentOrderSummary): OrderManagementRow {
+  const status = paymentOrderStatusLabel(order.status);
+  const delivery = paymentOrderDeliveryLabel(order.status);
+  const refundStatus = paymentOrderRefundStatusLabel(order.refund?.status);
+  const refundAmountLabel = paymentOrderRefundAmountLabel(order);
+  const refundRemainingDaysLabel = paymentOrderRefundRemainingDaysLabel(order);
+  return createOrderManagementRow({
+    accountRef: paymentOrderAccountRef(order),
+    additionalDetailFields: [
+      { label: "支付金额", value: paymentOrderAmountLabel(order) },
+      { label: "支付方式", value: paymentOrderChannelLabel(order.channel) },
+      { label: "支付交易号", value: order.providerOrderRef || "暂无记录" },
+      { label: "开通申请", value: order.accessRequestRef || "未创建" },
+      { label: "申请状态", value: paymentOrderAccessRequestStatusLabel(order.accessRequestStatus) },
+      { label: "退款状态", value: refundStatus },
+      { label: "可退金额", value: refundAmountLabel },
+      { label: "剩余天数", value: refundRemainingDaysLabel },
+      { label: "支付时间", value: formatOrderUsageDate(order.paidAt) },
+      { label: "创建时间", value: formatOrderUsageDate(order.createdAt) }
+    ],
+    assignedQuota: paymentOrderAmountLabel(order),
+    delivery,
+    deliveryTone: paymentOrderStatusTone(order.status),
+    id: order.orderRef,
+    lifecycle: "支付核对",
+    lifecycleTone: "info",
+    orderId: order.orderRef,
+    planLevel: order.planLabel || titleCaseSafe(order.plan),
+    refundAmountLabel,
+    refundBlockReason: paymentOrderRefundBlockReason(order),
+    refundEligible: isPaymentOrderRefundEligible(order),
+    refundRemainingDaysLabel,
+    refundStatus,
+    status,
+    statusTone: paymentOrderStatusTone(order.status),
+    usageEvidence: {
+      collectionLabel: paymentOrderCollectionLabel(order.status),
+      collectionTone: paymentOrderStatusTone(order.status),
+      lastObservedLabel: formatOrderUsageDate(order.paidAt || order.createdAt),
+      orderCountLabel: "1 个支付订单",
+      sourceLabel: "支付订单记录",
+      uploadDownloadLabel: "不适用",
+      usageRatioLabel: paymentOrderAccessRequestLabel(order),
+      userTotalLabel: paymentOrderAccountRef(order),
+      usedLimitLabel: paymentOrderAmountLabel(order)
+    }
+  });
+}
+
+function paymentOrderUsageSummary(payments: readonly AdminPaymentOrderSummary[]): OrderManagementUsageSummary {
+  const deliveredOrders = payments.filter((order) => order.status === "paid_access_delivered").length;
+  return {
+    measuredOrders: deliveredOrders,
+    pendingOrders: Math.max(0, payments.length - deliveredOrders),
+    sourceLabel: "支付订单记录",
+    totalOrders: payments.length,
+    totalUsedLabel: paymentOrderTotalAmountLabel(payments),
+    userAggregateCount: 0
+  };
+}
+
+function paymentOrderAccountRef(order: AdminPaymentOrderSummary) {
+  return order.loginRef || order.displayRef || order.accessRequestRef || "Payment account";
+}
+
+function paymentOrderAccessRequestLabel(order: AdminPaymentOrderSummary) {
+  if (!order.accessRequestRef) return "未创建开通申请";
+  return order.accessRequestStatus
+    ? `${order.accessRequestRef} · ${paymentOrderAccessRequestStatusLabel(order.accessRequestStatus)}`
+    : order.accessRequestRef;
+}
+
+function paymentOrderAccessRequestStatusLabel(status?: string | null) {
+  switch (status) {
+    case undefined:
+    case null:
+    case "":
+      return "未创建";
+    case "pending_admin_review":
+      return "待审核";
+    case "approved_pending_delivery":
+      return "待开通";
+    case "delivered":
+      return "已开通";
+    case "rejected":
+      return "已拒绝";
+    case "cancelled":
+      return "已取消";
+    case "expired":
+      return "已过期";
+    case "revoked":
+      return "已撤销";
+    default:
+      return titleCaseSafe(status);
+  }
+}
+
+function paymentOrderAmountLabel(order: Pick<AdminPaymentOrderSummary, "amountMinor" | "currency">) {
+  const amount = Number(order.amountMinor);
+  const currency = order.currency || "CNY";
+  const major = Number.isFinite(amount) ? amount / 100 : 0;
+  const prefix = currency.toUpperCase() === "CNY" ? "¥" : `${currency.toUpperCase()} `;
+  return `${prefix}${major.toFixed(2)} ${currency.toUpperCase()}`;
+}
+
+function paymentOrderTotalAmountLabel(payments: readonly AdminPaymentOrderSummary[]) {
+  if (payments.length === 0) return "¥0.00 CNY";
+  const currency = payments[0]?.currency || "CNY";
+  const amountMinor = payments
+    .filter((order) => (order.currency || "CNY").toUpperCase() === currency.toUpperCase())
+    .reduce((sum, order) => sum + Number(order.amountMinor || 0), 0);
+  return paymentOrderAmountLabel({ amountMinor, currency });
+}
+
+function paymentOrderStatusLabel(status: AdminPaymentOrderSummary["status"]) {
+  switch (status) {
+    case "pending_payment":
+      return "待付款";
+    case "payment_amount_mismatch":
+      return "金额需核对";
+    case "payment_channel_mismatch":
+      return "支付方式需核对";
+    case "payment_failed":
+      return "支付失败";
+    case "payment_provider_order_mismatch":
+      return "支付记录需核对";
+    case "paid_pending_admin_review":
+      return "已付款待审核";
+    case "paid_access_delivered":
+      return "已开通";
+    case "paid_delivery_blocked":
+      return "开通需处理";
+    default:
+      return titleCaseSafe(status);
+  }
+}
+
+function paymentOrderChannelLabel(channel?: string) {
+  switch ((channel || "").toLowerCase()) {
+    case "alipay":
+      return "支付宝";
+    case "wxpay":
+      return "微信支付";
+    case "qqpay":
+      return "QQ 支付";
+    case "bank":
+      return "银行卡";
+    case "jdpay":
+      return "京东支付";
+    case "":
+      return "暂无记录";
+    default:
+      return titleCaseSafe(channel || "unknown");
+  }
+}
+
+function paymentOrderDeliveryLabel(status: AdminPaymentOrderSummary["status"]) {
+  if (status === "paid_access_delivered") return "已开通";
+  if (status === "paid_delivery_blocked") return "开通需处理";
+  if (status === "paid_pending_admin_review") return "待审核";
+  if (status === "pending_payment") return "待付款";
+  return "需处理";
+}
+
+function paymentOrderCollectionLabel(status: AdminPaymentOrderSummary["status"]) {
+  if (status === "paid_access_delivered") return "已开通";
+  if (status === "pending_payment") return "待付款";
+  return paymentOrderStatusLabel(status);
+}
+
+function paymentOrderStatusTone(status: AdminPaymentOrderSummary["status"]): MetricTone {
+  if (status === "paid_access_delivered") return "success";
+  if (status === "pending_payment" || status === "paid_pending_admin_review") return "warning";
+  return "danger";
+}
+
+function paymentOrderRefundStatusLabel(status?: string) {
+  switch (status) {
+    case undefined:
+    case "":
+      return "未申请";
+    case "not_requested":
+      return "未申请";
+    case "refund_requested":
+      return "已申请";
+    case "refund_approved":
+      return "已批准";
+    case "refund_pending_provider":
+      return "等待退款通道处理";
+    case "refund_succeeded":
+      return "已退款";
+    case "refund_failed":
+      return "退款失败";
+    case "refund_rejected":
+      return "已拒绝";
+    default:
+      return titleCaseSafe(status);
+  }
+}
+
+function paymentOrderRefundAmountLabel(order: AdminPaymentOrderSummary) {
+  const amountMinor = order.refund?.amountMinor;
+  if (!Number.isInteger(amountMinor)) return "待核算";
+  return paymentOrderAmountLabel({ amountMinor: amountMinor ?? 0, currency: order.currency });
+}
+
+function paymentOrderRefundRemainingDaysLabel(order: AdminPaymentOrderSummary) {
+  const remainingDays = order.refund?.remainingDays;
+  if (!Number.isInteger(remainingDays)) return "待核算";
+  return `${remainingDays} 天`;
+}
+
+function isPaymentOrderRefundEligible(order: AdminPaymentOrderSummary) {
+  const refundableStatuses = new Set([
+    "paid_pending_admin_review",
+    "paid_access_delivered",
+    "paid_delivery_blocked"
+  ]);
+  const closedRefundStatuses = new Set([
+    "refund_approved",
+    "refund_pending_provider",
+    "refund_succeeded",
+    "refund_rejected"
+  ]);
+  return refundableStatuses.has(order.status)
+    && !closedRefundStatuses.has(order.refund?.status ?? "");
+}
+
+function paymentOrderRefundBlockReason(order: AdminPaymentOrderSummary) {
+  if (order.status === "payment_provider_order_mismatch" || order.status === "payment_channel_mismatch") {
+    return "支付记录与原订单不一致，请先完成账务核对后再处理退款。";
+  }
+  return undefined;
+}
+
 function orderManagementUsageSummary(
   requests: readonly PortalAccessRequestSummary[],
   usageMonitor?: SubscriptionUsageMonitor
@@ -2395,8 +2708,8 @@ function orderManagementUsageSummary(
     measuredOrders,
     pendingOrders: Math.max(0, totalOrders - measuredOrders),
     sourceLabel: usageMonitor?.safety.userAggregatedRows
-      ? "Billing orders + user usage aggregates"
-      : "Billing orders",
+      ? "订单与账户用量"
+      : "订单记录",
     totalOrders,
     totalUsedLabel: formatOrderBytes(totalUsedBytes),
     userAggregateCount: usageMonitor?.userAggregates?.length ?? 0
@@ -2437,46 +2750,46 @@ function orderManagementUsageEvidenceForRequest(
   const ratio = usageRatioLabel(usedBytes, limitBytes, request.usage?.usageRatio);
 
   return {
-    collectionLabel: titleCaseSafe(collectionStatus),
+    collectionLabel: usageCollectionLabel(collectionStatus),
     collectionTone: usageCollectionTone(collectionStatus),
     lastObservedLabel: formatOrderUsageDate(lastObservedAt),
     orderCountLabel: userAggregate
-      ? `${userAggregate.orderCount} orders · ${userAggregate.measuredOrders} measured`
-      : "1 order",
+      ? `${userAggregate.orderCount} 个订单 · ${userAggregate.measuredOrders} 个有用量`
+      : "1 个订单",
     sourceLabel: usageRow
-      ? "Usage monitor order row"
+      ? "订单用量记录"
       : userAggregate
-        ? "User aggregate fallback"
+        ? "账户用量合计"
         : request.usage
-          ? "Order usage summary"
-          : "No usage evidence",
-    uploadDownloadLabel: `${formatOrderBytes(uploadBytes)} up / ${formatOrderBytes(downloadBytes)} down`,
+          ? "订单用量摘要"
+          : "暂无用量记录",
+    uploadDownloadLabel: `上传 ${formatOrderBytes(uploadBytes)} / 下载 ${formatOrderBytes(downloadBytes)}`,
     usageRatioLabel: ratio,
     userTotalLabel: userAggregate
-      ? `${formatOrderBytes(userAggregate.usedBytes)} user total`
-      : "No user aggregate",
+      ? `${formatOrderBytes(userAggregate.usedBytes)} 账户合计`
+      : "暂无账户合计",
     usedLimitLabel: limitBytes > 0
-      ? `${formatOrderBytes(usedBytes)} / ${formatOrderBytes(limitBytes)}`
-      : `${formatOrderBytes(usedBytes)} / unmetered`
+      ? `已用 ${formatOrderBytes(usedBytes)} / 总额 ${formatOrderBytes(limitBytes)}`
+      : `已用 ${formatOrderBytes(usedBytes)} / 不限量`
   };
 }
 
 function portalAccessRequestStatusLabel(status: PortalAccessRequestSummary["status"]) {
   switch (status) {
     case "pending_admin_review":
-      return "Pending";
+      return "待审核";
     case "approved_pending_delivery":
-      return "Approved";
+      return "待开通";
     case "delivered":
-      return "Delivered";
+      return "已开通";
     case "rejected":
-      return "Rejected";
+      return "已拒绝";
     case "cancelled":
-      return "Cancelled";
+      return "已取消";
     case "expired":
-      return "Expired";
+      return "已过期";
     case "revoked":
-      return "Revoked";
+      return "已撤销";
     default:
       return titleCaseSafe(status);
   }
@@ -2491,13 +2804,13 @@ function portalAccessRequestStatusTone(status: PortalAccessRequestSummary["statu
 function portalAccessRequestLifecycleLabel(nextAction: string) {
   switch (nextAction) {
     case "admin_review_required":
-      return "Admin Review";
+      return "待审核";
     case "admin_delivery_required":
-      return "Delivery";
+      return "待开通";
     case "user_can_use_access":
-      return "Active";
+      return "使用中";
     case "request_closed":
-      return "Closed";
+      return "已结束";
     default:
       return titleCaseSafe(nextAction);
   }
@@ -2512,13 +2825,13 @@ function portalAccessRequestLifecycleTone(nextAction: string): MetricTone {
 function portalAccessRequestDeliveryLabel(status: PortalAccessRequestSummary["status"]) {
   switch (status) {
     case "delivered":
-      return "Delivered";
+      return "已开通";
     case "approved_pending_delivery":
-      return "Queued";
+      return "待开通";
     case "pending_admin_review":
-      return "Not Delivered";
+      return "待审核";
     default:
-      return "Blocked";
+      return "需处理";
   }
 }
 
@@ -2533,7 +2846,7 @@ function portalAccessRequestQuotaLabel(request: PortalAccessRequestSummary) {
   if (typeof byteLimit === "number" && Number.isFinite(byteLimit) && byteLimit > 0) {
     return formatOrderBytes(byteLimit);
   }
-  return `${request.durationDays} days`;
+  return `${request.durationDays} 天`;
 }
 
 function safeUsageBytes(value: unknown) {
@@ -2543,15 +2856,31 @@ function safeUsageBytes(value: unknown) {
 
 function usageRatioLabel(usedBytes: number, limitBytes: number, sourceRatio?: number) {
   if (limitBytes > 0) {
-    return `${clampPercent((usedBytes / limitBytes) * 100)}% of limit`;
+    return `已用 ${clampPercent((usedBytes / limitBytes) * 100)}%`;
   }
   if (typeof sourceRatio === "number" && Number.isFinite(sourceRatio) && sourceRatio > 0) {
-    return `${clampPercent(sourceRatio * 100)}% reported`;
+    return `已记录 ${clampPercent(sourceRatio * 100)}%`;
   }
   if (usedBytes > 0) {
-    return "Measured unmetered";
+    return "已记录用量";
   }
-  return "No measured usage";
+  return "暂无用量";
+}
+
+function usageCollectionLabel(status: string) {
+  switch (status) {
+    case "measured":
+      return "已记录";
+    case "measured_zero":
+      return "暂无消耗";
+    case "stale":
+      return "待更新";
+    case "collector_disabled":
+    case "not_collected":
+      return "暂无用量记录";
+    default:
+      return titleCaseSafe(status);
+  }
 }
 
 function usageCollectionTone(status: string): MetricTone {
@@ -2563,7 +2892,7 @@ function usageCollectionTone(status: string): MetricTone {
 }
 
 function formatOrderUsageDate(value: string | null | undefined) {
-  if (!value) return "Not observed";
+  if (!value) return "暂无记录";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
     return value;
@@ -2581,6 +2910,37 @@ function formatOrderBytes(bytes: number) {
     return `${Number.isInteger(mib) ? mib.toFixed(0) : mib.toFixed(1)} MB`;
   }
   return `${bytes} B`;
+}
+
+function formatOrderPlanLabel(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return "未设置套餐";
+  const lower = normalized.toLowerCase();
+  if (lower.includes("monthly") && lower.includes("plus")) return "月付 Plus";
+  if (lower.includes("yearly") && lower.includes("plus")) return "年度 Plus";
+  if (lower.includes("monthly") && lower.includes("basic")) return "基础月付";
+  if (lower.includes("yearly") && lower.includes("basic")) return "基础年付";
+  if (/^monthly$/i.test(normalized)) return "月付套餐";
+  if (/^yearly$/i.test(normalized)) return "年度套餐";
+  if (/^trial$/i.test(normalized)) return "试用套餐";
+  if (/tier\s*3\s*\/\s*pro/i.test(normalized)) return "专业套餐";
+  if (/tier\s*2|standard/i.test(normalized)) return "标准套餐";
+  if (/tier\s*1|basic/i.test(normalized)) return "基础套餐";
+  return normalized;
+}
+
+function formatOrderQuotaLabel(value: string) {
+  const normalized = value.trim();
+  if (!normalized) return "未设置额度";
+  if (/unmetered|unlimited/i.test(normalized)) return "不限量";
+
+  const dailyMatch = normalized.match(/^(\d+(?:\.\d+)?)\s*\/\s*1d$/i);
+  if (dailyMatch) return `${dailyMatch[1]} GB / 天`;
+
+  const durationMatch = normalized.match(/^(\d+)\s*天$/);
+  if (durationMatch) return `${durationMatch[1]} 天`;
+
+  return normalized.replace(/\b1d\b/gi, "天");
 }
 
 function titleCaseSafe(value: string) {
@@ -2618,17 +2978,12 @@ function AdminUserManagementReadPage({
   const hasRows = visibleRows.length > 0;
   const [selectedRowId, setSelectedRowId] = useState<string>(config.rows[0]?.id ?? "");
   const [activeLifecycleOperation, setActiveLifecycleOperation] = useState<UserManagementLifecycleOperation | null>(null);
-  const [inlineEditDisplayName, setInlineEditDisplayName] = useState("");
-  const [inlineEditError, setInlineEditError] = useState("");
-  const [inlineEditState, setInlineEditState] = useState<"idle" | "submitting" | "submitted" | "error">("idle");
-  const [inlineEditStatus, setInlineEditStatus] = useState("active");
+  const [entitlementPanelOpen, setEntitlementPanelOpen] = useState(false);
   const creatingUser = activeLifecycleOperation === "create";
   const selectedRow = creatingUser ? null : visibleRows.find((row) => row.id === selectedRowId) ?? visibleRows[0];
   const statusOptions = orderedFilterOptions(config.rows.map((row) => row.status), ["Active", "Pending", "Disabled", "Locked", "Review"]);
   const riskOptions = orderedFilterOptions(config.rows.map((row) => row.risk), ["Low", "Medium", "High"]);
   const planOptions = orderedFilterOptions(config.rows.map((row) => row.plan), ["Pilot", "Pro", "Team", "No Plan"]);
-  const accountActionGates = config.actionGates.filter(isUserManagementDryRunAction);
-  const inlineEditing = Boolean(activeLifecycleOperation === "update" && selectedRow);
 
   useEffect(() => {
     if (visibleRows.length > 0 && !visibleRows.some((row) => row.id === selectedRowId)) {
@@ -2636,86 +2991,13 @@ function AdminUserManagementReadPage({
     }
   }, [selectedRowId, visibleRows]);
 
-  useEffect(() => {
-    if (activeLifecycleOperation !== "update" || !selectedRow) {
-      setInlineEditState("idle");
-      setInlineEditError("");
-      return;
-    }
-    setInlineEditDisplayName(selectedRow.displayName);
-    setInlineEditStatus(userManagementLifecycleStatusValue(selectedRow.status));
-    setInlineEditState("idle");
-    setInlineEditError("");
-  }, [
-    activeLifecycleOperation,
-    selectedRow?.displayName,
-    selectedRow?.status,
-    selectedRow?.userId
-  ]);
-
-  async function submitInlineEdit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedRow) {
-      return;
-    }
-    if (!lifecycle) {
-      setInlineEditState("submitted");
-      return;
-    }
-
-    setInlineEditState("submitting");
-    setInlineEditError("");
-    try {
-      await lifecycle.update(selectedRow.userId, {
-        approvalRef: "approval_local_user_lifecycle",
-        displayName: inlineEditDisplayName,
-        operatorRef: "operator_local_admin",
-        reason: "local_admin_user_lifecycle",
-        status: inlineEditStatus
-      });
-      setInlineEditState("submitted");
-    } catch (caught) {
-      setInlineEditState("error");
-      setInlineEditError(caught instanceof Error ? caught.message : "Lifecycle request failed");
-    }
-  }
-
-  function renderUserManagementDetailField(field: NodeHealthField) {
-    if (inlineEditing && field.label === "Display Name") {
-      return (
-        <input
-          aria-label="Display Name"
-          autoComplete="off"
-          onChange={(event) => setInlineEditDisplayName(event.target.value)}
-          required
-          value={inlineEditDisplayName}
-        />
-      );
-    }
-    if (inlineEditing && field.label === "Status") {
-      return (
-        <select
-          aria-label="Status"
-          onChange={(event) => setInlineEditStatus(event.target.value)}
-          value={inlineEditStatus}
-        >
-          <option value="active">active</option>
-          <option value="pending_review">pending_review</option>
-          <option value="suspended">suspended</option>
-          <option value="disabled">disabled</option>
-        </select>
-      );
-    }
-    return renderUserManagementValue(field);
-  }
-
   function renderUserManagementDetailFields() {
     return (
       <dl>
         {selectedRow?.detail.fields.map((field) => (
           <div className="admin-audit-read-detail-field" key={field.label}>
             <dt>{field.label}</dt>
-            <dd>{renderUserManagementDetailField(field)}</dd>
+            <dd>{renderUserManagementValue(field)}</dd>
           </div>
         ))}
       </dl>
@@ -2726,13 +3008,8 @@ function AdminUserManagementReadPage({
     if (operation === "create") {
       setSelectedRowId("");
     }
+    setEntitlementPanelOpen(false);
     setActiveLifecycleOperation(operation);
-  }
-
-  function openAccountAction(gate: UserManagementActionGate) {
-    if (isUserManagementLifecycleOperation(gate.operation)) {
-      openLifecycleOperation(gate.operation);
-    }
   }
 
   return (
@@ -2803,10 +3080,11 @@ function AdminUserManagementReadPage({
             columns={userManagementColumns()}
             fixedRowCount={SAFE_READ_TABLE_FIXED_ROW_COUNT}
             getRowKey={(row) => row.id}
-            getRowLabel={(row) => `${row.id} ${row.userId} ${row.displayName} ${row.status} ${row.risk}`}
+            getRowLabel={(row) => `${row.email} ${row.plan} ${row.status} ${row.risk}`}
             onRowSelect={(row) => {
               setSelectedRowId(row.id);
               setActiveLifecycleOperation(null);
+              setEntitlementPanelOpen(false);
             }}
             pagination={visibleConfig.pagination}
             rows={visibleConfig.rows}
@@ -2826,7 +3104,18 @@ function AdminUserManagementReadPage({
           data-ui-surface="user-management-detail-panel"
         >
           <header>
-            <h2>{creatingUser ? "Create user" : selectedRow ? "User Details" : "No user selected"}</h2>
+            <h2>{creatingUser ? "创建用户" : selectedRow ? "账户详情" : "未选择账户"}</h2>
+            {selectedRow && lifecycle?.createEntitlement ? (
+              <button
+                onClick={() => {
+                  setActiveLifecycleOperation(null);
+                  setEntitlementPanelOpen((current) => !current);
+                }}
+                type="button"
+              >
+                调整权益
+              </button>
+            ) : null}
           </header>
           {creatingUser && lifecycle ? (
             <UserManagementLifecyclePanel
@@ -2837,68 +3126,126 @@ function AdminUserManagementReadPage({
             />
           ) : selectedRow ? (
             <>
-              {inlineEditing ? (
-                <form
-                  aria-label="User Management inline edit form"
-                  className="admin-user-management-inline-edit-form"
-                  onSubmit={submitInlineEdit}
-                >
-                  {renderUserManagementDetailFields()}
-                  {inlineEditState === "submitted" ? (
-                    <p className="admin-user-management-lifecycle-state">
-                      {lifecycle ? "Local lifecycle submitted." : "Preview only. Backend submit is locked."}
-                    </p>
-                  ) : null}
-                  {inlineEditState === "error" ? (
-                    <p className="admin-user-management-lifecycle-state" data-tone="danger">{inlineEditError}</p>
-                  ) : null}
-                  <div className="admin-user-management-dry-run-actions">
-                    <button disabled={inlineEditState === "submitting"} type="submit">
-                      {lifecycle ? "Submit edit" : "Preview edit"}
-                    </button>
-                    <button onClick={() => setActiveLifecycleOperation(null)} type="button">Close</button>
-                  </div>
-                </form>
-              ) : renderUserManagementDetailFields()}
-              <section className="admin-user-management-crud-gates" aria-label="Selected user account dry-run actions">
-                <h3>Account Actions</h3>
-                {accountActionGates.map((gate) => (
-                  <button
-                    className="admin-user-management-crud-action"
-                    data-operation={gate.operation}
-                    key={gate.id}
-                    onClick={() => openAccountAction(gate)}
-                    type="button"
-                  >
-                    {userManagementAccountActionLabel(gate)}
-                  </button>
-                ))}
-              </section>
-              {!lifecycle && activeLifecycleOperation && activeLifecycleOperation !== "update" ? (
-                <section className="admin-user-management-inline-action-state" aria-label="User Management inline action state">
-                  <strong>{userManagementLifecycleTitle(activeLifecycleOperation)}</strong>
-                  <span>{selectedRow.userId}</span>
-                  <span>Preview only. Backend submit is locked.</span>
-                  <button onClick={() => setActiveLifecycleOperation(null)} type="button">Close</button>
-                </section>
+              {renderUserManagementDetailFields()}
+              {entitlementPanelOpen && lifecycle?.createEntitlement ? (
+                <UserManagementEntitlementPanel
+                  accountId={selectedRow.userId}
+                  createEntitlement={lifecycle.createEntitlement}
+                  onClose={() => setEntitlementPanelOpen(false)}
+                />
               ) : null}
             </>
           ) : (
             <p>{tableState?.description ?? "No safe account summary is available for this page state."}</p>
           )}
-          {lifecycle && activeLifecycleOperation && !creatingUser ? (
-            activeLifecycleOperation === "update" ? null : (
-              <UserManagementLifecyclePanel
-                lifecycle={lifecycle}
-                onClose={() => setActiveLifecycleOperation(null)}
-                operation={activeLifecycleOperation}
-                row={selectedRow ?? null}
-              />
-            )
-          ) : null}
         </aside>
       </section>
     </div>
+  );
+}
+
+function UserManagementEntitlementPanel({
+  accountId,
+  createEntitlement,
+  onClose
+}: {
+  accountId: string;
+  createEntitlement: NonNullable<UserManagementLifecycleHandlers["createEntitlement"]>;
+  onClose: () => void;
+}) {
+  const initialPreset = USER_MANAGEMENT_ENTITLEMENT_PRESETS[0];
+  const [plan, setPlan] = useState(initialPreset.plan);
+  const [days, setDays] = useState(initialPreset.days);
+  const [trafficGb, setTrafficGb] = useState(initialPreset.trafficGb);
+  const [submitState, setSubmitState] = useState<"idle" | "submitting" | "submitted" | "error">("idle");
+  const [error, setError] = useState("");
+
+  function applyPreset(nextPlan: string) {
+    const preset = USER_MANAGEMENT_ENTITLEMENT_PRESETS.find((item) => item.plan === nextPlan) ?? initialPreset;
+    setPlan(preset.plan);
+    setDays(preset.days);
+    setTrafficGb(preset.trafficGb);
+  }
+
+  async function submitEntitlement(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitState("submitting");
+    setError("");
+
+    const safeDays = Math.max(1, Number(days) || initialPreset.days);
+    const validUntil = new Date(Date.now() + safeDays * 24 * 60 * 60 * 1000).toISOString();
+
+    try {
+      await createEntitlement(accountId, {
+        plan,
+        quota: {
+          trafficGb: Math.max(1, Number(trafficGb) || initialPreset.trafficGb)
+        },
+        status: "active",
+        validUntil
+      });
+      setSubmitState("submitted");
+    } catch (caught) {
+      setSubmitState("error");
+      setError(caught instanceof Error ? caught.message : "权益保存失败");
+    }
+  }
+
+  return (
+    <form
+      aria-label="账户权益调整"
+      className="admin-user-management-dry-run-panel admin-user-management-entitlement-panel"
+      onSubmit={submitEntitlement}
+    >
+      <header>
+        <h3>账户权益</h3>
+        <StatusChip label="账户级" tone="info" />
+      </header>
+      <div className="admin-user-management-lifecycle-fields">
+        <label>
+          <span>套餐档位</span>
+          <select
+            aria-label="套餐档位"
+            onChange={(event) => applyPreset(event.target.value)}
+            value={plan}
+          >
+            {USER_MANAGEMENT_ENTITLEMENT_PRESETS.map((preset) => (
+              <option key={preset.plan} value={preset.plan}>{preset.label}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>可用天数</span>
+          <input
+            aria-label="可用天数"
+            min={1}
+            onChange={(event) => setDays(Number(event.target.value))}
+            type="number"
+            value={days}
+          />
+        </label>
+        <label>
+          <span>共享月流量 GB/月</span>
+          <input
+            aria-label="共享月流量 GB/月"
+            min={1}
+            onChange={(event) => setTrafficGb(Number(event.target.value))}
+            type="number"
+            value={trafficGb}
+          />
+        </label>
+      </div>
+      {submitState === "submitted" ? (
+        <p className="admin-user-management-lifecycle-state">权益已保存</p>
+      ) : null}
+      {submitState === "error" ? (
+        <p className="admin-user-management-lifecycle-state" data-tone="danger">{error}</p>
+      ) : null}
+      <div className="admin-user-management-dry-run-actions">
+        <button disabled={submitState === "submitting"} type="submit">保存权益</button>
+        <button onClick={onClose} type="button">关闭</button>
+      </div>
+    </form>
   );
 }
 
@@ -2915,7 +3262,6 @@ function UserManagementLifecyclePanel({
 }) {
   const [organization, setOrganization] = useState("");
   const [email, setEmail] = useState("");
-  const [displayName, setDisplayName] = useState("");
   const [status, setStatus] = useState("active");
   const [submitState, setSubmitState] = useState<"idle" | "submitting" | "submitted" | "error">("idle");
   const [error, setError] = useState("");
@@ -2929,13 +3275,12 @@ function UserManagementLifecyclePanel({
   useEffect(() => {
     setOrganization("");
     setEmail("");
-    setDisplayName(operation === "create" ? "" : row?.displayName ?? "");
     setStatus(operation === "create" ? "active" : userManagementLifecycleStatusValue(row?.status));
     setSubmitState("idle");
     setError("");
     setCreateResult(null);
     setDeletePreview(null);
-  }, [operation, row?.displayName, row?.status, row?.userId]);
+  }, [operation, row?.status, row?.userId]);
 
   async function submitLifecycle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -2951,7 +3296,7 @@ function UserManagementLifecyclePanel({
       if (operation === "create") {
         const result = await lifecycle.create({
           approvalRef,
-          displayName,
+          displayName: email,
           email,
           operatorRef,
           organization,
@@ -2962,7 +3307,6 @@ function UserManagementLifecyclePanel({
       } else if (operation === "update" && row) {
         await lifecycle.update(row.userId, {
           approvalRef,
-          displayName,
           operatorRef,
           reason,
           status
@@ -3000,10 +3344,11 @@ function UserManagementLifecyclePanel({
       </header>
       {operation === "create" && createResult?.initialCredential ? (
         <section className="admin-user-management-lifecycle-preview" aria-label="User Management initial credential handoff">
+          <strong>Login email</strong>
+          <code>{createResult.account.email || email}</code>
           <strong>Initial password</strong>
           <code>{createResult.initialCredential.initialPassword}</code>
           <span>Visible once for this local admin-created test user.</span>
-          <span>{createResult.initialCredential.accountId}</span>
         </section>
       ) : null}
       {needsSelectedRow && !row ? <p>No user selected</p> : null}
@@ -3033,15 +3378,6 @@ function UserManagementLifecyclePanel({
         ) : null}
         {operation === "create" || operation === "update" ? (
           <>
-            <label>
-              <span>Display Name</span>
-              <input
-                autoComplete="off"
-                onChange={(event) => setDisplayName(event.target.value)}
-                required
-                value={displayName}
-              />
-            </label>
             <label>
               <span>Status</span>
               <select onChange={(event) => setStatus(event.target.value)} value={status}>
@@ -3077,20 +3413,15 @@ function UserManagementLifecyclePanel({
 }
 
 function AdminOrderManagementReadPage({
-  config,
-  lifecycle
+  config
 }: {
   config: OrderManagementPageConfig;
   lifecycle?: OrderManagementLifecycleHandlers;
 }) {
-  const title = pageTitles.orderManagement;
+  const title = "订单记录";
   const [selectedRowId, setSelectedRowId] = useState<string>(config.rows[0]?.id ?? "");
-  const [activeOperation, setActiveOperation] = useState<OrderManagementOperation | null>(null);
   const selectedRow = config.rows.find((row) => row.id === selectedRowId) ?? config.rows[0];
-
-  useEffect(() => {
-    setActiveOperation(null);
-  }, [selectedRowId]);
+  const detailFields = selectedRow ? orderRecordDetailFields(selectedRow) : [];
 
   return (
     <div
@@ -3100,20 +3431,20 @@ function AdminOrderManagementReadPage({
       data-safe-read-state="readonly"
       data-ui-role="order-management-safe-read-page"
     >
-      <header className="admin-audit-read-header" aria-label={`${title} header`}>
-        <nav className="admin-audit-read-breadcrumb" aria-label={`${title} breadcrumb`}>
-          <span>Home</span>
+      <header className="admin-audit-read-header" aria-label={`${title}页头`}>
+        <nav className="admin-audit-read-breadcrumb" aria-label={`${title}面包屑`}>
+          <span>首页</span>
           <span aria-hidden="true">&gt;</span>
           <span>{title}</span>
         </nav>
-        <div className="admin-audit-read-actions" aria-label={`${title} gated actions`}>
+        <div className="admin-audit-read-actions" aria-label={`${title}操作`}>
           <button disabled type="button">{config.actionLabel}</button>
         </div>
       </header>
 
-      <section className="admin-audit-read-filter-row" aria-label={`${title} query controls`}>
+      <section className="admin-audit-read-filter-row" aria-label={`${title}查询筛选`}>
         <label>
-          <span className="sr-only">{title} search</span>
+          <span className="sr-only">{title}搜索</span>
           <input disabled readOnly value={config.queryPlaceholder} />
         </label>
         {config.filters.map((filter) => (
@@ -3121,7 +3452,7 @@ function AdminOrderManagementReadPage({
         ))}
       </section>
 
-      <section className="admin-audit-read-body" aria-label={`${title} table and detail split`}>
+      <section className="admin-audit-read-body" aria-label={`${title}列表和详情`}>
         <article
           className="admin-audit-read-table-card admin-order-management-table"
           data-figma-component="OrderManagementTableCard"
@@ -3133,7 +3464,7 @@ function AdminOrderManagementReadPage({
             columns={orderManagementColumns()}
             fixedRowCount={SAFE_READ_TABLE_FIXED_ROW_COUNT}
             getRowKey={(row) => row.id}
-            getRowLabel={(row) => `${row.id} ${row.orderId} ${row.accountRef} ${row.status} ${row.lifecycle} ${row.delivery}`}
+            getRowLabel={(row) => `${row.id} ${row.orderId} ${row.accountRef} ${formatOrderPlanLabel(row.planLevel)} ${row.status} ${row.lifecycle} ${row.delivery}`}
             onRowSelect={(row) => setSelectedRowId(row.id)}
             pagination={config.pagination}
             rows={config.rows}
@@ -3148,47 +3479,24 @@ function AdminOrderManagementReadPage({
           data-ui-surface="order-management-detail-panel"
         >
           <header>
-            <h2>Order Details</h2>
+            <h2>{selectedRow ? "记录详情" : "未选择记录"}</h2>
           </header>
-          <dl>
-            {selectedRow.detail.fields.map((field) => (
-              <div className="admin-audit-read-detail-field" key={field.label}>
-                <dt>{field.label}</dt>
-                <dd>{renderOrderManagementValue(field)}</dd>
-              </div>
-            ))}
-          </dl>
-          <section className="admin-order-management-actions" aria-label="Order Management gated evidence handoffs">
-            <button
-              disabled={!lifecycle || !selectedRow}
-              onClick={() => setActiveOperation("approval-preview")}
-              type="button"
-            >
-              Approve Preview
-            </button>
-            <button
-              disabled={!lifecycle || !selectedRow || selectedRow?.delivery !== "Delivered"}
-              onClick={() => setActiveOperation("traffic-limit")}
-              type="button"
-            >
-              Set Traffic Limit
-            </button>
-            <button disabled type="button">Delivery Handoff · Gated</button>
-            <button disabled type="button">View Quota Architecture</button>
-          </section>
           {selectedRow ? (
-            <OrderManagementUsageEvidencePanel
-              summary={config.usageSummary}
-              usageEvidence={selectedRow.usageEvidence}
-            />
-          ) : null}
-          {activeOperation && selectedRow && lifecycle ? (
-            <AdminOrderManagementOperationPanel
-              lifecycle={lifecycle}
-              operation={activeOperation}
-              row={selectedRow}
-              onClose={() => setActiveOperation(null)}
-            />
+            <dl>
+              {detailFields.map((field) => (
+                <div className="admin-audit-read-detail-field" key={field.label}>
+                  <dt>{field.label}</dt>
+                  <dd>{renderOrderManagementValue(field)}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p>当前没有可查看的订单记录。</p>
+          )}
+          {selectedRow?.refundBlockReason ? (
+            <p className="admin-user-management-lifecycle-state" data-tone="danger">
+              {selectedRow.refundBlockReason}
+            </p>
           ) : null}
         </aside>
       </section>
@@ -3196,215 +3504,24 @@ function AdminOrderManagementReadPage({
   );
 }
 
-function OrderManagementUsageEvidencePanel({
-  summary,
-  usageEvidence
-}: {
-  summary: OrderManagementUsageSummary;
-  usageEvidence: OrderManagementUsageEvidence;
-}) {
-  return (
-    <section
-      aria-label="Order Management usage evidence"
-      className="admin-order-management-usage-evidence"
-      data-ui-surface="order-management-usage-evidence"
-    >
-      <header>
-        <h3>Usage & Billing Evidence</h3>
-        <StatusChip label={usageEvidence.collectionLabel} tone={usageEvidence.collectionTone} />
-      </header>
-      <dl>
-        <div>
-          <dt>Order Usage</dt>
-          <dd>{usageEvidence.usedLimitLabel}</dd>
-        </div>
-        <div>
-          <dt>Upload / Download</dt>
-          <dd>{usageEvidence.uploadDownloadLabel}</dd>
-        </div>
-        <div>
-          <dt>Usage Ratio</dt>
-          <dd>{usageEvidence.usageRatioLabel}</dd>
-        </div>
-        <div>
-          <dt>User Aggregate</dt>
-          <dd>{usageEvidence.userTotalLabel}</dd>
-        </div>
-        <div>
-          <dt>Orders</dt>
-          <dd>{usageEvidence.orderCountLabel}</dd>
-        </div>
-        <div>
-          <dt>Last Observed</dt>
-          <dd>{usageEvidence.lastObservedLabel}</dd>
-        </div>
-        <div>
-          <dt>Evidence Source</dt>
-          <dd>{usageEvidence.sourceLabel}</dd>
-        </div>
-        <div>
-          <dt>Ledger Summary</dt>
-          <dd>{summary.measuredOrders}/{summary.totalOrders} measured · {summary.totalUsedLabel}</dd>
-        </div>
-        <div>
-          <dt>User Rows</dt>
-          <dd>{summary.userAggregateCount} aggregates · {summary.sourceLabel}</dd>
-        </div>
-      </dl>
-    </section>
-  );
-}
-
-function AdminOrderManagementOperationPanel({
-  lifecycle,
-  operation,
-  onClose,
-  row
-}: {
-  lifecycle: OrderManagementLifecycleHandlers;
-  operation: OrderManagementOperation;
-  onClose: () => void;
-  row: OrderManagementRow;
-}) {
-  const [approvalRef, setApprovalRef] = useState("approval_local_order_lifecycle");
-  const [nodeId, setNodeId] = useState("channel-lab-b-tuic");
-  const [operatorRef, setOperatorRef] = useState("operator_local_admin");
-  const [reasonCode, setReasonCode] = useState("local_order_quota_review");
-  const [submitState, setSubmitState] = useState<"idle" | "submitting" | "submitted" | "error">("idle");
-  const [trafficLimitGb, setTrafficLimitGb] = useState(defaultTrafficLimitGb(row.assignedQuota));
-  const [statusMessage, setStatusMessage] = useState("");
-
-  useEffect(() => {
-    setApprovalRef("approval_local_order_lifecycle");
-    setNodeId("channel-lab-b-tuic");
-    setOperatorRef("operator_local_admin");
-    setReasonCode("local_order_quota_review");
-    setSubmitState("idle");
-    setTrafficLimitGb(defaultTrafficLimitGb(row.assignedQuota));
-    setStatusMessage("");
-  }, [operation, row.assignedQuota, row.orderId]);
-
-  async function submitOrderOperation(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitState("submitting");
-    setStatusMessage("");
-
-    try {
-      if (operation === "approval-preview") {
-        await lifecycle.previewApproval(row.orderId, {
-          approvalRef,
-          nodeId,
-          reviewedByRef: operatorRef
-        });
-        setStatusMessage("Approval preview ready.");
-      } else {
-        await lifecycle.updateTrafficLimit(row.orderId, {
-          reasonCode,
-          reviewedByRef: operatorRef,
-          trafficLimitBytes: trafficLimitBytesFromGb(trafficLimitGb)
-        });
-        setStatusMessage("Traffic limit submitted.");
-      }
-      setSubmitState("submitted");
-    } catch (caught) {
-      setSubmitState("error");
-      setStatusMessage(caught instanceof Error ? caught.message : "Order operation failed");
-    }
-  }
-
-  const approvalPreview = operation === "approval-preview";
-
-  return (
-    <form
-      aria-label="Order Management operation panel"
-      className="admin-user-management-dry-run-panel admin-order-management-operation-panel"
-      onSubmit={submitOrderOperation}
-    >
-      <header>
-        <h3>{approvalPreview ? "Approval preview" : "Traffic limit"}</h3>
-        <StatusChip label={approvalPreview ? "Preview" : "Local"} tone={approvalPreview ? "warning" : "info"} />
-      </header>
-      <div className="admin-user-management-lifecycle-fields">
-        <label>
-          <span>Operator Ref</span>
-          <input
-            autoComplete="off"
-            onChange={(event) => setOperatorRef(event.target.value)}
-            required
-            value={operatorRef}
-          />
-        </label>
-        {approvalPreview ? (
-          <>
-            <label>
-              <span>Approval Ref</span>
-              <input
-                autoComplete="off"
-                onChange={(event) => setApprovalRef(event.target.value)}
-                required
-                value={approvalRef}
-              />
-            </label>
-            <label>
-              <span>Node Ref</span>
-              <input
-                autoComplete="off"
-                onChange={(event) => setNodeId(event.target.value)}
-                required
-                value={nodeId}
-              />
-            </label>
-          </>
-        ) : (
-          <>
-            <label>
-              <span>Traffic Limit GB</span>
-              <input
-                min="0"
-                onChange={(event) => setTrafficLimitGb(event.target.value)}
-                required
-                type="number"
-                value={trafficLimitGb}
-              />
-            </label>
-            <label>
-              <span>Reason Code</span>
-              <input
-                autoComplete="off"
-                onChange={(event) => setReasonCode(event.target.value)}
-                required
-                value={reasonCode}
-              />
-            </label>
-          </>
-        )}
-      </div>
-      {statusMessage ? (
-        <p className="admin-user-management-lifecycle-state" data-tone={submitState === "error" ? "danger" : "info"}>
-          {statusMessage}
-        </p>
-      ) : null}
-      <div className="admin-user-management-dry-run-actions">
-        <button disabled={submitState === "submitting"} type="submit">
-          {approvalPreview ? "Run approval preview" : "Submit traffic limit"}
-        </button>
-        <button onClick={onClose} type="button">Close</button>
-      </div>
-    </form>
-  );
-}
-
-function defaultTrafficLimitGb(assignedQuota: string) {
-  const match = assignedQuota.match(/(\d+(?:\.\d+)?)\s*GB/i);
-  return match?.[1] ?? "20";
-}
-
-function trafficLimitBytesFromGb(value: string) {
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    throw new Error("Traffic limit must be a non-negative number");
-  }
-  return Math.round(parsed * 1024 * 1024 * 1024);
+function orderRecordDetailFields(row: OrderManagementRow): NodeHealthField[] {
+  const hasPaymentAmount = row.detail.fields.some((field) => field.label === "支付金额");
+  const hiddenLabels = new Set([
+    ...(hasPaymentAmount ? ["额度"] : []),
+    "已用流量",
+    "用量记录",
+    "最近使用",
+    "订阅状态",
+    "开通状态",
+    "开通申请",
+    "申请状态"
+  ]);
+  const baseFields = row.detail.fields.filter((field) => !hiddenLabels.has(field.label));
+  return [
+    ...baseFields,
+    { label: "记录状态", tone: row.statusTone, value: row.status },
+    { label: "处理状态", tone: row.deliveryTone, value: row.delivery }
+  ];
 }
 
 function AdminNodeHealthReadPage({
@@ -3908,23 +4025,23 @@ function nodeBandwidthColumns(): Array<DataTableColumn<NodeBandwidthRow>> {
 
 function userManagementColumns(): Array<DataTableColumn<UserManagementRow>> {
   return [
-    { header: "USER ID", key: "userId", render: (row) => <SafeAuditRef>{row.userId}</SafeAuditRef> },
-    { header: "DISPLAY NAME", key: "displayName", render: (row) => row.displayName },
-    { header: "EMAIL", key: "email", render: (row) => row.email },
+    { header: "LOGIN EMAIL", key: "email", render: (row) => row.email },
     { header: "PLAN", key: "plan", render: (row) => <StatusChip label={row.plan} tone={row.planTone} /> },
     { header: "STATUS", key: "status", render: (row) => <StatusChip label={row.status} tone={row.statusTone} /> },
-    { header: "RISK", key: "risk", render: (row) => <StatusChip label={row.risk} tone={row.riskTone} /> }
+    { header: "RISK", key: "risk", render: (row) => <StatusChip label={row.risk} tone={row.riskTone} /> },
+    { header: "CREATED", key: "createdDate", render: (row) => row.createdDate },
+    { header: "LAST ACCESS", key: "lastAccess", render: (row) => row.lastAccess }
   ];
 }
 
 function orderManagementColumns(): Array<DataTableColumn<OrderManagementRow>> {
   return [
-    { header: "ORDER ID", key: "orderId", render: (row) => <SafeAuditRef>{row.orderId}</SafeAuditRef> },
-    { header: "ACCOUNT REF", key: "accountRef", render: (row) => row.accountRef },
-    { header: "PLAN", key: "planLevel", render: (row) => row.planLevel },
-    { header: "STATUS", key: "status", render: (row) => <StatusChip label={row.status} tone={row.statusTone} /> },
-    { header: "LIFECYCLE", key: "lifecycle", render: (row) => <StatusChip label={row.lifecycle} tone={row.lifecycleTone} /> },
-    { header: "DELIVERY", key: "delivery", render: (row) => <StatusChip label={row.delivery} tone={row.deliveryTone} /> }
+    { header: "订单号", key: "orderId", render: (row) => <SafeAuditRef>{row.orderId}</SafeAuditRef> },
+    { header: "账户", key: "accountRef", render: (row) => row.accountRef },
+    { header: "套餐", key: "planLevel", render: (row) => formatOrderPlanLabel(row.planLevel) },
+    { header: "状态", key: "status", render: (row) => <StatusChip label={row.status} tone={row.statusTone} /> },
+    { header: "周期", key: "lifecycle", render: (row) => <StatusChip label={row.lifecycle} tone={row.lifecycleTone} /> },
+    { header: "交付", key: "delivery", render: (row) => <StatusChip label={row.delivery} tone={row.deliveryTone} /> }
   ];
 }
 
@@ -3946,29 +4063,6 @@ function renderUserManagementValue(field: NodeHealthField): ReactNode {
   }
 
   return field.value;
-}
-
-function isUserManagementDryRunAction(gate: UserManagementActionGate) {
-  return gate.state === "dry-run" && (
-    gate.operation === "update" ||
-    gate.operation === "delete"
-  );
-}
-
-function userManagementAccountActionLabel(gate: UserManagementActionGate) {
-  if (gate.operation === "update") return "Edit";
-  if (gate.operation === "disable") return "Disable";
-  if (gate.operation === "delete") return "Delete";
-  return gate.label;
-}
-
-function isUserManagementLifecycleOperation(
-  operation: UserManagementActionGate["operation"]
-): operation is UserManagementLifecycleOperation {
-  return operation === "create" ||
-    operation === "update" ||
-    operation === "disable" ||
-    operation === "delete";
 }
 
 function userManagementLifecycleTitle(operation: UserManagementLifecycleOperation) {

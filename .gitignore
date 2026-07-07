@@ -22,8 +22,10 @@ admin/dist/
 admin/dist-portal/
 /.codex-artifacts/
 /.codex-runtime/
+.codex/
 /.playwright-cli/
 /.tmp-node/
 test-results/
 handoff/
 admin/dist-site/
+.vercel

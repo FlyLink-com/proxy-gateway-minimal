@@ -1,7 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import type {
+  AdminPaymentOrderSummary,
+  CreatePlatformEntitlementInput,
   NodeBandwidthSummary,
+  PlatformEntitlementSummary,
   PortalAccessRequestSummary,
   SubscriptionUsageMonitor
 } from "../features/subscriptions/types";
@@ -18,19 +21,19 @@ describe("admin safe-read route pages", () => {
     const breadcrumb = screen.getByLabelText("User Management breadcrumb");
     expect(within(breadcrumb).getByText("Home")).not.toBeNull();
     expect(within(breadcrumb).getByText("User Management")).not.toBeNull();
-    expect(screen.getByPlaceholderText("Search User ID, name, email...")).not.toBeNull();
+    expect(screen.getByPlaceholderText("Search login email, plan, status...")).not.toBeNull();
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Status All" }).disabled).toBe(false);
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Risk All" }).disabled).toBe(false);
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Plan All" }).disabled).toBe(false);
     expect(screen.getByRole<HTMLButtonElement>("button", { name: "Created Time Last 24h" }).disabled).toBe(true);
     expect(within(screen.getByLabelText("User Management gated actions")).getByRole<HTMLButtonElement>("button", { name: "Create User · Gated" }).disabled).toBe(true);
     expect(screen.getByRole("table", { name: "User Management redacted table" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: "USER ID" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: "DISPLAY NAME" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: "EMAIL" })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "LOGIN EMAIL" })).not.toBeNull();
     expect(screen.getByRole("columnheader", { name: "PLAN" })).not.toBeNull();
     expect(screen.getByRole("columnheader", { name: "STATUS" })).not.toBeNull();
     expect(screen.getByRole("columnheader", { name: "RISK" })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "CREATED" })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "LAST ACCESS" })).not.toBeNull();
     expect(screen.getByText("Showing 1-8 of 8")).not.toBeNull();
     expect(screen.queryByText("Page 1 / 1")).toBeNull();
     expect(document.querySelectorAll(".admin-user-management-table .new-console-row-placeholder")).toHaveLength(12);
@@ -39,65 +42,67 @@ describe("admin safe-read route pages", () => {
     expect(document.querySelector("[data-figma-component='DetailPanel']")).not.toBeNull();
 
     const initialDetail = screen.getByLabelText("User Management redacted detail panel");
-    expect(within(initialDetail).getByText("User Details")).not.toBeNull();
-    expect(within(initialDetail).getAllByText("user_001")).toHaveLength(1);
-    expect(within(initialDetail).getAllByText("User Alpha")).toHaveLength(1);
-    expect(within(initialDetail).getAllByText("[REDACTED_EMAIL]").length).toBeGreaterThanOrEqual(1);
+    expect(within(initialDetail).getByText("账户详情")).not.toBeNull();
+    expect(within(initialDetail).getAllByText("alpha@example.test")).toHaveLength(1);
+    expect(within(initialDetail).queryByText("user_001")).toBeNull();
+    expect(within(initialDetail).queryByText("User Alpha")).toBeNull();
+    expect(within(initialDetail).queryByText("[REDACTED_EMAIL]")).toBeNull();
     expect(within(initialDetail).getByText("2026-01-18 13:42")).not.toBeNull();
     expect(within(initialDetail).queryByRole("button", { name: "User Access Logs" })).toBeNull();
     expect(within(initialDetail).queryByRole("button", { name: "User Operation Logs" })).toBeNull();
     expect(within(initialDetail).queryByRole("button", { name: "Revoke Access · Gated" })).toBeNull();
-    const accountActions = within(initialDetail).getByLabelText("Selected user account dry-run actions");
-    expect(within(accountActions).getByText("Account Actions")).not.toBeNull();
-    expect(within(accountActions).queryByText("Read User Detail")).toBeNull();
-    expect(within(accountActions).queryByText("Safe read available for the selected account row.")).toBeNull();
-    expect(within(accountActions).queryByRole("button", { name: "Create User · Gated" })).toBeNull();
-    expect(within(accountActions).getByRole<HTMLButtonElement>("button", { name: "Edit" }).disabled).toBe(false);
-    expect(within(accountActions).queryByRole("button", { name: "Disable" })).toBeNull();
-    expect(within(accountActions).getByRole<HTMLButtonElement>("button", { name: "Delete" }).disabled).toBe(false);
-    expect(within(accountActions).queryByText("Risk A")).toBeNull();
-    expect(within(accountActions).queryByText(/Requires create-user|Hard delete remains unavailable|permission contract/i)).toBeNull();
+    expect(within(initialDetail).queryByLabelText("Selected user account dry-run actions")).toBeNull();
+    expect(within(initialDetail).queryByLabelText("User Management inline edit form")).toBeNull();
+    expect(within(initialDetail).queryByLabelText("User Management inline action state")).toBeNull();
+    expect(within(initialDetail).queryByText("Account Actions")).toBeNull();
+    expect(within(initialDetail).queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(within(initialDetail).queryByRole("button", { name: "Disable" })).toBeNull();
+    expect(within(initialDetail).queryByRole("button", { name: "Delete" })).toBeNull();
 
-    const targetRow = screen.getByRole("row", { name: /user_management_008 user_008 User Theta Pending Medium/ });
+    const targetRow = screen.getByRole("row", { name: /theta@example\.test Team Pending Medium/ });
     expect(within(targetRow).getByText("Team")).not.toBeNull();
     expect(within(targetRow).getByText("Pending")).not.toBeNull();
 
     fireEvent.click(targetRow);
 
     const updatedDetail = screen.getByLabelText("User Management redacted detail panel");
-    expect(within(updatedDetail).getAllByText("user_008")).toHaveLength(1);
-    expect(within(updatedDetail).getByText("User Theta")).not.toBeNull();
+    expect(within(updatedDetail).getAllByText("theta@example.test")).toHaveLength(1);
+    expect(within(updatedDetail).queryByText("user_008")).toBeNull();
+    expect(within(updatedDetail).queryByText("User Theta")).toBeNull();
     expect(within(updatedDetail).getByText("Team")).not.toBeNull();
     expect(within(updatedDetail).getByText("Pending")).not.toBeNull();
     expect(within(updatedDetail).getByText("Medium")).not.toBeNull();
     expect(within(updatedDetail).getByText("2026-01-18 10:31")).not.toBeNull();
-    expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+    expect(within(updatedDetail).queryByLabelText("Selected user account dry-run actions")).toBeNull();
+    expect(within(updatedDetail).queryByLabelText("User Management inline edit form")).toBeNull();
+    expect(within(updatedDetail).queryByLabelText("User Management inline action state")).toBeNull();
+    expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite/i);
   });
 
-  test("keeps Edit and Delete dry-run shells inside the selected detail card", () => {
+  test("keeps the selected User Management detail card read-only and compact", () => {
     render(<AdminSafeReadPage page="userManagement" />);
 
     const detail = screen.getByLabelText("User Management redacted detail panel");
-    const accountActions = within(detail).getByLabelText("Selected user account dry-run actions");
-
-    fireEvent.click(within(accountActions).getByRole("button", { name: "Edit" }));
+    expect(within(detail).getByText("账户详情")).not.toBeNull();
     expect(within(detail).queryByLabelText("User Management dry-run panel")).toBeNull();
-    const editForm = within(detail).getByLabelText("User Management inline edit form");
-    expect(within(editForm).getByLabelText("Display Name")).not.toBeNull();
-    expect(within(editForm).getByLabelText("Status")).not.toBeNull();
-    expect(within(editForm).getByRole("button", { name: "Preview edit" })).not.toBeNull();
+    expect(within(detail).queryByLabelText("Selected user account dry-run actions")).toBeNull();
+    expect(within(detail).queryByLabelText("User Management inline edit form")).toBeNull();
+    expect(within(detail).queryByLabelText("User Management inline action state")).toBeNull();
+    expect(within(detail).queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(within(detail).queryByRole("button", { name: "Delete" })).toBeNull();
 
-    fireEvent.click(within(editForm).getByRole("button", { name: "Close" }));
-    expect(within(accountActions).queryByRole("button", { name: "Disable" })).toBeNull();
-    expect(within(detail).queryByLabelText("User Management dry-run panel")).toBeNull();
+    const targetRow = screen.getByRole("row", { name: /theta@example\.test Team Pending Medium/ });
+    fireEvent.click(targetRow);
 
-    fireEvent.click(within(accountActions).getByRole("button", { name: "Delete" }));
-    const deleteState = within(detail).getByLabelText("User Management inline action state");
-    expect(within(deleteState).getByText("Delete preview")).not.toBeNull();
-    expect(within(deleteState).getByText("user_001")).not.toBeNull();
-    expect(within(detail).queryByLabelText("User Management dry-run panel")).toBeNull();
+    const updatedDetail = screen.getByLabelText("User Management redacted detail panel");
+    expect(within(updatedDetail).getAllByText("theta@example.test")).toHaveLength(1);
+    expect(within(updatedDetail).getByText("Team")).not.toBeNull();
+    expect(within(updatedDetail).getByText("Pending")).not.toBeNull();
+    expect(within(updatedDetail).queryByLabelText("Selected user account dry-run actions")).toBeNull();
+    expect(within(updatedDetail).queryByLabelText("User Management inline edit form")).toBeNull();
+    expect(within(updatedDetail).queryByLabelText("User Management inline action state")).toBeNull();
 
-    expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite|[A-Z0-9._%+-]+@[A-Z]{2,}/i);
+    expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite/i);
   });
 
   test("submits the local User Management lifecycle through provided handlers", async () => {
@@ -105,8 +110,8 @@ describe("admin safe-read route pages", () => {
       create: vi.fn(async () => ({
         account: {
           createdAt: "2026-05-26T10:30:00.000Z",
-          displayName: "Beta Ops",
-          email: "[REDACTED_EMAIL]",
+          displayName: "beta@example.com",
+          email: "beta@example.com",
           entitlementCount: 0,
           id: "acct_beta_001",
           organization: "Beta Account",
@@ -173,14 +178,16 @@ describe("admin safe-read route pages", () => {
     fireEvent.click(within(screen.getByLabelText("User Management gated actions")).getByRole("button", { name: "Create User" }));
     const createPanel = screen.getByLabelText("User Management lifecycle panel");
     const createDetail = screen.getByLabelText("User Management redacted detail panel");
-    expect(within(createDetail).getByRole("heading", { level: 2, name: "Create user" })).not.toBeNull();
+    expect(within(createDetail).getByRole("heading", { level: 2, name: "创建用户" })).not.toBeNull();
     expect(within(createDetail).queryByText("Acme Ops")).toBeNull();
     expect(within(createDetail).queryByLabelText("Selected user account dry-run actions")).toBeNull();
     fireEvent.change(within(createPanel).getByLabelText("Organization"), { target: { value: "Beta Account" } });
     fireEvent.change(within(createPanel).getByLabelText("Email"), { target: { value: "beta@example.com" } });
-    fireEvent.change(within(createPanel).getByLabelText("Display Name"), { target: { value: "Beta Ops" } });
+    expect(within(createPanel).queryByLabelText("Display Name")).toBeNull();
     fireEvent.click(within(createPanel).getByRole("button", { name: "Submit create" }));
     const initialCredential = await within(createPanel).findByLabelText("User Management initial credential handoff");
+    expect(within(initialCredential).getByText("Login email")).not.toBeNull();
+    expect(within(initialCredential).getByText("beta@example.com")).not.toBeNull();
     expect(within(initialCredential).getByText("Initial password")).not.toBeNull();
     expect(within(createPanel).getByText("gcctemp-20260701-001")).not.toBeNull();
     expect(within(createPanel).getByText("Visible once for this local admin-created test user.")).not.toBeNull();
@@ -190,7 +197,7 @@ describe("admin safe-read route pages", () => {
     ).not.toBe(0);
     expect(lifecycle.create).toHaveBeenCalledWith({
       approvalRef: "approval_local_user_lifecycle",
-      displayName: "Beta Ops",
+      displayName: "beta@example.com",
       email: "beta@example.com",
       operatorRef: "operator_local_admin",
       organization: "Beta Account",
@@ -201,39 +208,21 @@ describe("admin safe-read route pages", () => {
     expect(screen.queryByLabelText("User Management lifecycle panel")).toBeNull();
 
     const detail = screen.getByLabelText("User Management redacted detail panel");
-    const accountActions = within(detail).getByLabelText("Selected user account dry-run actions");
-    fireEvent.click(within(accountActions).getByRole("button", { name: "Edit" }));
+    expect(within(detail).getByText("账户详情")).not.toBeNull();
     expect(screen.queryByLabelText("User Management lifecycle panel")).toBeNull();
-    const editForm = screen.getByLabelText("User Management inline edit form");
-    expect(within(detail).getByText("acct_001")).not.toBeNull();
-    expect(within(editForm).queryByLabelText("Operator Ref")).toBeNull();
-    expect(within(editForm).queryByLabelText("Approval Ref")).toBeNull();
-    expect(within(editForm).queryByLabelText("Reason")).toBeNull();
-    fireEvent.change(within(editForm).getByLabelText("Display Name"), { target: { value: "Acme Review" } });
-    fireEvent.change(within(editForm).getByLabelText("Status"), { target: { value: "suspended" } });
-    fireEvent.click(within(editForm).getByRole("button", { name: "Submit edit" }));
-    expect(lifecycle.update).toHaveBeenCalledWith("acct_001", {
-      approvalRef: "approval_local_user_lifecycle",
-      displayName: "Acme Review",
-      operatorRef: "operator_local_admin",
-      reason: "local_admin_user_lifecycle",
-      status: "suspended"
-    });
+    expect(within(detail).getByText("ops@example.com")).not.toBeNull();
+    expect(within(detail).queryByText("acct_001")).toBeNull();
+    expect(within(detail).queryByLabelText("Selected user account dry-run actions")).toBeNull();
+    expect(within(detail).queryByLabelText("User Management inline edit form")).toBeNull();
+    expect(within(detail).queryByLabelText("User Management inline action state")).toBeNull();
+    expect(within(detail).queryByRole("button", { name: "Edit" })).toBeNull();
+    expect(within(detail).queryByRole("button", { name: "Disable" })).toBeNull();
+    expect(within(detail).queryByRole("button", { name: "Delete" })).toBeNull();
 
-    expect(within(accountActions).queryByRole("button", { name: "Disable" })).toBeNull();
+    expect(lifecycle.update).not.toHaveBeenCalled();
     expect(lifecycle.disable).not.toHaveBeenCalled();
-
-    fireEvent.click(within(accountActions).getByRole("button", { name: "Delete" }));
-    const deletePanel = screen.getByLabelText("User Management lifecycle panel");
-    fireEvent.click(within(deletePanel).getByRole("button", { name: "Preview delete" }));
-    expect(lifecycle.previewDelete).toHaveBeenCalledWith("acct_001", {
-      approvalRef: "approval_local_user_lifecycle",
-      operatorRef: "operator_local_admin",
-      reason: "local_admin_user_lifecycle"
-    });
-    expect(await within(deletePanel).findByText("Physical delete blocked")).not.toBeNull();
-    expect(within(deletePanel).getByText("retain_auditable_account_or_disable_only")).not.toBeNull();
-    expect(document.body.textContent ?? "").not.toMatch(/ops@example\.com|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite/i);
+    expect(lifecycle.previewDelete).not.toHaveBeenCalled();
+    expect(document.body.textContent ?? "").not.toMatch(/subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite/i);
   });
 
   test("filters User Management rows through safe search and status controls", () => {
@@ -273,22 +262,22 @@ describe("admin safe-read route pages", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Status All" }));
     expect(screen.getByRole("button", { name: "Status Active" })).not.toBeNull();
-    expect(screen.getByRole("row", { name: /user_management_acct_001 acct_001 Acme Ops Active Low/ })).not.toBeNull();
-    expect(screen.queryByRole("row", { name: /user_management_acct_002 acct_002 Beta Review Pending Medium/ })).toBeNull();
+    expect(screen.getByRole("row", { name: /ops@example\.com No Plan Active Low/ })).not.toBeNull();
+    expect(screen.queryByRole("row", { name: /beta@example\.com No Plan Pending Medium/ })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Status Active" }));
     expect(screen.getByRole("button", { name: "Status Pending" })).not.toBeNull();
-    expect(screen.getByRole("row", { name: /user_management_acct_002 acct_002 Beta Review Pending Medium/ })).not.toBeNull();
-    expect(screen.queryByRole("row", { name: /user_management_acct_001 acct_001 Acme Ops Active Low/ })).toBeNull();
+    expect(screen.getByRole("row", { name: /beta@example\.com No Plan Pending Medium/ })).not.toBeNull();
+    expect(screen.queryByRole("row", { name: /ops@example\.com No Plan Active Low/ })).toBeNull();
 
-    fireEvent.change(screen.getByPlaceholderText("Search User ID, name, email..."), {
-      target: { value: "Acme" }
+    fireEvent.change(screen.getByPlaceholderText("Search login email, plan, status..."), {
+      target: { value: "ops@example.com" }
     });
     expect(screen.getByText("No user accounts available")).not.toBeNull();
-    expect(document.body.textContent ?? "").not.toMatch(/ops@example\.com|beta@example\.com|token=|secret|password|sqlite/i);
+    expect(document.body.textContent ?? "").not.toMatch(/token=|secret|password|sqlite/i);
   });
 
-  test("renders User Management from platform account summaries without exposing account email", () => {
+  test("renders User Management from platform account summaries with email as the public account label", () => {
     render(
       <AdminSafeReadPage
         page="userManagement"
@@ -310,22 +299,103 @@ describe("admin safe-read route pages", () => {
         userManagementEntitlements={[
           {
             accountId: "acct_001",
+            createdAt: "2026-07-02T10:05:00.000Z",
             id: "ent_001",
-            plan: "Pilot",
+            plan: "monthly_basic",
+            quota: { trafficGb: 50 },
             status: "active",
             type: "platform_entitlement_summary",
-            usable: true
+            usable: true,
+            validUntil: "2026-08-01T10:05:00.000Z"
           }
         ]}
       />
     );
 
-    expect(screen.getByRole("row", { name: /user_management_acct_001 acct_001 Acme Ops Active Low/ })).not.toBeNull();
+    expect(screen.getByRole("row", { name: /ops@example\.com Basic Monthly Active Low/ })).not.toBeNull();
     expect(screen.getByText("Showing 1-1 of 1")).not.toBeNull();
-    expect(screen.getAllByText("[REDACTED_EMAIL]").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByText("Pilot").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("2 total / 1 usable")).not.toBeNull();
-    expect(document.body.textContent ?? "").not.toMatch(/ops@example\.com|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite/i);
+    expect(screen.getAllByText("ops@example.com").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText("acct_001")).toBeNull();
+    expect(screen.getAllByText("Basic Monthly").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("账户权益")).not.toBeNull();
+    expect(screen.getByText("可用时间")).not.toBeNull();
+    expect(screen.getByText("共享月流量")).not.toBeNull();
+    expect(screen.getByText("50 GB / 月")).not.toBeNull();
+    expect(screen.getByText("2 records / 1 active")).not.toBeNull();
+    expect(document.body.textContent ?? "").not.toMatch(/subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite/i);
+  });
+
+  test("lets an operator adjust account entitlement days and shared monthly traffic", async () => {
+    const createEntitlement = vi.fn(async (
+      _accountId: string,
+      _input: CreatePlatformEntitlementInput
+    ): Promise<PlatformEntitlementSummary> => ({
+      accountId: "acct_001",
+      id: "ent_002",
+      plan: "monthly_plus",
+      quota: { trafficGb: 100 },
+      status: "active",
+      type: "platform_entitlement_summary",
+      usable: true,
+      validUntil: "2026-08-04T00:00:00.000Z"
+    }));
+
+    render(
+      <AdminSafeReadPage
+        page="userManagement"
+        userManagementAccounts={[
+          {
+            createdAt: "2026-05-26T10:00:00.000Z",
+            displayName: "Acme Ops",
+            email: "ops@example.com",
+            entitlementCount: 0,
+            id: "acct_001",
+            leadId: "lead_001",
+            organization: "Acme Research",
+            status: "active",
+            type: "platform_account_summary",
+            updatedAt: "2026-05-26T10:15:00.000Z",
+            usableEntitlementCount: 0
+          }
+        ]}
+        userManagementLifecycle={{
+          create: vi.fn(),
+          createEntitlement,
+          disable: vi.fn(),
+          previewDelete: vi.fn(),
+          update: vi.fn()
+        } as any}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "调整权益" }));
+    const panel = screen.getByLabelText("账户权益调整");
+
+    expect(within(panel).getByLabelText("套餐档位")).not.toBeNull();
+    expect(within(panel).getByLabelText("可用天数")).not.toBeNull();
+    expect(within(panel).getByLabelText("共享月流量 GB/月")).not.toBeNull();
+
+    fireEvent.change(within(panel).getByLabelText("套餐档位"), {
+      target: { value: "monthly_plus" }
+    });
+
+    expect(within(panel).getByDisplayValue("30")).not.toBeNull();
+    expect(within(panel).getByDisplayValue("100")).not.toBeNull();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "保存权益" }));
+
+    await waitFor(() => expect(createEntitlement).toHaveBeenCalledTimes(1));
+    expect(createEntitlement).toHaveBeenCalledWith(
+      "acct_001",
+      expect.objectContaining({
+        plan: "monthly_plus",
+        quota: { trafficGb: 100 },
+        status: "active"
+      })
+    );
+    const submittedInput = createEntitlement.mock.calls[0]?.[1];
+    expect(typeof submittedInput?.validUntil).toBe("string");
+    expect(within(panel).getByText("权益已保存")).not.toBeNull();
   });
 
   test("renders User Management empty platform account summaries without a stale detail row", () => {
@@ -334,31 +404,31 @@ describe("admin safe-read route pages", () => {
     expect(screen.getByRole("table", { name: "User Management redacted table" })).not.toBeNull();
     expect(screen.getByText("No user accounts available")).not.toBeNull();
     const detail = screen.getByLabelText("User Management redacted detail panel");
-    expect(within(detail).getByText("No user selected")).not.toBeNull();
+    expect(within(detail).getByText("未选择账户")).not.toBeNull();
     expect(within(detail).getByText("No safe account summary is available for this page state.")).not.toBeNull();
     expect(screen.queryByText("user_001")).toBeNull();
   });
 
-  test("renders Order Management with Figma order table, filters, gated actions, and safe details", () => {
+  test("renders Order Records with Figma order table, filters, gated actions, and safe details", () => {
     render(<AdminSafeReadPage page="orderManagement" />);
 
-    const breadcrumb = screen.getByLabelText("Order Management breadcrumb");
-    expect(within(breadcrumb).getByText("Home")).not.toBeNull();
-    expect(within(breadcrumb).getByText("Order Management")).not.toBeNull();
-    expect(screen.getByDisplayValue("Search ID, account ref, or lifecycle…")).not.toBeNull();
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Status" }).disabled).toBe(true);
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Plan" }).disabled).toBe(true);
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Lifecycle" }).disabled).toBe(true);
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Delivery" }).disabled).toBe(true);
-    expect(screen.getByRole<HTMLButtonElement>("button", { name: "Create Order · Gated" }).disabled).toBe(true);
-    expect(screen.getByRole("table", { name: "Order Management redacted table" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: "ORDER ID" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: "ACCOUNT REF" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: "PLAN" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: "STATUS" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: "LIFECYCLE" })).not.toBeNull();
-    expect(screen.getByRole("columnheader", { name: "DELIVERY" })).not.toBeNull();
-    expect(screen.getByText("Showing 1-4 of 4")).not.toBeNull();
+    const breadcrumb = screen.getByLabelText("订单记录面包屑");
+    expect(within(breadcrumb).getByText("首页")).not.toBeNull();
+    expect(within(breadcrumb).getByText("订单记录")).not.toBeNull();
+    expect(screen.getByDisplayValue("搜索订单号、账户或状态…")).not.toBeNull();
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "状态" }).disabled).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "套餐" }).disabled).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "周期" }).disabled).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "交付" }).disabled).toBe(true);
+    expect(screen.getByRole<HTMLButtonElement>("button", { name: "导出记录" }).disabled).toBe(true);
+    expect(screen.getByRole("table", { name: "订单记录列表" })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "订单号" })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "账户" })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "套餐" })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "状态" })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "周期" })).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "交付" })).not.toBeNull();
+    expect(screen.getByText("显示 1-4 / 4")).not.toBeNull();
     expect(screen.queryByText("Page 1 / 1")).toBeNull();
     expect(document.querySelectorAll(".admin-order-management-table .new-console-row-placeholder")).toHaveLength(16);
     expect(document.querySelector(".top-bar")).toBeNull();
@@ -366,38 +436,59 @@ describe("admin safe-read route pages", () => {
     expect(document.querySelector("[data-figma-component='OrderManagementTableCard']")).not.toBeNull();
     expect(document.querySelector("[data-figma-component='DetailPanel']")).not.toBeNull();
 
-    const initialDetail = screen.getByLabelText("Order Management redacted detail panel");
-    expect(within(initialDetail).getByText("Order Details")).not.toBeNull();
+    const initialDetail = screen.getByLabelText("订单记录详情");
+    expect(within(initialDetail).getByText("记录详情")).not.toBeNull();
     expect(within(initialDetail).getByText("ORD-4029")).not.toBeNull();
     expect(within(initialDetail).getByText("enterprise_alpha_01")).not.toBeNull();
-    expect(within(initialDetail).getByText("Tier 3 / Pro")).not.toBeNull();
-    expect(within(initialDetail).getByText("120 / 1d")).not.toBeNull();
-    const initialUsageEvidence = within(initialDetail).getByLabelText("Order Management usage evidence");
-    expect(initialUsageEvidence).not.toBeNull();
-    expect(within(initialUsageEvidence).getByText("Usage & Billing Evidence")).not.toBeNull();
-    expect(within(initialUsageEvidence).getByText("Not observed / 120 / 1d")).not.toBeNull();
-    expect(within(initialUsageEvidence).getByText("Order management fixture")).not.toBeNull();
-    expect(within(initialDetail).getByRole<HTMLButtonElement>("button", { name: "View Quota Architecture" }).disabled).toBe(true);
+    expect(within(initialDetail).getByText("专业套餐")).not.toBeNull();
+    expect(within(initialDetail).getByText("120 GB / 天")).not.toBeNull();
+    expect(within(initialDetail).getByText("记录状态")).not.toBeNull();
+    expect(within(initialDetail).getByText("处理状态")).not.toBeNull();
+    expect(within(initialDetail).queryByLabelText("订单用量核对")).toBeNull();
+    expect(within(initialDetail).queryByLabelText("订单记录操作")).toBeNull();
+    expect(within(initialDetail).queryByRole("button")).toBeNull();
     expect(within(initialDetail).queryByRole("button", { name: "View Usage Evidence" })).toBeNull();
 
-    const targetRow = screen.getByRole("row", { name: /order_management_4031 ORD-4031 enterprise_alpha_01 Disabled Suspended Blocked/ });
-    expect(within(targetRow).getByText("Disabled")).not.toBeNull();
-    expect(within(targetRow).getByText("Suspended")).not.toBeNull();
-    expect(within(targetRow).getByText("Blocked")).not.toBeNull();
+    const targetRow = screen.getByRole("row", { name: /order_management_4031 ORD-4031 enterprise_alpha_01 专业套餐 已停用 已暂停 需处理/ });
+    expect(within(targetRow).getByText("已停用")).not.toBeNull();
+    expect(within(targetRow).getByText("已暂停")).not.toBeNull();
+    expect(within(targetRow).getByText("需处理")).not.toBeNull();
 
     fireEvent.click(targetRow);
 
-    const updatedDetail = screen.getByLabelText("Order Management redacted detail panel");
+    const updatedDetail = screen.getByLabelText("订单记录详情");
     expect(within(updatedDetail).getByText("ORD-4031")).not.toBeNull();
     expect(within(updatedDetail).getByText("enterprise_alpha_01")).not.toBeNull();
-    expect(within(updatedDetail).getByText("Tier 3 / Pro")).not.toBeNull();
-    expect(within(updatedDetail).getByText("120 / 1d")).not.toBeNull();
-    expect(within(updatedDetail).getByText("Suspended")).not.toBeNull();
-    expect(within(updatedDetail).getByText("Blocked")).not.toBeNull();
+    expect(within(updatedDetail).getByText("专业套餐")).not.toBeNull();
+    expect(within(updatedDetail).getByText("120 GB / 天")).not.toBeNull();
+    expect(within(updatedDetail).getByText("记录状态")).not.toBeNull();
+    expect(within(updatedDetail).getByText("已停用")).not.toBeNull();
+    expect(within(updatedDetail).getByText("处理状态")).not.toBeNull();
+    expect(within(updatedDetail).getByText("需处理")).not.toBeNull();
     expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
   });
 
-  test("renders Order Management from portal access request summaries without protected material", () => {
+  test("wraps Order Records copy in operator-facing language instead of backend terms", () => {
+    render(<AdminSafeReadPage page="orderManagement" />);
+
+    expect(screen.getByRole("button", { name: "导出记录" })).not.toBeNull();
+    expect(screen.getByDisplayValue("搜索订单号、账户或状态…")).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "账户" })).not.toBeNull();
+
+    const detail = screen.getByLabelText("订单记录详情");
+    expect(within(detail).getByText("记录详情")).not.toBeNull();
+    expect(within(detail).getByText("账户")).not.toBeNull();
+    expect(within(detail).getByText("记录状态")).not.toBeNull();
+    expect(within(detail).getByText("处理状态")).not.toBeNull();
+    expect(within(detail).queryByText("用量记录")).toBeNull();
+    expect(within(detail).queryByText("交付由系统处理")).toBeNull();
+    expect(within(detail).queryByLabelText("订单用量核对")).toBeNull();
+    expect(within(detail).queryByLabelText("订单记录操作")).toBeNull();
+
+    expect(document.body.textContent ?? "").not.toMatch(/Gated|Fixture|Usage Collection|User Aggregate|Evidence Source|backend|callback|provider mismatch|channel mismatch/i);
+  });
+
+  test("renders Order Records from portal access request summaries without protected material", () => {
     const requests: PortalAccessRequestSummary[] = [
       {
         accessGrantRef: null,
@@ -467,32 +558,149 @@ describe("admin safe-read route pages", () => {
 
     render(<AdminSafeReadPage page="orderManagement" orderManagementRequests={requests} />);
 
-    expect(screen.getByRole("row", { name: /pareq_live_001 pareq_live_001 acct_live_001 Pending Admin Review Not Delivered/ })).not.toBeNull();
-    expect(screen.getByRole("row", { name: /pareq_live_002 pareq_live_002 acct_live_002 Delivered Active Delivered/ })).not.toBeNull();
-    expect(screen.getByText("Showing 1-2 of 2")).not.toBeNull();
+    expect(screen.getByRole("row", { name: /pareq_live_001 pareq_live_001 acct_live_001 月付套餐 待审核 待审核 待审核/ })).not.toBeNull();
+    expect(screen.getByRole("row", { name: /pareq_live_002 pareq_live_002 acct_live_002 年度套餐 已开通 使用中 已开通/ })).not.toBeNull();
+    expect(screen.getByText("显示 1-2 / 2")).not.toBeNull();
     expect(document.querySelectorAll(".admin-order-management-table .new-console-row-placeholder")).toHaveLength(18);
 
-    const initialDetail = screen.getByLabelText("Order Management redacted detail panel");
+    const initialDetail = screen.getByLabelText("订单记录详情");
     expect(within(initialDetail).getByText("pareq_live_001")).not.toBeNull();
     expect(within(initialDetail).getByText("acct_live_001")).not.toBeNull();
-    expect(within(initialDetail).getByText("Monthly")).not.toBeNull();
+    expect(within(initialDetail).getByText("月付套餐")).not.toBeNull();
     expect(within(initialDetail).getByText("20 GB")).not.toBeNull();
-    expect(within(initialDetail).getByText("Admin Review")).not.toBeNull();
-    expect(within(initialDetail).getByText("Not Delivered")).not.toBeNull();
+    expect(within(initialDetail).getAllByText("待审核").length).toBeGreaterThanOrEqual(1);
 
     fireEvent.click(screen.getByRole("row", { name: /pareq_live_002/ }));
 
-    const updatedDetail = screen.getByLabelText("Order Management redacted detail panel");
+    const updatedDetail = screen.getByLabelText("订单记录详情");
     expect(within(updatedDetail).getByText("pareq_live_002")).not.toBeNull();
     expect(within(updatedDetail).getByText("acct_live_002")).not.toBeNull();
-    expect(within(updatedDetail).getByText("Yearly")).not.toBeNull();
+    expect(within(updatedDetail).getByText("年度套餐")).not.toBeNull();
     expect(within(updatedDetail).getByText("100 GB")).not.toBeNull();
-    expect(within(updatedDetail).getByText("Active")).not.toBeNull();
-    expect(within(updatedDetail).getByText("Delivered")).not.toBeNull();
+    expect(within(updatedDetail).getAllByText("已开通").length).toBeGreaterThanOrEqual(1);
     expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite|rawArtifact|handoffMaterial/i);
   });
 
-  test("merges usage monitor evidence into Order Management for billing reconciliation", () => {
+  test("renders Order Records from payment orders with public login identity and delivery status", () => {
+    const payments: AdminPaymentOrderSummary[] = [
+      {
+        accessRequestRef: "pareq_paid_001",
+        accessRequestStatus: "pending_admin_review",
+        amountMinor: 3000,
+        createdAt: "2026-07-02T11:00:00.000Z",
+        currency: "CNY",
+        displayRef: "buyer@example.test",
+        loginRef: "buyer@example.test",
+        orderRef: "pay_order_public_ref",
+        paidAt: "2026-07-02T11:05:00.000Z",
+        plan: "monthly_plus",
+        planLabel: "monthly plus",
+        providerOrderRef: "provider_safe_ref",
+        channel: "wxpay",
+        status: "paid_delivery_blocked"
+      }
+    ];
+
+    render(<AdminSafeReadPage page="orderManagement" orderManagementPayments={payments} />);
+
+    const row = screen.getByRole("row", {
+      name: /pay_order_public_ref pay_order_public_ref buyer@example\.test 月付 Plus 开通需处理 支付核对 开通需处理/
+    });
+    expect(row).not.toBeNull();
+    expect(screen.getByText("显示 1-1 / 1")).not.toBeNull();
+
+    const detail = screen.getByLabelText("订单记录详情");
+    expect(within(detail).getAllByText("buyer@example.test").length).toBeGreaterThanOrEqual(1);
+    expect(within(detail).getByText("月付 Plus")).not.toBeNull();
+    expect(within(detail).getAllByText("¥30.00 CNY").length).toBeGreaterThanOrEqual(1);
+    expect(within(detail).getByText("微信支付")).not.toBeNull();
+    expect(within(detail).queryByText("申请状态")).toBeNull();
+    expect(within(detail).getAllByText("2026-07-02 11:05").length).toBeGreaterThanOrEqual(1);
+    expect(within(detail).getByText("provider_safe_ref")).not.toBeNull();
+    expect(document.body.textContent ?? "").not.toMatch(/checkoutUrl|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite|rawArtifact|handoffMaterial|merchantSecret|rawPayload/i);
+  });
+
+  test("renders payment callback mismatch states as explicit admin reconciliation warnings", () => {
+    const payments: AdminPaymentOrderSummary[] = [
+      {
+        amountMinor: 2000,
+        channel: "alipay",
+        createdAt: "2026-07-02T11:00:00.000Z",
+        currency: "CNY",
+        orderRef: "pay_order_provider_mismatch",
+        plan: "monthly_basic",
+        planLabel: "monthly basic",
+        providerOrderRef: "provider_safe_provider_mismatch",
+        status: "payment_provider_order_mismatch"
+      },
+      {
+        amountMinor: 3000,
+        channel: "wxpay",
+        createdAt: "2026-07-02T12:00:00.000Z",
+        currency: "CNY",
+        orderRef: "pay_order_channel_mismatch",
+        plan: "monthly_plus",
+        planLabel: "monthly plus",
+        providerOrderRef: "provider_safe_channel_mismatch",
+        status: "payment_channel_mismatch"
+      }
+    ];
+
+    render(<AdminSafeReadPage page="orderManagement" orderManagementPayments={payments} />);
+
+    expect(screen.getAllByText("支付记录需核对").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("支付方式需核对").length).toBeGreaterThanOrEqual(1);
+
+    const detail = screen.getByLabelText("订单记录详情");
+    expect(within(detail).getByText("支付宝")).not.toBeNull();
+    expect(within(detail).getByText("provider_safe_provider_mismatch")).not.toBeNull();
+    expect(within(detail).getAllByText("支付记录需核对").length).toBeGreaterThanOrEqual(1);
+    expect(within(detail).getByText("支付记录与原订单不一致，请先完成账务核对后再处理退款。")).not.toBeNull();
+    expect(within(detail).queryByRole("button", { name: "退款审批" })).toBeNull();
+    expect(within(detail).queryByLabelText("订单记录操作")).toBeNull();
+    expect(document.body.textContent ?? "").not.toMatch(/callback|provider mismatch|channel mismatch/i);
+  });
+
+  test("keeps refund actions out of the compact Order Records detail card", () => {
+    const payments: AdminPaymentOrderSummary[] = [
+      {
+        accessRequestRef: "pareq_refund_001",
+        accessRequestStatus: "delivered",
+        amountMinor: 3000,
+        createdAt: "2026-07-02T11:00:00.000Z",
+        currency: "CNY",
+        displayRef: "buyer@example.test",
+        loginRef: "buyer@example.test",
+        orderRef: "pay_order_refund_ref",
+        paidAt: "2026-07-02T11:05:00.000Z",
+        plan: "monthly_plus",
+        planLabel: "monthly plus",
+        status: "paid_access_delivered"
+      }
+    ];
+    const quoteRefund = vi.fn();
+    const approveRefund = vi.fn();
+    const previewApproval = vi.fn();
+    const updateTrafficLimit = vi.fn();
+
+    render(
+      <AdminSafeReadPage
+        page="orderManagement"
+        orderManagementLifecycle={{ approveRefund, previewApproval, quoteRefund, updateTrafficLimit }}
+        orderManagementPayments={payments}
+      />
+    );
+
+    const detail = screen.getByLabelText("订单记录详情");
+    expect(within(detail).getByText("未申请")).not.toBeNull();
+    expect(within(detail).queryByRole("button", { name: "退款审批" })).toBeNull();
+    expect(screen.queryByLabelText("订单记录操作面板")).toBeNull();
+    expect(quoteRefund).not.toHaveBeenCalled();
+    expect(approveRefund).not.toHaveBeenCalled();
+    expect(document.body.textContent ?? "").not.toMatch(/checkoutUrl|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite|rawArtifact|handoffMaterial|merchantSecret|rawPayload/i);
+  });
+
+  test("merges usage monitor evidence into Order Records for billing reconciliation", () => {
     const requests: PortalAccessRequestSummary[] = [
       {
         accessGrantRef: "grant_safe_ref_002",
@@ -666,58 +874,22 @@ describe("admin safe-read route pages", () => {
       />
     );
 
-    const detail = screen.getByLabelText("Order Management redacted detail panel");
-    const usageEvidence = within(detail).getByLabelText("Order Management usage evidence");
-    expect(within(usageEvidence).getByText("Usage & Billing Evidence")).not.toBeNull();
-    expect(within(usageEvidence).getByText("5 GB / 100 GB")).not.toBeNull();
-    expect(within(usageEvidence).getByText("1 GB up / 4 GB down")).not.toBeNull();
-    expect(within(usageEvidence).getByText("5% of limit")).not.toBeNull();
-    expect(within(usageEvidence).getByText("7 GB user total")).not.toBeNull();
-    expect(within(usageEvidence).getByText("2 orders · 1 measured")).not.toBeNull();
-    expect(within(usageEvidence).getByText("Usage monitor order row")).not.toBeNull();
-    expect(within(usageEvidence).getByText("1/1 measured · 5 GB")).not.toBeNull();
-    expect(within(usageEvidence).getByText("1 aggregates · Billing orders + user usage aggregates")).not.toBeNull();
+    const detail = screen.getByLabelText("订单记录详情");
+    expect(within(detail).getByText("pareq_live_002")).not.toBeNull();
+    expect(within(detail).getByText("acct_live_002")).not.toBeNull();
+    expect(within(detail).getByText("年度套餐")).not.toBeNull();
+    expect(within(detail).queryByLabelText("订单用量核对")).toBeNull();
+    expect(within(detail).queryByText("用量与账务核对")).toBeNull();
+    expect(within(detail).queryByText("订单用量记录")).toBeNull();
+    expect(within(detail).queryByText("订单与账户用量")).toBeNull();
     expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite|rawArtifact|handoffMaterial/i);
   });
 
-  test("submits Order Management dry-run operations from the selected detail panel", async () => {
-    const previewApproval = vi.fn(async () => ({
-      approvalRef: "approval_local_order_lifecycle",
-      issuanceInput: {},
-      mode: "portal-access-request-approval-preview" as const,
-      ok: true,
-      request: { id: "pareq_live_001", status: "approved_pending_delivery" as const },
-      safety: {
-        noProductionMutation: true,
-        noRawHandoffMaterial: true,
-        noRuntimeMutation: true,
-        noSubscriptionUrl: true,
-        previewOnly: true,
-        requiresSeparateIssuanceExecution: true
-      },
-      status: "approved_pending_delivery" as const
-    }));
-    const updateTrafficLimit = vi.fn(async () => ({
-      audit: {
-        action: "traffic_limit_updated",
-        recordedAt: "2026-06-30T10:00:00.000Z"
-      },
-      ok: true,
-      quota: {
-        previousTrafficLimitBytes: 107374182400,
-        trafficLimitBytes: 32212254720,
-        updatedAt: "2026-06-30T10:00:00.000Z"
-      },
-      request: { id: "pareq_live_002" },
-      safety: {
-        noProductionMutation: true,
-        noRawCustomerData: true,
-        noRawHandoffMaterial: true,
-        noRuntimeMutation: true,
-        noSubscriptionUrl: true
-      },
-      type: "portal_access_request_traffic_limit_update" as const
-    }));
+  test("does not expose lifecycle operations from the Order Records detail card", () => {
+    const previewApproval = vi.fn();
+    const updateTrafficLimit = vi.fn();
+    const quoteRefund = vi.fn();
+    const approveRefund = vi.fn();
     const requests: PortalAccessRequestSummary[] = [
       {
         accessGrantRef: null,
@@ -778,41 +950,25 @@ describe("admin safe-read route pages", () => {
     render(
       <AdminSafeReadPage
         page="orderManagement"
-        orderManagementLifecycle={{ previewApproval, updateTrafficLimit }}
+        orderManagementLifecycle={{ approveRefund, previewApproval, quoteRefund, updateTrafficLimit }}
         orderManagementRequests={requests}
       />
     );
 
-    const initialDetail = screen.getByLabelText("Order Management redacted detail panel");
-    expect(within(initialDetail).getByRole<HTMLButtonElement>("button", { name: "Delivery Handoff · Gated" }).disabled).toBe(true);
-    fireEvent.click(within(initialDetail).getByRole("button", { name: "Approve Preview" }));
-    const approvalPanel = screen.getByLabelText("Order Management operation panel");
-    fireEvent.click(within(approvalPanel).getByRole("button", { name: "Run approval preview" }));
+    const initialDetail = screen.getByLabelText("订单记录详情");
+    expect(within(initialDetail).queryByLabelText("订单记录操作")).toBeNull();
+    expect(within(initialDetail).queryByRole("button", { name: "审核订单" })).toBeNull();
+    expect(within(initialDetail).queryByRole("button", { name: "调整流量" })).toBeNull();
+    expect(within(initialDetail).queryByRole("button", { name: "退款审批" })).toBeNull();
 
-    await waitFor(() => {
-      expect(previewApproval).toHaveBeenCalledWith("pareq_live_001", {
-        approvalRef: "approval_local_order_lifecycle",
-        nodeId: "channel-lab-b-tuic",
-        reviewedByRef: "operator_local_admin"
-      });
-    });
-    expect(screen.getByText("Approval preview ready.")).not.toBeNull();
-
-    fireEvent.click(screen.getByRole("row", { name: /pareq_live_002 pareq_live_002 acct_live_002 Delivered Active Delivered/ }));
-    const updatedDetail = screen.getByLabelText("Order Management redacted detail panel");
-    fireEvent.click(within(updatedDetail).getByRole("button", { name: "Set Traffic Limit" }));
-    const limitPanel = screen.getByLabelText("Order Management operation panel");
-    fireEvent.change(within(limitPanel).getByLabelText("Traffic Limit GB"), { target: { value: "30" } });
-    fireEvent.click(within(limitPanel).getByRole("button", { name: "Submit traffic limit" }));
-
-    await waitFor(() => {
-      expect(updateTrafficLimit).toHaveBeenCalledWith("pareq_live_002", {
-        reasonCode: "local_order_quota_review",
-        reviewedByRef: "operator_local_admin",
-        trafficLimitBytes: 32212254720
-      });
-    });
-    expect(screen.getByText("Traffic limit submitted.")).not.toBeNull();
+    fireEvent.click(screen.getByRole("row", { name: /pareq_live_002 pareq_live_002 acct_live_002 年度套餐 已开通 使用中 已开通/ }));
+    const updatedDetail = screen.getByLabelText("订单记录详情");
+    expect(within(updatedDetail).queryByLabelText("订单记录操作")).toBeNull();
+    expect(screen.queryByLabelText("订单记录操作面板")).toBeNull();
+    expect(previewApproval).not.toHaveBeenCalled();
+    expect(updateTrafficLimit).not.toHaveBeenCalled();
+    expect(quoteRefund).not.toHaveBeenCalled();
+    expect(approveRefund).not.toHaveBeenCalled();
     expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite|rawArtifact|handoffMaterial/i);
   });
 

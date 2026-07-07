@@ -18,6 +18,7 @@ import {
 import { AdminApiError, createAdminApiClient } from "./features/subscriptions/api-client";
 import type {
   AdminListPageInfo,
+  AdminPaymentOrderSummary,
   NodeBandwidthSummary,
   PlatformAccountSummary,
   PlatformEntitlementSummary,
@@ -62,6 +63,7 @@ type UserManagementReadModel = {
 
 type OrderManagementSourceData = {
   pageInfo?: AdminListPageInfo;
+  payments?: AdminPaymentOrderSummary[];
   requests: PortalAccessRequestSummary[];
   usageMonitor?: SubscriptionUsageMonitor;
 };
@@ -327,17 +329,20 @@ export function App() {
 
     async function loadOrderManagementWithUsage() {
       const usageResult = client.listSubscriptionUsageMonitor();
+      const paymentsResult = client.listPaymentOrders().catch(() => undefined);
       try {
-        const [page, usageMonitor] = await Promise.all([
+        const [page, usageMonitor, payments] = await Promise.all([
           client.listPortalAccessRequestPage({
             limit: ORDER_MANAGEMENT_PAGE_SIZE,
             offset: 0
           }),
-          usageResult.catch(() => undefined)
+          usageResult.catch(() => undefined),
+          paymentsResult
         ]);
         if (!cancelled) {
           setOrderManagementData({
             pageInfo: page.pageInfo,
+            payments: payments?.orders ?? [],
             requests: page.items,
             usageMonitor
           });
@@ -345,9 +350,10 @@ export function App() {
         }
       } catch {
         try {
-          const [requests, usageMonitor] = await Promise.all([
+          const [requests, usageMonitor, payments] = await Promise.all([
             client.listPortalAccessRequests(),
-            usageResult.catch(() => undefined)
+            usageResult.catch(() => undefined),
+            paymentsResult
           ]);
           if (!cancelled) {
             setOrderManagementData({
@@ -359,6 +365,7 @@ export function App() {
                 returnedRows: requests.length,
                 totalRows: requests.length
               },
+              payments: payments?.orders ?? [],
               requests,
               usageMonitor
             });
@@ -457,6 +464,12 @@ export function App() {
         refreshUserManagementData();
         return result;
       },
+      createEntitlement: async (userId, input) => {
+        const client = createAdminApiClient(adminSession);
+        const result = await client.createPlatformEntitlement(userId, input);
+        refreshUserManagementData();
+        return result;
+      },
       disable: async (userId, input) => {
         const client = createAdminApiClient(adminSession);
         await client.disablePlatformAccount(userId, input);
@@ -486,6 +499,7 @@ export function App() {
     });
     setOrderManagementData((current) => ({
       pageInfo: nextPage.pageInfo,
+      payments: current?.payments,
       requests: nextPage.items,
       usageMonitor: current?.usageMonitor
     }));
@@ -503,6 +517,16 @@ export function App() {
         const update = await client.updatePortalAccessRequestTrafficLimit(requestRef, input);
         refreshOrderManagementData();
         return update;
+      },
+      quoteRefund: async (orderRef, input) => {
+        const client = createAdminApiClient(adminSession);
+        return client.quotePaymentRefund(orderRef, input);
+      },
+      approveRefund: async (orderRef, input) => {
+        const client = createAdminApiClient(adminSession);
+        const refund = await client.approvePaymentRefund(orderRef, input);
+        refreshOrderManagementData();
+        return refund;
       }
     };
   const userManagementReadModel = resolveUserManagementReadModel({
@@ -614,6 +638,9 @@ function renderPage(
           orderManagementLifecycle={orderManagementLifecycle}
           orderManagementPageInfo={orderManagementData?.pageInfo}
           onOrderManagementPageChange={onOrderManagementPageChange}
+          orderManagementPayments={orderManagementData?.payments && orderManagementData.payments.length > 0
+            ? orderManagementData.payments
+            : undefined}
           orderManagementRequests={orderManagementData?.requests}
           orderManagementUsageMonitor={orderManagementData?.usageMonitor ?? usageMonitorData ?? undefined}
         />

@@ -97,18 +97,27 @@ type UserManagementUsageSummary = {
 
 type UserManagementSubscriptionSummary = {
   current: string;
-  window: string;
+  monthlyTraffic: string;
+  planRecords: string;
+  validity: string;
 };
 
-const REDACTED_EMAIL = "[REDACTED_EMAIL]";
+type SelectedAccountPlan = {
+  entitlement?: PlatformEntitlementSummary;
+  label: string;
+  tone: MetricTone;
+};
+
+const EMAIL_NOT_AVAILABLE = "Email not available";
 const NOT_OBSERVED = "Not observed";
 const NOT_AVAILABLE = "Not available";
-const UNSAFE_TEXT_PATTERN = /https?:\/\/|subscriptionUrl|token=|secret|password|edgecred_|bearer|raw log|sqlite|credential|[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+const PUBLIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const UNSAFE_TEXT_PATTERN = /https?:\/\/|subscriptionUrl|token=|secret|password|edgecred_|bearer|raw log|sqlite|credential/i;
 const BLOCKED_ORDER_STATUSES = new Set(["blocked", "disabled", "revoked", "rotated", "expired", "missing"]);
 export const USER_MANAGEMENT_ACTION_GATES: readonly UserManagementActionGate[] = [
   {
     disabledReason: "Safe read available for the selected account row.",
-    evidenceFields: ["safe user ref", "status", "plan", "current subscription", "usage summary"],
+    evidenceFields: ["safe user ref", "status", "plan", "account plan", "usage summary"],
     id: "read-user-detail",
     label: "Read User Detail",
     operation: "read",
@@ -126,7 +135,7 @@ export const USER_MANAGEMENT_ACTION_GATES: readonly UserManagementActionGate[] =
   },
   {
     disabledReason: "Dry-run shell available; real edit requires permission contract, audit event, and backend validation.",
-    evidenceFields: ["safe user ref", "status", "plan", "current subscription"],
+    evidenceFields: ["safe user ref", "status", "plan", "account plan"],
     id: "edit-user",
     label: "Edit User · Dry-run",
     operation: "update",
@@ -135,7 +144,7 @@ export const USER_MANAGEMENT_ACTION_GATES: readonly UserManagementActionGate[] =
   },
   {
     disabledReason: "Dry-run shell available; real disable requires operator approval, audit event, and entitlement impact preview.",
-    evidenceFields: ["safe user ref", "status", "current subscription", "usage summary"],
+    evidenceFields: ["safe user ref", "status", "account plan", "usage summary"],
     id: "disable-user",
     label: "Disable User · Dry-run",
     operation: "disable",
@@ -144,7 +153,7 @@ export const USER_MANAGEMENT_ACTION_GATES: readonly UserManagementActionGate[] =
   },
   {
     disabledReason: "Hard delete remains unavailable; dry-run shell only until a separate approval gate and retention review exist.",
-    evidenceFields: ["safe user ref", "status", "current subscription", "usage summary"],
+    evidenceFields: ["safe user ref", "status", "account plan", "usage summary"],
     id: "delete-user",
     label: "Delete User · Dry-run",
     operation: "delete",
@@ -187,7 +196,7 @@ export function createUserManagementPageConfigFromAccountSummaries({
       showPageSummary: false,
       showWhenSinglePage: true
     },
-    queryPlaceholder: "Search User ID, name, email...",
+    queryPlaceholder: "Search login email, plan, status...",
     rows,
     tableAriaLabel: "User Management redacted table"
   };
@@ -208,15 +217,16 @@ function createUserManagementSafeReadRow(
   usageSummary?: UserManagementUsageSummary
 ): UserManagementSafeReadRow {
   const userId = safeRef(account.id);
+  const email = publicEmailForAccount(account);
   const plan = selectPlan(account.id, entitlements);
-  const subscription = subscriptionSummaryForAccount(account, entitlements, usageSummary, plan.label);
+  const accountPlan = subscriptionSummaryForAccount(account, entitlements, usageSummary, plan);
   const status = normalizeAccountStatus(account.status);
   const risk = deriveRisk(account, status.label, usageSummary);
   const row: UserManagementSafeReadRow = {
     createdDate: formatDate(account.createdAt),
     detail: { fields: [] },
-    displayName: displayNameForAccount(account, userId),
-    email: REDACTED_EMAIL,
+    displayName: email,
+    email,
     id: `user_management_${userId}`,
     lastAccess: formatDateTime(account.updatedAt),
     plan: plan.label,
@@ -229,17 +239,15 @@ function createUserManagementSafeReadRow(
   };
 
   row.detail.fields = [
-    { label: "User ID", value: row.userId },
-    { label: "Display Name", value: row.displayName },
-    { label: "Email", value: row.email },
-    { label: "Plan", value: row.plan },
-    { label: "Current Subscription", value: subscription.current },
-    { label: "Subscription Window", value: subscription.window },
+    { label: "Login Email", value: row.email },
+    { label: "账户权益", value: accountPlan.current },
+    { label: "可用时间", value: accountPlan.validity },
+    { label: "共享月流量", value: accountPlan.monthlyTraffic },
     { label: "Status", tone: row.statusTone, value: row.status },
     { label: "Risk Level", tone: row.riskTone, value: row.risk },
     { label: "Created Date", value: row.createdDate },
     { label: "Last Access", value: row.lastAccess },
-    { label: "Entitlements", value: `${boundedCount(account.entitlementCount)} total / ${boundedCount(account.usableEntitlementCount)} usable` },
+    { label: "权益记录", value: accountPlan.planRecords },
     ...usageDetailFields(usageSummary)
   ];
 
@@ -258,14 +266,13 @@ export function applyUserManagementSafeReadQuery<Row extends Pick<UserManagement
     return rows;
   }
 
-  const search = normalizeSafeFilterValue(query.search);
+  const search = normalizeSafeSearchValue(query.search);
   const status = normalizeSafeFilterValue(query.status);
   const plan = normalizeSafeFilterValue(query.plan);
   const risk = normalizeSafeFilterValue(query.risk);
 
   return rows.filter((row) => {
     if (search && ![
-      row.userId,
       row.displayName,
       row.plan,
       row.status,
@@ -316,10 +323,19 @@ function deriveRisk(
   return { label: "Low", tone: "info" };
 }
 
-function displayNameForAccount(account: PlatformAccountSummary, fallback: string): string {
-  return safeDisplayText(account.displayName)
-    ?? safeDisplayText(account.organization)
-    ?? fallback;
+function publicEmailForAccount(account: PlatformAccountSummary): string {
+  return safeEmailText(account.email)
+    ?? safeEmailText(account.displayName)
+    ?? EMAIL_NOT_AVAILABLE;
+}
+
+function safeEmailText(value: string | null | undefined): string | null {
+  const candidate = value?.trim().toLowerCase();
+  if (!candidate || !PUBLIC_EMAIL_PATTERN.test(candidate) || UNSAFE_TEXT_PATTERN.test(candidate)) {
+    return null;
+  }
+
+  return candidate;
 }
 
 function formatDate(value: string | null): string {
@@ -362,6 +378,15 @@ function normalizeSafeFilterValue(value: string | undefined): string {
   return safeValue.toLowerCase();
 }
 
+function normalizeSafeSearchValue(value: string | undefined): string {
+  const candidate = value?.trim().replace(/\s+/g, " ").toLowerCase();
+  if (!candidate || candidate === "all" || UNSAFE_TEXT_PATTERN.test(candidate)) {
+    return "";
+  }
+
+  return candidate;
+}
+
 function parseDate(value: string | null): Date | null {
   if (!value) {
     return null;
@@ -377,11 +402,44 @@ function safeDisplayText(value: string | null | undefined): string | null {
   }
 
   const candidate = value.trim().replace(/\s+/g, " ");
-  if (candidate.length === 0 || UNSAFE_TEXT_PATTERN.test(candidate)) {
+  if (
+    candidate.length === 0
+    || PUBLIC_EMAIL_PATTERN.test(candidate.toLowerCase())
+    || UNSAFE_TEXT_PATTERN.test(candidate)
+  ) {
     return null;
   }
 
   return candidate;
+}
+
+function formatAccountPlanLabel(value: string | null | undefined): string | null {
+  const candidate = safeDisplayText(value);
+  if (!candidate) {
+    return null;
+  }
+
+  const normalized = candidate.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  if (normalized === "monthly_basic") return "Basic Monthly";
+  if (normalized === "monthly_plus") return "Standard Monthly";
+  if (normalized === "yearly") return "Yearly Plan";
+  if (normalized === "monthly") return "Monthly Plan";
+  if (normalized === "trial") return "Trial";
+  return candidate
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((part) => part.slice(0, 1).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function quotaNumber(entitlement: PlatformEntitlementSummary | undefined, key: string): number {
+  const value = entitlement?.quota?.[key];
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
+}
+
+function formatQuotaNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function safeRef(value: string): string {
@@ -396,22 +454,22 @@ function safeRef(value: string): string {
 function selectPlan(
   accountId: string,
   entitlements: PlatformEntitlementSummary[]
-): { label: string; tone: MetricTone } {
+): SelectedAccountPlan {
   const accountEntitlements = entitlements.filter((entitlement) => entitlement.accountId === accountId);
   const entitlement = accountEntitlements.find((item) => item.usable) ?? accountEntitlements[0];
-  const safePlan = safeDisplayText(entitlement?.plan);
-  if (!safePlan) {
+  const safePlan = formatAccountPlanLabel(entitlement?.plan);
+  if (!safePlan || !entitlement) {
     return { label: "No Plan", tone: "neutral" };
   }
 
-  return { label: safePlan, tone: "info" };
+  return { entitlement, label: safePlan, tone: "info" };
 }
 
 function subscriptionSummaryForAccount(
   account: PlatformAccountSummary,
   entitlements: PlatformEntitlementSummary[],
   usageSummary: UserManagementUsageSummary | undefined,
-  planLabel: string
+  plan: SelectedAccountPlan
 ): UserManagementSubscriptionSummary {
   const accountEntitlements = entitlements.filter((entitlement) => entitlement.accountId === account.id);
   const startDate = earliestDate([
@@ -423,19 +481,25 @@ function subscriptionSummaryForAccount(
     usageSummary?.latestSubscriptionEndAt ?? null
   ]);
 
-  if (planLabel === "No Plan" && !endDate) {
+  const planRecords = `${boundedCount(account.entitlementCount)} records / ${boundedCount(account.usableEntitlementCount)} active`;
+  if (plan.label === "No Plan" && !endDate) {
     return {
-      current: "No active subscription",
-      window: NOT_AVAILABLE
+      current: "暂无有效套餐",
+      monthlyTraffic: NOT_AVAILABLE,
+      planRecords,
+      validity: NOT_AVAILABLE
     };
   }
 
   const startLabel = startDate ? formatDate(startDate.toISOString()) : NOT_AVAILABLE;
   const endLabel = endDate ? formatDate(endDate.toISOString()) : NOT_AVAILABLE;
+  const monthlyTraffic = quotaNumber(plan.entitlement, "trafficGb");
 
   return {
-    current: endDate ? `${planLabel} until ${endLabel}` : `${planLabel} / expiry not available`,
-    window: startDate || endDate ? `${startLabel} - ${endLabel}` : NOT_AVAILABLE
+    current: endDate ? `${plan.label} credited until ${endLabel}` : `${plan.label} / validity not available`,
+    monthlyTraffic: monthlyTraffic > 0 ? `${formatQuotaNumber(monthlyTraffic)} GB / 月` : NOT_AVAILABLE,
+    planRecords,
+    validity: startDate || endDate ? `${startLabel} - ${endLabel}` : NOT_AVAILABLE
   };
 }
 
@@ -505,11 +569,11 @@ function usageDetailFields(summary: UserManagementUsageSummary | undefined): Saf
   }
 
   return [
-    { label: "Orders", value: `${summary.totalOrders} total / ${summary.activeOrders} active` },
+    { label: "Usage Records", value: `${summary.totalOrders} records / ${summary.activeOrders} active` },
     { label: "Usage", value: `${formatBytes(summary.totalUsedBytes)} used` },
     { label: "Upload / Download", value: `${formatBytes(summary.totalUploadBytes)} up / ${formatBytes(summary.totalDownloadBytes)} down` },
-    { label: "Quota", value: formatQuota(summary.totalUsedBytes, summary.totalTrafficLimitBytes) },
-    { label: "Collection", value: `${summary.measuredOrders} measured / ${summary.pendingCollectionOrders} pending` },
+    { label: "Monthly Quota", value: formatQuota(summary.totalUsedBytes, summary.totalTrafficLimitBytes) },
+    { label: "Usage Reporting", value: `${summary.measuredOrders} measured / ${summary.pendingCollectionOrders} pending` },
     { label: "Last Usage", value: formatDateTime(summary.latestUsageObservedAt) },
     { label: "Warnings", value: summary.warnings.length > 0 ? summary.warnings.join(", ") : "None" }
   ];

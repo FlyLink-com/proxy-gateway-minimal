@@ -224,7 +224,7 @@ const companySiteCopy = {
             cta: "Register for 7-day trial",
             badge: "Most popular",
             tone: "featured",
-            features: ["More device capacity", "All available regions", "Multi-payment support", "Priority setup support"]
+            features: ["100 GB monthly traffic", "All available regions", "Multi-payment support", "Priority setup support"]
           }
         ],
         annual: [
@@ -384,7 +384,7 @@ const companySiteCopy = {
         ],
         cards: [
           { title: "Monthly Basic", description: "Approximate RMB 20/month for personal secure access and standard region use." },
-          { title: "Monthly Plus", description: "Approximate RMB 30/month for higher usage, more device capacity, and priority setup." },
+          { title: "Monthly Plus", description: "Approximate RMB 30/month for higher traffic usage, all available regions, and priority setup." },
           { title: "Annual", description: "Approximate RMB 200/year for longer-term use and the best public-site value indication." }
         ],
         sections: [
@@ -508,7 +508,7 @@ const companySiteCopy = {
           { label: "Support", value: "Public inquiry only" }
         ],
         cards: [
-          { title: "Respect account limits", description: "Use should stay within the activated plan, device capacity, and account controls." },
+          { title: "Respect account limits", description: "Use should stay within the activated plan, shared traffic quota, and account controls." },
           { title: "No harmful activity", description: "Fraud, spam, credential abuse, service disruption, or attempts to harm others are not permitted." },
           { title: "Safe support data", description: "Support requests should describe needs without sending secrets, passwords, or payment credentials." }
         ],

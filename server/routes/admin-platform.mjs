@@ -15,6 +15,7 @@ import { createCleanStartControlPlanePackage } from "../services/platform/clean-
 import { createAliyunGateDecisionPacket } from "../services/platform/aliyun-gate-decision-packet.mjs";
 import { buildProvisioningFormPackage } from "../services/platform/provisioning-form.mjs";
 import { previewSubscriptionIssuance, planSubscriptionIssuance } from "../services/platform/subscription-issuance.mjs";
+import { buildNodeBandwidthSummary } from "../services/platform/node-bandwidth-summary.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
 
 function sendError(res, error) {
@@ -25,6 +26,11 @@ function sendError(res, error) {
 
   if (error.code === "not_found") {
     res.status(404).json({ error: "not_found", message: error.message });
+    return;
+  }
+
+  if (error.code === "lifecycle_blocked") {
+    res.status(409).json({ error: "lifecycle_blocked", message: error.message });
     return;
   }
 
@@ -121,6 +127,7 @@ export function adminPlatformRoutes(state) {
   const aliyunGateEvidenceShell = state.platform?.aliyunGateEvidenceShell;
   const controlStore = state.platform?.controlStore;
   const portalAccessRequests = state.platform?.portalAccessRequests;
+  const portalPayments = state.platform?.portalPayments;
   const edgeUsageAccounting = state.platform?.edgeUsageAccounting;
   const dataPlaneHandoffQueue = state.platform?.dataPlaneHandoffQueue;
 
@@ -399,6 +406,98 @@ export function adminPlatformRoutes(state) {
     }
   });
 
+  router.get("/api/admin/platform/node-bandwidth", (req, res) => {
+    try {
+      res.json({
+        nodeBandwidth: buildNodeBandwidthSummary({
+          controlStore,
+          proxyConfig: state.proxyConfig,
+          filters: {
+            nodeId: req.query.nodeId,
+            from: req.query.from,
+            to: req.query.to,
+            bucket: req.query.bucket
+          },
+          usageCollectorConfigured: Boolean(edgeUsageAccounting?.collectAndRecord),
+          now: new Date()
+        })
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/platform/payments", (req, res) => {
+    try {
+      res.json({
+        payments: {
+          configured: Boolean(portalPayments && typeof portalPayments.listOrders === "function"),
+          orders: portalPayments && typeof portalPayments.listOrders === "function"
+            ? portalPayments.listOrders({
+              status: req.query.status,
+              portalUserRef: req.query.portalUserRef,
+              plan: req.query.plan
+            })
+            : [],
+          safety: {
+            noRawMerchantKey: true,
+            noRawProviderPayload: true,
+            noPaymentMutation: true
+          }
+        }
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/payments/:orderRef/retry-delivery", (req, res) => {
+    try {
+      if (!portalPayments || typeof portalPayments.retryDelivery !== "function") {
+        const error = new Error("portal payment service is not configured for delivery retry");
+        error.code = "validation_error";
+        throw error;
+      }
+      res.json({
+        payment: portalPayments.retryDelivery(req.params.orderRef, req.body ?? {})
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/platform/payments/:orderRef/refund-quote", (req, res) => {
+    try {
+      if (!portalPayments || typeof portalPayments.quoteRefund !== "function") {
+        const error = new Error("portal payment service is not configured for refund quote");
+        error.code = "validation_error";
+        throw error;
+      }
+      res.json({
+        payment: portalPayments.quoteRefund(req.params.orderRef, {
+          approvedAt: req.query.approvedAt
+        })
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/payments/:orderRef/approve-refund", async (req, res) => {
+    try {
+      if (!portalPayments || typeof portalPayments.approveRefund !== "function") {
+        const error = new Error("portal payment service is not configured for refund approval");
+        error.code = "validation_error";
+        throw error;
+      }
+      res.json({
+        payment: await portalPayments.approveRefund(req.params.orderRef, req.body ?? {})
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
   router.post("/api/admin/platform/subscription-usage-monitor/collect", async (req, res) => {
     try {
       if (!edgeUsageAccounting || typeof edgeUsageAccounting.collectAndRecord !== "function") {
@@ -514,6 +613,46 @@ export function adminPlatformRoutes(state) {
     }
   });
 
+  router.post("/api/admin/platform/accounts", (req, res) => {
+    try {
+      res.status(201).json(accountShell.createAccount(req.body ?? {}));
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.patch("/api/admin/platform/accounts/:id", (req, res) => {
+    try {
+      res.json(accountShell.updateAccount(req.params.id, req.body ?? {}));
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/accounts/:id/disable", (req, res) => {
+    try {
+      res.json(accountShell.disableAccount(req.params.id, req.body ?? {}));
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.post("/api/admin/platform/accounts/:id/delete-dry-run", (req, res) => {
+    try {
+      res.json({ deletion: accountShell.previewAccountDeletion(req.params.id, req.body ?? {}) });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.delete("/api/admin/platform/accounts/:id", (req, res) => {
+    try {
+      res.json(accountShell.deleteAccount(req.params.id));
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
   router.post("/api/admin/platform/accounts/:id/entitlements", (req, res) => {
     try {
       const entitlement = accountShell.createEntitlement(req.params.id, req.body ?? {});
@@ -566,11 +705,29 @@ export function adminPlatformRoutes(state) {
       if (!portalAccessRequests) {
         throw new Error("portalAccessRequests is not configured");
       }
-      res.json({
-        items: portalAccessRequests.listRequests({
-          status: req.query.status,
-          portalUserRef: req.query.portalUserRef
+      const page = typeof portalAccessRequests.listRequestsPage === "function"
+        ? portalAccessRequests.listRequestsPage({
+          limit: req.query.limit,
+          offset: req.query.offset,
+          portalUserRef: req.query.portalUserRef,
+          status: req.query.status
         })
+        : {
+          items: portalAccessRequests.listRequests({
+            status: req.query.status,
+            portalUserRef: req.query.portalUserRef
+          })
+        };
+      res.json({
+        items: page.items,
+        pageInfo: page.pageInfo ?? {
+          limit: page.items.length,
+          nextOffset: null,
+          offset: 0,
+          previousOffset: null,
+          returnedRows: page.items.length,
+          totalRows: page.items.length
+        }
       });
     } catch (error) {
       sendError(res, error);

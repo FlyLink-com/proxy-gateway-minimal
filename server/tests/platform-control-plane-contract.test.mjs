@@ -64,7 +64,7 @@ test("platform account and entitlement contracts separate commercial state from 
     status: "active",
     validFrom: "2026-05-26T00:00:00.000Z",
     validUntil: "2026-06-26T00:00:00.000Z",
-    quota: { trafficGb: 100, seats: 3 }
+    quota: { trafficGb: 100 }
   }, { now: NOW });
 
   assert.equal(account.status, "pending_review");

@@ -28,8 +28,7 @@ function inputFixture(overrides = {}) {
       status: "active",
       validUntil: "2026-06-28T18:30:00.000Z",
       quota: {
-        trafficGb: 50,
-        seats: 2
+        trafficGb: 50
       }
     },
     accessGrant: {

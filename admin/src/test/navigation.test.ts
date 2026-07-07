@@ -28,6 +28,7 @@ afterEach(() => {
 describe("admin navigation", () => {
   test("routes portal register paths to the user registration surface instead of Admin", async () => {
     window.history.pushState(null, "", "/portal/register/");
+    window.localStorage.setItem("gccwebos-site-locale", "zh");
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
       challenge: {
         challengeId: "challenge_safe_ref",
@@ -38,7 +39,7 @@ describe("admin navigation", () => {
 
     render(createElement(App));
 
-    expect(await screen.findByRole("heading", { name: "注册领取 7 天试用" }, { timeout: 5000 })).not.toBeNull();
+    expect(await screen.findByRole("heading", { name: "创建你的账户" }, { timeout: 5000 })).not.toBeNull();
     expect(screen.getByRole("region", { name: "用户注册" })).not.toBeNull();
     expect(screen.queryByText("运营总览")).toBeNull();
     expect(screen.queryByText("User Management")).toBeNull();
@@ -79,19 +80,19 @@ describe("admin navigation", () => {
     ]);
     expect(navSections.map((section) => section.description)).toEqual([
       "Overview, accounts, usage, and channels",
-      "Users, orders, nodes, and bandwidth",
+      "Users, order records, nodes, and bandwidth",
       "User and node evidence logs"
     ]);
     expect(navSections.map((section) => section.items.map((item) => item.label))).toEqual([
       ["Operations Overview", "Accounts & Resources", "Usage & Channels"],
-      ["User Management", "Order Management", "Node Health", "Node Bandwidth"],
+      ["User Management", "Order Records", "Node Health", "Node Bandwidth"],
       ["User Access Logs", "User Operation Logs", "Node Logs"]
     ]);
     expect(pageTitles.dashboard).toBe("Operations Overview");
     expect(pageTitles.portalRequests).toBe("Accounts & Resources");
     expect(pageTitles.usageMonitor).toBe("Usage & Channels");
     expect(pageTitles.userManagement).toBe("User Management");
-    expect(pageTitles.orderManagement).toBe("Order Management");
+    expect(pageTitles.orderManagement).toBe("Order Records");
     expect(pageTitles.nodeHealth).toBe("Node Health");
     expect(pageContexts.dashboard).toEqual({
       eyebrow: "Monitoring",
@@ -153,7 +154,7 @@ describe("admin navigation", () => {
       "Accounts & Resources",
       "Usage & Channels",
       "User Management",
-      "Order Management",
+      "Order Records",
       "Node Health",
       "Node Bandwidth",
       "User Access Logs",
@@ -423,6 +424,75 @@ describe("admin navigation", () => {
     expect(document.body.textContent ?? "").not.toMatch(/subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite|runtimePayload/i);
   });
 
+  test("loads payment orders for the Order Records page", async () => {
+    saveAdminSession({
+      authMode: "protectedSession",
+      baseUrl: "http://127.0.0.1:3456"
+    });
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/admin/platform/payments")) {
+        return jsonResponse({
+          payments: {
+            configured: true,
+            orders: [
+              {
+                accessRequestRef: "pareq_paid_nav_001",
+                accessRequestStatus: "pending_admin_review",
+                amountMinor: 3000,
+                createdAt: "2026-07-02T11:00:00.000Z",
+                currency: "CNY",
+                displayRef: "buyer@example.test",
+                loginRef: "buyer@example.test",
+                orderRef: "pay_order_nav_001",
+                paidAt: "2026-07-02T11:05:00.000Z",
+                plan: "monthly_plus",
+                planLabel: "monthly plus",
+                status: "paid_delivery_blocked"
+              }
+            ],
+            safety: {
+              noPaymentMutation: true,
+              noRawMerchantKey: true,
+              noRawProviderPayload: true
+            }
+          }
+        });
+      }
+      if (url.includes("/api/admin/platform/portal-access-requests")) {
+        return jsonResponse({
+          items: [],
+          pageInfo: {
+            limit: 20,
+            nextOffset: null,
+            offset: 0,
+            previousOffset: null,
+            returnedRows: 0,
+            totalRows: 0
+          }
+        });
+      }
+      if (url.includes("/api/admin/platform/subscription-usage-monitor")) {
+        return jsonResponse({ monitor: usageMonitorResponse() });
+      }
+      return jsonResponse({}, 404);
+    });
+    vi.stubGlobal("fetch", fetcher);
+    window.location.hash = "#/admin/order-management";
+
+    render(createElement(App));
+
+    expect(await screen.findByRole("row", { name: /pay_order_nav_001 pay_order_nav_001 buyer@example\.test/ })).not.toBeNull();
+    expect(screen.getAllByText("¥30.00 CNY").length).toBeGreaterThanOrEqual(1);
+    await waitFor(() => {
+      expect(fetcher).toHaveBeenCalledWith(
+        "http://127.0.0.1:3456/api/admin/platform/payments",
+        expect.objectContaining({ headers: expect.any(Headers) })
+      );
+    });
+    expect(document.body.textContent ?? "").not.toMatch(/checkoutUrl|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite|merchantSecret|rawPayload/i);
+  });
+
   test("defaults the admin shell to the operations dashboard", async () => {
     saveAdminSession({
       authMode: "protectedSession",
@@ -458,7 +528,7 @@ describe("admin navigation", () => {
     expect(within(workspaceSidebar).queryByLabelText("Platform Development routes")).toBeNull();
     expect(within(workspaceSidebar).queryByLabelText("System Settings routes")).toBeNull();
     expect(within(workspaceSidebar).getByRole("button", { name: "User Management" })).not.toBeNull();
-    expect(within(workspaceSidebar).getByRole("button", { name: "Order Management" })).not.toBeNull();
+    expect(within(workspaceSidebar).getByRole("button", { name: "Order Records" })).not.toBeNull();
     expect(within(workspaceSidebar).queryByLabelText("System Settings planned gate")).toBeNull();
     expect(within(workspaceSidebar).queryByLabelText("About planned gate")).toBeNull();
     expect(workspaceSidebar.textContent).not.toMatch(/Key Management|Audit Center|Log Access/);
@@ -868,9 +938,9 @@ describe("admin navigation", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "User Management" }));
 
-    expect(await screen.findByRole("row", { name: /user_management_acct_001 acct_001 Acme Ops Active Low/ })).not.toBeNull();
+    expect(await screen.findByRole("row", { name: /ops@example\.com Pilot Active Low/ })).not.toBeNull();
     expect(screen.getByText("Showing 1-1 of 1")).not.toBeNull();
-    expect(screen.getAllByText("[REDACTED_EMAIL]").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("ops@example.com").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Pilot").length).toBeGreaterThanOrEqual(1);
     await waitFor(() => {
       expect(fetcher).toHaveBeenCalledWith(
@@ -886,7 +956,7 @@ describe("admin navigation", () => {
         expect.objectContaining({ headers: expect.any(Headers) })
       );
     });
-    expect(screen.getByText("1 total / 1 active")).not.toBeNull();
+    expect(screen.getAllByText("1 records / 1 active").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("3.0 GB used")).not.toBeNull();
     expect(screen.getByText("3.0 / 10.0 GB")).not.toBeNull();
     expect(screen.getByText("1 measured / 0 pending")).not.toBeNull();
@@ -895,7 +965,7 @@ describe("admin navigation", () => {
       | undefined;
     expect((accountCall?.[1].headers as Headers).get("authorization")).toBeNull();
     expect(accountCall?.[1].credentials).toBe("same-origin");
-    expect(document.body.textContent ?? "").not.toMatch(/ops@example\.com|ord_hidden|tenant_hidden|node_hidden|chan_hidden|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite/i);
+    expect(document.body.textContent ?? "").not.toMatch(/ord_hidden|tenant_hidden|node_hidden|chan_hidden|subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite/i);
   });
 
   test("loads Usage & Channels from protected usage monitor summaries", async () => {
@@ -994,7 +1064,7 @@ describe("admin navigation", () => {
     expect(document.body.textContent ?? "").not.toMatch(/subscriptionUrl|token=|secret-value|password|edgecred_|bearer\s+[a-z0-9._-]+/i);
   });
 
-  test("loads Order Management from protected portal access request summaries", async () => {
+  test("loads Order Records from protected portal access request summaries", async () => {
     saveAdminSession({
       authMode: "protectedSession",
       baseUrl: "http://127.0.0.1:3456"
@@ -1048,10 +1118,10 @@ describe("admin navigation", () => {
 
     render(createElement(App));
 
-    fireEvent.click(await screen.findByRole("button", { name: "Order Management" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Order Records" }));
 
-    expect(await screen.findByRole("row", { name: /pareq_nav_001 pareq_nav_001 acct_nav_001 Pending Admin Review Not Delivered/ })).not.toBeNull();
-    expect(screen.getByText("Showing 1-1 of 1")).not.toBeNull();
+    expect(await screen.findByRole("row", { name: /pareq_nav_001 pareq_nav_001 acct_nav_001 月付套餐 待审核 待审核 待审核/ })).not.toBeNull();
+    expect(screen.getByText("显示 1-1 / 1")).not.toBeNull();
     await waitFor(() => {
       expect(fetcher).toHaveBeenCalledWith(
         "http://127.0.0.1:3456/api/admin/platform/portal-access-requests?limit=20&offset=0",
@@ -1066,7 +1136,7 @@ describe("admin navigation", () => {
     expect(document.body.textContent ?? "").not.toMatch(/subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite|handoffMaterial/i);
   });
 
-  test("loads next Order Management page from the protected Admin API", async () => {
+  test("loads next Order Records page from the protected Admin API", async () => {
     saveAdminSession({
       authMode: "protectedSession",
       baseUrl: "http://127.0.0.1:3456"
@@ -1135,14 +1205,14 @@ describe("admin navigation", () => {
 
     render(createElement(App));
 
-    fireEvent.click(await screen.findByRole("button", { name: "Order Management" }));
-    expect(await screen.findByRole("row", { name: /pareq_page_01 pareq_page_01 acct_page_01 Pending Admin Review Not Delivered/ })).not.toBeNull();
-    expect(screen.getByText("Showing 1-20 of 21")).not.toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Order Records" }));
+    expect(await screen.findByRole("row", { name: /pareq_page_01 pareq_page_01 acct_page_01 月付套餐 待审核 待审核 待审核/ })).not.toBeNull();
+    expect(screen.getByText("显示 1-20 / 21")).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }));
 
-    expect(await screen.findByRole("row", { name: /pareq_page_21 pareq_page_21 acct_page_21 Pending Admin Review Not Delivered/ })).not.toBeNull();
-    expect(screen.getByText("Showing 21-21 of 21")).not.toBeNull();
+    expect(await screen.findByRole("row", { name: /pareq_page_21 pareq_page_21 acct_page_21 月付套餐 待审核 待审核 待审核/ })).not.toBeNull();
+    expect(screen.getByText("显示 21-21 / 21")).not.toBeNull();
     await waitFor(() => {
       expect(fetcher).toHaveBeenCalledWith(
         "http://127.0.0.1:3456/api/admin/platform/portal-access-requests?limit=20&offset=20",
@@ -1152,7 +1222,7 @@ describe("admin navigation", () => {
     expect(document.body.textContent ?? "").not.toMatch(/subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite|handoffMaterial/i);
   });
 
-  test("submits Order Management operation previews through protected Admin APIs", async () => {
+  test("keeps Order Records as a read-only record lookup surface", async () => {
     saveAdminSession({
       authMode: "protectedSession",
       baseUrl: "http://127.0.0.1:3456"
@@ -1228,96 +1298,35 @@ describe("admin navigation", () => {
           }
         });
       }
-      if (url.endsWith("/api/admin/platform/portal-access-requests/pareq_nav_001/approve-preview") && method === "POST") {
-        return jsonResponse({
-          preview: {
-            approvalRef: "approval_local_order_lifecycle",
-            issuanceInput: {},
-            mode: "portal-access-request-approval-preview",
-            ok: true,
-            request: { id: "pareq_nav_001", status: "approved_pending_delivery" },
-            safety: {
-              noProductionMutation: true,
-              noRawHandoffMaterial: true,
-              noRuntimeMutation: true,
-              noSubscriptionUrl: true,
-              previewOnly: true,
-              requiresSeparateIssuanceExecution: true
-            },
-            status: "approved_pending_delivery"
-          }
-        });
-      }
-      if (url.endsWith("/api/admin/platform/portal-access-requests/pareq_nav_002/traffic-limit") && method === "POST") {
-        return jsonResponse({
-          quotaUpdate: {
-            audit: {
-              action: "traffic_limit_updated",
-              recordedAt: "2026-06-30T10:00:00.000Z"
-            },
-            ok: true,
-            quota: {
-              previousTrafficLimitBytes: 107374182400,
-              trafficLimitBytes: 32212254720,
-              updatedAt: "2026-06-30T10:00:00.000Z"
-            },
-            request: { id: "pareq_nav_002" },
-            safety: {
-              noProductionMutation: true,
-              noRawCustomerData: true,
-              noRawHandoffMaterial: true,
-              noRuntimeMutation: true,
-              noSubscriptionUrl: true
-            },
-            type: "portal_access_request_traffic_limit_update"
-          }
-        });
-      }
       return jsonResponse({}, 404);
     });
     vi.stubGlobal("fetch", fetcher);
 
     render(createElement(App));
 
-    fireEvent.click(await screen.findByRole("button", { name: "Order Management" }));
-    expect(await screen.findByRole("row", { name: /pareq_nav_001 pareq_nav_001 acct_nav_001 Pending Admin Review Not Delivered/ })).not.toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Order Records" }));
+    expect(await screen.findByRole("row", { name: /pareq_nav_001 pareq_nav_001 acct_nav_001 月付套餐 待审核 待审核 待审核/ })).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "Approve Preview" }));
-    fireEvent.click(screen.getByRole("button", { name: "Run approval preview" }));
-    await waitFor(() => {
-      expect(fetcher).toHaveBeenCalledWith(
-        "http://127.0.0.1:3456/api/admin/platform/portal-access-requests/pareq_nav_001/approve-preview",
-        expect.objectContaining({
-          body: JSON.stringify({
-            approvalRef: "approval_local_order_lifecycle",
-            nodeId: "channel-lab-b-tuic",
-            reviewedByRef: "operator_local_admin"
-          }),
-          method: "POST"
-        })
-      );
-    });
-    expect(screen.getByText("Approval preview ready.")).not.toBeNull();
+    const initialDetail = screen.getByLabelText("订单记录详情");
+    expect(within(initialDetail).getByText("pareq_nav_001")).not.toBeNull();
+    expect(within(initialDetail).queryByRole("button", { name: "审核订单" })).toBeNull();
+    expect(screen.queryByLabelText("订单记录操作面板")).toBeNull();
 
-    fireEvent.click(screen.getByRole("row", { name: /pareq_nav_002 pareq_nav_002 acct_nav_002 Delivered Active Delivered/ }));
-    fireEvent.click(screen.getByRole("button", { name: "Set Traffic Limit" }));
-    fireEvent.change(screen.getByLabelText("Traffic Limit GB"), { target: { value: "30" } });
-    fireEvent.click(screen.getByRole("button", { name: "Submit traffic limit" }));
+    fireEvent.click(screen.getByRole("row", { name: /pareq_nav_002 pareq_nav_002 acct_nav_002 年度套餐 已开通 使用中 已开通/ }));
+    const updatedDetail = screen.getByLabelText("订单记录详情");
+    expect(within(updatedDetail).getByText("pareq_nav_002")).not.toBeNull();
+    expect(within(updatedDetail).getByText("acct_nav_002")).not.toBeNull();
+    expect(within(updatedDetail).queryByRole("button", { name: "调整流量" })).toBeNull();
+    expect(screen.queryByLabelText("订单记录操作面板")).toBeNull();
 
-    await waitFor(() => {
-      expect(fetcher).toHaveBeenCalledWith(
-        "http://127.0.0.1:3456/api/admin/platform/portal-access-requests/pareq_nav_002/traffic-limit",
-        expect.objectContaining({
-          body: JSON.stringify({
-            reasonCode: "local_order_quota_review",
-            reviewedByRef: "operator_local_admin",
-            trafficLimitBytes: 32212254720
-          }),
-          method: "POST"
-        })
-      );
-    });
-    expect(screen.getByText("Traffic limit submitted.")).not.toBeNull();
+    expect(fetcher).not.toHaveBeenCalledWith(
+      expect.stringContaining("/approve-preview"),
+      expect.anything()
+    );
+    expect(fetcher).not.toHaveBeenCalledWith(
+      expect.stringContaining("/traffic-limit"),
+      expect.anything()
+    );
     expect(document.body.textContent ?? "").not.toMatch(/subscriptionUrl|token=|secret-value|password|edgecred_|bearer|raw log|sqlite|handoffMaterial/i);
   });
 
@@ -1420,13 +1429,13 @@ describe("admin navigation", () => {
     render(createElement(App));
 
     fireEvent.click(await screen.findByRole("button", { name: "User Management" }));
-    expect(await screen.findByRole("row", { name: /user_management_acct_001 acct_001 Acme Ops Active Low/ })).not.toBeNull();
+    expect(await screen.findByRole("row", { name: /ops@example\.com No Plan Active Low/ })).not.toBeNull();
 
     fireEvent.click(within(screen.getByLabelText("User Management gated actions")).getByRole("button", { name: "Create User" }));
     const panel = screen.getByLabelText("User Management lifecycle panel");
     fireEvent.change(within(panel).getByLabelText("Organization"), { target: { value: "Beta Account" } });
     fireEvent.change(within(panel).getByLabelText("Email"), { target: { value: "beta@example.com" } });
-    fireEvent.change(within(panel).getByLabelText("Display Name"), { target: { value: "Beta Ops" } });
+    expect(within(panel).queryByLabelText("Display Name")).toBeNull();
     fireEvent.click(within(panel).getByRole("button", { name: "Submit create" }));
 
     await waitFor(() => {
@@ -1435,7 +1444,7 @@ describe("admin navigation", () => {
         expect.objectContaining({
           body: JSON.stringify({
             approvalRef: "approval_local_user_lifecycle",
-            displayName: "Beta Ops",
+            displayName: "beta@example.com",
             email: "beta@example.com",
             operatorRef: "operator_local_admin",
             organization: "Beta Account",
@@ -1451,9 +1460,9 @@ describe("admin navigation", () => {
     expect(await screen.findByText("Loading protected account summaries from the Admin API.")).not.toBeNull();
     expect(screen.getByText("gcctemp-nav-create-001")).not.toBeNull();
     resolveRefreshAccounts?.();
-    expect(await screen.findByRole("row", { name: /user_management_acct_002 acct_002 Beta Ops Active Medium/ })).not.toBeNull();
+    expect(await screen.findByRole("row", { name: /beta@example\.com No Plan Active Medium/ })).not.toBeNull();
     expect(screen.getByText("gcctemp-nav-create-001")).not.toBeNull();
-    expect(document.body.textContent ?? "").not.toMatch(/ops@example\.com|beta@example\.com|subscriptionUrl|token=|secret-value|edgecred_|bearer|raw log|sqlite/i);
+    expect(document.body.textContent ?? "").not.toMatch(/subscriptionUrl|token=|secret-value|edgecred_|bearer|raw log|sqlite/i);
   });
 
   test("keeps Create User available when optional user-management evidence requests fail", async () => {
@@ -1495,7 +1504,7 @@ describe("admin navigation", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "User Management" }));
 
-    expect(await screen.findByRole("row", { name: /user_management_acct_001 acct_001 Acme Ops Active Low/ })).not.toBeNull();
+    expect(await screen.findByRole("row", { name: /ops@example\.com No Plan Active Low/ })).not.toBeNull();
     const createButton = within(screen.getByLabelText("User Management gated actions"))
       .getByRole<HTMLButtonElement>("button", { name: "Create User" });
     expect(createButton.disabled).toBe(false);

@@ -1,6 +1,6 @@
 # Admin Console Visual Protocol
 
-Last updated: 2026-06-25, America/Los_Angeles.
+Last updated: 2026-06-26, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-82 under GCC-81 / GCC-42
@@ -73,9 +73,9 @@ The current desktop source is the clean Figma baseline file
 
 | Page | Node | Role |
 | --- | --- | --- |
-| `Operations Overview` | `24:5` | Current route baseline card. |
-| `Accounts & Resources` | `24:35` | Current route baseline card. |
-| `Usage & Channels` | `24:65` | Current route baseline card. |
+| `Operations Overview` | `2:92` | Current route baseline frame. |
+| `Accounts & Resources` | `2:262` | Current route baseline frame. |
+| `Usage & Channels` | `2:432` | Current route baseline frame. |
 
 These cards supersede the older `373:*`, `99:*`, `104:*`, `365:*`, and
 `501:*` layout/rule drafts for implementation. Old frames remain useful as
@@ -86,7 +86,7 @@ Current geometry contract:
 
 | Element | Contract |
 | --- | --- |
-| Visible polished frame | `1600 x 908` inside the named `1600x1024` design stage. |
+| Visible polished frame | `1600 x 908` product baseline frame; implementation QA viewport remains `1600 x 1024`. |
 | ShellRail | `x=0`, `y=0`, `224 x 1024`; dark translucent glass. |
 | Content start | `x=252`; keeps a `28px` gutter after ShellRail. |
 | TopBar | `x=252`, `y=24`, `1296 x 58`; glass chrome with `16px` radius. |

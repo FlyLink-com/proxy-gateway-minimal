@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createApp } from "../app.mjs";
 import { createRuntimeState } from "../state.mjs";
+import { createPlatformAccountEntitlementShell } from "../services/platform/account-entitlement-shell.mjs";
 import { createPortalHumanChallengeService } from "../services/platform/portal-human-challenge.mjs";
 import { createPortalPasswordCredentialService } from "../services/platform/portal-password-credentials.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
@@ -42,6 +43,10 @@ function seedAccountAndEntitlement(store) {
     id: "acct_portal_route_1",
     ownerRef: "owner_safe_ref",
     status: "active",
+    metadata: {
+      loginRef: "portal-route@example.test",
+      displayRef: "portal-route@example.test"
+    },
     createdAt: NOW,
     updatedAt: NOW
   });
@@ -240,6 +245,8 @@ test("user portal routes consume dynamic entry and create scoped session without
       assert.equal(sessionResponse.status, 200);
       const sessionBody = await sessionResponse.json();
       assert.equal(sessionBody.session.sessionRef, "portal_session_route_1");
+      assert.equal(sessionBody.session.accountId, undefined);
+      assert.equal(sessionBody.session.userRef, "portal-route@example.test");
       assert.equal(sessionBody.session.expiresAt, SESSION_EXPIRES);
 
       const serialized = JSON.stringify({ enrollmentBody, sessionBody });
@@ -334,6 +341,8 @@ test("portal password session route verifies human challenge before credential w
       assert.equal(response.status, 200);
       const body = await response.json();
       assert.equal(body.session.sessionRef, "portal_session_route_1");
+      assert.equal(body.session.accountId, undefined);
+      assert.equal(body.session.userRef, "portal-route@example.test");
       assert.equal(body.session.authMethod, "password");
       assert.equal(store.listPortalSessions({ accountId: "acct_portal_route_1" }).length, 1);
 
@@ -406,6 +415,8 @@ test("portal password session route returns second-factor challenge after passwo
       assert.equal(body.challenge.status, "second_factor_required");
       assert.deepEqual(body.challenge.availableFactors, ["totp"]);
       assert.equal(body.challenge.challengeRef, "mfa_challenge_1");
+      assert.equal(body.challenge.accountId, undefined);
+      assert.equal(body.challenge.userRef, "portal-route@example.test");
       assert.equal(body.challenge.safety.noSessionCreated, true);
       const serialized = JSON.stringify(body);
       assert.equal(serialized.includes(plainPassword), false);
@@ -516,7 +527,8 @@ test("portal password second-factor route consumes a challenge and returns a sco
       assert.equal(factorResponse.status, 200);
       const factorBody = await factorResponse.json();
       assert.equal(factorBody.session.sessionRef, "portal_session_route_1");
-      assert.equal(factorBody.session.accountId, "acct_portal_route_1");
+      assert.equal(factorBody.session.accountId, undefined);
+      assert.equal(factorBody.session.userRef, "portal-route@example.test");
       assert.equal(factorBody.session.authMethod, "totp");
       assert.equal(store.getPortalSecondFactorChallenge("mfa_challenge_1").status, "used");
       assert.equal(store.listPortalSessions({ accountId: "acct_portal_route_1" }).length, 1);
@@ -600,7 +612,7 @@ test("portal security routes expose session-scoped authenticator state and confi
       const enrollmentBody = await enrollmentResponse.json();
       assert.equal(enrollmentBody.enrollment.enrollmentRef, "totp_enroll_route_1");
       assert.equal(enrollmentBody.enrollment.issuer, "GlobalCircle");
-      assert.equal(enrollmentBody.enrollment.accountLabel, "acct_portal_route_1");
+      assert.equal(enrollmentBody.enrollment.accountLabel, "portal-route@example.test");
       assert.equal(enrollmentBody.enrollment.manualKey, "JBSWY3DPEHPK3PXP");
       assert.match(enrollmentBody.enrollment.otpauthUri, /^otpauth:\/\/totp\//);
 
@@ -623,8 +635,17 @@ test("portal security routes expose session-scoped authenticator state and confi
       assert.equal(boundResponse.status, 200);
       assert.equal((await boundResponse.json()).security.authenticatorBound, true);
 
+      const duplicateEnrollmentResponse = await fetch(`${baseUrl}/api/portal/security/totp/enrollment`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Portal-Session": sessionRef },
+        body: JSON.stringify({})
+      });
+      assert.equal(duplicateEnrollmentResponse.status, 400);
+      assert.deepEqual(await duplicateEnrollmentResponse.json(), { error: "validation_error" });
+
       const serialized = JSON.stringify({ currentBody, confirmBody });
       assert.equal(serialized.includes(plainPassword), false);
+      assert.equal(serialized.includes("acct_portal_route_1"), false);
       assert.equal(serialized.includes("enc:JBSWY3DPEHPK3PXP"), false);
       assert.equal(serialized.includes("654321"), false);
     } finally {
@@ -635,6 +656,74 @@ test("portal security routes expose session-scoped authenticator state and confi
     allowPasswordOnlySessionForSetup: true,
     credentialRefFactory: () => "totp_bound_route_1",
     totpVerifier: ({ encryptedTotpSecret, code }) => encryptedTotpSecret === "enc:JBSWY3DPEHPK3PXP" && code === "654321"
+  });
+});
+
+test("portal current state returns account entitlements granted by admin", async () => {
+  await withPortalState(async ({ auth, passwordCredentialService, store }) => {
+    const plainPassword = `test-password-${randomUUID()}`;
+    passwordCredentialService.issueInitialPasswordCredential({
+      accountId: "acct_portal_route_1",
+      plainPassword,
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_password_route_entitlements",
+      mustRotate: false
+    });
+    const accountShell = createPlatformAccountEntitlementShell({
+      controlStore: store,
+      nowFn: () => NOW,
+      entitlementIdFactory: () => "ent_admin_yearly"
+    });
+    const yearlyEntitlement = accountShell.createEntitlement("acct_portal_route_1", {
+      plan: "yearly",
+      status: "active",
+      validUntil: "2027-07-07T00:00:00.000Z",
+      quota: { trafficGb: 200 }
+    });
+    const humanChallenges = createHumanChallengeService();
+    const { server, baseUrl } = await listen(createApp(baseState({
+      accountShell,
+      portalAccessRequests: {
+        listRequests: () => []
+      },
+      userPortalAuth: auth,
+      portalHumanChallenges: humanChallenges,
+      userPortalRoutesEnabled: true
+    })));
+    try {
+      const humanChallenge = await issueHumanChallenge(baseUrl);
+      const passwordResponse = await fetch(`${baseUrl}/api/portal/password/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: "acct_portal_route_1",
+          password: plainPassword,
+          humanVerification: {
+            challengeRef: humanChallenge.challengeRef,
+            answer: "13"
+          }
+        })
+      });
+      assert.equal(passwordResponse.status, 200);
+      const sessionRef = (await passwordResponse.json()).session.sessionRef;
+
+      const currentResponse = await fetch(`${baseUrl}/api/portal/access-requests/current`, {
+        headers: { "X-Portal-Session": sessionRef }
+      });
+      assert.equal(currentResponse.status, 200);
+      const currentBody = await currentResponse.json();
+      assert.deepEqual(currentBody.items, []);
+      assert.deepEqual(
+        currentBody.accountEntitlements.find((entitlement) => entitlement.id === yearlyEntitlement.id),
+        yearlyEntitlement
+      );
+      assert.equal(JSON.stringify(currentBody).includes(plainPassword), false);
+    } finally {
+      server.close();
+    }
+  }, {
+    withPasswordCredential: true,
+    allowPasswordOnlySessionForSetup: true
   });
 });
 

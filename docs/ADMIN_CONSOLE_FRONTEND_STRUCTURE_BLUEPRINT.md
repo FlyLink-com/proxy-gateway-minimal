@@ -50,8 +50,8 @@ and persisted browser layout preferences. It does not add backend authority,
 production mutation, schema migration, or sensitive runtime data exposure.
 
 The 2026-06-20 to 2026-06-21 Admin sequence closed the relationship model,
-capability-gated frontend registration, and static Platform Monitoring
-expansion. The active follow-up is backend DTO contract design in
+capability-gated frontend registration, and static Usage & Channels expansion.
+The active follow-up is backend DTO contract design in
 `docs/ADMIN_BACKEND_DTO_CONTRACT.md`.
 
 Backend DTO design remains docs-only until a separate implementation PR adds
@@ -193,7 +193,7 @@ The container model also defines the first visual style baseline:
   dedicated tokens so future pages do not restyle the operator console one
   component at a time.
 - The current accepted Figma baseline is `NefQiIMOPIBU28TIYcwQFE`:
-  `24:5`, `24:35`, and `24:65`. Older `373:*` Visual Polish frames, bottom
+  `2:92`, `2:262`, and `2:432`. Older `373:*` Visual Polish frames, bottom
   shelf, dock, AppLibrary, NavigationLibrary, and freeform windowing language
   are historical exploration, not the current implementation target.
 - Phase 4 visual work must follow `docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md`
@@ -223,35 +223,43 @@ flowchart TD
   Shell --> Workbench["Page Workbench"]
 
   Sidebar --> Active["Active Areas"]
-  Sidebar --> Locked["Locked Areas"]
+  Sidebar --> Reserved["Reserved Areas"]
+  Sidebar --> Privileged["Privileged Gates"]
 
-  Active --> Overview["Overview / Operations Overview"]
-  Active --> UserOps["User Operations / Accounts & Resources"]
-  Active --> PlatformMonitoring["Platform Monitoring / Usage & Channels"]
-
-  Locked --> AuditCases["Audit & Cases"]
-  Locked --> PlatformDev["Platform Development"]
-  Locked --> Settings["System Settings"]
+  Active --> Overview["Operations Overview"]
+  Active --> Accounts["Accounts & Resources"]
+  Active --> Usage["Usage & Channels"]
+  Active --> AuditCases["Audit & Cases"]
+  Active --> PlatformDev["Platform Development"]
+  Reserved --> Settings["System Settings"]
 
   Overview --> O1["Health Summary"]
   Overview --> O2["Risk Queue"]
   Overview --> O3["Next Actions"]
 
-  UserOps --> U1["Account Directory"]
-  UserOps --> U2["Resources & Orders"]
-  UserOps --> U3["Quota & Usage"]
-  UserOps --> U4["Lifecycle"]
-  UserOps --> U5["History & Events"]
+  Accounts --> U1["Account Directory"]
+  Accounts --> U2["Resources & Orders"]
+  Accounts --> U3["Quota & Usage"]
+  Accounts --> U4["Lifecycle"]
+  Accounts --> U5["History & Events"]
+  Accounts --> S1["User Management"]
+  Accounts --> S2["Order Management"]
 
-  PlatformMonitoring --> P1["Collection Freshness"]
-  PlatformMonitoring --> P2["Channel Coverage"]
-  PlatformMonitoring --> P3["Usage Ledger"]
-  PlatformMonitoring --> P4["Collection Anomalies"]
-  PlatformMonitoring --> P5["Receipts & Collectors"]
+  Usage --> P1["Collection Freshness"]
+  Usage --> P2["Channel Coverage"]
+  Usage --> P3["Usage Ledger"]
+  Usage --> P4["Collection Anomalies"]
+  Usage --> P5["Receipts & Collectors"]
 
-  AuditCases --> Gate1["Locked until durable case/history facts exist"]
-  PlatformDev --> Gate2["Locked until safe platform tools exist"]
-  Settings --> Gate3["Locked until private settings boundary exists"]
+  AuditCases --> A1["User Access Logs"]
+  AuditCases --> A2["User Operation Logs"]
+  PlatformDev --> D1["Node Health"]
+  PlatformDev --> D2["Node Logs"]
+  PlatformDev --> D3["Node Bandwidth"]
+
+  Privileged --> Gate1["Key Management"]
+  Privileged --> Gate2["Audit Center"]
+  Privileged --> Gate3["Log Access"]
 ```
 
 ## Page Ownership Map
@@ -259,11 +267,11 @@ flowchart TD
 | Page | Role | Primary question | Sections | Must not own |
 | --- | --- | --- | --- | --- |
 | `Operations Overview` | Overview and routing surface | What needs attention, and where should the operator go next? | `Health Summary`, `Risk Queue`, `Next Actions` | Account/resource ledger, object timeline, channel ledger, quota editing, order pause/archive, runtime apply. |
-| `Accounts & Resources` | Decision owner | Which account owns which resources, and what quota or lifecycle decision is needed? | `Account Directory`, `Resources & Orders`, `Quota & Usage`, `Lifecycle`, `History & Events` | Collector activation, channel strategy, runtime apply, platform tooling, operator settings. |
+| `Accounts & Resources` | Decision owner | Which account owns which resources, and what quota or lifecycle decision is needed? | `Account Directory`, `Resources & Orders`, `Quota & Usage`, `Lifecycle`, `History & Events`, plus dedicated `User Management` and `Order Management` query pages. | Collector activation, channel strategy, runtime apply, platform tooling, operator settings. |
 | `Usage & Channels` | Evidence owner | Are usage collection, channels, and receipts trustworthy? | `Collection Freshness`, `Channel Coverage`, `Usage Ledger`, `Collection Anomalies`, `Receipts & Collectors` | Account create/disable, quota ownership, order pause/archive, artifact lifecycle, runtime apply. |
-| `Audit & Cases` | Locked future work area | What happened over time, who reviewed it, and what case state is durable? | `Case Inbox`, `Object History`, `Audit Notes`, `Work Orders`, `Close / False Positive Review` | Direct production execution. |
-| `Platform Development` | Locked future work area | Which platform tool, strategy, or onboarding path should be reviewed? | `Channel Strategy`, `Node Onboarding`, `Collector Lab`, `API Diagnostics`, `Dry-run Tools` | User account operations and ungated production mutation. |
-| `System Settings` | Locked future work area | How is this private console configured? | `Connection Settings`, `Environment Profiles`, `Refresh Policy`, `Permissions`, `Safety Policy` | Public user settings and auth model changes without a separate gate. |
+| `Audit & Cases` | Evidence/query owner | What happened over time, who reviewed it, and what case state is durable? | `User Access Logs`, `User Operation Logs` | Direct production execution, raw logs, unredacted customer data. |
+| `Platform Development` | Evidence/query owner | Which node or platform runtime signal needs review? | `Node Health`, `Node Logs`, `Node Bandwidth` | User account operations and ungated production mutation. |
+| `System Settings` | Reserved configuration boundary | Which private console configuration gates may be introduced later? | None in the active 10-page set. | User/order business management, public user settings, auth model changes, or privileged mutation without a separate gate. |
 
 ## Relationship Model Mapping
 
@@ -272,9 +280,9 @@ creating immediate route sprawl:
 
 | Relationship item | Current structural owner | Current-wave rule |
 | --- | --- | --- |
-| User Management | `Accounts & Resources` sections | Keep user directory, order count, active order count, and user usage in the existing management page until GCC-114 decides a split. |
-| Order Management | `Accounts & Resources -> Resources & Orders` / `Quota & Usage` / `Lifecycle` | Keep per-order usage, lifecycle, artifact safe refs, and quota evidence in the existing page until DTO ownership justifies a split. |
-| Platform Monitoring, route latency, agent status, inspection summaries | `Usage & Channels` sections | Current static UI expansion under existing modules; backend DTO ownership remains pending. |
+| User Management | `Accounts & Resources` active route | Keep user directory, order count, active order count, and user usage on the dedicated safe-read management page. |
+| Order Management | `Accounts & Resources` active route | Keep per-order usage, lifecycle, artifact safe refs, and quota evidence on the dedicated safe-read management page. |
+| Platform monitoring signals, route latency, agent status, inspection summaries | `Usage & Channels` sections | Current static UI expansion under existing modules; backend DTO ownership remains pending. |
 | Account & Permissions | `System Settings` / future permission panel | Document as scoped operator-permission content; do not change auth model in this wave. |
 | About | Future safe system-info panel | Can be designed as a low-risk surface after build/version DTO fields are defined. |
 | Key Management | Privileged, not registered for non-super-admin | No route, System Search entry, search source, command result, notification link, hidden DOM, or API call for non-super-admin users. |
@@ -523,7 +531,7 @@ flowchart LR
 Rules:
 
 - Overview summarizes and routes.
-- Accounts & Resources owns user/resource/quota/lifecycle decisions.
+- Accounts & Resources owns user/resource/order/quota/lifecycle decisions.
 - Usage & Channels owns measurement evidence and anomaly diagnosis.
 - Audit & Cases owns durable case/history workflow only after backend facts
   exist.
@@ -557,7 +565,7 @@ Before starting Phase 2 or Phase 3 work, confirm:
 3. Every repeated object is marked owned, preview-only, or evidence-only.
 4. Overview has no detailed account/resource ledger, object timeline, or channel
    ledger.
-5. Accounts & Resources owns quota and lifecycle decisions.
+5. Accounts & Resources owns user, order, quota, and lifecycle decisions.
 6. Usage & Channels owns collection/channel/receipt evidence only.
 7. Locked pages have entry gates and no empty route pages.
 8. Future implementation has a code anchor and test anchor.

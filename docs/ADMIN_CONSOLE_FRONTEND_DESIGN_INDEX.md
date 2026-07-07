@@ -1,6 +1,6 @@
 # Admin Console Frontend Design Index
 
-Last updated: 2026-06-25, America/Los_Angeles.
+Last updated: 2026-06-29, America/Los_Angeles.
 
 > Status:
 > - Type: Frontend design source index and implementation handoff map
@@ -25,17 +25,24 @@ boundaries must not be crossed.
 | Canonical Figma file | <https://www.figma.com/design/NefQiIMOPIBU28TIYcwQFE/GlobalCircle-AI-Admin-UI-Baseline---2026-06-25> |
 | Archived source handoff | <https://www.figma.com/design/oZuKNtGPhP6oOQ0MSzpfvn/GlobalCircle-AI-Admin-UI-Handoff---2026-06-19> |
 | Current refined visual references | Clean baseline pages: `01 Design Rules V1-Polish`, `02 Component Contract`, `03 Product Baseline Frames`, `04 Figma-to-React Mapping`, `90 Evidence Gates`, and `99 Archive / Source Handoff`. |
-| Current product baseline nodes | `24:5` Operations Overview, `24:35` Accounts & Resources, `24:65` Usage & Channels. |
+| Current product baseline nodes | Active owner-page baseline: `2:92` Operations Overview, `2:262` Accounts & Resources, `2:432` Usage & Channels. Active safe-read query baseline: `59:4` User Management, `58:4` Order Management, `57:4` User Access Logs, `64:4` User Operation Logs, `61:4` Node Health, `62:4` Node Logs, `63:4` Node Bandwidth. All are under `03 Product Baseline Frames` (`2:4`). |
 | Direct review URL | <https://www.figma.com/design/NefQiIMOPIBU28TIYcwQFE/GlobalCircle-AI-Admin-UI-Baseline---2026-06-25?node-id=0-1> |
 | Clean baseline role | `NefQiIMOPIBU28TIYcwQFE` is now the active Admin UI design baseline. The old handoff file remains archive/lineage only unless a rule is explicitly copied into this baseline and reviewed there. |
 | Local screenshot evidence | `output/playwright/admin-new-baseline-qa-1600x1024.png`, `output/playwright/admin-new-baseline-qa-1280x800.png`, and `output/playwright/admin-new-baseline-qa-1024x768.png` were captured for the first visual QA pass. |
 | Current Figma Site | <https://www.figma.com/site/fGP4xsj27bbcYRGnzIa3DO/Untitled> |
 | Design-source boundary sync | `15 Design Source Boundary / 1600x1024`, node `240:2`, written through Figma connector on 2026-06-23. |
 | Design posture | Figma design is the frontend design repository and visual contract source; GitHub stores runnable implementation, tests, contracts, docs, and QA evidence; Figma Site is optional demo/click-flow review only. |
+| Current local mismatch | Source-anchor contracts, tests, shared sidebar ownership, and active-route ordering are synced to the ten active route frames. Remaining mismatch is feature-component parity for the seven safe-read route shells, DTO/API adapter design, page-specific table/filter/chart/log behavior, and browser viewport QA against the baseline. |
 
-The clean baseline project is the current design source for the three active
-Admin pages. Local screenshots are review evidence only and must not replace
-the canonical Figma design frames.
+The clean baseline project is the current design source for the active Admin
+route set. Local screenshots are review evidence only and must not replace the
+canonical Figma design frames.
+
+The seven user/order/log/node pages are approved for local safe-read route,
+manifest, and System Search carrying through a generic renderer. They are not
+feature-complete pages yet, and they are not approval for backend DTO/API
+integration, mutations, exports, runtime apply, production operations, or raw
+identity/log/config data exposure.
 
 Scope rule:
 
@@ -59,7 +66,7 @@ evidence, but the reviewable source chain is Figma, GitHub, and Linear.
 
 | Surface | Owns | Does not own | Current evidence |
 | --- | --- | --- | --- |
-| Figma design | Frontend design repository: page frames, component specs, visual baselines, responsive rules, copy/state contracts, and design acceptance notes. | Runtime frontend code, backend data, production authority, or secrets. | Canonical design file `NefQiIMOPIBU28TIYcwQFE`; active product baseline cards `24:5`, `24:35`, `24:65`; old handoff file is archive/lineage only. |
+| Figma design | Frontend design repository: page frames, component specs, visual baselines, responsive rules, copy/state contracts, and design acceptance notes. | Runtime frontend code, backend data, production authority, or secrets. | Canonical design file `NefQiIMOPIBU28TIYcwQFE`; active product baseline frames `2:92`, `2:262`, `2:432`; old handoff file is archive/lineage only. |
 | GitHub | Runnable Admin React/CSS/tests, design contracts, validation records, and PR review history. | Unreviewed visual decisions that bypass Figma and the design docs. | Current branch `codex/admin-figma-mirror-visual-qa`; Draft PR #364 tracks the visual review packet. |
 | Linear | Task gates, review ownership, phase acceptance, and next-stage sequencing. | Code, design source of truth, production approval, or secret storage. | GCC Admin UI task line and acceptance notes. |
 
@@ -89,6 +96,11 @@ implementation mapping through `04 Figma-to-React Mapping`, PR gates through
 `90 Evidence Gates`, and lineage through `99 Archive / Source Handoff`.
 The original handoff file is historical canvas only.
 
+Baseline project update, 2026-06-27: the clean Figma baseline page `2:4` was
+rescanned after the follow-up UI frames were promoted to safe-read query route
+baselines. The active route frame set is now `2:92`, `2:262`, `2:432`, `59:4`,
+`58:4`, `57:4`, `64:4`, `61:4`, `62:4`, and `63:4`.
+
 ## Current Figma Coverage
 
 The active clean baseline contains the source boundary, rule cards, component
@@ -98,9 +110,16 @@ and archive page. Older handoff frames have different lineage roles:
 | Surface | Node | Role | Current design status |
 | --- | --- | --- | --- |
 | Clean baseline project | `NefQiIMOPIBU28TIYcwQFE` | Active Admin UI design baseline. | Use for implementation handoff and visual QA. |
-| `Product Baseline / Operations Overview` | `24:5` | Active Operations route baseline card. | Current source for page ownership and first-screen modules. |
-| `Product Baseline / Accounts & Resources` | `24:35` | Active Accounts route baseline card. | Current source for page ownership and first-screen modules. |
-| `Product Baseline / Usage & Channels` | `24:65` | Active Usage route baseline card. | Current source for page ownership and first-screen modules. |
+| `Operations Overview / Baseline / 1600x908` | `2:92` | Active Operations route baseline frame. | Current source for page ownership and first-screen modules. |
+| `Accounts & Resources / Baseline / 1600x908` | `2:262` | Active Accounts route baseline frame. | Current source for page ownership and first-screen modules. |
+| `Usage & Channels / Baseline / 1600x908` | `2:432` | Active Usage route baseline frame. | Current source for page ownership and first-screen modules. |
+| `user-management` | `59:4` | Active user management safe-read query baseline. | Current source for local route, manifest, search, and fixture/projection shell only. |
+| `order-management` | `58:4` | Active order management safe-read query baseline. | Current source for local route, manifest, search, and fixture/projection shell only. |
+| `user-access-logs` | `57:4` | Active user access log safe-read query baseline. | Current source for local route, manifest, search, and fixture/projection shell only. |
+| `user-operation-logs` | `64:4` | Active operation log safe-read query baseline. | Current source for local route, manifest, search, and fixture/projection shell only. |
+| `node-health` | `61:4` | Active node health safe-read query baseline. | Current source for local route, manifest, search, and fixture/projection shell only. |
+| `node-logs` | `62:4` | Active node log safe-read query baseline. | Current source for local route, manifest, search, and fixture/projection shell only. |
+| `Node Bandwidth Inspector / Baseline / 1600x908` | `63:4` | Active node bandwidth safe-read query baseline. | Current source for local route, manifest, search, and fixture/projection shell only. |
 | `01 Operations Overview / 1600x1024` | `2:81` | Original page mirror and ownership map. | Superseded visually by `373:716`, still useful for page content lineage. |
 | `02 Accounts & Resources / 1600x1024` | `2:189` | Original page mirror and ownership map. | Superseded visually by `373:866`, still useful for page content lineage. |
 | `03 Usage & Channels / 1600x1024` | `2:309` | Original page mirror and ownership map. | Superseded visually by `373:1016`, still useful for page content lineage. |
@@ -117,10 +136,109 @@ and archive page. Older handoff frames have different lineage roles:
 | `AI Candidate V1 / Usage & Channels / Visual Polish / 1600x1024` | `373:1016` | Archived Usage desktop exploration. | Lineage only; not an active implementation source. |
 
 Implementation must now treat `NefQiIMOPIBU28TIYcwQFE` as the current design
-source and `24:5`, `24:35`, and `24:65` as the active route baseline cards.
+source and the ten `2:*` / `5x:*` / `6x:*` route frames as the active route
+baseline frames.
 The older `373:716`, `373:866`, `373:1016`, `99:2`, `104:2`, and `104:226`
 nodes remain lineage only unless a review explicitly copies their rule into
 the clean baseline and re-accepts it there.
+
+### Current Seven-Page Gap
+
+The local Admin frontend has route/search carrying for these seven pages, but
+still needs page-specific implementation before the Figma baseline can be
+called fully connected:
+
+| Page | Current local state | Missing implementation scope |
+| --- | --- | --- |
+| User Management | Active route shell, manifest entry, System Search result, Figma-aligned user table/detail renderer, System Settings sidebar ownership | Backend-backed query state, account action gate, safe DTO adapter |
+| Order Management | Active route shell, manifest entry, System Search result, Figma-aligned order table/detail renderer, System Settings sidebar ownership | Backend-backed query state, privileged order mutation/action gate, safe DTO adapter |
+| User Access Logs | Active route shell, manifest entry, System Search result, V2 source-rule Audit Table+Detail baseline alignment | Backend-backed query state, case handoff gate, privileged export approval, responsive breakpoint frames, safe DTO adapter |
+| User Operation Logs | Active route shell, manifest entry, System Search result, V2 source-rule Audit Table+Detail baseline alignment | Backend-backed query state, durable audit context handoff, privileged export approval, responsive breakpoint frames, safe DTO adapter |
+| Node Health | Active route shell, manifest entry, System Search result, Figma-aligned safe-read health table/detail renderer | Backend-backed query state, diagnostic preview, safe DTO adapter |
+| Node Logs | Active route shell, manifest entry, System Search result, Figma-aligned redacted log table/detail renderer | Backend-backed query state, privileged export approval, safe metadata adapter; no raw log payloads |
+| Node Bandwidth | Active route shell, manifest entry, System Search result, Figma-aligned bandwidth table/detail renderer | Backend-backed query state, privileged export approval, safe bandwidth aggregation adapter |
+
+### Local Safe-Read Page Update Workflow
+
+Use this workflow for the seven backend query / management pages. These pages
+are B-tier Admin UI work when code changes are made and C-tier when only docs
+or QA notes change. The workflow is intentionally one page at a time.
+
+1. Read `docs/PROJECT_CONTEXT.md` and `git status --short --branch` before
+   making claims or edits.
+2. Fetch the exact Figma route node with `get_design_context` and a screenshot.
+   If context is too large, fetch only the active page node.
+3. Classify the shell rule before editing:
+   - `Operations Overview`, `Accounts & Resources`, and `Usage & Channels`
+     use the shared shell `TopBar`.
+   - `User Management`, `Order Management`, `User Access Logs`,
+     `User Operation Logs`, `Node Health`, `Node Logs`, and `Node Bandwidth`
+     do not use the shared shell `TopBar`; they render only the page-local
+     Figma header.
+4. Implement only the current page. Do not batch-fix the other six pages in
+   the same pass unless a shared shell contract is required to prevent a
+   verified regression.
+5. Add or update tests in the same pass:
+   - route/navigation shell ownership;
+   - page DOM/content contract;
+   - style contract for Figma-critical geometry such as header height,
+     filter height, table columns, row heights, pagination, and detail-panel
+     split.
+6. Run rendered QA before moving to the next page. Required checks are page
+   identity, no framework overlay, no console errors/warnings, no global
+   horizontal overflow, correct shell/header attribution, and at least one
+   target interaction such as row selection updating a redacted detail panel.
+7. Run local validation:
+
+```powershell
+npm run admin:test
+npm run admin:build
+git diff --check origin/master...HEAD
+npm test
+```
+
+If `npm test` fails outside the touched Admin UI scope, record the exact
+unrelated failing test and blocker, but do not silently mark the whole repo
+green.
+
+Acceptance for each page:
+
+- no shared shell `TopBar` on the seven safe-read pages;
+- page-local Figma header and filter row match the active node;
+- tables use fixed Figma row rhythm, not stretched grid row spacing;
+- export or privileged actions stay disabled/gated;
+- detail panels show safe refs and redacted summaries only;
+- no raw log payloads, tokens, credentials, subscription URLs, runtime config,
+  SQLite rows, or customer-private data in UI, tests, screenshots, or docs.
+
+Current local sequence:
+
+| Step | Page | Status |
+| --- | --- | --- |
+| 1 | User Access Logs | Local shell/header and row-rhythm correction completed and Browser-verified on 2026-06-29. |
+| 2 | User Operation Logs | Local shell/header, filter row, table rhythm, pagination, and detail split correction completed and Chrome-verified on 2026-06-29. |
+| 3 | Node Health | Local shell/header, filter row, health table, pagination, and node detail split correction completed and Browser/Chrome-verified on 2026-06-29. |
+| 4 | Node Logs | Local shell/header, filter row, redacted log table, pagination, and log detail split correction completed and Browser/Chrome-verified on 2026-06-29. |
+| 5 | Node Bandwidth | Local shell/header, filter row, bandwidth table, pagination, and bandwidth detail split correction completed and Browser/Chrome-verified on 2026-06-29. |
+| 6 | User Management | Local shell/header, filter row, user table, pagination, gated route handoffs, redacted user detail split correction, and System Settings sidebar ownership completed and Browser/Chrome-verified on 2026-06-29. |
+| 7 | Order Management | Local shell/header, filter row, order table, pagination, gated evidence handoffs, safe order detail split correction, and System Settings sidebar ownership completed and Browser/Chrome-verified on 2026-06-29. |
+
+Seven-page safe-read calibration is now complete for the content surfaces and
+shared owner navigation. `Operations Overview`, `Accounts & Resources`, and
+`Usage & Channels` are the first three active owner routes. The backend query
+pages then follow as `Audit & Cases`, `Platform Development`, and
+`System Settings`; `User Management` and `Order Management` stay page-local
+header surfaces under `System Settings` and do not regain the shared TopBar.
+
+Local cleanup sequence after the 2026-06-26 source-boundary review:
+
+1. Correct documentation and source-boundary notes first.
+2. Compare the current local Admin frontend against the active Figma baseline
+   and record mismatches as implementation tasks, not as design changes.
+3. Run Browser/Chrome visual QA after code changes, then filter findings into
+   accepted baseline mismatch, local implementation bug, or future-page scope.
+4. Do not edit the Figma baseline file during implementation cleanup unless the
+   user explicitly approves a Figma change.
 
 Local sync status, 2026-06-24:
 
@@ -337,12 +455,12 @@ paragraph, move the detail to docs, tooltip, drawer, or state feedback.
 | Color semantics | Blue = navigation/action, green = healthy, amber = delayed/review, red = risk, slate/gray = neutral/planned. |
 | Typography | Integer font sizes, no negative letter spacing, heavy weight only for nav, title, and primary metrics. |
 | Actions | Overview routes to owner pages; it does not duplicate owner-page ledgers or mutation actions. |
-| Visual frame | Current Figma nodes are named `1600x1024` but the visible polished frame is `1600 x 908`; ShellRail remains `224 x 1024`. |
+| Visual frame | Active Figma product frames are `1600 x 908`; implementation QA still uses a `1600 x 1024` browser viewport. ShellRail is `224 x 908` in the baseline frame and must be viewport-bound in React. |
 | Chrome geometry | Baseline: ShellRail `0/0/224/1024`; TopBar `252/24/1296/58`. TopBar search is adaptive: do not hard-code `340px`; use the `501:488` rule of a `230px` narrow contract and `379px` wide contract while the right cluster stays right-aligned. |
 | Metric geometry | Baseline: four cards at `276/592/908/1224`, `y=102`, `300 x 150`; chips sit inside the upper-right metric region. LG/MD/SM card widths are rule-driven. |
 | Panel geometry | Baseline: three primary panels at `x=252/692/1132`, `416 x 260`; Operations/Accounts `y=300`, Usage `y=288`. LG/MD reduce width; SM shows two columns and routes the third panel through subpage/pagination. |
 | Panel rows | Primary panel body rows use `DataRowCompact`: two rows per panel, row width `372`, row height `44`, main/detail text left-aligned, status/action text right-aligned. Do not use legacy `DataTable`, fixture preview rows, or page-specific short-card layouts inside the first-screen primary row. |
-| Lower evidence | Baseline: chart/event-log panels begin near `y=596`, each `628 x 280`. Metrics charts use one shared `header + time range + legend + plot/grid/axis` structure across all three active pages; no bottom stat cards. Chart area width is `card.width - 56`; chart area height is `card.height - 80`; EventLog rows use columns `16 / 82 / 130 / 290`. |
+| Lower evidence | Baseline: chart/event-log panels begin near `y=596`, each `628 x 280`. Metrics charts use one shared `header + time range + legend + plot/grid/axis` structure across the three owner-page baselines; no bottom stat cards. Chart area width is `card.width - 56`; chart area height is `card.height - 80`; EventLog rows use columns `16 / 82 / 130 / 290`. |
 | Chart scales | Operations uses `Platform Metrics` with `Freshness / Coverage / Risk` and y-axis `99 / 56 / 12`; Accounts uses `Account Metrics` with `Active / Orders / Quota` and y-axis `12 / 6.5 / 1.0`; Usage uses `Usage Metrics` with `Freshness / Coverage / Anomalies` and y-axis `99 / 50 / 1.0`. Time range pills are fixed `26px` slots with `4px` gaps and the `1h` slot highlighted. |
 | Responsive | Current scope is `1600`, `1440`, `1280`, and `1024` Figma rules. Widths below `1024px` remain out of scope/pending, not completed mobile design. |
 
@@ -351,7 +469,7 @@ paragraph, move the detail to docs, tooltip, drawer, or state feedback.
 Before marking a frontend UI pass ready:
 
 1. Figma review uses the canonical clean baseline file and current route
-   baseline cards `24:5`, `24:35`, and `24:65`.
+   baseline frames `2:92`, `2:262`, and `2:432`.
 2. Implemented UI matches the page ownership model from Navigation IA.
 3. Visible copy matches the UI content matrix and this copy pack.
 4. Design-only copy is not rendered in normal operator mode.

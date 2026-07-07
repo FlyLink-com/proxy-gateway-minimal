@@ -67,7 +67,7 @@ describe("admin system search index", () => {
 
   test("surfaces current Figma safe-read query pages as active routes", () => {
     const userResults = createAdminSearchResults({ query: "user management" });
-    const orderResults = createAdminSearchResults({ query: "order management" });
+    const orderResults = createAdminSearchResults({ query: "order records" });
     const accessLogResults = createAdminSearchResults({ query: "user access logs" });
     const operationLogResults = createAdminSearchResults({ query: "operator logs" });
     const nodeHealthResults = createAdminSearchResults({ query: "node health" });

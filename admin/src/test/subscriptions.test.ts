@@ -32,6 +32,7 @@ import type {
   CleanEdgeReadinessSummary,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
+  AdminPaymentOrderList,
   NodeBandwidthSummary,
   SubscriptionUsageMonitor,
   SubscriptionTenant
@@ -189,6 +190,60 @@ describe("admin API client", () => {
     expect((firstCall[1].headers as Headers).get("authorization")).toBeNull();
     expect(accounts[0]).toMatchObject({ id: "acct_001", type: "platform_account_summary" });
     expect(entitlements[0]).toMatchObject({ accountId: "acct_001", type: "platform_entitlement_summary" });
+  });
+
+  test("creates account entitlement credits with shared quota fields", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url.endsWith("/api/admin/platform/accounts/acct_001/entitlements") && method === "POST") {
+        return jsonResponse({
+          entitlement: {
+            accountId: "acct_001",
+            id: "ent_002",
+            plan: "monthly_plus",
+            quota: { trafficGb: 100 },
+            status: "active",
+            type: "platform_entitlement_summary",
+            usable: true,
+            validUntil: "2026-08-04T00:00:00.000Z"
+          }
+        });
+      }
+      return jsonResponse({}, { status: 404 });
+    });
+    const client = createAdminApiClient({
+      baseUrl: "",
+      fetcher: fetchMock
+    });
+
+    const entitlement = await client.createPlatformEntitlement("acct_001", {
+      plan: "monthly_plus",
+      quota: { trafficGb: 100 },
+      status: "active",
+      validUntil: "2026-08-04T00:00:00.000Z"
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/admin/platform/accounts/acct_001/entitlements",
+      expect.objectContaining({
+        body: JSON.stringify({
+          plan: "monthly_plus",
+          quota: { trafficGb: 100 },
+          status: "active",
+          validUntil: "2026-08-04T00:00:00.000Z"
+        }),
+        headers: expect.any(Headers),
+        method: "POST"
+      })
+    );
+    const firstCall = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect((firstCall[1].headers as Headers).get("authorization")).toBeNull();
+    expect(entitlement).toMatchObject({
+      accountId: "acct_001",
+      plan: "monthly_plus",
+      quota: { trafficGb: 100 }
+    });
   });
 
   test("lists node bandwidth summaries through the protected platform route", async () => {
@@ -624,6 +679,240 @@ describe("admin API client", () => {
         reasonCode: "plan_change"
       })
     }));
+  });
+
+  test("lists payment orders through the protected Admin route", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/admin/platform/payments?status=paid_delivery_blocked&plan=monthly_plus") {
+        return jsonResponse({
+          payments: {
+            configured: true,
+            orders: [
+              {
+                orderRef: "pay_admin_001",
+                plan: "monthly_plus",
+                planLabel: "monthly plus",
+                amountMinor: 3000,
+                currency: "CNY",
+                status: "paid_delivery_blocked",
+                providerOrderRef: "provider_safe_001",
+                accessRequestRef: "pareq_pay_001",
+                accessRequestStatus: "pending_admin_review",
+                createdAt: "2026-07-02T10:00:00.000Z",
+                paidAt: "2026-07-02T10:03:00.000Z"
+              }
+            ],
+            safety: {
+              noRawMerchantKey: true,
+              noRawProviderPayload: true,
+              noPaymentMutation: true
+            }
+          }
+        });
+      }
+      return jsonResponse({}, { status: 404 });
+    });
+    const client = createAdminApiClient({
+      baseUrl: "",
+      fetcher
+    });
+
+    const payments: AdminPaymentOrderList = await client.listPaymentOrders({
+      status: "paid_delivery_blocked",
+      plan: "monthly_plus"
+    });
+
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/admin/platform/payments?status=paid_delivery_blocked&plan=monthly_plus",
+      expect.objectContaining({ headers: expect.any(Headers) })
+    );
+    const firstCall = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect((firstCall[1].headers as Headers).get("authorization")).toBeNull();
+    expect(payments.configured).toBe(true);
+    expect(payments.orders[0]).toMatchObject({
+      orderRef: "pay_admin_001",
+      plan: "monthly_plus",
+      status: "paid_delivery_blocked",
+      accessRequestRef: "pareq_pay_001"
+    });
+    expect(JSON.stringify(payments)).not.toMatch(/merchantSecret|apiKey|token=|rawPayload/i);
+  });
+
+  test("retries blocked payment delivery with approval metadata", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("/api/admin/platform/payments/pay_admin_001/retry-delivery");
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        actorRef: "operator_safe_ref",
+        reasonCode: "payment_delivery_retry",
+        approvalRef: "approval_retry_001"
+      });
+      return jsonResponse({
+        payment: {
+          order: {
+            orderRef: "pay_admin_001",
+            plan: "monthly_plus",
+            amountMinor: 3000,
+            currency: "CNY",
+            status: "paid_access_delivered",
+            accessRequestRef: "pareq_retry_001",
+            accessRequestStatus: "delivered",
+            createdAt: "2026-07-02T10:00:00.000Z",
+            paidAt: "2026-07-02T10:03:00.000Z"
+          },
+          audit: {
+            action: "payment_order_delivery_retry",
+            actorRef: "operator_safe_ref",
+            recordedAt: "2026-07-02T10:10:00.000Z"
+          },
+          safety: {
+            noRawMerchantKey: true,
+            noRawProviderPayload: true,
+            noPaymentAmountMutation: true,
+            noPlanMutation: true
+          }
+        }
+      });
+    });
+    const client = createAdminApiClient({
+      baseUrl: "",
+      fetcher
+    });
+
+    const retry = await client.retryPaymentDelivery("pay_admin_001", {
+      actorRef: "operator_safe_ref",
+      reasonCode: "payment_delivery_retry",
+      approvalRef: "approval_retry_001"
+    });
+
+    expect(retry.order.status).toBe("paid_access_delivered");
+    expect(retry.audit.action).toBe("payment_order_delivery_retry");
+    const firstCall = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect((firstCall[1].headers as Headers).get("authorization")).toBeNull();
+    expect(JSON.stringify(retry)).not.toMatch(/merchantSecret|apiKey|token=|rawPayload/i);
+  });
+
+  test("quotes payment refund without raw provider material", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("/api/admin/platform/payments/pay_admin_001/refund-quote?approvedAt=2026-07-12T10%3A00%3A00.000Z");
+      expect(init?.method).toBeUndefined();
+      return jsonResponse({
+        payment: {
+          order: {
+            amountMinor: 3000,
+            createdAt: "2026-07-02T10:00:00.000Z",
+            currency: "CNY",
+            orderRef: "pay_admin_001",
+            plan: "monthly_plus",
+            planLabel: "monthly plus",
+            status: "paid_access_delivered"
+          },
+          refund: {
+            amountMinor: 2000,
+            basis: "remaining_days",
+            calculatedAt: "2026-07-12T10:00:00.000Z",
+            currency: "CNY",
+            durationDays: 30,
+            money: "20.00",
+            remainingDays: 20,
+            status: "not_requested",
+            usedDays: 10
+          },
+          safety: {
+            noPaymentMutation: true,
+            noRawMerchantKey: true,
+            noRawProviderPayload: true,
+            noSubscriptionMutation: true
+          }
+        }
+      });
+    });
+    const client = createAdminApiClient({
+      baseUrl: "",
+      fetcher
+    });
+
+    const quote = await client.quotePaymentRefund("pay_admin_001", {
+      approvedAt: "2026-07-12T10:00:00.000Z"
+    });
+
+    expect(quote.refund.remainingDays).toBe(20);
+    expect(quote.refund.money).toBe("20.00");
+    const firstCall = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect((firstCall[1].headers as Headers).get("authorization")).toBeNull();
+    expect(JSON.stringify(quote)).not.toMatch(/merchantSecret|apiKey|token=|rawPayload/i);
+  });
+
+  test("approves payment refund with admin approval metadata", async () => {
+    const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("/api/admin/platform/payments/pay_admin_001/approve-refund");
+      expect(init?.method).toBe("POST");
+      expect(JSON.parse(String(init?.body))).toEqual({
+        actorRef: "operator_safe_ref",
+        approvalRef: "approval_refund_001",
+        reasonCode: "customer_requested_refund"
+      });
+      return jsonResponse({
+        payment: {
+          audit: {
+            action: "payment_order_refund_approved",
+            actorRef: "operator_safe_ref",
+            recordedAt: "2026-07-12T10:01:00.000Z"
+          },
+          order: {
+            amountMinor: 3000,
+            createdAt: "2026-07-02T10:00:00.000Z",
+            currency: "CNY",
+            orderRef: "pay_admin_001",
+            plan: "monthly_plus",
+            planLabel: "monthly plus",
+            refund: {
+              amountMinor: 2000,
+              approvedAt: "2026-07-12T10:01:00.000Z",
+              remainingDays: 20,
+              status: "refund_approved"
+            },
+            status: "paid_access_delivered"
+          },
+          refund: {
+            amountMinor: 2000,
+            basis: "remaining_days",
+            calculatedAt: "2026-07-12T10:00:00.000Z",
+            currency: "CNY",
+            durationDays: 30,
+            money: "20.00",
+            providerSubmitted: false,
+            remainingDays: 20,
+            status: "refund_approved",
+            usedDays: 10
+          },
+          safety: {
+            noPaymentAmountMutation: true,
+            noPlanMutation: true,
+            noRawMerchantKey: true,
+            noRawProviderPayload: true,
+            subscriptionDisabledOnlyAfterProviderSuccess: true
+          }
+        }
+      });
+    });
+    const client = createAdminApiClient({
+      baseUrl: "",
+      fetcher
+    });
+
+    const approval = await client.approvePaymentRefund("pay_admin_001", {
+      actorRef: "operator_safe_ref",
+      approvalRef: "approval_refund_001",
+      reasonCode: "customer_requested_refund"
+    });
+
+    expect(approval.refund.status).toBe("refund_approved");
+    expect(approval.audit.action).toBe("payment_order_refund_approved");
+    const firstCall = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect((firstCall[1].headers as Headers).get("authorization")).toBeNull();
+    expect(JSON.stringify(approval)).not.toMatch(/merchantSecret|apiKey|token=|rawPayload/i);
   });
 
   test("loads and records Aliyun gate review data without raw firewall details", async () => {
@@ -1342,6 +1631,18 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
         reason: input.reason
       }
     }),
+    createPlatformEntitlement: async (accountId, input) => ({
+      accountId,
+      createdAt: "2026-06-15T00:00:00.000Z",
+      id: "ent_stub",
+      plan: input.plan,
+      quota: input.quota ?? null,
+      status: input.status ?? "active",
+      type: "platform_entitlement_summary",
+      updatedAt: "2026-06-15T00:00:00.000Z",
+      usable: true,
+      validUntil: input.validUntil ?? null
+    }),
     updatePlatformAccount: async (accountId, input) => ({
       account: {
         createdAt: "2026-06-15T00:00:00.000Z",
@@ -1406,6 +1707,106 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
         previousOffset: null,
         returnedRows: 0,
         totalRows: 0
+      }
+    }),
+    listPaymentOrders: async () => ({
+      configured: true,
+      orders: [],
+      safety: {
+        noPaymentMutation: true,
+        noRawMerchantKey: true,
+        noRawProviderPayload: true
+      }
+    }),
+    retryPaymentDelivery: async (orderRef, input) => ({
+      audit: {
+        action: "payment_order_delivery_retry",
+        actorRef: input.actorRef,
+        recordedAt: "2026-06-15T00:00:00.000Z"
+      },
+      order: {
+        amountMinor: 3000,
+        createdAt: "2026-06-15T00:00:00.000Z",
+        currency: "CNY",
+        orderRef,
+        plan: "monthly_plus",
+        planLabel: "monthly plus",
+        status: "paid_access_delivered"
+      },
+      safety: {
+        noPaymentAmountMutation: true,
+        noPlanMutation: true,
+        noRawMerchantKey: true,
+        noRawProviderPayload: true
+      }
+    }),
+    quotePaymentRefund: async (orderRef) => ({
+      order: {
+        amountMinor: 3000,
+        createdAt: "2026-06-15T00:00:00.000Z",
+        currency: "CNY",
+        orderRef,
+        plan: "monthly_plus",
+        planLabel: "monthly plus",
+        status: "paid_access_delivered"
+      },
+      refund: {
+        amountMinor: 1500,
+        basis: "remaining_days",
+        calculatedAt: "2026-06-20T00:00:00.000Z",
+        currency: "CNY",
+        durationDays: 30,
+        money: "15.00",
+        remainingDays: 15,
+        status: "not_requested",
+        usedDays: 15
+      },
+      safety: {
+        noPaymentMutation: true,
+        noRawMerchantKey: true,
+        noRawProviderPayload: true,
+        noSubscriptionMutation: true
+      }
+    }),
+    approvePaymentRefund: async (orderRef, input) => ({
+      audit: {
+        action: "payment_order_refund_approved",
+        actorRef: input.actorRef,
+        recordedAt: "2026-06-20T00:00:00.000Z"
+      },
+      order: {
+        amountMinor: 3000,
+        createdAt: "2026-06-15T00:00:00.000Z",
+        currency: "CNY",
+        orderRef,
+        plan: "monthly_plus",
+        planLabel: "monthly plus",
+        refund: {
+          amountMinor: 1500,
+          approvedAt: "2026-06-20T00:00:00.000Z",
+          remainingDays: 15,
+          status: "refund_approved"
+        },
+        status: "paid_access_delivered"
+      },
+      refund: {
+        amountMinor: 1500,
+        basis: "remaining_days",
+        calculatedAt: "2026-06-20T00:00:00.000Z",
+        currency: "CNY",
+        durationDays: 30,
+        money: "15.00",
+        providerSubmitted: false,
+        remainingDays: 15,
+        status: "refund_approved",
+        usedDays: 15
+      },
+      safety: {
+        noPaymentAmountMutation: true,
+        noPlanMutation: true,
+        noRawMerchantKey: true,
+        noRawProviderPayload: true,
+        subscriptionDisabledOnlyAfterProviderSuccess: true
       }
     }),
     listSubscriptionUsageMonitor: async () => subscriptionUsageMonitor(),

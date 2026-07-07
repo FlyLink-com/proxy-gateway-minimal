@@ -1040,7 +1040,7 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-user-management-table .new-console-table")).toContain("grid-auto-rows: 28px");
     expect(selectorBlock(".admin-user-management-table .new-console-table")).toContain("height: auto");
     expect(selectorBlock(".admin-user-management-table .new-console-table")).toContain("padding-bottom: 0");
-    expect(selectorBlock(".admin-user-management-table .new-console-row")).toContain("grid-template-columns: 126px minmax(172px, 1fr) 142px 88px 94px 84px");
+    expect(selectorBlock(".admin-user-management-table .new-console-row")).toContain("grid-template-columns: minmax(230px, 1fr) 88px 94px 84px 96px 136px");
     expect(selectorBlock(".admin-user-management-table .new-console-row")).toContain("column-gap: 12px");
     expect(selectorBlock(".admin-user-management-table .new-console-row")).toContain("padding: 0 16px");
     expect(selectorBlock(".admin-user-management-table .new-console-row:not(.new-console-row-head)")).toContain("min-height: 28px");
@@ -1054,16 +1054,18 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-user-management-detail-panel")).toContain("overflow-y: auto");
     expect(selectorBlock(".admin-user-management-detail-panel")).toContain("scrollbar-width: thin");
     expect(selectorBlock(".admin-user-management-detail-panel h2")).toContain("font-size: 18px");
-    expect(selectorBlock(".admin-user-management-detail-panel .admin-audit-read-detail-field dd")).toContain("justify-content: flex-end");
+    expect(selectorBlock(".admin-user-management-detail-panel .admin-audit-read-detail-field dd")).toContain("display: grid");
+    expect(selectorBlock(".admin-user-management-detail-panel .admin-audit-read-detail-field dd")).toContain("justify-items: end");
     expect(selectorBlock(".admin-user-management-detail-panel .admin-audit-read-detail-field dd")).toContain("overflow-wrap: anywhere");
-    expect(selectorBlock(".admin-user-management-actions")).toContain("align-self: end");
-    expect(selectorBlock(".admin-user-management-actions button")).toContain("height: 40px");
-    expect(selectorBlock(".admin-user-management-actions button[data-tone=\"danger\"]")).toContain("border-color: rgba(242, 89, 89, 0.28)");
-    expect(selectorBlock(".admin-user-management-inline-action-state")).toContain("grid-template-columns: minmax(88px, auto) minmax(0, 1fr) auto auto");
-    expect(selectorBlock(".admin-user-management-inline-action-state")).toContain("padding: 8px 10px");
+    expect(selectorBlock(".admin-user-management-detail-panel .admin-audit-read-detail-field dd")).toContain("word-break: break-word");
+    expect(styles).not.toContain(".admin-user-management-actions");
+    expect(styles).not.toContain(".admin-user-management-crud-gates");
+    expect(styles).not.toContain(".admin-user-management-crud-action");
+    expect(styles).not.toContain(".admin-user-management-inline-edit-form");
+    expect(styles).not.toContain(".admin-user-management-inline-action-state");
   });
 
-  test("keeps Order Management on the Figma order table and gated evidence split", () => {
+  test("keeps Order Records on the Figma order table and gated evidence split", () => {
     expect(selectorBlock(".admin-order-management-read-page .admin-audit-read-actions button:first-child")).toContain("width: 162px");
     expect(selectorBlock(".admin-order-management-read-page .admin-audit-read-filter-row")).toContain("gap: 10px");
     expect(selectorBlock(".admin-order-management-read-page .admin-audit-read-filter-row")).toContain("padding: 0 14px");
@@ -1084,11 +1086,12 @@ describe("admin style token contract", () => {
     expect(selectorBlock(".admin-order-management-table .new-console-row > span:nth-child(2),\n.admin-order-management-table .new-console-row > span:nth-child(3)")).toContain("font-size: 11px");
     expect(selectorBlock(".admin-order-management-table .dashboard-status-badge")).toContain("height: 24px");
     expect(selectorBlock(".admin-order-management-table .data-card-pagination")).toContain("height: 34px");
-    expect(selectorBlock(".admin-order-management-detail-panel")).toContain("grid-template-rows: auto auto 1fr");
+    expect(selectorBlock(".admin-order-management-detail-panel")).toContain("grid-template-rows: none");
+    expect(selectorBlock(".admin-order-management-detail-panel")).toContain("overflow-y: auto");
     expect(selectorBlock(".admin-order-management-detail-panel h2")).toContain("font-size: 18px");
     expect(selectorBlock(".admin-order-management-detail-panel .admin-audit-read-detail-field dd")).toContain("justify-content: flex-end");
-    expect(selectorBlock(".admin-order-management-actions")).toContain("align-self: end");
-    expect(selectorBlock(".admin-order-management-actions button")).toContain("height: 42px");
+    expect(styles).not.toContain(".admin-order-management-actions");
+    expect(styles).not.toContain(".admin-order-management-usage-evidence");
   });
 
   test("keeps Node Health on the Figma health table and detail split", () => {

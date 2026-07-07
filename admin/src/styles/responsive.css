@@ -216,9 +216,54 @@
   .sparkline-axis {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+
+  .portal-login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-login-side {
+    display: none;
+  }
+
+  .portal-login-main {
+    min-height: 100vh;
+    padding: 92px 24px 40px;
+  }
+
+  .portal-login-main .portal-preference-switch {
+    top: 24px;
+    right: 24px;
+  }
+
+  .portal-login-header h1 {
+    font-size: 26px;
+  }
+
+  .portal-login-challenge-row {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-login-challenge-prompt {
+    justify-content: center;
+    width: 100%;
+  }
 }
 
 @media (max-width: 620px) {
+  .portal-login-main {
+    padding: 84px 20px 32px;
+  }
+
+  .portal-login-meta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .portal-login-submit,
+  .portal-login-secondary {
+    width: 100%;
+  }
+
   .top-bar {
     gap: 8px;
     padding: 8px var(--admin-canvas-gutter-mobile);
@@ -800,6 +845,86 @@
 
   .portal-auth-card {
     padding: 24px 22px;
+  }
+
+  .portal-registration-shell {
+    grid-template-columns: 1fr;
+    padding: 0;
+  }
+
+  .portal-registration-sidebar {
+    min-height: auto;
+    padding: 22px;
+    gap: 28px;
+  }
+
+  .portal-registration-sidebar-top {
+    gap: 24px;
+  }
+
+  .portal-registration-progress ol {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .portal-registration-progress li {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 8px;
+    text-align: center;
+  }
+
+  .portal-registration-progress li strong {
+    font-size: 11px;
+  }
+
+  .portal-registration-support {
+    display: none;
+  }
+
+  .portal-registration-main {
+    min-height: auto;
+    place-items: start center;
+    padding: 78px 20px 36px;
+  }
+
+  .portal-registration-main .portal-locale-switch {
+    top: 20px;
+    right: 20px;
+  }
+
+  .portal-registration-content h1,
+  .portal-registration-success h1 {
+    font-size: 28px;
+  }
+
+  .portal-registration-actions,
+  .portal-registration-success-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-registration-plan-card {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-registration-otp-field,
+  .portal-registration-otp-control,
+  .portal-registration-verify-step .portal-auth-submit,
+  .portal-registration-verify-step .portal-registration-resend-row,
+  .portal-registration-verify-step .portal-registration-email-help {
+    width: 100%;
+  }
+
+  .portal-registration-otp-slots {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 7px;
+    width: 100%;
+  }
+
+  .portal-registration-otp-slots span {
+    width: auto;
+    min-width: 0;
+    height: 42px;
   }
 
   .portal-use-topbar {

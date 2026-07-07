@@ -32,7 +32,7 @@ function createReadyCleanStartState() {
     status: "active",
     validFrom: "2026-05-27T00:00:00.000Z",
     validUntil: "2026-06-27T00:00:00.000Z",
-    quota: { trafficGb: 100, seats: 3 }
+    quota: { trafficGb: 100 }
   });
   const accessShell = createPlatformSubscriptionAccessShell({
     accountShell,

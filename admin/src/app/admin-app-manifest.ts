@@ -457,21 +457,21 @@ const PAGE_APP_DEFINITIONS: Record<AdminPage, {
     tone: "nav-app-tone-emerald"
   },
   orderManagement: {
-    aliases: ["order management", "orders", "create order", "delivery", "subscription artifact"],
+    aliases: ["order records", "payment records", "billing ledger", "流水", "订单记录", "order management", "orders", "create order", "delivery", "subscription artifact"],
     appId: "order-management",
     capabilities: ["view", "inspect", "comment", "suggest-action", "dry-run"],
     category: "management",
-    coreViews: ["order table", "delivery state filters", "quota summary", "subscription artifact gate"],
+    coreViews: ["order record table", "payment record filters", "billing reconciliation summary", "refund review gate"],
     iconKey: "clipboard",
-    primaryObjects: ["order", "resource order", "subscription artifact", "delivery state"],
+    primaryObjects: ["order record", "payment record", "billing reconciliation", "refund review"],
     role: "decision-owner",
-    searchableFields: ["order", "account ref", "plan", "quota", "status", "lifecycle", "delivery"],
+    searchableFields: ["order", "order records", "payment records", "billing ledger", "account ref", "plan", "quota", "status", "lifecycle", "delivery"],
     sourceContract: sourceContract(
       ["order-summary", "resource-order-summary", "subscription-artifact-summary", "delivery-state-summary"],
       ["orderManagement#order-management-table", "orderManagement#order-management-detail"],
       ["order-ref", "account-ref", "safe-artifact-ref", "delivery-state"]
     ),
-    zhName: "订单管理",
+    zhName: "订单记录",
     tone: "nav-app-tone-blue"
   },
   userAccessLogs: {

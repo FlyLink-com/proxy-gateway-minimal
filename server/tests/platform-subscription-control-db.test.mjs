@@ -354,6 +354,134 @@ test("subscription control store persists portal password credential summaries s
   });
 });
 
+test("subscription control store persists safe payment order lifecycle summaries", () => {
+  withStore((store) => {
+    const created = store.upsertPaymentOrder({
+      orderRef: "pay_store_001",
+      portalUserRef: "user_safe_ref",
+      plan: "monthly_plus",
+      planLabel: "monthly plus",
+      amountMinor: 3000,
+      money: "30.00",
+      currency: "CNY",
+      durationDays: 30,
+      clientTarget: "clash",
+      channel: "wxpay",
+      status: "pending_payment",
+      provider: "niuniu-pay",
+      providerOrderRef: "provider_pay_store_001",
+      checkoutUrl: "https://pay.example.test/pay_store_001",
+      urlScheme: "weixin://pay/provider_pay_store_001",
+      qrCode: "wxpay_qr_payload_safe",
+      checkoutExpiresAt: "2026-07-02T10:10:00.000Z",
+      createdAt: "2026-07-02T10:00:00.000Z",
+      updatedAt: "2026-07-02T10:00:00.000Z"
+    });
+    assert.equal(created.orderRef, "pay_store_001");
+    assert.equal(created.status, "pending_payment");
+    assert.equal(created.urlScheme, "weixin://pay/provider_pay_store_001");
+    assert.equal(created.qrCode, "wxpay_qr_payload_safe");
+    assert.equal(created.checkoutExpiresAt, "2026-07-02T10:10:00.000Z");
+
+    const updated = store.upsertPaymentOrder({
+      ...created,
+      status: "paid_access_delivered",
+      accessRequestRef: "pareq_monthly_plus",
+      accessRequestStatus: "delivered",
+      paidAt: "2026-07-02T10:05:00.000Z",
+      updatedAt: "2026-07-02T10:06:00.000Z"
+    });
+    assert.equal(updated.status, "paid_access_delivered");
+    assert.equal(updated.accessRequestRef, "pareq_monthly_plus");
+
+    const refunded = store.upsertPaymentOrder({
+      ...updated,
+      refundStatus: "refund_succeeded",
+      refundRequestedAt: "2026-07-12T10:05:00.000Z",
+      refundApprovedAt: "2026-07-12T10:05:00.000Z",
+      refundAmountMinor: 2000,
+      refundRemainingDays: 20,
+      refundReasonCode: "customer_requested_refund",
+      refundProviderRef: "provider_refund_safe_001",
+      updatedAt: "2026-07-12T10:06:00.000Z"
+    });
+    assert.equal(refunded.refundStatus, "refund_succeeded");
+    assert.equal(refunded.refundAmountMinor, 2000);
+    assert.equal(refunded.refundRemainingDays, 20);
+
+    assert.deepEqual(store.getPaymentOrder("pay_store_001"), refunded);
+    assert.deepEqual(store.listPaymentOrders({ portalUserRef: "user_safe_ref" }), [refunded]);
+    assert.deepEqual(store.listPaymentOrders({ status: "pending_payment" }), []);
+    assert.equal(JSON.stringify(refunded).includes("merchant"), false);
+    assert.equal(JSON.stringify(refunded).includes("raw"), false);
+  });
+});
+
+test("subscription control store lists only portal-backed user accounts for Admin user management", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+
+    store.createAccount({
+      id: "acct_internal_only",
+      ownerRef: "internal_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.createAccount({
+      id: "acct_portal_password",
+      ownerRef: "acct_portal_password",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        displayRef: "Portal Active User"
+      }
+    });
+    store.createAccount({
+      id: "acct_portal_order",
+      ownerRef: "acct_portal_order",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    store.createPortalPasswordCredential({
+      id: "pwd_portal_password",
+      accountId: "acct_portal_password",
+      passwordHash: "scrypt$v=1$N=32768$r=8$p=1$saltref$hashref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    store.upsertPortalAccessRequest({
+      id: "portal_req_order",
+      portalUserRef: "acct_portal_order",
+      plan: "trial",
+      clientTarget: "clash",
+      durationDays: 7,
+      quantity: 1,
+      status: "pending_admin_review",
+      nextAction: "admin_review",
+      priorTrialState: "none",
+      submittedAt: now,
+      updatedAt: now
+    });
+
+    const listed = store.listPortalUserAccounts();
+
+    assert.deepEqual(listed.map((account) => account.id).sort(), [
+      "acct_portal_order",
+      "acct_portal_password"
+    ]);
+    assert.equal(
+      listed.find((account) => account.id === "acct_portal_password").metadata.displayRef,
+      "Portal Active User"
+    );
+    assert.doesNotMatch(JSON.stringify(listed), /acct_internal_only|passwordHash|scrypt\$v=1|saltref|hashref/i);
+  });
+});
+
 test("subscription control store records redacted edge apply receipts", () => {
   withStore((store) => {
     const now = "2026-06-05T00:00:00.000Z";
@@ -524,7 +652,7 @@ test("subscription control store persists portal access request lifecycle", () =
     const created = store.upsertPortalAccessRequest({
       id: "pareq_store_001",
       portalUserRef: "portal_user_store_001",
-      plan: "monthly",
+      plan: "monthly_plus",
       clientTarget: "clash",
       durationDays: 30,
       quantity: 1,
@@ -537,6 +665,7 @@ test("subscription control store persists portal access request lifecycle", () =
     });
 
     assert.equal(created.id, "pareq_store_001");
+    assert.equal(created.plan, "monthly_plus");
     assert.equal(created.status, "pending_admin_review");
 
     const delivered = store.upsertPortalAccessRequest({

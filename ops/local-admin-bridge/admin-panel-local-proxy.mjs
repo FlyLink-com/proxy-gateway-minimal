@@ -6,7 +6,7 @@ import path from "node:path";
 const port = Number(process.env.ADMIN_PANEL_PROXY_PORT || "5177");
 const targetBase = new URL(process.env.ADMIN_API_TARGET || "http://127.0.0.1:5176");
 const distDir = process.env.ADMIN_PANEL_DIST || path.resolve("admin", "dist");
-const consoleToken = process.env.CONSOLE_TOKEN || "";
+const consoleToken = (process.env.CONSOLE_TOKEN || "").trim();
 const bootstrapToken = process.env.LOCAL_ADMIN_PROXY_BOOTSTRAP_TOKEN || "";
 const sessionSecret = process.env.LOCAL_ADMIN_PROXY_SESSION_SECRET || "";
 const sessionKey = "proxy-gateway-admin-session";

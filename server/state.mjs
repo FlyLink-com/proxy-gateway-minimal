@@ -19,9 +19,15 @@ import { createPlatformSubscriptionAccessShell } from "./services/platform/subsc
 import { createPortalAccessRequestService } from "./services/platform/portal-access-requests.mjs";
 import { createPortalSupportRequestService } from "./services/platform/portal-support-requests.mjs";
 import { createPortalHumanChallengeService } from "./services/platform/portal-human-challenge.mjs";
+import { createPortalRegistrationEmailVerificationService } from "./services/platform/portal-registration-email-verification.mjs";
+import { createResendRegistrationEmailSender } from "./services/platform/resend-registration-email-sender.mjs";
+import { createPortalRegistrationService } from "./services/platform/portal-registration.mjs";
 import { createPortalPasswordCredentialService } from "./services/platform/portal-password-credentials.mjs";
 import { createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
 import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
+import { createNiuniuPayAdapter } from "./services/platform/niuniu-pay-adapter.mjs";
+import { createPortalPaymentOrderService } from "./services/platform/portal-payment-orders.mjs";
+import { createAdminAuthService, createPortalAccountAdminAuthService } from "./services/platform/admin-auth.mjs";
 import { createHysteria2UsageCollector } from "./services/edge/hysteria2-usage-collector.mjs";
 import { createRuntimeUsageAccountingService } from "./services/platform/runtime-usage-accounting.mjs";
 import { createTrafficAccountingService } from "./services/platform/traffic-accounting.mjs";
@@ -547,6 +553,10 @@ export function createRuntimeState(options = {}) {
     env
   });
   const userPortalRoutesEnabled = envFlag(env.USER_PORTAL_ROUTES_ENABLED);
+  const userPortalPaymentsEnabled = envFlag(env.USER_PORTAL_PAYMENTS_ENABLED || env.PORTAL_PAYMENTS_ENABLED);
+  const adminAuthRoutesEnabled = envFlag(env.ADMIN_AUTH_ROUTES_ENABLED || env.ADMIN_PROTECTED_ROUTE_AUTH_ENABLED);
+  const adminAuthPortalAccountId = optionalEnvText(env.ADMIN_AUTH_PORTAL_ACCOUNT_ID);
+  const portalRegistrationEmailProvider = optionalEnvText(env.USER_PORTAL_REGISTRATION_EMAIL_PROVIDER).toLowerCase();
   const configuredServers = Array.isArray(proxyConfig?.servers) ? proxyConfig.servers : [];
   const configuredProxyRefs = proxyServerRefSet(proxyConfig);
   const edgeLifecycleEnabled = envFlag(env.USER_PORTAL_EDGE_LIFECYCLE_ENABLED || env.EDGE_CREDENTIAL_LIFECYCLE_ENABLED);
@@ -588,6 +598,7 @@ export function createRuntimeState(options = {}) {
     || join(rootDir, ".proxy-gateway", "control.sqlite");
   const publicSubscriptionBaseUrl = String(env.PUBLIC_SUBSCRIPTION_BASE_URL || `http://${host}:${consolePort}`).trim().replace(/\/+$/, "");
   const adminAllowedCidrs = parseCsv(env.ADMIN_ALLOWED_CIDRS, DEFAULT_ADMIN_ALLOWED_CIDRS);
+  const userPortalAllowedCidrs = parseCsv(env.USER_PORTAL_ALLOWED_CIDRS || env.PORTAL_ALLOWED_CIDRS, []);
   const trustedProxyCidrs = parseCsv(env.TRUSTED_PROXY_CIDRS, DEFAULT_TRUSTED_PROXY_CIDRS);
   const dataPlaneAgentAllowedCidrs = parseCsv(env.EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS, DEFAULT_ADMIN_ALLOWED_CIDRS);
   const dataPlaneAgentRoutesEnabled = envFlag(env.EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED);
@@ -616,7 +627,18 @@ export function createRuntimeState(options = {}) {
     })
   });
   const platformLeadQueue = options.platformLeadQueue || createPlatformLeadReviewQueue();
-  const platformAccountShell = options.platformAccountShell || createPlatformAccountEntitlementShell();
+  const platformAccountShellNeedsPasswordService = !options.platformAccountShell;
+  const platformPortalPasswordCredentialService = options.platformPortalPasswordCredentialService || (
+    (userPortalRoutesEnabled || adminAuthRoutesEnabled || platformAccountShellNeedsPasswordService) ? createPortalPasswordCredentialService({
+      controlStore: platformControlStore,
+      nowFn: options.userPortalNowFn
+    }) : null
+  );
+  const platformAccountShell = options.platformAccountShell || createPlatformAccountEntitlementShell({
+    controlStore: platformControlStore,
+    passwordCredentialService: platformPortalPasswordCredentialService,
+    nowFn: options.userPortalNowFn
+  });
   const platformAccessShell = options.platformAccessShell || createPlatformSubscriptionAccessShell({
     accountShell: platformAccountShell
   });
@@ -880,15 +902,74 @@ export function createRuntimeState(options = {}) {
       nowFn: options.userPortalNowFn
     }) : null
   );
-  const platformPortalPasswordCredentialService = options.platformPortalPasswordCredentialService || (
-    userPortalRoutesEnabled ? createPortalPasswordCredentialService({
-      controlStore: platformControlStore,
-      nowFn: options.userPortalNowFn
+  const platformPortalRegistrationEmailSender = options.portalRegistrationEmailSender || (
+    userPortalRoutesEnabled && portalRegistrationEmailProvider === "resend"
+      ? createResendRegistrationEmailSender({
+        apiKey: env.RESEND_API_KEY,
+        from: env.USER_PORTAL_REGISTRATION_EMAIL_FROM,
+        replyTo: env.USER_PORTAL_REGISTRATION_EMAIL_REPLY_TO,
+        userAgent: env.USER_PORTAL_REGISTRATION_EMAIL_USER_AGENT,
+        fetchFn: options.portalRegistrationEmailFetchFn
+      })
+      : null
+  );
+  const platformPortalRegistrationEmailDelivery = {
+    provider: platformPortalRegistrationEmailSender && !portalRegistrationEmailProvider
+      ? "custom"
+      : (portalRegistrationEmailProvider || "disabled"),
+    configured: Boolean(
+      platformPortalRegistrationEmailSender
+      && (
+        typeof platformPortalRegistrationEmailSender.isConfigured !== "function"
+        || platformPortalRegistrationEmailSender.isConfigured()
+      )
+    )
+  };
+  const platformPortalRegistrationEmailVerifications = options.platformPortalRegistrationEmailVerifications || (
+    userPortalRoutesEnabled ? createPortalRegistrationEmailVerificationService({
+      nowFn: options.userPortalNowFn,
+      sender: platformPortalRegistrationEmailSender
     }) : null
   );
   const platformPortalTotpVerifier = options.userPortalTotpVerifier || createPortalTotpVerifier({
     nowFn: options.userPortalNowFn
   });
+  const platformAdminAuth = options.platformAdminAuth || (
+    adminAuthRoutesEnabled
+      ? (
+        adminAuthPortalAccountId
+          ? createPortalAccountAdminAuthService({
+            controlStore: platformControlStore,
+            passwordCredentialService: platformPortalPasswordCredentialService,
+            nowFn: options.adminAuthNowFn,
+            sessionSecret: env.ADMIN_AUTH_SESSION_SECRET,
+            accountId: adminAuthPortalAccountId,
+            totpVerifier: options.adminAuthTotpVerifier || createPortalTotpVerifier({
+              nowFn: options.adminAuthNowFn
+            }),
+            totpSecretFactory: options.adminAuthTotpSecretFactory,
+            enrollmentRefFactory: options.adminAuthEnrollmentRefFactory,
+            credentialRefFactory: options.adminAuthCredentialRefFactory,
+            challengeRefFactory: options.adminAuthChallengeRefFactory,
+            sessionRefFactory: options.adminAuthSessionRefFactory
+          })
+          : createAdminAuthService({
+            nowFn: options.adminAuthNowFn,
+            bootstrapToken: env.ADMIN_AUTH_BOOTSTRAP_TOKEN,
+            sessionSecret: env.ADMIN_AUTH_SESSION_SECRET,
+            operatorRef: optionalEnvText(env.ADMIN_AUTH_OPERATOR_REF) || "operator_local_admin",
+            totpVerifier: options.adminAuthTotpVerifier || createPortalTotpVerifier({
+              nowFn: options.adminAuthNowFn
+            }),
+            totpSecretFactory: options.adminAuthTotpSecretFactory,
+            enrollmentRefFactory: options.adminAuthEnrollmentRefFactory,
+            credentialRefFactory: options.adminAuthCredentialRefFactory,
+            challengeRefFactory: options.adminAuthChallengeRefFactory,
+            sessionRefFactory: options.adminAuthSessionRefFactory
+          })
+      )
+      : null
+  );
   const platformUserPortalAuth = options.platformUserPortalAuth || (
     userPortalRoutesEnabled ? createUserPortalAuthService({
       controlStore: platformControlStore,
@@ -897,6 +978,51 @@ export function createRuntimeState(options = {}) {
       passwordCredentialService: platformPortalPasswordCredentialService,
       allowPasswordOnlySessionForSetup: envFlag(env.USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION)
     }) : null
+  );
+  const platformPortalRegistrations = options.platformPortalRegistrations || (
+    userPortalRoutesEnabled ? createPortalRegistrationService({
+      controlStore: platformControlStore,
+      userPortalAuth: platformUserPortalAuth,
+      passwordCredentialService: platformPortalPasswordCredentialService,
+      portalAccessRequests: platformPortalAccessRequests,
+      nowFn: options.userPortalNowFn
+    }) : null
+  );
+  const platformPortalPayments = options.platformPortalPayments || (
+    userPortalPaymentsEnabled ? (() => {
+      const notifyUrl = optionalEnvText(env.NIUNIU_PAY_NOTIFY_URL || env.USER_PORTAL_PAYMENT_NOTIFY_URL);
+      const returnUrl = optionalEnvText(env.NIUNIU_PAY_RETURN_URL || env.USER_PORTAL_PAYMENT_RETURN_URL);
+      if (!notifyUrl) {
+        throw runtimeValidationError("NIUNIU_PAY_NOTIFY_URL is required when user portal payments are enabled");
+      }
+      if (!returnUrl) {
+        throw runtimeValidationError("NIUNIU_PAY_RETURN_URL is required when user portal payments are enabled");
+      }
+      return createPortalPaymentOrderService({
+        providerAdapter: createNiuniuPayAdapter({
+          apiBaseUrl: env.NIUNIU_PAY_API_BASE_URL,
+          merchantId: env.NIUNIU_PAY_MERCHANT_ID,
+          merchantKey: env.NIUNIU_PAY_MERCHANT_KEY,
+          fetchFn: options.paymentFetchFn,
+          userAgent: env.NIUNIU_PAY_USER_AGENT
+        }),
+        orderStore: platformControlStore,
+        portalAccessRequests: platformPortalAccessRequests,
+        accountEntitlements: platformAccountShell,
+        notifyUrl,
+        returnUrl,
+        requireAutomaticDelivery: envFlag(env.USER_PORTAL_PAYMENTS_REQUIRE_AUTOMATIC_DELIVERY, true),
+        testPaymentOverride: {
+          accountDigest: env.USER_PORTAL_PAYMENT_TEST_ACCOUNT_DIGEST || env.USER_PORTAL_PAYMENT_TEST_ACCOUNT_SHA256,
+          amountMinor: env.USER_PORTAL_PAYMENT_TEST_AMOUNT_MINOR,
+          channel: env.USER_PORTAL_PAYMENT_TEST_CHANNEL,
+          plan: env.USER_PORTAL_PAYMENT_TEST_PLAN
+        },
+        nowFn: options.userPortalNowFn,
+        orderIdFactory: options.portalPaymentOrderIdFactory,
+        checkoutTtlSeconds: env.USER_PORTAL_PAYMENT_CHECKOUT_TTL_SECONDS || env.USER_PORTAL_PAYMENT_CODE_TTL_SECONDS
+      });
+    })() : null
   );
   const platformTrafficAccounting = options.platformTrafficAccounting || createTrafficAccountingService({
     controlStore: platformControlStore,
@@ -1090,11 +1216,17 @@ export function createRuntimeState(options = {}) {
       leadQueue: platformLeadQueue,
       accountShell: platformAccountShell,
       accessShell: platformAccessShell,
+      adminAuthRoutesEnabled,
+      adminAuth: platformAdminAuth,
       userPortalRoutesEnabled,
       userPortalAuth: platformUserPortalAuth,
       portalHumanChallenges: platformPortalHumanChallenges,
+      portalRegistrationEmailDelivery: platformPortalRegistrationEmailDelivery,
+      portalRegistrationEmailVerifications: platformPortalRegistrationEmailVerifications,
       portalPasswordCredentialService: platformPortalPasswordCredentialService,
+      portalRegistrations: platformPortalRegistrations,
       portalAccessRequests: platformPortalAccessRequests,
+      portalPayments: platformPortalPayments,
       portalSupportRequests: platformPortalSupportRequests,
       aliyunGateEvidenceShell: platformAliyunGateEvidenceShell,
       controlStore: platformControlStore,
@@ -1111,6 +1243,7 @@ export function createRuntimeState(options = {}) {
     },
     security: {
       adminAllowedCidrs,
+      userPortalAllowedCidrs,
       trustedProxyCidrs,
       dataPlaneAgentAllowedCidrs,
       subRateLimit: {

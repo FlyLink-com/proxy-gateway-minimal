@@ -4,10 +4,18 @@ import { executeSubscriptionIssuance } from "./subscription-issuance.mjs";
 const PLANS = {
   trial: { durationDays: 7, label: "7-day trial" },
   monthly: { durationDays: 30, label: "monthly" },
+  monthly_basic: { durationDays: 30, label: "monthly basic" },
+  monthly_plus: { durationDays: 30, label: "monthly plus" },
   yearly: { durationDays: 365, label: "yearly" }
 };
 const CLIENT_TARGETS = new Set(["clash", "karing"]);
 const SAFE_SUMMARY_EVENT_TYPES = new Set(["old_link_invalidated"]);
+const REUSABLE_PENDING_STATUSES = new Set(["pending_admin_review", "approved_pending_delivery"]);
+const DELIVERED_STATUSES = new Set(["delivered", "issued"]);
+const OCCUPYING_SUBSCRIPTION_STATUSES = new Set([
+  ...REUSABLE_PENDING_STATUSES,
+  ...DELIVERED_STATUSES
+]);
 const SAFE_REASON_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:-]{0,79}$/;
 const UNSAFE_REASON_CODE_PATTERN = /https?:|token|secret|credential|password|private|customer|@|\//i;
 
@@ -48,6 +56,11 @@ function isoText(value, field) {
   return date.toISOString();
 }
 
+function optionalIsoText(value, field) {
+  const normalized = optionalText(value);
+  return normalized ? isoText(normalized, field) : null;
+}
+
 function expiresAtFromDuration(baseIso, durationDays) {
   const base = new Date(baseIso);
   if (Number.isNaN(base.getTime())) {
@@ -67,6 +80,27 @@ function requireNonNegativeInteger(value, field) {
     throw platformError("validation_error", `${field} must be an integer >= 0`);
   }
   return parsed;
+}
+
+function optionalNonNegativeInteger(value, fallback, field) {
+  const normalized = String(value ?? "").trim();
+  if (!normalized) {
+    return fallback;
+  }
+  return requireNonNegativeInteger(normalized, field);
+}
+
+function pageInfoFor({ limit, offset, returnedRows, totalRows }) {
+  const nextOffset = offset + limit < totalRows ? offset + limit : null;
+  const previousOffset = offset > 0 ? Math.max(0, offset - limit) : null;
+  return {
+    limit,
+    nextOffset,
+    offset,
+    previousOffset,
+    returnedRows,
+    totalRows
+  };
 }
 
 function safeReasonCode(value, field) {
@@ -419,6 +453,22 @@ function cloneRecord(record) {
   };
 }
 
+function objectMetadata(value) {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 function createMemoryPortalAccessRequestStore() {
   const records = [];
   return {
@@ -514,6 +564,31 @@ export function createPortalAccessRequestService(options = {}) {
   function summarizeVisibleOnce(record) {
     const usage = usageSummaryFor(record, controlStore);
     return visibleOnceSummaryFor(record, usage, trafficLimitBytesFor(record, controlStore, usage));
+  }
+
+  function filteredRequests(filters = {}) {
+    const status = String(filters.status || "").trim();
+    const portalUserRef = String(filters.portalUserRef || "").trim();
+    return listRecords({ ...filters, status, portalUserRef })
+      .filter((request) => !status || request.status === status)
+      .filter((request) => !portalUserRef || request.portalUserRef === portalUserRef)
+      .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id));
+  }
+
+  function paginateRequests(filters = {}) {
+    const limit = Math.min(100, Math.max(1, optionalNonNegativeInteger(filters.limit, 20, "limit")));
+    const offset = optionalNonNegativeInteger(filters.offset, 0, "offset");
+    const rows = filteredRequests(filters);
+    const items = rows.slice(offset, offset + limit).map(summarize);
+    return {
+      items,
+      pageInfo: pageInfoFor({
+        limit,
+        offset,
+        returnedRows: items.length,
+        totalRows: rows.length
+      })
+    };
   }
 
   function requireRuntimeMethod(method) {
@@ -663,6 +738,33 @@ export function createPortalAccessRequestService(options = {}) {
     );
   }
 
+  function subscriptionRequestLimitFor(portalUserRef) {
+    if (!controlStore || typeof controlStore.getAccount !== "function") {
+      return null;
+    }
+    const account = controlStore.getAccount(portalUserRef);
+    const metadata = objectMetadata(account?.metadata);
+    if (metadata.singleSubscriptionOnly === true) {
+      return 1;
+    }
+    const explicitLimit = Number(metadata.subscriptionLimit);
+    return Number.isInteger(explicitLimit) && explicitLimit > 0 ? explicitLimit : null;
+  }
+
+  function assertSubscriptionRequestLimit(portalUserRef) {
+    const limit = subscriptionRequestLimitFor(portalUserRef);
+    if (!limit) {
+      return;
+    }
+    const existingCount = listRecords({ portalUserRef }).filter((request) =>
+      request.portalUserRef === portalUserRef
+      && OCCUPYING_SUBSCRIPTION_STATUSES.has(request.status)
+    ).length;
+    if (existingCount >= limit) {
+      throw platformError("subscription_limit_exceeded", "subscription request limit exceeded for this account");
+    }
+  }
+
   function assertAutoIssuanceReady() {
     if (!runtimeCore) {
       throw platformError("validation_error", "portal auto issuance runtime is not configured");
@@ -690,13 +792,68 @@ export function createPortalAccessRequestService(options = {}) {
     }
   }
 
-  function autoDeliver(record) {
+  function deliveryEntitlementFor(record, entitlementRef) {
+    if (!entitlementRef) {
+      return null;
+    }
+    if (!controlStore || typeof controlStore.getEntitlement !== "function") {
+      throw platformError("validation_error", "portal entitlement lookup is not configured");
+    }
+    const entitlement = controlStore.getEntitlement(entitlementRef);
+    if (!entitlement) {
+      throw platformError("not_found", "portal entitlement not found");
+    }
+    if (String(entitlement.accountId || "").trim() !== record.portalUserRef) {
+      throw platformError("validation_error", "portal entitlement does not belong to account");
+    }
+    if (String(entitlement.status || "").trim() !== "active") {
+      throw platformError("validation_error", "portal entitlement is not active");
+    }
+    const entitlementPlan = optionalText(entitlement.plan);
+    if (entitlementPlan && entitlementPlan !== record.plan) {
+      throw platformError("validation_error", "portal entitlement plan does not match request");
+    }
+    const validUntil = optionalIsoText(entitlement.validUntil, "entitlementValidUntil");
+    if (!validUntil || new Date(validUntil).getTime() <= new Date(isoNow(nowFn)).getTime()) {
+      throw platformError("validation_error", "portal entitlement is expired");
+    }
+    if (nonNegativeInteger(entitlement.trafficLimitBytes) <= 0) {
+      throw platformError("validation_error", "portal entitlement has no traffic quota");
+    }
+    return {
+      ...entitlement,
+      validUntil
+    };
+  }
+
+  function findReusableEntitlementRequest({ portalUserRef, plan, clientTarget }) {
+    return listRecords({ portalUserRef, plan })
+      .filter((request) =>
+        request.portalUserRef === portalUserRef
+        && request.plan === plan
+        && request.clientTarget === clientTarget
+        && (
+          DELIVERED_STATUSES.has(request.status)
+          || REUSABLE_PENDING_STATUSES.has(request.status)
+        )
+      )
+      .sort((a, b) =>
+        String(b.submittedAt || b.updatedAt || "").localeCompare(String(a.submittedAt || a.updatedAt || ""))
+        || String(b.id || "").localeCompare(String(a.id || ""))
+      )[0] || null;
+  }
+
+  function autoDeliver(record, options = {}) {
     assertAutoIssuanceReady();
     assertAutoIssuanceLimit(record);
-    const expiresAt = expiresAtFromDuration(record.submittedAt, record.durationDays);
-    const entitlementRef = `ent_${record.id}`;
+    const entitlementRef = optionalText(options.entitlementRef) || `ent_${record.id}`;
+    const existingEntitlement = deliveryEntitlementFor(record, optionalText(options.entitlementRef));
+    const expiresAt = existingEntitlement?.validUntil
+      || optionalIsoText(options.expiresAt || options.entitlementValidUntil, "expiresAt")
+      || expiresAtFromDuration(record.submittedAt, record.durationDays);
     const accessGrantRef = `grant_${record.id}`;
     const approvalRef = `auto_${record.id}`;
+    const purpose = options.entitlementRef ? "portal_entitlement_issuance" : "portal_auto_issuance";
     const issued = executeSubscriptionIssuance({
       controlStore,
       runtimeCore,
@@ -717,7 +874,7 @@ export function createPortalAccessRequestService(options = {}) {
           entitlementId: entitlementRef,
           requestId: record.id,
           requestedByRef: autoIssuance.reviewedByRef,
-          purpose: "portal_auto_issuance",
+          purpose,
           plan: record.plan
         }
       }
@@ -738,6 +895,22 @@ export function createPortalAccessRequestService(options = {}) {
       const now = isoNow(nowFn);
       const plan = normalizePlan(input.plan);
       const portalUserRef = text(input.portalUserRef, "portalUserRef");
+      const clientTarget = normalizeClientTarget(input.clientTarget);
+      const entitlementRef = optionalText(input.entitlementRef);
+      const entitlementValidUntil = optionalIsoText(input.entitlementValidUntil, "entitlementValidUntil");
+      if (entitlementRef) {
+        const reusable = findReusableEntitlementRequest({ portalUserRef, plan, clientTarget });
+        if (reusable) {
+          if (DELIVERED_STATUSES.has(reusable.status) && reusable.subscriptionUrl) {
+            return summarizeVisibleOnce(reusable);
+          }
+          return autoDeliver.call(this, reusable, {
+            entitlementRef,
+            entitlementValidUntil
+          });
+        }
+      }
+      assertSubscriptionRequestLimit(portalUserRef);
       if (plan === "trial" && hasPriorTrial(portalUserRef)) {
         throw platformError("validation_error", "trial request already exists for this account");
       }
@@ -746,7 +919,7 @@ export function createPortalAccessRequestService(options = {}) {
         id: text(input.requestRef || requestIdFactory?.() || nextRequestId(now, sequence), "requestRef"),
         portalUserRef,
         plan,
-        clientTarget: normalizeClientTarget(input.clientTarget),
+        clientTarget,
         durationDays: PLANS[plan].durationDays,
         quantity: normalizeQuantity(input.quantity),
         status: "pending_admin_review",
@@ -768,6 +941,12 @@ export function createPortalAccessRequestService(options = {}) {
         event: null
       };
       saveRecord(record);
+      if (entitlementRef) {
+        return autoDeliver.call(this, record, {
+          entitlementRef,
+          entitlementValidUntil
+        });
+      }
       if (autoIssuance.enabled) {
         return autoDeliver.call(this, record);
       }
@@ -775,13 +954,11 @@ export function createPortalAccessRequestService(options = {}) {
     },
 
     listRequests(filters = {}) {
-      const status = String(filters.status || "").trim();
-      const portalUserRef = String(filters.portalUserRef || "").trim();
-      return listRecords({ ...filters, status, portalUserRef })
-        .filter((request) => !status || request.status === status)
-        .filter((request) => !portalUserRef || request.portalUserRef === portalUserRef)
-        .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
-        .map(summarize);
+      return filteredRequests(filters).map(summarize);
+    },
+
+    listRequestsPage(filters = {}) {
+      return paginateRequests(filters);
     },
 
     listEdgeCredentialOrders(filters = {}) {
@@ -797,6 +974,14 @@ export function createPortalAccessRequestService(options = {}) {
 
     getRequest(id) {
       return summarize(getRecord(id));
+    },
+
+    revealSubscription(input = {}) {
+      const request = getOwnedDeliveredRecord(input);
+      if (!request.subscriptionUrl) {
+        throw platformError("validation_error", "subscription artifact is not available");
+      }
+      return summarizeVisibleOnce(request);
     },
 
     rejectRequest(id, input = {}) {

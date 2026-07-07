@@ -33,6 +33,15 @@ function hashEntryToken(rawToken) {
   return `portalentryhash_${createHash("sha256").update(requiredText(rawToken, "entryToken")).digest("hex")}`;
 }
 
+function digest(value) {
+  return createHash("sha256").update(String(value)).digest("hex");
+}
+
+function normalizeEmailLogin(value) {
+  const email = String(value ?? "").trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
 function defaultEntryTokenFactory() {
   return randomBytes(32).toString("base64url");
 }
@@ -139,9 +148,11 @@ function safeEnrollmentSummary(credential) {
 }
 
 function safeSessionSummary(session) {
+  const publicRef = session.publicUserRef || "user_account";
   return {
     sessionRef: session.sessionRef,
-    accountId: session.accountId,
+    userRef: publicRef,
+    displayName: publicRef,
     authMethod: session.authMethod,
     status: session.status,
     issuedAt: session.issuedAt,
@@ -156,10 +167,12 @@ function safeSessionSummary(session) {
 }
 
 function safeSecondFactorChallenge(challenge) {
+  const publicRef = challenge.publicUserRef || "user_account";
   return {
     status: "second_factor_required",
     challengeRef: challenge.id,
-    accountId: challenge.accountId,
+    userRef: publicRef,
+    displayName: publicRef,
     availableFactors: challenge.allowedFactors,
     expiresAt: challenge.expiresAt,
     safety: {
@@ -186,6 +199,22 @@ function safeSecurityState({ account, authenticatorBound, passkeyExported }) {
       noRawSecretReturned: true
     }
   };
+}
+
+function publicUserRefForAccount(account, fallbackLoginRef) {
+  const metadata = account?.metadata && typeof account.metadata === "object" ? account.metadata : {};
+  const candidates = [
+    metadata.loginRef,
+    metadata.displayRef,
+    metadata.contactRef,
+    metadata.email,
+    fallbackLoginRef
+  ];
+  for (const candidate of candidates) {
+    const email = normalizeEmailLogin(candidate);
+    if (email) return email;
+  }
+  return "user_account";
 }
 
 function safeTotpEnrollment(enrollment) {
@@ -233,7 +262,8 @@ export function createUserPortalAuthService({
     return isoText(nowFn(), "now");
   }
 
-  function createSession({ accountId, entryId = null, authMethod, issuedAt, expiresAt }) {
+  function createSession({ accountId, entryId = null, authMethod, issuedAt, expiresAt, loginRef }) {
+    const account = controlStore.getAccount(accountId);
     const session = controlStore.createPortalSession({
       id: requiredText(sessionRefFactory(), "sessionRef"),
       accountId,
@@ -248,11 +278,43 @@ export function createUserPortalAuthService({
       updatedAt: issuedAt
     });
     return {
-      session: safeSessionSummary(session)
+      session: safeSessionSummary({
+        ...session,
+        publicUserRef: publicUserRefForAccount(account, loginRef)
+      })
     };
   }
 
   const pendingTotpEnrollments = new Map();
+
+  function resolveActiveAccount(loginRef) {
+    const rawLoginRef = requiredText(loginRef, "accountId");
+    const directAccount = controlStore.getAccount(rawLoginRef);
+    if (directAccount) {
+      if (directAccount.status !== "active") {
+        throw portalAuthError("invalid_login", "invalid_login");
+      }
+      return directAccount;
+    }
+    const email = normalizeEmailLogin(rawLoginRef);
+    if (!email || typeof controlStore.listAccounts !== "function") {
+      throw portalAuthError("invalid_login", "invalid_login");
+    }
+    const emailDigest = digest(email);
+    const account = controlStore.listAccounts().find((candidate) => {
+      const metadata = candidate?.metadata && typeof candidate.metadata === "object" ? candidate.metadata : {};
+      return (
+        metadata.loginDigest === emailDigest
+        || metadata.contactDigest === emailDigest
+        || normalizeEmailLogin(metadata.loginRef) === email
+        || normalizeEmailLogin(metadata.displayRef) === email
+      );
+    });
+    if (!account || account.status !== "active") {
+      throw portalAuthError("invalid_login", "invalid_login");
+    }
+    return account;
+  }
 
   function getActiveSessionContext(sessionRef) {
     const checkedAt = now();
@@ -288,6 +350,12 @@ export function createUserPortalAuthService({
     return factors;
   }
 
+  function assertNoActiveTotpCredential(accountId) {
+    if (controlStore.getActivePortalTotpCredential(accountId)) {
+      throw portalAuthError("validation_error", "portal authenticator is already bound");
+    }
+  }
+
   function getSecurityState(input) {
     const { account } = getActiveSessionContext(input?.sessionRef);
     return {
@@ -301,11 +369,12 @@ export function createUserPortalAuthService({
 
   function startTotpEnrollment(input) {
     const { account, checkedAt } = getActiveSessionContext(input?.sessionRef);
+    assertNoActiveTotpCredential(account.id);
     const enrollmentRef = requiredText(input?.enrollmentRef || totpEnrollmentRefFactory(), "enrollmentRef");
     const secret = requiredText(totpSecretFactory(), "totpSecret");
     const expiresAt = addSeconds(checkedAt, 300);
     const issuer = requiredText(input?.issuer || totpIssuer, "issuer");
-    const accountLabel = requiredText(input?.accountLabel || account.id, "accountLabel");
+    const accountLabel = requiredText(input?.accountLabel || publicUserRefForAccount(account), "accountLabel");
     const enrollment = {
       enrollmentRef,
       accountId: account.id,
@@ -325,6 +394,7 @@ export function createUserPortalAuthService({
 
   function confirmTotpEnrollment(input) {
     const { account, checkedAt } = getActiveSessionContext(input?.sessionRef);
+    assertNoActiveTotpCredential(account.id);
     const enrollmentRef = requiredText(input?.enrollmentRef, "enrollmentRef");
     const enrollment = pendingTotpEnrollments.get(enrollmentRef);
     if (!enrollment || enrollment.accountId !== account.id) {
@@ -360,10 +430,12 @@ export function createUserPortalAuthService({
         });
       }
       pendingTotpEnrollments.delete(enrollmentRef);
+      const publicRef = publicUserRefForAccount(account);
       return {
         binding: {
           status: "bound",
-          accountId: account.id,
+          userRef: publicRef,
+          displayName: publicRef,
           method: "totp",
           boundAt: checkedAt,
           safety: {
@@ -385,6 +457,7 @@ export function createUserPortalAuthService({
     const expiresAt = isoText(input?.expiresAt, "expiresAt");
     ensureFuture(expiresAt, issuedAt, "expiresAt");
     ensureActiveAccountAndEntitlement({ controlStore, accountId, entitlementId, now: issuedAt });
+    assertNoActiveTotpCredential(accountId);
 
     const entryToken = requiredText(entryTokenFactory(), "entryToken");
     const entry = controlStore.createPortalEntry({
@@ -418,6 +491,7 @@ export function createUserPortalAuthService({
     const encryptedTotpSecret = requiredText(input?.encryptedTotpSecret, "encryptedTotpSecret");
     const entry = controlStore.findPortalEntryByTokenHash(hashEntryToken(entryToken));
     assertUsableEntry(entry, enrolledAt);
+    assertNoActiveTotpCredential(entry.accountId);
 
     return controlStore.runInTransaction(() => {
       const credential = controlStore.createPortalTotpCredential({
@@ -484,11 +558,9 @@ export function createUserPortalAuthService({
     if (!passwordCredentialService) {
       throw portalAuthError("validation_error", "password credential service is not configured");
     }
-    const accountId = requiredText(input?.accountId, "accountId");
-    const account = controlStore.getAccount(accountId);
-    if (!account || account.status !== "active") {
-      throw portalAuthError("invalid_login", "invalid_login");
-    }
+    const loginRef = requiredText(input?.accountId, "accountId");
+    const account = resolveActiveAccount(loginRef);
+    const accountId = account.id;
     passwordCredentialService.verifyPasswordCredential({
       accountId,
       plainPassword: requiredText(input?.plainPassword, "plainPassword"),
@@ -509,7 +581,10 @@ export function createUserPortalAuthService({
         updatedAt: verifiedAt
       });
       return {
-        result: safeSecondFactorChallenge(challenge)
+        result: safeSecondFactorChallenge({
+          ...challenge,
+          publicUserRef: publicUserRefForAccount(account, loginRef)
+        })
       };
     }
 
@@ -520,7 +595,8 @@ export function createUserPortalAuthService({
       accountId,
       authMethod: "password",
       issuedAt: verifiedAt,
-      expiresAt: input?.expiresAt
+      expiresAt: input?.expiresAt,
+      loginRef
     });
   }
 
@@ -589,6 +665,17 @@ export function createUserPortalAuthService({
     enrollTotpCredential,
     verifyTotpAndCreateSession,
     verifyPasswordAndMaybeChallenge,
+    createPasswordSetupSession(input = {}) {
+      const issuedAt = now();
+      const account = resolveActiveAccount(input.accountId);
+      return createSession({
+        accountId: account.id,
+        authMethod: "password",
+        issuedAt,
+        expiresAt: input.expiresAt,
+        loginRef: input.loginRef
+      });
+    },
     completeSecondFactor,
     requireSession(input = {}) {
       const { session, account } = getActiveSessionContext(input.sessionRef);

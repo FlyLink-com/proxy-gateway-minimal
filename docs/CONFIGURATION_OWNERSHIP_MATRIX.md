@@ -31,6 +31,7 @@ Git templates/docs = non-secret intent, schemas, and package shape
 | Database paths | runtime subscription DB, business control DB | `gccgw` installer | target-host `.env`, derived from install directory by default | path examples only | view/override in operator UI only | B for local/lab, A for production write/migration | stop service, restore previous DB path/config and backup |
 | Secrets | console token, SS password, payment webhook secret, protocol credentials, private cert material | operator / secret injection flow | protected host env, protected files, handoff | no | no raw values; status only | A in production | rotate secret and restore previous protected env if safe |
 | Management source | `ADMIN_ALLOWED_CIDRS`, trusted operator source, loopback/private admin access | `gccgw` installer plus operator security review | protected env / host config | examples only | operator UI may edit with preview | A for production boundary | restore prior allowlist and validate admin/public boundary |
+| User portal source | `USER_PORTAL_ALLOWED_CIDRS`, customer portal source restriction for gated launches | operator security review | protected env / host config | examples only | no raw values; safe status/preview only | A for production boundary | restore prior allowlist and validate portal allow/deny behavior |
 | Trusted proxy source | `TRUSTED_PROXY_CIDRS`, proxy IPs whose forwarded headers are trusted | operator security review | protected env / host config | examples only | operator UI may edit with preview | A for production boundary | restore prior trusted proxy list |
 | Data-plane agent source | `EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS`, loopback/private agent pull/apply sources | operator security review | protected env / host config | examples only | operator UI may edit with preview | A for production boundary | restore prior allowlist and validate internal-agent boundary |
 | Public boundary | public site, `/api/health`, `/api/public/leads`, `/sub/*`, blocked `/api/admin/*` | package template + operator UI preview | `public-boundary.json`, Nginx plan, runtime config | non-secret intent only | preview/edit expected policy; apply gated | A for Nginx/public mutation | restore previous Nginx config and validate routes |
@@ -52,6 +53,7 @@ surfaces. It is not the same as customer access.
 
 ```text
 ADMIN_ALLOWED_CIDRS = who may reach protected admin/platform routes
+USER_PORTAL_ALLOWED_CIDRS = who may reach user portal routes when a gated portal launch is enabled
 TRUSTED_PROXY_CIDRS = which reverse proxies may supply trusted client IP headers
 EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS = who may reach internal data-plane agent routes
 ```

@@ -105,13 +105,13 @@ export const consoleSections: ConsoleSection[] = [
   {
     id: "management",
     label: "Management",
-    description: "Users, orders, nodes, and bandwidth",
+    description: "Users, order records, nodes, and bandwidth",
     status: "active",
-    responsibility: "Own dedicated management query pages for users, orders, node health, and node bandwidth supervision.",
+    responsibility: "Own dedicated management query pages for users, order records, node health, and node bandwidth supervision.",
     entryGate: "Management pages expose safe refs, redacted states, and gated lifecycle shells only.",
     items: [
       { id: "userManagement", label: "User Management", icon: UserCog },
-      { id: "orderManagement", label: "Order Management", icon: ClipboardList },
+      { id: "orderManagement", label: "Order Records", icon: ClipboardList },
       { id: "nodeHealth", label: "Node Health", icon: Server },
       { id: "nodeBandwidth", label: "Node Bandwidth", icon: Gauge }
     ]
@@ -149,7 +149,7 @@ export const pageTitles: Record<AdminPage, string> = {
   portalRequests: "Accounts & Resources",
   usageMonitor: "Usage & Channels",
   userManagement: "User Management",
-  orderManagement: "Order Management",
+  orderManagement: "Order Records",
   nodeHealth: "Node Health",
   nodeBandwidth: "Node Bandwidth",
   userAccessLogs: "User Access Logs",
@@ -253,7 +253,7 @@ export const pageContexts: Record<AdminPage, { eyebrow: string; description: str
   },
   orderManagement: {
     eyebrow: "Management",
-    description: "Order registry query and delivery-state supervision"
+    description: "Payment and order record query for billing reconciliation"
   },
   nodeHealth: {
     eyebrow: "Management",
@@ -465,7 +465,7 @@ export const pageWorkbenchContracts: Record<AdminPage, PageWorkbenchContract> = 
   },
   orderManagement: {
     role: "decision-owner",
-    primaryQuestion: "Which resource order needs delivery, pause, archive, or subscription artifact review?",
+    primaryQuestion: "Which payment or order record needs billing reconciliation or refund review?",
     sectionIds: [],
     ownsDecisions: ["resource_order_lifecycle", "subscription_artifact_lifecycle", "order_pause_archive"],
     previewOnly: [],

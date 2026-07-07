@@ -26,8 +26,7 @@ function baseInput(overrides = {}) {
       validFrom: "2026-05-28T00:00:00.000Z",
       validUntil: "2026-06-28T00:00:00.000Z",
       quota: {
-        trafficGb: 50,
-        seats: 2
+        trafficGb: 50
       },
       createdAt: "2026-05-28T00:00:00.000Z",
       updatedAt: "2026-05-28T00:00:00.000Z"

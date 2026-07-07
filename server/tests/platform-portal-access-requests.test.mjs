@@ -119,6 +119,31 @@ function controlStore() {
   };
 }
 
+function portalRequestStore(records = []) {
+  const byId = new Map(records.map((record) => [record.id, structuredClone(record)]));
+  return {
+    upsertPortalAccessRequest(record) {
+      byId.set(record.id, structuredClone(record));
+      return structuredClone(record);
+    },
+    getPortalAccessRequest(id) {
+      const record = byId.get(id);
+      return record ? structuredClone(record) : null;
+    },
+    listPortalAccessRequests(filters = {}) {
+      const status = String(filters.status || "").trim();
+      const portalUserRef = String(filters.portalUserRef || "").trim();
+      const plan = String(filters.plan || "").trim();
+      return [...byId.values()]
+        .filter((record) => !status || record.status === status)
+        .filter((record) => !portalUserRef || record.portalUserRef === portalUserRef)
+        .filter((record) => !plan || record.plan === plan)
+        .sort((a, b) => a.submittedAt.localeCompare(b.submittedAt) || a.id.localeCompare(b.id))
+        .map((record) => structuredClone(record));
+    }
+  };
+}
+
 function edgeLifecycleService() {
   const calls = [];
   return {
@@ -406,17 +431,29 @@ test("portal access request service creates 7-day trial requests pending admin r
   assert.equal(JSON.stringify(request).includes("try before monthly"), false);
 });
 
-test("portal access request service accepts monthly and yearly with fixed durations", () => {
+test("portal access request service accepts monthly purchase models and yearly with fixed durations", () => {
   const monthly = createPortalAccessRequestService({
     nowFn: () => NOW,
     requestIdFactory: () => "pareq_monthly"
   }).submitRequest(validTrialInput({ plan: "monthly" }));
+  const monthlyBasic = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_monthly_basic"
+  }).submitRequest(validTrialInput({ plan: "monthly_basic" }));
+  const monthlyPlus = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_monthly_plus"
+  }).submitRequest(validTrialInput({ plan: "monthly_plus" }));
   const yearly = createPortalAccessRequestService({
     nowFn: () => NOW,
     requestIdFactory: () => "pareq_yearly"
   }).submitRequest(validTrialInput({ plan: "yearly" }));
 
   assert.equal(monthly.durationDays, 30);
+  assert.equal(monthlyBasic.durationDays, 30);
+  assert.equal(monthlyBasic.planLabel, "monthly basic");
+  assert.equal(monthlyPlus.durationDays, 30);
+  assert.equal(monthlyPlus.planLabel, "monthly plus");
   assert.equal(yearly.durationDays, 365);
 });
 
@@ -454,6 +491,212 @@ test("portal access request service auto-delivers 7-day orders when auto issuanc
   assert.equal(runtimeCore.calls[1][0], "createSubscriptionArtifact");
   assert.deepEqual(edgeLifecycle.calls.map((call) => call.reason), ["order_delivered"]);
   assert.doesNotMatch(JSON.stringify(request), /uuid|password|edgecred|digest|tenant_runtime_auto_1|artifact_runtime_auto_1/i);
+});
+
+test("portal access request service delivers paid orders with an existing admin entitlement", () => {
+  const runtimeCore = lifecycleRuntimeCore();
+  const control = controlStore();
+  control.createAccount({
+    id: "user_safe_ref",
+    ownerRef: "user_safe_ref",
+    status: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+    metadata: {}
+  });
+  control.createEntitlement({
+    id: "ent_admin_yearly",
+    accountId: "user_safe_ref",
+    plan: "yearly",
+    status: "active",
+    validFrom: NOW,
+    validUntil: "2027-07-07T00:00:00.000Z",
+    maxArtifacts: 1,
+    maxDevices: 1,
+    trafficLimitBytes: 214748364800,
+    createdAt: NOW,
+    updatedAt: NOW
+  });
+  control.calls.length = 0;
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_admin_entitlement_1",
+    runtimeCore,
+    controlStore: control,
+    autoIssuance: {
+      enabled: true,
+      nodeId: "channel-aliyun-a-tuic",
+      reviewedByRef: "portal_auto_issuer"
+    }
+  });
+
+  const request = requests.submitRequest(validTrialInput({
+    plan: "yearly",
+    entitlementRef: "ent_admin_yearly",
+    entitlementValidUntil: "2027-07-07T00:00:00.000Z"
+  }));
+
+  assert.equal(request.status, "delivered");
+  assert.equal(request.entitlementRef, "ent_admin_yearly");
+  assert.equal(request.expiresAt, "2027-07-07T00:00:00.000Z");
+  assert.equal(request.subscriptionUrl, "https://sub.example.test/sub/a/auto-visible-once.yaml");
+  assert.equal(
+    control.calls.some((call) => call[0] === "createEntitlement" && call[1] === "ent_admin_yearly"),
+    false
+  );
+  assert.deepEqual(
+    control.calls.filter((call) => call[0] === "createIssuanceRequest").map((call) => call[1]),
+    ["pareq_admin_entitlement_1"]
+  );
+  assert.equal(runtimeCore.calls[0][0], "createTenant");
+});
+
+test("portal access request service can deliver an existing pending request with an admin entitlement", () => {
+  const sharedStore = portalRequestStore();
+  const pendingService = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_existing_pending_1",
+    requestStore: sharedStore
+  });
+  const pending = pendingService.submitRequest(validTrialInput({ plan: "yearly" }));
+  assert.equal(pending.status, "pending_admin_review");
+
+  const control = controlStore();
+  control.createAccount({
+    id: "user_safe_ref",
+    ownerRef: "user_safe_ref",
+    status: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+    metadata: {
+      singleSubscriptionOnly: true,
+      subscriptionLimit: 1
+    }
+  });
+  control.createEntitlement({
+    id: "ent_admin_yearly",
+    accountId: "user_safe_ref",
+    plan: "yearly",
+    status: "active",
+    validFrom: NOW,
+    validUntil: "2027-07-07T00:00:00.000Z",
+    maxArtifacts: 1,
+    maxDevices: 1,
+    trafficLimitBytes: 214748364800,
+    createdAt: NOW,
+    updatedAt: NOW
+  });
+  const deliveredService = createPortalAccessRequestService({
+    nowFn: () => "2026-05-31T00:05:00.000Z",
+    requestIdFactory: () => "pareq_must_not_create_2",
+    requestStore: sharedStore,
+    runtimeCore: lifecycleRuntimeCore(),
+    controlStore: control,
+    autoIssuance: {
+      enabled: true,
+      nodeId: "channel-aliyun-a-tuic",
+      reviewedByRef: "portal_auto_issuer"
+    }
+  });
+
+  const delivered = deliveredService.submitRequest(validTrialInput({
+    plan: "yearly",
+    entitlementRef: "ent_admin_yearly",
+    entitlementValidUntil: "2027-07-07T00:00:00.000Z"
+  }));
+
+  assert.equal(delivered.id, "pareq_existing_pending_1");
+  assert.equal(delivered.status, "delivered");
+  assert.equal(delivered.entitlementRef, "ent_admin_yearly");
+  assert.equal(delivered.subscriptionUrl, "https://sub.example.test/sub/a/auto-visible-once.yaml");
+  assert.equal(sharedStore.listPortalAccessRequests({ portalUserRef: "user_safe_ref" }).length, 1);
+});
+
+test("portal access request service rejects admin entitlement refs outside the portal account", () => {
+  const runtimeCore = lifecycleRuntimeCore();
+  const control = controlStore();
+  control.createAccount({
+    id: "user_safe_ref",
+    ownerRef: "user_safe_ref",
+    status: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+    metadata: {}
+  });
+  control.createEntitlement({
+    id: "ent_other_account",
+    accountId: "acct_other_safe_ref",
+    plan: "yearly",
+    status: "active",
+    validFrom: NOW,
+    validUntil: "2027-07-07T00:00:00.000Z",
+    maxArtifacts: 1,
+    maxDevices: 1,
+    trafficLimitBytes: 214748364800,
+    createdAt: NOW,
+    updatedAt: NOW
+  });
+  control.calls.length = 0;
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_wrong_entitlement_1",
+    runtimeCore,
+    controlStore: control,
+    autoIssuance: {
+      enabled: true,
+      nodeId: "channel-aliyun-a-tuic",
+      reviewedByRef: "portal_auto_issuer"
+    }
+  });
+
+  assert.throws(
+    () => requests.submitRequest(validTrialInput({
+      plan: "yearly",
+      entitlementRef: "ent_other_account",
+      entitlementValidUntil: "2027-07-07T00:00:00.000Z"
+    })),
+    (error) => error.code === "validation_error"
+      && error.message === "portal entitlement does not belong to account"
+  );
+  assert.equal(runtimeCore.calls.length, 0);
+  assert.equal(control.calls.some((call) => call[0] === "createIssuanceRequest"), false);
+});
+
+test("portal access request service rejects missing admin entitlement refs before issuance", () => {
+  const runtimeCore = lifecycleRuntimeCore();
+  const control = controlStore();
+  control.createAccount({
+    id: "user_safe_ref",
+    ownerRef: "user_safe_ref",
+    status: "active",
+    createdAt: NOW,
+    updatedAt: NOW,
+    metadata: {}
+  });
+  control.calls.length = 0;
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_missing_entitlement_1",
+    runtimeCore,
+    controlStore: control,
+    autoIssuance: {
+      enabled: true,
+      nodeId: "channel-aliyun-a-tuic",
+      reviewedByRef: "portal_auto_issuer"
+    }
+  });
+
+  assert.throws(
+    () => requests.submitRequest(validTrialInput({
+      plan: "yearly",
+      entitlementRef: "ent_missing_admin",
+      entitlementValidUntil: "2027-07-07T00:00:00.000Z"
+    })),
+    (error) => error.code === "not_found" && error.message === "portal entitlement not found"
+  );
+  assert.equal(runtimeCore.calls.length, 0);
+  assert.equal(control.calls.some((call) => call[0] === "createEntitlement"), false);
+  assert.equal(control.calls.some((call) => call[0] === "createIssuanceRequest"), false);
 });
 
 test("portal access request service records order quantity and client target", () => {
@@ -500,6 +743,37 @@ test("portal access request service reads persisted orders after service restart
     assert.equal(listed[0].quantity, 2);
     assert.equal(store.listPortalAccessRequests({ portalUserRef: "user_safe_ref" }).length, 1);
   });
+});
+
+test("portal access request service returns paginated safe summaries for admin tables", () => {
+  let sequence = 0;
+  const requests = createPortalAccessRequestService({
+    nowFn: () => "2026-06-30T00:00:00.000Z",
+    requestIdFactory: () => {
+      sequence += 1;
+      return `pareq_page_${sequence}`;
+    }
+  });
+
+  for (let index = 1; index <= 4; index += 1) {
+    requests.submitRequest(validTrialInput({
+      portalUserRef: `portal_user_page_${index}`,
+      plan: index % 2 === 0 ? "monthly" : "trial"
+    }));
+  }
+
+  const page = requests.listRequestsPage({ limit: 2, offset: 1 });
+
+  assert.deepEqual(page.items.map((request) => request.id), ["pareq_page_2", "pareq_page_3"]);
+  assert.deepEqual(page.pageInfo, {
+    limit: 2,
+    nextOffset: 3,
+    offset: 1,
+    previousOffset: 0,
+    returnedRows: 2,
+    totalRows: 4
+  });
+  assert.doesNotMatch(JSON.stringify(page), /https?:|token=|password|edgecred_|visible-once|raw-artifact/i);
 });
 
 test("portal access request summaries include redacted usage rollups from the control store", () => {
@@ -778,6 +1052,154 @@ test("portal access request service blocks repeat initial trial even after revie
     () => requests.submitRequest(validTrialInput()),
     (error) => error.code === "validation_error" && error.message === "trial request already exists for this account"
   );
+});
+
+test("portal access request service limits new single-subscription accounts to one request", () => {
+  withControlStore((store) => {
+    let sequence = 0;
+    store.createAccount({
+      id: "acct_single_subscription_1",
+      ownerRef: "acct_single_subscription_1",
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+      metadata: {
+        singleSubscriptionOnly: true,
+        subscriptionLimit: 1
+      }
+    });
+    const requests = createPortalAccessRequestService({
+      nowFn: () => NOW,
+      requestIdFactory: () => {
+        sequence += 1;
+        return `pareq_single_subscription_${sequence}`;
+      },
+      controlStore: store
+    });
+
+    requests.submitRequest(validTrialInput({
+      portalUserRef: "acct_single_subscription_1"
+    }));
+
+    assert.throws(
+      () => requests.submitRequest(validTrialInput({
+        portalUserRef: "acct_single_subscription_1",
+        plan: "monthly"
+      })),
+      (error) => error.code === "subscription_limit_exceeded"
+        && error.message === "subscription request limit exceeded for this account"
+    );
+    assert.equal(store.listPortalAccessRequests({ portalUserRef: "acct_single_subscription_1" }).length, 1);
+  });
+});
+
+test("portal access request service does not count disabled history against single-subscription setup", () => {
+  withControlStore((store) => {
+    store.createAccount({
+      id: "acct_single_subscription_disabled_1",
+      ownerRef: "acct_single_subscription_disabled_1",
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW,
+      metadata: {
+        singleSubscriptionOnly: true,
+        subscriptionLimit: 1
+      }
+    });
+    store.upsertPortalAccessRequest({
+      id: "pareq_disabled_trial_history",
+      portalUserRef: "acct_single_subscription_disabled_1",
+      plan: "trial",
+      clientTarget: "clash",
+      durationDays: 7,
+      quantity: 1,
+      status: "disabled",
+      nextAction: "subscription_disabled",
+      noteProvided: false,
+      priorTrialState: "none",
+      submittedAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-02T00:00:00.000Z",
+      reviewedAt: "2026-05-01T00:00:00.000Z",
+      reviewedByRef: "portal_auto_issuer",
+      safeReasonCode: null,
+      expiresAt: "2026-05-08T00:00:00.000Z",
+      validUntil: "2026-05-08T00:00:00.000Z",
+      entitlementRef: "ent_disabled_trial_history",
+      accessGrantRef: "grant_disabled_trial_history",
+      tenantId: null,
+      artifactId: null,
+      subscriptionUrl: null,
+      event: null
+    });
+    store.createEntitlement({
+      id: "ent_admin_yearly_after_disabled",
+      accountId: "acct_single_subscription_disabled_1",
+      plan: "yearly",
+      status: "active",
+      validFrom: NOW,
+      validUntil: "2027-07-07T00:00:00.000Z",
+      maxArtifacts: 1,
+      maxDevices: 1,
+      trafficLimitBytes: 214748364800,
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    const requests = createPortalAccessRequestService({
+      nowFn: () => NOW,
+      requestIdFactory: () => "pareq_admin_yearly_after_disabled",
+      runtimeCore: lifecycleRuntimeCore(),
+      controlStore: store,
+      autoIssuance: {
+        enabled: true,
+        nodeId: "channel-aliyun-a-tuic",
+        reviewedByRef: "portal_auto_issuer"
+      }
+    });
+
+    const request = requests.submitRequest(validTrialInput({
+      portalUserRef: "acct_single_subscription_disabled_1",
+      plan: "yearly",
+      entitlementRef: "ent_admin_yearly_after_disabled",
+      entitlementValidUntil: "2027-07-07T00:00:00.000Z"
+    }));
+
+    assert.equal(request.status, "delivered");
+    assert.equal(request.entitlementRef, "ent_admin_yearly_after_disabled");
+    assert.equal(request.subscriptionUrl, "https://sub.example.test/sub/a/auto-visible-once.yaml");
+    assert.equal(store.listPortalAccessRequests({ portalUserRef: "acct_single_subscription_disabled_1" }).length, 2);
+  });
+});
+
+test("portal access request service leaves existing accounts without a single-subscription flag grandfathered", () => {
+  withControlStore((store) => {
+    let sequence = 0;
+    store.createAccount({
+      id: "acct_grandfathered_1",
+      ownerRef: "acct_grandfathered_1",
+      status: "active",
+      createdAt: NOW,
+      updatedAt: NOW
+    });
+    const requests = createPortalAccessRequestService({
+      nowFn: () => NOW,
+      requestIdFactory: () => {
+        sequence += 1;
+        return `pareq_grandfathered_${sequence}`;
+      },
+      controlStore: store
+    });
+
+    requests.submitRequest(validTrialInput({
+      portalUserRef: "acct_grandfathered_1"
+    }));
+    const monthly = requests.submitRequest(validTrialInput({
+      portalUserRef: "acct_grandfathered_1",
+      plan: "monthly"
+    }));
+
+    assert.equal(monthly.plan, "monthly");
+    assert.equal(store.listPortalAccessRequests({ portalUserRef: "acct_grandfathered_1" }).length, 2);
+  });
 });
 
 test("admin review can reject or prepare approval preview without issuing", () => {
@@ -1189,6 +1611,33 @@ test("refresh replaces material for an already-delivered order and keeps expiry"
   assert.deepEqual(runtimeCore.calls, [["rotateSubscriptionArtifact", "artifact_runtime_1"]]);
   assert.equal(JSON.stringify(refreshed).includes("tenant_runtime_1"), false);
   assert.equal(JSON.stringify(refreshed).includes("artifact_runtime_1"), false);
+});
+
+test("reveal returns visible subscription material for an owned delivered order without changing list safety", () => {
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_reveal_1"
+  });
+  requests.submitRequest(validTrialInput({ plan: "trial" }));
+  requests.markDelivered("pareq_reveal_1", {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_safe_ref",
+    accessGrantRef: "grant_safe_ref",
+    subscriptionUrl: "https://sub.example.test/import/reveal-visible-once",
+    expiresAt: "2026-06-07T00:00:00.000Z"
+  });
+
+  const listed = requests.listRequests({ portalUserRef: "user_safe_ref" });
+  assert.equal(Object.hasOwn(listed[0], "subscriptionUrl"), false);
+
+  const revealed = requests.revealSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_reveal_1"
+  });
+  assert.equal(revealed.subscriptionUrl, "https://sub.example.test/import/reveal-visible-once");
+  assert.equal(revealed.safety.noSubscriptionUrl, false);
+  assert.equal(JSON.stringify(revealed).includes("ent_safe_ref"), true);
+  assert.equal(JSON.stringify(revealed).includes("tenant_runtime_1"), false);
 });
 
 test("disable revokes the active artifact and disables the delivered tenant without deleting the order", () => {

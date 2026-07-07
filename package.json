@@ -113,6 +113,7 @@
     "admin:site:verify": "npm run verify:site-build --prefix admin",
     "admin:local-proxy:start": "powershell -ExecutionPolicy Bypass -File ops/local-admin-bridge/start-admin-panel-local-proxy.ps1",
     "admin:local-proxy:stop": "powershell -ExecutionPolicy Bypass -File ops/local-admin-bridge/stop-admin-panel-local-proxy.ps1",
+    "admin:fixture-api:user-management": "node ops/local-admin-bridge/admin-user-management-fixture-api.mjs",
     "cloudflare:site:build": "npm run admin:site:build",
     "cloudflare:site:verify": "npm run admin:site:verify",
     "cloudflare:site:dry-run": "npx --yes wrangler@4.99.0 deploy --config wrangler.jsonc --dry-run",

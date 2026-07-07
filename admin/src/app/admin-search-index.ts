@@ -119,7 +119,7 @@ const APPROVED_SYSTEM_SEARCH_TAGS: Record<string, string[]> = {
   "plugin.collection-anomalies": ["anomaly", "anomalies", "delay", "zero usage", "missing", "异常", "延迟", "零用量", "缺失", "候选"],
   "plugin.receipts-collectors": ["receipt", "receipts", "collector", "agent", "diagnostic", "回执", "收据", "采集器", "代理", "诊断"],
   "user-management": ["user", "users", "account", "management", "create", "disable", "status", "用户", "账号", "账户", "管理", "创建", "禁用"],
-  "order-management": ["order", "orders", "delivery", "subscription", "artifact", "lifecycle", "订单", "交付", "订阅", "产物", "生命周期"],
+  "order-management": ["order", "orders", "record", "records", "payment", "ledger", "billing", "refund", "delivery", "subscription", "artifact", "lifecycle", "订单", "订单记录", "流水", "支付", "账务", "退款", "交付", "订阅", "产物", "生命周期"],
   "user-access-logs": ["access", "login", "logs", "audit", "event", "user", "访问", "登录", "日志", "审计", "事件", "用户"],
   "user-operation-logs": ["operation", "operator", "action", "logs", "audit", "event", "操作", "操作员", "动作", "日志", "审计", "事件"],
   "node-health": ["node", "health", "heartbeat", "diagnostic", "region", "latency", "节点", "健康", "心跳", "诊断", "延迟"],

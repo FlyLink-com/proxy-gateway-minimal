@@ -1,6 +1,6 @@
 # Admin Console UI Layout And Effect Matrix
 
-Last updated: 2026-06-25, America/Los_Angeles.
+Last updated: 2026-06-26, America/Los_Angeles.
 
 > Status:
 > - Type: UI layout, visual effect, and visual QA matrix
@@ -30,9 +30,9 @@ baseline cards are:
 
 | Page | Current node | Current role |
 | --- | --- | --- |
-| `Operations Overview` | `24:5` | Current route baseline card. |
-| `Accounts & Resources` | `24:35` | Current route baseline card. |
-| `Usage & Channels` | `24:65` | Current route baseline card. |
+| `Operations Overview` | `2:92` | Current route baseline frame. |
+| `Accounts & Resources` | `2:262` | Current route baseline frame. |
+| `Usage & Channels` | `2:432` | Current route baseline frame. |
 
 The earlier `373:*`, `99:*`, `104:*`, `365:*`, and `501:*` frames are
 superseded lineage. Implementation should not continue from those older frames
@@ -48,7 +48,7 @@ responsive strategy, but they do not override the Visual Polish geometry:
 
 | Priority | Work item | Acceptance |
 | --- | --- | --- |
-| 1 | Reverse-standardize docs and React/CSS from `24:5`, `24:35`, and `24:65`. | Current layout, density, and visible/hidden content rules are documented before code polish. |
+| 1 | Reverse-standardize docs first from `2:92`, `2:262`, and `2:432`; then compare React/CSS against those frames. | Current layout, density, and visible/hidden content rules are documented before code polish. |
 | 2 | Implement visual parity from the clean baseline geometry. | Browser output matches ShellRail, TopBar, metric row, primary panels, and lower evidence row. |
 | 3 | Preserve component/state contracts. | `02 Component Contract` in the clean baseline is the active state-placement reference; state surfaces are hidden until a real state mode needs them. |
 | 4 | Collect visual QA evidence after implementation. | Browser screenshots at desktop and narrow widths prove no overlap, clipped text, nested-card clutter, or accidental wrapping. |
@@ -129,7 +129,7 @@ law while preserving the visual quality improvements that should be shared.
 
 | Area | Desktop target | Narrow target | Rule |
 | --- | --- | --- | --- |
-| Primary frame | Current Visual Polish frames are `1600 x 908` visible inside a named `1600x1024` stage; ShellRail remains `224 x 1024`. | `1024`, `768`, and mobile review widths. | Desktop is the primary closeout target; mobile is a safe review projection, not desktop squeezed down. |
+| Primary frame | Current product baseline frames are `1600 x 908`; implementation QA remains a `1600 x 1024` browser viewport. ShellRail is `224 x 908` in Figma and viewport-bound in React. | `1024`, `768`, and mobile review widths. | Desktop is the primary closeout target; mobile is a safe review projection, not desktop squeezed down. |
 | ShellRail | `224px` fixed left rail, dark glass, route ownership only. | Collapses or becomes compact navigation by separate review. | No AppLibrary, NavigationLibrary, dock, or desktop window model. |
 | TopBar | `x=252`, `y=24`, `1296 x 58`; System Search is adaptive between the `230px` narrow contract and `379px` wide contract while the right cluster stays right-aligned. | Search width is calculated from the available space between the left offset and the right cluster; do not hard-code the visual baseline `340px` capture. | Search is a form/result surface, not an app drawer, and must never overlap environment/operator/route pills. |
 | Metric row | Four `300 x 150` metric cards at `x=276/592/908/1224`, `y=102`. | Collapse to stacked cards only after narrow review. | Values and status chips must not wrap or collide. |
@@ -214,7 +214,7 @@ checks; it is not a substitute for browser screenshots.
 
 | Axis | Evidence to collect | Pass condition |
 | --- | --- | --- |
-| Figma page mirror | Clean baseline route cards `24:5`, `24:35`, `24:65`, plus `01 Design Rules V1-Polish`, `02 Component Contract`, `04 Figma-to-React Mapping`, and `90 Evidence Gates`. | Page structure and shared primitives match the matrix; no older one-page file or superseded draft is used as current source. |
+| Figma page mirror | Clean baseline route frames `2:92`, `2:262`, `2:432`, plus `01 Design Rules V1-Polish`, `02 Component Contract`, `04 Figma-to-React Mapping`, and `90 Evidence Gates`. | Page structure and shared primitives match the matrix; no older one-page file or superseded draft is used as current source. |
 | DOM grammar | `data-page-id`, `data-layout`, `data-density`, `data-ui-role`, `data-mobile-projection`, `data-figma-component`. | Rendered pages expose the expected grammar hooks for QA. |
 | Desktop screenshot | `1600px` and a common desktop width such as `1366px`. | No overlap, no draft chrome, no nested-card visual clutter, no wide stretching. |
 | Narrow screenshot | `1024px` and `768px`. | Sections collapse predictably and tables remain readable. |

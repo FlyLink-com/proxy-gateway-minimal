@@ -100,7 +100,7 @@ test("generateClashSubscription protects node domains from fake-ip self-routing"
     servers: [
       {
         name: "japan-vless",
-        host: "sub.globalcirclecat.cloud",
+        host: "jp.gccwebos.com",
         port: 8443,
         protocol: "vless",
         uuid: "11111111-1111-4111-8111-111111111111",
@@ -128,11 +128,10 @@ test("generateClashSubscription protects node domains from fake-ip self-routing"
 
   assert.match(yaml, /dns:\n  enable: true\n  enhanced-mode: fake-ip/);
   assert.match(yaml, /fake-ip-filter:\n(?:    - .+\n)+/);
-  assert.match(yaml, /  - "\+\.globalcirclecat\.cloud"/);
   assert.match(yaml, /  - "\+\.gccwebos\.com"/);
-  assert.match(yaml, /  - "sub\.globalcirclecat\.cloud"/);
+  assert.match(yaml, /  - "jp\.gccwebos\.com"/);
   assert.match(yaml, /  - "sgp\.gccwebos\.com"/);
-  assert.match(yaml, /rules:\n  - DOMAIN,sub\.globalcirclecat\.cloud,DIRECT\n  - DOMAIN,sgp\.gccwebos\.com,DIRECT\n  - DOMAIN-SUFFIX,globalcirclecat\.cloud,DIRECT\n  - DOMAIN-SUFFIX,gccwebos\.com,DIRECT\n  - MATCH,GLOBAL/);
+  assert.match(yaml, /rules:\n  - DOMAIN,jp\.gccwebos\.com,DIRECT\n  - DOMAIN,sgp\.gccwebos\.com,DIRECT\n  - DOMAIN-SUFFIX,gccwebos\.com,DIRECT\n  - MATCH,GLOBAL/);
   assert.doesNotMatch(yaml, /globalcirclecat\.icu/);
   assert.doesNotMatch(yaml, /- DIRECT\n/);
 });

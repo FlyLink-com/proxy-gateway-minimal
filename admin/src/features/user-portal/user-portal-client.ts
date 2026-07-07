@@ -8,8 +8,17 @@ import {
 export const PORTAL_REGISTRATION_SESSION_STORAGE_KEY = "gccwebos-portal-registration-session";
 
 export type PortalAuthMode = "email" | "authenticator" | "token" | "password" | "passkey";
-export type PortalPlanId = "trial" | "monthly" | "yearly";
+export type PortalPlanId = "trial" | "monthly" | "monthly_basic" | "monthly_plus" | "yearly";
 export type PortalClientId = "clash" | "karing";
+export type PortalPaymentChannel = "alipay" | "wxpay" | "qqpay" | "bank" | "jdpay";
+export type PortalPaymentOrderStatus =
+  | "pending_payment"
+  | "payment_amount_mismatch"
+  | "payment_failed"
+  | "paid_pending_admin_review"
+  | "paid_access_delivered"
+  | "paid_delivery_blocked"
+  | string;
 export type PortalSubscriptionStatus = "ready_for_operator_review" | "subscription_ready" | "subscription_disabled";
 export type PortalSubscriptionLifecycle = "pending" | "active" | "expired" | "disabled";
 export type PortalEmailCodePurpose = "login";
@@ -28,6 +37,55 @@ export type PortalSubscriptionEvent = {
   occurredAt: string;
 };
 
+export type PortalPaymentOrder = {
+  accessRequestRef?: string;
+  accessRequestStatus?: string;
+  amountMinor: number;
+  channel?: PortalPaymentChannel;
+  checkoutUrl?: string;
+  createdAt: string;
+  currency: string;
+  orderRef: string;
+  paidAt?: string;
+  paymentExpiresAt?: string;
+  planId: PortalPlanId;
+  planLabel?: string;
+  providerOrderRef?: string;
+  qrCode?: string;
+  status: PortalPaymentOrderStatus;
+  urlScheme?: string;
+  safety: {
+    noRawMerchantKey: true;
+    noRawProviderPayload: true;
+  };
+};
+
+export type PortalPaymentCheckoutInput = {
+  userRef: string;
+  sessionRef?: string;
+  planId: Exclude<PortalPlanId, "trial">;
+  clientTarget: PortalClientId;
+  channel: PortalPaymentChannel;
+  device?: "pc" | "mobile";
+};
+
+export type PortalPaymentOrdersInput = {
+  userRef: string;
+  sessionRef?: string;
+  plan?: Exclude<PortalPlanId, "trial">;
+  status?: PortalPaymentOrderStatus;
+};
+
+export type PortalPaymentCheckoutResult = {
+  provider: string;
+  order: PortalPaymentOrder;
+  safety: {
+    noRawMerchantKey: true;
+    noRawProviderPayload: true;
+    noSubscriptionIssued: true;
+  };
+};
+
 export type PortalSubscriptionUsage = {
   uploadBytes: number;
   downloadBytes: number;
@@ -44,7 +102,7 @@ export type PortalSubscriptionUsage = {
 export type PortalHistoryRecord = {
   recordRef: string;
   label: string;
-  status: "待发放" | "已授权" | "已刷新" | "已过期" | "已禁用";
+  status: "待开通" | "已开通" | "已刷新" | "已过期" | "已停用";
   occurredAt: string;
 };
 
@@ -120,6 +178,12 @@ export type PortalRegistrationInput = {
   email: string;
   password: string;
   emailVerification?: PortalRegistrationEmailVerificationProof;
+  legalAgreement: {
+    termsAccepted: true;
+    privacyAccepted: true;
+    termsVersion: string;
+    privacyVersion: string;
+  };
 };
 
 export type PortalRegistrationEmailVerificationInput = {
@@ -146,7 +210,7 @@ export type PortalRegistrationEmailVerificationChallenge = {
 
 export type PortalRegistrationResult = {
   status: "registered";
-  accountId: string;
+  userRef: string;
   session: PortalSession;
   trial: {
     durationDays: number;
@@ -214,6 +278,12 @@ export type PortalRefreshSubscriptionInput = {
   clientTarget: PortalClientId;
 };
 
+export type PortalRevealSubscriptionInput = {
+  userRef: string;
+  sessionRef?: string;
+  requestRef: string;
+};
+
 export type PortalDisableSubscriptionInput = {
   userRef: string;
   sessionRef?: string;
@@ -272,10 +342,24 @@ export type PortalSubscriptionRequest = {
   };
 };
 
+export type PortalAccountEntitlement = {
+  entitlementRef: string;
+  accountId?: string;
+  plan: PortalPlanId | string;
+  status: string;
+  usable: boolean;
+  validUntil?: string;
+  quota?: {
+    trafficGb?: number;
+  };
+};
+
 export type PortalUserState = {
   userRef: string;
   subscriptionRequest: PortalSubscriptionRequest | null;
   subscriptionRequests?: PortalSubscriptionRequest[];
+  accountEntitlements?: PortalAccountEntitlement[];
+  paymentOrders?: PortalPaymentOrder[];
   historySummary?: PortalHistoryRecord[];
   security?: PortalUserSecurityState;
   updatedAt: string;
@@ -362,6 +446,8 @@ export type UserPortalClient = {
   authenticate(input: PortalAuthInput): Promise<PortalAuthResult>;
   completeSecondFactor(input: PortalCompleteSecondFactorInput): Promise<PortalSession>;
   fetchCurrentState(input: { userRef: string; sessionRef?: string }): Promise<PortalUserState>;
+  fetchPaymentOrders(input: PortalPaymentOrdersInput): Promise<PortalPaymentOrder[]>;
+  createPaymentCheckout(input: PortalPaymentCheckoutInput): Promise<PortalPaymentCheckoutResult>;
   startAuthenticatorEnrollment(input: { userRef: string; sessionRef?: string }): Promise<PortalAuthenticatorEnrollment>;
   confirmAuthenticatorEnrollment(input: {
     userRef: string;
@@ -373,6 +459,7 @@ export type UserPortalClient = {
   exportPasskey(input: { userRef: string }): Promise<PortalPasskeyExport>;
   applyForSubscription(input: PortalApplySubscriptionInput): Promise<PortalSubscriptionRequest>;
   submitSupportRequest(input: PortalSupportRequestInput): Promise<PortalSupportRequest>;
+  revealSubscription(input: PortalRevealSubscriptionInput): Promise<PortalSubscriptionRequest>;
   refreshSubscription(input: PortalRefreshSubscriptionInput): Promise<PortalSubscriptionRequest>;
   disableSubscription(input: PortalDisableSubscriptionInput): Promise<PortalSubscriptionRequest>;
 };
@@ -508,15 +595,26 @@ function mapRegistrationResult(body: Record<string, unknown>): PortalRegistratio
   const registration = (body.registration ?? {}) as Record<string, unknown>;
   const trial = (registration.trial ?? {}) as Record<string, unknown>;
   const session = (body.session ?? {}) as Record<string, unknown>;
-  const accountId = requiredText(registration.accountId as string | undefined, "注册结果无效。");
+  const userRef = requiredText(
+    (
+      registration.userRef
+      ?? session.userRef
+      ?? session.displayName
+      ?? session.loginRef
+    ) as string | undefined,
+    "注册结果无效。"
+  );
   return {
     status: "registered",
-    accountId,
+    userRef,
     session: sessionSummary(
-      requiredText(String(session.accountId ?? accountId), "注册会话无效。"),
+      requiredText(
+        (session.userRef ?? session.loginRef ?? userRef) as string | undefined,
+        "注册会话无效。"
+      ),
       authModeFromBackend(session.authMethod as string | undefined, "password"),
       String(session.issuedAt ?? new Date().toISOString()),
-      String(session.displayName ?? session.accountId ?? accountId),
+      String(session.displayName ?? session.userRef ?? session.loginRef ?? userRef),
       typeof session.sessionRef === "string" ? session.sessionRef : undefined
     ),
     trial: {
@@ -558,6 +656,18 @@ function registrationEmailVerificationProof(
   return {
     verificationRef: requiredText(input?.verificationRef, "请先发送邮箱验证码。"),
     code: requiredText(input?.code, "请输入邮箱验证码。")
+  };
+}
+
+function legalAgreementProof(input: PortalRegistrationInput["legalAgreement"]) {
+  if (input?.termsAccepted !== true || input?.privacyAccepted !== true) {
+    throw portalError("请先同意服务条款和隐私政策。");
+  }
+  return {
+    termsAccepted: true,
+    privacyAccepted: true,
+    termsVersion: requiredText(input.termsVersion, "服务条款版本无效。"),
+    privacyVersion: requiredText(input.privacyVersion, "隐私政策版本无效。")
   };
 }
 
@@ -604,9 +714,57 @@ function normalizeOrderQuantity(value: unknown) {
 }
 
 function planLabel(planId: PortalPlanId) {
-  if (planId === "yearly") return "年卡";
+  if (planId === "yearly") return "年度套餐";
+  if (planId === "monthly_basic") return "基础月付";
+  if (planId === "monthly_plus") return "标准月付";
   if (planId === "trial") return "7 天订阅";
-  return "月卡";
+  return "月付套餐";
+}
+
+function normalizePaymentPlan(value: unknown): PortalPaymentCheckoutInput["planId"] {
+  if (value === "yearly" || value === "monthly_plus" || value === "monthly_basic") return value;
+  if (value === "monthly") return "monthly_basic";
+  throw portalError("支付套餐无效。");
+}
+
+function amountMinorForPlan(planId: Exclude<PortalPlanId, "trial">) {
+  if (planId === "yearly") return 20000;
+  if (planId === "monthly_plus") return 3000;
+  return 2000;
+}
+
+function mapPaymentOrder(record: Record<string, unknown>): PortalPaymentOrder {
+  const planId = normalizePaymentPlan(record.plan ?? record.planId);
+  const orderRef = requiredText(String(record.orderRef ?? ""), "支付订单无效。");
+  const channel = typeof record.channel === "string" && ["alipay", "wxpay", "qqpay", "bank", "jdpay"].includes(record.channel)
+    ? record.channel as PortalPaymentChannel
+    : undefined;
+  return {
+    orderRef,
+    planId,
+    planLabel: typeof record.planLabel === "string" ? record.planLabel : planLabel(planId),
+    amountMinor: Number(record.amountMinor ?? amountMinorForPlan(planId)),
+    channel,
+    currency: String(record.currency ?? "CNY"),
+    status: String(record.status ?? "pending_payment"),
+    checkoutUrl: typeof record.checkoutUrl === "string" ? record.checkoutUrl : undefined,
+    urlScheme: typeof record.urlScheme === "string" ? record.urlScheme : undefined,
+    qrCode: typeof record.qrCode === "string" ? record.qrCode : undefined,
+    paymentExpiresAt: typeof record.paymentExpiresAt === "string"
+      ? record.paymentExpiresAt
+      : typeof record.checkoutExpiresAt === "string"
+        ? record.checkoutExpiresAt
+        : undefined,
+    providerOrderRef: typeof record.providerOrderRef === "string" ? record.providerOrderRef : undefined,
+    accessRequestRef: typeof record.accessRequestRef === "string" ? record.accessRequestRef : undefined,
+    accessRequestStatus: typeof record.accessRequestStatus === "string" ? record.accessRequestStatus : undefined,
+    paidAt: typeof record.paidAt === "string" ? record.paidAt : undefined,
+    createdAt: requiredText(String(record.createdAt ?? ""), "支付订单时间无效。"),
+    safety: {
+      noRawMerchantKey: true,
+      noRawProviderPayload: true
+    }
+  };
 }
 
 function normalizeSupportMessage(value: string) {
@@ -621,16 +779,16 @@ function normalizeSupportMessage(value: string) {
 }
 
 function sessionSummary(
-  accountId: string,
+  userRef: string,
   mode: PortalAuthMode,
   issuedAt: string,
-  displayName = accountId,
+  displayName = userRef,
   sessionRef?: string
 ): PortalSession {
   return {
     status: "authenticated_preview",
     sessionRef,
-    userRef: accountId,
+    userRef,
     displayName,
     authMode: mode,
     registeredAt: issuedAt,
@@ -762,11 +920,11 @@ function mapAccessRequest(record: {
       : "pending";
   const subscriptionReady = lifecycle === "active" && Boolean(record.accessGrantRef || record.subscriptionUrl);
   const expiresAt = record.expiresAt ?? record.validUntil ?? (lifecycle === "active" && record.durationDays
-    ? `系统发放后 ${record.durationDays} 天`
+    ? `开通后 ${record.durationDays} 天`
     : lifecycle === "disabled"
-      ? "已禁用"
-      : "待系统发放");
-  const historyStatus = disabled ? "已禁用" : subscriptionReady ? "已授权" : "待发放";
+      ? "已停用"
+      : "开通中");
+  const historyStatus = disabled ? "已停用" : subscriptionReady ? "已开通" : "待开通";
   return {
     status: disabled ? "subscription_disabled" : subscriptionReady ? "subscription_ready" : "ready_for_operator_review",
     lifecycle,
@@ -785,7 +943,7 @@ function mapAccessRequest(record: {
     historySummary: [
       {
         recordRef: `history_${record.id ?? "request"}`,
-        label: `${disabled ? "禁用" : "申请"}${planLabel(planId)}（${historyStatus}）`,
+        label: `${disabled ? "停用" : "申请"}${planLabel(planId)}（${historyStatus}）`,
         status: historyStatus,
         occurredAt: record.updatedAt ?? record.submittedAt ?? new Date(0).toISOString()
       }
@@ -796,6 +954,35 @@ function mapAccessRequest(record: {
       noPaymentActivation: true,
       noPublicAdmin: true,
       noRawCustomerDataReturned: true
+    }
+  };
+}
+
+function mapAccountEntitlement(record: Record<string, unknown>): PortalAccountEntitlement {
+  const quota = record.quota && typeof record.quota === "object"
+    ? record.quota as Record<string, unknown>
+    : {};
+  const trafficGb = Number(quota.trafficGb ?? 0);
+  const accountId = typeof record.accountId === "string" && record.accountId.trim()
+    ? record.accountId
+    : undefined;
+  const validUntil = typeof record.validUntil === "string" && record.validUntil.trim()
+    ? record.validUntil
+    : undefined;
+  const entitlementRef = typeof record.id === "string" && record.id.trim()
+    ? record.id
+    : typeof record.entitlementRef === "string"
+      ? record.entitlementRef
+      : undefined;
+  return {
+    entitlementRef: requiredText(entitlementRef, "账户权益无效。"),
+    ...(accountId ? { accountId } : {}),
+    plan: String(record.plan ?? ""),
+    status: String(record.status ?? "pending"),
+    usable: record.usable === true,
+    ...(validUntil ? { validUntil } : {}),
+    quota: {
+      trafficGb: Number.isFinite(trafficGb) ? Math.max(0, trafficGb) : 0
     }
   };
 }
@@ -863,6 +1050,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
     passkeyEnabled?: boolean;
     passkeyRef?: string;
   }>();
+  const paymentOrders = new Map<string, PortalPaymentOrder[]>();
   const authenticatorEnrollments = new Map<string, {
     expiresAt: string;
     secret: string;
@@ -875,6 +1063,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
     userRef: string;
   }>();
   let localSubscriptionSequence = 0;
+  let localPaymentSequence = 0;
 
   function securityState(userRef: string): PortalUserSecurityState {
     const security = accountSecurity.get(userRef);
@@ -904,6 +1093,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         userRef,
         subscriptionRequest: null,
         subscriptionRequests: [],
+        paymentOrders: paymentOrders.get(userRef) ?? [],
         historySummary: [],
         security: securityState(userRef),
         updatedAt: now().toISOString(),
@@ -919,6 +1109,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
     const state = states.get(userRef) ?? emptyState(userRef);
     return {
       ...state,
+      paymentOrders: paymentOrders.get(userRef) ?? state.paymentOrders ?? [],
       security: securityState(userRef)
     };
   }
@@ -936,6 +1127,24 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
     };
     states.set(userRef, state);
     return state;
+  }
+
+  function upsertLocalPaymentOrder(userRef: string, order: PortalPaymentOrder) {
+    const nextOrders = [
+      order,
+      ...(paymentOrders.get(userRef) ?? []).filter((existing) => existing.orderRef !== order.orderRef)
+    ];
+    paymentOrders.set(userRef, nextOrders);
+    const state = currentState(userRef);
+    setState(userRef, {
+      subscriptionRequest: state.subscriptionRequest,
+      subscriptionRequests: state.subscriptionRequests,
+      paymentOrders: nextOrders,
+      historySummary: state.historySummary ?? [],
+      security: state.security,
+      updatedAt: order.createdAt
+    });
+    return nextOrders;
   }
 
   function createSecondFactorChallenge(userRef: string, displayName: string, issuedAt: Date): PortalSecondFactorChallenge {
@@ -1042,10 +1251,10 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       const email = requiredEmail(input.email);
       const password = requiredText(input.password, "请输入密码。");
       registrationEmailVerificationProof(input.emailVerification);
+      legalAgreementProof(input.legalAgreement);
       const issuedAt = now();
-      const accountId = stableRef("acct", email);
-      initialAccounts.set(accountId, {
-        userRef: accountId,
+      initialAccounts.set(email, {
+        userRef: email,
         displayName: email,
         issuedAt: issuedAt.toISOString(),
         previewPassword: password,
@@ -1053,8 +1262,8 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       });
       return {
         status: "registered",
-        accountId,
-        session: sessionSummary(accountId, "password", issuedAt.toISOString(), email, stableRef("portal_session", email)),
+        userRef: email,
+        session: sessionSummary(email, "password", issuedAt.toISOString(), email, stableRef("portal_session", email)),
         trial: {
           durationDays: 7,
           validUntil: expiresAtFromDays(issuedAt, 7),
@@ -1079,7 +1288,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         throw portalError("邮箱验证码登录尚未启用。");
       }
       if (input.mode === "authenticator") {
-        const accountId = requiredText(input.accountId, "请输入账户 ID。");
+        const accountId = requiredText(input.accountId, "请输入电子邮箱。");
         const security = accountSecurity.get(accountId);
         if (!security?.authenticatorSecret) {
           throw portalError("此账户未绑定身份验证器。");
@@ -1095,27 +1304,23 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         return sessionSummary(accountId, input.mode, issuedAt.toISOString());
       }
       if (input.mode === "password") {
-        const loginRef = requiredText(input.accountId, "请输入账户 ID。");
+        const loginRef = requiredText(input.accountId, "请输入电子邮箱。");
         const normalizedEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(loginRef.trim())
           ? loginRef.trim().toLowerCase()
           : null;
-        const accountId = initialAccounts.has(loginRef)
-          ? loginRef
-          : normalizedEmail
-            ? stableRef("acct", normalizedEmail)
-            : loginRef;
-        const account = initialAccounts.get(accountId);
+        const lookupRef = normalizedEmail ?? loginRef;
+        const account = initialAccounts.get(lookupRef);
         if (!account || requiredText(input.password, "请输入密码。") !== account.previewPassword) {
           throw portalError("账户或密码无效。");
         }
-        if (enabledFactors(accountId).length > 0) {
-          return createSecondFactorChallenge(accountId, account.displayName, issuedAt);
+        if (enabledFactors(account.userRef).length > 0) {
+          return createSecondFactorChallenge(account.userRef, account.displayName, issuedAt);
         }
-        return sessionSummary(accountId, input.mode, issuedAt.toISOString(), account.displayName);
+        return sessionSummary(account.userRef, input.mode, issuedAt.toISOString(), account.displayName);
       }
 
-      const entryToken = requiredText(input.entryToken, "请输入入口令牌。");
-      requiredText(input.encryptedTotpSecret, "请输入 TOTP 密钥。");
+      const entryToken = requiredText(input.entryToken, "开通链接无效，请重新打开邮件中的链接。");
+      requiredText(input.encryptedTotpSecret, "请重新完成身份验证器设置。");
       requiredText(input.totpCode, "请输入动态验证码。");
       return sessionSummary(registrationEntryAccounts.get(entryToken) ?? stableRef("portal_user", entryToken), input.mode, issuedAt.toISOString());
     },
@@ -1170,6 +1375,54 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         throw portalError("用户会话无效。");
       }
       return currentState(input.userRef);
+    },
+
+    async fetchPaymentOrders(input) {
+      const userRef = requiredText(input.userRef, "用户会话无效。");
+      return (paymentOrders.get(userRef) ?? [])
+        .filter((order) => !input.status || order.status === input.status)
+        .filter((order) => !input.plan || order.planId === input.plan);
+    },
+
+    async createPaymentCheckout(input) {
+      const userRef = requiredText(input.userRef, "用户会话无效。");
+      const planId = normalizePaymentPlan(input.planId);
+      const createdAt = now().toISOString();
+      const paymentExpiresAt = new Date(new Date(createdAt).getTime() + 10 * 60 * 1000).toISOString();
+      localPaymentSequence += 1;
+      const order: PortalPaymentOrder = {
+        orderRef: stableRef("pay", [
+          userRef,
+          planId,
+          input.clientTarget,
+          input.channel,
+          localPaymentSequence,
+          createdAt
+        ].join("|")),
+        planId,
+        planLabel: planLabel(planId),
+        amountMinor: amountMinorForPlan(planId),
+        channel: input.channel,
+        currency: "CNY",
+        status: "pending_payment",
+        checkoutUrl: `https://pay.example.test/${planId}`,
+        createdAt,
+        paymentExpiresAt,
+        safety: {
+          noRawMerchantKey: true,
+          noRawProviderPayload: true
+        }
+      };
+      upsertLocalPaymentOrder(userRef, order);
+      return {
+        provider: "local-preview",
+        order,
+        safety: {
+          noRawMerchantKey: true,
+          noRawProviderPayload: true,
+          noSubscriptionIssued: true
+        }
+      };
     },
 
     async startAuthenticatorEnrollment(input) {
@@ -1283,7 +1536,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       const durationDays = normalizeOrderDurationDays(input.durationDays, durationDaysForPlan(input.planId));
       const quantity = normalizeOrderQuantity(input.quantity);
       const totalDurationDays = durationDays * quantity;
-      const expiresAt = requestOnly ? "待系统发放" : expiresAtFromDays(now(), totalDurationDays);
+      const expiresAt = requestOnly ? "开通中" : expiresAtFromDays(now(), totalDurationDays);
       const requestRef = stableRef(
         "subreq",
         [
@@ -1302,8 +1555,8 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       const historySummary: PortalHistoryRecord[] = [
         {
           recordRef: stableRef("history", `${requestRef}|open|${issuedAt}`),
-          label: `申请${planLabel(input.planId)}（${subscriptionReady ? "已授权" : "待发放"}）`,
-          status: subscriptionReady ? "已授权" : "待发放",
+          label: `申请${planLabel(input.planId)}（${subscriptionReady ? "已开通" : "待开通"}）`,
+          status: subscriptionReady ? "已开通" : "待开通",
           occurredAt: issuedAt
         }
       ];
@@ -1371,6 +1624,40 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       };
     },
 
+    async revealSubscription(input) {
+      if (!input.userRef.trim() || !input.requestRef.trim()) {
+        throw portalError("用户会话无效。");
+      }
+
+      const existing = currentState(input.userRef);
+      const current = subscriptionRequestsFromState(existing).find((request) => request.requestRef === input.requestRef)
+        ?? existing.subscriptionRequest;
+      if (!current || current.requestRef !== input.requestRef || current.lifecycle !== "active") {
+        throw portalError("当前订单尚未开通，无法复制。");
+      }
+
+      const subscriptionUrl = current.subscriptionUrl ?? options.demoSubscriptionUrl?.trim();
+      if (!subscriptionUrl) {
+        throw portalError("当前订单尚未开通，无法复制。");
+      }
+
+      const revealed: PortalSubscriptionRequest = {
+        ...current,
+        status: "subscription_ready",
+        lifecycle: "active",
+        subscriptionUrl,
+        nextAction: "copy_subscription_url"
+      };
+      const subscriptionRequests = upsertSubscriptionRequest(subscriptionRequestsFromState(existing), revealed);
+      setState(input.userRef, {
+        subscriptionRequest: revealed,
+        subscriptionRequests,
+        historySummary: historySummaryForRequests(subscriptionRequests),
+        updatedAt: revealed.updatedAt ?? now().toISOString()
+      });
+      return revealed;
+    },
+
     async refreshSubscription(input) {
       if (!input.userRef.trim() || !input.requestRef.trim()) {
         throw portalError("用户会话无效。");
@@ -1380,12 +1667,12 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       const current = subscriptionRequestsFromState(existing).find((request) => request.requestRef === input.requestRef)
         ?? existing.subscriptionRequest;
       if (!current || current.requestRef !== input.requestRef || current.lifecycle !== "active") {
-        throw portalError("当前订单尚未发放，无法刷新。");
+        throw portalError("当前订单尚未开通，无法刷新。");
       }
 
       const subscriptionUrl = options.demoSubscriptionUrl?.trim();
       if (!subscriptionUrl) {
-        throw portalError("当前订单尚未发放，无法刷新。");
+        throw portalError("当前订单尚未开通，无法刷新。");
       }
 
       const refreshedAt = now().toISOString();
@@ -1445,15 +1732,15 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       const current = subscriptionRequestsFromState(existing).find((request) => request.requestRef === input.requestRef)
         ?? existing.subscriptionRequest;
       if (!current || current.requestRef !== input.requestRef || current.lifecycle !== "active") {
-        throw portalError("当前订单尚未发放，无法禁用。");
+        throw portalError("当前订单尚未开通，无法停用。");
       }
 
       const disabledAt = now().toISOString();
       const historySummary: PortalHistoryRecord[] = [
         {
           recordRef: stableRef("history", `${current.requestRef}|disable|${disabledAt}`),
-          label: "禁用订阅（已禁用）",
-          status: "已禁用",
+          label: "停用订阅（已停用）",
+          status: "已停用",
           occurredAt: disabledAt
         },
         ...(existing.historySummary ?? [])
@@ -1555,10 +1842,10 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
     });
     const session = sessionBody.session ?? {};
     return sessionSummary(
-      requiredText(session.accountId ?? accountId, "用户会话无效。"),
+      requiredText(session.userRef ?? session.loginRef ?? accountId, "用户会话无效。"),
       mode,
       session.issuedAt ?? now().toISOString(),
-      String(session.displayName ?? session.accountId ?? accountId),
+      String(session.displayName ?? session.userRef ?? session.loginRef ?? accountId),
       session.sessionRef
     );
   }
@@ -1593,11 +1880,13 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
 
     async registerTrialAccount(input) {
       const emailVerification = registrationEmailVerificationProof(input.emailVerification);
+      const legalAgreement = legalAgreementProof(input.legalAgreement);
       const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/registration"), {
         method: "POST",
         body: JSON.stringify({
           email: requiredEmail(input.email),
           password: requiredText(input.password, "请输入密码。"),
+          legalAgreement,
           emailVerification
         })
       });
@@ -1613,14 +1902,14 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
       }
       if (input.mode === "authenticator") {
         return createSession(
-          requiredText(input.accountId, "请输入账户 ID。"),
+          requiredText(input.accountId, "请输入电子邮箱。"),
           requiredText(input.totpCode, "请输入动态验证码。"),
           input.mode,
           verifiedHuman(input.humanVerification)
         );
       }
       if (input.mode === "password") {
-        const accountId = requiredText(input.accountId, "请输入账户 ID。");
+        const accountId = requiredText(input.accountId, "请输入电子邮箱。");
         const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/password/session"), {
           method: "POST",
           body: JSON.stringify({
@@ -1636,8 +1925,8 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
           return {
             status: "second_factor_required",
             challengeRef: requiredText(body.challenge.challengeRef, "二次验证会话无效。"),
-            userRef: requiredText(body.challenge.accountId ?? accountId, "用户会话无效。"),
-            displayName: String(body.challenge.displayName ?? body.challenge.accountId ?? accountId),
+            userRef: requiredText(body.challenge.userRef ?? body.challenge.loginRef ?? accountId, "用户会话无效。"),
+            displayName: String(body.challenge.displayName ?? body.challenge.userRef ?? body.challenge.loginRef ?? accountId),
             authMode: "password",
             availableFactors: factors,
             expiresInSeconds: Number(body.challenge.expiresInSeconds ?? 300),
@@ -1651,10 +1940,10 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
         }
         const session = body.session ?? {};
         return sessionSummary(
-          requiredText(session.accountId ?? accountId, "用户会话无效。"),
+          requiredText(session.userRef ?? session.loginRef ?? accountId, "用户会话无效。"),
           authModeFromBackend(session.authMethod, "password"),
           session.issuedAt ?? now().toISOString(),
-          String(session.displayName ?? session.accountId ?? accountId),
+          String(session.displayName ?? session.userRef ?? session.loginRef ?? accountId),
           session.sessionRef
         );
       }
@@ -1663,12 +1952,12 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
       const enrollmentBody = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/entry/enroll"), {
         method: "POST",
         body: JSON.stringify({
-          entryToken: requiredText(input.entryToken, "请输入入口令牌。"),
-          encryptedTotpSecret: requiredText(input.encryptedTotpSecret, "请输入 TOTP 密钥。"),
+          entryToken: requiredText(input.entryToken, "开通链接无效，请重新打开邮件中的链接。"),
+          encryptedTotpSecret: requiredText(input.encryptedTotpSecret, "请重新完成身份验证器设置。"),
           humanVerification
         })
       });
-      const accountId = requiredText(enrollmentBody.enrollment?.accountId, "入口激活结果无效。");
+      const accountId = requiredText(enrollmentBody.enrollment?.accountId, "账号开通结果无效，请重新开始。");
       return createSession(accountId, requiredText(input.totpCode, "请输入动态验证码。"), input.mode, humanVerification);
     },
 
@@ -1685,10 +1974,10 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
       });
       const session = body.session ?? {};
       return sessionSummary(
-        requiredText(session.accountId, "用户会话无效。"),
+        requiredText(session.userRef ?? session.loginRef, "用户会话无效。"),
         authModeFromBackend(session.authMethod, input.factor === "passkey" ? "passkey" : "authenticator"),
         session.issuedAt ?? now().toISOString(),
-        String(session.displayName ?? session.accountId),
+        String(session.displayName ?? session.userRef ?? session.loginRef),
         session.sessionRef
       );
     },
@@ -1706,6 +1995,9 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
         ? body.items as Parameters<typeof mapAccessRequest>[0][]
         : [];
       const subscriptionRequests = items.map((item) => mapAccessRequest(item));
+      const accountEntitlements = Array.isArray(body.accountEntitlements)
+        ? (body.accountEntitlements as Record<string, unknown>[]).map((item) => mapAccountEntitlement(item))
+        : [];
       const latest = subscriptionRequests[subscriptionRequests.length - 1] ?? null;
       const security = input.sessionRef
         ? mapSecurityState((await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/security/current"), {
@@ -1717,6 +2009,7 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
         userRef: input.userRef,
         subscriptionRequest: latest,
         subscriptionRequests,
+        accountEntitlements,
         historySummary: historySummaryForRequests(subscriptionRequests),
         security,
         updatedAt: latest?.updatedAt ?? now().toISOString(),
@@ -1724,6 +2017,46 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
           noAdminApi: true,
           noPaymentActivation: true,
           noPublicAdmin: true
+        }
+      };
+    },
+
+    async fetchPaymentOrders(input) {
+      requiredText(input.userRef, "用户会话无效。");
+      const query = new URLSearchParams();
+      if (input.status) query.set("status", input.status);
+      if (input.plan) query.set("plan", input.plan);
+      const suffix = query.toString() ? `?${query.toString()}` : "";
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, `/api/portal/payments/current${suffix}`), {
+        method: "GET",
+        headers: portalSessionHeaders(input.sessionRef)
+      });
+      const orders = Array.isArray(body.payments?.orders)
+        ? body.payments.orders as Record<string, unknown>[]
+        : [];
+      return orders.map((order) => mapPaymentOrder(order));
+    },
+
+    async createPaymentCheckout(input) {
+      requiredText(input.userRef, "用户会话无效。");
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/payments/checkout"), {
+        method: "POST",
+        headers: portalSessionHeaders(input.sessionRef),
+        body: JSON.stringify({
+          plan: normalizePaymentPlan(input.planId),
+          clientTarget: input.clientTarget,
+          channel: input.channel,
+          device: input.device
+        })
+      });
+      const checkout = body.checkout ?? {};
+      return {
+        provider: String(checkout.provider ?? "niuniu-pay"),
+        order: mapPaymentOrder(checkout.order ?? {}),
+        safety: {
+          noRawMerchantKey: true,
+          noRawProviderPayload: true,
+          noSubscriptionIssued: true
         }
       };
     },
@@ -1819,6 +2152,18 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
         })
       });
       return mapSupportRequest(body.request ?? {});
+    },
+
+    async revealSubscription(input) {
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/access-requests/reveal"), {
+        method: "POST",
+        headers: portalSessionHeaders(input.sessionRef),
+        body: JSON.stringify({
+          portalUserRef: requiredText(input.userRef, "用户会话无效。"),
+          requestRef: requiredText(input.requestRef, "申请记录无效。")
+        })
+      });
+      return mapAccessRequest(body.request ?? {});
     },
 
     async refreshSubscription(input) {

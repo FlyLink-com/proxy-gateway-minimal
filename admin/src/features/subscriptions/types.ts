@@ -138,6 +138,16 @@ export type UpdatePlatformAccountInput = PlatformAccountMutationInput & {
   status?: string;
 };
 
+export type CreatePlatformEntitlementInput = {
+  plan: string;
+  quota?: {
+    trafficGb?: number;
+  };
+  status?: string;
+  validFrom?: string;
+  validUntil?: string;
+};
+
 export type PlatformAccountMutationResult = {
   account: PlatformAccountSummary;
   credential?: {
@@ -314,6 +324,153 @@ export type PortalAccessApprovalPreview = {
     noRuntimeMutation: boolean;
     noProductionMutation: boolean;
     requiresSeparateIssuanceExecution: boolean;
+  };
+};
+
+export type AdminPaymentOrderStatus =
+  | "pending_payment"
+  | "payment_amount_mismatch"
+  | "payment_channel_mismatch"
+  | "payment_failed"
+  | "payment_provider_order_mismatch"
+  | "paid_pending_admin_review"
+  | "paid_access_delivered"
+  | "paid_delivery_blocked"
+  | string;
+
+export type AdminPaymentOrderPlan = "monthly_basic" | "monthly_plus" | "yearly" | string;
+
+export type AdminPaymentRefundStatus =
+  | "not_requested"
+  | "refund_requested"
+  | "refund_approved"
+  | "refund_pending_provider"
+  | "refund_succeeded"
+  | "refund_failed"
+  | "refund_rejected"
+  | string;
+
+export type AdminPaymentRefundSummary = {
+  amountMinor?: number;
+  approvedAt?: string;
+  failedReason?: string;
+  providerRefundRef?: string;
+  reasonCode?: string;
+  remainingDays?: number;
+  requestedAt?: string;
+  status: AdminPaymentRefundStatus;
+};
+
+export type AdminPaymentOrderSummary = {
+  accessRequestRef?: string | null;
+  accessRequestStatus?: string | null;
+  amountMinor: number;
+  channel?: string;
+  checkoutUrl?: string;
+  createdAt: string;
+  currency: string;
+  displayRef?: string;
+  loginRef?: string;
+  orderRef: string;
+  paidAt?: string | null;
+  plan: AdminPaymentOrderPlan;
+  planLabel?: string;
+  providerOrderRef?: string;
+  refund?: AdminPaymentRefundSummary;
+  status: AdminPaymentOrderStatus;
+};
+
+export type AdminPaymentOrderListFilters = {
+  plan?: AdminPaymentOrderPlan;
+  portalUserRef?: string;
+  status?: AdminPaymentOrderStatus;
+};
+
+export type AdminPaymentOrderList = {
+  configured: boolean;
+  orders: AdminPaymentOrderSummary[];
+  safety: {
+    noRawMerchantKey: true;
+    noRawProviderPayload: true;
+    noPaymentMutation: true;
+  };
+};
+
+export type AdminPaymentDeliveryRetryInput = {
+  actorRef: string;
+  reasonCode: string;
+  approvalRef: string;
+};
+
+export type AdminPaymentDeliveryRetryResult = {
+  order: AdminPaymentOrderSummary;
+  audit: {
+    action: string;
+    actorRef?: string;
+    recordedAt?: string;
+  };
+  safety: {
+    noRawMerchantKey: true;
+    noRawProviderPayload: true;
+    noPaymentAmountMutation: true;
+    noPlanMutation: true;
+  };
+};
+
+export type AdminPaymentRefundQuoteInput = {
+  approvedAt?: string;
+};
+
+export type AdminPaymentRefundQuote = {
+  amountMinor: number;
+  basis: "remaining_days" | string;
+  calculatedAt: string;
+  currency: string;
+  durationDays: number;
+  money: string;
+  remainingDays: number;
+  status: AdminPaymentRefundStatus;
+  usedDays: number;
+};
+
+export type AdminPaymentRefundQuoteResult = {
+  order: AdminPaymentOrderSummary;
+  refund: AdminPaymentRefundQuote;
+  safety: {
+    noPaymentMutation: true;
+    noRawMerchantKey: true;
+    noRawProviderPayload: true;
+    noSubscriptionMutation: true;
+  };
+};
+
+export type AdminPaymentRefundApprovalInput = {
+  actorRef: string;
+  approvalRef: string;
+  approvedAt?: string;
+  reasonCode: string;
+};
+
+export type AdminPaymentRefundApprovalResult = {
+  audit: {
+    action: string;
+    actorRef?: string;
+    recordedAt?: string;
+  };
+  order: AdminPaymentOrderSummary;
+  refund: AdminPaymentRefundQuote & {
+    accessDisableError?: string;
+    accessRequestStatus?: string;
+    provider?: string;
+    providerRefundRef?: string;
+    providerSubmitted: boolean;
+  };
+  safety: {
+    noPaymentAmountMutation: true;
+    noPlanMutation: true;
+    noRawMerchantKey: true;
+    noRawProviderPayload: true;
+    subscriptionDisabledOnlyAfterProviderSuccess: true;
   };
 };
 

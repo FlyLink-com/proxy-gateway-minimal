@@ -78,21 +78,27 @@ read/write access to user-portal functions.
 
 ## Phase 1: Operator-Issued Entry + TOTP
 
-Initial implementation avoids third-party login providers and avoids public
-self-service registration as the source of authority. The repository now has a
-repo-only internal service at `server/services/platform/user-portal-auth.mjs`
-for issuing dynamic entries, enrolling TOTP credentials, and creating scoped
-portal sessions against the subscription-control database. It is not exposed
-through HTTP and it does not issue subscriptions.
+Initial implementation avoids third-party login providers. The repository now
+has repo-only services for local self-service registration, dynamic entry
+issuance, TOTP enrollment, and scoped portal sessions against the
+subscription-control database. These seams are default-off and do not authorize
+production portal exposure, payment activation, or subscription URL issuance.
 
 The repository also includes a guarded local HTTP adapter at
 `server/routes/user-portal.mjs`. It is mounted by `createApp()` only when a
 caller explicitly injects `state.platform.userPortalAuth` and sets
 `state.platform.userPortalRoutesEnabled === true`. The default application
 state does not expose these routes. This adapter is for local/repository
-validation of entry consumption and session creation; production exposure,
-Nginx/DNS routing, cookie policy, CSRF posture, and public portal activation
-remain separate Risk A gates.
+validation of registration, entry consumption, authenticator binding, and
+session creation; production exposure, Nginx/DNS routing, cookie policy, CSRF
+posture, and public portal activation remain separate Risk A gates.
+
+The local registration seam is `POST /api/portal/registration` plus the portal
+build page at `/portal/register/`. It accepts basic signup form fields, creates
+the shared `platform_accounts.id`, creates an active 7-day trial entitlement,
+records a pending trial access request, and returns a visible-once portal entry
+token for first authenticator binding. The response must not return raw contact
+data or subscription URLs.
 
 The Admin/Portal frontend now keeps the normal login surface as a single
 account-login form: account ID, password, generated local anti-bot math
@@ -122,11 +128,12 @@ default HTTP client keeps authenticator enrollment, passkey export/enrollment,
 password login, and second-factor completion fail-closed until reviewed backend
 secret generation, storage, WebAuthn, recovery, rate-limit, and session services
 are approved. These controls are not separate login-page tabs. Operator-issued
-entry Token activation remains an
-admin-controlled first-bind boundary; the HTTP portal client still supports the
-default-off `/api/portal/entry/enroll` -> `/api/portal/session` seam for
-repository validation, but this is not exposed as a normal customer login
-choice. The default HTTP password client keeps password authentication
+entry Token activation remains an admin-controlled first-bind boundary for
+admin-created accounts. Self-service registration uses the same hash-only
+dynamic entry model for first authenticator binding. The HTTP portal client
+supports the default-off `/api/portal/registration` ->
+`/api/portal/entry/enroll` -> `/api/portal/session` seam for repository
+validation. The default HTTP password client keeps password authentication
 fail-closed; real password hash storage, reset flows, and production password
 authentication remain separate gates. Email-code login and real mail issuance
 are no longer part of the product direction. The current email-code client
@@ -157,14 +164,17 @@ Required behavior:
 - entry token has `expiresAt`, `maxUses`, `usedAt`, `revokedAt`, and audit
   metadata;
 - first successful entry can enroll a TOTP authenticator;
+- each account may have only one active Google Authenticator / TOTP credential
+  during the gated launch; replacement or recovery requires a separate
+  operator reset/revoke workflow;
 - TOTP verification has rate limits, attempt counters, replay window controls,
   and audit events;
 - successful verification creates a short-lived portal session;
 - authenticator and passkey enrollment controls belong in the user
   account/security center, not as normal login-page alternatives;
-- repository-local preview may include issued initial accounts that force a
-  first-login security-initialization dialog, but this must not be treated as
-  public self-service registration or production account provisioning;
+- repository-local preview may include issued initial accounts or local
+  self-service registration accounts that force first authenticator binding,
+  but this must not be treated as production account provisioning;
 - once an account has a local-preview authenticator or passkey enabled, password
   login must produce a second-factor challenge and must not create a session
   until one enabled factor verifies;
@@ -188,11 +198,13 @@ Required behavior:
 
 Non-goals:
 
-- public fixed `/login` or `/portal` links on the company site;
+- production public `/login` or `/portal` exposure without the separate A-tier
+  auth, routing, cookie, abuse-control, and rollback gate;
 - public Admin exposure;
 - Google OAuth or any third-party login dependency;
 - payment activation;
-- automatic entitlement or subscription issuance;
+- automatic paid entitlement, payment renewal, or production subscription
+  issuance;
 - direct subscription artifact fetch from the portal-entry token.
 
 ## Phase 2: User-Scoped Portal Session

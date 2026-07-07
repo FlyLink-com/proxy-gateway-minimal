@@ -21,6 +21,7 @@ export type DataTablePagination = {
   onPageChange?: (page: number) => void | Promise<void>;
   pageSize: number;
   previousLabel?: string;
+  rangeLabel?: (range: { firstVisibleRow: number; lastVisibleRow: number; totalRows: number }) => ReactNode;
   showPageSummary?: boolean;
   showWhenSinglePage?: boolean;
   totalRows?: number;
@@ -162,6 +163,7 @@ export function DataTable<Row>({
           nextLabel={pagination?.nextLabel}
           onPageChange={handlePageChange}
           previousLabel={pagination?.previousLabel}
+          rangeLabel={pagination?.rangeLabel}
           showPageSummary={pagination?.showPageSummary}
           totalPages={totalPages}
           totalRows={totalRows}
@@ -180,6 +182,7 @@ export function DataCardPagination({
   nextLabel = "Next",
   onPageChange,
   previousLabel = "Prev",
+  rangeLabel,
   showPageSummary = true,
   totalPages,
   totalRows
@@ -192,6 +195,7 @@ export function DataCardPagination({
   nextLabel?: string;
   onPageChange: (page: number) => void;
   previousLabel?: string;
+  rangeLabel?: (range: { firstVisibleRow: number; lastVisibleRow: number; totalRows: number }) => ReactNode;
   showPageSummary?: boolean;
   totalPages: number;
   totalRows: number;
@@ -209,7 +213,9 @@ export function DataCardPagination({
       data-ui-surface="data-card-pagination"
     >
       <span className="data-card-pagination-range">
-        Showing {firstVisibleRow}-{lastVisibleRow} of {formattedTotalRows}
+        {rangeLabel
+          ? rangeLabel({ firstVisibleRow, lastVisibleRow, totalRows: visibleTotalRows })
+          : <>Showing {firstVisibleRow}-{lastVisibleRow} of {formattedTotalRows}</>}
       </span>
       <div className="data-card-pagination-controls">
         <button

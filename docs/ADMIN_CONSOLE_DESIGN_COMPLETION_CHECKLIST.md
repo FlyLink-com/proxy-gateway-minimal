@@ -1,6 +1,6 @@
 # Admin Console Design Completion Checklist
 
-Last updated: 2026-06-25, America/Los_Angeles.
+Last updated: 2026-06-26, America/Los_Angeles.
 
 > Status:
 > - Type: Figma/page/visual/component-state design completion gate
@@ -28,7 +28,7 @@ Use this document after `docs/ADMIN_CONSOLE_FRONTEND_DESIGN_INDEX.md` and before
 | --- | --- |
 | Design direction | Accepted. Continue with the protected Admin Console model, not the browser-OS experiment. |
 | Active pages | `Operations Overview`, `Accounts & Resources`, `Usage & Channels`. |
-| Figma source | Canonical file is `GlobalCircle AI Admin UI Baseline - 2026-06-25` (`NefQiIMOPIBU28TIYcwQFE`); current route baseline cards are `24:5`, `24:35`, and `24:65`. |
+| Figma source | Canonical file is `GlobalCircle AI Admin UI Baseline - 2026-06-25` (`NefQiIMOPIBU28TIYcwQFE`); current route baseline frames are `2:92`, `2:262`, and `2:432` under `03 Product Baseline Frames` (`2:4`). |
 | Figma Site role | Optional demo/click-flow review surface only; it is not a design completion gate, source of truth, or implementation target. |
 | Current phase | Clean baseline source accepted; reverse-standardize docs and React/CSS from the new baseline before backend integration or runtime projection. |
 | Deferred work | `Usage & Channels` runtime projection, backend DTOs, auth/schema/runtime work, and privileged surfaces. |
@@ -40,9 +40,9 @@ source for the three active Admin pages.
 
 | Page | Current frame | Design status | Implementation consequence |
 | --- | --- | --- | --- |
-| `Operations Overview` | `24:5` | Accepted clean-baseline route card. | Implement from the clean baseline; old `373:716`, `99:2`, and `365:8` are lineage only. |
-| `Accounts & Resources` | `24:35` | Accepted clean-baseline route card. | Implement from the clean baseline; old `373:866`, `104:2`, and `365:52` are lineage only. |
-| `Usage & Channels` | `24:65` | Accepted clean-baseline route card. | Implement from the clean baseline; old `373:1016`, `104:226`, and `365:96` are lineage only. |
+| `Operations Overview` | `2:92` | Accepted clean-baseline route frame. | Implement from the clean baseline; old `373:716`, `99:2`, `365:8`, and retired local `24:5` anchors are lineage/drift only. |
+| `Accounts & Resources` | `2:262` | Accepted clean-baseline route frame. | Implement from the clean baseline; old `373:866`, `104:2`, `365:52`, and retired local `24:35` anchors are lineage/drift only. |
+| `Usage & Channels` | `2:432` | Accepted clean-baseline route frame. | Implement from the clean baseline; old `373:1016`, `104:226`, `365:96`, and retired local `24:65` anchors are lineage/drift only. |
 
 Current visual decisions:
 
@@ -70,7 +70,7 @@ but this pass only inspected page coverage and local screenshot evidence.
 | Top-level page map | `0:1 Admin UI Handoff` contains `14` top-level frames. | Verified historically. | Archive/lineage only; do not use as the active mirror source. |
 | Original active page mirrors | `2:81` Operations, `2:189` Accounts, `2:309` Usage. | Present and ownership-correct. | Migrate Accounts and Usage to the refined visual protocol. |
 | Current implementation captures | `17:2`, `22:2`, `23:2`. | Present. | Use as implementation baseline evidence, not as final design polish. |
-| Refined visual drafts | `99:2` Operations, `104:2` Accounts, `104:226` Usage. | Superseded draft lineage. | Keep for rationale only; current implementation source is the clean baseline cards `24:5`, `24:35`, `24:65`. |
+| Refined visual drafts | `99:2` Operations, `104:2` Accounts, `104:226` Usage. | Superseded draft lineage. | Keep for rationale only; current implementation source is the clean baseline frames `2:92`, `2:262`, `2:432`. |
 | State and safety matrix | `2:427` `04 State & Safety Matrix`. | Present. | Still needs page-level state placement and responsive visual QA. |
 
 GCC-122 cleanup pass after first review:
@@ -107,7 +107,7 @@ GCC-122 design-evidence pass:
 Audit conclusion:
 
 - `Operations Overview`, `Accounts & Resources`, and `Usage & Channels` now
-  have accepted clean-baseline route cards in `24:5`, `24:35`, and `24:65`.
+  have accepted clean-baseline route frames in `2:92`, `2:262`, and `2:432`.
 - The earlier `99:2`, `104:2`, and `104:226` drafts are superseded and should
   not drive implementation except as historical design rationale.
 - Component-state placement, responsive strategy, and Figma-to-code mapping now

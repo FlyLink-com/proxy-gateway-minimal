@@ -225,6 +225,106 @@ test("enabled portal route creates a pending 7-day trial request without subscri
   }
 });
 
+test("enabled portal route passes the current account admin entitlement for paid setup", async () => {
+  let submitted = null;
+  const portalAccessRequests = {
+    submitRequest(input = {}) {
+      submitted = input;
+      return {
+        id: "pareq_admin_entitlement_route",
+        portalUserRef: input.portalUserRef,
+        plan: input.plan,
+        status: "delivered",
+        entitlementRef: input.entitlementRef,
+        expiresAt: input.entitlementValidUntil,
+        subscriptionUrl: "route-safe-visible-once-link"
+      };
+    }
+  };
+  const accountShell = {
+    listEntitlements(input = {}) {
+      assert.equal(input.accountId, "acct_route_entitled");
+      return [{
+        id: "ent_admin_yearly_route",
+        accountId: "acct_route_entitled",
+        plan: "yearly",
+        status: "active",
+        usable: true,
+        validUntil: "2027-07-07T00:00:00.000Z",
+        quota: { trafficGb: 200 }
+      }];
+    }
+  };
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    userPortalRoutesEnabled: true,
+    userPortalAuth: portalAuth("acct_route_entitled"),
+    portalAccessRequests,
+    accountShell
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/portal/access-requests`, {
+      method: "POST",
+      headers: portalSessionHeaders(),
+      body: JSON.stringify({
+        portalUserRef: "client_supplied_must_not_win",
+        plan: "yearly",
+        clientTarget: "clash",
+        quantity: 1
+      })
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(submitted.portalUserRef, "acct_route_entitled");
+    assert.equal(submitted.entitlementRef, "ent_admin_yearly_route");
+    assert.equal(submitted.entitlementValidUntil, "2027-07-07T00:00:00.000Z");
+    assert.equal(body.request.entitlementRef, "ent_admin_yearly_route");
+    assert.equal(JSON.stringify(body).includes("client_supplied_must_not_win"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("enabled portal route ignores client supplied entitlement fields", async () => {
+  let submitted = null;
+  const portalAccessRequests = {
+    submitRequest(input = {}) {
+      submitted = input;
+      return {
+        id: "pareq_no_entitlement_route",
+        portalUserRef: input.portalUserRef,
+        plan: input.plan,
+        status: "pending_admin_review"
+      };
+    }
+  };
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    userPortalRoutesEnabled: true,
+    userPortalAuth: portalAuth("acct_route_without_entitlement"),
+    portalAccessRequests
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/portal/access-requests`, {
+      method: "POST",
+      headers: portalSessionHeaders(),
+      body: JSON.stringify({
+        plan: "yearly",
+        clientTarget: "clash",
+        quantity: 1,
+        entitlementRef: "ent_client_supplied",
+        entitlementValidUntil: "2099-01-01T00:00:00.000Z"
+      })
+    });
+    assert.equal(response.status, 201);
+    const body = await response.json();
+    assert.equal(submitted.portalUserRef, "acct_route_without_entitlement");
+    assert.equal(Object.hasOwn(submitted, "entitlementRef"), false);
+    assert.equal(Object.hasOwn(submitted, "entitlementValidUntil"), false);
+    assert.equal(JSON.stringify(body).includes("ent_client_supplied"), false);
+  } finally {
+    server.close();
+  }
+});
+
 test("enabled portal route rejects order creation without a portal session before service mutation", async () => {
   let submitCalls = 0;
   const portalAccessRequests = {
@@ -306,6 +406,62 @@ test("enabled portal route lists every order for the current portal user", async
   }
 });
 
+test("enabled portal route rejects a second subscription request for new limited accounts", async () => {
+  let sequence = 0;
+  const requestStore = routePortalRequestStoreWith([]);
+  const portalAccessRequests = createPortalAccessRequestService({
+    nowFn: () => "2026-06-01T00:00:00.000Z",
+    requestIdFactory: () => {
+      sequence += 1;
+      return `pareq_route_single_${sequence}`;
+    },
+    portalAccessRequestStore: requestStore,
+    controlStore: {
+      getAccount(id) {
+        return {
+          id,
+          metadata: {
+            singleSubscriptionOnly: true,
+            subscriptionLimit: 1
+          }
+        };
+      }
+    }
+  });
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    userPortalRoutesEnabled: true,
+    userPortalAuth: portalAuth("acct_route_single_1"),
+    portalAccessRequests
+  })));
+  try {
+    const trial = await fetch(`${baseUrl}/api/portal/access-requests`, {
+      method: "POST",
+      headers: portalSessionHeaders(),
+      body: JSON.stringify({
+        plan: "trial",
+        clientTarget: "clash",
+        quantity: 1
+      })
+    });
+    assert.equal(trial.status, 201);
+
+    const monthly = await fetch(`${baseUrl}/api/portal/access-requests`, {
+      method: "POST",
+      headers: portalSessionHeaders(),
+      body: JSON.stringify({
+        plan: "monthly",
+        clientTarget: "karing",
+        quantity: 1
+      })
+    });
+    assert.equal(monthly.status, 409);
+    assert.deepEqual(await monthly.json(), { error: "subscription_limit_exceeded" });
+    assert.equal(portalAccessRequests.listRequests({ portalUserRef: "acct_route_single_1" }).length, 1);
+  } finally {
+    server.close();
+  }
+});
+
 test("admin route lists and previews portal access requests behind console auth", async () => {
   const portalAccessRequests = requestService();
   portalAccessRequests.submitRequest(trialBody());
@@ -336,6 +492,44 @@ test("admin route lists and previews portal access requests behind console auth"
     assert.equal(previewBody.preview.status, "approved_pending_delivery");
     assert.equal(previewBody.preview.safety.noRuntimeMutation, true);
     assert.equal(JSON.stringify(previewBody).includes("subscriptionUrl"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("admin route paginates portal access request summaries for table reads", async () => {
+  let sequence = 0;
+  const portalAccessRequests = createPortalAccessRequestService({
+    nowFn: () => "2026-06-30T00:00:00.000Z",
+    requestIdFactory: () => {
+      sequence += 1;
+      return `pareq_route_page_${sequence}`;
+    }
+  });
+  for (let index = 1; index <= 3; index += 1) {
+    portalAccessRequests.submitRequest({
+      ...trialBody(),
+      portalUserRef: `route_user_page_${index}`
+    });
+  }
+  const { server, baseUrl } = await listen(createApp(fakeState({ portalAccessRequests })));
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/portal-access-requests?limit=1&offset=1`, {
+      headers: authHeaders()
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+
+    assert.deepEqual(body.items.map((item) => item.id), ["pareq_route_page_2"]);
+    assert.deepEqual(body.pageInfo, {
+      limit: 1,
+      nextOffset: 2,
+      offset: 1,
+      previousOffset: 0,
+      returnedRows: 1,
+      totalRows: 3
+    });
+    assert.doesNotMatch(JSON.stringify(body), /https?:|token=|password|edgecred_|visible-once|raw-artifact/i);
   } finally {
     server.close();
   }
@@ -459,6 +653,19 @@ test("enabled portal route refreshes and disables a delivered order lifecycle", 
     portalAccessRequests
   })));
   try {
+    const revealed = await fetch(`${baseUrl}/api/portal/access-requests/reveal`, {
+      method: "POST",
+      headers: portalSessionHeaders(),
+      body: JSON.stringify({
+        portalUserRef: "user_safe_ref",
+        requestRef: "pareq_route_lifecycle"
+      })
+    });
+    assert.equal(revealed.status, 200);
+    const revealedBody = await revealed.json();
+    assert.equal(revealedBody.request.subscriptionUrl, "https://sub.example.test/import/original-visible-once");
+    assert.equal(revealedBody.request.safety.noSubscriptionUrl, false);
+
     const refreshed = await fetch(`${baseUrl}/api/portal/access-requests/refresh`, {
       method: "POST",
       headers: portalSessionHeaders(),

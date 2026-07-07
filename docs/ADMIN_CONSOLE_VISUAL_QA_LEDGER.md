@@ -1,6 +1,6 @@
 # Admin Console Visual QA Ledger
 
-Last updated: 2026-06-25, America/Los_Angeles.
+Last updated: 2026-06-29, America/Los_Angeles.
 
 > Status:
 > - Linear: GCC-68
@@ -49,7 +49,7 @@ Figma connector evidence for the active baseline on 2026-06-25:
 | --- | --- |
 | Source file metadata | Active file is `https://www.figma.com/design/NefQiIMOPIBU28TIYcwQFE/GlobalCircle-AI-Admin-UI-Baseline---2026-06-25`. |
 | Current top-level pages | `00 Index & Project Map`, `01 Design Rules V1-Polish`, `02 Component Contract`, `03 Product Baseline Frames`, `04 Figma-to-React Mapping`, `90 Evidence Gates`, and `99 Archive / Source Handoff`. |
-| Current visual source frames | `Product Baseline / Operations Overview` (`24:5`), `Product Baseline / Accounts & Resources` (`24:35`), and `Product Baseline / Usage & Channels` (`24:65`). |
+| Current visual source frames | `Operations Overview / Baseline / 1600x908` (`2:92`), `Accounts & Resources / Baseline / 1600x908` (`2:262`), and `Usage & Channels / Baseline / 1600x908` (`2:432`). |
 | Historical page mirror frames | Older `373:*`, `99:*`, and `104:*` frames are archive/lineage only unless their rule is copied into the clean baseline and re-accepted. |
 | Implementation captures | Local screenshots remain browser QA evidence only and do not replace the active Figma baseline. |
 | Previous mismatch | The earlier one-page Requirements Map and the former multi-frame handoff are not active implementation sources. |
@@ -69,7 +69,20 @@ Component-system mirror status:
 | Observed component nodes / variants | `0` component-set variants in the clean baseline; current output is a design contract, not a reusable Figma library. |
 | Pending component mirrors | None for source-boundary setup; React/CSS visual parity and browser QA remain open. |
 | Phase 2 screenshot evidence | New baseline screenshots were captured under `output/playwright/` for 1600, 1280, and 1024 widths. |
-| Next task line | `Admin React/CSS source-boundary cleanup and browser visual QA against the clean baseline` |
+| Next task line | `Admin React/CSS browser visual QA and page-subroute parity filtering against the clean baseline` |
+
+Phase 1 freeze snapshot, 2026-06-26:
+
+| Item | Frozen status | Evidence |
+| --- | --- | --- |
+| Figma source boundary | Frozen | `ADMIN_FIGMA_BASELINE_FREEZE.activeFile = NefQiIMOPIBU28TIYcwQFE` |
+| Route baseline frames | Frozen | `2:92`, `2:262`, `2:432` are asserted in mirror and evidence contract tests. |
+| Operations first screen | Frozen | Browser check shows one health summary, three workspace panels, and two evidence surfaces; tests assert summary and panel roles separately. |
+| Accounts and Usage first screens | Frozen | Browser check shows three workspace panels and two evidence surfaces for each route. |
+| Deep section routes | Frozen | `#/admin/accounts/quota-usage` normalizes to `#/admin/accounts` until section contracts are designed. |
+| Deprecated AppLibrary/NavigationLibrary behavior | Frozen out | Navigation tests assert no AppLibrary, NavigationLibrary, module hide/restore, dock/appbar, or old page-local subnavigation behavior. |
+| Backend/API/data wiring | Not frozen | Deferred to later DTO and implementation task lines. |
+| Mobile below `1024px` | Not frozen | Out of scope for the current baseline gate. |
 
 Local mirror contract added:
 
@@ -109,6 +122,81 @@ Local target:
 ```text
 http://127.0.0.1:5173/
 ```
+
+Local safe-read workflow calibration on 2026-06-29:
+
+| Check | Result |
+| --- | --- |
+| Workflow tier | Admin UI code work remains B-tier; docs/ledger updates remain C-tier. No production, auth, schema, runtime, deployment, token, credential, subscription URL, raw config/log/env, SQLite row, or customer-data authority is granted. |
+| Page sequencing | Continue one page at a time for page content. `User Access Logs`, `User Operation Logs`, `Node Health`, `Node Logs`, `Node Bandwidth`, `User Management`, and `Order Management` are the completed calibration pages. The owner-navigation pass now routes User/Order pages under `Accounts & Resources`; `System Settings` is reserved and not an active business route. |
+| Shell rule | Only `Operations Overview`, `Accounts & Resources`, and `Usage & Channels` render the shared shell `TopBar`. The seven safe-read query/management pages render the Figma page-local header only. |
+| `User Access Logs` rendered proof | Browser / IAB check at `#/admin/user-access-logs` returned `shellTopbar=disabled`, `topbarPresent=false`, no horizontal overflow, and no console warnings/errors. |
+| `User Access Logs` row rhythm | Browser / IAB row heights were `[44, 56, 56, 56, 56, 56, 56, 56, 56]`: one `44px` header row plus eight fixed `56px` data rows. |
+| `User Operation Logs` rendered proof | Local Chrome check at `#/admin/user-operation-logs` returned `shellTopbar=disabled`, `topbarPresent=false`, zero filter inputs, filters `All Operators`, `Any ID`, `All Actions`, `All Results`, `Last 24 Hours`, and `Reset`, no horizontal overflow, and no console warnings/errors. |
+| `User Operation Logs` row rhythm | Local Chrome row heights were `[44, 56, 56, 56, 56, 56, 56, 56, 56]`; table/detail geometry was `940px` table card plus `340px` detail panel at shared `714px` height, and pagination rendered `Showing 1-8 of 128` without a page summary. |
+| `User Operation Logs` interaction proof | Selecting `op_evt_004` updated `Log Details` to safe refs for `op_004` and `sub_8192`; protected trace, privileged detail, raw payload, token, credential, subscription URL, runtime config, and SQLite row output remained absent. |
+| `Node Health` rendered proof | Browser and local Chrome checks at `#/admin/node-health` returned `shellTopbar=disabled`, `topbarPresent=false`, search `Search node ID or region...`, filters `All Regions`, `All Status`, `All Types`, and `Apply Filters`, no horizontal overflow, and no console warnings/errors. |
+| `Node Health` row rhythm | Local Chrome row heights were `[44, 56, 56, 56, 56, 56, 56, 56, 56]`; table/detail geometry was `940px` health table plus `340px` detail panel at shared `714px` height, and pagination rendered `Showing 1-8 of 24` without a page summary. |
+| `Node Health` interaction proof | Selecting `node_ed_03` updated `Node Details` to safe refs and redacted IP material; node-log and diagnostics actions stayed disabled/gated, and raw logs, tokens, credentials, subscription URLs, runtime config, and SQLite rows remained absent. |
+| `Node Logs` rendered proof | Browser and local Chrome checks at `#/admin/node-logs` returned `shellTopbar=disabled`, `topbarPresent=false`, search `Search node ID, event type...`, filters `All Nodes`, `Last 24 Hours`, `All Events`, `All Status`, and `Apply Filters`, no raw-log surface, and no metric cards. |
+| `Node Logs` row rhythm | Local Chrome screenshot `C:\Users\g\AppData\Local\Temp\globalcircle-node-logs-fixed-v3.png` rendered the Figma page-local header, `940px` log table plus `340px` detail panel at shared `714px` height, fixed `44px` header row plus eight `56px` data rows, and pagination `Showing 1-8 of 2,847` without a page summary. |
+| `Node Logs` interaction proof | Browser row selection for `node_log_003` updated `Log Details` to `node_gw_03`, `Error`, `Offline`, `ERROR`, `ap-south-1`, and `[REDACTED_IP]`; raw logs, tokens, credentials, subscription URLs, runtime config, SQLite rows, and customer-private data remained absent. |
+| `Node Bandwidth` rendered proof | Browser and local Chrome checks at `#/admin/node-bandwidth` returned `topbarPresent=false`, search `Search node ID or region...`, filters `All Nodes`, `Last 1h`, `All Regions`, `All Types`, and `Apply`, no metric cards, no sensitive terms, and no console warnings/errors. |
+| `Node Bandwidth` row rhythm | Local Chrome screenshot `C:\Users\g\AppData\Local\Temp\globalcircle-node-bandwidth-fixed-v1.png` rendered the Figma page-local header, `940px` bandwidth table plus `340px` detail panel at shared `714px` height, fixed `44px` header row plus eight `56px` data rows, and pagination `Showing 1-8 of 24` without a page summary. |
+| `Node Bandwidth` interaction proof | Browser row selection for `node_edge_07` updated `Bandwidth Detail` to safe bandwidth summaries with `91%` danger utilization, `4.2 Gbps` inbound, `3.1 Gbps` outbound, `38ms` latency, and `0.08%` packet loss; raw logs, tokens, credentials, subscription URLs, runtime config, SQLite rows, and customer-private data remained absent. |
+| `User Management` rendered proof | Browser and local Chrome checks at `#/admin/user-management` returned `topbarPresent=false`, search `Search User ID, name, email...`, filters `Status All`, `Risk All`, `Plan All`, and `Created Time Last 24h`, disabled `Create User · Gated`, no metric cards, no horizontal overflow, no sensitive terms, and no console warnings/errors. |
+| `User Management` row rhythm | Local Chrome screenshot `C:\Users\g\AppData\Local\Temp\globalcircle-user-management-fixed-v1.png` rendered the Figma page-local header, `940px` user table plus `340px` detail panel at shared `714px` height, fixed `44px` header row plus eight `56px` data rows, and pagination `Showing 1-8 of 32` without a page summary. |
+| `User Management` interaction proof | Browser row selection for `user_008` updated `User Details` to safe user refs with `User Theta`, `[REDACTED_EMAIL]`, `Team`, `Pending`, `Medium`, and `2026-01-18 10:31`; access-log handoff, operation-log handoff, and revoke controls remained disabled/gated, and raw logs, tokens, credentials, subscription URLs, runtime config, SQLite rows, and customer-private data remained absent. |
+| `Order Management` rendered proof | Browser and local Chrome checks at `#/admin/order-management` returned `topbarPresent=false`, search `Search ID, account ref, or lifecycle...`, filters `Status`, `Plan`, `Lifecycle`, and `Delivery`, disabled `Create Order · Gated`, no metric cards, no horizontal overflow, no sensitive terms, and no console warnings/errors. |
+| `Order Management` row rhythm | Local Chrome screenshot `C:\Users\g\AppData\Local\Temp\globalcircle-order-management-fixed-v1.png` rendered the Figma page-local header, `940px` order table plus `340px` detail panel at shared `714px` height, fixed `44px` header row plus four `56px` data rows with Figma blank-table remainder, and pagination `Showing 1-4 of 128` without a page summary. |
+| `Order Management` interaction proof | Browser row selection for `ORD-4031` updated `Order Details` to safe order refs with `enterprise_alpha_01`, `Tier 3 / Pro`, `120 / 1d`, `Suspended`, and `Blocked`; quota-architecture and usage-evidence handoffs stayed disabled/gated, and raw logs, tokens, credentials, subscription URLs, runtime config, SQLite rows, and customer-private data remained absent. |
+| Shared navigation note | The workspace sidebar now renders `Accounts & Resources` with `User Management` and `Order Management`, plus `Audit & Cases` and `Platform Development` groups. `System Settings` is reserved and has no active business route or normal-operator planned gate. |
+| Validation | `npm run admin:test` passed `33` files / `299` tests; `npm run admin:build` passed with the existing Vite chunk-size warning; `git diff --check origin/master...HEAD` passed. Root `npm test` ran `819` server tests with `818` pass and `1` unrelated failure in `platform-controlled-open-cli.test.mjs` because the tracked-example entitlement fixture is expired. |
+
+Playwright/Chrome baseline and overflow check on 2026-06-28 after the first
+two page-specific backend-query surfaces were added:
+
+| Routes checked | Viewports | Page identity | Table/detail interaction | Global horizontal overflow | Header/filter overlap | Table/detail overlap | Console warnings/errors | Result |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `#/admin/user-access-logs`, `#/admin/user-operation-logs` | `1440 x 900`, `1024 x 768`, `390 x 844` | Pass | Pass: selected rows updated the redacted detail panel. | No | No | No | 0 | Pass |
+
+Focused Browser source-rule check on 2026-06-28 for
+`#/admin/user-access-logs`:
+
+| Check | Result |
+| --- | --- |
+| Browser route | In-app Browser was blocked by the local client for `localhost`/`127.0.0.1` with `ERR_BLOCKED_BY_CLIENT`; fallback validation used local headless Chrome/CDP against the same Vite dev server. |
+| Header attribution | Breadcrumb variant rendered as `Home > User Access Logs`; header actions rendered `Operator Console` and `Export CSV`, both disabled. |
+| Filter row | Search placeholder rendered `Search user ID, session, activity...`; filters rendered `All Results`, `Last 24 Hours`, `All Methods`, and `All Risk`. |
+| Table/detail split | 1600px check rendered table and detail side by side; 1024px check stacked table and detail with no global horizontal overflow. |
+| Table columns | Columns rendered as `TIMESTAMP`, `USER REF`, `EVENT TYPE`, `RESULT`, and `RISK LEVEL`; event/result/risk cells render contained `StatusChip` components. |
+| Pagination | Access table pagination rendered `Showing 1-8 of 715` with `Previous`/`Next` controls and no page-number summary. |
+| Interaction | Selecting `evt_access_004` updated `Event Detail` with redacted blocked-delete evidence. |
+| Console/overlay | No Vite/framework overlay and no console warnings/errors in the 1600px and 1024px Chrome/CDP checks. |
+
+Focused Browser source-rule check on 2026-06-28 for
+`#/admin/user-operation-logs`:
+
+| Check | Result |
+| --- | --- |
+| Header attribution | Breadcrumb variant rendered as `Home > User Operation Logs`; no title-only `h1` in the page header. |
+| Header stroke tier | `rgba(255, 255, 255, 0.35)` on the top-header; secondary surfaces stay on the lower stroke tier. |
+| Table/detail split | `audit-table-card` measured `940px`; `DetailPanel` measured `340px`; both shared the same top and height. |
+| Column positions | Header cells measured at x `17/169/341/513/645/777`, matching the fixed `16/168/340/512/644/776` rule within 1px stroke rounding. |
+| Action/result cells | Both ACTION and RESULT render as contained `StatusChip` components. |
+| Pagination | Operation table pagination measured `56px` high. |
+| Interaction | Selecting `op_evt_004` updated `Log Details` with redacted lifecycle evidence. |
+
+Observed details:
+
+- `Export CSV · Gated` stays disabled on User Access Logs; User Operation Logs
+  follows the V2 source label `Export CSV` while still disabled in the current
+  frontend phase.
+- Tablet and mobile widths were checked for overflow safety only. The V2
+  source rules explicitly keep 1440/1280/1024 breakpoint frames pending, so this
+  pass must not be treated as responsive-complete for User Operation Logs.
+- Local viewport screenshots were generated under a temp QA directory for
+  operator inspection and were not committed.
 
 Clean-baseline Browser check on 2026-06-25 used the active Figma baseline file
 `NefQiIMOPIBU28TIYcwQFE` and the local Admin console at `127.0.0.1:5173`.
@@ -235,7 +323,7 @@ Page-local navigation observed:
 | ID | Concept area | Expected from concept | Current implementation | QA status |
 | --- | --- | --- | --- | --- |
 | SH-01 | Shell and brand | Left rail with GlobalCircle AI identity and protected operator context. | Sidebar shows brand, grouped navigation, locked future slots, and safety footer. | Pass |
-| SH-02 | Navigation | Overview, user supervision, platform monitoring, audit/cases, platform development, and settings. | Active real pages remain limited to `Operations Overview`, `Accounts & Resources`, and `Usage & Channels`; planned areas are locked. | Pass |
+| SH-02 | Navigation | Operations overview, accounts/resources, usage/channels, audit/cases, platform development, and reserved system settings. | The sidebar orders ten active routes as `Operations Overview`, `Accounts & Resources`, `User Management`, `Order Management`, `Usage & Channels`, `Audit & Cases` logs, and `Platform Development` node pages. Reserved/privileged settings stay outside the normal page list. | Pass |
 | SH-03 | Top search | Search users, orders, channels, cases, or events. | Top search is route-aware and searches active console pages; global object search is a later data-contract gap. | Partial |
 | OV-10 | Platform health metric | Health card with status, note, and sparkline. | `Platform health` follows the clean-baseline metric pattern: status pill, title, and safe summary copy. | Pass |
 | OV-11 | Risk cases metric | Risk count and trend. | `Risk candidates` follows the clean-baseline metric pattern and routes only; it does not mount a case workflow. | Pass |
@@ -251,8 +339,8 @@ Page-local navigation observed:
 | Page | Expected role | Current result | QA status |
 | --- | --- | --- | --- |
 | `Operations Overview` | Summary-and-routing dashboard that sends deep work to the owning page. | The page renders operator-chrome panels with four metric cards, `Risk Queue`, `Next Actions`, and `Review Candidates`. Draft-only field counts, `Preview` / `Owner` chips, and nested fixture preview rows are suppressed on Overview. Account/resource ledgers, object timelines, and channel ledgers are intentionally absent from Overview. Legacy service/order/activity/warning/recent-activity detail panels are also removed. | Pass |
-| `User Operations / Accounts & Resources` | Own user accounts, resources, orders, quota, lifecycle, and history/event entry points. | The first-screen primary row now follows the Visual Polish contract with three `416 x 260` panels: `Account Directory`, `Resources & Orders`, and `Lifecycle`. Each panel uses two compact `DataRowCompact` rows with safe refs and right-aligned state/action text; legacy tables and filter bars are not part of the primary row. | Pass |
-| `Platform Monitoring / Usage & Channels` | Own collection freshness, channel coverage, usage ledger, collection anomaly queue, receipt/collector entry points. | The first-screen primary row now follows the Visual Polish contract with three `416 x 260` panels: `Collection Freshness`, `Channel Coverage`, and `Usage Ledger`. Each panel uses compact measured-state rows; collection anomalies and receipts remain follow-up/evidence surfaces outside the primary row. | Pass |
+| `Accounts & Resources` | Own user accounts, resources, orders, quota, lifecycle, and history/event entry points. | The first-screen primary row now follows the Visual Polish contract with three `416 x 260` panels: `Account Directory`, `Resources & Orders`, and `Lifecycle`. Each panel uses two compact `DataRowCompact` rows with safe refs and right-aligned state/action text; legacy tables and filter bars are not part of the primary row. | Pass |
+| `Usage & Channels` | Own collection freshness, channel coverage, usage ledger, collection anomaly queue, receipt/collector entry points. | The first-screen primary row now follows the Visual Polish contract with three `416 x 260` panels: `Collection Freshness`, `Channel Coverage`, and `Usage Ledger`. Each panel uses compact measured-state rows; collection anomalies and receipts remain follow-up/evidence surfaces outside the primary row. | Pass |
 
 Primary panel visual contract, 2026-06-25:
 
@@ -261,7 +349,14 @@ Primary panel visual contract, 2026-06-25:
 | Shared geometry | Three primary panels per active page, `416 x 260`, aligned to the Figma Visual Polish row. |
 | Row grammar | Two `DataRowCompact` rows per primary panel, bounded inside the panel body; no floating table/list fragments. |
 | Removed residue | No retired hide/visibility button, AppLibrary/NavigationLibrary recovery text, code-development instruction chip, or old short-card layout inside the primary row. |
-| Page ownership | Operations routes to owner pages; Accounts owns account/resource/lifecycle; Usage owns freshness/coverage/ledger. |
+| Page ownership | Operations routes to owner pages; Accounts owns account/resource/lifecycle plus user/order management; Usage owns freshness/coverage/ledger; Audit owns user access/operation logs; Platform Development owns node health/logs/bandwidth; System Settings is reserved for future console configuration. |
+
+Owner-navigation check, 2026-06-29:
+
+| Route | Sidebar result | TopBar rule | Overflow | Console | Result |
+| --- | --- | --- | --- | --- | --- |
+| `#/admin/order-management` on fresh `127.0.0.1:5176` | Ordered as `Operations Overview`, `Accounts & Resources`, `User Management`, `Order Management`, `Usage & Channels`, `Audit & Cases` logs, and `Platform Development` nodes; active route `Order Management`; no `System Settings` planned gate. | `data-shell-topbar="disabled"`, no shared TopBar. | No global horizontal overflow. | 0 errors/warnings. | Pass |
+| Sidebar click to `#/admin/operations` on fresh `127.0.0.1:5176` | Active route `Operations Overview`; same grouped sidebar remains visible. | `data-shell-topbar="enabled"`, one shared TopBar with system search. | No global horizontal overflow. | 0 errors/warnings. | Pass |
 
 ## Responsive Checks
 

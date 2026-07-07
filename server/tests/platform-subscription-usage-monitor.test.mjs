@@ -61,13 +61,15 @@ function seedDeliveredOrder(store, {
   trafficLimitBytes = 0,
   now = "2026-06-08T00:00:00.000Z"
 }) {
-  store.createAccount({
-    id: accountId,
-    ownerRef: portalUserRef,
-    status: "active",
-    createdAt: now,
-    updatedAt: now
-  });
+  if (!store.getAccount(accountId)) {
+    store.createAccount({
+      id: accountId,
+      ownerRef: portalUserRef,
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+  }
   store.createEntitlement({
     id: entitlementId,
     accountId,
@@ -293,6 +295,196 @@ test("admin subscription usage monitor returns every delivered order with portal
       const filteredBody = await filtered.json();
       assert.equal(filteredBody.monitor.items.length, 1);
       assert.equal(filteredBody.monitor.items[0].portalUserRef, "portal_user_usage_monitor_2");
+    } finally {
+      server.close();
+    }
+  });
+});
+
+test("admin subscription usage monitor exposes user-level traffic aggregates across orders", async () => {
+  await withStore(async (controlStore) => {
+    seedDeliveredOrder(controlStore, {
+      accountId: "acct_usage_user_rollup",
+      portalUserRef: "portal_user_usage_rollup",
+      requestId: "pareq_usage_user_rollup_1",
+      entitlementId: "ent_usage_user_rollup_1",
+      tenantRef: "tenant_usage_user_rollup_1",
+      artifactRef: "artifact_usage_user_rollup_1",
+      edgeCredentialRef: "edgecred_pareq_usage_user_rollup_1",
+      channelRef: "channel-vultr-a-hy2",
+      plan: "monthly",
+      trafficLimitBytes: 1000
+    });
+    seedDeliveredOrder(controlStore, {
+      accountId: "acct_usage_user_rollup",
+      portalUserRef: "portal_user_usage_rollup",
+      requestId: "pareq_usage_user_rollup_2",
+      entitlementId: "ent_usage_user_rollup_2",
+      tenantRef: "tenant_usage_user_rollup_2",
+      artifactRef: "artifact_usage_user_rollup_2",
+      edgeCredentialRef: "edgecred_pareq_usage_user_rollup_2",
+      channelRef: "channel-vultr-b-tuic",
+      plan: "yearly",
+      trafficLimitBytes: 2000
+    });
+    const accounting = createTrafficAccountingService({
+      controlStore,
+      nowFn: () => "2026-06-08T01:06:00.000Z"
+    });
+    accounting.recordUsageObservation({
+      sourceRef: "hy2_stats_usage_user_rollup_1",
+      channelRef: "channel-vultr-a-hy2",
+      edgeCredentialRef: "edgecred_pareq_usage_user_rollup_1",
+      observedAt: "2026-06-08T00:05:00.000Z",
+      intervalStartedAt: "2026-06-08T00:00:00.000Z",
+      intervalEndedAt: "2026-06-08T00:05:00.000Z",
+      uploadBytes: 100,
+      downloadBytes: 200
+    });
+    accounting.recordUsageObservation({
+      sourceRef: "tuic_stats_usage_user_rollup_2",
+      channelRef: "channel-vultr-b-tuic",
+      edgeCredentialRef: "edgecred_pareq_usage_user_rollup_2",
+      observedAt: "2026-06-08T00:10:00.000Z",
+      intervalStartedAt: "2026-06-08T00:00:00.000Z",
+      intervalEndedAt: "2026-06-08T00:10:00.000Z",
+      uploadBytes: 50,
+      downloadBytes: 250
+    });
+
+    const { server, baseUrl } = await listen(createApp(fakeState({
+      controlStore,
+      portalAccessRequests: { listRequests: () => [] }
+    })));
+    try {
+      const response = await fetch(`${baseUrl}/api/admin/platform/subscription-usage-monitor`, {
+        headers: authHeaders()
+      });
+      assert.equal(response.status, 200);
+      const body = await response.json();
+
+      assert.equal(body.monitor.items.length, 2);
+      assert.equal(body.monitor.userAggregates.length, 1);
+      assert.deepEqual(body.monitor.userAggregates[0], {
+        accountId: "acct_usage_user_rollup",
+        portalUserRef: "portal_user_usage_rollup",
+        orderCount: 2,
+        measuredOrders: 2,
+        unmeasuredOrders: 0,
+        zeroUsageOrders: 0,
+        plans: ["monthly", "yearly"],
+        issuedChannels: ["channel-vultr-a-hy2", "channel-vultr-b-tuic"],
+        trafficLimitBytes: 3000,
+        usedBytes: 600,
+        uploadBytes: 150,
+        downloadBytes: 450,
+        collectionStatus: "measured",
+        usageMeasured: true,
+        lastUsageObservedAt: "2026-06-08T00:10:00.000Z",
+        channelUsages: [
+          {
+            channelRef: "channel-vultr-a-hy2",
+            usedBytes: 300,
+            uploadBytes: 100,
+            downloadBytes: 200,
+            lastObservedAt: "2026-06-08T00:05:00.000Z"
+          },
+          {
+            channelRef: "channel-vultr-b-tuic",
+            usedBytes: 300,
+            uploadBytes: 50,
+            downloadBytes: 250,
+            lastObservedAt: "2026-06-08T00:10:00.000Z"
+          }
+        ],
+        warnings: []
+      });
+      assert.equal(body.monitor.safety.userAggregatedRows, true);
+      assert.doesNotMatch(JSON.stringify(body.monitor.userAggregates), /visible-once|https?:\/\/|password|token=|bearer|rawConfig|edgecred_/i);
+    } finally {
+      server.close();
+    }
+  });
+});
+
+test("admin subscription usage monitor keeps user aggregates pending when any order is unmeasured", async () => {
+  await withStore(async (controlStore) => {
+    seedDeliveredOrder(controlStore, {
+      accountId: "acct_usage_user_partial",
+      portalUserRef: "portal_user_usage_partial",
+      requestId: "pareq_usage_user_partial_1",
+      entitlementId: "ent_usage_user_partial_1",
+      tenantRef: "tenant_usage_user_partial_1",
+      artifactRef: "artifact_usage_user_partial_1",
+      edgeCredentialRef: "edgecred_pareq_usage_user_partial_1",
+      channelRef: "channel-vultr-a-hy2",
+      trafficLimitBytes: 1000
+    });
+    seedDeliveredOrder(controlStore, {
+      accountId: "acct_usage_user_partial",
+      portalUserRef: "portal_user_usage_partial",
+      requestId: "pareq_usage_user_partial_2",
+      entitlementId: "ent_usage_user_partial_2",
+      tenantRef: "tenant_usage_user_partial_2",
+      artifactRef: "artifact_usage_user_partial_2",
+      edgeCredentialRef: "edgecred_pareq_usage_user_partial_2",
+      channelRef: "channel-vultr-b-tuic",
+      trafficLimitBytes: 2000
+    });
+    const accounting = createTrafficAccountingService({
+      controlStore,
+      nowFn: () => "2026-06-08T01:06:00.000Z"
+    });
+    accounting.recordUsageObservation({
+      sourceRef: "hy2_stats_usage_user_partial_1",
+      channelRef: "channel-vultr-a-hy2",
+      edgeCredentialRef: "edgecred_pareq_usage_user_partial_1",
+      observedAt: "2026-06-08T00:05:00.000Z",
+      intervalStartedAt: "2026-06-08T00:00:00.000Z",
+      intervalEndedAt: "2026-06-08T00:05:00.000Z",
+      uploadBytes: 100,
+      downloadBytes: 200
+    });
+
+    const { server, baseUrl } = await listen(createApp(fakeState({
+      controlStore,
+      portalAccessRequests: { listRequests: () => [] }
+    })));
+    try {
+      const response = await fetch(`${baseUrl}/api/admin/platform/subscription-usage-monitor`, {
+        headers: authHeaders()
+      });
+      assert.equal(response.status, 200);
+      const body = await response.json();
+
+      assert.equal(body.monitor.userAggregates.length, 1);
+      assert.deepEqual(body.monitor.userAggregates[0], {
+        accountId: "acct_usage_user_partial",
+        portalUserRef: "portal_user_usage_partial",
+        orderCount: 2,
+        measuredOrders: 1,
+        unmeasuredOrders: 1,
+        zeroUsageOrders: 0,
+        plans: ["monthly"],
+        issuedChannels: ["channel-vultr-a-hy2", "channel-vultr-b-tuic"],
+        trafficLimitBytes: 3000,
+        usedBytes: 300,
+        uploadBytes: 100,
+        downloadBytes: 200,
+        collectionStatus: "not_collected",
+        usageMeasured: true,
+        lastUsageObservedAt: "2026-06-08T00:05:00.000Z",
+        channelUsages: [
+          {
+            channelRef: "channel-vultr-a-hy2",
+            usedBytes: 300,
+            uploadBytes: 100,
+            downloadBytes: 200,
+            lastObservedAt: "2026-06-08T00:05:00.000Z"
+          }
+        ],
+        warnings: []
+      });
     } finally {
       server.close();
     }

@@ -406,6 +406,43 @@ function mapAuditEvent(row) {
   };
 }
 
+function mapPaymentOrder(row) {
+  if (!row) return null;
+  const result = {
+    orderRef: row.order_ref,
+    portalUserRef: row.portal_user_ref,
+    plan: row.plan,
+    planLabel: row.plan_label,
+    amountMinor: row.amount_minor,
+    money: row.money,
+    currency: row.currency,
+    durationDays: row.duration_days,
+    clientTarget: row.client_target,
+    channel: row.channel,
+    status: row.status,
+    provider: row.provider,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+  if (row.provider_order_ref) result.providerOrderRef = row.provider_order_ref;
+  if (row.checkout_url) result.checkoutUrl = row.checkout_url;
+  if (row.checkout_url_scheme) result.urlScheme = row.checkout_url_scheme;
+  if (row.checkout_qr_code) result.qrCode = row.checkout_qr_code;
+  if (row.checkout_expires_at) result.checkoutExpiresAt = row.checkout_expires_at;
+  if (row.access_request_ref) result.accessRequestRef = row.access_request_ref;
+  if (row.access_request_status) result.accessRequestStatus = row.access_request_status;
+  if (row.paid_at) result.paidAt = row.paid_at;
+  if (row.refund_status) result.refundStatus = row.refund_status;
+  if (row.refund_requested_at) result.refundRequestedAt = row.refund_requested_at;
+  if (row.refund_approved_at) result.refundApprovedAt = row.refund_approved_at;
+  if (Number.isInteger(row.refund_amount_minor)) result.refundAmountMinor = row.refund_amount_minor;
+  if (Number.isInteger(row.refund_remaining_days)) result.refundRemainingDays = row.refund_remaining_days;
+  if (row.refund_reason_code) result.refundReasonCode = row.refund_reason_code;
+  if (row.refund_provider_ref) result.refundProviderRef = row.refund_provider_ref;
+  if (row.refund_failed_reason) result.refundFailedReason = row.refund_failed_reason;
+  return result;
+}
+
 function mapEdgeRegisteredNode(row) {
   if (!row) return null;
   return {
@@ -800,6 +837,60 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     create index if not exists platform_audit_events_entity_ref_idx
       on platform_audit_events(entity_ref);
 
+    create table if not exists platform_payment_orders (
+      order_ref text primary key,
+      portal_user_ref text not null,
+      plan text not null check (plan in ('monthly_basic', 'monthly_plus', 'yearly')),
+      plan_label text not null,
+      amount_minor integer not null check (amount_minor > 0),
+      money text not null,
+      currency text not null,
+      duration_days integer not null check (duration_days > 0),
+      client_target text not null check (client_target in ('clash', 'karing')),
+      channel text not null check (channel in ('alipay', 'wxpay', 'qqpay', 'bank', 'jdpay')),
+      status text not null check (status in (
+        'pending_payment',
+        'payment_amount_mismatch',
+        'payment_failed',
+        'paid_pending_admin_review',
+        'paid_access_delivered',
+        'paid_delivery_blocked'
+      )),
+      provider text not null,
+      provider_order_ref text,
+      checkout_url text,
+      checkout_url_scheme text,
+      checkout_qr_code text,
+      checkout_expires_at text,
+      access_request_ref text,
+      access_request_status text,
+      paid_at text,
+      refund_status text check (refund_status is null or refund_status in (
+        'refund_requested',
+        'refund_approved',
+        'refund_pending_provider',
+        'refund_succeeded',
+        'refund_failed',
+        'refund_rejected'
+      )),
+      refund_requested_at text,
+      refund_approved_at text,
+      refund_amount_minor integer check (refund_amount_minor is null or refund_amount_minor >= 0),
+      refund_remaining_days integer check (refund_remaining_days is null or refund_remaining_days >= 0),
+      refund_reason_code text,
+      refund_provider_ref text,
+      refund_failed_reason text,
+      created_at text not null,
+      updated_at text not null
+    );
+
+    create index if not exists platform_payment_orders_portal_user_idx
+      on platform_payment_orders(portal_user_ref, created_at);
+    create index if not exists platform_payment_orders_status_idx
+      on platform_payment_orders(status, created_at);
+    create index if not exists platform_payment_orders_plan_idx
+      on platform_payment_orders(plan, created_at);
+
     create table if not exists platform_edge_registered_nodes (
       node_ref text primary key,
       provider_ref text not null,
@@ -883,7 +974,7 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     create table if not exists platform_portal_access_requests (
       id text primary key,
       portal_user_ref text not null,
-      plan text not null check (plan in ('trial', 'monthly', 'yearly')),
+      plan text not null check (plan in ('trial', 'monthly', 'monthly_basic', 'monthly_plus', 'yearly')),
       client_target text not null check (client_target in ('clash', 'karing')),
       duration_days integer not null check (duration_days > 0),
       quantity integer not null check (quantity > 0),
@@ -1072,6 +1163,20 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     { name: "event_json", definition: "event_json text not null default '{}'" }
   ]);
 
+  ensureTableColumns(db, "platform_payment_orders", [
+    { name: "checkout_expires_at", definition: "checkout_expires_at text" },
+    { name: "checkout_url_scheme", definition: "checkout_url_scheme text" },
+    { name: "checkout_qr_code", definition: "checkout_qr_code text" },
+    { name: "refund_status", definition: "refund_status text check (refund_status is null or refund_status in ('refund_requested', 'refund_approved', 'refund_pending_provider', 'refund_succeeded', 'refund_failed', 'refund_rejected'))" },
+    { name: "refund_requested_at", definition: "refund_requested_at text" },
+    { name: "refund_approved_at", definition: "refund_approved_at text" },
+    { name: "refund_amount_minor", definition: "refund_amount_minor integer check (refund_amount_minor is null or refund_amount_minor >= 0)" },
+    { name: "refund_remaining_days", definition: "refund_remaining_days integer check (refund_remaining_days is null or refund_remaining_days >= 0)" },
+    { name: "refund_reason_code", definition: "refund_reason_code text" },
+    { name: "refund_provider_ref", definition: "refund_provider_ref text" },
+    { name: "refund_failed_reason", definition: "refund_failed_reason text" }
+  ]);
+
   function createAccount(input) {
     assertNoUnsafeFields(input);
     const record = {
@@ -1094,6 +1199,91 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
 
   function getAccount(id) {
     return mapAccount(db.prepare("select * from platform_accounts where id = ?").get(requiredText(id, "id")));
+  }
+
+  function listAccounts(filters = {}) {
+    const status = optionalText(filters.status);
+    const rows = status
+      ? db.prepare(`
+          select * from platform_accounts
+          where status = ?
+          order by created_at asc, id asc
+        `).all(status)
+      : db.prepare(`
+          select * from platform_accounts
+          order by created_at asc, id asc
+        `).all();
+    return rows.map(mapAccount);
+  }
+
+  function listPortalUserAccounts(filters = {}) {
+    const status = optionalText(filters.status);
+    const predicates = [`
+      (
+        exists (
+          select 1 from platform_portal_password_credentials c
+          where c.account_id = a.id
+        )
+        or exists (
+          select 1 from platform_portal_totp_credentials c
+          where c.account_id = a.id
+        )
+        or exists (
+          select 1 from platform_portal_passkey_credentials c
+          where c.account_id = a.id
+        )
+        or exists (
+          select 1 from platform_portal_sessions s
+          where s.account_id = a.id
+        )
+        or exists (
+          select 1 from platform_portal_entries e
+          where e.account_id = a.id
+        )
+        or exists (
+          select 1 from platform_portal_access_requests r
+          where r.portal_user_ref = a.id
+        )
+      )
+    `];
+    const params = [];
+    if (status) {
+      predicates.unshift("a.status = ?");
+      params.push(status);
+    }
+    return db.prepare(`
+      select a.* from platform_accounts a
+      where ${predicates.join(" and ")}
+      order by a.created_at asc, a.id asc
+    `).all(...params).map(mapAccount);
+  }
+
+  function updateAccount(id, input = {}) {
+    assertNoUnsafeFields(input);
+    const existing = getAccount(id);
+    if (!existing) {
+      throw platformError("not_found", "account not found");
+    }
+    const status = optionalText(input.status) || existing.status;
+    const updatedAt = isoText(input.updatedAt, "updatedAt");
+    const metadata = {
+      ...existing.metadata,
+      ...(input.metadata && typeof input.metadata === "object" && !Array.isArray(input.metadata) ? input.metadata : {})
+    };
+    const result = db.prepare(`
+      update platform_accounts
+      set status = ?, updated_at = ?, metadata_json = ?
+      where id = ?
+    `).run(
+      status,
+      updatedAt,
+      jsonObject(metadata, "metadata"),
+      existing.id
+    );
+    if (result.changes !== 1) {
+      throw platformError("not_found", "account not found");
+    }
+    return getAccount(existing.id);
   }
 
   function createEntitlement(input) {
@@ -1125,6 +1315,21 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
 
   function getEntitlement(id) {
     return mapEntitlement(db.prepare("select * from platform_entitlements where id = ?").get(requiredText(id, "id")));
+  }
+
+  function listEntitlements(filters = {}) {
+    const accountId = optionalText(filters.accountId);
+    const rows = accountId
+      ? db.prepare(`
+          select * from platform_entitlements
+          where account_id = ?
+          order by created_at asc, id asc
+        `).all(accountId)
+      : db.prepare(`
+          select * from platform_entitlements
+          order by created_at asc, id asc
+        `).all();
+    return rows.map(mapEntitlement);
   }
 
   function updateEntitlementTrafficLimit(id, { trafficLimitBytes, updatedAt }) {
@@ -1662,6 +1867,126 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
 
   function getAuditEvent(id) {
     return mapAuditEvent(db.prepare("select * from platform_audit_events where id = ?").get(requiredText(id, "id")));
+  }
+
+  function upsertPaymentOrder(input) {
+    const record = {
+      orderRef: requiredText(input.orderRef, "orderRef"),
+      portalUserRef: requiredText(input.portalUserRef, "portalUserRef"),
+      plan: requiredText(input.plan, "plan"),
+      planLabel: requiredText(input.planLabel, "planLabel"),
+      amountMinor: integer(input.amountMinor, "amountMinor", { min: 1 }),
+      money: requiredText(input.money, "money"),
+      currency: requiredText(input.currency || "CNY", "currency"),
+      durationDays: integer(input.durationDays, "durationDays", { min: 1 }),
+      clientTarget: requiredText(input.clientTarget || "clash", "clientTarget"),
+      channel: requiredText(input.channel, "channel"),
+      status: requiredText(input.status, "status"),
+      provider: requiredText(input.provider || "niuniu-pay", "provider"),
+      providerOrderRef: optionalText(input.providerOrderRef),
+      checkoutUrl: optionalText(input.checkoutUrl),
+      urlScheme: optionalText(input.urlScheme),
+      qrCode: optionalText(input.qrCode),
+      checkoutExpiresAt: optionalIsoText(input.checkoutExpiresAt || input.paymentExpiresAt, "checkoutExpiresAt"),
+      accessRequestRef: optionalText(input.accessRequestRef),
+      accessRequestStatus: optionalText(input.accessRequestStatus),
+      paidAt: optionalIsoText(input.paidAt, "paidAt"),
+      refundStatus: optionalText(input.refundStatus),
+      refundRequestedAt: optionalIsoText(input.refundRequestedAt, "refundRequestedAt"),
+      refundApprovedAt: optionalIsoText(input.refundApprovedAt, "refundApprovedAt"),
+      refundAmountMinor: input.refundAmountMinor == null ? null : integer(input.refundAmountMinor, "refundAmountMinor", { min: 0 }),
+      refundRemainingDays: input.refundRemainingDays == null ? null : integer(input.refundRemainingDays, "refundRemainingDays", { min: 0 }),
+      refundReasonCode: optionalText(input.refundReasonCode),
+      refundProviderRef: optionalText(input.refundProviderRef),
+      refundFailedReason: optionalText(input.refundFailedReason),
+      createdAt: isoText(input.createdAt, "createdAt"),
+      updatedAt: isoText(input.updatedAt || input.createdAt, "updatedAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_payment_orders (
+        order_ref, portal_user_ref, plan, plan_label, amount_minor, money,
+        currency, duration_days, client_target, channel, status, provider,
+        provider_order_ref, checkout_url, checkout_url_scheme, checkout_qr_code,
+        checkout_expires_at, access_request_ref,
+        access_request_status, paid_at, refund_status, refund_requested_at,
+        refund_approved_at, refund_amount_minor, refund_remaining_days,
+        refund_reason_code, refund_provider_ref, refund_failed_reason,
+        created_at, updated_at
+      ) values (
+        @orderRef, @portalUserRef, @plan, @planLabel, @amountMinor, @money,
+        @currency, @durationDays, @clientTarget, @channel, @status, @provider,
+        @providerOrderRef, @checkoutUrl, @urlScheme, @qrCode,
+        @checkoutExpiresAt, @accessRequestRef,
+        @accessRequestStatus, @paidAt, @refundStatus, @refundRequestedAt,
+        @refundApprovedAt, @refundAmountMinor, @refundRemainingDays,
+        @refundReasonCode, @refundProviderRef, @refundFailedReason,
+        @createdAt, @updatedAt
+      )
+      on conflict(order_ref) do update set
+        portal_user_ref = excluded.portal_user_ref,
+        plan = excluded.plan,
+        plan_label = excluded.plan_label,
+        amount_minor = excluded.amount_minor,
+        money = excluded.money,
+        currency = excluded.currency,
+        duration_days = excluded.duration_days,
+        client_target = excluded.client_target,
+        channel = excluded.channel,
+        status = excluded.status,
+        provider = excluded.provider,
+        provider_order_ref = excluded.provider_order_ref,
+        checkout_url = excluded.checkout_url,
+        checkout_url_scheme = excluded.checkout_url_scheme,
+        checkout_qr_code = excluded.checkout_qr_code,
+        checkout_expires_at = excluded.checkout_expires_at,
+        access_request_ref = excluded.access_request_ref,
+        access_request_status = excluded.access_request_status,
+        paid_at = excluded.paid_at,
+        refund_status = excluded.refund_status,
+        refund_requested_at = excluded.refund_requested_at,
+        refund_approved_at = excluded.refund_approved_at,
+        refund_amount_minor = excluded.refund_amount_minor,
+        refund_remaining_days = excluded.refund_remaining_days,
+        refund_reason_code = excluded.refund_reason_code,
+        refund_provider_ref = excluded.refund_provider_ref,
+        refund_failed_reason = excluded.refund_failed_reason,
+        created_at = excluded.created_at,
+        updated_at = excluded.updated_at
+    `), record);
+    return getPaymentOrder(record.orderRef);
+  }
+
+  function getPaymentOrder(orderRef) {
+    return mapPaymentOrder(db.prepare(`
+      select * from platform_payment_orders
+      where order_ref = ?
+    `).get(requiredText(orderRef, "orderRef")));
+  }
+
+  function listPaymentOrders(filters = {}) {
+    const clauses = [];
+    const params = [];
+    const portalUserRef = optionalText(filters.portalUserRef);
+    const status = optionalText(filters.status);
+    const plan = optionalText(filters.plan);
+    if (portalUserRef) {
+      clauses.push("portal_user_ref = ?");
+      params.push(portalUserRef);
+    }
+    if (status) {
+      clauses.push("status = ?");
+      params.push(status);
+    }
+    if (plan) {
+      clauses.push("plan = ?");
+      params.push(plan);
+    }
+    const where = clauses.length ? `where ${clauses.join(" and ")}` : "";
+    return db.prepare(`
+      select * from platform_payment_orders
+      ${where}
+      order by created_at asc, order_ref asc
+    `).all(...params).map(mapPaymentOrder);
   }
 
   function upsertEdgeRegisteredNode(input) {
@@ -2600,8 +2925,12 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     runInTransaction,
     createAccount,
     getAccount,
+    listAccounts,
+    listPortalUserAccounts,
+    updateAccount,
     createEntitlement,
     getEntitlement,
+    listEntitlements,
     updateEntitlementTrafficLimit,
     createIssuanceRequest,
     getIssuanceRequest,
@@ -2625,6 +2954,9 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     getRevocationEvent,
     recordAuditEvent,
     getAuditEvent,
+    upsertPaymentOrder,
+    getPaymentOrder,
+    listPaymentOrders,
     upsertEdgeRegisteredNode,
     getEdgeRegisteredNode,
     listEdgeRegisteredNodes,

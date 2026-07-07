@@ -237,8 +237,7 @@ function Read-RemoteConsoleToken {
     "-o", "IdentitiesOnly=yes",
     "-i", $SshKey
   )
-  $remoteTokenCommand = @'
-set -eu
+  $remoteTokenScript = 'set -eu
 files=$(systemctl show -p EnvironmentFiles --value proxy-gateway-candidate.service 2>/dev/null || true)
 for item in $files; do
   clean=${item#-}
@@ -252,12 +251,14 @@ if [ -z "${CONSOLE_TOKEN:-}" ]; then
   exit 1
 fi
 printf "%s" "$CONSOLE_TOKEN"
-'@
-  $token = & ssh @sshOptions $sshTarget $remoteTokenCommand 2>$null
-  if (($LASTEXITCODE -ne 0) -or (-not $token)) {
+'
+  $encodedRemoteTokenScript = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($remoteTokenScript))
+  $remoteCommand = "printf '%s' '$encodedRemoteTokenScript' | base64 -d | sh"
+  $tokenOutput = & ssh @sshOptions $sshTarget $remoteCommand 2>$null
+  if (($LASTEXITCODE -ne 0) -or (-not $tokenOutput)) {
     throw "Console token could not be loaded through SSH target '$sshTarget'."
   }
-  return $token
+  return (($tokenOutput -join "`n").Trim())
 }
 
 if ($DryRun) {

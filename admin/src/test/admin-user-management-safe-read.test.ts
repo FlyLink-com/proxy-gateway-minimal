@@ -19,7 +19,7 @@ const baseAccount = {
 } as const;
 
 describe("admin user management safe-read adapter", () => {
-  test("maps platform account summaries into redacted user management rows", () => {
+  test("maps platform account summaries into email-first user management rows", () => {
     const config = createUserManagementPageConfigFromAccountSummaries({
       accounts: [baseAccount],
       entitlements: [
@@ -28,7 +28,7 @@ describe("admin user management safe-read adapter", () => {
           createdAt: "2026-05-26T10:00:00.000Z",
           id: "ent_001",
           plan: "Pilot",
-          quota: { seats: 3, trafficGb: 100 },
+          quota: { trafficGb: 100 },
           status: "active",
           type: "platform_entitlement_summary",
           updatedAt: "2026-05-26T10:15:00.000Z",
@@ -41,8 +41,8 @@ describe("admin user management safe-read adapter", () => {
     expect(config.pagination.displayTotalRows).toBe(1);
     expect(config.rows[0]).toMatchObject({
       createdDate: "2026-05-26",
-      displayName: "Acme Ops",
-      email: "[REDACTED_EMAIL]",
+      displayName: "ops@example.com",
+      email: "ops@example.com",
       id: "user_management_acct_001",
       lastAccess: "2026-05-26 10:15",
       plan: "Pilot",
@@ -53,12 +53,11 @@ describe("admin user management safe-read adapter", () => {
       userId: "acct_001"
     });
     expect(config.rows[0]?.detail.fields).toEqual(expect.arrayContaining([
-      { label: "User ID", value: "acct_001" },
-      { label: "Email", value: "[REDACTED_EMAIL]" },
-      { label: "Entitlements", value: "2 total / 1 usable" }
+      { label: "Login Email", value: "ops@example.com" },
+      { label: "权益记录", value: "2 records / 1 active" }
     ]));
     expect(findUserManagementSafeReadIssues(config)).toEqual([]);
-    expect(JSON.stringify(config)).not.toMatch(/ops@example\.com|token|secret|password|credential|subscriptionUrl|sqlite|raw log/i);
+    expect(JSON.stringify(config)).not.toMatch(/token|secret|password|credential|subscriptionUrl|sqlite|raw log/i);
   });
 
   test("declares the User Management CRUD workflow as gated business actions", () => {
@@ -112,7 +111,7 @@ describe("admin user management safe-read adapter", () => {
       "safe user ref",
       "status",
       "plan",
-      "current subscription",
+      "account plan",
       "usage summary"
     ]));
     expect(JSON.stringify(config.actionGates)).not.toMatch(/token|secret|password|credential|subscriptionUrl|sqlite|raw log/i);
@@ -135,8 +134,8 @@ describe("admin user management safe-read adapter", () => {
     });
 
     expect(config.rows[0]).toMatchObject({
-      displayName: "acct_unsafe_002",
-      email: "[REDACTED_EMAIL]",
+      displayName: "admin@example.com",
+      email: "admin@example.com",
       id: "user_management_acct_unsafe_002",
       lastAccess: "Not observed",
       plan: "No Plan",
@@ -145,7 +144,7 @@ describe("admin user management safe-read adapter", () => {
       userId: "acct_unsafe_002"
     });
     expect(findUserManagementSafeReadIssues(config)).toEqual([]);
-    expect(JSON.stringify(config)).not.toMatch(/admin@example\.com|internal\.example|token=|secret|credential|sqlite/i);
+    expect(JSON.stringify(config)).not.toMatch(/internal\.example|token=|secret|credential|sqlite/i);
   });
 
   test("filters user rows by safe query fields only", () => {
@@ -190,14 +189,14 @@ describe("admin user management safe-read adapter", () => {
       query: {
         plan: "No Plan",
         risk: "Medium",
-        search: "Beta",
+        search: "beta@example.com",
         status: "Pending"
       }
     });
 
     expect(config.pagination.displayTotalRows).toBe(1);
     expect(config.rows.map((row) => row.userId)).toEqual(["acct_002"]);
-    expect(JSON.stringify(config)).not.toMatch(/beta@example\.com|gamma@example\.com/i);
+    expect(JSON.stringify(config)).not.toMatch(/token|secret|password|credential|subscriptionUrl|sqlite|raw log/i);
   });
 
   test("drops unsafe query text before filtering user rows", () => {
@@ -211,6 +210,39 @@ describe("admin user management safe-read adapter", () => {
     expect(config.rows.map((row) => row.userId)).toEqual(["acct_001"]);
     expect(findUserManagementSafeReadIssues(config)).toEqual([]);
     expect(JSON.stringify(config)).not.toMatch(/internal\.example|token=|secret/i);
+  });
+
+  test("projects paid plan credits as account days and monthly traffic", () => {
+    const config = createUserManagementPageConfigFromAccountSummaries({
+      accounts: [baseAccount],
+      entitlements: [
+        {
+          accountId: "acct_001",
+          createdAt: "2026-07-02T10:05:00.000Z",
+          id: "ent_paid_plan",
+          plan: "monthly_plus",
+          quota: { trafficGb: 100 },
+          status: "active",
+          type: "platform_entitlement_summary",
+          updatedAt: "2026-07-02T10:05:00.000Z",
+          usable: true,
+          validUntil: "2026-08-01T10:05:00.000Z"
+        }
+      ]
+    });
+
+    expect(config.rows[0]).toMatchObject({
+      plan: "Standard Monthly",
+      planTone: "info",
+      risk: "Low"
+    });
+    expect(config.rows[0]?.detail.fields).toEqual(expect.arrayContaining([
+      { label: "账户权益", value: "Standard Monthly credited until 2026-08-01" },
+      { label: "可用时间", value: "2026-05-26 - 2026-08-01" },
+      { label: "共享月流量", value: "100 GB / 月" },
+      { label: "权益记录", value: "2 records / 1 active" }
+    ]));
+    expect(JSON.stringify(config)).not.toMatch(/Current Subscription|Entitlements|Subscription Slots|Monthly Traffic|subscriptionUrl|token|secret|credential/i);
   });
 
   test("adds account-level order and usage summaries without exposing order internals", () => {
@@ -302,10 +334,10 @@ describe("admin user management safe-read adapter", () => {
       riskTone: "danger"
     });
     expect(config.rows[0]?.detail.fields).toEqual(expect.arrayContaining([
-      { label: "Orders", value: "2 total / 1 active" },
+      { label: "Usage Records", value: "2 records / 1 active" },
       { label: "Usage", value: "4.0 GB used" },
-      { label: "Quota", value: "4.0 / 15.0 GB" },
-      { label: "Collection", value: "1 measured / 1 pending" },
+      { label: "Monthly Quota", value: "4.0 / 15.0 GB" },
+      { label: "Usage Reporting", value: "1 measured / 1 pending" },
       { label: "Warnings", value: "blocked" }
     ]));
     expect(findUserManagementSafeReadIssues(config)).toEqual([]);
@@ -368,13 +400,13 @@ describe("admin user management safe-read adapter", () => {
     });
 
     expect(config.rows[0]?.detail.fields).toEqual(expect.arrayContaining([
-      { label: "Current Subscription", value: "Pilot until 2026-07-26" },
-      { label: "Subscription Window", value: "2026-05-26 - 2026-07-26" },
+      { label: "账户权益", value: "Pilot credited until 2026-07-26" },
+      { label: "可用时间", value: "2026-05-26 - 2026-07-26" },
       { label: "Usage", value: "4.0 GB used" },
       { label: "Upload / Download", value: "1.5 GB up / 2.5 GB down" },
       { label: "Last Usage", value: "2026-06-20 08:15" }
     ]));
     expect(findUserManagementSafeReadIssues(config)).toEqual([]);
-    expect(JSON.stringify(config)).not.toMatch(/ord_hidden|tenant_hidden|node_hidden|chan_hidden|artifact_hidden|subscriptionUrl|token|secret|credential|ops@example\.com/i);
+    expect(JSON.stringify(config)).not.toMatch(/ord_hidden|tenant_hidden|node_hidden|chan_hidden|artifact_hidden|subscriptionUrl|token|secret|credential/i);
   });
 });

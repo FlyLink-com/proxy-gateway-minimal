@@ -1,10 +1,16 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createRuntimeState } from "../state.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
+import { buildNiuniuPaySignature } from "../services/platform/niuniu-pay-adapter.mjs";
+
+function digestIdentity(value) {
+  return createHash("sha256").update(String(value).trim().toLowerCase()).digest("hex");
+}
 
 function fakeSubscriptionStore(overrides = {}) {
   return {
@@ -82,6 +88,8 @@ function runtimeEnv(overrides = {}) {
     ...overrides
   };
 }
+
+const TEST_ACTIVE_EXPIRES_AT = "2099-07-05T00:00:00.000Z";
 
 test("createRuntimeState exposes expected ports and services", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-state-"));
@@ -271,6 +279,80 @@ test("createRuntimeState uses SUBSCRIPTION_CONTROL_DB_PATH for the business cont
   }
 });
 
+test("createRuntimeState backs Admin user management with the persistent control store", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-user-management-control-"));
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret"
+      }),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      autoStartHttpProxy: false
+    });
+
+    const now = "2026-06-30T00:00:00.000Z";
+    state.platform.controlStore.createAccount({
+      id: "acct_admin_user_state_1",
+      ownerRef: "acct_admin_user_state_1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        displayRef: "Admin User State",
+        organizationRef: "Admin User State"
+      }
+    });
+    state.platform.controlStore.createPortalPasswordCredential({
+      id: "pwd_admin_user_state_1",
+      accountId: "acct_admin_user_state_1",
+      passwordHash: "scrypt$v=1$N=32768$r=8$p=1$saltref$hashref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+
+    assert.deepEqual(
+      state.platform.accountShell.listAccounts().map((account) => [account.id, account.status, account.displayName]),
+      [["acct_admin_user_state_1", "active", "Admin User State"]]
+    );
+
+    state.platform.accountShell.disableAccount("acct_admin_user_state_1", {
+      approvalRef: "approval_state_disable",
+      operatorRef: "operator_safe_ref"
+    });
+
+    assert.equal(state.platform.controlStore.getAccount("acct_admin_user_state_1").status, "disabled");
+
+    const created = state.platform.accountShell.createAccount({
+      approvalRef: "approval_state_create",
+      displayName: "Admin Created State User",
+      email: "state-create@example.com",
+      operatorRef: "operator_safe_ref",
+      organization: "Admin Created State User",
+      reason: "state user management create",
+      status: "active"
+    });
+    assert.equal(created.account.status, "active");
+    assert.equal(created.initialCredential.accountId, created.account.id);
+    assert.equal(created.initialCredential.visibleOnce, true);
+    assert.equal(created.initialCredential.mustRotate, true);
+    assert.equal(typeof created.initialCredential.initialPassword, "string");
+    assert.ok(created.initialCredential.initialPassword.length >= 20);
+    const verified = state.platform.portalPasswordCredentialService.verifyPasswordCredential({
+      accountId: created.account.id,
+      plainPassword: created.initialCredential.initialPassword
+    });
+    assert.equal(verified.summary.status, "verified");
+  } finally {
+    state?.close();
+    removeTempDir(dir);
+  }
+});
+
 test("createRuntimeState closes only owned subscription repositories", () => {
   let closeCount = 0;
   const repository = fakeSubscriptionStore({
@@ -344,6 +426,108 @@ test("createRuntimeState parses hardening security environment", () => {
   }
 });
 
+test("createRuntimeState wires env-gated protected admin auth services", () => {
+  const state = createRuntimeState({
+    rootDir: new URL("../../", import.meta.url),
+    env: runtimeEnv({
+      CONSOLE_TOKEN: "secret",
+      ADMIN_AUTH_ROUTES_ENABLED: "true",
+      ADMIN_AUTH_BOOTSTRAP_TOKEN: "synthetic-admin-bootstrap",
+      ADMIN_AUTH_SESSION_SECRET: "synthetic-admin-session-secret",
+      ADMIN_AUTH_OPERATOR_REF: "operator_local_admin"
+    }),
+    autoStartHttpProxy: false,
+    subscriptionDbPath: ":memory:"
+  });
+
+  try {
+    assert.equal(state.platform.adminAuthRoutesEnabled, true);
+    assert.equal(typeof state.platform.adminAuth.startBootstrap, "function");
+    assert.equal(typeof state.platform.adminAuth.confirmTotpEnrollment, "function");
+    assert.equal(typeof state.platform.adminAuth.authenticateCookie, "function");
+  } finally {
+    state.close();
+  }
+});
+
+test("createRuntimeState can back protected admin auth with one portal account", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-admin-portal-auth-"));
+  const now = "2026-07-01T00:00:00.000Z";
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        ADMIN_AUTH_ROUTES_ENABLED: "true",
+        ADMIN_AUTH_SESSION_SECRET: "synthetic-admin-session-secret",
+        ADMIN_AUTH_PORTAL_ACCOUNT_ID: "portal_user_admin_state_001"
+      }),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      userPortalNowFn: () => now,
+      adminAuthNowFn: () => now,
+      adminAuthTotpVerifier: ({ encryptedTotpSecret, code }) => encryptedTotpSecret === "enc:state-admin-totp" && code === "654321",
+      adminAuthChallengeRefFactory: () => "admin_state_challenge_1",
+      adminAuthSessionRefFactory: () => "admin_state_session_1",
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(state.platform.adminAuthRoutesEnabled, true);
+    assert.equal(typeof state.platform.portalPasswordCredentialService.issueInitialPasswordCredential, "function");
+    assert.equal(typeof state.platform.adminAuth.login, "function");
+
+    state.platform.controlStore.createAccount({
+      id: "portal_user_admin_state_001",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.portalPasswordCredentialService.issueInitialPasswordCredential({
+      accountId: "portal_user_admin_state_001",
+      plainPassword: "synthetic-admin-password",
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_admin_state_1"
+    });
+    state.platform.controlStore.createPortalTotpCredential({
+      id: "totp_admin_state_1",
+      accountId: "portal_user_admin_state_001",
+      encryptedTotpSecret: "enc:state-admin-totp",
+      status: "active",
+      failureCount: 0,
+      enrolledAt: now,
+      updatedAt: now
+    });
+
+    assert.deepEqual(state.platform.adminAuth.sessionStatus(), {
+      authenticated: false,
+      mode: "portalAccount",
+      operatorRef: "portal_user_admin_state_001",
+      setupRequired: false
+    });
+
+    const challenge = state.platform.adminAuth.login({
+      operatorRef: "portal_user_admin_state_001",
+      bootstrapToken: "synthetic-admin-password"
+    });
+    assert.equal(challenge.challenge.challengeRef, "admin_state_challenge_1");
+
+    const verified = state.platform.adminAuth.verifyTotp({
+      challengeRef: "admin_state_challenge_1",
+      code: "654321"
+    });
+    assert.equal(verified.session.operatorRef, "portal_user_admin_state_001");
+    assert.doesNotMatch(JSON.stringify({ challenge, verified }), /synthetic-admin-password|state-admin-totp|654321|enc:/);
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
 test("createRuntimeState wires env-gated user portal password login services", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-auth-wiring-"));
   const now = "2026-06-06T00:00:00.000Z";
@@ -365,6 +549,7 @@ test("createRuntimeState wires env-gated user portal password login services", (
 
     assert.equal(state.platform.userPortalRoutesEnabled, true);
     assert.equal(typeof state.platform.portalHumanChallenges.issueChallenge, "function");
+    assert.equal(typeof state.platform.portalRegistrationEmailVerifications.issueVerification, "function");
     assert.equal(typeof state.platform.portalPasswordCredentialService.issueInitialPasswordCredential, "function");
     assert.equal(typeof state.platform.userPortalAuth.verifyPasswordAndMaybeChallenge, "function");
 
@@ -373,7 +558,11 @@ test("createRuntimeState wires env-gated user portal password login services", (
       ownerRef: "portal_user_state_1",
       status: "active",
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      metadata: {
+        loginRef: "portal-state@example.test",
+        displayRef: "portal-state@example.test"
+      }
     });
     state.platform.portalPasswordCredentialService.issueInitialPasswordCredential({
       accountId: "acct_portal_state_1",
@@ -386,12 +575,261 @@ test("createRuntimeState wires env-gated user portal password login services", (
     assert.equal(issued.challenge.type, "math");
 
     const result = state.platform.userPortalAuth.verifyPasswordAndMaybeChallenge({
-      accountId: "acct_portal_state_1",
+      accountId: "portal-state@example.test",
       plainPassword: "synthetic-password"
     });
     assert.equal(result.session.authMethod, "password");
-    assert.equal(result.session.accountId, "acct_portal_state_1");
+    assert.equal(result.session.accountId, undefined);
+    assert.equal(result.session.userRef, "portal-state@example.test");
+    assert.equal(result.session.displayName, "portal-state@example.test");
+    assert.equal(JSON.stringify(result).includes("acct_portal_state_1"), false);
     assert.doesNotMatch(JSON.stringify(result), /synthetic-password|scrypt\$v=1/);
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
+test("createRuntimeState wires Resend registration email sender from env", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-email-wiring-"));
+  const now = "2026-06-06T00:00:00.000Z";
+  const capturedRequests = [];
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        USER_PORTAL_REGISTRATION_EMAIL_PROVIDER: "resend",
+        USER_PORTAL_REGISTRATION_EMAIL_FROM: "GCC WebOS <verify@mail.gccwebos.com>",
+        USER_PORTAL_REGISTRATION_EMAIL_REPLY_TO: "support@gccwebos.com",
+        RESEND_API_KEY: "synthetic-resend-api-key"
+      }),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      userPortalNowFn: () => now,
+      portalRegistrationEmailFetchFn: async (url, init) => {
+        capturedRequests.push({ url, init });
+        return {
+          ok: true,
+          json: async () => ({ id: "email_state_registration_1" })
+        };
+      },
+      autoStartHttpProxy: false
+    });
+
+    assert.deepEqual(state.platform.portalRegistrationEmailDelivery, {
+      provider: "resend",
+      configured: true
+    });
+
+    const issued = await state.platform.portalRegistrationEmailVerifications.issueVerification({
+      email: "Portal.Owner@example.test"
+    });
+    assert.equal(issued.verification.safety.noRawCodeReturned, true);
+    assert.equal(issued.verification.safety.noRawEmailReturned, true);
+    assert.equal(capturedRequests.length, 1);
+    assert.equal(capturedRequests[0].url, "https://api.resend.com/emails");
+    assert.equal(capturedRequests[0].init.headers["User-Agent"], "proxy-gateway-minimal/registration-email");
+    assert.equal(capturedRequests[0].init.headers.Authorization, "Bearer synthetic-resend-api-key");
+
+    const body = JSON.parse(capturedRequests[0].init.body);
+    assert.deepEqual(body.to, ["portal.owner@example.test"]);
+    assert.equal(body.from, "GCC WebOS <verify@mail.gccwebos.com>");
+    assert.equal(body.reply_to, "support@gccwebos.com");
+    assert.match(body.text, /\b\d{6}\b/);
+    assert.doesNotMatch(JSON.stringify(issued), /portal\.owner@example\.test|synthetic-resend-api-key/);
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
+test("createRuntimeState wires env-gated portal payment checkout service", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-payments-wiring-"));
+  const capturedRequests = [];
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        USER_PORTAL_PAYMENTS_ENABLED: "true",
+        NIUNIU_PAY_API_BASE_URL: "https://niuniuapi.example.test",
+        NIUNIU_PAY_MERCHANT_ID: "1001",
+        NIUNIU_PAY_MERCHANT_KEY: "synthetic-niuniu-key",
+        NIUNIU_PAY_NOTIFY_URL: "https://portal.gccwebos.com/api/portal/payments/notify",
+        NIUNIU_PAY_RETURN_URL: "https://portal.gccwebos.com/"
+      }),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      userPortalNowFn: () => "2026-07-02T10:00:00.000Z",
+      paymentFetchFn: async (url, init) => {
+        capturedRequests.push({ url, init });
+        return {
+          ok: true,
+          json: async () => ({
+            code: 1,
+            trade_no: "provider_state_payment_001",
+            payurl: "https://pay.example.test/state_payment_001"
+          })
+        };
+      },
+      portalPaymentOrderIdFactory: () => "state_payment_001",
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(typeof state.platform.portalPayments.createCheckout, "function");
+    state.platform.controlStore.createAccount({
+      id: "portal-payments@example.test",
+      ownerRef: "portal-payments@example.test",
+      status: "active",
+      createdAt: "2026-07-02T10:00:00.000Z",
+      updatedAt: "2026-07-02T10:00:00.000Z",
+      metadata: {
+        loginRef: "portal-payments@example.test",
+        displayRef: "portal-payments@example.test"
+      }
+    });
+
+    const checkout = await state.platform.portalPayments.createCheckout({
+      portalUserRef: "portal-payments@example.test",
+      plan: "monthly_plus",
+      clientTarget: "clash",
+      channel: "alipay",
+      clientIp: "203.0.113.20"
+    });
+
+    assert.equal(capturedRequests.length, 1);
+    assert.equal(capturedRequests[0].url, "https://niuniuapi.example.test/mapi.php");
+    const body = new URLSearchParams(capturedRequests[0].init.body);
+    assert.equal(body.get("pid"), "1001");
+    assert.equal(body.get("out_trade_no"), "state_payment_001");
+    assert.equal(body.get("notify_url"), "https://portal.gccwebos.com/api/portal/payments/notify");
+    assert.equal(checkout.order.checkoutUrl, "https://pay.example.test/state_payment_001");
+    assert.equal(JSON.stringify(checkout).includes("synthetic-niuniu-key"), false);
+    assert.equal(
+      state.platform.controlStore.getPaymentOrder("state_payment_001").status,
+      "pending_payment"
+    );
+
+    const payload = {
+      pid: "1001",
+      trade_no: "provider_state_payment_001",
+      out_trade_no: "state_payment_001",
+      trade_status: "TRADE_SUCCESS",
+      type: "alipay",
+      money: "30.00",
+      sign_type: "MD5"
+    };
+    const notification = state.platform.portalPayments.handleNotification({
+      ...payload,
+      sign: buildNiuniuPaySignature(payload, "synthetic-niuniu-key")
+    });
+    assert.equal(notification.order.accountCreditStatus, "credited");
+    assert.equal(notification.safety.noSubscriptionIssued, true);
+    assert.equal(
+      state.platform.controlStore.getPaymentOrder("state_payment_001").status,
+      "paid_access_delivered"
+    );
+    const entitlements = state.platform.accountShell.listEntitlements({
+      accountId: "portal-payments@example.test"
+    });
+    assert.equal(entitlements.length, 1);
+    assert.equal(entitlements[0].plan, "monthly_plus");
+    assert.equal(entitlements[0].validUntil, "2026-08-01T10:00:00.000Z");
+    assert.deepEqual(entitlements[0].quota, { trafficGb: 100 });
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
+test("createRuntimeState applies test payment amount only to configured account digest", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-payments-test-override-"));
+  const capturedRequests = [];
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        USER_PORTAL_PAYMENTS_ENABLED: "true",
+        USER_PORTAL_PAYMENT_TEST_ACCOUNT_DIGEST: digestIdentity("test-payments@example.test"),
+        USER_PORTAL_PAYMENT_TEST_AMOUNT_MINOR: "1",
+        USER_PORTAL_PAYMENT_TEST_CHANNEL: "wxpay",
+        USER_PORTAL_PAYMENT_TEST_PLAN: "monthly_basic",
+        USER_PORTAL_PAYMENT_CODE_TTL_SECONDS: "120",
+        NIUNIU_PAY_API_BASE_URL: "https://niuniuapi.example.test",
+        NIUNIU_PAY_MERCHANT_ID: "1001",
+        NIUNIU_PAY_MERCHANT_KEY: "synthetic-niuniu-key",
+        NIUNIU_PAY_NOTIFY_URL: "https://portal.gccwebos.com/api/portal/payments/notify",
+        NIUNIU_PAY_RETURN_URL: "https://portal.gccwebos.com/"
+      }),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      userPortalNowFn: () => "2026-07-02T10:00:00.000Z",
+      paymentFetchFn: async (url, init) => {
+        capturedRequests.push({ url, init });
+        return {
+          ok: true,
+          json: async () => ({
+            code: 1,
+            trade_no: "provider_state_payment_test_001",
+            payurl: "https://pay.example.test/state_payment_test_001"
+          })
+        };
+      },
+      portalPaymentOrderIdFactory: () => "state_payment_test_001",
+      autoStartHttpProxy: false
+    });
+
+    state.platform.controlStore.createAccount({
+      id: "acct_test_payments",
+      ownerRef: "acct_test_payments",
+      status: "active",
+      createdAt: "2026-07-02T10:00:00.000Z",
+      updatedAt: "2026-07-02T10:00:00.000Z",
+      metadata: {
+        loginRef: "test-payments@example.test",
+        displayRef: "test-payments@example.test"
+      }
+    });
+
+    const checkout = await state.platform.portalPayments.createCheckout({
+      portalUserRef: "acct_test_payments",
+      plan: "monthly_basic",
+      clientTarget: "clash",
+      channel: "wxpay",
+      clientIp: "203.0.113.20"
+    });
+
+    const body = new URLSearchParams(capturedRequests[0].init.body);
+    assert.equal(body.get("money"), "0.01");
+    assert.equal(body.get("type"), "wxpay");
+    assert.equal(checkout.order.amountMinor, 1);
+    assert.equal(checkout.order.checkoutExpiresAt, "2026-07-02T10:02:00.000Z");
+    assert.equal(checkout.safety.testPaymentAmountOverride, true);
+    assert.equal(
+      state.platform.controlStore.getPaymentOrder("state_payment_test_001").money,
+      "0.01"
+    );
+    assert.equal(
+      state.platform.controlStore.getPaymentOrder("state_payment_test_001").checkoutExpiresAt,
+      "2026-07-02T10:02:00.000Z"
+    );
   } finally {
     state?.subscriptions?.repository?.close?.();
     state?.platform?.controlStore?.close?.();
@@ -424,7 +862,11 @@ test("createRuntimeState verifies TOTP second factor for portal password login",
       ownerRef: "portal_user_totp_state_1",
       status: "active",
       createdAt: now,
-      updatedAt: now
+      updatedAt: now,
+      metadata: {
+        loginRef: "portal-totp-state@example.test",
+        displayRef: "portal-totp-state@example.test"
+      }
     });
     state.platform.portalPasswordCredentialService.issueInitialPasswordCredential({
       accountId: "acct_portal_totp_state_1",
@@ -443,11 +885,12 @@ test("createRuntimeState verifies TOTP second factor for portal password login",
     });
 
     const challenge = state.platform.userPortalAuth.verifyPasswordAndMaybeChallenge({
-      accountId: "acct_portal_totp_state_1",
+      accountId: "portal-totp-state@example.test",
       plainPassword: "synthetic-password"
     });
     assert.equal(challenge.result.status, "second_factor_required");
     assert.deepEqual(challenge.result.availableFactors, ["totp"]);
+    assert.equal(challenge.result.userRef, "portal-totp-state@example.test");
 
     const completed = state.platform.userPortalAuth.completeSecondFactor({
       challengeRef: challenge.result.challengeRef,
@@ -455,7 +898,10 @@ test("createRuntimeState verifies TOTP second factor for portal password login",
       code: "049557"
     });
     assert.equal(completed.session.authMethod, "totp");
-    assert.equal(completed.session.accountId, "acct_portal_totp_state_1");
+    assert.equal(completed.session.accountId, undefined);
+    assert.equal(completed.session.userRef, "portal-totp-state@example.test");
+    assert.equal(completed.session.displayName, "portal-totp-state@example.test");
+    assert.equal(JSON.stringify({ challenge, completed }).includes("acct_portal_totp_state_1"), false);
   } finally {
     state?.close();
     removeTempDir(dir);
@@ -490,7 +936,7 @@ test("createRuntimeState wires env-gated edge credential lifecycle services", ()
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_ref",
       accessGrantRef: "grant_state_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: TEST_ACTIVE_EXPIRES_AT
     });
 
     const edgeOrders = state.platform.portalAccessRequests.listEdgeCredentialOrders();
@@ -541,7 +987,7 @@ test("createRuntimeState restores persisted edge orders into lifecycle desired s
       plan: "monthly",
       status: "active",
       validFrom: now,
-      validUntil: "2026-07-05T00:00:00.000Z",
+      validUntil: TEST_ACTIVE_EXPIRES_AT,
       createdAt: now,
       updatedAt: now
     });
@@ -1134,7 +1580,7 @@ test("createRuntimeState wires env-gated Mihomo TUIC host adapter for edge lifec
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_host_ref",
       accessGrantRef: "grant_state_host_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: TEST_ACTIVE_EXPIRES_AT
     });
 
     assert.equal(delivered.safety.noRuntimeMutation, false);
@@ -1218,7 +1664,7 @@ test("createRuntimeState wires env-gated Sing-box SS host adapter for edge lifec
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_sing_box_ref",
       accessGrantRef: "grant_state_sing_box_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: TEST_ACTIVE_EXPIRES_AT
     });
 
     assert.equal(delivered.safety.noRuntimeMutation, false);
@@ -1289,7 +1735,7 @@ test("createRuntimeState wires env-gated Xray VLESS Reality host adapter for edg
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_xray_ref",
       accessGrantRef: "grant_state_xray_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: TEST_ACTIVE_EXPIRES_AT
     });
 
     assert.equal(delivered.safety.noRuntimeMutation, false);
@@ -1360,7 +1806,7 @@ test("createRuntimeState wires env-gated Hysteria2 host adapter for edge lifecyc
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_hy2_ref",
       accessGrantRef: "grant_state_hy2_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: TEST_ACTIVE_EXPIRES_AT
     });
 
     assert.equal(delivered.safety.noRuntimeMutation, false);

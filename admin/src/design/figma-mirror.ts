@@ -49,7 +49,7 @@ export const ADMIN_FIGMA_BASELINE_FREEZE = {
     "System Search replaces AppLibrary and NavigationLibrary",
     "Operations Overview renders health metrics as summary plus three workspace panels",
     "Accounts and Usage first screens render three workspace panels plus lower evidence surfaces",
-    "User Management, Order Management, User Access Logs, User Operation Logs, Node Health, Node Logs, and Node Bandwidth are active safe-read route shells",
+    "User Management, Order Records, User Access Logs, User Operation Logs, Node Health, Node Logs, and Node Bandwidth are active safe-read route shells",
     "Legacy page section deep links normalize to the owning page until section contracts are designed",
     "Retired AppLibrary, hidden module restore, dock/appbar, drag/resize, and OS windowing behavior"
   ],
@@ -485,7 +485,7 @@ export const ADMIN_FIGMA_MIRROR_PAGES: readonly AdminFigmaMirrorPage[] = [
     ]
   },
   {
-    name: "Product Baseline / Order Management",
+    name: "Product Baseline / Order Records",
     status: "current",
     role: "page-mirror",
     frameName: "order-management",
@@ -493,8 +493,8 @@ export const ADMIN_FIGMA_MIRROR_PAGES: readonly AdminFigmaMirrorPage[] = [
     nodeId: "58:4",
     mapsToPages: ["orderManagement"],
     acceptance: [
-      "Owns the Order Management safe-read query page",
-      "Defines order table, delivery state filters, quota summary, and gated create-order action",
+      "Owns the Order Records safe-read query page",
+      "Defines order record table, payment-state filters, billing summary, and gated export action",
       "Does not authorize order pause, archive, artifact generation, or delivery mutation"
     ]
   },

@@ -77,13 +77,6 @@ function normalizeQuota(value = {}) {
     }
     quota.trafficGb = trafficGb;
   }
-  if (value.seats !== undefined) {
-    const seats = Number(value.seats);
-    if (!Number.isInteger(seats) || seats < 0) {
-      throw contractError("quota.seats is invalid");
-    }
-    quota.seats = seats;
-  }
   return quota;
 }
 

@@ -32,6 +32,10 @@ function seedAccountAndEntitlement(store) {
     id: "acct_portal_1",
     ownerRef: "owner_safe_ref",
     status: "active",
+    metadata: {
+      loginRef: "portal-auth@example.test",
+      displayRef: "portal-auth@example.test"
+    },
     createdAt: NOW,
     updatedAt: NOW
   });
@@ -132,6 +136,8 @@ test("user portal auth consumes entry, enrolls TOTP, and creates a scoped sessio
       code: "123456"
     });
     assert.equal(verified.session.sessionRef, "portal_session_1");
+    assert.equal(verified.session.accountId, undefined);
+    assert.equal(verified.session.userRef, "portal-auth@example.test");
     assert.equal(verified.session.authMethod, "totp");
     assert.equal(verified.session.expiresAt, SESSION_EXPIRES);
 
@@ -139,6 +145,56 @@ test("user portal auth consumes entry, enrolls TOTP, and creates a scoped sessio
     assert.equal(serialized.includes("enc:totp-secret"), false);
     assert.equal(serialized.includes("123456"), false);
     assert.equal(serialized.includes("portal-entry-raw-secret"), false);
+  });
+});
+
+test("user portal auth allows only one active authenticator per account", () => {
+  withStore((store) => {
+    const firstService = createService(store, {
+      entryRefFactory: () => "entry_portal_1",
+      entryTokenFactory: () => "portal-entry-raw-secret-1",
+      credentialRefFactory: () => "totp_cred_1"
+    });
+    const secondService = createService(store, {
+      entryRefFactory: () => "entry_portal_2",
+      entryTokenFactory: () => "portal-entry-raw-secret-2",
+      credentialRefFactory: () => "totp_cred_2"
+    });
+
+    const firstEntry = firstService.issueDynamicEntry({
+      accountId: "acct_portal_1",
+      entitlementId: "ent_portal_1",
+      approvalRef: "approval_portal_1",
+      issuedByRef: "operator_safe_ref",
+      expiresAt: FUTURE
+    });
+    const secondEntry = secondService.issueDynamicEntry({
+      accountId: "acct_portal_1",
+      entitlementId: "ent_portal_1",
+      approvalRef: "approval_portal_2",
+      issuedByRef: "operator_safe_ref",
+      expiresAt: FUTURE
+    });
+
+    firstService.enrollTotpCredential({
+      entryToken: firstEntry.handoffMaterial.entryToken,
+      encryptedTotpSecret: "enc:totp-secret"
+    });
+
+    assert.throws(() => secondService.enrollTotpCredential({
+      entryToken: secondEntry.handoffMaterial.entryToken,
+      encryptedTotpSecret: "enc:totp-secret-2"
+    }), /portal authenticator is already bound/);
+    assert.equal(store.getPortalEntry("entry_portal_2").status, "active");
+    assert.equal(store.getActivePortalTotpCredential("acct_portal_1").id, "totp_cred_1");
+
+    assert.throws(() => secondService.issueDynamicEntry({
+      accountId: "acct_portal_1",
+      entitlementId: "ent_portal_1",
+      approvalRef: "approval_portal_3",
+      issuedByRef: "operator_safe_ref",
+      expiresAt: FUTURE
+    }), /portal authenticator is already bound/);
   });
 });
 
@@ -194,6 +250,8 @@ test("user portal auth creates first-login setup session from password when poli
       plainPassword
     });
     assert.equal(verified.session.sessionRef, "portal_session_1");
+    assert.equal(verified.session.accountId, undefined);
+    assert.equal(verified.session.userRef, "portal-auth@example.test");
     assert.equal(verified.session.authMethod, "password");
     assert.equal(verified.session.expiresAt, SESSION_EXPIRES);
 
@@ -234,6 +292,8 @@ test("user portal auth requires second factor after password when TOTP is enable
     });
     assert.equal(challenge.result.status, "second_factor_required");
     assert.equal(challenge.result.challengeRef, "mfa_challenge_1");
+    assert.equal(challenge.result.accountId, undefined);
+    assert.equal(challenge.result.userRef, "portal-auth@example.test");
     assert.deepEqual(challenge.result.availableFactors, ["totp"]);
     assert.equal(store.listPortalSessions({ accountId: "acct_portal_1" }).length, 0);
 
@@ -250,11 +310,14 @@ test("user portal auth requires second factor after password when TOTP is enable
       code: "123456"
     });
     assert.equal(completed.session.sessionRef, "portal_session_1");
+    assert.equal(completed.session.accountId, undefined);
+    assert.equal(completed.session.userRef, "portal-auth@example.test");
     assert.equal(completed.session.authMethod, "totp");
     assert.equal(store.getPortalSecondFactorChallenge("mfa_challenge_1").status, "used");
 
     const serialized = JSON.stringify({ challenge, completed });
     assert.equal(serialized.includes(plainPassword), false);
+    assert.equal(serialized.includes("acct_portal_1"), false);
     assert.doesNotMatch(serialized, /passwordHash|scrypt\$v=1|enc:totp-secret|123456/);
   });
 });

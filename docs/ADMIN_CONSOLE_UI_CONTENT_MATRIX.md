@@ -1,6 +1,6 @@
 # Admin Console UI Content Matrix
 
-Last updated: 2026-06-25, America/Los_Angeles.
+Last updated: 2026-06-26, America/Los_Angeles.
 
 > Status:
 > - Type: UI design copy and implementation matrix
@@ -79,9 +79,9 @@ or route split is designed.
 
 | Page | Current frame | Visible first-screen content |
 | --- | --- | --- |
-| `Operations Overview` | `24:5` | ShellRail, TopBar System Search, four metrics, `Risk Queue`, `Next Actions`, `Review Candidates`, lower Operations metrics/event evidence. |
-| `Accounts & Resources` | `24:35` | ShellRail, TopBar System Search, four account/resource metrics, `Account Directory`, `Resources & Orders`, `Lifecycle`, lower Account metrics/event evidence. |
-| `Usage & Channels` | `24:65` | ShellRail, TopBar System Search, four usage/channel metrics, `Collection Freshness`, `Channel Coverage`, `Usage Ledger`, lower Usage metrics/event evidence. |
+| `Operations Overview` | `2:92` | ShellRail, TopBar System Search, four metrics, `Risk Queue`, `Next Actions`, `Review Candidates`, lower Operations metrics/event evidence. |
+| `Accounts & Resources` | `2:262` | ShellRail, TopBar System Search, four account/resource metrics, `Account Directory`, `Resources & Orders`, `Lifecycle`, lower Account metrics/event evidence. |
+| `Usage & Channels` | `2:432` | ShellRail, TopBar System Search, four usage/channel metrics, `Collection Freshness`, `Channel Coverage`, `Usage Ledger`, lower Usage metrics/event evidence. |
 
 Current compression rules:
 

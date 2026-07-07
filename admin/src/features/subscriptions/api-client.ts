@@ -24,7 +24,16 @@ import type {
   ChannelSystemReviewInput,
   CleanEdgeReadinessInput,
   CleanEdgeReadinessSummary,
+  AdminPaymentDeliveryRetryInput,
+  AdminPaymentDeliveryRetryResult,
+  AdminPaymentOrderList,
+  AdminPaymentOrderListFilters,
+  AdminPaymentRefundApprovalInput,
+  AdminPaymentRefundApprovalResult,
+  AdminPaymentRefundQuoteInput,
+  AdminPaymentRefundQuoteResult,
   CreatePlatformAccountInput,
+  CreatePlatformEntitlementInput,
   CreateSubscriptionInput,
   CreateSubscriptionResult,
   NodeBandwidthFilters,
@@ -249,6 +258,16 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
         )
       ).items;
     },
+    createPlatformEntitlement: async (accountId: string, input: CreatePlatformEntitlementInput) =>
+      (
+        await request<{ entitlement: PlatformEntitlementSummary }>(
+          `/api/admin/platform/accounts/${encodeURIComponent(accountId)}/entitlements`,
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).entitlement,
     listSubscriptionUsageMonitor: async (filters: SubscriptionUsageMonitorFilters = {}) =>
       (
         await request<{ monitor: SubscriptionUsageMonitor }>(
@@ -287,6 +306,47 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
           }
         )
       ).quotaUpdate,
+    listPaymentOrders: async (filters: AdminPaymentOrderListFilters = {}) =>
+      (
+        await request<{ payments: AdminPaymentOrderList }>(
+          `/api/admin/platform/payments${queryString(filters)}`
+        )
+      ).payments,
+    retryPaymentDelivery: async (
+      orderRef: string,
+      input: AdminPaymentDeliveryRetryInput
+    ) =>
+      (
+        await request<{ payment: AdminPaymentDeliveryRetryResult }>(
+          `/api/admin/platform/payments/${encodeURIComponent(orderRef)}/retry-delivery`,
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).payment,
+    quotePaymentRefund: async (
+      orderRef: string,
+      input: AdminPaymentRefundQuoteInput = {}
+    ) =>
+      (
+        await request<{ payment: AdminPaymentRefundQuoteResult }>(
+          `/api/admin/platform/payments/${encodeURIComponent(orderRef)}/refund-quote${queryString(input)}`
+        )
+      ).payment,
+    approvePaymentRefund: async (
+      orderRef: string,
+      input: AdminPaymentRefundApprovalInput
+    ) =>
+      (
+        await request<{ payment: AdminPaymentRefundApprovalResult }>(
+          `/api/admin/platform/payments/${encodeURIComponent(orderRef)}/approve-refund`,
+          {
+            method: "POST",
+            body: JSON.stringify(input)
+          }
+        )
+      ).payment,
     getAliyunGates: async () =>
       (await request<{ aliyunGates: AliyunGateDecisionPacket }>("/api/admin/platform/aliyun-gates")).aliyunGates,
     getAliyunGateEvidence: async () =>

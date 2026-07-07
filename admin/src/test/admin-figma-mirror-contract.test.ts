@@ -120,7 +120,7 @@ describe("admin Figma mirror contract", () => {
       "Product Baseline / Accounts & Resources",
       "Product Baseline / Usage & Channels",
       "Product Baseline / User Management",
-      "Product Baseline / Order Management",
+      "Product Baseline / Order Records",
       "Product Baseline / User Access Logs",
       "Product Baseline / User Operation Logs",
       "Product Baseline / Node Health",
