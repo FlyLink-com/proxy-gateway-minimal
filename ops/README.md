@@ -186,8 +186,8 @@ curl -i http://127.0.0.1:3456/api/admin/subscriptions
 From a public network:
 
 ```bash
-curl -i http://sub.globalcirclecat.com/api/health
-curl -i http://sub.globalcirclecat.com/api/admin/subscriptions
+curl -i http://sub.gccwebos.com/api/health
+curl -i http://sub.gccwebos.com/api/admin/subscriptions
 ```
 
 Expected public behavior:
