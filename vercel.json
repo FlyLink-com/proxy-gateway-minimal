@@ -1,13 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "vite",
-  "installCommand": "npm ci && npm ci --prefix admin",
-  "buildCommand": "VITE_ADMIN_FIXTURE_PREVIEW=true npm run admin:build",
-  "outputDirectory": "admin/dist",
-  "rewrites": [
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
-    }
-  ]
+  "installCommand": "npm ci --prefix admin",
+  "buildCommand": "npm run admin:site:build && npm run admin:site:verify",
+  "outputDirectory": "admin/dist-site"
 }

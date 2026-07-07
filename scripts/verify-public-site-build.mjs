@@ -17,16 +17,21 @@ function walk(dir) {
   });
 }
 
-const filesToScan = walk(targetDir).filter((file) => /\.(html|js)$/i.test(file));
+const filesToScan = walk(targetDir).filter((file) => /\.(html|js|svg)$/i.test(file));
 const combined = filesToScan.map((file) => readFileSync(file, "utf8")).join("\n");
 
 const requiredPatterns = [
-  /GlobalCircle AI/,
+  /GCC WebOS/,
   /company-site-shell/,
-  /hello@globalcirclecat\.com/
+  /gccwebos-public-site/,
+  /Secure private access for every device/,
+  /Tell us what you need/,
+  /Multiple payment methods supported/,
+  /Register for 7-day trial/
 ];
 
 const forbiddenPatterns = [
+  /GlobalCircle AI/,
   /Admin Console/i,
   /Subscription Admin/i,
   /Admin API/i,
