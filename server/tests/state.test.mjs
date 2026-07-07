@@ -1153,6 +1153,61 @@ test("createRuntimeState wires env-gated Mihomo TUIC host adapter for edge lifec
   }
 });
 
+test("createRuntimeState rejects JP protocol runtime TLS identity drift", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-jp-tls-drift-"));
+  const materialPath = join(dir, "protected", "edge-material.json");
+  const hy2ActiveConfigPath = join(dir, "hysteria", "config.yaml");
+  const hy2CandidateConfigPath = join(dir, "hysteria", "config.candidate.yaml");
+  const hy2BackupDir = join(dir, "hysteria", "backups");
+  const tuicActiveConfigPath = join(dir, "mihomo", "config.yaml");
+  const tuicCandidateConfigPath = join(dir, "mihomo", "config.candidate.yaml");
+  const tuicBackupDir = join(dir, "mihomo", "backups");
+  let state;
+
+  try {
+    mkdirSync(join(dir, "hysteria"), { recursive: true });
+    mkdirSync(join(dir, "mihomo"), { recursive: true });
+    writeFileSync(hy2ActiveConfigPath, "listen: \":10443\"\n", { mode: 0o600 });
+    writeFileSync(tuicActiveConfigPath, "listeners: []\n", { mode: 0o600 });
+    assert.throws(() => {
+      state = createRuntimeState({
+        rootDir: new URL("../../", import.meta.url),
+        env: runtimeEnv({
+          CONSOLE_TOKEN: "secret",
+          USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
+          USER_PORTAL_EDGE_CHANNEL_REF: "channel-vultr-a-tuic",
+          USER_PORTAL_EDGE_CHANNEL_REFS: "channel-vultr-a-hy2,channel-vultr-a-tuic",
+          EDGE_CREDENTIAL_MATERIAL_PATH: materialPath,
+          EDGE_CREDENTIAL_LIFECYCLE_EXECUTE_PRODUCTION_MUTATION: "true",
+          VULTR_TUIC_HOST: "jp.gccwebos.com",
+          VULTR_TUIC_SNI: "jp.gccwebos.com",
+          VULTR_HY2_HOST: "jp.gccwebos.com",
+          VULTR_HY2_SNI: "jp.gccwebos.com",
+          EDGE_HYSTERIA2_ACTIVE_CONFIG_PATH: hy2ActiveConfigPath,
+          EDGE_HYSTERIA2_CANDIDATE_CONFIG_PATH: hy2CandidateConfigPath,
+          EDGE_HYSTERIA2_BACKUP_DIR: hy2BackupDir,
+          EDGE_MIHOMO_TUIC_CERTIFICATE_PATH: "/etc/mihomo/tls/globalcirclecat.cloud/fullchain.pem",
+          EDGE_MIHOMO_TUIC_PRIVATE_KEY_PATH: "/etc/mihomo/tls/globalcirclecat.cloud/privkey.pem",
+          EDGE_MIHOMO_ACTIVE_CONFIG_PATH: tuicActiveConfigPath,
+          EDGE_MIHOMO_CANDIDATE_CONFIG_PATH: tuicCandidateConfigPath,
+          EDGE_MIHOMO_BACKUP_DIR: tuicBackupDir,
+          EDGE_HYSTERIA2_CERTIFICATE_PATH: "/etc/hysteria/server.crt",
+          EDGE_HYSTERIA2_PRIVATE_KEY_PATH: "/etc/hysteria/server.key"
+        }),
+        subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+        controlDbPath: join(dir, "control.sqlite"),
+        autoStartHttpProxy: false
+      });
+    }, {
+      code: "validation_error",
+      message: /channel-vultr-a-(hy2|tuic).*jp\.gccwebos\.com.*TLS certificate path/
+    });
+  } finally {
+    state?.close();
+    removeTempDir(dir);
+  }
+});
+
 test("createRuntimeState wires env-gated Sing-box SS host adapter for edge lifecycle apply", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-edge-sing-box-wiring-"));
   const materialPath = join(dir, "protected", "edge-material.json");
