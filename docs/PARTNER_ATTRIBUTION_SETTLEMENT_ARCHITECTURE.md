@@ -525,6 +525,21 @@ Adapter rules:
 AppsFlyer should be the first adapter because it can support campaign links,
 Web attribution, and backend S2S reporting.
 
+Current repo status:
+
+- `server/services/platform/appsflyer-attribution-adapter.mjs` implements the
+  disabled/dry-run adapter boundary.
+- `APPSFLYER_ATTRIBUTION_MODE=disabled` is the default placeholder mode.
+- The adapter can normalize safe OneLink/Web attribution parameters.
+- The adapter can build redacted dry-run Web SDK and Web-S2S event plans.
+- The dry-run Web-S2S plan follows the current safe shape for
+  `POST https://webs2s.appsflyer.com/v1/{bundleId}/event`: `eventType` is
+  fixed to `EVENT`, `eventName` is explicit, `webDevKey` is represented only as
+  a redacted credential field, and at least one safe user identifier
+  (`customerUserId` or `afUserId`) is required.
+- Live dispatch is blocked unless a separate production gate explicitly allows
+  it.
+
 Allowed in repo-only work:
 
 - normalize OneLink or Web attribution parameters;
@@ -711,7 +726,9 @@ Initial task map:
 - `GCC-149` - Portal attribution capture and backend fact binding.
 - `GCC-150` - settlement candidate engine, freeze period, refunds, and
   reversals.
-- `GCC-151` - AppsFlyer adapter in disabled/dry-run mode.
+- `GCC-151` - AppsFlyer adapter in disabled/dry-run mode. Initial repo-only
+  adapter is implemented with redaction tests; live AppsFlyer Web/S2S remains
+  gated.
 - `GCC-152` - protected Admin attribution and settlement review reporting.
 - `GCC-153` - privacy, fraud, abuse, and reconciliation guardrails.
 - `GCC-154` - production activation gate.
