@@ -52,6 +52,12 @@ const VULTR_MULTICHANNEL_ENV = {
   SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-password",
 };
 
+const EDGE_LIFECYCLE_TEST_NOW = "2026-06-10T00:00:00.000Z";
+
+function edgeLifecycleTestNow() {
+  return new Date(EDGE_LIFECYCLE_TEST_NOW);
+}
+
 function sleepMs(ms) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
@@ -478,6 +484,7 @@ test("createRuntimeState wires env-gated edge credential lifecycle services", ()
       }),
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       controlDbPath: join(dir, "control.sqlite"),
+      edgeLifecycleNowFn: edgeLifecycleTestNow,
       edgeRuntimeAdapter: { applyDesiredState: () => ({ ok: true }) },
       autoStartHttpProxy: false
     });
@@ -523,6 +530,7 @@ test("createRuntimeState restores persisted edge orders into lifecycle desired s
       }),
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       controlDbPath: join(dir, "control.sqlite"),
+      edgeLifecycleNowFn: edgeLifecycleTestNow,
       edgeRuntimeAdapter: { applyDesiredState: () => ({ ok: true }) },
       autoStartHttpProxy: false
     });
@@ -1115,6 +1123,7 @@ test("createRuntimeState wires env-gated Mihomo TUIC host adapter for edge lifec
       }),
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       controlDbPath: join(dir, "control.sqlite"),
+      edgeLifecycleNowFn: edgeLifecycleTestNow,
       edgeRuntimeCommandRunner(command, args) {
         commandCalls.push([command, ...args]);
         if (command === "mihomo") return { exitCode: 0 };
@@ -1254,6 +1263,7 @@ test("createRuntimeState wires env-gated Sing-box SS host adapter for edge lifec
       proxyConfigPath,
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       controlDbPath: join(dir, "control.sqlite"),
+      edgeLifecycleNowFn: edgeLifecycleTestNow,
       edgeRuntimeCommandRunner(command, args) {
         commandCalls.push([command, ...args]);
         if (command === "sing-box") return { exitCode: 0 };
@@ -1325,6 +1335,7 @@ test("createRuntimeState wires env-gated Xray VLESS Reality host adapter for edg
       }),
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       controlDbPath: join(dir, "control.sqlite"),
+      edgeLifecycleNowFn: edgeLifecycleTestNow,
       edgeRuntimeCommandRunner(command, args) {
         commandCalls.push([command, ...args]);
         if (command === "xray") return { exitCode: 0 };
@@ -1396,6 +1407,7 @@ test("createRuntimeState wires env-gated Hysteria2 host adapter for edge lifecyc
       }),
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       controlDbPath: join(dir, "control.sqlite"),
+      edgeLifecycleNowFn: edgeLifecycleTestNow,
       edgeRuntimeCommandRunner(command, args) {
         commandCalls.push([command, ...args]);
         if (command === "hysteria") return { exitCode: 0 };

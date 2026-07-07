@@ -869,6 +869,7 @@ export function createRuntimeState(options = {}) {
         service: createOrderCredentialLifecycleService({
           channelRef: channelRefForRuntime,
           runtime: runtimeBinding.runtime,
+          nowFn: options.edgeLifecycleNowFn || options.userPortalNowFn,
           listOrders: () => mergeEdgeCredentialOrders(
             durableEdgeCredentialOrders({
               controlStore: platformControlStore,
