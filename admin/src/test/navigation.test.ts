@@ -95,6 +95,7 @@ describe("admin navigation", () => {
       "Collection Freshness",
       "Channel Coverage",
       "Usage Ledger",
+      "Partner Attribution",
       "Collection Anomalies",
       "Receipts & Collectors"
     ]);

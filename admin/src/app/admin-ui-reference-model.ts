@@ -26,6 +26,7 @@ export type AdminUiSurfaceKey =
   | "usage-freshness"
   | "channel-coverage"
   | "usage-ledger"
+  | "partner-attribution-report"
   | "collection-anomalies"
   | "receipts-collectors";
 
@@ -220,6 +221,14 @@ export const ADMIN_UI_SURFACE_REFERENCES: AdminUiSurfaceReference[] = [
     implementationTarget: "Usage ledger table and traffic summaries",
     key: "usage-ledger",
     label: "Usage ledger",
+    page: "usageMonitor",
+    primaryReference: "tremor",
+    supportingReferences: ["ant-design-pro"]
+  },
+  {
+    implementationTarget: "Partner attribution funnel and settlement review tables",
+    key: "partner-attribution-report",
+    label: "Partner attribution report",
     page: "usageMonitor",
     primaryReference: "tremor",
     supportingReferences: ["ant-design-pro"]

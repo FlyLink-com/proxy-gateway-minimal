@@ -48,6 +48,7 @@ describe("admin module contract", () => {
       "usageMonitor:freshness:platform-monitoring-freshness",
       "usageMonitor:channel-coverage:platform-monitoring-channel-coverage",
       "usageMonitor:usage-ledger:platform-monitoring-usage-ledger",
+      "usageMonitor:partner-attribution-report:platform-monitoring-partner-attribution-report",
       "usageMonitor:collection-anomalies:platform-monitoring-anomalies",
       "usageMonitor:receipts-collectors:platform-monitoring-receipts-collectors"
     ]);
@@ -89,6 +90,7 @@ describe("admin module contract", () => {
       "usageMonitor:freshness": "not-applicable",
       "usageMonitor:channel-coverage": "pagination",
       "usageMonitor:usage-ledger": "pagination",
+      "usageMonitor:partner-attribution-report": "pagination",
       "usageMonitor:collection-anomalies": "pagination",
       "usageMonitor:receipts-collectors": "pagination"
     });

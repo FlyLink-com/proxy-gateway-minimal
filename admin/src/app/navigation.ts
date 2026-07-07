@@ -43,7 +43,9 @@ export type PageDecisionKey =
   | "channel_coverage"
   | "receipt_coverage"
   | "collection_anomalies"
+  | "partner_attribution_reporting"
   | "runtime_apply"
+  | "payout_approval"
   | "platform_tooling"
   | "operator_settings";
 
@@ -257,6 +259,14 @@ export const pageSubNavigation: Record<AdminPage, PageSubNavigationItem[]> = {
       targetId: "platform-monitoring-usage-ledger"
     },
     {
+      id: "partner-attribution-report",
+      label: "Partner Attribution",
+      description: "Partner attribution funnel, campaign summary, and settlement review candidates.",
+      mode: "owner",
+      owner: "Platform Monitoring",
+      targetId: "platform-monitoring-partner-attribution-report"
+    },
+    {
       id: "collection-anomalies",
       label: "Collection Anomalies",
       description: "Collection delay, true zero usage, not collected, disabled collector, and missing receipt candidates.",
@@ -288,7 +298,8 @@ export const pageWorkbenchContracts: Record<AdminPage, PageWorkbenchContract> = 
       "usage_collection_trust",
       "channel_coverage",
       "receipt_coverage",
-      "collection_anomalies"
+      "collection_anomalies",
+      "partner_attribution_reporting"
     ],
     evidenceOnly: [],
     forbiddenDecisions: [
@@ -345,6 +356,7 @@ export const pageWorkbenchContracts: Record<AdminPage, PageWorkbenchContract> = 
       "order_pause_archive",
       "subscription_artifact_lifecycle",
       "runtime_apply",
+      "payout_approval",
       "platform_tooling",
       "operator_settings"
     ]

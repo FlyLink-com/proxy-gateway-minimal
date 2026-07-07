@@ -274,6 +274,7 @@ describe("admin app manifest", () => {
       "freshness",
       "channel-coverage",
       "usage-ledger",
+      "partner-attribution-report",
       "collection-anomalies",
       "receipts-collectors"
     ]);

@@ -5,6 +5,7 @@ import {
 import {
   DataCardPagination,
   DataTable,
+  EmptyState,
   MetricCard,
   RiskQueue,
   SafeRef,
@@ -21,8 +22,108 @@ import {
   buildUsageRuntimeViewModel,
   type UsageRuntimeLedgerRow
 } from "../features/subscriptions/usage-view-model";
+import type {
+  PartnerAttributionAdminReport,
+  PartnerAttributionFunnelKey
+} from "../features/subscriptions/types";
 
 const usageRuntimeViewModel = buildUsageRuntimeViewModel(usageRuntimeProjectionFixture);
+
+export const partnerAttributionReportFixture: PartnerAttributionAdminReport = {
+  type: "partner_attribution_admin_report",
+  status: "ready",
+  generatedAt: "2026-07-07T02:00:00.000Z",
+  sourceLabels: ["AppsFlyer evidence", "Backend settlement facts"],
+  summary: {
+    partnerCount: 1,
+    campaignCount: 1,
+    touchCount: 3,
+    eventCount: 6,
+    settlementCandidateCount: 1,
+    payableReviewCount: 0,
+    reversedCount: 0
+  },
+  funnel: {
+    visit: 1,
+    registrationSuccess: 1,
+    checkoutStarted: 1,
+    paymentSuccess: 1,
+    entitlementDelivered: 1,
+    refund: 0,
+    chargeback: 0,
+    riskRejected: 0,
+    settlementCandidateCreated: 1,
+    settlementReversed: 0
+  },
+  partners: [{
+    partnerRef: "partner_alpha",
+    safeDisplayName: "Alpha Partner",
+    status: "active",
+    riskTier: "standard",
+    campaignCount: 1,
+    touchCount: 3,
+    eventCount: 6,
+    settlementCandidateCount: 1,
+    payableReviewCount: 0,
+    reversedCount: 0,
+    totalAmountCents: 2500,
+    currency: "USD"
+  }],
+  campaigns: [{
+    campaignRef: "campaign_alpha_jp",
+    partnerRef: "partner_alpha",
+    status: "active",
+    provider: "appsflyer",
+    touchCount: 3,
+    eventCount: 6,
+    settlementCandidateCount: 1,
+    payableReviewCount: 0,
+    reversedCount: 0,
+    totalAmountCents: 2500,
+    currency: "USD",
+    funnel: {
+      visit: 1,
+      registrationSuccess: 1,
+      checkoutStarted: 1,
+      paymentSuccess: 1,
+      entitlementDelivered: 1,
+      settlementCandidateCreated: 1
+    }
+  }],
+  candidates: [{
+    candidateRef: "settlement_candidate_1",
+    status: "frozen",
+    partnerRef: "partner_alpha",
+    campaignRef: "campaign_alpha_jp",
+    accountRef: "account_safe_1",
+    orderRef: "order_safe_1",
+    paymentRef: "payment_safe_1",
+    entitlementRef: "entitlement_safe_1",
+    policyRef: "policy_first_payment_cpa",
+    model: "first_payment_cpa",
+    currency: "USD",
+    basisAmountCents: 12000,
+    amountCents: 2500,
+    freezeUntil: "2026-07-14T01:20:00.000Z",
+    payableAt: null,
+    reversedAt: null,
+    reasonCode: null,
+    sourceEventRefs: ["event_payment_1", "event_entitlement_1"],
+    reversalEventRef: null,
+    sourceLabels: ["Backend settlement facts"]
+  }],
+  warnings: [],
+  safety: {
+    summaryOnly: true,
+    rawProviderPayloadReturned: false,
+    rawSubscriptionUrlReturned: false,
+    rawTokenReturned: false,
+    rawCredentialReturned: false,
+    rawRuntimeConfigReturned: false,
+    rawSqliteRowsReturned: false,
+    mutationAllowed: false
+  }
+};
 
 export const usageChannelsBlueprint: BlueprintPage = {
   page: "usageMonitor",
@@ -60,6 +161,15 @@ export const usageChannelsBlueprint: BlueprintPage = {
       description: "Read-only account, order, channel, and traffic evidence.",
       moduleNavIds: [
         "usage-ledger"
+      ]
+    },
+    {
+      id: "partner-attribution",
+      label: "Attribution & Settlement",
+      owner: "Platform Monitoring",
+      description: "Partner attribution funnel, campaign summary, and settlement review candidates.",
+      moduleNavIds: [
+        "partner-attribution-report"
       ]
     }
   ],
@@ -171,6 +281,43 @@ export const usageChannelsBlueprint: BlueprintPage = {
       nextStep: "Reconnect read-only ledger after column taxonomy and privacy filters are finalized."
     },
     {
+      navId: "partner-attribution-report",
+      container: {
+        category: "monitoring",
+        container: "Partner attribution reporting",
+        dataAdapter: "Safe partner attribution admin report DTO; no provider payload, token, URL, credential, or payout mutation.",
+        layoutPolicy: "Dense summary, funnel, and review tables inside Platform Monitoring.",
+        performanceBoundary: "Bounded partner/campaign/candidate summaries before live pagination.",
+        interactionModel: "Inspect attribution and settlement evidence; payout approval remains out of scope."
+      },
+      content: <PartnerAttributionReportContent />,
+      containmentStrategy: "pagination",
+      purpose: "Review partner, campaign, attribution funnel, and settlement candidate evidence without exposing raw provider payloads.",
+      contentFields: [
+        "Partner · safe ref",
+        "Campaign · safe ref",
+        "Funnel · event counts",
+        "Settlement candidate · safe refs",
+        "Amount · review status"
+      ],
+      states: [
+        "Ready",
+        "Unconfigured",
+        "Pending review",
+        "Reversed",
+        "Safe summary only"
+      ],
+      uiSurface: "partner-attribution-report",
+      ownership: "Owns attribution and settlement evidence visibility only.",
+      boundaries: [
+        "No payout approval",
+        "No raw provider payload",
+        "No subscription URL or token output",
+        "No partner credential output"
+      ],
+      nextStep: "Connect live Admin DTO after backend reporting route and redaction tests are merged."
+    },
+    {
       navId: "collection-anomalies",
       container: {
         category: "monitoring",
@@ -258,6 +405,177 @@ export function SubscriptionUsageMonitorPage({
       fixturePreviewEnabled={fixturePreviewEnabled}
     />
   );
+}
+
+type PartnerFunnelRow = {
+  key: PartnerAttributionFunnelKey;
+  label: string;
+  count: number;
+};
+
+const partnerFunnelLabels: Array<{ key: PartnerAttributionFunnelKey; label: string }> = [
+  { key: "visit", label: "Visit" },
+  { key: "registrationSuccess", label: "Registration success" },
+  { key: "checkoutStarted", label: "Checkout started" },
+  { key: "paymentSuccess", label: "Payment success" },
+  { key: "entitlementDelivered", label: "Entitlement delivered" },
+  { key: "settlementCandidateCreated", label: "Settlement candidate created" },
+  { key: "refund", label: "Refund" },
+  { key: "chargeback", label: "Chargeback" },
+  { key: "riskRejected", label: "Risk rejected" },
+  { key: "settlementReversed", label: "Settlement reversed" }
+];
+
+export function PartnerAttributionReportContent({
+  report = partnerAttributionReportFixture
+}: {
+  report?: PartnerAttributionAdminReport;
+}) {
+  const sourceLabels = report.sourceLabels.length > 0 ? report.sourceLabels : ["No live source configured"];
+  const funnelRows = partnerFunnelLabels.map((entry) => ({
+    ...entry,
+    count: report.funnel[entry.key] ?? 0
+  }));
+
+  if (report.status === "unconfigured") {
+    return (
+      <div className="admin-operator-content" aria-label="Partner Attribution reporting content">
+        <EmptyState
+          checklist={[
+            "Safe summary only",
+            "No payout approval",
+            "No raw provider payload"
+          ]}
+          description={report.warnings.join(" ") || "Connect the attribution and settlement reporting services before reviewing partner evidence."}
+          role="status"
+          title="Partner attribution reporting unavailable"
+        />
+        <div className="admin-static-status-row" aria-label="Partner Attribution safety boundaries">
+          <StatusChip label="Safe summary only" tone="success" />
+          <StatusChip label="No payout approval" tone="neutral" />
+          <StatusChip label="No credential output" tone="neutral" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="admin-operator-content" aria-label="Partner Attribution reporting content">
+      <div className="admin-static-status-row" aria-label="Partner Attribution report sources">
+        {sourceLabels.map((label) => (
+          <StatusChip key={label} label={label} tone={label.startsWith("No ") ? "neutral" : "info"} />
+        ))}
+        <StatusChip label="Safe summary only" tone="success" />
+        <StatusChip label="No payout approval" tone="neutral" />
+      </div>
+      <div className="ops-metric-grid ops-metric-grid-compact">
+        <MetricCard
+          detail={`${report.summary.campaignCount} campaigns`}
+          icon={<Activity aria-hidden="true" />}
+          label="Partners"
+          tone="info"
+          value={report.summary.partnerCount}
+        />
+        <MetricCard
+          detail={`${report.summary.eventCount} events`}
+          icon={<Gauge aria-hidden="true" />}
+          label="Touches"
+          tone="neutral"
+          value={report.summary.touchCount}
+        />
+        <MetricCard
+          detail={`${report.summary.payableReviewCount} payable review`}
+          icon={<ReceiptText aria-hidden="true" />}
+          label="Settlement candidates"
+          tone={report.summary.settlementCandidateCount > 0 ? "warning" : "neutral"}
+          value={report.summary.settlementCandidateCount}
+        />
+        <MetricCard
+          detail={`${report.summary.reversedCount} reversed`}
+          icon={<RadioTower aria-hidden="true" />}
+          label="Campaigns"
+          tone="info"
+          value={report.summary.campaignCount}
+        />
+      </div>
+      <DataTable
+        ariaLabel="Partner Attribution funnel table"
+        columns={[
+          { header: "Funnel step", key: "label", render: (row: PartnerFunnelRow) => row.label },
+          { header: "Count", key: "count", render: (row) => row.count }
+        ]}
+        getRowKey={(row) => row.key}
+        pagination={{
+          ariaLabel: "Partner Attribution funnel pagination",
+          itemLabel: "steps",
+          pageSize: 10
+        }}
+        rows={funnelRows}
+      />
+      <DataTable
+        ariaLabel="Partner Attribution partners table"
+        columns={[
+          { header: "Partner", key: "partner", render: (row: PartnerAttributionAdminReport["partners"][number]) => <><SafeRef value={row.partnerRef} /> · {row.safeDisplayName}</> },
+          { header: "Status", key: "status", render: (row) => <StatusChip label={row.status} tone={row.status === "active" ? "success" : "neutral"} /> },
+          { header: "Risk", key: "risk", render: (row) => row.riskTier },
+          { header: "Campaigns", key: "campaigns", render: (row) => row.campaignCount },
+          { header: "Touches", key: "touches", render: (row) => row.touchCount },
+          { header: "Settlement", key: "settlement", render: (row) => `${row.settlementCandidateCount} candidates` },
+          { header: "Amount", key: "amount", render: (row) => formatSettlementAmount(row.totalAmountCents, row.currency) }
+        ]}
+        getRowKey={(row) => row.partnerRef}
+        pagination={{
+          ariaLabel: "Partner Attribution partners pagination",
+          itemLabel: "partners",
+          pageSize: 5
+        }}
+        rows={report.partners}
+      />
+      <DataTable
+        ariaLabel="Partner Attribution campaigns table"
+        columns={[
+          { header: "Campaign", key: "campaign", render: (row: PartnerAttributionAdminReport["campaigns"][number]) => <SafeRef value={row.campaignRef} /> },
+          { header: "Partner", key: "partner", render: (row) => <SafeRef value={row.partnerRef} /> },
+          { header: "Provider", key: "provider", render: (row) => row.provider },
+          { header: "Status", key: "status", render: (row) => <StatusChip label={row.status} tone={row.status === "active" ? "success" : "neutral"} /> },
+          { header: "Events", key: "events", render: (row) => row.eventCount },
+          { header: "Amount", key: "amount", render: (row) => formatSettlementAmount(row.totalAmountCents, row.currency) }
+        ]}
+        getRowKey={(row) => row.campaignRef}
+        pagination={{
+          ariaLabel: "Partner Attribution campaigns pagination",
+          itemLabel: "campaigns",
+          pageSize: 5
+        }}
+        rows={report.campaigns}
+      />
+      <DataTable
+        ariaLabel="Partner Attribution settlement candidates table"
+        columns={[
+          { header: "Candidate", key: "candidate", render: (row: PartnerAttributionAdminReport["candidates"][number]) => <SafeRef value={row.candidateRef} /> },
+          { header: "Partner / campaign", key: "partnerCampaign", render: (row) => <><SafeRef value={row.partnerRef} /> · <SafeRef value={row.campaignRef} /></> },
+          { header: "Order / event", key: "event", render: (row) => <><SafeRef value={row.orderRef} /> · <SafeRef value={row.sourceEventRefs[0]} /></> },
+          { header: "Status", key: "status", render: (row) => <StatusChip label={row.status} tone={row.status === "frozen" ? "warning" : "neutral"} /> },
+          { header: "Reason", key: "reason", render: (row) => row.reasonCode || "policy match" },
+          { header: "Amount", key: "amount", render: (row) => formatSettlementAmount(row.amountCents, row.currency) },
+          { header: "Source", key: "source", render: (row) => row.sourceLabels.join(", ") }
+        ]}
+        getRowKey={(row) => row.candidateRef}
+        pagination={{
+          ariaLabel: "Partner Attribution settlement candidates pagination",
+          itemLabel: "candidates",
+          pageSize: 5
+        }}
+        rows={report.candidates}
+      />
+    </div>
+  );
+}
+
+function formatSettlementAmount(amountCents: number, currency: string | null) {
+  const normalizedAmount = Number.isFinite(amountCents) ? amountCents : 0;
+  const normalizedCurrency = currency || "USD";
+  return `$${(normalizedAmount / 100).toFixed(2)} ${normalizedCurrency}`;
 }
 
 function FreshnessContent() {

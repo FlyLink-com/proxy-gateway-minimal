@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, test } from "vitest";
-import { SubscriptionUsageMonitorPage } from "../pages/subscription-usage-monitor-page";
+import {
+  PartnerAttributionReportContent,
+  SubscriptionUsageMonitorPage
+} from "../pages/subscription-usage-monitor-page";
 
 afterEach(() => {
   cleanup();
@@ -153,6 +156,77 @@ describe("subscription usage monitor page", () => {
     const renderedText = document.body.textContent ?? "";
     expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|yaml|edgecred_/i);
     expect(screen.queryByRole("button", { name: /Apply filters|Create|Disable|Pause|Archive|Activate|Apply/i })).toBeNull();
+  });
+
+  test("renders partner attribution and settlement reporting as a safe read-only module", () => {
+    render(<SubscriptionUsageMonitorPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Attribution & Settlement subpage" }));
+
+    expect(sectionAnchorOrder()).toEqual(["platform-monitoring-partner-attribution-report"]);
+    expect(screen.getByRole("heading", { name: "Partner Attribution" })).not.toBeNull();
+    expect(screen.getByLabelText("Partner Attribution reporting content")).not.toBeNull();
+    expect(screen.getByText("AppsFlyer evidence")).not.toBeNull();
+    expect(screen.getAllByText("Backend settlement facts").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Partners").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Campaigns").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Settlement candidates").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("partner_alpha").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("campaign_alpha_jp").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Registration success")).not.toBeNull();
+    expect(screen.getByText("Settlement candidate created")).not.toBeNull();
+    expect(screen.getByText("settlement_candidate_1")).not.toBeNull();
+    expect(screen.getAllByText("$25.00 USD").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("Safe summary only").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("No payout approval")).not.toBeNull();
+
+    const renderedText = document.body.textContent ?? "";
+    expect(renderedText).not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|rawProvider|edgecred_|customer@example|\/sub\//i);
+    expect(screen.queryByRole("button", { name: /Approve|Pay|Create|Disable|Pause|Archive|Activate|Apply/i })).toBeNull();
+  });
+
+  test("keeps partner attribution empty state safe when reporting services are unconfigured", () => {
+    render(
+      <PartnerAttributionReportContent
+        report={{
+          type: "partner_attribution_admin_report",
+          status: "unconfigured",
+          generatedAt: "2026-07-07T02:00:00.000Z",
+          sourceLabels: [],
+          summary: {
+            partnerCount: 0,
+            campaignCount: 0,
+            touchCount: 0,
+            eventCount: 0,
+            settlementCandidateCount: 0,
+            payableReviewCount: 0,
+            reversedCount: 0
+          },
+          funnel: {},
+          partners: [],
+          campaigns: [],
+          candidates: [],
+          warnings: ["partner attribution reporting services are not configured"],
+          safety: {
+            summaryOnly: true,
+            rawProviderPayloadReturned: false,
+            rawSubscriptionUrlReturned: false,
+            rawTokenReturned: false,
+            rawCredentialReturned: false,
+            rawRuntimeConfigReturned: false,
+            rawSqliteRowsReturned: false,
+            mutationAllowed: false
+          }
+        }}
+      />
+    );
+
+    expect(screen.getByRole("status")).not.toBeNull();
+    expect(screen.getByText("Partner attribution reporting unavailable")).not.toBeNull();
+    expect(screen.getByText("partner attribution reporting services are not configured")).not.toBeNull();
+    expect(screen.getAllByText("Safe summary only").length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(document.body.textContent ?? "").not.toMatch(/https?:\/\/|subscriptionUrl|token=|secret-value|password|edgecred_|\/sub\//i);
   });
 
   test("renders Usage & Channels fixture preview with receipt and collector states", () => {

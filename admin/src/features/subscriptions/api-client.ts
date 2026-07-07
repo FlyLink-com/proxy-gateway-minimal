@@ -26,6 +26,7 @@ import type {
   CleanEdgeReadinessSummary,
   CreateSubscriptionInput,
   CreateSubscriptionResult,
+  PartnerAttributionAdminReport,
   PortalAccessApprovalPreview,
   PortalAccessApprovalPreviewInput,
   PortalAccessRequestSummary,
@@ -197,6 +198,12 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
           `/api/admin/platform/subscription-usage-monitor${queryString(filters)}`
         )
       ).monitor,
+    getPartnerAttributionReport: async () =>
+      (
+        await request<{ report: PartnerAttributionAdminReport }>(
+          "/api/admin/platform/partner-attribution-report"
+        )
+      ).report,
     previewPortalAccessRequestApproval: async (
       requestRef: string,
       input: PortalAccessApprovalPreviewInput
