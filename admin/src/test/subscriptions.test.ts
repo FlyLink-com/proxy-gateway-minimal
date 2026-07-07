@@ -26,6 +26,7 @@ import type {
   CleanEdgeReadinessSummary,
   ChannelSystemDecisionFlow,
   ChannelSystemReviewInput,
+  PartnerAttributionAdminReport,
   SubscriptionUsageMonitor,
   SubscriptionTenant
 } from "../features/subscriptions/types";
@@ -232,6 +233,37 @@ describe("admin API client", () => {
     expect(items[0].plan).toBe("trial");
     const firstCall = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     expect(firstCall[0]).toBe("http://127.0.0.1:3456/api/admin/platform/portal-access-requests");
+  });
+
+  test("loads partner attribution reporting through the protected platform route", async () => {
+    const fetcher = vi.fn(async () => jsonResponse({ report: partnerAttributionReport() }));
+    const client = createAdminApiClient({
+      baseUrl: "",
+      consoleToken: "console-secret",
+      fetcher
+    });
+
+    const loaded = await client.getPartnerAttributionReport();
+
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/admin/platform/partner-attribution-report",
+      expect.objectContaining({ headers: expect.any(Headers) })
+    );
+    const firstCall = fetcher.mock.calls[0] as unknown as [string, RequestInit];
+    expect((firstCall[1].headers as Headers).get("authorization")).toBe("Bearer console-secret");
+    expect(loaded).toMatchObject({
+      type: "partner_attribution_admin_report",
+      status: "ready",
+      summary: { partnerCount: 1, settlementCandidateCount: 1 },
+      safety: {
+        summaryOnly: true,
+        rawProviderPayloadReturned: false,
+        rawSubscriptionUrlReturned: false,
+        rawTokenReturned: false,
+        rawCredentialReturned: false,
+        mutationAllowed: false
+      }
+    });
   });
 
   test("previews portal access request approval without returning subscription material", async () => {
@@ -778,6 +810,104 @@ function subscriptionUsageMonitor(): SubscriptionUsageMonitor {
   };
 }
 
+function partnerAttributionReport(): PartnerAttributionAdminReport {
+  return {
+    type: "partner_attribution_admin_report",
+    status: "ready",
+    generatedAt: "2026-07-07T02:00:00.000Z",
+    sourceLabels: ["AppsFlyer evidence", "Backend settlement facts"],
+    summary: {
+      partnerCount: 1,
+      campaignCount: 1,
+      touchCount: 3,
+      eventCount: 6,
+      settlementCandidateCount: 1,
+      payableReviewCount: 0,
+      reversedCount: 0
+    },
+    funnel: {
+      visit: 1,
+      registrationSuccess: 1,
+      checkoutStarted: 1,
+      paymentSuccess: 1,
+      entitlementDelivered: 1,
+      refund: 0,
+      chargeback: 0,
+      riskRejected: 0,
+      settlementCandidateCreated: 1,
+      settlementReversed: 0
+    },
+    partners: [{
+      partnerRef: "partner_alpha",
+      safeDisplayName: "Alpha Partner",
+      status: "active",
+      riskTier: "standard",
+      campaignCount: 1,
+      touchCount: 3,
+      eventCount: 6,
+      settlementCandidateCount: 1,
+      payableReviewCount: 0,
+      reversedCount: 0,
+      totalAmountCents: 2500,
+      currency: "USD"
+    }],
+    campaigns: [{
+      campaignRef: "campaign_alpha_jp",
+      partnerRef: "partner_alpha",
+      status: "active",
+      provider: "appsflyer",
+      touchCount: 3,
+      eventCount: 6,
+      settlementCandidateCount: 1,
+      payableReviewCount: 0,
+      reversedCount: 0,
+      totalAmountCents: 2500,
+      currency: "USD",
+      funnel: {
+        visit: 1,
+        registrationSuccess: 1,
+        checkoutStarted: 1,
+        paymentSuccess: 1,
+        entitlementDelivered: 1,
+        settlementCandidateCreated: 1
+      }
+    }],
+    candidates: [{
+      candidateRef: "settlement_candidate_1",
+      status: "frozen",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_alpha_jp",
+      accountRef: "account_safe_1",
+      orderRef: "order_safe_1",
+      paymentRef: "payment_safe_1",
+      entitlementRef: "entitlement_safe_1",
+      policyRef: "policy_first_payment_cpa",
+      model: "first_payment_cpa",
+      currency: "USD",
+      basisAmountCents: 12000,
+      amountCents: 2500,
+      freezeUntil: "2026-07-14T01:20:00.000Z",
+      payableAt: null,
+      reversedAt: null,
+      reasonCode: null,
+      sourceEventRefs: ["event_payment_1", "event_entitlement_1"],
+      reversalEventRef: null,
+      sourceLabels: ["Backend settlement facts"]
+    }],
+    warnings: [],
+    safety: {
+      summaryOnly: true,
+      rawProviderPayloadReturned: false,
+      rawSubscriptionUrlReturned: false,
+      rawTokenReturned: false,
+      rawCredentialReturned: false,
+      rawRuntimeConfigReturned: false,
+      rawSqliteRowsReturned: false,
+      mutationAllowed: false
+    }
+  };
+}
+
 function usageSeriesFixture(overrides: Partial<SubscriptionUsageMonitor["series"]> = {}): SubscriptionUsageMonitor["series"] {
   return {
     type: "subscription_usage_timeseries",
@@ -861,6 +991,7 @@ function adminClient(overrides: Partial<AdminApiClient> = {}): AdminApiClient {
     previewProvisioningForm: async () => provisioningFormPreview(),
     listPortalAccessRequests: async () => [],
     listSubscriptionUsageMonitor: async () => subscriptionUsageMonitor(),
+    getPartnerAttributionReport: async () => partnerAttributionReport(),
     previewPortalAccessRequestApproval: async () => ({
       ok: true,
       mode: "portal-access-request-approval-preview" as const,

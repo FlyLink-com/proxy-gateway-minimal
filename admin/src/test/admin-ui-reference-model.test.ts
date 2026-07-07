@@ -48,7 +48,7 @@ describe("admin UI reference model", () => {
       blueprint.modules.map((module) => module.uiSurface)
     ));
 
-    expect(moduleSurfaceKeys).toHaveLength(13);
+    expect(moduleSurfaceKeys).toHaveLength(14);
     expect(new Set(moduleSurfaceKeys).size).toBe(moduleSurfaceKeys.length);
     moduleSurfaceKeys.forEach((surfaceKey) => {
       expect(roadmapKeys.has(surfaceKey)).toBe(true);

@@ -95,6 +95,9 @@ export function createApp(state, options = {}) {
     || state.platform?.controlStore
     || state.platform?.edgeUsageAccounting
     || state.platform?.dataPlaneHandoffQueue
+    || state.platform?.partnerAttributionStore
+    || state.platform?.partnerAttributionEventLedger
+    || state.platform?.partnerSettlementCandidateEngine
   ) {
     app.use(adminPlatformRoutes(state));
   }

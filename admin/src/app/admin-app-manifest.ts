@@ -491,31 +491,34 @@ const PAGE_APP_DEFINITIONS: Record<AdminPage, {
     tone: "nav-app-tone-emerald"
   },
   usageMonitor: {
-    aliases: ["usage", "channels", "collector", "receipts", "freshness"],
+    aliases: ["usage", "channels", "collector", "receipts", "freshness", "partner attribution", "settlement"],
     appId: "usage-channels",
     capabilities: ["view", "inspect", "suggest-action", "dry-run"],
     category: "monitoring",
-    coreViews: ["collection freshness", "channel coverage", "usage ledger", "collection anomalies", "receipts and collectors"],
+    coreViews: ["collection freshness", "channel coverage", "usage ledger", "partner attribution", "collection anomalies", "receipts and collectors"],
     iconKey: "activity",
-    primaryObjects: ["usage sample", "channel", "collector", "receipt", "safe edge reference"],
+    primaryObjects: ["usage sample", "channel", "collector", "receipt", "safe edge reference", "partner ref", "settlement candidate"],
     role: "evidence-owner",
-    searchableFields: ["usage", "channel", "collector", "receipt", "freshness", "anomaly"],
+    searchableFields: ["usage", "channel", "collector", "receipt", "freshness", "anomaly", "partner", "attribution", "settlement"],
     sourceContract: sourceContract(
       [
         "usage-ledger-summary",
         "channel-coverage-summary",
         "collector-status-summary",
         "receipt-state-summary",
-        "usage-anomaly-summary"
+        "usage-anomaly-summary",
+        "partner-attribution-admin-report",
+        "settlement-candidate-summary"
       ],
       [
         "usageMonitor#platform-monitoring-freshness",
         "usageMonitor#platform-monitoring-channel-coverage",
         "usageMonitor#platform-monitoring-usage-ledger",
+        "usageMonitor#platform-monitoring-partner-attribution-report",
         "usageMonitor#platform-monitoring-anomalies",
         "usageMonitor#platform-monitoring-receipts-collectors"
       ],
-      ["usage-sample", "channel-ref", "collector-state", "receipt-state", "anomaly-state"]
+      ["usage-sample", "channel-ref", "collector-state", "receipt-state", "anomaly-state", "partner-ref", "settlement-candidate-ref"]
     ),
     zhName: "使用情况和渠道",
     tone: "nav-app-tone-cyan"
@@ -555,6 +558,7 @@ const PLUGIN_ICON_KEYS: Record<string, string> = {
   "history-events": "history",
   lifecycle: "refresh",
   "next-actions": "route",
+  "partner-attribution-report": "clipboard",
   "quota-usage": "gauge",
   "receipts-collectors": "package",
   "resource-orders": "boxes",
@@ -571,6 +575,7 @@ const PLUGIN_TONES: Record<string, string> = {
   "history-events": "nav-app-tone-slate",
   lifecycle: "nav-app-tone-violet",
   "next-actions": "nav-app-tone-indigo",
+  "partner-attribution-report": "nav-app-tone-lime",
   "quota-usage": "nav-app-tone-lime",
   "receipts-collectors": "nav-app-tone-teal",
   "resource-orders": "nav-app-tone-teal",
@@ -587,6 +592,7 @@ const PLUGIN_ZH_NAMES: Record<string, string> = {
   "history-events": "历史与事件",
   lifecycle: "生命周期",
   "next-actions": "后续行动",
+  "partner-attribution-report": "代理归因",
   "quota-usage": "配额与使用情况",
   "receipts-collectors": "收据和采集器",
   "resource-orders": "资源与订单",
@@ -603,6 +609,7 @@ const PLUGIN_PRIMARY_OBJECTS: Record<string, string[]> = {
   "history-events": ["object history", "case candidate", "restricted event"],
   lifecycle: ["account lifecycle", "order pause", "expiry", "archive candidate"],
   "next-actions": ["review route", "owner page", "operator action"],
+  "partner-attribution-report": ["partner", "campaign", "attribution funnel", "settlement candidate"],
   "quota-usage": ["quota policy", "edited limit", "total usage", "quota risk"],
   "receipts-collectors": ["receipt state", "collector availability", "safe diagnostic"],
   "resource-orders": ["order", "resource", "entitlement", "subscription artifact"],
@@ -619,6 +626,7 @@ const PLUGIN_CATEGORIES: Record<string, WorkbenchCategory> = {
   "history-events": "audit-workflow",
   lifecycle: "management",
   "next-actions": "audit-workflow",
+  "partner-attribution-report": "monitoring",
   "quota-usage": "configuration",
   "receipts-collectors": "platform-tools",
   "resource-orders": "management",
@@ -695,6 +703,11 @@ const PLUGIN_SOURCE_CONTRACTS: Record<string, AdminAppSourceContract> = {
     ["usage-ledger-summary", "usage-rollup-summary", "channel-coverage-summary"],
     ["usageMonitor#platform-monitoring-usage-ledger", "portalRequests#user-supervision-quota-usage"],
     ["account-ref", "order-ref", "channel-ref", "measured-usage"]
+  ),
+  "partner-attribution-report": sourceContract(
+    ["partner-attribution-admin-report", "attribution-funnel-summary", "settlement-candidate-summary"],
+    ["usageMonitor#platform-monitoring-partner-attribution-report"],
+    ["partner-ref", "campaign-ref", "settlement-candidate-ref"]
   )
 };
 

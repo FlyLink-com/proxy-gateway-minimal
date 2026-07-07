@@ -14,6 +14,7 @@ import { buildCleanEdgeReadinessSummary } from "../services/clean-edge-readiness
 import { createCleanStartControlPlanePackage } from "../services/platform/clean-start-control-plane.mjs";
 import { createAliyunGateDecisionPacket } from "../services/platform/aliyun-gate-decision-packet.mjs";
 import { buildProvisioningFormPackage } from "../services/platform/provisioning-form.mjs";
+import { createPartnerAttributionAdminReport } from "../services/platform/partner-attribution-admin-report.mjs";
 import { previewSubscriptionIssuance, planSubscriptionIssuance } from "../services/platform/subscription-issuance.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
 
@@ -123,6 +124,9 @@ export function adminPlatformRoutes(state) {
   const portalAccessRequests = state.platform?.portalAccessRequests;
   const edgeUsageAccounting = state.platform?.edgeUsageAccounting;
   const dataPlaneHandoffQueue = state.platform?.dataPlaneHandoffQueue;
+  const partnerAttributionStore = state.platform?.partnerAttributionStore;
+  const partnerAttributionEventLedger = state.platform?.partnerAttributionEventLedger;
+  const partnerSettlementCandidateEngine = state.platform?.partnerSettlementCandidateEngine;
 
   function buildCleanStartPackage() {
     return createCleanStartControlPlanePackage({
@@ -391,6 +395,21 @@ export function adminPlatformRoutes(state) {
             bucket: req.query.bucket
           },
           usageCollectorConfigured: Boolean(edgeUsageAccounting?.collectAndRecord),
+          now: new Date()
+        })
+      });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/platform/partner-attribution-report", (_req, res) => {
+    try {
+      res.json({
+        report: createPartnerAttributionAdminReport({
+          attributionStore: partnerAttributionStore,
+          eventLedger: partnerAttributionEventLedger,
+          settlementEngine: partnerSettlementCandidateEngine,
           now: new Date()
         })
       });

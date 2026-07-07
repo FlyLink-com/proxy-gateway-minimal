@@ -23,7 +23,7 @@ export type AdminSearchResult = {
 const PAGE_SEARCH_ALIASES: Record<AdminPage, string[]> = {
   dashboard: ["overview", "operations", "health", "risk", "action", "owner", "总览", "概览", "运营", "健康", "风险", "行动"],
   portalRequests: ["account", "accounts", "user", "users", "resource", "order", "quota", "lifecycle", "账户", "账号", "用户", "资源", "订单", "配额", "流量", "生命周期"],
-  usageMonitor: ["usage", "traffic", "channel", "collection", "receipt", "anomaly", "用量", "流量", "通道", "渠道", "采集", "回执", "异常"]
+  usageMonitor: ["usage", "traffic", "channel", "collection", "receipt", "anomaly", "partner", "attribution", "settlement", "用量", "流量", "通道", "渠道", "采集", "回执", "异常", "归因", "结算"]
 };
 
 const MODULE_SEARCH_ALIASES: Record<string, string[]> = {
@@ -39,6 +39,7 @@ const MODULE_SEARCH_ALIASES: Record<string, string[]> = {
   freshness: ["freshness", "collection", "latency", "delay", "generated", "采集", "新鲜度", "延迟", "生成", "观测"],
   "channel-coverage": ["channel", "channels", "coverage", "route", "runtime", "通道", "渠道", "覆盖", "路由", "运行时"],
   "usage-ledger": ["usage", "ledger", "account", "order", "channel", "traffic", "用量", "流量", "账簿", "账户", "账号", "订单", "通道", "渠道"],
+  "partner-attribution-report": ["partner", "affiliate", "attribution", "campaign", "settlement", "appsflyer", "伙伴", "代理", "归因", "活动", "结算"],
   "collection-anomalies": ["anomaly", "anomalies", "delay", "zero usage", "missing", "异常", "延迟", "零用量", "缺失", "候选"],
   "receipts-collectors": ["receipt", "receipts", "collector", "agent", "diagnostic", "回执", "收据", "采集器", "代理", "诊断"]
 };

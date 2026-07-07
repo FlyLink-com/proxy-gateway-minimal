@@ -364,6 +364,96 @@ export type SubscriptionUsageMonitor = {
   };
 };
 
+export type PartnerAttributionFunnelKey =
+  | "visit"
+  | "registrationSuccess"
+  | "checkoutStarted"
+  | "paymentSuccess"
+  | "entitlementDelivered"
+  | "refund"
+  | "chargeback"
+  | "riskRejected"
+  | "settlementCandidateCreated"
+  | "settlementReversed";
+
+export type PartnerAttributionAdminReport = {
+  type: "partner_attribution_admin_report";
+  status: "ready" | "unconfigured" | "error" | string;
+  generatedAt: string;
+  sourceLabels: string[];
+  summary: {
+    partnerCount: number;
+    campaignCount: number;
+    touchCount: number;
+    eventCount: number;
+    settlementCandidateCount: number;
+    payableReviewCount: number;
+    reversedCount: number;
+  };
+  funnel: Partial<Record<PartnerAttributionFunnelKey, number>>;
+  partners: Array<{
+    partnerRef: string;
+    safeDisplayName: string;
+    status: string;
+    riskTier: string;
+    campaignCount: number;
+    touchCount: number;
+    eventCount: number;
+    settlementCandidateCount: number;
+    payableReviewCount: number;
+    reversedCount: number;
+    totalAmountCents: number;
+    currency: string | null;
+  }>;
+  campaigns: Array<{
+    campaignRef: string;
+    partnerRef: string | null;
+    status: string;
+    provider: string;
+    touchCount: number;
+    eventCount: number;
+    settlementCandidateCount: number;
+    payableReviewCount: number;
+    reversedCount: number;
+    totalAmountCents: number;
+    currency: string | null;
+    funnel: Partial<Record<PartnerAttributionFunnelKey, number>>;
+  }>;
+  candidates: Array<{
+    candidateRef: string;
+    status: string;
+    partnerRef: string | null;
+    campaignRef: string | null;
+    accountRef: string | null;
+    orderRef: string;
+    paymentRef: string | null;
+    entitlementRef: string | null;
+    policyRef: string | null;
+    model: string | null;
+    currency: string;
+    basisAmountCents: number | null;
+    amountCents: number;
+    freezeUntil: string | null;
+    payableAt: string | null;
+    reversedAt: string | null;
+    reasonCode: string | null;
+    sourceEventRefs: string[];
+    reversalEventRef: string | null;
+    sourceLabels: string[];
+  }>;
+  warnings: string[];
+  safety: {
+    summaryOnly: boolean;
+    rawProviderPayloadReturned: boolean;
+    rawSubscriptionUrlReturned: boolean;
+    rawTokenReturned: boolean;
+    rawCredentialReturned: boolean;
+    rawRuntimeConfigReturned: boolean;
+    rawSqliteRowsReturned: boolean;
+    mutationAllowed: boolean;
+  };
+};
+
 export type SubscriptionNode = {
   id: string;
   name: string;
