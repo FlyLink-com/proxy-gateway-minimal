@@ -40,7 +40,7 @@ const FORBIDDEN_FIELD_RULES = [
   },
   {
     label: "protocol_credential",
-    pattern: /credential_?material|protocol_?credential|password/
+    pattern: /credential_?material|protocol_?credential|provider_?credential|(^|_)(web_?dev_?key|dev_?key)($|_)|password/
   },
   {
     label: "sqlite_row_dump",
@@ -255,33 +255,47 @@ function refMatches(actual, expected) {
   return !expected || actual === expected;
 }
 
+function optionalRefCompatible(actual, expected) {
+  return !actual || !expected || actual === expected;
+}
+
 function backendFactMatches(fact, eventType, candidate) {
   if (!fact || fact.eventType !== eventType || !recordedFact(fact)) return false;
   if (!refMatches(fact.orderRef, candidate.orderRef)) return false;
   if (eventType === "payment_success" && !refMatches(fact.paymentRef, candidate.paymentRef)) return false;
   if (eventType === "entitlement_delivered" && !refMatches(fact.entitlementRef, candidate.entitlementRef)) return false;
-  if (!refMatches(fact.partnerRef, candidate.partnerRef)) return false;
-  if (!refMatches(fact.campaignRef, candidate.campaignRef)) return false;
-  if (!refMatches(fact.touchRef, candidate.touchRef)) return false;
+  if (!optionalRefCompatible(fact.paymentRef, candidate.paymentRef)) return false;
+  if (!optionalRefCompatible(fact.partnerRef, candidate.partnerRef)) return false;
+  if (!optionalRefCompatible(fact.campaignRef, candidate.campaignRef)) return false;
+  if (!optionalRefCompatible(fact.touchRef, candidate.touchRef)) return false;
   return true;
 }
 
+function duplicatePaymentFactMatches(fact, candidate) {
+  if (!fact || fact.eventType !== "payment_success" || !recordedFact(fact)) return false;
+  if (candidate.orderRef) {
+    return fact.orderRef === candidate.orderRef;
+  }
+  if (candidate.paymentRef) {
+    return fact.paymentRef === candidate.paymentRef;
+  }
+  return false;
+}
+
+const PROVIDER_ANCHOR_FIELDS = ["touchRef", "accountRef", "orderRef", "paymentRef", "entitlementRef"];
+const PROVIDER_COMPATIBLE_FIELDS = ["partnerRef", "campaignRef", ...PROVIDER_ANCHOR_FIELDS];
+
 function providerMatches(evidence, candidate) {
   if (!evidence) return false;
-  if (!refMatches(evidence.partnerRef, candidate.partnerRef)) return false;
-  if (!refMatches(evidence.campaignRef, candidate.campaignRef)) return false;
-  if (!refMatches(evidence.touchRef, candidate.touchRef)) return false;
-  return true;
+  if (!recordedProviderEvidence(evidence)) return false;
+  if (!PROVIDER_COMPATIBLE_FIELDS.every((field) => optionalRefCompatible(evidence[field], candidate[field]))) {
+    return false;
+  }
+  return PROVIDER_ANCHOR_FIELDS.some((field) => evidence[field] && candidate[field] && evidence[field] === candidate[field]);
 }
 
 function reversalFactMatches(fact, candidate) {
   if (!fact || !REVERSAL_EVENT_TYPES.has(fact.eventType) || !recordedFact(fact)) return false;
-  const refFields = ["orderRef", "paymentRef", "entitlementRef", "partnerRef", "campaignRef", "touchRef"];
-  for (const field of refFields) {
-    if (fact[field] && candidate[field] && fact[field] !== candidate[field]) {
-      return false;
-    }
-  }
   return ["orderRef", "paymentRef", "entitlementRef"].some((field) => (
     fact[field] && candidate[field] && fact[field] === candidate[field]
   ));
@@ -375,7 +389,13 @@ export function createPartnerAttributionGuardrails() {
     }
 
     const reversals = input.reversalFacts || input.reversal_facts || [];
-    if (reversals.length >= 2 || reversals.some((fact) => fact?.reasonCode === "chargeback" || fact?.reason_code === "chargeback")) {
+    if (
+      reversals.length >= 2 ||
+      reversals.some((fact) => (
+        [fact?.reasonCode, fact?.reason_code, fact?.eventType, fact?.event_type]
+          .some((value) => text(value).toLowerCase() === "chargeback")
+      ))
+    ) {
       signals.push(signal("repeated_reversal", "high", { count: reversals.length }));
     }
 
@@ -419,11 +439,15 @@ export function createPartnerAttributionGuardrails() {
       blockers.push(blocker("privacy_boundary_violation"));
     }
 
-    const payment = backendFacts.find((fact) => backendFactMatches(fact, "payment_success", candidate));
+    const paymentFacts = backendFacts.filter((fact) => duplicatePaymentFactMatches(fact, candidate));
+    const payment = paymentFacts.find((fact) => backendFactMatches(fact, "payment_success", candidate));
     if (payment) {
       matchedEvidence.push("backend_payment_success");
     } else {
       blockers.push(blocker("missing_backend_payment"));
+    }
+    if (paymentFacts.length > 1) {
+      blockers.push(blocker("duplicate_backend_payment"));
     }
 
     const entitlement = backendFacts.find((fact) => backendFactMatches(fact, "entitlement_delivered", candidate));
@@ -450,6 +474,9 @@ export function createPartnerAttributionGuardrails() {
       if (partnerMismatch) blockers.push(blocker("provider_partner_mismatch"));
       if (campaignMismatch) blockers.push(blocker("provider_campaign_mismatch"));
       if (touchMismatch) blockers.push(blocker("provider_touch_mismatch", "review"));
+      if (!partnerMismatch && !campaignMismatch && !touchMismatch) {
+        blockers.push(blocker("insufficient_provider_attribution_evidence", "review"));
+      }
     }
 
     if (fraudSignals?.manualReviewRequired) {

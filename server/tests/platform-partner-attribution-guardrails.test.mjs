@@ -63,6 +63,33 @@ test("partner attribution guardrails cover advertised artifact and raw-log forbi
   assert.equal(JSON.stringify(review).includes("customer private details"), false);
 });
 
+test("partner attribution guardrails block raw provider credential key fields", () => {
+  const guardrails = createPartnerAttributionGuardrails();
+
+  const review = guardrails.inspectPrivacyBoundary({
+    surface: "provider_upload",
+    payload: {
+      partnerRef: "partner_alpha",
+      webDevKey: "placeholder-web-dev-key",
+      nested: {
+        devKey: "placeholder-dev-key",
+        providerCredential: "placeholder-provider-credential"
+      }
+    }
+  });
+
+  assert.equal(review.ok, false);
+  assert.deepEqual(review.findings.map((finding) => finding.path).sort(), [
+    "$.nested.devKey",
+    "$.nested.providerCredential",
+    "$.webDevKey"
+  ]);
+  assert.deepEqual(new Set(review.findings.map((finding) => finding.label)), new Set(["protocol_credential"]));
+  assert.equal(JSON.stringify(review).includes("placeholder-web-dev-key"), false);
+  assert.equal(JSON.stringify(review).includes("placeholder-dev-key"), false);
+  assert.equal(JSON.stringify(review).includes("placeholder-provider-credential"), false);
+});
+
 test("partner attribution guardrails summarize fraud and abuse signals from safe aggregates", () => {
   const guardrails = createPartnerAttributionGuardrails();
 
@@ -100,6 +127,22 @@ test("partner attribution guardrails summarize fraud and abuse signals from safe
     "unsafe_campaign_param"
   ]);
   assert.equal(JSON.stringify(summary).includes("https://example.invalid"), false);
+});
+
+test("partner attribution guardrails count ledger chargeback event types as reversal signals", () => {
+  const guardrails = createPartnerAttributionGuardrails();
+
+  const summary = guardrails.summarizeFraudSignals({
+    partnerRef: "partner_alpha",
+    campaignRef: "campaign_launch",
+    reversalFacts: [
+      { eventType: "chargeback" }
+    ]
+  });
+
+  assert.equal(summary.manualReviewRequired, true);
+  assert.equal(summary.riskTier, "high");
+  assert.deepEqual(summary.signals.map((signal) => signal.code), ["repeated_reversal"]);
 });
 
 test("partner attribution guardrails reconcile provider evidence to backend facts before payable review", () => {
@@ -156,6 +199,54 @@ test("partner attribution guardrails reconcile provider evidence to backend fact
     "backend_payment_success",
     "provider_attribution_evidence"
   ]);
+  assert.deepEqual(review.blockers, []);
+});
+
+test("partner attribution guardrails do not require optional touch refs on backend facts", () => {
+  const guardrails = createPartnerAttributionGuardrails();
+
+  const review = guardrails.reconcileSettlementEvidence({
+    candidate: {
+      candidateRef: "candidate_alpha",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      orderRef: "order_alpha",
+      paymentRef: "payment_alpha",
+      entitlementRef: "entitlement_alpha",
+      touchRef: "touch_alpha",
+      status: "frozen"
+    },
+    providerEvidence: [{
+      provider: "appsflyer",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      touchRef: "touch_alpha",
+      eventName: "purchase_confirmed"
+    }],
+    backendFacts: [
+      {
+        eventType: "payment_success",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        status: "recorded"
+      },
+      {
+        eventType: "entitlement_delivered",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        entitlementRef: "entitlement_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        status: "recorded"
+      }
+    ]
+  });
+
+  assert.equal(review.status, "payable_review_allowed");
+  assert.equal(review.payableReviewAllowed, true);
   assert.deepEqual(review.blockers, []);
 });
 
@@ -216,6 +307,64 @@ test("partner attribution guardrails scope reversal blockers to the candidate fa
   assert.deepEqual(review.blockers, []);
 });
 
+test("partner attribution guardrails block same-order reversals even when attribution refs are stale", () => {
+  const guardrails = createPartnerAttributionGuardrails();
+
+  const review = guardrails.reconcileSettlementEvidence({
+    candidate: {
+      candidateRef: "candidate_alpha",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      orderRef: "order_alpha",
+      paymentRef: "payment_alpha",
+      entitlementRef: "entitlement_alpha",
+      touchRef: "touch_alpha",
+      status: "frozen"
+    },
+    providerEvidence: [{
+      provider: "appsflyer",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      touchRef: "touch_alpha",
+      eventName: "purchase_confirmed"
+    }],
+    backendFacts: [
+      {
+        eventType: "payment_success",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        status: "recorded"
+      },
+      {
+        eventType: "entitlement_delivered",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        entitlementRef: "entitlement_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        status: "recorded"
+      },
+      {
+        eventType: "refund",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        partnerRef: "partner_stale",
+        campaignRef: "campaign_stale",
+        touchRef: "touch_stale",
+        status: "recorded"
+      }
+    ]
+  });
+
+  assert.equal(review.status, "blocked");
+  assert.equal(review.payableReviewAllowed, false);
+  assert.deepEqual(review.blockers.map((blocker) => blocker.code), ["backend_reversal_fact"]);
+});
+
 test("partner attribution guardrails block payable review when backend facts are incomplete or provider evidence mismatches", () => {
   const guardrails = createPartnerAttributionGuardrails();
 
@@ -260,4 +409,117 @@ test("partner attribution guardrails block payable review when backend facts are
     "provider_partner_mismatch"
   ]);
   assert.equal(JSON.stringify(review).includes("partner_other"), false);
+});
+
+test("partner attribution guardrails require anchored provider evidence before payable review", () => {
+  const guardrails = createPartnerAttributionGuardrails();
+
+  const review = guardrails.reconcileSettlementEvidence({
+    candidate: {
+      candidateRef: "candidate_alpha",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      orderRef: "order_alpha",
+      paymentRef: "payment_alpha",
+      entitlementRef: "entitlement_alpha",
+      touchRef: "touch_alpha",
+      status: "frozen"
+    },
+    providerEvidence: [
+      {
+        provider: "appsflyer",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        eventName: "purchase_confirmed",
+        status: "recorded"
+      }
+    ],
+    backendFacts: [
+      {
+        eventType: "payment_success",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        status: "recorded"
+      },
+      {
+        eventType: "entitlement_delivered",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        entitlementRef: "entitlement_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        status: "recorded"
+      }
+    ]
+  });
+
+  assert.equal(review.status, "manual_review_required");
+  assert.equal(review.payableReviewAllowed, false);
+  assert.deepEqual(review.matchedEvidence, [
+    "backend_entitlement_delivered",
+    "backend_payment_success"
+  ]);
+  assert.deepEqual(review.blockers.map((blocker) => blocker.code), ["insufficient_provider_attribution_evidence"]);
+});
+
+test("partner attribution guardrails block duplicate payment facts for one order", () => {
+  const guardrails = createPartnerAttributionGuardrails();
+
+  const review = guardrails.reconcileSettlementEvidence({
+    candidate: {
+      candidateRef: "candidate_alpha",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      orderRef: "order_alpha",
+      paymentRef: "payment_alpha",
+      entitlementRef: "entitlement_alpha",
+      touchRef: "touch_alpha",
+      status: "frozen"
+    },
+    providerEvidence: [{
+      provider: "appsflyer",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      touchRef: "touch_alpha",
+      eventName: "purchase_confirmed"
+    }],
+    backendFacts: [
+      {
+        eventType: "payment_success",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        status: "recorded"
+      },
+      {
+        eventType: "payment_success",
+        orderRef: "order_alpha",
+        paymentRef: "payment_beta",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        status: "recorded"
+      },
+      {
+        eventType: "entitlement_delivered",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        entitlementRef: "entitlement_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        status: "recorded"
+      }
+    ]
+  });
+
+  assert.equal(review.status, "blocked");
+  assert.equal(review.payableReviewAllowed, false);
+  assert.deepEqual(review.blockers.map((blocker) => blocker.code), ["duplicate_backend_payment"]);
 });
