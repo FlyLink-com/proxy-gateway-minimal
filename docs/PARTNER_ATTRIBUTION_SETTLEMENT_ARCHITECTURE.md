@@ -630,6 +630,24 @@ campaigns already registered in the platform attribution store. Settlement
 remains manual review only until a separate A-tier activation record approves
 live provider dispatch and payable settlement handling.
 
+Current local closed-loop fixture:
+
+```text
+createPartnerAttributionPilotFixture().runClosedLoopProof(...)
+```
+
+It uses one in-memory SQLite database to seed a safe partner, campaign, and
+settlement policy; generate a dry-run AppsFlyer pilot link; capture Portal
+attribution; bind registration, checkout, payment success, and entitlement
+delivery; create a settlement candidate; and return a protected Admin report
+summary. It returns only safe refs, counts, reconciliation status, stripped
+parameter names, and guardrail summaries.
+
+It does not install AppsFlyer credentials, call provider APIs, enable Web SDK
+or S2S dispatch, create OneLink assets, mutate production data, approve a
+payout, or return customer-private, subscription, credential, runtime, or raw
+provider payload values.
+
 ## Portal Capture Boundary
 
 Portal may capture attribution parameters on approved public/customer routes:
