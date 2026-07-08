@@ -17,9 +17,15 @@ were replaced by focused PRs from current `master`.
 - PR #396 archived the traffic usage / SGP execution records.
 - PR #397 merged the portal registration backend services, routes, runtime
   wiring, and tests.
+- PR #399 merged the Admin safe-read projection/page-model contracts and
+  pagination standard baseline.
+- PR #400 merged the Admin table query-state contract for paginated and
+  route-split safe-read projections.
+- PR #401 merged the Admin owner page model DTOs for Operations Overview,
+  Accounts & Resources, and Usage & Channels.
 - PR #381 was closed as a superseded traffic-usage carrier after #395 and #396.
 - PR #364 was closed as a superseded Admin/Portal carrier after #394 and #397.
-- Open PR count was rechecked as `0` during this repo-only closeout pass.
+- Open PR count was rechecked as `0` after PR #401.
 
 ## Merge Vehicle Rule
 
@@ -39,6 +45,11 @@ Each follow-up PR must state:
 
 1. **Admin UI baseline / safe-read shell**
    - Risk: B
+   - Completed so far: PR #399 safe-read model/projection contracts, PR #400
+     table query-state contract, and PR #401 owner page model DTOs.
+   - Remaining: locale, navigation, visual QA, stable rendered shell pieces,
+     and any page wiring that can be validated without pulling unrelated auth,
+     payment, or runtime changes.
    - Scope: Admin safe-read DTOs, locale, navigation, visual QA, and stable
      shell pieces only.
    - Exclude: payment, Niuniu, protected Admin auth, runtime changes, and docs
