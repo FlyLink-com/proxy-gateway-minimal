@@ -1,0 +1,80 @@
+# 2026-07-08 PR Closeout Queue
+
+> Status: Active repo-only queue
+> Risk: C
+> Production impact: None
+> Execution authority: This record does not authorize production, runtime,
+> DNS, Nginx, firewall, schema, credential, token, subscription material,
+> payment-provider, AppsFlyer live, or customer-data actions.
+
+This record captures the July 8 source/PR closeout after the dirty carrier PRs
+were replaced by focused PRs from current `master`.
+
+## Current GitHub State
+
+- PR #394 merged the portal registration frontend/source alignment.
+- PR #395 merged the traffic usage runtime/source collectors and tests.
+- PR #396 archived the traffic usage / SGP execution records.
+- PR #397 merged the portal registration backend services, routes, runtime
+  wiring, and tests.
+- PR #381 was closed as a superseded traffic-usage carrier after #395 and #396.
+- PR #364 was closed as a superseded Admin/Portal carrier after #394 and #397.
+- Open PR count was rechecked as `0` during this repo-only closeout pass.
+
+## Merge Vehicle Rule
+
+Do not reopen or merge closed carrier branches. Any remaining useful work must
+be re-cut from latest `origin/master` as a focused PR with current validation.
+
+Each follow-up PR must state:
+
+- `Risk`
+- `Production/AWS impact`
+- `Validation`
+- `Not included`
+- Whether it is source/test, docs-only, inventory-only, or a Risk A approval
+  packet
+
+## Next Split Queue
+
+1. **Admin UI baseline / safe-read shell**
+   - Risk: B
+   - Scope: Admin safe-read DTOs, locale, navigation, visual QA, and stable
+     shell pieces only.
+   - Exclude: payment, Niuniu, protected Admin auth, runtime changes, and docs
+     archive deletion.
+   - Validation: `npm run admin:test`, `npm run admin:build`, `npm test`,
+     `git diff --check origin/master...HEAD`.
+
+2. **User Portal experience upgrades**
+   - Risk: B
+   - Scope: registration/user-panel UX improvements that build on #394 and
+     #397.
+   - Exclude: payment-provider activation, production static deploy, DNS,
+     Nginx, credentials, tokens, and subscription material.
+   - Validation: Admin UI tests/build plus `npm test`.
+
+3. **Niuniu/payment source adapter**
+   - Risk: B for repo-only adapter/tests; A for any live provider activation.
+   - Scope: provider-neutral or Niuniu adapter source, fail-closed checkout
+     boundaries, synthetic tests, and no live keys.
+   - Exclude: live checkout activation, production webhook, provider secrets,
+     payment notification endpoint activation, and production route exposure.
+
+4. **Admin protected auth**
+   - Risk: B for local source/tests; A for any public/prod auth boundary change.
+   - Scope: protected Admin auth source and tests from current `master`.
+   - Exclude: public Admin exposure, Nginx changes, runtime env mutation,
+     credential output, and production activation.
+
+5. **Docs/archive reconciliation**
+   - Risk: C
+   - Scope: index stale production records and archive references without
+     deleting current execution evidence or moving source code.
+   - Exclude: bulk deletion of `docs/production-replacement-records`, runtime
+     mutation, or claims that archived records describe current live state.
+
+## Validation For This Record
+
+- `npm run project-state:check`
+- `git diff --check origin/master...HEAD`
