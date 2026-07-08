@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import { AdminLocaleProvider, useAdminLocale } from "../../app/admin-locale";
 import { ADMIN_UI_CONTRACT } from "../../app/admin-ui-contract";
 import { type AdminPage } from "../../app/navigation";
 import { AppSidebar } from "./app-sidebar";
@@ -20,6 +21,29 @@ export function AdminLayout({
   children
 }: AdminLayoutProps) {
   return (
+    <AdminLocaleProvider>
+      <AdminLayoutShell
+        activePage={activePage}
+        search={search}
+        onSearchChange={onSearchChange}
+        onNavigate={onNavigate}
+      >
+        {children}
+      </AdminLayoutShell>
+    </AdminLocaleProvider>
+  );
+}
+
+function AdminLayoutShell({
+  activePage,
+  search,
+  onSearchChange,
+  onNavigate,
+  children
+}: AdminLayoutProps) {
+  const { copy, locale, setLocale } = useAdminLocale();
+
+  return (
     <div
       className="admin-shell"
       data-density={ADMIN_UI_CONTRACT.appShell.density}
@@ -28,11 +52,15 @@ export function AdminLayout({
     >
       <AppSidebar
         activePage={activePage}
+        shellCopy={copy.sidebar}
         onNavigate={onNavigate}
       />
       <div className="admin-main">
         <TopBar
           activePage={activePage}
+          locale={locale}
+          shellCopy={copy.topBar}
+          onLocaleChange={setLocale}
           search={search}
           onSearchChange={onSearchChange}
         />

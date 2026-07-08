@@ -1041,6 +1041,37 @@
   line-height: 1.4;
 }
 
+.operator-language-row {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--admin-border);
+}
+
+.operator-language-options {
+  display: flex;
+  gap: 6px;
+}
+
+.operator-language-button {
+  min-height: 30px;
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius-control);
+  background: var(--admin-surface-muted);
+  color: var(--admin-text-soft);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 0 10px;
+}
+
+.operator-language-button:hover,
+.operator-language-button-active {
+  border-color: var(--admin-info-border);
+  background: rgba(239, 246, 255, 0.82);
+  color: var(--admin-accent-strong);
+}
+
 .operator-popover {
   min-width: 250px;
 }
