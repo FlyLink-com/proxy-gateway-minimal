@@ -1,25 +1,32 @@
 import { ChevronDown, Search, ShieldCheck } from "lucide-react";
 import { getWorkspacePageApp } from "../../app/admin-app-manifest";
+import { ADMIN_SHELL_COPY, type AdminLocale, type AdminShellCopy } from "../../app/admin-locale";
 import { pageContexts, pageTitles, type AdminPage } from "../../app/navigation";
 import { cn } from "../../lib/utils";
 
 type TopBarProps = {
   activePage: AdminPage;
+  locale?: AdminLocale;
+  shellCopy?: AdminShellCopy["topBar"];
+  onLocaleChange?: (locale: AdminLocale) => void;
   search: string;
   onSearchChange: (value: string) => void;
 };
 
-const PAGE_STATUS_LABEL: Record<AdminPage, string> = {
-  dashboard: "Summary and routing",
-  portalRequests: "Decision owner",
-  usageMonitor: "Evidence owner"
-};
-
-export function TopBar({ activePage, search, onSearchChange }: TopBarProps) {
+export function TopBar({
+  activePage,
+  locale = "en",
+  shellCopy = ADMIN_SHELL_COPY.en.topBar,
+  onLocaleChange,
+  search,
+  onSearchChange
+}: TopBarProps) {
   const pageContext = pageContexts[activePage];
   const pageApp = getWorkspacePageApp(activePage);
   const PageIcon = pageApp?.icon;
   const searchActive = search.trim().length > 0;
+  const pageTitle = shellCopy.pageTitles[activePage] ?? pageTitles[activePage];
+  const pageEyebrow = shellCopy.contexts[activePage] ?? pageContext.eyebrow;
 
   return (
     <header className="top-bar" data-figma-component="TopBar" data-ui-surface="top-bar">
@@ -30,46 +37,65 @@ export function TopBar({ activePage, search, onSearchChange }: TopBarProps) {
           </span>
         ) : null}
         <div>
-          <p className="top-bar-context">{pageContext.eyebrow}</p>
-          <strong className="top-bar-page-title">{pageTitles[activePage]}</strong>
+          <p className="top-bar-context">{pageEyebrow}</p>
+          <strong className="top-bar-page-title">{pageTitle}</strong>
         </div>
       </div>
       <form
         className={cn("top-bar-search", searchActive ? "top-bar-search-active" : "")}
-        aria-label="Search Admin Console"
+        aria-label={shellCopy.searchAriaLabel}
         data-search-state={searchActive ? "active" : "idle"}
         data-search-scope="system"
         role="search"
         onSubmit={(event) => event.preventDefault()}
       >
         <Search aria-hidden="true" />
-        <label className="sr-only" htmlFor="top-bar-system-search">Search accounts, orders, channels, cases</label>
+        <label className="sr-only" htmlFor="top-bar-system-search">{shellCopy.searchLabel}</label>
         <input
           id="top-bar-system-search"
-          aria-label="Search accounts, orders, channels, cases"
+          aria-label={shellCopy.searchLabel}
           onChange={(event) => onSearchChange(event.target.value)}
-          placeholder="Search accounts, orders, channels, cases"
+          placeholder={shellCopy.searchPlaceholders[activePage]}
           value={search}
         />
       </form>
-      <div className="top-bar-actions" role="group" aria-label="Operator account controls">
-        <span className="dashboard-status-badge dashboard-status-info">{PAGE_STATUS_LABEL[activePage]}</span>
-        <span className="dashboard-status-badge dashboard-status-warning">Risk A gated</span>
+      <div className="top-bar-actions" role="group" aria-label={shellCopy.accountControlsLabel}>
+        <span className="dashboard-status-badge dashboard-status-info">{shellCopy.pageStatus[activePage]}</span>
+        <span className="dashboard-status-badge dashboard-status-warning">{shellCopy.riskGateLabel}</span>
         <details className="operator-account-menu">
-          <summary className="operator-account-summary" aria-label="Operator account">
+          <summary className="operator-account-summary" aria-label={shellCopy.accountAriaLabel}>
             <span className="operator-account-avatar" aria-hidden="true">
               <ShieldCheck />
             </span>
             <span className="operator-account-copy">
-              <strong>operator</strong>
-              <small>Production read-only</small>
+              <strong>{shellCopy.accountName}</strong>
+              <small>{shellCopy.accountRole}</small>
             </span>
             <ChevronDown aria-hidden="true" />
           </summary>
           <div className="top-menu-popover operator-account-popover">
-            <strong>operator</strong>
-            <span>Production supervision only.</span>
-            <span>Runtime changes require a Risk A gate.</span>
+            <strong>{shellCopy.accountName}</strong>
+            <span>{shellCopy.accountPopoverDescription}</span>
+            <span>{shellCopy.accountPopoverGate}</span>
+            {onLocaleChange ? (
+              <div className="operator-language-row" aria-label={shellCopy.languageLabel}>
+                <span>{shellCopy.languageLabel}</span>
+                <div className="operator-language-options">
+                  {(["zh", "en"] satisfies AdminLocale[]).map((option) => (
+                    <button
+                      aria-label={shellCopy.languageOptions[option].ariaLabel}
+                      aria-pressed={locale === option}
+                      className={cn("operator-language-button", locale === option && "operator-language-button-active")}
+                      key={option}
+                      onClick={() => onLocaleChange(option)}
+                      type="button"
+                    >
+                      {shellCopy.languageOptions[option].label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </details>
       </div>

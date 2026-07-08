@@ -4,6 +4,7 @@ import {
   getCapabilityScopedAdminAppMap,
   type AdminCapabilityContext
 } from "../../app/admin-app-manifest";
+import { ADMIN_SHELL_COPY, type AdminShellCopy } from "../../app/admin-locale";
 import { type AdminPage } from "../../app/navigation";
 import { cn } from "../../lib/utils";
 import { PrivilegedGate, WorkspaceSidebar } from "../primitives";
@@ -12,12 +13,14 @@ type AppSidebarProps = {
   activePage: AdminPage;
   onNavigate: (page: AdminPage) => void;
   capabilityContext?: AdminCapabilityContext;
+  shellCopy?: AdminShellCopy["sidebar"];
 };
 
 export function AppSidebar({
   activePage,
   onNavigate,
-  capabilityContext = DEFAULT_ADMIN_CAPABILITY_CONTEXT
+  capabilityContext = DEFAULT_ADMIN_CAPABILITY_CONTEXT,
+  shellCopy = ADMIN_SHELL_COPY.en.sidebar
 }: AppSidebarProps) {
   const appMap = getCapabilityScopedAdminAppMap(capabilityContext);
 
@@ -28,7 +31,7 @@ export function AppSidebar({
       active: page === activePage,
       icon: <Icon />,
       id: app.id,
-      label: app.label,
+      label: page ? shellCopy.routes[page] : app.label,
       onClick: () => {
         if (page) {
           onNavigate(page);
@@ -42,7 +45,7 @@ export function AppSidebar({
     const PlannedIcon = app.icon ?? Lock;
     return (
       <button
-        aria-label={`${app.label} planned gate`}
+        aria-label={`${app.label} ${shellCopy.plannedGateAriaSuffix}`}
         className="nav-item nav-item-planned nav-item-sidebar-planned"
         disabled
         key={app.id}
@@ -53,25 +56,26 @@ export function AppSidebar({
           <PlannedIcon />
         </span>
         <span className="nav-item-copy">{app.label}</span>
-        <span className="nav-item-gate-pill">Gate</span>
+        <span className="nav-item-gate-pill">{shellCopy.plannedGateLabel}</span>
       </button>
     );
   });
 
   return (
     <WorkspaceSidebar
+      ariaLabel={shellCopy.workspaceAriaLabel}
       brand={{
         mark: "GC",
         name: "GlobalCircle AI",
-        subtitle: "Proxy Gateway Admin"
+        subtitle: shellCopy.brandSubtitle
       }}
       pinnedApps={pinnedApps}
       plannedRoutes={plannedSidebarRoutes}
       safetyGate={(
         <PrivilegedGate
-          description="No token, URL, credential, runtime config, or raw customer data in Admin UI fixtures."
-          detail="Production actions require an approved runbook."
-          title="Risk A gated"
+          description={shellCopy.safetyDescription}
+          detail={shellCopy.safetyDetail}
+          title={shellCopy.safetyTitle}
         />
       )}
     />
