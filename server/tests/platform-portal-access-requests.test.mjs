@@ -1254,6 +1254,37 @@ test("refresh replaces material for an already-delivered order and keeps expiry"
   assert.equal(JSON.stringify(refreshed).includes("artifact_runtime_1"), false);
 });
 
+test("reveal returns the existing delivered subscription URL without rotating material", () => {
+  const runtimeCore = lifecycleRuntimeCore();
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_reveal_1",
+    runtimeCore
+  });
+  requests.submitRequest(validTrialInput());
+  requests.markDelivered("pareq_reveal_1", {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_safe_ref",
+    accessGrantRef: "grant_safe_ref",
+    tenantId: "tenant_runtime_1",
+    artifactId: "artifact_runtime_1",
+    subscriptionUrl: "https://sub.example.test/import/original-visible-once",
+    expiresAt: "2026-06-07T00:00:00.000Z"
+  });
+
+  const revealed = requests.revealSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_reveal_1"
+  });
+
+  assert.equal(revealed.status, "delivered");
+  assert.equal(revealed.subscriptionUrl, "https://sub.example.test/import/original-visible-once");
+  assert.equal(revealed.expiresAt, "2026-06-07T00:00:00.000Z");
+  assert.deepEqual(runtimeCore.calls, []);
+  assert.equal(JSON.stringify(revealed).includes("tenant_runtime_1"), false);
+  assert.equal(JSON.stringify(revealed).includes("artifact_runtime_1"), false);
+});
+
 test("disable revokes the active artifact and disables the delivered tenant without deleting the order", () => {
   const runtimeCore = lifecycleRuntimeCore();
   const requests = createPortalAccessRequestService({

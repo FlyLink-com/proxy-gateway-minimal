@@ -1066,6 +1066,10 @@ export function createPortalAccessRequestService(options = {}) {
       return summarizeVisibleOnce(saveRecord(request));
     },
 
+    revealSubscription(input = {}) {
+      return summarizeVisibleOnce(getOwnedDeliveredRecord(input));
+    },
+
     disableSubscription(input = {}) {
       const now = isoNow(nowFn);
       const request = getOwnedDeliveredRecord(input);

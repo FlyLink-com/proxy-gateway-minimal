@@ -459,6 +459,22 @@ test("enabled portal route refreshes and disables a delivered order lifecycle", 
     portalAccessRequests
   })));
   try {
+    const revealed = await fetch(`${baseUrl}/api/portal/access-requests/reveal`, {
+      method: "POST",
+      headers: portalSessionHeaders(),
+      body: JSON.stringify({
+        portalUserRef: "user_safe_ref",
+        requestRef: "pareq_route_lifecycle"
+      })
+    });
+    assert.equal(revealed.status, 200);
+    const revealedBody = await revealed.json();
+    assert.equal(revealedBody.request.status, "delivered");
+    assert.equal(revealedBody.request.subscriptionUrl, "https://sub.example.test/import/original-visible-once");
+    assert.equal(JSON.stringify(revealedBody).includes("tenant_route_1"), false);
+    assert.equal(JSON.stringify(revealedBody).includes("artifact_route_1"), false);
+    assert.deepEqual(calls, []);
+
     const refreshed = await fetch(`${baseUrl}/api/portal/access-requests/refresh`, {
       method: "POST",
       headers: portalSessionHeaders(),

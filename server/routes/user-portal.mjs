@@ -321,6 +321,21 @@ export function userPortalRoutes(state, options = {}) {
     }
   });
 
+  router.post("/api/portal/access-requests/reveal", (req, res) => {
+    try {
+      if (!accessRequests || typeof accessRequests.revealSubscription !== "function") {
+        const error = new Error("portal order reveal service is not configured");
+        error.code = "validation_error";
+        throw error;
+      }
+      res.json({
+        request: accessRequests.revealSubscription(sessionScopedBody(req))
+      });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
   router.post("/api/portal/access-requests/refresh", (req, res) => {
     try {
       if (!accessRequests || typeof accessRequests.refreshSubscription !== "function") {
