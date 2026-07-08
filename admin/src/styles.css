@@ -5,4 +5,5 @@
 @import "./styles/shared-components.css";
 @import "./styles/admin-os-workspace.css";
 @import "./styles/legacy-entrypoints.css";
+@import "./styles/user-portal-registration.css";
 @import "./styles/responsive.css";

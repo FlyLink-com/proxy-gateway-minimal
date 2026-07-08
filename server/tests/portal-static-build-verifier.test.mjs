@@ -28,7 +28,7 @@ test("portal static build verifier accepts a portal-only shell", async () => {
     await writeFile(path.join(tempDir, "index.html"), "<div id=\"root\"></div><script src=\"/assets/portal.js\"></script>");
     await writeFile(
       path.join(tempDir, "portal.js"),
-      "fetch('/api/portal/human-challenges'); fetch('/api/portal/password/session'); console.log('账号登录 订阅管理 客服支持 个人中心');"
+      "fetch('/api/portal/human-challenges'); fetch('/api/portal/password/session'); fetch('/api/portal/registration'); fetch('/api/portal/registration/email-verification'); console.log('/portal/register 账号登录 订阅管理 客服支持 个人中心');"
     );
     await writeFile(path.join(tempDir, "portal.css"), ".portal-auth-shell{}");
 
@@ -38,6 +38,7 @@ test("portal static build verifier accepts a portal-only shell", async () => {
     assert.equal(summary.safety.noAdminShellMarkers, true);
     assert.equal(summary.safety.noSecretMaterial, true);
     assert.equal(summary.safety.hasPortalHumanChallengeContract, true);
+    assert.equal(summary.safety.hasPortalRegistrationContract, true);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -47,7 +48,7 @@ test("portal static build verifier rejects bundles without backend human challen
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "portal-build-"));
   try {
     await writeFile(path.join(tempDir, "index.html"), "<div id=\"root\"></div><script src=\"/assets/portal.js\"></script>");
-    await writeFile(path.join(tempDir, "portal.js"), "fetch('/api/portal/password/session'); console.log('账号登录');");
+    await writeFile(path.join(tempDir, "portal.js"), "fetch('/api/portal/password/session'); fetch('/api/portal/registration'); fetch('/api/portal/registration/email-verification'); console.log('/portal/register 账号登录');");
     await writeFile(path.join(tempDir, "portal.css"), ".portal-auth-shell{}");
 
     await assert.rejects(

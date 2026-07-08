@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   ADMIN_FIXTURE_PREVIEW_DATA,
   isAdminFixturePreviewEnabled
@@ -12,7 +12,6 @@ import { ConnectionPanel } from "./features/subscriptions/connection-panel";
 import { CompanySitePage } from "./features/company-site/company-site-page";
 import { UserPortalPage } from "./features/user-portal/user-portal-page";
 import {
-  createHttpUserPortalClient,
   createLocalUserPortalClient
 } from "./features/user-portal/user-portal-client";
 import { AdminSetupPage } from "./pages/admin-setup-page";
@@ -21,9 +20,21 @@ import { DashboardPage } from "./pages/dashboard-page";
 import { PortalRequestsPage } from "./pages/portal-requests-page";
 import { SubscriptionUsageMonitorPage } from "./pages/subscription-usage-monitor-page";
 
-type AppRoute = "admin" | "portal" | "portalPreview" | "site";
+type AppRoute = "admin" | "portal" | "portalPreview" | "portalRegister" | "site";
 
-function routeFromHash(): AppRoute {
+const UserPortalRoute = lazy(async () => {
+  const module = await import("./features/user-portal/user-portal-route");
+  return { default: module.UserPortalRoute };
+});
+
+function routeFromLocation(): AppRoute {
+  const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
+  if (normalizedPath === "/portal/register") {
+    return "portalRegister";
+  }
+  if (normalizedPath === "/portal") {
+    return "portal";
+  }
   if (window.location.hash === "#/site") {
     return "site";
   }
@@ -34,24 +45,27 @@ function routeFromHash(): AppRoute {
 }
 
 export function App() {
-  const [route, setRoute] = useState<AppRoute>(() => routeFromHash());
+  const [route, setRoute] = useState<AppRoute>(() => routeFromLocation());
   const [activePage, setActivePage] = useState<AdminPage>("dashboard");
   const [search, setSearch] = useState("");
   const [riskNotificationCount, setRiskNotificationCount] = useState(0);
   const [adminSession, setAdminSession] = useState(() => loadAdminSession());
   const fixturePreviewEnabled = isAdminFixturePreviewEnabled();
   const adminApiConfigured = fixturePreviewEnabled || adminSession.consoleToken.trim().length > 0;
-  const httpUserPortalClient = useMemo(() => createHttpUserPortalClient(), []);
   const localUserPortalClient = useMemo(() => createLocalUserPortalClient({
     demoSubscriptionUrl: "https://sub.example.test/import/local-preview-visible-once"
   }), []);
 
   useEffect(() => {
     function syncRoute() {
-      setRoute(routeFromHash());
+      setRoute(routeFromLocation());
     }
     window.addEventListener("hashchange", syncRoute);
-    return () => window.removeEventListener("hashchange", syncRoute);
+    window.addEventListener("popstate", syncRoute);
+    return () => {
+      window.removeEventListener("hashchange", syncRoute);
+      window.removeEventListener("popstate", syncRoute);
+    };
   }, []);
 
   function openPortal() {
@@ -78,10 +92,26 @@ export function App() {
     return <CompanySitePage />;
   }
 
-  if (route === "portal" || route === "portalPreview") {
+  if (route === "portalRegister") {
+    return (
+      <Suspense fallback={<PortalRouteFallback />}>
+        <UserPortalRoute mode="register" />
+      </Suspense>
+    );
+  }
+
+  if (route === "portal") {
+    return (
+      <Suspense fallback={<PortalRouteFallback />}>
+        <UserPortalRoute mode="login" />
+      </Suspense>
+    );
+  }
+
+  if (route === "portalPreview") {
     return (
       <UserPortalPage
-        portalClient={route === "portalPreview" ? localUserPortalClient : httpUserPortalClient}
+        portalClient={localUserPortalClient}
         onBackToAdmin={openAdmin}
       />
     );
@@ -148,5 +178,18 @@ function FixturePreviewBanner() {
       </div>
       <p>Safe synthetic data only. No production Admin API is connected, and mutation workflows remain locked.</p>
     </aside>
+  );
+}
+
+function PortalRouteFallback() {
+  return (
+    <main className="portal-auth-shell">
+      <section className="portal-auth-card" aria-label="User portal loading">
+        <div className="portal-auth-header">
+          <h1>GCC WebOS</h1>
+          <p>Loading user portal...</p>
+        </div>
+      </section>
+    </main>
   );
 }

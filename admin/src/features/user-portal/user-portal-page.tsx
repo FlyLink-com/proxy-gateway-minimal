@@ -22,6 +22,7 @@ import { ModalFrame } from "../../components/modal-frame";
 import { copyText } from "../../lib/clipboard";
 import { errorMessage } from "../../lib/errors";
 import { cn } from "../../lib/utils";
+import { PORTAL_REGISTRATION_SESSION_STORAGE_KEY } from "./user-portal-client";
 import type {
   PortalAuthenticatorEnrollment,
   PortalClientId,
@@ -442,8 +443,10 @@ function downloadPasskeyExport(passkeyExport: PortalPasskeyExport) {
 }
 
 export function UserPortalPage({
+  initialSession,
   portalClient
 }: {
+  initialSession?: PortalSession;
   portalClient: UserPortalClient;
   onBackToAdmin?: () => void;
 }) {
@@ -581,6 +584,31 @@ export function UserPortalPage({
     setHistorySummary(portalState.historySummary ?? subscriptionRequests.flatMap((request) => request.historySummary ?? []));
     setActiveView("subscription");
   }
+
+  useEffect(() => {
+    if (!initialSession || portalSession) return;
+    void hydratePortalSession(initialSession).catch((caughtError) => {
+      setAuthError(errorMessage(caughtError, "本地预览会话载入失败，请重新登录。"));
+    });
+  }, [initialSession, portalSession]);
+
+  useEffect(() => {
+    if (portalSession || typeof window === "undefined") return;
+    const rawSession = window.sessionStorage.getItem(PORTAL_REGISTRATION_SESSION_STORAGE_KEY);
+    if (!rawSession) return;
+    window.sessionStorage.removeItem(PORTAL_REGISTRATION_SESSION_STORAGE_KEY);
+    try {
+      const session = JSON.parse(rawSession) as PortalSession;
+      if (!session || typeof session.userRef !== "string") {
+        throw new Error("invalid registration session");
+      }
+      void hydratePortalSession(session).catch((caughtError) => {
+        setAuthError(errorMessage(caughtError, "注册会话载入失败，请重新登录。"));
+      });
+    } catch {
+      setAuthError("注册会话载入失败，请重新登录。");
+    }
+  }, [portalSession]);
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1066,6 +1094,9 @@ export function UserPortalPage({
             <button className="portal-auth-submit" type="submit" disabled={!canSubmitPasswordLogin}>
               {humanChallengeLoading ? "加载校验中" : "登录"}
             </button>
+            <p className="portal-auth-switch">
+              还没有账号？ <a href="/portal/register/">注册领取 7 天试用</a>
+            </p>
           </form>
         </section>
       </main>

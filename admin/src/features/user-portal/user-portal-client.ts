@@ -6,6 +6,8 @@ import {
   verifyTotpCode
 } from "./totp-preview";
 
+export const PORTAL_REGISTRATION_SESSION_STORAGE_KEY = "gccwebos-portal-registration-session";
+
 export type PortalAuthMode = "email" | "authenticator" | "token" | "password" | "passkey";
 export type PortalPlanId = "trial" | "monthly" | "yearly";
 export type PortalClientId = "clash" | "karing";
@@ -14,7 +16,7 @@ export type PortalSubscriptionLifecycle = "pending" | "active" | "expired" | "di
 export type PortalEmailCodePurpose = "login";
 export type PortalSecondFactorKind = "authenticator" | "passkey";
 export type PortalSupportCategory = "subscription" | "client_import" | "account_security" | "other";
-export type PortalHumanChallengeScope = "portal_login";
+export type PortalHumanChallengeScope = "portal_login" | "portal_registration";
 export type PortalInitialAccount = {
   userRef: string;
   displayName: string;
@@ -113,6 +115,58 @@ export type PortalEmailCodeRequestInput = {
   purpose: PortalEmailCodePurpose;
   email: string;
   humanVerification: PortalHumanVerificationInput;
+};
+
+export type PortalRegistrationInput = {
+  email: string;
+  password: string;
+  emailVerification?: PortalRegistrationEmailVerificationProof;
+  legalAgreement: {
+    termsAccepted: true;
+    privacyAccepted: true;
+    termsVersion: string;
+    privacyVersion: string;
+  };
+};
+
+export type PortalRegistrationEmailVerificationInput = {
+  email: string;
+};
+
+export type PortalRegistrationEmailVerificationProof = {
+  verificationRef: string;
+  code: string;
+};
+
+export type PortalRegistrationEmailVerificationChallenge = {
+  status: "requested" | "simulated";
+  verificationRef: string;
+  expiresInSeconds: number;
+  safety: {
+    noAdminApi: true;
+    noAccountCreated: true;
+    noPublicAuthActivated: true;
+    noRawCodeReturned: true;
+    noRawEmailReturned: true;
+  };
+};
+
+export type PortalRegistrationResult = {
+  status: "registered";
+  userRef: string;
+  session: PortalSession;
+  trial: {
+    durationDays: number;
+    validUntil: string;
+    accessRequestStatus: string;
+  };
+  safety: {
+    noAdminApi: true;
+    noPaymentActivation: true;
+    noPublicAdmin: true;
+    noRawCustomerDataReturned: true;
+    rawPasswordReturned: false;
+  };
 };
 
 export type PortalEmailCodeChallenge = {
@@ -308,6 +362,10 @@ export type PortalPasskeyExport = {
 export type UserPortalClient = {
   issueHumanChallenge(input?: PortalHumanChallengeRequestInput): Promise<PortalHumanVerificationChallenge>;
   requestEmailCode(input: PortalEmailCodeRequestInput): Promise<PortalEmailCodeChallenge>;
+  requestRegistrationEmailVerification(
+    input: PortalRegistrationEmailVerificationInput
+  ): Promise<PortalRegistrationEmailVerificationChallenge>;
+  registerTrialAccount(input: PortalRegistrationInput): Promise<PortalRegistrationResult>;
   authenticate(input: PortalAuthInput): Promise<PortalAuthResult>;
   completeSecondFactor(input: PortalCompleteSecondFactorInput): Promise<PortalSession>;
   fetchCurrentState(input: { userRef: string; sessionRef?: string }): Promise<PortalUserState>;
@@ -509,6 +567,86 @@ function sessionSummary(
       noPublicAuthActivated: true,
       noRawPasswordReturned: true
     }
+  };
+}
+
+function mapRegistrationResult(body: Record<string, unknown>): PortalRegistrationResult {
+  const registration = (body.registration ?? {}) as Record<string, unknown>;
+  const trial = (registration.trial ?? {}) as Record<string, unknown>;
+  const session = (body.session ?? {}) as Record<string, unknown>;
+  const userRef = requiredText(
+    (
+      registration.userRef
+      ?? session.userRef
+      ?? session.displayName
+      ?? session.loginRef
+    ) as string | undefined,
+    "注册结果无效。"
+  );
+  return {
+    status: "registered",
+    userRef,
+    session: sessionSummary(
+      requiredText(
+        (session.userRef ?? session.loginRef ?? userRef) as string | undefined,
+        "注册会话无效。"
+      ),
+      authModeFromBackend(session.authMethod as string | undefined, "password"),
+      String(session.issuedAt ?? new Date().toISOString()),
+      String(session.displayName ?? session.userRef ?? session.loginRef ?? userRef),
+      typeof session.sessionRef === "string" ? session.sessionRef : undefined
+    ),
+    trial: {
+      durationDays: normalizeOrderDurationDays(Number(trial.durationDays ?? 7), 7),
+      validUntil: requiredText(trial.validUntil as string | undefined, "试用有效期无效。"),
+      accessRequestStatus: String(trial.accessRequestStatus ?? "pending_admin_review")
+    },
+    safety: {
+      noAdminApi: true,
+      noPaymentActivation: true,
+      noPublicAdmin: true,
+      noRawCustomerDataReturned: true,
+      rawPasswordReturned: false
+    }
+  };
+}
+
+function mapRegistrationEmailVerification(
+  body: Record<string, unknown>
+): PortalRegistrationEmailVerificationChallenge {
+  const verification = (body.verification ?? {}) as Record<string, unknown>;
+  return {
+    status: String(verification.status ?? "requested") === "simulated" ? "simulated" : "requested",
+    verificationRef: requiredText(verification.verificationRef as string | undefined, "邮箱验证码请求无效。"),
+    expiresInSeconds: Number(verification.expiresInSeconds ?? 600),
+    safety: {
+      noAdminApi: true,
+      noAccountCreated: true,
+      noPublicAuthActivated: true,
+      noRawCodeReturned: true,
+      noRawEmailReturned: true
+    }
+  };
+}
+
+function registrationEmailVerificationProof(
+  input: PortalRegistrationInput["emailVerification"] | undefined
+): PortalRegistrationEmailVerificationProof {
+  return {
+    verificationRef: requiredText(input?.verificationRef, "请先发送邮箱验证码。"),
+    code: requiredText(input?.code, "请输入邮箱验证码。")
+  };
+}
+
+function legalAgreementProof(input: PortalRegistrationInput["legalAgreement"]) {
+  if (input?.termsAccepted !== true || input?.privacyAccepted !== true) {
+    throw portalError("请先同意服务条款和隐私政策。");
+  }
+  return {
+    termsAccepted: true,
+    privacyAccepted: true,
+    termsVersion: requiredText(input.termsVersion, "服务条款版本无效。"),
+    privacyVersion: requiredText(input.privacyVersion, "隐私政策版本无效。")
   };
 }
 
@@ -890,6 +1028,54 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         throw portalError("邮箱验证码用途无效。");
       }
       throw portalError("邮箱验证码登录尚未启用。");
+    },
+
+    async requestRegistrationEmailVerification(input) {
+      const email = requiredEmail(input.email);
+      return {
+        status: "simulated",
+        verificationRef: stableRef("reg_email", email),
+        expiresInSeconds: 600,
+        safety: {
+          noAdminApi: true,
+          noAccountCreated: true,
+          noPublicAuthActivated: true,
+          noRawCodeReturned: true,
+          noRawEmailReturned: true
+        }
+      };
+    },
+
+    async registerTrialAccount(input) {
+      const email = requiredEmail(input.email);
+      const password = requiredText(input.password, "请输入密码。");
+      registrationEmailVerificationProof(input.emailVerification);
+      legalAgreementProof(input.legalAgreement);
+      const issuedAt = now();
+      initialAccounts.set(email, {
+        userRef: email,
+        displayName: email,
+        issuedAt: issuedAt.toISOString(),
+        previewPassword: password,
+        requireSecuritySetup: false
+      });
+      return {
+        status: "registered",
+        userRef: email,
+        session: sessionSummary(email, "password", issuedAt.toISOString(), email, stableRef("portal_session", email)),
+        trial: {
+          durationDays: 7,
+          validUntil: expiresAtFromDays(issuedAt, 7),
+          accessRequestStatus: "pending_admin_review"
+        },
+        safety: {
+          noAdminApi: true,
+          noPaymentActivation: true,
+          noPublicAdmin: true,
+          noRawCustomerDataReturned: true,
+          rawPasswordReturned: false
+        }
+      };
     },
 
     async authenticate(input) {
@@ -1390,6 +1576,31 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
         throw portalError("邮箱验证码用途无效。");
       }
       throw portalError("邮箱验证码登录尚未启用。");
+    },
+
+    async requestRegistrationEmailVerification(input) {
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/registration/email-verification"), {
+        method: "POST",
+        body: JSON.stringify({
+          email: requiredEmail(input.email)
+        })
+      });
+      return mapRegistrationEmailVerification(body);
+    },
+
+    async registerTrialAccount(input) {
+      const emailVerification = registrationEmailVerificationProof(input.emailVerification);
+      const legalAgreement = legalAgreementProof(input.legalAgreement);
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/registration"), {
+        method: "POST",
+        body: JSON.stringify({
+          email: requiredEmail(input.email),
+          password: requiredText(input.password, "请输入密码。"),
+          legalAgreement,
+          emailVerification
+        })
+      });
+      return mapRegistrationResult(body);
     },
 
     async authenticate(input) {
