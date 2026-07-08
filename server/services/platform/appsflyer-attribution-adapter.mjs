@@ -6,6 +6,8 @@ const WEB_S2S_REQUIRED_IDENTIFIERS = ["customerUserId", "afUserId"];
 const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
 const SAFE_ROUTE_PATTERN = /^\/[A-Za-z0-9/_-]{0,127}$/;
 const SAFE_PARAM_NAMES = new Set([
+  "partner_ref",
+  "campaign_ref",
   "pid",
   "c",
   "campaign",
@@ -17,8 +19,28 @@ const SAFE_PARAM_NAMES = new Set([
   "af_sub2",
   "af_sub3",
   "af_sub4",
-  "af_sub5"
+  "af_sub5",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term"
 ]);
+const DEFAULT_PILOT_LANDING_ROUTES = new Set(["/portal/register", "/portal"]);
+const PILOT_LINK_PARAM_ORDER = [
+  "pid",
+  "c",
+  "partner_ref",
+  "campaign_ref",
+  "af_channel",
+  "af_sub1",
+  "af_sub2",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term"
+];
 const UNSAFE_FIELD_PARTS = [
   "email",
   "phone",
@@ -89,6 +111,15 @@ function safeRoute(value) {
   return normalized;
 }
 
+function safeLandingRoute(value, approvedLandingRoutes = DEFAULT_PILOT_LANDING_ROUTES) {
+  const landingRoute = safeRoute(value || "/portal/register");
+  const approved = new Set(Array.from(approvedLandingRoutes, (route) => safeRoute(route)));
+  if (!approved.has(landingRoute)) {
+    throw adapterError("validation_error", "landingRoute is not approved for AppsFlyer pilot attribution");
+  }
+  return landingRoute;
+}
+
 function safeEventName(value) {
   return safeRef(value, "eventName");
 }
@@ -99,6 +130,10 @@ function maybeSafeAccountRef(value) {
 
 function maybeSafeVisitorRef(value) {
   return text(value) ? safeRef(value, "visitorRef") : null;
+}
+
+function optionalSafeRef(value, field) {
+  return text(value) ? safeRef(value, field) : null;
 }
 
 function optionalTimestamp(value) {
@@ -145,6 +180,35 @@ function safeEventValueKeys(eventValue = {}) {
   };
 }
 
+function normalizePilotExtraParams(extraParams = {}) {
+  const kept = {};
+  const stripped = [];
+  for (const [rawKey, rawValue] of Object.entries(asParams(extraParams))) {
+    const key = text(rawKey).toLowerCase();
+    if (!SAFE_PARAM_NAMES.has(key) || isUnsafeField(key) || !isSafeValue(rawValue)) {
+      if (key) stripped.push(key);
+      continue;
+    }
+    kept[key] = text(Array.isArray(rawValue) ? rawValue[0] : rawValue);
+  }
+  stripped.sort();
+  return { kept, stripped };
+}
+
+function orderedQueryString(params = {}) {
+  const orderedKeys = [
+    ...PILOT_LINK_PARAM_ORDER,
+    ...Object.keys(params).filter((key) => !PILOT_LINK_PARAM_ORDER.includes(key)).sort()
+  ];
+  const search = new URLSearchParams();
+  for (const key of orderedKeys) {
+    if (params[key]) {
+      search.set(key, params[key]);
+    }
+  }
+  return search.toString();
+}
+
 export function createAppsFlyerAttributionAdapter({
   env = process.env,
   allowLiveDispatch = false
@@ -173,6 +237,55 @@ export function createAppsFlyerAttributionAdapter({
     };
   }
 
+  function planPilotLink(input = {}) {
+    const landingRoute = safeLandingRoute(input.landingRoute || input.landing_route, input.approvedLandingRoutes);
+    const partnerRef = safeRef(input.partnerRef || input.partner_ref, "partnerRef");
+    const campaignRef = safeRef(input.campaignRef || input.campaign_ref, "campaignRef");
+    const channel = optionalSafeRef(input.channel || input.afChannel || input.af_channel || "partner", "channel");
+    const creativeRef = optionalSafeRef(input.creativeRef || input.creative_ref || input.afSub2 || input.af_sub2, "creativeRef");
+    const medium = optionalSafeRef(input.medium || input.utmMedium || input.utm_medium || "partner", "medium");
+    const term = optionalSafeRef(input.term || input.utmTerm || input.utm_term, "term");
+    const { kept: extraParams, stripped: strippedParams } = normalizePilotExtraParams(
+      input.extraParams || input.extra_params
+    );
+    const queryParams = {
+      ...extraParams,
+      pid: partnerRef,
+      c: campaignRef,
+      partner_ref: partnerRef,
+      campaign_ref: campaignRef,
+      af_channel: channel,
+      af_sub1: partnerRef,
+      utm_source: partnerRef,
+      utm_medium: medium,
+      utm_campaign: campaignRef
+    };
+    if (creativeRef) {
+      queryParams.af_sub2 = creativeRef;
+      queryParams.utm_content = creativeRef;
+    }
+    if (term) {
+      queryParams.utm_term = term;
+    }
+    const queryString = orderedQueryString(queryParams);
+
+    return {
+      provider: PROVIDER,
+      mode,
+      dryRun: true,
+      dispatchBlocked: true,
+      productionGateRequired: true,
+      landingRoute,
+      landingPath: `${landingRoute}?${queryString}`,
+      partnerRef,
+      campaignRef,
+      queryParams,
+      queryParamKeys: Object.keys(queryParams).sort(),
+      strippedParams,
+      redacted: true
+    };
+  }
+
   function normalizeLandingParams({ landingRoute = "/", params = {} } = {}) {
     const normalized = {};
     const strippedParams = [];
@@ -187,8 +300,8 @@ export function createAppsFlyerAttributionAdapter({
 
     return {
       provider: PROVIDER,
-      partnerRef: normalized.pid || normalized.media_source || null,
-      campaignRef: normalized.c || normalized.campaign || null,
+      partnerRef: normalized.partner_ref || normalized.pid || normalized.media_source || normalized.utm_source || null,
+      campaignRef: normalized.campaign_ref || normalized.c || normalized.campaign || normalized.utm_campaign || null,
       landingRoute: safeRoute(landingRoute),
       metadata: normalized,
       strippedParams,
@@ -255,6 +368,7 @@ export function createAppsFlyerAttributionAdapter({
 
   return {
     getConfigSummary,
+    planPilotLink,
     normalizeLandingParams,
     planServerEvent,
     planWebSdkEvent

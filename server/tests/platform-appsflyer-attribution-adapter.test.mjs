@@ -56,6 +56,99 @@ test("AppsFlyer adapter normalizes safe OneLink params and strips unsafe client 
   assert.equal(JSON.stringify(evidence).includes("https://example.invalid"), false);
 });
 
+test("AppsFlyer adapter plans safe dry-run pilot links for controlled partners", () => {
+  const adapter = createAppsFlyerAttributionAdapter({
+    env: {
+      APPSFLYER_ATTRIBUTION_MODE: "dry_run",
+      APPSFLYER_WEB_DEV_KEY: "web_key_should_not_be_returned",
+      APPSFLYER_APP_ID: "website-gccwebos.com"
+    }
+  });
+
+  const plan = adapter.planPilotLink({
+    landingRoute: "/portal/register",
+    partnerRef: "partner_alpha",
+    campaignRef: "campaign_launch",
+    creativeRef: "creative_a",
+    extraParams: {
+      af_sub5: "safe_segment",
+      customer_email: "customer@example.invalid",
+      token: "token_should_not_pass"
+    }
+  });
+
+  assert.equal(plan.provider, "appsflyer");
+  assert.equal(plan.mode, "dry_run");
+  assert.equal(plan.dryRun, true);
+  assert.equal(plan.dispatchBlocked, true);
+  assert.equal(plan.productionGateRequired, true);
+  assert.equal(plan.landingRoute, "/portal/register");
+  assert.equal(plan.partnerRef, "partner_alpha");
+  assert.equal(plan.campaignRef, "campaign_launch");
+  assert.equal(
+    plan.landingPath,
+    "/portal/register?pid=partner_alpha&c=campaign_launch&partner_ref=partner_alpha&campaign_ref=campaign_launch&af_channel=partner&af_sub1=partner_alpha&af_sub2=creative_a&utm_source=partner_alpha&utm_medium=partner&utm_campaign=campaign_launch&utm_content=creative_a&af_sub5=safe_segment"
+  );
+  assert.deepEqual(plan.queryParams, {
+    pid: "partner_alpha",
+    c: "campaign_launch",
+    partner_ref: "partner_alpha",
+    campaign_ref: "campaign_launch",
+    af_channel: "partner",
+    af_sub1: "partner_alpha",
+    af_sub2: "creative_a",
+    af_sub5: "safe_segment",
+    utm_source: "partner_alpha",
+    utm_medium: "partner",
+    utm_campaign: "campaign_launch",
+    utm_content: "creative_a"
+  });
+  assert.deepEqual(plan.strippedParams, ["customer_email", "token"]);
+  assert.equal(JSON.stringify(plan).includes("customer@example.invalid"), false);
+  assert.equal(JSON.stringify(plan).includes("token_should_not_pass"), false);
+  assert.equal(JSON.stringify(plan).includes("web_key_should_not_be_returned"), false);
+});
+
+test("AppsFlyer adapter pilot link planning rejects unapproved landing routes", () => {
+  const adapter = createAppsFlyerAttributionAdapter();
+
+  assert.throws(
+    () => adapter.planPilotLink({
+      landingRoute: "/admin",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch"
+    }),
+    /landingRoute is not approved/
+  );
+});
+
+test("AppsFlyer adapter normalizes platform and UTM pilot link parameters", () => {
+  const adapter = createAppsFlyerAttributionAdapter();
+
+  const evidence = adapter.normalizeLandingParams({
+    landingRoute: "/portal",
+    params: {
+      partner_ref: "partner_alpha",
+      campaign_ref: "campaign_launch",
+      utm_source: "partner_alpha",
+      utm_medium: "partner",
+      utm_campaign: "campaign_launch",
+      utm_content: "creative_a"
+    }
+  });
+
+  assert.equal(evidence.partnerRef, "partner_alpha");
+  assert.equal(evidence.campaignRef, "campaign_launch");
+  assert.deepEqual(evidence.metadata, {
+    partner_ref: "partner_alpha",
+    campaign_ref: "campaign_launch",
+    utm_source: "partner_alpha",
+    utm_medium: "partner",
+    utm_campaign: "campaign_launch",
+    utm_content: "creative_a"
+  });
+});
+
 test("AppsFlyer adapter builds dry-run S2S event plans without raw private payloads", () => {
   const adapter = createAppsFlyerAttributionAdapter({
     env: {
