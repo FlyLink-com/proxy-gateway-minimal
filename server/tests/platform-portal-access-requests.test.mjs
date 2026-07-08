@@ -173,6 +173,9 @@ function seedUsageOrder(store, overrides = {}) {
   const artifactRef = overrides.artifactRef || "artifact_usage_summary_1";
   const edgeCredentialRef = overrides.edgeCredentialRef || `edgecred_${requestId}`;
   const edgeCredentials = Array.isArray(overrides.edgeCredentials) ? overrides.edgeCredentials : undefined;
+  const plan = overrides.plan || "monthly";
+  const durationDays = overrides.durationDays ?? (plan === "yearly" ? 365 : 30);
+  const validUntil = overrides.validUntil || "2026-07-06T00:00:00.000Z";
 
   store.createAccount({
     id: accountId,
@@ -184,10 +187,10 @@ function seedUsageOrder(store, overrides = {}) {
   store.createEntitlement({
     id: entitlementId,
     accountId,
-    plan: "monthly",
+    plan,
     status: "active",
     validFrom: now,
-    validUntil: "2026-07-06T00:00:00.000Z",
+    validUntil,
     trafficLimitBytes: overrides.trafficLimitBytes ?? 1000,
     createdAt: now,
     updatedAt: now
@@ -217,9 +220,9 @@ function seedUsageOrder(store, overrides = {}) {
   store.upsertPortalAccessRequest({
     id: requestId,
     portalUserRef: "portal_user_usage_summary_1",
-    plan: "monthly",
+    plan,
     clientTarget: "clash",
-    durationDays: 30,
+    durationDays,
     quantity: 1,
     status: "delivered",
     nextAction: "user_can_use_access",
@@ -229,8 +232,8 @@ function seedUsageOrder(store, overrides = {}) {
     updatedAt: now,
     reviewedAt: now,
     reviewedByRef: "portal_auto_issuer",
-    expiresAt: "2026-07-06T00:00:00.000Z",
-    validUntil: "2026-07-06T00:00:00.000Z",
+    expiresAt: validUntil,
+    validUntil,
     entitlementRef: entitlementId,
     accessGrantRef: `grant_${requestId}`,
     tenantId: tenantRef,
@@ -612,6 +615,66 @@ test("portal access request summaries aggregate multi-channel usage by request i
     assert.equal(summary.usage.channelCount, 3);
     assert.equal(summary.usage.measuredChannelCount, 3);
     assert.equal(summary.usage.updatedAt, "2026-06-06T00:03:01.000Z");
+    assert.doesNotMatch(JSON.stringify(summary.usage), /edgecred|channel-vultr|password|token|subscriptionUrl/i);
+  });
+});
+
+test("portal access request summaries use the current entitlement monthly usage cycle", () => {
+  withControlStore((store) => {
+    const { requestId, accountId, entitlementId, edgeCredentialRef } = seedUsageOrder(store, {
+      now: "2026-07-06T00:00:00.000Z",
+      plan: "yearly",
+      durationDays: 365,
+      validUntil: "2027-07-06T00:00:00.000Z",
+      trafficLimitBytes: 1000
+    });
+    store.recordUsageSample({
+      id: "usage_summary_cycle_previous",
+      sourceRef: "hy2_stats_snapshot_cycle_previous",
+      channelRef: "channel-vultr-a-hy2",
+      edgeCredentialRef,
+      accountId,
+      entitlementId,
+      requestId,
+      observedAt: "2026-07-10T00:05:00.000Z",
+      intervalStartedAt: "2026-07-10T00:00:00.000Z",
+      intervalEndedAt: "2026-07-10T00:05:00.000Z",
+      uploadBytes: 400,
+      downloadBytes: 500,
+      sampleDigest: "usage_summary_cycle_previous_digest",
+      createdAt: "2026-07-10T00:05:01.000Z"
+    });
+    store.recordUsageSample({
+      id: "usage_summary_cycle_current",
+      sourceRef: "hy2_stats_snapshot_cycle_current",
+      channelRef: "channel-vultr-a-hy2",
+      edgeCredentialRef,
+      accountId,
+      entitlementId,
+      requestId,
+      observedAt: "2026-08-07T00:05:00.000Z",
+      intervalStartedAt: "2026-08-07T00:00:00.000Z",
+      intervalEndedAt: "2026-08-07T00:05:00.000Z",
+      uploadBytes: 90,
+      downloadBytes: 110,
+      sampleDigest: "usage_summary_cycle_current_digest",
+      createdAt: "2026-08-07T00:05:01.000Z"
+    });
+
+    const requests = createPortalAccessRequestService({
+      nowFn: () => "2026-08-07T00:06:00.000Z",
+      controlStore: store
+    });
+    const summary = requests.getRequest(requestId);
+
+    assert.equal(store.getUsageRollupByEdgeCredentialRef(edgeCredentialRef).totalBytes, 1100);
+    assert.equal(summary.usage.uploadBytes, 90);
+    assert.equal(summary.usage.downloadBytes, 110);
+    assert.equal(summary.usage.usedBytes, 200);
+    assert.equal(summary.usage.totalBytes, 1000);
+    assert.equal(summary.usage.usageRatio, 0.2);
+    assert.equal(summary.usage.status, "within_limit");
+    assert.equal(summary.usage.updatedAt, "2026-08-07T00:05:01.000Z");
     assert.doesNotMatch(JSON.stringify(summary.usage), /edgecred|channel-vultr|password|token|subscriptionUrl/i);
   });
 });

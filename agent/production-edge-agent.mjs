@@ -398,6 +398,14 @@ function optionalEnvText(env, name) {
   return text(env[name]);
 }
 
+function optionalEnvTextFile(env, name) {
+  const path = optionalEnvText(env, name);
+  if (!path) {
+    return "";
+  }
+  return text(readFileSync(path, "utf8"));
+}
+
 function parseEnvCsv(env, name, fallback = []) {
   const raw = optionalEnvText(env, name);
   return raw ? raw.split(",").map((item) => item.trim()).filter(Boolean) : fallback;
@@ -444,6 +452,9 @@ function createProductionRuntimeAdaptersFromEnvWithStore(env = process.env, mate
             privateKey: env.EDGE_XRAY_VLESS_REALITY_PRIVATE_KEY,
             shortIds: parseEnvCsv(env, "EDGE_XRAY_VLESS_SHORT_IDS", []),
             xver: env.EDGE_XRAY_VLESS_XVER,
+            usageStats: {
+              statsServer: optionalEnvText(env, "EDGE_XRAY_RUNTIME_STATS_SERVER")
+            },
             validationAttempts: env.EDGE_XRAY_LISTENER_VALIDATION_ATTEMPTS,
             validationRetryDelayMs: env.EDGE_XRAY_LISTENER_VALIDATION_RETRY_DELAY_MS
           },
@@ -515,7 +526,12 @@ function createProductionRuntimeAdaptersFromEnvWithStore(env = process.env, mate
             certificate: env.EDGE_MIHOMO_TUIC_CERTIFICATE_PATH,
             privateKey: env.EDGE_MIHOMO_TUIC_PRIVATE_KEY_PATH,
             congestionController: optionalEnvText(env, "EDGE_MIHOMO_TUIC_CONGESTION_CONTROLLER") || "bbr",
-            alpn: parseEnvCsv(env, "EDGE_MIHOMO_TUIC_ALPN", ["h3"])
+            alpn: parseEnvCsv(env, "EDGE_MIHOMO_TUIC_ALPN", ["h3"]),
+            usageController: {
+              controllerUrl: optionalEnvText(env, "EDGE_MIHOMO_RUNTIME_CONTROLLER_URL"),
+              secret: optionalEnvText(env, "EDGE_MIHOMO_RUNTIME_CONTROLLER_SECRET")
+                || optionalEnvTextFile(env, "EDGE_MIHOMO_RUNTIME_CONTROLLER_SECRET_FILE")
+            }
           },
           resolveCredentialMaterial
         })

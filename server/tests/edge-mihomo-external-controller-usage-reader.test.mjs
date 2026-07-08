@@ -95,6 +95,97 @@ test("Mihomo external-controller usage reader maps per-credential entries and su
   assert.doesNotMatch(JSON.stringify(snapshot), /11111111-1111-4111-8111-111111111111|runtime-password|198\.51\.100\.20/);
 });
 
+test("Mihomo external-controller usage reader maps connections through a runtime credential map", async () => {
+  const reader = createMihomoExternalControllerUsageSnapshotReader({
+    controllerUrl: "http://localhost:19090",
+    metricsPath: "/connections",
+    credentialRefByRuntimeUser: {
+      "11111111-1111-4111-8111-111111111111": "edgecred_runtime_user_001"
+    },
+    nowFn: () => "2026-06-06T12:00:00.000Z",
+    fetchJson: async () => ({
+      observedAt: "2026-06-06T11:59:00.000Z",
+      uploadTotal: 1500,
+      downloadTotal: 2600,
+      connections: [
+        {
+          upload: 500,
+          download: 600,
+          metadata: {
+            inboundUser: "11111111-1111-4111-8111-111111111111",
+            host: "private.example.invalid",
+            sourceIP: "198.51.100.20"
+          },
+          password: "runtime-password"
+        },
+        {
+          upload: 700,
+          download: 900,
+          metadata: {
+            inboundUser: "11111111-1111-4111-8111-111111111111"
+          }
+        }
+      ]
+    })
+  });
+
+  const snapshot = await reader({
+    channelRef: "channel-vultr-a-tuic",
+    since: "2026-06-06T11:55:00.000Z"
+  });
+
+  assert.deepEqual(snapshot, {
+    sourceRef: "mihomo_external_controller_connections",
+    observedAt: "2026-06-06T11:59:00.000Z",
+    intervalStartedAt: "2026-06-06T11:55:00.000Z",
+    intervalEndedAt: "2026-06-06T11:59:00.000Z",
+    entries: [
+      {
+        edgeCredentialRef: "edgecred_runtime_user_001",
+        uploadBytes: 1200,
+        downloadBytes: 1500
+      }
+    ]
+  });
+  assert.doesNotMatch(JSON.stringify(snapshot), /11111111-1111-4111-8111-111111111111|runtime-password|198\.51\.100\.20|private\.example\.invalid/);
+});
+
+test("Mihomo external-controller usage reader keeps unmapped connections as aggregate-only", async () => {
+  const reader = createMihomoExternalControllerUsageSnapshotReader({
+    controllerUrl: "http://localhost:19090",
+    metricsPath: "/connections",
+    credentialRefByRuntimeUser: {},
+    nowFn: () => "2026-06-06T12:00:00.000Z",
+    fetchJson: async () => ({
+      observedAt: "2026-06-06T11:59:00.000Z",
+      uploadTotal: 1500,
+      downloadTotal: 2600,
+      connections: [
+        {
+          upload: 500,
+          download: 600,
+          metadata: {
+            inboundUser: "22222222-2222-4222-8222-222222222222"
+          }
+        }
+      ]
+    })
+  });
+  const collector = createMihomoTuicUsageCollector({
+    channelRef: "channel-vultr-a-tuic",
+    snapshotReader: reader
+  });
+
+  const result = await collector.collect({
+    since: "2026-06-06T11:55:00.000Z"
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "collector_not_supported");
+  assert.equal(result.blockers[0].code, "node_aggregate_only");
+  assert.deepEqual(result.observations, []);
+});
+
 test("Mihomo external-controller aggregate snapshots fail closed through the usage collector", async () => {
   const reader = createMihomoExternalControllerUsageSnapshotReader({
     controllerUrl: "http://[::1]:19090",

@@ -1532,9 +1532,16 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     const edgeCredentialRef = optionalText(filters.edgeCredentialRef);
     const accountId = optionalText(filters.accountId);
     const entitlementId = optionalText(filters.entitlementId);
+    const requestId = optionalText(filters.requestId);
+    const observedFrom = optionalIsoText(filters.observedFrom, "observedFrom");
+    const observedTo = optionalIsoText(filters.observedTo, "observedTo");
     if (edgeCredentialRef) {
       clauses.push("edge_credential_ref = ?");
       params.push(edgeCredentialRef);
+    }
+    if (requestId) {
+      clauses.push("request_id = ?");
+      params.push(requestId);
     }
     if (accountId) {
       clauses.push("account_id = ?");
@@ -1543,6 +1550,14 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     if (entitlementId) {
       clauses.push("entitlement_id = ?");
       params.push(entitlementId);
+    }
+    if (observedFrom) {
+      clauses.push("observed_at >= ?");
+      params.push(observedFrom);
+    }
+    if (observedTo) {
+      clauses.push("observed_at < ?");
+      params.push(observedTo);
     }
     const where = clauses.length ? `where ${clauses.join(" and ")}` : "";
     return db.prepare(`

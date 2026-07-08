@@ -10,6 +10,10 @@ import {
   createSubscriptionRouteResolver,
   publicBaseUrl
 } from "../services/subscriptions/subscription-route-resolver.mjs";
+import {
+  summarizeUsageSamples,
+  usageCycleFiltersForBinding
+} from "../services/platform/usage-billing-cycle.mjs";
 
 function safeRef(prefix, value) {
   return `${prefix}ref_${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
@@ -18,6 +22,13 @@ function safeRef(prefix, value) {
 function nonNegativeInteger(value) {
   const normalized = Number(value);
   return Number.isInteger(normalized) && normalized >= 0 ? normalized : 0;
+}
+
+function usageNowIso(state) {
+  const nowFn = state.platform?.usageNowFn;
+  const value = typeof nowFn === "function" ? nowFn() : new Date();
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
 }
 
 export function subscriptionRoutes(state, options = {}) {
@@ -50,9 +61,15 @@ export function subscriptionRoutes(state, options = {}) {
           continue;
         }
         const rollup = controlStore.getUsageRollupByEdgeCredentialRef(binding.edgeCredentialRef);
+        const currentCycleUsage = currentCycleUsageFor({
+          controlStore,
+          binding,
+          at: usageNowIso(state),
+          fallbackRollup: rollup
+        });
         return {
-          uploadBytes: nonNegativeInteger(rollup?.uploadBytes),
-          downloadBytes: nonNegativeInteger(rollup?.downloadBytes),
+          uploadBytes: nonNegativeInteger(currentCycleUsage.uploadBytes),
+          downloadBytes: nonNegativeInteger(currentCycleUsage.downloadBytes),
           totalBytes: nonNegativeInteger(binding.trafficLimitBytes)
         };
       }
@@ -193,4 +210,21 @@ export function subscriptionRoutes(state, options = {}) {
   });
 
   return router;
+}
+
+function currentCycleUsageFor({ controlStore, binding, at, fallbackRollup }) {
+  if (typeof controlStore?.listUsageSamples !== "function") {
+    return {
+      uploadBytes: nonNegativeInteger(fallbackRollup?.uploadBytes),
+      downloadBytes: nonNegativeInteger(fallbackRollup?.downloadBytes)
+    };
+  }
+  const summary = summarizeUsageSamples(controlStore.listUsageSamples({
+    requestId: binding.requestId,
+    ...usageCycleFiltersForBinding(binding, at)
+  }));
+  return {
+    uploadBytes: summary.uploadBytes,
+    downloadBytes: summary.downloadBytes
+  };
 }

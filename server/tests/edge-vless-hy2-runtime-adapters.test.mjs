@@ -116,6 +116,68 @@ test("Xray VLESS Reality host adapter writes candidate, tests, backs up, restart
   }
 });
 
+test("Xray VLESS Reality host adapter preserves loopback usage stats source", () => {
+  const dir = mkdtempSync(join(tmpdir(), "xray-vless-host-adapter-usage-source-"));
+  const activeConfigPath = join(dir, "config.json");
+  const candidateConfigPath = join(dir, "config.candidate.json");
+  const backupDir = join(dir, "backups");
+
+  try {
+    writeFileSync(activeConfigPath, "{}\n", { mode: 0o600 });
+    const adapter = createXrayVlessRealityHostRuntimeAdapter({
+      activeConfigPath,
+      candidateConfigPath,
+      backupDir,
+      listener: {
+        name: "channel-sgp-a-vless-reality-tcp",
+        listen: "0.0.0.0",
+        port: 8443,
+        flow: "xtls-rprx-vision",
+        dest: "www.example.com:443",
+        serverNames: ["www.example.com"],
+        privateKey: "synthetic-private-key",
+        shortIds: ["abcd1234"],
+        usageStats: {
+          statsServer: "127.0.0.1:10085"
+        }
+      },
+      resolveCredentialMaterial: () => ({
+        uuid: "11111111-1111-4111-8111-111111111111",
+        password: "unused-password"
+      }),
+      commandRunner(command) {
+        if (command === "xray") return { exitCode: 0 };
+        if (command === "systemctl") return { exitCode: 0 };
+        if (command === "ss") return { exitCode: 0, stdout: "LISTEN 0 4096 0.0.0.0:8443 0.0.0.0:*" };
+        return { exitCode: 1 };
+      }
+    });
+
+    const report = buildCredentialReconciliationApplyPlan({
+      desiredState: desiredState("xray-vless-reality", "channel-sgp-a-vless-reality-tcp"),
+      inputPath: "runtime:order-lifecycle",
+      executeProductionMutation: true,
+      runtimeAdapter: adapter
+    });
+
+    assert.equal(report.ok, true);
+    const candidate = JSON.parse(readFileSync(candidateConfigPath, "utf8"));
+    assert.deepEqual(candidate.stats, {});
+    assert.deepEqual(candidate.api.services, ["HandlerService", "LoggerService", "StatsService"]);
+    assert.equal(candidate.api.tag, "api");
+    const apiInbound = candidate.inbounds.find((inbound) => inbound.tag === "api");
+    assert.equal(apiInbound.listen, "127.0.0.1");
+    assert.equal(apiInbound.port, 10085);
+    assert.equal(apiInbound.protocol, "dokodemo-door");
+    assert.equal(candidate.policy.levels["0"].statsUserUplink, true);
+    assert.equal(candidate.policy.levels["0"].statsUserDownlink, true);
+    assert.equal(candidate.routing.rules.some((rule) => rule.inboundTag?.includes("api") && rule.outboundTag === "api"), true);
+    assert.doesNotMatch(JSON.stringify(report), /synthetic-private-key|11111111-1111-4111-8111-111111111111|config\.candidate|backups/i);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Hysteria2 host adapter writes userpass config, tests, backs up, restarts, and validates UDP listener", () => {
   const dir = mkdtempSync(join(tmpdir(), "hy2-host-adapter-"));
   const activeConfigPath = join(dir, "config.yaml");

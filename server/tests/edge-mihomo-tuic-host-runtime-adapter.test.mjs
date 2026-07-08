@@ -92,6 +92,64 @@ test("Mihomo TUIC host runtime adapter writes candidate, tests config, backs up,
   }
 });
 
+test("Mihomo TUIC host runtime adapter preserves loopback external-controller usage source", () => {
+  const dir = mkdtempSync(join(tmpdir(), "mihomo-tuic-host-adapter-usage-source-"));
+  const activeConfigPath = join(dir, "config.yaml");
+  const candidateConfigPath = join(dir, "config.candidate.yaml");
+  const backupDir = join(dir, "backups");
+
+  try {
+    writeFileSync(activeConfigPath, "listeners: []\n", { mode: 0o600 });
+    const adapter = createMihomoTuicHostRuntimeAdapter({
+      activeConfigPath,
+      candidateConfigPath,
+      backupDir,
+      listener: {
+        name: "channel-sgp-a-tuic",
+        port: 443,
+        listen: "0.0.0.0",
+        certificate: "/etc/mihomo/server.crt",
+        privateKey: "/etc/mihomo/server.key",
+        usageController: {
+          controllerUrl: "http://127.0.0.1:19090",
+          secret: "synthetic-controller-secret"
+        }
+      },
+      resolveCredentialMaterial: () => ({
+        uuid: "11111111-1111-4111-8111-111111111111",
+        password: "synthetic-host-password"
+      }),
+      commandRunner(command) {
+        if (command === "mihomo") return { exitCode: 0 };
+        if (command === "systemctl") return { exitCode: 0 };
+        if (command === "ss") return { exitCode: 0, stdout: "udp UNCONN 0 0 0.0.0.0:443 0.0.0.0:*" };
+        return { exitCode: 1 };
+      }
+    });
+
+    const report = buildCredentialReconciliationApplyPlan({
+      desiredState: {
+        ...desiredState(),
+        channelRef: "channel-sgp-a-tuic",
+        desiredStateRef: "desired_state_sgp_tuic_001"
+      },
+      inputPath: "runtime:order-lifecycle",
+      executeProductionMutation: true,
+      runtimeAdapter: adapter
+    });
+
+    assert.equal(report.ok, true);
+    const candidate = readFileSync(candidateConfigPath, "utf8");
+    assert.match(candidate, /^external-controller: "127\.0\.0\.1:19090"/m);
+    assert.match(candidate, /^secret: "synthetic-controller-secret"/m);
+    assert.match(candidate, /^listeners:/m);
+    assert.match(candidate, /type: tuic/);
+    assert.doesNotMatch(JSON.stringify(report), /synthetic-host-password|synthetic-controller-secret|11111111-1111-4111-8111-111111111111|config\.candidate|backups|server\.key/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Mihomo TUIC host runtime adapter retries listener validation after restart", () => {
   const dir = mkdtempSync(join(tmpdir(), "mihomo-tuic-host-adapter-listener-race-"));
   const activeConfigPath = join(dir, "config.yaml");
