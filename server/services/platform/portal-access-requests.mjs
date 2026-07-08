@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 import { executeSubscriptionIssuance } from "./subscription-issuance.mjs";
+import {
+  summarizeUsageSamples,
+  usageCycleFiltersForBinding
+} from "./usage-billing-cycle.mjs";
 
 const PLANS = {
   trial: { durationDays: 7, label: "7-day trial" },
@@ -205,7 +209,7 @@ function measuredChannelCountFor(rollups) {
   return channelRefs.size > 0 ? channelRefs.size : rollups.length;
 }
 
-function usageSummaryFor(record, controlStore) {
+function usageSummaryFor(record, controlStore, now = null) {
   if (!controlStore || !record?.id) {
     return null;
   }
@@ -234,24 +238,23 @@ function usageSummaryFor(record, controlStore) {
   }
 
   let trafficLimitBytes = 0;
+  let cycleBinding = null;
   if (typeof controlStore.findIssuedSubscriptionBindingByEdgeCredentialRef === "function") {
     const refs = rollups.map((rollup) => rollup.edgeCredentialRef);
     for (const edgeCredentialRef of refs) {
       const binding = controlStore.findIssuedSubscriptionBindingByEdgeCredentialRef(edgeCredentialRef);
       trafficLimitBytes = Math.max(trafficLimitBytes, nonNegativeInteger(binding?.trafficLimitBytes));
+      cycleBinding ||= binding || null;
     }
   }
 
-  const uploadBytes = rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.uploadBytes), 0);
-  const downloadBytes = rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.downloadBytes), 0);
-  const usedBytes = rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.totalBytes), 0);
-  const measuredChannelCount = measuredChannelCountFor(rollups);
-  const channelCount = Math.max(issuedChannelRefsFor(record, rollups).length, measuredChannelCount);
-  const updatedAt = rollups
-    .map((rollup) => rollup.updatedAt || rollup.lastObservedAt)
-    .filter(Boolean)
-    .sort()
-    .at(-1);
+  const currentUsage = currentCycleUsageRowsFor({ record, controlStore, binding: cycleBinding, at: now, rollups });
+  const uploadBytes = currentUsage.summary.uploadBytes;
+  const downloadBytes = currentUsage.summary.downloadBytes;
+  const usedBytes = currentUsage.summary.totalBytes;
+  const measuredChannelCount = measuredChannelCountFor(currentUsage.rows);
+  const channelCount = Math.max(issuedChannelRefsFor(record, currentUsage.rows).length, measuredChannelCount);
+  const updatedAt = currentUsage.summary.updatedAt;
 
   return {
     uploadBytes,
@@ -419,6 +422,57 @@ function cloneRecord(record) {
   };
 }
 
+function currentCycleUsageRowsFor({ record, controlStore, binding, at, rollups }) {
+  if (!binding || typeof controlStore?.listUsageSamples !== "function") {
+    return {
+      rows: rollups,
+      summary: {
+        uploadBytes: rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.uploadBytes), 0),
+        downloadBytes: rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.downloadBytes), 0),
+        totalBytes: rollups.reduce((sum, rollup) => sum + nonNegativeInteger(rollup.totalBytes), 0),
+        updatedAt: rollups
+          .map((rollup) => rollup.updatedAt || rollup.lastObservedAt)
+          .filter(Boolean)
+          .sort()
+          .at(-1) || null
+      }
+    };
+  }
+  const samples = controlStore.listUsageSamples({
+    requestId: record.id,
+    ...usageCycleFiltersForBinding(binding, at || new Date().toISOString())
+  });
+  const summary = summarizeUsageSamples(samples);
+  return {
+    rows: samples.map((sample) => ({
+      edgeCredentialRef: sample.edgeCredentialRef,
+      channelRef: sample.channelRef,
+      uploadBytes: sample.uploadBytes,
+      downloadBytes: sample.downloadBytes,
+      totalBytes: sample.totalBytes,
+      lastObservedAt: sample.observedAt,
+      updatedAt: sample.createdAt
+    })),
+    summary
+  };
+}
+
+function objectMetadata(value) {
+  if (!value) return {};
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 function createMemoryPortalAccessRequestStore() {
   const records = [];
   return {
@@ -507,12 +561,12 @@ export function createPortalAccessRequestService(options = {}) {
   }
 
   function summarize(record) {
-    const usage = usageSummaryFor(record, controlStore);
+    const usage = usageSummaryFor(record, controlStore, isoNow(nowFn));
     return safeSummaryFor(record, usage, trafficLimitBytesFor(record, controlStore, usage));
   }
 
   function summarizeVisibleOnce(record) {
-    const usage = usageSummaryFor(record, controlStore);
+    const usage = usageSummaryFor(record, controlStore, isoNow(nowFn));
     return visibleOnceSummaryFor(record, usage, trafficLimitBytesFor(record, controlStore, usage));
   }
 

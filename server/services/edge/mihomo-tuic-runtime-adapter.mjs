@@ -26,6 +26,40 @@ function numberOrDefault(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function isLoopbackHost(value) {
+  const host = text(value).replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
+
+function loopbackControllerAuthority(value, field) {
+  const raw = text(value);
+  if (!raw) {
+    return "";
+  }
+  let host = "";
+  let port = "";
+  if (/^https?:\/\//i.test(raw)) {
+    const parsed = new URL(raw);
+    host = parsed.hostname;
+    port = parsed.port;
+  } else {
+    const separator = raw.lastIndexOf(":");
+    if (separator > 0) {
+      host = raw.slice(0, separator);
+      port = raw.slice(separator + 1);
+    }
+  }
+  host = host.replace(/^\[/, "").replace(/\]$/, "");
+  if (!isLoopbackHost(host)) {
+    throw new Error(`${field} must be loopback-only`);
+  }
+  const safePort = numberOrDefault(port, 0);
+  if (!safePort) {
+    throw new Error(`${field} must include a port`);
+  }
+  return `${host}:${safePort}`;
+}
+
 function yamlScalar(value) {
   const raw = text(value);
   return `"${raw
@@ -72,17 +106,30 @@ function buildManagedUsersConfig(payload, users, listener = {}) {
   const alpn = Array.isArray(listener.alpn) && listener.alpn.length > 0
     ? listener.alpn.map(text).filter(Boolean)
     : ["h3"];
+  const controllerAuthority = loopbackControllerAuthority(
+    listener.usageController?.controllerUrl || listener.usageController?.listen,
+    "listener.usageController.controllerUrl"
+  );
+  const controllerSecret = text(listener.usageController?.secret);
   const lines = [
     "# managed-by: gccgw-edge-credential-reconciliation",
     `# channel-ref: ${payload.channelRef}`,
-    `# desired-state-ref: ${payload.desiredStateRef}`,
+    `# desired-state-ref: ${payload.desiredStateRef}`
+  ];
+  if (controllerAuthority) {
+    lines.push(`external-controller: ${yamlScalar(controllerAuthority)}`);
+  }
+  if (controllerSecret) {
+    lines.push(`secret: ${yamlScalar(controllerSecret)}`);
+  }
+  lines.push(
     "listeners:",
     `  - name: ${yamlScalar(listenerName)}`,
     "    type: tuic",
     `    port: ${port}`,
     `    listen: ${yamlScalar(listen)}`,
     "    users:"
-  ];
+  );
 
   for (const user of users) {
     lines.push(`      ${yamlScalar(user.uuid)}: ${yamlScalar(user.password)}`);
@@ -150,7 +197,12 @@ export function createMihomoTuicExplicitRestartAdapter({
         return failedReceipt({ serviceName: safeServiceName });
       }
 
-      const candidateConfig = buildManagedUsersConfig(payload, users, runtimeListener);
+      let candidateConfig;
+      try {
+        candidateConfig = buildManagedUsersConfig(payload, users, runtimeListener);
+      } catch {
+        return failedReceipt({ serviceName: safeServiceName });
+      }
       if (typeof writeCandidateConfig !== "function" || typeof runConfigTest !== "function") {
         return failedReceipt({ serviceName: safeServiceName });
       }

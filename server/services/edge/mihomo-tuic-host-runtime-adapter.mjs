@@ -126,7 +126,8 @@ export function createMihomoTuicHostRuntimeAdapter({
       certificate: listener.certificate,
       privateKey: listener.privateKey,
       congestionController: listener.congestionController || "bbr",
-      alpn: listener.alpn || ["h3"]
+      alpn: listener.alpn || ["h3"],
+      usageController: listener.usageController
     },
     resolveCredentialMaterial,
     writeCandidateConfig(content) {

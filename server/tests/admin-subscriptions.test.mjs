@@ -490,7 +490,9 @@ test("tenant subscription headers include traffic rollup from the control store 
   const controlStore = createSqliteSubscriptionControlStore({
     database: new Database(":memory:")
   });
-  const now = "2026-06-06T00:00:00.000Z";
+  const now = "2026-07-06T00:00:00.000Z";
+  const validUntil = "2027-07-06T00:00:00.000Z";
+  let usageSequence = 0;
   try {
     controlStore.createAccount({
       id: "acct_header_usage_1",
@@ -502,10 +504,10 @@ test("tenant subscription headers include traffic rollup from the control store 
     controlStore.createEntitlement({
       id: "ent_header_usage_1",
       accountId: "acct_header_usage_1",
-      plan: "monthly",
+      plan: "yearly",
       status: "active",
       validFrom: now,
-      validUntil: "2026-06-21T00:00:00.000Z",
+      validUntil,
       trafficLimitBytes: 4096,
       createdAt: now,
       updatedAt: now
@@ -535,9 +537,9 @@ test("tenant subscription headers include traffic rollup from the control store 
     controlStore.upsertPortalAccessRequest({
       id: "pareq_header_usage_1",
       portalUserRef: "portal_user_header_usage_1",
-      plan: "monthly",
+      plan: "yearly",
       clientTarget: "clash",
-      durationDays: 30,
+      durationDays: 365,
       quantity: 1,
       status: "delivered",
       nextAction: "user_can_use_access",
@@ -547,8 +549,8 @@ test("tenant subscription headers include traffic rollup from the control store 
       updatedAt: now,
       reviewedAt: now,
       reviewedByRef: "portal_auto_issuer",
-      expiresAt: "2026-06-21T00:00:00.000Z",
-      validUntil: "2026-06-21T00:00:00.000Z",
+      expiresAt: validUntil,
+      validUntil,
       entitlementRef: "ent_header_usage_1",
       accessGrantRef: "grant_header_usage_1",
       tenantId: "tenant_real_1",
@@ -560,26 +562,43 @@ test("tenant subscription headers include traffic rollup from the control store 
     });
     createTrafficAccountingService({
       controlStore,
-      nowFn: () => "2026-06-06T00:10:00.000Z",
-      usageSampleRefFactory: () => "usage_sample_header_1"
+      nowFn: () => "2026-08-07T00:10:00.000Z",
+      usageSampleRefFactory: () => `usage_sample_header_${++usageSequence}`
     }).recordUsageObservation({
       sourceRef: "mihomo_snapshot_header_1",
       channelRef: "node_sg",
       edgeCredentialRef: "edgecred_pareq_header_usage_1",
-      observedAt: "2026-06-06T00:05:00.000Z",
-      intervalStartedAt: "2026-06-06T00:00:00.000Z",
-      intervalEndedAt: "2026-06-06T00:05:00.000Z",
+      observedAt: "2026-07-10T00:05:00.000Z",
+      intervalStartedAt: "2026-07-10T00:00:00.000Z",
+      intervalEndedAt: "2026-07-10T00:05:00.000Z",
       uploadBytes: 1000,
       downloadBytes: 2000
     });
+    createTrafficAccountingService({
+      controlStore,
+      nowFn: () => "2026-08-07T00:10:00.000Z",
+      usageSampleRefFactory: () => `usage_sample_header_${++usageSequence}`
+    }).recordUsageObservation({
+      sourceRef: "mihomo_snapshot_header_2",
+      channelRef: "node_sg",
+      edgeCredentialRef: "edgecred_pareq_header_usage_1",
+      observedAt: "2026-08-07T00:05:00.000Z",
+      intervalStartedAt: "2026-08-07T00:00:00.000Z",
+      intervalEndedAt: "2026-08-07T00:05:00.000Z",
+      uploadBytes: 90,
+      downloadBytes: 110
+    });
 
     const state = fakeState(context.service);
-    state.platform = { controlStore };
+    state.platform = {
+      controlStore,
+      usageNowFn: () => "2026-08-07T00:06:00.000Z"
+    };
     const { server, baseUrl } = await listen(createApp(state));
     try {
       const created = await requestJson(baseUrl, "/api/admin/subscriptions", {
         method: "POST",
-        body: { displayName: "Customer A", expiresAt: "2026-06-21T00:00:00.000Z" }
+        body: { displayName: "Customer A", expiresAt: validUntil }
       });
       assert.equal(created.response.status, 201);
 
@@ -587,9 +606,9 @@ test("tenant subscription headers include traffic rollup from the control store 
       assert.equal(subscription.status, 200);
       assert.equal(
         subscription.headers.get("subscription-userinfo"),
-        `upload=1000; download=2000; total=4096; expire=${Math.floor(Date.parse("2026-06-21T00:00:00.000Z") / 1000)}`
+        `upload=90; download=110; total=4096; expire=${Math.floor(Date.parse(validUntil) / 1000)}`
       );
-      assert.equal(subscription.headers.get("x-subscription-expires-at"), "2026-06-21T00:00:00.000Z");
+      assert.equal(subscription.headers.get("x-subscription-expires-at"), validUntil);
     } finally {
       server.close();
     }
