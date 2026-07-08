@@ -41,6 +41,19 @@
 
 Result:
 
+## Deploy Note
+
+<!-- Only fill this section after a production deploy, rollback, or static
+replacement. Leave as "Not deployed" otherwise. -->
+
+- deployed_at: Not deployed
+- release_unit:
+- source_commit:
+- artifact_or_release:
+- target:
+- backup:
+- validation:
+
 ## Remaining Gates
 
 <!-- Name future work or approval gates. Say "None" only when no required work remains for this PR scope. -->
