@@ -10,8 +10,14 @@ export const adminZhCNLanguagePack: AdminLanguagePack = {
     htmlLang: "zh-CN",
     sidebar: {
       brandSubtitle: "代理网关",
+      groups: {
+        overview: "总览",
+        "platform-monitoring": "平台监测",
+        "user-supervision": "用户运营"
+      },
       plannedGateAriaSuffix: "计划门禁",
       plannedGateLabel: "门禁",
+      routeSuffix: "路由",
       routes: {
         dashboard: "运营总览",
         portalRequests: "账户与资源",

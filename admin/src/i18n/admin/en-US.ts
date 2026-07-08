@@ -23,8 +23,14 @@ export const adminEnUSLanguagePack: AdminLanguagePack = {
     htmlLang: "en-US",
     sidebar: {
       brandSubtitle: "Proxy Gateway Admin",
+      groups: {
+        overview: "Overview",
+        "platform-monitoring": "Platform Monitoring",
+        "user-supervision": "User Operations"
+      },
       plannedGateAriaSuffix: "planned gate",
       plannedGateLabel: "Gate",
+      routeSuffix: "routes",
       routes: pageTitles,
       safetyDescription: "No token, URL, credential, runtime config, or raw customer data in Admin UI fixtures.",
       safetyDetail: "Production actions require an approved runbook.",

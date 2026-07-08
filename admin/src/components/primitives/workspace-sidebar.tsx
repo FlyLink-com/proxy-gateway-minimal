@@ -17,11 +17,21 @@ export type WorkspaceSidebarPinnedRoute = {
   tone?: string;
 };
 
+export type WorkspaceSidebarPinnedRouteGroup = {
+  id: string;
+  items: WorkspaceSidebarPinnedRoute[];
+  label: string;
+  routeSuffix?: string;
+};
+
 export type WorkspaceSidebarProps = {
   ariaLabel?: string;
   brand: WorkspaceSidebarBrand;
   className?: string;
   pinnedApps: WorkspaceSidebarPinnedRoute[];
+  pinnedAppGroups?: WorkspaceSidebarPinnedRouteGroup[];
+  plannedRoutesAriaLabel?: string;
+  primaryRoutesAriaLabel?: string;
   plannedRoutes?: ReactNode;
   safetyGate?: ReactNode;
 };
@@ -30,10 +40,31 @@ export function WorkspaceSidebar({
   ariaLabel = "Workspace sidebar",
   brand,
   className,
+  pinnedAppGroups,
   pinnedApps,
+  plannedRoutesAriaLabel = "Planned workspace routes",
+  primaryRoutesAriaLabel = "Primary workspace routes",
   plannedRoutes,
   safetyGate
 }: WorkspaceSidebarProps) {
+  const hasPinnedAppGroups = pinnedAppGroups && pinnedAppGroups.length > 0;
+
+  const renderPinnedRoute = (app: WorkspaceSidebarPinnedRoute) => (
+    <button
+      aria-current={app.active ? "page" : undefined}
+      className={cn("nav-item", app.active && "nav-item-active")}
+      key={app.id}
+      onClick={app.onClick}
+      title={app.label}
+      type="button"
+    >
+      <span className={cn("nav-item-icon nav-app-icon nav-route-icon", app.tone)} aria-hidden="true">
+        {app.icon}
+      </span>
+      <span className="nav-item-copy">{app.label}</span>
+    </button>
+  );
+
   return (
     <aside
       className={cn("app-sidebar workspace-sidebar", className)}
@@ -52,26 +83,25 @@ export function WorkspaceSidebar({
       </div>
 
       <nav className="nav-list">
-        <div className="nav-primary-list" aria-label="Primary workspace routes">
-          {pinnedApps.map((app) => (
-            <button
-              aria-current={app.active ? "page" : undefined}
-              className={cn("nav-item", app.active && "nav-item-active")}
-              key={app.id}
-              onClick={app.onClick}
-              title={app.label}
-              type="button"
+        <div className="nav-primary-list" aria-label={primaryRoutesAriaLabel}>
+          {hasPinnedAppGroups ? pinnedAppGroups.map((group) => (
+            <section
+              aria-label={`${group.label} ${group.routeSuffix ?? "routes"}`}
+              className="nav-section"
+              key={group.id}
             >
-              <span className={cn("nav-item-icon nav-app-icon nav-route-icon", app.tone)} aria-hidden="true">
-                {app.icon}
-              </span>
-              <span className="nav-item-copy">{app.label}</span>
-            </button>
-          ))}
+              <div className="nav-section-heading">
+                <div className="nav-section-label">{group.label}</div>
+              </div>
+              <div className="nav-section-items">
+                {group.items.map(renderPinnedRoute)}
+              </div>
+            </section>
+          )) : pinnedApps.map(renderPinnedRoute)}
         </div>
 
         {plannedRoutes ? (
-          <div className="nav-planned-sidebar-list" aria-label="Planned workspace routes">
+          <div className="nav-planned-sidebar-list" aria-label={plannedRoutesAriaLabel}>
             {plannedRoutes}
           </div>
         ) : null}

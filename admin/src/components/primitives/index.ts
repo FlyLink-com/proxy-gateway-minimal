@@ -31,6 +31,7 @@ export { StatusChip } from "./status-chip";
 export {
   WorkspaceSidebar,
   type WorkspaceSidebarBrand,
+  type WorkspaceSidebarPinnedRouteGroup,
   type WorkspaceSidebarPinnedRoute,
   type WorkspaceSidebarProps
 } from "./workspace-sidebar";
