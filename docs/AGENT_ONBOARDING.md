@@ -163,6 +163,9 @@ Then confirm:
 Every PR must make its scope auditable:
 
 - Summary states what changed in one to three sentences.
+- Issue / Index Card section links the tracking issue when required by
+  `docs/GITHUB_ISSUE_PR_WORKFLOW.md`; otherwise it explains why the PR is
+  standalone.
 - Risk section names `A`, `B`, or `C`.
 - Production, AWS, Aliyun, runtime, DNS, node, traffic, and customer-data impact
   are stated explicitly.

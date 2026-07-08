@@ -2184,6 +2184,8 @@ High-value entrypoints:
 - `AGENTS.md` - workflow rules and A/B/C risk gates.
 - `docs/AGENT_ONBOARDING.md` - first-pass agent reading order, workspace
   boundaries, common mistakes, and PR checklist.
+- `docs/GITHUB_ISSUE_PR_WORKFLOW.md` - GitHub Issues as durable index cards
+  and PRs as execution summaries/validation receipts.
 - `docs/PROJECT_OPERATING_MODEL.md` - source-of-truth layers and work lanes.
 - `docs/PROJECT_SIMPLIFICATION_MAP.md` - cleanup map and complexity hotspots.
 - `docs/MASTER_ARCHIVE_BOUNDARY.md` - `master` versus archive boundary for
