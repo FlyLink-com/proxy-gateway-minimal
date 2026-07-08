@@ -4,12 +4,15 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "../App";
 import {
   consoleSections,
+  formatAdminRouteHash,
+  isPageSectionRouteEnabled,
   navItems,
   navSections,
   pageContexts,
   pageSubNavigation,
   pageTitles,
-  pageWorkbenchContracts
+  pageWorkbenchContracts,
+  parseAdminRouteHash
 } from "../app/navigation";
 import { saveAdminSession } from "../features/subscriptions/admin-session";
 
@@ -75,6 +78,25 @@ describe("admin navigation", () => {
     expect(navSections.map((section) => section.label)).not.toContain("Platform Development");
     expect(navSections.map((section) => section.label)).not.toContain("System Settings");
     expect(navItems.map((item) => item.label)).toEqual(["Operations Overview", "Accounts & Resources", "Usage & Channels"]);
+  });
+
+  test("formats and parses canonical Admin page hashes for active pages", () => {
+    expect(formatAdminRouteHash("dashboard")).toBe("#/admin/operations");
+    expect(formatAdminRouteHash("portalRequests")).toBe("#/admin/accounts");
+    expect(formatAdminRouteHash("usageMonitor")).toBe("#/admin/usage");
+
+    expect(parseAdminRouteHash("#/admin")).toEqual({ page: "dashboard" });
+    expect(parseAdminRouteHash("#/admin/operations")).toEqual({ page: "dashboard" });
+    expect(parseAdminRouteHash("#/admin/accounts")).toEqual({ page: "portalRequests" });
+    expect(parseAdminRouteHash("#/admin/usage")).toEqual({ page: "usageMonitor" });
+    expect(parseAdminRouteHash("#/admin/dashboard")).toEqual({ page: "dashboard" });
+    expect(parseAdminRouteHash("#/admin/portalRequests")).toEqual({ page: "portalRequests" });
+    expect(parseAdminRouteHash("#/admin/unknown")).toEqual({ page: "dashboard" });
+    expect(parseAdminRouteHash("#/admin/%E0%A4%A")).toEqual({ page: "dashboard" });
+    expect(parseAdminRouteHash("#/site")).toBeNull();
+    expect(parseAdminRouteHash("#/admin-tools")).toBeNull();
+    expect(isPageSectionRouteEnabled("dashboard", "health-summary")).toBe(false);
+    expect(formatAdminRouteHash("dashboard", "health-summary")).toBe("#/admin/operations");
   });
 
   test("defines page-local subnavigation from the Admin domain dictionary", () => {
@@ -263,6 +285,25 @@ describe("admin navigation", () => {
     expect(screen.getByRole("heading", { name: "Usage Ledger" })).not.toBeNull();
     expect(screen.queryByLabelText("Console status bar")).toBeNull();
     expect(document.querySelector(".admin-content")?.textContent).not.toContain("Admin API connection");
+  });
+
+  test("syncs active Admin page navigation to canonical hash routes", async () => {
+    saveAdminSession({
+      baseUrl: "http://127.0.0.1:3456",
+      consoleToken: "admin_console_ref"
+    });
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => dashboardJsonResponse(String(input))));
+    window.location.hash = "#/admin/accounts";
+
+    render(createElement(App));
+
+    expect(await screen.findByRole("heading", { name: "Accounts & Resources" })).not.toBeNull();
+    expect(window.location.hash).toBe("#/admin/accounts");
+
+    fireEvent.click(screen.getByRole("button", { name: "Usage & Channels" }));
+
+    expect(await screen.findByRole("heading", { name: "Usage & Channels" })).not.toBeNull();
+    expect(window.location.hash).toBe("#/admin/usage");
   });
 
   test("routes platform monitoring navigation to the usage and channel monitor page", async () => {

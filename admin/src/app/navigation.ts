@@ -5,6 +5,11 @@ export type AdminPage =
   | "portalRequests"
   | "usageMonitor";
 
+export type AdminPageRouteTarget = {
+  page: AdminPage;
+  navId?: string;
+};
+
 export type NavItem = {
   id: AdminPage;
   label: string;
@@ -148,6 +153,82 @@ export const pageTitles: Record<AdminPage, string> = {
   portalRequests: "Accounts & Resources",
   usageMonitor: "Usage & Channels"
 };
+
+export const adminPageRouteSlugs: Record<AdminPage, string> = {
+  dashboard: "operations",
+  portalRequests: "accounts",
+  usageMonitor: "usage"
+};
+
+const adminPageByRouteSlug = Object.fromEntries(
+  Object.entries(adminPageRouteSlugs).map(([page, slug]) => [slug, page])
+) as Record<string, AdminPage>;
+
+const enabledPageSectionRoutes: Partial<Record<AdminPage, Set<string>>> = {};
+
+export function parseAdminRouteHash(hash: string): AdminPageRouteTarget | null {
+  const normalizedHash = hash.trim();
+  if (normalizedHash !== "#/admin" && !normalizedHash.startsWith("#/admin/")) {
+    return null;
+  }
+
+  const [pageSegment, navSegment] = normalizedHash
+    .replace(/^#\/admin\/?/, "")
+    .split("/")
+    .map((segment) => decodeRouteSegment(segment.trim()))
+    .filter(Boolean);
+
+  const page = pageFromRouteSegment(pageSegment);
+  if (!page) {
+    return { page: "dashboard" };
+  }
+
+  const navId = navSegment && isPageSectionRouteEnabled(page, navSegment)
+    ? navSegment
+    : undefined;
+
+  return { navId, page };
+}
+
+export function formatAdminRouteHash(page: AdminPage, navId?: string) {
+  const pageSlug = adminPageRouteSlugs[page];
+  const sectionSuffix = navId && isPageSectionRouteEnabled(page, navId)
+    ? `/${encodeURIComponent(navId)}`
+    : "";
+
+  return `#/admin/${pageSlug}${sectionSuffix}`;
+}
+
+export function isPageSubNavigationId(page: AdminPage, navId: string) {
+  return pageSubNavigation[page].some((item) => item.id === navId);
+}
+
+export function isPageSectionRouteEnabled(page: AdminPage, navId: string) {
+  // Page modules stay catalogued. Only explicitly designed subpage contracts get URL routes.
+  return enabledPageSectionRoutes[page]?.has(navId) ?? false;
+}
+
+export function usesAdminShellTopBar(page: AdminPage) {
+  return page in pageTitles;
+}
+
+function pageFromRouteSegment(segment?: string): AdminPage | undefined {
+  if (!segment) {
+    return undefined;
+  }
+  if (segment === "dashboard" || segment === "portalRequests" || segment === "usageMonitor") {
+    return segment as AdminPage;
+  }
+  return adminPageByRouteSlug[segment];
+}
+
+function decodeRouteSegment(segment: string) {
+  try {
+    return decodeURIComponent(segment);
+  } catch {
+    return segment;
+  }
+}
 
 export const pageContexts: Record<AdminPage, { eyebrow: string; description: string }> = {
   dashboard: {
