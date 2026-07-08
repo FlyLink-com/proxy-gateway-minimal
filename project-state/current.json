@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-07-06",
+  "lastUpdated": "2026-07-08",
   "timezone": "America/Los_Angeles",
   "status": "active-snapshot-vultr-japan-control-plane-sgp-data-plane",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
@@ -10,6 +10,7 @@
     "docs/PROJECT_CONTEXT.md",
     "docs/README.md",
     "docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md",
+    "docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md",
     "docs/BRANCH_AND_SERVICE_OPERATING_MODEL.md",
     "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
     "docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md",
@@ -215,27 +216,21 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "stableBaselineCommit": "e8db032",
-    "openPrCount": 1,
+    "stableBaselineCommit": "6845445e",
+    "openPrCount": 2,
     "mergedPrsInCloseout": [
-      299,
-      302,
-      303,
-      304,
-      305,
-      306,
-      307,
-      308,
-      309,
-      310,
-      311,
-      312,
-      315
+      367,
+      384,
+      385,
+      389,
+      366,
+      390,
+      392
     ],
     "followOnBaseline": "master",
     "followOnBranchPolicy": "Start subsequent tasks from a clean master worktree unless a task explicitly states another baseline.",
-    "closeoutPlan": "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
-    "note": "Branch context was rechecked after local/GitHub read-only check: master and origin/master are at e8db032 after PR #315 merged; open PR count is 1 with PR #316 for codex/linear-agent-ops-guards. Earlier PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 are merged, and PR #300 was closed without merge. Always verify live Git status before new work."
+    "closeoutPlan": "docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md",
+    "note": "Branch context was rechecked after the 2026-07-08 PR merge pass: master and origin/master are at 6845445e after PR #392 merged. Open PRs are #381 traffic-usage closeout and #364 Admin/Portal baseline, both Draft/dirty reference carriers. PR #337 and PR #341 were closed as stale; #367, #384, #385, #389, #366, #390, and #392 were merged during the consolidation pass. Always verify live Git status before new work."
   },
   "architectureView": {
     "currentMentalModel": "four-layer-single-control-plane-multi-data-plane",
@@ -264,7 +259,7 @@
       "old checkout paths and archive directories",
       "runtime-only residue copied from production hosts"
     ],
-    "branchAuthority": "master and origin/master at e8db032 are the follow-on development baseline after PR #315 merged; PR #316 is currently open for codex/linear-agent-ops-guards. Earlier PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 merged; PR #300 is closed without merge."
+    "branchAuthority": "master and origin/master at 6845445e are the follow-on development baseline after the 2026-07-08 consolidation pass. Open PR #381 and PR #364 are Draft/dirty reference carriers and should be split, not merged as-is. PR #337 and PR #341 are closed stale references."
   },
   "productSpine": [
     "stable subscription/import experience",
@@ -283,7 +278,9 @@
     "Remote data-plane future-order coordination is coded in source: delivered orders record safe pending desired-state notifications for remote channels, and subscription rendering still requires a matching applied receipt before exposing those channels. Earlier 2026-06-11 gates found and corrected envfile, placeholder, source-deployment, and protected-material gaps through staged packages and rollback evidence. The 2026-06-14 closeout snapshot records the current Japan runtime baseline as control-plane-node-registration-closeout-20260614-001 and observes SGP agent/runtime service anchors active. Future-order SGP apply/render for new orders still needs a separately approved controlled smoke before broad rollout claims.",
     "Aliyun subscription-distribution records, channel-lab-a/b records, and Japan single-TUIC upgrade records are historical/fallback references. Do not reactivate them as current production authority or automatic issuance targets without a fresh Risk A gate and live verification.",
     "User Portal and Admin/Operator surfaces are adapters over shared domain services. User order creation, lifecycle status, refresh, usage monitor, and support flows must use durable backend state, not frontend Map/demo state.",
+    "The 2026-07-08 portal static recovery restored production frontend behavior from the ca9f5702 artifact line, but current master still needs a small portal source-alignment PR for registration/user-panel source before future static deploys should be cut from master. Do not treat PR #364 as merged source authority.",
     "Order-owned traffic accounting remains an active implementation lane: Admin usage monitor, User Portal order summaries, Admin user-resource supervision, and Admin traffic/channel supervision now have repo-only UI/code paths for durable rollups, safe quota editing, platform channel health, anomaly queues, and order-ledger views. The New Admin surface is positioned around user accounts and their resources, not standalone subscription creation. Live runtime sample collection, quota enforcement, and auto-disable still require separate gates.",
+    "The 2026-07-08 traffic usage closeout is not merged to master. PR #381 is a Draft/dirty reference carrier that must be split into docs/evidence, repo-side collector/tests, and separate A-tier runtime gates before merge.",
     "Admin OS is an active repo-only operator-console workstream and must not be reported as delivered from uncommitted Admin UI changes. Current active pages are Operations Overview, Accounts & Resources, and Usage & Channels; Audit & Cases, Platform Development, and System Settings remain locked/planned until real data sources, redaction boundaries, tests, and validation exist. Current Admin OS task-state has GCC-77 System Search safe discovery, GCC-78 workspace layout presets, and GCC-79 capability boundary matrix merged into master through PR #356, PR #357, and PR #358; GCC-74 app map, GCC-75 manifest authoring, and GCC-82 visual protocol remain docs/design-state references. The app metadata source of truth is admin/src/app/admin-app-manifest.ts. App Registry and YAML import are future design only and are not an implemented runtime registry, upload endpoint, schema migration, permission model, or publication flow.",
     "Legacy query-token retirement remains a separate Risk A lane after opaque artifact coverage, observation, endpoint compatibility checks, rollback evidence, and exact operator approval.",
     "All production/runtime/cloud changes remain Risk A: DNS, Nginx, provider firewall, systemd restarts, runtime config, live order creation, account/password generation, subscription URL/token/password output, and SQLite row dumps stay out of repo-only work."
@@ -370,7 +367,7 @@
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, validation evidence, and Agent / Task Routing metadata before it is marked Ready, submitted for merge, or reported complete. The routing metadata must name the lead agent, supporting agents if any, primary unit, secondary units, follow-up agent suitability, and recommended next owner. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
-    "githubHostedActions": "Local/GitHub read-only check reports master and origin/master at e8db032 after PR #315 merged, with PR #316 currently open for codex/linear-agent-ops-guards. Earlier PR #299, PR #302, PR #303, PR #304, PR #305, PR #306, PR #307, PR #308, PR #309, PR #310, PR #311, and PR #312 merged, and PR #300 closed without merge. Recent master CI and Release Artifact workflows should be checked per PR/run; use local/manual validation when hosted workflows do not run.",
+    "githubHostedActions": "The 2026-07-08 consolidation pass reports master and origin/master at 6845445e after PR #392 merged. Master CI and Release Artifact succeeded for #392; #390 master CI, Release Artifact, and Deploy Cloudflare Site workflows also succeeded. Recent workflow state should still be checked per PR/run; use local/manual validation when hosted workflows do not run.",
     "manualCiFallback": "Use docs/VALIDATION_BASELINE.md and docs/CI_MANUAL_VALIDATION.md for the current manual validation path; historical HP/Aliyun manual CI facts are reference only.",
     "manualCiIsStaging": false,
     "cTierCommand": "git diff --check origin/master...HEAD",
@@ -391,6 +388,16 @@
       "id": "production-artifact-boundary-before-next-deploy",
       "summary": "SGP Gate 2 promoted a clean artifact built from commit 505eed929e7fb7a3aa72b62ff2da92725891d9c5 plus rebuilt Admin/Portal static assets to the Japan control plane. Future artifacts must still pass the production boundary checker; Singapore runtime files must not be copied back into Git as source. The 2026-06-11 User Portal route hotfix must be folded into the source/artifact line before the next runtime package is cut.",
       "sourceDoc": "docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md"
+    },
+    {
+      "id": "portal-static-source-alignment-after-restore",
+      "summary": "Production portal static behavior was restored on 2026-07-08 from the ca9f5702 artifact line, but current master does not yet include the full registration/user-panel source slice from PR #364. Re-cut a small portal source-alignment PR from current master before future portal static deploys are cut from master.",
+      "sourceDoc": "docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md"
+    },
+    {
+      "id": "traffic-usage-closeout-split",
+      "summary": "PR #381 contains traffic-usage docs, collector scripts, platform/accounting code, runtime-adapter changes, and production execution records in one dirty Draft. Split it into a docs/evidence PR, a repo-side collector/tests PR, and separate A-tier runtime gates before merge.",
+      "sourceDoc": "docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md"
     },
     {
       "id": "control-plane-node-registration-closeout",
@@ -434,13 +441,16 @@
     }
   ],
   "nextRecommendedQueue": [
+    "Use docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md before continuing frontend or traffic-usage work. Do not merge PR #364 or PR #381 as-is.",
+    "Re-cut a small portal source-alignment PR from current master to align the registration/user-panel source with the restored ca9f5702 production static artifact. Keep unrelated Admin OS, public-site fixtures, and runtime changes out of that PR.",
+    "Split PR #381 into a docs/evidence-only PR, a repo-side collector/accounting implementation PR with tests, and separate A-tier runtime config gates. Do not mix production runtime mutation with the source PR.",
     "Use docs/production-replacement-records/2026-06-14-control-plane-node-registration-production-gate-package.md and docs/production-replacement-records/2026-06-14-control-plane-node-registration-exact-approval-readiness.md as the current GCC-6 package before any production node registration. Treat Japan release control-plane-node-registration-closeout-20260614-001 as the documented current production runtime baseline, subject to live verification before any Risk A task. Future node onboarding still needs a separate exact gate for reviewed first-boot packet ingestion or reviewed existing node binding, protected material handoff, desired-state generation, edge-agent apply receipts, render proof, validation, and rollback.",
     "Use docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-validation.md as staging evidence only; production promotion still needs a separate exact Risk A approval with read-only inventory, backup, validation, and rollback.",
     "Use docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md when aligning current docs or preparing the next Risk A gate; do not use historical Aliyun-current wording to override the Vultr Japan/Singapore production lane.",
     "Before broad SGP future-order rollout claims, run a separately approved controlled smoke against the current Japan runtime baseline: create or reuse exactly one reviewed order, verify SGP desired-state/material pull/apply, post fresh redacted receipts, and prove six-channel render without outputting subscription URLs, tokens, YAML, raw config, or SQLite rows.",
     "Before the next Vultr production deploy, follow docs/production-replacement-records/2026-06-09-sgp-final-production-closeout-gate.md: run a clean artifact manifest through the production artifact boundary checker and record source commit plus artifact SHA-256.",
     "Run a fresh no-secrets new-order desktop and mobile smoke only under exact production approval; do not create live orders during repo-only validation.",
-    "Finish repo-only state/docs archive alignment, then run npm run project-state:check and git diff --check.",
+    "After portal and traffic-usage split PRs land, close or archive PR #364 and PR #381 as reference carriers; keep #337 and #341 closed rather than rebasing stale branches.",
     "Package any local adapter/template changes into an explicit Vultr runtime release only after current repo validation is clean.",
     "Use the protected remote handoff queue/API for future reviewed SGP handoff summaries, then use a separate Risk A gate for any future production remote apply.",
     "Continue the Admin OS lane through docs/ADMIN_CONSOLE_REBUILD_BASELINE.md, docs/ADMIN_CONSOLE_NAVIGATION_IA.md, docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md, docs/ADMIN_CONSOLE_APP_MAP.md, docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md, and docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md: keep Operations Overview, Accounts & Resources, and Usage & Channels as the only active pages; keep Audit & Cases, Platform Development, and System Settings locked/planned; use admin/src/app/admin-app-manifest.ts as the current app metadata source of truth; treat App Registry/YAML import as future design only; do not mark uncommitted Admin UI work as delivered until the owning Admin branch closes with validation.",
