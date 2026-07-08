@@ -218,6 +218,19 @@ function mapAccount(row) {
   };
 }
 
+function normalizedPortalLoginRef(value) {
+  return text(value).toLowerCase();
+}
+
+function portalLoginRefsFromMetadata(metadata) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return [];
+  }
+  return ["loginRef", "displayRef"]
+    .map((field) => text(metadata[field]))
+    .filter(Boolean);
+}
+
 function mapEntitlement(row) {
   if (!row) return null;
   const now = new Date();
@@ -1094,6 +1107,49 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
 
   function getAccount(id) {
     return mapAccount(db.prepare("select * from platform_accounts where id = ?").get(requiredText(id, "id")));
+  }
+
+  function resolvePortalLoginAccount(loginRef) {
+    const normalizedInput = requiredText(loginRef, "loginRef");
+    const exact = getAccount(normalizedInput);
+    if (exact) {
+      return {
+        status: "resolved",
+        account: exact
+      };
+    }
+
+    const normalized = normalizedPortalLoginRef(normalizedInput);
+    const matches = new Map();
+    const accounts = db.prepare(`
+      select * from platform_accounts
+      where status = 'active'
+      order by created_at asc, id asc
+    `).all().map(mapAccount);
+    for (const account of accounts) {
+      for (const candidate of portalLoginRefsFromMetadata(account.metadata)) {
+        if (normalizedPortalLoginRef(candidate) === normalized) {
+          matches.set(account.id, account);
+        }
+      }
+    }
+
+    if (matches.size === 1) {
+      return {
+        status: "resolved",
+        account: [...matches.values()][0]
+      };
+    }
+    if (matches.size > 1) {
+      return {
+        status: "ambiguous",
+        account: null
+      };
+    }
+    return {
+      status: "not_found",
+      account: null
+    };
   }
 
   function createEntitlement(input) {
@@ -2609,6 +2665,7 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     runInTransaction,
     createAccount,
     getAccount,
+    resolvePortalLoginAccount,
     createEntitlement,
     getEntitlement,
     updateEntitlementTrafficLimit,

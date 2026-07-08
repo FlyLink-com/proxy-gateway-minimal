@@ -946,6 +946,84 @@ test("subscription control store tracks portal password verification state", () 
   });
 });
 
+test("subscription control store resolves portal login refs by exact account id or unique metadata", () => {
+  withStore((store) => {
+    const now = "2026-06-03T00:00:00.000Z";
+    store.createAccount({
+      id: "acct_exact_login",
+      ownerRef: "owner_safe_ref",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        loginRef: "shared-login@example.test",
+        displayRef: "Exact Login"
+      }
+    });
+    store.createAccount({
+      id: "acct_metadata_login",
+      ownerRef: "owner_safe_ref_2",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        loginRef: "Customer.Login@example.test",
+        displayRef: "Customer.Visible@example.test"
+      }
+    });
+    store.createAccount({
+      id: "acct_duplicate_login_a",
+      ownerRef: "owner_safe_ref_3",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        loginRef: "duplicate-login@example.test"
+      }
+    });
+    store.createAccount({
+      id: "acct_duplicate_login_b",
+      ownerRef: "owner_safe_ref_4",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        displayRef: "DUPLICATE-LOGIN@example.test"
+      }
+    });
+    store.createAccount({
+      id: "acct_inactive_login",
+      ownerRef: "owner_safe_ref_5",
+      status: "disabled",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        loginRef: "customer.login@example.test"
+      }
+    });
+
+    const exact = store.resolvePortalLoginAccount("acct_exact_login");
+    assert.equal(exact.status, "resolved");
+    assert.equal(exact.account.id, "acct_exact_login");
+
+    const loginRef = store.resolvePortalLoginAccount(" customer.login@example.test ");
+    assert.equal(loginRef.status, "resolved");
+    assert.equal(loginRef.account.id, "acct_metadata_login");
+
+    const displayRef = store.resolvePortalLoginAccount("CUSTOMER.VISIBLE@example.test");
+    assert.equal(displayRef.status, "resolved");
+    assert.equal(displayRef.account.id, "acct_metadata_login");
+
+    const duplicate = store.resolvePortalLoginAccount("duplicate-login@example.test");
+    assert.equal(duplicate.status, "ambiguous");
+    assert.equal(duplicate.account, null);
+
+    const missing = store.resolvePortalLoginAccount("missing-login@example.test");
+    assert.equal(missing.status, "not_found");
+    assert.equal(missing.account, null);
+  });
+});
+
 test("subscription control store persists portal passkey credentials without public summary leakage", () => {
   withStore((store) => {
     const now = "2026-06-03T00:00:00.000Z";
