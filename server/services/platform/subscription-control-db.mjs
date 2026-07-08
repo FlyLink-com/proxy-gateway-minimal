@@ -2260,12 +2260,10 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     const result = db.prepare(`
       update platform_portal_totp_credentials
       set failure_count = failure_count + 1,
-          status = case when ? is not null then 'locked' else status end,
           locked_until = coalesce(?, locked_until),
           updated_at = ?
       where id = ? and status = 'active'
     `).run(
-      nextLockedUntil,
       nextLockedUntil,
       isoText(updatedAt, "updatedAt"),
       requiredText(id, "id")
@@ -2279,7 +2277,7 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
   function markPortalTotpVerified(id, { verifiedAt, updatedAt }) {
     const result = db.prepare(`
       update platform_portal_totp_credentials
-      set failure_count = 0, last_verified_at = ?, updated_at = ?
+      set failure_count = 0, locked_until = null, last_verified_at = ?, updated_at = ?
       where id = ? and status = 'active'
     `).run(isoText(verifiedAt, "verifiedAt"), isoText(updatedAt, "updatedAt"), requiredText(id, "id"));
     if (result.changes !== 1) {

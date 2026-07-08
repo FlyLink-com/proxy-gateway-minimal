@@ -16,6 +16,9 @@ import { listen } from "./helpers/listen.mjs";
 const NOW = "2026-05-31T00:00:00.000Z";
 const FUTURE = "2099-06-04T00:00:00.000Z";
 const SESSION_EXPIRES = "2026-05-31T00:30:00.000Z";
+const TEST_TOTP_SECRET_PROTECTOR = {
+  protect: (secret) => `v2:test-protected:${secret}`
+};
 const VULTR_MULTICHANNEL_ENV = {
   VULTR_TUIC_HOST: "tuic.example.test",
   VULTR_TUIC_UUID: "11111111-1111-4111-8111-111111111111",
@@ -151,9 +154,13 @@ function withPortalState(fn, options = {}) {
       sessionRefFactory: () => "portal_session_route_1",
       totpEnrollmentRefFactory: options.totpEnrollmentRefFactory || (() => "totp_enroll_route_1"),
       totpSecretFactory: options.totpSecretFactory || (() => "JBSWY3DPEHPK3PXP"),
-      totpSecretProtector: options.totpSecretProtector,
+      totpSecretProtector: options.totpSecretProtector ?? TEST_TOTP_SECRET_PROTECTOR,
       sessionExpiresAtFactory: () => SESSION_EXPIRES,
-      totpVerifier: options.totpVerifier || (({ encryptedTotpSecret, code }) => encryptedTotpSecret === "enc:route-totp-secret" && code === "123456"),
+      totpVerifier: options.totpVerifier || (({ encryptedTotpSecret, code }) => (
+        encryptedTotpSecret === "v2:test-protected:route-totp-secret" && code === "123456"
+      ) || (
+        encryptedTotpSecret === "v2:test-protected:JBSWY3DPEHPK3PXP" && code === "654321"
+      )),
       passwordCredentialService,
       allowPasswordOnlySessionForSetup: options.allowPasswordOnlySessionForSetup ?? false,
       totpMaxFailures: options.totpMaxFailures,
@@ -232,6 +239,9 @@ test("user portal routes consume dynamic entry and create scoped session without
       assert.equal(enrollmentBody.enrollment.action, "totp_enrolled");
       assert.equal(enrollmentBody.enrollment.accountId, "acct_portal_route_1");
       assert.equal(store.getPortalEntry("entry_portal_route_1").status, "used");
+      const storedCredential = store.getActivePortalTotpCredential("acct_portal_route_1");
+      assert.equal(storedCredential.encryptedTotpSecret, "v2:test-protected:route-totp-secret");
+      assert.equal(storedCredential.encryptedTotpSecret.startsWith("enc:"), false);
 
       const sessionResponse = await fetch(`${baseUrl}/api/portal/session`, {
         method: "POST",
@@ -601,7 +611,7 @@ test("portal password second-factor route locks TOTP after repeated failures", a
       }
 
       const credential = store.getPortalTotpCredential("totp_route_1");
-      assert.equal(credential.status, "locked");
+      assert.equal(credential.status, "active");
       assert.equal(credential.failureCount, 2);
       assert.equal(credential.lockedUntil, "2026-05-31T00:15:00.000Z");
       const challenge = store.getPortalSecondFactorChallenge("mfa_challenge_1");
@@ -721,7 +731,7 @@ test("portal security routes expose session-scoped authenticator state and confi
     withPasswordCredential: true,
     allowPasswordOnlySessionForSetup: true,
     credentialRefFactory: () => "totp_bound_route_1",
-    totpVerifier: ({ encryptedTotpSecret, code }) => encryptedTotpSecret === "enc:JBSWY3DPEHPK3PXP" && code === "654321"
+    totpVerifier: ({ encryptedTotpSecret, code }) => encryptedTotpSecret === "v2:test-protected:JBSWY3DPEHPK3PXP" && code === "654321"
   });
 });
 

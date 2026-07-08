@@ -107,7 +107,9 @@ export function createApp(state, options = {}) {
     nowFn: options.rateLimitNowFn,
     keyFn: clientIpResolver
   }));
-  app.use(subscriptionRoutes(state));
+  app.use(subscriptionRoutes(state, {
+    resolveClientIpFn: clientIpResolver
+  }));
   app.use(diagnosticsRoutes(state));
 
   return app;

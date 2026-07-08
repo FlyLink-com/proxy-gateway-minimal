@@ -676,3 +676,42 @@ test("Clash subscription route hides subscription service failures", async () =>
     server.close();
   }
 });
+
+test("artifact subscription routes bind using the trusted client IP resolver", async () => {
+  let capturedMetadata;
+  const state = fakeState({
+    security: {
+      adminAllowedCidrs: ["127.0.0.1/32"],
+      trustedProxyCidrs: ["127.0.0.1/32"],
+      subRateLimit: { windowMs: 60000, max: 100 }
+    },
+    subscriptions: {
+      service: {
+        resolveSubscriptionArtifact: async (_artifact, metadata) => {
+          capturedMetadata = metadata;
+          return {
+            ok: true,
+            proxyConfig: sampleConfig()
+          };
+        }
+      }
+    }
+  });
+  const { server, baseUrl } = await listen(createApp(state, {
+    clientIpResolver: () => "203.0.113.10"
+  }));
+  try {
+    const response = await fetch(`${baseUrl}/sub/a/opaque-device`, {
+      headers: {
+        "user-agent": "Mihomo/Test",
+        "x-forwarded-for": "203.0.113.10"
+      }
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(capturedMetadata.ip, "203.0.113.10");
+    assert.equal(capturedMetadata.userAgent, "Mihomo/Test");
+  } finally {
+    server.close();
+  }
+});

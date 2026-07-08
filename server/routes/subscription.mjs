@@ -20,9 +20,12 @@ function nonNegativeInteger(value) {
   return Number.isInteger(normalized) && normalized >= 0 ? normalized : 0;
 }
 
-export function subscriptionRoutes(state) {
+export function subscriptionRoutes(state, options = {}) {
   const router = Router();
   const resolver = createSubscriptionRouteResolver(state);
+  const resolveClientIpFn = typeof options.resolveClientIpFn === "function"
+    ? options.resolveClientIpFn
+    : (req) => req.ip || req.socket?.remoteAddress || "";
 
   function subscriptionTrafficUsage(result) {
     const controlStore = state.platform?.controlStore;
@@ -104,7 +107,7 @@ export function subscriptionRoutes(state) {
   async function resolveArtifact(req, res) {
     const resolved = await resolver.resolveArtifact({
       artifact: req.params.artifact,
-      ip: req.ip || req.socket?.remoteAddress || "",
+      ip: resolveClientIpFn(req),
       userAgent: req.get("user-agent") || ""
     });
     if (!resolved.ok) {

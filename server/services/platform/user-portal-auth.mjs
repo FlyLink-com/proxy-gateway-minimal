@@ -316,10 +316,18 @@ export function createUserPortalAuthService({
   }
 
   function protectTotpSecret(secret) {
-    if (totpSecretProtector && typeof totpSecretProtector.protect === "function") {
-      return requiredText(totpSecretProtector.protect(secret), "encryptedTotpSecret");
+    if (!totpSecretProtector || typeof totpSecretProtector.protect !== "function") {
+      throw portalAuthError("validation_error", "portal TOTP secret protector is required");
     }
-    return `enc:${secret}`;
+    return requiredText(totpSecretProtector.protect(secret), "encryptedTotpSecret");
+  }
+
+  function protectIncomingTotpSecret(value) {
+    const encryptedTotpSecret = requiredText(value, "encryptedTotpSecret");
+    if (!encryptedTotpSecret.startsWith("enc:")) {
+      throw portalAuthError("validation_error", "portal TOTP enrollment secret must use enc format before server-side protection");
+    }
+    return protectTotpSecret(requiredText(encryptedTotpSecret.slice(4), "totpSecret"));
   }
 
   function startTotpEnrollment(input) {
@@ -438,7 +446,7 @@ export function createUserPortalAuthService({
   function enrollTotpCredential(input) {
     const enrolledAt = now();
     const entryToken = requiredText(input?.entryToken, "entryToken");
-    const encryptedTotpSecret = requiredText(input?.encryptedTotpSecret, "encryptedTotpSecret");
+    const encryptedTotpSecret = protectIncomingTotpSecret(input?.encryptedTotpSecret);
     const entry = controlStore.findPortalEntryByTokenHash(hashEntryToken(entryToken));
     assertUsableEntry(entry, enrolledAt);
 
