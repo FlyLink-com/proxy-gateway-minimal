@@ -429,6 +429,78 @@ test("createRuntimeState wires env-gated user portal password login services", (
   }
 });
 
+test("createRuntimeState wires env-gated user portal registration services", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-registration-wiring-"));
+  const now = "2026-07-08T00:00:00.000Z";
+  const sentEmails = [];
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION: "true"
+      }),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      userPortalNowFn: () => now,
+      portalRegistrationEmailSender: async (message) => {
+        sentEmails.push(message);
+      },
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(state.platform.portalRegistrationEmailDelivery.provider, "custom");
+    assert.equal(state.platform.portalRegistrationEmailDelivery.configured, true);
+    assert.equal(typeof state.platform.portalRegistrationEmailVerifications.issueVerification, "function");
+    assert.equal(typeof state.platform.portalRegistrationEmailVerifications.verifyVerification, "function");
+    assert.equal(typeof state.platform.portalRegistrations.submitRegistration, "function");
+
+    const issued = await state.platform.portalRegistrationEmailVerifications.issueVerification({
+      email: "new-user@example.test",
+      purpose: "portal_registration",
+      requestContext: { sourceIp: "127.0.0.1", userAgent: "state-test" }
+    });
+
+    assert.equal(sentEmails.length, 1);
+    assert.equal(issued.verification.safety.noRawCodeReturned, true);
+    assert.equal(JSON.stringify(issued).includes(sentEmails[0].code), false);
+
+    state.platform.portalRegistrationEmailVerifications.verifyVerification({
+      email: "new-user@example.test",
+      purpose: "portal_registration",
+      emailVerification: {
+        verificationRef: issued.verification.verificationRef,
+        code: sentEmails[0].code
+      },
+      requestContext: { sourceIp: "127.0.0.1", userAgent: "state-test" }
+    });
+
+    const result = state.platform.portalRegistrations.submitRegistration({
+      email: "new-user@example.test",
+      password: "synthetic-registration-password",
+      legalAgreement: {
+        termsAccepted: true,
+        privacyAccepted: true
+      },
+      requestContext: { sourceIp: "127.0.0.1", userAgent: "state-test" }
+    });
+
+    assert.equal(result.registration.status, "registered");
+    assert.equal(result.session.authMethod, "password");
+    assert.equal(result.session.accountId, undefined);
+    assert.equal(result.session.userRef, "new-user@example.test");
+    assert.equal(JSON.stringify(result).includes("synthetic-registration-password"), false);
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
 test("createRuntimeState verifies TOTP second factor for portal password login", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-totp-wiring-"));
   const now = "2026-06-06T00:00:00.000Z";

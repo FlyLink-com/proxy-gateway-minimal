@@ -5,6 +5,34 @@ function sendPortalError(res, error) {
     res.status(400).json({ error: "human_verification_failed" });
     return;
   }
+  if (error.code === "email_verification_required") {
+    res.status(400).json({ error: "email_verification_required" });
+    return;
+  }
+  if (error.code === "email_verification_failed") {
+    res.status(400).json({ error: "email_verification_failed" });
+    return;
+  }
+  if (error.code === "email_verification_unavailable") {
+    res.status(503).json({ error: "email_verification_unavailable" });
+    return;
+  }
+  if (error.code === "email_verification_rate_limited") {
+    res.status(429).json({ error: "email_verification_rate_limited" });
+    return;
+  }
+  if (error.code === "registration_rate_limited") {
+    res.status(429).json({ error: "registration_rate_limited" });
+    return;
+  }
+  if (error.code === "legal_agreement_required") {
+    res.status(400).json({ error: "legal_agreement_required" });
+    return;
+  }
+  if (error.code === "account_already_exists") {
+    res.status(409).json({ error: "account_already_exists" });
+    return;
+  }
   if (error.code === "invalid_session") {
     res.status(401).json({ error: "invalid_session" });
     return;
@@ -28,6 +56,9 @@ export function userPortalRoutes(state, options = {}) {
   const router = Router();
   const auth = options.userPortalAuth || state.platform?.userPortalAuth;
   const accessRequests = options.portalAccessRequests || state.platform?.portalAccessRequests;
+  const registrations = options.portalRegistrations || state.platform?.portalRegistrations;
+  const registrationEmailVerifications = options.portalRegistrationEmailVerifications
+    || state.platform?.portalRegistrationEmailVerifications;
   const supportRequests = options.portalSupportRequests || state.platform?.portalSupportRequests;
   const humanChallenges = options.portalHumanChallenges || state.platform?.portalHumanChallenges;
 
@@ -186,6 +217,57 @@ export function userPortalRoutes(state, options = {}) {
         encryptedTotpSecret: req.body?.encryptedTotpSecret
       });
       res.json({ enrollment: enrollment.summary });
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.post("/api/portal/registration/email-verification", async (req, res) => {
+    try {
+      if (
+        !registrationEmailVerifications
+        || typeof registrationEmailVerifications.issueVerification !== "function"
+      ) {
+        const error = new Error("portal registration email verification service is not configured");
+        error.code = "email_verification_unavailable";
+        throw error;
+      }
+      const issued = await registrationEmailVerifications.issueVerification({
+        email: req.body?.email,
+        purpose: "portal_registration",
+        requestContext: requestContext(req)
+      });
+      res.status(201).json(issued);
+    } catch (error) {
+      sendPortalError(res, error);
+    }
+  });
+
+  router.post("/api/portal/registration", (req, res) => {
+    try {
+      if (!registrations || typeof registrations.submitRegistration !== "function") {
+        const error = new Error("portal registration service is not configured");
+        error.code = "validation_error";
+        throw error;
+      }
+      if (
+        !registrationEmailVerifications
+        || typeof registrationEmailVerifications.verifyVerification !== "function"
+      ) {
+        const error = new Error("portal registration email verification service is not configured");
+        error.code = "email_verification_unavailable";
+        throw error;
+      }
+      registrationEmailVerifications.verifyVerification({
+        email: req.body?.email,
+        purpose: "portal_registration",
+        emailVerification: req.body?.emailVerification,
+        requestContext: requestContext(req)
+      });
+      res.status(201).json(registrations.submitRegistration({
+        ...(req.body ?? {}),
+        requestContext: requestContext(req)
+      }));
     } catch (error) {
       sendPortalError(res, error);
     }

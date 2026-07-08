@@ -20,6 +20,8 @@ const PUBLIC_PATHS = ["/api/health", "/api/public/leads", "/proxy.pac", "/sub/cl
 const PUBLIC_PATH_PREFIXES = ["/sub/a/"];
 const USER_PORTAL_PUBLIC_PATHS = [
   "/api/portal/human-challenges",
+  "/api/portal/registration",
+  "/api/portal/registration/email-verification",
   "/api/portal/password/session",
   "/api/portal/password/second-factor",
   "/api/portal/entry/enroll",
@@ -48,6 +50,8 @@ export function createApp(state, options = {}) {
     && (
       state.platform?.userPortalAuth
       || state.platform?.portalAccessRequests
+      || state.platform?.portalRegistrations
+      || state.platform?.portalRegistrationEmailVerifications
       || state.platform?.portalSupportRequests
     )
   );

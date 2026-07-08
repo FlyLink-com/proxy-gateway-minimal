@@ -21,6 +21,9 @@ import { createPortalAccessRequestService } from "./services/platform/portal-acc
 import { createPortalSupportRequestService } from "./services/platform/portal-support-requests.mjs";
 import { createPortalHumanChallengeService } from "./services/platform/portal-human-challenge.mjs";
 import { createPortalPasswordCredentialService } from "./services/platform/portal-password-credentials.mjs";
+import { createPortalRegistrationEmailVerificationService } from "./services/platform/portal-registration-email-verification.mjs";
+import { createResendRegistrationEmailSender } from "./services/platform/resend-registration-email-sender.mjs";
+import { createPortalRegistrationService } from "./services/platform/portal-registration.mjs";
 import { createPortalTotpSecretProtector, createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
 import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
 import { createHysteria2UsageCollector } from "./services/edge/hysteria2-usage-collector.mjs";
@@ -835,6 +838,7 @@ export function createRuntimeState(options = {}) {
     env
   });
   const userPortalRoutesEnabled = envFlag(env.USER_PORTAL_ROUTES_ENABLED);
+  const portalRegistrationEmailProvider = optionalEnvText(env.USER_PORTAL_REGISTRATION_EMAIL_PROVIDER).toLowerCase();
   const configuredServers = Array.isArray(proxyConfig?.servers) ? proxyConfig.servers : [];
   const configuredProxyRefs = proxyServerRefSet(proxyConfig);
   const edgeLifecycleEnabled = envFlag(env.USER_PORTAL_EDGE_LIFECYCLE_ENABLED || env.EDGE_CREDENTIAL_LIFECYCLE_ENABLED);
@@ -1192,6 +1196,35 @@ export function createRuntimeState(options = {}) {
       nowFn: options.userPortalNowFn
     }) : null
   );
+  const platformPortalRegistrationEmailSender = options.portalRegistrationEmailSender || (
+    userPortalRoutesEnabled && portalRegistrationEmailProvider === "resend"
+      ? createResendRegistrationEmailSender({
+        apiKey: env.RESEND_API_KEY,
+        from: env.USER_PORTAL_REGISTRATION_EMAIL_FROM,
+        replyTo: env.USER_PORTAL_REGISTRATION_EMAIL_REPLY_TO,
+        userAgent: env.USER_PORTAL_REGISTRATION_EMAIL_USER_AGENT,
+        fetchFn: options.portalRegistrationEmailFetchFn
+      })
+      : null
+  );
+  const platformPortalRegistrationEmailDelivery = {
+    provider: platformPortalRegistrationEmailSender && !portalRegistrationEmailProvider
+      ? "custom"
+      : (portalRegistrationEmailProvider || "disabled"),
+    configured: Boolean(
+      platformPortalRegistrationEmailSender
+      && (
+        typeof platformPortalRegistrationEmailSender.isConfigured !== "function"
+        || platformPortalRegistrationEmailSender.isConfigured()
+      )
+    )
+  };
+  const platformPortalRegistrationEmailVerifications = options.platformPortalRegistrationEmailVerifications || (
+    userPortalRoutesEnabled ? createPortalRegistrationEmailVerificationService({
+      nowFn: options.userPortalNowFn,
+      sender: platformPortalRegistrationEmailSender
+    }) : null
+  );
   const platformPortalPasswordCredentialService = options.platformPortalPasswordCredentialService || (
     userPortalRoutesEnabled ? createPortalPasswordCredentialService({
       controlStore: platformControlStore,
@@ -1212,6 +1245,15 @@ export function createRuntimeState(options = {}) {
       totpSecretProtector: platformPortalTotpSecretProtector,
       passwordCredentialService: platformPortalPasswordCredentialService,
       allowPasswordOnlySessionForSetup: envFlag(env.USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION)
+    }) : null
+  );
+  const platformPortalRegistrations = options.platformPortalRegistrations || (
+    userPortalRoutesEnabled ? createPortalRegistrationService({
+      controlStore: platformControlStore,
+      userPortalAuth: platformUserPortalAuth,
+      passwordCredentialService: platformPortalPasswordCredentialService,
+      portalAccessRequests: platformPortalAccessRequests,
+      nowFn: options.userPortalNowFn
     }) : null
   );
   const platformTrafficAccounting = options.platformTrafficAccounting || createTrafficAccountingService({
@@ -1410,7 +1452,10 @@ export function createRuntimeState(options = {}) {
       userPortalRoutesEnabled,
       userPortalAuth: platformUserPortalAuth,
       portalHumanChallenges: platformPortalHumanChallenges,
+      portalRegistrationEmailDelivery: platformPortalRegistrationEmailDelivery,
+      portalRegistrationEmailVerifications: platformPortalRegistrationEmailVerifications,
       portalPasswordCredentialService: platformPortalPasswordCredentialService,
+      portalRegistrations: platformPortalRegistrations,
       portalAccessRequests: platformPortalAccessRequests,
       portalSupportRequests: platformPortalSupportRequests,
       aliyunGateEvidenceShell: platformAliyunGateEvidenceShell,

@@ -197,6 +197,11 @@ function safeSecurityState({ account, authenticatorBound, passkeyExported }) {
   };
 }
 
+function normalizeEmailLogin(value) {
+  const email = String(value ?? "").trim().toLowerCase();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
 function safeTotpEnrollment(enrollment) {
   return {
     enrollmentRef: enrollment.enrollmentRef,
@@ -644,6 +649,29 @@ export function createUserPortalAuthService({
     enrollTotpCredential,
     verifyTotpAndCreateSession,
     verifyPasswordAndMaybeChallenge,
+    createPasswordSetupSession(input = {}) {
+      const issuedAt = now();
+      const accountId = requiredText(input.accountId, "accountId");
+      const account = controlStore.getAccount(accountId);
+      if (!account || account.status !== "active") {
+        throw portalAuthError("invalid_login", "invalid_login");
+      }
+      const publicRef = normalizeEmailLogin(input.loginRef) || "user_account";
+      const { session } = createSession({
+        accountId,
+        authMethod: "password",
+        issuedAt,
+        expiresAt: input.expiresAt
+      });
+      return {
+        session: {
+          ...session,
+          accountId: undefined,
+          userRef: publicRef,
+          displayName: publicRef
+        }
+      };
+    },
     completeSecondFactor,
     requireSession(input = {}) {
       const { session, account } = getActiveSessionContext(input.sessionRef);
