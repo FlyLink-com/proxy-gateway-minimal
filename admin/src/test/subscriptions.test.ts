@@ -851,10 +851,10 @@ function partnerAttributionReport(): PartnerAttributionAdminReport {
       totalAmountCents: 2500,
       currency: "USD"
     }],
-    campaigns: [{
-      campaignRef: "campaign_alpha_jp",
-      partnerRef: "partner_alpha",
-      status: "active",
+      campaigns: [{
+        campaignRef: "campaign_alpha_jp",
+        partnerRef: "partner_alpha",
+        status: "active",
       provider: "appsflyer",
       touchCount: 3,
       eventCount: 6,
@@ -869,11 +869,21 @@ function partnerAttributionReport(): PartnerAttributionAdminReport {
         checkoutStarted: 1,
         paymentSuccess: 1,
         entitlementDelivered: 1,
-        settlementCandidateCreated: 1
-      }
-    }],
-    candidates: [{
-      candidateRef: "settlement_candidate_1",
+          settlementCandidateCreated: 1
+        }
+      }],
+      guardrails: {
+        summaryOnly: true,
+        privacyBoundaryOk: true,
+        rawValuesReturned: false,
+        reconciliation: {
+          payableReviewAllowedCount: 1,
+          manualReviewRequiredCount: 0,
+          blockedCount: 0
+        }
+      },
+      candidates: [{
+        candidateRef: "settlement_candidate_1",
       status: "frozen",
       partnerRef: "partner_alpha",
       campaignRef: "campaign_alpha_jp",
@@ -889,11 +899,19 @@ function partnerAttributionReport(): PartnerAttributionAdminReport {
       freezeUntil: "2026-07-14T01:20:00.000Z",
       payableAt: null,
       reversedAt: null,
-      reasonCode: null,
-      sourceEventRefs: ["event_payment_1", "event_entitlement_1"],
-      reversalEventRef: null,
-      sourceLabels: ["Backend settlement facts"]
-    }],
+        reasonCode: null,
+        sourceEventRefs: ["event_payment_1", "event_entitlement_1"],
+        reversalEventRef: null,
+        sourceLabels: ["Backend settlement facts"],
+        reconciliationStatus: "payable_review_allowed",
+        manualReviewRequired: false,
+        reconciliationBlockers: [],
+        matchedEvidence: [
+          "backend_entitlement_delivered",
+          "backend_payment_success",
+          "provider_attribution_evidence"
+        ]
+      }],
     warnings: [],
     safety: {
       summaryOnly: true,

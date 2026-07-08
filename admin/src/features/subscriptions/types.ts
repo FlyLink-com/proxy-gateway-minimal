@@ -419,6 +419,16 @@ export type PartnerAttributionAdminReport = {
     currency: string | null;
     funnel: Partial<Record<PartnerAttributionFunnelKey, number>>;
   }>;
+  guardrails: {
+    summaryOnly: boolean;
+    privacyBoundaryOk: boolean;
+    rawValuesReturned: boolean;
+    reconciliation: {
+      payableReviewAllowedCount: number;
+      manualReviewRequiredCount: number;
+      blockedCount: number;
+    };
+  };
   candidates: Array<{
     candidateRef: string;
     status: string;
@@ -440,6 +450,10 @@ export type PartnerAttributionAdminReport = {
     sourceEventRefs: string[];
     reversalEventRef: string | null;
     sourceLabels: string[];
+    reconciliationStatus: string;
+    manualReviewRequired: boolean;
+    reconciliationBlockers: string[];
+    matchedEvidence: string[];
   }>;
   warnings: string[];
   safety: {
