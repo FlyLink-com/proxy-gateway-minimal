@@ -26,6 +26,7 @@ import { createResendRegistrationEmailSender } from "./services/platform/resend-
 import { createPortalRegistrationService } from "./services/platform/portal-registration.mjs";
 import { createPortalTotpSecretProtector, createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
 import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
+import { createAdminAuthService, createPortalAccountAdminAuthService } from "./services/platform/admin-auth.mjs";
 import { createHysteria2UsageCollector } from "./services/edge/hysteria2-usage-collector.mjs";
 import { createMihomoTuicUsageCollector } from "./services/edge/mihomo-tuic-usage-collector.mjs";
 import { createMihomoExternalControllerUsageSnapshotReader } from "./services/edge/mihomo-external-controller-usage-reader.mjs";
@@ -838,6 +839,8 @@ export function createRuntimeState(options = {}) {
     env
   });
   const userPortalRoutesEnabled = envFlag(env.USER_PORTAL_ROUTES_ENABLED);
+  const adminAuthRoutesEnabled = envFlag(env.ADMIN_AUTH_ROUTES_ENABLED || env.ADMIN_PROTECTED_ROUTE_AUTH_ENABLED);
+  const adminAuthPortalAccountId = optionalEnvText(env.ADMIN_AUTH_PORTAL_ACCOUNT_ID);
   const portalRegistrationEmailProvider = optionalEnvText(env.USER_PORTAL_REGISTRATION_EMAIL_PROVIDER).toLowerCase();
   const configuredServers = Array.isArray(proxyConfig?.servers) ? proxyConfig.servers : [];
   const configuredProxyRefs = proxyServerRefSet(proxyConfig);
@@ -1226,7 +1229,7 @@ export function createRuntimeState(options = {}) {
     }) : null
   );
   const platformPortalPasswordCredentialService = options.platformPortalPasswordCredentialService || (
-    userPortalRoutesEnabled ? createPortalPasswordCredentialService({
+    (userPortalRoutesEnabled || adminAuthRoutesEnabled) ? createPortalPasswordCredentialService({
       controlStore: platformControlStore,
       nowFn: options.userPortalNowFn
     }) : null
@@ -1237,6 +1240,42 @@ export function createRuntimeState(options = {}) {
     nowFn: options.userPortalNowFn,
     secretProtector: platformPortalTotpSecretProtector
   });
+  const platformAdminTotpVerifier = options.adminAuthTotpVerifier || createPortalTotpVerifier({
+    nowFn: options.adminAuthNowFn,
+    secretProtector: platformPortalTotpSecretProtector
+  });
+  const platformAdminAuth = options.platformAdminAuth || (
+    adminAuthRoutesEnabled
+      ? (
+        adminAuthPortalAccountId
+          ? createPortalAccountAdminAuthService({
+            controlStore: platformControlStore,
+            passwordCredentialService: platformPortalPasswordCredentialService,
+            nowFn: options.adminAuthNowFn,
+            sessionSecret: env.ADMIN_AUTH_SESSION_SECRET,
+            accountId: adminAuthPortalAccountId,
+            totpVerifier: platformAdminTotpVerifier,
+            totpSecretFactory: options.adminAuthTotpSecretFactory,
+            enrollmentRefFactory: options.adminAuthEnrollmentRefFactory,
+            credentialRefFactory: options.adminAuthCredentialRefFactory,
+            challengeRefFactory: options.adminAuthChallengeRefFactory,
+            sessionRefFactory: options.adminAuthSessionRefFactory
+          })
+          : createAdminAuthService({
+            nowFn: options.adminAuthNowFn,
+            bootstrapToken: env.ADMIN_AUTH_BOOTSTRAP_TOKEN,
+            sessionSecret: env.ADMIN_AUTH_SESSION_SECRET,
+            operatorRef: optionalEnvText(env.ADMIN_AUTH_OPERATOR_REF) || "operator_local_admin",
+            totpVerifier: platformAdminTotpVerifier,
+            totpSecretFactory: options.adminAuthTotpSecretFactory,
+            enrollmentRefFactory: options.adminAuthEnrollmentRefFactory,
+            credentialRefFactory: options.adminAuthCredentialRefFactory,
+            challengeRefFactory: options.adminAuthChallengeRefFactory,
+            sessionRefFactory: options.adminAuthSessionRefFactory
+          })
+      )
+      : null
+  );
   const platformUserPortalAuth = options.platformUserPortalAuth || (
     userPortalRoutesEnabled ? createUserPortalAuthService({
       controlStore: platformControlStore,
@@ -1449,6 +1488,8 @@ export function createRuntimeState(options = {}) {
       leadQueue: platformLeadQueue,
       accountShell: platformAccountShell,
       accessShell: platformAccessShell,
+      adminAuthRoutesEnabled,
+      adminAuth: platformAdminAuth,
       userPortalRoutesEnabled,
       userPortalAuth: platformUserPortalAuth,
       portalHumanChallenges: platformPortalHumanChallenges,

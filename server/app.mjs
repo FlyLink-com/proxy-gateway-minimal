@@ -10,6 +10,11 @@ import { systemProxyRoutes } from "./routes/system-proxy.mjs";
 import { networkRoutes } from "./routes/network.mjs";
 import { adminSubscriptionRoutes } from "./routes/admin-subscriptions.mjs";
 import { adminPlatformRoutes } from "./routes/admin-platform.mjs";
+import {
+  ADMIN_AUTH_PUBLIC_PATHS,
+  adminAuthRoutes,
+  createAdminSessionGatewayMiddleware
+} from "./routes/admin-auth.mjs";
 import { subscriptionRoutes } from "./routes/subscription.mjs";
 import { publicLeadRoutes } from "./routes/public-leads.mjs";
 import { userPortalRoutes } from "./routes/user-portal.mjs";
@@ -59,9 +64,14 @@ export function createApp(state, options = {}) {
     state.platform?.dataPlaneAgentRoutesEnabled
     && state.platform?.dataPlaneAgentService
   );
+  const adminAuthRoutesEnabled = Boolean(
+    state.platform?.adminAuthRoutesEnabled
+    && state.platform?.adminAuth
+  );
   const authPublicPaths = [
     ...PUBLIC_PATHS,
-    ...(userPortalRoutesEnabled ? USER_PORTAL_PUBLIC_PATHS : [])
+    ...(userPortalRoutesEnabled ? USER_PORTAL_PUBLIC_PATHS : []),
+    ...(adminAuthRoutesEnabled ? ADMIN_AUTH_PUBLIC_PATHS : [])
   ];
   const clientIpResolver = options.clientIpResolver || ((req) => resolveClientIp(req, {
     trustedProxyCidrs: security.trustedProxyCidrs
@@ -70,6 +80,17 @@ export function createApp(state, options = {}) {
     allowedCidrs: security.adminAllowedCidrs,
     resolveClientIpFn: clientIpResolver
   }));
+  if (adminAuthRoutesEnabled) {
+    app.use("/api/admin-auth", createAdminAllowlistMiddleware({
+      allowedCidrs: security.adminAllowedCidrs,
+      resolveClientIpFn: clientIpResolver
+    }));
+    app.use(adminAuthRoutes(state));
+    app.use("/api/admin", createAdminSessionGatewayMiddleware({
+      adminAuth: state.platform.adminAuth,
+      consoleToken: state.consoleToken
+    }));
+  }
   if (dataPlaneAgentRoutesEnabled) {
     app.use(dataPlaneAgentRoutes(state, {
       resolveClientIpFn: clientIpResolver
