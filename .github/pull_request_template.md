@@ -2,6 +2,19 @@
 
 <!-- 1-3 sentences. State the intent and the concrete scope. -->
 
+## Issue / Index Card
+
+<!--
+PRs are execution summaries and validation receipts. GitHub Issues are durable
+index cards for Risk A, multi-PR, source/production drift, archive, or main-lane
+work. Use Refs # when this PR contributes to an issue; use Closes # only when
+the issue's done criteria are fully satisfied.
+-->
+
+- Issue: None / Refs # / Closes #
+- Issue role: none / index card / epic / A-tier gate
+- Close behavior: refs only / closes when done criteria are complete
+
 ## Agent / Task Routing
 
 - Lead agent:
