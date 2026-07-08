@@ -288,6 +288,22 @@ export function createUserPortalAuthService({
     return factors;
   }
 
+  function resolvePasswordLoginAccount(loginRef) {
+    const normalizedLoginRef = requiredText(loginRef, "accountId");
+    if (typeof controlStore.resolvePortalLoginAccount === "function") {
+      const resolved = controlStore.resolvePortalLoginAccount(normalizedLoginRef);
+      if (!resolved || resolved.status !== "resolved" || !resolved.account) {
+        throw portalAuthError("invalid_login", "invalid_login");
+      }
+      return resolved.account;
+    }
+    const account = controlStore.getAccount(normalizedLoginRef);
+    if (!account) {
+      throw portalAuthError("invalid_login", "invalid_login");
+    }
+    return account;
+  }
+
   function getSecurityState(input) {
     const { account } = getActiveSessionContext(input?.sessionRef);
     return {
@@ -484,11 +500,11 @@ export function createUserPortalAuthService({
     if (!passwordCredentialService) {
       throw portalAuthError("validation_error", "password credential service is not configured");
     }
-    const accountId = requiredText(input?.accountId, "accountId");
-    const account = controlStore.getAccount(accountId);
+    const account = resolvePasswordLoginAccount(input?.accountId);
     if (!account || account.status !== "active") {
       throw portalAuthError("invalid_login", "invalid_login");
     }
+    const accountId = account.id;
     passwordCredentialService.verifyPasswordCredential({
       accountId,
       plainPassword: requiredText(input?.plainPassword, "plainPassword"),

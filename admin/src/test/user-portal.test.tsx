@@ -313,7 +313,7 @@ function openNewOrderForm() {
 }
 
 async function submitPortalLogin(accountId = "user_safe_ref", password = "user-password") {
-  fireEvent.change(screen.getByLabelText("账户 ID"), { target: { value: accountId } });
+  fireEvent.change(screen.getByLabelText("电子邮箱"), { target: { value: accountId } });
   fireEvent.change(screen.getByLabelText("密码"), { target: { value: password } });
   fireEvent.change(screen.getByLabelText("防机器人校验"), { target: { value: await waitForRobotAnswer() } });
   fireEvent.click(screen.getByRole("button", { name: "登录" }));
@@ -329,8 +329,8 @@ describe("user portal route", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open user portal" }));
 
     expect(await screen.findByRole("heading", { name: "账号登录" })).not.toBeNull();
-    expect(screen.getByText("使用账户密码登录。可在个人中心开启身份验证器和通行密钥。")).not.toBeNull();
-    expect(screen.getByLabelText("账户 ID")).not.toBeNull();
+    expect(screen.getByText("使用账号密码登录，进入用户中心管理套餐、订单和客户端。")).not.toBeNull();
+    expect(screen.getByLabelText("电子邮箱")).not.toBeNull();
     expect(screen.getByLabelText("密码")).not.toBeNull();
     expect(screen.getByLabelText("防机器人校验")).not.toBeNull();
     expect(screen.getByRole("button", { name: "登录" })).not.toBeNull();
@@ -370,7 +370,7 @@ describe("user portal route", () => {
     expect(await screen.findByRole("heading", { name: "账号登录" })).not.toBeNull();
     expect(screen.queryByRole("navigation", { name: "用户中心导航" })).toBeNull();
     expect(screen.queryByRole("button", { name: "退出登录" })).toBeNull();
-    expect((screen.getByLabelText("账户 ID") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("电子邮箱") as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText("密码") as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText("防机器人校验") as HTMLInputElement).value).toBe("");
   });
@@ -381,9 +381,9 @@ describe("user portal product surface", () => {
     render(createElement(UserPortalPage, { portalClient: portalClient() }));
 
     expect(screen.getByRole("heading", { name: "账号登录" })).not.toBeNull();
-    expect(screen.getByText("使用账户密码登录。可在个人中心开启身份验证器和通行密钥。")).not.toBeNull();
+    expect(screen.getByText("使用账号密码登录，进入用户中心管理套餐、订单和客户端。")).not.toBeNull();
     expect(screen.queryByRole("group", { name: "登录方式" })).toBeNull();
-    expect(screen.getByLabelText("账户 ID")).not.toBeNull();
+    expect(screen.getByLabelText("电子邮箱")).not.toBeNull();
     expect(screen.getByLabelText("密码")).not.toBeNull();
     expect(screen.getByLabelText("防机器人校验")).not.toBeNull();
     await waitForRobotAnswer();
@@ -436,7 +436,7 @@ describe("user portal product surface", () => {
     const client = portalClient();
     const { container } = render(createElement(UserPortalPage, { portalClient: client }));
 
-    fireEvent.change(screen.getByLabelText("账户 ID"), { target: { value: "acct_1" } });
+    fireEvent.change(screen.getByLabelText("电子邮箱"), { target: { value: "acct_1" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "secret-passphrase" } });
     fireEvent.change(screen.getByLabelText("防机器人校验"), { target: { value: await waitForRobotAnswer() } });
     fireEvent.change(container.querySelector("input[name='portal-company']") as HTMLInputElement, { target: { value: "bot" } });
@@ -593,7 +593,7 @@ describe("user portal product surface", () => {
     const client = portalClient();
     render(createElement(UserPortalPage, { portalClient: client }));
 
-    fireEvent.change(screen.getByLabelText("账户 ID"), { target: { value: "acct_password_1" } });
+    fireEvent.change(screen.getByLabelText("电子邮箱"), { target: { value: "acct_password_1" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "secret-passphrase" } });
     const robotAnswer = await waitForRobotAnswer();
     fireEvent.change(screen.getByLabelText("防机器人校验"), { target: { value: robotAnswer } });
@@ -626,7 +626,7 @@ describe("user portal product surface", () => {
       expect((screen.getByLabelText("防机器人校验") as HTMLInputElement).placeholder).toBe("8 + 5 = ?");
     });
 
-    fireEvent.change(screen.getByLabelText("账户 ID"), { target: { value: "acct_password_1" } });
+    fireEvent.change(screen.getByLabelText("电子邮箱"), { target: { value: "acct_password_1" } });
     fireEvent.change(screen.getByLabelText("密码"), { target: { value: "secret-passphrase" } });
     fireEvent.change(screen.getByLabelText("防机器人校验"), { target: { value: "13" } });
     fireEvent.click(screen.getByRole("button", { name: "登录" }));

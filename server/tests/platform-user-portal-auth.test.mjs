@@ -33,7 +33,11 @@ function seedAccountAndEntitlement(store) {
     ownerRef: "owner_safe_ref",
     status: "active",
     createdAt: NOW,
-    updatedAt: NOW
+    updatedAt: NOW,
+    metadata: {
+      loginRef: "Portal.User@example.test",
+      displayRef: "Portal.User@example.test"
+    }
   });
   store.createEntitlement({
     id: "ent_portal_1",
@@ -196,6 +200,36 @@ test("user portal auth creates first-login setup session from password when poli
     assert.equal(verified.session.sessionRef, "portal_session_1");
     assert.equal(verified.session.authMethod, "password");
     assert.equal(verified.session.expiresAt, SESSION_EXPIRES);
+
+    const serialized = JSON.stringify(verified);
+    assert.equal(serialized.includes(plainPassword), false);
+    assert.doesNotMatch(serialized, /passwordHash|scrypt\$v=1/);
+  });
+});
+
+test("user portal auth accepts a unique loginRef for password login", () => {
+  withStore((store) => {
+    const passwordService = createPasswordService(store);
+    const plainPassword = buildTestPassword();
+    passwordService.issueInitialPasswordCredential({
+      accountId: "acct_portal_1",
+      plainPassword,
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_portal_password"
+    });
+    const service = createService(store, {
+      passwordCredentialService: passwordService,
+      allowPasswordOnlySessionForSetup: true
+    });
+
+    const verified = service.verifyPasswordAndMaybeChallenge({
+      accountId: " portal.user@example.test ",
+      plainPassword
+    });
+    assert.equal(verified.session.sessionRef, "portal_session_1");
+    assert.equal(verified.session.accountId, "acct_portal_1");
+    assert.equal(verified.session.authMethod, "password");
+    assert.equal(store.listPortalSessions({ accountId: "acct_portal_1" }).length, 1);
 
     const serialized = JSON.stringify(verified);
     assert.equal(serialized.includes(plainPassword), false);

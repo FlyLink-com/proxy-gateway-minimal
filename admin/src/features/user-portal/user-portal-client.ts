@@ -917,7 +917,7 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
         return sessionSummary(accountId, input.mode, issuedAt.toISOString());
       }
       if (input.mode === "password") {
-        const accountId = requiredText(input.accountId, "请输入账户 ID。");
+        const accountId = requiredText(input.accountId, "请输入电子邮箱。");
         const account = initialAccounts.get(accountId);
         if (!account || requiredText(input.password, "请输入密码。") !== account.previewPassword) {
           throw portalError("账户或密码无效。");
@@ -1408,7 +1408,7 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
         );
       }
       if (input.mode === "password") {
-        const accountId = requiredText(input.accountId, "请输入账户 ID。");
+        const accountId = requiredText(input.accountId, "请输入电子邮箱。");
         const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/password/session"), {
           method: "POST",
           body: JSON.stringify({

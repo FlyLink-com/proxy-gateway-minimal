@@ -1014,11 +1014,11 @@ export function UserPortalPage({
         <section className="portal-auth-card" aria-label="用户登录">
           <div className="portal-auth-header">
             <h1>账号登录</h1>
-            <p>使用账户密码登录。可在个人中心开启身份验证器和通行密钥。</p>
+            <p>使用账号密码登录，进入用户中心管理套餐、订单和客户端。</p>
           </div>
 
           <form className="portal-auth-form" onSubmit={submitAuth}>
-            <label htmlFor="portal-account-id">账户 ID</label>
+            <label htmlFor="portal-account-id">电子邮箱</label>
             <input
               id="portal-account-id"
               value={accountId}

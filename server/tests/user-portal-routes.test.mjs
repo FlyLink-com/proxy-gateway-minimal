@@ -43,7 +43,11 @@ function seedAccountAndEntitlement(store) {
     ownerRef: "owner_safe_ref",
     status: "active",
     createdAt: NOW,
-    updatedAt: NOW
+    updatedAt: NOW,
+    metadata: {
+      loginRef: "Portal.Route@example.test",
+      displayRef: "Portal.Route@example.test"
+    }
   });
   store.createEntitlement({
     id: "ent_portal_route_1",
@@ -417,6 +421,57 @@ test("portal password session route returns second-factor challenge after passwo
     }
   }, {
     withPasswordCredential: true
+  });
+});
+
+test("portal password session route resolves a unique loginRef before creating a session", async () => {
+  await withPortalState(async ({ store, auth, passwordCredentialService }) => {
+    const plainPassword = `test-password-${randomUUID()}`;
+    passwordCredentialService.issueInitialPasswordCredential({
+      accountId: "acct_portal_route_1",
+      plainPassword,
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_password_route_login_ref",
+      mustRotate: true
+    });
+    const humanChallenges = createHumanChallengeService();
+    const { server, baseUrl } = await listen(createApp(baseState({
+      userPortalAuth: auth,
+      portalHumanChallenges: humanChallenges,
+      userPortalRoutesEnabled: true
+    })));
+    try {
+      const challenge = await issueHumanChallenge(baseUrl);
+      const response = await fetch(`${baseUrl}/api/portal/password/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: " portal.route@example.test ",
+          password: plainPassword,
+          humanVerification: {
+            challengeRef: challenge.challengeRef,
+            answer: "13"
+          }
+        })
+      });
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.session.sessionRef, "portal_session_route_1");
+      assert.equal(body.session.accountId, "acct_portal_route_1");
+      assert.equal(body.session.authMethod, "password");
+      assert.equal(store.listPortalSessions({ accountId: "acct_portal_route_1" }).length, 1);
+
+      const serialized = JSON.stringify(body);
+      assert.equal(serialized.includes(plainPassword), false);
+      assert.equal(serialized.includes("scrypt$v=1"), false);
+      assert.equal(serialized.includes("token="), false);
+      assert.equal(serialized.includes("subscriptionUrl"), false);
+    } finally {
+      server.close();
+    }
+  }, {
+    withPasswordCredential: true,
+    allowPasswordOnlySessionForSetup: true
   });
 });
 
