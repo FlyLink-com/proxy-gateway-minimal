@@ -851,7 +851,10 @@ Initial task map:
   First repo-only slice adds dry-run pilot-link planning for approved portal
   routes and keeps all live AppsFlyer credentials, provider dispatch, OneLink
   creation, branded-domain setup, broad promotion, and payable settlement
-  execution behind the production gate.
+  execution behind the production gate. The production activation gate package
+  is recorded in
+  `docs/production-replacement-records/2026-07-08-appsflyer-production-activation-gate.md`;
+  it is an approval packet only and does not authorize production mutation.
 
 Recommended order:
 
