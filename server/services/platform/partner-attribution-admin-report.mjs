@@ -94,14 +94,33 @@ function funnelFor(events) {
   return funnel;
 }
 
+function eventRecorded(event) {
+  return !event.status || event.status === "recorded";
+}
+
+function eventRelevantToCandidate(event, candidate) {
+  const strongRefs = ["orderRef", "paymentRef", "entitlementRef", "accountRef", "touchRef"];
+  if (strongRefs.some((field) => event[field] && candidate[field] && event[field] === candidate[field])) {
+    return true;
+  }
+  return Boolean(
+    event.partnerRef &&
+    candidate.partnerRef &&
+    event.partnerRef === candidate.partnerRef &&
+    event.campaignRef &&
+    candidate.campaignRef &&
+    event.campaignRef === candidate.campaignRef
+  );
+}
+
 function providerEvidenceForCandidate(candidate, events) {
   return events
     .filter((event) => event.providerEvidenceSummary && Object.keys(event.providerEvidenceSummary).length > 0)
-    .filter((event) => !candidate.partnerRef || event.partnerRef === candidate.partnerRef)
-    .filter((event) => !candidate.campaignRef || event.campaignRef === candidate.campaignRef)
-    .filter((event) => !candidate.touchRef || event.touchRef === candidate.touchRef)
+    .filter(eventRecorded)
+    .filter((event) => eventRelevantToCandidate(event, candidate))
     .map((event) => ({
       provider: event.providerEvidenceSummary.provider || event.source,
+      status: event.status,
       partnerRef: event.partnerRef,
       campaignRef: event.campaignRef,
       touchRef: event.touchRef,
@@ -144,8 +163,12 @@ function candidateReviewRow(candidate, { events, guardrails }) {
 }
 
 function guardrailSummary(candidateRows) {
+  const privacyBoundaryOk = !candidateRows.some((candidate) => (
+    candidate.reconciliationBlockers.includes("privacy_boundary_violation")
+  ));
   return {
     ...emptyGuardrails(),
+    privacyBoundaryOk,
     reconciliation: {
       payableReviewAllowedCount: candidateRows.filter((candidate) => candidate.reconciliationStatus === "payable_review_allowed").length,
       manualReviewRequiredCount: candidateRows.filter((candidate) => candidate.manualReviewRequired).length,

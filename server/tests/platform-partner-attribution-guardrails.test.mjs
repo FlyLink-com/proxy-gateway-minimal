@@ -40,6 +40,29 @@ test("partner attribution guardrails block forbidden private material without re
   assert.equal(JSON.stringify(review).includes("vless://"), false);
 });
 
+test("partner attribution guardrails cover advertised artifact and raw-log forbidden classes", () => {
+  const guardrails = createPartnerAttributionGuardrails();
+
+  const review = guardrails.inspectPrivacyBoundary({
+    surface: "admin_view",
+    payload: {
+      partnerRef: "partner_alpha",
+      artifactMaterial: "opaque-material-placeholder",
+      diagnostics: {
+        rawLog: "request carried customer private details"
+      }
+    }
+  });
+
+  assert.equal(review.ok, false);
+  assert.deepEqual(review.findings.map((finding) => finding.label).sort(), [
+    "opaque_artifact_material",
+    "raw_log_private"
+  ]);
+  assert.equal(JSON.stringify(review).includes("opaque-material-placeholder"), false);
+  assert.equal(JSON.stringify(review).includes("customer private details"), false);
+});
+
 test("partner attribution guardrails summarize fraud and abuse signals from safe aggregates", () => {
   const guardrails = createPartnerAttributionGuardrails();
 
@@ -133,6 +156,63 @@ test("partner attribution guardrails reconcile provider evidence to backend fact
     "backend_payment_success",
     "provider_attribution_evidence"
   ]);
+  assert.deepEqual(review.blockers, []);
+});
+
+test("partner attribution guardrails scope reversal blockers to the candidate facts", () => {
+  const guardrails = createPartnerAttributionGuardrails();
+
+  const review = guardrails.reconcileSettlementEvidence({
+    candidate: {
+      candidateRef: "candidate_alpha",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      orderRef: "order_alpha",
+      paymentRef: "payment_alpha",
+      entitlementRef: "entitlement_alpha",
+      touchRef: "touch_alpha",
+      status: "frozen"
+    },
+    providerEvidence: [{
+      provider: "appsflyer",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      touchRef: "touch_alpha",
+      eventName: "purchase_confirmed"
+    }],
+    backendFacts: [
+      {
+        eventType: "payment_success",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        status: "recorded"
+      },
+      {
+        eventType: "entitlement_delivered",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        entitlementRef: "entitlement_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        status: "recorded"
+      },
+      {
+        eventType: "refund",
+        orderRef: "order_other",
+        paymentRef: "payment_other",
+        partnerRef: "partner_other",
+        campaignRef: "campaign_other",
+        status: "recorded"
+      }
+    ]
+  });
+
+  assert.equal(review.status, "payable_review_allowed");
+  assert.equal(review.payableReviewAllowed, true);
   assert.deepEqual(review.blockers, []);
 });
 

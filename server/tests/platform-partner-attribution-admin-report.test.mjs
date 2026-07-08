@@ -158,6 +158,93 @@ function seedFacts({ attributionStore, eventLedger, settlementEngine }) {
   }).candidate;
 }
 
+function fakeReport({
+  events,
+  candidates,
+  touches = [],
+  now = "2026-07-07T02:00:00.000Z"
+}) {
+  return createPartnerAttributionAdminReport({
+    attributionStore: {
+      listAttributionTouches: () => touches,
+      getCampaign: () => null,
+      getPartner: () => null
+    },
+    eventLedger: {
+      listSettlementSafeEvents: () => events
+    },
+    settlementEngine: {
+      listSettlementCandidates: () => candidates
+    },
+    now
+  });
+}
+
+function baseCandidate(overrides = {}) {
+  return {
+    candidateRef: "candidate_alpha",
+    status: "frozen",
+    partnerRef: "partner_alpha",
+    campaignRef: "campaign_launch",
+    accountRef: "account_alpha",
+    orderRef: "order_alpha",
+    paymentRef: "payment_alpha",
+    entitlementRef: "entitlement_alpha",
+    policyRef: "policy_alpha",
+    model: "first_payment_cpa",
+    currency: "USD",
+    basisAmountCents: 12000,
+    amountCents: 2500,
+    freezeUntil: "2026-07-14T01:20:00.000Z",
+    payableAt: null,
+    reversedAt: null,
+    reasonCode: null,
+    sourceEventRefs: ["event_payment_alpha", "event_entitlement_alpha"],
+    reversalEventRef: null,
+    touchRef: "touch_alpha",
+    ...overrides
+  };
+}
+
+function baseBackendFacts() {
+  return [
+    {
+      eventRef: "event_payment_alpha",
+      eventType: "payment_success",
+      status: "recorded",
+      source: "payment_backend",
+      accountRef: "account_alpha",
+      orderRef: "order_alpha",
+      paymentRef: "payment_alpha",
+      entitlementRef: null,
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      touchRef: "touch_alpha",
+      occurredAt: "2026-07-07T01:15:00.000Z",
+      recordedAt: "2026-07-07T01:16:00.000Z",
+      metadataSummary: { amountCents: 12000, currency: "USD" },
+      providerEvidenceSummary: {}
+    },
+    {
+      eventRef: "event_entitlement_alpha",
+      eventType: "entitlement_delivered",
+      status: "recorded",
+      source: "entitlement_service",
+      accountRef: "account_alpha",
+      orderRef: "order_alpha",
+      paymentRef: "payment_alpha",
+      entitlementRef: "entitlement_alpha",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      touchRef: "touch_alpha",
+      occurredAt: "2026-07-07T01:20:00.000Z",
+      recordedAt: "2026-07-07T01:21:00.000Z",
+      metadataSummary: {},
+      providerEvidenceSummary: {}
+    }
+  ];
+}
+
 test("partner attribution admin report summarizes funnel and settlement review without sensitive material", () => {
   withAttributionReporting((services) => {
     const candidate = seedFacts(services);
@@ -265,6 +352,109 @@ test("partner attribution admin report summarizes funnel and settlement review w
       /https?:\/\/|token=|secret-value|password=|rawConfig|edgecred_|customer@example|\/sub\//i
     );
   });
+});
+
+test("partner attribution admin report keeps mismatch provider evidence visible to reconciliation", () => {
+  const report = fakeReport({
+    candidates: [baseCandidate()],
+    events: [
+      ...baseBackendFacts(),
+      {
+        eventRef: "event_provider_mismatch",
+        eventType: "visit",
+        status: "recorded",
+        source: "appsflyer_web",
+        accountRef: null,
+        orderRef: null,
+        paymentRef: null,
+        entitlementRef: null,
+        partnerRef: "partner_other",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        occurredAt: "2026-07-07T01:00:00.000Z",
+        recordedAt: "2026-07-07T01:01:00.000Z",
+        metadataSummary: {},
+        providerEvidenceSummary: {
+          provider: "appsflyer",
+          eventName: "visit",
+          evidenceRef: "af_visit_mismatch"
+        }
+      }
+    ]
+  });
+
+  assert.equal(report.candidates[0].reconciliationStatus, "blocked");
+  assert.deepEqual(report.candidates[0].reconciliationBlockers, ["provider_partner_mismatch"]);
+  assert.equal(report.guardrails.reconciliation.blockedCount, 1);
+});
+
+test("partner attribution admin report ignores non-recorded provider evidence for payable review", () => {
+  const report = fakeReport({
+    candidates: [baseCandidate()],
+    events: [
+      ...baseBackendFacts(),
+      {
+        eventRef: "event_provider_rejected",
+        eventType: "visit",
+        status: "rejected",
+        source: "appsflyer_web",
+        accountRef: null,
+        orderRef: null,
+        paymentRef: null,
+        entitlementRef: null,
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        occurredAt: "2026-07-07T01:00:00.000Z",
+        recordedAt: "2026-07-07T01:01:00.000Z",
+        metadataSummary: {},
+        providerEvidenceSummary: {
+          provider: "appsflyer",
+          eventName: "visit",
+          evidenceRef: "af_visit_rejected"
+        }
+      }
+    ]
+  });
+
+  assert.equal(report.candidates[0].reconciliationStatus, "manual_review_required");
+  assert.deepEqual(report.candidates[0].reconciliationBlockers, ["missing_provider_attribution_evidence"]);
+  assert.equal(report.guardrails.reconciliation.manualReviewRequiredCount, 1);
+});
+
+test("partner attribution admin report surfaces privacy boundary failures in the guardrail summary", () => {
+  const report = fakeReport({
+    candidates: [baseCandidate({ rawRuntimeConfig: "vless://should-not-pass" })],
+    events: [
+      ...baseBackendFacts(),
+      {
+        eventRef: "event_provider_alpha",
+        eventType: "visit",
+        status: "recorded",
+        source: "appsflyer_web",
+        accountRef: null,
+        orderRef: null,
+        paymentRef: null,
+        entitlementRef: null,
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        occurredAt: "2026-07-07T01:00:00.000Z",
+        recordedAt: "2026-07-07T01:01:00.000Z",
+        metadataSummary: {},
+        providerEvidenceSummary: {
+          provider: "appsflyer",
+          eventName: "visit",
+          evidenceRef: "af_visit_safe"
+        }
+      }
+    ]
+  });
+
+  assert.equal(report.candidates[0].reconciliationStatus, "blocked");
+  assert.deepEqual(report.candidates[0].reconciliationBlockers, ["privacy_boundary_violation"]);
+  assert.equal(report.guardrails.privacyBoundaryOk, false);
+  assert.equal(JSON.stringify(report).includes("vless://should-not-pass"), false);
 });
 
 test("partner attribution admin report returns an empty safe state before services are wired", () => {

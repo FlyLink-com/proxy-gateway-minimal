@@ -23,6 +23,14 @@ const FORBIDDEN_FIELD_RULES = [
     pattern: /raw_?runtime_?config|raw_?config|runtime_?config/
   },
   {
+    label: "opaque_artifact_material",
+    pattern: /opaque_?artifact|artifact_?material|raw_?artifact/
+  },
+  {
+    label: "raw_log_private",
+    pattern: /raw_?log|private_?log|log_?dump/
+  },
+  {
     label: "token",
     pattern: /(^|_)(token|bearer|api_?key|auth_?header)($|_)/
   },
@@ -239,6 +247,10 @@ function recordedFact(fact) {
   return !fact.status || fact.status === "recorded";
 }
 
+function recordedProviderEvidence(evidence) {
+  return !evidence.status || evidence.status === "recorded";
+}
+
 function refMatches(actual, expected) {
   return !expected || actual === expected;
 }
@@ -260,6 +272,19 @@ function providerMatches(evidence, candidate) {
   if (!refMatches(evidence.campaignRef, candidate.campaignRef)) return false;
   if (!refMatches(evidence.touchRef, candidate.touchRef)) return false;
   return true;
+}
+
+function reversalFactMatches(fact, candidate) {
+  if (!fact || !REVERSAL_EVENT_TYPES.has(fact.eventType) || !recordedFact(fact)) return false;
+  const refFields = ["orderRef", "paymentRef", "entitlementRef", "partnerRef", "campaignRef", "touchRef"];
+  for (const field of refFields) {
+    if (fact[field] && candidate[field] && fact[field] !== candidate[field]) {
+      return false;
+    }
+  }
+  return ["orderRef", "paymentRef", "entitlementRef"].some((field) => (
+    fact[field] && candidate[field] && fact[field] === candidate[field]
+  ));
 }
 
 function blocker(code, severity = "block") {
@@ -376,6 +401,7 @@ export function createPartnerAttributionGuardrails() {
   function reconcileSettlementEvidence(input = {}) {
     const candidate = sanitizeCandidate(input.candidate || {});
     const providerEvidence = input.providerEvidence || input.provider_evidence || [];
+    const recordedProviderEvidenceItems = providerEvidence.filter(recordedProviderEvidence);
     const backendFacts = input.backendFacts || input.backend_facts || [];
     const fraudSignals = input.fraudSignals || input.fraud_signals || null;
     const matchedEvidence = [];
@@ -407,20 +433,20 @@ export function createPartnerAttributionGuardrails() {
       blockers.push(blocker("missing_backend_entitlement"));
     }
 
-    const reversal = backendFacts.find((fact) => REVERSAL_EVENT_TYPES.has(fact.eventType) && recordedFact(fact));
+    const reversal = backendFacts.find((fact) => reversalFactMatches(fact, candidate));
     if (reversal) {
       blockers.push(blocker("backend_reversal_fact"));
     }
 
-    const providerMatch = providerEvidence.find((evidence) => providerMatches(evidence, candidate));
+    const providerMatch = recordedProviderEvidenceItems.find((evidence) => providerMatches(evidence, candidate));
     if (providerMatch) {
       matchedEvidence.push("provider_attribution_evidence");
-    } else if (providerEvidence.length === 0) {
+    } else if (recordedProviderEvidenceItems.length === 0) {
       blockers.push(blocker("missing_provider_attribution_evidence", "review"));
     } else {
-      const partnerMismatch = providerEvidence.some((evidence) => evidence.partnerRef && evidence.partnerRef !== candidate.partnerRef);
-      const campaignMismatch = providerEvidence.some((evidence) => evidence.campaignRef && evidence.campaignRef !== candidate.campaignRef);
-      const touchMismatch = providerEvidence.some((evidence) => evidence.touchRef && evidence.touchRef !== candidate.touchRef);
+      const partnerMismatch = recordedProviderEvidenceItems.some((evidence) => evidence.partnerRef && evidence.partnerRef !== candidate.partnerRef);
+      const campaignMismatch = recordedProviderEvidenceItems.some((evidence) => evidence.campaignRef && evidence.campaignRef !== candidate.campaignRef);
+      const touchMismatch = recordedProviderEvidenceItems.some((evidence) => evidence.touchRef && evidence.touchRef !== candidate.touchRef);
       if (partnerMismatch) blockers.push(blocker("provider_partner_mismatch"));
       if (campaignMismatch) blockers.push(blocker("provider_campaign_mismatch"));
       if (touchMismatch) blockers.push(blocker("provider_touch_mismatch", "review"));
