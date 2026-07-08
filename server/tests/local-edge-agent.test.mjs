@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { LOCAL_EDGE_DIAGNOSTICS_CONTRACT } from "../../agent/diagnostics.mjs";
 import {
@@ -25,6 +26,10 @@ function sampleConfig(overrides = {}) {
   };
 }
 
+function readLocalEdgeAgentSource() {
+  return readFileSync("agent/local-edge-agent.mjs", "utf8");
+}
+
 test("normalizeAgentConfig accepts loopback-only local listener config", () => {
   const config = normalizeAgentConfig(sampleConfig({ subscriptionPort: "19091", proxyPort: "19081" }));
 
@@ -45,6 +50,15 @@ test("normalizeAgentConfig rejects public listener hosts", () => {
     () => normalizeAgentConfig(sampleConfig({ bindHost: "192.168.1.10" })),
     /bindHost must be loopback-only/
   );
+});
+
+test("local edge agent avoids browser blocked ports for ephemeral subscription listeners", () => {
+  const source = readLocalEdgeAgentSource();
+
+  assert.match(source, /const FETCH_BLOCKED_PORTS = new Set\(\[/);
+  assert.match(source, /\b10080\b/);
+  assert.match(source, /requestedEphemeralSubscriptionPort && FETCH_BLOCKED_PORTS\.has\(address\.port\)/);
+  assert.match(source, /server = createServer\(app\);\s*tryListen\(\);/s);
 });
 
 test("buildLocalClashSubscription emits only loopback local proxy details", () => {
