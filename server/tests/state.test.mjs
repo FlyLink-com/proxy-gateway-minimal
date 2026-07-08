@@ -429,6 +429,40 @@ test("createRuntimeState wires env-gated user portal password login services", (
   }
 });
 
+test("createRuntimeState wires portal-account admin auth to the configured single administrator", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-admin-auth-wiring-"));
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        ADMIN_AUTH_ROUTES_ENABLED: "true",
+        ADMIN_AUTH_SESSION_SECRET: "synthetic-admin-session-secret",
+        ADMIN_AUTH_PORTAL_ACCOUNT_ID: "portal_user_20260604_001"
+      }),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      adminAuthNowFn: () => "2026-07-08T00:00:00.000Z",
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(state.platform.adminAuthRoutesEnabled, true);
+    assert.equal(typeof state.platform.portalPasswordCredentialService.issueInitialPasswordCredential, "function");
+    assert.equal(typeof state.platform.adminAuth.sessionStatus, "function");
+    assert.deepEqual(state.platform.adminAuth.sessionStatus(), {
+      authenticated: false,
+      mode: "portalAccount",
+      operatorRef: "portal_user_20260604_001",
+      setupRequired: true
+    });
+  } finally {
+    state?.close?.();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
 test("createRuntimeState wires env-gated user portal registration services", async () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-registration-wiring-"));
   const now = "2026-07-08T00:00:00.000Z";
