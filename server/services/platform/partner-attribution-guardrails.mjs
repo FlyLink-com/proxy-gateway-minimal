@@ -1,4 +1,5 @@
 const SAFE_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
+const UNSAFE_PROTOCOL_REF_PATTERN = /^[A-Za-z][A-Za-z0-9+.-]*:\/\//;
 const REVIEW_SURFACES = new Set([
   "provider_upload",
   "admin_view",
@@ -81,6 +82,32 @@ const FORBIDDEN_VALUE_RULES = [
     pattern: /https?:\/\//i
   }
 ];
+const FORBIDDEN_KEY_VALUE_RULES = [
+  {
+    label: "subscription_url",
+    pattern: /https?:\/\/\S*\/sub\/|\/sub\//i
+  },
+  {
+    label: "raw_runtime_config",
+    pattern: /\b(vless|hysteria2|tuic|trojan|ss):\/\//i
+  },
+  {
+    label: "token",
+    pattern: /\b(token=|bearer\s+|api[_-]?key=|auth[_-]?header=)\b/i
+  },
+  {
+    label: "secret",
+    pattern: /\b(secret=|private key|private_key=)\b/i
+  },
+  {
+    label: "customer_private_contact",
+    pattern: /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i
+  },
+  {
+    label: "external_url",
+    pattern: /https?:\/\//i
+  }
+];
 const SAFE_FIELD_HINTS = /(^|_)(safe|redacted|masked|summary|count|status|ref|refs)($|_)/;
 const REVERSAL_EVENT_TYPES = new Set(["refund", "chargeback", "risk_rejected"]);
 
@@ -126,12 +153,17 @@ function pathFor(parent, key) {
   if (typeof key === "number") {
     return `${parent}[${key}]`;
   }
-  return parent === "$" ? `$.${key}` : `${parent}.${key}`;
+  const segment = keyValueFindingFor(key, "$", "unknown") ? "[redacted_key]" : key;
+  return parent === "$" ? `$.${segment}` : `${parent}.${segment}`;
 }
 
 function safeRef(value) {
   const normalized = text(value);
-  return SAFE_REF_PATTERN.test(normalized) ? normalized : null;
+  if (!SAFE_REF_PATTERN.test(normalized)) return null;
+  if (UNSAFE_PROTOCOL_REF_PATTERN.test(normalized) || valueFindingFor(normalized, "$", "unknown")) {
+    return null;
+  }
+  return normalized;
 }
 
 function addFinding(findings, finding) {
@@ -182,6 +214,22 @@ function valueFindingFor(value, path, surface) {
   return null;
 }
 
+function keyValueFindingFor(value, path, surface) {
+  const normalized = text(value);
+  if (!normalized) return null;
+  for (const rule of FORBIDDEN_KEY_VALUE_RULES) {
+    if (!rule.pattern.test(normalized)) continue;
+    return {
+      code: "forbidden_value_shape",
+      label: rule.label,
+      path,
+      surface,
+      severity: "block"
+    };
+  }
+  return null;
+}
+
 function inspectNode(value, { surface, path, findings }) {
   if (value == null) return;
   if (Array.isArray(value)) {
@@ -191,8 +239,13 @@ function inspectNode(value, { surface, path, findings }) {
   if (typeof value === "object") {
     for (const [key, nested] of Object.entries(value)) {
       const nestedPath = pathFor(path, key);
-      const fieldFinding = fieldFindingFor(key, nestedPath, surface);
-      if (fieldFinding) addFinding(findings, fieldFinding);
+      const keyValueFinding = keyValueFindingFor(key, nestedPath, surface);
+      if (keyValueFinding) {
+        addFinding(findings, keyValueFinding);
+      } else {
+        const fieldFinding = fieldFindingFor(key, nestedPath, surface);
+        if (fieldFinding) addFinding(findings, fieldFinding);
+      }
       inspectNode(nested, { surface, path: nestedPath, findings });
     }
     return;
@@ -313,6 +366,7 @@ function sanitizeCandidate(input = {}) {
     candidateRef: safeRef(input.candidateRef || input.candidate_ref),
     partnerRef: safeRef(input.partnerRef || input.partner_ref),
     campaignRef: safeRef(input.campaignRef || input.campaign_ref),
+    accountRef: safeRef(input.accountRef || input.account_ref),
     orderRef: safeRef(input.orderRef || input.order_ref),
     paymentRef: safeRef(input.paymentRef || input.payment_ref),
     entitlementRef: safeRef(input.entitlementRef || input.entitlement_ref),

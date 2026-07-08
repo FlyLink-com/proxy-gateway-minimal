@@ -90,6 +90,34 @@ test("partner attribution guardrails block raw provider credential key fields", 
   assert.equal(JSON.stringify(review).includes("placeholder-provider-credential"), false);
 });
 
+test("partner attribution guardrails scan and redact private object keys", () => {
+  const guardrails = createPartnerAttributionGuardrails();
+
+  const review = guardrails.inspectPrivacyBoundary({
+    surface: "provider_upload",
+    payload: {
+      safeSummary: {
+        "private@example.invalid": "dynamic provider key",
+        "https://portal.example.invalid/sub/raw-token": {
+          rawLog: "raw nested log placeholder"
+        }
+      }
+    }
+  });
+
+  assert.equal(review.ok, false);
+  assert.deepEqual(review.findings.map((finding) => finding.label).sort(), [
+    "customer_private_contact",
+    "raw_log_private",
+    "subscription_url"
+  ]);
+  const serialized = JSON.stringify(review);
+  assert.equal(serialized.includes("private@example.invalid"), false);
+  assert.equal(serialized.includes("https://portal.example.invalid"), false);
+  assert.equal(serialized.includes("/sub/raw-token"), false);
+  assert.equal(serialized.includes("raw nested log placeholder"), false);
+});
+
 test("partner attribution guardrails summarize fraud and abuse signals from safe aggregates", () => {
   const guardrails = createPartnerAttributionGuardrails();
 
@@ -127,6 +155,61 @@ test("partner attribution guardrails summarize fraud and abuse signals from safe
     "unsafe_campaign_param"
   ]);
   assert.equal(JSON.stringify(summary).includes("https://example.invalid"), false);
+});
+
+test("partner attribution guardrails reject protocol-shaped refs before returning summaries", () => {
+  const guardrails = createPartnerAttributionGuardrails();
+
+  const summary = guardrails.summarizeFraudSignals({
+    partnerRef: "vless://raw-ref-placeholder",
+    campaignRef: "campaign_launch"
+  });
+  const review = guardrails.reconcileSettlementEvidence({
+    candidate: {
+      candidateRef: "tuic://raw-candidate-placeholder",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      orderRef: "order_alpha",
+      paymentRef: "payment_alpha",
+      entitlementRef: "entitlement_alpha",
+      touchRef: "touch_alpha",
+      status: "frozen"
+    },
+    providerEvidence: [{
+      provider: "appsflyer",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      touchRef: "touch_alpha",
+      eventName: "purchase_confirmed"
+    }],
+    backendFacts: [
+      {
+        eventType: "payment_success",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        status: "recorded"
+      },
+      {
+        eventType: "entitlement_delivered",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        entitlementRef: "entitlement_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        touchRef: "touch_alpha",
+        status: "recorded"
+      }
+    ]
+  });
+
+  assert.equal(summary.partnerRef, null);
+  assert.equal(summary.campaignRef, "campaign_launch");
+  assert.equal(review.candidateRef, null);
+  assert.equal(JSON.stringify(summary).includes("vless://"), false);
+  assert.equal(JSON.stringify(review).includes("tuic://"), false);
 });
 
 test("partner attribution guardrails count ledger chargeback event types as reversal signals", () => {
@@ -464,6 +547,62 @@ test("partner attribution guardrails require anchored provider evidence before p
     "backend_payment_success"
   ]);
   assert.deepEqual(review.blockers.map((blocker) => blocker.code), ["insufficient_provider_attribution_evidence"]);
+});
+
+test("partner attribution guardrails match provider account anchors", () => {
+  const guardrails = createPartnerAttributionGuardrails();
+
+  const review = guardrails.reconcileSettlementEvidence({
+    candidate: {
+      candidateRef: "candidate_alpha",
+      partnerRef: "partner_alpha",
+      campaignRef: "campaign_launch",
+      accountRef: "account_alpha",
+      orderRef: "order_alpha",
+      paymentRef: "payment_alpha",
+      entitlementRef: "entitlement_alpha",
+      status: "frozen"
+    },
+    providerEvidence: [
+      {
+        provider: "appsflyer",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        accountRef: "account_alpha",
+        eventName: "purchase_confirmed",
+        status: "recorded"
+      }
+    ],
+    backendFacts: [
+      {
+        eventType: "payment_success",
+        accountRef: "account_alpha",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        status: "recorded"
+      },
+      {
+        eventType: "entitlement_delivered",
+        accountRef: "account_alpha",
+        orderRef: "order_alpha",
+        paymentRef: "payment_alpha",
+        entitlementRef: "entitlement_alpha",
+        partnerRef: "partner_alpha",
+        campaignRef: "campaign_launch",
+        status: "recorded"
+      }
+    ]
+  });
+
+  assert.equal(review.status, "payable_review_allowed");
+  assert.deepEqual(review.blockers, []);
+  assert.deepEqual(review.matchedEvidence, [
+    "backend_entitlement_delivered",
+    "backend_payment_success",
+    "provider_attribution_evidence"
+  ]);
 });
 
 test("partner attribution guardrails block duplicate payment facts for one order", () => {

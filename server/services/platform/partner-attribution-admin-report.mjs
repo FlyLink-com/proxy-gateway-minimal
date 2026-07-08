@@ -123,6 +123,10 @@ function providerEvidenceForCandidate(candidate, events) {
       status: event.status,
       partnerRef: event.partnerRef,
       campaignRef: event.campaignRef,
+      accountRef: event.accountRef,
+      orderRef: event.orderRef,
+      paymentRef: event.paymentRef,
+      entitlementRef: event.entitlementRef,
       touchRef: event.touchRef,
       eventName: event.providerEvidenceSummary.eventName || event.eventType
     }));
@@ -171,7 +175,7 @@ function guardrailSummary(candidateRows) {
     privacyBoundaryOk,
     reconciliation: {
       payableReviewAllowedCount: candidateRows.filter((candidate) => candidate.reconciliationStatus === "payable_review_allowed").length,
-      manualReviewRequiredCount: candidateRows.filter((candidate) => candidate.manualReviewRequired).length,
+      manualReviewRequiredCount: candidateRows.filter((candidate) => candidate.reconciliationStatus === "manual_review_required").length,
       blockedCount: candidateRows.filter((candidate) => candidate.reconciliationStatus === "blocked").length
     }
   };
