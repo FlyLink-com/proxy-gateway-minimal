@@ -6,7 +6,7 @@ import path from "node:path";
 const port = Number(process.env.ADMIN_PANEL_PROXY_PORT || "5177");
 const targetBase = new URL(process.env.ADMIN_API_TARGET || "http://127.0.0.1:5176");
 const distDir = process.env.ADMIN_PANEL_DIST || path.resolve("admin", "dist");
-const consoleToken = process.env.CONSOLE_TOKEN || "";
+const consoleToken = (process.env.CONSOLE_TOKEN || "").trim();
 const bootstrapToken = process.env.LOCAL_ADMIN_PROXY_BOOTSTRAP_TOKEN || "";
 const sessionSecret = process.env.LOCAL_ADMIN_PROXY_SESSION_SECRET || "";
 const sessionKey = "proxy-gateway-admin-session";
@@ -15,12 +15,21 @@ const localCookieName = "gcc_local_admin_session";
 const localSessionTtlMs = 8 * 60 * 60 * 1000;
 let bootstrapUsed = false;
 
+function isLoopbackHostname(hostname) {
+  const normalized = String(hostname || "").toLowerCase();
+  return normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1" || normalized === "[::1]";
+}
+
 if (!consoleToken.trim()) {
   console.error("CONSOLE_TOKEN is required in this process environment.");
   process.exit(1);
 }
 if (!bootstrapToken.trim() || !sessionSecret.trim()) {
   console.error("LOCAL_ADMIN_PROXY_BOOTSTRAP_TOKEN and LOCAL_ADMIN_PROXY_SESSION_SECRET are required.");
+  process.exit(1);
+}
+if (!["http:", "https:"].includes(targetBase.protocol) || !isLoopbackHostname(targetBase.hostname)) {
+  console.error("ADMIN_API_TARGET must be a loopback http(s) origin.");
   process.exit(1);
 }
 
@@ -100,7 +109,12 @@ function serveLocked(res) {
 }
 
 function safeStaticPath(urlPath) {
-  const normalizedPath = decodeURIComponent(urlPath.split("?")[0] || "/");
+  let normalizedPath = "/";
+  try {
+    normalizedPath = decodeURIComponent(urlPath.split("?")[0] || "/");
+  } catch {
+    return null;
+  }
   const relative = normalizedPath === "/" ? "index.html" : normalizedPath.replace(/^\/+/, "");
   const fullPath = path.resolve(distDir, relative);
   const root = path.resolve(distDir);
@@ -148,7 +162,9 @@ function serveStatic(req, res) {
   const ext = path.extname(fullPath).toLowerCase();
   res.writeHead(200, {
     "content-type": mimeTypes.get(ext) || "application/octet-stream",
-    "cache-control": "no-store"
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer"
   });
   fs.createReadStream(fullPath).pipe(res);
 }

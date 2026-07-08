@@ -6,6 +6,14 @@ import { redactedLastFailure, sanitizeDiagnosticsCounters } from "./diagnostics.
 import { startLocalSocksAdapter } from "./socks5-adapter.mjs";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+const FETCH_BLOCKED_PORTS = new Set([
+  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77, 79,
+  87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123, 135, 137,
+  139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515, 526, 530, 531, 532,
+  540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995, 1719, 1720, 1723,
+  2049, 3659, 4045, 4190, 5060, 5061, 6000, 6566, 6665, 6666, 6667, 6668, 6669,
+  6679, 6697, 10080
+]);
 const DEFAULTS = {
   bindHost: "127.0.0.1",
   subscriptionPort: 19090,
@@ -141,29 +149,86 @@ export async function startLocalEdgeAgent({
     proxyImplemented: Boolean(proxy),
     trustedConfig: true
   });
-  const server = createServer(app);
+  let server = createServer(app);
+  const requestedEphemeralSubscriptionPort = config.subscriptionPort === 0;
 
   return new Promise((resolve, reject) => {
+    let settled = false;
+
     async function fail(error) {
+      if (settled) {
+        return;
+      }
+      settled = true;
       if (proxy) {
         await proxy.close();
       }
       reject(error);
     }
 
+    function tryListen() {
+      server.once("error", fail);
+      server.listen(0, config.bindHost, () => {
+        server.off("error", fail);
+        const address = server.address();
+        if (requestedEphemeralSubscriptionPort && FETCH_BLOCKED_PORTS.has(address.port)) {
+          server.close((error) => {
+            if (error) {
+              void fail(error);
+              return;
+            }
+            server = createServer(app);
+            tryListen();
+          });
+          return;
+        }
+
+        config.subscriptionPort = address.port;
+        settled = true;
+        const activeServer = server;
+        resolve({
+          server: activeServer,
+          proxy,
+          channel: resolvedChannel,
+          config,
+          subscriptionUrl: `http://${config.bindHost}:${config.subscriptionPort}/clash.yaml`,
+          close: () =>
+            new Promise((closeResolve, closeReject) => {
+              activeServer.close(async (error) => {
+                if (error) {
+                  closeReject(error);
+                  return;
+                }
+                if (proxy) {
+                  await proxy.close();
+                }
+                closeResolve();
+              });
+            })
+        });
+      });
+    }
+
+    if (requestedEphemeralSubscriptionPort) {
+      tryListen();
+      return;
+    }
+
     server.once("error", fail);
     server.listen(config.subscriptionPort, config.bindHost, () => {
       server.off("error", fail);
       config.subscriptionPort = server.address().port;
+      settled = true;
+      const activeServer = server;
       resolve({
-        server,
+        server: activeServer,
         proxy,
         channel: resolvedChannel,
         config,
         subscriptionUrl: `http://${config.bindHost}:${config.subscriptionPort}/clash.yaml`,
         close: () =>
           new Promise((closeResolve, closeReject) => {
-            server.close(async (error) => {
+            activeServer.close(async (error) => {
               if (error) {
                 closeReject(error);
                 return;

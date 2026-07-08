@@ -65,3 +65,20 @@ test("stop script does not kill unknown listeners unless explicitly forced", () 
   assert.match(script, /Skipping unknown listener/);
   assert.match(script, /Stop-Process/);
 });
+
+test("local Admin proxy keeps console token on loopback targets only", () => {
+  const script = readText("ops/local-admin-bridge/admin-panel-local-proxy.mjs");
+
+  assert.match(script, /ADMIN_API_TARGET must be a loopback http\(s\) origin/);
+  assert.match(script, /isLoopbackHostname\(targetBase\.hostname\)/);
+  assert.match(script, /authorization: `Bearer \$\{consoleToken\}`/);
+});
+
+test("local Admin proxy rejects malformed static paths without throwing", () => {
+  const script = readText("ops/local-admin-bridge/admin-panel-local-proxy.mjs");
+
+  assert.match(script, /decodeURIComponent\(urlPath\.split\("\?"\)\[0\] \|\| "\/"\)/);
+  assert.match(script, /catch \{\s*return null;\s*\}/);
+  assert.match(script, /"x-content-type-options": "nosniff"/);
+  assert.match(script, /"referrer-policy": "no-referrer"/);
+});
