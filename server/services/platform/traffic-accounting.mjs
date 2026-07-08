@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+import {
+  summarizeUsageSamples,
+  usageCycleFiltersForBinding
+} from "./usage-billing-cycle.mjs";
 
 function trafficError(code, message) {
   const error = new Error(message);
@@ -65,9 +69,9 @@ function defaultSampleRefFactory({ sampleDigest }) {
   return `usage_${sampleDigest.replace(/^sha256:/, "").slice(0, 24)}`;
 }
 
-function quotaDecision({ binding, rollup }) {
+function quotaDecision({ binding, usage }) {
   const trafficLimitBytes = Number(binding?.trafficLimitBytes ?? 0);
-  const usedBytes = Number(rollup?.totalBytes ?? 0);
+  const usedBytes = Number(usage?.totalBytes ?? 0);
   if (!trafficLimitBytes) {
     return {
       status: "unmetered_no_limit",
@@ -150,9 +154,15 @@ export function createTrafficAccountingService({
       sampleDigest,
       createdAt: isoNow(nowFn)
     });
+    const currentCycleUsage = currentCycleUsageFor({
+      controlStore,
+      binding,
+      observedAt: normalized.observedAt,
+      fallbackRollup: usage.rollup
+    });
     const decision = quotaDecision({
       binding,
-      rollup: usage.rollup
+      usage: currentCycleUsage
     });
 
     return {
@@ -170,7 +180,7 @@ export function createTrafficAccountingService({
       rollup: usage.rollup,
       quota: {
         trafficLimitBytes: binding.trafficLimitBytes,
-        usedBytes: usage.rollup?.totalBytes ?? 0
+        usedBytes: currentCycleUsage.totalBytes
       },
       nextAction: decision.nextAction,
       execution: {
@@ -186,5 +196,25 @@ export function createTrafficAccountingService({
 
   return {
     recordUsageObservation
+  };
+}
+
+function currentCycleUsageFor({ controlStore, binding, observedAt, fallbackRollup }) {
+  if (typeof controlStore?.listUsageSamples !== "function") {
+    return {
+      uploadBytes: Number(fallbackRollup?.uploadBytes ?? 0),
+      downloadBytes: Number(fallbackRollup?.downloadBytes ?? 0),
+      totalBytes: Number(fallbackRollup?.totalBytes ?? 0)
+    };
+  }
+  const samples = controlStore.listUsageSamples({
+    requestId: binding.requestId,
+    ...usageCycleFiltersForBinding(binding, observedAt)
+  });
+  const summary = summarizeUsageSamples(samples);
+  return {
+    uploadBytes: summary.uploadBytes,
+    downloadBytes: summary.downloadBytes,
+    totalBytes: summary.totalBytes
   };
 }

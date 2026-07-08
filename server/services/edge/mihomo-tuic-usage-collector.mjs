@@ -104,6 +104,7 @@ function normalizeSnapshot(snapshot, { channelRef, since, nowFn }) {
     throw collectorError("validation_error", "usage snapshot must be an object");
   }
   const sourceRef = safeRef(snapshot.sourceRef || "mihomo_usage_snapshot", "sourceRef");
+  const accountingMode = text(snapshot.accountingMode) || "snapshot";
   const observedAt = isoText(snapshot.observedAt || isoNow(nowFn), "observedAt");
   const intervalStartedAt = isoText(snapshot.intervalStartedAt || since || observedAt, "intervalStartedAt");
   const intervalEndedAt = isoText(snapshot.intervalEndedAt || observedAt, "intervalEndedAt");
@@ -111,6 +112,8 @@ function normalizeSnapshot(snapshot, { channelRef, since, nowFn }) {
 
   return {
     sourceRef,
+    accountingMode,
+    stateWarmup: snapshot.stateWarmup === true,
     observedAt,
     intervalStartedAt,
     intervalEndedAt,
@@ -173,6 +176,23 @@ export function createMihomoTuicUsageCollector({
         blockers: [blocker("node_aggregate_only", "usageSnapshot.aggregate")]
       });
     }
+    if (snapshot.accountingMode === "delta" && !snapshot.entries.length) {
+      return {
+        ok: true,
+        status: "collected",
+        sourceRef: snapshot.sourceRef,
+        channelRef: safeChannelRef,
+        accountingMode: "delta",
+        stateWarmup: snapshot.stateWarmup,
+        observations: [],
+        blockers: [],
+        nextAction: "record_usage_observations_with_control_plane_accounting",
+        safety: {
+          noRawRuntimePayload: true,
+          noSecretMaterialReturned: true
+        }
+      };
+    }
     if (!snapshot.entries.length) {
       return unsupported({
         sourceRef: snapshot.sourceRef,
@@ -191,6 +211,8 @@ export function createMihomoTuicUsageCollector({
         status: "collected",
         sourceRef: snapshot.sourceRef,
         channelRef: safeChannelRef,
+        accountingMode: snapshot.accountingMode,
+        stateWarmup: snapshot.stateWarmup,
         observations: snapshot.entries.map((entry, index) =>
           normalizeEntry(entry, index, contextualSnapshot)
         ),

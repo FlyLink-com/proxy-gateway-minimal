@@ -57,6 +57,40 @@ function nonNegativeInteger(value, fallback) {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+function isLoopbackHost(value) {
+  const host = text(value).replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  return host === "localhost" || host === "127.0.0.1" || host === "::1";
+}
+
+function loopbackHostPort(value, field) {
+  const raw = requiredText(value, field);
+  let host = "";
+  let port = "";
+  if (/^https?:\/\//i.test(raw)) {
+    const parsed = new URL(raw);
+    host = parsed.hostname;
+    port = parsed.port;
+  } else {
+    const separator = raw.lastIndexOf(":");
+    if (separator > 0) {
+      host = raw.slice(0, separator);
+      port = raw.slice(separator + 1);
+    }
+  }
+  host = host.replace(/^\[/, "").replace(/\]$/, "");
+  if (!isLoopbackHost(host)) {
+    throw hostError("validation_error", `${field} must be loopback-only`);
+  }
+  const safePort = positivePort(port, 0);
+  if (!safePort) {
+    throw hostError("validation_error", `${field} must include a port`);
+  }
+  return {
+    listen: host,
+    port: safePort
+  };
+}
+
 function sleepMs(ms) {
   if (ms <= 0) return;
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
@@ -157,7 +191,11 @@ function buildXrayConfig(payload, clients, listener) {
   const tag = text(listener.name) || payload.channelRef;
   const serverNames = arrayOfText(listener.serverNames, []);
   const shortIds = arrayOfText(listener.shortIds, []);
-  return JSON.stringify({
+  const usageStatsServer = text(listener.usageStats?.statsServer || listener.usageStats?.server || listener.usageStats?.listen);
+  const usageStats = usageStatsServer
+    ? loopbackHostPort(usageStatsServer, "listener.usageStats.statsServer")
+    : null;
+  const config = {
     log: {
       loglevel: "warning"
     },
@@ -195,7 +233,47 @@ function buildXrayConfig(payload, clients, listener) {
         tag: "direct"
       }
     ]
-  }, null, 2);
+  };
+  if (usageStats) {
+    config.stats = {};
+    config.api = {
+      tag: "api",
+      services: ["HandlerService", "LoggerService", "StatsService"]
+    };
+    config.policy = {
+      levels: {
+        "0": {
+          statsUserUplink: true,
+          statsUserDownlink: true
+        }
+      },
+      system: {
+        statsInboundUplink: true,
+        statsInboundDownlink: true,
+        statsOutboundUplink: true,
+        statsOutboundDownlink: true
+      }
+    };
+    config.inbounds.push({
+      tag: "api",
+      listen: usageStats.listen,
+      port: usageStats.port,
+      protocol: "dokodemo-door",
+      settings: {
+        address: usageStats.listen
+      }
+    });
+    config.routing = {
+      rules: [
+        {
+          type: "field",
+          inboundTag: ["api"],
+          outboundTag: "api"
+        }
+      ]
+    };
+  }
+  return JSON.stringify(config, null, 2);
 }
 
 export function createXrayVlessRealityExplicitRestartAdapter({
@@ -236,7 +314,13 @@ export function createXrayVlessRealityExplicitRestartAdapter({
         return failedReceipt({ serviceName: safeServiceName });
       }
 
-      writeCandidateConfig(buildXrayConfig(payload, clients, runtimeListener));
+      let candidateConfig;
+      try {
+        candidateConfig = buildXrayConfig(payload, clients, runtimeListener);
+      } catch {
+        return failedReceipt({ serviceName: safeServiceName });
+      }
+      writeCandidateConfig(candidateConfig);
       const configTest = runConfigTest() || {};
       const exitCode = Number.isInteger(configTest.exitCode) ? configTest.exitCode : 1;
       if (exitCode !== 0) {
@@ -315,7 +399,8 @@ export function createXrayVlessRealityHostRuntimeAdapter({
       serverNames: listener.serverNames,
       privateKey: listener.privateKey,
       shortIds: listener.shortIds,
-      xver: listener.xver
+      xver: listener.xver,
+      usageStats: listener.usageStats
     },
     resolveCredentialMaterial,
     writeCandidateConfig(content) {

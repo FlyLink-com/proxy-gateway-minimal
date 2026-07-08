@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createApp } from "../app.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
+import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
 import { createTrafficAccountingService } from "../services/platform/traffic-accounting.mjs";
 import { listen } from "./helpers/listen.mjs";
 
@@ -59,7 +60,8 @@ function seedDeliveredOrder(store, {
   plan = "monthly",
   quantity = 1,
   trafficLimitBytes = 0,
-  now = "2026-06-08T00:00:00.000Z"
+  now = "2026-06-08T00:00:00.000Z",
+  validUntil = "2026-07-08T00:00:00.000Z"
 }) {
   store.createAccount({
     id: accountId,
@@ -74,7 +76,7 @@ function seedDeliveredOrder(store, {
     plan,
     status: "active",
     validFrom: now,
-    validUntil: "2026-07-08T00:00:00.000Z",
+    validUntil,
     trafficLimitBytes,
     createdAt: now,
     updatedAt: now
@@ -106,7 +108,7 @@ function seedDeliveredOrder(store, {
     portalUserRef,
     plan,
     clientTarget: "clash",
-    durationDays: plan === "trial" ? 7 : 30,
+    durationDays: plan === "trial" ? 7 : plan === "yearly" ? 365 : 30,
     quantity,
     status: "delivered",
     nextAction: "user_can_use_access",
@@ -116,8 +118,8 @@ function seedDeliveredOrder(store, {
     updatedAt: now,
     reviewedAt: now,
     reviewedByRef: "portal_auto_issuer",
-    expiresAt: "2026-07-08T00:00:00.000Z",
-    validUntil: "2026-07-08T00:00:00.000Z",
+    expiresAt: validUntil,
+    validUntil,
     entitlementRef: entitlementId,
     accessGrantRef: `grant_${requestId}`,
     tenantId: tenantRef,
@@ -129,6 +131,71 @@ function seedDeliveredOrder(store, {
     edgeCredentials
   });
 }
+
+test("admin subscription usage monitor summarizes only the current entitlement monthly cycle", async () => {
+  await withStore(async (controlStore) => {
+    seedDeliveredOrder(controlStore, {
+      accountId: "acct_usage_monitor_cycle",
+      portalUserRef: "portal_user_usage_monitor_cycle",
+      requestId: "pareq_usage_monitor_cycle",
+      entitlementId: "ent_usage_monitor_cycle",
+      tenantRef: "tenant_usage_monitor_cycle",
+      artifactRef: "artifact_usage_monitor_cycle",
+      edgeCredentialRef: "edgecred_pareq_usage_monitor_cycle",
+      channelRef: "channel-vultr-a-hy2",
+      plan: "yearly",
+      trafficLimitBytes: 1000,
+      now: "2026-07-06T00:00:00.000Z",
+      validUntil: "2027-07-06T00:00:00.000Z"
+    });
+    let sequence = 0;
+    const accounting = createTrafficAccountingService({
+      controlStore,
+      nowFn: () => "2026-08-07T00:10:00.000Z",
+      usageSampleRefFactory: () => `usage_sample_monitor_cycle_${++sequence}`
+    });
+    accounting.recordUsageObservation({
+      sourceRef: "hy2_stats_usage_monitor_cycle_previous",
+      channelRef: "channel-vultr-a-hy2",
+      edgeCredentialRef: "edgecred_pareq_usage_monitor_cycle",
+      observedAt: "2026-07-10T00:05:00.000Z",
+      intervalStartedAt: "2026-07-10T00:00:00.000Z",
+      intervalEndedAt: "2026-07-10T00:05:00.000Z",
+      uploadBytes: 400,
+      downloadBytes: 500
+    });
+    accounting.recordUsageObservation({
+      sourceRef: "hy2_stats_usage_monitor_cycle_current",
+      channelRef: "channel-vultr-a-hy2",
+      edgeCredentialRef: "edgecred_pareq_usage_monitor_cycle",
+      observedAt: "2026-08-07T00:05:00.000Z",
+      intervalStartedAt: "2026-08-07T00:00:00.000Z",
+      intervalEndedAt: "2026-08-07T00:05:00.000Z",
+      uploadBytes: 90,
+      downloadBytes: 110
+    });
+
+    const monitor = buildSubscriptionUsageMonitor({
+      controlStore,
+      now: "2026-08-07T00:06:00.000Z"
+    });
+
+    assert.equal(controlStore.getUsageRollupByEdgeCredentialRef("edgecred_pareq_usage_monitor_cycle").totalBytes, 1100);
+    assert.equal(monitor.items.length, 1);
+    assert.equal(monitor.items[0].usedBytes, 200);
+    assert.equal(monitor.items[0].uploadBytes, 90);
+    assert.equal(monitor.items[0].downloadBytes, 110);
+    assert.equal(monitor.items[0].trafficLimitBytes, 1000);
+    assert.equal(monitor.items[0].usageStatus, "measured");
+    assert.equal(monitor.aggregates.usage.totalUsedBytes, 200);
+    assert.equal(monitor.aggregates.usage.totalUploadBytes, 90);
+    assert.equal(monitor.aggregates.usage.totalDownloadBytes, 110);
+    assert.deepEqual(monitor.aggregates.usage.byUsageChannel, {
+      "channel-vultr-a-hy2": 200
+    });
+    assert.doesNotMatch(JSON.stringify(monitor), /edgecred_|https?:|password|token=/i);
+  });
+});
 
 test("admin subscription usage monitor returns every delivered order with portal user ownership", async () => {
   await withStore(async (controlStore) => {

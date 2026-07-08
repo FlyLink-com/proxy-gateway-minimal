@@ -1977,6 +1977,7 @@ test("createRuntimeState records runtime usage observations into the control led
       },
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       controlDbPath: join(dir, "control.sqlite"),
+      userPortalNowFn: () => "2026-06-07T00:00:00.000Z",
       edgeUsageCollectors: [
         {
           channelRef: "channel-vultr-a-hy2",
@@ -2249,5 +2250,881 @@ test("createRuntimeState wires env-gated Hy2 usage collector into the control le
       // Windows can keep SQLite temp handles briefly after close; do not mask
       // the usage accounting assertion result.
     }
+  }
+});
+
+test("createRuntimeState keeps TUIC usage collector disabled without a Mihomo controller URL", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-env-tuic-usage-disabled-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  let state;
+
+  try {
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_vultr_tuic",
+          name: "channel-vultr-a-tuic",
+          protocol: "tuic",
+          type: "tuic",
+          host: "edge.example.test",
+          port: 443,
+          uuid: "11111111-1111-4111-8111-111111111111",
+          password: "synthetic-tuic-password",
+          runtimeAdapter: "mihomo-tuic-explicit-restart",
+          credentialMode: "per-order",
+          status: "online"
+        }
+      ]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        EDGE_CREDENTIAL_CHANNEL_REFS: "channel-vultr-a-tuic",
+        EDGE_USAGE_COLLECTOR_ENABLED: "true"
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      autoStartHttpProxy: false
+    });
+
+    assert.deepEqual(state.platform.edgeUsageCollectors, []);
+    assert.equal(state.platform.edgeUsageAccounting, null);
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
+test("createRuntimeState wires env-gated Mihomo TUIC usage collector into the control ledger", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-env-tuic-usage-ledger-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  const edgeCredentialRef = "edgecred_pareq_env_tuic_usage_001_channel-vultr-a-tuic";
+  const fetchCalls = [];
+  let state;
+
+  try {
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_vultr_tuic",
+          name: "channel-vultr-a-tuic",
+          protocol: "tuic",
+          type: "tuic",
+          host: "edge.example.test",
+          port: 443,
+          uuid: "11111111-1111-4111-8111-111111111111",
+          password: "synthetic-tuic-password",
+          runtimeAdapter: "mihomo-tuic-explicit-restart",
+          credentialMode: "per-order",
+          status: "online"
+        }
+      ]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        EDGE_CREDENTIAL_CHANNEL_REFS: "channel-vultr-a-tuic",
+        EDGE_USAGE_COLLECTOR_ENABLED: "true",
+        EDGE_MIHOMO_USAGE_CONTROLLER_URL: "http://127.0.0.1:19090",
+        EDGE_MIHOMO_USAGE_METRICS_PATH: "/usage",
+        EDGE_MIHOMO_USAGE_CONTROLLER_SECRET: "synthetic-controller-secret"
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      edgeUsageFetch: async (url, options = {}) => {
+        fetchCalls.push({
+          url,
+          authorization: options.headers?.Authorization
+        });
+        return {
+          ok: true,
+          async json() {
+            return {
+              observedAt: "2026-06-08T00:05:00.000Z",
+              users: [
+                {
+                  edgeCredentialRef,
+                  upload: 123,
+                  download: 456,
+                  password: "must-not-return",
+                  rawConfig: "must-not-return"
+                }
+              ]
+            };
+          }
+        };
+      },
+      autoStartHttpProxy: false
+    });
+
+    const now = "2026-06-08T00:00:00.000Z";
+    state.platform.controlStore.createAccount({
+      id: "acct_env_tuic_usage_001",
+      ownerRef: "portal_user_env_tuic_usage_001",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.controlStore.createEntitlement({
+      id: "ent_env_tuic_usage_001",
+      accountId: "acct_env_tuic_usage_001",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-07-08T00:00:00.000Z",
+      trafficLimitBytes: 10_000,
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.controlStore.createIssuanceRequest({
+      id: "pareq_env_tuic_usage_001",
+      accountId: "acct_env_tuic_usage_001",
+      entitlementId: "ent_env_tuic_usage_001",
+      approvalRef: "approval_env_tuic_usage_001",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel-vultr-a-tuic",
+      purpose: "portal_auto_issuance",
+      requestedByRef: "portal_auto_issuer",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.controlStore.linkIssuedSubscription({
+      id: "link_env_tuic_usage_001",
+      requestId: "pareq_env_tuic_usage_001",
+      tenantRef: "tenant_env_tuic_usage_001",
+      artifactRef: "artifact_env_tuic_usage_001",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.controlStore.upsertPortalAccessRequest({
+      id: "pareq_env_tuic_usage_001",
+      portalUserRef: "portal_user_env_tuic_usage_001",
+      plan: "monthly",
+      clientTarget: "clash",
+      durationDays: 30,
+      quantity: 1,
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      noteProvided: false,
+      priorTrialState: "not_applicable",
+      submittedAt: now,
+      updatedAt: now,
+      reviewedAt: now,
+      reviewedByRef: "portal_auto_issuer",
+      expiresAt: "2026-07-08T00:00:00.000Z",
+      validUntil: "2026-07-08T00:00:00.000Z",
+      entitlementRef: "ent_env_tuic_usage_001",
+      accessGrantRef: "grant_env_tuic_usage_001",
+      tenantId: "tenant_env_tuic_usage_001",
+      artifactId: "artifact_env_tuic_usage_001",
+      edgeChannelRef: "channel-vultr-a-tuic",
+      edgeCredentialRef,
+      edgeMaterialDigest: "sha256:env_tuic_usage_digest"
+    });
+
+    assert.equal(state.platform.edgeUsageCollectors.length, 1);
+    assert.ok(state.platform.edgeUsageAccounting);
+    const usage = await state.platform.edgeUsageAccounting.collectAndRecord({
+      since: "2026-06-08T00:00:00.000Z"
+    });
+
+    assert.equal(usage.ok, true);
+    assert.equal(usage.observationCount, 1);
+    assert.equal(usage.recordedCount, 1);
+    assert.equal(usage.insertedCount, 1);
+    assert.equal(usage.unresolvedCount, 0);
+    assert.deepEqual(fetchCalls, [
+      {
+        url: "http://127.0.0.1:19090/usage",
+        authorization: "Bearer synthetic-controller-secret"
+      }
+    ]);
+    const rollup = state.platform.controlStore.getUsageRollupByEdgeCredentialRef(edgeCredentialRef);
+    assert.equal(rollup.totalBytes, 579);
+    assert.equal(rollup.uploadBytes, 123);
+    assert.equal(rollup.downloadBytes, 456);
+    assert.equal(rollup.requestId, "pareq_env_tuic_usage_001");
+    assert.doesNotMatch(JSON.stringify(usage), /synthetic-controller-secret|must-not-return|password|token|rawConfig/i);
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch {
+      // Windows can keep SQLite temp handles briefly after close; do not mask
+      // the usage accounting assertion result.
+    }
+  }
+});
+
+test("createRuntimeState wires Mihomo TUIC connections usage through a credential map file", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-env-tuic-connections-usage-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  const credentialMapPath = join(dir, "protected", "tuic-usage-map.json");
+  const runtimeUser = "11111111-1111-4111-8111-111111111111";
+  const edgeCredentialRef = "edgecred_pareq_env_tuic_connections_001_channel-vultr-a-tuic";
+  let state;
+
+  try {
+    mkdirSync(join(dir, "protected"), { recursive: true });
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_vultr_tuic",
+          name: "channel-vultr-a-tuic",
+          protocol: "tuic",
+          type: "tuic",
+          host: "edge.example.test",
+          port: 443,
+          uuid: runtimeUser,
+          password: "synthetic-tuic-password",
+          runtimeAdapter: "mihomo-tuic-explicit-restart",
+          credentialMode: "per-order",
+          status: "online"
+        }
+      ]
+    }), { mode: 0o600 });
+    writeFileSync(credentialMapPath, JSON.stringify({
+      [runtimeUser]: edgeCredentialRef
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        EDGE_CREDENTIAL_CHANNEL_REFS: "channel-vultr-a-tuic",
+        EDGE_USAGE_COLLECTOR_ENABLED: "true",
+        EDGE_MIHOMO_USAGE_CONTROLLER_URL: "http://127.0.0.1:19090",
+        EDGE_MIHOMO_USAGE_METRICS_PATH: "/connections",
+        EDGE_MIHOMO_USAGE_CREDENTIAL_MAP_PATH: credentialMapPath
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      edgeUsageFetch: async () => ({
+        ok: true,
+        async json() {
+          return {
+            observedAt: "2026-06-08T00:05:00.000Z",
+            uploadTotal: 3000,
+            downloadTotal: 5000,
+            connections: [
+              {
+                upload: 120,
+                download: 340,
+                metadata: {
+                  inboundUser: runtimeUser,
+                  sourceIP: "198.51.100.20",
+                  host: "private.example.invalid"
+                },
+                password: "must-not-return"
+              },
+              {
+                upload: 80,
+                download: 160,
+                metadata: {
+                  inboundUser: runtimeUser
+                }
+              }
+            ]
+          };
+        }
+      }),
+      autoStartHttpProxy: false
+    });
+
+    assert.equal(state.platform.edgeUsageCollectors.length, 1);
+    const collected = await state.platform.edgeUsageCollectors[0].collect({
+      since: "2026-06-08T00:00:00.000Z"
+    });
+
+    assert.equal(collected.ok, true);
+    assert.deepEqual(collected.observations, [
+      {
+        sourceRef: "mihomo_external_controller_connections",
+        channelRef: "channel-vultr-a-tuic",
+        edgeCredentialRef,
+        observedAt: "2026-06-08T00:05:00.000Z",
+        intervalStartedAt: "2026-06-08T00:00:00.000Z",
+        intervalEndedAt: "2026-06-08T00:05:00.000Z",
+        uploadBytes: 200,
+        downloadBytes: 500
+      }
+    ]);
+    assert.doesNotMatch(JSON.stringify(collected), /11111111-1111-4111-8111-111111111111|must-not-return|198\.51\.100\.20|private\.example\.invalid/);
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
+test("createRuntimeState wires env-gated Xray VLESS usage collector into the control ledger", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-env-vless-usage-ledger-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  const edgeCredentialRef = "edgecred_pareq_env_vless_usage_001_channel-vultr-a-vless-reality-tcp";
+  const commandCalls = [];
+  let state;
+
+  try {
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_vultr_vless",
+          name: "channel-vultr-a-vless-reality-tcp",
+          protocol: "vless",
+          type: "vless",
+          host: "edge.example.test",
+          port: 443,
+          uuid: "11111111-1111-4111-8111-111111111111",
+          runtimeAdapter: "xray-vless-reality-explicit-restart",
+          credentialMode: "per-order",
+          status: "online"
+        }
+      ]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        EDGE_CREDENTIAL_CHANNEL_REFS: "channel-vultr-a-vless-reality-tcp",
+        EDGE_USAGE_COLLECTOR_ENABLED: "true",
+        EDGE_XRAY_STATS_SERVER: "127.0.0.1:10085"
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      edgeUsageCommandRunner: (command, args) => {
+        commandCalls.push({ command, args });
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            observedAt: "2026-07-07T00:05:00.000Z",
+            stat: [
+              {
+                name: `${"user"}>>>${edgeCredentialRef}>>>traffic>>>uplink`,
+                value: 222
+              },
+              {
+                name: `${"user"}>>>${edgeCredentialRef}>>>traffic>>>downlink`,
+                value: 333
+              }
+            ],
+            privateKey: "must-not-return"
+          })
+        };
+      },
+      autoStartHttpProxy: false
+    });
+
+    const now = "2026-07-07T00:00:00.000Z";
+    state.platform.controlStore.createAccount({
+      id: "acct_env_vless_usage_001",
+      ownerRef: "portal_user_env_vless_usage_001",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.controlStore.createEntitlement({
+      id: "ent_env_vless_usage_001",
+      accountId: "acct_env_vless_usage_001",
+      plan: "monthly",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-08-07T00:00:00.000Z",
+      trafficLimitBytes: 10_000,
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.controlStore.createIssuanceRequest({
+      id: "pareq_env_vless_usage_001",
+      accountId: "acct_env_vless_usage_001",
+      entitlementId: "ent_env_vless_usage_001",
+      approvalRef: "approval_env_vless_usage_001",
+      status: "issued",
+      quantity: 1,
+      nodeId: "channel-vultr-a-vless-reality-tcp",
+      purpose: "portal_auto_issuance",
+      requestedByRef: "portal_auto_issuer",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.controlStore.linkIssuedSubscription({
+      id: "link_env_vless_usage_001",
+      requestId: "pareq_env_vless_usage_001",
+      tenantRef: "tenant_env_vless_usage_001",
+      artifactRef: "artifact_env_vless_usage_001",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.controlStore.upsertPortalAccessRequest({
+      id: "pareq_env_vless_usage_001",
+      portalUserRef: "portal_user_env_vless_usage_001",
+      plan: "monthly",
+      clientTarget: "clash",
+      durationDays: 30,
+      quantity: 1,
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      noteProvided: false,
+      priorTrialState: "not_applicable",
+      submittedAt: now,
+      updatedAt: now,
+      reviewedAt: now,
+      reviewedByRef: "portal_auto_issuer",
+      expiresAt: "2026-08-07T00:00:00.000Z",
+      validUntil: "2026-08-07T00:00:00.000Z",
+      entitlementRef: "ent_env_vless_usage_001",
+      accessGrantRef: "grant_env_vless_usage_001",
+      tenantId: "tenant_env_vless_usage_001",
+      artifactId: "artifact_env_vless_usage_001",
+      edgeChannelRef: "channel-vultr-a-vless-reality-tcp",
+      edgeCredentialRef,
+      edgeMaterialDigest: "sha256:env_vless_usage_digest"
+    });
+
+    assert.equal(state.platform.edgeUsageCollectors.length, 1);
+    assert.ok(state.platform.edgeUsageAccounting);
+    const usage = await state.platform.edgeUsageAccounting.collectAndRecord({
+      since: "2026-07-07T00:00:00.000Z"
+    });
+
+    assert.equal(usage.ok, true);
+    assert.equal(usage.observationCount, 1);
+    assert.equal(usage.recordedCount, 1);
+    assert.equal(usage.insertedCount, 1);
+    assert.equal(usage.unresolvedCount, 0);
+    assert.deepEqual(commandCalls, [
+      {
+        command: "xray",
+        args: ["api", "statsquery", "--server=127.0.0.1:10085"]
+      }
+    ]);
+    const rollup = state.platform.controlStore.getUsageRollupByEdgeCredentialRef(edgeCredentialRef);
+    assert.equal(rollup.totalBytes, 555);
+    assert.equal(rollup.uploadBytes, 222);
+    assert.equal(rollup.downloadBytes, 333);
+    assert.equal(rollup.requestId, "pareq_env_vless_usage_001");
+    assert.doesNotMatch(JSON.stringify(usage), /must-not-return|privateKey|password|token|rawConfig/i);
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch {
+      // Windows can keep SQLite temp handles briefly after close; do not mask
+      // the usage accounting assertion result.
+    }
+  }
+});
+
+test("createRuntimeState scopes env-gated Xray VLESS usage collectors to explicit channel refs", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-env-vless-usage-scope-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  let state;
+
+  try {
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_vultr_vless",
+          name: "channel-vultr-a-vless-reality-tcp",
+          protocol: "vless",
+          type: "vless",
+          host: "edge-vultr.example.test",
+          port: 443,
+          uuid: "11111111-1111-4111-8111-111111111111",
+          runtimeAdapter: "xray-vless-reality-explicit-restart",
+          credentialMode: "per-order",
+          status: "online"
+        },
+        {
+          id: "channel_sgp_vless",
+          name: "channel-sgp-a-vless-reality-tcp",
+          protocol: "vless",
+          type: "vless",
+          host: "edge-sgp.example.test",
+          port: 443,
+          uuid: "22222222-2222-4222-8222-222222222222",
+          runtimeAdapter: "xray-vless-reality-explicit-restart",
+          credentialMode: "per-order",
+          status: "online"
+        }
+      ]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        EDGE_CREDENTIAL_CHANNEL_REFS: [
+          "channel-vultr-a-vless-reality-tcp",
+          "channel-sgp-a-vless-reality-tcp"
+        ].join(","),
+        EDGE_USAGE_COLLECTOR_ENABLED: "true",
+        EDGE_XRAY_STATS_SERVER: "127.0.0.1:10085",
+        EDGE_XRAY_USAGE_CHANNEL_REFS: "channel-vultr-a-vless-reality-tcp"
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      edgeUsageCommandRunner: () => ({
+        exitCode: 0,
+        stdout: JSON.stringify({ observedAt: "2026-07-07T00:05:00.000Z", stat: [] })
+      }),
+      autoStartHttpProxy: false
+    });
+
+    assert.deepEqual(
+      state.platform.edgeUsageCollectors.map((collector) => collector.channelRef),
+      ["channel-vultr-a-vless-reality-tcp"]
+    );
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    try {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    } catch {
+      // Windows can keep SQLite temp handles briefly after close.
+    }
+  }
+});
+
+test("createRuntimeState scopes env-gated Mihomo TUIC usage collectors to explicit channel refs", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-env-tuic-usage-scope-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  let state;
+
+  try {
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_vultr_tuic",
+          name: "channel-vultr-a-tuic",
+          protocol: "tuic",
+          type: "tuic",
+          host: "edge-vultr.example.test",
+          port: 443,
+          uuid: "11111111-1111-4111-8111-111111111111",
+          password: "synthetic-vultr-tuic-password",
+          runtimeAdapter: "mihomo-tuic-explicit-restart",
+          credentialMode: "per-order",
+          status: "online"
+        },
+        {
+          id: "channel_sgp_tuic",
+          name: "channel-sgp-a-tuic",
+          protocol: "tuic",
+          type: "tuic",
+          host: "edge-sgp.example.test",
+          port: 443,
+          uuid: "22222222-2222-4222-8222-222222222222",
+          password: "synthetic-sgp-tuic-password",
+          runtimeAdapter: "mihomo-tuic-explicit-restart",
+          credentialMode: "per-order",
+          status: "online"
+        }
+      ]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        EDGE_CREDENTIAL_CHANNEL_REFS: [
+          "channel-vultr-a-tuic",
+          "channel-sgp-a-tuic"
+        ].join(","),
+        EDGE_USAGE_COLLECTOR_ENABLED: "true",
+        EDGE_MIHOMO_USAGE_CONTROLLER_URL: "http://127.0.0.1:19090",
+        EDGE_MIHOMO_USAGE_METRICS_PATH: "/connections",
+        EDGE_MIHOMO_USAGE_CHANNEL_REFS: "channel-vultr-a-tuic"
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      edgeUsageFetch: async () => ({
+        ok: true,
+        async json() {
+          return {
+            observedAt: "2026-07-07T00:05:00.000Z",
+            connections: []
+          };
+        }
+      }),
+      autoStartHttpProxy: false
+    });
+
+    assert.deepEqual(
+      state.platform.edgeUsageCollectors.map((collector) => collector.channelRef),
+      ["channel-vultr-a-tuic"]
+    );
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
+test("createRuntimeState wires separate Xray VLESS usage sources per channel ref", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-env-vless-usage-multi-source-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  const vultrCredentialRef = "edgecred_pareq_env_vless_usage_001_channel-vultr-a-vless-reality-tcp";
+  const sgpCredentialRef = "edgecred_pareq_env_vless_usage_001_channel-sgp-a-vless-reality-tcp";
+  const commandCalls = [];
+  let state;
+
+  try {
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_vultr_vless",
+          name: "channel-vultr-a-vless-reality-tcp",
+          protocol: "vless",
+          type: "vless",
+          host: "edge-vultr.example.test",
+          port: 443,
+          uuid: "11111111-1111-4111-8111-111111111111",
+          runtimeAdapter: "xray-vless-reality-explicit-restart",
+          credentialMode: "per-order",
+          status: "online"
+        },
+        {
+          id: "channel_sgp_vless",
+          name: "channel-sgp-a-vless-reality-tcp",
+          protocol: "vless",
+          type: "vless",
+          host: "edge-sgp.example.test",
+          port: 8443,
+          uuid: "22222222-2222-4222-8222-222222222222",
+          runtimeAdapter: "remote-data-plane-handoff",
+          credentialMode: "per-order",
+          status: "online"
+        }
+      ]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        EDGE_CREDENTIAL_CHANNEL_REFS: [
+          "channel-vultr-a-vless-reality-tcp",
+          "channel-sgp-a-vless-reality-tcp"
+        ].join(","),
+        EDGE_USAGE_COLLECTOR_ENABLED: "true",
+        EDGE_XRAY_USAGE_SOURCES_JSON: JSON.stringify([
+          {
+            statsServer: "127.0.0.1:10085",
+            channelRefs: ["channel-vultr-a-vless-reality-tcp"]
+          },
+          {
+            statsServer: "127.0.0.1:11085",
+            channelRefs: ["channel-sgp-a-vless-reality-tcp"]
+          }
+        ])
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      edgeUsageCommandRunner: (command, args) => {
+        commandCalls.push({ command, args });
+        const statsServer = args.find((arg) => arg.startsWith("--server=")) || "";
+        const edgeCredentialRef = statsServer.includes("11085") ? sgpCredentialRef : vultrCredentialRef;
+        return {
+          exitCode: 0,
+          stdout: JSON.stringify({
+            observedAt: "2026-07-07T00:05:00.000Z",
+            stat: [
+              {
+                name: `${"user"}>>>${edgeCredentialRef}>>>traffic>>>uplink`,
+                value: 100
+              },
+              {
+                name: `${"user"}>>>${edgeCredentialRef}>>>traffic>>>downlink`,
+                value: 200
+              }
+            ]
+          })
+        };
+      },
+      autoStartHttpProxy: false
+    });
+
+    assert.deepEqual(
+      state.platform.edgeUsageCollectors.map((collector) => collector.channelRef),
+      ["channel-vultr-a-vless-reality-tcp", "channel-sgp-a-vless-reality-tcp"]
+    );
+
+    const reports = [];
+    for (const collector of state.platform.edgeUsageCollectors) {
+      reports.push(await collector.collect({ since: "2026-07-07T00:00:00.000Z" }));
+    }
+
+    assert.deepEqual(
+      commandCalls.map((call) => call.args.find((arg) => arg.startsWith("--server="))),
+      ["--server=127.0.0.1:10085", "--server=127.0.0.1:11085"]
+    );
+    assert.deepEqual(
+      reports.map((report) => report.observations[0].edgeCredentialRef),
+      [vultrCredentialRef, sgpCredentialRef]
+    );
+    assert.deepEqual(
+      reports.map((report) => report.channelRef),
+      ["channel-vultr-a-vless-reality-tcp", "channel-sgp-a-vless-reality-tcp"]
+    );
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+  }
+});
+
+test("createRuntimeState wires separate Mihomo TUIC usage sources per channel ref", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-env-tuic-usage-multi-source-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  const vultrCredentialRef = "edgecred_pareq_env_tuic_usage_001_channel-vultr-a-tuic";
+  const sgpCredentialRef = "edgecred_pareq_env_tuic_usage_001_channel-sgp-a-tuic";
+  const requests = [];
+  let state;
+
+  try {
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_vultr_tuic",
+          name: "channel-vultr-a-tuic",
+          protocol: "tuic",
+          type: "tuic",
+          host: "edge-vultr.example.test",
+          port: 443,
+          uuid: "11111111-1111-4111-8111-111111111111",
+          password: "synthetic-vultr-tuic-password",
+          runtimeAdapter: "mihomo-tuic-explicit-restart",
+          credentialMode: "per-order",
+          status: "online"
+        },
+        {
+          id: "channel_sgp_tuic",
+          name: "channel-sgp-a-tuic",
+          protocol: "tuic",
+          type: "tuic",
+          host: "edge-sgp.example.test",
+          port: 443,
+          uuid: "22222222-2222-4222-8222-222222222222",
+          password: "synthetic-sgp-tuic-password",
+          runtimeAdapter: "remote-data-plane-handoff",
+          credentialMode: "per-order",
+          status: "online"
+        }
+      ]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        EDGE_CREDENTIAL_CHANNEL_REFS: [
+          "channel-vultr-a-tuic",
+          "channel-sgp-a-tuic"
+        ].join(","),
+        EDGE_USAGE_COLLECTOR_ENABLED: "true",
+        EDGE_MIHOMO_USAGE_SOURCES_JSON: JSON.stringify([
+          {
+            controllerUrl: "http://127.0.0.1:19090",
+            metricsPath: "/connections",
+            controllerSecret: "synthetic-vultr-controller-secret",
+            credentialMapJson: {
+              "vultr-runtime-user": vultrCredentialRef
+            },
+            channelRefs: ["channel-vultr-a-tuic"]
+          },
+          {
+            controllerUrl: "http://127.0.0.1:19091",
+            metricsPath: "/connections",
+            controllerSecret: "synthetic-sgp-controller-secret",
+            credentialMapJson: {
+              "sgp-runtime-user": sgpCredentialRef
+            },
+            channelRefs: ["channel-sgp-a-tuic"]
+          }
+        ])
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      edgeUsageFetch: async (url, { headers } = {}) => {
+        requests.push({ url: String(url), headers });
+        const isSgp = String(url).includes("19091");
+        return {
+          ok: true,
+          async json() {
+            return {
+              observedAt: "2026-07-07T00:05:00.000Z",
+              connections: [
+                {
+                  inboundUser: isSgp ? "sgp-runtime-user" : "vultr-runtime-user",
+                  uploadBytes: isSgp ? 300 : 100,
+                  downloadBytes: isSgp ? 400 : 200,
+                  privateKey: "must-not-return"
+                }
+              ]
+            };
+          }
+        };
+      },
+      autoStartHttpProxy: false
+    });
+
+    assert.deepEqual(
+      state.platform.edgeUsageCollectors.map((collector) => collector.channelRef),
+      ["channel-vultr-a-tuic", "channel-sgp-a-tuic"]
+    );
+
+    const reports = [];
+    for (const collector of state.platform.edgeUsageCollectors) {
+      reports.push(await collector.collect({ since: "2026-07-07T00:00:00.000Z" }));
+    }
+
+    assert.deepEqual(
+      requests.map((request) => request.url),
+      ["http://127.0.0.1:19090/connections", "http://127.0.0.1:19091/connections"]
+    );
+    assert.deepEqual(
+      reports.map((report) => report.observations[0].edgeCredentialRef),
+      [vultrCredentialRef, sgpCredentialRef]
+    );
+    assert.doesNotMatch(JSON.stringify(reports), /runtime-user|privateKey|controller-secret|must-not-return/i);
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });

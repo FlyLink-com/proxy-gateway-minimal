@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve, join } from "node:path";
 import { createSsLocalService } from "./services/ss-local.mjs";
@@ -23,6 +24,10 @@ import { createPortalPasswordCredentialService } from "./services/platform/porta
 import { createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
 import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
 import { createHysteria2UsageCollector } from "./services/edge/hysteria2-usage-collector.mjs";
+import { createMihomoTuicUsageCollector } from "./services/edge/mihomo-tuic-usage-collector.mjs";
+import { createMihomoExternalControllerUsageSnapshotReader } from "./services/edge/mihomo-external-controller-usage-reader.mjs";
+import { createXrayVlessUsageCollector } from "./services/edge/xray-vless-usage-collector.mjs";
+import { createXrayStatsCliUsageSnapshotReader } from "./services/edge/xray-stats-cli-usage-reader.mjs";
 import { createRuntimeUsageAccountingService } from "./services/platform/runtime-usage-accounting.mjs";
 import { createTrafficAccountingService } from "./services/platform/traffic-accounting.mjs";
 import { createFileBackedEdgeCredentialMaterialStore } from "./services/edge/credential-material-store.mjs";
@@ -94,6 +99,20 @@ function runtimeValidationError(message) {
   return error;
 }
 
+function dateNowFn(nowFn) {
+  if (typeof nowFn !== "function") {
+    return undefined;
+  }
+  return () => {
+    const value = nowFn();
+    if (value instanceof Date) {
+      return value;
+    }
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? new Date() : date;
+  };
+}
+
 function parseJsonArrayEnv(value, field) {
   const raw = optionalEnvText(value);
   if (!raw) {
@@ -108,6 +127,157 @@ function parseJsonArrayEnv(value, field) {
   } catch {
     throw runtimeValidationError(`${field} must be a JSON array`);
   }
+}
+
+function parseJsonObjectEnv(value, field) {
+  const raw = optionalEnvText(value);
+  if (!raw) {
+    return {};
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("not_object");
+    }
+    return parsed;
+  } catch {
+    throw runtimeValidationError(`${field} must be a JSON object`);
+  }
+}
+
+function parseJsonObjectConfig(value, field) {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value;
+  }
+  return parseJsonObjectEnv(value, field);
+}
+
+function parseJsonObjectFileEnv(value, field) {
+  const filePath = optionalEnvText(value);
+  if (!filePath) {
+    return {};
+  }
+  let raw;
+  try {
+    raw = readFileSync(filePath, "utf8");
+  } catch {
+    throw runtimeValidationError(`${field} must reference a readable JSON object file`);
+  }
+  return parseJsonObjectEnv(raw, field);
+}
+
+function optionalTextFile(value, field) {
+  const filePath = optionalEnvText(value);
+  if (!filePath) {
+    return "";
+  }
+  try {
+    return readFileSync(filePath, "utf8").trim();
+  } catch {
+    throw runtimeValidationError(`${field} must reference a readable text file`);
+  }
+}
+
+function createMihomoUsageCredentialMap(env = {}, source = {}) {
+  const sourceCredentialMapJson = source.credentialMapJson ?? source.credentialMap ?? source.runtimeCredentialMap;
+  const sourceCredentialMapPath = source.credentialMapPath ?? source.credentialMapFile;
+  return {
+    ...parseJsonObjectConfig(
+      sourceCredentialMapJson
+        ?? env.EDGE_MIHOMO_USAGE_CREDENTIAL_MAP_JSON
+        ?? env.EDGE_MIHOMO_TUIC_USAGE_CREDENTIAL_MAP_JSON
+        ?? env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_CREDENTIAL_MAP_JSON,
+      sourceCredentialMapJson === undefined
+        ? "EDGE_MIHOMO_USAGE_CREDENTIAL_MAP_JSON"
+        : "EDGE_MIHOMO_USAGE_SOURCES_JSON[].credentialMapJson"
+    ),
+    ...parseJsonObjectFileEnv(
+      sourceCredentialMapPath
+        ?? env.EDGE_MIHOMO_USAGE_CREDENTIAL_MAP_PATH
+        ?? env.EDGE_MIHOMO_TUIC_USAGE_CREDENTIAL_MAP_PATH
+        ?? env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_CREDENTIAL_MAP_PATH,
+      sourceCredentialMapPath === undefined
+        ? "EDGE_MIHOMO_USAGE_CREDENTIAL_MAP_PATH"
+        : "EDGE_MIHOMO_USAGE_SOURCES_JSON[].credentialMapPath"
+    )
+  };
+}
+
+function parseUsageSourceArray(value, field) {
+  return parseJsonArrayEnv(value, field).map((source, index) => {
+    if (!source || typeof source !== "object" || Array.isArray(source)) {
+      throw runtimeValidationError(`${field}[${index}] must be an object`);
+    }
+    return source;
+  });
+}
+
+function sourceChannelRefs(source, fallback = []) {
+  if (Array.isArray(source.channelRefs)) {
+    return source.channelRefs.map((ref) => optionalEnvText(ref)).filter(Boolean);
+  }
+  return parseCsv(source.channelRefs || source.channelRef, fallback);
+}
+
+function createXrayUsageSourceConfigs(env = {}) {
+  const configuredSources = parseUsageSourceArray(
+    env.EDGE_XRAY_USAGE_SOURCES_JSON || env.EDGE_XRAY_STATS_SOURCES_JSON,
+    "EDGE_XRAY_USAGE_SOURCES_JSON"
+  );
+  if (configuredSources.length > 0) {
+    return configuredSources.map((source, index) => ({
+      statsServer: optionalEnvText(source.statsServer || source.server),
+      xrayBinary: optionalEnvText(source.xrayBinary),
+      channelRefs: sourceChannelRefs(source, []),
+      fieldPrefix: `EDGE_XRAY_USAGE_SOURCES_JSON[${index}]`
+    }));
+  }
+
+  const statsServer = optionalEnvText(env.EDGE_XRAY_STATS_SERVER || env.EDGE_XRAY_STATS_API_SERVER);
+  if (!statsServer) {
+    return [];
+  }
+  return [{
+    statsServer,
+    xrayBinary: optionalEnvText(env.EDGE_XRAY_BINARY),
+    channelRefs: parseCsv(env.EDGE_XRAY_USAGE_CHANNEL_REFS || env.EDGE_XRAY_STATS_CHANNEL_REFS, []),
+    fieldPrefix: "EDGE_XRAY_STATS_SERVER"
+  }];
+}
+
+function createMihomoUsageSourceConfigs(env = {}) {
+  const configuredSources = parseUsageSourceArray(
+    env.EDGE_MIHOMO_USAGE_SOURCES_JSON
+      || env.EDGE_MIHOMO_TUIC_USAGE_SOURCES_JSON
+      || env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_SOURCES_JSON,
+    "EDGE_MIHOMO_USAGE_SOURCES_JSON"
+  );
+  if (configuredSources.length > 0) {
+    return configuredSources.map((source, index) => ({
+      controllerUrl: optionalEnvText(source.controllerUrl || source.url),
+      metricsPath: source.metricsPath,
+      controllerSecret: optionalEnvText(source.controllerSecret)
+        || optionalTextFile(source.controllerSecretPath || source.controllerSecretFile, `EDGE_MIHOMO_USAGE_SOURCES_JSON[${index}].controllerSecretPath`),
+      channelRefs: sourceChannelRefs(source, []),
+      credentialMapJson: source.credentialMapJson ?? source.credentialMap ?? source.runtimeCredentialMap,
+      credentialMapPath: source.credentialMapPath ?? source.credentialMapFile,
+      fieldPrefix: `EDGE_MIHOMO_USAGE_SOURCES_JSON[${index}]`
+    }));
+  }
+
+  const controllerUrl = optionalEnvText(
+    env.EDGE_MIHOMO_USAGE_CONTROLLER_URL || env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_URL
+  );
+  if (!controllerUrl) {
+    return [];
+  }
+  return [{
+    controllerUrl,
+    metricsPath: env.EDGE_MIHOMO_USAGE_METRICS_PATH || env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_METRICS_PATH,
+    controllerSecret: env.EDGE_MIHOMO_USAGE_CONTROLLER_SECRET || env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_SECRET,
+    channelRefs: parseCsv(env.EDGE_MIHOMO_USAGE_CHANNEL_REFS || env.EDGE_MIHOMO_TUIC_USAGE_CHANNEL_REFS, []),
+    fieldPrefix: "EDGE_MIHOMO_USAGE_CONTROLLER_URL"
+  }];
 }
 
 function isLoopbackHostname(hostname) {
@@ -213,6 +383,18 @@ function isHysteria2ProxyServer(server = {}) {
   return protocol === "hysteria2" || protocol === "hy2" || runtimeAdapter.includes("hysteria2");
 }
 
+function isMihomoTuicProxyServer(server = {}) {
+  const protocol = optionalEnvText(server.protocol || server.type).toLowerCase();
+  const runtimeAdapter = optionalEnvText(server.runtimeAdapter).toLowerCase();
+  return protocol === "tuic" || runtimeAdapter.includes("mihomo-tuic") || runtimeAdapter.includes("tuic");
+}
+
+function isXrayVlessProxyServer(server = {}) {
+  const protocol = optionalEnvText(server.protocol || server.type).toLowerCase();
+  const runtimeAdapter = optionalEnvText(server.runtimeAdapter).toLowerCase();
+  return protocol === "vless" || runtimeAdapter.includes("xray-vless") || runtimeAdapter.includes("vless");
+}
+
 function runtimeFromProxyServer(server = {}, fallback = "mihomo-tuic") {
   const protocol = optionalEnvText(server.protocol || server.type).toLowerCase();
   const runtimeAdapter = optionalEnvText(server.runtimeAdapter).toLowerCase();
@@ -237,6 +419,7 @@ function createEnvEdgeUsageCollectors({
   edgeChannelRefs,
   hysteria2TrafficReader,
   fetchFn,
+  xrayStatsCommandRunner,
   nowFn
 } = {}) {
   if (!envFlag(env.EDGE_USAGE_COLLECTOR_ENABLED || env.EDGE_USAGE_ACCOUNTING_ENABLED)) {
@@ -245,30 +428,100 @@ function createEnvEdgeUsageCollectors({
 
   const configuredServers = Array.isArray(proxyConfig?.servers) ? proxyConfig.servers : [];
   const allowedChannelRefs = new Set(edgeChannelRefs.map((ref) => optionalEnvText(ref)).filter(Boolean));
+  const collectors = [];
   const hy2ChannelRefs = configuredServers
     .filter(isHysteria2ProxyServer)
     .map(proxyServerRef)
     .filter((channelRef) => channelRef && (allowedChannelRefs.size === 0 || allowedChannelRefs.has(channelRef)));
-  if (hy2ChannelRefs.length === 0) {
-    return [];
+
+  if (hy2ChannelRefs.length > 0) {
+    const trafficReader = typeof hysteria2TrafficReader === "function"
+      ? hysteria2TrafficReader
+      : createHysteria2TrafficStatsReader({
+        listen: env.EDGE_HYSTERIA2_TRAFFIC_STATS_LISTEN,
+        secret: env.EDGE_HYSTERIA2_TRAFFIC_STATS_SECRET,
+        fetchFn
+      });
+
+    collectors.push(...[...new Set(hy2ChannelRefs)].map((channelRef) => ({
+      channelRef,
+      ...createHysteria2UsageCollector({
+        channelRef,
+        trafficReader,
+        nowFn
+      })
+    })));
   }
 
-  const trafficReader = typeof hysteria2TrafficReader === "function"
-    ? hysteria2TrafficReader
-    : createHysteria2TrafficStatsReader({
-      listen: env.EDGE_HYSTERIA2_TRAFFIC_STATS_LISTEN,
-      secret: env.EDGE_HYSTERIA2_TRAFFIC_STATS_SECRET,
-      fetchFn
+  for (const mihomoUsageSource of createMihomoUsageSourceConfigs(env)) {
+    const allowedMihomoUsageChannelRefs = new Set(
+      mihomoUsageSource.channelRefs.map((ref) => optionalEnvText(ref)).filter(Boolean)
+    );
+    const tuicChannelRefs = configuredServers
+      .filter(isMihomoTuicProxyServer)
+      .map(proxyServerRef)
+      .filter((channelRef) =>
+        channelRef
+        && (allowedChannelRefs.size === 0 || allowedChannelRefs.has(channelRef))
+        && (allowedMihomoUsageChannelRefs.size === 0 || allowedMihomoUsageChannelRefs.has(channelRef))
+      );
+    const fetchJson = typeof fetchFn === "function"
+      ? async ({ url, headers }) => {
+        const response = await fetchFn(url, { headers });
+        if (!response?.ok) {
+          throw runtimeValidationError("Mihomo usage controller request failed");
+        }
+        return await response.json();
+      }
+      : undefined;
+    const snapshotReader = createMihomoExternalControllerUsageSnapshotReader({
+      controllerUrl: mihomoUsageSource.controllerUrl,
+      metricsPath: mihomoUsageSource.metricsPath,
+      controllerSecret: mihomoUsageSource.controllerSecret,
+      credentialRefByRuntimeUser: createMihomoUsageCredentialMap(env, mihomoUsageSource),
+      fetchJson,
+      nowFn
     });
 
-  return [...new Set(hy2ChannelRefs)].map((channelRef) => ({
-    channelRef,
-    ...createHysteria2UsageCollector({
+    collectors.push(...[...new Set(tuicChannelRefs)].map((channelRef) => ({
       channelRef,
-      trafficReader,
+      ...createMihomoTuicUsageCollector({
+        channelRef,
+        snapshotReader,
+        nowFn
+      })
+    })));
+  }
+
+  for (const xrayUsageSource of createXrayUsageSourceConfigs(env)) {
+    const allowedXrayUsageChannelRefs = new Set(
+      xrayUsageSource.channelRefs.map((ref) => optionalEnvText(ref)).filter(Boolean)
+    );
+    const vlessChannelRefs = configuredServers
+      .filter(isXrayVlessProxyServer)
+      .map(proxyServerRef)
+      .filter((channelRef) =>
+        channelRef
+        && (allowedChannelRefs.size === 0 || allowedChannelRefs.has(channelRef))
+        && (allowedXrayUsageChannelRefs.size === 0 || allowedXrayUsageChannelRefs.has(channelRef))
+      );
+    const snapshotReader = createXrayStatsCliUsageSnapshotReader({
+      xrayBinary: optionalEnvText(xrayUsageSource.xrayBinary) || optionalEnvText(env.EDGE_XRAY_BINARY) || "xray",
+      statsServer: xrayUsageSource.statsServer,
+      ...(typeof xrayStatsCommandRunner === "function" ? { commandRunner: xrayStatsCommandRunner } : {}),
       nowFn
-    })
-  }));
+    });
+
+    collectors.push(...[...new Set(vlessChannelRefs)].map((channelRef) => ({
+      channelRef,
+      ...createXrayVlessUsageCollector({
+        channelRef,
+        snapshotReader
+      })
+    })));
+  }
+
+  return collectors;
 }
 
 function edgeCredentialRefForRequestId(requestId, channelRef = "", options = {}) {
@@ -598,11 +851,13 @@ export function createRuntimeState(options = {}) {
   );
   const ownsControlStore = !options.platformControlStore;
   const platformControlStore = options.platformControlStore || createSqliteSubscriptionControlStore({ dbPath: controlDbPath });
+  const subscriptionCoreNowFn = dateNowFn(options.subscriptionNowFn || options.userPortalNowFn);
   let edgeCredentialMaterialStore = options.edgeCredentialMaterialStore || null;
   const subscriptionCore = options.subscriptionCore || options.subscriptionService || createSubscriptionCore({
     store: subscriptionStore,
     proxyConfig,
     publicSubscriptionBaseUrl,
+    nowFn: subscriptionCoreNowFn,
     expiringDays: Number.parseInt(env.SUBSCRIPTION_EXPIRING_DAYS, 10) || 7,
     tempLinkTtlMinutes,
     tenantCredentialMaterialResolver: ({ tenantId, nodeId }) => resolveTenantCredentialMaterialFromStores({
@@ -709,7 +964,12 @@ export function createRuntimeState(options = {}) {
               certificate: env.EDGE_MIHOMO_TUIC_CERTIFICATE_PATH,
               privateKey: env.EDGE_MIHOMO_TUIC_PRIVATE_KEY_PATH,
               congestionController: optionalEnvText(env.EDGE_MIHOMO_TUIC_CONGESTION_CONTROLLER) || "bbr",
-              alpn: parseCsv(env.EDGE_MIHOMO_TUIC_ALPN, ["h3"])
+              alpn: parseCsv(env.EDGE_MIHOMO_TUIC_ALPN, ["h3"]),
+              usageController: {
+                controllerUrl: optionalEnvText(env.EDGE_MIHOMO_RUNTIME_CONTROLLER_URL),
+                secret: optionalEnvText(env.EDGE_MIHOMO_RUNTIME_CONTROLLER_SECRET)
+                  || optionalTextFile(env.EDGE_MIHOMO_RUNTIME_CONTROLLER_SECRET_FILE, "EDGE_MIHOMO_RUNTIME_CONTROLLER_SECRET_FILE")
+              }
             },
             resolveCredentialMaterial: (credentialRef) => edgeCredentialMaterialStore.resolveCredentialMaterial(credentialRef),
             commandRunner: options.edgeRuntimeCommandRunner
@@ -759,6 +1019,9 @@ export function createRuntimeState(options = {}) {
               privateKey: env.EDGE_XRAY_VLESS_REALITY_PRIVATE_KEY,
               shortIds: parseCsv(env.EDGE_XRAY_VLESS_SHORT_IDS, []),
               xver: env.EDGE_XRAY_VLESS_XVER,
+              usageStats: {
+                statsServer: optionalEnvText(env.EDGE_XRAY_RUNTIME_STATS_SERVER)
+              },
               validationAttempts: env.EDGE_XRAY_LISTENER_VALIDATION_ATTEMPTS,
               validationRetryDelayMs: env.EDGE_XRAY_LISTENER_VALIDATION_RETRY_DELAY_MS
             },
@@ -860,6 +1123,7 @@ export function createRuntimeState(options = {}) {
   platformPortalAccessRequests = options.platformPortalAccessRequests || createPortalAccessRequestService({
     runtimeCore: subscriptionCore,
     controlStore: platformControlStore,
+    nowFn: options.userPortalNowFn,
     edgeCredentialIssuer,
     edgeLifecycleService,
     edgeDesiredStateNotifier,
@@ -911,6 +1175,7 @@ export function createRuntimeState(options = {}) {
       edgeChannelRefs,
       hysteria2TrafficReader: options.hysteria2TrafficReader,
       fetchFn: options.edgeUsageFetch,
+      xrayStatsCommandRunner: options.edgeUsageCommandRunner || options.edgeRuntimeCommandRunner,
       nowFn: options.usageCollectorNowFn
     });
   const edgeUsageAccounting = options.edgeUsageAccounting || (
