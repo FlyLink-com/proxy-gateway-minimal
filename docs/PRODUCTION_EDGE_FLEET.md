@@ -1,6 +1,6 @@
 # Production Edge Fleet Plan
 
-Last updated: 2026-06-13, Asia/Shanghai.
+Last updated: 2026-07-07, Asia/Shanghai.
 
 > Status:
 > - Type: Active planning document
@@ -37,6 +37,16 @@ Vultr Japan and Vultr Singapore are the active production data-plane direction.
 Historical Aliyun near-term distribution wording below is no longer current
 production authority.
 Reusable clean-node work follows docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md.
+```
+
+Current domain-lane override, 2026-07-07:
+
+```text
+The current production subscription/control-plane lane is gccwebos.com.
+Use sub.gccwebos.com for the public subscription gateway and jp.gccwebos.com
+for Japan QUIC client host/SNI/certificate alignment. globalcirclecat.* names
+in older records are historical unless a newer execution record explicitly
+scopes them.
 ```
 
 The AWS staging node-image readiness validation is recorded in
@@ -104,7 +114,9 @@ Current durable facts:
 prod-edge-a target slot:
   Current role: historical production primary edge slot
   Current traffic: no active AWS carrying instance
-  Current public traffic host: none; sub.globalcirclecat.com points to Aliyun
+  Current public traffic host: no active AWS carrying instance; older
+    sub.globalcirclecat.com Aliyun wording is historical and not the current
+    Vultr/gccwebos.com lane
   Current runtime identity: provider-neutral prod-edge-a slot preserved for rebuild planning
 
 prod-edge-b target slot:
@@ -121,7 +133,7 @@ prod-edge-c target slot:
 ```
 
 Vultr Japan now carries the documented production control-plane authority for
-the current `globalcirclecat.cloud` lane. The target direction is to keep
+the current `gccwebos.com` lane. The target direction is to keep
 subscription authority separate from replaceable edge capacity. This document
 only defines edge slots. It does not authorize `sub-control-a` / `sub-control-b`
 creation, database movement, artifact movement, DNS migration, clean edge
@@ -248,15 +260,15 @@ provider-neutral.
 Recommended future provider-neutral node hosts:
 
 ```text
-edge-a.globalcirclecat.com
-edge-b.globalcirclecat.com
-edge-c.globalcirclecat.com
+edge-a.gccwebos.com
+edge-b.gccwebos.com
+edge-c.gccwebos.com
 ```
 
 Subscription gateway host:
 
 ```text
-sub.globalcirclecat.com
+sub.gccwebos.com
 ```
 
 Current DNS remains unchanged by this plan. Any DNS mutation remains Risk A and
@@ -376,7 +388,7 @@ Before runtime work starts, decide:
 ```text
 1. Should prod-edge-b remain active secondary output, canary-only, or warm standby?
 2. Should prod-edge-c be cold standby with build materials, or pre-created warm standby?
-3. Should node hosts be edge-a/b/c.globalcirclecat.com?
+3. Should node hosts be edge-a/b/c.gccwebos.com?
 4. Should generated subscriptions ever list multiple nodes for normal tenants?
 5. What is the maximum acceptable SQLite staleness for standby recovery?
 6. Who can approve secret/data restore to prod-edge-b or prod-edge-c?

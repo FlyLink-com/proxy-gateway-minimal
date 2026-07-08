@@ -585,7 +585,7 @@ test("createRuntimeState wires env-gated edge credential lifecycle services", ()
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_ref",
       accessGrantRef: "grant_state_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: "2099-07-05T00:00:00.000Z"
     });
 
     const edgeOrders = state.platform.portalAccessRequests.listEdgeCredentialOrders();
@@ -637,7 +637,7 @@ test("createRuntimeState restores persisted edge orders into lifecycle desired s
       plan: "monthly",
       status: "active",
       validFrom: now,
-      validUntil: "2026-07-05T00:00:00.000Z",
+      validUntil: "2099-07-05T00:00:00.000Z",
       createdAt: now,
       updatedAt: now
     });
@@ -1231,7 +1231,7 @@ test("createRuntimeState wires env-gated Mihomo TUIC host adapter for edge lifec
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_host_ref",
       accessGrantRef: "grant_state_host_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: "2099-07-05T00:00:00.000Z"
     });
 
     assert.equal(delivered.safety.noRuntimeMutation, false);
@@ -1244,6 +1244,61 @@ test("createRuntimeState wires env-gated Mihomo TUIC host adapter for edge lifec
     assert.equal(existsSync(candidateConfigPath), true);
     assert.equal(existsSync(backupDir), true);
     assert.doesNotMatch(JSON.stringify(delivered), /uuid|password|server\.key|config\.candidate|backups/i);
+  } finally {
+    state?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState rejects JP protocol runtime TLS identity drift", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-jp-tls-drift-"));
+  const materialPath = join(dir, "protected", "edge-material.json");
+  const hy2ActiveConfigPath = join(dir, "hysteria", "config.yaml");
+  const hy2CandidateConfigPath = join(dir, "hysteria", "config.candidate.yaml");
+  const hy2BackupDir = join(dir, "hysteria", "backups");
+  const tuicActiveConfigPath = join(dir, "mihomo", "config.yaml");
+  const tuicCandidateConfigPath = join(dir, "mihomo", "config.candidate.yaml");
+  const tuicBackupDir = join(dir, "mihomo", "backups");
+  let state;
+
+  try {
+    mkdirSync(join(dir, "hysteria"), { recursive: true });
+    mkdirSync(join(dir, "mihomo"), { recursive: true });
+    writeFileSync(hy2ActiveConfigPath, "listen: \":10443\"\n", { mode: 0o600 });
+    writeFileSync(tuicActiveConfigPath, "listeners: []\n", { mode: 0o600 });
+    assert.throws(() => {
+      state = createRuntimeState({
+        rootDir: new URL("../../", import.meta.url),
+        env: runtimeEnv({
+          CONSOLE_TOKEN: "secret",
+          USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
+          USER_PORTAL_EDGE_CHANNEL_REF: "channel-vultr-a-tuic",
+          USER_PORTAL_EDGE_CHANNEL_REFS: "channel-vultr-a-hy2,channel-vultr-a-tuic",
+          EDGE_CREDENTIAL_MATERIAL_PATH: materialPath,
+          EDGE_CREDENTIAL_LIFECYCLE_EXECUTE_PRODUCTION_MUTATION: "true",
+          VULTR_TUIC_HOST: "jp.gccwebos.com",
+          VULTR_TUIC_SNI: "jp.gccwebos.com",
+          VULTR_HY2_HOST: "jp.gccwebos.com",
+          VULTR_HY2_SNI: "jp.gccwebos.com",
+          EDGE_HYSTERIA2_ACTIVE_CONFIG_PATH: hy2ActiveConfigPath,
+          EDGE_HYSTERIA2_CANDIDATE_CONFIG_PATH: hy2CandidateConfigPath,
+          EDGE_HYSTERIA2_BACKUP_DIR: hy2BackupDir,
+          EDGE_MIHOMO_TUIC_CERTIFICATE_PATH: "/etc/mihomo/tls/globalcirclecat.cloud/fullchain.pem",
+          EDGE_MIHOMO_TUIC_PRIVATE_KEY_PATH: "/etc/mihomo/tls/globalcirclecat.cloud/privkey.pem",
+          EDGE_MIHOMO_ACTIVE_CONFIG_PATH: tuicActiveConfigPath,
+          EDGE_MIHOMO_CANDIDATE_CONFIG_PATH: tuicCandidateConfigPath,
+          EDGE_MIHOMO_BACKUP_DIR: tuicBackupDir,
+          EDGE_HYSTERIA2_CERTIFICATE_PATH: "/etc/hysteria/server.crt",
+          EDGE_HYSTERIA2_PRIVATE_KEY_PATH: "/etc/hysteria/server.key"
+        }),
+        subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+        controlDbPath: join(dir, "control.sqlite"),
+        autoStartHttpProxy: false
+      });
+    }, {
+      code: "validation_error",
+      message: /channel-vultr-a-(hy2|tuic).*jp\.gccwebos\.com.*TLS certificate path/
+    });
   } finally {
     state?.close();
     removeTempDir(dir);
@@ -1316,7 +1371,7 @@ test("createRuntimeState wires env-gated Sing-box SS host adapter for edge lifec
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_sing_box_ref",
       accessGrantRef: "grant_state_sing_box_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: "2099-07-05T00:00:00.000Z"
     });
 
     assert.equal(delivered.safety.noRuntimeMutation, false);
@@ -1388,7 +1443,7 @@ test("createRuntimeState wires env-gated Xray VLESS Reality host adapter for edg
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_xray_ref",
       accessGrantRef: "grant_state_xray_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: "2099-07-05T00:00:00.000Z"
     });
 
     assert.equal(delivered.safety.noRuntimeMutation, false);
@@ -1460,7 +1515,7 @@ test("createRuntimeState wires env-gated Hysteria2 host adapter for edge lifecyc
       reviewedByRef: "operator_safe_ref",
       entitlementRef: "ent_state_hy2_ref",
       accessGrantRef: "grant_state_hy2_ref",
-      expiresAt: "2026-07-05T00:00:00.000Z"
+      expiresAt: "2099-07-05T00:00:00.000Z"
     });
 
     assert.equal(delivered.safety.noRuntimeMutation, false);

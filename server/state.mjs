@@ -88,6 +88,10 @@ function optionalEnvPositiveInteger(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function normalizeRuntimeIdentity(value) {
+  return optionalEnvText(value).toLowerCase();
+}
+
 function runtimeValidationError(message) {
   const error = new Error(message);
   error.code = "validation_error";
@@ -418,6 +422,25 @@ function remoteDataPlaneAdapterName(server = {}) {
   return optionalEnvText(server.runtimeAdapter || server.edgeRuntimeAdapter || server.dataPlaneRuntimeAdapter);
 }
 
+function assertJpRuntimeTlsIdentity({ channelRef, serverConfig = {}, certificatePath, privateKeyPath } = {}) {
+  const host = normalizeRuntimeIdentity(serverConfig.host || serverConfig.server);
+  const sni = normalizeRuntimeIdentity(serverConfig.sni || serverConfig.serverName || serverConfig.server_name);
+  const identity = sni || host;
+  if (identity !== "jp.gccwebos.com") {
+    return;
+  }
+
+  const certificate = normalizeRuntimeIdentity(certificatePath);
+  const privateKey = normalizeRuntimeIdentity(privateKeyPath);
+  const safeChannelRef = optionalEnvText(channelRef || serverConfig.name || serverConfig.id || "runtime channel");
+  if (!certificate.includes("jp.gccwebos.com")) {
+    throw runtimeValidationError(`${safeChannelRef} uses jp.gccwebos.com but TLS certificate path must reference jp.gccwebos.com material`);
+  }
+  if (!privateKey.includes("jp.gccwebos.com")) {
+    throw runtimeValidationError(`${safeChannelRef} uses jp.gccwebos.com but TLS private key path must reference jp.gccwebos.com material`);
+  }
+}
+
 function requiresAppliedRemoteReceipt(server = {}) {
   return remoteDataPlaneAdapterName(server) === "remote-data-plane-handoff";
 }
@@ -706,6 +729,12 @@ export function createRuntimeState(options = {}) {
         };
       }
       if (adapterName === "mihomo-tuic-explicit-restart") {
+        assertJpRuntimeTlsIdentity({
+          channelRef: channelRefForRuntime,
+          serverConfig,
+          certificatePath: env.EDGE_MIHOMO_TUIC_CERTIFICATE_PATH,
+          privateKeyPath: env.EDGE_MIHOMO_TUIC_PRIVATE_KEY_PATH
+        });
         return {
           runtime: "mihomo-tuic",
           runtimeAdapter: createMihomoTuicHostRuntimeAdapter({
@@ -780,6 +809,12 @@ export function createRuntimeState(options = {}) {
         };
       }
       if (adapterName === "hysteria2-explicit-restart") {
+        assertJpRuntimeTlsIdentity({
+          channelRef: channelRefForRuntime,
+          serverConfig,
+          certificatePath: env.EDGE_HYSTERIA2_CERTIFICATE_PATH,
+          privateKeyPath: env.EDGE_HYSTERIA2_PRIVATE_KEY_PATH
+        });
         return {
           runtime: "hysteria2",
           runtimeAdapter: createHysteria2HostRuntimeAdapter({

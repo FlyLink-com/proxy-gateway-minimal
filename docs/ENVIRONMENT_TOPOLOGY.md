@@ -1,6 +1,6 @@
 # Environment Topology
 
-Last updated: 2026-06-09, America/Los_Angeles.
+Last updated: 2026-07-07, America/Los_Angeles.
 
 This document defines the operating map for the subscription management
 project. Use it to avoid mixing local Codex projects, historical repository
@@ -71,7 +71,7 @@ before any Risk A action.
 
 | Surface | Current role | Authority boundary |
 | --- | --- | --- |
-| Vultr Japan | Main production control plane for `globalcirclecat.cloud`. | Owns accounts, user portal orders, subscription rendering, credential lifecycle orchestration, Admin/operator API, and usage ledger authority. |
+| Vultr Japan | Main production control plane for the `gccwebos.com` lane. | Owns accounts, user portal orders, subscription rendering, credential lifecycle orchestration, Admin/operator API, and usage ledger authority. |
 | Vultr Japan data plane | Production data-plane capacity on the same provider lane. | Owns protocol runtime capacity only; it must not become an independent customer/order database. |
 | Vultr Singapore | Additional production data-plane capacity connected through Japan control-plane handoff/apply. | Owns protocol runtime capacity only; it must not issue accounts, orders, package limits, or independent portal state. |
 | Cloudflare | DNS, optional static public-site hosting, cache/CDN edge, and Workers Builds validation for `admin/dist-site`. | Must not host the Express/SQLite control plane, Admin API, User Portal API, subscription issuance, payment, runtime adapters, or credentials. |

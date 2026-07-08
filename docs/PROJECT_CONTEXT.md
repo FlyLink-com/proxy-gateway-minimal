@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-06-18, America/Los_Angeles.
+Last updated: 2026-07-06, America/Los_Angeles.
 
 > Status:
 > - Type: Active current-state handoff
@@ -1192,12 +1192,13 @@ Use these docs for detail:
 ## Current Production Snapshot
 
 This snapshot includes the latest documented Vultr/SGP closeout from
-2026-06-09, but remains a documentation handoff only. Refresh live DNS, Nginx,
+2026-06-09 and the JP TUIC/Hysteria2 certificate-domain alignment from
+2026-07-06, but remains a documentation handoff only. Refresh live DNS, Nginx,
 service, endpoint, firewall, runtime, and SQLite state before any new A-tier
 work.
 
 - Vultr Japan is the documented current control-plane authority for the
-  `globalcirclecat.cloud` production lane after the June Vultr migration work.
+  `gccwebos.com` production lane after the June/July Vultr migration work.
   Japan owns user portal orders, subscription rendering, credential lifecycle
   orchestration, and remote data-plane handoff for the current Vultr/SGP lane.
 - Vultr Singapore is documented as a data-plane node connected through Japan
@@ -1208,6 +1209,11 @@ work.
   present; Hysteria2 stats loopback-only; and no public Admin exposure.
 - Subscription rendering must keep controlled GlobalCircle node domains out of
   fake-IP/TUN self-routing paths for desktop Clash/Mihomo clients.
+- JP TUIC/Hysteria2 runtime certificate paths must stay aligned with the
+  rendered client host/SNI. The 2026-07-06 record documents the fix for a
+  runtime certificate drift where subscription rendering was already on
+  `jp.gccwebos.com` but the runtime services were still presenting an older
+  certificate.
 - Hysteria2 runtime config must render `outbounds` as named list entries and
   preserve service-user-readable config ownership when applying credentials.
 
