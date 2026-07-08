@@ -1109,6 +1109,21 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     return mapAccount(db.prepare("select * from platform_accounts where id = ?").get(requiredText(id, "id")));
   }
 
+  function listAccounts(filters = {}) {
+    const status = optionalText(filters.status);
+    const rows = status
+      ? db.prepare(`
+          select * from platform_accounts
+          where status = ?
+          order by created_at asc, id asc
+        `).all(status)
+      : db.prepare(`
+          select * from platform_accounts
+          order by created_at asc, id asc
+        `).all();
+    return rows.map(mapAccount);
+  }
+
   function resolvePortalLoginAccount(loginRef) {
     const normalizedInput = requiredText(loginRef, "loginRef");
     const exact = getAccount(normalizedInput);
@@ -2680,6 +2695,7 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     runInTransaction,
     createAccount,
     getAccount,
+    listAccounts,
     resolvePortalLoginAccount,
     createEntitlement,
     getEntitlement,
