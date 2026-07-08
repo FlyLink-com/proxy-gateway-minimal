@@ -1,0 +1,616 @@
+.portal-locale-switch {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  margin: -16px 0 10px;
+}
+
+.portal-locale-switch button {
+  min-width: 34px;
+  min-height: 30px;
+  border: 1px solid #d8dde8;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #64748b;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.portal-locale-switch button:hover,
+.portal-locale-switch button:focus-visible {
+  border-color: #94a3b8;
+  color: #0f172a;
+}
+
+.portal-locale-switch button[aria-pressed="true"] {
+  border-color: #20d5e8;
+  background: #20d5e8;
+  color: #06111f;
+}
+
+.portal-registration-shell,
+.portal-registration-shell *,
+.portal-registration-shell *::before,
+.portal-registration-shell *::after {
+  box-sizing: border-box;
+}
+
+.portal-registration-shell {
+  display: grid;
+  grid-template-columns: 384px minmax(0, 1fr);
+  min-height: 100vh;
+  padding: 0;
+  align-items: stretch;
+  justify-content: stretch;
+  background: #ffffff;
+  color: #101828;
+}
+
+.portal-registration-sidebar {
+  min-height: 100vh;
+  background: #080f20;
+  color: #f8fbff;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 40px 38px 32px;
+}
+
+.portal-registration-sidebar-top {
+  display: grid;
+  gap: 54px;
+}
+
+.portal-registration-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 32px;
+}
+
+.portal-registration-brand strong {
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.portal-registration-logo,
+.portal-registration-success-logo,
+.portal-registration-mail-icon {
+  display: grid;
+  place-items: center;
+  background: #20d5e8;
+  color: #06111f;
+}
+
+.portal-registration-logo {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+}
+
+.portal-registration-logo svg,
+.portal-registration-progress li span svg,
+.portal-registration-mail-icon svg {
+  display: block;
+}
+
+.portal-registration-progress {
+  display: grid;
+  gap: 24px;
+}
+
+.portal-registration-progress p {
+  margin: 0;
+  color: #9aa8bd;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.portal-registration-progress ol {
+  display: grid;
+  gap: 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.portal-registration-progress li {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  color: #6f7f96;
+}
+
+.portal-registration-progress li span {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: #17243a;
+  color: #71829a;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.portal-registration-progress li strong {
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.portal-registration-progress li.is-current,
+.portal-registration-progress li.is-complete {
+  color: #f8fbff;
+}
+
+.portal-registration-progress li.is-current span,
+.portal-registration-progress li.is-complete span {
+  background: #20d5e8;
+  color: #06111f;
+}
+
+.portal-registration-support {
+  margin: 0;
+  color: #72819a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.portal-registration-main {
+  position: relative;
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 72px 24px;
+  background: #ffffff;
+}
+
+.portal-registration-main .portal-locale-switch {
+  position: absolute;
+  top: 40px;
+  right: 40px;
+  margin: 0;
+}
+
+.portal-registration-content {
+  width: min(462px, 100%);
+  display: grid;
+  gap: 16px;
+}
+
+.portal-registration-step-label {
+  margin: 0 0 8px;
+  color: #8b9ab0;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.portal-registration-content h1,
+.portal-registration-success h1 {
+  margin: 0;
+  color: #101828;
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1.18;
+}
+
+.portal-registration-copy,
+.portal-registration-success > p {
+  margin: 0;
+  color: #697586;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.portal-registration-field {
+  display: grid;
+  gap: 8px;
+}
+
+.portal-registration-field label,
+.portal-registration-otp-label {
+  color: #344054;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.portal-registration-field input,
+.portal-registration-otp-input {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #cfd8e6;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #101828;
+  font-size: 15px;
+  padding: 0 14px;
+}
+
+.portal-registration-field input:focus,
+.portal-registration-otp-input:focus {
+  border-color: #20bcd0;
+  box-shadow: 0 0 0 3px rgba(32, 213, 232, 0.15);
+  outline: 0;
+}
+
+.portal-registration-rules {
+  display: grid;
+  gap: 7px;
+  margin: 2px 0 4px;
+}
+
+.portal-registration-rules span {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  color: #98a2b3;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.portal-registration-rules i {
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  border: 1px solid #c8d4e3;
+  border-radius: 999px;
+  color: #06111f;
+  font-size: 9px;
+  font-style: normal;
+  line-height: 1;
+}
+
+.portal-registration-rules span.is-valid {
+  color: #0f7380;
+}
+
+.portal-registration-rules span.is-valid i {
+  border-color: #20d5e8;
+  background: #20d5e8;
+}
+
+.portal-registration-checkbox {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  color: #475467;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.portal-registration-checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: #20d5e8;
+  margin: 0;
+}
+
+.portal-registration-checkbox a,
+.portal-registration-signin a,
+.portal-registration-resend-row button {
+  color: #087a8a;
+  font-weight: 900;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.portal-registration-content .portal-auth-submit,
+.portal-registration-success-actions .portal-auth-submit {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 7px;
+  background: #20d5e8;
+  color: #06111f;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.portal-registration-content .portal-auth-submit:disabled {
+  background: #d8e1ea;
+  color: #8b9ab0;
+  cursor: not-allowed;
+}
+
+.portal-registration-signin {
+  margin: 8px 0 0;
+  color: #697586;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.portal-registration-plan-card {
+  border: 1px solid #20d5e8;
+  border-radius: 8px;
+  background: #f6fdff;
+  padding: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: start;
+}
+
+.portal-registration-plan-card span,
+.portal-registration-success-pills span {
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  border-radius: 999px;
+  background: #e6fbff;
+  color: #087a8a;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 6px 9px;
+}
+
+.portal-registration-plan-card h2 {
+  margin: 14px 0 8px;
+  color: #101828;
+  font-size: 24px;
+}
+
+.portal-registration-plan-card p {
+  margin: 0;
+  color: #697586;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.portal-registration-plan-card strong {
+  color: #101828;
+  font-size: 18px;
+  white-space: nowrap;
+}
+
+.portal-registration-plan-notes {
+  display: grid;
+  gap: 8px;
+}
+
+.portal-registration-plan-notes span {
+  border: 1px solid #e4ebf3;
+  border-radius: 8px;
+  color: #697586;
+  font-size: 13px;
+  font-weight: 800;
+  padding: 10px 12px;
+}
+
+.portal-registration-actions,
+.portal-registration-success-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 0.45fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.portal-registration-back-button,
+.portal-registration-secondary-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  border: 1px solid #cfd8e6;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #344054;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.portal-registration-mail-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  background: #e8fbff;
+  color: #18c6d8;
+}
+
+.portal-registration-timer,
+.portal-registration-email-help {
+  margin: 0;
+  color: #697586;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.portal-registration-verify-step {
+  --registration-verify-control-width: 382px;
+  gap: 12px;
+}
+
+.portal-registration-otp-field {
+  display: grid;
+  gap: 10px;
+  width: min(var(--registration-verify-control-width), 100%);
+}
+
+.portal-registration-otp-control {
+  position: relative;
+  width: min(326px, 100%);
+}
+
+.portal-registration-otp-input {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  padding: 0;
+  opacity: 0;
+}
+
+.portal-registration-otp-input:focus {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.portal-registration-otp-slots {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(34px, 44px));
+  gap: 10px;
+  width: max-content;
+  max-width: 100%;
+}
+
+.portal-registration-otp-slots span {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #d6e0eb;
+  border-radius: 6px;
+  background: #ffffff;
+  color: #101828;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.portal-registration-otp-control:focus-within .portal-registration-otp-slots span.is-active {
+  border-color: #20d5e8;
+  box-shadow: 0 0 0 3px rgba(32, 213, 232, 0.13);
+}
+
+.portal-registration-verify-step .portal-auth-submit,
+.portal-registration-verify-step .portal-registration-resend-row,
+.portal-registration-verify-step .portal-registration-email-help,
+.portal-registration-verify-step .portal-inline-error {
+  width: min(var(--registration-verify-control-width), 100%);
+}
+
+.portal-registration-resend-row {
+  color: #697586;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.portal-registration-resend-row button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.portal-registration-resend-row button:disabled {
+  color: #98a2b3;
+  cursor: not-allowed;
+}
+
+.portal-registration-success {
+  width: min(480px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 20px;
+  text-align: center;
+}
+
+.portal-registration-success-logo {
+  width: 80px;
+  height: 80px;
+  border-radius: 999px;
+  font-size: 36px;
+  font-weight: 900;
+}
+
+.portal-registration-success-actions {
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 4px;
+}
+
+.portal-registration-trial-hint {
+  max-width: 380px;
+  color: #697586;
+}
+
+.portal-registration-success-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;
+}
+
+.portal-registration-shell .portal-inline-error,
+.portal-registration-shell .portal-inline-success {
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  margin: 0;
+  padding: 10px 12px;
+}
+
+.portal-registration-shell .portal-inline-error {
+  border: 1px solid #fecaca;
+  background: #fff1f2;
+  color: #991b1b;
+}
+
+.portal-registration-shell .portal-inline-success {
+  border: 1px solid #a7f3d0;
+  background: #ecfdf5;
+  color: #047857;
+}
+
+@media (max-width: 760px) {
+  .portal-registration-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-registration-sidebar {
+    min-height: auto;
+    gap: 24px;
+    padding: 28px 22px;
+  }
+
+  .portal-registration-sidebar-top {
+    gap: 28px;
+  }
+
+  .portal-registration-main {
+    min-height: auto;
+    padding: 88px 20px 48px;
+  }
+
+  .portal-registration-main .portal-locale-switch {
+    top: 24px;
+    right: 20px;
+  }
+
+  .portal-registration-progress ol {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-registration-actions,
+  .portal-registration-success-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-registration-otp-control,
+  .portal-registration-otp-slots {
+    width: 100%;
+  }
+
+  .portal-registration-otp-slots {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .portal-registration-otp-slots span {
+    width: 100%;
+  }
+}

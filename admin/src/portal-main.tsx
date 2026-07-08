@@ -1,12 +1,12 @@
-import { StrictMode, useMemo } from "react";
+import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { UserPortalPage } from "./features/user-portal/user-portal-page";
-import { createHttpUserPortalClient } from "./features/user-portal/user-portal-client";
+import { UserPortalRoute } from "./features/user-portal/user-portal-route";
 import "./styles.css";
 
 function PortalOnlyApp() {
-  const portalClient = useMemo(() => createHttpUserPortalClient(), []);
-  return <UserPortalPage portalClient={portalClient} />;
+  const normalizedPath = window.location.pathname.replace(/\/+$/, "") || "/";
+  const mode = normalizedPath === "/portal/register" ? "register" : "login";
+  return <UserPortalRoute mode={mode} />;
 }
 
 createRoot(document.getElementById("root")!).render(

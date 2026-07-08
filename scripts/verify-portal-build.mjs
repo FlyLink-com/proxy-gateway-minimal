@@ -22,8 +22,11 @@ const SECRET_MARKERS = [
 ];
 
 const REQUIRED_RUNTIME_MARKERS = [
+  "/portal/register",
   "/api/portal/human-challenges",
-  "/api/portal/password/session"
+  "/api/portal/password/session",
+  "/api/portal/registration",
+  "/api/portal/registration/email-verification"
 ];
 
 async function listFiles(dir) {
@@ -107,7 +110,8 @@ export async function verifyPortalBuildDirectory(buildDir) {
     safety: {
       noAdminShellMarkers: true,
       noSecretMaterial: true,
-      hasPortalHumanChallengeContract: true
+      hasPortalHumanChallengeContract: true,
+      hasPortalRegistrationContract: true
     }
   };
 }
