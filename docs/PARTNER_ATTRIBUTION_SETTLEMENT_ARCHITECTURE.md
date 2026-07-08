@@ -531,6 +531,9 @@ Current repo status:
   disabled/dry-run adapter boundary.
 - `APPSFLYER_ATTRIBUTION_MODE=disabled` is the default placeholder mode.
 - The adapter can normalize safe OneLink/Web attribution parameters.
+- The adapter can build redacted dry-run pilot partner-link plans for approved
+  portal landing routes without creating AppsFlyer links or calling provider
+  APIs.
 - The adapter can build redacted dry-run Web SDK and Web-S2S event plans.
 - The dry-run Web-S2S plan follows the current safe shape for
   `POST https://webs2s.appsflyer.com/v1/{bundleId}/event`: `eventType` is
@@ -543,6 +546,8 @@ Current repo status:
 Allowed in repo-only work:
 
 - normalize OneLink or Web attribution parameters;
+- build pilot partner-link plans using safe relative portal paths and reviewed
+  query parameters;
 - define event-name mapping;
 - build dry-run Web SDK event plans;
 - build dry-run S2S payload summaries;
@@ -569,6 +574,61 @@ Suggested event mapping:
 | `payment_success` | purchase/payment evidence | Backend S2S only |
 | `entitlement_delivered` | subscription/service activation | Preferred settlement evidence |
 | `refund` / `chargeback` | revenue reversal | Backend S2S only after policy review |
+
+## Pilot Partner-Link Dry-Run Baseline
+
+The first controlled promotion slice should use platform-owned Web links, not
+OneLink templates or branded-domain creation.
+
+Current repo-only helper:
+
+```text
+createAppsFlyerAttributionAdapter().planPilotLink(...)
+```
+
+It returns:
+
+- a relative `landingPath` only, such as an approved `/portal/...` path with
+  query parameters;
+- safe `queryParams` and `queryParamKeys`;
+- stripped parameter names when unsafe or unexpected values are supplied;
+- `dryRun: true`, `dispatchBlocked: true`, and `productionGateRequired: true`.
+
+It does not:
+
+- create an AppsFlyer link;
+- create a OneLink template;
+- create or mutate a branded domain;
+- send Web SDK or Web-S2S events;
+- store credentials or output provider keys.
+
+Initial parameter contract:
+
+| Parameter | Meaning | Owner |
+| --- | --- | --- |
+| `pid` | AppsFlyer media source / partner ref | Adapter |
+| `c` | AppsFlyer campaign ref | Adapter |
+| `partner_ref` | Platform partner ref for portal capture | Platform |
+| `campaign_ref` | Platform campaign ref for portal capture | Platform |
+| `af_channel` | Safe channel class, initially `partner` | Adapter |
+| `af_sub1` | Platform-safe partner ref duplicate for provider evidence | Adapter |
+| `af_sub2` | Optional creative or placement ref | Operator |
+| `utm_source` | Partner ref for non-provider analytics | Adapter |
+| `utm_medium` | Medium, initially `partner` | Adapter |
+| `utm_campaign` | Campaign ref for non-provider analytics | Adapter |
+| `utm_content` | Optional creative or placement ref | Operator |
+
+Approved initial landing routes:
+
+```text
+/portal/register
+/portal
+```
+
+The first pilot should issue only reviewed links for named partners and
+campaigns already registered in the platform attribution store. Settlement
+remains manual review only until a separate A-tier activation record approves
+live provider dispatch and payable settlement handling.
 
 ## Portal Capture Boundary
 
@@ -753,6 +813,10 @@ Initial task map:
   It does not activate production enforcement, live provider calls, partner
   payouts, or customer-private exports.
 - `GCC-154` - production activation gate.
+  First repo-only slice adds dry-run pilot-link planning for approved portal
+  routes and keeps all live AppsFlyer credentials, provider dispatch, OneLink
+  creation, branded-domain setup, broad promotion, and payable settlement
+  execution behind the production gate.
 
 Recommended order:
 
