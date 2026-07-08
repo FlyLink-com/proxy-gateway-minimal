@@ -807,7 +807,7 @@ const companySiteCopy = {
       submit: "提交请求"
     },
     faq: {
-      eyebrow: "常见问题",
+      eyebrow: "帮助与解答",
       title: "常见问题",
       items: [
         {
