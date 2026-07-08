@@ -95,10 +95,13 @@ GCC WebOS static/domain closeouts, and local tooling hardening. The follow-up
 July 8 closeout is recorded in `docs/PR_CLOSEOUT_QUEUE_2026_07_08.md`: PR #394
 restored portal registration frontend/source alignment, PR #395 merged traffic
 usage runtime/source collectors, PR #396 archived traffic usage / SGP execution
-records, and PR #397 restored the portal registration backend. PR #364 and PR
-#381 are now closed superseded carrier branches, not merge vehicles. Continue
-remaining Admin UI, User Portal UX, payment/Niuniu, Admin protected auth, and
-docs/archive work by re-cutting focused PRs from latest `master`.
+records, PR #397 restored the portal registration backend, PR #399 merged the
+Admin safe-read projection/page-model contracts, PR #400 merged the Admin table
+query-state contract, and PR #401 merged the Admin owner page model DTOs. PR
+#364 and PR #381 are now closed superseded carrier branches, not merge
+vehicles. Continue remaining Admin UI shell/locale/navigation/visual QA, User
+Portal UX, payment/Niuniu, Admin protected auth, and docs/archive work by
+re-cutting focused PRs from latest `master`.
 
 The AWS staging node-image readiness validation is recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md`.
