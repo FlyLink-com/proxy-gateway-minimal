@@ -2255,12 +2255,19 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     `).get(requiredText(accountId, "accountId")));
   }
 
-  function recordPortalTotpVerificationFailure(id, { updatedAt }) {
+  function recordPortalTotpVerificationFailure(id, { lockedUntil = null, updatedAt } = {}) {
+    const nextLockedUntil = optionalIsoText(lockedUntil, "lockedUntil");
     const result = db.prepare(`
       update platform_portal_totp_credentials
-      set failure_count = failure_count + 1, updated_at = ?
+      set failure_count = failure_count + 1,
+          locked_until = coalesce(?, locked_until),
+          updated_at = ?
       where id = ? and status = 'active'
-    `).run(isoText(updatedAt, "updatedAt"), requiredText(id, "id"));
+    `).run(
+      nextLockedUntil,
+      isoText(updatedAt, "updatedAt"),
+      requiredText(id, "id")
+    );
     if (result.changes !== 1) {
       throw platformError("not_found", "active portal TOTP credential not found");
     }
@@ -2270,7 +2277,7 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
   function markPortalTotpVerified(id, { verifiedAt, updatedAt }) {
     const result = db.prepare(`
       update platform_portal_totp_credentials
-      set failure_count = 0, last_verified_at = ?, updated_at = ?
+      set failure_count = 0, locked_until = null, last_verified_at = ?, updated_at = ?
       where id = ? and status = 'active'
     `).run(isoText(verifiedAt, "verifiedAt"), isoText(updatedAt, "updatedAt"), requiredText(id, "id"));
     if (result.changes !== 1) {
@@ -2463,12 +2470,14 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     return getPortalSecondFactorChallenge(id);
   }
 
-  function recordPortalSecondFactorChallengeFailure(id, { updatedAt } = {}) {
+  function recordPortalSecondFactorChallengeFailure(id, { locked = false, updatedAt } = {}) {
     const result = db.prepare(`
       update platform_portal_second_factor_challenges
-      set failure_count = failure_count + 1, updated_at = ?
+      set failure_count = failure_count + 1,
+          status = case when ? = 1 then 'locked' else status end,
+          updated_at = ?
       where id = ? and status = 'active'
-    `).run(isoText(updatedAt, "updatedAt"), requiredText(id, "id"));
+    `).run(locked ? 1 : 0, isoText(updatedAt, "updatedAt"), requiredText(id, "id"));
     if (result.changes !== 1) {
       throw platformError("not_found", "active portal second-factor challenge not found");
     }

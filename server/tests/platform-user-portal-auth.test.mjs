@@ -11,6 +11,9 @@ import { createUserPortalAuthService } from "../services/platform/user-portal-au
 const NOW = "2026-05-31T00:00:00.000Z";
 const FUTURE = "2099-06-04T00:00:00.000Z";
 const SESSION_EXPIRES = "2026-05-31T00:30:00.000Z";
+const TEST_TOTP_SECRET_PROTECTOR = {
+  protect: (secret) => `v2:test-protected:${secret}`
+};
 
 function withStore(fn) {
   const tempDir = mkdtempSync(join(tmpdir(), "platform-user-portal-auth-"));
@@ -60,7 +63,8 @@ function createService(store, overrides = {}) {
     secondFactorChallengeRefFactory: () => "mfa_challenge_1",
     sessionRefFactory: () => "portal_session_1",
     sessionExpiresAtFactory: () => SESSION_EXPIRES,
-    totpVerifier: ({ encryptedTotpSecret, code }) => encryptedTotpSecret === "enc:totp-secret" && code === "123456",
+    totpSecretProtector: TEST_TOTP_SECRET_PROTECTOR,
+    totpVerifier: ({ encryptedTotpSecret, code }) => encryptedTotpSecret === "v2:test-protected:totp-secret" && code === "123456",
     ...overrides
   });
 }
@@ -256,5 +260,110 @@ test("user portal auth requires second factor after password when TOTP is enable
     const serialized = JSON.stringify({ challenge, completed });
     assert.equal(serialized.includes(plainPassword), false);
     assert.doesNotMatch(serialized, /passwordHash|scrypt\$v=1|enc:totp-secret|123456/);
+  });
+});
+
+test("user portal auth keeps locked TOTP as a required second factor for password login", () => {
+  withStore((store) => {
+    const passwordService = createPasswordService(store);
+    const plainPassword = buildTestPassword();
+    passwordService.issueInitialPasswordCredential({
+      accountId: "acct_portal_1",
+      plainPassword,
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_portal_password_locked_totp"
+    });
+    const service = createService(store, {
+      passwordCredentialService: passwordService,
+      allowPasswordOnlySessionForSetup: true,
+      totpVerifier: () => false,
+      totpMaxFailures: 2,
+      totpLockSeconds: 900
+    });
+    const issued = service.issueDynamicEntry({
+      accountId: "acct_portal_1",
+      entitlementId: "ent_portal_1",
+      approvalRef: "approval_portal_1",
+      issuedByRef: "operator_safe_ref",
+      expiresAt: FUTURE
+    });
+    service.enrollTotpCredential({
+      entryToken: issued.handoffMaterial.entryToken,
+      encryptedTotpSecret: "enc:totp-secret"
+    });
+
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      assert.throws(() => service.verifyTotpAndCreateSession({
+        accountId: "acct_portal_1",
+        code: "000000"
+      }), /TOTP verification failed/);
+    }
+
+    const credential = store.getPortalTotpCredential("totp_cred_1");
+    assert.equal(credential.lockedUntil, "2026-05-31T00:15:00.000Z");
+
+    const challenge = service.verifyPasswordAndMaybeChallenge({
+      accountId: "acct_portal_1",
+      plainPassword
+    });
+    assert.equal(Object.hasOwn(challenge, "session"), false);
+    assert.equal(Object.hasOwn(challenge, "result"), true);
+    assert.equal(challenge.result.status, "second_factor_required");
+    assert.deepEqual(challenge.result.availableFactors, ["totp"]);
+    assert.equal(store.listPortalSessions({ accountId: "acct_portal_1" }).length, 0);
+  });
+});
+
+test("user portal auth requires a TOTP secret protector before setup enrollment", () => {
+  withStore((store) => {
+    const passwordService = createPasswordService(store);
+    const plainPassword = buildTestPassword();
+    passwordService.issueInitialPasswordCredential({
+      accountId: "acct_portal_1",
+      plainPassword,
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_portal_password_totp_setup"
+    });
+    const service = createService(store, {
+      passwordCredentialService: passwordService,
+      allowPasswordOnlySessionForSetup: true,
+      totpSecretProtector: null
+    });
+    const session = service.verifyPasswordAndMaybeChallenge({
+      accountId: "acct_portal_1",
+      plainPassword
+    });
+
+    assert.throws(() => service.startTotpEnrollment({
+      sessionRef: session.session.sessionRef
+    }), /portal TOTP secret protector is required/);
+    assert.equal(store.getActivePortalTotpCredential("acct_portal_1"), null);
+  });
+});
+
+test("user portal auth protects dynamic entry TOTP enrollment before persistence", () => {
+  withStore((store) => {
+    const service = createService(store, {
+      totpSecretProtector: {
+        protect: (secret) => `v2:test-protected:${secret}`
+      },
+      totpVerifier: ({ encryptedTotpSecret, code }) => encryptedTotpSecret === "v2:test-protected:totp-secret" && code === "123456"
+    });
+    const issued = service.issueDynamicEntry({
+      accountId: "acct_portal_1",
+      entitlementId: "ent_portal_1",
+      approvalRef: "approval_portal_1",
+      issuedByRef: "operator_safe_ref",
+      expiresAt: FUTURE
+    });
+
+    service.enrollTotpCredential({
+      entryToken: issued.handoffMaterial.entryToken,
+      encryptedTotpSecret: "enc:totp-secret"
+    });
+
+    const stored = store.getActivePortalTotpCredential("acct_portal_1");
+    assert.equal(stored.encryptedTotpSecret, "v2:test-protected:totp-secret");
+    assert.equal(stored.encryptedTotpSecret.startsWith("enc:"), false);
   });
 });

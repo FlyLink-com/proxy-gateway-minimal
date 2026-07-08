@@ -115,6 +115,8 @@ HANDOFF_DIR
 PUBLIC_SUBSCRIPTION_BASE_URL
 ADMIN_ALLOWED_CIDRS
 TRUSTED_PROXY_CIDRS
+EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS
+USER_PORTAL_TOTP_SECRET_KEY
 SUB_RATE_LIMIT_WINDOW_MS
 SUB_RATE_LIMIT_MAX
 SUBSCRIPTION_TEMP_LINK_TTL_MINUTES
@@ -123,6 +125,10 @@ SUBSCRIPTION_TEMP_LINK_TTL_MINUTES
 规则：
 
 - `.env.example` 只放占位符和安全默认形状。
+- 管理面和 data-plane agent allowlist 默认只包含 loopback；生产私网或固定
+  operator 来源必须在目标机显式写入对应 CIDR。
+- `USER_PORTAL_TOTP_SECRET_KEY` 只在目标机配置，必须是 32-byte key 的
+  hex/base64/base64url 表示；用于新 TOTP credential 的 at-rest 保护。
 - 真实 token、密码、节点凭据、订阅 URL、SQLite、客户数据只允许留在目标机
   `.env`、受保护 runtime 文件或 operator-only handoff 中。
 - 不要把真实 `.env`、订阅链接、客户资料、私钥、云 AK/SK、SQLite 内容写入

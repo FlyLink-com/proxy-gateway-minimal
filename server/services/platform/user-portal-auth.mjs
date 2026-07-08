@@ -48,6 +48,15 @@ function addSeconds(isoTimestamp, seconds) {
   return new Date(new Date(isoTimestamp).getTime() + seconds * 1000).toISOString();
 }
 
+function positiveIntegerOrDefault(value, fallback) {
+  const normalized = Number(value);
+  return Number.isInteger(normalized) && normalized > 0 ? normalized : fallback;
+}
+
+function shouldLockAfterFailure(failureCount, maxFailures) {
+  return Number(failureCount || 0) + 1 >= maxFailures;
+}
+
 function randomBase32Secret(byteLength = 20) {
   const bytes = randomBytes(byteLength);
   let bits = "";
@@ -219,8 +228,12 @@ export function createUserPortalAuthService({
   totpIssuer = DEFAULT_TOTP_ISSUER,
   sessionExpiresAtFactory,
   totpVerifier,
+  totpSecretProtector = null,
   passwordCredentialService,
-  allowPasswordOnlySessionForSetup = false
+  allowPasswordOnlySessionForSetup = false,
+  totpMaxFailures = 5,
+  totpLockSeconds = 900,
+  secondFactorMaxFailures = 5
 } = {}) {
   if (!controlStore) {
     throw new Error("controlStore is required");
@@ -228,6 +241,9 @@ export function createUserPortalAuthService({
   if (typeof totpVerifier !== "function") {
     throw new Error("totpVerifier is required");
   }
+  const maxTotpFailures = positiveIntegerOrDefault(totpMaxFailures, 5);
+  const totpLockDurationSeconds = positiveIntegerOrDefault(totpLockSeconds, 900);
+  const maxSecondFactorFailures = positiveIntegerOrDefault(secondFactorMaxFailures, 5);
 
   function now() {
     return isoText(nowFn(), "now");
@@ -299,6 +315,21 @@ export function createUserPortalAuthService({
     };
   }
 
+  function protectTotpSecret(secret) {
+    if (!totpSecretProtector || typeof totpSecretProtector.protect !== "function") {
+      throw portalAuthError("validation_error", "portal TOTP secret protector is required");
+    }
+    return requiredText(totpSecretProtector.protect(secret), "encryptedTotpSecret");
+  }
+
+  function protectIncomingTotpSecret(value) {
+    const encryptedTotpSecret = requiredText(value, "encryptedTotpSecret");
+    if (!encryptedTotpSecret.startsWith("enc:")) {
+      throw portalAuthError("validation_error", "portal TOTP enrollment secret must use enc format before server-side protection");
+    }
+    return protectTotpSecret(requiredText(encryptedTotpSecret.slice(4), "totpSecret"));
+  }
+
   function startTotpEnrollment(input) {
     const { account, checkedAt } = getActiveSessionContext(input?.sessionRef);
     const enrollmentRef = requiredText(input?.enrollmentRef || totpEnrollmentRefFactory(), "enrollmentRef");
@@ -312,7 +343,7 @@ export function createUserPortalAuthService({
       issuer,
       accountLabel,
       secret,
-      encryptedTotpSecret: `enc:${secret}`,
+      encryptedTotpSecret: protectTotpSecret(secret),
       otpauthUri: createTotpUri({ issuer, accountLabel, secret }),
       issuedAt: checkedAt,
       expiresAt
@@ -415,7 +446,7 @@ export function createUserPortalAuthService({
   function enrollTotpCredential(input) {
     const enrolledAt = now();
     const entryToken = requiredText(input?.entryToken, "entryToken");
-    const encryptedTotpSecret = requiredText(input?.encryptedTotpSecret, "encryptedTotpSecret");
+    const encryptedTotpSecret = protectIncomingTotpSecret(input?.encryptedTotpSecret);
     const entry = controlStore.findPortalEntryByTokenHash(hashEntryToken(entryToken));
     assertUsableEntry(entry, enrolledAt);
 
@@ -458,7 +489,9 @@ export function createUserPortalAuthService({
       credentialRef: credential.id
     });
     if (!verified) {
+      const shouldLockTotp = shouldLockAfterFailure(credential.failureCount, maxTotpFailures);
       controlStore.recordPortalTotpVerificationFailure(credential.id, {
+        lockedUntil: shouldLockTotp ? addSeconds(verifiedAt, totpLockDurationSeconds) : null,
         updatedAt: verifiedAt
       });
       throw portalAuthError("validation_error", "TOTP verification failed");
@@ -557,11 +590,17 @@ export function createUserPortalAuthService({
       credentialRef: credential.id
     });
     if (!verified) {
-      controlStore.recordPortalTotpVerificationFailure(credential.id, {
-        updatedAt: verifiedAt
-      });
-      controlStore.recordPortalSecondFactorChallengeFailure(challenge.id, {
-        updatedAt: verifiedAt
+      const shouldLockTotp = shouldLockAfterFailure(credential.failureCount, maxTotpFailures);
+      const shouldLockChallenge = shouldLockAfterFailure(challenge.failureCount, maxSecondFactorFailures);
+      controlStore.runInTransaction(() => {
+        controlStore.recordPortalTotpVerificationFailure(credential.id, {
+          lockedUntil: shouldLockTotp ? addSeconds(verifiedAt, totpLockDurationSeconds) : null,
+          updatedAt: verifiedAt
+        });
+        controlStore.recordPortalSecondFactorChallengeFailure(challenge.id, {
+          locked: shouldLockChallenge,
+          updatedAt: verifiedAt
+        });
       });
       throw portalAuthError("validation_error", "TOTP verification failed");
     }

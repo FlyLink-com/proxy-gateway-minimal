@@ -16,6 +16,9 @@ import { listen } from "./helpers/listen.mjs";
 const NOW = "2026-05-31T00:00:00.000Z";
 const FUTURE = "2099-06-04T00:00:00.000Z";
 const SESSION_EXPIRES = "2026-05-31T00:30:00.000Z";
+const TEST_TOTP_SECRET_PROTECTOR = {
+  protect: (secret) => `v2:test-protected:${secret}`
+};
 const VULTR_MULTICHANNEL_ENV = {
   VULTR_TUIC_HOST: "tuic.example.test",
   VULTR_TUIC_UUID: "11111111-1111-4111-8111-111111111111",
@@ -151,10 +154,18 @@ function withPortalState(fn, options = {}) {
       sessionRefFactory: () => "portal_session_route_1",
       totpEnrollmentRefFactory: options.totpEnrollmentRefFactory || (() => "totp_enroll_route_1"),
       totpSecretFactory: options.totpSecretFactory || (() => "JBSWY3DPEHPK3PXP"),
+      totpSecretProtector: options.totpSecretProtector ?? TEST_TOTP_SECRET_PROTECTOR,
       sessionExpiresAtFactory: () => SESSION_EXPIRES,
-      totpVerifier: options.totpVerifier || (({ encryptedTotpSecret, code }) => encryptedTotpSecret === "enc:route-totp-secret" && code === "123456"),
+      totpVerifier: options.totpVerifier || (({ encryptedTotpSecret, code }) => (
+        encryptedTotpSecret === "v2:test-protected:route-totp-secret" && code === "123456"
+      ) || (
+        encryptedTotpSecret === "v2:test-protected:JBSWY3DPEHPK3PXP" && code === "654321"
+      )),
       passwordCredentialService,
-      allowPasswordOnlySessionForSetup: options.allowPasswordOnlySessionForSetup ?? false
+      allowPasswordOnlySessionForSetup: options.allowPasswordOnlySessionForSetup ?? false,
+      totpMaxFailures: options.totpMaxFailures,
+      totpLockSeconds: options.totpLockSeconds,
+      secondFactorMaxFailures: options.secondFactorMaxFailures
     });
     const issued = auth.issueDynamicEntry({
       accountId: "acct_portal_route_1",
@@ -228,6 +239,9 @@ test("user portal routes consume dynamic entry and create scoped session without
       assert.equal(enrollmentBody.enrollment.action, "totp_enrolled");
       assert.equal(enrollmentBody.enrollment.accountId, "acct_portal_route_1");
       assert.equal(store.getPortalEntry("entry_portal_route_1").status, "used");
+      const storedCredential = store.getActivePortalTotpCredential("acct_portal_route_1");
+      assert.equal(storedCredential.encryptedTotpSecret, "v2:test-protected:route-totp-secret");
+      assert.equal(storedCredential.encryptedTotpSecret.startsWith("enc:"), false);
 
       const sessionResponse = await fetch(`${baseUrl}/api/portal/session`, {
         method: "POST",
@@ -545,6 +559,89 @@ test("portal password second-factor route consumes a challenge and returns a sco
   });
 });
 
+test("portal password second-factor route locks TOTP after repeated failures", async () => {
+  await withPortalState(async ({ store, auth, passwordCredentialService, entryToken }) => {
+    const plainPassword = `test-password-${randomUUID()}`;
+    passwordCredentialService.issueInitialPasswordCredential({
+      accountId: "acct_portal_route_1",
+      plainPassword,
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_password_route_4",
+      mustRotate: true
+    });
+    auth.enrollTotpCredential({
+      entryToken,
+      encryptedTotpSecret: "enc:route-totp-secret"
+    });
+    const humanChallenges = createHumanChallengeService();
+    const { server, baseUrl } = await listen(createApp(baseState({
+      userPortalAuth: auth,
+      portalHumanChallenges: humanChallenges,
+      userPortalRoutesEnabled: true
+    })));
+    try {
+      const humanChallenge = await issueHumanChallenge(baseUrl);
+      const passwordResponse = await fetch(`${baseUrl}/api/portal/password/session`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          accountId: "acct_portal_route_1",
+          password: plainPassword,
+          humanVerification: {
+            challengeRef: humanChallenge.challengeRef,
+            answer: "13"
+          }
+        })
+      });
+      assert.equal(passwordResponse.status, 202);
+      const passwordBody = await passwordResponse.json();
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const factorResponse = await fetch(`${baseUrl}/api/portal/password/second-factor`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            challengeRef: passwordBody.challenge.challengeRef,
+            factor: "totp",
+            code: "000000"
+          })
+        });
+        assert.equal(factorResponse.status, 400);
+        assert.equal((await factorResponse.json()).error, "validation_error");
+      }
+
+      const credential = store.getPortalTotpCredential("totp_route_1");
+      assert.equal(credential.status, "active");
+      assert.equal(credential.failureCount, 2);
+      assert.equal(credential.lockedUntil, "2026-05-31T00:15:00.000Z");
+      const challenge = store.getPortalSecondFactorChallenge("mfa_challenge_1");
+      assert.equal(challenge.status, "locked");
+      assert.equal(challenge.failureCount, 2);
+      assert.equal(store.listPortalSessions({ accountId: "acct_portal_route_1" }).length, 0);
+
+      const lockedResponse = await fetch(`${baseUrl}/api/portal/password/second-factor`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          challengeRef: passwordBody.challenge.challengeRef,
+          factor: "totp",
+          code: "123456"
+        })
+      });
+      assert.equal(lockedResponse.status, 400);
+      assert.equal((await lockedResponse.json()).error, "validation_error");
+      assert.equal(store.listPortalSessions({ accountId: "acct_portal_route_1" }).length, 0);
+    } finally {
+      server.close();
+    }
+  }, {
+    withPasswordCredential: true,
+    totpMaxFailures: 2,
+    totpLockSeconds: 900,
+    secondFactorMaxFailures: 2
+  });
+});
+
 test("portal security routes expose session-scoped authenticator state and confirm TOTP enrollment", async () => {
   await withPortalState(async ({ store, auth, passwordCredentialService }) => {
     const plainPassword = `test-password-${randomUUID()}`;
@@ -634,7 +731,50 @@ test("portal security routes expose session-scoped authenticator state and confi
     withPasswordCredential: true,
     allowPasswordOnlySessionForSetup: true,
     credentialRefFactory: () => "totp_bound_route_1",
-    totpVerifier: ({ encryptedTotpSecret, code }) => encryptedTotpSecret === "enc:JBSWY3DPEHPK3PXP" && code === "654321"
+    totpVerifier: ({ encryptedTotpSecret, code }) => encryptedTotpSecret === "v2:test-protected:JBSWY3DPEHPK3PXP" && code === "654321"
+  });
+});
+
+test("portal TOTP setup stores protected secret material after enrollment confirmation", async () => {
+  const protector = {
+    protect: (secret) => `v2:test-protected:${secret.split("").reverse().join("")}`
+  };
+
+  await withPortalState(async ({ store, auth, passwordCredentialService }) => {
+    const plainPassword = `test-password-${randomUUID()}`;
+    passwordCredentialService.issueInitialPasswordCredential({
+      accountId: "acct_portal_route_1",
+      plainPassword,
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_password_route_secret_protection",
+      mustRotate: true
+    });
+
+    const passwordResult = auth.verifyPasswordAndMaybeChallenge({
+      accountId: "acct_portal_route_1",
+      plainPassword
+    });
+    const sessionRef = passwordResult.session.sessionRef;
+
+    const started = auth.startTotpEnrollment({ sessionRef });
+    const confirmed = auth.confirmTotpEnrollment({
+      sessionRef,
+      enrollmentRef: started.enrollment.enrollmentRef,
+      code: "654321"
+    });
+
+    assert.equal(confirmed.binding.method, "totp");
+    const stored = store.getActivePortalTotpCredential("acct_portal_route_1");
+    assert.equal(stored.id, "totp_bound_route_1");
+    assert.match(stored.encryptedTotpSecret, /^v2:test-protected:/);
+    assert.equal(stored.encryptedTotpSecret.includes("JBSWY3DPEHPK3PXP"), false);
+    assert.equal(stored.encryptedTotpSecret.startsWith("enc:"), false);
+  }, {
+    withPasswordCredential: true,
+    allowPasswordOnlySessionForSetup: true,
+    credentialRefFactory: () => "totp_bound_route_1",
+    totpSecretProtector: protector,
+    totpVerifier: ({ encryptedTotpSecret, code }) => encryptedTotpSecret.startsWith("v2:test-protected:") && code === "654321"
   });
 });
 
