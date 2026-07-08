@@ -200,6 +200,8 @@ describe("company site route", () => {
     expect(screen.getByRole("heading", { name: "安全私密访问，覆盖每一台设备" })).not.toBeNull();
     expect(screen.getByRole("link", { name: "注册" }).getAttribute("href")).toBe(portalRegisterUrl);
     expect(screen.getByRole("link", { name: "登录" }).getAttribute("href")).toBe(portalLoginUrl);
+    expect(screen.getByText("帮助与解答")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "常见问题" })).not.toBeNull();
     expect(screen.getAllByRole("link", { name: /注册领取 7 天试用/ }).length).toBeGreaterThan(0);
     screen.getAllByRole("link", { name: /注册领取 7 天试用/ }).forEach((link) => {
       expect(link.getAttribute("href")).toBe(portalRegisterUrl);

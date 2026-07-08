@@ -2450,6 +2450,11 @@
   font-size: 13px;
 }
 
+.company-site-footer,
+.company-site-footer * {
+  box-sizing: border-box;
+}
+
 .company-site-footer-brand {
   display: flex;
   align-items: center;
@@ -2491,7 +2496,7 @@
 }
 
 .company-site-footer-column a {
-  color: #6b7280;
+  color: #94a3b8;
   text-decoration: none;
 }
 
@@ -2508,7 +2513,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  color: #374151;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.company-site-footer .company-site-footer-bottom span:first-child {
+  color: inherit;
+  font-weight: 600;
 }
 
 .connection-panel > div:first-child {

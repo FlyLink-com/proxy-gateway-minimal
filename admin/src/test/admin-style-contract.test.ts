@@ -527,6 +527,15 @@ describe("admin style token contract", () => {
     expect(publicSiteStyles).not.toContain("font-weight: 900");
     expect(publicSiteStyles).not.toMatch(/letter-spacing:\s*0\.0[6-8]em/);
     expect(responsiveStyles).toMatch(/\.site-effect-flow,[\s\S]*\.site-orbit,[\s\S]*\.site-terminal-card:hover/);
+    expect(selectorBlock(".company-site-footer .company-site-footer-bottom span:first-child")).toContain("color: inherit");
+    expect(selectorBlock(".company-site-footer .company-site-footer-bottom span:first-child")).toContain("font-weight: 600");
+    expect(styles).toMatch(/@media \(max-width: 768px\) \{[\s\S]*\.company-site-intake\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/m);
+    expect(styles).toMatch(/@media \(max-width: 768px\) \{[\s\S]*\.company-site-intake-panel\s*\{[\s\S]*padding: 28px 20px;/m);
+    expect(styles).toMatch(/@media \(max-width: 768px\) \{[\s\S]*\.company-site-form-grid\s*\{[\s\S]*grid-template-columns: 1fr;/m);
+    expect(styles).toMatch(/@media \(max-width: 768px\) \{[\s\S]*\.company-site-faq\s*\{[\s\S]*padding: 64px 20px;/m);
+    expect(styles).toMatch(/@media \(max-width: 768px\) \{[\s\S]*\.company-site-faq-grid\s*\{[\s\S]*grid-template-columns: 1fr;/m);
+    expect(styles).toMatch(/@media \(max-width: 768px\) \{[\s\S]*\.company-site-footer\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/m);
+    expect(styles).toMatch(/@media \(max-width: 768px\) \{[\s\S]*\.company-site-footer-links\s*\{[\s\S]*display: grid;[\s\S]*grid-template-columns: 1fr;/m);
 
     expect(faviconSvg).toContain("GCC WebOS secure access");
     expect(faviconSvg).toContain("<circle cx=\"32\" cy=\"32\"");
