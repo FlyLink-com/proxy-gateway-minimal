@@ -145,6 +145,11 @@ export const ADMIN_FIGMA_PAGINATION_STANDARD = {
     "system-search",
     "action-chips"
   ],
+  compositionLimits: {
+    maxOverviewModulesWithoutSubpages: 3,
+    maxOwnerModulesPerSubpage: 2,
+    ownerPagesRequireSubpages: true
+  },
   requiredStates: [
     "default",
     "current",
@@ -249,8 +254,8 @@ export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {
     "MetricCard",
     "StatusChip",
     "DataTable / DataRow",
-    "TopBar",
-    "Sidebar / Navigation Library",
+    "TopBar / System Search",
+    "Sidebar / Primary Routes",
     "PrivilegedGate",
     "EmptyState / Loading / Stale / Error"
   ],
@@ -259,8 +264,8 @@ export const ADMIN_FIGMA_COMPONENT_MIRROR_STATUS = {
     "MetricCard",
     "StatusChip",
     "DataTable / DataRow",
-    "TopBar",
-    "Sidebar / Navigation Library",
+    "TopBar / System Search",
+    "Sidebar / Primary Routes",
     "PrivilegedGate",
     "EmptyState / Loading / Stale / Error"
   ],

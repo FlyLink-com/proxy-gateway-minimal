@@ -110,8 +110,9 @@ The mirror must follow the same ownership model as the React implementation:
   `About` areas remain planned until their backend and UI contracts exist.
 
 The mirror must not reintroduce the older App Library / OS experiment as an
-implementation target. Navigation library and panel hiding remain useful
-patterns, but the current web implementation is a structured Admin workbench.
+implementation target. System Search, primary routes, and panel hiding remain
+useful patterns, but the current web implementation is a structured Admin
+workbench.
 
 Current implementation alignment:
 
@@ -138,7 +139,7 @@ Completed component mirrors:
 - `StatusChip`
 - `DataTable / DataRow`
 - `TopBar`
-- `Sidebar / Navigation Library`
+- `Sidebar / Primary Routes`
 - `PrivilegedGate`
 - `EmptyState / Loading / Stale / Error`
 
@@ -200,7 +201,7 @@ This matrix makes the implicit handoff explicit:
 | `PanelFrame` | `src/components/primitives/panel-frame.tsx` | Panel chrome ownership, header layout, density, hide affordance, state chrome. | `GCC-119` |
 | `DataRow` | `src/components/primitives/data-table.tsx` | Row interaction, table state rows, safe-ref overflow boundary. | `GCC-119` |
 | `TopBar` | `src/components/layout/top-bar.tsx` | Shell height, search/account controls, route status chips, Risk A notice. | `GCC-119` |
-| `SidebarNavigation` | `src/components/primitives/workspace-sidebar.tsx` | Sidebar route state, navigation library, local search, planned-route gate. | `GCC-119` |
+| `SidebarNavigation` | `src/components/primitives/workspace-sidebar.tsx` | Sidebar route state, System Search handoff, local route controls, planned-route gate. | `GCC-119` |
 | `PrivilegedGate` | `src/components/primitives/privileged-gate.tsx`, `admin-ui-contract`, `admin-app-manifest`, and shell safety surfaces | Hidden/gated/fresh-MFA/unavailable semantics and production-action guard copy. | `GCC-119` |
 | `StateFeedback` | `src/components/primitives/state-feedback.tsx`, `empty-state.tsx`, and `DataTableState` | Loading, empty, stale, error, status/alert role, redacted detail. | `GCC-119` |
 
@@ -235,8 +236,8 @@ page-local rewrites:
   workstream and case chrome class names.
 - `DataTableState` now accepts the shared state-feedback tones and renders state
   content through `StateFeedback` inside the existing table cell.
-- `MetricCard`, `StatusChip`, `TopBar`, `WorkspaceSidebar`, and
-  `NavigationLibrary` now expose stable `data-figma-component` /
+- `MetricCard`, `StatusChip`, `TopBar`, `WorkspaceSidebar`, and System Search /
+  primary-route surfaces now expose stable `data-figma-component` /
   `data-ui-surface` hooks for GCC-120 browser evidence.
 - Overview health metrics now render through `MetricCard` instead of the old
   page-local `admin-overview-metric-card` contract.
@@ -249,8 +250,8 @@ page-local rewrites:
 `GCC-119` implementation alignment, and `GCC-120` breakpoint/state evidence
 were accepted. Treat this file as the merged Admin Figma mirror baseline, not
 as an open Draft gate. Follow-on PRs #356, #357, and #358 extended the same
-baseline with Navigation Library safe indexing, workspace layout presets, and
-the Admin capability boundary matrix.
+baseline with System Search safe discovery, workspace layout presets, and the
+Admin capability boundary matrix.
 
 ## GCC-122 Pagination And Mobile Boundary
 

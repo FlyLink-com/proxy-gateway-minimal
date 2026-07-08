@@ -289,6 +289,7 @@ describe("admin app manifest", () => {
       expect(app.catalog.searchableFields.length).toBeGreaterThan(0);
       expect(app.catalog.safetyBoundary).toMatch(/safe|locked|console/i);
       expect(app.catalog.followUpTask).toMatch(/^GCC-/);
+      expect(app.catalog.followUpTask).not.toMatch(/Navigation Library|App Library|Module Library/i);
       expect(app.catalog.sourceContract.dataSourceRefs.length).toBeGreaterThan(0);
       expect(app.catalog.sourceContract.drilldownTargets.length).toBeGreaterThan(0);
       expect(app.catalog.sourceContract.evidenceRoutes.length).toBeGreaterThan(0);

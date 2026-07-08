@@ -77,25 +77,24 @@ boundaries:
 The visible shell subtitle remains `Proxy Gateway`. Page labels carry the
 operator-console responsibility split.
 
-## Navigation Library Safe Index Contract
+## System Search Safe Discovery Contract
 
-`Navigation Library` is the protected console launcher, search, and recovery
-surface. It is not an OS app drawer and must not behave like a large scrolling
-modal that duplicates page content.
+`System Search` is the protected console discovery and recovery surface. It is
+not an OS app drawer and must not behave like a large scrolling modal that
+duplicates page content or primary navigation.
 
 The React source of truth is `admin/src/app/admin-app-manifest.ts`. Its
-`createNavigationLibrarySearchIndex()` output is the reviewable contract for
-safe search and recovery. Every entry must be a safe summary record with these
-properties:
+`createSystemSearchIndex()` output is the reviewable contract for safe search
+and recovery. Every entry must be a safe summary record with these properties:
 
 | Field | Contract |
 | --- | --- |
 | `resultType` | One of `workspace-app`, `plugin-module`, `system-action`, or `planned-app`. |
-| `libraryGroup` | One of `workspace-pages`, `plugins`, `console-settings`, or `planned-apps`. |
+| `searchGroup` | One of `workspace-pages`, `modules`, `console-settings`, or `planned-apps`. |
 | `dataBoundary` | Always `safe-summary-only` in this phase. |
 | `productionImpact` | `read-only`, `none`, or `gated`; never direct production mutation. |
 | `forbiddenFields` | Explicit policy labels for forbidden raw fields. These labels are not searchable payload. |
-| `moduleRecovery` | Present only for `plugin-module` entries. Recovery source is `navigation-library`, action is `restore-module`, and hidden modules consume no canvas space. |
+| `moduleRecovery` | Present only for `plugin-module` entries. Recovery source is `system-search`, action is `restore-module`, and hidden modules consume no canvas space. |
 
 Search payload is limited to sanitized label, alias, owner area, category,
 route target, safe description, approved searchable fields, status,
@@ -167,7 +166,7 @@ The current implementation stores this state only in browser local storage and
 does not create a server schema, production database index, realtime sync
 channel, or cross-user preference model. `hidden` is represented both as
 `visible: false` and `sizePreset: hidden`; restoring a hidden module from
-Navigation Library returns it to `standard`.
+System Search or page-local controls returns it to `standard`.
 
 Panel controls live in the module header/floating header affordance. They must
 offer preset changes and hide behavior without reintroducing an edit workspace
@@ -257,7 +256,7 @@ at all:
 
 - no sidebar or planned-app entry;
 - no hidden route;
-- no App Library launcher;
+- no System Search entry, primary-route item, or module restore launcher;
 - no global-search or command-palette result;
 - no notification deep link;
 - no frontend API call for key, audit, or raw/ephemeral log data.

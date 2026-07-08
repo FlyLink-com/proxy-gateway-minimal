@@ -61,7 +61,7 @@ at production depth. Use this scope for the current handoff:
 
 | Frame group | Must include | Must not include |
 | --- | --- | --- |
-| Shell and navigation | Active three pages, locked ordinary slots, top bar controls, protected-console safety line, App Library/search states. | Search results or hidden launchers for Key Management, Audit Center, or Log Access for non-super-admin users. |
+| Shell and navigation | Active three pages, locked ordinary slots, top bar controls, protected-console safety line, System Search states, and primary-route states. | Search results or hidden launchers for Key Management, Audit Center, or Log Access for non-super-admin users. |
 | `Operations Overview` | Health Summary, Risk Queue, Next Actions, inspection summary as compact signal. | Full account/order ledger, raw audit trail, raw logs, key metadata, production action buttons. |
 | `Accounts & Resources` | Account/user supervision, order count, active order count, per-user traffic, resources/orders, quota and lifecycle states, safe artifact refs. | Raw subscription URL, token, private key, credential, billing/payment expansion, runtime mutation controls. |
 | `Usage & Channels` | Collection Freshness, Channel Coverage, Usage Ledger, Collection Anomalies, Receipts & Collectors; static route latency, agent status, and inspection summaries under the existing monitoring modules. | Raw logs, raw config, collector activation, quota decision ownership. |

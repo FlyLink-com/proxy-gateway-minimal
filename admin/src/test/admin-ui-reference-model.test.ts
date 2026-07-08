@@ -61,6 +61,21 @@ describe("admin UI reference model", () => {
     expect(getAdminUiSurfaceReference("usage-ledger")?.primaryReference).toBe("tremor");
     expect(getAdminUiSurfaceReference("account-directory")?.primaryReference).toBe("ant-design-pro");
     expect(getAdminUiSurfaceReference("resource-orders")?.supportingReferences).toContain("arco-design-pro");
-    expect(getAdminUiSurfaceReference("navigation-command")?.primaryReference).toBe("shadcn-ui");
+    expect(getAdminUiSurfaceReference("system-search")?.primaryReference).toBe("shadcn-ui");
+  });
+
+  test("keeps shell references aligned to system search instead of a navigation library", () => {
+    expect(getAdminUiSurfaceReference("system-search")).toMatchObject({
+      implementationTarget: "TopBar system search + workspace route index",
+      label: "System search route index",
+      page: "shell"
+    });
+
+    const referenceText = JSON.stringify({
+      sources: ADMIN_UI_REFERENCE_SOURCES,
+      surfaces: ADMIN_UI_SURFACE_REFERENCES
+    });
+
+    expect(referenceText).not.toMatch(/navigation command library|navigation library|app library/i);
   });
 });

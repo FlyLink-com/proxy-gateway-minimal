@@ -132,7 +132,8 @@ Non-super-admin behavior:
 - no audit route;
 - no log route;
 - no key-management route;
-- no App Library entry for audit/log/key-management;
+- no System Search entry, primary-route item, or module restore launcher for
+  audit/log/key-management;
 - no global-search source for audit/log/key-management;
 - no command palette result for audit/log/key-management;
 - no notification deep link to audit/log/key-management;
@@ -388,8 +389,8 @@ UI states:
 - access denied;
 - audit summary retained.
 
-The page must never cache raw logs in localStorage, sessionStorage, App Library,
-search index, screenshots, or fixture data.
+The page must never cache raw logs in localStorage, sessionStorage, System
+Search, screenshots, or fixture data.
 
 ## Dashboard Visualization Contract
 

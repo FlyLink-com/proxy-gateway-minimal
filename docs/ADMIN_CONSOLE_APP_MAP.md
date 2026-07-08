@@ -4,7 +4,7 @@ Last updated: 2026-06-21, Asia/Shanghai.
 
 > Status:
 > - Linear: GCC-74 under GCC-81 / GCC-42
-> - Type: Control-plane application map and App Library source
+> - Type: Control-plane application map and System Search source
 > - Risk: C for this document; current React manifest/test integration is B.
 > - Production impact: None.
 > - Execution authority: Does not authorize production, AWS, Vultr, DNS,
@@ -12,9 +12,12 @@ Last updated: 2026-06-21, Asia/Shanghai.
 >   credential, subscription URL, raw config/log/env, raw log, audit export,
 >   SQLite row, or customer-data actions.
 
-The Admin console is a browser desktop. A page is a workspace app, and each
-page module is a plugin app. The App Library is the restore/search surface for
-workspace pages, plugins, console utilities, and planned apps.
+The Admin console is a protected operator workspace. A page is a workspace
+area, and each page module is a page-owned panel. System Search is the only
+current global search/discovery and restore surface for workspace pages,
+modules, console utilities, and planned slots. `AppLibrary` /
+`NavigationLibrary` are superseded historical names and must not be used as
+active implementation targets.
 
 The code source of truth is `admin/src/app/admin-app-manifest.ts`. The app
 authoring contract is documented in
@@ -27,12 +30,12 @@ Every app entry must have:
 
 | Field | Meaning |
 | --- | --- |
-| `appId` | Stable identifier used by App Library, tests, search, and future permissions. |
+| `appId` | Stable identifier used by System Search, tests, layout, and future permissions. |
 | `zhName` / `enName` | Chinese planning name and English canonical UI name. |
 | `category` | One of Monitoring, Management, Configuration, Audit / Workflow, or Platform Tools. |
 | `primaryObjects` | Business objects supervised by the app. |
 | `coreViews` | First UI surfaces the app owns. |
-| `searchableFields` | Whitelisted safe fields used by App Library search. |
+| `searchableFields` | Whitelisted safe fields used by System Search. |
 | `safetyBoundary` | What the app may show or control without new authority. |
 | `followUpTask` | Next implementation task that owns deeper behavior. |
 | `sourceContract` | Safe data-source refs, drilldown targets, evidence routes, and display-only transform boundary. |
@@ -44,7 +47,7 @@ Forbidden fields remain excluded from search and UI output.
 The 2026-06-20 relationship update adds one stricter rule: privileged apps are
 not ordinary locked search results. Key Management, Audit Center, and Log
 Access must be absent from non-super-admin manifests, search documents, command
-results, notifications, App Library entries, hidden DOM, and frontend data-fetch
+results, notifications, System Search entries, hidden DOM, and frontend data-fetch
 registration.
 
 ## Grafana-First Console Mapping
@@ -57,7 +60,7 @@ control-console pattern source. The local mapping is:
 | Dashboard | Workspace app: `operations-overview`, `accounts-resources`, `usage-channels`, and future gated workspaces. |
 | Panel | Plugin app/module owned by one workspace page. |
 | Data source | Safe backend summary/API domain such as accounts, orders, usage ledger, channels, collectors, receipts, or gates. |
-| Library | App Library groups, search index, hidden plugin recovery, and future safe tags/folders. |
+| Library | Manifest-backed System Search index, page/module recovery, and future safe tags/folders. |
 | Alert | Risk queue or anomaly item that routes to safe evidence, not production execution. |
 | Explore | Read-only drilldown from overview to account, order, channel, collector, receipt, or gate evidence. |
 
@@ -65,13 +68,13 @@ Do not copy Grafana code, add a generic observability product model, or expose
 arbitrary data-source configuration, raw logs, raw config, SQLite rows,
 subscription material, token, credential, or production action APIs.
 
-## App Library Search Boundary
+## System Search Boundary
 
-The App Library is the global launcher, command/search surface, and hidden
-plugin recovery center. It is not a remote plugin market and not an
-authorization layer.
+System Search is the top-bar search, route discovery, and hidden-module
+recovery surface. It is not a remote plugin market, not an app drawer, and not
+an authorization layer.
 
-Future search work should define an explicit `AppLibrarySearchDocument` shape
+Future search work should define an explicit `SystemSearchDocument` shape
 instead of scraping rendered UI labels. The document may include only:
 
 - app id, labels, aliases, safe descriptions, category, owner area, route
@@ -88,7 +91,7 @@ Search documents are generated from registered apps only. If a role does not
 receive a privileged app registration, that app also contributes no aliases,
 safe descriptions, notifications, command results, or route hints.
 
-Frontend visibility only controls App Library display. Backend API permission
+Frontend visibility only controls shell and System Search display. Backend API permission
 remains the authority for every data fetch, drilldown, mutation, or future app
 registry action.
 
@@ -124,8 +127,9 @@ runtime mutation, or arbitrary external data-source configuration.
 | Accounts & Resources | `account-overview`, `resource-orders`, `quota-usage`, `lifecycle`, `history-events` |
 | Usage & Channels | `freshness`, `channel-coverage`, `usage-ledger`, `collection-anomalies`, `receipts-collectors` |
 
-Plugin controls are local to the plugin header/menu. The App Library restores
-hidden plugins by dispatching the app's `route.page` and `route.targetId`.
+Module controls are local to the module header/menu. System Search or
+page-local controls restore hidden modules by dispatching the manifest
+`route.page` and `route.targetId`.
 
 ## Console Utilities
 
@@ -160,7 +164,7 @@ they are omitted from the generated manifest entirely.
 ## Relationship Queue Mapping
 
 The expanded relationship draft is the sequencing source, while this map remains
-the App Library registration source.
+the Admin app registration source.
 
 | Relationship surface | App-map treatment | Linear owner |
 | --- | --- | --- |
@@ -180,8 +184,8 @@ the App Library registration source.
    lives in `docs/ADMIN_CONSOLE_APP_REGISTRY_REVIEW_DESIGN.md`; it is not an
    implemented runtime registry.
 3. Do not duplicate page/module/utility metadata outside the app manifest.
-4. App Library rendering should consume the app map, not rebuild entries from
-   page navigation arrays.
+4. System Search and route-index rendering should consume the app map, not
+   rebuild entries from page navigation arrays.
 5. Future permission and search work should consume the manifest catalog,
    not scrape rendered labels.
 6. Future app templates should conform to

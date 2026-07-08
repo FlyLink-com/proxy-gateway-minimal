@@ -13,23 +13,24 @@ Last updated: 2026-06-18, America/Los_Angeles.
 >   credential, subscription URL, raw config/log/env, SQLite row, or
 >   customer-data actions.
 
-This document freezes the visual protocol for the New Admin OS after the
-browser-desktop workspace skeleton in PR #330. It is the Gate 0 source of truth
-for spacing, surface hierarchy, App Library density, plugin dimensions,
-typography, icon treatment, and responsive behavior.
+This document freezes the visual protocol for the protected Admin console after
+the browser-desktop workspace skeleton in PR #330. It is the Gate 0 source of
+truth for spacing, surface hierarchy, System Search density, route-card
+density, module dimensions, typography, icon treatment, and responsive
+behavior.
 
 Use this before implementing:
 
 - `GCC-74` app map and control-plane application list;
 - `GCC-75` App Manifest and app authoring standard;
 - `GCC-76` plugin container template;
-- `GCC-77` App Library search and safe indexing;
-- `GCC-78` workspace drag/resize/minimize engine;
+- `GCC-77` System Search safe discovery;
+- `GCC-78` workspace layout preset and restore model;
 - `GCC-79` permission capability matrix.
 
 No downstream task should invent new radius, shadow, typography, icon size,
-App Library density, or plugin geometry without updating this protocol and its
-style contract tests.
+System Search density, route-card density, or module geometry without updating
+this protocol and its style contract tests.
 
 ## Design Goal
 
@@ -38,7 +39,8 @@ The Admin surface is a browser desktop / control-plane workspace:
 ```text
 status bar
   -> workspace appbar / dock
-  -> App Library launcher
+  -> System Search
+  -> primary route launcher
   -> plugin canvas
 ```
 
@@ -105,8 +107,8 @@ navigation, active app state, or primary metrics, not every piece of copy.
 
 | Location | Size |
 | --- | --- |
-| App Library icon | `30px` |
-| Large App Library icon | `34px` |
+| Search/route icon | `30px` |
+| Large route/action icon | `34px` |
 | Dock/appbar icon | `32px` |
 | Nav item icon slot | `32px` |
 | Top bar app icon | `30px` |
@@ -119,29 +121,32 @@ Icon treatment:
 - do not use iOS-6 style glossy highlights;
 - do not use multi-stop gradients for every tile.
 
-## App Library Protocol
+## System Search And Route Launcher Protocol
 
-The App Library is a system launcher/menu, not a scroll dialog.
+System Search is the global discovery/recovery surface. It is not an app
+drawer, scroll dialog, or secondary navigation tree. Primary routes and
+page-local controls remain the visible route mechanism.
 
 | Rule | Value |
 | --- | --- |
-| Width | `760px`, capped by viewport gutter |
-| Max height | `min(560px, viewport-safe height)` |
+| System Search width | `640px`, capped by viewport gutter |
+| System Search max height | `min(480px, viewport-safe height)` |
 | Padding | `12px` |
 | Group gap | `10px` |
-| Tile height | `64px` |
-| Page app columns | `3` columns, `132px` cells |
-| Plugin/module columns | `6` columns, `78px` cells |
-| Utility columns | `5` columns, `78px` cells |
-| Mobile grid | collapse launcher grids to `2` columns at the small breakpoint |
+| Result row height | `44px` minimum |
+| Route card height | `44px` minimum |
+| Module launcher height | `44px` minimum |
+| Mobile behavior | collapse to a route-aware search sheet only after a dedicated mobile standard exists |
 
 Required structure:
 
-1. Search stays inside App Library.
-2. Utilities appear before workspace pages.
-3. Workspace pages appear before plugin/card apps.
-4. Planned apps stay grouped and visually quieter.
-5. Hidden plugins recover from App Library and should not occupy canvas space.
+1. Top-bar search is a real system search form, not a hidden launcher trigger.
+2. Results come from the safe manifest/search document contract.
+3. Primary routes appear in sidebar/top route controls, not inside a second
+   launcher layer.
+4. Planned apps stay out of active navigation unless explicitly gated.
+5. Hidden/collapsed modules recover from System Search or page-local controls
+   and should not occupy canvas space.
 
 ## Plugin Container Protocol
 
@@ -168,7 +173,8 @@ Display states:
 - `medium`: spans two columns and is the default for substantial modules;
 - `small`: spans one column and must still expose title, status, and restore
   logic;
-- `hidden`: removed from canvas, recoverable from App Library;
+- `hidden`: removed from canvas, recoverable from System Search or page-local
+  controls;
 - `readonly`: visible but without mutation controls;
 - `planned`: visibly gated and not treated as active functionality.
 
@@ -184,16 +190,16 @@ the plugin.
 | Search | Collapsed to icon when idle; expands in place when active. Search should not dominate the status bar. |
 | Workspace appbar | Bottom dock at `58px` height and `960px` max width. |
 | Brand | Keep brand compact in the appbar; do not rebuild a traditional tall sidebar. |
-| Account/operator | Right-side status context only; detailed settings belong in App Library or future settings app. |
+| Account/operator | Right-side status context only; detailed settings belong in System Search or a future settings route. |
 
 ## Responsive Protocol
 
 | Breakpoint | Rule |
 | --- | --- |
-| Wide desktop | Canvas maxes at `1520px`; App Library centers above appbar. |
+| Wide desktop | Canvas maxes at `1520px`; System Search opens as a bounded command surface aligned to the status bar. |
 | Under 980px | Plugin cards collapse to one-column ownership where needed; metadata shifts left. |
 | Under 860px | Appbar stays compact near the bottom; planned/safety controls become icon-first. |
-| Under 620px | App Library grids become two columns; controls wrap; plugin tools align left. |
+| Under 620px | System Search becomes a bounded route-aware sheet only after the dedicated mobile standard is accepted; controls wrap and plugin tools align left. |
 | Under 520px | Dense table headers may hide and rows must stay horizontally safe. |
 
 Responsive CSS is only a safety layer for the desktop workbench while the web
@@ -207,7 +213,7 @@ status bar
   -> compact page identity
   -> priority section switcher
   -> one active review card / drill-in detail
-  -> compact appbar and App Library recovery
+  -> compact route/search recovery
 ```
 
 Mobile must preserve route ownership, capability gates, and redaction rules,
@@ -242,7 +248,8 @@ outside the grammar contract.
 Before a Phase 4 implementation PR is ready, verify:
 
 1. New styles use existing `--admin-*` tokens or add protocol-approved tokens.
-2. App Library keeps launcher density and includes search.
+2. System Search uses the safe search contract and does not duplicate primary
+   navigation or page content.
 3. Plugin controls are local to the plugin header/menu.
 4. Hidden/minimized plugins do not occupy canvas space.
 5. No duplicate editor controls exist at both canvas and plugin level.
@@ -277,8 +284,8 @@ Style-contract candidates for follow-up PRs:
   gradients;
 - keep typography bans for `10.5px`, literal `650`, `750`, `900`, and negative
   letter spacing;
-- require App Library, plugin, status bar, and appbar geometry to match the
-  tokenized protocol.
+- require System Search, plugin, status bar, route controls, and appbar
+  geometry to match the tokenized protocol.
 
 ## Validation
 
