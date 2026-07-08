@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-07-06, America/Los_Angeles.
+Last updated: 2026-07-08, America/Los_Angeles.
 
 > Status:
 > - Type: Active current-state handoff
@@ -86,6 +86,15 @@ checkout paths, archive directories, runtime-only residue, or `master` alone.
 This file intentionally does not store an evergreen `master` SHA or open PR
 count. Run `git status`, `git rev-parse --short HEAD`, and `gh pr list` before
 making any new branch, GitHub, or production claim.
+
+The 2026-07-08 source/production reconciliation is recorded in
+`docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md`. It records that current
+`master` contains the lightweight Deploy Note rule, Admin system-search
+structure, portal login/security fixes, AppsFlyer disabled/gate records,
+GCC WebOS static/domain closeouts, and local tooling hardening. It also records
+that PR #364 and PR #381 remain Draft/dirty reference carriers, not merge
+vehicles. Continue by re-cutting small portal source-alignment and traffic usage
+split PRs from current `master`; do not merge either carrier as-is.
 
 The AWS staging node-image readiness validation is recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md`.
