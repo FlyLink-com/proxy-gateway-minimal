@@ -171,11 +171,13 @@ describe("subscription usage monitor page", () => {
     expect(screen.getAllByText("Partners").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Campaigns").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Settlement candidates").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Guardrail review")).not.toBeNull();
     expect(screen.getAllByText("partner_alpha").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("campaign_alpha_jp").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("Registration success")).not.toBeNull();
     expect(screen.getByText("Settlement candidate created")).not.toBeNull();
     expect(screen.getByText("settlement_candidate_1")).not.toBeNull();
+    expect(screen.getByText("payable_review_allowed")).not.toBeNull();
     expect(screen.getAllByText("$25.00 USD").length).toBeGreaterThanOrEqual(1);
     expect(screen.getAllByText("Safe summary only").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("No payout approval")).not.toBeNull();
@@ -202,11 +204,21 @@ describe("subscription usage monitor page", () => {
             payableReviewCount: 0,
             reversedCount: 0
           },
-          funnel: {},
-          partners: [],
-          campaigns: [],
-          candidates: [],
-          warnings: ["partner attribution reporting services are not configured"],
+            funnel: {},
+            partners: [],
+            campaigns: [],
+            guardrails: {
+              summaryOnly: true,
+              privacyBoundaryOk: true,
+              rawValuesReturned: false,
+              reconciliation: {
+                payableReviewAllowedCount: 0,
+                manualReviewRequiredCount: 0,
+                blockedCount: 0
+              }
+            },
+            candidates: [],
+            warnings: ["partner attribution reporting services are not configured"],
           safety: {
             summaryOnly: true,
             rawProviderPayloadReturned: false,

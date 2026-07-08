@@ -175,6 +175,9 @@ test("admin partner attribution report route is protected and returns a safe rep
       assert.equal(body.report.partners[0].partnerRef, "partner_route");
       assert.equal(body.report.campaigns[0].campaignRef, "campaign_route");
       assert.equal(body.report.candidates[0].orderRef, "order_route");
+      assert.equal(body.report.guardrails.reconciliation.manualReviewRequiredCount, 1);
+      assert.equal(body.report.candidates[0].reconciliationStatus, "manual_review_required");
+      assert.deepEqual(body.report.candidates[0].reconciliationBlockers, ["missing_provider_attribution_evidence"]);
       assert.equal(body.report.safety.mutationAllowed, false);
       assert.doesNotMatch(JSON.stringify(body.report), /https?:\/\/|token=|secret-value|password=|rawConfig|edgecred_|\/sub\//i);
     } finally {

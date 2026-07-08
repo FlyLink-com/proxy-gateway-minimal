@@ -1,3 +1,5 @@
+import { createPartnerAttributionGuardrails } from "./partner-attribution-guardrails.mjs";
+
 const REPORT_TYPE = "partner_attribution_admin_report";
 const SOURCE_LABELS = ["AppsFlyer evidence", "Backend settlement facts"];
 
@@ -34,6 +36,19 @@ function safety() {
     rawRuntimeConfigReturned: false,
     rawSqliteRowsReturned: false,
     mutationAllowed: false
+  };
+}
+
+function emptyGuardrails() {
+  return {
+    summaryOnly: true,
+    privacyBoundaryOk: true,
+    rawValuesReturned: false,
+    reconciliation: {
+      payableReviewAllowedCount: 0,
+      manualReviewRequiredCount: 0,
+      blockedCount: 0
+    }
   };
 }
 
@@ -79,7 +94,27 @@ function funnelFor(events) {
   return funnel;
 }
 
-function candidateReviewRow(candidate) {
+function providerEvidenceForCandidate(candidate, events) {
+  return events
+    .filter((event) => event.providerEvidenceSummary && Object.keys(event.providerEvidenceSummary).length > 0)
+    .filter((event) => !candidate.partnerRef || event.partnerRef === candidate.partnerRef)
+    .filter((event) => !candidate.campaignRef || event.campaignRef === candidate.campaignRef)
+    .filter((event) => !candidate.touchRef || event.touchRef === candidate.touchRef)
+    .map((event) => ({
+      provider: event.providerEvidenceSummary.provider || event.source,
+      partnerRef: event.partnerRef,
+      campaignRef: event.campaignRef,
+      touchRef: event.touchRef,
+      eventName: event.providerEvidenceSummary.eventName || event.eventType
+    }));
+}
+
+function candidateReviewRow(candidate, { events, guardrails }) {
+  const reconciliation = guardrails.reconcileSettlementEvidence({
+    candidate,
+    providerEvidence: providerEvidenceForCandidate(candidate, events),
+    backendFacts: events
+  });
   return {
     candidateRef: candidate.candidateRef,
     status: candidate.status,
@@ -100,7 +135,22 @@ function candidateReviewRow(candidate) {
     reasonCode: candidate.reasonCode,
     sourceEventRefs: [...(candidate.sourceEventRefs || [])],
     reversalEventRef: candidate.reversalEventRef,
-    sourceLabels: ["Backend settlement facts"]
+    sourceLabels: ["Backend settlement facts"],
+    reconciliationStatus: reconciliation.status,
+    manualReviewRequired: reconciliation.manualReviewRequired,
+    reconciliationBlockers: reconciliation.blockers.map((blocker) => blocker.code),
+    matchedEvidence: reconciliation.matchedEvidence
+  };
+}
+
+function guardrailSummary(candidateRows) {
+  return {
+    ...emptyGuardrails(),
+    reconciliation: {
+      payableReviewAllowedCount: candidateRows.filter((candidate) => candidate.reconciliationStatus === "payable_review_allowed").length,
+      manualReviewRequiredCount: candidateRows.filter((candidate) => candidate.manualReviewRequired).length,
+      blockedCount: candidateRows.filter((candidate) => candidate.reconciliationStatus === "blocked").length
+    }
   };
 }
 
@@ -175,6 +225,7 @@ export function createPartnerAttributionAdminReport({
     partners: [],
     campaigns: [],
     candidates: [],
+    guardrails: emptyGuardrails(),
     safety: safety()
   };
 
@@ -226,6 +277,11 @@ export function createPartnerAttributionAdminReport({
 
   const candidatesByStatus = countBy(candidates, (candidate) => candidate.status);
   const funnel = funnelFor(events);
+  const guardrails = createPartnerAttributionGuardrails();
+  const candidateRows = candidates.map((candidate) => candidateReviewRow(candidate, {
+    events,
+    guardrails
+  }));
   return {
     ...base,
     status: "ready",
@@ -254,6 +310,7 @@ export function createPartnerAttributionAdminReport({
       events,
       candidates
     })),
-    candidates: candidates.map(candidateReviewRow)
+    candidates: candidateRows,
+    guardrails: guardrailSummary(candidateRows)
   };
 }

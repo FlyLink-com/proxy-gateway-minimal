@@ -632,6 +632,7 @@ Protected Admin may show:
 - attribution source summaries;
 - payment and entitlement conversion counts;
 - candidate statuses;
+- guardrail reconciliation status and blocker codes;
 - reversal summaries;
 - reconciliation warnings.
 
@@ -655,6 +656,7 @@ backend payment fact
 backend entitlement fact
 settlement candidate status
 manual review status
+guardrail reconciliation status
 ```
 
 ## Privacy Boundary
@@ -683,6 +685,20 @@ Allowed:
 - redacted metadata summaries;
 - currency and amount where a payment policy approves reporting.
 
+Current repo-only guardrail baseline:
+
+- `server/services/platform/partner-attribution-guardrails.mjs` centralizes the
+  forbidden-data scanner, fraud/abuse signal summary, and settlement
+  reconciliation review.
+- The scanner returns finding labels, paths, and blocker codes only; it must not
+  return raw matched values.
+- Admin attribution reporting includes candidate-level reconciliation status,
+  manual-review booleans, matched evidence labels, and blocker codes.
+- Missing provider evidence may require manual review, but it is not by itself a
+  production enforcement switch.
+- Backend payment and entitlement facts remain mandatory before a candidate can
+  be surfaced as payable-review allowed.
+
 ## Storage Boundary
 
 Initial implementation should live inside the current monolith:
@@ -706,6 +722,7 @@ Schema or durable storage work remains B/A boundary:
 | Architecture/docs baseline | C | `git diff --check origin/master...HEAD` |
 | Repo-only services and tests | B | focused tests plus `npm test` |
 | Admin reporting with backend DTOs | B | `npm run admin:test`, `npm run admin:build`, `npm test` |
+| Privacy/fraud/reconciliation guardrail baseline | B | guardrail tests, Admin report tests, `npm run admin:test`, `npm run admin:build`, `npm test` |
 | Placeholder env names / disabled adapter | B | redaction tests plus `npm test` |
 | Production credentials | A | exact approval, secret-location review, rollback |
 | Live AppsFlyer Web/S2S | A | dry-run payload review, controlled activation, reconciliation |
@@ -730,7 +747,11 @@ Initial task map:
   adapter is implemented with redaction tests; live AppsFlyer Web/S2S remains
   gated.
 - `GCC-152` - protected Admin attribution and settlement review reporting.
-- `GCC-153` - privacy, fraud, abuse, and reconciliation guardrails.
+- `GCC-153` - privacy, fraud, abuse, and reconciliation guardrails. Repo-only
+  baseline adds reusable forbidden-data scanning, fraud signal summary,
+  provider/backend settlement reconciliation, and safe Admin guardrail summary.
+  It does not activate production enforcement, live provider calls, partner
+  payouts, or customer-private exports.
 - `GCC-154` - production activation gate.
 
 Recommended order:

@@ -177,6 +177,16 @@ test("partner attribution admin report summarizes funnel and settlement review w
     assert.equal(report.summary.settlementCandidateCount, 1);
     assert.equal(report.summary.payableReviewCount, 0);
     assert.equal(report.summary.reversedCount, 0);
+    assert.deepEqual(report.guardrails, {
+      summaryOnly: true,
+      privacyBoundaryOk: true,
+      rawValuesReturned: false,
+      reconciliation: {
+        payableReviewAllowedCount: 1,
+        manualReviewRequiredCount: 0,
+        blockedCount: 0
+      }
+    });
     assert.deepEqual(report.funnel, {
       visit: 1,
       registrationSuccess: 1,
@@ -231,7 +241,15 @@ test("partner attribution admin report summarizes funnel and settlement review w
         reasonCode: null,
         sourceEventRefs: candidate.sourceEventRefs,
         reversalEventRef: null,
-        sourceLabels: ["Backend settlement facts"]
+        sourceLabels: ["Backend settlement facts"],
+        reconciliationStatus: "payable_review_allowed",
+        manualReviewRequired: false,
+        reconciliationBlockers: [],
+        matchedEvidence: [
+          "backend_entitlement_delivered",
+          "backend_payment_success",
+          "provider_attribution_evidence"
+        ]
       }
     ]);
     assert.equal(report.safety.summaryOnly, true);
@@ -259,6 +277,16 @@ test("partner attribution admin report returns an empty safe state before servic
   assert.deepEqual(report.partners, []);
   assert.deepEqual(report.campaigns, []);
   assert.deepEqual(report.candidates, []);
+  assert.deepEqual(report.guardrails, {
+    summaryOnly: true,
+    privacyBoundaryOk: true,
+    rawValuesReturned: false,
+    reconciliation: {
+      payableReviewAllowedCount: 0,
+      manualReviewRequiredCount: 0,
+      blockedCount: 0
+    }
+  });
   assert.deepEqual(report.funnel, {
     visit: 0,
     registrationSuccess: 0,

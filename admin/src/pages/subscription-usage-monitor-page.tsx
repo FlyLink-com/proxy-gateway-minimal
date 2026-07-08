@@ -90,6 +90,16 @@ export const partnerAttributionReportFixture: PartnerAttributionAdminReport = {
       settlementCandidateCreated: 1
     }
   }],
+  guardrails: {
+    summaryOnly: true,
+    privacyBoundaryOk: true,
+    rawValuesReturned: false,
+    reconciliation: {
+      payableReviewAllowedCount: 1,
+      manualReviewRequiredCount: 0,
+      blockedCount: 0
+    }
+  },
   candidates: [{
     candidateRef: "settlement_candidate_1",
     status: "frozen",
@@ -110,7 +120,15 @@ export const partnerAttributionReportFixture: PartnerAttributionAdminReport = {
     reasonCode: null,
     sourceEventRefs: ["event_payment_1", "event_entitlement_1"],
     reversalEventRef: null,
-    sourceLabels: ["Backend settlement facts"]
+    sourceLabels: ["Backend settlement facts"],
+    reconciliationStatus: "payable_review_allowed",
+    manualReviewRequired: false,
+    reconciliationBlockers: [],
+    matchedEvidence: [
+      "backend_entitlement_delivered",
+      "backend_payment_success",
+      "provider_attribution_evidence"
+    ]
   }],
   warnings: [],
   safety: {
@@ -483,16 +501,23 @@ export function PartnerAttributionReportContent({
           tone="neutral"
           value={report.summary.touchCount}
         />
-        <MetricCard
-          detail={`${report.summary.payableReviewCount} payable review`}
-          icon={<ReceiptText aria-hidden="true" />}
-          label="Settlement candidates"
-          tone={report.summary.settlementCandidateCount > 0 ? "warning" : "neutral"}
-          value={report.summary.settlementCandidateCount}
-        />
-        <MetricCard
-          detail={`${report.summary.reversedCount} reversed`}
-          icon={<RadioTower aria-hidden="true" />}
+          <MetricCard
+            detail={`${report.summary.payableReviewCount} payable review`}
+            icon={<ReceiptText aria-hidden="true" />}
+            label="Settlement candidates"
+            tone={report.summary.settlementCandidateCount > 0 ? "warning" : "neutral"}
+            value={report.summary.settlementCandidateCount}
+          />
+          <MetricCard
+            detail={`${report.guardrails.reconciliation.blockedCount} blocked`}
+            icon={<Activity aria-hidden="true" />}
+            label="Guardrail review"
+            tone={report.guardrails.reconciliation.manualReviewRequiredCount > 0 ? "warning" : "success"}
+            value={report.guardrails.reconciliation.manualReviewRequiredCount}
+          />
+          <MetricCard
+            detail={`${report.summary.reversedCount} reversed`}
+            icon={<RadioTower aria-hidden="true" />}
           label="Campaigns"
           tone="info"
           value={report.summary.campaignCount}
@@ -554,12 +579,13 @@ export function PartnerAttributionReportContent({
         columns={[
           { header: "Candidate", key: "candidate", render: (row: PartnerAttributionAdminReport["candidates"][number]) => <SafeRef value={row.candidateRef} /> },
           { header: "Partner / campaign", key: "partnerCampaign", render: (row) => <><SafeRef value={row.partnerRef} /> · <SafeRef value={row.campaignRef} /></> },
-          { header: "Order / event", key: "event", render: (row) => <><SafeRef value={row.orderRef} /> · <SafeRef value={row.sourceEventRefs[0]} /></> },
-          { header: "Status", key: "status", render: (row) => <StatusChip label={row.status} tone={row.status === "frozen" ? "warning" : "neutral"} /> },
-          { header: "Reason", key: "reason", render: (row) => row.reasonCode || "policy match" },
-          { header: "Amount", key: "amount", render: (row) => formatSettlementAmount(row.amountCents, row.currency) },
-          { header: "Source", key: "source", render: (row) => row.sourceLabels.join(", ") }
-        ]}
+            { header: "Order / event", key: "event", render: (row) => <><SafeRef value={row.orderRef} /> · <SafeRef value={row.sourceEventRefs[0]} /></> },
+            { header: "Status", key: "status", render: (row) => <StatusChip label={row.status} tone={row.status === "frozen" ? "warning" : "neutral"} /> },
+            { header: "Guardrail", key: "guardrail", render: (row) => <StatusChip label={row.reconciliationStatus} tone={row.manualReviewRequired ? "warning" : "success"} /> },
+            { header: "Reason", key: "reason", render: (row) => row.reasonCode || "policy match" },
+            { header: "Amount", key: "amount", render: (row) => formatSettlementAmount(row.amountCents, row.currency) },
+            { header: "Source", key: "source", render: (row) => row.reconciliationBlockers.length > 0 ? row.reconciliationBlockers.join(", ") : row.sourceLabels.join(", ") }
+          ]}
         getRowKey={(row) => row.candidateRef}
         pagination={{
           ariaLabel: "Partner Attribution settlement candidates pagination",
