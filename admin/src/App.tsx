@@ -3,7 +3,11 @@ import {
   ADMIN_FIXTURE_PREVIEW_DATA,
   isAdminFixturePreviewEnabled
 } from "./app/admin-fixture-preview";
-import { type AdminPage } from "./app/navigation";
+import {
+  formatAdminRouteHash,
+  parseAdminRouteHash,
+  type AdminPage
+} from "./app/navigation";
 import { AdminLayout } from "./components/layout/admin-layout";
 import {
   loadAdminSession
@@ -45,8 +49,9 @@ function routeFromLocation(): AppRoute {
 }
 
 export function App() {
+  const initialAdminRoute = parseAdminRouteHash(window.location.hash);
   const [route, setRoute] = useState<AppRoute>(() => routeFromLocation());
-  const [activePage, setActivePage] = useState<AdminPage>("dashboard");
+  const [activePage, setActivePage] = useState<AdminPage>(initialAdminRoute?.page ?? "dashboard");
   const [search, setSearch] = useState("");
   const [riskNotificationCount, setRiskNotificationCount] = useState(0);
   const [adminSession, setAdminSession] = useState(() => loadAdminSession());
@@ -58,8 +63,21 @@ export function App() {
 
   useEffect(() => {
     function syncRoute() {
-      setRoute(routeFromLocation());
+      const nextRoute = routeFromLocation();
+      const nextAdminRoute = parseAdminRouteHash(window.location.hash);
+      setRoute(nextRoute);
+      if (nextRoute === "admin" && nextAdminRoute) {
+        const canonicalHash = formatAdminRouteHash(nextAdminRoute.page, nextAdminRoute.navId);
+        if (window.location.hash !== canonicalHash) {
+          window.history.replaceState(null, "", canonicalHash);
+        }
+        setActivePage(nextAdminRoute.page);
+        setSearch("");
+      } else if (nextRoute !== "admin") {
+        setSearch("");
+      }
     }
+    syncRoute();
     window.addEventListener("hashchange", syncRoute);
     window.addEventListener("popstate", syncRoute);
     return () => {
@@ -86,6 +104,10 @@ export function App() {
   function navigateAdminPage(page: AdminPage) {
     setActivePage(page);
     setSearch("");
+    const nextHash = formatAdminRouteHash(page);
+    if (window.location.hash !== nextHash) {
+      window.location.hash = nextHash;
+    }
   }
 
   if (route === "site") {
