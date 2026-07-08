@@ -648,6 +648,23 @@ or S2S dispatch, create OneLink assets, mutate production data, approve a
 payout, or return customer-private, subscription, credential, runtime, or raw
 provider payload values.
 
+Current pilot package preview helper:
+
+```text
+buildPartnerAttributionPilotPackagePreview(...)
+```
+
+It prepares a reviewable promotion package for approved partner, campaign, and
+creative refs. The preview contains safe relative landing links, dry-run Web
+SDK and Web-S2S event plans, stripped parameter names, stripped event-value
+keys, and a protected Admin-facing summary of required reviews. It is intended
+to let operators review the exact link and event surface before any A-tier
+production activation.
+
+It does not create provider-side links, send AppsFlyer events, install or
+return credentials, create OneLink or branded-domain assets, mutate platform
+state, approve payout eligibility, or expose raw customer/private material.
+
 ## Portal Capture Boundary
 
 Portal may capture attribution parameters on approved public/customer routes:
