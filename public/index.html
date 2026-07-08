@@ -170,10 +170,12 @@
 
 <script>
 let autoTimer = null;
+let authToken = '';
 
-// ===== Auth Token (Fix 1) =====
-function getToken() { return localStorage.getItem('console_token') || ''; }
-function setToken(t) { localStorage.setItem('console_token', t); }
+// ===== Auth Token =====
+function getToken() { return authToken; }
+function setToken(t) { authToken = String(t || '').trim(); }
+function clearToken() { authToken = ''; }
 
 async function ensureAuth() {
   if (getToken()) return true;
@@ -193,7 +195,7 @@ async function authFetch(url, opts = {}) {
   if (token) headers['Authorization'] = 'Bearer ' + token;
   const res = await fetch(url, { ...opts, headers });
   if (res.status === 401) {
-    localStorage.removeItem('console_token');
+    clearToken();
     const token = prompt('认证失败，请重新输入 Console Token：');
     if (token) {
       setToken(token);
@@ -212,6 +214,20 @@ function log(msg) {
 }
 function badgeClass(ok, warn) { return ok ? 'ok' : warn ? 'warn' : 'fail'; }
 function badgeLabel(ok, warn) { return ok ? '● 运行中' : warn ? '◌ 待检测' : '✕ 停止'; }
+function textNode(value) { return document.createTextNode(String(value ?? '')); }
+function element(tag, options = {}, children = []) {
+  const el = document.createElement(tag);
+  if (options.className) el.className = options.className;
+  if (options.style) el.setAttribute('style', options.style);
+  for (const child of children) el.appendChild(typeof child === 'string' ? textNode(child) : child);
+  return el;
+}
+function renderMessage(container, className, text) {
+  container.replaceChildren(element('div', { className }, [text]));
+}
+function badgeElement(ok, warn) {
+  return element('span', { className: 'badge ' + badgeClass(ok, warn) }, [badgeLabel(ok, warn)]);
+}
 
 // ===== Port Status =====
 async function refreshPorts() {
@@ -261,7 +277,7 @@ async function testProxy() {
     const res = await authFetch('/api/proxy/test');
     const data = await res.json();
     if (data.ok) {
-      el.innerHTML = `出口: <strong>${data.origin}</strong>`;
+      el.textContent = `出口: ${data.origin}`;
       el.style.color = '#3fb950';
       log(`代理测试通过，出口 IP: ${data.origin}`);
     } else {
@@ -363,9 +379,14 @@ async function networkDoctor(action = 'status', verbose = true) {
       dot.className = 'dot on';
       text.textContent = '网络层: 已接管';
     }
-    issueBox.innerHTML = (data.issues || []).length
-      ? (data.issues || []).map(i => `<div class="${i.severity}">[${i.severity}] ${i.code}: ${i.message}</div>`).join('')
-      : '<span class="ok">Windows 代理栈状态正常</span>';
+    const issues = data.issues || [];
+    if (issues.length) {
+      issueBox.replaceChildren(...issues.map(i =>
+        element('div', { className: i.severity }, [`[${i.severity}] ${i.code}: ${i.message}`])
+      ));
+    } else {
+      issueBox.replaceChildren(element('span', { className: 'ok' }, ['Windows 代理栈状态正常']));
+    }
     if (data.actions && data.actions.length) log('执行: ' + data.actions.join(', '));
   } catch(e) {
     dot.className = 'dot';
@@ -419,16 +440,19 @@ async function checkProxy() {
   try {
     const res = await authFetch('/api/proxy/status');
     const data = await res.json();
-    card.innerHTML = data.results.map(s => `
-      <div class="card">
-        <strong>${s.name || s.host + ':' + s.port}</strong><br>
-        <span class="mono">${s.host}:${s.port}</span>
-        <span class="badge ${badgeClass(s.ok)}">${badgeLabel(s.ok)}</span>
-        <span class="mono">${s.info || ''}</span>
-      </div>
-    `).join('');
+    card.replaceChildren(...data.results.map(s =>
+      element('div', { className: 'card' }, [
+        element('strong', {}, [s.name || `${s.host}:${s.port}`]),
+        element('br'),
+        element('span', { className: 'mono' }, [`${s.host}:${s.port}`]),
+        textNode(' '),
+        badgeElement(s.ok),
+        textNode(' '),
+        element('span', { className: 'mono' }, [s.info || ''])
+      ])
+    ));
     log(`Shadowsocks: ${data.results.filter(s=>s.ok).length}/${data.results.length} 可达`);
-  } catch(e) { card.innerHTML = '<div class="card fail">错误</div>'; }
+  } catch(e) { renderMessage(card, 'card fail', '错误'); }
 }
 
 async function checkNginx() {
@@ -436,14 +460,15 @@ async function checkNginx() {
   try {
     const res = await authFetch('/api/nginx/status');
     const data = await res.json();
-    card.innerHTML = data.results.map(s => `
-      <div class="card" style="padding:10px 14px;">
-        <span class="mono" style="font-size:14px;font-weight:bold;color:#58a6ff;">:${s.port}</span>
-        <span class="badge ${badgeClass(s.ok)}">${badgeLabel(s.ok)}</span>
-      </div>
-    `).join('');
+    card.replaceChildren(...data.results.map(s =>
+      element('div', { className: 'card', style: 'padding:10px 14px;' }, [
+        element('span', { className: 'mono', style: 'font-size:14px;font-weight:bold;color:#58a6ff;' }, [`:${s.port}`]),
+        textNode(' '),
+        badgeElement(s.ok)
+      ])
+    ));
     log(`Nginx: ${data.results.filter(s=>s.ok).length}/${data.results.length} 端口可达`);
-  } catch(e) { card.innerHTML = '<div class="card fail">错误</div>'; }
+  } catch(e) { renderMessage(card, 'card fail', '错误'); }
 }
 
 async function checkPing() {
@@ -457,14 +482,16 @@ async function checkPing() {
     const results = await Promise.all(
       hosts.map(h => authFetch('/api/ping/' + h).then(r=>r.json()).catch(()=>({host:h,reachable:false})))
     );
-    card.innerHTML = `<table>${results.map(r => `
-      <tr>
-        <td><strong>${r.host}</strong></td>
-        <td><span class="badge ${badgeClass(r.reachable)}">${badgeLabel(r.reachable)}</span></td>
-        <td class="mono">${r.avgMs != null ? r.avgMs + 'ms' : (r.loss != null ? '丢包 ' + r.loss + '%' : '—')}</td>
-      </tr>
-    `).join('')}</table>`;
-  } catch(e) { card.innerHTML = '<span class="fail">错误</span>'; }
+    const table = element('table');
+    for (const r of results) {
+      table.appendChild(element('tr', {}, [
+        element('td', {}, [element('strong', {}, [r.host])]),
+        element('td', {}, [badgeElement(r.reachable)]),
+        element('td', { className: 'mono' }, [r.avgMs != null ? r.avgMs + 'ms' : (r.loss != null ? '丢包 ' + r.loss + '%' : '—')])
+      ]));
+    }
+    card.replaceChildren(table);
+  } catch(e) { card.replaceChildren(element('span', { className: 'fail' }, ['错误'])); }
 }
 
 async function refreshAll() {

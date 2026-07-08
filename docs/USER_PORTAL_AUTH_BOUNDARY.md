@@ -296,8 +296,13 @@ external_identities
 
 Sensitive notes:
 
-- `encryptedTotpSecret` requires a server-side encryption key outside the
-  repository.
+- `encryptedTotpSecret` requires `USER_PORTAL_TOTP_SECRET_KEY`, a 32-byte
+  server-side key stored outside the repository. New repository-generated TOTP
+  credentials use a `v2:aes-256-gcm:*` protected value when that key is
+  configured.
+- legacy `enc:<base32>` TOTP records remain readable only for backward
+  compatibility; they are not an encrypted storage format and should not be
+  used for new production credentials.
 - dynamic entry tokens and recovery codes should be stored hash-only.
 - raw portal URLs, subscription URLs, tokens, credentials, provider secrets,
   customer PII, and handoff material must not be written to repository files or

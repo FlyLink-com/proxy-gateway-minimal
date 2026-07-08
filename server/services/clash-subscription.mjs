@@ -789,19 +789,14 @@ export function generateClashSubscription(proxyConfig, options = {}) {
 }
 
 export function subscriptionSummary({
-  proxyConfig,
-  host,
-  consolePort,
-  consoleToken
+  proxyConfig
 }) {
   const servers = clashServers(proxyConfig);
-  const token = encodeURIComponent(consoleToken);
 
   return {
     ok: true,
     profileName: "Proxy Gateway Local",
     serverCount: servers.length,
-    subscriptionUrl: `http://${host}:${consolePort}/sub/clash.yaml?token=${token}`,
     servers: servers.map((server) => ({
       name: server.name,
       host: server.host,

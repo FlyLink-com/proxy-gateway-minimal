@@ -7,7 +7,6 @@ import {
   subscriptionSummary
 } from "../services/clash-subscription.mjs";
 import {
-  bearerToken,
   createSubscriptionRouteResolver,
   publicBaseUrl
 } from "../services/subscriptions/subscription-route-resolver.mjs";
@@ -164,14 +163,6 @@ export function subscriptionRoutes(state) {
 
   router.get("/sub/clash.yaml", async (req, res) => {
     const token = typeof req.query.token === "string" ? req.query.token : "";
-    const bearer = bearerToken(req.get("authorization") || "");
-
-    if (token === state.consoleToken || bearer === state.consoleToken) {
-      res
-        .type("application/x-yaml; charset=utf-8")
-        .send(generateClashSubscription(state.proxyConfig));
-      return;
-    }
 
     if (!token) {
       res.status(401).json({ error: "Unauthorized" });
@@ -194,10 +185,7 @@ export function subscriptionRoutes(state) {
 
   router.get("/api/subscription/status", (_req, res) => {
     res.json(subscriptionSummary({
-      proxyConfig: state.proxyConfig,
-      host: state.host,
-      consolePort: state.ports.console,
-      consoleToken: state.consoleToken
+      proxyConfig: state.proxyConfig
     }));
   });
 

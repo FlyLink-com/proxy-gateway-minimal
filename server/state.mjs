@@ -20,7 +20,7 @@ import { createPortalAccessRequestService } from "./services/platform/portal-acc
 import { createPortalSupportRequestService } from "./services/platform/portal-support-requests.mjs";
 import { createPortalHumanChallengeService } from "./services/platform/portal-human-challenge.mjs";
 import { createPortalPasswordCredentialService } from "./services/platform/portal-password-credentials.mjs";
-import { createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
+import { createPortalTotpSecretProtector, createPortalTotpVerifier } from "./services/platform/portal-totp-verifier.mjs";
 import { createUserPortalAuthService } from "./services/platform/user-portal-auth.mjs";
 import { createHysteria2UsageCollector } from "./services/edge/hysteria2-usage-collector.mjs";
 import { createRuntimeUsageAccountingService } from "./services/platform/runtime-usage-accounting.mjs";
@@ -92,6 +92,18 @@ function runtimeValidationError(message) {
   const error = new Error(message);
   error.code = "validation_error";
   return error;
+}
+
+function createOptionalPortalTotpSecretProtector(value) {
+  const key = optionalEnvText(value);
+  if (!key) {
+    return null;
+  }
+  try {
+    return createPortalTotpSecretProtector({ key });
+  } catch (error) {
+    throw runtimeValidationError(`USER_PORTAL_TOTP_SECRET_KEY ${error.message}`);
+  }
 }
 
 function parseJsonArrayEnv(value, field) {
@@ -887,14 +899,18 @@ export function createRuntimeState(options = {}) {
       nowFn: options.userPortalNowFn
     }) : null
   );
+  const platformPortalTotpSecretProtector = options.userPortalTotpSecretProtector
+    || createOptionalPortalTotpSecretProtector(env.USER_PORTAL_TOTP_SECRET_KEY);
   const platformPortalTotpVerifier = options.userPortalTotpVerifier || createPortalTotpVerifier({
-    nowFn: options.userPortalNowFn
+    nowFn: options.userPortalNowFn,
+    secretProtector: platformPortalTotpSecretProtector
   });
   const platformUserPortalAuth = options.platformUserPortalAuth || (
     userPortalRoutesEnabled ? createUserPortalAuthService({
       controlStore: platformControlStore,
       nowFn: options.userPortalNowFn,
       totpVerifier: platformPortalTotpVerifier,
+      totpSecretProtector: platformPortalTotpSecretProtector,
       passwordCredentialService: platformPortalPasswordCredentialService,
       allowPasswordOnlySessionForSetup: envFlag(env.USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION)
     }) : null

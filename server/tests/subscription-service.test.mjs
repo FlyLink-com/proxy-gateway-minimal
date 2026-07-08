@@ -684,6 +684,43 @@ test("service creates visible-once opaque artifacts and resolves them to V2 outp
   });
 });
 
+test("service enforces opaque artifact IP prefix and user-agent binding after first refresh", async () => {
+  await withService(async (context) => {
+    await createActiveTenant(context);
+    context.service.createSubscriptionArtifact("tenant_1");
+
+    const first = context.service.resolveSubscriptionArtifact("opaque_device_secret", {
+      ip: "203.0.113.44",
+      userAgent: "Clash/Test"
+    });
+    assert.equal(first.ok, true);
+
+    const sameBinding = context.service.resolveSubscriptionArtifact("opaque_device_secret", {
+      ip: "203.0.113.99",
+      userAgent: "Clash/Test"
+    });
+    assert.equal(sameBinding.ok, true);
+
+    assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret", {
+      ip: "203.0.113.99",
+      userAgent: "curl/8.0"
+    }), {
+      ok: false,
+      status: 403,
+      error: "Subscription artifact binding mismatch"
+    });
+    assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret", {
+      ip: "198.51.100.10",
+      userAgent: "Clash/Test"
+    }), {
+      ok: false,
+      status: 403,
+      error: "Subscription artifact binding mismatch"
+    });
+    assert.equal(context.repository.listArtifactsByTenant("tenant_1")[0].refreshCount, 2);
+  });
+});
+
 test("service resolves per-order TUIC artifacts with tenant-bound credential material", async () => {
   await withService(async (context) => {
     await createActiveTenant(context, { nodeId: "channel-aliyun-a-tuic" });

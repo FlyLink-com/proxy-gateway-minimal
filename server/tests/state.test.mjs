@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { createRuntimeState } from "../state.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
+import { createPortalTotpSecretProtector } from "../services/platform/portal-totp-verifier.mjs";
 
 function fakeSubscriptionStore(overrides = {}) {
   return {
@@ -51,6 +52,8 @@ const VULTR_MULTICHANNEL_ENV = {
   SGP_XRAY_VLESS_REALITY_SHORT_ID: "synthetic-sgp-short-id",
   SGP_HY2_STATIC_PASSWORD: "synthetic-sgp-hy2-password",
 };
+const PORTAL_TOTP_PROTECTOR_KEY = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+const PORTAL_TOTP_PROTECTOR_IV = Buffer.from("000102030405060708090a0b", "hex");
 
 const EDGE_LIFECYCLE_TEST_NOW = "2026-06-10T00:00:00.000Z";
 
@@ -350,6 +353,26 @@ test("createRuntimeState parses hardening security environment", () => {
   }
 });
 
+test("createRuntimeState defaults admin and data-plane agent allowlists to loopback only", () => {
+  const state = createRuntimeState({
+    rootDir: new URL("../../", import.meta.url),
+    env: runtimeEnv({
+      CONSOLE_TOKEN: "secret"
+    }),
+    autoStartHttpProxy: false,
+    subscriptionDbPath: ":memory:"
+  });
+
+  try {
+    assert.deepEqual(state.security.adminAllowedCidrs, ["127.0.0.1", "::1"]);
+    assert.deepEqual(state.security.dataPlaneAgentAllowedCidrs, ["127.0.0.1", "::1"]);
+    assert.equal(state.security.adminAllowedCidrs.some((entry) => entry.includes("10.0.0.0/8")), false);
+    assert.equal(state.security.dataPlaneAgentAllowedCidrs.some((entry) => entry.includes("192.168.0.0/16")), false);
+  } finally {
+    state.close();
+  }
+});
+
 test("createRuntimeState wires env-gated user portal password login services", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-auth-wiring-"));
   const now = "2026-06-06T00:00:00.000Z";
@@ -462,6 +485,71 @@ test("createRuntimeState verifies TOTP second factor for portal password login",
     });
     assert.equal(completed.session.authMethod, "totp");
     assert.equal(completed.session.accountId, "acct_portal_totp_state_1");
+  } finally {
+    state?.close();
+    removeTempDir(dir);
+  }
+});
+
+test("createRuntimeState decrypts protected portal TOTP credentials from env key", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-portal-totp-protected-"));
+  const now = "2026-06-06T00:00:00.000Z";
+  const secretProtector = createPortalTotpSecretProtector({
+    key: Buffer.from(PORTAL_TOTP_PROTECTOR_KEY, "hex"),
+    ivFactory: () => PORTAL_TOTP_PROTECTOR_IV
+  });
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        USER_PORTAL_ROUTES_ENABLED: "true",
+        USER_PORTAL_ALLOW_PASSWORD_ONLY_SETUP_SESSION: "true",
+        USER_PORTAL_TOTP_SECRET_KEY: PORTAL_TOTP_PROTECTOR_KEY
+      }),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      userPortalNowFn: () => now,
+      autoStartHttpProxy: false
+    });
+
+    state.platform.controlStore.createAccount({
+      id: "acct_portal_protected_totp_state_1",
+      ownerRef: "portal_user_protected_totp_state_1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now
+    });
+    state.platform.portalPasswordCredentialService.issueInitialPasswordCredential({
+      accountId: "acct_portal_protected_totp_state_1",
+      plainPassword: "synthetic-password",
+      issuedByRef: "operator_safe_ref",
+      approvalRef: "approval_portal_protected_totp_state_1"
+    });
+    state.platform.controlStore.createPortalTotpCredential({
+      id: "totp_portal_protected_state_1",
+      accountId: "acct_portal_protected_totp_state_1",
+      encryptedTotpSecret: secretProtector.protect("JBSWY3DPEHPK3PXP"),
+      status: "active",
+      failureCount: 0,
+      enrolledAt: now,
+      updatedAt: now
+    });
+
+    const challenge = state.platform.userPortalAuth.verifyPasswordAndMaybeChallenge({
+      accountId: "acct_portal_protected_totp_state_1",
+      plainPassword: "synthetic-password"
+    });
+    const completed = state.platform.userPortalAuth.completeSecondFactor({
+      challengeRef: challenge.result.challengeRef,
+      factor: "totp",
+      code: "049557"
+    });
+
+    assert.equal(completed.session.authMethod, "totp");
+    assert.equal(completed.session.accountId, "acct_portal_protected_totp_state_1");
   } finally {
     state?.close();
     removeTempDir(dir);
