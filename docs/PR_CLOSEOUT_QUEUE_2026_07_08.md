@@ -23,9 +23,15 @@ were replaced by focused PRs from current `master`.
   route-split safe-read projections.
 - PR #401 merged the Admin owner page model DTOs for Operations Overview,
   Accounts & Resources, and Usage & Channels.
+- PR #403 merged Admin user-management control-store safe summaries and exposed
+  portal-registration accounts to Admin safe-read surfaces.
+- PR #404 merged the User Portal public preference switch for component-level
+  locale/theme controls.
+- PR #405 merged the Admin shell locale switch for the current three workspace
+  pages.
 - PR #381 was closed as a superseded traffic-usage carrier after #395 and #396.
 - PR #364 was closed as a superseded Admin/Portal carrier after #394 and #397.
-- Open PR count was rechecked as `0` after PR #401.
+- Open PR count was rechecked as `0` after PR #405.
 
 ## Merge Vehicle Rule
 
@@ -46,12 +52,13 @@ Each follow-up PR must state:
 1. **Admin UI baseline / safe-read shell**
    - Risk: B
    - Completed so far: PR #399 safe-read model/projection contracts, PR #400
-     table query-state contract, and PR #401 owner page model DTOs.
-   - Remaining: locale, navigation, visual QA, stable rendered shell pieces,
-     and any page wiring that can be validated without pulling unrelated auth,
-     payment, or runtime changes.
-   - Scope: Admin safe-read DTOs, locale, navigation, visual QA, and stable
-     shell pieces only.
+     table query-state contract, PR #401 owner page model DTOs, PR #403
+     user-management safe summaries, and PR #405 shell locale switch.
+   - Remaining: navigation, visual QA, stable rendered shell pieces, and any
+     page wiring that can be validated without pulling unrelated auth, payment,
+     or runtime changes.
+   - Scope: Admin safe-read DTOs, navigation, visual QA, and stable shell
+     pieces only.
    - Exclude: payment, Niuniu, protected Admin auth, runtime changes, and docs
      archive deletion.
    - Validation: `npm run admin:test`, `npm run admin:build`, `npm test`,
@@ -59,6 +66,9 @@ Each follow-up PR must state:
 
 2. **User Portal experience upgrades**
    - Risk: B
+   - Completed so far: PR #394 restored portal registration frontend/source
+     alignment, PR #397 restored registration backend wiring, and PR #404 added
+     the public preference component.
    - Scope: registration/user-panel UX improvements that build on #394 and
      #397.
    - Exclude: payment-provider activation, production static deploy, DNS,
