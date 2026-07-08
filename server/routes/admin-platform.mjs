@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Router } from "express";
 import { buildChannelLabTargetDecision } from "../services/channel-lab-target-decision.mjs";
 import { buildChannelRuntimeExecutionHandoff } from "../services/channel-runtime-execution-handoff.mjs";
@@ -34,6 +35,7 @@ function sendError(res, error) {
 }
 
 const BYTES_PER_GB = 1024 ** 3;
+const PUBLIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function optionalAdminText(value) {
   if (Array.isArray(value)) {
@@ -43,6 +45,50 @@ function optionalAdminText(value) {
     return "";
   }
   return value.trim();
+}
+
+function normalizeAdminSearch(value) {
+  return optionalAdminText(value).toLowerCase();
+}
+
+function normalizeAdminEmailSearch(value) {
+  const normalized = normalizeAdminSearch(value);
+  return normalized && PUBLIC_EMAIL_PATTERN.test(normalized) ? normalized : "";
+}
+
+function sha256Hex(value) {
+  return createHash("sha256").update(String(value)).digest("hex");
+}
+
+function searchContext(value) {
+  const text = normalizeAdminSearch(value);
+  const email = normalizeAdminEmailSearch(text);
+  return {
+    email,
+    emailDigest: email ? sha256Hex(email) : "",
+    text
+  };
+}
+
+function metadataDigestMatchesEmailSearch(metadata, context) {
+  if (!context?.emailDigest) {
+    return false;
+  }
+  return optionalAdminText(metadata.loginDigest) === context.emailDigest
+    || optionalAdminText(metadata.contactDigest) === context.emailDigest;
+}
+
+function summaryMatchesSearch(summary, context) {
+  if (!context.text) {
+    return true;
+  }
+  return [
+    summary.id,
+    summary.email,
+    summary.displayName,
+    summary.organization,
+    summary.status
+  ].some((value) => optionalAdminText(value).toLowerCase().includes(context.text));
 }
 
 function finiteNumber(value) {
@@ -110,10 +156,11 @@ function controlStoreEntitlementSummariesForAccount(controlStore, accountId, now
     .map((entitlement) => summaryForControlStoreEntitlement(entitlement, now));
 }
 
-function summaryForControlStoreAccount(controlStore, account, now) {
+function summaryForControlStoreAccount(controlStore, account, now, { search } = {}) {
   const metadata = account.metadata && typeof account.metadata === "object" ? account.metadata : {};
   const entitlements = controlStoreEntitlementSummariesForAccount(controlStore, account.id, now);
-  const loginRef = optionalAdminText(metadata.loginRef);
+  const matchedLoginRef = metadataDigestMatchesEmailSearch(metadata, search) ? search.email : "";
+  const loginRef = optionalAdminText(metadata.loginRef) || matchedLoginRef;
   const displayRef = optionalAdminText(metadata.displayRef);
   const displayName = displayRef
     || optionalAdminText(metadata.displayName)
@@ -152,22 +199,24 @@ function mergeAdminSummaryItems(shellItems, controlStoreItems) {
   return [...byId.values()].sort(compareAdminSummaryItems);
 }
 
-function listControlStoreAccountSummaries(controlStore, { status, now }) {
+function listControlStoreAccountSummaries(controlStore, { search, status, now }) {
   if (typeof controlStore?.listAccounts !== "function") {
     return [];
   }
 
   return controlStore
     .listAccounts(status ? { status } : {})
-    .map((account) => summaryForControlStoreAccount(controlStore, account, now));
+    .map((account) => summaryForControlStoreAccount(controlStore, account, now, { search }));
 }
 
-function listAdminAccountSummaries({ accountShell, controlStore, status, now }) {
+function listAdminAccountSummaries({ accountShell, controlStore, search, status, now }) {
+  const context = searchContext(search);
   const shellItems = typeof accountShell?.listAccounts === "function"
     ? accountShell.listAccounts(status ? { status } : {})
     : [];
-  const controlStoreItems = listControlStoreAccountSummaries(controlStore, { status, now });
-  return mergeAdminSummaryItems(shellItems, controlStoreItems);
+  const controlStoreItems = listControlStoreAccountSummaries(controlStore, { search: context, status, now });
+  return mergeAdminSummaryItems(shellItems, controlStoreItems)
+    .filter((summary) => summaryMatchesSearch(summary, context));
 }
 
 function listControlStoreEntitlementSummaries(controlStore, { accountId, now }) {
@@ -692,6 +741,7 @@ export function adminPlatformRoutes(state) {
         items: listAdminAccountSummaries({
           accountShell,
           controlStore,
+          search: optionalAdminText(req.query.search || req.query.q),
           status: optionalAdminText(req.query.status),
           now: new Date()
         })

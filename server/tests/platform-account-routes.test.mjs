@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import Database from "better-sqlite3";
 import { resolve } from "node:path";
@@ -55,6 +56,10 @@ function sampleLead() {
     stage: "pilot budget approved",
     message: "Need API sandbox access."
   };
+}
+
+function sha256Hex(value) {
+  return createHash("sha256").update(String(value)).digest("hex");
 }
 
 test("admin platform routes convert reviewed leads into account shells", async () => {
@@ -263,6 +268,74 @@ test("admin platform routes list portal registration accounts from control store
         createdAt: now,
         updatedAt: now
       }]);
+    } finally {
+      server.close();
+    }
+  } finally {
+    database.close();
+  }
+});
+
+test("admin platform account search resolves legacy digest-only portal accounts without listing digests", async () => {
+  const leadQueue = createPlatformLeadReviewQueue();
+  const accountShell = createPlatformAccountEntitlementShell();
+  const { database, store: controlStore } = createControlStoreFixture();
+  const now = "2026-07-08T10:00:00.000Z";
+  const legacyEmail = "legacy-user@example.test";
+  const legacyEmailDigest = sha256Hex(legacyEmail);
+
+  try {
+    controlStore.createAccount({
+      id: "acct_digest_only_1",
+      ownerRef: "acct_digest_only_1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        registrationSource: "self_service_portal",
+        contactDigest: legacyEmailDigest,
+        loginDigest: legacyEmailDigest,
+        displayDigest: "digest_should_not_be_listed"
+      }
+    });
+    controlStore.createEntitlement({
+      id: "ent_digest_only_trial_1",
+      accountId: "acct_digest_only_1",
+      plan: "trial",
+      status: "active",
+      validFrom: now,
+      validUntil: "2026-07-15T10:00:00.000Z",
+      maxArtifacts: 1,
+      maxDevices: 1,
+      trafficLimitBytes: 10 * 1024 ** 3,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const { server, baseUrl } = await listen(createApp(fakeState({ leadQueue, accountShell, controlStore })));
+    try {
+      const listed = await fetch(`${baseUrl}/api/admin/platform/accounts`, {
+        headers: authHeaders()
+      });
+      assert.equal(listed.status, 200);
+      const listedBody = await listed.json();
+      assert.equal(listedBody.items.length, 1);
+      assert.equal(listedBody.items[0].email, null);
+      assert.equal(listedBody.items[0].displayName, "acct_digest_only_1");
+      assert.equal(JSON.stringify(listedBody).includes(legacyEmail), false);
+      assert.equal(JSON.stringify(listedBody).includes(legacyEmailDigest), false);
+      assert.equal(JSON.stringify(listedBody).includes("digest_should_not_be_listed"), false);
+
+      const searched = await fetch(`${baseUrl}/api/admin/platform/accounts?search=LEGACY-USER%40EXAMPLE.TEST`, {
+        headers: authHeaders()
+      });
+      assert.equal(searched.status, 200);
+      const searchedBody = await searched.json();
+      assert.deepEqual(searchedBody.items.map((item) => item.id), ["acct_digest_only_1"]);
+      assert.equal(searchedBody.items[0].email, legacyEmail);
+      assert.equal(searchedBody.items[0].displayName, legacyEmail);
+      assert.equal(JSON.stringify(searchedBody).includes(legacyEmailDigest), false);
+      assert.equal(JSON.stringify(searchedBody).includes("digest_should_not_be_listed"), false);
     } finally {
       server.close();
     }

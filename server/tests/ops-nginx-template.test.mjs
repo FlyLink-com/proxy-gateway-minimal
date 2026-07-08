@@ -18,4 +18,11 @@ for (const relativePath of PUBLIC_NGINX_TEMPLATES) {
     assert.match(content, /server_name\s+sub\.gccwebos\.com\s+_;/);
     assert.doesNotMatch(content, /sub\.globalcirclecat\.com/);
   });
+
+  test(`${relativePath} rejects dotfile paths before static or artifact fallback`, () => {
+    const content = readFileSync(resolve(ROOT, relativePath), "utf8");
+
+    assert.equal(content.includes("location ~ (^|/)\\.(?!well-known(?:/|$)) {"), true);
+    assert.match(content, /location\s+\^~\s+\/sub\/a\/\.\s*\{\s*return 404;/s);
+  });
 }
