@@ -91,10 +91,14 @@ The 2026-07-08 source/production reconciliation is recorded in
 `docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md`. It records that current
 `master` contains the lightweight Deploy Note rule, Admin system-search
 structure, portal login/security fixes, AppsFlyer disabled/gate records,
-GCC WebOS static/domain closeouts, and local tooling hardening. It also records
-that PR #364 and PR #381 remain Draft/dirty reference carriers, not merge
-vehicles. Continue by re-cutting small portal source-alignment and traffic usage
-split PRs from current `master`; do not merge either carrier as-is.
+GCC WebOS static/domain closeouts, and local tooling hardening. The follow-up
+July 8 closeout is recorded in `docs/PR_CLOSEOUT_QUEUE_2026_07_08.md`: PR #394
+restored portal registration frontend/source alignment, PR #395 merged traffic
+usage runtime/source collectors, PR #396 archived traffic usage / SGP execution
+records, and PR #397 restored the portal registration backend. PR #364 and PR
+#381 are now closed superseded carrier branches, not merge vehicles. Continue
+remaining Admin UI, User Portal UX, payment/Niuniu, Admin protected auth, and
+docs/archive work by re-cutting focused PRs from latest `master`.
 
 The AWS staging node-image readiness validation is recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md`.
