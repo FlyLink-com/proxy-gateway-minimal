@@ -36,6 +36,7 @@ function sendError(res, error) {
 
 const BYTES_PER_GB = 1024 ** 3;
 const PUBLIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CONTROL_STORE_ENTITLEMENT_STATUSES = new Set(["active", "expired", "revoked", "suspended"]);
 
 function optionalAdminText(value) {
   if (Array.isArray(value)) {
@@ -94,6 +95,122 @@ function summaryMatchesSearch(summary, context) {
 function finiteNumber(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function adminPlatformError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function isoTimestamp(value, field, fallback) {
+  const raw = value ?? fallback;
+  const date = raw instanceof Date ? raw : new Date(raw);
+  if (Number.isNaN(date.getTime())) {
+    throw adminPlatformError("validation_error", `${field} must be a valid ISO timestamp`);
+  }
+  return date.toISOString();
+}
+
+function positiveInteger(value, field, fallback) {
+  const number = Number(value ?? fallback);
+  if (!Number.isInteger(number) || number < 1) {
+    throw adminPlatformError("validation_error", `${field} must be an integer >= 1`);
+  }
+  return number;
+}
+
+function nonNegativeInteger(value, field, fallback = 0) {
+  const number = Number(value ?? fallback);
+  if (!Number.isInteger(number) || number < 0) {
+    throw adminPlatformError("validation_error", `${field} must be an integer >= 0`);
+  }
+  return number;
+}
+
+function numericTrafficLimitBytes(payload = {}) {
+  const quota = payload.quota && typeof payload.quota === "object" ? payload.quota : {};
+  const explicitBytes = finiteNumber(payload.trafficLimitBytes ?? quota.trafficLimitBytes);
+  if (explicitBytes !== null) {
+    return nonNegativeInteger(explicitBytes, "trafficLimitBytes");
+  }
+
+  const trafficGb = finiteNumber(quota.trafficGb ?? payload.trafficGb);
+  if (trafficGb === null) {
+    return 0;
+  }
+  if (trafficGb < 0) {
+    throw adminPlatformError("validation_error", "quota.trafficGb must be >= 0");
+  }
+  return Math.round(trafficGb * BYTES_PER_GB);
+}
+
+function controlStoreEntitlementStatus(value) {
+  const normalized = optionalAdminText(value) || "active";
+  if (normalized === "disabled") {
+    return "revoked";
+  }
+  if (!CONTROL_STORE_ENTITLEMENT_STATUSES.has(normalized)) {
+    throw adminPlatformError("validation_error", "status is invalid");
+  }
+  return normalized;
+}
+
+function controlStoreEntitlementValidUntil(payload = {}, now) {
+  const explicit = optionalAdminText(payload.validUntil ?? payload.expiresAt);
+  if (explicit) {
+    return isoTimestamp(explicit, "validUntil");
+  }
+
+  const days = finiteNumber(payload.durationDays ?? payload.availableDays ?? payload.days);
+  if (days === null) {
+    throw adminPlatformError("validation_error", "validUntil or durationDays is required");
+  }
+  if (!Number.isFinite(days) || days < 1) {
+    throw adminPlatformError("validation_error", "durationDays must be >= 1");
+  }
+  return new Date(now.getTime() + Math.ceil(days) * 24 * 60 * 60 * 1000).toISOString();
+}
+
+function controlStoreEntitlementId(controlStore, accountId, now) {
+  const stamp = now.toISOString().replace(/\D/g, "").slice(0, 17);
+  const accountDigest = sha256Hex(accountId).slice(0, 12);
+  for (let sequence = 1; sequence <= 1000; sequence += 1) {
+    const id = `ent_admin_${stamp}_${accountDigest}_${sequence}`;
+    if (typeof controlStore?.getEntitlement !== "function" || !controlStore.getEntitlement(id)) {
+      return id;
+    }
+  }
+  throw adminPlatformError("validation_error", "entitlement id allocation failed");
+}
+
+function createControlStoreEntitlementSummary(controlStore, accountId, payload = {}, now) {
+  if (typeof controlStore?.getAccount !== "function" || typeof controlStore?.createEntitlement !== "function") {
+    return null;
+  }
+
+  const account = controlStore.getAccount(accountId);
+  if (!account) {
+    return null;
+  }
+
+  const quota = payload.quota && typeof payload.quota === "object" ? payload.quota : {};
+  const createdAt = now.toISOString();
+  const entitlement = controlStore.createEntitlement({
+    id: controlStoreEntitlementId(controlStore, account.id, now),
+    accountId: account.id,
+    plan: optionalAdminText(payload.plan) || "monthly",
+    status: controlStoreEntitlementStatus(payload.status),
+    validFrom: isoTimestamp(payload.validFrom, "validFrom", now),
+    validUntil: controlStoreEntitlementValidUntil(payload, now),
+    maxArtifacts: positiveInteger(payload.maxArtifacts ?? quota.artifacts, "maxArtifacts", 1),
+    maxDevices: positiveInteger(payload.maxDevices ?? quota.devices ?? quota.seats, "maxDevices", 1),
+    trafficLimitBytes: numericTrafficLimitBytes(payload),
+    createdAt,
+    updatedAt: createdAt
+  });
+
+  return summaryForControlStoreEntitlement(entitlement, now);
 }
 
 function controlStoreQuotaForEntitlement(entitlement) {
@@ -753,6 +870,17 @@ export function adminPlatformRoutes(state) {
 
   router.post("/api/admin/platform/accounts/:id/entitlements", (req, res) => {
     try {
+      const controlStoreEntitlement = createControlStoreEntitlementSummary(
+        controlStore,
+        optionalAdminText(req.params.id),
+        req.body ?? {},
+        new Date()
+      );
+      if (controlStoreEntitlement) {
+        res.status(201).json({ entitlement: controlStoreEntitlement });
+        return;
+      }
+
       const entitlement = accountShell.createEntitlement(req.params.id, req.body ?? {});
       res.status(201).json({ entitlement });
     } catch (error) {

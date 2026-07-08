@@ -276,6 +276,88 @@ test("admin platform routes list portal registration accounts from control store
   }
 });
 
+test("admin platform routes create control-store account entitlements", async () => {
+  const leadQueue = createPlatformLeadReviewQueue();
+  const accountShell = createPlatformAccountEntitlementShell();
+  const { database, store: controlStore } = createControlStoreFixture();
+  const now = "2026-07-08T10:00:00.000Z";
+  const validUntil = "2027-07-08T10:00:00.000Z";
+
+  try {
+    controlStore.createAccount({
+      id: "acct_registration_2",
+      ownerRef: "acct_registration_2",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        registrationSource: "self_service_portal",
+        loginRef: "control-user@example.test",
+        displayRef: "control-user@example.test"
+      }
+    });
+
+    const { server, baseUrl } = await listen(createApp(fakeState({ leadQueue, accountShell, controlStore })));
+    try {
+      const created = await fetch(`${baseUrl}/api/admin/platform/accounts/acct_registration_2/entitlements`, {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          plan: "yearly",
+          status: "active",
+          validUntil,
+          quota: { trafficGb: 200, seats: 3 }
+        })
+      });
+      assert.equal(created.status, 201);
+      const createdBody = await created.json();
+      assert.match(createdBody.entitlement.id, /^ent_admin_/);
+      assert.deepEqual({
+        ...createdBody.entitlement,
+        id: "ent_admin_test"
+      }, {
+        id: "ent_admin_test",
+        type: "platform_entitlement_summary",
+        accountId: "acct_registration_2",
+        status: "active",
+        plan: "yearly",
+        usable: true,
+        validUntil,
+        quota: {
+          devices: 3,
+          artifacts: 1,
+          trafficGb: 200,
+          trafficLimitBytes: 200 * 1024 ** 3
+        },
+        trafficLimitBytes: 200 * 1024 ** 3,
+        maxArtifacts: 1,
+        maxDevices: 3,
+        createdAt: createdBody.entitlement.createdAt,
+        updatedAt: createdBody.entitlement.updatedAt
+      });
+
+      const stored = controlStore.getEntitlement(createdBody.entitlement.id);
+      assert.equal(stored.accountId, "acct_registration_2");
+      assert.equal(stored.plan, "yearly");
+      assert.equal(stored.trafficLimitBytes, 200 * 1024 ** 3);
+
+      const listed = await fetch(`${baseUrl}/api/admin/platform/entitlements?accountId=acct_registration_2`, {
+        headers: authHeaders()
+      });
+      assert.equal(listed.status, 200);
+      const listedBody = await listed.json();
+      assert.deepEqual(listedBody.items.map((item) => item.id), [createdBody.entitlement.id]);
+    } finally {
+      server.close();
+    }
+  } finally {
+    database.close();
+  }
+});
+
 test("admin platform account search resolves legacy digest-only portal accounts without listing digests", async () => {
   const leadQueue = createPlatformLeadReviewQueue();
   const accountShell = createPlatformAccountEntitlementShell();
