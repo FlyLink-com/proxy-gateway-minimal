@@ -13,6 +13,7 @@ import { buildChannelSystemDecisionFlow } from "../services/channel-system-decis
 import { buildCleanEdgeReadinessSummary } from "../services/clean-edge-readiness-summary.mjs";
 import { createCleanStartControlPlanePackage } from "../services/platform/clean-start-control-plane.mjs";
 import { createAliyunGateDecisionPacket } from "../services/platform/aliyun-gate-decision-packet.mjs";
+import { createPlatformControlSummary } from "../services/platform/control-plane-contract.mjs";
 import { buildProvisioningFormPackage } from "../services/platform/provisioning-form.mjs";
 import { createPartnerAttributionAdminReport } from "../services/platform/partner-attribution-admin-report.mjs";
 import { previewSubscriptionIssuance, planSubscriptionIssuance } from "../services/platform/subscription-issuance.mjs";
@@ -30,6 +31,166 @@ function sendError(res, error) {
   }
 
   res.status(500).json({ error: "internal_error" });
+}
+
+const BYTES_PER_GB = 1024 ** 3;
+
+function optionalAdminText(value) {
+  if (Array.isArray(value)) {
+    return optionalAdminText(value[0]);
+  }
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim();
+}
+
+function finiteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function controlStoreQuotaForEntitlement(entitlement) {
+  const quota = {};
+  const maxArtifacts = finiteNumber(entitlement.maxArtifacts);
+  const maxDevices = finiteNumber(entitlement.maxDevices);
+  const trafficLimitBytes = finiteNumber(entitlement.trafficLimitBytes);
+
+  if (maxArtifacts !== null) {
+    quota.artifacts = maxArtifacts;
+  }
+  if (maxDevices !== null) {
+    quota.devices = maxDevices;
+  }
+  if (trafficLimitBytes !== null) {
+    quota.trafficLimitBytes = trafficLimitBytes;
+    if (trafficLimitBytes > 0) {
+      quota.trafficGb = trafficLimitBytes / BYTES_PER_GB;
+    }
+  }
+
+  return quota;
+}
+
+function summaryForControlStoreEntitlement(entitlement, now) {
+  const quota = controlStoreQuotaForEntitlement(entitlement);
+  const summary = createPlatformControlSummary({
+    entitlement: {
+      ...entitlement,
+      quota
+    },
+    now
+  }).entitlement;
+
+  return {
+    id: summary.id,
+    type: "platform_entitlement_summary",
+    accountId: entitlement.accountId,
+    status: summary.status,
+    plan: summary.plan,
+    usable: summary.usable,
+    validUntil: summary.validUntil,
+    quota,
+    trafficLimitBytes: entitlement.trafficLimitBytes,
+    maxArtifacts: entitlement.maxArtifacts,
+    maxDevices: entitlement.maxDevices,
+    createdAt: entitlement.createdAt,
+    updatedAt: entitlement.updatedAt
+  };
+}
+
+function controlStoreEntitlementSummariesForAccount(controlStore, accountId, now) {
+  if (typeof controlStore?.getAccountControlSummary !== "function") {
+    return [];
+  }
+
+  return controlStore
+    .getAccountControlSummary(accountId)
+    .entitlements
+    .map((entitlement) => summaryForControlStoreEntitlement(entitlement, now));
+}
+
+function summaryForControlStoreAccount(controlStore, account, now) {
+  const metadata = account.metadata && typeof account.metadata === "object" ? account.metadata : {};
+  const entitlements = controlStoreEntitlementSummariesForAccount(controlStore, account.id, now);
+  const loginRef = optionalAdminText(metadata.loginRef);
+  const displayRef = optionalAdminText(metadata.displayRef);
+  const displayName = displayRef
+    || optionalAdminText(metadata.displayName)
+    || loginRef
+    || optionalAdminText(account.ownerRef)
+    || account.id;
+
+  return {
+    id: account.id,
+    type: "platform_account_summary",
+    leadId: optionalAdminText(metadata.leadId) || null,
+    status: account.status,
+    organization: optionalAdminText(metadata.organization) || null,
+    email: loginRef || null,
+    displayName,
+    entitlementCount: entitlements.length,
+    usableEntitlementCount: entitlements.filter((entitlement) => entitlement.usable).length,
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt
+  };
+}
+
+function compareAdminSummaryItems(a, b) {
+  return String(a.createdAt || "").localeCompare(String(b.createdAt || ""))
+    || String(a.id || "").localeCompare(String(b.id || ""));
+}
+
+function mergeAdminSummaryItems(shellItems, controlStoreItems) {
+  const byId = new Map();
+  for (const item of shellItems) {
+    byId.set(item.id, item);
+  }
+  for (const item of controlStoreItems) {
+    byId.set(item.id, item);
+  }
+  return [...byId.values()].sort(compareAdminSummaryItems);
+}
+
+function listControlStoreAccountSummaries(controlStore, { status, now }) {
+  if (typeof controlStore?.listAccounts !== "function") {
+    return [];
+  }
+
+  return controlStore
+    .listAccounts(status ? { status } : {})
+    .map((account) => summaryForControlStoreAccount(controlStore, account, now));
+}
+
+function listAdminAccountSummaries({ accountShell, controlStore, status, now }) {
+  const shellItems = typeof accountShell?.listAccounts === "function"
+    ? accountShell.listAccounts(status ? { status } : {})
+    : [];
+  const controlStoreItems = listControlStoreAccountSummaries(controlStore, { status, now });
+  return mergeAdminSummaryItems(shellItems, controlStoreItems);
+}
+
+function listControlStoreEntitlementSummaries(controlStore, { accountId, now }) {
+  if (typeof controlStore?.listAccounts !== "function") {
+    return [];
+  }
+
+  if (accountId) {
+    const account = typeof controlStore.getAccount === "function" ? controlStore.getAccount(accountId) : null;
+    return account ? controlStoreEntitlementSummariesForAccount(controlStore, account.id, now) : [];
+  }
+
+  return controlStore
+    .listAccounts()
+    .flatMap((account) => controlStoreEntitlementSummariesForAccount(controlStore, account.id, now));
+}
+
+function listAdminEntitlementSummaries({ accountShell, controlStore, accountId, now }) {
+  const shellItems = typeof accountShell?.listEntitlements === "function"
+    ? accountShell.listEntitlements(accountId ? { accountId } : {})
+    : [];
+  const controlStoreItems = listControlStoreEntitlementSummaries(controlStore, { accountId, now });
+  return mergeAdminSummaryItems(shellItems, controlStoreItems);
 }
 
 function requireAliyunGateEvidenceShell(shell) {
@@ -527,7 +688,14 @@ export function adminPlatformRoutes(state) {
 
   router.get("/api/admin/platform/accounts", (req, res) => {
     try {
-      res.json({ items: accountShell.listAccounts({ status: req.query.status }) });
+      res.json({
+        items: listAdminAccountSummaries({
+          accountShell,
+          controlStore,
+          status: optionalAdminText(req.query.status),
+          now: new Date()
+        })
+      });
     } catch (error) {
       sendError(res, error);
     }
@@ -544,7 +712,14 @@ export function adminPlatformRoutes(state) {
 
   router.get("/api/admin/platform/accounts/:id/entitlements", (req, res) => {
     try {
-      res.json({ items: accountShell.listEntitlements({ accountId: req.params.id }) });
+      res.json({
+        items: listAdminEntitlementSummaries({
+          accountShell,
+          controlStore,
+          accountId: optionalAdminText(req.params.id),
+          now: new Date()
+        })
+      });
     } catch (error) {
       sendError(res, error);
     }
@@ -552,7 +727,14 @@ export function adminPlatformRoutes(state) {
 
   router.get("/api/admin/platform/entitlements", (req, res) => {
     try {
-      res.json({ items: accountShell.listEntitlements({ accountId: req.query.accountId }) });
+      res.json({
+        items: listAdminEntitlementSummaries({
+          accountShell,
+          controlStore,
+          accountId: optionalAdminText(req.query.accountId),
+          now: new Date()
+        })
+      });
     } catch (error) {
       sendError(res, error);
     }

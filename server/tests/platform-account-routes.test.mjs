@@ -1,22 +1,24 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import Database from "better-sqlite3";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "../app.mjs";
 import { createPlatformAccountEntitlementShell } from "../services/platform/account-entitlement-shell.mjs";
 import { createPlatformLeadReviewQueue } from "../services/platform/lead-review-queue.mjs";
+import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 import { listen } from "./helpers/listen.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 
-function fakeState({ leadQueue, accountShell }) {
+function fakeState({ leadQueue, accountShell, controlStore }) {
   return {
     rootDir: ROOT,
     host: "127.0.0.1",
     ports: { console: 3456, socks: 1080, httpProxy: 18180 },
     consoleToken: "secret",
     proxyConfig: { servers: [], pingHosts: [], nginx: { host: "127.0.0.1", ports: [] } },
-    platform: { leadQueue, accountShell },
+    platform: { leadQueue, accountShell, controlStore },
     services: {
       ssLocal: {
         start: async () => ({ ok: true }),
@@ -30,6 +32,14 @@ function fakeState({ leadQueue, accountShell }) {
       }
     },
     isPortListening: async () => false
+  };
+}
+
+function createControlStoreFixture() {
+  const database = new Database(":memory:");
+  return {
+    database,
+    store: createSqliteSubscriptionControlStore({ database })
   };
 }
 
@@ -166,5 +176,97 @@ test("admin platform routes create and list account entitlements", async () => {
     assert.deepEqual(body.items.map((item) => item.id), ["ent_1"]);
   } finally {
     server.close();
+  }
+});
+
+test("admin platform routes list portal registration accounts from control store", async () => {
+  const leadQueue = createPlatformLeadReviewQueue();
+  const accountShell = createPlatformAccountEntitlementShell();
+  const { database, store: controlStore } = createControlStoreFixture();
+  const now = "2026-07-08T10:00:00.000Z";
+  const validUntil = "2027-07-08T10:00:00.000Z";
+
+  try {
+    controlStore.createAccount({
+      id: "acct_registration_1",
+      ownerRef: "acct_registration_1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        registrationSource: "self_service_portal",
+        loginRef: "local-user@example.test",
+        displayRef: "local-user@example.test",
+        registrationSourceIpDigest: "digest_should_not_be_listed",
+        intentPlan: "trial"
+      }
+    });
+    controlStore.createEntitlement({
+      id: "ent_registration_trial_1",
+      accountId: "acct_registration_1",
+      plan: "trial",
+      status: "active",
+      validFrom: now,
+      validUntil,
+      maxArtifacts: 1,
+      maxDevices: 1,
+      trafficLimitBytes: 10 * 1024 ** 3,
+      createdAt: now,
+      updatedAt: now
+    });
+
+    const { server, baseUrl } = await listen(createApp(fakeState({ leadQueue, accountShell, controlStore })));
+    try {
+      const accounts = await fetch(`${baseUrl}/api/admin/platform/accounts`, {
+        headers: authHeaders()
+      });
+      assert.equal(accounts.status, 200);
+      const accountsBody = await accounts.json();
+      assert.equal(accountsBody.items.length, 1);
+      assert.deepEqual(accountsBody.items[0], {
+        id: "acct_registration_1",
+        type: "platform_account_summary",
+        leadId: null,
+        status: "active",
+        organization: null,
+        email: "local-user@example.test",
+        displayName: "local-user@example.test",
+        entitlementCount: 1,
+        usableEntitlementCount: 1,
+        createdAt: now,
+        updatedAt: now
+      });
+      assert.equal(JSON.stringify(accountsBody).includes("digest_should_not_be_listed"), false);
+
+      const entitlements = await fetch(`${baseUrl}/api/admin/platform/entitlements?accountId=acct_registration_1`, {
+        headers: authHeaders()
+      });
+      assert.equal(entitlements.status, 200);
+      const entitlementsBody = await entitlements.json();
+      assert.deepEqual(entitlementsBody.items, [{
+        id: "ent_registration_trial_1",
+        type: "platform_entitlement_summary",
+        accountId: "acct_registration_1",
+        status: "active",
+        plan: "trial",
+        usable: true,
+        validUntil,
+        quota: {
+          artifacts: 1,
+          devices: 1,
+          trafficGb: 10,
+          trafficLimitBytes: 10 * 1024 ** 3
+        },
+        trafficLimitBytes: 10 * 1024 ** 3,
+        maxArtifacts: 1,
+        maxDevices: 1,
+        createdAt: now,
+        updatedAt: now
+      }]);
+    } finally {
+      server.close();
+    }
+  } finally {
+    database.close();
   }
 });
