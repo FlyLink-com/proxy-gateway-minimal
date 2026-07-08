@@ -5,9 +5,9 @@ import {
   type AdminCapabilityContext
 } from "../../app/admin-app-manifest";
 import { ADMIN_SHELL_COPY, type AdminShellCopy } from "../../app/admin-locale";
-import { type AdminPage } from "../../app/navigation";
+import { navSections, type AdminPage } from "../../app/navigation";
 import { cn } from "../../lib/utils";
-import { PrivilegedGate, WorkspaceSidebar } from "../primitives";
+import { PrivilegedGate, WorkspaceSidebar, type WorkspaceSidebarPinnedRoute } from "../primitives";
 
 type AppSidebarProps = {
   activePage: AdminPage;
@@ -24,7 +24,7 @@ export function AppSidebar({
 }: AppSidebarProps) {
   const appMap = getCapabilityScopedAdminAppMap(capabilityContext);
 
-  const pinnedApps = appMap.workspacePages.map((app) => {
+  const toPinnedRoute = (app: (typeof appMap.workspacePages)[number]): WorkspaceSidebarPinnedRoute => {
     const Icon = app.icon;
     const page = app.route.page;
     return {
@@ -39,7 +39,20 @@ export function AppSidebar({
       },
       tone: app.tone
     };
-  });
+  };
+
+  const workspacePageByPage = new Map(appMap.workspacePages.map((app) => [app.route.page, app]));
+  const pinnedAppGroups = navSections.map((section) => ({
+    id: section.id,
+    label: shellCopy.groups[section.id] ?? section.label,
+    routeSuffix: shellCopy.routeSuffix,
+    items: section.items
+      .map((item) => workspacePageByPage.get(item.id))
+      .filter((app): app is (typeof appMap.workspacePages)[number] => app !== undefined)
+      .map(toPinnedRoute)
+  })).filter((group) => group.items.length > 0);
+
+  const pinnedApps = pinnedAppGroups.flatMap((group) => group.items);
 
   const plannedSidebarRoutes = appMap.plannedApps.map((app) => {
     const PlannedIcon = app.icon ?? Lock;
@@ -69,6 +82,7 @@ export function AppSidebar({
         name: "GlobalCircle AI",
         subtitle: shellCopy.brandSubtitle
       }}
+      pinnedAppGroups={pinnedAppGroups}
       pinnedApps={pinnedApps}
       plannedRoutes={plannedSidebarRoutes}
       safetyGate={(

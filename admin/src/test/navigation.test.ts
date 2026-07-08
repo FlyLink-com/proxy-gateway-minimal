@@ -225,6 +225,9 @@ describe("admin navigation", () => {
     expect(screen.queryByLabelText("Admin navigation")).toBeNull();
     const workspaceSidebar = screen.getByLabelText("Workspace sidebar");
     expect(within(workspaceSidebar).getByLabelText("Primary workspace routes")).not.toBeNull();
+    expect(within(workspaceSidebar).getByLabelText("Overview routes")).not.toBeNull();
+    expect(within(workspaceSidebar).getByLabelText("User Operations routes")).not.toBeNull();
+    expect(within(workspaceSidebar).getByLabelText("Platform Monitoring routes")).not.toBeNull();
     expect(within(workspaceSidebar).getByRole("button", { name: "Operations Overview" })).not.toBeNull();
     expect(within(workspaceSidebar).getByRole("button", { name: "Accounts & Resources" })).not.toBeNull();
     expect(within(workspaceSidebar).getByRole("button", { name: "Usage & Channels" })).not.toBeNull();

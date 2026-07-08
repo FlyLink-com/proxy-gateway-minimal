@@ -7,8 +7,10 @@ export type AdminShellCopy = {
   htmlLang: string;
   sidebar: {
     brandSubtitle: string;
+    groups: Record<string, string>;
     plannedGateAriaSuffix: string;
     plannedGateLabel: string;
+    routeSuffix: string;
     routes: Record<AdminPage, string>;
     safetyDescription: string;
     safetyDetail: string;
