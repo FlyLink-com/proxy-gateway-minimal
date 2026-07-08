@@ -19,6 +19,7 @@ import {
   type PortalHumanVerificationChallenge,
   type PortalPasskeyBinding,
   type PortalPasskeyExport,
+  type PortalRevealSubscriptionInput,
   type PortalRefreshSubscriptionInput,
   type PortalRegistrationEmailVerificationChallenge,
   type PortalRegistrationInput,
@@ -252,6 +253,25 @@ function portalClient(overrides: Partial<UserPortalClient> = {}): UserPortalClie
         noPaymentActivation: true,
         noPublicAdmin: true,
         noRawMessageReturned: true
+      }
+    })),
+    revealSubscription: vi.fn(async (input: PortalRevealSubscriptionInput): Promise<PortalSubscriptionRequest> => ({
+      status: "subscription_ready",
+      lifecycle: "active",
+      requestRef: input.requestRef,
+      userRef: input.userRef,
+      planId: "yearly",
+      clientTarget: "clash",
+      expiresAt: "2027-05-31T00:00:00.000Z",
+      subscriptionUrl: "https://sub.example.test/import/revealed-visible-once",
+      nextAction: "copy_subscription_url",
+      updatedAt: "2026-05-31T00:00:00.000Z",
+      safety: {
+        noAdminApi: true,
+        noDbMutation: true,
+        noPaymentActivation: true,
+        noPublicAdmin: true,
+        noRawCustomerDataReturned: true
       }
     })),
     refreshSubscription: vi.fn(async (input: PortalRefreshSubscriptionInput): Promise<PortalSubscriptionRequest> => ({
@@ -1180,6 +1200,46 @@ describe("user portal product surface", () => {
     } as never);
 
     expect(request.requestRef).toBe("pareq_trial_session_1");
+    expect(request.lifecycle).toBe("active");
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  test("http portal client reveals an active order subscription with the portal session", async () => {
+    const fetchFn = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe("/api/portal/access-requests/reveal");
+      expect(init?.method).toBe("POST");
+      expect(init?.headers).toMatchObject({
+        "X-Portal-Session": "portal_session_http_1"
+      });
+      expect(JSON.parse(String(init?.body))).toEqual({
+        portalUserRef: "user_safe_ref",
+        requestRef: "pareq_visible_once_1"
+      });
+      return new Response(JSON.stringify({
+        request: {
+          id: "pareq_visible_once_1",
+          portalUserRef: "user_safe_ref",
+          plan: "yearly",
+          clientTarget: "clash",
+          durationDays: 365,
+          quantity: 1,
+          status: "delivered",
+          subscriptionUrl: "https://sub.example.test/import/revealed-visible-once",
+          submittedAt: "2026-06-04T00:00:00.000Z",
+          updatedAt: "2026-06-04T00:00:00.000Z",
+          expiresAt: "2027-06-04T00:00:00.000Z"
+        }
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    const client = createHttpUserPortalClient({ fetchFn });
+
+    const request = await client.revealSubscription({
+      userRef: "user_safe_ref",
+      sessionRef: "portal_session_http_1",
+      requestRef: "pareq_visible_once_1"
+    });
+
+    expect(request.subscriptionUrl).toBe("https://sub.example.test/import/revealed-visible-once");
     expect(request.lifecycle).toBe("active");
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });

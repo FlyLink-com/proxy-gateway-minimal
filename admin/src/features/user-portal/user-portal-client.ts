@@ -221,6 +221,12 @@ export type PortalRefreshSubscriptionInput = {
   clientTarget: PortalClientId;
 };
 
+export type PortalRevealSubscriptionInput = {
+  userRef: string;
+  sessionRef?: string;
+  requestRef: string;
+};
+
 export type PortalDisableSubscriptionInput = {
   userRef: string;
   sessionRef?: string;
@@ -380,6 +386,7 @@ export type UserPortalClient = {
   exportPasskey(input: { userRef: string }): Promise<PortalPasskeyExport>;
   applyForSubscription(input: PortalApplySubscriptionInput): Promise<PortalSubscriptionRequest>;
   submitSupportRequest(input: PortalSupportRequestInput): Promise<PortalSupportRequest>;
+  revealSubscription(input: PortalRevealSubscriptionInput): Promise<PortalSubscriptionRequest>;
   refreshSubscription(input: PortalRefreshSubscriptionInput): Promise<PortalSubscriptionRequest>;
   disableSubscription(input: PortalDisableSubscriptionInput): Promise<PortalSubscriptionRequest>;
 };
@@ -1368,6 +1375,20 @@ export function createLocalUserPortalClient(options: LocalUserPortalClientOption
       };
     },
 
+    async revealSubscription(input) {
+      if (!input.userRef.trim() || !input.requestRef.trim()) {
+        throw portalError("用户会话无效。");
+      }
+
+      const existing = currentState(input.userRef);
+      const current = subscriptionRequestsFromState(existing).find((request) => request.requestRef === input.requestRef)
+        ?? existing.subscriptionRequest;
+      if (!current || current.requestRef !== input.requestRef || current.lifecycle !== "active" || !current.subscriptionUrl) {
+        throw portalError("当前订单尚未发放，无法显示订阅链接。");
+      }
+      return current;
+    },
+
     async refreshSubscription(input) {
       if (!input.userRef.trim() || !input.requestRef.trim()) {
         throw portalError("用户会话无效。");
@@ -1822,6 +1843,18 @@ export function createHttpUserPortalClient(options: HttpUserPortalClientOptions 
         })
       });
       return mapSupportRequest(body.request ?? {});
+    },
+
+    async revealSubscription(input) {
+      const body = await jsonRequest(fetchFn, endpoint(baseUrl, "/api/portal/access-requests/reveal"), {
+        method: "POST",
+        headers: portalSessionHeaders(input.sessionRef),
+        body: JSON.stringify({
+          portalUserRef: requiredText(input.userRef, "用户会话无效。"),
+          requestRef: requiredText(input.requestRef, "申请记录无效。")
+        })
+      });
+      return mapAccessRequest(body.request ?? {});
     },
 
     async refreshSubscription(input) {
