@@ -295,7 +295,8 @@ export function applyUserManagementSafeReadQuery<Row extends Pick<UserManagement
       row.displayName,
       row.plan,
       row.status,
-      row.risk
+      row.risk,
+      row.userId
     ].some((value) => value.toLowerCase().includes(search))) {
       return false;
     }

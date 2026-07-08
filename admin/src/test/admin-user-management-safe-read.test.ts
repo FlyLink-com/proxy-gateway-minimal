@@ -199,6 +199,30 @@ describe("admin user management safe-read adapter", () => {
     expect(JSON.stringify(config)).not.toMatch(/token|secret|password|credential|subscriptionUrl|sqlite|raw log/i);
   });
 
+  test("filters user rows by safe account ref when email is unavailable", () => {
+    const config = createUserManagementPageConfigFromAccountSummaries({
+      accounts: [
+        {
+          ...baseAccount,
+          displayName: "acct_digest_only_1",
+          email: null,
+          id: "acct_digest_only_1"
+        }
+      ],
+      query: {
+        search: "digest_only"
+      }
+    });
+
+    expect(config.pagination.displayTotalRows).toBe(1);
+    expect(config.rows[0]).toMatchObject({
+      displayName: "Email not available",
+      email: "Email not available",
+      userId: "acct_digest_only_1"
+    });
+    expect(findUserManagementSafeReadIssues(config)).toEqual([]);
+  });
+
   test("drops unsafe query text before filtering user rows", () => {
     const config = createUserManagementPageConfigFromAccountSummaries({
       accounts: [baseAccount],

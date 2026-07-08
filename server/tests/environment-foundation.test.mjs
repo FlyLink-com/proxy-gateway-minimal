@@ -86,6 +86,8 @@ test("public Nginx template exposes only health and subscription paths", () => {
   assert.match(nginx, /location = \/api\/health/);
   assert.match(nginx, /location = \/sub\/clash\.yaml/);
   assert.match(nginx, /location \^~ \/api\/admin\/\s*\{\s*return 404;/s);
+  assert.equal(nginx.includes("location ~ (^|/)\\.(?!well-known(?:/|$)) {"), true);
+  assert.match(nginx, /location \^~ \/sub\/a\/\.\s*\{\s*return 404;/s);
   assert.match(nginx, /location \/\s*\{\s*return 404;/s);
   assert.match(nginx, /\$request_method \$uri \$server_protocol/);
   assert.doesNotMatch(nginx, /\$request_uri/);
