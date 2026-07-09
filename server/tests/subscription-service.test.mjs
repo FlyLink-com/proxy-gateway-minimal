@@ -684,7 +684,7 @@ test("service creates visible-once opaque artifacts and resolves them to V2 outp
   });
 });
 
-test("service enforces opaque artifact IP prefix and user-agent binding after first refresh", async () => {
+test("service records opaque artifact IP prefix and user-agent binding without blocking refresh", async () => {
   await withService(async (context) => {
     await createActiveTenant(context);
     context.service.createSubscriptionArtifact("tenant_1");
@@ -694,6 +694,11 @@ test("service enforces opaque artifact IP prefix and user-agent binding after fi
       userAgent: "Clash/Test"
     });
     assert.equal(first.ok, true);
+    const firstArtifact = context.repository.findArtifactBySecretHash(
+      hashSubscriptionToken("opaque_device_secret")
+    );
+    assert.ok(firstArtifact.boundIpPrefixHash);
+    assert.ok(firstArtifact.boundUserAgentHash);
 
     const sameBinding = context.service.resolveSubscriptionArtifact("opaque_device_secret", {
       ip: "203.0.113.99",
@@ -701,23 +706,23 @@ test("service enforces opaque artifact IP prefix and user-agent binding after fi
     });
     assert.equal(sameBinding.ok, true);
 
-    assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret", {
+    const differentUserAgent = context.service.resolveSubscriptionArtifact("opaque_device_secret", {
       ip: "203.0.113.99",
       userAgent: "curl/8.0"
-    }), {
-      ok: false,
-      status: 403,
-      error: "Subscription artifact binding mismatch"
     });
-    assert.deepEqual(context.service.resolveSubscriptionArtifact("opaque_device_secret", {
+    assert.equal(differentUserAgent.ok, true);
+    const differentIpPrefix = context.service.resolveSubscriptionArtifact("opaque_device_secret", {
       ip: "198.51.100.10",
       userAgent: "Clash/Test"
-    }), {
-      ok: false,
-      status: 403,
-      error: "Subscription artifact binding mismatch"
     });
-    assert.equal(context.repository.listArtifactsByTenant("tenant_1")[0].refreshCount, 2);
+    assert.equal(differentIpPrefix.ok, true);
+
+    const finalArtifact = context.repository.findArtifactBySecretHash(
+      hashSubscriptionToken("opaque_device_secret")
+    );
+    assert.equal(finalArtifact.boundIpPrefixHash, firstArtifact.boundIpPrefixHash);
+    assert.equal(finalArtifact.boundUserAgentHash, firstArtifact.boundUserAgentHash);
+    assert.equal(context.repository.listArtifactsByTenant("tenant_1")[0].refreshCount, 4);
   });
 });
 
