@@ -83,16 +83,6 @@ export function createSubscriptionCore({
     };
   }
 
-  function artifactBindingMatches(artifact, binding) {
-    if (artifact.boundIpPrefixHash && artifact.boundIpPrefixHash !== binding.ipPrefixHash) {
-      return false;
-    }
-    if (artifact.boundUserAgentHash && artifact.boundUserAgentHash !== binding.userAgentHash) {
-      return false;
-    }
-    return true;
-  }
-
   const tenantCredentialMaterials = new Map();
 
   function requiredText(value, field) {
@@ -554,16 +544,12 @@ export function createSubscriptionCore({
       return { ok: false, status: 410, error: "Subscription artifact rotated" };
     }
 
-    const binding = artifactBindingFromMetadata(metadata);
-    if (!artifactBindingMatches(artifact, binding)) {
-      return { ok: false, status: 403, error: "Subscription artifact binding mismatch" };
-    }
-
     const result = resolveTenantAccess(artifact.tenant);
     if (!result.ok) {
       return result;
     }
 
+    const binding = artifactBindingFromMetadata(metadata);
     subscriptionStore.markArtifactRefreshed(artifact.id, {
       now: isoNow(nowFn),
       ipPrefixHash: binding.ipPrefixHash,
