@@ -24,10 +24,10 @@ const requiredPatterns = [
   /GCC WebOS/,
   /company-site-shell/,
   /gccwebos-public-site/,
-  /Secure private access for every device/,
+  /Secure access for every device/,
   /Tell us what you need/,
-  /Multiple payment methods supported/,
-  /Register for 7-day trial/
+  /Common payment options supported/,
+  /Start 7-day trial/
 ];
 
 const forbiddenPatterns = [
