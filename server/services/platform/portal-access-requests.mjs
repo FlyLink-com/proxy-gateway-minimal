@@ -12,6 +12,7 @@ const PLANS = {
 };
 const CLIENT_TARGETS = new Set(["clash", "karing"]);
 const SAFE_SUMMARY_EVENT_TYPES = new Set([
+  "delivery_generation_reissued",
   "old_link_invalidated",
   "subscription_disabled",
   "traffic_supply_suspended"
@@ -336,7 +337,7 @@ function safeDeliveryFor(record, event) {
     artifactPresent,
     runtimeMaterialPresent,
     ...(event?.type ? { lastEventType: event.type } : {}),
-    ...(event?.type === "old_link_invalidated" && event.occurredAt
+    ...((event?.type === "old_link_invalidated" || event?.type === "delivery_generation_reissued") && event.occurredAt
       ? { lastReissuedAt: event.occurredAt }
       : {})
   };
@@ -1120,13 +1121,9 @@ export function createPortalAccessRequestService(options = {}) {
         throw platformError("validation_error", "subscription artifact is not available");
       }
 
-      const rotateArtifact = requireRuntimeMethod("rotateSubscriptionArtifact");
-      const rotated = rotateArtifact(request.artifactId);
-      request.artifactId = text(rotated?.replacement?.id, "artifactId");
-      request.subscriptionUrl = text(rotated?.subscriptionUrl, "subscriptionUrl");
       request.clientTarget = normalizeClientTarget(input.clientTarget || request.clientTarget);
       request.event = {
-        type: "old_link_invalidated",
+        type: "delivery_generation_reissued",
         occurredAt: now
       };
       request.updatedAt = now;

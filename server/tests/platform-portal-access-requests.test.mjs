@@ -319,7 +319,7 @@ function materialBearingPortalRequest(overrides = {}) {
       edgeMaterialDigest: "safe-edge-material-digest"
     }],
     event: {
-      type: "old_link_invalidated",
+      type: "delivery_generation_reissued",
       occurredAt: "2026-06-08T00:01:00.000Z",
       deliveryLink: "safe-delivery-link",
       rawArtifactMaterial: "safe-raw-artifact-material"
@@ -379,7 +379,7 @@ function assertRoutineSummarySafe(summary) {
   ]);
   assert.equal(Object.hasOwn(summary, "subscriptionUrl"), false);
   assert.deepEqual(summary.event, {
-    type: "old_link_invalidated",
+    type: "delivery_generation_reissued",
     occurredAt: "2026-06-08T00:01:00.000Z"
   });
   assert.deepEqual(summary.delivery, {
@@ -387,7 +387,7 @@ function assertRoutineSummarySafe(summary) {
     state: "current",
     artifactPresent: true,
     runtimeMaterialPresent: true,
-    lastEventType: "old_link_invalidated",
+    lastEventType: "delivery_generation_reissued",
     lastReissuedAt: "2026-06-08T00:01:00.000Z"
   });
   assert.equal(summary.safety.noSubscriptionUrl, true);
@@ -1248,7 +1248,7 @@ test("deferred edge lifecycle returns delivered order before runtime reconciliat
   assert.doesNotMatch(JSON.stringify(reconciled), /uuid|password/i);
 });
 
-test("refresh replaces material for an already-delivered order and keeps expiry", () => {
+test("refresh reissues material for an already-delivered order while preserving the imported subscription URL", () => {
   const runtimeCore = lifecycleRuntimeCore();
   const requests = createPortalAccessRequestService({
     nowFn: () => NOW,
@@ -1274,16 +1274,17 @@ test("refresh replaces material for an already-delivered order and keeps expiry"
 
   assert.equal(refreshed.status, "delivered");
   assert.equal(refreshed.clientTarget, "karing");
-  assert.equal(refreshed.subscriptionUrl, "https://sub.example.test/import/refreshed-visible-once");
+  assert.equal(refreshed.subscriptionUrl, "https://sub.example.test/import/original-visible-once");
   assert.equal(refreshed.expiresAt, "2026-06-07T00:00:00.000Z");
   assert.equal(refreshed.validUntil, "2026-06-07T00:00:00.000Z");
-  assert.equal(refreshed.event.type, "old_link_invalidated");
+  assert.equal(refreshed.event.type, "delivery_generation_reissued");
   assert.equal(refreshed.delivery.model, "account_resource_delivery_generation");
   assert.equal(refreshed.delivery.state, "current");
   assert.equal(refreshed.delivery.artifactPresent, true);
   assert.equal(refreshed.delivery.runtimeMaterialPresent, false);
   assert.equal(refreshed.delivery.lastReissuedAt, NOW);
-  assert.deepEqual(runtimeCore.calls, [["rotateSubscriptionArtifact", "artifact_runtime_1"]]);
+  assert.equal(refreshed.artifactId, undefined);
+  assert.deepEqual(runtimeCore.calls, []);
   assert.equal(JSON.stringify(refreshed).includes("tenant_runtime_1"), false);
   assert.equal(JSON.stringify(refreshed).includes("artifact_runtime_1"), false);
 });
@@ -1335,7 +1336,6 @@ test("refresh rotates per-order edge material so cached client credentials stop 
   assert.notEqual(before.edgeMaterialDigest, after.edgeMaterialDigest);
   assert.deepEqual(runtimeCore.calls.map(([method]) => method), [
     "bindTenantCredentialMaterial",
-    "rotateSubscriptionArtifact",
     "bindTenantCredentialMaterial"
   ]);
   assert.deepEqual(runtimeCore.calls.map(([, input]) => input?.materialUuid).filter(Boolean), [
