@@ -35,7 +35,7 @@ Use this before making claims about:
 4. /api/admin source-IP allowlist middleware
 5. app-level Bearer auth middleware
 6. /api/status
-7. legacy proxy routes
+7. local proxy control compatibility routes, when enabled
 8. system proxy routes
 9. network routes
 10. admin subscription routes, when subscription runtime exists
@@ -110,18 +110,24 @@ Protected control routes include:
 /api/status
 /api/ss/*
 /api/http-proxy/*
-/api/proxy/*
+/api/proxy/start
+/api/proxy/stop
+/api/proxy/overview
 /api/system-proxy/*
 /api/env-proxy/*
 /api/autostart/*
 /api/network/*
-/api/proxy/servers
-/api/proxy/status
 /api/nginx/status
 /api/ping/:host
-/api/proxy/test
 /api/subscription/status
 ```
+
+`/api/ss/*`, `/api/http-proxy/*`, `/api/proxy/start`,
+`/api/proxy/stop`, and `/api/proxy/overview` are local proxy control
+compatibility routes owned by the local operator console. They can be disabled
+with `LOCAL_PROXY_CONTROL_ROUTES_ENABLED=false`. Diagnostic read routes
+`/api/proxy/servers`, `/api/proxy/status`, and `/api/proxy/test` are owned by
+`diagnosticsRoutes`.
 
 These routes rely on the app-level Bearer auth middleware and deployment
 boundaries. They are not public endpoints.

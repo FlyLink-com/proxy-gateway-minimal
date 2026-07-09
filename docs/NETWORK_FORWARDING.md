@@ -235,7 +235,9 @@ listener `127.0.0.1:1080`.
 - Console port, SOCKS5 port, and HTTP proxy port checks.
 - WinINet, user environment, and optional WinHTTP proxy checks.
 - Clash/Mihomo process, common port, and config conflict detection.
-- Daemon startup and proxy-stack startup through `/api/proxy/start`.
+- Daemon startup and proxy-stack startup through `/api/proxy/start`, which is a
+  local proxy control compatibility route and can be disabled with
+  `LOCAL_PROXY_CONTROL_ROUTES_ENABLED=false`.
 
 Current limitations to keep explicit:
 

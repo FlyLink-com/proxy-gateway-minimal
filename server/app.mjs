@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { createAdminAllowlistMiddleware } from "./middleware/admin-allowlist.mjs";
 import { createAuthMiddleware } from "./middleware/auth.mjs";
 import { createRateLimitMiddleware } from "./middleware/rate-limit.mjs";
-import { legacyProxyRoutes } from "./routes/legacy-proxy.mjs";
+import {
+  localProxyControlRoutes,
+  localProxyControlRoutesEnabled
+} from "./routes/local-proxy-control.mjs";
 import { statusRoutes } from "./routes/status.mjs";
 import { diagnosticsRoutes } from "./routes/diagnostics.mjs";
 import { systemProxyRoutes } from "./routes/system-proxy.mjs";
@@ -149,7 +152,9 @@ export function createApp(state, options = {}) {
     app.use(userPortalRoutes(state));
   }
   app.get("/api/status", statusRoutes(state));
-  app.use(legacyProxyRoutes(state));
+  if (localProxyControlRoutesEnabled(state)) {
+    app.use(localProxyControlRoutes(state));
+  }
   app.use(systemProxyRoutes(state));
   app.use(networkRoutes(state));
   if (state.subscriptions?.core || state.subscriptions?.service) {

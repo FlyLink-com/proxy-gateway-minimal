@@ -438,7 +438,7 @@ Prototype product path:
   server/tests/local-edge-*.mjs
 
 Network diagnostics / compatibility audit candidates:
-  server/routes/legacy-proxy.mjs
+  server/routes/local-proxy-control.mjs
   server/routes/network.mjs
   server/routes/system-proxy.mjs
   server/routes/diagnostics.mjs
