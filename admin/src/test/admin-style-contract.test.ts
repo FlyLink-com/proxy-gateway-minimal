@@ -536,6 +536,24 @@ describe("admin style token contract", () => {
     expect(styles).toMatch(/@media \(max-width: 768px\) \{[\s\S]*\.company-site-faq-grid\s*\{[\s\S]*grid-template-columns: 1fr;/m);
     expect(styles).toMatch(/@media \(max-width: 768px\) \{[\s\S]*\.company-site-footer\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/m);
     expect(styles).toMatch(/@media \(max-width: 768px\) \{[\s\S]*\.company-site-footer-links\s*\{[\s\S]*display: grid;[\s\S]*grid-template-columns: 1fr;/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-header\s*\{[\s\S]*min-height: 72px;[\s\S]*padding: 0 24px;[\s\S]*gap: 12px;/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-header:has\(\.company-site-nav\[data-mobile-menu-open="true"\]\)\s*\{[\s\S]*min-height: 278px;/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-section,[\s\S]*\.company-site-how\s*\{[\s\S]*padding: 56px 24px;/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-capabilities,[\s\S]*\.company-site-steps\s*\{[\s\S]*width: 100%;[\s\S]*grid-template-columns: minmax\(0, 1fr\);/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-plan-grid\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-payment-strip\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-dashboard\s*\{[\s\S]*max-width: 100%;[\s\S]*overflow: visible;/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-trust-strip\s*\{[\s\S]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-trust-item\s*\{[\s\S]*min-width: 0;[\s\S]*overflow-wrap: anywhere;/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-brand\s*\{[\s\S]*min-height: 44px;/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-language-switch button\s*\{[\s\S]*min-width: 36px;[\s\S]*min-height: 44px;/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-nav\s*\{[\s\S]*position: fixed;[\s\S]*top: 72px;/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-region-row a\s*\{[\s\S]*min-height: 36px;[\s\S]*display: inline-flex;/m);
+    expect(styles).toMatch(/@media \(max-width: 768px\) \{[\s\S]*\.company-site-footer-links a\s*\{[\s\S]*min-height: 36px;[\s\S]*display: flex;/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-info-facts dl > div\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);[\s\S]*gap: 4px;/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-info-facts dd\s*\{[\s\S]*text-align: left;/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-info-hero-grid\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/m);
+    expect(styles).toMatch(/@media \(max-width: 520px\) \{[\s\S]*\.company-site-info-cards,[\s\S]*\.company-site-info-section-list\s*\{[\s\S]*grid-template-columns: minmax\(0, 1fr\);/m);
 
     expect(faviconSvg).toContain("GCC WebOS secure access");
     expect(faviconSvg).toContain("<circle cx=\"32\" cy=\"32\"");

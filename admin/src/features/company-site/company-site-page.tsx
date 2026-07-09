@@ -101,13 +101,13 @@ const companySiteCopy = {
     actions: {
       register: "Register",
       signIn: "Sign in",
-      trial: "Register for 7-day trial",
+      trial: "Start 7-day trial",
       viewPlans: "View plans"
     },
     hero: {
       overline: "VPN & Secure Access",
-      title: "Secure private access for every device",
-      description: "GCC WebOS gives you a reliable, encrypted connection across all your devices - for individuals and small teams who need consistent, private network access.",
+      title: "Secure access for every device",
+      description: "GCC WebOS gives individuals and small teams a stable, encrypted connection that stays consistent across every device.",
       trust: ["No-log policy", "AES-256 encrypted", "30-day refund"]
     },
     dashboard: {
@@ -193,16 +193,16 @@ const companySiteCopy = {
     pricing: {
       eyebrow: "Pricing",
       title: "Simple, transparent plans",
-      description: "Approximate RMB pricing with monthly, annual, and multi-payment support.",
+      description: "Clear RMB pricing with monthly and annual choices plus common payment options.",
       billingAria: "Billing period",
       monthly: "Monthly",
       annual: "Annual",
       highlights: [
-        "Multiple payment methods supported",
-        "RMB monthly and annual options",
-        "Final payment is confirmed inside the account area"
+        "Common payment options supported",
+        "Monthly and annual choices",
+        "Final amount is confirmed before activation"
       ],
-      note: "Prices are displayed as approximate RMB equivalents. Registration includes a 7-day trial; final plan, payment channel, and activation status are confirmed in the account area.",
+      note: "Prices are shown as RMB estimates. Registration includes a 7-day trial; final plan, payment channel, and activation status are confirmed before activation.",
       plans: {
         monthly: [
           {
@@ -210,21 +210,21 @@ const companySiteCopy = {
             name: "Monthly Basic",
             price: "¥20",
             suffix: "/month",
-            description: "Approximate RMB monthly plan for personal secure access.",
-            cta: "Register for 7-day trial",
+            description: "For light use across everyday regions.",
+            cta: "Start 7-day trial",
             tone: "light",
-            features: ["Personal use", "Standard regions", "Multi-payment support", "Account-area activation"]
+            features: ["Personal use", "Everyday regions", "Multiple payment options", "Activate in your account"]
           },
           {
             value: "Monthly Plus",
             name: "Monthly Plus",
             price: "¥30",
             suffix: "/month",
-            description: "Approximate RMB monthly plan for higher usage and priority setup.",
-            cta: "Register for 7-day trial",
+            description: "For frequent use with more regions and devices.",
+            cta: "Start 7-day trial",
             badge: "Most popular",
             tone: "featured",
-            features: ["100 GB monthly traffic", "All available regions", "Multi-payment support", "Priority setup support"]
+            features: ["More devices", "All available regions", "Multiple payment options", "Priority support"]
           }
         ],
         annual: [
@@ -233,10 +233,10 @@ const companySiteCopy = {
             name: "Annual",
             price: "¥200",
             suffix: "/year",
-            description: "Approximate RMB annual plan for long-term use.",
-            cta: "Register for 7-day trial",
+            description: "Best value for long-term access.",
+            cta: "Start 7-day trial",
             tone: "dark",
-            features: ["Annual billing", "Best value", "Multi-payment support", "Renewal inside account area"]
+            features: ["Annual billing", "Best value", "Complete region access", "Priority support"]
           }
         ]
       } satisfies Record<BillingPeriod, Array<{
@@ -341,7 +341,7 @@ const companySiteCopy = {
       back: "Back to main site",
       dataSheet: "Data sheet",
       details: "Details",
-      primaryCta: "Register for 7-day trial",
+      primaryCta: "Start 7-day trial",
       quickFacts: "Quick facts",
       secondaryCta: "Send inquiry",
       updated: "June 30, 2026",
@@ -376,16 +376,16 @@ const companySiteCopy = {
       pricing: {
         eyebrow: "Pricing data sheet",
         title: "Pricing and payment overview",
-        description: "Public pricing is shown as approximate RMB equivalents. The exact plan, payment method, and activation status are confirmed after sign-in.",
+        description: "Public pricing is shown as RMB estimates. The exact plan, payment method, and activation status are confirmed before activation.",
         facts: [
           { label: "Monthly", value: "¥20 / ¥30 per month" },
           { label: "Annual", value: "¥200 per year" },
           { label: "Trial", value: "7 days after registration" }
         ],
         cards: [
-          { title: "Monthly Basic", description: "Approximate RMB 20/month for personal secure access and standard region use." },
-          { title: "Monthly Plus", description: "Approximate RMB 30/month for higher traffic usage, all available regions, and priority setup." },
-          { title: "Annual", description: "Approximate RMB 200/year for longer-term use and the best public-site value indication." }
+          { title: "Monthly Basic", description: "Around RMB 20/month for light use and everyday region access." },
+          { title: "Monthly Plus", description: "Around RMB 30/month for frequent use, more devices, and priority support." },
+          { title: "Annual", description: "Around RMB 200/year for long-term access with better overall value." }
         ],
         sections: [
           {
@@ -478,9 +478,9 @@ const companySiteCopy = {
         title: "Privacy Policy",
         description: "This page summarizes public-site data handling. The website collects inquiry details only and stores language preference locally in the browser.",
         facts: [
-          { label: "Public form", value: "Name/team, email, plan, region, use case" },
+          { label: "Public form", value: "Contact name, email, plan, region, use case" },
           { label: "Local storage", value: "Language preference only" },
-          { label: "Tracking", value: "No ad pixels in current code" }
+          { label: "Tracking", value: "No advertising tracking in use" }
         ],
         cards: [
           { title: "Inquiry data", description: "The contact form submits public access needs so support can review and follow up." },
@@ -494,7 +494,7 @@ const companySiteCopy = {
           },
           {
             title: "What the public site does not do",
-            items: ["It does not collect passwords", "It does not publish subscription URLs", "It does not intentionally load advertising trackers in the current implementation"]
+            items: ["It does not collect passwords", "It does not publish subscription URLs", "It does not use advertising tracking in the current implementation"]
           }
         ]
       },
@@ -624,13 +624,13 @@ const companySiteCopy = {
     actions: {
       register: "注册",
       signIn: "登录",
-      trial: "注册领取 7 天试用",
+      trial: "领取 7 天试用",
       viewPlans: "查看套餐"
     },
     hero: {
       overline: "VPN 与安全访问",
-      title: "安全私密访问，覆盖每一台设备",
-      description: "GCC WebOS 为个人和小团队提供稳定、加密的网络连接，帮助你在多设备间保持一致、安全、私密的访问体验。",
+      title: "安全连接，每台设备都可用",
+      description: "GCC WebOS 为个人和小团队提供稳定、加密的连接，让每台设备都能保持一致、安全、私密的访问体验。",
       trust: ["不记录访问活动", "AES-256 加密", "30 天退款支持"]
     },
     dashboard: {
@@ -716,16 +716,16 @@ const companySiteCopy = {
     pricing: {
       eyebrow: "价格",
       title: "清晰透明的套餐",
-      description: "人民币近似价格，支持月度、年度和多种支付方式。",
+      description: "人民币价格清晰展示，月付、年付和常用支付方式都可选择。",
       billingAria: "计费周期",
       monthly: "月度",
       annual: "年度",
       highlights: [
         "支持多种支付方式",
-        "人民币月付和年付选项",
-        "最终付款在账户区域内确认"
+        "月付和年付灵活选择",
+        "支付前确认最终金额"
       ],
-      note: "价格以人民币近似值展示。注册包含 7 天试用；最终套餐、支付渠道和激活状态会在账户区域内确认。",
+      note: "价格以人民币估算展示。注册包含 7 天试用；最终套餐、支付渠道和激活状态会在开通前确认。",
       plans: {
         monthly: [
           {
@@ -733,21 +733,21 @@ const companySiteCopy = {
             name: "月度基础",
             price: "¥20",
             suffix: "/月",
-            description: "适合个人安全访问的人民币月度近似套餐。",
-            cta: "注册领取 7 天试用",
+            description: "适合轻量使用，覆盖常用地区。",
+            cta: "领取 7 天试用",
             tone: "light",
-            features: ["个人使用", "标准区域", "多种支付支持", "账户区域激活"]
+            features: ["个人使用", "常用地区节点", "多种支付方式", "账户内完成开通"]
           },
           {
             value: "Monthly Plus",
             name: "月度会员",
             price: "¥30",
             suffix: "/月",
-            description: "适合更高用量和优先配置需求的人民币月度近似套餐。",
-            cta: "注册领取 7 天试用",
+            description: "适合高频使用，解锁更多地区和设备。",
+            cta: "领取 7 天试用",
             badge: "最受欢迎",
             tone: "featured",
-            features: ["更大设备容量", "所有可用区域", "多种支付支持", "优先配置支持"]
+            features: ["支持更多设备", "所有可用地区", "多种支付方式", "优先客服支持"]
           }
         ],
         annual: [
@@ -756,10 +756,10 @@ const companySiteCopy = {
             name: "年度套餐",
             price: "¥200",
             suffix: "/年",
-            description: "适合长期使用的人民币年度近似套餐。",
-            cta: "注册领取 7 天试用",
+            description: "长期使用更划算，包含完整节点与优先支持。",
+            cta: "领取 7 天试用",
             tone: "dark",
-            features: ["年度账单", "性价比最高", "多种支付支持", "账户区域内续订"]
+            features: ["年度订阅", "长期更划算", "完整地区访问", "优先客服支持"]
           }
         ]
       } satisfies Record<BillingPeriod, Array<{
@@ -864,7 +864,7 @@ const companySiteCopy = {
       back: "返回官网",
       dataSheet: "资料片",
       details: "详细说明",
-      primaryCta: "注册领取 7 天试用",
+      primaryCta: "领取 7 天试用",
       quickFacts: "关键信息",
       secondaryCta: "提交咨询",
       updated: "2026 年 6 月 30 日",
@@ -899,16 +899,16 @@ const companySiteCopy = {
       pricing: {
         eyebrow: "价格资料片",
         title: "价格与支付概览",
-        description: "公开价格以人民币近似值展示。最终套餐、支付方式和激活状态会在登录后确认。",
+        description: "公开价格以人民币估算展示。最终套餐、支付方式和激活状态会在开通前确认。",
         facts: [
           { label: "月付", value: "20 元 / 30 元每月" },
           { label: "年付", value: "200 元每年" },
           { label: "试用", value: "注册后 7 天" }
         ],
         cards: [
-          { title: "月度基础", description: "约人民币 20 元/月，适合个人安全访问和标准区域使用。" },
-          { title: "月度会员", description: "约人民币 30 元/月，适合更高用量、更大设备容量和优先配置。" },
-          { title: "年度套餐", description: "约人民币 200 元/年，适合长期使用，是公开展示中的高性价比选项。" }
+          { title: "月度基础", description: "约人民币 20 元/月，适合轻量使用和常用地区访问。" },
+          { title: "月度会员", description: "约人民币 30 元/月，适合更高频使用、更多设备和优先支持。" },
+          { title: "年度套餐", description: "约人民币 200 元/年，适合长期使用，整体更划算。" }
         ],
         sections: [
           {
@@ -1001,9 +1001,9 @@ const companySiteCopy = {
         title: "隐私政策",
         description: "此页面概述公开官网的数据处理方式。官网只收集咨询信息，并在浏览器本地保存语言偏好。",
         facts: [
-          { label: "公开表单", value: "姓名/团队、邮箱、计划、区域、用例" },
+          { label: "公开表单", value: "姓名、邮箱、计划、区域、使用需求" },
           { label: "本地存储", value: "仅语言偏好" },
-          { label: "追踪", value: "当前代码未接广告像素" }
+          { label: "追踪", value: "当前未使用广告追踪" }
         ],
         cards: [
           { title: "咨询信息", description: "联系表单提交公开访问需求，便于支持团队审核和跟进。" },
@@ -1017,7 +1017,7 @@ const companySiteCopy = {
           },
           {
             title: "公开官网不会做",
-            items: ["不收集密码", "不发布订阅地址", "当前实现不主动加载广告追踪脚本"]
+            items: ["不收集密码", "不发布订阅地址", "当前实现不使用广告追踪"]
           }
         ]
       },
@@ -1049,7 +1049,7 @@ const companySiteCopy = {
       help: {
         eyebrow: "支持资料片",
         title: "帮助中心",
-        description: "面向准备注册、开始试用或完成账户区域激活的访客整理常见支持主题。",
+        description: "面向准备注册、开始试用或完成账户开通的访客整理常见支持主题。",
         facts: [
           { label: "第一步", value: "注册或提交咨询" },
           { label: "试用", value: "注册后 7 天" },
@@ -1214,6 +1214,7 @@ export function CompanySitePage() {
   const [leadStatus, setLeadStatus] = useState<"idle" | "submitting" | "success" | "error">("idle");
   const [activeSection, setActiveSection] = useState<(typeof companySiteSectionIds)[number]>("top");
   const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>("monthly");
+  const [isMobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const [infoPageSlug, setInfoPageSlug] = useState<CompanySiteInfoPageSlug | null>(() => (
     readCompanySiteInfoPageSlugFromHash()
   ));
@@ -1292,6 +1293,7 @@ export function CompanySitePage() {
 
   function handleSiteAnchorClick(event: MouseEvent<HTMLAnchorElement>, sectionId: string) {
     event.preventDefault();
+    setMobileNavigationOpen(false);
     if (companySiteSectionIds.includes(sectionId as typeof activeSection)) {
       setActiveSection(sectionId as typeof activeSection);
     }
@@ -1307,12 +1309,14 @@ export function CompanySitePage() {
   }
 
   function handleLoginAction(event: MouseEvent<HTMLAnchorElement>) {
+    setMobileNavigationOpen(false);
     if (loginUrl.startsWith("#")) {
       handleSiteAnchorClick(event, loginUrl.slice(1));
     }
   }
 
   function handleRegisterAction(event: MouseEvent<HTMLAnchorElement>) {
+    setMobileNavigationOpen(false);
     if (registerUrl.startsWith("#")) {
       handleSiteAnchorClick(event, registerUrl.slice(1));
     }
@@ -1340,7 +1344,7 @@ export function CompanySitePage() {
 
   return (
     <main className="company-site-shell" data-active-section={activeSection} data-locale={locale}>
-      <header className="company-site-header">
+      <header className="company-site-header" data-mobile-menu-open={isMobileNavigationOpen}>
         <a
           className="company-site-brand"
           href="#top"
@@ -1352,7 +1356,12 @@ export function CompanySitePage() {
           </span>
           <strong>GCC WebOS</strong>
         </a>
-        <nav className="company-site-nav" aria-label={copy.aria.navigation}>
+        <nav
+          className="company-site-nav"
+          id="company-site-mobile-nav"
+          aria-label={copy.aria.navigation}
+          data-mobile-menu-open={isMobileNavigationOpen}
+        >
           <a href="#features" onClick={(event) => handleSiteAnchorClick(event, "features")}>
             {copy.nav.features}
           </a>
@@ -1394,7 +1403,14 @@ export function CompanySitePage() {
           >
             {copy.actions.signIn}
           </a>
-          <button className="company-site-menu-button" type="button" aria-label={copy.aria.openNavigation}>
+          <button
+            className="company-site-menu-button"
+            type="button"
+            aria-label={copy.aria.openNavigation}
+            aria-controls="company-site-mobile-nav"
+            aria-expanded={isMobileNavigationOpen}
+            onClick={() => setMobileNavigationOpen((isOpen) => !isOpen)}
+          >
             <Menu aria-hidden="true" />
           </button>
         </div>

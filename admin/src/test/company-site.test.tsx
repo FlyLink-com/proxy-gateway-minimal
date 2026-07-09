@@ -38,7 +38,7 @@ describe("company site route", () => {
     expect(document.documentElement.lang).toBe("en");
     expect(document.title).toBe("GCC WebOS - VPN Secure Access");
     expect(screen.getAllByText("GCC WebOS").length).toBeGreaterThan(1);
-    expect(screen.getByRole("heading", { name: "Secure private access for every device" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Secure access for every device" })).not.toBeNull();
     expect(screen.getByText("VPN & Secure Access")).not.toBeNull();
     expect(screen.getByText("GCC WebOS Dashboard")).not.toBeNull();
     expect(screen.getByText("Protocol: WireGuard")).not.toBeNull();
@@ -50,8 +50,8 @@ describe("company site route", () => {
     expect(screen.getByRole("heading", { name: "Common questions" })).not.toBeNull();
     expect(screen.getByRole("link", { name: "Register" }).getAttribute("href")).toBe(portalRegisterUrl);
     expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe(portalLoginUrl);
-    expect(screen.getAllByRole("link", { name: /Register for 7-day trial/ }).length).toBeGreaterThan(0);
-    screen.getAllByRole("link", { name: /Register for 7-day trial/ }).forEach((link) => {
+    expect(screen.getAllByRole("link", { name: /Start 7-day trial/ }).length).toBeGreaterThan(0);
+    screen.getAllByRole("link", { name: /Start 7-day trial/ }).forEach((link) => {
       expect(link.getAttribute("href")).toBe(portalRegisterUrl);
     });
 
@@ -64,7 +64,7 @@ describe("company site route", () => {
     expect(container.innerHTML).not.toMatch(
       /login-after-entry|subscriptionUrl|token=|entryRef|artifactRef|access-grants|#\/portal|\/use|\/api\/admin/
     );
-    expect(container.textContent).not.toMatch(/Telegram|TG|扫码注册|扫码进入|翻墙|绕过|突破封锁/);
+    expect(container.textContent).not.toMatch(/Telegram|TG|扫码注册|扫码进入|翻墙|绕过|突破封锁|Approximate RMB monthly plan|Account-area activation/);
     expect(container.innerHTML).not.toMatch(/t\.me|gcaltd0528|telegram/i);
   });
 
@@ -172,7 +172,7 @@ describe("company site route", () => {
     expect(screen.getByText("Monthly Plus")).not.toBeNull();
     expect(screen.queryByText("¥200")).toBeNull();
 
-    expect(screen.getByText("Multiple payment methods supported")).not.toBeNull();
+    expect(screen.getByText("Common payment options supported")).not.toBeNull();
 
     [
       "Does GCC WebOS log my activity?",
@@ -197,17 +197,20 @@ describe("company site route", () => {
 
     expect(document.documentElement.lang).toBe("zh-CN");
     expect(document.title).toBe("GCC WebOS - VPN 安全访问");
-    expect(screen.getByRole("heading", { name: "安全私密访问，覆盖每一台设备" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "安全连接，每台设备都可用" })).not.toBeNull();
     expect(screen.getByRole("link", { name: "注册" }).getAttribute("href")).toBe(portalRegisterUrl);
     expect(screen.getByRole("link", { name: "登录" }).getAttribute("href")).toBe(portalLoginUrl);
     expect(screen.getByText("帮助与解答")).not.toBeNull();
     expect(screen.getByRole("heading", { name: "常见问题" })).not.toBeNull();
-    expect(screen.getAllByRole("link", { name: /注册领取 7 天试用/ }).length).toBeGreaterThan(0);
-    screen.getAllByRole("link", { name: /注册领取 7 天试用/ }).forEach((link) => {
+    expect(screen.getAllByRole("link", { name: /领取 7 天试用/ }).length).toBeGreaterThan(0);
+    screen.getAllByRole("link", { name: /领取 7 天试用/ }).forEach((link) => {
       expect(link.getAttribute("href")).toBe(portalRegisterUrl);
     });
     expect(screen.getByText("支持多种支付方式")).not.toBeNull();
+    expect(screen.getByText("适合轻量使用，覆盖常用地区。")).not.toBeNull();
+    expect(screen.getByText("账户内完成开通")).not.toBeNull();
     expect(screen.getByLabelText("姓名或团队")).not.toBeNull();
+    expect(document.body.textContent).not.toMatch(/人民币月度近似套餐|账户区域激活|当前代码未接广告像素/);
 
     fireEvent.click(screen.getByRole("button", { name: "年度" }));
 
@@ -224,24 +227,24 @@ describe("company site route", () => {
 
     render(createElement(App));
 
-    expect(screen.getByRole("heading", { name: "Secure private access for every device" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Secure access for every device" })).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "中" }));
 
     expect(window.localStorage.getItem("gccwebos-site-locale")).toBe("zh");
     expect(document.documentElement.lang).toBe("zh-CN");
-    expect(screen.getByRole("heading", { name: "安全私密访问，覆盖每一台设备" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "安全连接，每台设备都可用" })).not.toBeNull();
 
     cleanup();
     window.location.hash = "#/site";
     render(createElement(App));
 
     expect(document.documentElement.lang).toBe("zh-CN");
-    expect(screen.getByRole("heading", { name: "安全私密访问，覆盖每一台设备" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "安全连接，每台设备都可用" })).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "EN" }));
     expect(window.localStorage.getItem("gccwebos-site-locale")).toBe("en");
     expect(document.documentElement.lang).toBe("en");
-    expect(screen.getByRole("heading", { name: "Secure private access for every device" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "Secure access for every device" })).not.toBeNull();
   });
 
   test("keeps the site hash route when scrolling through public site navigation", () => {
@@ -280,6 +283,40 @@ describe("company site route", () => {
     });
   });
 
+  test("toggles the compact mobile navigation and closes it after navigation", () => {
+    setBrowserLanguage("zh-CN");
+    window.location.hash = "#/site";
+
+    const { container } = render(createElement(App));
+    const header = container.querySelector(".company-site-header");
+    const siteNav = screen.getByRole("navigation", { name: "GCC WebOS 官网导航" });
+    const menuButton = screen.getByRole("button", { name: "打开导航" });
+
+    expect(header?.getAttribute("data-mobile-menu-open")).toBe("false");
+    expect(siteNav.getAttribute("data-mobile-menu-open")).toBe("false");
+    expect(menuButton.getAttribute("aria-expanded")).toBe("false");
+
+    fireEvent.click(menuButton);
+
+    expect(header?.getAttribute("data-mobile-menu-open")).toBe("true");
+    expect(siteNav.getAttribute("data-mobile-menu-open")).toBe("true");
+    expect(menuButton.getAttribute("aria-expanded")).toBe("true");
+
+    const pricingSection = container.querySelector("#pricing") as HTMLElement & {
+      scrollIntoView: (options?: ScrollIntoViewOptions) => void;
+    };
+    const scrollIntoView = vi.fn();
+    pricingSection.scrollIntoView = scrollIntoView;
+
+    fireEvent.click(within(siteNav).getByRole("link", { name: "价格" }));
+
+    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    expect(window.location.hash).toBe("#/site");
+    expect(header?.getAttribute("data-mobile-menu-open")).toBe("false");
+    expect(siteNav.getAttribute("data-mobile-menu-open")).toBe("false");
+    expect(menuButton.getAttribute("aria-expanded")).toBe("false");
+  });
+
   test("opens footer information sheets with localized public-only content", () => {
     setBrowserLanguage("zh-CN");
     window.location.hash = "#/site";
@@ -314,7 +351,7 @@ describe("company site route", () => {
     expect(document.title).toBe("隐私政策 - GCC WebOS");
     expect(screen.getByRole("heading", { name: "隐私政策" })).not.toBeNull();
     expect(screen.getByText("语言偏好")).not.toBeNull();
-    expect(screen.getByText("当前代码未接广告像素")).not.toBeNull();
+    expect(screen.getByText("当前未使用广告追踪")).not.toBeNull();
     expect(screen.getByRole("link", { name: "返回官网" })).not.toBeNull();
     expect(container.querySelector(".company-site-info-page")).not.toBeNull();
     expect(container.querySelectorAll(".company-site-info-card").length).toBe(3);
@@ -323,7 +360,7 @@ describe("company site route", () => {
     fireEvent.click(screen.getByRole("link", { name: "返回官网" }));
 
     expect(window.location.hash).toBe("#/site");
-    expect(screen.getByRole("heading", { name: "安全私密访问，覆盖每一台设备" })).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "安全连接，每台设备都可用" })).not.toBeNull();
   });
 
   test("does not embed Telegram signup, raw subscription, or bypass-positioning content", () => {
