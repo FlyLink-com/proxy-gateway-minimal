@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-07-08, America/Los_Angeles.
+Last updated: 2026-07-09, America/Los_Angeles.
 
 > Status:
 > - Type: Active current-state handoff
@@ -87,23 +87,18 @@ This file intentionally does not store an evergreen `master` SHA or open PR
 count. Run `git status`, `git rev-parse --short HEAD`, and `gh pr list` before
 making any new branch, GitHub, or production claim.
 
-The 2026-07-08 source/production reconciliation is recorded in
-`docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md`. It records that current
-`master` contains the lightweight Deploy Note rule, Admin system-search
-structure, portal login/security fixes, AppsFlyer disabled/gate records,
-GCC WebOS static/domain closeouts, and local tooling hardening. The follow-up
-July 8 closeout is recorded in `docs/PR_CLOSEOUT_QUEUE_2026_07_08.md`: PR #394
-restored portal registration frontend/source alignment, PR #395 merged traffic
-usage runtime/source collectors, PR #396 archived traffic usage / SGP execution
-records, PR #397 restored the portal registration backend, PR #399 merged the
-Admin safe-read projection/page-model contracts, PR #400 merged the Admin table
-query-state contract, PR #401 merged the Admin owner page model DTOs, PR #403
-merged Admin user-management control-store safe summaries, PR #404 merged the
-User Portal public preference switch, and PR #405 merged the Admin shell locale
-switch. PR #364 and PR #381 are now closed superseded carrier branches, not
-merge vehicles. Continue remaining Admin UI navigation/visual QA/rendered shell
-pieces, User Portal page UX, payment/Niuniu, Admin protected auth, and
-docs/archive work by re-cutting focused PRs from latest `master`.
+The July 8 source/production reconciliation remains audit evidence in
+`docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md` and
+`docs/PR_CLOSEOUT_QUEUE_2026_07_08.md`, but those files are no longer the
+current Git queue. The current Git/docs closeout index is
+`docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md`: `master` is at
+`a00830ea`, GitHub open PR count is `0`, remote heads contain only `master`,
+local stale worktrees/backup branches were removed, and PRs #413-#426 landed as
+focused follow-ups after the earlier #394-#405 closeout. PR #364 and PR #381
+remain closed superseded carrier branches, not merge vehicles. Continue
+remaining Admin UI shell/visual QA, User Portal UX, payment/Niuniu, Admin
+protected auth, and docs/archive work by re-cutting focused PRs from latest
+`master`.
 
 The AWS staging node-image readiness validation is recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md`.

@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-07-08",
+  "lastUpdated": "2026-07-09",
   "timezone": "America/Los_Angeles",
   "status": "active-snapshot-vultr-japan-control-plane-sgp-data-plane",
   "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
@@ -10,6 +10,7 @@
     "docs/PROJECT_CONTEXT.md",
     "docs/README.md",
     "docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md",
+    "docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md",
     "docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md",
     "docs/PR_CLOSEOUT_QUEUE_2026_07_08.md",
     "docs/BRANCH_AND_SERVICE_OPERATING_MODEL.md",
@@ -217,7 +218,7 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "stableBaselineCommit": "f03330bd",
+    "stableBaselineCommit": "a00830ea",
     "openPrCount": 0,
     "mergedPrsInCloseout": [
       367,
@@ -230,7 +231,27 @@
       394,
       395,
       396,
-      397
+      397,
+      399,
+      400,
+      401,
+      403,
+      404,
+      405,
+      413,
+      414,
+      415,
+      416,
+      417,
+      418,
+      419,
+      420,
+      421,
+      422,
+      423,
+      424,
+      425,
+      426
     ],
     "closedCarrierPrs": [
       364,
@@ -238,8 +259,8 @@
     ],
     "followOnBaseline": "master",
     "followOnBranchPolicy": "Start subsequent tasks from a clean master worktree unless a task explicitly states another baseline.",
-    "closeoutPlan": "docs/PR_CLOSEOUT_QUEUE_2026_07_08.md",
-    "note": "Branch context was rechecked after the 2026-07-08 PR closeout pass: origin/master is at f03330bd after PR #397 merged, and the open PR count was 0. PR #394 restored portal registration frontend/source alignment, PR #395 merged traffic usage runtime/source collectors, PR #396 archived traffic usage / SGP execution records, and PR #397 restored portal registration backend services/routes/runtime wiring/tests. PR #364 and PR #381 are closed superseded carrier branches. Always verify live Git status before new work."
+    "closeoutPlan": "docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md",
+    "note": "Branch context was rechecked during the 2026-07-09 Git/docs closeout: origin/master is at a00830ea after PR #426 and the mobile CTA deploy-record commit, GitHub open PR count is 0, remote heads contain only master, and stale local worktrees/backup branches were removed. PR #364 and PR #381 are closed superseded carrier branches. Always verify live Git status before new work."
   },
   "architectureView": {
     "currentMentalModel": "four-layer-single-control-plane-multi-data-plane",
@@ -268,7 +289,7 @@
       "old checkout paths and archive directories",
       "runtime-only residue copied from production hosts"
     ],
-    "branchAuthority": "origin/master at f03330bd is the follow-on development baseline after the 2026-07-08 PR closeout pass. PR #364 and PR #381 are closed superseded carrier branches and should not be reopened or merged as-is. Remaining useful work must be re-cut from latest master as focused PRs."
+    "branchAuthority": "origin/master at a00830ea is the follow-on development baseline after the 2026-07-09 Git/docs closeout. GitHub open PR count was 0 and remote heads contained only master during that closeout. PR #364 and PR #381 are closed superseded carrier branches and should not be reopened or merged as-is. Remaining useful work must be re-cut from latest master as focused PRs."
   },
   "productSpine": [
     "stable subscription/import experience",
@@ -287,9 +308,9 @@
     "Remote data-plane future-order coordination is coded in source: delivered orders record safe pending desired-state notifications for remote channels, and subscription rendering still requires a matching applied receipt before exposing those channels. Earlier 2026-06-11 gates found and corrected envfile, placeholder, source-deployment, and protected-material gaps through staged packages and rollback evidence. The 2026-06-14 closeout snapshot records the current Japan runtime baseline as control-plane-node-registration-closeout-20260614-001 and observes SGP agent/runtime service anchors active. Future-order SGP apply/render for new orders still needs a separately approved controlled smoke before broad rollout claims.",
     "Aliyun subscription-distribution records, channel-lab-a/b records, and Japan single-TUIC upgrade records are historical/fallback references. Do not reactivate them as current production authority or automatic issuance targets without a fresh Risk A gate and live verification.",
     "User Portal and Admin/Operator surfaces are adapters over shared domain services. User order creation, lifecycle status, refresh, usage monitor, and support flows must use durable backend state, not frontend Map/demo state.",
-    "The 2026-07-08 portal static recovery restored production frontend behavior from the ca9f5702 artifact line. Master now has the focused source recovery slices: PR #394 restored the portal registration frontend/source alignment and PR #397 restored the portal registration backend services, routes, runtime wiring, and tests. Do not treat closed PR #364 as source authority for remaining Admin UI, payment, protected auth, or archive work.",
+    "The 2026-07-08 portal static recovery restored production frontend behavior from the ca9f5702 artifact line. Master now has the focused source/runtime recovery slices: PR #394 restored portal registration frontend/source alignment, PR #397 restored registration backend wiring, PR #413 revealed active subscription links, PR #414 preserved the production portal static source baseline, PR #418/#419 stabilized the account delivery refresh lifecycle, and PR #425 protected refresh and credential fetches. Do not treat closed PR #364 as source authority for remaining Admin UI, payment, protected auth, or archive work.",
     "Order-owned traffic accounting remains an active implementation lane: Admin usage monitor, User Portal order summaries, Admin user-resource supervision, and Admin traffic/channel supervision now have repo-only UI/code paths for durable rollups, safe quota editing, platform channel health, anomaly queues, and order-ledger views. The New Admin surface is positioned around user accounts and their resources, not standalone subscription creation. Live runtime sample collection, quota enforcement, and auto-disable still require separate gates.",
-    "The 2026-07-08 traffic usage carrier has been split: PR #395 merged the repo-side runtime/source collectors and tests, and PR #396 archived the traffic usage / SGP execution records. Closed PR #381 is no longer a merge vehicle. Runtime config changes, service restarts, and live collector activation remain separate Risk A gates.",
+    "The 2026-07-08 traffic usage carrier has been split and superseded: PR #395 merged the repo-side runtime/source collectors and tests, PR #396 archived the traffic usage / SGP execution records, PR #416 exposed redacted collector startup status, PR #420 preserved metering runtime endpoints, PR #421 made empty Xray stats observable, and PR #422-#424 recorded the later deployment/traffic closeout notes. Closed PR #381 is no longer a merge vehicle. Runtime config changes, service restarts, and live collector activation remain separate Risk A gates.",
     "Admin OS is an active repo-only operator-console workstream and must not be reported as delivered from uncommitted Admin UI changes. Current active pages are Operations Overview, Accounts & Resources, and Usage & Channels; Audit & Cases, Platform Development, and System Settings remain locked/planned until real data sources, redaction boundaries, tests, and validation exist. Current Admin OS task-state has GCC-77 System Search safe discovery, GCC-78 workspace layout presets, and GCC-79 capability boundary matrix merged into master through PR #356, PR #357, and PR #358; GCC-74 app map, GCC-75 manifest authoring, and GCC-82 visual protocol remain docs/design-state references. The app metadata source of truth is admin/src/app/admin-app-manifest.ts. App Registry and YAML import are future design only and are not an implemented runtime registry, upload endpoint, schema migration, permission model, or publication flow.",
     "Legacy query-token retirement remains a separate Risk A lane after opaque artifact coverage, observation, endpoint compatibility checks, rollback evidence, and exact operator approval.",
     "All production/runtime/cloud changes remain Risk A: DNS, Nginx, provider firewall, systemd restarts, runtime config, live order creation, account/password generation, subscription URL/token/password output, and SQLite row dumps stay out of repo-only work."
@@ -376,7 +397,7 @@
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, validation evidence, and Agent / Task Routing metadata before it is marked Ready, submitted for merge, or reported complete. The routing metadata must name the lead agent, supporting agents if any, primary unit, secondary units, follow-up agent suitability, and recommended next owner. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
-    "githubHostedActions": "The 2026-07-08 PR closeout pass reports origin/master at f03330bd after PR #397 merged. PR #397 checks passed for Validate, Vercel, Vercel Preview Comments, and Workers Builds before merge. Recent workflow state should still be checked per PR/run; use local/manual validation when hosted workflows do not run.",
+    "githubHostedActions": "The 2026-07-09 Git/docs closeout reports origin/master at a00830ea, GitHub open PR count 0, and remote heads containing only master. Hosted workflow state should still be checked per future PR/run; use local/manual validation when hosted workflows do not run.",
     "manualCiFallback": "Use docs/VALIDATION_BASELINE.md and docs/CI_MANUAL_VALIDATION.md for the current manual validation path; historical HP/Aliyun manual CI facts are reference only.",
     "manualCiIsStaging": false,
     "cTierCommand": "git diff --check origin/master...HEAD",
@@ -400,8 +421,8 @@
     },
     {
       "id": "post-carrier-follow-up-pr-split-queue",
-      "summary": "PR #364 and PR #381 are closed superseded carrier branches after focused PRs #394, #395, #396, and #397 landed. Remaining Admin UI, User Portal UX, payment/Niuniu, Admin protected auth, and docs/archive reconciliation work must be re-cut from latest master as focused PRs with current validation and explicit non-goals.",
-      "sourceDoc": "docs/PR_CLOSEOUT_QUEUE_2026_07_08.md"
+      "summary": "PR #364 and PR #381 are closed superseded carrier branches after focused PRs #394-#397, #399-#405, and #413-#426 landed. The 2026-07-09 Git/docs closeout cleaned stale local worktrees, backup branches, and remote merged branch residue; remaining Admin UI, User Portal UX, payment/Niuniu, Admin protected auth, and docs/archive reconciliation work must be re-cut from latest master as focused PRs with current validation and explicit non-goals.",
+      "sourceDoc": "docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md"
     },
     {
       "id": "control-plane-node-registration-closeout",
@@ -445,9 +466,9 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Use docs/PR_CLOSEOUT_QUEUE_2026_07_08.md before continuing the post-carrier work. PR #364 and PR #381 are closed superseded carrier branches; do not reopen or merge them as-is.",
-    "Re-cut the remaining Admin UI baseline / safe-read shell from latest master as a focused B-tier PR. Keep payment, Niuniu, protected Admin auth, runtime changes, and docs/archive deletion out of that PR.",
-    "Re-cut User Portal UX improvements from latest master only after #394 and #397 are treated as the source baseline. Keep payment-provider activation, production static deploy, DNS, Nginx, credentials, tokens, and subscription material out of that PR.",
+    "Use docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md before deciding whether a stale branch, old worktree, or July 8 queue item still represents current Git state. PR #364 and PR #381 are closed superseded carrier branches; do not reopen or merge them as-is.",
+    "Re-cut the remaining Admin UI shell / visual QA work from latest master as a focused B-tier PR. Keep payment, Niuniu, protected Admin auth, runtime changes, and docs archive deletion out of that PR.",
+    "Re-cut User Portal UX improvements from latest master after treating #394, #397, #413, #414, #418, #419, and #425 as the current source baseline. Keep payment-provider activation, production static deploy, DNS, Nginx, credentials, tokens, and subscription material out of that PR.",
     "Split Niuniu/payment into repo-only source/test work first; live provider activation, webhook exposure, provider secrets, checkout activation, and payment notification production behavior remain separate Risk A gates.",
     "Split Admin protected auth into local source/tests first; public Admin exposure, Nginx changes, runtime env mutation, credential output, and production activation remain separate Risk A gates.",
     "Handle docs/archive reconciliation as C-tier indexing work only; do not bulk-delete production execution records or treat archived records as current live state.",
