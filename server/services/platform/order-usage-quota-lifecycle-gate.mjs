@@ -27,7 +27,28 @@ function quotaSummary(decision = {}) {
   };
 }
 
+function trafficSupplySummary(decision = {}) {
+  const source = decision.trafficSupply && typeof decision.trafficSupply === "object"
+    ? decision.trafficSupply
+    : {};
+  const status = text(source.status || (
+    decision.lifecycleAction === "traffic_supply_suspend_required"
+      ? "suspend_required"
+      : ""
+  ));
+  if (!status) {
+    return null;
+  }
+  return {
+    status,
+    scope: text(source.scope || "order_resource"),
+    reason: text(source.reason || "quota_exhausted"),
+    accountMutationRequired: source.accountMutationRequired === true
+  };
+}
+
 function baseResult(decision = {}) {
+  const trafficSupply = trafficSupplySummary(decision);
   return {
     type: "order_usage_quota_lifecycle_gate_result",
     requestRef: safeRef(decision.requestId),
@@ -37,11 +58,13 @@ function baseResult(decision = {}) {
     channelRef: safeRef(decision.channelRef),
     edgeCredentialRef: safeRef(decision.edgeCredentialRef),
     quota: quotaSummary(decision),
+    ...(trafficSupply ? { trafficSupply } : {}),
     safety: {
       noSubscriptionUrl: true,
       noRuntimeSecretMaterial: true,
       noRawRuntimePayload: true,
-      noDirectRuntimeMutation: true
+      noDirectRuntimeMutation: true,
+      noAccountDisable: true
     }
   };
 }
@@ -59,12 +82,27 @@ function summarizeOrder(order = {}) {
   };
 }
 
+function requiresTrafficSupplySuspend(decision = {}) {
+  return decision?.status === "over_quota_disable_required"
+    || decision?.lifecycleAction === "traffic_supply_suspend_required"
+    || decision?.trafficSupply?.status === "suspend_required";
+}
+
 export function createOrderUsageQuotaLifecycleGate({
   orderLifecycleService
 } = {}) {
-  if (!orderLifecycleService || typeof orderLifecycleService.disableSubscription !== "function") {
-    throw gateError("validation_error", "orderLifecycleService.disableSubscription is required");
+  if (
+    !orderLifecycleService
+    || (
+      typeof orderLifecycleService.suspendTrafficSupply !== "function"
+      && typeof orderLifecycleService.disableSubscription !== "function"
+    )
+  ) {
+    throw gateError("validation_error", "orderLifecycleService.suspendTrafficSupply is required");
   }
+  const suspendTrafficSupply = typeof orderLifecycleService.suspendTrafficSupply === "function"
+    ? orderLifecycleService.suspendTrafficSupply.bind(orderLifecycleService)
+    : orderLifecycleService.disableSubscription.bind(orderLifecycleService);
 
   function handleUsageDecision(decision = {}, options = {}) {
     const resultBase = baseResult(decision);
@@ -99,7 +137,7 @@ export function createOrderUsageQuotaLifecycleGate({
       };
     }
 
-    if (decision?.status !== "over_quota_disable_required") {
+    if (!requiresTrafficSupplySuspend(decision)) {
       return {
         ...resultBase,
         ok: true,
@@ -117,7 +155,7 @@ export function createOrderUsageQuotaLifecycleGate({
         portalUserRef,
         ok: false,
         status: "blocked",
-        nextAction: "resolve_order_owner_before_disable",
+        nextAction: "resolve_order_owner_before_traffic_supply_suspend",
         mutation: false,
         blockers: [
           {
@@ -127,22 +165,25 @@ export function createOrderUsageQuotaLifecycleGate({
       };
     }
 
-    if (options.executeControlledDisable !== true) {
+    const executeTrafficSupplySuspend = options.executeControlledTrafficSupplySuspend === true
+      || options.executeControlledDisable === true;
+    if (executeTrafficSupplySuspend !== true) {
       return {
         ...resultBase,
         portalUserRef,
         ok: true,
-        status: "controlled_disable_required",
-        nextAction: "request_controlled_disable_approval",
+        status: "controlled_traffic_supply_suspend_required",
+        nextAction: "request_controlled_traffic_supply_suspend_approval",
         mutation: false,
         execution: {
-          controlledDisableRequired: true,
-          controlledDisableExecuted: false
+          trafficSupplySuspendRequired: true,
+          trafficSupplySuspendExecuted: false,
+          accountMutationRequired: false
         }
       };
     }
 
-    const disabledOrder = orderLifecycleService.disableSubscription({
+    const suspendedOrder = suspendTrafficSupply({
       requestRef,
       portalUserRef,
       reviewedByRef: safeRef(options.reviewedByRef) || "usage_quota_gate"
@@ -152,14 +193,15 @@ export function createOrderUsageQuotaLifecycleGate({
       ...resultBase,
       portalUserRef,
       ok: true,
-      status: "controlled_disable_completed",
-      nextAction: "order_disabled_review_edge_lifecycle",
+      status: "controlled_traffic_supply_suspend_completed",
+      nextAction: "traffic_supply_suspended_review_edge_lifecycle",
       mutation: true,
       execution: {
-        controlledDisableRequired: true,
-        controlledDisableExecuted: true
+        trafficSupplySuspendRequired: true,
+        trafficSupplySuspendExecuted: true,
+        accountMutationRequired: false
       },
-      disabledOrder: summarizeOrder(disabledOrder)
+      suspendedOrder: summarizeOrder(suspendedOrder)
     };
   }
 

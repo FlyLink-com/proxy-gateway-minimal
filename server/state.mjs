@@ -34,6 +34,7 @@ import { createXrayVlessUsageCollector } from "./services/edge/xray-vless-usage-
 import { createXrayStatsCliUsageSnapshotReader } from "./services/edge/xray-stats-cli-usage-reader.mjs";
 import { createRuntimeUsageAccountingService } from "./services/platform/runtime-usage-accounting.mjs";
 import { createTrafficAccountingService } from "./services/platform/traffic-accounting.mjs";
+import { createOrderUsageQuotaLifecycleGate } from "./services/platform/order-usage-quota-lifecycle-gate.mjs";
 import { createFileBackedEdgeCredentialMaterialStore } from "./services/edge/credential-material-store.mjs";
 import {
   createOrderEdgeCredentialIssuer,
@@ -1287,6 +1288,13 @@ export function createRuntimeState(options = {}) {
     controlStore: platformControlStore,
     nowFn: options.trafficAccountingNowFn
   });
+  const orderUsageQuotaLifecycleGate = options.orderUsageQuotaLifecycleGate || (
+    platformPortalAccessRequests
+      ? createOrderUsageQuotaLifecycleGate({
+        orderLifecycleService: platformPortalAccessRequests
+      })
+      : null
+  );
   const edgeUsageCollectors = Array.isArray(options.edgeUsageCollectors)
     ? options.edgeUsageCollectors
     : createEnvEdgeUsageCollectors({
@@ -1302,7 +1310,8 @@ export function createRuntimeState(options = {}) {
     edgeUsageCollectors.length > 0
       ? createRuntimeUsageAccountingService({
         collectors: edgeUsageCollectors,
-        accounting: platformTrafficAccounting
+        accounting: platformTrafficAccounting,
+        trafficSupplyLifecycleGate: orderUsageQuotaLifecycleGate
       })
       : null
   );
@@ -1494,6 +1503,7 @@ export function createRuntimeState(options = {}) {
       edgeLifecycleService,
       edgeRuntimeAdapter,
       trafficAccounting: platformTrafficAccounting,
+      orderUsageQuotaLifecycleGate,
       edgeUsageCollectors,
       edgeUsageAccounting,
       dataPlaneHandoffQueue,

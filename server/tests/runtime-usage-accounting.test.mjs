@@ -117,3 +117,141 @@ test("runtime usage accounting isolates per-observation accounting failures with
   assert.equal(report.reports[0].recorded[1].ok, true);
   assert.doesNotMatch(JSON.stringify(report), /raw sqlite path|C:\/secret|control\.db/i);
 });
+
+test("runtime usage accounting blocks over-quota traffic supply suspension when lifecycle gate is missing", async () => {
+  const service = createRuntimeUsageAccountingService({
+    collectors: [
+      {
+        channelRef: "channel-good",
+        collect: async () => ({
+          ok: true,
+          status: "collected",
+          observations: [observation()],
+          nextAction: "record_usage_observations_with_control_plane_accounting"
+        })
+      }
+    ],
+    accounting: {
+      recordUsageObservation(input) {
+        return {
+          ok: true,
+          status: "over_quota_disable_required",
+          lifecycleAction: "traffic_supply_suspend_required",
+          trafficSupply: {
+            status: "suspend_required",
+            scope: "order_resource",
+            reason: "quota_exhausted",
+            accountMutationRequired: false
+          },
+          channelRef: input.channelRef,
+          edgeCredentialRef: input.edgeCredentialRef,
+          sampleInserted: true,
+          nextAction: "suspend_traffic_supply_through_controlled_gate"
+        };
+      }
+    }
+  });
+
+  const report = await service.collectAndRecord({ since: "2026-06-14T23:00:00.000Z" });
+
+  assert.equal(report.ok, false);
+  assert.equal(report.quotaDisableRequiredCount, 1);
+  assert.equal(report.trafficSupplySuspendRequiredCount, 1);
+  assert.equal(report.trafficSupplySuspendAttemptedCount, 0);
+  assert.equal(report.trafficSupplySuspendExecutedCount, 0);
+  assert.equal(report.trafficSupplySuspendFailedCount, 0);
+  assert.equal(report.trafficSupplySuspendPendingCount, 1);
+  assert.equal(report.execution.subscriptionMutationRequired, true);
+  assert.equal(report.execution.trafficSupplyMutationRequired, true);
+  assert.equal(report.execution.trafficSupplyMutationAttempted, false);
+  assert.equal(report.execution.trafficSupplyMutationExecuted, false);
+  assert.equal(report.execution.accountMutationRequired, false);
+  assert.equal(
+    report.reports[0].recorded[0].trafficSupplyLifecycle.status,
+    "traffic_supply_suspend_gate_missing"
+  );
+  assert.equal(report.reports[0].recorded[0].lifecycleAction, "traffic_supply_suspend_required");
+  assert.deepEqual(report.reports[0].recorded[0].trafficSupply, {
+    status: "suspend_required",
+    scope: "order_resource",
+    reason: "quota_exhausted",
+    accountMutationRequired: false
+  });
+  assert.doesNotMatch(JSON.stringify(report), /password|token|subscriptionUrl|rawConfig/i);
+});
+
+test("runtime usage accounting automatically suspends traffic supply at quota limit", async () => {
+  const lifecycleCalls = [];
+  const service = createRuntimeUsageAccountingService({
+    collectors: [
+      {
+        channelRef: "channel-good",
+        collect: async () => ({
+          ok: true,
+          status: "collected",
+          observations: [observation()],
+          nextAction: "record_usage_observations_with_control_plane_accounting"
+        })
+      }
+    ],
+    accounting: {
+      recordUsageObservation(input) {
+        return {
+          ok: true,
+          status: "over_quota_disable_required",
+          lifecycleAction: "traffic_supply_suspend_required",
+          trafficSupply: {
+            status: "suspend_required",
+            scope: "order_resource",
+            reason: "quota_exhausted",
+            accountMutationRequired: false
+          },
+          requestId: "pareq_good",
+          portalUserRef: "portal_user_good",
+          channelRef: input.channelRef,
+          edgeCredentialRef: input.edgeCredentialRef,
+          sampleInserted: true,
+          nextAction: "suspend_traffic_supply_through_controlled_gate"
+        };
+      }
+    },
+    trafficSupplyLifecycleGate: {
+      handleUsageDecision(decision, options) {
+        lifecycleCalls.push({ decision, options });
+        return {
+          ok: true,
+          status: "controlled_traffic_supply_suspend_completed",
+          mutation: true,
+          nextAction: "traffic_supply_suspended_review_edge_lifecycle",
+          execution: {
+            trafficSupplySuspendRequired: true,
+            trafficSupplySuspendExecuted: true,
+            accountMutationRequired: false
+          }
+        };
+      }
+    }
+  });
+
+  const report = await service.collectAndRecord({ since: "2026-06-14T23:00:00.000Z" });
+
+  assert.equal(report.ok, true);
+  assert.equal(report.trafficSupplySuspendRequiredCount, 1);
+  assert.equal(report.trafficSupplySuspendAttemptedCount, 1);
+  assert.equal(report.trafficSupplySuspendExecutedCount, 1);
+  assert.equal(report.trafficSupplySuspendFailedCount, 0);
+  assert.equal(report.trafficSupplySuspendPendingCount, 0);
+  assert.equal(report.execution.trafficSupplyMutationAttempted, true);
+  assert.equal(report.execution.trafficSupplyMutationExecuted, true);
+  assert.equal(report.execution.accountMutationRequired, false);
+  assert.equal(lifecycleCalls.length, 1);
+  assert.equal(lifecycleCalls[0].options.executeControlledTrafficSupplySuspend, true);
+  assert.equal(lifecycleCalls[0].options.reviewedByRef, "usage_quota_auto_gate");
+  assert.equal(
+    report.reports[0].recorded[0].trafficSupplyLifecycle.status,
+    "controlled_traffic_supply_suspend_completed"
+  );
+  assert.equal(report.reports[0].recorded[0].trafficSupplyLifecycle.mutation, true);
+  assert.equal(report.reports[0].recorded[0].trafficSupplyLifecycle.execution.accountMutationRequired, false);
+  assert.doesNotMatch(JSON.stringify(report), /password|token|subscriptionUrl|rawConfig/i);
+});

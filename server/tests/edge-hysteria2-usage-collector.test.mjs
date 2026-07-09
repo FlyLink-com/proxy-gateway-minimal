@@ -310,6 +310,9 @@ test("Hysteria2 usage accounting returns quota-disable decisions without direct 
     assert.equal(second.rollup.totalBytes, 1000);
     assert.equal(second.execution.directRuntimeMutationAllowed, false);
     assert.equal(second.execution.subscriptionMutationRequired, true);
-    assert.equal(second.nextAction, "disable_or_revoke_through_controlled_gate");
+    assert.equal(second.execution.trafficSupplyMutationRequired, true);
+    assert.equal(second.execution.accountMutationRequired, false);
+    assert.equal(second.lifecycleAction, "traffic_supply_suspend_required");
+    assert.equal(second.nextAction, "suspend_traffic_supply_through_controlled_gate");
   });
 });

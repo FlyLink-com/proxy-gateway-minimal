@@ -193,8 +193,17 @@ test("traffic accounting records usage by edge credential and returns quota deci
     assert.equal(over.status, "over_quota_disable_required");
     assert.equal(over.rollup.totalBytes, 1000);
     assert.equal(over.portalUserRef, "portal_user_usage_service_1");
-    assert.equal(over.nextAction, "disable_or_revoke_through_controlled_gate");
+    assert.equal(over.nextAction, "suspend_traffic_supply_through_controlled_gate");
+    assert.equal(over.lifecycleAction, "traffic_supply_suspend_required");
+    assert.deepEqual(over.trafficSupply, {
+      status: "suspend_required",
+      scope: "order_resource",
+      reason: "quota_exhausted",
+      accountMutationRequired: false
+    });
     assert.equal(over.execution.directRuntimeMutationAllowed, false);
+    assert.equal(over.execution.trafficSupplyMutationRequired, true);
+    assert.equal(over.execution.accountMutationRequired, false);
 
     const serialized = JSON.stringify({ first, duplicate, over });
     assert.doesNotMatch(serialized, /password|token|subscriptionUrl|rawConfig/i);

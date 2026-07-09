@@ -11,7 +11,11 @@ const PLANS = {
   yearly: { durationDays: 365, label: "yearly" }
 };
 const CLIENT_TARGETS = new Set(["clash", "karing"]);
-const SAFE_SUMMARY_EVENT_TYPES = new Set(["old_link_invalidated"]);
+const SAFE_SUMMARY_EVENT_TYPES = new Set([
+  "old_link_invalidated",
+  "subscription_disabled",
+  "traffic_supply_suspended"
+]);
 const SAFE_REASON_CODE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:-]{0,79}$/;
 const UNSAFE_REASON_CODE_PATTERN = /https?:|token|secret|credential|password|private|customer|@|\//i;
 
@@ -710,6 +714,35 @@ export function createPortalAccessRequestService(options = {}) {
     return request;
   }
 
+  function revokeDeliveredTrafficSupply(input = {}, {
+    nextAction,
+    eventType,
+    edgeReason
+  } = {}) {
+    const now = isoNow(nowFn);
+    const request = getOwnedDeliveredRecord(input);
+
+    if (request.artifactId) {
+      requireRuntimeMethod("revokeSubscriptionArtifact")(request.artifactId);
+    }
+    if (request.tenantId) {
+      requireRuntimeMethod("disableTenant")(request.tenantId);
+    }
+
+    request.status = "disabled";
+    request.nextAction = nextAction;
+    request.subscriptionUrl = null;
+    request.event = {
+      type: eventType,
+      occurredAt: now
+    };
+    request.updatedAt = now;
+    saveRecord(request);
+    recordEdgeLifecycleResult(request, notifyEdgeLifecycle(edgeReason, request));
+    notifyEdgeDesiredState(edgeReason, request);
+    return summarize(saveRecord(request));
+  }
+
   function hasPriorTrial(portalUserRef) {
     return listRecords({ portalUserRef, plan: "trial" }).some((request) =>
       request.portalUserRef === portalUserRef
@@ -1070,26 +1103,20 @@ export function createPortalAccessRequestService(options = {}) {
       return summarizeVisibleOnce(getOwnedDeliveredRecord(input));
     },
 
+    suspendTrafficSupply(input = {}) {
+      return revokeDeliveredTrafficSupply(input, {
+        nextAction: "traffic_supply_suspended_quota",
+        eventType: "traffic_supply_suspended",
+        edgeReason: "traffic_supply_suspended"
+      });
+    },
+
     disableSubscription(input = {}) {
-      const now = isoNow(nowFn);
-      const request = getOwnedDeliveredRecord(input);
-
-      if (request.artifactId) {
-        requireRuntimeMethod("revokeSubscriptionArtifact")(request.artifactId);
-      }
-      if (request.tenantId) {
-        requireRuntimeMethod("disableTenant")(request.tenantId);
-      }
-
-      request.status = "disabled";
-      request.nextAction = "subscription_disabled";
-      request.subscriptionUrl = null;
-      request.event = null;
-      request.updatedAt = now;
-      saveRecord(request);
-      recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_disabled", request));
-      notifyEdgeDesiredState("order_disabled", request);
-      return summarize(saveRecord(request));
+      return revokeDeliveredTrafficSupply(input, {
+        nextAction: "subscription_disabled",
+        eventType: "subscription_disabled",
+        edgeReason: "order_disabled"
+      });
     }
   };
 }

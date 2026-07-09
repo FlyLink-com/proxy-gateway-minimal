@@ -81,7 +81,14 @@ function quotaDecision({ binding, usage }) {
   if (usedBytes >= trafficLimitBytes) {
     return {
       status: "over_quota_disable_required",
-      nextAction: "disable_or_revoke_through_controlled_gate"
+      nextAction: "suspend_traffic_supply_through_controlled_gate",
+      lifecycleAction: "traffic_supply_suspend_required",
+      trafficSupply: {
+        status: "suspend_required",
+        scope: "order_resource",
+        reason: "quota_exhausted",
+        accountMutationRequired: false
+      }
     };
   }
   return {
@@ -185,8 +192,12 @@ export function createTrafficAccountingService({
       nextAction: decision.nextAction,
       execution: {
         directRuntimeMutationAllowed: false,
-        subscriptionMutationRequired: decision.status === "over_quota_disable_required"
+        subscriptionMutationRequired: decision.status === "over_quota_disable_required",
+        trafficSupplyMutationRequired: decision.status === "over_quota_disable_required",
+        accountMutationRequired: false
       },
+      lifecycleAction: decision.lifecycleAction,
+      trafficSupply: decision.trafficSupply,
       safety: {
         noRawRuntimePayload: true,
         noSecretMaterialReturned: true
