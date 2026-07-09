@@ -29,6 +29,7 @@ function redactedFailure(error) {
     type: "vless_xray_stats_usage_proof",
     ok: false,
     readyToEnableCollector: false,
+    idleNoUserTraffic: false,
     statsServerLoopbackOnly: false,
     collectorStatus: code,
     channelRef: "",
@@ -101,11 +102,16 @@ async function runVlessXrayStatsUsageProof(env = process.env) {
     store?.close();
   }
 
+  const idleNoUserTraffic = collected.ok === true
+    && text(collected.status) === "idle_no_user_traffic"
+    && observations.length === 0;
   const readyToEnableCollector = collected.ok === true && observations.length > 0;
+  const ok = readyToEnableCollector || idleNoUserTraffic;
   return {
     type: "vless_xray_stats_usage_proof",
-    ok: readyToEnableCollector,
+    ok,
     readyToEnableCollector,
+    idleNoUserTraffic,
     statsServerLoopbackOnly: true,
     collectorStatus: text(collected.status),
     channelRef,
@@ -116,7 +122,9 @@ async function runVlessXrayStatsUsageProof(env = process.env) {
     blockers,
     nextAction: readyToEnableCollector
       ? "request_operator_approval_to_enable_vless_usage_collector"
-      : "do_not_enable_vless_usage_collector_until_user_counters_exist",
+      : idleNoUserTraffic
+        ? "continue_usage_monitoring_until_user_counters_are_observed"
+        : "do_not_enable_vless_usage_collector_until_user_counters_exist",
     sensitiveOutputSuppressed: true
   };
 }

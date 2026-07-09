@@ -14,6 +14,20 @@ function safeText(value) {
   return String(value || "").trim();
 }
 
+function safeObservability(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const summary = {};
+  if (typeof value.statsApiReachable === "boolean") {
+    summary.statsApiReachable = value.statsApiReachable;
+  }
+  if (typeof value.userTrafficCountersObserved === "boolean") {
+    summary.userTrafficCountersObserved = value.userTrafficCountersObserved;
+  }
+  return Object.keys(summary).length > 0 ? summary : null;
+}
+
 export function hasOnlyUnresolvedBindingFailures(report) {
   const reports = Array.isArray(report?.reports) ? report.reports : [];
   if (report?.ok === true || Number(report?.unresolvedCount || 0) <= 0) {
@@ -40,6 +54,7 @@ export function summarizeUsageAccountingReport(report, {
     ok: report?.ok === true || unresolvedBindingTolerated,
     rawReportOk: report?.ok === true,
     collectorCount: Number(report?.collectorCount || 0),
+    idleCollectorCount: Number(report?.idleCollectorCount || 0),
     observationCount: Number(report?.observationCount || 0),
     recordedCount: Number(report?.recordedCount || 0),
     insertedCount: Number(report?.insertedCount || 0),
@@ -57,10 +72,12 @@ export function summarizeUsageAccountingReport(report, {
       channelRef: String(entry?.channelRef || "").trim(),
       collectorOk: entry?.collectorOk === true,
       collectorStatus: String(entry?.collectorStatus || "").trim(),
+      idle: entry?.idle === true,
       observationCount: Number(entry?.observationCount || 0),
       recordedCount: Number(entry?.recordedCount || 0),
       unresolvedCount: Number(entry?.unresolvedCount || 0),
       blockers: reportCodeList(entry?.blockers),
+      observability: safeObservability(entry?.observability),
       nextAction: String(entry?.nextAction || "").trim()
     })),
     nextAction: unresolvedBindingTolerated

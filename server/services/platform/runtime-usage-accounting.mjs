@@ -61,6 +61,21 @@ function trafficSupplyLifecycleMissingResult() {
   };
 }
 
+function safeCollectorObservability(result = {}) {
+  const value = result?.observability;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const safe = {};
+  if (typeof value.statsApiReachable === "boolean") {
+    safe.statsApiReachable = value.statsApiReachable;
+  }
+  if (typeof value.userTrafficCountersObserved === "boolean") {
+    safe.userTrafficCountersObserved = value.userTrafficCountersObserved;
+  }
+  return Object.keys(safe).length > 0 ? safe : null;
+}
+
 function normalizeCollectors(collectors = []) {
   return (Array.isArray(collectors) ? collectors : [])
     .map((collector) => ({
@@ -120,6 +135,7 @@ export function createRuntimeUsageAccountingService({
     let trafficSupplySuspendExecutedCount = 0;
     let trafficSupplySuspendFailedCount = 0;
     let trafficSupplySuspendPendingCount = 0;
+    let idleCollectorCount = 0;
 
     for (const { channelRef, collector } of normalizedCollectors) {
       let collected;
@@ -133,6 +149,12 @@ export function createRuntimeUsageAccountingService({
       const observations = Array.isArray(collected?.observations)
         ? collected.observations
         : [];
+      const collectorIdle = collected?.ok === true
+        && text(collected?.status) === "idle_no_user_traffic"
+        && observations.length === 0;
+      if (collectorIdle) {
+        idleCollectorCount += 1;
+      }
       const recorded = [];
       for (const observation of observations) {
         observationCount += 1;
@@ -198,10 +220,12 @@ export function createRuntimeUsageAccountingService({
         channelRef: channelRef || text(collected?.channelRef),
         collectorOk: collected?.ok === true,
         collectorStatus: text(collected?.status),
+        idle: collectorIdle,
         observationCount: observations.length,
         recordedCount: recorded.filter((item) => item.ok).length,
         unresolvedCount: recorded.filter((item) => !item.ok).length,
         blockers: blockerCodes(collected),
+        observability: safeCollectorObservability(collected),
         recorded,
         nextAction: collected?.nextAction
       });
@@ -214,6 +238,7 @@ export function createRuntimeUsageAccountingService({
       type: "gccgw_runtime_usage_accounting_report",
       ok,
       collectorCount: normalizedCollectors.length,
+      idleCollectorCount,
       observationCount,
       recordedCount,
       insertedCount,
