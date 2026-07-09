@@ -489,8 +489,8 @@ test("enabled portal route refreshes and disables a delivered order lifecycle", 
     assert.equal(refreshedBody.request.status, "delivered");
     assert.equal(refreshedBody.request.clientTarget, "karing");
     assert.equal(refreshedBody.request.expiresAt, "2026-06-07T00:00:00.000Z");
-    assert.equal(refreshedBody.request.subscriptionUrl, "https://sub.example.test/import/refreshed-visible-once");
-    assert.equal(refreshedBody.request.event.type, "old_link_invalidated");
+    assert.equal(refreshedBody.request.subscriptionUrl, "https://sub.example.test/import/original-visible-once");
+    assert.equal(refreshedBody.request.event.type, "delivery_generation_reissued");
     assert.equal(JSON.stringify(refreshedBody).includes("tenant_route_1"), false);
     assert.equal(JSON.stringify(refreshedBody).includes("artifact_route_1"), false);
 
@@ -508,8 +508,7 @@ test("enabled portal route refreshes and disables a delivered order lifecycle", 
     assert.equal(disabledBody.request.nextAction, "subscription_disabled");
     assert.equal(Object.hasOwn(disabledBody.request, "subscriptionUrl"), false);
     assert.deepEqual(calls, [
-      ["rotateSubscriptionArtifact", "artifact_route_1"],
-      ["revokeSubscriptionArtifact", "artifact_route_2"],
+      ["revokeSubscriptionArtifact", "artifact_route_1"],
       ["disableTenant", "tenant_route_1"]
     ]);
   } finally {

@@ -41,17 +41,22 @@ delivery generation changes.
 
 Customer portal "refresh" means reissue the current delivery generation.
 
-It must not mean "keep every old client configuration alive." A reissue keeps
-the account/order/entitlement stable while replacing the delivery material:
+It must not mean "make the customer import a different subscription URL for
+normal account refresh." A reissue keeps the account/order/entitlement and the
+active opaque artifact URL stable while replacing the delivery material:
 
-- rotate the active opaque artifact so old artifact routes fail closed;
-- issue a new visible-once subscription URL for the current generation;
+- keep the already-imported opaque artifact URL refreshable;
+- render the same artifact URL against the current delivery generation;
 - rotate protected runtime material for the same order-owned
   `edgeCredentialRef`;
 - keep usage accounting anchored to the same account/order/resource;
 - notify edge lifecycle / desired-state paths so runtime apply receipts can
   prove the new generation is active;
 - expose only safe lifecycle metadata to Portal/Admin readers.
+
+Artifact rotation remains available for leakage, abuse, device rebind, or
+operator-controlled revocation. It is no longer the default customer portal
+refresh behavior.
 
 The current safe read model exposes this as:
 
@@ -100,7 +105,7 @@ decision on the resource supply, not an account disable action.
 Repository validation for this model should include:
 
 ```powershell
-node --test server/tests/platform-portal-access-requests.test.mjs server/tests/edge-order-credential-issuer.test.mjs server/tests/admin-subscriptions.test.mjs --test-name-pattern "delivery|refresh|rotated opaque artifact|force-rotate"
+node --test server/tests/platform-portal-access-requests.test.mjs server/tests/edge-order-credential-issuer.test.mjs server/tests/admin-subscriptions.test.mjs --test-name-pattern "delivery|refresh|stable subscription URL|force-rotate"
 npm test
 git diff --check
 ```

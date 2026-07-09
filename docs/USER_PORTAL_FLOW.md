@@ -143,12 +143,12 @@ none
 | --- | --- | --- | --- | --- |
 | `none` | Not opened / 未开通 | Apply / 申请开通 | None / 无 | User chooses trial/monthly/yearly package and client target only. |
 | `pending` | Waiting for authorization / 等待授权 | Waiting / 等待授权中 | Pending authorization / 待授权 | Order requests wait for reviewed delivery or later order-management handling. No fixed expiry or subscription material should be shown before issuance. |
-| `active` | Service active / 服务生效中 | Order row actions / 订单行操作 | Concrete expiry date | Active means the order has already been issued by a reviewed delivery path. Refresh reissues the current delivery generation, invalidates the previous artifact/configuration, and does not change the package period. |
+| `active` | Service active / 服务生效中 | Order row actions / 订单行操作 | Concrete expiry date | Active means the order has already been issued by a reviewed delivery path. Refresh reissues the current delivery generation, keeps the imported subscription URL stable, invalidates previous runtime material/configuration, and does not change the package period. |
 | `disabled` | Disabled / 已禁用 | Re-apply / 重新申请 | Disabled / 已禁用 | User-disabled records remain auditable and are not physically deleted. |
 | `expired` | Expired / 已过期 | Re-apply / 重新申请开通 | Expired date | User returns to package application flow. |
 
-Old-link invalidation is an event, not a lifecycle state. It should appear as an
-inline event note after refresh, not as a permanent navigation/status item.
+Delivery generation reissue is an event, not a lifecycle state. It should appear
+as an inline event note after refresh, not as a permanent navigation/status item.
 
 ## State Transitions
 
@@ -163,7 +163,7 @@ requests user actions and refreshes its view from returned state.
 | Subscription order submitted | `none`, `expired`, or `disabled` | `pending` | Backend order/request service | Create an order/request summary without subscription URL or entitlement material. |
 | Duplicate package application | `pending` | `pending` | Backend | Show existing pending state instead of creating another request. |
 | Operator approval | `pending` | `active` | Operator/backend | Start the package period server-side and return concrete expiry on next state read. |
-| Subscription reissue | `active` | `active` plus old-link-invalidated event | Backend order lifecycle service | Show newly returned visible-once material, use the returned delivery-generation summary, and show an inline previous-configuration invalidation note. |
+| Subscription reissue | `active` | `active` plus delivery-generation-reissued event | Backend order lifecycle service | Show newly returned visible-once material when applicable, keep the imported subscription URL stable, use the returned delivery-generation summary, and show an inline previous-configuration invalidation note. |
 | Subscription disabled by user | `active` | `disabled` | Backend order lifecycle service | Remove visible material, keep the order/request record, and keep physical delete disabled. |
 | Package expiry | `active` | `expired` | Backend | Show expired package and allow re-application. |
 | Unsupported portal action | Any | No state change | Backend | Render the returned error without guessing fallback state. |
@@ -218,7 +218,7 @@ local preview implementation.
 | `exportPasskey` | Export the local-preview passkey backup package and enable the account factor for second-factor preview. | Session/user reference. | Preview JSON package plus safe export metadata. | Local preview only; HTTP path fail-closed. | WebAuthn private key export, production credential mutation, public route activation, subscription authority, or Admin token use. |
 | `fetchCurrentState` | Hydrate the portal after login or page refresh. | Session/user reference. | Order lifecycle, package, expiry, history summary, and issued material only if an order was already delivered. | No subscription mutation. | Client-side state reconstruction or lifecycle guessing. |
 | `applyForSubscription` | Create a 7-day/monthly/yearly order request. | Session/user reference, package id, quantity, and client target. | Request summary and pending lifecycle. | Creates an order/access-request fact only. | Client-provided expiry, price, quota, node id, artifact secret, contact profile, delete action, or direct subscription generation. |
-| `refreshSubscription` | Reissue the current delivery generation for an already-issued order. | Session/user reference, request reference, and client target. | New visible-once material summary, safe delivery-generation metadata, and old-link invalidation event. | Backend-controlled reissue only when active and issued. | New package application, duration extension, payment capture, direct request-step issuance, account disable, usage reset, or operator override. |
+| `refreshSubscription` | Reissue the current delivery generation for an already-issued order. | Session/user reference, request reference, and client target. | Stable imported subscription URL, safe delivery-generation metadata, and delivery-generation-reissued event. | Backend-controlled reissue only when active and issued. | New package application, duration extension, payment capture, direct request-step issuance, account disable, usage reset, artifact URL rotation, or operator override. |
 | `disableSubscription` | Legacy API name for stopping an already-issued order/resource without deleting the account or order/request record. | Session/user reference and request reference. | Disabled lifecycle summary. | Backend-controlled order/resource stop only when active and issued. | Account disable, physical delete, payment refund logic, operator override, or hidden record removal. |
 | `suspendTrafficSupply` | Suspend traffic supply for an already-issued order/resource when a controlled lifecycle decision such as quota exhaustion fires. | Session/user reference and request reference. | Traffic-supply suspended summary and safe event metadata. | Backend-controlled traffic-supply suspension only when active and issued; quota exhaustion is executed automatically by the usage collector once the gate is enabled. | Account disable, physical delete, payment refund logic, operator override, or hidden record removal. |
 | `fetchSubscriptionHistory` | Read account history for Profile. | Session/user reference. | Application, approval, refresh, expiry, and support summary rows. | None. | Raw secrets, full database rows, or operator audit dumps. |
@@ -320,8 +320,8 @@ The four views must render the same backend state consistently.
   allow re-application.
 - `expired`: allow package selection and re-application.
 - Refresh success: show an event note that the previous delivery generation or
-  imported configuration has been invalidated; do not create a separate
-  lifecycle state for it.
+  imported runtime configuration has been replaced while the subscription URL
+  remains stable; do not create a separate lifecycle state for it.
 
 ### Use Guide
 
