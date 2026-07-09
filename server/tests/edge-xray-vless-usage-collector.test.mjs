@@ -43,7 +43,7 @@ test("Xray VLESS usage collector converts per-user stats into safe observations"
   assert.doesNotMatch(JSON.stringify(result), /11111111-1111-4111-8111-111111111111|must-not-return|privateKey/);
 });
 
-test("Xray VLESS usage collector fails closed without per-user stats", async () => {
+test("Xray VLESS usage collector reports idle when stats are reachable without user traffic", async () => {
   const collector = createXrayVlessUsageCollector({
     channelRef: "channel-vultr-a-vless-reality-tcp",
     snapshotReader: async () => ({
@@ -57,9 +57,13 @@ test("Xray VLESS usage collector fails closed without per-user stats", async () 
 
   const result = await collector.collect();
 
-  assert.equal(result.ok, false);
-  assert.equal(result.status, "collector_not_supported");
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "idle_no_user_traffic");
   assert.deepEqual(result.observations, []);
-  assert.equal(result.blockers[0].code, "xray_user_stats_required");
-  assert.equal(result.nextAction, "enable_xray_stats_api_and_user_counters_before_quota_enforcement");
+  assert.deepEqual(result.blockers, []);
+  assert.deepEqual(result.observability, {
+    statsApiReachable: true,
+    userTrafficCountersObserved: false
+  });
+  assert.equal(result.nextAction, "continue_usage_monitoring_until_user_counters_are_observed");
 });

@@ -51,15 +51,19 @@ function blocker(code, target) {
   return { code, target };
 }
 
-function unsupported({ sourceRef, channelRef, blockers }) {
+function idleNoUserTraffic({ sourceRef, channelRef }) {
   return {
-    ok: false,
-    status: "collector_not_supported",
+    ok: true,
+    status: "idle_no_user_traffic",
     sourceRef,
     channelRef,
     observations: [],
-    blockers,
-    nextAction: "enable_xray_stats_api_and_user_counters_before_quota_enforcement",
+    blockers: [],
+    observability: {
+      statsApiReachable: true,
+      userTrafficCountersObserved: false
+    },
+    nextAction: "continue_usage_monitoring_until_user_counters_are_observed",
     safety: {
       noRawRuntimePayload: true,
       noSecretMaterialReturned: true
@@ -141,10 +145,9 @@ export function createXrayVlessUsageCollector({
     }
 
     if (!snapshot.entries.length) {
-      return unsupported({
+      return idleNoUserTraffic({
         sourceRef: snapshot.sourceRef,
-        channelRef: safeChannelRef,
-        blockers: [blocker("xray_user_stats_required", "usageSnapshot.entries")]
+        channelRef: safeChannelRef
       });
     }
 

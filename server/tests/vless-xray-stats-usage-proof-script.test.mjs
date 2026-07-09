@@ -51,6 +51,7 @@ test("VLESS Xray stats usage proof accepts only redacted user counters", async (
     type: "vless_xray_stats_usage_proof",
     ok: true,
     readyToEnableCollector: true,
+    idleNoUserTraffic: false,
     statsServerLoopbackOnly: true,
     collectorStatus: "collected",
     channelRef: "channel-vultr-a-vless-reality-tcp",
@@ -66,7 +67,7 @@ test("VLESS Xray stats usage proof accepts only redacted user counters", async (
   assert.equal(result.stderr, "");
 });
 
-test("VLESS Xray stats usage proof blocks aggregate or empty stats", async () => {
+test("VLESS Xray stats usage proof reports idle when stats are reachable but empty", async () => {
   const result = await runProofScript({
     ...process.env,
     VLESS_XRAY_USAGE_PROOF_STATS_JSON: JSON.stringify({
@@ -82,13 +83,15 @@ test("VLESS Xray stats usage proof blocks aggregate or empty stats", async () =>
     VLESS_XRAY_USAGE_PROOF_CHANNEL_REF: "channel-vultr-a-vless-reality-tcp"
   });
 
-  assert.equal(result.status, 1);
+  assert.equal(result.status, 0);
   const summary = JSON.parse(result.stdout);
   assert.equal(summary.type, "vless_xray_stats_usage_proof");
-  assert.equal(summary.ok, false);
+  assert.equal(summary.ok, true);
   assert.equal(summary.readyToEnableCollector, false);
-  assert.deepEqual(summary.blockers, ["xray_user_stats_required"]);
-  assert.equal(summary.nextAction, "do_not_enable_vless_usage_collector_until_user_counters_exist");
+  assert.equal(summary.idleNoUserTraffic, true);
+  assert.equal(summary.collectorStatus, "idle_no_user_traffic");
+  assert.deepEqual(summary.blockers, []);
+  assert.equal(summary.nextAction, "continue_usage_monitoring_until_user_counters_are_observed");
   assert.doesNotMatch(result.stdout, /runtime-private-key|127\.0\.0\.1|10085/);
   assert.equal(result.stderr, "");
 });

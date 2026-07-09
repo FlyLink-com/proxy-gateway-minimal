@@ -62,6 +62,57 @@ test("traffic usage collect summary omits credential refs and raw runtime payloa
   });
 });
 
+test("traffic usage collect summary exposes idle Xray collectors as observable status", () => {
+  const summary = summarizeUsageAccountingReport({
+    ok: true,
+    collectorCount: 1,
+    idleCollectorCount: 1,
+    observationCount: 0,
+    recordedCount: 0,
+    insertedCount: 0,
+    unresolvedCount: 0,
+    quotaDisableRequiredCount: 0,
+    trafficSupplySuspendRequiredCount: 0,
+    trafficSupplySuspendAttemptedCount: 0,
+    trafficSupplySuspendExecutedCount: 0,
+    trafficSupplySuspendFailedCount: 0,
+    trafficSupplySuspendPendingCount: 0,
+    nextAction: "continue_usage_monitoring",
+    safety: {
+      noRawRuntimePayload: true,
+      noSecretMaterialReturned: true
+    },
+    redacted: true,
+    reports: [
+      {
+        channelRef: "channel-sgp-a-vless-reality-tcp",
+        collectorOk: true,
+        collectorStatus: "idle_no_user_traffic",
+        idle: true,
+        observationCount: 0,
+        recordedCount: 0,
+        unresolvedCount: 0,
+        blockers: [],
+        observability: {
+          statsApiReachable: true,
+          userTrafficCountersObserved: false
+        },
+        recorded: [],
+        nextAction: "continue_usage_monitoring_until_user_counters_are_observed"
+      }
+    ]
+  });
+
+  assert.equal(summary.ok, true);
+  assert.equal(summary.idleCollectorCount, 1);
+  assert.equal(summary.reports[0].idle, true);
+  assert.deepEqual(summary.reports[0].observability, {
+    statsApiReachable: true,
+    userTrafficCountersObserved: false
+  });
+  assert.equal(JSON.stringify(summary).includes("edgecred_"), false);
+});
+
 test("traffic usage collect summary tolerates only unresolved binding residue", () => {
   const report = {
     ok: false,

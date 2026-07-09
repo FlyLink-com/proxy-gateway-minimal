@@ -118,6 +118,47 @@ test("runtime usage accounting isolates per-observation accounting failures with
   assert.doesNotMatch(JSON.stringify(report), /raw sqlite path|C:\/secret|control\.db/i);
 });
 
+test("runtime usage accounting treats reachable empty Xray stats as observable idle", async () => {
+  const service = createRuntimeUsageAccountingService({
+    collectors: [
+      {
+        channelRef: "channel-sgp-a-vless-reality-tcp",
+        collect: async () => ({
+          ok: true,
+          status: "idle_no_user_traffic",
+          observations: [],
+          blockers: [],
+          observability: {
+            statsApiReachable: true,
+            userTrafficCountersObserved: false
+          },
+          nextAction: "continue_usage_monitoring_until_user_counters_are_observed"
+        })
+      }
+    ],
+    accounting: {
+      recordUsageObservation() {
+        throw new Error("idle collector should not record samples");
+      }
+    }
+  });
+
+  const report = await service.collectAndRecord({ since: "2026-07-09T00:00:00.000Z" });
+
+  assert.equal(report.ok, true);
+  assert.equal(report.collectorCount, 1);
+  assert.equal(report.observationCount, 0);
+  assert.equal(report.idleCollectorCount, 1);
+  assert.equal(report.reports[0].collectorOk, true);
+  assert.equal(report.reports[0].collectorStatus, "idle_no_user_traffic");
+  assert.equal(report.reports[0].idle, true);
+  assert.deepEqual(report.reports[0].observability, {
+    statsApiReachable: true,
+    userTrafficCountersObserved: false
+  });
+  assert.equal(report.nextAction, "continue_usage_monitoring");
+});
+
 test("runtime usage accounting blocks over-quota traffic supply suspension when lifecycle gate is missing", async () => {
   const service = createRuntimeUsageAccountingService({
     collectors: [
