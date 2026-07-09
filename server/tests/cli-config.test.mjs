@@ -45,8 +45,8 @@ function buildSensitiveConfig() {
           handoffDir: "handoff/local"
         }
       },
-      "aliyun-prod": {
-        environment: "aliyun-prod",
+      "vultr-japan-prod": {
+        environment: "vultr-japan-prod",
         riskTier: "A",
         publicBaseUrl: rawPublicBaseUrl,
         execution: {
@@ -74,10 +74,10 @@ function assertNoRawConfigValues(value) {
 test("gccgw config show redacts real file and URL values", () => {
   const { configPath, cleanup } = createConfigFile(buildSensitiveConfig());
   try {
-    const show = buildGccgwConfigShow({ configPath, profile: "aliyun-prod", format: "json" });
+    const show = buildGccgwConfigShow({ configPath, profile: "vultr-japan-prod", format: "json" });
 
     assert.equal(show.type, "gccgw_config_profile");
-    assert.equal(show.profile, "aliyun-prod");
+    assert.equal(show.profile, "vultr-japan-prod");
     assert.equal(show.riskTier, "A");
     assert.equal(show.publicBaseUrl.configured, true);
     assert.equal(show.publicBaseUrl.https, true);
@@ -98,9 +98,9 @@ test("gccgw config list exposes profile capabilities without raw values", () => 
 
     assert.equal(list.type, "gccgw_config_list");
     assert.equal(list.valuesRedacted, true);
-    assert.deepEqual(list.profiles.map((profile) => profile.name), ["aliyun-prod", "local"]);
+    assert.deepEqual(list.profiles.map((profile) => profile.name), ["local", "vultr-japan-prod"]);
     assert.ok(list.profiles.some((profile) => (
-      profile.name === "aliyun-prod"
+      profile.name === "vultr-japan-prod"
       && profile.riskTier === "A"
       && profile.execution.allowProductionMutation === true
       && profile.execution.approvalRequired === true
@@ -114,11 +114,11 @@ test("gccgw config list exposes profile capabilities without raw values", () => 
 test("gccgw config validate reports shape without leaking configured values", () => {
   const { configPath, cleanup } = createConfigFile(buildSensitiveConfig());
   try {
-    const validation = buildGccgwConfigValidation({ configPath, profile: "aliyun-prod", format: "json" });
+    const validation = buildGccgwConfigValidation({ configPath, profile: "vultr-japan-prod", format: "json" });
 
     assert.equal(validation.type, "gccgw_config_validation");
     assert.equal(validation.ok, true);
-    assert.equal(validation.profile, "aliyun-prod");
+    assert.equal(validation.profile, "vultr-japan-prod");
     assert.deepEqual(validation.issues, []);
     assertNoRawConfigValues(validation);
   } finally {
@@ -133,7 +133,7 @@ test("gccgw config commands route through sanitized config views", async () => {
     const exitCode = await runProxyGatewayCli([
       "config",
       "show",
-      "aliyun-prod",
+      "vultr-japan-prod",
       "--config",
       configPath,
       "--json"
@@ -155,7 +155,7 @@ test("gccgw config commands route through sanitized config views", async () => {
 
     assert.equal(exitCode, 0);
     const parsed = JSON.parse(stdout);
-    assert.equal(parsed.profile, "aliyun-prod");
+    assert.equal(parsed.profile, "vultr-japan-prod");
     assertNoRawConfigValues(parsed);
   } finally {
     cleanup();

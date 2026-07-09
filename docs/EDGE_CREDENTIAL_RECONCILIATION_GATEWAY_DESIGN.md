@@ -271,8 +271,9 @@ apply approval and after apply validation.
 
 The first repo implementation should stay intentionally small:
 
-- one logical channel at a time: `channel-aliyun-a-tuic` for Aliyun local edge
-  validation, or `channel-lab-b-tuic` for Japan TUIC validation;
+- one logical channel at a time, selected explicitly from the current
+  Vultr Japan/Singapore runtime inventory rather than a provider-specific
+  fallback;
 - one runtime: Mihomo TUIC v5;
 - one activation surface: explicit restart of `mihomo-tuic.service`;
 - full desired-state snapshot apply, not order-by-order deltas;
@@ -280,10 +281,11 @@ The first repo implementation should stay intentionally small:
 - redacted outputs only;
 - local tests and dry-run plans before any production gate.
 
-## Aliyun Local Edge First Phase
+## Provider-Neutral Local Edge First Phase
 
-Aliyun can host a local data-plane channel beside the subscription control
-plane, but the logical boundaries must stay separate.
+The local data-plane channel can run beside the subscription control plane, but
+the logical boundaries must stay separate and the provider/channel identity must
+come from the current runtime inventory.
 
 Required separation:
 

@@ -179,7 +179,7 @@ node bin/gccgw.mjs docs domain package
 ```bash
 node bin/gccgw.mjs config list
 node bin/gccgw.mjs config show local
-node bin/gccgw.mjs config validate --profile aliyun-prod
+node bin/gccgw.mjs config validate --profile vultr-japan-prod
 ```
 
 项目验证：

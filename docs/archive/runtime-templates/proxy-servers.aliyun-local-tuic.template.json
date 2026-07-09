@@ -1,6 +1,9 @@
 {
-  "reviewedRuntimeTemplate": true,
-  "templatePurpose": "Aliyun local TUIC logical channel lifecycle metadata. Replace placeholders from protected runtime storage before any production deployment.",
+  "archiveOnly": true,
+  "currentRuntimeTemplate": false,
+  "reviewedRuntimeTemplate": false,
+  "templatePurpose": "Historical Aliyun local TUIC reference only. Do not use as a current runtime config, deployment template, adapter default, or provider ownership model.",
+  "retiredReason": "Aliyun is no longer the current control or data-plane provider for this project. Current runtime templates live under config/ and use Vultr Japan/Singapore identities.",
   "servers": [
     {
       "id": "channel_aliyun_a_tuic",

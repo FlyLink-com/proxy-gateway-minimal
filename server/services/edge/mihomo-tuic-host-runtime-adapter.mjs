@@ -38,6 +38,14 @@ function safeRef(value, fallback = "") {
   return SAFE_REF_PATTERN.test(normalized) ? normalized : fallback;
 }
 
+function requiredSafeRef(value, field) {
+  const normalized = requiredText(value, field);
+  if (!SAFE_REF_PATTERN.test(normalized)) {
+    throw hostError("validation_error", `${field} is invalid`);
+  }
+  return normalized;
+}
+
 function positivePort(value, fallback = 443) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -113,6 +121,7 @@ export function createMihomoTuicHostRuntimeAdapter({
   const safeBackupDir = requiredText(backupDir, "backupDir");
   const safeServiceName = safeRef(serviceName, "mihomo-tuic.service");
   const safeMihomoBinary = requiredText(mihomoBinary, "mihomoBinary");
+  const listenerName = requiredSafeRef(listener.name, "listener.name");
   const port = positivePort(listener.port, 443);
   const listenerValidationAttempts = positiveInteger(listener.validationAttempts, 5);
   const listenerValidationRetryDelayMs = nonNegativeInteger(listener.validationRetryDelayMs, 100);
@@ -120,7 +129,7 @@ export function createMihomoTuicHostRuntimeAdapter({
   return createMihomoTuicExplicitRestartAdapter({
     serviceName: safeServiceName,
     listener: {
-      name: listener.name || "channel-aliyun-a-tuic",
+      name: listenerName,
       port,
       listen: listener.listen || "0.0.0.0",
       certificate: listener.certificate,

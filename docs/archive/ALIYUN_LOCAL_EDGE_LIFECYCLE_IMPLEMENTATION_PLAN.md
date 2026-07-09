@@ -1,5 +1,9 @@
 # Aliyun Local Edge Lifecycle Implementation Plan
 
+> Archived historical plan. Aliyun is retired from the current runtime and
+> provider template surface; do not use this document as current execution or
+> configuration guidance.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > `superpowers:test-driven-development` for implementation. This plan is scoped
 > to repo-only code, tests, templates, and dry-run CLI behavior. It does not

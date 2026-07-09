@@ -8,10 +8,10 @@ import { createMihomoTuicHostRuntimeAdapter } from "../services/edge/mihomo-tuic
 
 function desiredState() {
   return {
-    channelRef: "channel-aliyun-a-tuic",
+    channelRef: "channel-vultr-a-tuic",
     runtime: "mihomo-tuic",
     activationSurface: "explicit-restart",
-    desiredStateRef: "desired_state_aliyun_host_001",
+    desiredStateRef: "desired_state_vultr_host_001",
     desiredCredentials: [
       {
         credentialRef: "edgecred_order_001",
@@ -41,7 +41,7 @@ test("Mihomo TUIC host runtime adapter writes candidate, tests config, backs up,
       serviceName: "mihomo-tuic.service",
       mihomoBinary: "mihomo",
       listener: {
-        name: "channel-aliyun-a-tuic",
+        name: "channel-vultr-a-tuic",
         port: 443,
         listen: "0.0.0.0",
         certificate: "/etc/mihomo/server.crt",
@@ -150,6 +150,25 @@ test("Mihomo TUIC host runtime adapter preserves loopback external-controller us
   }
 });
 
+test("Mihomo TUIC host runtime adapter requires an explicit listener name", () => {
+  assert.throws(
+    () => createMihomoTuicHostRuntimeAdapter({
+      activeConfigPath: "/tmp/mihomo/config.yaml",
+      candidateConfigPath: "/tmp/mihomo/config.candidate.yaml",
+      backupDir: "/tmp/mihomo/backups",
+      listener: {
+        certificate: "/etc/mihomo/server.crt",
+        privateKey: "/etc/mihomo/server.key"
+      },
+      resolveCredentialMaterial: () => ({
+        uuid: "11111111-1111-4111-8111-111111111111",
+        password: "synthetic-host-password"
+      })
+    }),
+    /listener\.name is required/
+  );
+});
+
 test("Mihomo TUIC host runtime adapter retries listener validation after restart", () => {
   const dir = mkdtempSync(join(tmpdir(), "mihomo-tuic-host-adapter-listener-race-"));
   const activeConfigPath = join(dir, "config.yaml");
@@ -167,7 +186,7 @@ test("Mihomo TUIC host runtime adapter retries listener validation after restart
       serviceName: "mihomo-tuic.service",
       mihomoBinary: "mihomo",
       listener: {
-        name: "channel-aliyun-a-tuic",
+        name: "channel-vultr-a-tuic",
         port: 443,
         listen: "0.0.0.0",
         certificate: "/etc/mihomo/server.crt",
@@ -225,7 +244,7 @@ test("Mihomo TUIC host runtime adapter stops before backup when config test fail
       candidateConfigPath,
       backupDir,
       listener: {
-        name: "channel-aliyun-a-tuic",
+        name: "channel-vultr-a-tuic",
         certificate: "/etc/mihomo/server.crt",
         privateKey: "/etc/mihomo/server.key"
       },
