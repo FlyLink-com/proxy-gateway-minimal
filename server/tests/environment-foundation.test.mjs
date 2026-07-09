@@ -36,6 +36,9 @@ test(".env.example documents the production subscription runtime settings", () =
     "USER_PORTAL_TOTP_SECRET_KEY",
     "SUB_RATE_LIMIT_WINDOW_MS",
     "SUB_RATE_LIMIT_MAX",
+    "SUB_CREDENTIAL_RATE_LIMIT_WINDOW_MS",
+    "SUB_CREDENTIAL_RATE_LIMIT_MAX",
+    "USER_PORTAL_REFRESH_COOLDOWN_MS",
     "SUBSCRIPTION_TEMP_LINK_TTL_MINUTES"
   ]) {
     assert.match(envExample, new RegExp(`^${key}=`, "m"), `${key} should be documented`);
@@ -60,6 +63,9 @@ test("edge-node env template stays aligned with the root runtime env closure", (
     "USER_PORTAL_TOTP_SECRET_KEY",
     "SUB_RATE_LIMIT_WINDOW_MS",
     "SUB_RATE_LIMIT_MAX",
+    "SUB_CREDENTIAL_RATE_LIMIT_WINDOW_MS",
+    "SUB_CREDENTIAL_RATE_LIMIT_MAX",
+    "USER_PORTAL_REFRESH_COOLDOWN_MS",
     "SUBSCRIPTION_TEMP_LINK_TTL_MINUTES"
   ]) {
     assert.match(rootEnv, new RegExp(`^${key}=`, "m"), `${key} should exist in root .env.example`);

@@ -118,6 +118,18 @@ function optionalEnvPositiveInteger(value) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function envPositiveInteger(value, fallback) {
+  return optionalEnvPositiveInteger(value) ?? fallback;
+}
+
+function envNonNegativeInteger(value, fallback) {
+  if (String(value ?? "").trim() === "") {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 function normalizeRuntimeIdentity(value) {
   return optionalEnvText(value).toLowerCase();
 }
@@ -918,6 +930,7 @@ export function createRuntimeState(options = {}) {
   const dataPlaneAgentAllowedCidrs = parseCsv(env.EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS, DEFAULT_ADMIN_ALLOWED_CIDRS);
   const dataPlaneAgentRoutesEnabled = envFlag(env.EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED);
   const tempLinkTtlMinutes = Number.parseInt(env.SUBSCRIPTION_TEMP_LINK_TTL_MINUTES, 10) || 24 * 60;
+  const portalRefreshCooldownMs = envNonNegativeInteger(env.USER_PORTAL_REFRESH_COOLDOWN_MS, 300000);
   const ownsSubscriptionStore = !options.subscriptionStore && !options.subscriptionRepository && !options.subscriptionCore && !options.subscriptionService;
   const subscriptionStore = options.subscriptionStore || options.subscriptionRepository || (
     ownsSubscriptionStore ? createSqliteSubscriptionStore({ dbPath: subscriptionDbPath }) : null
@@ -1227,6 +1240,7 @@ export function createRuntimeState(options = {}) {
     edgeCredentialIssuer,
     edgeLifecycleService,
     edgeDesiredStateNotifier,
+    refreshCooldownMs: portalRefreshCooldownMs,
     autoIssuance: {
       enabled: autoIssuanceEnabled,
       nodeId: optionalEnvText(env.USER_PORTAL_AUTO_ISSUANCE_NODE_ID),
@@ -1559,6 +1573,10 @@ export function createRuntimeState(options = {}) {
       subRateLimit: {
         windowMs: Number.parseInt(env.SUB_RATE_LIMIT_WINDOW_MS, 10) || 60000,
         max: Number.parseInt(env.SUB_RATE_LIMIT_MAX, 10) || 30
+      },
+      subCredentialRateLimit: {
+        windowMs: envPositiveInteger(env.SUB_CREDENTIAL_RATE_LIMIT_WINDOW_MS, 60000),
+        max: envPositiveInteger(env.SUB_CREDENTIAL_RATE_LIMIT_MAX, 30)
       }
     },
     close,

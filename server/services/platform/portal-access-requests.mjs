@@ -570,6 +570,7 @@ export function createPortalAccessRequestService(options = {}) {
   const edgeLifecycleService = options.edgeLifecycleService;
   const edgeCredentialIssuer = options.edgeCredentialIssuer;
   const edgeDesiredStateNotifier = options.edgeDesiredStateNotifier;
+  const refreshCooldownMs = limitNumber(options.refreshCooldownMs) || 0;
   const autoIssuance = {
     enabled: options.autoIssuance?.enabled === true,
     nodeId: String(options.autoIssuance?.nodeId || "").trim(),
@@ -683,6 +684,24 @@ export function createPortalAccessRequestService(options = {}) {
   function recordEdgeLifecycleResult(request, result) {
     if (result?.mutation === true) {
       request.edgeLifecycleMutation = true;
+    }
+  }
+
+  function assertRefreshCooldown(request, now) {
+    if (refreshCooldownMs <= 0) {
+      return;
+    }
+    if (!["delivery_generation_reissued", "old_link_invalidated"].includes(request.event?.type)) {
+      return;
+    }
+    const lastReissuedAt = new Date(request.event.occurredAt || 0).getTime();
+    const requestedAt = new Date(now).getTime();
+    if (
+      Number.isFinite(lastReissuedAt)
+      && Number.isFinite(requestedAt)
+      && requestedAt - lastReissuedAt < refreshCooldownMs
+    ) {
+      throw platformError("subscription_refresh_rate_limited", "subscription refresh is rate limited");
     }
   }
 
@@ -1120,6 +1139,7 @@ export function createPortalAccessRequestService(options = {}) {
       if (!request.artifactId) {
         throw platformError("validation_error", "subscription artifact is not available");
       }
+      assertRefreshCooldown(request, now);
 
       request.clientTarget = normalizeClientTarget(input.clientTarget || request.clientTarget);
       request.event = {

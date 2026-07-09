@@ -128,6 +128,37 @@ async function issueHumanChallenge(baseUrl, scope = "portal_login") {
   return body.challenge;
 }
 
+test("portal refresh route maps subscription cooldown to 429", async () => {
+  const cooldownError = new Error("subscription refresh is rate limited");
+  cooldownError.code = "subscription_refresh_rate_limited";
+  const { server, baseUrl } = await listen(createApp(baseState({
+    userPortalRoutesEnabled: true,
+    userPortalAuth: {
+      requireSession: () => ({ accountId: "acct_portal_route_1" })
+    },
+    portalAccessRequests: {
+      refreshSubscription() {
+        throw cooldownError;
+      }
+    }
+  })));
+  try {
+    const response = await fetch(`${baseUrl}/api/portal/access-requests/refresh`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Portal-Session": "portal_session_route_1"
+      },
+      body: JSON.stringify({ requestRef: "pareq_route_1" })
+    });
+
+    assert.equal(response.status, 429);
+    assert.deepEqual(await response.json(), { error: "subscription_refresh_rate_limited" });
+  } finally {
+    server.close();
+  }
+});
+
 function withPortalState(fn, options = {}) {
   const tempDir = mkdtempSync(join(tmpdir(), "user-portal-routes-"));
   let store;

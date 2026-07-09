@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import express from "express";
 import { join } from "node:path";
 import { createAdminAllowlistMiddleware } from "./middleware/admin-allowlist.mjs";
@@ -41,6 +42,47 @@ const USER_PORTAL_PUBLIC_PATHS = [
   "/api/portal/security/totp/enrollment/confirm",
   "/api/portal/support-requests"
 ];
+
+function hashRateLimitValue(value) {
+  return createHash("sha256")
+    .update(String(value || ""))
+    .digest("hex")
+    .slice(0, 24);
+}
+
+function trimYamlSuffix(value) {
+  return String(value || "").replace(/\.ya?ml$/i, "");
+}
+
+function subscriptionCredentialRateLimitKey(req, fallbackKeyFn) {
+  const fallbackKey = () => `ip:${hashRateLimitValue(
+    fallbackKeyFn(req) || req.ip || req.socket?.remoteAddress || "unknown"
+  )}`;
+  let url;
+  try {
+    url = new URL(req.originalUrl || req.url || "", "http://127.0.0.1");
+  } catch {
+    return fallbackKey();
+  }
+
+  const artifactPrefix = "/sub/a/";
+  if (url.pathname.startsWith(artifactPrefix)) {
+    const [artifactSegment] = url.pathname.slice(artifactPrefix.length).split("/");
+    const artifact = trimYamlSuffix(artifactSegment);
+    if (artifact) {
+      return `artifact:${hashRateLimitValue(artifact)}`;
+    }
+  }
+
+  if (url.pathname === "/sub/clash.yaml") {
+    const token = url.searchParams.get("token") || "";
+    if (token) {
+      return `token:${hashRateLimitValue(token)}`;
+    }
+  }
+
+  return fallbackKey();
+}
 
 export function createApp(state, options = {}) {
   const app = express();
@@ -133,6 +175,14 @@ export function createApp(state, options = {}) {
     nowFn: options.rateLimitNowFn,
     keyFn: clientIpResolver
   }));
+  if (security.subCredentialRateLimit) {
+    app.use("/sub", createRateLimitMiddleware({
+      windowMs: security.subCredentialRateLimit.windowMs,
+      max: security.subCredentialRateLimit.max,
+      nowFn: options.rateLimitNowFn,
+      keyFn: (req) => subscriptionCredentialRateLimitKey(req, clientIpResolver)
+    }));
+  }
   app.use(subscriptionRoutes(state, {
     resolveClientIpFn: clientIpResolver
   }));

@@ -25,6 +25,10 @@ function sendPortalError(res, error) {
     res.status(429).json({ error: "registration_rate_limited" });
     return;
   }
+  if (error.code === "subscription_refresh_rate_limited") {
+    res.status(429).json({ error: "subscription_refresh_rate_limited" });
+    return;
+  }
   if (error.code === "legal_agreement_required") {
     res.status(400).json({ error: "legal_agreement_required" });
     return;

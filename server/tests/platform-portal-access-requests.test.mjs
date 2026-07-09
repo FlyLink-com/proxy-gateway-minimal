@@ -1289,6 +1289,47 @@ test("refresh reissues material for an already-delivered order while preserving 
   assert.equal(JSON.stringify(refreshed).includes("artifact_runtime_1"), false);
 });
 
+test("refresh enforces a per-order cooldown before reissuing material again", () => {
+  let now = "2026-06-01T00:00:00.000Z";
+  const requests = createPortalAccessRequestService({
+    nowFn: () => now,
+    requestIdFactory: () => "pareq_refresh_cooldown_1",
+    refreshCooldownMs: 5 * 60 * 1000
+  });
+  requests.submitRequest(validTrialInput());
+  requests.markDelivered("pareq_refresh_cooldown_1", {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_safe_ref",
+    accessGrantRef: "grant_safe_ref",
+    tenantId: "tenant_runtime_1",
+    artifactId: "artifact_runtime_1",
+    subscriptionUrl: "https://sub.example.test/import/original-visible-once",
+    expiresAt: "2026-06-07T00:00:00.000Z"
+  });
+
+  const firstRefresh = requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_cooldown_1"
+  });
+  assert.equal(firstRefresh.event.type, "delivery_generation_reissued");
+
+  assert.throws(
+    () => requests.refreshSubscription({
+      portalUserRef: "user_safe_ref",
+      requestRef: "pareq_refresh_cooldown_1"
+    }),
+    { code: "subscription_refresh_rate_limited" }
+  );
+
+  now = "2026-06-01T00:05:01.000Z";
+  const afterCooldown = requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_cooldown_1"
+  });
+  assert.equal(afterCooldown.event.type, "delivery_generation_reissued");
+  assert.equal(afterCooldown.delivery.lastReissuedAt, "2026-06-01T00:05:01.000Z");
+});
+
 test("refresh rotates per-order edge material so cached client credentials stop matching runtime", () => {
   const runtimeCore = lifecycleRuntimeCore();
   runtimeCore.bindTenantCredentialMaterial = (input) => {

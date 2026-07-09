@@ -337,6 +337,8 @@ test("createRuntimeState parses hardening security environment", () => {
       TRUSTED_PROXY_CIDRS: "127.0.0.1/32",
       SUB_RATE_LIMIT_WINDOW_MS: "1000",
       SUB_RATE_LIMIT_MAX: "2",
+      SUB_CREDENTIAL_RATE_LIMIT_WINDOW_MS: "2000",
+      SUB_CREDENTIAL_RATE_LIMIT_MAX: "3",
       SUBSCRIPTION_TEMP_LINK_TTL_MINUTES: "30"
     }),
     autoStartHttpProxy: false,
@@ -347,6 +349,7 @@ test("createRuntimeState parses hardening security environment", () => {
     assert.deepEqual(state.security.adminAllowedCidrs, ["127.0.0.1/32", "10.0.0.0/8"]);
     assert.deepEqual(state.security.trustedProxyCidrs, ["127.0.0.1/32"]);
     assert.deepEqual(state.security.subRateLimit, { windowMs: 1000, max: 2 });
+    assert.deepEqual(state.security.subCredentialRateLimit, { windowMs: 2000, max: 3 });
     assert.equal(state.subscriptions.tempLinkTtlMinutes, 30);
   } finally {
     state.close();
