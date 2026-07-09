@@ -138,6 +138,12 @@ Dynamic YAML is allowed and expected:
 - node hostnames can move through DNS or runtime config;
 - expired or disabled tenants remain blocked at resolution time.
 
+In the account subscription model, an opaque artifact is part of the current
+delivery generation, not the account subscription itself. Portal reissue can
+rotate the artifact and protected runtime material while keeping the account,
+order, entitlement, and usage accounting anchor stable. The broader lifecycle
+boundary lives in `docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md`.
+
 ## Device Binding
 
 Device binding is heuristic, not cryptographic.

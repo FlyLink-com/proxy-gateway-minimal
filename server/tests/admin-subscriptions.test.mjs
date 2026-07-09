@@ -720,6 +720,50 @@ test("opaque artifact provider-mode routes split profile and provider YAML", asy
   }
 });
 
+test("rotated opaque artifact blocks profile provider and bare routes", async () => {
+  const context = realSubscriptionContext();
+  const { server, baseUrl } = await listen(createApp(fakeState(context.service)));
+  try {
+    const created = await requestJson(baseUrl, "/api/admin/subscriptions", {
+      method: "POST",
+      body: { displayName: "Customer A", expiresAt: "2026-06-21T00:00:00.000Z" }
+    });
+    assert.equal(created.response.status, 201);
+
+    const artifact = await requestJson(baseUrl, "/api/admin/subscriptions/tenant_real_1/artifacts", {
+      method: "POST"
+    });
+    assert.equal(artifact.response.status, 201);
+
+    const rotated = await requestJson(
+      baseUrl,
+      `/api/admin/subscription-artifacts/${artifact.body.artifact.id}/rotate`,
+      { method: "POST" }
+    );
+    assert.equal(rotated.response.status, 201);
+
+    const oldPath = new URL(artifact.body.subscriptionUrl).pathname;
+    const oldProviderPath = oldPath.replace(/\.yaml$/i, "");
+    for (const path of [
+      oldPath,
+      `${oldProviderPath}/profile.yaml`,
+      `${oldProviderPath}/provider.yaml`
+    ]) {
+      const blocked = await fetch(`${baseUrl}${path}`);
+      assert.equal(blocked.status, 410);
+      assert.deepEqual(await blocked.json(), { error: "Subscription artifact rotated" });
+    }
+
+    const replacementPath = new URL(rotated.body.subscriptionUrl).pathname.replace(/\.yaml$/i, "");
+    const replacementProfile = await fetch(`${baseUrl}${replacementPath}/profile.yaml`);
+    assert.equal(replacementProfile.status, 200);
+    assert.doesNotMatch(await replacementProfile.text(), /pgsub_route_visible|tenant_real_1/);
+  } finally {
+    server.close();
+    context.close();
+  }
+});
+
 test("opaque artifact provider profile uses configured public subscription base URL", async () => {
   const context = realSubscriptionContext();
   const state = fakeState(context.service);

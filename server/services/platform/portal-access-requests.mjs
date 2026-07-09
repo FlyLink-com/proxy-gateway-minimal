@@ -307,7 +307,43 @@ function safeEventFor(event) {
   return Object.keys(safeEvent).length > 0 ? safeEvent : null;
 }
 
+function deliveryStateFor(record) {
+  const status = String(record?.status || "").trim();
+  if (["delivered", "issued"].includes(status)) {
+    return "current";
+  }
+  if (status === "approved_pending_delivery") {
+    return "pending_delivery";
+  }
+  if (status === "disabled") {
+    return "disabled";
+  }
+  if (status === "expired") {
+    return "expired";
+  }
+  return "not_issued";
+}
+
+function safeDeliveryFor(record, event) {
+  const artifactPresent = Boolean(String(record?.artifactId || "").trim());
+  const runtimeMaterialPresent = Boolean(
+    String(record?.edgeCredentialRef || "").trim()
+    && String(record?.edgeMaterialDigest || "").trim()
+  );
+  return {
+    model: "account_resource_delivery_generation",
+    state: deliveryStateFor(record),
+    artifactPresent,
+    runtimeMaterialPresent,
+    ...(event?.type ? { lastEventType: event.type } : {}),
+    ...(event?.type === "old_link_invalidated" && event.occurredAt
+      ? { lastReissuedAt: event.occurredAt }
+      : {})
+  };
+}
+
 function safeSummaryFor(record, usage = null, trafficLimitBytes = null) {
+  const event = safeEventFor(record.event);
   const summary = {
     id: record.id,
     type: "portal_access_request_summary",
@@ -330,7 +366,8 @@ function safeSummaryFor(record, usage = null, trafficLimitBytes = null) {
     ...(trafficLimitBytes === null ? {} : { trafficLimitBytes }),
     entitlementRef: record.entitlementRef,
     accessGrantRef: record.accessGrantRef,
-    event: safeEventFor(record.event),
+    event,
+    delivery: safeDeliveryFor(record, event),
     safety: {
       noSubscriptionUrl: true,
       noRawCustomerData: true,
@@ -648,7 +685,7 @@ export function createPortalAccessRequestService(options = {}) {
     }
   }
 
-  function attachEdgeCredentials(request) {
+  function attachEdgeCredentials(request, { forceRotateCredential = false } = {}) {
     if (!edgeCredentialIssuer) {
       return [];
     }
@@ -662,9 +699,13 @@ export function createPortalAccessRequestService(options = {}) {
     const credentials = typeof edgeCredentialIssuer.ensureCredentialsForOrder === "function"
       ? edgeCredentialIssuer.ensureCredentialsForOrder({
         ...order,
-        channelRefs: autoIssuance.channelRefs
+        channelRefs: autoIssuance.channelRefs,
+        forceRotateCredential
       })
-      : [edgeCredentialIssuer.ensureCredentialForOrder(order)];
+      : [edgeCredentialIssuer.ensureCredentialForOrder({
+        ...order,
+        forceRotateCredential
+      })];
     const normalized = credentials.map((credential) => ({
       edgeChannelRef: text(credential.edgeChannelRef, "edgeChannelRef"),
       edgeCredentialRef: text(credential.edgeCredentialRef, "edgeCredentialRef"),
@@ -1089,7 +1130,7 @@ export function createPortalAccessRequestService(options = {}) {
         occurredAt: now
       };
       request.updatedAt = now;
-      const credentials = attachEdgeCredentials(request);
+      const credentials = attachEdgeCredentials(request, { forceRotateCredential: true });
       for (const credential of credentials) {
         bindTenantCredentialMaterial(request, credential);
       }

@@ -3,6 +3,7 @@ import test from "node:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createOrderEdgeCredentialIssuer } from "../services/edge/order-credential-issuer.mjs";
 import { createPortalAccessRequestService } from "../services/platform/portal-access-requests.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 
@@ -146,6 +147,25 @@ function edgeCredentialIssuer() {
         edgeCredentialRef: `edgecred_${order.id}`,
         edgeMaterialDigest: `sha256:digest_${order.id}`
       };
+    }
+  };
+}
+
+function edgeMaterialStore() {
+  const entries = new Map();
+  return {
+    putCredentialMaterial(input) {
+      entries.set(input.credentialRef, input);
+      return {
+        credentialRef: input.credentialRef,
+        materialDigest: input.materialDigest
+      };
+    },
+    getCredentialMaterialSummary(credentialRef) {
+      return entries.get(credentialRef) ?? null;
+    },
+    resolveCredentialMaterial(credentialRef) {
+      return entries.get(credentialRef)?.material ?? null;
     }
   };
 }
@@ -335,6 +355,7 @@ function assertRoutineSummarySafe(summary) {
   assert.deepEqual(Object.keys(summary).sort(), [
     "accessGrantRef",
     "clientTarget",
+    "delivery",
     "durationDays",
     "entitlementRef",
     "event",
@@ -360,6 +381,14 @@ function assertRoutineSummarySafe(summary) {
   assert.deepEqual(summary.event, {
     type: "old_link_invalidated",
     occurredAt: "2026-06-08T00:01:00.000Z"
+  });
+  assert.deepEqual(summary.delivery, {
+    model: "account_resource_delivery_generation",
+    state: "current",
+    artifactPresent: true,
+    runtimeMaterialPresent: true,
+    lastEventType: "old_link_invalidated",
+    lastReissuedAt: "2026-06-08T00:01:00.000Z"
   });
   assert.equal(summary.safety.noSubscriptionUrl, true);
   const serialized = JSON.stringify(summary);
@@ -1249,9 +1278,71 @@ test("refresh replaces material for an already-delivered order and keeps expiry"
   assert.equal(refreshed.expiresAt, "2026-06-07T00:00:00.000Z");
   assert.equal(refreshed.validUntil, "2026-06-07T00:00:00.000Z");
   assert.equal(refreshed.event.type, "old_link_invalidated");
+  assert.equal(refreshed.delivery.model, "account_resource_delivery_generation");
+  assert.equal(refreshed.delivery.state, "current");
+  assert.equal(refreshed.delivery.artifactPresent, true);
+  assert.equal(refreshed.delivery.runtimeMaterialPresent, false);
+  assert.equal(refreshed.delivery.lastReissuedAt, NOW);
   assert.deepEqual(runtimeCore.calls, [["rotateSubscriptionArtifact", "artifact_runtime_1"]]);
   assert.equal(JSON.stringify(refreshed).includes("tenant_runtime_1"), false);
   assert.equal(JSON.stringify(refreshed).includes("artifact_runtime_1"), false);
+});
+
+test("refresh rotates per-order edge material so cached client credentials stop matching runtime", () => {
+  const runtimeCore = lifecycleRuntimeCore();
+  runtimeCore.bindTenantCredentialMaterial = (input) => {
+    runtimeCore.calls.push(["bindTenantCredentialMaterial", {
+      tenantId: input.tenantId,
+      nodeId: input.nodeId,
+      credentialRef: input.credentialRef,
+      materialUuid: input.material.uuid
+    }]);
+    return { ok: true };
+  };
+  const materialStore = edgeMaterialStore();
+  let sequence = 0;
+  const issuer = createOrderEdgeCredentialIssuer({
+    channelRef: "channel-aliyun-a-tuic",
+    materialStore,
+    uuidFactory: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`,
+    passwordFactory: () => `password-${sequence}`
+  });
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_refresh_edge_rotate_1",
+    runtimeCore,
+    edgeCredentialIssuer: issuer
+  });
+  requests.submitRequest(validTrialInput());
+  requests.markDelivered("pareq_refresh_edge_rotate_1", {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_safe_ref",
+    accessGrantRef: "grant_safe_ref",
+    tenantId: "tenant_runtime_1",
+    artifactId: "artifact_runtime_1",
+    subscriptionUrl: "https://sub.example.test/import/original-visible-once",
+    expiresAt: "2026-06-07T00:00:00.000Z"
+  });
+  const [before] = requests.listEdgeCredentialOrders();
+
+  requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_edge_rotate_1"
+  });
+  const [after] = requests.listEdgeCredentialOrders();
+
+  assert.equal(before.edgeCredentialRef, after.edgeCredentialRef);
+  assert.notEqual(before.edgeMaterialDigest, after.edgeMaterialDigest);
+  assert.deepEqual(runtimeCore.calls.map(([method]) => method), [
+    "bindTenantCredentialMaterial",
+    "rotateSubscriptionArtifact",
+    "bindTenantCredentialMaterial"
+  ]);
+  assert.deepEqual(runtimeCore.calls.map(([, input]) => input?.materialUuid).filter(Boolean), [
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000002"
+  ]);
+  assert.doesNotMatch(JSON.stringify(requests.getRequest("pareq_refresh_edge_rotate_1")), /password-1|password-2/i);
 });
 
 test("reveal returns the existing delivered subscription URL without rotating material", () => {
