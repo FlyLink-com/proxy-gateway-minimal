@@ -1333,6 +1333,9 @@ export function buildInstallConfigurePlan({
       { name: "TRUSTED_PROXY_CIDRS", valueKind: "optional", secret: false },
       { name: "SUB_RATE_LIMIT_WINDOW_MS", valueKind: "default", valuePreview: "60000", secret: false },
       { name: "SUB_RATE_LIMIT_MAX", valueKind: "default", valuePreview: "30", secret: false },
+      { name: "SUB_CREDENTIAL_RATE_LIMIT_WINDOW_MS", valueKind: "default", valuePreview: "60000", secret: false },
+      { name: "SUB_CREDENTIAL_RATE_LIMIT_MAX", valueKind: "default", valuePreview: "30", secret: false },
+      { name: "USER_PORTAL_REFRESH_COOLDOWN_MS", valueKind: "default", valuePreview: "300000", secret: false },
       { name: "SUBSCRIPTION_TEMP_LINK_TTL_MINUTES", valueKind: "default", valuePreview: "1440", secret: false }
     ],
     plannedOperations: [

@@ -84,3 +84,27 @@ test("/sub rate limit keys by resolved client IP", async () => {
     server.close();
   }
 });
+
+test("/sub credential rate limit keys opaque artifact requests across IPs", async () => {
+  let requestIndex = 0;
+  const appState = state();
+  appState.security.subRateLimit = { windowMs: 1000, max: 100 };
+  appState.security.subCredentialRateLimit = { windowMs: 1000, max: 2 };
+  const app = createApp(appState, {
+    clientIpResolver: () => `198.51.100.${++requestIndex}`,
+    rateLimitNowFn: () => 1000
+  });
+  const { server, baseUrl } = await listen(app);
+  try {
+    const artifact = "opaque-device-ref";
+    assert.equal((await fetch(`${baseUrl}/sub/a/${artifact}/profile.yaml`)).status, 404);
+    assert.equal((await fetch(`${baseUrl}/sub/a/${artifact}/provider.yaml`)).status, 404);
+    const limited = await fetch(`${baseUrl}/sub/a/${artifact}.yaml`);
+    assert.equal(limited.status, 429);
+    assert.deepEqual(await limited.json(), { error: "Too Many Requests" });
+
+    assert.equal((await fetch(`${baseUrl}/sub/a/other-device-ref/profile.yaml`)).status, 404);
+  } finally {
+    server.close();
+  }
+});
