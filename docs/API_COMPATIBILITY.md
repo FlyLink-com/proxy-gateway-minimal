@@ -2,9 +2,14 @@
 
 Phase 1 keeps the existing `proxy-gateway-minimal` API surface stable.
 
-Still supported:
+Core/public routes:
 
 - `GET /api/health`
+- `GET /api/nginx/status`
+- `GET /api/ping/:host`
+
+Local proxy control compatibility routes:
+
 - `POST /api/ss/start`
 - `POST /api/ss/stop`
 - `POST /api/http-proxy/start`
@@ -12,11 +17,16 @@ Still supported:
 - `POST /api/proxy/start`
 - `POST /api/proxy/stop`
 - `GET /api/proxy/overview`
+
+These routes are owned by the local operator console and can be disabled with
+`LOCAL_PROXY_CONTROL_ROUTES_ENABLED=false` when the runtime must not expose local
+proxy start/stop controls.
+
+Network diagnostics routes:
+
 - `GET /api/proxy/status`
 - `GET /api/proxy/test`
 - `GET /api/proxy/servers`
-- `GET /api/nginx/status`
-- `GET /api/ping/:host`
 - `POST /api/system-proxy/:action`
 - `POST /api/env-proxy/on`
 - `POST /api/env-proxy/off`

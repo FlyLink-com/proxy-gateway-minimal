@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createApp } from "../app.mjs";
 import { listen } from "./helpers/listen.mjs";
 
-function fakeState() {
+function fakeState(overrides = {}) {
   return {
     rootDir: resolve(fileURLToPath(new URL("../../", import.meta.url))),
     host: "127.0.0.1",
@@ -24,7 +24,8 @@ function fakeState() {
         status: () => ({ running: true, starting: false, port: 18180, host: "127.0.0.1" })
       }
     },
-    isPortListening: async (port) => port === 1080 || port === 18180
+    isPortListening: async (port) => port === 1080 || port === 18180,
+    ...overrides
   };
 }
 
@@ -43,7 +44,7 @@ test("static console loads without token while control routes stay protected", a
   }
 });
 
-test("legacy proxy routes keep existing paths", async () => {
+test("local proxy control compatibility routes keep existing paths", async () => {
   const { server, baseUrl } = await listen(createApp(fakeState()));
   try {
     const start = await fetch(`${baseUrl}/api/proxy/start`, {
@@ -61,6 +62,32 @@ test("legacy proxy routes keep existing paths", async () => {
     assert.equal(body.socks5.port, 1080);
     assert.equal(body.httpProxy.port, 18180);
     assert.equal(body.ssRunning, true);
+  } finally {
+    server.close();
+  }
+});
+
+test("local proxy control routes can be disabled while diagnostics stay mounted", async () => {
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    localProxyControl: { routesEnabled: false }
+  })));
+  try {
+    const start = await fetch(`${baseUrl}/api/proxy/start`, {
+      method: "POST",
+      headers: { authorization: "Bearer secret" }
+    });
+    assert.equal(start.status, 404);
+
+    const overview = await fetch(`${baseUrl}/api/proxy/overview`, {
+      headers: { authorization: "Bearer secret" }
+    });
+    assert.equal(overview.status, 404);
+
+    const diagnostics = await fetch(`${baseUrl}/api/proxy/status`, {
+      headers: { authorization: "Bearer secret" }
+    });
+    assert.equal(diagnostics.status, 200);
+    assert.deepEqual((await diagnostics.json()).results, []);
   } finally {
     server.close();
   }

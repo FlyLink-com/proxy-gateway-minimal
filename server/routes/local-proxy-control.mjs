@@ -1,6 +1,17 @@
 import { Router } from "express";
 
-export function legacyProxyRoutes(state) {
+export const LOCAL_PROXY_CONTROL_ROUTE_OWNER = Object.freeze({
+  owner: "local_proxy_control",
+  scope: "local_operator_console",
+  compatibility: "legacy_paths"
+});
+
+export function localProxyControlRoutesEnabled(state) {
+  const configured = state?.localProxyControl?.routesEnabled;
+  return configured === false ? false : true;
+}
+
+export function localProxyControlRoutes(state) {
   const router = Router();
 
   router.post("/api/ss/start", async (_req, res) => {

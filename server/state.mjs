@@ -879,6 +879,7 @@ export function createRuntimeState(options = {}) {
   });
   const userPortalRoutesEnabled = envFlag(env.USER_PORTAL_ROUTES_ENABLED);
   const adminAuthRoutesEnabled = envFlag(env.ADMIN_AUTH_ROUTES_ENABLED || env.ADMIN_PROTECTED_ROUTE_AUTH_ENABLED);
+  const localProxyControlRoutesEnabled = envFlag(env.LOCAL_PROXY_CONTROL_ROUTES_ENABLED, true);
   const adminAuthPortalAccountId = optionalEnvText(env.ADMIN_AUTH_PORTAL_ACCOUNT_ID);
   if (adminAuthRoutesEnabled && !adminAuthPortalAccountId) {
     throw new Error("ADMIN_AUTH_PORTAL_ACCOUNT_ID is required when admin auth routes are enabled");
@@ -1525,6 +1526,11 @@ export function createRuntimeState(options = {}) {
     consoleToken: consoleToken.token,
     consoleTokenSource: consoleToken.source,
     consoleTokenStorePath: consoleToken.tokenStorePath,
+    localProxyControl: {
+      routesEnabled: localProxyControlRoutesEnabled,
+      owner: "local_proxy_control",
+      scope: "local_operator_console"
+    },
     services: { ssLocal, httpProxy },
     subscriptions: {
       store: subscriptionStore,
