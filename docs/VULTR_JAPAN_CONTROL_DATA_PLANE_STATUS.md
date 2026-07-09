@@ -1,6 +1,6 @@
 # Vultr Japan Control / Data-Plane Status
 
-Last updated: 2026-07-06, UTC.
+Last updated: 2026-07-09, UTC.
 
 > Status:
 > - Type: Active docs/status baseline
@@ -33,10 +33,13 @@ Current production client-facing domains for this lane are under
 the runtime certificate SAN must stay aligned; a subscription render proof alone
 is not enough if the runtime service still presents an older certificate.
 
-Aliyun control-center, clean-start, promotion, Aegis, and gate records are now
-historical evidence unless a future task explicitly requests Aliyun archaeology,
-rollback review, or code/API compatibility migration. Do not treat Aliyun as the
-current control center or active default for new planning.
+Aliyun control-center, clean-start, promotion, Aegis, and gate records are
+historical evidence only. Do not treat Aliyun as the current control center,
+active default, compatibility route, or provider ownership model for new
+planning.
+
+The current protected Admin API no longer exposes Aliyun gate packet/evidence
+routes or replacement provider-gate aliases for the retired Aliyun lane.
 
 ## Relationship To Execution Records
 
@@ -60,8 +63,8 @@ This docs/status update does not perform or authorize:
   rotation.
 - Public Admin exposure, payment activation, user traffic, edge traffic, or
   production cutover.
-- `server/*` or `admin/*` `aliyun-gates` / `AliyunGate*` API migration; that is a
-  separate B-tier compatibility task.
+- Restoration of retired Aliyun gate APIs without a new explicit repo task and
+  current ownership decision.
 
 ## Required Next Evidence Before Any A-Tier Work
 

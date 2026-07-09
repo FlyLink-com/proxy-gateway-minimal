@@ -1,7 +1,4 @@
 import type {
-  AccessMigrationEvidenceInput,
-  AliyunGateDecisionPacket,
-  AliyunGateEvidenceSummary,
   ChannelLabTargetDecision,
   ChannelLabTargetDecisionInput,
   ChannelRuntimeEvidenceBridge,
@@ -34,7 +31,6 @@ import type {
   PortalAccessTrafficLimitUpdateInput,
   ProvisioningFormInput,
   ProvisioningFormPreview,
-  ProviderFirewallEvidenceInput,
   RenewSubscriptionInput,
   ResetTokenResult,
   SubscriptionNode,
@@ -230,31 +226,6 @@ export function createAdminApiClient(options: AdminApiClientOptions) {
           }
         )
       ).quotaUpdate,
-    getAliyunGates: async () =>
-      (await request<{ aliyunGates: AliyunGateDecisionPacket }>("/api/admin/platform/aliyun-gates")).aliyunGates,
-    getAliyunGateEvidence: async () =>
-      (await request<{ evidence: AliyunGateEvidenceSummary | null }>("/api/admin/platform/aliyun-gate-evidence"))
-        .evidence,
-    recordProviderFirewallEvidence: async (input: ProviderFirewallEvidenceInput) =>
-      (
-        await request<{ evidence: AliyunGateEvidenceSummary }>(
-          "/api/admin/platform/aliyun-gate-evidence/provider-firewall",
-          {
-            method: "POST",
-            body: JSON.stringify(input)
-          }
-        )
-      ).evidence,
-    recordAccessMigrationEvidence: async (input: AccessMigrationEvidenceInput) =>
-      (
-        await request<{ evidence: AliyunGateEvidenceSummary }>(
-          "/api/admin/platform/aliyun-gate-evidence/access-migration",
-          {
-            method: "POST",
-            body: JSON.stringify(input)
-          }
-        )
-      ).evidence,
     reviewChannelSystem: async (input: ChannelSystemReviewInput) =>
       (
         await request<{ channelSystem: ChannelSystemDecisionFlow }>(
