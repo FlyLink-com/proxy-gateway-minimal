@@ -1232,6 +1232,21 @@ work.
   runtime certificate drift where subscription rendering was already on
   `jp.gccwebos.com` but the runtime services were still presenting an older
   certificate.
+- The 2026-07-09 Japan traffic runtime restore is recorded in
+  `docs/production-replacement-records/2026-07-09-japan-traffic-runtime-config-restore-execution.md`.
+  It restored loopback-only Xray stats/API and Mihomo external-controller
+  sources for Japan metering, validated the traffic collector with redacted
+  summaries, and did not deploy PR #417 quota auto-suspend code.
+- The 2026-07-09 Japan quota auto-suspend backend deploy is recorded in
+  `docs/production-replacement-records/2026-07-09-traffic-quota-auto-suspend-backend-deploy-execution.md`.
+  It deployed `traffic-quota-auto-suspend-20260709-001` from PR #417 to the
+  Japan control plane, restarted only `proxy-gateway-candidate.service`, and
+  validated the redacted traffic collector path.
+- The 2026-07-09 account resource delivery lifecycle deploy is recorded in
+  `docs/production-replacement-records/2026-07-09-account-resource-delivery-lifecycle-backend-deploy-execution.md`.
+  It deployed `account-resource-delivery-lifecycle-20260709-001` from PR #418,
+  preserved protected runtime state, and left a pre-existing SGP VLESS idle
+  collector condition to later observable-status source work.
 - Hysteria2 runtime config must render `outbounds` as named list entries and
   preserve service-user-readable config ownership when applying credentials.
 
