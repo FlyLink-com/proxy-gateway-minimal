@@ -44,3 +44,34 @@ test("order credential issuer honors per-order channelRefs when provided", () =>
     "edgecred_pareq_dynamic_channels_1_channel-b"
   ]);
 });
+
+test("order credential issuer can force-rotate protected material for the same ref", () => {
+  let sequence = 0;
+  const store = materialStore();
+  const issuer = createOrderEdgeCredentialIssuer({
+    channelRef: "channel-primary",
+    materialStore: store,
+    uuidFactory: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`,
+    passwordFactory: () => `password-${sequence}`
+  });
+
+  const [first] = issuer.ensureCredentialsForOrder({
+    id: "pareq_rotate_1",
+    channelRefs: ["channel-primary"]
+  });
+  const [unchanged] = issuer.ensureCredentialsForOrder({
+    id: "pareq_rotate_1",
+    channelRefs: ["channel-primary"]
+  });
+  const [rotated] = issuer.ensureCredentialsForOrder({
+    id: "pareq_rotate_1",
+    channelRefs: ["channel-primary"],
+    forceRotateCredential: true
+  });
+
+  assert.equal(first.edgeCredentialRef, unchanged.edgeCredentialRef);
+  assert.equal(first.edgeCredentialRef, rotated.edgeCredentialRef);
+  assert.equal(first.edgeMaterialDigest, unchanged.edgeMaterialDigest);
+  assert.notEqual(first.edgeMaterialDigest, rotated.edgeMaterialDigest);
+  assert.deepEqual(store.resolveCredentialMaterial("edgecred_pareq_rotate_1"), rotated.edgeCredentialMaterial);
+});

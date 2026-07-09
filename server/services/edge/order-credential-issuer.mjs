@@ -67,6 +67,10 @@ function normalizeChannelRefs({ channelRef, channelRefs } = {}) {
   return normalized;
 }
 
+function forceRotateCredentialFor(order = {}) {
+  return order.forceRotateCredential === true;
+}
+
 export function createOrderEdgeCredentialIssuer({
   channelRef,
   channelRefs,
@@ -81,7 +85,10 @@ export function createOrderEdgeCredentialIssuer({
     throw issuerError("validation_error", "materialStore is required");
   }
 
-  function ensureCredentialForChannel(order = {}, channelRefForOrder, { singleChannelCredentialRef = safeChannelRefs.length === 1 } = {}) {
+  function ensureCredentialForChannel(order = {}, channelRefForOrder, {
+    singleChannelCredentialRef = safeChannelRefs.length === 1,
+    forceRotateCredential = forceRotateCredentialFor(order)
+  } = {}) {
     const orderRef = requiredSafeRef(order.id || order.requestRef, "orderRef");
     const safeChannelRef = requiredSafeRef(channelRefForOrder, "channelRef");
     const credentialRef = requiredSafeRef(
@@ -96,7 +103,7 @@ export function createOrderEdgeCredentialIssuer({
     const existing = typeof materialStore.getCredentialMaterialSummary === "function"
       ? materialStore.getCredentialMaterialSummary(credentialRef)
       : null;
-    if (existing) {
+    if (existing && forceRotateCredential !== true) {
       const existingMaterial = typeof materialStore.resolveCredentialMaterial === "function"
         ? materialStore.resolveCredentialMaterial(existing.credentialRef)
         : null;
@@ -131,7 +138,9 @@ export function createOrderEdgeCredentialIssuer({
 
   return {
     ensureCredentialForOrder(order = {}) {
-      return ensureCredentialForChannel(order, primaryChannelRef);
+      return ensureCredentialForChannel(order, primaryChannelRef, {
+        forceRotateCredential: forceRotateCredentialFor(order)
+      });
     },
 
     ensureCredentialsForOrder(order = {}) {
@@ -139,8 +148,10 @@ export function createOrderEdgeCredentialIssuer({
         ? normalizeChannelRefs({ channelRefs: order.channelRefs })
         : safeChannelRefs;
       const singleChannelCredentialRef = orderChannelRefs.length === 1;
+      const forceRotateCredential = forceRotateCredentialFor(order);
       return orderChannelRefs.map((safeChannelRef) => ensureCredentialForChannel(order, safeChannelRef, {
-        singleChannelCredentialRef
+        singleChannelCredentialRef,
+        forceRotateCredential
       }));
     }
   };
