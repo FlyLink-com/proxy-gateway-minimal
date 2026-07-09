@@ -20,6 +20,7 @@ docs/superpowers/plans/*.tmp
 .vs/
 admin/dist/
 admin/dist-portal/
+.vercel/
 /.codex-artifacts/
 /.codex-runtime/
 /.playwright-cli/
