@@ -1317,12 +1317,15 @@ test("createRuntimeState wires env-gated Mihomo TUIC host adapter for edge lifec
   const activeConfigPath = join(dir, "mihomo", "config.yaml");
   const candidateConfigPath = join(dir, "mihomo", "config.candidate.yaml");
   const backupDir = join(dir, "mihomo", "backups");
+  const controllerSecretPath = join(dir, "protected", "mihomo-controller.secret");
   const commandCalls = [];
   let state;
 
   try {
     mkdirSync(join(dir, "mihomo"), { recursive: true });
+    mkdirSync(join(dir, "protected"), { recursive: true });
     writeFileSync(activeConfigPath, "listeners: []\n", { mode: 0o600 });
+    writeFileSync(controllerSecretPath, "synthetic-controller-secret\n", { mode: 0o600 });
     state = createRuntimeState({
       rootDir: new URL("../../", import.meta.url),
       env: runtimeEnv({
@@ -1336,7 +1339,9 @@ test("createRuntimeState wires env-gated Mihomo TUIC host adapter for edge lifec
         EDGE_MIHOMO_CANDIDATE_CONFIG_PATH: candidateConfigPath,
         EDGE_MIHOMO_BACKUP_DIR: backupDir,
         EDGE_MIHOMO_TUIC_CERTIFICATE_PATH: "/etc/mihomo/server.crt",
-        EDGE_MIHOMO_TUIC_PRIVATE_KEY_PATH: "/etc/mihomo/server.key"
+        EDGE_MIHOMO_TUIC_PRIVATE_KEY_PATH: "/etc/mihomo/server.key",
+        EDGE_MIHOMO_USAGE_CONTROLLER_URL: "http://127.0.0.1:19090",
+        EDGE_MIHOMO_USAGE_CONTROLLER_SECRET_FILE: controllerSecretPath
       }),
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       controlDbPath: join(dir, "control.sqlite"),
@@ -1368,6 +1373,8 @@ test("createRuntimeState wires env-gated Mihomo TUIC host adapter for edge lifec
     assert.deepEqual(commandCalls.map((call) => call[0]), ["mihomo", "systemctl", "systemctl", "ss"]);
     const activeConfig = readFileSync(activeConfigPath, "utf8");
     assert.match(activeConfig, /^listeners:/m);
+    assert.match(activeConfig, /^external-controller: "127\.0\.0\.1:19090"$/m);
+    assert.match(activeConfig, /^secret: "synthetic-controller-secret"$/m);
     assert.match(activeConfig, /type: tuic/);
     assert.match(activeConfig, /users:/);
     assert.equal(existsSync(candidateConfigPath), true);
@@ -1548,7 +1555,8 @@ test("createRuntimeState wires env-gated Xray VLESS Reality host adapter for edg
         EDGE_XRAY_VLESS_DEST: "www.example.com:443",
         EDGE_XRAY_VLESS_SERVER_NAMES: "www.example.com",
         EDGE_XRAY_VLESS_REALITY_PRIVATE_KEY: "synthetic-private-key",
-        EDGE_XRAY_VLESS_SHORT_IDS: "abcd1234"
+        EDGE_XRAY_VLESS_SHORT_IDS: "abcd1234",
+        EDGE_XRAY_STATS_SERVER: "127.0.0.1:10085"
       }),
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       controlDbPath: join(dir, "control.sqlite"),
@@ -1582,6 +1590,10 @@ test("createRuntimeState wires env-gated Xray VLESS Reality host adapter for edg
     assert.equal(activeConfig.inbounds[0].protocol, "vless");
     assert.equal(activeConfig.inbounds[0].tag, "channel-vultr-a-vless-reality-tcp");
     assert.equal(activeConfig.inbounds[0].settings.clients.length, 1);
+    assert.deepEqual(activeConfig.api.services, ["HandlerService", "LoggerService", "StatsService"]);
+    assert.equal(activeConfig.policy.levels["0"].statsUserUplink, true);
+    assert.equal(activeConfig.policy.levels["0"].statsUserDownlink, true);
+    assert.equal(activeConfig.inbounds.some((inbound) => inbound.tag === "api" && inbound.listen === "127.0.0.1" && inbound.port === 10085), true);
     assert.equal(existsSync(candidateConfigPath), true);
     assert.equal(existsSync(backupDir), true);
     assert.doesNotMatch(JSON.stringify(delivered), /uuid|password|synthetic-private-key|config\.candidate|backups/i);
@@ -2576,11 +2588,14 @@ test("createRuntimeState keeps TUIC usage collector disabled without a Mihomo co
 test("createRuntimeState wires env-gated Mihomo TUIC usage collector into the control ledger", async () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-env-tuic-usage-ledger-"));
   const proxyConfigPath = join(dir, "proxy-servers.json");
+  const controllerSecretPath = join(dir, "protected", "mihomo-controller.secret");
   const edgeCredentialRef = "edgecred_pareq_env_tuic_usage_001_channel-vultr-a-tuic";
   const fetchCalls = [];
   let state;
 
   try {
+    mkdirSync(join(dir, "protected"), { recursive: true });
+    writeFileSync(controllerSecretPath, "synthetic-controller-secret\n", { mode: 0o600 });
     writeFileSync(proxyConfigPath, JSON.stringify({
       servers: [
         {
@@ -2609,7 +2624,7 @@ test("createRuntimeState wires env-gated Mihomo TUIC usage collector into the co
         EDGE_USAGE_COLLECTOR_ENABLED: "true",
         EDGE_MIHOMO_USAGE_CONTROLLER_URL: "http://127.0.0.1:19090",
         EDGE_MIHOMO_USAGE_METRICS_PATH: "/usage",
-        EDGE_MIHOMO_USAGE_CONTROLLER_SECRET: "synthetic-controller-secret"
+        EDGE_MIHOMO_USAGE_CONTROLLER_SECRET_FILE: controllerSecretPath
       },
       subscriptionDbPath: join(dir, "subscriptions.sqlite"),
       controlDbPath: join(dir, "control.sqlite"),

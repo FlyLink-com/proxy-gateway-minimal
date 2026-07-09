@@ -93,6 +93,26 @@ function optionalEnvText(value) {
   return String(value || "").trim();
 }
 
+function firstOptionalEnvText(...values) {
+  for (const value of values) {
+    const text = optionalEnvText(value);
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+function firstOptionalTextFile(...candidates) {
+  for (const [value, field] of candidates) {
+    const filePath = optionalEnvText(value);
+    if (filePath) {
+      return optionalTextFile(filePath, field);
+    }
+  }
+  return "";
+}
+
 function optionalEnvPositiveInteger(value) {
   const parsed = Number.parseInt(value, 10);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
@@ -254,7 +274,7 @@ function createXrayUsageSourceConfigs(env = {}) {
     }));
   }
 
-  const statsServer = optionalEnvText(env.EDGE_XRAY_STATS_SERVER || env.EDGE_XRAY_STATS_API_SERVER);
+  const statsServer = firstOptionalEnvText(env.EDGE_XRAY_STATS_SERVER, env.EDGE_XRAY_STATS_API_SERVER);
   if (!statsServer) {
     return [];
   }
@@ -286,8 +306,9 @@ function createMihomoUsageSourceConfigs(env = {}) {
     }));
   }
 
-  const controllerUrl = optionalEnvText(
-    env.EDGE_MIHOMO_USAGE_CONTROLLER_URL || env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_URL
+  const controllerUrl = firstOptionalEnvText(
+    env.EDGE_MIHOMO_USAGE_CONTROLLER_URL,
+    env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_URL
   );
   if (!controllerUrl) {
     return [];
@@ -295,7 +316,13 @@ function createMihomoUsageSourceConfigs(env = {}) {
   return [{
     controllerUrl,
     metricsPath: env.EDGE_MIHOMO_USAGE_METRICS_PATH || env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_METRICS_PATH,
-    controllerSecret: env.EDGE_MIHOMO_USAGE_CONTROLLER_SECRET || env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_SECRET,
+    controllerSecret: firstOptionalEnvText(
+      env.EDGE_MIHOMO_USAGE_CONTROLLER_SECRET,
+      env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_SECRET
+    ) || firstOptionalTextFile(
+      [env.EDGE_MIHOMO_USAGE_CONTROLLER_SECRET_FILE, "EDGE_MIHOMO_USAGE_CONTROLLER_SECRET_FILE"],
+      [env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_SECRET_FILE, "EDGE_MIHOMO_EXTERNAL_CONTROLLER_SECRET_FILE"]
+    ),
     channelRefs: parseCsv(env.EDGE_MIHOMO_USAGE_CHANNEL_REFS || env.EDGE_MIHOMO_TUIC_USAGE_CHANNEL_REFS, []),
     fieldPrefix: "EDGE_MIHOMO_USAGE_CONTROLLER_URL"
   }];
@@ -1018,9 +1045,20 @@ export function createRuntimeState(options = {}) {
               congestionController: optionalEnvText(env.EDGE_MIHOMO_TUIC_CONGESTION_CONTROLLER) || "bbr",
               alpn: parseCsv(env.EDGE_MIHOMO_TUIC_ALPN, ["h3"]),
               usageController: {
-                controllerUrl: optionalEnvText(env.EDGE_MIHOMO_RUNTIME_CONTROLLER_URL),
-                secret: optionalEnvText(env.EDGE_MIHOMO_RUNTIME_CONTROLLER_SECRET)
-                  || optionalTextFile(env.EDGE_MIHOMO_RUNTIME_CONTROLLER_SECRET_FILE, "EDGE_MIHOMO_RUNTIME_CONTROLLER_SECRET_FILE")
+                controllerUrl: firstOptionalEnvText(
+                  env.EDGE_MIHOMO_RUNTIME_CONTROLLER_URL,
+                  env.EDGE_MIHOMO_USAGE_CONTROLLER_URL,
+                  env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_URL
+                ),
+                secret: firstOptionalEnvText(
+                  env.EDGE_MIHOMO_RUNTIME_CONTROLLER_SECRET,
+                  env.EDGE_MIHOMO_USAGE_CONTROLLER_SECRET,
+                  env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_SECRET
+                ) || firstOptionalTextFile(
+                  [env.EDGE_MIHOMO_RUNTIME_CONTROLLER_SECRET_FILE, "EDGE_MIHOMO_RUNTIME_CONTROLLER_SECRET_FILE"],
+                  [env.EDGE_MIHOMO_USAGE_CONTROLLER_SECRET_FILE, "EDGE_MIHOMO_USAGE_CONTROLLER_SECRET_FILE"],
+                  [env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_SECRET_FILE, "EDGE_MIHOMO_EXTERNAL_CONTROLLER_SECRET_FILE"]
+                )
               }
             },
             resolveCredentialMaterial: (credentialRef) => edgeCredentialMaterialStore.resolveCredentialMaterial(credentialRef),
@@ -1072,7 +1110,11 @@ export function createRuntimeState(options = {}) {
               shortIds: parseCsv(env.EDGE_XRAY_VLESS_SHORT_IDS, []),
               xver: env.EDGE_XRAY_VLESS_XVER,
               usageStats: {
-                statsServer: optionalEnvText(env.EDGE_XRAY_RUNTIME_STATS_SERVER)
+                statsServer: firstOptionalEnvText(
+                  env.EDGE_XRAY_RUNTIME_STATS_SERVER,
+                  env.EDGE_XRAY_STATS_SERVER,
+                  env.EDGE_XRAY_STATS_API_SERVER
+                )
               },
               validationAttempts: env.EDGE_XRAY_LISTENER_VALIDATION_ATTEMPTS,
               validationRetryDelayMs: env.EDGE_XRAY_LISTENER_VALIDATION_RETRY_DELAY_MS
