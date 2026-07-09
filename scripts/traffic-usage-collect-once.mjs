@@ -28,6 +28,61 @@ function safeObservability(value) {
   return Object.keys(summary).length > 0 ? summary : null;
 }
 
+function envFlag(value) {
+  return ["1", "true", "yes", "on"].includes(String(value || "").trim().toLowerCase());
+}
+
+function envPresent(env, key) {
+  return safeText(env?.[key]).length > 0;
+}
+
+function adminStatusProbe(env = {}) {
+  return {
+    adminAuthRoutesEnabled: envFlag(env.ADMIN_AUTH_ROUTES_ENABLED || env.ADMIN_PROTECTED_ROUTE_AUTH_ENABLED),
+    adminAuthPortalAccountIdPresent: envPresent(env, "ADMIN_AUTH_PORTAL_ACCOUNT_ID"),
+    adminAuthSessionSecretPresent: envPresent(env, "ADMIN_AUTH_SESSION_SECRET")
+  };
+}
+
+function startupFailureClass(error, adminStatus) {
+  const message = String(error?.message || "");
+  if (
+    message.includes("ADMIN_AUTH_PORTAL_ACCOUNT_ID")
+    || (adminStatus.adminAuthRoutesEnabled && !adminStatus.adminAuthPortalAccountIdPresent)
+  ) {
+    return "admin_auth_operator_ref_missing";
+  }
+  return "runtime_state_initialization_failed";
+}
+
+export function summarizeCollectorStartupFailure(error, {
+  mode = "collect",
+  env = {},
+  failureStage = "runtime_state"
+} = {}) {
+  const adminStatus = adminStatusProbe(env);
+  const failureClass = startupFailureClass(error, adminStatus);
+  return {
+    type: "traffic_usage_collect_status",
+    ok: false,
+    mode,
+    status: "startup_failed",
+    failureStage,
+    failureClass,
+    errorCode: error?.code || "collector_exception",
+    adminStatus,
+    nextAction: failureClass === "admin_auth_operator_ref_missing"
+      ? "sync_usage_collector_admin_auth_environment"
+      : "review_usage_collector_startup_failure",
+    safety: {
+      redacted: true,
+      noRawEnvValues: true,
+      noSecretMaterialReturned: true,
+      adminStatusProbe: true
+    }
+  };
+}
+
 export function hasOnlyUnresolvedBindingFailures(report) {
   const reports = Array.isArray(report?.reports) ? report.reports : [];
   if (report?.ok === true || Number(report?.unresolvedCount || 0) <= 0) {
@@ -111,13 +166,24 @@ export async function runTrafficUsageCollectOnce({
   cwd = process.cwd(),
   env = process.env,
   stdout = process.stdout,
-  stderr = process.stderr
+  stderr = process.stderr,
+  runtimeStateFactory = createRuntimeState
 } = {}) {
   const mode = argv.includes("--collect") ? "collect" : "check";
-  const state = createRuntimeState({
-    rootDir: cwd,
-    env
-  });
+  let state;
+  try {
+    state = runtimeStateFactory({
+      rootDir: cwd,
+      env
+    });
+  } catch (error) {
+    stderr.write(`${JSON.stringify(summarizeCollectorStartupFailure(error, {
+      mode,
+      env,
+      failureStage: "runtime_state"
+    }))}\n`);
+    return 1;
+  }
 
   if (mode === "check") {
     stdout.write(`${JSON.stringify(summarizeCollectorCheck(state))}\n`);
@@ -159,11 +225,12 @@ if (isDirectInvocation()) {
       process.exitCode = code;
     })
     .catch((error) => {
-      process.stderr.write(`${JSON.stringify({
-        type: "traffic_usage_collect_once",
-        ok: false,
-        error: error?.code || "collector_exception"
-      })}\n`);
+      const mode = process.argv.slice(2).includes("--collect") ? "collect" : "check";
+      process.stderr.write(`${JSON.stringify(summarizeCollectorStartupFailure(error, {
+        mode,
+        env: process.env,
+        failureStage: "unhandled_exception"
+      }))}\n`);
       process.exitCode = 1;
     });
 }

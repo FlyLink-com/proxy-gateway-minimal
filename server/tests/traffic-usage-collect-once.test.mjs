@@ -6,7 +6,9 @@ import { spawnSync } from "node:child_process";
 import test from "node:test";
 import {
   hasOnlyUnresolvedBindingFailures,
+  runTrafficUsageCollectOnce,
   summarizeCollectorCheck,
+  summarizeCollectorStartupFailure,
   summarizeUsageAccountingReport
 } from "../../scripts/traffic-usage-collect-once.mjs";
 
@@ -234,6 +236,66 @@ test("traffic usage collect check reports configured collector count without col
     channelRefs: ["channel-vultr-a-hy2"],
     nextAction: "enable_timer_after_operator_approval"
   });
+});
+
+test("traffic usage startup failure summary exposes redacted admin status probe", () => {
+  const error = new Error("ADMIN_AUTH_PORTAL_ACCOUNT_ID is required when admin auth routes are enabled");
+  const summary = summarizeCollectorStartupFailure(error, {
+    mode: "collect",
+    env: {
+      ADMIN_AUTH_ROUTES_ENABLED: "true",
+      ADMIN_AUTH_SESSION_SECRET: "synthetic-secret"
+    }
+  });
+
+  assert.deepEqual(summary, {
+    type: "traffic_usage_collect_status",
+    ok: false,
+    mode: "collect",
+    status: "startup_failed",
+    failureStage: "runtime_state",
+    failureClass: "admin_auth_operator_ref_missing",
+    errorCode: "collector_exception",
+    adminStatus: {
+      adminAuthRoutesEnabled: true,
+      adminAuthPortalAccountIdPresent: false,
+      adminAuthSessionSecretPresent: true
+    },
+    nextAction: "sync_usage_collector_admin_auth_environment",
+    safety: {
+      redacted: true,
+      noRawEnvValues: true,
+      noSecretMaterialReturned: true,
+      adminStatusProbe: true
+    }
+  });
+  assert.equal(JSON.stringify(summary).includes("synthetic-secret"), false);
+});
+
+test("traffic usage collect CLI reports startup diagnostics when runtime state initialization fails", async () => {
+  let stderr = "";
+  const exitCode = await runTrafficUsageCollectOnce({
+    argv: ["--collect"],
+    env: {
+      ADMIN_AUTH_ROUTES_ENABLED: "true",
+      ADMIN_AUTH_SESSION_SECRET: "synthetic-secret"
+    },
+    stdout: { write() {} },
+    stderr: { write(chunk) { stderr += chunk; } },
+    runtimeStateFactory() {
+      throw new Error("ADMIN_AUTH_PORTAL_ACCOUNT_ID is required when admin auth routes are enabled");
+    }
+  });
+
+  assert.equal(exitCode, 1);
+  const summary = JSON.parse(stderr);
+  assert.equal(summary.type, "traffic_usage_collect_status");
+  assert.equal(summary.status, "startup_failed");
+  assert.equal(summary.failureClass, "admin_auth_operator_ref_missing");
+  assert.equal(summary.adminStatus.adminAuthRoutesEnabled, true);
+  assert.equal(summary.adminStatus.adminAuthPortalAccountIdPresent, false);
+  assert.equal(summary.adminStatus.adminAuthSessionSecretPresent, true);
+  assert.equal(JSON.stringify(summary).includes("synthetic-secret"), false);
 });
 
 test("traffic usage collect CLI runs when invoked through a symlinked path", () => {
