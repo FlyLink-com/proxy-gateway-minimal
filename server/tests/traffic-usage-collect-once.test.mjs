@@ -19,6 +19,11 @@ test("traffic usage collect summary omits credential refs and raw runtime payloa
     insertedCount: 1,
     unresolvedCount: 0,
     quotaDisableRequiredCount: 0,
+    trafficSupplySuspendRequiredCount: 0,
+    trafficSupplySuspendAttemptedCount: 0,
+    trafficSupplySuspendExecutedCount: 0,
+    trafficSupplySuspendFailedCount: 0,
+    trafficSupplySuspendPendingCount: 0,
     nextAction: "continue_usage_monitoring",
     safety: {
       noRawRuntimePayload: true,
@@ -47,6 +52,8 @@ test("traffic usage collect summary omits credential refs and raw runtime payloa
 
   assert.equal(summary.ok, true);
   assert.equal(summary.reports[0].recordedCount, 1);
+  assert.equal(summary.trafficSupplySuspendRequiredCount, 0);
+  assert.equal(summary.trafficSupplySuspendExecutedCount, 0);
   assert.equal(JSON.stringify(summary).includes("edgecred_sensitive_ref"), false);
   assert.deepEqual(summary.safety, {
     noRawRuntimePayload: true,

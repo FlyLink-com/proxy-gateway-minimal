@@ -1319,6 +1319,44 @@ test("disable revokes the active artifact and disables the delivered tenant with
   assert.equal(requests.getRequest("pareq_disable_1").status, "disabled");
 });
 
+test("traffic supply suspension revokes access while preserving the order record", () => {
+  const runtimeCore = lifecycleRuntimeCore();
+  const edgeLifecycle = edgeLifecycleService();
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_suspend_traffic_1",
+    runtimeCore,
+    edgeLifecycleService: edgeLifecycle
+  });
+  requests.submitRequest(validTrialInput());
+  requests.markDelivered("pareq_suspend_traffic_1", {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_safe_ref",
+    accessGrantRef: "grant_safe_ref",
+    tenantId: "tenant_runtime_1",
+    artifactId: "artifact_runtime_1",
+    subscriptionUrl: "https://sub.example.test/import/original-visible-once",
+    expiresAt: "2026-06-07T00:00:00.000Z"
+  });
+
+  const suspended = requests.suspendTrafficSupply({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_suspend_traffic_1"
+  });
+
+  assert.equal(suspended.status, "disabled");
+  assert.equal(suspended.nextAction, "traffic_supply_suspended_quota");
+  assert.equal(suspended.event.type, "traffic_supply_suspended");
+  assert.equal(suspended.subscriptionUrl, undefined);
+  assert.deepEqual(runtimeCore.calls, [
+    ["revokeSubscriptionArtifact", "artifact_runtime_1"],
+    ["disableTenant", "tenant_runtime_1"]
+  ]);
+  assert.equal(edgeLifecycle.calls.length, 1);
+  assert.equal(edgeLifecycle.calls[0].reason, "traffic_supply_suspended");
+  assert.equal(requests.getRequest("pareq_suspend_traffic_1").nextAction, "traffic_supply_suspended_quota");
+});
+
 test("refresh and disable notify the optional edge lifecycle service", () => {
   const runtimeCore = lifecycleRuntimeCore();
   const edgeLifecycle = edgeLifecycleService();

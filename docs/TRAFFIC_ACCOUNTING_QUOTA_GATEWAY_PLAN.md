@@ -212,20 +212,29 @@ Add a control-plane service that:
 4. compares `total_bytes` with `traffic_limit_bytes`;
 5. returns one of:
    - `within_quota`;
-   - `over_quota_disable_required`;
+   - `over_quota_disable_required` with `traffic_supply_suspend_required`
+     lifecycle metadata;
    - `unmetered_no_limit`;
    - `unresolved_binding`;
    - `collector_not_supported`.
 
-When over quota, the service must not directly mutate the node runtime. It must
-request the existing controlled lifecycle path:
+When over quota, the service must not disable the user account. Once the
+traffic-supply lifecycle gate is enabled in the runtime state, the collector
+must automatically invoke the controlled traffic-supply suspension path for the
+affected order/resource. The production approval is for enabling this automatic
+gate, not for manually approving every over-limit resource:
 
 ```text
-mark order/link disabled
+mark order/resource traffic supply suspended
   -> desired credential set excludes the credential
   -> edge reconciliation apply gate revokes runtime credential
   -> receipt records applied/failed state
 ```
+
+The collector summary must expose redacted counts for required, attempted,
+executed, failed, and pending traffic-supply suspensions so Admin can surface
+automatic cutoff health without showing subscription URLs, credentials, raw
+runtime payloads, or customer-private rows.
 
 ### 5. Subscription Header Backfill
 
@@ -277,7 +286,7 @@ Status as of 2026-06-06:
   issued as safe `edgeCredentialRef` anchors, and `tx`/`rx` are normalized into
   upload/download usage observations;
 - real runtime traffic collection, production migration, and quota-driven
-  runtime disable/revoke remain unimplemented until a runtime can expose real
+  runtime traffic-supply suspension remain gated until a runtime can expose real
   per-credential usage observations and a schema-gated cursor store is approved.
 
 ### Phase 1: Repo-Only Schema and Service Tests

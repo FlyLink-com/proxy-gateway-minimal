@@ -111,13 +111,13 @@ function recordOverQuotaUsage(store) {
   });
 }
 
-test("usage quota lifecycle gate plans a controlled disable without mutating orders by default", () => {
+test("usage quota lifecycle gate plans controlled traffic supply suspension without mutating orders by default", () => {
   withStore((store) => {
     const overQuota = recordOverQuotaUsage(store);
     const calls = [];
     const gate = createOrderUsageQuotaLifecycleGate({
       orderLifecycleService: {
-        disableSubscription(input) {
+        suspendTrafficSupply(input) {
           calls.push(input);
           return { id: input.requestRef, status: "disabled" };
         }
@@ -127,17 +127,21 @@ test("usage quota lifecycle gate plans a controlled disable without mutating ord
     const result = gate.handleUsageDecision(overQuota);
 
     assert.equal(overQuota.status, "over_quota_disable_required");
+    assert.equal(overQuota.lifecycleAction, "traffic_supply_suspend_required");
     assert.equal(result.ok, true);
-    assert.equal(result.status, "controlled_disable_required");
-    assert.equal(result.nextAction, "request_controlled_disable_approval");
+    assert.equal(result.status, "controlled_traffic_supply_suspend_required");
+    assert.equal(result.nextAction, "request_controlled_traffic_supply_suspend_approval");
     assert.equal(result.mutation, false);
+    assert.equal(result.execution.trafficSupplySuspendRequired, true);
+    assert.equal(result.execution.accountMutationRequired, false);
+    assert.equal(result.safety.noAccountDisable, true);
     assert.equal(calls.length, 0);
     assert.equal(store.listPortalAccessRequests({ status: "delivered" }).length, 1);
     assert.doesNotMatch(JSON.stringify(result), /https?:\/\/|password|token|rawConfig/i);
   });
 });
 
-test("usage quota lifecycle gate can explicitly disable an over-quota portal order through lifecycle services", () => {
+test("usage quota lifecycle gate can explicitly suspend over-quota portal traffic supply", () => {
   withStore((store) => {
     const runtimeCalls = [];
     const edgeLifecycleCalls = [];
@@ -172,23 +176,27 @@ test("usage quota lifecycle gate can explicitly disable an over-quota portal ord
     });
 
     const result = gate.handleUsageDecision(overQuota, {
-      executeControlledDisable: true,
+      executeControlledTrafficSupplySuspend: true,
       reviewedByRef: "usage_quota_gate"
     });
 
     assert.equal(result.ok, true);
-    assert.equal(result.status, "controlled_disable_completed");
+    assert.equal(result.status, "controlled_traffic_supply_suspend_completed");
+    assert.equal(result.nextAction, "traffic_supply_suspended_review_edge_lifecycle");
     assert.equal(result.mutation, true);
+    assert.equal(result.execution.accountMutationRequired, false);
     assert.deepEqual(runtimeCalls, [
       ["revokeSubscriptionArtifact", "artifact_usage_gate_1"],
       ["disableTenant", "tenant_usage_gate_1"]
     ]);
     assert.equal(edgeLifecycleCalls.length, 1);
-    assert.equal(edgeLifecycleCalls[0].reason, "order_disabled");
+    assert.equal(edgeLifecycleCalls[0].reason, "traffic_supply_suspended");
     assert.equal(edgeLifecycleCalls[0].order.edgeCredentialRef, "edgecred_usage_gate_1");
     assert.equal(store.listPortalAccessRequests({ status: "disabled" })[0].id, "pareq_usage_gate_1");
-    assert.equal(result.disabledOrder.status, "disabled");
-    assert.equal(result.disabledOrder.safety.noSubscriptionUrl, true);
+    assert.equal(store.getPortalAccessRequest("pareq_usage_gate_1").nextAction, "traffic_supply_suspended_quota");
+    assert.equal(result.suspendedOrder.status, "disabled");
+    assert.equal(result.suspendedOrder.nextAction, "traffic_supply_suspended_quota");
+    assert.equal(result.suspendedOrder.safety.noSubscriptionUrl, true);
     assert.doesNotMatch(JSON.stringify(result), /https?:\/\/|password|token|rawConfig/i);
   });
 });

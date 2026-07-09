@@ -219,7 +219,8 @@ local preview implementation.
 | `fetchCurrentState` | Hydrate the portal after login or page refresh. | Session/user reference. | Order lifecycle, package, expiry, history summary, and issued material only if an order was already delivered. | No subscription mutation. | Client-side state reconstruction or lifecycle guessing. |
 | `applyForSubscription` | Create a 7-day/monthly/yearly order request. | Session/user reference, package id, quantity, and client target. | Request summary and pending lifecycle. | Creates an order/access-request fact only. | Client-provided expiry, price, quota, node id, artifact secret, contact profile, delete action, or direct subscription generation. |
 | `refreshSubscription` | Replace material for an already-issued order. | Session/user reference, request reference, and client target. | New visible-once material summary and old-link invalidation event. | Backend-controlled refresh only when active and issued. | New package application, duration extension, payment capture, direct request-step issuance, or operator override. |
-| `disableSubscription` | Disable an already-issued order without deleting the order/request record. | Session/user reference and request reference. | Disabled lifecycle summary. | Backend-controlled disable only when active and issued. | Physical delete, payment refund logic, operator override, or hidden record removal. |
+| `disableSubscription` | Legacy API name for stopping an already-issued order/resource without deleting the account or order/request record. | Session/user reference and request reference. | Disabled lifecycle summary. | Backend-controlled order/resource stop only when active and issued. | Account disable, physical delete, payment refund logic, operator override, or hidden record removal. |
+| `suspendTrafficSupply` | Suspend traffic supply for an already-issued order/resource when a controlled lifecycle decision such as quota exhaustion fires. | Session/user reference and request reference. | Traffic-supply suspended summary and safe event metadata. | Backend-controlled traffic-supply suspension only when active and issued; quota exhaustion is executed automatically by the usage collector once the gate is enabled. | Account disable, physical delete, payment refund logic, operator override, or hidden record removal. |
 | `fetchSubscriptionHistory` | Read account history for Profile. | Session/user reference. | Application, approval, refresh, expiry, and support summary rows. | None. | Raw secrets, full database rows, or operator audit dumps. |
 | `requestSupport` | Prepare a support handoff. | Session/user reference, issue category, safe message/context. | Support handoff reference or guidance. | Support record only if implemented. | Bot execution, payment operation, Admin mutation, or subscription issuance. |
 
@@ -247,7 +248,10 @@ It must keep intent calls separate:
 - Read current portal state after login: `fetchCurrentState`.
 - Apply/open package: `applyForSubscription`.
 - Refresh current active subscription: `refreshSubscription`.
-- Disable current active subscription: `disableSubscription`.
+- Stop current active subscription/order through the legacy portal action:
+  `disableSubscription`.
+- Suspend traffic supply for an active order/resource when usage reaches the
+  configured limit: `suspendTrafficSupply` through the automatic collector gate.
 
 These actions must not share an overloaded request method, because opening a new
 package and refreshing an existing subscription have different backend

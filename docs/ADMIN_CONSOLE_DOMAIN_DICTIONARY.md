@@ -159,8 +159,10 @@ and what account/order lifecycle needs review?
 
 Account creation and account disable belong here. Subscription creation is not
 the primary Admin model. Order pause, revoke, archive, and quota enforcement are
-separate lifecycle review flows and may become Risk A depending on production
-impact.
+separate lifecycle review flows. Quota exhaustion should suspend traffic supply
+for the affected order/resource automatically through the usage collector gate,
+not disable the user account. Enabling or changing that production cutoff gate
+may become Risk A depending on production impact.
 
 ### `平台监控 / 流量与通道`
 
