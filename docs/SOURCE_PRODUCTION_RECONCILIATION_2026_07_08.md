@@ -69,6 +69,29 @@ Do not include unrelated Admin OS, Figma mirror, public-site fixture, or runtime
 changes from #364. The PR should state that production static was restored
 already, and that this repo PR aligns source to the restored frontend baseline.
 
+#### Portal static source alignment follow-up
+
+This follow-up re-cuts the portal static source baseline from current `master`
+instead of merging #364 as a carrier branch. It restores only the portal static
+source needed to rebuild the production `/var/www/globalcircle-portal` artifact
+from `ca9f5702`, keeps the preserved CSS behind the portal-only build entry,
+and leaves the current Admin shell stylesheet on `master`.
+
+Evidence:
+
+- Production static had already been backed up separately at
+  `D:\Projects\proxy-gateway-minimal-artifacts\production-portal-static-preserve\20260708-191234`.
+- `admin:portal:build` from this branch emits the same production artifact
+  filenames observed on Japan: `index-C8cV34to.css`, `index-BVwqYSau.js`, and
+  `browser-Bpdo4wTk.js`.
+- A local tar expansion and SHA-256 manifest comparison against
+  `globalcircle-portal-ca9f5702-20260708.tar` found 9 files, 9 artifact files,
+  and 0 differences.
+
+This is a repo source-alignment change only. It does not authorize or perform a
+production deploy, static replacement, Nginx change, DNS change, runtime config
+change, credential/token change, schema migration, or AppsFlyer activation.
+
 ### Traffic usage closeout
 
 Do not merge #381 as one PR. Re-cut:

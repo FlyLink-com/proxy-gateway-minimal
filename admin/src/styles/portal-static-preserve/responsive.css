@@ -1,0 +1,1381 @@
+@media (max-width: 860px) {
+  :root {
+    --admin-mobile-nav-bottom: 8px;
+    --admin-canvas-gutter: 16px;
+  }
+
+  .admin-shell {
+    display: block;
+  }
+
+  .admin-main {
+    margin-left: 0;
+    padding-bottom: 92px;
+  }
+
+  .app-sidebar {
+    top: auto;
+    left: 8px;
+    right: 8px;
+    bottom: 8px;
+    width: auto;
+    transform: none;
+    padding: var(--admin-mobile-nav-padding);
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--admin-mobile-nav-gap);
+    border-radius: 18px;
+  }
+
+  .nav-list {
+    flex-direction: row;
+    flex: 1;
+    gap: var(--admin-mobile-nav-gap);
+    min-width: 0;
+    align-items: center;
+  }
+
+  .nav-primary-list {
+    display: flex;
+    flex-direction: row;
+    flex: 1 1 auto;
+    gap: 6px;
+    width: auto;
+    min-width: 0;
+  }
+
+  .nav-planned-sidebar-list {
+    display: none;
+  }
+
+  .brand-name,
+  .brand-subtitle,
+  .nav-item-copy,
+  .sidebar-safety-summary strong {
+    display: none;
+  }
+
+  .brand {
+    width: auto;
+    border-bottom: 0;
+    padding-right: 0;
+    padding-bottom: 0;
+  }
+
+  .brand-mark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .nav-item {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+  }
+
+  .nav-item-icon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .sidebar-safety-summary {
+    width: var(--admin-touch-target-min);
+    padding: 0;
+    justify-content: center;
+    place-items: center;
+  }
+
+  .sidebar-safety-footer {
+    flex: 0 0 var(--admin-touch-target-min);
+    width: var(--admin-touch-target-min);
+    min-width: var(--admin-touch-target-min);
+  }
+
+  .sidebar-safety-summary {
+    min-height: var(--admin-touch-target-min);
+    height: var(--admin-touch-target-min);
+    gap: 0;
+  }
+
+  .sidebar-safety-summary span,
+  .sidebar-safety-summary strong {
+    display: none;
+  }
+
+  .sidebar-safety-detail {
+    display: none;
+  }
+
+  .sidebar-safety-summary svg:first-of-type {
+    display: block;
+    width: 18px;
+    height: 18px;
+  }
+
+  .sidebar-safety-summary svg:last-of-type {
+    display: none;
+  }
+
+  .top-bar {
+    align-items: center;
+    flex-direction: row;
+    min-width: 0;
+  }
+
+  .top-bar-heading {
+    flex: 1 1 auto;
+  }
+
+  .top-bar-description {
+    max-width: 48vw;
+  }
+
+  .top-bar-actions {
+    align-items: center;
+    flex-direction: row;
+    justify-content: flex-end;
+    min-width: 0;
+    width: auto;
+  }
+
+  .top-bar-search {
+    width: min(320px, 34vw);
+    padding: 0 12px;
+  }
+
+  .connection-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .connection-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .connection-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .connection-actions .primary-button,
+  .connection-actions .ghost-button {
+    width: 100%;
+  }
+
+  .connection-widget,
+  .connection-widget-summary {
+    width: 100%;
+  }
+
+  .connection-widget-summary {
+    justify-content: space-between;
+  }
+
+  .connection-widget-popover {
+    position: static;
+    width: 100%;
+    margin-top: 10px;
+  }
+
+  .dashboard-hero {
+    flex-direction: column;
+  }
+
+  .dashboard-health {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .page-header-status-stack {
+    justify-content: flex-start;
+    width: 100%;
+  }
+
+  .page-header-status-stack .data-source-badge {
+    max-width: none;
+    width: 100%;
+  }
+
+  .admin-overview-metric-grid,
+  .ops-metric-grid,
+  .admin-static-card-grid,
+  .dashboard-mini-metrics,
+  .dashboard-mini-metrics-compact {
+    grid-template-columns: 1fr;
+  }
+
+  .chart-split {
+    grid-template-columns: 1fr;
+  }
+
+  .donut-chart {
+    justify-self: center;
+  }
+
+  .sparkline-axis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .portal-login-shell {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-login-side {
+    display: none;
+  }
+
+  .portal-login-main {
+    min-height: 100vh;
+    padding: 92px 24px 40px;
+  }
+
+  .portal-login-main .portal-preference-switch {
+    top: 24px;
+    right: 24px;
+  }
+
+  .portal-login-header h1 {
+    font-size: 26px;
+  }
+
+  .portal-login-challenge-row {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-login-challenge-prompt {
+    justify-content: center;
+    width: 100%;
+  }
+}
+
+@media (max-width: 620px) {
+  .portal-login-main {
+    padding: 84px 20px 32px;
+  }
+
+  .portal-login-meta {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .portal-login-submit,
+  .portal-login-secondary {
+    width: 100%;
+  }
+
+  .top-bar {
+    gap: 8px;
+    padding: 8px var(--admin-canvas-gutter-mobile);
+  }
+
+  .top-bar-heading {
+    flex: 1 1 auto;
+    gap: 0;
+  }
+
+  .top-bar-heading .top-bar-context,
+  .top-bar-description {
+    display: none;
+  }
+
+  .top-bar-page-title {
+    font-size: 15px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .top-bar-search {
+    display: none;
+  }
+
+  .top-bar-actions {
+    display: flex;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    flex: 0 0 auto;
+    min-width: 0;
+    width: auto;
+  }
+
+  .top-bar-actions > .dashboard-status-badge {
+    display: none;
+  }
+
+  .operator-account-summary {
+    width: var(--admin-touch-target-min);
+    justify-content: center;
+    min-height: var(--admin-touch-target-min);
+    padding: 3px;
+  }
+
+  .operator-account-avatar {
+    width: 30px;
+    height: 30px;
+  }
+
+  .operator-account-summary > svg,
+  .operator-account-copy {
+    display: none;
+  }
+
+  .operator-account-copy small {
+    display: none;
+  }
+
+  .operator-account-popover {
+    min-width: min(260px, calc(100vw - 24px));
+  }
+
+  .top-status-strip {
+    gap: 6px;
+    justify-content: flex-end;
+    padding: 3px;
+  }
+
+  .top-status-strip .environment-pill,
+  .top-status-strip .icon-button,
+  .top-status-strip .console-tools-summary {
+    min-height: var(--admin-touch-target-min);
+  }
+
+  .top-status-strip .icon-button,
+  .top-status-strip .console-tools-summary {
+    width: var(--admin-touch-target-min);
+  }
+
+  .top-status-strip .environment-pill {
+    padding: 0 10px;
+  }
+
+  .environment-menu,
+  .top-bar-link,
+  .top-bar .connection-widget,
+  .top-bar .connection-widget-summary {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .operator-menu {
+    min-width: 0;
+    width: auto;
+  }
+
+  .environment-summary {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .top-status-strip .environment-menu,
+  .top-status-strip .environment-summary {
+    width: auto;
+  }
+
+  .top-bar .connection-widget-copy {
+    min-width: 0;
+  }
+
+  .top-bar .connection-widget-copy strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .top-bar-link {
+    justify-content: center;
+    min-height: var(--admin-touch-target-min);
+    min-width: 0;
+    padding: 0 10px;
+    white-space: normal;
+  }
+
+  .nav-item {
+    display: inline-flex;
+    justify-content: center;
+    min-height: var(--admin-touch-target-min);
+    min-width: 0;
+    overflow: hidden;
+    padding: 4px;
+    text-align: center;
+  }
+
+  .nav-item-icon {
+    width: 28px;
+    height: 28px;
+  }
+
+  .nav-item-copy {
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  .page-subnav-scroll {
+    display: flex;
+    flex-wrap: wrap;
+    overflow-x: visible;
+    padding-bottom: 0;
+  }
+
+  .page-subnav-link {
+    flex: 1 1 156px;
+    min-height: var(--admin-touch-target-min);
+    width: auto;
+  }
+
+  .page-subnav-mode {
+    display: none;
+  }
+
+  .admin-blueprint-module-panel-meta {
+    align-items: flex-start;
+    justify-items: start;
+  }
+
+  .admin-blueprint-page {
+    gap: 12px;
+  }
+
+  .admin-blueprint-page-hero {
+    gap: 6px;
+  }
+
+  .admin-blueprint-page-hero p {
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .admin-blueprint-page-hero h1 {
+    font-size: 26px;
+    line-height: 1.2;
+  }
+
+  .admin-fixture-preview-banner {
+    gap: 4px;
+    padding: 8px 10px;
+  }
+
+  .admin-fixture-preview-banner > div {
+    gap: 6px;
+  }
+
+  .admin-fixture-preview-banner p {
+    display: none;
+  }
+
+  .admin-blueprint-module-panel {
+    gap: 8px;
+    max-block-size: none;
+    overflow: visible;
+    padding: 10px;
+  }
+
+  .admin-fixture-preview,
+  .admin-fixture-preview-rows {
+    gap: 8px;
+  }
+
+  .admin-fixture-preview-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-blueprint-page[data-page] [data-module-nav-id] .admin-fixture-preview-row {
+    min-height: 0;
+    padding: 10px;
+  }
+
+  .usage-timeseries-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 980px) {
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usage-channel-health-grid,
+  .usage-anomaly-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-blueprint-module-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-blueprint-page[data-page="dashboard"] .admin-blueprint-module-board,
+  .admin-blueprint-page[data-page="portalRequests"] .admin-blueprint-module-board,
+  .admin-blueprint-page[data-page="usageMonitor"] .admin-blueprint-module-board {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id],
+  .admin-blueprint-page[data-page="portalRequests"] [data-module-nav-id],
+  .admin-blueprint-page[data-page="usageMonitor"] [data-module-nav-id] {
+    grid-column: auto;
+    grid-row: auto;
+    height: auto;
+    min-height: 0;
+  }
+
+  .admin-blueprint-page[data-page="dashboard"] [data-module-nav-id="health-summary"] .admin-fixture-preview-rows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-blueprint-module-panel-head,
+  .admin-blueprint-module-panel > .admin-blueprint-actions {
+    grid-column: 1;
+    grid-row: auto;
+  }
+
+  .admin-blueprint-module-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .admin-blueprint-module-title,
+  .admin-blueprint-module-panel-meta {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .admin-blueprint-module-panel > .admin-blueprint-actions {
+    justify-content: flex-start;
+  }
+
+  .case-workbench-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-overview-metric-grid,
+  .ops-metric-grid,
+  .admin-static-card-grid,
+  .new-console-workbench,
+  .overview-next-actions-grid,
+  .dashboard-grid-primary,
+  .dashboard-grid-secondary {
+    grid-template-columns: 1fr;
+  }
+
+  .new-console-workbench > .case-detail-panel,
+  .new-console-workbench-slot-channel,
+  .new-console-channel-panel {
+    grid-column: auto;
+    grid-row: auto;
+  }
+
+  .new-console-channel-table .new-console-row {
+    grid-template-columns: minmax(0, 1.1fr) minmax(88px, 0.7fr) minmax(88px, 0.7fr);
+  }
+
+  .monitor-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usage-anomaly-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .install-config-hero,
+  .install-config-grid,
+  .install-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .json-deployment-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-hero,
+  .company-site-band,
+  .company-site-capabilities,
+  .company-site-effect-layout,
+  .company-site-direction-list {
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-hero {
+    min-height: auto;
+  }
+
+  .company-site-visual {
+    min-height: 420px;
+  }
+
+  .company-site-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .company-site-contact {
+    align-items: flex-start;
+    grid-template-columns: 1fr;
+  }
+
+  .portal-use-shell,
+  .portal-dashboard-grid,
+  .portal-link-list,
+  .portal-download-grid,
+  .portal-form-grid,
+  .portal-guide-grid,
+  .portal-state-grid,
+  .portal-support-grid,
+  .portal-profile-module-grid,
+  .portal-profile-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-order-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portal-order-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-support-success {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .portal-support-success .portal-primary-button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+
+  .portal-security-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-security-status,
+  .portal-security-action {
+    justify-self: stretch;
+  }
+
+  .portal-primary-button.compact {
+    justify-content: center;
+    width: 100%;
+  }
+
+  .portal-use-shell {
+    padding: 16px;
+  }
+
+  .portal-use-sidebar {
+    position: static;
+    height: auto;
+  }
+
+  .portal-use-nav {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 981px) {
+  .portal-use-main {
+    padding-right: 8px;
+  }
+}
+
+@media (max-width: 520px) {
+  .admin-content {
+    padding: 16px;
+  }
+
+  .new-console-row-head {
+    display: none;
+  }
+
+  .data-card-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .data-card-pagination-controls {
+    justify-content: space-between;
+    width: 100%;
+  }
+
+  .usage-channel-health-grid,
+  .usage-anomaly-summary-grid,
+  .usage-anomaly-row,
+  .new-console-row,
+  .new-console-channel-table .new-console-row {
+    grid-template-columns: 1fr;
+  }
+
+  .case-row {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .case-reason {
+    grid-column: 2;
+  }
+
+  .case-section-heading,
+  .case-detail-heading {
+    flex-direction: column;
+  }
+
+  .usage-card-header {
+    flex-direction: column;
+  }
+
+  .company-site-header,
+  .company-site-actions,
+  .company-site-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .company-site-header {
+    position: static;
+  }
+
+  .company-site-primary,
+  .company-site-secondary {
+    width: 100%;
+  }
+
+  .company-site-nav {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .company-site-nav a {
+    padding-left: 0;
+  }
+
+  .company-site-hero {
+    padding-top: 34px;
+  }
+
+  .company-site-visual {
+    min-height: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 18px;
+  }
+
+  .company-site-visual::before,
+  .company-site-visual::after,
+  .site-orbit {
+    display: none;
+  }
+
+  .site-signal-card {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    padding: 14px;
+  }
+
+  .site-signal-card-main {
+    top: auto;
+    left: auto;
+  }
+
+  .site-signal-card-sub {
+    top: auto;
+    right: auto;
+  }
+
+  .site-signal-card-edge {
+    bottom: auto;
+    left: auto;
+  }
+
+  .site-terminal-card {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    padding: 14px;
+  }
+
+  .company-site-band,
+  .company-site-contact,
+  .company-site-product-effect {
+    padding: 24px;
+  }
+
+  .company-site-scenario-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .site-effect-flow {
+    min-height: auto;
+  }
+
+  .company-site-contact-form {
+    padding: 18px;
+  }
+
+  .company-site-contact-form .company-site-primary {
+    width: 100%;
+  }
+
+  .company-site-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-heading {
+    flex-direction: column;
+  }
+
+  .page-heading .primary-button {
+    width: 100%;
+  }
+
+  .install-config-hero {
+    padding: 20px;
+  }
+
+  .portal-auth-card {
+    padding: 24px 22px;
+  }
+
+  .portal-registration-shell {
+    grid-template-columns: 1fr;
+    padding: 0;
+  }
+
+  .portal-registration-sidebar {
+    min-height: auto;
+    padding: 22px;
+    gap: 28px;
+  }
+
+  .portal-registration-sidebar-top {
+    gap: 24px;
+  }
+
+  .portal-registration-progress ol {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .portal-registration-progress li {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    gap: 8px;
+    text-align: center;
+  }
+
+  .portal-registration-progress li strong {
+    font-size: 11px;
+  }
+
+  .portal-registration-support {
+    display: none;
+  }
+
+  .portal-registration-main {
+    min-height: auto;
+    place-items: start center;
+    padding: 78px 20px 36px;
+  }
+
+  .portal-registration-main .portal-locale-switch {
+    top: 20px;
+    right: 20px;
+  }
+
+  .portal-registration-content h1,
+  .portal-registration-success h1 {
+    font-size: 28px;
+  }
+
+  .portal-registration-actions,
+  .portal-registration-success-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-registration-plan-card {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-registration-otp-field,
+  .portal-registration-otp-control,
+  .portal-registration-verify-step .portal-auth-submit,
+  .portal-registration-verify-step .portal-registration-resend-row,
+  .portal-registration-verify-step .portal-registration-email-help {
+    width: 100%;
+  }
+
+  .portal-registration-otp-slots {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 7px;
+    width: 100%;
+  }
+
+  .portal-registration-otp-slots span {
+    width: auto;
+    min-width: 0;
+    height: 42px;
+  }
+
+  .portal-use-topbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portal-use-nav,
+  .portal-quick-grid,
+  .portal-form-grid,
+  .portal-plan-row,
+  .portal-authenticator-setup,
+  .portal-profile-list div {
+    grid-template-columns: 1fr;
+  }
+
+  .portal-authenticator-qr {
+    width: min(208px, 100%);
+    height: auto;
+    aspect-ratio: 1;
+  }
+
+  .portal-contact-summary,
+  .portal-modal-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .portal-contact-summary button,
+  .portal-modal-actions button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .company-site-shell::before,
+  .company-site-shell::after,
+  .company-site-primary,
+  .company-site-primary svg,
+  .company-site-section,
+  .company-site-band,
+  .company-site-contact,
+  .company-site-product-effect,
+  .company-site-visual,
+  .company-site-card,
+  .company-site-scenario-card,
+  .company-site-direction,
+  .nav-item,
+  .primary-button,
+  .ghost-button,
+  .icon-button,
+  .case-row,
+  .new-console-row,
+  .site-effect-flow,
+  .site-orbit,
+  .site-signal-card,
+  .site-terminal-card {
+    animation: none;
+    transition: none;
+  }
+
+  .company-site-primary:hover,
+  .company-site-shell[data-active-section="top"] .company-site-visual,
+  .company-site-shell[data-active-section="api-proof"] .site-effect-flow,
+  .company-site-shell[data-active-section="scenarios"] .site-effect-flow,
+  .company-site-shell[data-active-section="capabilities"] .company-site-section,
+  .company-site-shell[data-active-section="scenarios"] .company-site-product-effect,
+  .company-site-shell[data-active-section="api-proof"] .company-site-product-effect,
+  .company-site-shell[data-active-section="delivery"] .company-site-band,
+  .company-site-shell[data-active-section="contact"] .company-site-contact,
+  .company-site-card:hover,
+  .company-site-scenario-card:hover,
+  .company-site-direction:hover,
+  .page-subnav-link:hover,
+  .admin-blueprint-module-panel:hover,
+  .admin-blueprint-mini-card:hover,
+  .admin-blueprint-page-card:hover,
+  .nav-item:hover,
+  .nav-item-active,
+  .site-effect-flow,
+  .site-orbit,
+  .site-terminal-card:hover,
+  .site-signal-card:hover {
+    box-shadow: none;
+    transform: none;
+  }
+}
+
+@media (max-width: 1180px) {
+  .company-site-header {
+    padding-inline: 32px;
+  }
+
+  .company-site-hero {
+    padding-inline: 32px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 40px;
+    padding-block: 64px;
+  }
+
+  .company-site-dashboard {
+    max-width: 640px;
+  }
+
+  .company-site-trust-strip {
+    padding-inline: 32px;
+  }
+
+  .company-site-section,
+  .company-site-how,
+  .company-site-pricing,
+  .company-site-faq {
+    padding-inline: 32px;
+  }
+
+  .company-site-intake {
+    grid-template-columns: 320px minmax(0, 1fr);
+  }
+
+  .company-site-intake-panel {
+    padding: 56px;
+  }
+
+  .company-site-footer {
+    padding-inline: 32px;
+  }
+}
+
+@media (max-width: 860px) {
+  .company-site-nav,
+  .company-site-header-actions .company-site-secondary {
+    display: none;
+  }
+
+  .company-site-menu-button {
+    display: grid;
+    place-items: center;
+  }
+
+  .company-site-header {
+    min-height: 56px;
+    padding-inline: 20px;
+  }
+
+  .company-site-hero {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 36px;
+    min-height: auto;
+    padding: 40px 20px 48px;
+  }
+
+  .company-site-hero h1 {
+    font-size: 36px;
+    line-height: 1.1;
+  }
+
+  .company-site-hero-copy > p {
+    font-size: 15px;
+  }
+
+  .company-site-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 120px;
+  }
+
+  .company-site-actions .company-site-primary,
+  .company-site-actions .company-site-secondary {
+    width: auto;
+  }
+
+  .company-site-hero-trust {
+    gap: 16px;
+    padding-top: 0;
+  }
+
+  .company-site-dashboard {
+    min-height: auto;
+    border-radius: 10px;
+  }
+
+  .company-site-connection-row,
+  .company-site-region-row,
+  .company-site-device-row,
+  .company-site-subscription-row > div:first-child {
+    gap: 10px;
+  }
+
+  .company-site-connection-row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .company-site-connection-row > div:last-child {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .company-site-trust-strip {
+    min-height: auto;
+    padding: 24px 20px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+  }
+
+  .company-site-trust-item {
+    justify-content: flex-start;
+    font-size: 13px;
+  }
+
+  .company-site-section,
+  .company-site-how,
+  .company-site-pricing,
+  .company-site-faq {
+    padding: 48px 20px;
+  }
+
+  .company-site-info-hero {
+    padding: 48px 20px 56px;
+  }
+
+  .company-site-info-hero-grid,
+  .company-site-info-cards,
+  .company-site-info-section-list {
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-info-hero-grid {
+    gap: 28px;
+    margin-top: 32px;
+  }
+
+  .company-site-info-copy h1 {
+    font-size: 36px;
+    line-height: 1.12;
+  }
+
+  .company-site-info-copy p {
+    font-size: 15px;
+  }
+
+  .company-site-info-body {
+    padding: 36px 20px 48px;
+  }
+
+  .company-site-info-card {
+    min-height: 0;
+  }
+
+  .company-site-section-heading {
+    margin-bottom: 32px;
+    text-align: left;
+  }
+
+  .company-site-section-heading h2 {
+    font-size: 28px;
+  }
+
+  .company-site-capabilities,
+  .company-site-steps,
+  .company-site-plan-grid,
+  .company-site-plan-grid[data-plan-count="1"],
+  .company-site-plan-grid[data-plan-count="2"],
+  .company-site-payment-strip,
+  .company-site-faq-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-billing-toggle {
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .company-site-plan-card {
+    min-height: 0;
+    padding: 24px;
+  }
+
+  .company-site-intake {
+    min-height: 0;
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-intake-rail {
+    min-height: 0;
+    padding: 32px 20px;
+  }
+
+  .company-site-intake-rail small {
+    display: none;
+  }
+
+  .company-site-intake-panel {
+    padding: 40px 20px 48px;
+  }
+
+  .company-site-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-contact-form .company-site-primary {
+    width: 100%;
+  }
+
+  .company-site-footer {
+    grid-template-columns: 1fr;
+    padding: 40px 20px;
+  }
+
+  .company-site-footer-links {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 32px;
+  }
+
+  .company-site-footer-bottom {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 520px) {
+  .company-site-shell {
+    overflow-x: hidden;
+  }
+
+  .company-site-header {
+    align-items: center;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    flex-direction: row;
+    gap: 12px;
+    padding-inline: 20px;
+  }
+
+  .company-site-brand {
+    min-width: 0;
+  }
+
+  .company-site-brand strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .company-site-header-actions {
+    flex: 0 0 auto;
+    gap: 6px;
+  }
+
+  .company-site-menu-button {
+    display: none;
+  }
+
+  .company-site-language-switch {
+    min-height: 34px;
+  }
+
+  .company-site-language-switch button {
+    min-width: 30px;
+    min-height: 28px;
+    font-size: 12px;
+  }
+
+  .company-site-header-actions .company-site-primary.compact {
+    width: auto;
+    max-width: 112px;
+    padding-inline: 12px;
+    font-size: 13px;
+  }
+
+  .company-site-primary,
+  .company-site-secondary,
+  .company-site-plan-action {
+    width: auto;
+  }
+
+  .company-site-hero,
+  .company-site-hero-copy,
+  .company-site-dashboard {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .company-site-hero {
+    overflow: hidden;
+  }
+
+  .company-site-hero h1,
+  .company-site-hero-copy > p {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .company-site-shell[data-locale="zh"] .company-site-hero h1 {
+    line-break: anywhere;
+    word-break: break-all;
+  }
+
+  .company-site-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .company-site-actions .company-site-primary,
+  .company-site-actions .company-site-secondary {
+    width: 100%;
+  }
+
+  .company-site-hero-trust {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .company-site-dashboard-top,
+  .company-site-region-row,
+  .company-site-device-row,
+  .company-site-subscription-row {
+    padding-inline: 16px;
+  }
+
+  .company-site-region-row,
+  .company-site-device-row,
+  .company-site-subscription-row > div:first-child {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .company-site-dashboard-top strong,
+  .company-site-region-row strong,
+  .company-site-device-row strong,
+  .company-site-subscription-row span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .company-site-region-row a,
+  .company-site-device-row > span {
+    align-self: flex-start;
+    gap: 6px;
+  }
+
+  .company-site-footer {
+    align-items: stretch;
+    flex-direction: initial;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .company-site-faq-item summary svg {
+    transition: none;
+  }
+}

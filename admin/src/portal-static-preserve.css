@@ -1,0 +1,10 @@
+@import "./styles/portal-static-preserve/tokens.css";
+@import "./styles/portal-static-preserve/base.css";
+@import "./styles/portal-static-preserve/admin-os-chrome.css";
+@import "./styles/portal-static-preserve/public-site.css";
+@import "./styles/portal-static-preserve/shared-components.css";
+@import "./styles/portal-static-preserve/admin-os-workspace.css";
+@import "./styles/portal-static-preserve/legacy-entrypoints.css";
+@import "./styles/portal-static-preserve/responsive.css";
+@import "./styles/portal-static-preserve/admin-os-visual-polish.css";
+@import "./styles/portal-static-preserve/user-portal-desktop.css";
