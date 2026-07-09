@@ -114,7 +114,7 @@ const SPECIAL_COMMAND_ENTRIES = [
   ["install configure", null, "install", "B", "dry-run", "Build a redacted install configuration plan without writing host files"],
   ["install plan", null, "install", "C", "read-only", "Show the server installation sequence without touching the host"],
   ["install preflight", null, "install", "C", "read-only", "Check server bootstrap prerequisites without mutating the host"],
-  ["edge credentials reconcile-plan", null, "edge", "B", "dry-run", "Build a redacted edge credential desired-state reconciliation plan", ["docs/EDGE_CREDENTIAL_RECONCILIATION_GATEWAY_DESIGN.md", "docs/ALIYUN_LOCAL_EDGE_LIFECYCLE_IMPLEMENTATION_PLAN.md"]],
+  ["edge credentials reconcile-plan", null, "edge", "B", "dry-run", "Build a redacted edge credential desired-state reconciliation plan", ["docs/EDGE_CREDENTIAL_RECONCILIATION_GATEWAY_DESIGN.md"]],
   ["edge credentials apply", null, "edge", "A", "execution-gated", "Apply a reviewed edge credential desired-state reconciliation plan on a node", ["docs/EDGE_CREDENTIAL_RECONCILIATION_GATEWAY_DESIGN.md", "docs/PRODUCTION_EDGE_FLEET.md"]],
   ["edge material-handoff preflight", null, "edge", "B", "dry-run", "Check protected material readiness for a registered data-plane node without printing material", ["docs/CONTROL_DATA_PLANE_INTERCONNECT_CONTRACT.md", "docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md"]],
   ["edge tuic-credentials plan", null, "edge", "B", "dry-run", "Build a redacted TUIC per-order credential lifecycle plan", ["docs/JAPAN_TUIC_PER_ORDER_CREDENTIAL_UPGRADE_RUNBOOK.md", "docs/CHANNEL_MULTI_CHANNEL_NODE_DESIGN.md"]],
@@ -1976,7 +1976,7 @@ Common commands:
   gccgw architecture --json
   gccgw config list
   gccgw config show local
-  gccgw config validate --profile aliyun-prod
+  gccgw config validate --profile vultr-japan-prod
   gccgw docs command platform issue-subscription
   gccgw docs domain platform
   gccgw install configure --dry-run --domain https://sub.example.com --install-dir /opt/gccgw --management-source 203.0.113.10/32 --json

@@ -31,8 +31,8 @@
         "handoffDir": "handoff/hp-private"
       }
     },
-    "aliyun-prod": {
-      "environment": "aliyun-prod",
+    "vultr-japan-prod": {
+      "environment": "vultr-japan-prod",
       "riskTier": "A",
       "publicBaseUrl": "https://example.invalid",
       "execution": {
@@ -40,10 +40,10 @@
         "approvalRequired": true
       },
       "files": {
-        "envFile": ".env.aliyun-prod",
-        "runtimeDbPath": "data/runtime.aliyun-prod.sqlite",
-        "controlDbPath": "data/control.aliyun-prod.sqlite",
-        "handoffDir": "handoff/aliyun-prod"
+        "envFile": ".env.vultr-japan-prod",
+        "runtimeDbPath": "data/runtime.vultr-japan-prod.sqlite",
+        "controlDbPath": "data/control.vultr-japan-prod.sqlite",
+        "handoffDir": "handoff/vultr-japan-prod"
       }
     }
   }
