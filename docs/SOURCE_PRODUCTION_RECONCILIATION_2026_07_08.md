@@ -1,7 +1,9 @@
 # Source And Production Reconciliation - 2026-07-08
 
 > Status:
-> - Type: Current reconciliation and archive queue
+> - Type: Historical reconciliation and archive queue; superseded as the
+>   current Git/docs queue by
+>   `docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md`
 > - Risk: C
 > - Execution authority: Does not authorize production, Vultr, DNS, Nginx,
 >   systemd, firewall, SQLite, runtime config, deploy, rollback, credential,
@@ -20,6 +22,11 @@ PRs instead of trying to rescue stale stacked branches.
 Use this document before continuing PR #364 or PR #381. It is an inventory and
 archive queue only. It does not prove live runtime state and does not grant any
 production action.
+
+For current Git branch/worktree/PR status after the July 9 cleanup, use
+`docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md`. The original July 8 evidence
+below is retained to explain why the carrier branches were split instead of
+merged.
 
 ## Evidence Checked
 

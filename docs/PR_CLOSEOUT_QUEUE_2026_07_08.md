@@ -1,6 +1,7 @@
 # 2026-07-08 PR Closeout Queue
 
-> Status: Active repo-only queue
+> Status: Historical repo-only queue; superseded as the current Git/docs queue
+> by `docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md`
 > Risk: C
 > Production impact: None
 > Execution authority: This record does not authorize production, runtime,
@@ -9,6 +10,10 @@
 
 This record captures the July 8 source/PR closeout after the dirty carrier PRs
 were replaced by focused PRs from current `master`.
+
+Use this file for historical context only. For the current branch/worktree/PR
+state after the July 9 cleanup, read
+`docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md`.
 
 ## Current GitHub State
 
