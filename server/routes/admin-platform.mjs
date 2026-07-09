@@ -13,7 +13,6 @@ import { buildChannelSubscriptionOutputDraft } from "../services/channel-subscri
 import { buildChannelSystemDecisionFlow } from "../services/channel-system-decision-flow.mjs";
 import { buildCleanEdgeReadinessSummary } from "../services/clean-edge-readiness-summary.mjs";
 import { createCleanStartControlPlanePackage } from "../services/platform/clean-start-control-plane.mjs";
-import { createAliyunGateDecisionPacket } from "../services/platform/aliyun-gate-decision-packet.mjs";
 import { createPlatformControlSummary } from "../services/platform/control-plane-contract.mjs";
 import { buildProvisioningFormPackage } from "../services/platform/provisioning-form.mjs";
 import { createPartnerAttributionAdminReport } from "../services/platform/partner-attribution-admin-report.mjs";
@@ -359,15 +358,6 @@ function listAdminEntitlementSummaries({ accountShell, controlStore, accountId, 
   return mergeAdminSummaryItems(shellItems, controlStoreItems);
 }
 
-function requireAliyunGateEvidenceShell(shell) {
-  if (shell) {
-    return shell;
-  }
-  const error = new Error("Aliyun gate evidence shell is not configured");
-  error.code = "validation_error";
-  throw error;
-}
-
 function channelSystemValidationError() {
   const error = new Error("channel system decision flow input is invalid");
   error.code = "validation_error";
@@ -445,8 +435,6 @@ export function adminPlatformRoutes(state) {
   const leadQueue = state.platform?.leadQueue;
   const accountShell = state.platform?.accountShell;
   const accessShell = state.platform?.accessShell;
-  const aliyunGateEvidence = state.platform?.aliyunGateEvidence || {};
-  const aliyunGateEvidenceShell = state.platform?.aliyunGateEvidenceShell;
   const controlStore = state.platform?.controlStore;
   const portalAccessRequests = state.platform?.portalAccessRequests;
   const edgeUsageAccounting = state.platform?.edgeUsageAccounting;
@@ -467,33 +455,6 @@ export function adminPlatformRoutes(state) {
   router.get("/api/admin/platform/clean-start", (req, res) => {
     try {
       res.json({ cleanStart: buildCleanStartPackage() });
-    } catch (error) {
-      sendError(res, error);
-    }
-  });
-
-  router.get("/api/admin/platform/aliyun-gates", (req, res) => {
-    try {
-      res.json({
-        aliyunGates: createAliyunGateDecisionPacket({
-          cleanStart: buildCleanStartPackage(),
-          providerFirewall: aliyunGateEvidenceShell
-            ? aliyunGateEvidenceShell.providerFirewallEvidenceForDecisionPacket()
-            : aliyunGateEvidence.providerFirewall,
-          accessMigration: aliyunGateEvidenceShell
-            ? aliyunGateEvidenceShell.accessMigrationEvidenceForDecisionPacket()
-            : aliyunGateEvidence.accessMigration,
-          now: new Date()
-        })
-      });
-    } catch (error) {
-      sendError(res, error);
-    }
-  });
-
-  router.get("/api/admin/platform/aliyun-gate-evidence", (req, res) => {
-    try {
-      res.json({ evidence: aliyunGateEvidenceShell ? aliyunGateEvidenceShell.summary() : null });
     } catch (error) {
       sendError(res, error);
     }
@@ -800,26 +761,6 @@ export function adminPlatformRoutes(state) {
         appliedByRef: req.body?.appliedByRef
       });
       res.status(archive.ok ? 202 : 400).json({ archive });
-    } catch (error) {
-      sendError(res, error);
-    }
-  });
-
-  router.post("/api/admin/platform/aliyun-gate-evidence/provider-firewall", (req, res) => {
-    try {
-      const evidence = requireAliyunGateEvidenceShell(aliyunGateEvidenceShell)
-        .recordProviderFirewallEvidence(req.body ?? {});
-      res.status(201).json({ evidence });
-    } catch (error) {
-      sendError(res, error);
-    }
-  });
-
-  router.post("/api/admin/platform/aliyun-gate-evidence/access-migration", (req, res) => {
-    try {
-      const evidence = requireAliyunGateEvidenceShell(aliyunGateEvidenceShell)
-        .recordAccessMigrationEvidence(req.body ?? {});
-      res.status(201).json({ evidence });
     } catch (error) {
       sendError(res, error);
     }

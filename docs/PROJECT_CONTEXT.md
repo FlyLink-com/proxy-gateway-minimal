@@ -876,34 +876,13 @@ Current architecture priorities:
   organization names. It is not Aliyun deployment, runtime initialization,
   public listener exposure, DNS, provider-firewall hardening, SQLite
   persistence, state copy, user traffic, or production authority.
-- Platform Aliyun Gate Decision Packet: repository-only gate-decision support
-  lives in `server/services/platform/aliyun-gate-decision-packet.mjs` and the
-  protected Admin route `/api/admin/platform/aliyun-gates`. It summarizes the
-  clean-start private validation, provider-firewall hardening,
-  public-boundary dry run, DNS promotion, broader opaque artifact issuance,
-  and legacy query-token retirement gates with explicit approval phrases for
-  the next executable A-tier gates, blockers, source docs, and not-authorized
-  actions. It does not expose firewall raw rules, management source labels, raw
-  portal URLs, artifact references, subscription URLs, node hosts, node
-  credentials, tokens, customer emails, or organization names. It is not Aliyun
-  deployment, firewall mutation, public listener exposure, DNS, state copy, AWS
-  mutation, artifact issuance, legacy query-token retirement, legacy route
-  removal, user traffic, edge traffic, or production authority.
-- Platform Aliyun Gate Evidence Shell: repository-only operator evidence
-  support lives in `server/services/platform/aliyun-gate-evidence-shell.mjs`
-  with protected Admin routes `/api/admin/platform/aliyun-gate-evidence` and
-  `/api/admin/platform/aliyun-gate-evidence/provider-firewall` plus
-  `/api/admin/platform/aliyun-gate-evidence/access-migration`. It records
-  in-memory provider-firewall and access-migration gate evidence for decision
-  support and exposes only status/boolean summaries. It lets the gate decision
-  packet consume boolean internal evidence without retaining or echoing
-  firewall raw rules, management-source labels, wg-home decision text, private
-  notes, raw portal URLs, artifact references, subscription URLs, raw tokens,
-  node hosts, node credentials, customer emails, or organization names. It is
-  not Aliyun deployment, firewall
-  mutation, UFW change, public listener exposure, DNS, SQLite persistence,
-  state copy, AWS mutation, artifact issuance, legacy query-token retirement,
-  user traffic, edge traffic, or production authority.
+- Historical Aliyun gate packet and gate-evidence repository code has been
+  retired from the current backend/Admin surface. Current code must not expose
+  `/api/admin/platform/aliyun-gates`, `aliyun-gate-evidence`, or replacement
+  provider-gate aliases for that historical lane. The old Aliyun gate records
+  remain archival evidence in `docs/archive/`, `docs/goals/`, and
+  `docs/production-replacement-records/`; they are not active APIs, current
+  provider ownership, production authority, or compatibility routes.
 - Platform Access Model Inventory Summary: repository-only local tooling can
   normalize operator-provided subscription-access inventory facts into a
   redacted preflight summary through
@@ -916,19 +895,14 @@ Current architecture priorities:
   Aliyun runtime inspection, SQLite access, artifact issuance, legacy
   query-token retirement, legacy route removal, DNS, Nginx, firewall, AWS,
   edge traffic, or production authority.
-- Platform Aliyun Gate Review UI: repository-only Admin Overview support can
-  show the protected Aliyun gate decision packet and gate-evidence summary for
-  operator review. It displays exact-phrase fail-closed approval policy
-  metadata for the executable gates without showing approval phrase text. It
-  can record provider-firewall and access-migration evidence only as booleans
-  and does not submit approval phrases or expose A-tier execution buttons. It
-  does not display or submit raw firewall rules, management-source labels,
-  wg-home decision text, notes, raw portal URLs, artifact references,
-  subscription URLs, raw tokens, node hosts, node credentials, customer emails,
-  or organization names. It is not Aliyun deployment, firewall mutation, UFW
-  change, public listener exposure, DNS, SQLite persistence, state copy, AWS
-  mutation, artifact issuance, legacy query-token retirement, user traffic,
-  edge traffic, or production authority.
+- Platform Aliyun Gate Review UI: this repository-only Admin review surface is
+  retired together with the historical Aliyun gate packet and gate-evidence
+  APIs. Current Admin Overview code must not expose those review controls or
+  replacement provider-gate compatibility controls. Historical records can
+  still be used for archaeology, but they are not current planning defaults,
+  active provider ownership, executable approval gates, artifact issuance,
+  legacy query-token retirement, user traffic, edge traffic, or production
+  authority.
 - Aliyun Promotion Runbook / Package 5: the repository-only promotion gate
   model is documented in `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`
   and recorded in
@@ -959,19 +933,11 @@ Current architecture priorities:
   Execution-record templates for the two next gates live under
   `docs/production-replacement-records/templates/` and must only be copied into
   dated execution records after the matching exact approval phrase is received.
-  The repository also has a tested Aliyun gate approval-phrase policy in
-  `server/services/platform/aliyun-gate-decision-packet.mjs`; it accepts only
-  the exact phrase for the named gate and rejects short confirmations without
-  echoing submitted text. The gate packet exposes the same fail-closed
-  policy as operator-facing metadata for the clean-start private validation and
-  provider-firewall hardening gates, while still exposing no approval
-  submission route and no execution control.
-  The protected `/api/admin/platform/aliyun-gates` packet can now show which
-  next gates are ready for operator approval and which remain blocked, and the
-  protected gate-evidence shell can record operator-provided provider-firewall
-  evidence for that packet. Runtime initialization, public-boundary dry run,
-  and production subscription-distribution promotion have execution records;
-  edge rebuild and rollback-start remain separate A-tier gates.
+  The earlier repository-only Aliyun gate approval-phrase policy and Admin gate
+  review surface are now archival evidence only. Runtime initialization,
+  public-boundary dry run, and production subscription-distribution promotion
+  have execution records; edge rebuild and rollback-start remain separate
+  historical A-tier records, not current active provider gates.
   The repo-only B/C MVP closeout audit lives in
   `docs/production-replacement-records/2026-05-27-aliyun-repo-mvp-closeout.md`
   and records that repository contracts, protected Admin review surfaces, gate

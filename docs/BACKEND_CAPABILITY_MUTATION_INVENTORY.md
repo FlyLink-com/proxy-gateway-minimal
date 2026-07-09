@@ -103,8 +103,6 @@ These protected platform routes persist state or change durable queue records:
 | `POST /api/admin/platform/subscription-issuance/request` | control store account, entitlement, and planned issuance request | does not create runtime tenant or artifact; test asserts `runtimeDbMutated: false` and `controlDbMutated: true` |
 | `POST /api/admin/platform/subscription-usage-monitor/collect` | usage accounting collector/store if configured | collector integration is explicit and returns 202 |
 | `POST /api/admin/platform/data-plane-handoff-queue/:handoffRef/archive` | protected handoff queue files/archive | queue archive result reports `mutation: false` because it records queue bookkeeping, not data-plane apply |
-| `POST /api/admin/platform/aliyun-gate-evidence/provider-firewall` | in-process or configured evidence shell | stores redacted evidence summary; raw rules are not echoed |
-| `POST /api/admin/platform/aliyun-gate-evidence/access-migration` | in-process or configured evidence shell | stores redacted evidence summary; raw URLs/tokens/artifacts are not echoed |
 | `POST /api/admin/platform/leads/:id/status` | lead review queue | updates lead status summary |
 | `POST /api/admin/platform/leads/:id/account` | account shell and lead queue | creates account from lead and marks lead converted |
 | `POST /api/admin/platform/accounts/:id/entitlements` | account entitlement shell | creates entitlement |
@@ -112,10 +110,13 @@ These protected platform routes persist state or change durable queue records:
 | `POST /api/admin/platform/portal-access-requests/:requestRef/reject` | portal access request store | marks request rejected |
 | `POST /api/admin/platform/portal-access-requests/:requestRef/mark-delivered` | portal access request store; optional edge credential/lifecycle services when configured | marks delivered and may attach edge credential refs/material digests; raw material must not be returned |
 
-Read-only durable-summary routes include platform clean-start, gate packet,
-gate evidence summary, leads list, accounts list, entitlements list, access
-grants list, portal access request list, usage monitor, and data-plane handoff
-queue list.
+Read-only durable-summary routes include platform clean-start, leads list,
+accounts list, entitlements list, access grants list, portal access request
+list, usage monitor, and data-plane handoff queue list.
+
+The historical Aliyun gate packet and gate-evidence Admin APIs are retired from
+the current backend surface. Their records remain historical documentation only
+under the archive and production-replacement record indexes.
 
 ### Portal Case Routes
 

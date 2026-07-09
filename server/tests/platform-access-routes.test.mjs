@@ -6,21 +6,20 @@ import { createApp } from "../app.mjs";
 import { buildChannelSubscriptionActivationFlow } from "../services/channel-subscription-activation-flow.mjs";
 import { createChannelSubscriptionActivationFlowFixture } from "../services/channel-subscription-activation-flow-fixture.mjs";
 import { createPlatformAccountEntitlementShell } from "../services/platform/account-entitlement-shell.mjs";
-import { createPlatformAliyunGateEvidenceShell } from "../services/platform/aliyun-gate-evidence-shell.mjs";
 import { createPlatformLeadReviewQueue } from "../services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "../services/platform/subscription-access-shell.mjs";
 import { listen } from "./helpers/listen.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
 
-function fakeState({ leadQueue, accountShell, accessShell, proxyConfig, aliyunGateEvidence, aliyunGateEvidenceShell }) {
+function fakeState({ leadQueue, accountShell, accessShell, proxyConfig }) {
   return {
     rootDir: ROOT,
     host: "127.0.0.1",
     ports: { console: 3456, socks: 1080, httpProxy: 18180 },
     consoleToken: "secret",
     proxyConfig: proxyConfig || { servers: [], pingHosts: [], nginx: { host: "127.0.0.1", ports: [] } },
-    platform: { leadQueue, accountShell, accessShell, aliyunGateEvidence, aliyunGateEvidenceShell },
+    platform: { leadQueue, accountShell, accessShell },
     services: {
       ssLocal: {
         start: async () => ({ ok: true }),
@@ -192,247 +191,7 @@ test("admin platform clean-start route returns protected redacted private render
   }
 });
 
-test("admin platform Aliyun gate packet route is protected and redacts firewall evidence", async () => {
-  const { leadQueue, accountShell, accessShell } = createPlatformState();
-  accessShell.issueDynamicEntry("acct_1", "ent_1", {
-    entryRef: "entry_ref_secret",
-    artifactRef: "artifact_ref_secret",
-    rawEntryUrl: "https://portal-secret.example/use?token=dynamic-secret"
-  });
-  const proxyConfig = {
-    servers: [
-      {
-        name: "clean-edge-a",
-        host: "edge-secret.example",
-        port: 443,
-        type: "ss",
-        cipher: "aes-256-gcm",
-        password: "node-password-secret",
-        qualityClass: "stable"
-      }
-    ],
-    pingHosts: [],
-    nginx: { host: "127.0.0.1", ports: [] }
-  };
-  const aliyunGateEvidence = {
-    providerFirewall: {
-      hasRollbackSnapshot: true,
-      managementSource: "operator-home-secret-label",
-      wgHomeDecision: "wg-home-secret-scope-label",
-      rawRules: ["ALLOW 203.0.113.99/32 udp 51820 token=secret"]
-    }
-  };
-  const { server, baseUrl } = await listen(createApp(fakeState({
-    leadQueue,
-    accountShell,
-    accessShell,
-    proxyConfig,
-    aliyunGateEvidence
-  })));
-  try {
-    const unauthenticated = await fetch(`${baseUrl}/api/admin/platform/aliyun-gates`);
-    assert.equal(unauthenticated.status, 401);
-
-    const response = await fetch(`${baseUrl}/api/admin/platform/aliyun-gates`, {
-      headers: authHeaders()
-    });
-    assert.equal(response.status, 200);
-    const body = await response.json();
-    assert.equal(body.aliyunGates.type, "aliyun_gate_decision_packet");
-    assert.equal(body.aliyunGates.status, "blocked");
-    assert.equal(body.aliyunGates.gates[0].risk, "A");
-    assert.equal(
-      body.aliyunGates.gates.some((gate) => gate.status === "ready_for_operator_approval"),
-      true
-    );
-
-    const serialized = JSON.stringify(body);
-    assert.equal(serialized.includes("edge-secret.example"), false);
-    assert.equal(serialized.includes("node-password-secret"), false);
-    assert.equal(serialized.includes("portal-secret.example"), false);
-    assert.equal(serialized.includes("dynamic-secret"), false);
-    assert.equal(serialized.includes("entry_ref_secret"), false);
-    assert.equal(serialized.includes("artifact_ref_secret"), false);
-    assert.equal(serialized.includes("203.0.113.99"), false);
-    assert.equal(serialized.includes("operator-home-secret-label"), false);
-    assert.equal(serialized.includes("wg-home-secret-scope-label"), false);
-    assert.equal(serialized.includes("token=secret"), false);
-  } finally {
-    server.close();
-  }
-});
-
-test("admin platform Aliyun gate evidence route records provider-firewall evidence for the gate packet", async () => {
-  const { leadQueue, accountShell, accessShell } = createPlatformState();
-  accessShell.issueDynamicEntry("acct_1", "ent_1", {
-    entryRef: "entry_ref_secret",
-    artifactRef: "artifact_ref_secret",
-    rawEntryUrl: "https://portal-secret.example/use?token=dynamic-secret"
-  });
-  const proxyConfig = {
-    servers: [
-      {
-        name: "clean-edge-a",
-        host: "edge-secret.example",
-        port: 443,
-        type: "ss",
-        cipher: "aes-256-gcm",
-        password: "node-password-secret",
-        qualityClass: "stable"
-      }
-    ],
-    pingHosts: [],
-    nginx: { host: "127.0.0.1", ports: [] }
-  };
-  const aliyunGateEvidenceShell = createPlatformAliyunGateEvidenceShell({
-    nowFn: () => "2026-05-27T15:00:00.000Z"
-  });
-  const { server, baseUrl } = await listen(createApp(fakeState({
-    leadQueue,
-    accountShell,
-    accessShell,
-    proxyConfig,
-    aliyunGateEvidenceShell
-  })));
-  try {
-    const unauthenticated = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence`);
-    assert.equal(unauthenticated.status, 401);
-
-    const created = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence/provider-firewall`, {
-      method: "POST",
-      headers: {
-        ...authHeaders(),
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        hasRollbackSnapshot: true,
-        managementSource: "operator-home-secret-label",
-        wgHomeDecision: "wg-home-secret-scope-label",
-        rawRules: ["ALLOW 203.0.113.99/32 udp 51820 token=secret"],
-        note: "private note with customer@example.com"
-      })
-    });
-    assert.equal(created.status, 201);
-    const createdBody = await created.json();
-    assert.equal(createdBody.evidence.providerFirewall.status, "ready_for_gate_packet");
-    assert.equal(createdBody.evidence.providerFirewall.hasRollbackSnapshot, true);
-    assert.equal(createdBody.evidence.providerFirewall.hasManagementSourceDecision, true);
-    assert.equal(createdBody.evidence.providerFirewall.hasWgHomeDecision, true);
-    assert.equal(createdBody.evidence.providerFirewall.rawRulesProvided, true);
-    assert.equal(createdBody.evidence.providerFirewall.rawRulesEchoed, false);
-
-    const packet = await fetch(`${baseUrl}/api/admin/platform/aliyun-gates`, {
-      headers: authHeaders()
-    });
-    assert.equal(packet.status, 200);
-    const packetBody = await packet.json();
-    const firewallGate = packetBody.aliyunGates.gates.find((gate) => gate.id === "aliyun_provider_firewall_hardening");
-    assert.equal(firewallGate.status, "ready_for_operator_approval");
-    assert.deepEqual(firewallGate.blockers, []);
-
-    const listed = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence`, {
-      headers: authHeaders()
-    });
-    assert.equal(listed.status, 200);
-    const serialized = JSON.stringify({
-      created: createdBody,
-      listed: await listed.json(),
-      packet: packetBody
-    });
-    assert.equal(serialized.includes("edge-secret.example"), false);
-    assert.equal(serialized.includes("node-password-secret"), false);
-    assert.equal(serialized.includes("portal-secret.example"), false);
-    assert.equal(serialized.includes("dynamic-secret"), false);
-    assert.equal(serialized.includes("entry_ref_secret"), false);
-    assert.equal(serialized.includes("artifact_ref_secret"), false);
-    assert.equal(serialized.includes("203.0.113.99"), false);
-    assert.equal(serialized.includes("operator-home-secret-label"), false);
-    assert.equal(serialized.includes("wg-home-secret-scope-label"), false);
-    assert.equal(serialized.includes("customer@example.com"), false);
-    assert.equal(serialized.includes("token=secret"), false);
-  } finally {
-    server.close();
-  }
-});
-
-test("admin platform Aliyun gate evidence route records access-migration evidence for artifact gates", async () => {
-  const { leadQueue, accountShell, accessShell } = createPlatformState();
-  const aliyunGateEvidenceShell = createPlatformAliyunGateEvidenceShell({
-    nowFn: () => "2026-05-27T15:30:00.000Z"
-  });
-  const { server, baseUrl } = await listen(createApp(fakeState({
-    leadQueue,
-    accountShell,
-    accessShell,
-    aliyunGateEvidenceShell
-  })));
-  try {
-    const created = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence/access-migration`, {
-      method: "POST",
-      headers: {
-        ...authHeaders(),
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        hasLiveAccessModelInventory: true,
-        hasApprovedArtifactScope: true,
-        artifactIssuanceCompleted: false,
-        artifactRefreshObservationRecorded: false,
-        hasApprovedLegacyRetirementScope: false,
-        rawSubscriptionUrls: ["https://sub.example/sub/clash.yaml?token=secret-token"],
-        rawArtifactUrls: ["https://sub.example/sub/a/artifact-secret.yaml"],
-        rawTokens: ["pgsub_secret"],
-        note: "private note with customer@example.com"
-      })
-    });
-    assert.equal(created.status, 201);
-    const createdBody = await created.json();
-    assert.equal(createdBody.evidence.accessMigration.status, "ready_for_artifact_issuance_gate");
-    assert.equal(createdBody.evidence.accessMigration.hasLiveAccessModelInventory, true);
-    assert.equal(createdBody.evidence.accessMigration.hasApprovedArtifactScope, true);
-    assert.equal(createdBody.evidence.accessMigration.rawUrlsProvided, true);
-    assert.equal(createdBody.evidence.accessMigration.rawUrlsEchoed, false);
-    assert.equal(createdBody.evidence.accessMigration.rawTokensProvided, true);
-    assert.equal(createdBody.evidence.accessMigration.rawTokensEchoed, false);
-    assert.equal(createdBody.evidence.accessMigration.rawArtifactsProvided, true);
-    assert.equal(createdBody.evidence.accessMigration.rawArtifactsEchoed, false);
-
-    const packet = await fetch(`${baseUrl}/api/admin/platform/aliyun-gates`, {
-      headers: authHeaders()
-    });
-    assert.equal(packet.status, 200);
-    const packetBody = await packet.json();
-    const artifactGate = packetBody.aliyunGates.gates.find((gate) => gate.id === "aliyun_opaque_artifact_issuance");
-    const legacyGate = packetBody.aliyunGates.gates.find((gate) => gate.id === "aliyun_legacy_query_token_retirement");
-    assert.equal(artifactGate.status, "ready_for_operator_approval");
-    assert.deepEqual(artifactGate.blockers, []);
-    assert.equal(legacyGate.status, "blocked");
-    assert.deepEqual(legacyGate.blockers, [
-      "broader opaque artifact issuance not completed",
-      "artifact refresh observation not recorded",
-      "approved legacy retirement scope not recorded"
-    ]);
-
-    const listed = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence`, {
-      headers: authHeaders()
-    });
-    assert.equal(listed.status, 200);
-    const serialized = JSON.stringify({
-      created: createdBody,
-      listed: await listed.json(),
-      packet: packetBody
-    });
-    assert.equal(serialized.includes("sub.example"), false);
-    assert.equal(serialized.includes("secret-token"), false);
-    assert.equal(serialized.includes("artifact-secret"), false);
-    assert.equal(serialized.includes("pgsub_secret"), false);
-    assert.equal(serialized.includes("customer@example.com"), false);
-  } finally {
-    server.close();
-  }
-});
-
-test("admin platform Aliyun gate evidence route fails closed when evidence shell is unavailable", async () => {
+test("retired Aliyun admin gate routes are not exposed on the current platform surface", async () => {
   const { leadQueue, accountShell, accessShell } = createPlatformState();
   const { server, baseUrl } = await listen(createApp(fakeState({
     leadQueue,
@@ -440,58 +199,29 @@ test("admin platform Aliyun gate evidence route fails closed when evidence shell
     accessShell
   })));
   try {
-    const response = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence/provider-firewall`, {
-      method: "POST",
-      headers: {
-        ...authHeaders(),
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ hasRollbackSnapshot: true })
-    });
+    const routes = [
+      "/api/admin/platform/aliyun-gates",
+      "/api/admin/platform/provider-gates",
+      "/api/admin/platform/aliyun-gate-evidence",
+      "/api/admin/platform/provider-gate-evidence",
+      "/api/admin/platform/aliyun-gate-evidence/provider-firewall",
+      "/api/admin/platform/provider-gate-evidence/provider-firewall",
+      "/api/admin/platform/aliyun-gate-evidence/access-migration",
+      "/api/admin/platform/provider-gate-evidence/access-migration"
+    ];
 
-    assert.equal(response.status, 400);
-    assert.equal((await response.json()).error, "validation_error");
-
-    const accessMigrationResponse = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence/access-migration`, {
-      method: "POST",
-      headers: {
-        ...authHeaders(),
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ hasLiveAccessModelInventory: true })
-    });
-
-    assert.equal(accessMigrationResponse.status, 400);
-    assert.equal((await accessMigrationResponse.json()).error, "validation_error");
-  } finally {
-    server.close();
-  }
-});
-
-test("admin platform routes do not echo internal error messages", async () => {
-  const { leadQueue, accountShell, accessShell } = createPlatformState();
-  const aliyunGateEvidenceShell = {
-    summary: () => {
-      throw new Error(
-        "gate evidence failed for https://gateway.example.com/sub/clash.yaml?token=pgsub_sensitive password=secret"
-      );
+    for (const route of routes) {
+      const method = route.includes("provider-firewall") || route.includes("access-migration") ? "POST" : "GET";
+      const response = await fetch(`${baseUrl}${route}`, {
+        method,
+        headers: {
+          ...authHeaders(),
+          ...(method === "POST" ? { "Content-Type": "application/json" } : {})
+        },
+        ...(method === "POST" ? { body: JSON.stringify({ hasRollbackSnapshot: true }) } : {})
+      });
+      assert.equal(response.status, 404, route);
     }
-  };
-  const { server, baseUrl } = await listen(createApp(fakeState({
-    leadQueue,
-    accountShell,
-    accessShell,
-    aliyunGateEvidenceShell
-  })));
-  try {
-    const response = await fetch(`${baseUrl}/api/admin/platform/aliyun-gate-evidence`, {
-      headers: authHeaders()
-    });
-    const body = await response.json();
-
-    assert.equal(response.status, 500);
-    assert.deepEqual(body, { error: "internal_error" });
-    assert.doesNotMatch(JSON.stringify(body), /pgsub_sensitive|password=secret|gateway\.example/);
   } finally {
     server.close();
   }

@@ -13,7 +13,6 @@ import { createSqliteSubscriptionStore } from "./services/subscriptions/reposito
 import { createSubscriptionCore } from "./services/subscriptions/core.mjs";
 import { DEFAULT_ADMIN_ALLOWED_CIDRS, DEFAULT_TRUSTED_PROXY_CIDRS } from "./services/ip-address.mjs";
 import { createPlatformAccountEntitlementShell } from "./services/platform/account-entitlement-shell.mjs";
-import { createPlatformAliyunGateEvidenceShell } from "./services/platform/aliyun-gate-evidence-shell.mjs";
 import { createSqliteSubscriptionControlStore } from "./services/platform/subscription-control-db.mjs";
 import { createPlatformLeadReviewQueue } from "./services/platform/lead-review-queue.mjs";
 import { createPlatformSubscriptionAccessShell } from "./services/platform/subscription-access-shell.mjs";
@@ -1405,7 +1404,6 @@ export function createRuntimeState(options = {}) {
       })
       : null
   );
-  const platformAliyunGateEvidenceShell = options.platformAliyunGateEvidenceShell || createPlatformAliyunGateEvidenceShell();
   let closed = false;
 
   function close() {
@@ -1552,7 +1550,6 @@ export function createRuntimeState(options = {}) {
       portalRegistrations: platformPortalRegistrations,
       portalAccessRequests: platformPortalAccessRequests,
       portalSupportRequests: platformPortalSupportRequests,
-      aliyunGateEvidenceShell: platformAliyunGateEvidenceShell,
       controlStore: platformControlStore,
       edgeCredentialMaterialStore,
       edgeCredentialIssuer,
