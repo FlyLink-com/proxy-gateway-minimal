@@ -76,7 +76,7 @@ describe("public portal preference switch", () => {
 
     expect(screen.getByRole("group", { name: "Portal preferences" })).not.toBeNull();
 
-    fireEvent.click(screen.getByRole("button", { name: "English" }));
+    fireEvent.click(screen.getByRole("button", { name: "EN" }));
     fireEvent.click(screen.getByRole("button", { name: "日间主题" }));
 
     expect(localeChanges).toEqual(["en"]);

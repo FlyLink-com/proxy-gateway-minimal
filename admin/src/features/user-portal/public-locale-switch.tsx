@@ -36,22 +36,14 @@ function isPublicTheme(value: string | null): value is PublicTheme {
 }
 
 function detectPublicTheme(defaultTheme: PublicTheme = "light"): PublicTheme {
-  try {
-    if (typeof window === "undefined") return defaultTheme;
-    const storedTheme = window.localStorage.getItem(PUBLIC_THEME_STORAGE_KEY);
-    return isPublicTheme(storedTheme) ? storedTheme : defaultTheme;
-  } catch {
-    return defaultTheme;
-  }
+  if (typeof window === "undefined") return defaultTheme;
+  const storedTheme = window.localStorage.getItem(PUBLIC_THEME_STORAGE_KEY);
+  return isPublicTheme(storedTheme) ? storedTheme : defaultTheme;
 }
 
 function savePublicTheme(theme: PublicTheme) {
-  try {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(PUBLIC_THEME_STORAGE_KEY, theme);
-  } catch {
-    // The active session still updates even when persistence is blocked.
-  }
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(PUBLIC_THEME_STORAGE_KEY, theme);
 }
 
 export function usePublicLocalePreference(defaultLocale: PublicLocale = "zh") {
@@ -103,7 +95,6 @@ export function PublicLocaleSwitch({
           type="button"
           key={option}
           aria-pressed={locale === option}
-          aria-label={PUBLIC_LOCALE_LABELS[option].name}
           title={PUBLIC_LOCALE_LABELS[option].name}
           onClick={() => onLocaleChange(option)}
         >

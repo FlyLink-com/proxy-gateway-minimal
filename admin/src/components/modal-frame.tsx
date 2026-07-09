@@ -6,6 +6,7 @@ type ModalFrameProps = {
   closeLabel?: string;
   footer?: ReactNode;
   onClose: () => void;
+  panelClassName?: string;
   subtitle?: ReactNode;
   title: string;
   titleId: string;
@@ -17,13 +18,14 @@ export function ModalFrame({
   closeLabel = "Close",
   footer,
   onClose,
+  panelClassName,
   subtitle,
   title,
   titleId
 }: ModalFrameProps) {
   return (
     <div className="modal-backdrop" role="presentation">
-      <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+      <section className={["modal-panel", panelClassName].filter(Boolean).join(" ")} role="dialog" aria-modal="true" aria-labelledby={titleId}>
         <div className="modal-header">
           <div>
             <h3 id={titleId}>{title}</h3>
