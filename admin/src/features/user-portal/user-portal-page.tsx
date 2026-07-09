@@ -1422,20 +1422,33 @@ export function UserPortalPage({
     }
   }
 
-  const revealOrCreateSubscriptionLink = useCallback(async (clientTargetOverride: PortalClientId): Promise<string | null> => {
+  const revealOrCreateSubscriptionLink = useCallback(async (
+    clientTargetOverride: PortalClientId,
+    options: { refreshExisting?: boolean } = {}
+  ): Promise<string | null> => {
     if (!portalSession) return null;
     setActionError("");
     setCopiedOrderRef(null);
     setPending(true);
     try {
       if (selectedOrder?.status === "active") {
-        const revealed = selectedOrder.request.subscriptionUrl
-          ? selectedOrder.request
-          : await portalClient.revealSubscription({
+        let revealed: PortalSubscriptionRequest;
+        if (options.refreshExisting) {
+          revealed = await portalClient.refreshSubscription({
+            userRef: portalSession.userRef,
+            sessionRef: portalSession.sessionRef,
+            requestRef: selectedOrder.requestRef,
+            clientTarget: clientTargetOverride
+          });
+        } else if (selectedOrder.request.subscriptionUrl) {
+          revealed = selectedOrder.request;
+        } else {
+          revealed = await portalClient.revealSubscription({
             userRef: portalSession.userRef,
             sessionRef: portalSession.sessionRef,
             requestRef: selectedOrder.requestRef
           });
+        }
         if (!revealed.subscriptionUrl) {
           throw new Error(uiText(locale, "订阅链接正在生成，请稍后再试。", "Your connection link is being prepared. Try again shortly."));
         }
@@ -3360,7 +3373,10 @@ function UseGuide({
   hasSetupAccess: boolean;
   setActiveView: (value: PortalView) => void;
   startNewOrder: () => void;
-  revealOrCreateSubscriptionLink: (clientTarget: PortalClientId) => Promise<string | null>;
+  revealOrCreateSubscriptionLink: (
+    clientTarget: PortalClientId,
+    options?: { refreshExisting?: boolean }
+  ) => Promise<string | null>;
 }) {
   type GuidePlatformId = "ios" | "android" | "harmony" | "macos" | "windows" | "linux";
   type GuideClientId = "clash" | "karing" | "hiddify";
@@ -3988,7 +4004,9 @@ function UseGuide({
                       type="button"
                       disabled={pending}
                       onClick={async () => {
-                        const link = await revealOrCreateSubscriptionLink(selectedGuide.clientTarget);
+                        const link = await revealOrCreateSubscriptionLink(selectedGuide.clientTarget, {
+                          refreshExisting: Boolean(visibleSubscriptionUrl)
+                        });
                         if (link) {
                           setVisibleSubscriptionUrl(link);
                           setLocalLinkCopied(false);

@@ -2840,7 +2840,6 @@ describe("user portal product surface", () => {
 
     await enterPortal();
     openPortalSubscriptions();
-    fireEvent.click(await screen.findByRole("button", { name: "生成订阅链接" }));
 
     await waitFor(() => expect(revealSubscription).toHaveBeenCalledWith(expect.objectContaining({
       userRef: "user_safe_ref",
@@ -2983,10 +2982,17 @@ describe("user portal product surface", () => {
     expect(screen.getByText("复制你的订阅链接")).not.toBeNull();
     expect(screen.getByText("点击生成并复制。这个链接只放进客户端，不要发给别人。")).not.toBeNull();
     await waitFor(() => expect(screen.getByDisplayValue("https://sub.example.test/import/existing-visible-once")).not.toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "刷新链接" }));
+    await waitFor(() => expect(client.refreshSubscription).toHaveBeenCalledWith(expect.objectContaining({
+      userRef: "user_safe_ref",
+      requestRef: "subreq_existing_monthly",
+      clientTarget: "clash"
+    })));
+    await waitFor(() => expect(screen.getByDisplayValue("https://sub.example.test/import/refreshed-visible-once")).not.toBeNull());
     expect(screen.queryByRole("button", { name: "先查看导入教程" })).toBeNull();
     expect(writeText).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "复制链接" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://sub.example.test/import/existing-visible-once"));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://sub.example.test/import/refreshed-visible-once"));
     expect(screen.queryByRole("button", { name: "上一步" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "我已复制，下一步" }));
     expect(screen.getByText("STEP 3 / 5")).not.toBeNull();
