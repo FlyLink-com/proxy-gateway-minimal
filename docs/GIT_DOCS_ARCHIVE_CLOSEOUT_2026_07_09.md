@@ -23,6 +23,11 @@ The older records remain audit evidence:
 
 Do not treat those July 8 records as the current PR queue after this closeout.
 
+The next-phase foundation freeze is recorded in
+`docs/FOUNDATION_FREEZE_2026_07_09.md`. Treat it as the current process boundary
+before opening new operating-lifecycle, AppsFlyer/attribution, versioning,
+Admin/User Portal, or extension/plugin-boundary PRs.
+
 ## Current Git State Checked
 
 - Local checkout: `D:\Projects\proxy-gateway-minimal`

@@ -100,6 +100,16 @@ remaining Admin UI shell/visual QA, User Portal UX, payment/Niuniu, Admin
 protected auth, and docs/archive work by re-cutting focused PRs from latest
 `master`.
 
+The next-phase foundation freeze is recorded in
+`docs/FOUNDATION_FREEZE_2026_07_09.md`. Read it before starting operating
+lifecycle or AppsFlyer/attribution scale-up work. It freezes the current
+source/process baseline, keeps release traceability on `source_commit`,
+`artifact_or_release`, `release_unit`, and `Deploy Note`, and records that
+Admin `app/plugin` wording remains static manifest/page-owned modules rather
+than an enterprise runtime plugin platform. It does not declare formal semver,
+authorize production/provider/runtime changes, or mark lifecycle/attribution
+work complete.
+
 The AWS staging node-image readiness validation is recorded in
 `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md`.
 It validates the no-secret image readiness and first-boot packet helper path
