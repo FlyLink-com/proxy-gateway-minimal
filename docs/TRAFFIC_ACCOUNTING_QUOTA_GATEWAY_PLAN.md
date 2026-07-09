@@ -1,6 +1,6 @@
 # Traffic Accounting and Quota Gateway Plan
 
-Last updated: 2026-06-06, Asia/Shanghai.
+Last updated: 2026-07-09, America/Los_Angeles.
 
 This document defines the repo-only plan for adding per-subscription traffic
 accounting, quota enforcement, and abuse containment to the current
@@ -257,7 +257,53 @@ If no ledger data exists yet:
 
 ## Implementation Phases
 
-Status as of 2026-06-06:
+Status as of 2026-07-09:
+
+- The durable usage ledger, rollups, quota decision service, traffic-aware
+  subscription header backfill, and automatic traffic-supply suspension path
+  have moved from repo-only plan into the current backend source.
+- Japan production metering uses the main traffic collector for Xray VLESS,
+  Hysteria2, and Japan Mihomo TUIC channels. Japan TUIC currently depends on a
+  protected runtime-user to `edgeCredentialRef` usage credential map.
+- The protected Japan TUIC map rebuild helper exists for verified, approved
+  repair work, but a one-time map snapshot is not the desired long-term
+  operating model.
+- Xray stats endpoints that are reachable but have no user counters are treated
+  as observable `idle_no_user_traffic`, not as hard collector failures.
+- SGP TUIC is intentionally kept out of the five-minute
+  `gccgw-traffic-usage-collect.timer` path. It uses the dedicated
+  `mihomo_connection_delta_usage_sidecar` model with its own protected state,
+  service, and timer.
+- The SGP TUIC sidecar records per-connection deltas only from observed active
+  connection windows. The accepted residual risk is that timer polling can
+  undercount connections that start and finish between polling windows.
+- Admin-facing metering status now has several source markers in code, but a
+  unified Admin projection still needs to combine main collector status, Xray
+  idle observability, traffic-supply suspension counters, sidecar health, and
+  Japan TUIC map verification state.
+
+Remaining technical debt:
+
+1. Replace Japan TUIC's long-term dependency on a manually refreshed protected
+   usage credential map. Either migrate Japan TUIC to the same
+   connection-delta sidecar model used by SGP TUIC, or keep a protected
+   verify/rebuild workflow with explicit Admin health markers.
+2. Surface SGP TUIC sidecar health in the future Admin status model. The
+   important markers are sidecar timer active/enabled, last service result,
+   redacted observation/record counts, state-file safety, and accepted polling
+   undercount risk.
+3. Keep `channel-sgp-a-tuic` out of the existing five-minute collector unless a
+   future runtime exposes quota-grade per-credential counters directly. Adding
+   it back as a normal Mihomo TUIC collector would regress to aggregate or
+   incomplete attribution.
+4. Treat Xray idle, unresolved mapping residue, collector startup auth blockers,
+   and sidecar idle windows as distinct Admin states. They should not collapse
+   into one generic "traffic metering failed" status.
+5. Any future production change to collector services, sidecar units, runtime
+   config, schema, or protected credential material remains Risk A and needs
+   exact approval, backup, redacted validation, and rollback.
+
+Historical status as of 2026-06-06:
 
 - Phase 1 repo-only usage sample storage, rollups, quota decisions, and
   traffic-aware subscription header backfill are implemented locally;
