@@ -57,9 +57,6 @@ export function App() {
   const [adminSession, setAdminSession] = useState(() => loadAdminSession());
   const fixturePreviewEnabled = isAdminFixturePreviewEnabled();
   const adminApiConfigured = fixturePreviewEnabled || adminSession.consoleToken.trim().length > 0;
-  const localUserPortalClient = useMemo(() => createLocalUserPortalClient({
-    demoSubscriptionUrl: "https://sub.example.test/import/local-preview-visible-once"
-  }), []);
 
   useEffect(() => {
     function syncRoute() {
@@ -132,10 +129,7 @@ export function App() {
 
   if (route === "portalPreview") {
     return (
-      <UserPortalPage
-        portalClient={localUserPortalClient}
-        onBackToAdmin={openAdmin}
-      />
+      <PortalPreviewRoute onBackToAdmin={openAdmin} />
     );
   }
 
@@ -166,6 +160,23 @@ export function App() {
         />
       ) : renderPage(activePage, navigateAdminPage, setRiskNotificationCount, fixturePreviewEnabled)}
     </AdminLayout>
+  );
+}
+
+function PortalPreviewRoute({
+  onBackToAdmin
+}: {
+  onBackToAdmin: () => void;
+}) {
+  const localUserPortalClient = useMemo(() => createLocalUserPortalClient({
+    demoSubscriptionUrl: "https://sub.example.test/import/local-preview-visible-once"
+  }), []);
+
+  return (
+    <UserPortalPage
+      portalClient={localUserPortalClient}
+      onBackToAdmin={onBackToAdmin}
+    />
   );
 }
 
