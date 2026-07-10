@@ -2,11 +2,11 @@
 
 > Status:
 > - Type: Current documented release snapshot
-> - Version management baseline: `v1`
-> - Baseline commit: `67838e98` (PR #443)
+> - Version management baseline: `v2`
+> - Baseline commit: `4fbe0222` (PR #445)
 > - Updated: 2026-07-09, America/Los_Angeles
 > - Evidence cutoff: tracked execution records through 2026-07-09 plus local
->   artifact hash verification on the same date
+>   artifact verification and GitHub Release Artifact run `29074645989`
 > - Live verification: Not performed for this docs-only update
 > - Execution authority: None
 
@@ -28,6 +28,24 @@ override this file for documented release identity.
 - `disabled`: the unit is intentionally present without live activation.
 - `not_deployed`: reviewed source is on `master` but no matching production
   promotion is recorded.
+
+## Build Artifact State
+
+Artifact Manifest v1 is active for the two existing `control-plane-app` ZIP
+workflows. The first verified `master` proof is:
+
+- Source commit: `4fbe022264e30acd9e487dd880b7d4ed544be259`
+- Release: `4fbe022264e3`
+- Artifact: `proxy-gateway-4fbe022264e3.zip`
+- SHA-256: `0f27e8ceec796d32d1509fe0415deefb45879a62a11ecfb7a8b1d24d9ea3ee41`
+- Size: `4429476` bytes
+- Created: `2026-07-10T06:44:46.026Z`
+- Evidence: GitHub Release Artifact run `29074645989`
+
+The downloaded ZIP, checksum sidecar, and `artifact.json` agreed on source,
+release, file name, SHA-256, size, and UTC creation time. The manifest contained
+no downloaded absolute path. This is build evidence only; it did not deploy or
+promote the artifact and did not change the production snapshot below.
 
 ## Documented Production Snapshot
 
@@ -61,9 +79,11 @@ production promotion in the current record set:
 
 ## Freeze Boundary
 
-`67838e98` is **Version Management Baseline v1**: the capability map, release
-manifest, release-unit registry, and Agent rules are accepted source facts.
-This file completes the documented state view without promoting any capability.
+`4fbe0222` is **Version Management Baseline v2**: Baseline v1 source, release,
+deployment, and runtime-state boundaries now include machine-readable Artifact
+Manifest v1 identity for the existing control-plane ZIP workflows. This freeze
+does not promote any capability or change production state. Baseline v1 remains
+the historical foundation at `67838e98`.
 
 Update this snapshot only when a tracked deployment, rollback, or explicit
 release reconciliation changes one of the listed units. Before any Risk A
@@ -73,6 +93,7 @@ authoritative over this dated file.
 ## Evidence
 
 - `RELEASE_MANIFEST.md`
+- GitHub Release Artifact run `29074645989`
 - `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md`
 - `docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md`
 - `docs/production-replacement-records/2026-07-09-traffic-usage-xray-idle-observable-backend-deploy-execution.md`
