@@ -33,6 +33,7 @@ import { createXrayVlessUsageCollector } from "./services/edge/xray-vless-usage-
 import { createXrayStatsCliUsageSnapshotReader } from "./services/edge/xray-stats-cli-usage-reader.mjs";
 import { createRuntimeUsageAccountingService } from "./services/platform/runtime-usage-accounting.mjs";
 import { createTrafficAccountingService } from "./services/platform/traffic-accounting.mjs";
+import { createFileTrafficCollectorStatusStore } from "./services/platform/traffic-collector-admin-projection.mjs";
 import { createOrderUsageQuotaLifecycleGate } from "./services/platform/order-usage-quota-lifecycle-gate.mjs";
 import { createFileBackedEdgeCredentialMaterialStore } from "./services/edge/credential-material-store.mjs";
 import {
@@ -1387,6 +1388,14 @@ export function createRuntimeState(options = {}) {
       })
       : null
   );
+  const trafficCollectorStatusPath = optionalEnvText(env.EDGE_USAGE_COLLECTOR_STATUS_PATH);
+  const trafficCollectorStatusStore = options.trafficCollectorStatusStore || (
+    trafficCollectorStatusPath
+      ? createFileTrafficCollectorStatusStore({
+        filePath: trafficCollectorStatusPath
+      })
+      : null
+  );
   const dataPlaneHandoffDir = optionalEnvText(env.EDGE_DATA_PLANE_HANDOFF_DIR || env.USER_PORTAL_EDGE_HANDOFF_DIR);
   const dataPlaneHandoffQueue = options.dataPlaneHandoffQueue || (
     dataPlaneHandoffDir
@@ -1581,6 +1590,7 @@ export function createRuntimeState(options = {}) {
       orderUsageQuotaLifecycleGate,
       edgeUsageCollectors,
       edgeUsageAccounting,
+      trafficCollectorStatusStore,
       dataPlaneHandoffQueue,
       dataPlaneAgentRoutesEnabled,
       dataPlaneAgentService

@@ -18,6 +18,10 @@ import { buildProvisioningFormPackage } from "../services/platform/provisioning-
 import { createPartnerAttributionAdminReport } from "../services/platform/partner-attribution-admin-report.mjs";
 import { previewSubscriptionIssuance, planSubscriptionIssuance } from "../services/platform/subscription-issuance.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
+import {
+  createUnavailableTrafficCollectorAdminProjection,
+  sanitizeTrafficCollectorAdminProjection
+} from "../services/platform/traffic-collector-admin-projection.mjs";
 
 function sendError(res, error) {
   if (error.code === "validation_error") {
@@ -438,6 +442,7 @@ export function adminPlatformRoutes(state) {
   const controlStore = state.platform?.controlStore;
   const portalAccessRequests = state.platform?.portalAccessRequests;
   const edgeUsageAccounting = state.platform?.edgeUsageAccounting;
+  const trafficCollectorStatusStore = state.platform?.trafficCollectorStatusStore;
   const dataPlaneHandoffQueue = state.platform?.dataPlaneHandoffQueue;
   const partnerAttributionStore = state.platform?.partnerAttributionStore;
   const partnerAttributionEventLedger = state.platform?.partnerAttributionEventLedger;
@@ -689,6 +694,18 @@ export function adminPlatformRoutes(state) {
     } catch (error) {
       sendError(res, error);
     }
+  });
+
+  router.get("/api/admin/platform/traffic-collector-status", (_req, res) => {
+    let collectorStatus = createUnavailableTrafficCollectorAdminProjection("not_configured");
+    if (trafficCollectorStatusStore && typeof trafficCollectorStatusStore.read === "function") {
+      try {
+        collectorStatus = sanitizeTrafficCollectorAdminProjection(trafficCollectorStatusStore.read());
+      } catch {
+        collectorStatus = createUnavailableTrafficCollectorAdminProjection("invalid_observation");
+      }
+    }
+    res.json({ collectorStatus });
   });
 
   router.get("/api/admin/platform/partner-attribution-report", (_req, res) => {

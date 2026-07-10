@@ -324,6 +324,112 @@ test("traffic usage collect CLI reports startup diagnostics when runtime state i
   assert.equal(JSON.stringify(summary).includes("synthetic-secret"), false);
 });
 
+test("traffic usage collect CLI records a redacted cross-process status snapshot", async () => {
+  const writes = [];
+  let stdout = "";
+  const report = {
+    ok: true,
+    collectorCount: 1,
+    idleCollectorCount: 0,
+    observationCount: 0,
+    recordedCount: 0,
+    insertedCount: 0,
+    unresolvedCount: 0,
+    quotaDisableRequiredCount: 0,
+    trafficSupplySuspendRequiredCount: 0,
+    trafficSupplySuspendAttemptedCount: 0,
+    trafficSupplySuspendExecutedCount: 0,
+    trafficSupplySuspendFailedCount: 0,
+    trafficSupplySuspendPendingCount: 0,
+    reports: [],
+    safety: {
+      noRawRuntimePayload: true,
+      noSecretMaterialReturned: true
+    },
+    redacted: true
+  };
+
+  const exitCode = await runTrafficUsageCollectOnce({
+    argv: ["--collect"],
+    stdout: { write(chunk) { stdout += chunk; } },
+    stderr: { write() {} },
+    nowFn: () => new Date("2026-07-10T13:00:00.000Z"),
+    runtimeStateFactory() {
+      return {
+        platform: {
+          edgeUsageAccounting: {
+            async collectAndRecord() {
+              return report;
+            }
+          },
+          trafficCollectorStatusStore: {
+            write(input) {
+              writes.push(input);
+            }
+          }
+        }
+      };
+    }
+  });
+
+  assert.equal(exitCode, 0);
+  const summary = JSON.parse(stdout);
+  assert.equal(summary.type, "traffic_usage_collect_once");
+  assert.deepEqual(writes, [{
+    summary,
+    observedAt: "2026-07-10T13:00:00.000Z"
+  }]);
+});
+
+test("traffic usage collect CLI keeps metering result authoritative when status snapshot writing fails", async () => {
+  let stdout = "";
+  let stderr = "";
+  const exitCode = await runTrafficUsageCollectOnce({
+    argv: ["--collect"],
+    stdout: { write(chunk) { stdout += chunk; } },
+    stderr: { write(chunk) { stderr += chunk; } },
+    runtimeStateFactory() {
+      return {
+        platform: {
+          edgeUsageAccounting: {
+            async collectAndRecord() {
+              return {
+                ok: true,
+                collectorCount: 0,
+                reports: [],
+                safety: {
+                  noRawRuntimePayload: true,
+                  noSecretMaterialReturned: true
+                },
+                redacted: true
+              };
+            }
+          },
+          trafficCollectorStatusStore: {
+            write() {
+              throw new Error("/protected/private/status-path must not leak");
+            }
+          }
+        }
+      };
+    }
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(JSON.parse(stdout).ok, true);
+  assert.deepEqual(JSON.parse(stderr), {
+    type: "traffic_collector_status_snapshot",
+    ok: false,
+    error: "status_snapshot_write_failed",
+    safety: {
+      redacted: true,
+      pathReturned: false,
+      rawErrorReturned: false
+    }
+  });
+  assert.doesNotMatch(stderr, /protected|private|status-path/i);
+});
+
 test("traffic usage collect CLI runs when invoked through a symlinked path", () => {
   const tempDir = mkdtempSync(join(tmpdir(), "traffic-usage-collect-cli-"));
   const scriptPath = join(tempDir, "check-direct-invocation.mjs");

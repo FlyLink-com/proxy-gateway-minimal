@@ -167,6 +167,7 @@ export function createApp(state, options = {}) {
     || state.platform?.portalAccessRequests
     || state.platform?.controlStore
     || state.platform?.edgeUsageAccounting
+    || state.platform?.trafficCollectorStatusStore
     || state.platform?.dataPlaneHandoffQueue
     || state.platform?.partnerAttributionStore
     || state.platform?.partnerAttributionEventLedger

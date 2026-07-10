@@ -2648,6 +2648,51 @@ test("createRuntimeState keeps TUIC usage collector disabled without a Mihomo co
   }
 });
 
+test("createRuntimeState wires the optional cross-process collector status store", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-collector-status-store-"));
+  const statusPath = join(dir, "protected", "collector-status.json");
+  let state;
+
+  try {
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        EDGE_USAGE_COLLECTOR_STATUS_PATH: statusPath
+      }),
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      autoStartHttpProxy: false
+    });
+
+    assert.ok(state.platform.trafficCollectorStatusStore);
+    const projection = state.platform.trafficCollectorStatusStore.write({
+      observedAt: "2026-07-10T13:00:00.000Z",
+      summary: {
+        type: "traffic_usage_collect_once",
+        ok: true,
+        rawReportOk: true,
+        collectorCount: 0,
+        idleCollectorCount: 0,
+        observationCount: 0,
+        recordedCount: 0,
+        insertedCount: 0,
+        unresolvedCount: 0,
+        reports: []
+      }
+    });
+    assert.equal(projection.availability, "available");
+    assert.deepEqual(state.platform.trafficCollectorStatusStore.read(), projection);
+    assert.equal(existsSync(statusPath), true);
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    removeTempDir(dir);
+  }
+});
+
 test("createRuntimeState wires env-gated Mihomo TUIC usage collector into the control ledger", async () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-env-tuic-usage-ledger-"));
   const proxyConfigPath = join(dir, "proxy-servers.json");
