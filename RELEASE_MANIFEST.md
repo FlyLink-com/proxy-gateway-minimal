@@ -4,7 +4,7 @@
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
 > - Last updated: 2026-07-09, America/Los_Angeles
-> - Source inventory baseline: `master` at `db5e25ae`
+> - Source inventory baseline: `master` at `4fbe0222`
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
@@ -100,6 +100,11 @@ artifact base name rather than a local or host path. Automated workflow
 integration is intentionally limited to `control-plane-app` in v1. Generating
 this file does not deploy or promote the artifact and does not change runtime
 state.
+
+The first verified `master` proof is GitHub Release Artifact run `29074645989`
+for source `4fbe022264e30acd9e487dd880b7d4ed544be259`. Its uploaded ZIP, checksum
+sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size,
+and UTC creation time, and the manifest contained no downloaded absolute path.
 
 ## Current PR Mapping
 
