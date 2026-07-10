@@ -64,7 +64,35 @@ test("runtime usage accounting isolates collector failures and keeps later colle
   assert.equal(report.reports[0].collectorOk, false);
   assert.equal(report.reports[0].collectorStatus, "collector_error");
   assert.deepEqual(report.reports[0].blockers, ["collector_exception"]);
+  assert.deepEqual(report.reports[0].collectorState, {
+    type: "traffic_collector_state",
+    health: "failed",
+    condition: "runtime_down",
+    sourceRef: "",
+    channelRef: "channel-bad",
+    lastSuccessAt: null,
+    observationCount: 0,
+    unresolvedCount: 0,
+    errorType: "runtime_down",
+    safety: {
+      redacted: true
+    }
+  });
   assert.equal(report.reports[1].collectorOk, true);
+  assert.deepEqual(report.reports[1].collectorState, {
+    type: "traffic_collector_state",
+    health: "healthy",
+    condition: "ok",
+    sourceRef: "runtime_source_1",
+    channelRef: "channel-good",
+    lastSuccessAt: "2026-06-15T00:00:00.000Z",
+    observationCount: 1,
+    unresolvedCount: 0,
+    errorType: null,
+    safety: {
+      redacted: true
+    }
+  });
   assert.equal(report.execution.writerMode, "sequential");
   assert.equal(report.execution.retryMode, "operator_replay_idempotent_samples");
   assert.equal(report.execution.safeToRetry, true);
@@ -126,6 +154,7 @@ test("runtime usage accounting treats reachable empty Xray stats as observable i
         collect: async () => ({
           ok: true,
           status: "idle_no_user_traffic",
+          sourceRef: "xray_statsquery_user_traffic",
           observations: [],
           blockers: [],
           observability: {
@@ -152,11 +181,136 @@ test("runtime usage accounting treats reachable empty Xray stats as observable i
   assert.equal(report.reports[0].collectorOk, true);
   assert.equal(report.reports[0].collectorStatus, "idle_no_user_traffic");
   assert.equal(report.reports[0].idle, true);
+  assert.deepEqual(report.reports[0].collectorState, {
+    type: "traffic_collector_state",
+    health: "healthy",
+    condition: "idle_no_user_traffic",
+    sourceRef: "xray_statsquery_user_traffic",
+    channelRef: "channel-sgp-a-vless-reality-tcp",
+    lastSuccessAt: null,
+    observationCount: 0,
+    unresolvedCount: 0,
+    errorType: null,
+    safety: {
+      redacted: true
+    }
+  });
   assert.deepEqual(report.reports[0].observability, {
     statsApiReachable: true,
     userTrafficCountersObserved: false
   });
   assert.equal(report.nextAction, "continue_usage_monitoring");
+});
+
+test("runtime usage accounting projects canonical collector conditions", async (t) => {
+  const cases = [
+    {
+      name: "missing per-credential stats",
+      collected: {
+        ok: false,
+        status: "collector_not_supported",
+        sourceRef: "mihomo_usage_snapshot",
+        observations: [],
+        blockers: [{ code: "per_credential_usage_entries_required" }]
+      },
+      expected: { health: "degraded", condition: "missing_stats" }
+    },
+    {
+      name: "runtime authentication failure",
+      collected: {
+        ok: false,
+        status: "collector_error",
+        sourceRef: "mihomo_usage_snapshot",
+        observations: [],
+        blockers: [{ code: "controller_unauthorized" }]
+      },
+      expected: { health: "failed", condition: "auth_error" }
+    },
+    {
+      name: "collector configuration failure",
+      collected: {
+        ok: false,
+        status: "validation_error",
+        sourceRef: "hysteria2_traffic_stats",
+        observations: [],
+        blockers: [{ code: "validation_error" }]
+      },
+      expected: { health: "failed", condition: "config_error" }
+    },
+    {
+      name: "sidecar warmup window",
+      collected: {
+        ok: true,
+        status: "collected",
+        sourceRef: "mihomo_connection_delta",
+        stateWarmup: true,
+        observations: [],
+        blockers: []
+      },
+      expected: { health: "degraded", condition: "sidecar_idle" }
+    }
+  ];
+
+  for (const entry of cases) {
+    await t.test(entry.name, async () => {
+      const service = createRuntimeUsageAccountingService({
+        collectors: [
+          {
+            channelRef: "channel-safe",
+            collect: async () => entry.collected
+          }
+        ],
+        accounting: {
+          recordUsageObservation() {
+            throw new Error("empty collector result must not record usage");
+          }
+        }
+      });
+
+      const report = await service.collectAndRecord();
+
+      assert.equal(report.reports[0].collectorState.health, entry.expected.health);
+      assert.equal(report.reports[0].collectorState.condition, entry.expected.condition);
+      assert.equal(report.reports[0].collectorState.errorType, entry.expected.condition);
+    });
+  }
+});
+
+test("runtime usage accounting projects unresolved bindings separately from collector health", async () => {
+  const service = createRuntimeUsageAccountingService({
+    collectors: [
+      {
+        channelRef: "channel-mapping",
+        collect: async () => ({
+          ok: true,
+          status: "collected",
+          sourceRef: "hysteria2_traffic_stats",
+          observations: [observation({ channelRef: "channel-mapping" })],
+          blockers: []
+        })
+      }
+    ],
+    accounting: {
+      recordUsageObservation(input) {
+        return {
+          ok: false,
+          status: "unresolved_binding",
+          channelRef: input.channelRef,
+          edgeCredentialRef: input.edgeCredentialRef,
+          sampleInserted: false,
+          blockers: [{ code: "edge_credential_binding_missing" }]
+        };
+      }
+    }
+  });
+
+  const report = await service.collectAndRecord();
+
+  assert.equal(report.reports[0].collectorOk, true);
+  assert.equal(report.reports[0].unresolvedCount, 1);
+  assert.equal(report.reports[0].collectorState.health, "degraded");
+  assert.equal(report.reports[0].collectorState.condition, "mapping_unresolved");
+  assert.equal(report.reports[0].collectorState.errorType, "mapping_unresolved");
 });
 
 test("runtime usage accounting blocks over-quota traffic supply suspension when lifecycle gate is missing", async () => {

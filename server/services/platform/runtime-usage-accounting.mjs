@@ -1,3 +1,5 @@
+import { projectTrafficCollectorState } from "./traffic-collector-state.mjs";
+
 function usageError(code, message) {
   const error = new Error(message);
   error.code = code;
@@ -216,14 +218,28 @@ export function createRuntimeUsageAccountingService({
           nextAction: result.nextAction
         });
       }
+      const reportChannelRef = channelRef || text(collected?.channelRef);
+      const reportUnresolvedCount = recorded.filter((item) => !item.ok).length;
       reports.push({
-        channelRef: channelRef || text(collected?.channelRef),
+        channelRef: reportChannelRef,
         collectorOk: collected?.ok === true,
         collectorStatus: text(collected?.status),
+        collectorState: projectTrafficCollectorState({
+          collectorOk: collected?.ok === true,
+          collectorStatus: collected?.status,
+          sourceRef: collected?.sourceRef,
+          channelRef: reportChannelRef,
+          observations,
+          unresolvedCount: reportUnresolvedCount,
+          blockers: collected?.blockers,
+          recorded,
+          idle: collectorIdle,
+          stateWarmup: collected?.stateWarmup === true
+        }),
         idle: collectorIdle,
         observationCount: observations.length,
         recordedCount: recorded.filter((item) => item.ok).length,
-        unresolvedCount: recorded.filter((item) => !item.ok).length,
+        unresolvedCount: reportUnresolvedCount,
         blockers: blockerCodes(collected),
         observability: safeCollectorObservability(collected),
         recorded,
