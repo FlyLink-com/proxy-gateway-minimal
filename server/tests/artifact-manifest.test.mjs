@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -231,4 +231,28 @@ test("Release Artifact workflow packages verified Portal output with its own ide
   assert.match(portalJob, /\.release-artifacts\/artifact\.json/);
   assert.match(portalJob, /uses: actions\/upload-artifact@v7/);
   assert.doesNotMatch(portalJob, /\/var\/www\/globalcircle-portal|\b(?:scp|ssh|rsync|nginx)\b/);
+});
+
+test("artifact workflows use the supported upload-artifact runtime", () => {
+  const workflowsDirectory = resolve(REPOSITORY_ROOT, ".github/workflows");
+  const workflowFiles = readdirSync(workflowsDirectory)
+    .filter((file) => /\.ya?ml$/i.test(file));
+  let uploadStepCount = 0;
+
+  for (const workflowFile of workflowFiles) {
+    const workflow = readFileSync(resolve(workflowsDirectory, workflowFile), "utf8");
+    const uploadActions = [...workflow.matchAll(/actions\/upload-artifact@(v\d+)/g)];
+
+    uploadStepCount += uploadActions.length;
+    assert.doesNotMatch(
+      workflow,
+      /actions\/upload-artifact@v4/,
+      `${workflowFile} must not use the deprecated upload-artifact v4 runtime`
+    );
+    for (const [, version] of uploadActions) {
+      assert.equal(version, "v7", `${workflowFile} must use upload-artifact v7`);
+    }
+  }
+
+  assert.ok(uploadStepCount > 0, "repository must contain an artifact upload contract");
 });
