@@ -219,8 +219,9 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "stableBaselineCommit": "a00830ea",
-    "openPrCount": 0,
+    "stableBaselineCommit": "53eb5a10",
+    "openPrCountAtCloseout": 0,
+    "openIssueCountAtCloseout": 0,
     "mergedPrsInCloseout": [
       367,
       384,
@@ -252,7 +253,12 @@
       423,
       424,
       425,
-      426
+      426,
+      427,
+      432,
+      433,
+      434,
+      435
     ],
     "closedCarrierPrs": [
       364,
@@ -261,7 +267,7 @@
     "followOnBaseline": "master",
     "followOnBranchPolicy": "Start subsequent tasks from a clean master worktree unless a task explicitly states another baseline.",
     "closeoutPlan": "docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md",
-    "note": "Branch context was rechecked during the 2026-07-09 Git/docs closeout: origin/master is at a00830ea after PR #426 and the mobile CTA deploy-record commit, GitHub open PR count is 0, remote heads contain only master, and stale local worktrees/backup branches were removed. PR #364 and PR #381 are closed superseded carrier branches. Always verify live Git status before new work."
+    "note": "The final 2026-07-09 Git/docs cleanup snapshot runs through PR #435 at 53eb5a10: GitHub open PR and issue counts were 0, remote heads contained only master, and stale local worktrees/backup branches were removed. PR #364 and PR #381 are closed superseded carrier branches. PRs #432-#435 closed Portal preview isolation, retired Aliyun gate/default cleanup, and local proxy-control ownership. This is a dated snapshot; always verify live Git and GitHub state before new work."
   },
   "architectureView": {
     "currentMentalModel": "four-layer-single-control-plane-multi-data-plane",
@@ -290,7 +296,7 @@
       "old checkout paths and archive directories",
       "runtime-only residue copied from production hosts"
     ],
-    "branchAuthority": "origin/master at a00830ea is the follow-on development baseline after the 2026-07-09 Git/docs closeout. GitHub open PR count was 0 and remote heads contained only master during that closeout. PR #364 and PR #381 are closed superseded carrier branches and should not be reopened or merged as-is. Remaining useful work must be re-cut from latest master as focused PRs."
+    "branchAuthority": "The final 2026-07-09 cleanup snapshot is 53eb5a10 after PR #435. GitHub open PR and issue counts were 0 and remote heads contained only master at that snapshot. PR #364 and PR #381 are closed superseded carrier branches and should not be reopened or merged as-is. Live origin/master remains authoritative, and subsequent work must be re-cut from latest master as focused PRs."
   },
   "productSpine": [
     "stable subscription/import experience",
@@ -399,7 +405,7 @@
   "validationSnapshot": {
     "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
     "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, validation evidence, and Agent / Task Routing metadata before it is marked Ready, submitted for merge, or reported complete. The routing metadata must name the lead agent, supporting agents if any, primary unit, secondary units, follow-up agent suitability, and recommended next owner. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
-    "githubHostedActions": "The 2026-07-09 Git/docs closeout reports origin/master at a00830ea, GitHub open PR count 0, and remote heads containing only master. Hosted workflow state should still be checked per future PR/run; use local/manual validation when hosted workflows do not run.",
+    "githubHostedActions": "The final 2026-07-09 Git/docs cleanup snapshot runs through PR #435 at 53eb5a10, with GitHub open PR and issue counts 0 and remote heads containing only master. Hosted workflow state should still be checked per future PR/run; use local/manual validation when hosted workflows do not run.",
     "manualCiFallback": "Use docs/VALIDATION_BASELINE.md and docs/CI_MANUAL_VALIDATION.md for the current manual validation path; historical HP/Aliyun manual CI facts are reference only.",
     "manualCiIsStaging": false,
     "cTierCommand": "git diff --check origin/master...HEAD",
@@ -420,11 +426,6 @@
       "id": "production-artifact-boundary-before-next-deploy",
       "summary": "SGP Gate 2 promoted a clean artifact built from commit 505eed929e7fb7a3aa72b62ff2da92725891d9c5 plus rebuilt Admin/Portal static assets to the Japan control plane. Future artifacts must still pass the production boundary checker; Singapore runtime files must not be copied back into Git as source. The 2026-06-11 User Portal route hotfix must be folded into the source/artifact line before the next runtime package is cut.",
       "sourceDoc": "docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md"
-    },
-    {
-      "id": "post-carrier-follow-up-pr-split-queue",
-      "summary": "PR #364 and PR #381 are closed superseded carrier branches after focused PRs #394-#397, #399-#405, and #413-#426 landed. The 2026-07-09 Git/docs closeout cleaned stale local worktrees, backup branches, and remote merged branch residue; remaining Admin UI, User Portal UX, payment/Niuniu, Admin protected auth, and docs/archive reconciliation work must be re-cut from latest master as focused PRs with current validation and explicit non-goals.",
-      "sourceDoc": "docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md"
     },
     {
       "id": "foundation-freeze-before-next-phase",

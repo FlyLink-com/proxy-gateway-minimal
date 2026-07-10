@@ -91,14 +91,16 @@ The July 8 source/production reconciliation remains audit evidence in
 `docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md` and
 `docs/PR_CLOSEOUT_QUEUE_2026_07_08.md`, but those files are no longer the
 current Git queue. The current Git/docs closeout index is
-`docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md`: `master` is at
-`a00830ea`, GitHub open PR count is `0`, remote heads contain only `master`,
-local stale worktrees/backup branches were removed, and PRs #413-#426 landed as
-focused follow-ups after the earlier #394-#405 closeout. PR #364 and PR #381
-remain closed superseded carrier branches, not merge vehicles. Continue
-remaining Admin UI shell/visual QA, User Portal UX, payment/Niuniu, Admin
-protected auth, and docs/archive work by re-cutting focused PRs from latest
-`master`.
+`docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md`. Its final cleanup snapshot runs
+through PR #435 at `53eb5a10`: GitHub open PR and issue counts were `0`, remote
+heads contained only `master`, and local stale worktrees/backup branches had
+been removed. PRs #432-#435 closed the remaining Portal preview isolation,
+retired Aliyun gate/default cleanup, and local proxy-control ownership work.
+PR #364 and PR #381 remain closed superseded carrier branches, not merge
+vehicles. These are snapshot facts, not evergreen Git state; verify the live
+branch, PR, issue, and remote-head state before new work. Continue Admin UI,
+User Portal, payment/Niuniu, protected Admin auth, operating lifecycle, and
+AppsFlyer/attribution work as new focused lanes from latest `master`.
 
 The next-phase foundation freeze is recorded in
 `docs/FOUNDATION_FREEZE_2026_07_09.md`. Read it before starting operating
