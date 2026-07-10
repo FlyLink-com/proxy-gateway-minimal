@@ -1,6 +1,6 @@
 # Traffic Accounting and Quota Gateway Plan
 
-Last updated: 2026-07-09, America/Los_Angeles.
+Last updated: 2026-07-10, America/Los_Angeles.
 
 This document defines the repo-only plan for adding per-subscription traffic
 accounting, quota enforcement, and abuse containment to the current
@@ -12,27 +12,31 @@ customer-data mutation.
 
 ## Current Facts
 
-The current repository can issue user-portal orders and bind edge credentials,
-but it does not yet meter real proxy traffic per order.
+The current source contains the durable usage ledger, rollups, quota decisions,
+traffic-aware subscription headers, collector adapters, and automatic
+traffic-supply suspension path. The documented Japan production release also
+contains an earlier working metering baseline, but current `master` remains
+source-ahead of that deployed control-plane identity.
 
 Known current behavior:
 
-- subscription responses set `Subscription-Userinfo` with fixed
-  `upload=0`, `download=0`, and `total=0`, while only `expire` reflects the
-  subscription lifecycle;
-- `platform_entitlements.traffic_limit_bytes` stores a traffic limit, not used
-  traffic;
-- `platform_quota_counters` stores generic counters and can be reused for
-  rollups, but it is not a durable usage ledger;
+- subscription responses can project recorded upload/download rollups,
+  entitlement traffic limits, and lifecycle expiry;
+- `platform_entitlements.traffic_limit_bytes` remains the configured limit,
+  while durable usage samples and rollups track consumed traffic separately;
+- quota decisions can suspend traffic supply without terminating the account;
 - issued subscription bindings can map active tenant/artifact records back to
   account, entitlement, request, and node facts;
 - edge credential refs already provide the right anchor for order-scoped
   runtime credentials;
-- the billing contract already models usage debit decisions, but no storage or
-  collector currently feeds those decisions.
+- PR #441 defines canonical collector state, PR #459 preserves redacted adapter
+  error provenance, and PR #460 exposes a protected read-only collector status
+  projection; all three remain source-only until separately deployed;
+- protected Japan TUIC map verification and SGP TUIC sidecar status are not yet
+  integrated as complete producers for that projection.
 
-Therefore, time-based expiry and disable/revoke can be represented, but traffic
-abuse cannot yet be detected or limited reliably.
+The remaining Phase 2 work is operational closure and production
+reconciliation, not creation of a second usage ledger or quota model.
 
 ## Goal
 
@@ -257,7 +261,7 @@ If no ledger data exists yet:
 
 ## Implementation Phases
 
-Status as of 2026-07-09:
+Status as of 2026-07-10:
 
 - The durable usage ledger, rollups, quota decision service, traffic-aware
   subscription header backfill, and automatic traffic-supply suspension path
@@ -277,10 +281,10 @@ Status as of 2026-07-09:
 - The SGP TUIC sidecar records per-connection deltas only from observed active
   connection windows. The accepted residual risk is that timer polling can
   undercount connections that start and finish between polling windows.
-- Admin-facing metering status now has several source markers in code, but a
-  unified Admin projection still needs to combine main collector status, Xray
-  idle observability, traffic-supply suspension counters, sidecar health, and
-  Japan TUIC map verification state.
+- The protected read-only Admin projection now combines canonical collector and
+  accounting state without triggering collection. Japan TUIC map verification
+  and SGP TUIC sidecar health still need separately evidenced protected status
+  producers before the read model is complete.
 
 Remaining technical debt:
 

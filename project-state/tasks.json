@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2026-07-10.1",
+  "schemaVersion": "2026-07-10.2",
   "lastUpdated": "2026-07-10",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-current-queue",
@@ -13,17 +13,17 @@
     "docs/PROJECT_SIMPLIFICATION_MAP.md"
   ],
   "historicalBoundary": {
-    "lastExpandedSnapshot": "7e9a8667657e5323e09ff7c262da85d26729e69b",
+    "sourceSnapshotAtReconciliation": "9aa1561eea8ce77cd1cf670369d5bd42c2331ba2",
     "rule": "Use Git history and docs/archive indexes for completed or superseded tasks; do not re-add them to the current queue without a new Issue and fresh evidence."
   },
   "tasks": [
     {
       "id": "A-version-management-vercel-staged-proof",
       "risk": "A",
-      "status": "blocked-requires-exact-approval",
+      "status": "completed-in-issue-457",
       "lane": "version-management",
-      "title": "Prove the Vercel company-site deployment remains staged after the next real master merge",
-      "goal": "Close Issue #457 by proving a real master merge creates a production-target candidate without moving gccwebos.com or www.gccwebos.com, while promotion and rollback remain separate approvals.",
+      "title": "Prove the Vercel company-site deployment remains staged after a real master merge",
+      "goal": "Closed Issue #457 after real master merges created production-target candidates without moving gccwebos.com or www.gccwebos.com; promotion and rollback remain separate approvals.",
       "allowedFiles": [
         "docs/CURRENT_RELEASE_STATE.md",
         "project-state/*.json"
@@ -35,10 +35,10 @@
         "output credentials, tokens, environment values, customer data, or private runtime material"
       ],
       "validation": [
-        "confirm autoAssignCustomDomains remains false before merge",
-        "record the exact staged deployment identity created by the approved real merge",
-        "confirm both public aliases remain on the pre-merge known-good deployment",
-        "record redacted evidence in Issue #457 before closure"
+        "autoAssignCustomDomains remained false before and after the approved merge",
+        "PR #460 merge created READY staged Vercel deployment dpl_33AwpEF5kp2fnxSSgP4C8AhR8TNd and GitHub deployment 5392032753",
+        "both public aliases remained on GitHub deployment 5389897330 and returned HTTP 200",
+        "redacted evidence was recorded and Issue #457 was closed"
       ]
     },
     {
@@ -68,7 +68,7 @@
     {
       "id": "B-phase2-collector-error-provenance",
       "risk": "B",
-      "status": "ready-after-version-gate",
+      "status": "completed-in-pr-459",
       "lane": "traffic-accounting",
       "title": "Preserve safe collector error provenance through current adapters",
       "goal": "Map real redacted adapter facts to canonical missing-stats, runtime, config, auth, mapping, idle, and sidecar conditions instead of collapsing them into a generic exception.",
@@ -85,24 +85,26 @@
         "emit raw logs, controller payloads, map contents, credentials, or customer data"
       ],
       "validation": [
-        "focused adapter and collector-state tests",
-        "npm test",
-        "git diff --check origin/master...HEAD"
+        "PR #459 merged as 72e98096",
+        "npm test passed 1007/1007 before merge",
+        "project-state and diff checks passed",
+        "production_state remains not_deployed"
       ]
     },
     {
       "id": "B-phase2-collector-admin-projection",
       "risk": "B",
-      "status": "queued-after-provenance",
+      "status": "completed-in-pr-460",
       "lane": "traffic-accounting",
       "title": "Expose canonical collector state through protected read-only Admin surfaces",
       "goal": "Let operators consume the same redacted collector semantics after adapter provenance is reliable, without repair, restart, config, or credential controls.",
       "allowedFiles": [
+        "scripts/traffic-usage-collect-once.mjs",
+        "server/app.mjs",
+        "server/routes/admin-platform.mjs",
+        "server/state.mjs",
         "server/services/platform/**/*.mjs",
-        "server/tests/**/*.test.mjs",
-        "admin/src/**/*.ts",
-        "admin/src/**/*.tsx",
-        "admin/src/**/*.test.tsx"
+        "server/tests/**/*.test.mjs"
       ],
       "forbiddenActions": [
         "add service restart, repair, runtime apply, or configuration controls",
@@ -111,9 +113,34 @@
         "change production runtime"
       ],
       "validation": [
-        "focused backend and Admin tests",
-        "npm run admin:test",
-        "npm run admin:build",
+        "PR #460 merged as 9aa1561e",
+        "focused projection, state, route, and snapshot tests passed",
+        "npm test passed 1016/1016 before merge",
+        "project-state, syntax, and diff checks passed",
+        "production_state remains not_deployed"
+      ]
+    },
+    {
+      "id": "B-phase2-collector-status-producers",
+      "risk": "B",
+      "status": "requires-scope-review",
+      "lane": "traffic-accounting",
+      "title": "Add protected JP TUIC map and SGP TUIC sidecar status producers",
+      "goal": "Complete the remaining Issue #437 source facts without Admin UI, runtime mutation, or production activation.",
+      "allowedFiles": [
+        "scripts/**/*.mjs",
+        "server/services/platform/**/*.mjs",
+        "server/tests/**/*.test.mjs",
+        "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md"
+      ],
+      "forbiddenActions": [
+        "read or emit protected map contents, credentials, controller payloads, raw config, raw logs, SQLite rows, or customer data",
+        "change production environment, runtime config, services, timers, quota, subscription, or traffic-supply behavior",
+        "add Admin UI, restart, repair, or runtime-apply controls"
+      ],
+      "validation": [
+        "scope review identifies existing redacted producer facts before code changes",
+        "focused producer and projection boundary tests",
         "npm test",
         "git diff --check origin/master...HEAD"
       ]

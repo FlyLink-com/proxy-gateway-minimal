@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2026-07-10.1",
+  "schemaVersion": "2026-07-10.2",
   "lastUpdated": "2026-07-10",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
@@ -17,9 +17,9 @@
     {
       "id": "version-management",
       "name": "Version And Deployment Governance",
-      "status": "active-closeout",
+      "status": "baseline-stable",
       "riskBoundary": "C for source-state records and artifact contracts; A for deployment, promotion, rollback, or production observation",
-      "purpose": "Keep source, artifact, deployment, and runtime evidence separate and close the Vercel staged-promotion boundary tracked by Issue #457.",
+      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Issue #457 is closed after real merges proved the staged Vercel boundary; any promotion or rollback remains separately gated.",
       "primaryDocs": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -43,7 +43,7 @@
       "name": "Traffic Accounting",
       "status": "active",
       "riskBoundary": "B for collector contracts, redacted provenance, tests, and protected read-only projection; A for runtime, service, config, quota, or traffic-supply mutation",
-      "purpose": "Complete Issue #437 so collector health, accounting success, quota state, and runtime state are distinguishable without sensitive output.",
+      "purpose": "Complete Issue #437. PRs #441, #459, and #460 provide the canonical state, safe provenance, and protected read model; Japan TUIC map verification and SGP TUIC sidecar status producers remain.",
       "primaryDocs": [
         "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
         "docs/CURRENT_RELEASE_STATE.md"
