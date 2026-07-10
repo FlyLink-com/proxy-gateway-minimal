@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import "dotenv/config";
-import { readFileSync, realpathSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { readFileSync, realpathSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -10,6 +11,22 @@ import {
 import { createMihomoTuicUsageCollector } from "../server/services/edge/mihomo-tuic-usage-collector.mjs";
 import { createSqliteSubscriptionControlStore } from "../server/services/platform/subscription-control-db.mjs";
 import { createTrafficAccountingService } from "../server/services/platform/traffic-accounting.mjs";
+import { createFileTrafficCollectorStatusStore } from "../server/services/platform/traffic-collector-admin-projection.mjs";
+import { buildMihomoConnectionDeltaSidecarProducerStatus } from "../server/services/platform/traffic-collector-status-producers.mjs";
+
+export { buildMihomoConnectionDeltaSidecarProducerStatus };
+
+const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,160}$/;
+const SAFE_FAILURE_CODES = new Set([
+  "controller_error",
+  "controller_forbidden",
+  "controller_unauthorized",
+  "credential_binding_missing",
+  "mapping_unresolved",
+  "runtime_fetch_failed",
+  "unresolved_binding",
+  "validation_error"
+]);
 
 function text(value) {
   return String(value ?? "").trim();
@@ -105,14 +122,68 @@ function blockerCodes(value) {
     : [];
 }
 
-function redactedFailure(error) {
-  const code = error?.code || "mihomo_connection_delta_sidecar_failed";
+function readSidecarTimerStatus({
+  unitName = "gccgw-sgp-tuic-delta-usage-sidecar.timer"
+} = {}) {
+  try {
+    const result = spawnSync("systemctl", [
+      "show",
+      unitName,
+      "--property=ActiveState",
+      "--property=UnitFileState",
+      "--no-pager"
+    ], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 2000,
+      maxBuffer: 4096
+    });
+    const properties = Object.fromEntries(text(result.stdout)
+      .split(/\r?\n/)
+      .map((line) => line.split("=", 2).map((part) => text(part).toLowerCase()))
+      .filter(([key, value]) => key && value));
+    return {
+      active: properties.activestate === "active"
+        ? true
+        : ["inactive", "failed", "deactivating"].includes(properties.activestate)
+          ? false
+          : null,
+      enabled: ["enabled", "enabled-runtime"].includes(properties.unitfilestate)
+        ? true
+        : ["disabled", "masked", "static"].includes(properties.unitfilestate)
+          ? false
+          : null
+    };
+  } catch {
+    // An unavailable systemd client is represented as an unknown observation.
+  }
+  return { active: null, enabled: null };
+}
+
+function readSidecarStateFileStatus({ statePath } = {}) {
+  if (!text(statePath)) return { configured: false, protected: null };
+  try {
+    const state = statSync(statePath);
+    return {
+      configured: true,
+      protected: state.isFile() && (process.platform === "win32" || (state.mode & 0o777) === 0o600)
+    };
+  } catch {
+    return { configured: true, protected: false };
+  }
+}
+
+function redactedFailure(error, { channelRef, recordUsage = false } = {}) {
+  const rawCode = text(error?.code);
+  const code = SAFE_FAILURE_CODES.has(rawCode)
+    ? rawCode
+    : "mihomo_connection_delta_sidecar_failed";
   return {
     type: "mihomo_connection_delta_usage_sidecar",
     ok: false,
-    recordUsage: false,
+    recordUsage,
     collectorStatus: code,
-    channelRef: "",
+    channelRef: SAFE_REF_PATTERN.test(text(channelRef)) ? text(channelRef) : "",
     accountingMode: "delta",
     stateWarmup: false,
     observationCount: 0,
@@ -165,12 +236,54 @@ export function summarizeMihomoConnectionDeltaSidecarRun({
   };
 }
 
-export async function runMihomoConnectionDeltaUsageSidecar({
+function writeSidecarProducerStatus({
+  summary,
+  env,
+  statePath,
+  nowFn,
+  timerStatusReader,
+  stateFileStatusReader,
+  stderr
+}) {
+  const statusPath = envText(env, "EDGE_USAGE_COLLECTOR_STATUS_PATH");
+  if (!statusPath) return;
+  try {
+    const now = nowFn();
+    createFileTrafficCollectorStatusStore({ filePath: statusPath }).writeProducerStatus(
+      buildMihomoConnectionDeltaSidecarProducerStatus({
+        summary,
+        observedAt: now instanceof Date ? now.toISOString() : now,
+        timer: timerStatusReader({
+          unitName: "gccgw-sgp-tuic-delta-usage-sidecar.timer"
+        }),
+        stateFile: stateFileStatusReader({ statePath }),
+        pollIntervalSeconds: envText(env, "MIHOMO_CONNECTION_DELTA_POLL_INTERVAL_SECONDS") || undefined
+      })
+    );
+  } catch {
+    stderr.write(`${JSON.stringify({
+      type: "traffic_collector_status_producer_snapshot",
+      ok: false,
+      producerRef: "sgp_tuic_connection_delta_sidecar",
+      error: "status_snapshot_write_failed",
+      safety: {
+        redacted: true,
+        pathReturned: false,
+        rawErrorReturned: false
+      }
+    })}\n`);
+  }
+}
+
+async function runMihomoConnectionDeltaUsageSidecarCore({
   argv = process.argv.slice(2),
   env = process.env,
   stdout = process.stdout,
+  stderr = process.stderr,
   fetchJson,
-  nowFn = () => new Date()
+  nowFn = () => new Date(),
+  timerStatusReader = readSidecarTimerStatus,
+  stateFileStatusReader = readSidecarStateFileStatus
 } = {}) {
   const collect = argv.includes("--collect");
   const recordUsage = argv.includes("--record")
@@ -259,8 +372,65 @@ export async function runMihomoConnectionDeltaUsageSidecar({
     recorded,
     recordUsage
   });
+  writeSidecarProducerStatus({
+    summary,
+    env,
+    statePath,
+    nowFn,
+    timerStatusReader,
+    stateFileStatusReader,
+    stderr
+  });
   stdout.write(`${JSON.stringify(summary)}\n`);
   return summary.ok ? 0 : 1;
+}
+
+export async function runMihomoConnectionDeltaUsageSidecar(options = {}) {
+  const argv = options.argv || process.argv.slice(2);
+  const env = options.env || process.env;
+  const stdout = options.stdout || process.stdout;
+  const stderr = options.stderr || process.stderr;
+  const nowFn = options.nowFn || (() => new Date());
+  const timerStatusReader = options.timerStatusReader || readSidecarTimerStatus;
+  const stateFileStatusReader = options.stateFileStatusReader || readSidecarStateFileStatus;
+  try {
+    return await runMihomoConnectionDeltaUsageSidecarCore({
+      ...options,
+      argv,
+      env,
+      stdout,
+      stderr,
+      nowFn,
+      timerStatusReader,
+      stateFileStatusReader
+    });
+  } catch (error) {
+    const channelRef = envText(
+      env,
+      "MIHOMO_CONNECTION_DELTA_CHANNEL_REF",
+      "EDGE_MIHOMO_CONNECTION_DELTA_CHANNEL_REF"
+    ) || "channel-sgp-a-tuic";
+    const recordUsage = argv.includes("--record")
+      || boolEnv(env.MIHOMO_CONNECTION_DELTA_RECORD_USAGE)
+      || boolEnv(env.EDGE_MIHOMO_CONNECTION_DELTA_RECORD_USAGE);
+    const statePath = envText(
+      env,
+      "MIHOMO_CONNECTION_DELTA_STATE_PATH",
+      "EDGE_MIHOMO_CONNECTION_DELTA_STATE_PATH"
+    );
+    const summary = redactedFailure(error, { channelRef, recordUsage });
+    writeSidecarProducerStatus({
+      summary,
+      env,
+      statePath,
+      nowFn,
+      timerStatusReader,
+      stateFileStatusReader,
+      stderr
+    });
+    stdout.write(`${JSON.stringify(summary)}\n`);
+    return 1;
+  }
 }
 
 function isDirectInvocation() {
