@@ -6,6 +6,32 @@ import {
   createMihomoConnectionDeltaUsageReader
 } from "../services/edge/mihomo-connection-delta-usage-reader.mjs";
 
+test("Mihomo connection delta reader rejects an invalid fetchJson override", () => {
+  assert.throws(() => createMihomoConnectionDeltaUsageReader({
+    controllerUrl: "http://127.0.0.1:19090",
+    fetchJson: "invalid"
+  }), { code: "validation_error" });
+});
+
+test("Mihomo connection delta reader preserves safe HTTP auth provenance", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => ({
+    ok: false,
+    status: 403
+  }));
+  const reader = createMihomoConnectionDeltaUsageReader({
+    controllerUrl: "http://127.0.0.1:19090"
+  });
+
+  await assert.rejects(
+    () => reader(),
+    (error) => {
+      assert.equal(error.code, "controller_forbidden");
+      assert.doesNotMatch(error.message, /403|secret|token|payload/i);
+      return true;
+    }
+  );
+});
+
 test("Mihomo connection delta reader baselines first snapshot and emits later deltas", async () => {
   const stateStore = createInMemoryMihomoConnectionDeltaStateStore();
   const payloads = [

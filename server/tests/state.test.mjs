@@ -2540,6 +2540,66 @@ test("createRuntimeState wires env-gated Hy2 usage collector into the control le
   }
 });
 
+test("createRuntimeState keeps Hy2 runtime and auth failures distinct from config errors", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-env-hy2-provenance-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  const responses = [
+    { ok: false, status: 401 },
+    { ok: false, status: 503 }
+  ];
+  let state;
+
+  try {
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [
+        {
+          id: "channel_vultr_hy2",
+          name: "channel-vultr-a-hy2",
+          protocol: "hysteria2",
+          type: "hysteria2",
+          host: "edge.example.test",
+          port: 10443,
+          password: "synthetic-hy2-password",
+          runtimeAdapter: "hysteria2-explicit-restart",
+          credentialMode: "per-order",
+          status: "online"
+        }
+      ]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "secret",
+        SS_PASSWORD: "pw",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        EDGE_CREDENTIAL_CHANNEL_REFS: "channel-vultr-a-hy2",
+        EDGE_USAGE_COLLECTOR_ENABLED: "true",
+        EDGE_HYSTERIA2_TRAFFIC_STATS_LISTEN: "127.0.0.1:26080",
+        EDGE_HYSTERIA2_TRAFFIC_STATS_SECRET: "synthetic-stats-secret"
+      },
+      subscriptionDbPath: join(dir, "subscriptions.sqlite"),
+      controlDbPath: join(dir, "control.sqlite"),
+      edgeUsageFetch: async () => responses.shift(),
+      autoStartHttpProxy: false
+    });
+
+    const authReport = await state.platform.edgeUsageAccounting.collectAndRecord();
+    const runtimeReport = await state.platform.edgeUsageAccounting.collectAndRecord();
+
+    assert.deepEqual(authReport.reports[0].blockers, ["traffic_stats_unauthorized"]);
+    assert.equal(authReport.reports[0].collectorState.condition, "auth_error");
+    assert.deepEqual(runtimeReport.reports[0].blockers, ["runtime_fetch_failed"]);
+    assert.equal(runtimeReport.reports[0].collectorState.condition, "runtime_down");
+    assert.doesNotMatch(JSON.stringify([authReport, runtimeReport]), /synthetic-stats-secret|synthetic-hy2-password/i);
+  } finally {
+    state?.subscriptions?.repository?.close?.();
+    state?.platform?.controlStore?.close?.();
+    state?.subscriptions?.close?.();
+    removeTempDir(dir);
+  }
+});
+
 test("createRuntimeState keeps TUIC usage collector disabled without a Mihomo controller URL", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-env-tuic-usage-disabled-"));
   const proxyConfigPath = join(dir, "proxy-servers.json");

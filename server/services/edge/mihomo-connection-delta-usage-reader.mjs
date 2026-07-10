@@ -230,12 +230,27 @@ function connectionEntriesFromPayload(payload, runtimeCredentialMap) {
   return entries;
 }
 
-async function defaultFetchJson({ url, headers }) {
-  const response = await fetch(url, { headers });
-  if (!response.ok) {
+async function defaultFetchJson({ url, headers, fetchFn }) {
+  let response;
+  try {
+    response = await fetchFn(url, { headers });
+  } catch {
     throw readerError("controller_error", "controller request failed");
   }
-  return response.json();
+  if (response?.status === 401) {
+    throw readerError("controller_unauthorized", "controller request failed");
+  }
+  if (response?.status === 403) {
+    throw readerError("controller_forbidden", "controller request failed");
+  }
+  if (!response?.ok) {
+    throw readerError("controller_error", "controller request failed");
+  }
+  try {
+    return await response.json();
+  } catch {
+    throw readerError("validation_error", "controller response must be JSON");
+  }
 }
 
 export function createInMemoryMihomoConnectionDeltaStateStore(initialState) {
@@ -278,7 +293,8 @@ export function createMihomoConnectionDeltaUsageReader({
   controllerSecret,
   credentialRefByRuntimeUser,
   stateStore = createInMemoryMihomoConnectionDeltaStateStore(),
-  fetchJson = defaultFetchJson,
+  fetchJson,
+  fetchFn = globalThis.fetch,
   nowFn = () => new Date()
 } = {}) {
   const baseUrl = loopbackControllerUrl(controllerUrl);
@@ -288,14 +304,20 @@ export function createMihomoConnectionDeltaUsageReader({
   if (!stateStore || typeof stateStore.read !== "function" || typeof stateStore.write !== "function") {
     throw readerError("validation_error", "stateStore with read/write methods is required");
   }
-  if (typeof fetchJson !== "function") {
-    throw readerError("validation_error", "fetchJson is required");
+  if (fetchJson !== undefined && typeof fetchJson !== "function") {
+    throw readerError("validation_error", "fetchJson must be a function");
+  }
+  const readJson = typeof fetchJson === "function"
+    ? fetchJson
+    : (request) => defaultFetchJson({ ...request, fetchFn });
+  if (typeof fetchJson !== "function" && typeof fetchFn !== "function") {
+    throw readerError("validation_error", "fetchFn is required");
   }
 
   return async function readMihomoConnectionDeltaUsage({ since } = {}) {
     const url = new URL(path, baseUrl);
     const headers = secret ? { Authorization: `Bearer ${secret}` } : {};
-    const payload = await fetchJson({
+    const payload = await readJson({
       url: url.toString(),
       headers
     });

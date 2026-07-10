@@ -1,3 +1,5 @@
+import { safeUsageCollectorFailure } from "./usage-collector-failure.mjs";
+
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 function collectorError(code, message) {
@@ -128,10 +130,23 @@ export function createXrayVlessUsageCollector({
   }
 
   async function collect({ since } = {}) {
-    const source = await snapshotReader({
-      channelRef: safeChannelRef,
-      since
-    });
+    let source;
+    try {
+      source = await snapshotReader({
+        channelRef: safeChannelRef,
+        since
+      });
+    } catch (error) {
+      const failure = safeUsageCollectorFailure({
+        error,
+        sourceRef: "xray_statsquery_user_traffic",
+        channelRef: safeChannelRef,
+        target: "snapshotReader",
+        nextAction: "review_xray_usage_source_failure"
+      });
+      if (failure) return failure;
+      throw error;
+    }
 
     let snapshot;
     try {

@@ -15,6 +15,50 @@ test("Mihomo external-controller usage reader rejects non-loopback controller UR
   }), /controllerUrl must use http loopback/);
 });
 
+test("Mihomo external-controller usage reader rejects an invalid fetchJson override", () => {
+  assert.throws(() => createMihomoExternalControllerUsageSnapshotReader({
+    controllerUrl: "http://127.0.0.1:19090",
+    fetchJson: "invalid"
+  }), { code: "validation_error" });
+});
+
+test("Mihomo external-controller usage reader preserves safe HTTP auth provenance", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => ({
+    ok: false,
+    status: 401
+  }));
+  const reader = createMihomoExternalControllerUsageSnapshotReader({
+    controllerUrl: "http://127.0.0.1:19090"
+  });
+
+  await assert.rejects(
+    () => reader(),
+    (error) => {
+      assert.equal(error.code, "controller_unauthorized");
+      assert.doesNotMatch(error.message, /401|secret|token|payload/i);
+      return true;
+    }
+  );
+});
+
+test("Mihomo external-controller usage reader redacts network failures", async (t) => {
+  t.mock.method(globalThis, "fetch", async () => {
+    throw new Error("private controller endpoint detail must not leak");
+  });
+  const reader = createMihomoExternalControllerUsageSnapshotReader({
+    controllerUrl: "http://127.0.0.1:19090"
+  });
+
+  await assert.rejects(
+    () => reader(),
+    (error) => {
+      assert.equal(error.code, "controller_error");
+      assert.doesNotMatch(error.message, /private controller endpoint detail/i);
+      return true;
+    }
+  );
+});
+
 test("Mihomo external-controller usage reader converts aggregate traffic into safe aggregate snapshot", async () => {
   const calls = [];
   const reader = createMihomoExternalControllerUsageSnapshotReader({
