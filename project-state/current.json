@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2026-07-10.1",
+  "schemaVersion": "2026-07-10.2",
   "lastUpdated": "2026-07-10",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
@@ -27,30 +27,29 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "sourceSnapshotAtInventory": "7e9a8667657e5323e09ff7c262da85d26729e69b",
+    "sourceSnapshotAtInventory": "9aa1561eea8ce77cd1cf670369d5bd42c2331ba2",
     "observedOpenPrCount": 0,
-    "observedOpenIssueCount": 5,
+    "observedOpenIssueCount": 4,
     "activeIssues": [
       437,
       438,
       439,
-      440,
-      457
+      440
     ],
     "remoteBranches": [
       "master"
     ],
-    "recentVersionManagementPrs": [
-      442,
-      443,
-      444,
+    "recentMergedPrs": [
       445,
       446,
       448,
       450,
       452,
       454,
-      456
+      456,
+      458,
+      459,
+      460
     ],
     "mergePolicyObservation": {
       "allowSquashMerge": true,
@@ -88,7 +87,7 @@
   "activeDirections": [
     "Phase 2 is Operational Reliability, not broad feature expansion.",
     "Issue #437 Traffic Accounting is the only active implementation Epic; #438 and #439 are queued, and #440 is an opportunistic guardrail.",
-    "Issue #457 must prove staged Vercel behavior on a real master merge before any explicit company-site promotion model is considered closed.",
+    "Issue #457 is closed after real master merges proved staged Vercel behavior without moving public custom aliases; promotion remains a separate exact Risk A gate.",
     "Source, artifact, deployment, and runtime evidence remain separate; a merge or build artifact never proves production state.",
     "Billing and AppsFlyer remain disabled/non-live, and architecture stays a modular monolith."
   ],
@@ -101,14 +100,14 @@
       439,
       440
     ],
-    "governanceIssue": 457,
+    "governanceIssue": null,
     "leadAgent": "Codex",
     "operatorRole": "The operator approves or rejects exact Risk A gates after the reviewer defines scope, validation, rollback, and stop conditions.",
     "riskBoundary": "Repository contracts and tests are B-tier; production, provider, auth, schema, deployment, promotion, rollback, and runtime mutation are separately approved A-tier work."
   },
   "productionSnapshot": {
     "requiresLiveVerification": true,
-    "evidenceCutoff": "2026-07-10T10:58:28Z",
+    "evidenceCutoff": "2026-07-10T13:26:52Z",
     "controlPlaneAuthority": "Vultr Japan",
     "dataPlaneCapacity": [
       "Vultr Japan",
@@ -160,11 +159,21 @@
       "productionBranch": "master",
       "autoAssignCustomDomains": false,
       "currentDeployment": "proxy-gateway-minimal-hqdudl13g-gccltd.vercel.app",
+      "currentDeploymentRecord": "5389897330",
+      "currentDeploymentSource": "7e9a8667657e5323e09ff7c262da85d26729e69b",
       "publicAliases": [
         "gccwebos.com",
         "www.gccwebos.com"
       ],
-      "operationalProof": "pending next real master merge",
+      "latestStagedCandidate": {
+        "vercelDeployment": "dpl_33AwpEF5kp2fnxSSgP4C8AhR8TNd",
+        "githubDeployment": "5392032753",
+        "sourceCommit": "9aa1561eea8ce77cd1cf670369d5bd42c2331ba2",
+        "state": "READY",
+        "productionEnvironment": false,
+        "publicAliasesAssigned": false
+      },
+      "operationalProof": "completed through real merges #458, #459, and #460; public aliases remained on the pre-gate deployment",
       "promotionAuthority": "separate exact Risk A approval"
     },
     "cloudflareSiteBoundary": {
@@ -185,21 +194,16 @@
     "internalRuntime": "metering and control endpoints remain loopback/private according to documented execution records and require live verification before mutation"
   },
   "validationSnapshot": {
-    "masterAtInventory": "7e9a8667657e5323e09ff7c262da85d26729e69b",
-    "latestCiRun": "29085757610 success",
-    "latestReleaseArtifactRun": "29085757627 success",
+    "masterAtInventory": "9aa1561eea8ce77cd1cf670369d5bd42c2331ba2",
+    "latestCiRun": "29095756877 success",
+    "latestReleaseArtifactRun": "29095756923 success",
     "projectStateCheck": "required whenever project-state files change",
     "cTierDiffCheck": "git diff --check origin/master...HEAD"
   },
   "activeBlockers": [
     {
-      "id": "vercel-staged-deployment-proof",
-      "summary": "Issue #457 setting change is complete, but the next real master merge has not yet proven that the new Vercel deployment stays staged while public aliases remain unchanged.",
-      "sourceDoc": "docs/CURRENT_RELEASE_STATE.md"
-    },
-    {
-      "id": "traffic-collector-error-provenance",
-      "summary": "Issue #437 has the canonical collector-state contract from PR #441, but current adapters still need safe source-error provenance before protected Admin projection is trustworthy.",
+      "id": "traffic-collector-status-producers",
+      "summary": "Issue #437 has the canonical contract, safe adapter provenance, and protected read model from PRs #441, #459, and #460, but Japan TUIC map verification and SGP TUIC sidecar status still lack separately evidenced protected producers.",
       "sourceDoc": "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md"
     },
     {
@@ -214,10 +218,9 @@
     }
   ],
   "nextRecommendedQueue": [
-    "Finish the current C-tier project-state reconciliation and review its diff before merge.",
-    "Under a separate exact Risk A approval, merge the reviewed real change and prove Vercel creates a staged deployment without moving public aliases; then close Issue #457.",
-    "Start the Issue #437 collector-error-provenance B-tier slice from the resulting clean master.",
-    "Add the protected read-only collector Admin projection only after provenance tests pass.",
+    "Review and merge the current C-tier release-ledger reconciliation without treating it as deployment evidence.",
+    "Define the smallest source-only #437 slice for protected Japan TUIC map verification and SGP TUIC sidecar status producers.",
+    "Keep the Admin UI deferred until the remaining producer facts are stable and covered by boundary tests.",
     "Keep Issues #438 and #439 queued and use Issue #440 only for a measured boundary exposed by active work."
   ],
   "forbiddenInStateFiles": [

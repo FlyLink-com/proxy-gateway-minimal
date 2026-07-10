@@ -6,6 +6,8 @@
 > - Production impact: None
 > - Source baseline: `master` at `9d48592c`
 > - Scope: The 10 most recently merged pull requests at the time of review
+> - Historical boundary: Frozen. Do not append current PRs to this dated map.
+>   Use `RELEASE_MANIFEST.md` for the current compact PR mapping.
 > - Execution authority: None. This document does not authorize deployment,
 >   runtime mutation, static replacement, provider changes, credentials,
 >   subscription material, or customer-data access.

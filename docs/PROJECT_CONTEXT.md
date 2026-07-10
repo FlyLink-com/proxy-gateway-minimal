@@ -86,13 +86,13 @@ gaoyi1020-web/proxy-gateway-minimal
 
 At the pre-reconciliation 2026-07-10 snapshot:
 
-- `master`: `7e9a8667657e5323e09ff7c262da85d26729e69b`
+- `master`: `9aa1561eea8ce77cd1cf670369d5bd42c2331ba2`
 - local worktree: clean and synchronized before this reconciliation branch
 - remote branches: `master` only
 - open PRs: 0
-- open Issues: #437, #438, #439, #440, and #457
-- latest master CI: `29085757610`, success
-- latest Release Artifact run: `29085757627`, success
+- open Issues: #437, #438, #439, and #440
+- latest master CI: `29095756877`, success
+- latest Release Artifact run: `29095756923`, success
 
 These are dated facts. Re-run Git and GitHub inventory before making a current
 claim.
@@ -134,11 +134,13 @@ Keep one primary implementation lane active:
 
 | Order | Issue | Lane | Current state |
 | --- | --- | --- | --- |
-| Gate | #457 | Version/deployment governance | Setting changed; staged-deployment proof pending |
-| 1 | #437 | Traffic Accounting | Active; PR #441 merged, error provenance next |
+| 1 | #437 | Traffic Accounting | Active; PRs #441, #459, and #460 merged; producer gaps remain |
 | 2 | #438 | Portal Lifecycle | Queued after traffic semantics stabilize |
 | 3 | #439 | Commercial Foundation | Queued; billing and AppsFlyer remain non-live |
 | 4 | #440 | Code Boundary Cleanup | Opportunistic guardrail only |
+
+Issue #457 is closed. Real merges proved the Vercel staged-deployment boundary
+without moving the public custom aliases. Promotion remains separately gated.
 
 Do not pre-create broad pipeline, Portal redesign, payment activation, or
 architecture-refactor PRs. Each source PR must answer:
@@ -179,8 +181,11 @@ The company site uses Vercel Git integration:
 - current public alias target:
   `proxy-gateway-minimal-hqdudl13g-gccltd.vercel.app`
 - current GitHub Production deployment: `5389897330`
-- next proof: a real master merge must create a staged deployment without
-  moving `gccwebos.com` or `www.gccwebos.com`
+- latest staged candidate: Vercel deployment
+  `dpl_33AwpEF5kp2fnxSSgP4C8AhR8TNd`, GitHub deployment `5392032753`, source
+  `9aa1561eea8ce77cd1cf670369d5bd42c2331ba2`
+- staged proof: candidate READY, `production_environment=false`, and neither
+  public custom alias moved
 
 No Vercel promotion or rollback is authorized by this document.
 
@@ -210,17 +215,17 @@ Important boundaries:
 - AppsFlyer: disabled/dry-run only.
 
 The documented control-plane source is an ancestor of current `master`, which
-is 25 commits ahead at the snapshot. Source-only capabilities must not be
+is 28 commits ahead at the snapshot. Source-only capabilities must not be
 reported as deployed without a matching production record.
 
 ## Active Blockers
 
-1. #457 still needs a real staged-deployment proof before closure.
-2. #437 adapter error provenance is not implemented; Admin projection must wait.
-3. Runtime Identity has not observed Japan or Singapore production.
-4. Company site, Portal, Admin, and subscription-rendering lineage is not fully
+1. #437 still lacks protected Japan TUIC map verification status and SGP TUIC
+   sidecar status producers; the Admin UI remains deferred.
+2. Runtime Identity has not observed Japan or Singapore production.
+3. Company site, Portal, Admin, and subscription-rendering lineage is not fully
    reconciled.
-5. Billing and AppsFlyer are intentionally non-live.
+4. Billing and AppsFlyer are intentionally non-live.
 
 Historical Aliyun, AWS canary, old carrier PR, and Admin OS task queues are not
 current execution authority. Use Git history and the archive/index documents

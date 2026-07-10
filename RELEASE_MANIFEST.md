@@ -4,7 +4,7 @@
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
 > - Last updated: 2026-07-10, America/Los_Angeles
-> - Source inventory baseline: `master` at `7e9a8667`
+> - Source inventory baseline: `master` at `9aa1561e`
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
@@ -28,16 +28,18 @@ Source -> Artifact -> Release -> Deployment -> Runtime State
 
 ## Deployment Promotion Boundary
 
-Issue #457 records the current company-site promotion boundary. The linked
-Vercel project keeps `master` as its Production Branch but now has automatic
-custom production-domain assignment disabled. Merging source may create a
-production-target candidate; it must not be described as current until the
-public aliases are explicitly promoted and validated.
+Closed Issue #457 records the proven company-site promotion boundary. The
+linked Vercel project keeps `master` as its Production Branch and has automatic
+custom production-domain assignment disabled. Real merges #458, #459, and #460
+created production-target candidates without moving the public custom aliases.
 
-The setting change itself created no deployment and moved no alias. The next
-real `master` merge must still prove that the resulting deployment remains
-staged while `gccwebos.com` and `www.gccwebos.com` stay on the previously
-approved deployment. Promotion or rollback is a separate exact Risk A gate.
+The latest observed candidate is READY as Vercel deployment
+`dpl_33AwpEF5kp2fnxSSgP4C8AhR8TNd`, GitHub deployment `5392032753`, for source
+`9aa1561eea8ce77cd1cf670369d5bd42c2331ba2`. It has
+`production_environment=false` and did not receive `gccwebos.com` or
+`www.gccwebos.com`. Both public aliases remained on GitHub deployment
+`5389897330`, sourced from `7e9a8667657e5323e09ff7c262da85d26729e69b`.
+Promotion or rollback remains a separate exact Risk A gate.
 
 The Cloudflare public-site workflow also keeps repository auto-deploy disabled.
 Build/verification evidence from that workflow is not deployment evidence.
@@ -129,6 +131,12 @@ for source `4fbe022264e30acd9e487dd880b7d4ed544be259`. Its uploaded ZIP, checksu
 sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size,
 and UTC creation time, and the manifest contained no downloaded absolute path.
 
+The latest verified `master` proof at this inventory cutoff is Release Artifact
+run `29095756923` for source
+`9aa1561eea8ce77cd1cf670369d5bd42c2331ba2`. It completed the control-plane,
+Portal, and Admin artifact jobs. This is build evidence, not production
+promotion evidence.
+
 ## Runtime Config Identity v1
 
 Runtime Config Identity is an observation artifact, not an application build,
@@ -166,26 +174,40 @@ approval and execution evidence.
 
 ## Current PR Mapping
 
-This is the compact release view of the detailed capability inventory in
-`docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md`.
+This is the current compact view of the ten most recently merged PRs at source
+baseline `9aa1561e`. The detailed
+`docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md` is a frozen historical snapshot
+and is not appended with later PRs.
 
 | PR | Capability | Source commit | Release unit | Release assignment | Production state |
 | --- | --- | --- | --- | --- | --- |
-| #441 | `collector-state-contract@v1` | `9d48592c` | `control-plane-app` | Unassigned | `not_deployed` |
-| #436 | `phase-2-foundation-baseline@v1` | `2ac196b7` | None | None | `not_applicable` |
-| #435 | `local-proxy-control-boundary@v1` | `53eb5a10` | `control-plane-app` | Unassigned | `not_deployed` |
-| #434 | `aliyun-runtime-default-retirement@v1` | `7d70292e` | `control-plane-app` | Unassigned | `not_deployed` |
-| #433 | `aliyun-gate-api-retirement@v1` | `1935a806` | `control-plane-app`, `admin-static` | Unassigned; promote units separately | `not_deployed` |
-| #432 | `portal-preview-isolation@v1` | `a7e25425` | Unresolved: `admin-static` or `portal-static` | Promotion blocked pending artifact ownership | `not_deployed` |
-| #427 | `foundation-freeze-and-archive-boundary@v1` | `790f20a6` | None | None | `not_applicable` |
-| #426 | `company-site-mobile-experience@v1` | `e853076d` | `company-site-static` | Historical deployment only; release lineage unresolved | `deployed_unreconciled` |
-| #425 | `subscription-refresh-abuse-controls@v1` | `5d23e1ab` | `control-plane-app` | Unassigned | `not_deployed` |
-| #424 | `production-deployment-evidence-index@v1` | `b2ce22d8` | None; evidence references earlier units | Evidence carrier, not a release | `not_applicable` |
+| #445 | `artifact-manifest-generation@v1` | `4fbe0222` | `none` | Governance/tooling only | `not_applicable` |
+| #446 | `version-management-baseline-v2@v1` | `b1bec5b0` | `none` | Governance baseline only | `not_applicable` |
+| #448 | `portal-static-artifact-generation@v1` | `4b5bc143` | `portal-static` | Artifact built; no promotion | `not_deployed` |
+| #450 | `artifact-upload-action-v7@v1` | `255a0822` | `none` | CI maintenance only | `not_applicable` |
+| #452 | `admin-static-artifact-generation@v1` | `18807285` | `admin-static` | Artifact built; no promotion | `not_deployed` |
+| #454 | `artifact-coverage-reconciliation@v1` | `65f8515e` | `none` | Governance reconciliation only | `not_applicable` |
+| #456 | `runtime-config-identity-generation@v1` | `7e9a8667` | `none` | Offline observation tooling only | `not_applicable` |
+| #458 | `phase-2-project-state-reconciliation@v1` | `3013e8f9` | `none` | Source reconciliation; Vercel candidate remained staged | `not_deployed` |
+| #459 | `collector-error-provenance@v1` | `72e98096` | `control-plane-app` | Unassigned | `not_deployed` |
+| #460 | `protected-admin-collector-projection@v1` | `9aa1561e` | `control-plane-app` | Unassigned | `not_deployed` |
 
-No new release is declared `ready` or `deployed` by this manifest. In
-particular, #426 is mapped to `company-site-static`, but its historical artifact
-cannot be proven reproducible from the merge commit and therefore remains
-`deployed_unreconciled` until a clean promotion replaces or reconciles it.
+The Phase 2 traffic chain begins with #441
+`collector-state-contract@v1`; #459 preserves redacted adapter provenance and
+#460 exposes the protected read model. All three remain source-only until an
+exact `control-plane-app` deployment record proves otherwise.
+
+No new release is declared `ready` or `deployed` by this manifest. A source-only
+PR may say that deployment is not applicable; that statement is not a Deploy
+Note and must not be backfilled as production evidence.
+
+## Rollback Strategy Rule
+
+- Source-only capability: revert the exact merge commit through a reviewed PR.
+- Governance or offline tooling with release unit `none`: no production
+  rollback applies.
+- Deployed release unit: restore the exact previous artifact or release identity
+  under a separately approved gate and validate the target boundary.
 
 ## Fixed Rules
 
