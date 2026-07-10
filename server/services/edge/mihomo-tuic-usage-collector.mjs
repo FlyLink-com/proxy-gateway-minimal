@@ -142,10 +142,12 @@ function normalizeEntry(entry, index, snapshot) {
 
 export function createMihomoTuicUsageCollector({
   channelRef,
+  sourceRef = "mihomo_usage_snapshot",
   snapshotReader,
   nowFn = defaultNow
 } = {}) {
   const safeChannelRef = safeRef(channelRef, "channelRef");
+  const safeSourceRef = safeRef(sourceRef, "sourceRef");
   if (typeof snapshotReader !== "function") {
     throw collectorError("validation_error", "snapshotReader is required");
   }
@@ -160,7 +162,7 @@ export function createMihomoTuicUsageCollector({
     } catch (error) {
       const failure = safeUsageCollectorFailure({
         error,
-        sourceRef: "mihomo_usage_snapshot",
+        sourceRef: safeSourceRef,
         channelRef: safeChannelRef,
         target: "snapshotReader",
         nextAction: "review_mihomo_usage_source_failure"
@@ -178,7 +180,7 @@ export function createMihomoTuicUsageCollector({
       });
     } catch (error) {
       return validationFailure({
-        sourceRef: "mihomo_usage_snapshot",
+        sourceRef: safeSourceRef,
         channelRef: safeChannelRef,
         error
       });

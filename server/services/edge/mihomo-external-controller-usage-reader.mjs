@@ -208,6 +208,7 @@ async function defaultFetchJson({ url, headers, fetchFn }) {
 export function createMihomoExternalControllerUsageSnapshotReader({
   controllerUrl,
   metricsPath = "/traffic",
+  sourceRef,
   controllerSecret,
   credentialRefByRuntimeUser,
   fetchJson,
@@ -216,6 +217,9 @@ export function createMihomoExternalControllerUsageSnapshotReader({
 } = {}) {
   const baseUrl = loopbackControllerUrl(controllerUrl);
   const path = safePath(metricsPath);
+  const safeSourceRef = text(sourceRef)
+    ? safeRef(sourceRef, "sourceRef")
+    : sourceRefFromPath(path);
   const secret = text(controllerSecret);
   const runtimeCredentialMap = safeRuntimeCredentialMap(credentialRefByRuntimeUser);
   if (fetchJson !== undefined && typeof fetchJson !== "function") {
@@ -258,7 +262,7 @@ export function createMihomoExternalControllerUsageSnapshotReader({
       .filter(Boolean);
 
     const snapshot = {
-      sourceRef: sourceRefFromPath(path),
+      sourceRef: safeSourceRef,
       observedAt,
       intervalStartedAt,
       intervalEndedAt

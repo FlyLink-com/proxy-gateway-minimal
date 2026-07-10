@@ -3408,6 +3408,7 @@ test("createRuntimeState wires separate Mihomo TUIC usage sources per channel re
         EDGE_USAGE_COLLECTOR_ENABLED: "true",
         EDGE_MIHOMO_USAGE_SOURCES_JSON: JSON.stringify([
           {
+            sourceRef: "mihomo_usage_source_vultr",
             controllerUrl: "http://127.0.0.1:19090",
             metricsPath: "/connections",
             controllerSecret: "synthetic-vultr-controller-secret",
@@ -3417,6 +3418,7 @@ test("createRuntimeState wires separate Mihomo TUIC usage sources per channel re
             channelRefs: ["channel-vultr-a-tuic"]
           },
           {
+            sourceRef: "mihomo_usage_source_sgp",
             controllerUrl: "http://127.0.0.1:19091",
             metricsPath: "/connections",
             controllerSecret: "synthetic-sgp-controller-secret",
@@ -3469,6 +3471,10 @@ test("createRuntimeState wires separate Mihomo TUIC usage sources per channel re
     assert.deepEqual(
       reports.map((report) => report.observations[0].edgeCredentialRef),
       [vultrCredentialRef, sgpCredentialRef]
+    );
+    assert.deepEqual(
+      reports.map((report) => report.sourceRef),
+      ["mihomo_usage_source_vultr", "mihomo_usage_source_sgp"]
     );
     assert.doesNotMatch(JSON.stringify(reports), /runtime-user|privateKey|controller-secret|must-not-return/i);
   } finally {

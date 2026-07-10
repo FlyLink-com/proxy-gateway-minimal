@@ -63,6 +63,48 @@ test("Mihomo collector preserves a safe controller auth failure for canonical au
   assert.doesNotMatch(JSON.stringify(report), /secret runtime payload|private runtime config|rawConfig/i);
 });
 
+test("Mihomo collectors preserve distinct source identities on a shared channel", async () => {
+  const channelRef = "channel-shared-tuic";
+  const collectors = [
+    {
+      sourceRef: "mihomo_usage_source_jp",
+      errorCode: "controller_unauthorized"
+    },
+    {
+      sourceRef: "mihomo_usage_source_sgp",
+      errorCode: "controller_forbidden"
+    }
+  ].map(({ sourceRef, errorCode }) => ({
+    channelRef,
+    ...createMihomoTuicUsageCollector({
+      channelRef,
+      sourceRef,
+      snapshotReader: async () => {
+        throw sourceError(errorCode);
+      }
+    })
+  }));
+  const service = createRuntimeUsageAccountingService({
+    collectors,
+    accounting: {
+      recordUsageObservation() {
+        throw new Error("failed collectors must not record usage");
+      }
+    }
+  });
+
+  const report = await service.collectAndRecord();
+
+  assert.deepEqual(
+    report.reports.map((entry) => entry.collectorState.sourceRef),
+    ["mihomo_usage_source_jp", "mihomo_usage_source_sgp"]
+  );
+  assert.deepEqual(
+    report.reports.map((entry) => entry.blockers[0]),
+    ["controller_unauthorized", "controller_forbidden"]
+  );
+});
+
 test("Hysteria2 collector keeps runtime fetch failures distinct from config validation", async () => {
   const report = await collectReport({
     channelRef: "channel-vultr-a-hy2",

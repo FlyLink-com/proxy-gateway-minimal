@@ -312,6 +312,7 @@ function createMihomoUsageSourceConfigs(env = {}) {
   );
   if (configuredSources.length > 0) {
     return configuredSources.map((source, index) => ({
+      sourceRef: optionalEnvText(source.sourceRef || source.id) || `mihomo_usage_source_${index + 1}`,
       controllerUrl: optionalEnvText(source.controllerUrl || source.url),
       metricsPath: source.metricsPath,
       controllerSecret: optionalEnvText(source.controllerSecret)
@@ -331,6 +332,7 @@ function createMihomoUsageSourceConfigs(env = {}) {
     return [];
   }
   return [{
+    sourceRef: "",
     controllerUrl,
     metricsPath: env.EDGE_MIHOMO_USAGE_METRICS_PATH || env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_METRICS_PATH,
     controllerSecret: firstOptionalEnvText(
@@ -548,6 +550,7 @@ function createEnvEdgeUsageCollectors({
     const snapshotReader = createMihomoExternalControllerUsageSnapshotReader({
       controllerUrl: mihomoUsageSource.controllerUrl,
       metricsPath: mihomoUsageSource.metricsPath,
+      sourceRef: mihomoUsageSource.sourceRef || undefined,
       controllerSecret: mihomoUsageSource.controllerSecret,
       credentialRefByRuntimeUser: createMihomoUsageCredentialMap(env, mihomoUsageSource),
       fetchFn,
@@ -558,6 +561,7 @@ function createEnvEdgeUsageCollectors({
       channelRef,
       ...createMihomoTuicUsageCollector({
         channelRef,
+        sourceRef: mihomoUsageSource.sourceRef || undefined,
         snapshotReader,
         nowFn
       })
