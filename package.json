@@ -107,6 +107,7 @@
     "daemon": "node daemon.mjs",
     "admin:dev": "npm run dev --prefix admin",
     "admin:build": "npm run build --prefix admin",
+    "admin:verify": "npm run verify:admin-build --prefix admin",
     "admin:portal:build": "npm run build:portal --prefix admin",
     "admin:portal:verify": "npm run verify:portal-build --prefix admin",
     "admin:site:build": "npm run build:site --prefix admin",
