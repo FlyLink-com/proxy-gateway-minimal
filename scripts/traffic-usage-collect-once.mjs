@@ -3,6 +3,7 @@ import { realpathSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRuntimeState } from "../server/state.mjs";
+import { sanitizeTrafficCollectorState } from "../server/services/platform/traffic-collector-state.mjs";
 
 function reportCodeList(value) {
   return Array.isArray(value)
@@ -127,6 +128,7 @@ export function summarizeUsageAccountingReport(report, {
       channelRef: String(entry?.channelRef || "").trim(),
       collectorOk: entry?.collectorOk === true,
       collectorStatus: String(entry?.collectorStatus || "").trim(),
+      collectorState: sanitizeTrafficCollectorState(entry?.collectorState),
       idle: entry?.idle === true,
       observationCount: Number(entry?.observationCount || 0),
       recordedCount: Number(entry?.recordedCount || 0),

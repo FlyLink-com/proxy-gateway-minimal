@@ -37,6 +37,19 @@ test("traffic usage collect summary omits credential refs and raw runtime payloa
         channelRef: "channel-vultr-a-hy2",
         collectorOk: true,
         collectorStatus: "collected",
+        collectorState: {
+          type: "traffic_collector_state",
+          health: "healthy",
+          condition: "ok",
+          sourceRef: "hysteria2_traffic_stats",
+          channelRef: "channel-vultr-a-hy2",
+          lastCollectorSuccessAt: "2026-07-09T00:00:00.000Z",
+          observationCount: 1,
+          unresolvedCount: 0,
+          errorType: null,
+          rawRuntimePayload: "must-not-pass-through",
+          safety: { redacted: true }
+        },
         observationCount: 1,
         recordedCount: 1,
         unresolvedCount: 0,
@@ -54,9 +67,22 @@ test("traffic usage collect summary omits credential refs and raw runtime payloa
 
   assert.equal(summary.ok, true);
   assert.equal(summary.reports[0].recordedCount, 1);
+  assert.deepEqual(summary.reports[0].collectorState, {
+    type: "traffic_collector_state",
+    health: "healthy",
+    condition: "ok",
+    sourceRef: "hysteria2_traffic_stats",
+    channelRef: "channel-vultr-a-hy2",
+    lastCollectorSuccessAt: "2026-07-09T00:00:00.000Z",
+    observationCount: 1,
+    unresolvedCount: 0,
+    errorType: null,
+    safety: { redacted: true }
+  });
   assert.equal(summary.trafficSupplySuspendRequiredCount, 0);
   assert.equal(summary.trafficSupplySuspendExecutedCount, 0);
   assert.equal(JSON.stringify(summary).includes("edgecred_sensitive_ref"), false);
+  assert.equal(JSON.stringify(summary).includes("must-not-pass-through"), false);
   assert.deepEqual(summary.safety, {
     noRawRuntimePayload: true,
     noSecretMaterialReturned: true,
