@@ -8,8 +8,8 @@
 > - Updated: 2026-07-10, America/Los_Angeles
 > - Evidence cutoff: tracked execution records through 2026-07-09 plus local
 >   artifact verification and GitHub Release Artifact runs `29074645989` and
->   `29082515200`
-> - Live verification: Not performed for this docs-only update
+>   `29082515200`; Runtime Identity v1 evidence is repository-local validation
+> - Live verification: Not performed; Runtime Identity v1 remains offline-only
 > - Execution authority: None
 
 Read this file for the latest repository-backed production identity before
@@ -41,10 +41,11 @@ Artifact Manifest v1 has build-time coverage for three release units:
 | `portal-static` | Tracked | The Portal job builds and verifies `admin/dist-portal`, then emits a ZIP, checksum, and `artifact.json`. |
 | `admin-static` | Tracked | The Admin job builds and verifies `admin/dist`, then emits a ZIP, checksum, and `artifact.json`. |
 
-Runtime-config identity is not covered by Artifact Manifest v1. Identity schema,
-offline generation, and production observation for `japan-runtime-config` and
-`sgp-runtime-config` remain pending and must not be inferred from static or
-control-plane artifacts.
+Runtime-config identity is separate from Artifact Manifest v1. Runtime Config
+Identity v1 now defines the schema and deterministic offline generator for
+`japan-runtime-config` and `sgp-runtime-config`. No generated identity is
+committed, and no production observation or reconciliation has been performed;
+runtime identity must not be inferred from static or control-plane artifacts.
 
 The first verified `master` control-plane proof is:
 
