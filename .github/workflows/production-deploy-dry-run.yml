@@ -119,6 +119,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: production-dry-run-${{ inputs.target }}-${{ steps.release.outputs.release }}
-          path: .release-artifacts/
+          path: |
+            .release-artifacts/proxy-gateway-${{ steps.release.outputs.release }}.zip
+            .release-artifacts/proxy-gateway-${{ steps.release.outputs.release }}.zip.sha256
+            .release-artifacts/deploy-plan.txt
+            .release-artifacts/artifact.json
           if-no-files-found: error
           retention-days: 14
