@@ -31,7 +31,7 @@
 - 默认原则是风险决定流程重量、验证命令固定化、PR 数量最小化；C 档直接，B 档紧凑，A 档严格。
 - 每个 PR 提交前必须形成完整闭环：设计/意图、执行变更、验证证据都要在 PR body、文档、代码或执行记录中可追溯。未完成闭环的 PR 只能保持 Draft，不能标记 Ready、不能请求合并、不能当作已完成工作汇报。
 - 发生生产部署、回退或线上静态替换后，不要求长篇发布文档，但必须在相关 PR 追加一个简短 `Deploy Note`：`deployed_at`、`release_unit`、`source_commit`、`artifact_or_release`、`target`、`backup`、`validation`。
-- `release_unit` 只用少量固定值：`control-plane-app`、`portal-static`、`admin-static`、`japan-runtime-config`、`sgp-runtime-config`、`subscription-rendering`、`attribution-appsflyer`。如果实际部署单元和 PR 声明不一致，先停止并说明风险，不继续扩大变更。
+- `release_unit` 只用少量固定值：`control-plane-app`、`company-site-static`、`portal-static`、`admin-static`、`japan-runtime-config`、`sgp-runtime-config`、`subscription-rendering`、`attribution-appsflyer`。静态前端 PR 还必须用 `frontend_surface` 明确声明 `company-site`、`portal` 或 `admin`；如果实际部署单元和 PR 声明不一致，先停止并说明风险，不继续扩大变更。
 - 不允许把“只写设计但没有执行/验证”的 PR 当作完成，除非用户明确批准该 PR 就是 spec-only / runbook-only / inventory-only，并且 PR body 写清楚非目标、未执行事项和下一审批门禁。
 - C 档适用于 docs-only 任务，例如 README、PROJECT_CONTEXT、NETWORK_FORWARDING、DEPLOYMENT_FLOW、STAGING_PROVISIONING、CI_MANUAL_VALIDATION、runbook、状态记录、小型决策同步、错别字或过期状态修正。流程是从 `master` 新建 `docs/<topic>` 分支，直接改文档，运行 `git diff --check origin/master...HEAD`，开 Draft PR，review 后 ready + merge，再本地收尾。C 档不单独写 spec/plan，不跑 `npm test`，除非文档本身很大或涉及命令/测试基线。
 - B 档适用于中低风险代码任务，例如 server 小型 refactor、测试覆盖、HTTP bridge 小修、PowerShell 诊断脚本小修、Admin UI 局部交互、SQLite busy_timeout/lastUsed 策略、非生产 runtime 小行为修正。流程是一个 `fix/<topic>`、`test/<topic>` 或 `refactor/<topic>` PR 内完成简短设计说明、代码、测试和必要文档，不拆 spec PR + implementation PR。后端/server 运行 `git diff --check origin/master...HEAD` 和 `npm test`；Admin UI 运行 `git diff --check origin/master...HEAD`、`npm run admin:test`、`npm run admin:build`、`npm test`；PowerShell/HTTP bridge 小修先跑对应 targeted test，再跑 `npm test`。
