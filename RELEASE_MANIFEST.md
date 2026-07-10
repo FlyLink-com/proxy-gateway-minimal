@@ -75,9 +75,9 @@ recorded in the related PR Deploy Note; merge status alone never changes
 
 ## Artifact Manifest v1
 
-The two existing control-plane ZIP workflows generate and upload
-`artifact.json` beside the ZIP and checksum. The manifest contains only the
-portable artifact identity:
+The control-plane ZIP workflows and the independent Portal static artifact job
+generate and upload `artifact.json` beside each ZIP and checksum. The manifest
+contains only the portable artifact identity:
 
 ```json
 {
@@ -96,10 +96,11 @@ portable artifact identity:
 
 `scripts/create-artifact-manifest.mjs` recognizes the eight fixed release
 units, rejects non-portable source/release metadata, and records only the
-artifact base name rather than a local or host path. Automated workflow
-integration is intentionally limited to `control-plane-app` in v1. Generating
-this file does not deploy or promote the artifact and does not change runtime
-state.
+artifact base name rather than a local or host path. Automated artifact
+identity now covers `control-plane-app` and `portal-static`; the production
+dry-run workflow remains limited to `control-plane-app`. The Portal job builds
+and verifies `admin/dist-portal` before packaging it, but does not deploy or
+promote the artifact. Generating this file does not change runtime state.
 
 The first verified `master` proof is GitHub Release Artifact run `29074645989`
 for source `4fbe022264e30acd9e487dd880b7d4ed544be259`. Its uploaded ZIP, checksum

@@ -198,3 +198,36 @@ test("ZIP workflows generate artifact.json before upload", () => {
     assert.ok(workflow.includes(workflowCase.uploadPath));
   }
 });
+
+test("Release Artifact workflow packages verified Portal output with its own identity", () => {
+  const workflow = readFileSync(
+    resolve(REPOSITORY_ROOT, ".github/workflows/release-artifact.yml"),
+    "utf8"
+  );
+  const portalJobIndex = workflow.indexOf("  portal-static:");
+
+  assert.ok(portalJobIndex >= 0, "workflow must define an independent portal-static job");
+
+  const portalJob = workflow.slice(portalJobIndex);
+  const buildIndex = portalJob.indexOf("- name: Build Portal static");
+  const verifyIndex = portalJob.indexOf("- name: Verify Portal static");
+  const zipIndex = portalJob.indexOf("- name: Create Portal static zip");
+  const manifestIndex = portalJob.indexOf("- name: Create Portal artifact manifest");
+  const uploadIndex = portalJob.indexOf("- name: Upload Portal artifact");
+
+  assert.ok(buildIndex >= 0, "Portal job must build the static bundle");
+  assert.ok(verifyIndex > buildIndex, "Portal job must verify the bundle after building it");
+  assert.ok(zipIndex > verifyIndex, "Portal job must package only the verified bundle");
+  assert.ok(manifestIndex > zipIndex, "Portal job must create identity after packaging");
+  assert.ok(uploadIndex > manifestIndex, "Portal job must upload only after identity exists");
+  assert.match(portalJob, /npm ci --prefix admin/);
+  assert.match(portalJob, /npm run admin:portal:build/);
+  assert.match(portalJob, /npm run admin:portal:verify/);
+  assert.match(portalJob, /globalcircle-portal-\$\{\{ steps\.release\.outputs\.release \}\}\.zip/);
+  assert.match(portalJob, /--release-unit portal-static/);
+  assert.match(portalJob, /--source-commit "\$GITHUB_SHA"/);
+  assert.match(portalJob, /--artifact "\$artifact"/);
+  assert.match(portalJob, /--output \.release-artifacts\/artifact\.json/);
+  assert.match(portalJob, /\.release-artifacts\/artifact\.json/);
+  assert.doesNotMatch(portalJob, /\/var\/www\/globalcircle-portal|\b(?:scp|ssh|rsync|nginx)\b/);
+});
