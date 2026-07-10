@@ -80,3 +80,79 @@ jobs:
             .release-artifacts/artifact.json
           if-no-files-found: error
           retention-days: 14
+
+  portal-static:
+    name: Package Portal static artifact
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+
+      - name: Install Portal dependencies
+        run: npm ci --prefix admin
+
+      - name: Build Portal static
+        run: npm run admin:portal:build
+
+      - name: Verify Portal static
+        run: npm run admin:portal:verify
+
+      - name: Resolve Portal release label
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          release="${{ inputs.release }}"
+          if [ -z "$release" ]; then
+            release="$(git rev-parse --short=12 HEAD)"
+          fi
+          case "$release" in
+            *[!A-Za-z0-9._-]*|'')
+              echo "Invalid release label: $release" >&2
+              exit 1
+              ;;
+          esac
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+      - name: Create Portal static zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .release-artifacts
+          artifact=".release-artifacts/globalcircle-portal-${{ steps.release.outputs.release }}.zip"
+          (
+            cd admin/dist-portal
+            zip -q -r "$GITHUB_WORKSPACE/$artifact" .
+          )
+          sha256sum "$artifact" | tee "$artifact.sha256"
+
+      - name: Create Portal artifact manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact=".release-artifacts/globalcircle-portal-${{ steps.release.outputs.release }}.zip"
+          node scripts/create-artifact-manifest.mjs \
+            --release-unit portal-static \
+            --source-commit "$GITHUB_SHA" \
+            --release "${{ steps.release.outputs.release }}" \
+            --artifact "$artifact" \
+            --output .release-artifacts/artifact.json
+
+      - name: Upload Portal artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: portal-static-${{ steps.release.outputs.release }}
+          path: |
+            .release-artifacts/globalcircle-portal-${{ steps.release.outputs.release }}.zip
+            .release-artifacts/globalcircle-portal-${{ steps.release.outputs.release }}.zip.sha256
+            .release-artifacts/artifact.json
+          if-no-files-found: error
+          retention-days: 14
