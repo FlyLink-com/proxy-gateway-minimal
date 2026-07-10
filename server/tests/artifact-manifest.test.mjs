@@ -229,5 +229,6 @@ test("Release Artifact workflow packages verified Portal output with its own ide
   assert.match(portalJob, /--artifact "\$artifact"/);
   assert.match(portalJob, /--output \.release-artifacts\/artifact\.json/);
   assert.match(portalJob, /\.release-artifacts\/artifact\.json/);
+  assert.match(portalJob, /uses: actions\/upload-artifact@v7/);
   assert.doesNotMatch(portalJob, /\/var\/www\/globalcircle-portal|\b(?:scp|ssh|rsync|nginx)\b/);
 });

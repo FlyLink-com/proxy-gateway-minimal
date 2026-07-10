@@ -147,7 +147,7 @@ jobs:
             --output .release-artifacts/artifact.json
 
       - name: Upload Portal artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: portal-static-${{ steps.release.outputs.release }}
           path: |
