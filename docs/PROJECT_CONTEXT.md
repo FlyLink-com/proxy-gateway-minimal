@@ -86,13 +86,13 @@ gaoyi1020-web/proxy-gateway-minimal
 
 At the pre-reconciliation 2026-07-10 snapshot:
 
-- `master`: `9aa1561eea8ce77cd1cf670369d5bd42c2331ba2`
+- `master`: `20f8345dd1e6d09dd1a816634aa8f29c5312fd0c`
 - local worktree: clean and synchronized before this reconciliation branch
 - remote branches: `master` only
 - open PRs: 0
-- open Issues: #437, #438, #439, and #440
-- latest master CI: `29095756877`, success
-- latest Release Artifact run: `29095756923`, success
+- open Issues: #437, #438, #439, #440, and #462
+- latest master CI: `29097381907`, success
+- latest Release Artifact run: `29097381774`, success
 
 These are dated facts. Re-run Git and GitHub inventory before making a current
 claim.
@@ -134,6 +134,7 @@ Keep one primary implementation lane active:
 
 | Order | Issue | Lane | Current state |
 | --- | --- | --- | --- |
+| Gate | #462 | Version/deployment governance | Cloudflare setting corrected; one master-merge proof remains |
 | 1 | #437 | Traffic Accounting | Active; PRs #441, #459, and #460 merged; producer gaps remain |
 | 2 | #438 | Portal Lifecycle | Queued after traffic semantics stabilize |
 | 3 | #439 | Commercial Foundation | Queued; billing and AppsFlyer remain non-live |
@@ -182,8 +183,8 @@ The company site uses Vercel Git integration:
   `proxy-gateway-minimal-hqdudl13g-gccltd.vercel.app`
 - current GitHub Production deployment: `5389897330`
 - latest staged candidate: Vercel deployment
-  `dpl_33AwpEF5kp2fnxSSgP4C8AhR8TNd`, GitHub deployment `5392032753`, source
-  `9aa1561eea8ce77cd1cf670369d5bd42c2331ba2`
+  `dpl_Fy7at228XHgWE1p2T5ZpCoa97HS1`, GitHub deployment `5392379943`, source
+  `20f8345dd1e6d09dd1a816634aa8f29c5312fd0c`
 - staged proof: candidate READY, `production_environment=false`, and neither
   public custom alias moved
 
@@ -192,6 +193,14 @@ No Vercel promotion or rollback is authorized by this document.
 The Cloudflare public-site workflow keeps automatic deploy disabled through
 `CLOUDFLARE_SITE_AUTO_DEPLOY=false`. Pushes that match its paths may still run
 build and verification. Manual deployment remains a separate production gate.
+
+Cloudflare native Workers Builds is a separate provider path. The #461 merge
+auto-promoted Worker deployment `540da82f-b04d-4d67-9c8d-c5542d55e8a5`
+before that path was identified. Under Issue #462 approval, only the native
+production trigger command was changed to `npx wrangler versions upload`.
+Readback proved no setting-side build, version, or deployment, and no custom
+domains are attached. One reviewed master merge proof remains before #462 can
+close.
 
 GitHub `Production` and `cloudflare-production` environments had no protection
 rules at the latest read-only inventory. Branch protection/ruleset APIs were
@@ -205,8 +214,9 @@ The compact current snapshot is in `docs/CURRENT_RELEASE_STATE.md`.
 Important boundaries:
 
 - `control-plane-app`: `active_documented` from the July 9 deployment record.
-- `company-site-static`: `deployed_unreconciled`; current Vercel source and
-  deployment are known, but portable artifact lineage is incomplete.
+- `company-site-static`: `deployed_unreconciled`; current Vercel public and
+  Cloudflare workers.dev identities are known, but portable artifact lineage is
+  incomplete.
 - `portal-static`: `deployed_unreconciled`.
 - `admin-static`: `unknown` production identity.
 - Japan and SGP runtime config: `active_documented`, not live-observed by
@@ -215,17 +225,19 @@ Important boundaries:
 - AppsFlyer: disabled/dry-run only.
 
 The documented control-plane source is an ancestor of current `master`, which
-is 28 commits ahead at the snapshot. Source-only capabilities must not be
+is 29 commits ahead at the snapshot. Source-only capabilities must not be
 reported as deployed without a matching production record.
 
 ## Active Blockers
 
-1. #437 still lacks protected Japan TUIC map verification status and SGP TUIC
+1. #462 still needs one reviewed master merge proving Cloudflare uploads a
+   version without changing its active deployment.
+2. #437 still lacks protected Japan TUIC map verification status and SGP TUIC
    sidecar status producers; the Admin UI remains deferred.
-2. Runtime Identity has not observed Japan or Singapore production.
-3. Company site, Portal, Admin, and subscription-rendering lineage is not fully
+3. Runtime Identity has not observed Japan or Singapore production.
+4. Company site, Portal, Admin, and subscription-rendering lineage is not fully
    reconciled.
-4. Billing and AppsFlyer are intentionally non-live.
+5. Billing and AppsFlyer are intentionally non-live.
 
 Historical Aliyun, AWS canary, old carrier PR, and Admin OS task queues are not
 current execution authority. Use Git history and the archive/index documents
