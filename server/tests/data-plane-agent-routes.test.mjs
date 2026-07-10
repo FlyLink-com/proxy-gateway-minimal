@@ -116,7 +116,7 @@ function agentHeaders(token = "node-agent-token") {
 
 function seedIssuedPortalOrder(store) {
   const now = "2026-06-10T00:00:00.000Z";
-  const validUntil = "2026-07-10T00:00:00.000Z";
+  const validUntil = "2099-07-10T00:00:00.000Z";
   store.createAccount({
     id: "acct_agent_route_sqlite_1",
     ownerRef: "portal_user_agent_route_sqlite_1",

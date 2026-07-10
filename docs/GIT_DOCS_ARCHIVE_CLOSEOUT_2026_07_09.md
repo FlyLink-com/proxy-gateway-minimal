@@ -32,11 +32,15 @@ Admin/User Portal, or extension/plugin-boundary PRs.
 
 - Local checkout: `D:\Projects\proxy-gateway-minimal`
 - Branch: `master`
-- Current baseline: `a00830ea docs: record mobile cta deploy`
+- Final cleanup baseline snapshot: `53eb5a10 chore(routes): clarify local proxy control surface`
 - Local status: clean
-- GitHub open PR count: `0`
+- GitHub open PR count at closeout: `0`
+- GitHub open issue count at closeout: `0`
 - Remote heads: `master` only
 - Active worktrees: main checkout only
+
+This is a dated closeout snapshot, not an evergreen branch claim. Re-run the
+Git and GitHub inventory before starting subsequent work.
 
 The cleanup evidence is archived locally at:
 
@@ -62,6 +66,10 @@ D:\Projects\proxy-gateway-minimal-artifacts\git-expiry-cleanup-20260709
 | #424 | Merged | Record July 9 production deployments. |
 | #425 | Merged | Protect subscription refresh and credential fetches. |
 | #426 | Merged | Tighten GCC WebOS company-site mobile copy/layout. |
+| #432 | Merged | Isolate the Portal preview fixture client from the real Portal route. |
+| #433 | Merged | Retire Aliyun gate APIs from active Admin/server ownership. |
+| #434 | Merged | Retire Aliyun runtime defaults and archive historical templates. |
+| #435 | Merged | Clarify and gate the local proxy-control compatibility surface. |
 
 ## Archived Or Removed Git Residue
 
@@ -83,7 +91,8 @@ D:\Projects\proxy-gateway-minimal-artifacts\git-expiry-cleanup-20260709
 ## Current Follow-Up Queue
 
 Start all follow-up work from latest `master`; do not reopen or merge stale
-carrier branches.
+carrier branches. The Git/archive cleanup phase is complete through PR #435;
+the items below are next-phase product lanes, not unresolved closeout blockers.
 
 1. **Admin UI shell and visual QA**
    - Risk: B
