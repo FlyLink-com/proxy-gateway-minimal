@@ -1,260 +1,155 @@
 {
-  "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-06-09",
-  "timezone": "Asia/Shanghai",
-  "status": "active",
-  "purpose": "Machine-readable active project lanes for agent orientation. This file does not authorize production, cloud, deployment, or secret changes.",
+  "schemaVersion": "2026-07-10.1",
+  "lastUpdated": "2026-07-10",
+  "timezone": "America/Los_Angeles",
+  "status": "phase-2-operational-reliability",
+  "purpose": "Compact current lane index for Phase 2. Historical lanes remain in Git history and indexed execution records, not in the active Agent queue.",
   "sourceDocs": [
-    "docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md",
-    "docs/PROJECT_CONTEXT.md",
-    "docs/README.md",
-    "docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md",
-    "docs/BRANCH_AND_SERVICE_OPERATING_MODEL.md",
-    "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
-    "docs/DOMAIN_UNIT_BOUNDARIES.md",
-    "docs/units/README.md",
-    "docs/PROJECT_OPERATING_MODEL.md",
-    "docs/PROJECT_SIMPLIFICATION_MAP.md",
-    "docs/PROJECT_TOPOLOGY.md",
-    "docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md",
-    "docs/CHANNEL_PROTOCOL_TUNING_PLAN.md",
-    "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
-    "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md"
+    "docs/CURRENT_RELEASE_STATE.md",
+    "docs/FOUNDATION_FREEZE_2026_07_09.md",
+    "docs/GITHUB_ISSUE_PR_WORKFLOW.md",
+    "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
+    "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
+    "docs/BILLING_RECHARGE_CONTRACT.md",
+    "docs/PROJECT_SIMPLIFICATION_MAP.md"
   ],
   "lanes": [
     {
-      "id": "product-business",
-      "name": "Product Business",
-      "status": "active-boundary",
-      "riskBoundary": "C for product docs and acceptance criteria; B for UI/code behavior; A if production access semantics change",
-      "purpose": "Own the user-facing service promise, workflows, and acceptance criteria without owning commercial payment state or node runtime configuration.",
+      "id": "version-management",
+      "name": "Version And Deployment Governance",
+      "status": "active-closeout",
+      "riskBoundary": "C for source-state records and artifact contracts; A for deployment, promotion, rollback, or production observation",
+      "purpose": "Keep source, artifact, deployment, and runtime evidence separate and close the Vercel staged-promotion boundary tracked by Issue #457.",
       "primaryDocs": [
-        "docs/DOMAIN_UNIT_BOUNDARIES.md",
-        "docs/units/PRODUCT_BUSINESS_UNIT.md",
-        "docs/PROJECT_OPERATING_MODEL.md",
-        "docs/PROJECT_SIMPLIFICATION_MAP.md"
+        "RELEASE_MANIFEST.md",
+        "docs/CURRENT_RELEASE_STATE.md",
+        "docs/GITHUB_ISSUE_PR_WORKFLOW.md"
       ],
-      "primaryCodeAreas": [],
+      "primaryCodeAreas": [
+        ".github/workflows/",
+        "scripts/create-artifact-manifest.mjs",
+        "scripts/generate-runtime-identity.mjs",
+        "project-state/"
+      ],
       "nonGoals": [
-        "payment collection",
-        "node configuration",
-        "CI execution",
-        "AWS or DNS mutation"
+        "automatic production promotion",
+        "runtime mutation",
+        "secret-bearing runtime manifests",
+        "a deployment state machine before deployment evidence exists"
       ]
     },
     {
-      "id": "commercial-entitlement",
-      "name": "Commercial / Entitlement",
-      "status": "planned-boundary",
-      "riskBoundary": "C for architecture docs; B/A depends on future integration surface and production access semantics",
-      "purpose": "Separate package, validity, quota, renewal, and customer commercial status decisions from subscription rendering and node capacity.",
-      "primaryDocs": [
-        "docs/DOMAIN_UNIT_BOUNDARIES.md",
-        "docs/units/COMMERCIAL_ENTITLEMENT_UNIT.md"
-      ],
-      "primaryCodeAreas": [],
-      "nonGoals": [
-        "Subscription V2 YAML rendering",
-        "opaque artifact authority",
-        "edge-node health",
-        "Clash/Mihomo configuration"
-      ]
-    },
-    {
-      "id": "subscription-control-plane",
-      "name": "Subscription Control Plane",
+      "id": "traffic-accounting",
+      "name": "Traffic Accounting",
       "status": "active",
-      "riskBoundary": "C/B for repo docs/code; A for production state, tenant state, artifacts, DNS, Nginx, or runtime changes",
-      "purpose": "Own subscription authority, Admin/operator actions, opaque artifacts, order/account state, credential lifecycle, usage ledger, and stable subscription rendering.",
+      "riskBoundary": "B for collector contracts, redacted provenance, tests, and protected read-only projection; A for runtime, service, config, quota, or traffic-supply mutation",
+      "purpose": "Complete Issue #437 so collector health, accounting success, quota state, and runtime state are distinguishable without sensitive output.",
       "primaryDocs": [
-        "docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md",
-        "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
         "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
-        "docs/units/SUBSCRIPTION_ACCESS_UNIT.md",
-        "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
-        "docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md",
-        "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
-        "docs/SUBSCRIPTION_V2_REPLACEMENT.md",
-        "docs/SUBSCRIPTION_DEVICE_SCOPED_OPAQUE_URLS.md",
-        "docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md"
+        "docs/CURRENT_RELEASE_STATE.md"
       ],
       "primaryCodeAreas": [
-        "server/services/subscriptions/*",
-        "server/routes/subscription.mjs",
-        "server/routes/admin-subscriptions.mjs",
-        "server/services/clash-subscription.mjs",
-        "server/middleware/*"
+        "server/services/edge/",
+        "server/services/platform/",
+        "server/tests/",
+        "admin/src/"
       ],
       "nonGoals": [
-        "edge data-plane traffic ownership",
-        "customer VPN routing",
-        "server mesh membership",
-        "local client routing",
-        "production mutation without Risk A approval"
+        "billing",
+        "automated recovery",
+        "Admin restart controls",
+        "runtime config or service mutation in a source PR"
       ]
     },
     {
-      "id": "edge-data-plane",
-      "name": "Edge Data Plane",
-      "status": "active",
-      "riskBoundary": "A for real node, DNS, Nginx, systemd, production config, tenant, or traffic changes",
-      "purpose": "Make production edge nodes replaceable data-plane capacity while preserving provider-neutral identities, channel refs, runtime-only responsibilities, and rollback paths.",
+      "id": "portal-lifecycle",
+      "name": "Portal User And Resource Lifecycle",
+      "status": "planned",
+      "riskBoundary": "B for lifecycle mapping, safe DTOs, tests, and focused UI consumption; A for auth activation, schema, or production static replacement",
+      "purpose": "Execute Issue #438 after traffic and quota semantics stabilize, without redesigning the Portal or merging payment state into subscription state.",
       "primaryDocs": [
-        "docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md",
-        "docs/CONTROL_DATA_PLANE_INTERCONNECT_CONTRACT.md",
-        "docs/NODE_REGISTRATION_AND_POOL_CONTRACT.md",
-        "docs/CHANNEL_PROTOCOL_TUNING_PLAN.md",
-        "docs/units/EDGE_NODE_UNIT.md",
-        "docs/PRODUCTION_EDGE_FLEET.md",
-        "docs/CHANNEL_CANARY_SERVER_SELECTION.md",
-        "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md",
-        "docs/NODE_NAMING.md",
-        "docs/PRODUCTION_REPLACEMENT.md",
-        "docs/PRODUCTION_DR.md"
+        "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
+        "docs/USER_PORTAL_FLOW.md",
+        "docs/USER_PORTAL_AUTH_BOUNDARY.md"
       ],
       "primaryCodeAreas": [
-        "ops/edge-node/*",
-        "proxy-servers.json.example",
-        "ops/nginx/*",
-        "ops/systemd/*"
+        "server/services/platform/",
+        "server/services/subscriptions/",
+        "admin/src/features/user-portal/"
       ],
       "nonGoals": [
-        "subscription authority",
-        "Admin public exposure",
-        "node changes without live inventory and approval"
+        "database migration in the first slice",
+        "payment-provider activation",
+        "legacy access retirement",
+        "broad frontend redesign"
       ]
     },
     {
-      "id": "local-client-adapter",
-      "name": "Local Client Adapter",
-      "status": "prototype-active",
-      "riskBoundary": "B for repo prototype work; A if device credentials, production transport, installer, or runtime activation is introduced",
-      "purpose": "Develop a loopback-only Local Edge Agent path that lets Clash/Mihomo keep routing/UI while platform channels evolve behind it.",
+      "id": "commercial-foundation",
+      "name": "Commercial Foundation",
+      "status": "planned",
+      "riskBoundary": "B for provider-neutral contracts, event catalogs, disabled adapters, and tests; A for live payment, credentials, webhooks, settlement, or AppsFlyer dispatch",
+      "purpose": "Execute Issue #439 only after operational lifecycle contracts are stable while keeping all providers disabled and fail-closed.",
       "primaryDocs": [
-        "docs/units/LOCAL_CLIENT_UNIT.md",
-        "docs/LOCAL_EDGE_AGENT_DESIGN.md",
-        "docs/NETWORK_FORWARDING.md"
+        "docs/BILLING_RECHARGE_CONTRACT.md",
+        "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
+        "docs/PARTNER_ATTRIBUTION_SETTLEMENT_ARCHITECTURE.md"
       ],
       "primaryCodeAreas": [
-        "agent/*",
-        "server/tests/local-edge-*.mjs"
+        "server/services/platform/",
+        "server/tests/",
+        "admin/src/"
       ],
       "nonGoals": [
-        "TUN driver",
-        "system proxy mutation",
-        "public listener",
-        "HP Relay promotion",
-        "Server Edge Mesh transport in V1",
-        "Clash/Mihomo UI or rules replacement",
-        "production remote transport without a separate gate"
+        "live checkout",
+        "provider credentials",
+        "payment-driven subscription issuance",
+        "live AppsFlyer activation"
       ]
     },
     {
-      "id": "validation-ci",
-      "name": "Validation And CI",
-      "status": "active",
-      "riskBoundary": "C for validation docs; B for validation scripts and test changes; not staging or deploy approval",
-      "purpose": "Keep local tests, Admin tests/build, GitHub Actions intent, target local Linux manual CI, and historical Aliyun manual CI fallback understandable and reproducible.",
+      "id": "code-boundary",
+      "name": "Code Boundary Cleanup",
+      "status": "planned-guardrail",
+      "riskBoundary": "B for one behavior-preserving extraction with contract tests; A if a refactor changes auth, schema, runtime, or public behavior",
+      "purpose": "Use Issue #440 only when Phase 2 work exposes a measured ownership or dependency problem; keep the modular monolith intact.",
       "primaryDocs": [
-        "docs/units/VALIDATION_CI_UNIT.md",
-        "docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md",
-        "docs/BRANCH_AND_SERVICE_OPERATING_MODEL.md",
-        "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
-        "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
-        "docs/CI_MANUAL_VALIDATION.md",
-        "docs/PROJECT_CONTEXT.md"
+        "docs/PROJECT_SIMPLIFICATION_MAP.md",
+        "docs/DOMAIN_UNIT_BOUNDARIES.md",
+        "docs/MULTI_ENV_ADAPTER_RUNTIME_MODEL.md"
       ],
       "primaryCodeAreas": [
-        "package.json",
-        "server/tests/*",
-        "admin/src/test/*",
-        ".github/workflows/*"
+        "server/state.mjs",
+        "server/services/",
+        "admin/src/"
       ],
       "nonGoals": [
-        "production approval",
-        "self-hosted runner assumption",
-        "routine CI on a host being prepared as production subscription control",
-        "staging substitution"
-      ]
-    },
-    {
-      "id": "operator-lab-hp-relay",
-      "name": "Operator Lab / HP Relay",
-      "status": "experiment",
-      "riskBoundary": "Local/operator experiment only unless explicitly promoted through separate design and risk gate",
-      "purpose": "Support local path, upstream, and channel-behavior research without confusing it with production or staging.",
-      "primaryDocs": [
-        "docs/units/OPERATOR_LAB_UNIT.md",
-        "docs/PROJECT_TOPOLOGY.md",
-        "docs/PROJECT_SIMPLIFICATION_MAP.md"
-      ],
-      "primaryCodeAreas": [],
-      "nonGoals": [
-        "production",
-        "staging",
-        "CI",
-        "prod-edge-c",
-        "Server Edge Mesh",
-        "official Local Edge Agent runtime",
-        "public subscription gateway",
-        "customer traffic service"
+        "repository-wide directory migration",
+        "microservices",
+        "database replacement",
+        "line-count-driven refactoring"
       ]
     },
     {
       "id": "production-operations",
       "name": "Production Operations",
       "status": "active-boundary",
-      "riskBoundary": "C for docs; A for AWS, DNS, Nginx, HTTPS, systemd, security groups, production nodes, runtime config, SQLite, tenants, artifacts, deploy, rollback, or cutover",
-      "purpose": "Own gated external-state execution, serialized production mutation, execution records, rollback evidence, and production validation boundaries.",
+      "riskBoundary": "A for every production, provider, DNS, Nginx, systemd, firewall, schema, deployment, promotion, rollback, or live customer-data action",
+      "purpose": "Provide serialized read-only inventory, exact approval, validation, rollback, and redacted evidence for production actions without becoming an implementation backlog.",
       "primaryDocs": [
-        "docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md",
-        "docs/BRANCH_AND_SERVICE_OPERATING_MODEL.md",
-        "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
-        "docs/production-replacement-records/2026-06-09-vultr-sgp-multichannel-runtime-closeout.md",
-        "docs/units/PRODUCTION_OPS_UNIT.md",
-        "docs/PROJECT_CONTEXT.md",
-        "docs/PROJECT_OPERATING_MODEL.md",
-        "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
+        "docs/CURRENT_RELEASE_STATE.md",
         "docs/DEPLOYMENT_FLOW.md",
-        "docs/PRODUCTION_DR.md",
-        "docs/PRODUCTION_REPLACEMENT.md",
-        "docs/PRODUCTION_EDGE_FLEET.md",
-        "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md",
-        "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
-        "docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md"
+        "docs/README.md"
       ],
       "primaryCodeAreas": [
-        "ops/*"
+        "docs/production-replacement-records/",
+        ".github/workflows/production-deploy-dry-run.yml"
       ],
       "nonGoals": [
-        "product pricing",
-        "commercial package design",
-        "product scope decisions",
-        "operator lab promotion without design",
-        "CI success as deployment approval",
-        "ungated production mutation"
-      ]
-    },
-    {
-      "id": "server-edge-mesh",
-      "name": "Server Edge Mesh",
-      "status": "ops-architecture-active",
-      "riskBoundary": "C for docs/preflight; A for WireGuard install, keys, UDP ingress, service changes, or live mesh validation",
-      "purpose": "Plan private edge-to-edge health, management, validation, and recovery paths.",
-      "primaryDocs": [
-        "docs/SERVER_EDGE_MESH_DESIGN.md",
-        "docs/archive/SERVER_EDGE_MESH_WIREGUARD_CANARY_RUNBOOK.md",
-        "docs/server-edge-mesh-records/2026-05-25-server-edge-mesh-preflight.md"
-      ],
-      "primaryCodeAreas": [],
-      "nonGoals": [
-        "user VPN",
-        "ordinary customer traffic routing",
-        "Local Edge Agent transport",
-        "HP Relay promotion",
-        "opaque artifact migration",
-        "Clash/Mihomo endpoint exposure",
-        "WireGuard execution without explicit approval"
+        "implicit approval",
+        "parallel external mutation",
+        "sensitive evidence output",
+        "treating a merged PR as production proof"
       ]
     }
   ]
