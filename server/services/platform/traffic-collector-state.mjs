@@ -19,6 +19,16 @@ export const TRAFFIC_COLLECTOR_CONDITION = Object.freeze({
 
 const HEALTH_VALUES = new Set(Object.values(TRAFFIC_COLLECTOR_HEALTH));
 const CONDITION_VALUES = new Set(Object.values(TRAFFIC_COLLECTOR_CONDITION));
+const HEALTH_BY_CONDITION = Object.freeze({
+  [TRAFFIC_COLLECTOR_CONDITION.OK]: TRAFFIC_COLLECTOR_HEALTH.HEALTHY,
+  [TRAFFIC_COLLECTOR_CONDITION.IDLE_NO_USER_TRAFFIC]: TRAFFIC_COLLECTOR_HEALTH.HEALTHY,
+  [TRAFFIC_COLLECTOR_CONDITION.MISSING_STATS]: TRAFFIC_COLLECTOR_HEALTH.DEGRADED,
+  [TRAFFIC_COLLECTOR_CONDITION.MAPPING_UNRESOLVED]: TRAFFIC_COLLECTOR_HEALTH.DEGRADED,
+  [TRAFFIC_COLLECTOR_CONDITION.SIDECAR_IDLE]: TRAFFIC_COLLECTOR_HEALTH.DEGRADED,
+  [TRAFFIC_COLLECTOR_CONDITION.RUNTIME_DOWN]: TRAFFIC_COLLECTOR_HEALTH.FAILED,
+  [TRAFFIC_COLLECTOR_CONDITION.CONFIG_ERROR]: TRAFFIC_COLLECTOR_HEALTH.FAILED,
+  [TRAFFIC_COLLECTOR_CONDITION.AUTH_ERROR]: TRAFFIC_COLLECTOR_HEALTH.FAILED
+});
 
 function text(value) {
   return String(value ?? "").trim();
@@ -57,10 +67,10 @@ function includesSignal(signals, fragments) {
   return signals.some((signal) => fragments.some((fragment) => signal.includes(fragment)));
 }
 
-function latestSuccessAt({ collectorOk, lastSuccessAt, observations }) {
+function latestCollectorSuccessAt({ collectorOk, lastCollectorSuccessAt, observations }) {
   if (!collectorOk) return null;
   const candidates = [
-    isoOrNull(lastSuccessAt),
+    isoOrNull(lastCollectorSuccessAt),
     ...(Array.isArray(observations)
       ? observations.map((entry) => isoOrNull(entry?.observedAt))
       : [])
@@ -116,7 +126,7 @@ function stateRecord({
   condition,
   sourceRef,
   channelRef,
-  lastSuccessAt,
+  lastCollectorSuccessAt,
   observationCount,
   unresolvedCount
 }) {
@@ -126,7 +136,7 @@ function stateRecord({
     condition,
     sourceRef: safeRef(sourceRef),
     channelRef: safeRef(channelRef),
-    lastSuccessAt: isoOrNull(lastSuccessAt),
+    lastCollectorSuccessAt: isoOrNull(lastCollectorSuccessAt),
     observationCount: nonNegativeInteger(observationCount),
     unresolvedCount: nonNegativeInteger(unresolvedCount),
     errorType: health === TRAFFIC_COLLECTOR_HEALTH.HEALTHY ? null : condition,
@@ -141,7 +151,7 @@ export function projectTrafficCollectorState({
   collectorStatus,
   sourceRef,
   channelRef,
-  lastSuccessAt,
+  lastCollectorSuccessAt,
   observations = [],
   observationCount,
   unresolvedCount = 0,
@@ -165,7 +175,11 @@ export function projectTrafficCollectorState({
     condition,
     sourceRef: sourceRef || safeObservations[0]?.sourceRef,
     channelRef,
-    lastSuccessAt: latestSuccessAt({ collectorOk, lastSuccessAt, observations: safeObservations }),
+    lastCollectorSuccessAt: latestCollectorSuccessAt({
+      collectorOk,
+      lastCollectorSuccessAt,
+      observations: safeObservations
+    }),
     observationCount: observationCount ?? safeObservations.length,
     unresolvedCount
   });
@@ -175,13 +189,17 @@ export function sanitizeTrafficCollectorState(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const health = text(value.health);
   const condition = text(value.condition);
-  if (!HEALTH_VALUES.has(health) || !CONDITION_VALUES.has(condition)) return null;
+  if (
+    !HEALTH_VALUES.has(health)
+    || !CONDITION_VALUES.has(condition)
+    || HEALTH_BY_CONDITION[condition] !== health
+  ) return null;
   return stateRecord({
     health,
     condition,
     sourceRef: value.sourceRef,
     channelRef: value.channelRef,
-    lastSuccessAt: value.lastSuccessAt,
+    lastCollectorSuccessAt: value.lastCollectorSuccessAt,
     observationCount: value.observationCount,
     unresolvedCount: value.unresolvedCount
   });
