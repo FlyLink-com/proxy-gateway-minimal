@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync
+} from "node:fs";
 import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -106,6 +112,19 @@ function comparablePath(path) {
   return process.platform === "win32" ? absolutePath.toLowerCase() : absolutePath;
 }
 
+function pathsReferToSameFile(leftPath, rightPath) {
+  if (comparablePath(leftPath) === comparablePath(rightPath)) {
+    return true;
+  }
+  try {
+    const leftStat = statSync(leftPath);
+    const rightStat = statSync(rightPath);
+    return leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
+  } catch {
+    return false;
+  }
+}
+
 export function runRuntimeIdentityCli({
   argv = process.argv.slice(2),
   stdout = process.stdout,
@@ -115,7 +134,7 @@ export function runRuntimeIdentityCli({
     const outputPath = requiredArg(argv, "--output");
     const componentInputs = argValues(argv, "--component").map(componentFromArg);
     if (componentInputs.some((component) => (
-      comparablePath(component.path) === comparablePath(outputPath)
+      pathsReferToSameFile(component.path, outputPath)
     ))) {
       throw new Error("runtime_identity_output_conflicts_with_component");
     }

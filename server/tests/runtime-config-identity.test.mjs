@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  linkSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import test from "node:test";
@@ -270,6 +276,32 @@ test("CLI never overwrites an input component", async (t) => {
   });
   assert.equal(stderr.includes(directory), false);
   assert.equal(stderr.includes("synthetic component bytes"), false);
+});
+
+test("CLI rejects an output alias of an input component", async (t) => {
+  const { runRuntimeIdentityCli } = await loadRuntimeIdentityModule();
+  const directory = mkdtempSync(join(tmpdir(), "gccgw-runtime-identity-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const componentPath = join(directory, "xray-config.sample");
+  const outputAliasPath = join(directory, "runtime-identity.json");
+  const componentBytes = Buffer.from("synthetic component bytes");
+  writeFileSync(componentPath, componentBytes);
+  linkSync(componentPath, outputAliasPath);
+
+  const exitCode = runRuntimeIdentityCli({
+    argv: [
+      "--release-unit", "japan-runtime-config",
+      "--observed-at", "2026-07-10T10:00:00Z",
+      "--component", `xray-config=${componentPath}`,
+      "--output", outputAliasPath
+    ],
+    stdout: { write: () => {} },
+    stderr: { write: () => {} }
+  });
+
+  assert.equal(exitCode, 1);
+  assert.deepEqual(readFileSync(componentPath), componentBytes);
+  assert.deepEqual(readFileSync(outputAliasPath), componentBytes);
 });
 
 test("script executes the runtime identity CLI directly", (t) => {
