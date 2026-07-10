@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2026-07-10.2",
+  "schemaVersion": "2026-07-10.3",
   "lastUpdated": "2026-07-10",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-current-queue",
@@ -13,7 +13,7 @@
     "docs/PROJECT_SIMPLIFICATION_MAP.md"
   ],
   "historicalBoundary": {
-    "sourceSnapshotAtReconciliation": "9aa1561eea8ce77cd1cf670369d5bd42c2331ba2",
+    "sourceSnapshotAtReconciliation": "20f8345dd1e6d09dd1a816634aa8f29c5312fd0c",
     "rule": "Use Git history and docs/archive indexes for completed or superseded tasks; do not re-add them to the current queue without a new Issue and fresh evidence."
   },
   "tasks": [
@@ -39,6 +39,62 @@
         "PR #460 merge created READY staged Vercel deployment dpl_33AwpEF5kp2fnxSSgP4C8AhR8TNd and GitHub deployment 5392032753",
         "both public aliases remained on GitHub deployment 5389897330 and returned HTTP 200",
         "redacted evidence was recorded and Issue #457 was closed"
+      ]
+    },
+    {
+      "id": "A-version-management-cloudflare-provider-gate",
+      "risk": "A",
+      "status": "completed-in-issue-462-provider-gate",
+      "lane": "version-management",
+      "title": "Change the Cloudflare native master trigger to version upload",
+      "goal": "Completed the approved Issue #462 provider gate without changing the active deployment, domains, bindings, Vercel, DNS, or source.",
+      "allowedFiles": [
+        "RELEASE_MANIFEST.md",
+        "docs/CURRENT_RELEASE_STATE.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "change the Cloudflare trigger again without a separate exact approval",
+        "promote or roll back a Worker version",
+        "change Worker routes, custom domains, workers.dev, bindings, build token, environment variables, DNS, Vercel, runtime, Portal, Admin, or control-plane services",
+        "output credentials, tokens, environment values, raw logs, customer data, or private runtime material"
+      ],
+      "validation": [
+        "production trigger readback is npx wrangler versions upload",
+        "setting mutation created no build, version, or deployment",
+        "branch, path, root, cache, repository connection, build token reference, and environment variable count remained unchanged",
+        "active deployment remained 540da82f-b04d-4d67-9c8d-c5542d55e8a5",
+        "active version remained e5a648c9-d3c4-47b7-afb9-4bbed8f1be70 at 100%",
+        "Vercel public aliases remained unchanged"
+      ]
+    },
+    {
+      "id": "C-version-management-cloudflare-version-upload-proof",
+      "risk": "C",
+      "status": "in-progress",
+      "lane": "version-management",
+      "title": "Prove Cloudflare master builds save versions without promotion",
+      "goal": "Close Issue #462 after this reviewed state-only merge uploads a saved Worker version without changing the active deployment or active version.",
+      "allowedFiles": [
+        "RELEASE_MANIFEST.md",
+        "docs/CURRENT_RELEASE_STATE.md",
+        "docs/PROJECT_CONTEXT.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "change any Cloudflare, Vercel, DNS, domain, route, Worker, runtime, Portal, Admin, or control-plane setting",
+        "promote or roll back a Worker or Vercel version",
+        "change source outside the current state records",
+        "output credentials, tokens, environment values, raw logs, customer data, or private runtime material"
+      ],
+      "validation": [
+        "merge one reviewed C-tier state correction PR",
+        "Cloudflare build succeeds and creates a saved version",
+        "active deployment remains 540da82f-b04d-4d67-9c8d-c5542d55e8a5",
+        "active version remains e5a648c9-d3c4-47b7-afb9-4bbed8f1be70 at 100%",
+        "GitHub CI dry-run and Release Artifact succeed",
+        "Vercel public aliases remain unchanged"
       ]
     },
     {

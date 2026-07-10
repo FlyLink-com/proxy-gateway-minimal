@@ -4,7 +4,7 @@
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
 > - Last updated: 2026-07-10, America/Los_Angeles
-> - Source inventory baseline: `master` at `9aa1561e`
+> - Source inventory baseline: `master` at `20f8345d`
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
@@ -30,19 +30,29 @@ Source -> Artifact -> Release -> Deployment -> Runtime State
 
 Closed Issue #457 records the proven company-site promotion boundary. The
 linked Vercel project keeps `master` as its Production Branch and has automatic
-custom production-domain assignment disabled. Real merges #458, #459, and #460
+custom production-domain assignment disabled. Real merges #458 through #461
 created production-target candidates without moving the public custom aliases.
 
 The latest observed candidate is READY as Vercel deployment
-`dpl_33AwpEF5kp2fnxSSgP4C8AhR8TNd`, GitHub deployment `5392032753`, for source
-`9aa1561eea8ce77cd1cf670369d5bd42c2331ba2`. It has
+`dpl_Fy7at228XHgWE1p2T5ZpCoa97HS1`, GitHub deployment `5392379943`, for source
+`20f8345dd1e6d09dd1a816634aa8f29c5312fd0c`. It has
 `production_environment=false` and did not receive `gccwebos.com` or
 `www.gccwebos.com`. Both public aliases remained on GitHub deployment
 `5389897330`, sourced from `7e9a8667657e5323e09ff7c262da85d26729e69b`.
 Promotion or rollback remains a separate exact Risk A gate.
 
-The Cloudflare public-site workflow also keeps repository auto-deploy disabled.
-Build/verification evidence from that workflow is not deployment evidence.
+The repository Cloudflare workflow keeps auto-deploy disabled and performs a
+Wrangler dry run. A separate native Workers Builds production trigger was found
+to auto-promote every `master` commit. The #461 merge created active deployment
+`540da82f-b04d-4d67-9c8d-c5542d55e8a5`, version
+`e5a648c9-d3c4-47b7-afb9-4bbed8f1be70` at 100%, on a workers.dev-only surface
+with no custom domains.
+
+The approved Issue #462 gate changed only that trigger's deploy command from
+`npx wrangler deploy` to `npx wrangler versions upload`. The setting change
+created no build, version, or deployment and left the active identity unchanged.
+This establishes the intended build-and-version boundary, but the Issue remains
+open until a reviewed `master` merge proves that no active promotion occurs.
 
 ## Release Units
 
@@ -132,8 +142,8 @@ sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size
 and UTC creation time, and the manifest contained no downloaded absolute path.
 
 The latest verified `master` proof at this inventory cutoff is Release Artifact
-run `29095756923` for source
-`9aa1561eea8ce77cd1cf670369d5bd42c2331ba2`. It completed the control-plane,
+run `29097381774` for source
+`20f8345dd1e6d09dd1a816634aa8f29c5312fd0c`. It completed the control-plane,
 Portal, and Admin artifact jobs. This is build evidence, not production
 promotion evidence.
 
@@ -175,13 +185,12 @@ approval and execution evidence.
 ## Current PR Mapping
 
 This is the current compact view of the ten most recently merged PRs at source
-baseline `9aa1561e`. The detailed
+baseline `20f8345d`. The detailed
 `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md` is a frozen historical snapshot
 and is not appended with later PRs.
 
 | PR | Capability | Source commit | Release unit | Release assignment | Production state |
 | --- | --- | --- | --- | --- | --- |
-| #445 | `artifact-manifest-generation@v1` | `4fbe0222` | `none` | Governance/tooling only | `not_applicable` |
 | #446 | `version-management-baseline-v2@v1` | `b1bec5b0` | `none` | Governance baseline only | `not_applicable` |
 | #448 | `portal-static-artifact-generation@v1` | `4b5bc143` | `portal-static` | Artifact built; no promotion | `not_deployed` |
 | #450 | `artifact-upload-action-v7@v1` | `255a0822` | `none` | CI maintenance only | `not_applicable` |
@@ -191,6 +200,7 @@ and is not appended with later PRs.
 | #458 | `phase-2-project-state-reconciliation@v1` | `3013e8f9` | `none` | Source reconciliation; Vercel candidate remained staged | `not_deployed` |
 | #459 | `collector-error-provenance@v1` | `72e98096` | `control-plane-app` | Unassigned | `not_deployed` |
 | #460 | `protected-admin-collector-projection@v1` | `9aa1561e` | `control-plane-app` | Unassigned | `not_deployed` |
+| #461 | `release-ledger-reconciliation@v1` | `20f8345d` | `none` | Governance reconciliation only | `not_applicable` |
 
 The Phase 2 traffic chain begins with #441
 `collector-state-contract@v1`; #459 preserves redacted adapter provenance and
