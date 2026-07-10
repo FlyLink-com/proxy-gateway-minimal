@@ -103,6 +103,18 @@ jobs:
             echo "expected_current_release=${{ inputs.expected_current_release }}"
           } >> .release-artifacts/deploy-plan.txt
 
+      - name: Create artifact manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact=".release-artifacts/proxy-gateway-${{ steps.release.outputs.release }}.zip"
+          node scripts/create-artifact-manifest.mjs \
+            --release-unit control-plane-app \
+            --source-commit "$GITHUB_SHA" \
+            --release "${{ steps.release.outputs.release }}" \
+            --artifact "$artifact" \
+            --output .release-artifacts/artifact.json
+
       - name: Upload dry-run packet
         uses: actions/upload-artifact@v4
         with:

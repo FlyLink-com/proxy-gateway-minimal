@@ -27,6 +27,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
       - name: Resolve release label
         id: release
         shell: bash
@@ -53,6 +58,18 @@ jobs:
           git archive --format=zip --output "$artifact" HEAD
           sha256sum "$artifact" | tee "$artifact.sha256"
 
+      - name: Create artifact manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact=".release-artifacts/proxy-gateway-${{ steps.release.outputs.release }}.zip"
+          node scripts/create-artifact-manifest.mjs \
+            --release-unit control-plane-app \
+            --source-commit "$GITHUB_SHA" \
+            --release "${{ steps.release.outputs.release }}" \
+            --artifact "$artifact" \
+            --output .release-artifacts/artifact.json
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -60,5 +77,6 @@ jobs:
           path: |
             .release-artifacts/proxy-gateway-${{ steps.release.outputs.release }}.zip
             .release-artifacts/proxy-gateway-${{ steps.release.outputs.release }}.zip.sha256
+            .release-artifacts/artifact.json
           if-no-files-found: error
           retention-days: 14
