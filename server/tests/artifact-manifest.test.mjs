@@ -274,3 +274,62 @@ test("production dry-run uploads only the explicit deploy packet files", () => {
   assert.match(uploadStep, /\.release-artifacts\/artifact\.json/);
   assert.doesNotMatch(uploadStep, /include-hidden-files:\s*true/);
 });
+
+test("Release Artifact workflow packages verified Admin output with the shared manifest schema", () => {
+  const workflow = readFileSync(
+    resolve(REPOSITORY_ROOT, ".github/workflows/release-artifact.yml"),
+    "utf8"
+  );
+  const adminJobIndex = workflow.indexOf("  admin-static:");
+
+  assert.ok(adminJobIndex >= 0, "workflow must define an independent admin-static job");
+
+  const adminJob = workflow.slice(adminJobIndex);
+  const buildIndex = adminJob.indexOf("- name: Build Admin static");
+  const verifyIndex = adminJob.indexOf("- name: Verify Admin static");
+  const zipIndex = adminJob.indexOf("- name: Create Admin static zip");
+  const manifestIndex = adminJob.indexOf("- name: Create Admin artifact manifest");
+  const uploadIndex = adminJob.indexOf("- name: Upload Admin artifact");
+
+  assert.ok(buildIndex >= 0, "Admin job must build the static bundle");
+  assert.ok(verifyIndex > buildIndex, "Admin job must verify the bundle after building it");
+  assert.ok(zipIndex > verifyIndex, "Admin job must package only the verified bundle");
+  assert.ok(manifestIndex > zipIndex, "Admin job must create identity after packaging");
+  assert.ok(uploadIndex > manifestIndex, "Admin job must upload only after identity exists");
+  assert.match(adminJob, /npm ci --prefix admin/);
+  assert.match(adminJob, /npm run admin:build/);
+  assert.match(adminJob, /npm run admin:verify/);
+  assert.match(adminJob, /globalcircle-admin-\$\{\{ steps\.release\.outputs\.release \}\}\.zip/);
+  assert.match(adminJob, /--release-unit admin-static/);
+  assert.match(adminJob, /--source-commit "\$GITHUB_SHA"/);
+  assert.match(adminJob, /--artifact "\$artifact"/);
+  assert.match(adminJob, /--output \.release-artifacts\/artifact\.json/);
+  assert.match(adminJob, /uses: actions\/upload-artifact@v7/);
+  assert.doesNotMatch(adminJob, /\/var\/www|\b(?:scp|ssh|rsync|nginx)\b/);
+});
+
+test("Release Artifact workflow treats dispatch release labels as shell data", () => {
+  const workflow = readFileSync(
+    resolve(REPOSITORY_ROOT, ".github/workflows/release-artifact.yml"),
+    "utf8"
+  );
+  const environmentBindings = workflow.match(
+    /RELEASE_INPUT: \$\{\{ inputs\.release \}\}/g
+  ) ?? [];
+
+  assert.equal(
+    environmentBindings.length,
+    3,
+    "each artifact job must pass the dispatch input through the environment"
+  );
+  assert.doesNotMatch(
+    workflow,
+    /release="\$\{\{ inputs\.release \}\}"/,
+    "dispatch input must not be interpolated into generated shell source"
+  );
+  assert.equal(
+    (workflow.match(/release="\$RELEASE_INPUT"/g) ?? []).length,
+    3,
+    "each artifact job must validate the environment value"
+  );
+});

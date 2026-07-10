@@ -10,6 +10,7 @@
     "build:site": "tsc --noEmit && vite build --config vite.site.config.ts",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
+    "verify:admin-build": "node ../scripts/verify-admin-build.mjs dist",
     "verify:portal-build": "node ../scripts/verify-portal-build.mjs dist-portal",
     "verify:site-build": "node ../scripts/verify-public-site-build.mjs dist-site"
   },

@@ -35,9 +35,11 @@ jobs:
       - name: Resolve release label
         id: release
         shell: bash
+        env:
+          RELEASE_INPUT: ${{ inputs.release }}
         run: |
           set -euo pipefail
-          release="${{ inputs.release }}"
+          release="$RELEASE_INPUT"
           if [ -z "$release" ]; then
             release="$(git rev-parse --short=12 HEAD)"
           fi
@@ -108,9 +110,11 @@ jobs:
       - name: Resolve Portal release label
         id: release
         shell: bash
+        env:
+          RELEASE_INPUT: ${{ inputs.release }}
         run: |
           set -euo pipefail
-          release="${{ inputs.release }}"
+          release="$RELEASE_INPUT"
           if [ -z "$release" ]; then
             release="$(git rev-parse --short=12 HEAD)"
           fi
@@ -153,6 +157,84 @@ jobs:
           path: |
             .release-artifacts/globalcircle-portal-${{ steps.release.outputs.release }}.zip
             .release-artifacts/globalcircle-portal-${{ steps.release.outputs.release }}.zip.sha256
+            .release-artifacts/artifact.json
+          if-no-files-found: error
+          retention-days: 14
+
+  admin-static:
+    name: Package Admin static artifact
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+
+      - name: Install Admin dependencies
+        run: npm ci --prefix admin
+
+      - name: Build Admin static
+        run: npm run admin:build
+
+      - name: Verify Admin static
+        run: npm run admin:verify
+
+      - name: Resolve Admin release label
+        id: release
+        shell: bash
+        env:
+          RELEASE_INPUT: ${{ inputs.release }}
+        run: |
+          set -euo pipefail
+          release="$RELEASE_INPUT"
+          if [ -z "$release" ]; then
+            release="$(git rev-parse --short=12 HEAD)"
+          fi
+          case "$release" in
+            *[!A-Za-z0-9._-]*|'')
+              echo "Invalid release label: $release" >&2
+              exit 1
+              ;;
+          esac
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+
+      - name: Create Admin static zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .release-artifacts
+          artifact=".release-artifacts/globalcircle-admin-${{ steps.release.outputs.release }}.zip"
+          (
+            cd admin/dist
+            zip -q -r "$GITHUB_WORKSPACE/$artifact" .
+          )
+          sha256sum "$artifact" | tee "$artifact.sha256"
+
+      - name: Create Admin artifact manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          artifact=".release-artifacts/globalcircle-admin-${{ steps.release.outputs.release }}.zip"
+          node scripts/create-artifact-manifest.mjs \
+            --release-unit admin-static \
+            --source-commit "$GITHUB_SHA" \
+            --release "${{ steps.release.outputs.release }}" \
+            --artifact "$artifact" \
+            --output .release-artifacts/artifact.json
+
+      - name: Upload Admin artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: admin-static-${{ steps.release.outputs.release }}
+          path: |
+            .release-artifacts/globalcircle-admin-${{ steps.release.outputs.release }}.zip
+            .release-artifacts/globalcircle-admin-${{ steps.release.outputs.release }}.zip.sha256
             .release-artifacts/artifact.json
           if-no-files-found: error
           retention-days: 14
