@@ -71,6 +71,39 @@ test("admin static build verifier rejects private-key material", async () => {
   }
 });
 
+test("admin static build verifier rejects private-key container files", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "admin-build-"));
+  try {
+    await writeAdminFixture(tempDir, ADMIN_RUNTIME_MARKERS.join(" "));
+    await writeFile(path.join(tempDir, "unexpected.pem"), "not-a-public-artifact");
+
+    await assert.rejects(
+      () => verifyAdminBuildDirectory(tempDir),
+      /private key container/
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("admin static build verifier scans every file for private-key markers", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "admin-build-"));
+  try {
+    await writeAdminFixture(tempDir, ADMIN_RUNTIME_MARKERS.join(" "));
+    await writeFile(
+      path.join(tempDir, "unexpected.bin"),
+      "-----BEGIN ENCRYPTED PRIVATE KEY-----"
+    );
+
+    await assert.rejects(
+      () => verifyAdminBuildDirectory(tempDir),
+      /private key marker/
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("admin static build verifier rejects source maps", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "admin-build-"));
   try {
@@ -80,6 +113,38 @@ test("admin static build verifier rejects source maps", async () => {
     await assert.rejects(
       () => verifyAdminBuildDirectory(tempDir),
       /source map/
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("admin static build verifier rejects uppercase source-map files", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "admin-build-"));
+  try {
+    await writeAdminFixture(tempDir, ADMIN_RUNTIME_MARKERS.join(" "));
+    await writeFile(path.join(tempDir, "admin.js.MAP"), "{}");
+
+    await assert.rejects(
+      () => verifyAdminBuildDirectory(tempDir),
+      /source map/
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("admin static build verifier rejects inline source maps", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "admin-build-"));
+  try {
+    await writeAdminFixture(
+      tempDir,
+      `${ADMIN_RUNTIME_MARKERS.join(" ")}\n//# sourceMappingURL=data:application/json;base64,e30=`
+    );
+
+    await assert.rejects(
+      () => verifyAdminBuildDirectory(tempDir),
+      /source map directive/
     );
   } finally {
     await rm(tempDir, { recursive: true, force: true });

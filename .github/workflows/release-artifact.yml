@@ -35,9 +35,11 @@ jobs:
       - name: Resolve release label
         id: release
         shell: bash
+        env:
+          RELEASE_INPUT: ${{ inputs.release }}
         run: |
           set -euo pipefail
-          release="${{ inputs.release }}"
+          release="$RELEASE_INPUT"
           if [ -z "$release" ]; then
             release="$(git rev-parse --short=12 HEAD)"
           fi
@@ -108,9 +110,11 @@ jobs:
       - name: Resolve Portal release label
         id: release
         shell: bash
+        env:
+          RELEASE_INPUT: ${{ inputs.release }}
         run: |
           set -euo pipefail
-          release="${{ inputs.release }}"
+          release="$RELEASE_INPUT"
           if [ -z "$release" ]; then
             release="$(git rev-parse --short=12 HEAD)"
           fi
@@ -184,9 +188,11 @@ jobs:
       - name: Resolve Admin release label
         id: release
         shell: bash
+        env:
+          RELEASE_INPUT: ${{ inputs.release }}
         run: |
           set -euo pipefail
-          release="${{ inputs.release }}"
+          release="$RELEASE_INPUT"
           if [ -z "$release" ]; then
             release="$(git rev-parse --short=12 HEAD)"
           fi

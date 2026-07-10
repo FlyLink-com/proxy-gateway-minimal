@@ -307,3 +307,29 @@ test("Release Artifact workflow packages verified Admin output with the shared m
   assert.match(adminJob, /uses: actions\/upload-artifact@v7/);
   assert.doesNotMatch(adminJob, /\/var\/www|\b(?:scp|ssh|rsync|nginx)\b/);
 });
+
+test("Release Artifact workflow treats dispatch release labels as shell data", () => {
+  const workflow = readFileSync(
+    resolve(REPOSITORY_ROOT, ".github/workflows/release-artifact.yml"),
+    "utf8"
+  );
+  const environmentBindings = workflow.match(
+    /RELEASE_INPUT: \$\{\{ inputs\.release \}\}/g
+  ) ?? [];
+
+  assert.equal(
+    environmentBindings.length,
+    3,
+    "each artifact job must pass the dispatch input through the environment"
+  );
+  assert.doesNotMatch(
+    workflow,
+    /release="\$\{\{ inputs\.release \}\}"/,
+    "dispatch input must not be interpolated into generated shell source"
+  );
+  assert.equal(
+    (workflow.match(/release="\$RELEASE_INPUT"/g) ?? []).length,
+    3,
+    "each artifact job must validate the environment value"
+  );
+});

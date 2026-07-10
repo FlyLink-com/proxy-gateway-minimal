@@ -10,9 +10,23 @@ const REQUIRED_RUNTIME_MARKERS = [
 
 const PRIVATE_KEY_MARKERS = [
   "-----BEGIN PRIVATE KEY-----",
+  "-----BEGIN ENCRYPTED PRIVATE KEY-----",
   "-----BEGIN RSA PRIVATE KEY-----",
-  "-----BEGIN OPENSSH PRIVATE KEY-----"
+  "-----BEGIN EC PRIVATE KEY-----",
+  "-----BEGIN DSA PRIVATE KEY-----",
+  "-----BEGIN OPENSSH PRIVATE KEY-----",
+  "-----BEGIN PGP PRIVATE KEY BLOCK-----"
 ];
+
+const PRIVATE_KEY_CONTAINER_EXTENSIONS = new Set([
+  ".der",
+  ".key",
+  ".p12",
+  ".pem",
+  ".pfx"
+]);
+
+const SOURCE_MAP_DIRECTIVE = /(?:\/\/[#@]|\/\*[#@])\s*sourceMappingURL\s*=/i;
 
 async function listFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -53,17 +67,26 @@ export async function verifyAdminBuildDirectory(buildDirectory) {
     throw new Error("admin build is missing CSS assets");
   }
 
-  const sourceMap = relativeFiles.find((file) => file.endsWith(".map"));
+  const privateKeyContainer = relativeFiles.find((file) =>
+    PRIVATE_KEY_CONTAINER_EXTENSIONS.has(path.posix.extname(file).toLowerCase())
+  );
+  if (privateKeyContainer) {
+    throw new Error(`admin build contains private key container: ${privateKeyContainer}`);
+  }
+
+  const sourceMap = relativeFiles.find((file) => file.toLowerCase().endsWith(".map"));
   if (sourceMap) {
     throw new Error(`admin build contains source map: ${sourceMap}`);
   }
 
-  const scannableFiles = files.filter((file) => /\.(?:html|js|css|svg|json|txt)$/i.test(file));
-  for (const file of scannableFiles) {
-    const content = await readFile(file, "utf8");
+  for (const file of files) {
+    const content = await readFile(file);
     const privateKeyMarker = PRIVATE_KEY_MARKERS.find((marker) => content.includes(marker));
     if (privateKeyMarker) {
       throw new Error(`private key marker found in ${relativeBuildPath(buildDirectory, file)}`);
+    }
+    if (/\.(?:js|css)$/i.test(file) && SOURCE_MAP_DIRECTIVE.test(content.toString("utf8"))) {
+      throw new Error(`source map directive found in ${relativeBuildPath(buildDirectory, file)}`);
     }
   }
 

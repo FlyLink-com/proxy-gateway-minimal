@@ -103,6 +103,11 @@ static jobs build and verify `admin/dist-portal` or `admin/dist` before
 packaging them, but do not deploy or promote either artifact. Generating this
 file does not change runtime state.
 
+`admin-static` identifies the default Admin entrypoint as it is built today; it
+does not assert physical source isolation. That entrypoint still bundles shared
+Portal and company-site routes until a separate boundary-cleanup task removes
+them.
+
 The first verified `master` proof is GitHub Release Artifact run `29074645989`
 for source `4fbe022264e30acd9e487dd880b7d4ed544be259`. Its uploaded ZIP, checksum
 sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size,
