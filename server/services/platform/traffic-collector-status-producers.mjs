@@ -131,19 +131,72 @@ function mapProducerProjection(value, base) {
     verification_failed: "failed:config_error"
   }[status];
   if (!expected || expected !== `${base.producerHealth}:${base.producerCondition}`) return null;
+  const map = {
+    status,
+    currentMapCount: nonNegativeInteger(value.map.currentMapCount),
+    expectedMapCount: nonNegativeInteger(value.map.expectedMapCount),
+    addCount: nonNegativeInteger(value.map.addCount),
+    removeCount: nonNegativeInteger(value.map.removeCount),
+    changedCount: nonNegativeInteger(value.map.changedCount),
+    missingMaterialCount: nonNegativeInteger(value.map.missingMaterialCount)
+  };
+  const hasDrift = map.addCount + map.removeCount + map.changedCount > 0;
+  if (
+    (status === "in_sync" && map.missingMaterialCount > 0)
+    || (status === "drifted" && (map.missingMaterialCount > 0 || !hasDrift))
+    || (status === "missing_material" && map.missingMaterialCount === 0)
+  ) return null;
   return {
     ...base,
-    map: {
-      status,
-      currentMapCount: nonNegativeInteger(value.map.currentMapCount),
-      expectedMapCount: nonNegativeInteger(value.map.expectedMapCount),
-      addCount: nonNegativeInteger(value.map.addCount),
-      removeCount: nonNegativeInteger(value.map.removeCount),
-      changedCount: nonNegativeInteger(value.map.changedCount),
-      missingMaterialCount: nonNegativeInteger(value.map.missingMaterialCount)
-    },
+    map,
     safety: producerSafety()
   };
+}
+
+function sidecarEvidenceCondition({
+  safeReasonCodes = [],
+  lastRunResult,
+  timerActive,
+  timerEnabled,
+  stateFileConfigured,
+  stateFileProtected,
+  observationCount,
+  unresolvedCount
+} = {}) {
+  if (safeReasonCodes.some((code) => code.includes("unauthorized") || code.includes("forbidden"))) {
+    return ["failed", "auth_error"];
+  }
+  if (
+    safeReasonCodes.includes("validation_error")
+    || (
+      lastRunResult === "success"
+      && (stateFileConfigured === false || stateFileProtected === false)
+    )
+  ) {
+    return ["failed", "config_error"];
+  }
+  if (
+    nonNegativeInteger(unresolvedCount) > 0
+    || safeReasonCodes.some((code) => code.includes("unresolved") || code.includes("binding_missing"))
+  ) {
+    return ["degraded", "mapping_unresolved"];
+  }
+  if (timerActive === false || timerEnabled === false) {
+    return ["failed", "runtime_down"];
+  }
+  if (
+    typeof timerActive !== "boolean"
+    || typeof timerEnabled !== "boolean"
+    || lastRunResult === "unknown"
+    || (lastRunResult === "success" && stateFileProtected === null)
+  ) {
+    return ["degraded", "missing_stats"];
+  }
+  if (lastRunResult === "success" && nonNegativeInteger(observationCount) === 0) {
+    return ["degraded", "sidecar_idle"];
+  }
+  if (lastRunResult === "success") return ["healthy", "ok"];
+  return ["failed", "runtime_down"];
 }
 
 function sidecarProducerProjection(value, base) {
@@ -151,26 +204,30 @@ function sidecarProducerProjection(value, base) {
   if (text(value.polling.model) !== "connection_delta") return null;
   const lastRunResult = text(value.sidecar.lastRunResult);
   if (!new Set(["success", "failed", "unknown"]).has(lastRunResult)) return null;
+  const sidecar = {
+    timerActive: booleanOrNull(value.sidecar.timerActive),
+    timerEnabled: booleanOrNull(value.sidecar.timerEnabled),
+    lastRunResult,
+    recordUsage: value.sidecar.recordUsage === true,
+    stateFileConfigured: value.sidecar.stateFileConfigured === true,
+    stateFileProtected: booleanOrNull(value.sidecar.stateFileProtected),
+    observationCount: nonNegativeInteger(value.sidecar.observationCount),
+    recordedCount: nonNegativeInteger(value.sidecar.recordedCount),
+    insertedCount: nonNegativeInteger(value.sidecar.insertedCount),
+    unresolvedCount: nonNegativeInteger(value.sidecar.unresolvedCount)
+  };
+  const safeReasonCodes = reasonCodes(value.reasonCodes);
+  const expected = sidecarEvidenceCondition({ ...sidecar, safeReasonCodes });
+  if (expected.join(":") !== `${base.producerHealth}:${base.producerCondition}`) return null;
   return {
     ...base,
-    sidecar: {
-      timerActive: booleanOrNull(value.sidecar.timerActive),
-      timerEnabled: booleanOrNull(value.sidecar.timerEnabled),
-      lastRunResult,
-      recordUsage: value.sidecar.recordUsage === true,
-      stateFileConfigured: value.sidecar.stateFileConfigured === true,
-      stateFileProtected: booleanOrNull(value.sidecar.stateFileProtected),
-      observationCount: nonNegativeInteger(value.sidecar.observationCount),
-      recordedCount: nonNegativeInteger(value.sidecar.recordedCount),
-      insertedCount: nonNegativeInteger(value.sidecar.insertedCount),
-      unresolvedCount: nonNegativeInteger(value.sidecar.unresolvedCount)
-    },
+    sidecar,
     polling: {
       model: "connection_delta",
       intervalSeconds: positiveIntegerOrNull(value.polling.intervalSeconds),
       mayUndercountShortConnections: value.polling.mayUndercountShortConnections === true
     },
-    reasonCodes: reasonCodes(value.reasonCodes),
+    reasonCodes: safeReasonCodes,
     safety: producerSafety({ rawControllerPayloadReturned: false })
   };
 }
@@ -266,39 +323,16 @@ export function buildMihomoTuicUsageCredentialMapProducerStatus({
 }
 
 function sidecarProducerCondition({ summary, timer, stateFile }) {
-  const safeReasonCodes = reasonCodes(summary?.blockers);
-  if (safeReasonCodes.some((code) => code.includes("unauthorized") || code.includes("forbidden"))) {
-    return ["failed", "auth_error"];
-  }
-  if (
-    safeReasonCodes.includes("validation_error")
-    || (
-      summary?.ok === true
-      && (stateFile?.configured === false || stateFile?.protected === false)
-    )
-  ) {
-    return ["failed", "config_error"];
-  }
-  if (
-    nonNegativeInteger(summary?.unresolvedCount) > 0
-    || safeReasonCodes.some((code) => code.includes("unresolved") || code.includes("binding_missing"))
-  ) {
-    return ["degraded", "mapping_unresolved"];
-  }
-  if (timer?.active === false || timer?.enabled === false) {
-    return ["failed", "runtime_down"];
-  }
-  if (typeof timer?.active !== "boolean" || typeof timer?.enabled !== "boolean") {
-    return ["degraded", "missing_stats"];
-  }
-  if (
-    summary?.ok === true
-    && (summary?.stateWarmup === true || nonNegativeInteger(summary?.observationCount) === 0)
-  ) {
-    return ["degraded", "sidecar_idle"];
-  }
-  if (summary?.ok === true) return ["healthy", "ok"];
-  return ["failed", "runtime_down"];
+  return sidecarEvidenceCondition({
+    safeReasonCodes: reasonCodes(summary?.blockers),
+    lastRunResult: summary?.ok === true ? "success" : "failed",
+    timerActive: booleanOrNull(timer?.active),
+    timerEnabled: booleanOrNull(timer?.enabled),
+    stateFileConfigured: stateFile?.configured === true,
+    stateFileProtected: booleanOrNull(stateFile?.protected),
+    observationCount: nonNegativeInteger(summary?.observationCount),
+    unresolvedCount: nonNegativeInteger(summary?.unresolvedCount)
+  });
 }
 
 export function buildMihomoConnectionDeltaSidecarProducerStatus({

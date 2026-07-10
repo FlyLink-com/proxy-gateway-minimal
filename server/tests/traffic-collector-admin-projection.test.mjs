@@ -17,6 +17,7 @@ import {
   createFileTrafficCollectorStatusStore,
   sanitizeTrafficCollectorAdminProjection
 } from "../services/platform/traffic-collector-admin-projection.mjs";
+import { sanitizeTrafficCollectorProducerStatus } from "../services/platform/traffic-collector-status-producers.mjs";
 import { listen } from "./helpers/listen.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
@@ -164,13 +165,13 @@ test("collector Admin projection keeps producer health separate and redacted", (
         availability: "available",
         observedAt: "2026-07-10T12:59:59.000Z",
         channelRef: "channel-sgp-a-tuic",
-        producerHealth: "degraded",
-        producerCondition: "sidecar_idle",
-        lastSuccessAt: "2026-07-10T12:59:59.000Z",
+        producerHealth: "failed",
+        producerCondition: "auth_error",
+        lastSuccessAt: null,
         sidecar: {
           timerActive: true,
           timerEnabled: true,
-          lastRunResult: "success",
+          lastRunResult: "failed",
           recordUsage: true,
           stateFileConfigured: true,
           stateFileProtected: true,
@@ -225,7 +226,7 @@ test("collector Admin projection keeps producer health separate and redacted", (
     "sgp_tuic_connection_delta_sidecar"
   ]);
   assert.equal(projection.producers[0].map.status, "in_sync");
-  assert.equal(projection.producers[1].producerCondition, "sidecar_idle");
+  assert.equal(projection.producers[1].producerCondition, "auth_error");
   assert.deepEqual(projection.producers[1].reasonCodes, ["controller_unauthorized"]);
   assert.equal(projection.producers[1].polling.mayUndercountShortConnections, true);
   assert.equal(projection.omittedProducerCount, 1);
@@ -234,6 +235,65 @@ test("collector Admin projection keeps producer health separate and redacted", (
 
   const serialized = JSON.stringify(projection);
   assert.doesNotMatch(serialized, /must-not-leak|private\.example|token=|"rawMap":|"rawLog":/i);
+});
+
+test("collector producer sanitizer rejects contradictory sidecar health evidence", () => {
+  const contradictory = {
+    type: "traffic_collector_status_producer",
+    schemaVersion: "1",
+    producerRef: "sgp_tuic_connection_delta_sidecar",
+    availability: "available",
+    observedAt: "2026-07-10T12:59:59.000Z",
+    channelRef: "channel-sgp-a-tuic",
+    producerHealth: "healthy",
+    producerCondition: "ok",
+    lastSuccessAt: null,
+    sidecar: {
+      timerActive: false,
+      timerEnabled: false,
+      lastRunResult: "failed",
+      recordUsage: true,
+      stateFileConfigured: false,
+      stateFileProtected: false,
+      observationCount: 0,
+      recordedCount: 0,
+      insertedCount: 0,
+      unresolvedCount: 1
+    },
+    polling: {
+      model: "connection_delta",
+      intervalSeconds: 10,
+      mayUndercountShortConnections: true
+    },
+    reasonCodes: ["controller_unauthorized"]
+  };
+
+  assert.equal(sanitizeTrafficCollectorProducerStatus(contradictory), null);
+});
+
+test("collector producer sanitizer rejects contradictory map evidence", () => {
+  const contradictory = {
+    type: "traffic_collector_status_producer",
+    schemaVersion: "1",
+    producerRef: "japan_tuic_usage_credential_map",
+    availability: "available",
+    observedAt: "2026-07-10T12:58:00.000Z",
+    channelRef: "channel-vultr-a-tuic",
+    producerHealth: "healthy",
+    producerCondition: "ok",
+    lastSuccessAt: "2026-07-10T12:58:00.000Z",
+    map: {
+      status: "in_sync",
+      currentMapCount: 6,
+      expectedMapCount: 7,
+      addCount: 1,
+      removeCount: 0,
+      changedCount: 0,
+      missingMaterialCount: 1
+    }
+  };
+
+  assert.equal(sanitizeTrafficCollectorProducerStatus(contradictory), null);
 });
 
 test("collector status store persists only the redacted projection and reports unavailable evidence safely", () => {
