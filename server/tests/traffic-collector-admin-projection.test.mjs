@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -16,6 +17,7 @@ import {
   createFileTrafficCollectorStatusStore,
   sanitizeTrafficCollectorAdminProjection
 } from "../services/platform/traffic-collector-admin-projection.mjs";
+import { sanitizeTrafficCollectorProducerStatus } from "../services/platform/traffic-collector-status-producers.mjs";
 import { listen } from "./helpers/listen.mjs";
 
 const ROOT = resolve(fileURLToPath(new URL("../../", import.meta.url)));
@@ -151,6 +153,149 @@ test("collector Admin projection preserves canonical state and only allowlisted 
   assert.doesNotMatch(serialized, /retryable|recommendedAction|owner/i);
 });
 
+test("collector Admin projection keeps producer health separate and redacted", () => {
+  const projection = buildTrafficCollectorAdminProjection({
+    summary: collectorSummary(),
+    observedAt: OBSERVED_AT,
+    producerStatuses: [
+      {
+        type: "traffic_collector_status_producer",
+        schemaVersion: "1",
+        producerRef: "sgp_tuic_connection_delta_sidecar",
+        availability: "available",
+        observedAt: "2026-07-10T12:59:59.000Z",
+        channelRef: "channel-sgp-a-tuic",
+        producerHealth: "failed",
+        producerCondition: "auth_error",
+        lastSuccessAt: null,
+        sidecar: {
+          timerActive: true,
+          timerEnabled: true,
+          lastRunResult: "failed",
+          recordUsage: true,
+          stateFileConfigured: true,
+          stateFileProtected: true,
+          observationCount: 0,
+          recordedCount: 0,
+          insertedCount: 0,
+          unresolvedCount: 0,
+          rawLog: "must-not-leak-sidecar-log"
+        },
+        polling: {
+          model: "connection_delta",
+          intervalSeconds: 10,
+          mayUndercountShortConnections: true
+        },
+        reasonCodes: ["controller_unauthorized", "https://private.example/token=must-not-leak"]
+      },
+      {
+        type: "traffic_collector_status_producer",
+        schemaVersion: "1",
+        producerRef: "japan_tuic_usage_credential_map",
+        availability: "available",
+        observedAt: "2026-07-10T12:58:00.000Z",
+        channelRef: "channel-vultr-a-tuic",
+        producerHealth: "healthy",
+        producerCondition: "ok",
+        lastSuccessAt: "2026-07-10T12:58:00.000Z",
+        map: {
+          status: "in_sync",
+          currentMapCount: 7,
+          expectedMapCount: 7,
+          addCount: 0,
+          removeCount: 0,
+          missingMaterialCount: 0,
+          rawMap: "must-not-leak-map"
+        }
+      },
+      {
+        type: "traffic_collector_status_producer",
+        schemaVersion: "1",
+        producerRef: "unknown_producer",
+        availability: "available",
+        observedAt: OBSERVED_AT,
+        producerHealth: "healthy",
+        producerCondition: "ok"
+      }
+    ]
+  });
+
+  assert.equal(Array.isArray(projection.producers), true);
+  assert.deepEqual(projection.producers.map((entry) => entry.producerRef), [
+    "japan_tuic_usage_credential_map",
+    "sgp_tuic_connection_delta_sidecar"
+  ]);
+  assert.equal(projection.producers[0].map.status, "in_sync");
+  assert.equal(projection.producers[1].producerCondition, "auth_error");
+  assert.deepEqual(projection.producers[1].reasonCodes, ["controller_unauthorized"]);
+  assert.equal(projection.producers[1].polling.mayUndercountShortConnections, true);
+  assert.equal(projection.omittedProducerCount, 1);
+  assert.equal(Object.hasOwn(projection.run, "producerHealth"), false);
+  assert.equal(Object.hasOwn(projection.accounting, "producerHealth"), false);
+
+  const serialized = JSON.stringify(projection);
+  assert.doesNotMatch(serialized, /must-not-leak|private\.example|token=|"rawMap":|"rawLog":/i);
+});
+
+test("collector producer sanitizer rejects contradictory sidecar health evidence", () => {
+  const contradictory = {
+    type: "traffic_collector_status_producer",
+    schemaVersion: "1",
+    producerRef: "sgp_tuic_connection_delta_sidecar",
+    availability: "available",
+    observedAt: "2026-07-10T12:59:59.000Z",
+    channelRef: "channel-sgp-a-tuic",
+    producerHealth: "healthy",
+    producerCondition: "ok",
+    lastSuccessAt: null,
+    sidecar: {
+      timerActive: false,
+      timerEnabled: false,
+      lastRunResult: "failed",
+      recordUsage: true,
+      stateFileConfigured: false,
+      stateFileProtected: false,
+      observationCount: 0,
+      recordedCount: 0,
+      insertedCount: 0,
+      unresolvedCount: 1
+    },
+    polling: {
+      model: "connection_delta",
+      intervalSeconds: 10,
+      mayUndercountShortConnections: true
+    },
+    reasonCodes: ["controller_unauthorized"]
+  };
+
+  assert.equal(sanitizeTrafficCollectorProducerStatus(contradictory), null);
+});
+
+test("collector producer sanitizer rejects contradictory map evidence", () => {
+  const contradictory = {
+    type: "traffic_collector_status_producer",
+    schemaVersion: "1",
+    producerRef: "japan_tuic_usage_credential_map",
+    availability: "available",
+    observedAt: "2026-07-10T12:58:00.000Z",
+    channelRef: "channel-vultr-a-tuic",
+    producerHealth: "healthy",
+    producerCondition: "ok",
+    lastSuccessAt: "2026-07-10T12:58:00.000Z",
+    map: {
+      status: "in_sync",
+      currentMapCount: 6,
+      expectedMapCount: 7,
+      addCount: 1,
+      removeCount: 0,
+      changedCount: 0,
+      missingMaterialCount: 1
+    }
+  };
+
+  assert.equal(sanitizeTrafficCollectorProducerStatus(contradictory), null);
+});
+
 test("collector status store persists only the redacted projection and reports unavailable evidence safely", () => {
   const dir = mkdtempSync(join(tmpdir(), "collector-admin-projection-"));
   const statusPath = join(dir, "collector-status.json");
@@ -163,7 +308,10 @@ test("collector status store persists only the redacted projection and reports u
       observedAt: OBSERVED_AT
     });
     assert.deepEqual(store.read(), written);
-    assert.deepEqual(JSON.parse(readFileSync(statusPath, "utf8")), written);
+    assert.deepEqual(JSON.parse(readFileSync(statusPath, "utf8")), {
+      ...written,
+      producers: []
+    });
     if (process.platform !== "win32") {
       assert.equal(statSync(statusPath).mode & 0o777, 0o600);
     }
@@ -175,6 +323,133 @@ test("collector status store persists only the redacted projection and reports u
     assert.equal(invalid.observedAt, null);
     assert.deepEqual(invalid.collectors, []);
     assert.doesNotMatch(JSON.stringify(invalid), new RegExp(statusPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("collector status store merges independent protected producer snapshots", () => {
+  const dir = mkdtempSync(join(tmpdir(), "collector-admin-producers-"));
+  const statusPath = join(dir, "collector-status.json");
+  try {
+    const store = createFileTrafficCollectorStatusStore({ filePath: statusPath });
+    assert.equal(typeof store.writeProducerStatus, "function");
+    const before = store.read();
+    assert.deepEqual(before.producers.map((entry) => [entry.producerRef, entry.availability]), [
+      ["japan_tuic_usage_credential_map", "not_observed"],
+      ["sgp_tuic_connection_delta_sidecar", "not_observed"]
+    ]);
+    store.write({
+      summary: collectorSummary(),
+      observedAt: OBSERVED_AT
+    });
+    store.writeProducerStatus({
+      type: "traffic_collector_status_producer",
+      schemaVersion: "1",
+      producerRef: "japan_tuic_usage_credential_map",
+      availability: "available",
+      observedAt: "2026-07-10T12:58:00.000Z",
+      channelRef: "channel-vultr-a-tuic",
+      producerHealth: "healthy",
+      producerCondition: "ok",
+      lastSuccessAt: "2026-07-10T12:58:00.000Z",
+      map: {
+        status: "in_sync",
+        currentMapCount: 7,
+        expectedMapCount: 7,
+        addCount: 0,
+        removeCount: 0,
+        missingMaterialCount: 0,
+        protectedMap: "must-not-leak-map"
+      }
+    });
+    store.writeProducerStatus({
+      type: "traffic_collector_status_producer",
+      schemaVersion: "1",
+      producerRef: "sgp_tuic_connection_delta_sidecar",
+      availability: "available",
+      observedAt: "2026-07-10T12:59:59.000Z",
+      channelRef: "channel-sgp-a-tuic",
+      producerHealth: "degraded",
+      producerCondition: "sidecar_idle",
+      lastSuccessAt: "2026-07-10T12:59:59.000Z",
+      sidecar: {
+        timerActive: true,
+        timerEnabled: true,
+        lastRunResult: "success",
+        recordUsage: true,
+        stateFileConfigured: true,
+        stateFileProtected: true,
+        observationCount: 0,
+        recordedCount: 0,
+        insertedCount: 0,
+        unresolvedCount: 0,
+        controllerPayload: "must-not-leak-payload"
+      },
+      polling: {
+        model: "connection_delta",
+        intervalSeconds: 10,
+        mayUndercountShortConnections: true
+      },
+      reasonCodes: []
+    });
+
+    const projection = store.read();
+    assert.deepEqual(projection.producers.map((entry) => entry.producerRef), [
+      "japan_tuic_usage_credential_map",
+      "sgp_tuic_connection_delta_sidecar"
+    ]);
+    store.writeProducerStatus({
+      type: "traffic_collector_status_producer",
+      schemaVersion: "1",
+      producerRef: "sgp_tuic_connection_delta_sidecar",
+      availability: "available",
+      observedAt: "2026-07-10T13:01:00.000Z",
+      channelRef: "channel-sgp-a-tuic",
+      producerHealth: "failed",
+      producerCondition: "runtime_down",
+      lastSuccessAt: null,
+      sidecar: {
+        timerActive: false,
+        timerEnabled: true,
+        lastRunResult: "failed",
+        recordUsage: true,
+        stateFileConfigured: true,
+        stateFileProtected: true,
+        observationCount: 0,
+        recordedCount: 0,
+        insertedCount: 0,
+        unresolvedCount: 0
+      },
+      polling: {
+        model: "connection_delta",
+        intervalSeconds: 10,
+        mayUndercountShortConnections: true
+      },
+      reasonCodes: []
+    });
+    const failedSidecar = store.read().producers.find((entry) => (
+      entry.producerRef === "sgp_tuic_connection_delta_sidecar"
+    ));
+    assert.equal(failedSidecar.producerHealth, "failed");
+    assert.equal(failedSidecar.lastSuccessAt, "2026-07-10T12:59:59.000Z");
+    const files = readdirSync(dir).map((name) => join(dir, name));
+    assert.equal(files.length, 3);
+    for (const filePath of files) {
+      if (process.platform !== "win32") {
+        assert.equal(statSync(filePath).mode & 0o777, 0o600);
+      }
+      assert.doesNotMatch(readFileSync(filePath, "utf8"), /must-not-leak|"controllerPayload":|"protectedMap":/i);
+    }
+
+    const sidecarPath = files.find((filePath) => filePath.includes("sgp-tuic-sidecar"));
+    writeFileSync(sidecarPath, '{"rawLog":"must-not-leak"}', { mode: 0o600 });
+    const invalidSidecar = store.read().producers.find((entry) => (
+      entry.producerRef === "sgp_tuic_connection_delta_sidecar"
+    ));
+    assert.equal(invalidSidecar.availability, "invalid_observation");
+    assert.equal(invalidSidecar.producerHealth, null);
+    assert.doesNotMatch(JSON.stringify(invalidSidecar), /must-not-leak|rawLog|collector-status/i);
   } finally {
     rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
@@ -230,6 +505,63 @@ test("collector status store preserves the last success time across a later fail
     assert.equal(projection.collectors[0].condition, "auth_error");
     assert.deepEqual(projection.collectors[0].reasonCodes, ["controller_unauthorized"]);
     assert.equal(projection.collectors[0].lastCollectorSuccessAt, "2026-07-10T12:54:59.000Z");
+  } finally {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("collector status store rejects stale producer observations", () => {
+  const dir = mkdtempSync(join(tmpdir(), "collector-admin-producer-order-"));
+  const statusPath = join(dir, "collector-status.json");
+  try {
+    const store = createFileTrafficCollectorStatusStore({ filePath: statusPath });
+    const base = {
+      type: "traffic_collector_status_producer",
+      schemaVersion: "1",
+      producerRef: "japan_tuic_usage_credential_map",
+      availability: "available",
+      channelRef: "channel-vultr-a-tuic",
+      safety: { redacted: true }
+    };
+    store.writeProducerStatus({
+      ...base,
+      observedAt: "2026-07-10T13:05:00.000Z",
+      producerHealth: "healthy",
+      producerCondition: "ok",
+      lastSuccessAt: "2026-07-10T13:05:00.000Z",
+      map: {
+        status: "in_sync",
+        currentMapCount: 7,
+        expectedMapCount: 7,
+        addCount: 0,
+        removeCount: 0,
+        changedCount: 0,
+        missingMaterialCount: 0
+      }
+    });
+    store.writeProducerStatus({
+      ...base,
+      observedAt: "2026-07-10T13:04:00.000Z",
+      producerHealth: "degraded",
+      producerCondition: "mapping_unresolved",
+      lastSuccessAt: null,
+      map: {
+        status: "drifted",
+        currentMapCount: 7,
+        expectedMapCount: 7,
+        addCount: 0,
+        removeCount: 0,
+        changedCount: 1,
+        missingMaterialCount: 0
+      }
+    });
+
+    const producer = store.read().producers.find((entry) => (
+      entry.producerRef === "japan_tuic_usage_credential_map"
+    ));
+    assert.equal(producer.observedAt, "2026-07-10T13:05:00.000Z");
+    assert.equal(producer.producerHealth, "healthy");
+    assert.equal(producer.map.status, "in_sync");
   } finally {
     rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
@@ -294,6 +626,54 @@ test("protected collector status route is read-only and does not trigger collect
     assert.equal(collectCalls, 0);
   } finally {
     server.close();
+  }
+});
+
+test("protected collector status route preserves producer-only evidence", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "collector-admin-producer-only-route-"));
+  const statusPath = join(dir, "collector-status.json");
+  const store = createFileTrafficCollectorStatusStore({ filePath: statusPath });
+  store.writeProducerStatus({
+    type: "traffic_collector_status_producer",
+    schemaVersion: "1",
+    producerRef: "japan_tuic_usage_credential_map",
+    availability: "available",
+    observedAt: "2026-07-10T12:58:00.000Z",
+    channelRef: "channel-vultr-a-tuic",
+    producerHealth: "healthy",
+    producerCondition: "ok",
+    lastSuccessAt: "2026-07-10T12:58:00.000Z",
+    map: {
+      status: "in_sync",
+      currentMapCount: 7,
+      expectedMapCount: 7,
+      addCount: 0,
+      removeCount: 0,
+      changedCount: 0,
+      missingMaterialCount: 0
+    }
+  });
+  const { server, baseUrl } = await listen(createApp(fakeState({
+    trafficCollectorStatusStore: store
+  })));
+
+  try {
+    const response = await fetch(`${baseUrl}/api/admin/platform/traffic-collector-status`, {
+      headers: { Authorization: "Bearer secret" }
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.collectorStatus.availability, "not_observed");
+    assert.deepEqual(body.collectorStatus.producers.map((entry) => [
+      entry.producerRef,
+      entry.availability
+    ]), [
+      ["japan_tuic_usage_credential_map", "available"],
+      ["sgp_tuic_connection_delta_sidecar", "not_observed"]
+    ]);
+  } finally {
+    server.close();
+    rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
 });
 

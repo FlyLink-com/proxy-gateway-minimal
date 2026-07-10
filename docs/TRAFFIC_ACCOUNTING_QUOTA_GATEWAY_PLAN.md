@@ -281,10 +281,19 @@ Status as of 2026-07-10:
 - The SGP TUIC sidecar records per-connection deltas only from observed active
   connection windows. The accepted residual risk is that timer polling can
   undercount connections that start and finish between polling windows.
-- The protected read-only Admin projection now combines canonical collector and
-  accounting state without triggering collection. Japan TUIC map verification
-  and SGP TUIC sidecar health still need separately evidenced protected status
-  producers before the read model is complete.
+- The protected read-only Admin projection combines canonical collector and
+  accounting state without triggering collection. Source support now also
+  accepts independent redacted producer snapshots for Japan TUIC map
+  verification and the SGP TUIC sidecar. Missing or malformed producer evidence
+  remains explicit as `not_observed` or `invalid_observation`.
+- Producer snapshots share the existing configured collector status base path
+  but use separate atomic mode-`0600` fragments, so the 10-second sidecar and
+  five-minute main collector do not overwrite each other. Producer writes use a
+  short cross-process lock and reject older `observedAt` values. Map verification
+  compares both runtime-user keys and credential-reference values; unknown
+  sidecar timer evidence is `degraded/missing_stats`, not healthy. This source
+  capability is not deployed or configured in production by the implementation
+  PR.
 
 Remaining technical debt:
 
@@ -292,10 +301,10 @@ Remaining technical debt:
    usage credential map. Either migrate Japan TUIC to the same
    connection-delta sidecar model used by SGP TUIC, or keep a protected
    verify/rebuild workflow with explicit Admin health markers.
-2. Surface SGP TUIC sidecar health in the future Admin status model. The
-   important markers are sidecar timer active/enabled, last service result,
-   redacted observation/record counts, state-file safety, and accepted polling
-   undercount risk.
+2. Activate and validate the SGP TUIC sidecar producer under a separate Risk A
+   gate. The source contract now includes timer active/enabled, last run result,
+   redacted observation/record counts, state-file safety, and the accepted
+   polling undercount risk; no production observation has been performed.
 3. Keep `channel-sgp-a-tuic` out of the existing five-minute collector unless a
    future runtime exposes quota-grade per-credential counters directly. Adding
    it back as a normal Mihomo TUIC collector would regress to aggregate or
