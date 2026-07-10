@@ -1,497 +1,224 @@
 {
-  "schemaVersion": "2026-05-25.1",
-  "lastUpdated": "2026-07-09",
+  "schemaVersion": "2026-07-10.1",
+  "lastUpdated": "2026-07-10",
   "timezone": "America/Los_Angeles",
-  "status": "active-snapshot-vultr-japan-control-plane-sgp-data-plane",
-  "purpose": "Compact current project state for agent orientation. Verify drift-prone production facts live before any Risk A task.",
+  "status": "phase-2-operational-reliability",
+  "purpose": "Compact current project state for Agent orientation. Verify drift-prone GitHub, deployment, and production facts live before any Risk A action.",
   "sourceDocs": [
-    "docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md",
-    "docs/RUNTIME_LANE_AUTHORITY.md",
+    "docs/CURRENT_RELEASE_STATE.md",
+    "RELEASE_MANIFEST.md",
     "docs/PROJECT_CONTEXT.md",
-    "docs/README.md",
-    "docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md",
-    "docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md",
+    "docs/GITHUB_ISSUE_PR_WORKFLOW.md",
     "docs/FOUNDATION_FREEZE_2026_07_09.md",
-    "docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md",
-    "docs/PR_CLOSEOUT_QUEUE_2026_07_08.md",
-    "docs/BRANCH_AND_SERVICE_OPERATING_MODEL.md",
-    "docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md",
-    "docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md",
-    "docs/CONTROL_DATA_PLANE_INTERCONNECT_CONTRACT.md",
-    "docs/NODE_ONBOARDING_RUNBOOK.md",
-    "docs/NODE_REGISTRATION_AND_POOL_CONTRACT.md",
-    "docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md",
-    "docs/CONTROL_PLANE_NODE_REGISTRATION_CLOSEOUT.md",
-    "docs/CHANNEL_PROTOCOL_TUNING_PLAN.md",
     "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
-    "docs/USER_PORTAL_AUTH_BOUNDARY.md",
-    "docs/USER_PORTAL_FLOW.md",
-    "docs/SUBSCRIPTION_CONTROL_DATABASE.md",
-    "docs/production-replacement-records/2026-06-09-vultr-sgp-multichannel-runtime-closeout.md",
-    "docs/production-replacement-records/2026-06-09-github-japan-sgp-runtime-drift-reconciliation.md",
-    "docs/production-replacement-records/2026-06-09-sgp-final-production-closeout-gate.md",
-    "docs/production-replacement-records/2026-06-09-sgp-final-closeout-gate1-readonly-inventory.md",
-    "docs/production-replacement-records/2026-06-09-sgp-japan-to-sgp-apply-identity-fix.md",
-    "docs/production-replacement-records/2026-06-09-sgp-gate2-japan-control-plane-clean-artifact-upgrade.md",
-    "docs/production-replacement-records/2026-06-09-sgp-gate3-data-plane-apply-preflight-blocked.md",
-    "docs/production-replacement-records/2026-06-09-sgp-gate3a-material-registration-approval-packet.md",
-    "docs/production-replacement-records/2026-06-10-sgp-gate3a-material-registration-execution.md",
-    "docs/production-replacement-records/2026-06-10-sgp-gate3-data-plane-apply-execution.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-private-tunnel-production-activation.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-future-order-readonly-preflight-approval-packet.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-future-order-readonly-preflight.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-future-order-runtime-upgrade-approval-packet.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-future-order-runtime-upgrade-rollback.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-protected-env-normalization.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-future-order-runtime-retry-envfile-blocker.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-candidate-envfile-fix-runtime-retry-rollback.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-future-order-startup-diagnostic.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-sgp-template-key-alignment.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-002-readonly-preflight.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-002-runtime-schema-production-retry.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-future-order-live-smoke-approval-packet.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-source-absorption.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-source-deployment-approval-packet.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-source-deployment-live-smoke-rollback.md",
-    "docs/superpowers/plans/2026-06-11-sgp-protected-material-sync.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-protected-material-sync-approval-packet.md",
-    "docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md",
-    "docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md",
-    "docs/production-replacement-records/2026-06-14-aws-staging-node-image-readiness-validation.md",
-    "docs/production-replacement-records/2026-06-14-production-node-image-factory-closeout.md",
-    "docs/production-replacement-records/2026-06-14-production-node-image-factory-acceptance-matrix.md",
-    "docs/production-replacement-records/2026-06-14-production-image-promotion-approval-packet.md",
-    "docs/production-replacement-records/2026-06-14-control-plane-node-registration-production-gate-package.md",
-    "docs/production-replacement-records/2026-06-14-control-plane-node-registration-exact-approval-readiness.md",
-    "docs/production-replacement-records/2026-06-13-control-plane-node-registration-closeout-approval-packet.md",
-    "docs/production-replacement-records/2026-06-14-control-plane-node-registration-closeout-execution.md",
-    "docs/production-replacement-records/2026-07-06-jp-tuic-hy2-cert-domain-alignment.md",
-    "docs/superpowers/plans/2026-06-13-control-plane-node-registration-ingestion.md",
-    "docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-approval-packet.md",
-    "docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-validation.md",
-    "docs/superpowers/plans/2026-06-09-historical-residue-closeout.md",
-    "docs/DOMAIN_UNIT_BOUNDARIES.md",
-    "docs/units/README.md",
-    "docs/PROJECT_OPERATING_MODEL.md",
-    "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md",
-    "docs/OPERATOR_PROVISIONING_FORM_CONTRACT.md",
-    "docs/ADMIN_UI_LEGACY_ARCHIVE.md",
-    "docs/ADMIN_CONSOLE_REBUILD_BASELINE.md",
-    "docs/ADMIN_CONSOLE_CONCEPT_REQUIREMENTS_MATRIX.md",
-    "docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md",
-    "docs/ADMIN_CONSOLE_NAVIGATION_IA.md",
-    "docs/ADMIN_CONSOLE_APP_MAP.md",
-    "docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md",
-    "docs/ADMIN_CONSOLE_APP_REGISTRY_REVIEW_DESIGN.md",
-    "docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md",
-    "docs/RESOURCE_PACKAGE_CLI.md",
+    "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
+    "docs/BILLING_RECHARGE_CONTRACT.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md",
-    "docs/MULTI_ENV_ADAPTER_RUNTIME_MODEL.md",
-    "docs/SERVER_IMPORT_MANIFEST_2026_06_01.md",
-    "docs/PROJECT_TOPOLOGY.md",
-    "docs/goals/2026-05-26-aliyun-subscription-control-platform-mvp.md",
-    "docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md",
-    "docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md",
-    "docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md",
-    "docs/CLEAN_EDGE_READINESS_SUMMARY.md",
-    "docs/CHANNEL_STRATEGY_ENGINE.md",
-    "docs/CHANNEL_TUIC_COMPARISON_CANARY_PLAN.md",
-    "docs/CHANNEL_CANARY_SERVER_SELECTION.md",
-    "docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md",
-    "docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md",
-    "docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md",
-    "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup-inventory.md",
-    "docs/production-replacement-records/2026-05-26-aliyun-ci-cleanup.md",
-    "docs/production-replacement-records/2026-05-26-aliyun-sub-control-candidate-preparation.md",
-    "docs/production-replacement-records/2026-05-26-aliyun-state-copy-preflight.md",
-    "docs/production-replacement-records/2026-05-26-prod-edge-a-source-internal-state-copy-inspection.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-promotion-runbook-readiness.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-gate-a-live-inventory.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-gate-b-source-firewall-plan.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-clean-start-control-plane-plan.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-runbook.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-clean-start-private-validation-execution.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-runbook.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-provider-firewall-hardening-execution.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-hp-management-source-firewall-execution.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-public-boundary-dry-run-execution.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-production-subscription-distribution-promotion.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-promotion-observation-aegis-readonly.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-runbook.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-preflight.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-aegis-service-repair-execution.md",
-    "docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-runbook.md",
-    "docs/production-replacement-records/2026-05-27-clean-edge-node-rebuild-preflight.md",
-    "docs/production-replacement-records/2026-05-27-clean-edge-rebuild-execution-handoff.md",
-    "docs/production-replacement-records/2026-05-27-post-226-clean-edge-live-check.md",
-    "docs/production-replacement-records/2026-05-27-opaque-artifact-issuance-and-legacy-token-retirement-runbook.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-next-a-tier-execution-packet.md",
-    "docs/production-replacement-records/2026-05-27-aliyun-repo-mvp-closeout.md",
-    "docs/production-replacement-records/templates/aliyun-clean-start-private-validation-execution-template.md",
-    "docs/production-replacement-records/templates/aliyun-provider-firewall-hardening-execution-template.md",
-    "docs/production-replacement-records/templates/aliyun-aegis-service-repair-execution-template.md",
-    "docs/production-replacement-records/templates/clean-edge-node-rebuild-execution-template.md",
-    "docs/production-replacement-records/templates/opaque-artifact-issuance-execution-template.md",
-    "docs/production-replacement-records/templates/legacy-query-token-retirement-execution-template.md",
-    "docs/production-replacement-records/2026-05-26-singapore-prod-edge-stop.md",
-    "docs/production-replacement-records/2026-05-26-channel-canary-server-selection-inventory.md",
-    "docs/production-replacement-records/2026-05-26-channel-lab-a-creation.md",
-    "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-runtime.md",
-    "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-operator-device-canary.md",
-    "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-mihomo-import-validation.md",
-    "docs/production-replacement-records/2026-05-26-channel-lab-a-hysteria2-extended-measurement.md",
-    "docs/production-replacement-records/2026-05-26-sub-control-a-candidate-readonly-preflight.md",
-    "docs/production-replacement-records/2026-05-26-non-aliyun-node-cleanup-preflight.md",
-    "docs/VALIDATION_BASELINE.md",
-    "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-gate.md",
-    "docs/production-replacement-records/2026-05-27-tuic-runtime-inventory-execution.md",
-    "docs/production-replacement-records/2026-05-28-channel-lab-b-creation.md",
-    "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-runtime.md",
-    "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-operator-device-canary.md",
-    "docs/production-replacement-records/2026-05-28-channel-lab-b-tuic-extended-measurement.md",
-    "docs/production-replacement-records/2026-05-28-aliyun-tuic-subscription-output-integration-inventory.md",
-    "docs/production-replacement-records/2026-05-28-aliyun-tuic-host-provider-inventory.md",
-    "docs/production-replacement-records/2026-05-28-aliyun-cloud-assistant-tuic-host-inventory.md",
-    "docs/production-replacement-records/2026-05-28-tuic-subscription-output-canary-planning.md",
-    "docs/production-replacement-records/2026-05-28-tuic-subscription-output-dry-run-package.md",
-    "docs/production-replacement-records/2026-05-28-tuic-subscription-output-config-review.md",
-    "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-mechanism.md",
-    "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-request.md",
-    "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation-stopped.md",
-    "docs/production-replacement-records/2026-05-28-tuic-controlled-operator-access-creation.md",
-    "docs/production-replacement-records/2026-05-28-tuic-controlled-access-activation.md",
-    "docs/production-replacement-records/2026-05-28-cli-preproduction-subscription-issuance.md",
-    "docs/production-replacement-records/2026-05-29-singapore-prod-edge-termination.md",
-    "docs/production-replacement-records/2026-06-01-aliyun-server-project-import-readonly-inventory.md",
-    "docs/production-replacement-records/2026-06-02-aws-disposable-tokyo-korea-gccgw-validation.md",
-    "docs/production-replacement-records/2026-06-02-aliyun-upgrade-preflight-inventory.md",
-    "docs/production-replacement-records/2026-06-02-aliyun-candidate-runtime-upgrade-blocked.md",
-    "docs/production-replacement-records/2026-06-02-aliyun-candidate-runtime-upgrade-rollback.md",
-    "docs/production-replacement-records/2026-06-02-aliyun-control-db-path-upgrade-success.md",
-    "docs/production-replacement-records/2026-06-04-aliyun-user-portal-deployment-readonly-preflight.md",
-    "docs/production-replacement-records/2026-06-04-user-portal-local-panel-closeout.md",
-    "docs/production-replacement-records/2026-06-05-aliyun-local-edge-lifecycle-production-gate-draft.md",
-    "docs/production-replacement-records/2026-06-05-aliyun-mihomo-tuic-install-only-bootstrap.md",
-    "docs/production-replacement-records/2026-06-05-aliyun-tuic-env-only-prewire.md",
-    "docs/production-replacement-records/2026-06-05-aliyun-tuic-listener-material-preflight.md",
-    "docs/production-replacement-records/2026-06-05-aliyun-tuic-listener-material-wiring.md",
-    "docs/production-replacement-records/2026-06-05-aliyun-tuic-per-order-activation-blocked.md",
-    "docs/production-replacement-records/2026-06-05-aliyun-tuic-per-order-permission-gate.md",
-    "docs/production-replacement-records/2026-06-05-aliyun-tuic-phase3-activation.md",
-    "docs/production-replacement-records/2026-06-05-aliyun-tuic-runtime-env-wiring-preflight.md",
-    "docs/production-replacement-records/2026-06-05-japan-tuic-production-reconnect.md",
-    "docs/production-replacement-records/2026-06-05-portal-test-account-totp-reset.md",
-    "docs/production-replacement-records/2026-06-05-retired-shadowsocks-node-cloud-cleanup.md",
-    "docs/production-replacement-records/2026-06-05-route53-globalcirclecat-hosted-zone-prep.md",
-    "docs/production-replacement-records/2026-06-05-stable-tcp-capacity-readonly-inventory.md",
-    "docs/production-replacement-records/2026-06-05-stable-tcp-node-restoration.md",
-    "docs/production-replacement-records/2026-06-06-aliyun-non-website-cleanup.md",
-    "docs/production-replacement-records/2026-06-06-aliyun-portal-auth-runtime-upgrade-prep.md",
-    "docs/production-replacement-records/2026-06-06-aliyun-portal-auth-runtime-upgrade.md",
-    "docs/production-replacement-records/2026-06-06-aliyun-portal-auth-security-runtime-prep.md",
-    "docs/production-replacement-records/2026-06-06-aliyun-portal-auth-security-runtime-upgrade.md",
-    "docs/production-replacement-records/2026-06-06-aliyun-portal-auto-issuance-session-gate.md",
-    "docs/production-replacement-records/2026-06-06-aliyun-portal-login-public-route-hotfix-rollback.md",
-    "docs/production-replacement-records/2026-06-06-aliyun-portal-static-auth-challenge-fix.md",
-    "docs/production-replacement-records/2026-06-06-aws-production-like-staging-gate5-preflight.md",
-    "docs/production-replacement-records/2026-06-06-aws-production-like-staging-gate5-restart-permission-success.md",
-    "docs/production-replacement-records/2026-06-06-aws-production-like-staging-gate5-setup-session-hotfix.md",
-    "docs/production-replacement-records/2026-06-06-aws-production-like-staging-gate5-synthetic-validation-blocked.md",
-    "docs/production-replacement-records/2026-06-06-aws-production-like-staging-host-bootstrap.md",
-    "docs/production-replacement-records/2026-06-06-aws-production-like-staging-resource-creation.md",
-    "docs/production-replacement-records/2026-06-06-aws-staging-gate6c-usage-anchor-runtime-proof.md",
-    "docs/production-replacement-records/2026-06-06-aws-staging-gate7-runtime-usage-proof.md",
-    "docs/production-replacement-records/2026-06-06-aws-staging-gate8-hysteria2-usage-proof.md",
-    "docs/production-replacement-records/2026-06-06-vultr-independent-candidate-deployment.md",
-    "docs/production-replacement-records/2026-06-06-vultr-portal-initial-account-import.md",
-    "docs/production-replacement-records/2026-06-06-vultr-tuic-certificate-chain-fix.md",
-    "docs/production-replacement-records/2026-06-08-aws-staging-gate11-lifecycle-usage-proof.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-material-sync-partial-activation.md",
-    "docs/production-replacement-records/2026-06-11-edge-agent-scoped-receipt-render-gate-approval-packet.md",
-    "docs/production-replacement-records/2026-06-11-sgp-receipt-required-config-hardening.md",
-    "docs/production-replacement-records/2026-06-15-gcc-9-usage-accounting-failure-isolation.md"
+    "docs/production-replacement-records/2026-07-09-traffic-usage-xray-idle-observable-backend-deploy-execution.md",
+    "docs/production-replacement-records/2026-07-09-japan-traffic-runtime-config-restore-execution.md",
+    "docs/production-replacement-records/2026-07-08-sgp-subscription-render-receipt-reconcile-execution.md"
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
     "github": "gaoyi1020-web/proxy-gateway-minimal",
     "localPath": "D:\\Projects\\proxy-gateway-minimal",
-    "legacyShellPathWarning": "Do not use C:\\Users\\g\\OneDrive\\文档\\订阅管理 or C:\\Users\\g\\Projects\\订阅管理\\proxy-gateway-minimal as the real code repo."
+    "defaultBranch": "master",
+    "legacyCheckoutRule": "Use the D drive checkout only; historical checkouts are archive/reference surfaces."
   },
   "branchContext": {
     "stableBaseline": "master",
-    "stableBaselineCommit": "53eb5a10",
-    "openPrCountAtCloseout": 0,
-    "openIssueCountAtCloseout": 0,
-    "mergedPrsInCloseout": [
-      367,
-      384,
-      385,
-      389,
-      366,
-      390,
-      392,
-      394,
-      395,
-      396,
-      397,
-      399,
-      400,
-      401,
-      403,
-      404,
-      405,
-      413,
-      414,
-      415,
-      416,
-      417,
-      418,
-      419,
-      420,
-      421,
-      422,
-      423,
-      424,
-      425,
-      426,
-      427,
-      432,
-      433,
-      434,
-      435
+    "sourceSnapshotAtInventory": "7e9a8667657e5323e09ff7c262da85d26729e69b",
+    "observedOpenPrCount": 0,
+    "observedOpenIssueCount": 5,
+    "activeIssues": [
+      437,
+      438,
+      439,
+      440,
+      457
     ],
-    "closedCarrierPrs": [
-      364,
-      381
+    "remoteBranches": [
+      "master"
     ],
-    "followOnBaseline": "master",
-    "followOnBranchPolicy": "Start subsequent tasks from a clean master worktree unless a task explicitly states another baseline.",
-    "closeoutPlan": "docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md",
-    "note": "The final 2026-07-09 Git/docs cleanup snapshot runs through PR #435 at 53eb5a10: GitHub open PR and issue counts were 0, remote heads contained only master, and stale local worktrees/backup branches were removed. PR #364 and PR #381 are closed superseded carrier branches. PRs #432-#435 closed Portal preview isolation, retired Aliyun gate/default cleanup, and local proxy-control ownership. This is a dated snapshot; always verify live Git and GitHub state before new work."
+    "recentVersionManagementPrs": [
+      442,
+      443,
+      444,
+      445,
+      446,
+      448,
+      450,
+      452,
+      454,
+      456
+    ],
+    "mergePolicyObservation": {
+      "allowSquashMerge": true,
+      "allowMergeCommit": true,
+      "allowRebaseMerge": true,
+      "deleteBranchOnMerge": false,
+      "branchProtectionAvailability": "GitHub API returned HTTP 403 for this private-repository plan; do not claim an enforced branch rule."
+    },
+    "note": "This is a dated source snapshot. Re-run git status, git fetch, PR/Issue inventory, and required checks before making current claims."
   },
   "architectureView": {
-    "currentMentalModel": "four-layer-single-control-plane-multi-data-plane",
+    "currentMentalModel": "release-managed modular monolith with one Japan control plane, Japan/Singapore data-plane capacity, separate static surfaces, and explicit source/artifact/deployment/runtime evidence domains",
     "layers": [
-      {
-        "name": "adapters",
-        "authority": "User Portal, protected Admin/Operator, and CLI are thin adapters over shared domain services; public Admin is not a product surface."
-      },
-      {
-        "name": "control-plane",
-        "authority": "Vultr Japan owns accounts, orders, subscription artifacts, credential refs, desired-state notifications, render gating, and usage ledger state."
-      },
-      {
-        "name": "interconnect",
-        "authority": "Private authenticated data-plane agent routes move redacted desired-state, node-scoped material batches, leases, and redacted receipts."
-      },
-      {
-        "name": "data-plane",
-        "authority": "Vultr Japan and Vultr Singapore provide VLESS Reality, Hysteria2, and TUIC runtime capacity; Singapore channels require matching applied receipts before subscription rendering."
-      }
+      "User Portal, protected Admin, company site, and CLI adapters",
+      "Japan control-plane application and durable control stores",
+      "authenticated control/data-plane handoff and receipt boundary",
+      "Japan and Singapore protocol runtimes",
+      "artifact, deployment, and runtime observation evidence"
     ],
-    "notCurrentAuthority": [
-      "master-only Aliyun/AWS current-state narratives",
-      "historical Aliyun subscription-distribution records",
-      "channel-lab-a/b records",
-      "old checkout paths and archive directories",
-      "runtime-only residue copied from production hosts"
-    ],
-    "branchAuthority": "The final 2026-07-09 cleanup snapshot is 53eb5a10 after PR #435. GitHub open PR and issue counts were 0 and remote heads contained only master at that snapshot. PR #364 and PR #381 are closed superseded carrier branches and should not be reopened or merged as-is. Live origin/master remains authoritative, and subsequent work must be re-cut from latest master as focused PRs."
+    "nonGoals": [
+      "microservice split",
+      "database replacement",
+      "enterprise plugin runtime",
+      "automatic production promotion",
+      "live payment or attribution activation"
+    ]
   },
   "productSpine": [
-    "stable subscription/import experience",
-    "authoritative subscription control plane",
-    "replaceable edge data-plane capacity",
-    "local client adapter path",
-    "measured validation and operations"
+    "stable registration, login, subscription, and client import experience",
+    "authoritative account, entitlement, delivery, usage, and quota lifecycle",
+    "trustworthy traffic accounting and protected operator observability",
+    "replaceable Japan/Singapore data-plane capacity behind stable delivery",
+    "provider-neutral commercial foundation with all live providers gated"
   ],
   "activeDirections": [
-    "Mainline focus is core subscription production delivery: '能生产、能发放、能审计、能撤回'. Visual, marketing, Telegram bot, video-channel drafts, and speculative decorative work remain retired unless explicitly reopened.",
-    "docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md is the current C-tier docs/status orientation and no-mutation boundary; it complements, but does not replace, the Vultr production execution records or live verification required before Risk A work.",
-    "Vultr Japan is the current subscription control-plane authority for the gccwebos.com production lane; local machines remain development, validation, operator handoff, and archive surfaces only.",
-    "Vultr Japan and Vultr Singapore are data-plane capacity hosts. Their VLESS Reality, Hysteria2, and TUIC logical channels should be rendered as one subscription bundle only when the Japan control-plane channel config, runtime handoff, and credential fan-out are aligned.",
-    "Single-control-plane / multi-data-plane is the active architecture boundary: accounts, orders, artifacts, credential lifecycle, subscription rendering, and usage ledgers stay authoritative in one control store; edge hosts own protocol runtime and traffic capacity only.",
-    "Production-node image readiness has been validated on AWS staging with aws-node-image-validation-20260613-001 and repeated for GCC-15 with aws-node-image-validation-20260614-001. The broader AWS staging control/data-plane integration proof has also been validated with aws-control-data-plane-integration-validation-20260613-001 using synthetic safe input only. Repo-only source includes first-boot packet to durable safe node registration ingestion and redacted protected-material handoff preflight by registered node/current desired-state/material digest, plus a dry-run operator CLI entry backed by a read-only control DB adapter. The 2026-06-14 production-node image factory closeout and acceptance matrix split the remaining image lane into GCC-13 docs alignment, GCC-14 helper/fixture closure, GCC-15 AWS staging validation, GCC-16 production promotion approval, and follow-on Risk A node registration/material handoff gates; GCC-15 is now closed by the 2026-06-14 AWS staging execution record, the GCC-16 production image promotion approval packet is drafted at docs/production-replacement-records/2026-06-14-production-image-promotion-approval-packet.md as approval-only documentation, the GCC-6 control-plane node registration production gate package is drafted at docs/production-replacement-records/2026-06-14-control-plane-node-registration-production-gate-package.md as a registration-focused Risk A package, and the GCC-6 exact-approval readiness checklist is drafted at docs/production-replacement-records/2026-06-14-control-plane-node-registration-exact-approval-readiness.md to separate known package evidence from live/operator fields. The 2026-06-14 production closeout snapshot records Japan running control-plane-node-registration-closeout-20260614-001, public portal/subscription boundaries healthy, public Admin/internal routes blocked, tcp3456 loopback-only, and SGP data-plane services/listeners active. This is not blanket approval for future node activation, protected material handoff for new nodes, traffic activation, DNS/Nginx/firewall changes, live order issuance, or sensitive output.",
-    "Remote data-plane future-order coordination is coded in source: delivered orders record safe pending desired-state notifications for remote channels, and subscription rendering still requires a matching applied receipt before exposing those channels. Earlier 2026-06-11 gates found and corrected envfile, placeholder, source-deployment, and protected-material gaps through staged packages and rollback evidence. The 2026-06-14 closeout snapshot records the current Japan runtime baseline as control-plane-node-registration-closeout-20260614-001 and observes SGP agent/runtime service anchors active. Future-order SGP apply/render for new orders still needs a separately approved controlled smoke before broad rollout claims.",
-    "Aliyun subscription-distribution records, channel-lab-a/b records, and Japan single-TUIC upgrade records are historical/fallback references. Do not reactivate them as current production authority or automatic issuance targets without a fresh Risk A gate and live verification.",
-    "User Portal and Admin/Operator surfaces are adapters over shared domain services. User order creation, lifecycle status, refresh, usage monitor, and support flows must use durable backend state, not frontend Map/demo state.",
-    "The 2026-07-08 portal static recovery restored production frontend behavior from the ca9f5702 artifact line. Master now has the focused source/runtime recovery slices: PR #394 restored portal registration frontend/source alignment, PR #397 restored registration backend wiring, PR #413 revealed active subscription links, PR #414 preserved the production portal static source baseline, PR #418/#419 stabilized the account delivery refresh lifecycle, and PR #425 protected refresh and credential fetches. Do not treat closed PR #364 as source authority for remaining Admin UI, payment, protected auth, or archive work.",
-    "The 2026-07-09 foundation freeze is recorded in docs/FOUNDATION_FREEZE_2026_07_09.md. It freezes master as the current source/process baseline, keeps release traceability on source_commit/artifact_or_release/artifact_sha256 where available/release_unit/Deploy Note, treats Admin app/plugin wording as static manifest/page-owned modules rather than an enterprise runtime plugin platform, and splits the next phase into operating lifecycle plus AppsFlyer/attribution scale-up without granting production, provider, runtime, schema, credential, payment, or customer-data authority.",
-    "Order-owned traffic accounting remains an active implementation lane: Admin usage monitor, User Portal order summaries, Admin user-resource supervision, and Admin traffic/channel supervision now have repo-only UI/code paths for durable rollups, safe quota editing, platform channel health, anomaly queues, and order-ledger views. The New Admin surface is positioned around user accounts and their resources, not standalone subscription creation. Live runtime sample collection, quota enforcement, and auto-disable still require separate gates.",
-    "The 2026-07-08 traffic usage carrier has been split and superseded: PR #395 merged the repo-side runtime/source collectors and tests, PR #396 archived the traffic usage / SGP execution records, PR #416 exposed redacted collector startup status, PR #420 preserved metering runtime endpoints, PR #421 made empty Xray stats observable, and PR #422-#424 recorded the later deployment/traffic closeout notes. Closed PR #381 is no longer a merge vehicle. Runtime config changes, service restarts, and live collector activation remain separate Risk A gates.",
-    "Admin OS is an active repo-only operator-console workstream and must not be reported as delivered from uncommitted Admin UI changes. Current active pages are Operations Overview, Accounts & Resources, and Usage & Channels; Audit & Cases, Platform Development, and System Settings remain locked/planned until real data sources, redaction boundaries, tests, and validation exist. Current Admin OS task-state has GCC-77 System Search safe discovery, GCC-78 workspace layout presets, and GCC-79 capability boundary matrix merged into master through PR #356, PR #357, and PR #358; GCC-74 app map, GCC-75 manifest authoring, and GCC-82 visual protocol remain docs/design-state references. The app metadata source of truth is admin/src/app/admin-app-manifest.ts. App Registry and YAML import are future design only and are not an implemented runtime registry, upload endpoint, schema migration, permission model, or publication flow.",
-    "Legacy query-token retirement remains a separate Risk A lane after opaque artifact coverage, observation, endpoint compatibility checks, rollback evidence, and exact operator approval.",
-    "All production/runtime/cloud changes remain Risk A: DNS, Nginx, provider firewall, systemd restarts, runtime config, live order creation, account/password generation, subscription URL/token/password output, and SQLite row dumps stay out of repo-only work."
+    "Phase 2 is Operational Reliability, not broad feature expansion.",
+    "Issue #437 Traffic Accounting is the only active implementation Epic; #438 and #439 are queued, and #440 is an opportunistic guardrail.",
+    "Issue #457 must prove staged Vercel behavior on a real master merge before any explicit company-site promotion model is considered closed.",
+    "Source, artifact, deployment, and runtime evidence remain separate; a merge or build artifact never proves production state.",
+    "Billing and AppsFlyer remain disabled/non-live, and architecture stays a modular monolith."
   ],
   "activeGoal": {
-    "id": "vultr-japan-sgp-single-control-plane-multichannel",
-    "name": "Vultr Japan Control Plane With Japan/Singapore Multi-Data-Plane",
-    "sourceDoc": "docs/SINGLE_CONTROL_PLANE_MULTI_DATA_PLANE_PLAN.md",
-    "leadAgent": "Codex",
-    "riskBoundary": "Vultr Japan is the current control-plane authority; Vultr Japan and Singapore are data-plane capacity. Production deploy, runtime config, DNS, Nginx, firewall, live order smoke, credential lifecycle activation, and usage collector activation remain separately gated Risk A work.",
-    "allowed": [
-      "docs and project-state updates",
-      "local validation",
-      "Admin/User Portal repo validation",
-      "redacted production observation after approval",
-      "historical Aliyun wording downgrade",
-      "provider-neutral planning language"
+    "id": "phase-2-operational-reliability",
+    "name": "GCC WebOS Phase 2 Operational Reliability",
+    "primaryIssue": 437,
+    "queuedIssues": [
+      438,
+      439,
+      440
     ],
-    "notAuthorized": [
-      "Vultr provisioning or mutation",
-      "DNS change",
-      "Nginx reload",
-      "systemd restart",
-      "firewall mutation",
-      "SQLite migration",
-      "tenant or artifact mutation",
-      "subscription issuance",
-      "public Admin exposure",
-      "DNS mutation",
-      "Nginx config or reload",
-      "provider firewall mutation",
-      "runtime service restart",
-      "live order creation",
-      "account/password generation",
-      "subscription URL/token/password output",
-      "SQLite row dump",
-      "user traffic or edge traffic activation",
-      "server/admin AliyunGate API migration"
-    ]
+    "governanceIssue": 457,
+    "leadAgent": "Codex",
+    "operatorRole": "The operator approves or rejects exact Risk A gates after the reviewer defines scope, validation, rollback, and stop conditions.",
+    "riskBoundary": "Repository contracts and tests are B-tier; production, provider, auth, schema, deployment, promotion, rollback, and runtime mutation are separately approved A-tier work."
   },
   "productionSnapshot": {
     "requiresLiveVerification": true,
-    "serviceStatus": "vultr-japan-control-plane-with-vultr-and-sgp-data-plane-recorded",
-    "currentPrimarySlot": "vultr-japan-control-plane",
-    "subscriptionGatewayDomain": "sub.gccwebos.com",
-    "userPortalDomain": "portal.gccwebos.com",
-    "publicAdminUiExposed": false,
-    "dataPlaneSlots": [
-      "channel-vultr-a-vless-reality-tcp",
-      "channel-vultr-a-hy2",
-      "channel-vultr-a-tuic",
-      "channel-sgp-a-vless-reality-tcp",
-      "channel-sgp-a-hy2",
-      "channel-sgp-a-tuic"
+    "evidenceCutoff": "2026-07-10T10:58:28Z",
+    "controlPlaneAuthority": "Vultr Japan",
+    "dataPlaneCapacity": [
+      "Vultr Japan",
+      "Vultr Singapore"
     ],
-    "historicalOrFallback": [
-      "Aliyun subscription distribution lane",
-      "channel-lab-a Hysteria2 records",
-      "channel-lab-b TUIC canary records",
-      "Japan TUIC single-channel upgrade runbook"
+    "releaseUnits": [
+      {
+        "id": "control-plane-app",
+        "state": "active_documented",
+        "identity": "traffic-usage-xray-idle-observable-20260709-001"
+      },
+      {
+        "id": "company-site-static",
+        "state": "deployed_unreconciled",
+        "identity": "GitHub deployment 5389897330 from source 7e9a8667657e5323e09ff7c262da85d26729e69b"
+      },
+      {
+        "id": "portal-static",
+        "state": "deployed_unreconciled",
+        "identity": "globalcircle-portal-ca9f5702-20260708 restore line"
+      },
+      {
+        "id": "admin-static",
+        "state": "unknown",
+        "identity": "build identity exists; production promotion identity is not recorded"
+      },
+      {
+        "id": "japan-runtime-config",
+        "state": "active_documented",
+        "identity": "2026-07-09 Japan traffic runtime restore record"
+      },
+      {
+        "id": "sgp-runtime-config",
+        "state": "active_documented",
+        "identity": "2026-07-08 SGP receipt/render reconciliation record"
+      },
+      {
+        "id": "subscription-rendering",
+        "state": "deployed_unreconciled",
+        "identity": "receipt-gated documented rendering state"
+      },
+      {
+        "id": "attribution-appsflyer",
+        "state": "disabled",
+        "identity": "disabled/dry-run only"
+      }
     ],
-    "vultrControlRegion": "Japan",
-    "vultrDataPlaneRegions": [
-      "Japan",
-      "Singapore"
-    ],
+    "companySitePromotionBoundary": {
+      "productionBranch": "master",
+      "autoAssignCustomDomains": false,
+      "currentDeployment": "proxy-gateway-minimal-hqdudl13g-gccltd.vercel.app",
+      "publicAliases": [
+        "gccwebos.com",
+        "www.gccwebos.com"
+      ],
+      "operationalProof": "pending next real master merge",
+      "promotionAuthority": "separate exact Risk A approval"
+    },
+    "cloudflareSiteBoundary": {
+      "autoDeploy": false,
+      "environment": "cloudflare-production",
+      "latestObservedPushBehavior": "build and verification succeeded; deploy job skipped"
+    },
     "notes": [
-      "This snapshot is documentation state only; verify live Vultr, DNS, Nginx, systemd, endpoint, and SQLite state before any Risk A action.",
-      "The current design keeps order/account/artifact/credential lifecycle authority in the Japan control plane and treats Singapore as runtime capacity only.",
-      "The 2026-07-06 JP runtime certificate alignment record confirms TUIC/Hysteria2 runtime certificate paths were corrected to the jp.gccwebos.com certificate after a cert/SNI drift caused client verification failures.",
-      "AWS staging has validated the no-secret node-image readiness and first-boot helper path with aws-node-image-validation-20260614-001, and separately validated the synthetic control/data-plane integration path; this is not production activation and not control-plane registration completion.",
-      "The AWS staging control/data-plane integration execution record is now staging evidence for desired-state, edge-agent apply, redacted receipts, receipt-gated rendering, and usage/lifecycle smoke with synthetic facts only.",
-      "New order smoke, provider firewall changes, usage collector activation, and any future runtime restart require separate exact approval and execution records.",
-      "Do not output subscription URLs, tokens, passwords, raw config, raw logs, or SQLite rows in status files or operator reports."
+      "Only the company-site deployment boundary was live-read during this snapshot; Japan and Singapore runtime services were not re-inventoried.",
+      "Do not infer production runtime identity from master, a GitHub artifact, or the offline Runtime Identity generator.",
+      "Do not output subscription material, credentials, raw config, raw logs, environment values, SQLite rows, or customer data."
     ]
   },
   "accessModelSnapshot": {
-    "currentStableUserEntry": "portal order creation and opaque subscription refresh/import experience",
-    "opaqueArtifactCanaryActive": false,
-    "legacyQueryTokenRouteStillExists": true,
-    "broaderArtifactIssuance": "covered-by-current-portal-order-and-artifact-flow-subject-to-live-verification",
-    "trafficAccounting": "usage-ledger-admin-monitor-user-portal-basic-rollup-display-admin-user-resource-quota-edit-admin-traffic-channel-supervision; Admin OS page ownership/app map work remains in-progress/backlog until merged validation; live-collector-activation-and-quota-auto-disable-not-complete"
+    "companySite": "public static surface",
+    "userPortal": "public customer adapter backed by authenticated account/resource services",
+    "admin": "protected operator surface; public unauthenticated access must remain blocked",
+    "internalRuntime": "metering and control endpoints remain loopback/private according to documented execution records and require live verification before mutation"
   },
   "validationSnapshot": {
-    "validationBaselineDoc": "docs/VALIDATION_BASELINE.md",
-    "prCompletionGate": "Every PR must contain its approved design/intent, execution or approved no-op/inventory, validation evidence, and Agent / Task Routing metadata before it is marked Ready, submitted for merge, or reported complete. The routing metadata must name the lead agent, supporting agents if any, primary unit, secondary units, follow-up agent suitability, and recommended next owner. Spec-only, runbook-only, and inventory-only PRs must say so explicitly and name the next gate.",
-    "githubHostedActions": "The final 2026-07-09 Git/docs cleanup snapshot runs through PR #435 at 53eb5a10, with GitHub open PR and issue counts 0 and remote heads containing only master. Hosted workflow state should still be checked per future PR/run; use local/manual validation when hosted workflows do not run.",
-    "manualCiFallback": "Use docs/VALIDATION_BASELINE.md and docs/CI_MANUAL_VALIDATION.md for the current manual validation path; historical HP/Aliyun manual CI facts are reference only.",
-    "manualCiIsStaging": false,
-    "cTierCommand": "git diff --check origin/master...HEAD",
-    "bTierServerCommands": [
-      "git diff --check origin/master...HEAD",
-      "npm test"
-    ],
-    "bTierAdminCommands": [
-      "git diff --check origin/master...HEAD",
-      "npm run admin:test",
-      "npm run admin:build",
-      "npm test"
-    ],
-    "projectStateCommand": "npm run project-state:check"
+    "masterAtInventory": "7e9a8667657e5323e09ff7c262da85d26729e69b",
+    "latestCiRun": "29085757610 success",
+    "latestReleaseArtifactRun": "29085757627 success",
+    "projectStateCheck": "required whenever project-state files change",
+    "cTierDiffCheck": "git diff --check origin/master...HEAD"
   },
   "activeBlockers": [
     {
-      "id": "production-artifact-boundary-before-next-deploy",
-      "summary": "SGP Gate 2 promoted a clean artifact built from commit 505eed929e7fb7a3aa72b62ff2da92725891d9c5 plus rebuilt Admin/Portal static assets to the Japan control plane. Future artifacts must still pass the production boundary checker; Singapore runtime files must not be copied back into Git as source. The 2026-06-11 User Portal route hotfix must be folded into the source/artifact line before the next runtime package is cut.",
-      "sourceDoc": "docs/production-replacement-records/2026-06-11-portal-api-agent-route-hotfix.md"
+      "id": "vercel-staged-deployment-proof",
+      "summary": "Issue #457 setting change is complete, but the next real master merge has not yet proven that the new Vercel deployment stays staged while public aliases remain unchanged.",
+      "sourceDoc": "docs/CURRENT_RELEASE_STATE.md"
     },
     {
-      "id": "foundation-freeze-before-next-phase",
-      "summary": "Before the operating lifecycle or AppsFlyer/attribution scale-up phase starts, use the 2026-07-09 foundation freeze as the current boundary: master remains the source baseline, deployment traceability remains source_commit/artifact_or_release/release_unit/Deploy Note based, Admin app/plugin wording is not an enterprise runtime plugin platform, and live provider/runtime/schema/payment changes still need separate gates.",
-      "sourceDoc": "docs/FOUNDATION_FREEZE_2026_07_09.md"
-    },
-    {
-      "id": "control-plane-node-registration-closeout",
-      "summary": "Node image readiness is validated on AWS staging through the GCC-15 aws-node-image-validation-20260614-001 execution record, and synthetic control/data-plane integration is separately validated on AWS staging. Repo-only first-boot packet ingestion records safe registered node facts in the control DB, and protected-material handoff preflight can verify current desired-state material readiness by digest without outputting values through service code and the dry-run operator CLI. The 2026-06-14 production closeout snapshot records Japan current release control-plane-node-registration-closeout-20260614-001 with healthy public/control boundaries and SGP runtime anchors. The GCC-6 production gate package now defines the exact registration-mode, approval, validation, and rollback boundary for one reviewed first-boot packet or reviewed existing node, and the GCC-6 exact-approval readiness checklist separates known local package evidence from live/operator fields that must still be supplied. New node activation, production protected material handoff for new nodes, live order smoke, and broad receipt-gated render activation remain separate Risk A gates.",
-      "sourceDoc": "docs/production-replacement-records/2026-06-14-control-plane-node-registration-production-gate-package.md"
-    },
-    {
-      "id": "sgp-remote-handoff-apply-productization",
-      "summary": "Singapore data-plane runtime can be represented in the Japan control-plane bundle. Japan-to-SGP SSH apply identity, protected material pull/merge source, receipt-gated rendering source, and the 2026-06-14 Japan runtime baseline are now documented. Current read-only evidence shows SGP agent and VLESS/Hy2/TUIC service anchors active. The remaining productization gate is a fresh controlled future-order smoke proving desired-state, material pull/apply, fresh receipts, and six-channel render without sensitive output.",
-      "sourceDoc": "docs/production-replacement-records/2026-06-14-control-plane-node-registration-closeout-execution.md"
-    },
-    {
-      "id": "sgp-protected-material-sync-for-future-orders",
-      "summary": "The old candidate-package-only protected material sync blocker is superseded by the 2026-06-14 runtime baseline snapshot. Keep this lane open only as a validation gate: future-order SGP apply must prove material lookup, controlled apply, fresh receipts, and render unlock on a reviewed order before broader production claims.",
-      "sourceDoc": "docs/production-replacement-records/2026-06-14-control-plane-node-registration-closeout-execution.md"
-    },
-    {
-      "id": "new-order-six-channel-smoke",
-      "summary": "A fresh desktop and mobile new-order smoke must confirm that the rendered subscription bundle includes the intended Vultr Japan and Singapore channels and that client import/proxy behavior is acceptable before broader rollout claims.",
-      "sourceDoc": "docs/production-replacement-records/2026-06-09-vultr-sgp-multichannel-runtime-closeout.md"
-    },
-    {
-      "id": "order-owned-usage-monitor-closure",
-      "summary": "Admin usage monitor and User Portal order summaries now have a basic durable-rollup display path before runtime samples arrive. Admin user-resource supervision can edit delivered-order trafficLimitBytes with safe audit metadata, and Admin traffic/channel supervision now separates platform channel health, usage-ledger filters, historical curves, anomaly queues, receipts/collectors, and order-ledger views. The New Admin management surface is oriented around user accounts, access resources, usage, and anomalies rather than standalone subscription creation. Live runtime sample ingestion, quota enforcement, and auto-disable remain separate gated work.",
+      "id": "traffic-collector-error-provenance",
+      "summary": "Issue #437 has the canonical collector-state contract from PR #441, but current adapters still need safe source-error provenance before protected Admin projection is trustworthy.",
       "sourceDoc": "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md"
     },
     {
-      "id": "admin-console-navigation-ia",
-      "summary": "Admin OS is being treated as a sustainable protected operator console shell, but the current docs/state handoff records it as in-progress/backlog only. Active pages are Operations Overview, Accounts & Resources, and Usage & Channels. Audit & Cases, Platform Development, and System Settings stay locked/planned. GCC-77 System Search safe discovery, GCC-78 workspace layout presets, and GCC-79 capability boundary matrix are merged into master through PR #356, PR #357, and PR #358; GCC-74 app map, GCC-75 manifest authoring, and GCC-82 visual protocol remain docs/design-state references. The current app metadata source of truth is admin/src/app/admin-app-manifest.ts. App Registry/YAML import is future design only and is not an implemented runtime registry or upload flow.",
-      "sourceDoc": "docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md"
+      "id": "runtime-observation-not-performed",
+      "summary": "Runtime Config Identity v1 is offline-only; Japan and Singapore production identities have not been observed or reconciled.",
+      "sourceDoc": "RELEASE_MANIFEST.md"
     },
     {
-      "id": "legacy-query-token-retirement",
-      "summary": "Legacy query-token subscription access remains a separate Risk A lane after opaque artifact coverage, observation, endpoint compatibility checks, rollback evidence, and exact operator approval.",
-      "sourceDoc": "docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md"
-    },
-    {
-      "id": "historical-runtime-lanes-not-current-authority",
-      "summary": "Aliyun, channel-lab-a/b, AWS Singapore prod-edge-a/b, and the single Japan TUIC upgrade runbook are historical or fallback references unless a fresh live inventory and Risk A approval explicitly reactivates them.",
-      "sourceDoc": "docs/README.md"
+      "id": "release-unit-production-reconciliation",
+      "summary": "Company site, Portal, Admin, and subscription-rendering production identities remain incomplete or unknown even though build artifact identity exists for several units.",
+      "sourceDoc": "docs/CURRENT_RELEASE_STATE.md"
     }
   ],
   "nextRecommendedQueue": [
-    "Read docs/FOUNDATION_FREEZE_2026_07_09.md before starting operating lifecycle or AppsFlyer/attribution scale-up work. Keep formal semver, enterprise plugin runtime, provider live activation, schema migration, payment live activation, public Admin exposure, and production runtime mutation behind separate PRs and gates.",
-    "Use docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md before deciding whether a stale branch, old worktree, or July 8 queue item still represents current Git state. PR #364 and PR #381 are closed superseded carrier branches; do not reopen or merge them as-is.",
-    "Re-cut the remaining Admin UI shell / visual QA work from latest master as a focused B-tier PR. Keep payment, Niuniu, protected Admin auth, runtime changes, and docs archive deletion out of that PR.",
-    "Re-cut User Portal UX improvements from latest master after treating #394, #397, #413, #414, #418, #419, and #425 as the current source baseline. Keep payment-provider activation, production static deploy, DNS, Nginx, credentials, tokens, and subscription material out of that PR.",
-    "Split Niuniu/payment into repo-only source/test work first; live provider activation, webhook exposure, provider secrets, checkout activation, and payment notification production behavior remain separate Risk A gates.",
-    "Split Admin protected auth into local source/tests first; public Admin exposure, Nginx changes, runtime env mutation, credential output, and production activation remain separate Risk A gates.",
-    "Handle docs/archive reconciliation as C-tier indexing work only; do not bulk-delete production execution records or treat archived records as current live state.",
-    "Use docs/production-replacement-records/2026-06-14-control-plane-node-registration-production-gate-package.md and docs/production-replacement-records/2026-06-14-control-plane-node-registration-exact-approval-readiness.md as the current GCC-6 package before any production node registration. Treat Japan release control-plane-node-registration-closeout-20260614-001 as the documented current production runtime baseline, subject to live verification before any Risk A task. Future node onboarding still needs a separate exact gate for reviewed first-boot packet ingestion or reviewed existing node binding, protected material handoff, desired-state generation, edge-agent apply receipts, render proof, validation, and rollback.",
-    "Use docs/production-replacement-records/2026-06-13-aws-staging-control-data-plane-integration-validation.md as staging evidence only; production promotion still needs a separate exact Risk A approval with read-only inventory, backup, validation, and rollback.",
-    "Use docs/VULTR_JAPAN_CONTROL_DATA_PLANE_STATUS.md when aligning current docs or preparing the next Risk A gate; do not use historical Aliyun-current wording to override the Vultr Japan/Singapore production lane.",
-    "Before broad SGP future-order rollout claims, run a separately approved controlled smoke against the current Japan runtime baseline: create or reuse exactly one reviewed order, verify SGP desired-state/material pull/apply, post fresh redacted receipts, and prove six-channel render without outputting subscription URLs, tokens, YAML, raw config, or SQLite rows.",
-    "Before the next Vultr production deploy, follow docs/production-replacement-records/2026-06-09-sgp-final-production-closeout-gate.md: run a clean artifact manifest through the production artifact boundary checker and record source commit plus artifact SHA-256.",
-    "Run a fresh no-secrets new-order desktop and mobile smoke only under exact production approval; do not create live orders during repo-only validation.",
-    "Package any local adapter/template changes into an explicit Vultr runtime release only after current repo validation is clean.",
-    "Use the protected remote handoff queue/API for future reviewed SGP handoff summaries, then use a separate Risk A gate for any future production remote apply.",
-    "Continue the Admin OS lane through docs/ADMIN_CONSOLE_REBUILD_BASELINE.md, docs/ADMIN_CONSOLE_NAVIGATION_IA.md, docs/ADMIN_CONSOLE_COMPONENT_FUNCTION_BLUEPRINT.md, docs/ADMIN_CONSOLE_APP_MAP.md, docs/ADMIN_CONSOLE_APP_MANIFEST_AUTHORING_STANDARD.md, and docs/ADMIN_CONSOLE_VISUAL_PROTOCOL.md: keep Operations Overview, Accounts & Resources, and Usage & Channels as the only active pages; keep Audit & Cases, Platform Development, and System Settings locked/planned; use admin/src/app/admin-app-manifest.ts as the current app metadata source of truth; treat App Registry/YAML import as future design only; do not mark uncommitted Admin UI work as delivered until the owning Admin branch closes with validation.",
-    "Keep legacy query-token retirement separate from multichannel rollout; do not combine route removal with artifact issuance or runtime changes.",
-    "Do not mutate DNS, Nginx, provider firewall, runtime service state, account/passwords, payment, live orders, subscription URLs/tokens/passwords, or SQLite rows without exact approval."
+    "Finish the current C-tier project-state reconciliation and review its diff before merge.",
+    "Under a separate exact Risk A approval, merge the reviewed real change and prove Vercel creates a staged deployment without moving public aliases; then close Issue #457.",
+    "Start the Issue #437 collector-error-provenance B-tier slice from the resulting clean master.",
+    "Add the protected read-only collector Admin projection only after provenance tests pass.",
+    "Keep Issues #438 and #439 queued and use Issue #440 only for a measured boundary exposed by active work."
   ],
   "forbiddenInStateFiles": [
     "raw subscription URLs",
@@ -500,7 +227,9 @@
     "private keys",
     "cloud credentials",
     "customer data",
-    "production .env values",
-    "unredacted logs"
+    "production environment values",
+    "unredacted logs",
+    "raw runtime config",
+    "SQLite rows"
   ]
 }

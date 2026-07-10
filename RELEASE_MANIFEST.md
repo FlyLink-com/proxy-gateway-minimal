@@ -3,8 +3,8 @@
 > Status:
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
-> - Last updated: 2026-07-09, America/Los_Angeles
-> - Source inventory baseline: `master` at `4fbe0222`
+> - Last updated: 2026-07-10, America/Los_Angeles
+> - Source inventory baseline: `master` at `7e9a8667`
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
@@ -25,6 +25,22 @@ Source -> Artifact -> Release -> Deployment -> Runtime State
 | Runtime State | What is actually serving now? | Read-only live inventory and runtime validation |
 
 `master` is the trusted source baseline. It is not a production-version claim.
+
+## Deployment Promotion Boundary
+
+Issue #457 records the current company-site promotion boundary. The linked
+Vercel project keeps `master` as its Production Branch but now has automatic
+custom production-domain assignment disabled. Merging source may create a
+production-target candidate; it must not be described as current until the
+public aliases are explicitly promoted and validated.
+
+The setting change itself created no deployment and moved no alias. The next
+real `master` merge must still prove that the resulting deployment remains
+staged while `gccwebos.com` and `www.gccwebos.com` stay on the previously
+approved deployment. Promotion or rollback is a separate exact Risk A gate.
+
+The Cloudflare public-site workflow also keeps repository auto-deploy disabled.
+Build/verification evidence from that workflow is not deployment evidence.
 
 ## Release Units
 
