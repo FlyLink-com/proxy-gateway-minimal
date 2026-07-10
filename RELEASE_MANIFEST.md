@@ -73,6 +73,34 @@ target boundary, validation, and rollback information. Production completion is
 recorded in the related PR Deploy Note; merge status alone never changes
 `production_state`.
 
+## Artifact Manifest v1
+
+The two existing control-plane ZIP workflows generate and upload
+`artifact.json` beside the ZIP and checksum. The manifest contains only the
+portable artifact identity:
+
+```json
+{
+  "schemaVersion": "1",
+  "releaseUnit": "control-plane-app",
+  "sourceCommit": "<full-git-commit>",
+  "release": "<release-label>",
+  "artifact": {
+    "fileName": "<artifact-file-name>",
+    "sha256": "<sha256>",
+    "sizeBytes": 0,
+    "createdAt": "<iso-8601-timestamp>"
+  }
+}
+```
+
+`scripts/create-artifact-manifest.mjs` recognizes the eight fixed release
+units, rejects non-portable source/release metadata, and records only the
+artifact base name rather than a local or host path. Automated workflow
+integration is intentionally limited to `control-plane-app` in v1. Generating
+this file does not deploy or promote the artifact and does not change runtime
+state.
+
 ## Current PR Mapping
 
 This is the compact release view of the detailed capability inventory in
