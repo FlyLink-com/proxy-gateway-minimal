@@ -1,0 +1,299 @@
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync
+} from "node:fs";
+import { dirname, isAbsolute, resolve } from "node:path";
+import { sanitizeTrafficCollectorState } from "./traffic-collector-state.mjs";
+
+const MAX_SNAPSHOT_BYTES = 256 * 1024;
+const AVAILABLE = "available";
+const UNAVAILABLE_STATES = new Set([
+  "not_configured",
+  "not_observed",
+  "invalid_observation"
+]);
+const SAFE_SOURCE_REASON_CODES = new Set([
+  "auth_error",
+  "authentication_failed",
+  "collector_exception",
+  "controller_error",
+  "controller_forbidden",
+  "controller_unauthorized",
+  "credential_binding_missing",
+  "mapping_unresolved",
+  "missing_stats",
+  "node_aggregate_only",
+  "per_credential_usage_entries_required",
+  "runtime_down",
+  "runtime_fetch_failed",
+  "traffic_stats_forbidden",
+  "traffic_stats_unauthorized",
+  "unresolved_binding",
+  "validation_error",
+  "xray_stats_query_failed"
+]);
+
+function projectionError(message) {
+  const error = new Error(message);
+  error.code = "validation_error";
+  return error;
+}
+
+function text(value) {
+  return String(value ?? "").trim();
+}
+
+function nonNegativeInteger(value) {
+  const normalized = Number(value);
+  return Number.isInteger(normalized) && normalized >= 0 ? normalized : 0;
+}
+
+function isoOrNull(value) {
+  const normalized = text(value);
+  if (!normalized) return null;
+  const timestamp = new Date(normalized);
+  return Number.isNaN(timestamp.getTime()) ? null : timestamp.toISOString();
+}
+
+function safety() {
+  return {
+    redacted: true,
+    summaryOnly: true,
+    mutationAllowed: false,
+    rawRuntimePayloadReturned: false,
+    rawConfigReturned: false,
+    rawLogReturned: false,
+    credentialReturned: false,
+    customerDataReturned: false
+  };
+}
+
+function sourceReasonCodes(value) {
+  const codes = Array.isArray(value)
+    ? value.map((entry) => text(entry?.code || entry).toLowerCase())
+    : [];
+  return [...new Set(codes.filter((code) => SAFE_SOURCE_REASON_CODES.has(code)))].sort();
+}
+
+function observability(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const result = {};
+  if (typeof value.statsApiReachable === "boolean") {
+    result.statsApiReachable = value.statsApiReachable;
+  }
+  if (typeof value.userTrafficCountersObserved === "boolean") {
+    result.userTrafficCountersObserved = value.userTrafficCountersObserved;
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+function collectorProjection({ collectorState, blockers, reasonCodes, observability: rawObservability } = {}) {
+  const state = sanitizeTrafficCollectorState(collectorState);
+  if (!state) return null;
+  return {
+    ...state,
+    reasonCodes: sourceReasonCodes(reasonCodes || blockers),
+    observability: observability(rawObservability),
+    safety: { redacted: true }
+  };
+}
+
+function sortCollectors(left, right) {
+  return left.channelRef.localeCompare(right.channelRef)
+    || left.sourceRef.localeCompare(right.sourceRef);
+}
+
+function collectorKey(value) {
+  const channelRef = text(value?.channelRef);
+  const sourceRef = text(value?.sourceRef);
+  return channelRef && sourceRef ? `${channelRef}\u0000${sourceRef}` : "";
+}
+
+function preserveLastCollectorSuccess(projection, previous) {
+  if (previous?.availability !== AVAILABLE) return projection;
+  const previousSuccessByCollector = new Map(
+    previous.collectors
+      .map((collector) => [collectorKey(collector), isoOrNull(collector.lastCollectorSuccessAt)])
+      .filter(([key, timestamp]) => key && timestamp)
+  );
+  return {
+    ...projection,
+    collectors: projection.collectors.map((collector) => {
+      if (collector.lastCollectorSuccessAt) return collector;
+      const previousSuccess = previousSuccessByCollector.get(collectorKey(collector));
+      return previousSuccess
+        ? { ...collector, lastCollectorSuccessAt: previousSuccess }
+        : collector;
+    })
+  };
+}
+
+export function createUnavailableTrafficCollectorAdminProjection(availability = "invalid_observation") {
+  const normalized = UNAVAILABLE_STATES.has(availability) ? availability : "invalid_observation";
+  return {
+    type: "traffic_collector_admin_projection",
+    schemaVersion: "1",
+    availability: normalized,
+    observedAt: null,
+    run: null,
+    accounting: null,
+    collectors: [],
+    omittedCollectorCount: 0,
+    safety: safety()
+  };
+}
+
+export function buildTrafficCollectorAdminProjection({ summary, observedAt } = {}) {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+    throw projectionError("traffic collector summary is required");
+  }
+  if (text(summary.type) !== "traffic_usage_collect_once") {
+    throw projectionError("traffic collector summary type is invalid");
+  }
+  const safeObservedAt = isoOrNull(observedAt);
+  if (!safeObservedAt) {
+    throw projectionError("observedAt must be a valid ISO timestamp");
+  }
+
+  const reports = Array.isArray(summary.reports) ? summary.reports : [];
+  const collectors = reports
+    .map((report) => collectorProjection({
+      collectorState: report?.collectorState,
+      blockers: report?.blockers,
+      observability: report?.observability
+    }))
+    .filter(Boolean)
+    .sort(sortCollectors);
+  const unresolvedCount = nonNegativeInteger(summary.unresolvedCount);
+
+  return {
+    type: "traffic_collector_admin_projection",
+    schemaVersion: "1",
+    availability: AVAILABLE,
+    observedAt: safeObservedAt,
+    run: {
+      runOk: summary.ok === true,
+      rawReportOk: summary.rawReportOk === true,
+      collectorCount: nonNegativeInteger(summary.collectorCount),
+      idleCollectorCount: nonNegativeInteger(summary.idleCollectorCount)
+    },
+    accounting: {
+      recordingOk: unresolvedCount === 0,
+      observationCount: nonNegativeInteger(summary.observationCount),
+      recordedCount: nonNegativeInteger(summary.recordedCount),
+      insertedCount: nonNegativeInteger(summary.insertedCount),
+      unresolvedCount
+    },
+    collectors,
+    omittedCollectorCount: reports.length - collectors.length,
+    safety: safety()
+  };
+}
+
+export function sanitizeTrafficCollectorAdminProjection(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return createUnavailableTrafficCollectorAdminProjection("invalid_observation");
+  }
+  if (value.availability !== AVAILABLE) {
+    return createUnavailableTrafficCollectorAdminProjection(value.availability);
+  }
+  if (text(value.type) !== "traffic_collector_admin_projection" || text(value.schemaVersion) !== "1") {
+    return createUnavailableTrafficCollectorAdminProjection("invalid_observation");
+  }
+  const observedAt = isoOrNull(value.observedAt);
+  if (!observedAt || !value.run || !value.accounting) {
+    return createUnavailableTrafficCollectorAdminProjection("invalid_observation");
+  }
+
+  const rawCollectors = Array.isArray(value.collectors) ? value.collectors : [];
+  const collectors = rawCollectors
+    .map((entry) => collectorProjection({
+      collectorState: entry,
+      reasonCodes: entry?.reasonCodes,
+      observability: entry?.observability
+    }))
+    .filter(Boolean)
+    .sort(sortCollectors);
+  const unresolvedCount = nonNegativeInteger(value.accounting.unresolvedCount);
+
+  return {
+    type: "traffic_collector_admin_projection",
+    schemaVersion: "1",
+    availability: AVAILABLE,
+    observedAt,
+    run: {
+      runOk: value.run.runOk === true,
+      rawReportOk: value.run.rawReportOk === true,
+      collectorCount: nonNegativeInteger(value.run.collectorCount),
+      idleCollectorCount: nonNegativeInteger(value.run.idleCollectorCount)
+    },
+    accounting: {
+      recordingOk: value.accounting.recordingOk === true && unresolvedCount === 0,
+      observationCount: nonNegativeInteger(value.accounting.observationCount),
+      recordedCount: nonNegativeInteger(value.accounting.recordedCount),
+      insertedCount: nonNegativeInteger(value.accounting.insertedCount),
+      unresolvedCount
+    },
+    collectors,
+    omittedCollectorCount: nonNegativeInteger(value.omittedCollectorCount)
+      + (rawCollectors.length - collectors.length),
+    safety: safety()
+  };
+}
+
+export function createFileTrafficCollectorStatusStore({ filePath } = {}) {
+  const normalizedPath = text(filePath);
+  if (!normalizedPath || !isAbsolute(normalizedPath)) {
+    throw projectionError("traffic collector status file path must be absolute");
+  }
+  const resolvedPath = resolve(normalizedPath);
+
+  function read() {
+    if (!existsSync(resolvedPath)) {
+      return createUnavailableTrafficCollectorAdminProjection("not_observed");
+    }
+    try {
+      if (statSync(resolvedPath).size > MAX_SNAPSHOT_BYTES) {
+        return createUnavailableTrafficCollectorAdminProjection("invalid_observation");
+      }
+      const payload = readFileSync(resolvedPath, "utf8");
+      if (Buffer.byteLength(payload, "utf8") > MAX_SNAPSHOT_BYTES) {
+        return createUnavailableTrafficCollectorAdminProjection("invalid_observation");
+      }
+      return sanitizeTrafficCollectorAdminProjection(JSON.parse(payload));
+    } catch {
+      return createUnavailableTrafficCollectorAdminProjection("invalid_observation");
+    }
+  }
+
+  function write(input = {}) {
+    const projection = preserveLastCollectorSuccess(
+      buildTrafficCollectorAdminProjection(input),
+      read()
+    );
+    mkdirSync(dirname(resolvedPath), { recursive: true, mode: 0o700 });
+    const temporaryPath = `${resolvedPath}.${process.pid}.tmp`;
+    try {
+      writeFileSync(temporaryPath, `${JSON.stringify(projection, null, 2)}\n`, { mode: 0o600 });
+      chmodSync(temporaryPath, 0o600);
+      renameSync(temporaryPath, resolvedPath);
+      chmodSync(resolvedPath, 0o600);
+    } catch (error) {
+      try {
+        if (existsSync(temporaryPath)) unlinkSync(temporaryPath);
+      } catch {
+        // Preserve the original write failure without exposing cleanup details.
+      }
+      throw error;
+    }
+    return projection;
+  }
+
+  return { read, write };
+}

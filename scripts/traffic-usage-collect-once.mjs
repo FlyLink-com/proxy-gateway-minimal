@@ -169,7 +169,8 @@ export async function runTrafficUsageCollectOnce({
   env = process.env,
   stdout = process.stdout,
   stderr = process.stderr,
-  runtimeStateFactory = createRuntimeState
+  runtimeStateFactory = createRuntimeState,
+  nowFn = () => new Date()
 } = {}) {
   const mode = argv.includes("--collect") ? "collect" : "check";
   let state;
@@ -206,6 +207,25 @@ export async function runTrafficUsageCollectOnce({
   const summary = summarizeUsageAccountingReport(report, {
     unresolvedPolicy: "tolerate_unresolved_bindings"
   });
+  const statusStore = state.platform?.trafficCollectorStatusStore;
+  if (statusStore && typeof statusStore.write === "function") {
+    try {
+      const now = nowFn();
+      const observedAt = (now instanceof Date ? now : new Date(now)).toISOString();
+      statusStore.write({ summary, observedAt });
+    } catch {
+      stderr.write(`${JSON.stringify({
+        type: "traffic_collector_status_snapshot",
+        ok: false,
+        error: "status_snapshot_write_failed",
+        safety: {
+          redacted: true,
+          pathReturned: false,
+          rawErrorReturned: false
+        }
+      })}\n`);
+    }
+  }
   stdout.write(`${JSON.stringify(summary)}\n`);
   return summary.ok ? 0 : 1;
 }
