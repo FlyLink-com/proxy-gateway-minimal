@@ -13,7 +13,8 @@ import test from "node:test";
 import { createApp } from "../app.mjs";
 import {
   buildTrafficCollectorAdminProjection,
-  createFileTrafficCollectorStatusStore
+  createFileTrafficCollectorStatusStore,
+  sanitizeTrafficCollectorAdminProjection
 } from "../services/platform/traffic-collector-admin-projection.mjs";
 import { listen } from "./helpers/listen.mjs";
 
@@ -231,6 +232,24 @@ test("collector status store preserves the last success time across a later fail
     assert.equal(projection.collectors[0].lastCollectorSuccessAt, "2026-07-10T12:54:59.000Z");
   } finally {
     rmSync(dir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("collector Admin projection rejects malformed available snapshot containers", () => {
+  const projection = buildTrafficCollectorAdminProjection({
+    summary: collectorSummary(),
+    observedAt: OBSERVED_AT
+  });
+
+  for (const malformed of [
+    { ...projection, run: [] },
+    { ...projection, accounting: [] },
+    { ...projection, collectors: {} }
+  ]) {
+    const sanitized = sanitizeTrafficCollectorAdminProjection(malformed);
+    assert.equal(sanitized.availability, "invalid_observation");
+    assert.equal(sanitized.observedAt, null);
+    assert.deepEqual(sanitized.collectors, []);
   }
 });
 

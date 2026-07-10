@@ -49,6 +49,10 @@ function text(value) {
   return String(value ?? "").trim();
 }
 
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
 function nonNegativeInteger(value) {
   const normalized = Number(value);
   return Number.isInteger(normalized) && normalized >= 0 ? normalized : 0;
@@ -150,7 +154,7 @@ export function createUnavailableTrafficCollectorAdminProjection(availability = 
 }
 
 export function buildTrafficCollectorAdminProjection({ summary, observedAt } = {}) {
-  if (!summary || typeof summary !== "object" || Array.isArray(summary)) {
+  if (!isRecord(summary)) {
     throw projectionError("traffic collector summary is required");
   }
   if (text(summary.type) !== "traffic_usage_collect_once") {
@@ -197,7 +201,7 @@ export function buildTrafficCollectorAdminProjection({ summary, observedAt } = {
 }
 
 export function sanitizeTrafficCollectorAdminProjection(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
+  if (!isRecord(value)) {
     return createUnavailableTrafficCollectorAdminProjection("invalid_observation");
   }
   if (value.availability !== AVAILABLE) {
@@ -207,7 +211,12 @@ export function sanitizeTrafficCollectorAdminProjection(value) {
     return createUnavailableTrafficCollectorAdminProjection("invalid_observation");
   }
   const observedAt = isoOrNull(value.observedAt);
-  if (!observedAt || !value.run || !value.accounting) {
+  if (
+    !observedAt
+    || !isRecord(value.run)
+    || !isRecord(value.accounting)
+    || !Array.isArray(value.collectors)
+  ) {
     return createUnavailableTrafficCollectorAdminProjection("invalid_observation");
   }
 
