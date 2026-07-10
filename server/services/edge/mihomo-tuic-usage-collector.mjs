@@ -1,3 +1,5 @@
+import { safeUsageCollectorFailure } from "./usage-collector-failure.mjs";
+
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 function collectorError(code, message) {
@@ -140,19 +142,34 @@ function normalizeEntry(entry, index, snapshot) {
 
 export function createMihomoTuicUsageCollector({
   channelRef,
+  sourceRef = "mihomo_usage_snapshot",
   snapshotReader,
   nowFn = defaultNow
 } = {}) {
   const safeChannelRef = safeRef(channelRef, "channelRef");
+  const safeSourceRef = safeRef(sourceRef, "sourceRef");
   if (typeof snapshotReader !== "function") {
     throw collectorError("validation_error", "snapshotReader is required");
   }
 
   async function collect({ since } = {}) {
-    const source = await snapshotReader({
-      channelRef: safeChannelRef,
-      since
-    });
+    let source;
+    try {
+      source = await snapshotReader({
+        channelRef: safeChannelRef,
+        since
+      });
+    } catch (error) {
+      const failure = safeUsageCollectorFailure({
+        error,
+        sourceRef: safeSourceRef,
+        channelRef: safeChannelRef,
+        target: "snapshotReader",
+        nextAction: "review_mihomo_usage_source_failure"
+      });
+      if (failure) return failure;
+      throw error;
+    }
 
     let snapshot;
     try {
@@ -163,7 +180,7 @@ export function createMihomoTuicUsageCollector({
       });
     } catch (error) {
       return validationFailure({
-        sourceRef: "mihomo_usage_snapshot",
+        sourceRef: safeSourceRef,
         channelRef: safeChannelRef,
         error
       });

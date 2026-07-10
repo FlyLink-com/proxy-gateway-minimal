@@ -1,3 +1,5 @@
+import { safeUsageCollectorFailure } from "./usage-collector-failure.mjs";
+
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 function collectorError(code, message) {
@@ -123,12 +125,28 @@ export function createHysteria2UsageCollector({
       intervalEndedAt: observedAt
     };
 
-    let statsMap;
+    let source;
     try {
-      statsMap = readStatsMap(await trafficReader({
+      source = await trafficReader({
         channelRef: safeChannelRef,
         clear: true
-      }));
+      });
+    } catch (error) {
+      const failure = safeUsageCollectorFailure({
+        error,
+        sourceRef: snapshot.sourceRef,
+        channelRef: safeChannelRef,
+        target: "trafficReader",
+        nextAction: "review_hysteria2_usage_source_failure",
+        accountingMode: "delta"
+      });
+      if (failure) return failure;
+      throw error;
+    }
+
+    let statsMap;
+    try {
+      statsMap = readStatsMap(source);
     } catch (error) {
       return validationFailure({
         sourceRef: snapshot.sourceRef,

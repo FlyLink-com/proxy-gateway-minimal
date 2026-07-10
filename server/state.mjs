@@ -139,6 +139,12 @@ function runtimeValidationError(message) {
   return error;
 }
 
+function runtimeUsageError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
 function createOptionalPortalTotpSecretProtector(value) {
   const key = optionalEnvText(value);
   if (!key) {
@@ -306,6 +312,7 @@ function createMihomoUsageSourceConfigs(env = {}) {
   );
   if (configuredSources.length > 0) {
     return configuredSources.map((source, index) => ({
+      sourceRef: optionalEnvText(source.sourceRef || source.id) || `mihomo_usage_source_${index + 1}`,
       controllerUrl: optionalEnvText(source.controllerUrl || source.url),
       metricsPath: source.metricsPath,
       controllerSecret: optionalEnvText(source.controllerSecret)
@@ -325,6 +332,7 @@ function createMihomoUsageSourceConfigs(env = {}) {
     return [];
   }
   return [{
+    sourceRef: "",
     controllerUrl,
     metricsPath: env.EDGE_MIHOMO_USAGE_METRICS_PATH || env.EDGE_MIHOMO_EXTERNAL_CONTROLLER_METRICS_PATH,
     controllerSecret: firstOptionalEnvText(
@@ -385,11 +393,26 @@ function createHysteria2TrafficStatsReader({
     if (statsSecret) {
       headers.Authorization = statsSecret;
     }
-    const response = await fetchFn(url, { headers });
-    if (!response?.ok) {
-      throw runtimeValidationError("Hysteria2 traffic stats API request failed");
+    let response;
+    try {
+      response = await fetchFn(url, { headers });
+    } catch {
+      throw runtimeUsageError("runtime_fetch_failed", "Hysteria2 traffic stats API request failed");
     }
-    return await response.json();
+    if (response?.status === 401) {
+      throw runtimeUsageError("traffic_stats_unauthorized", "Hysteria2 traffic stats API request failed");
+    }
+    if (response?.status === 403) {
+      throw runtimeUsageError("traffic_stats_forbidden", "Hysteria2 traffic stats API request failed");
+    }
+    if (!response?.ok) {
+      throw runtimeUsageError("runtime_fetch_failed", "Hysteria2 traffic stats API request failed");
+    }
+    try {
+      return await response.json();
+    } catch {
+      throw runtimeValidationError("Hysteria2 traffic stats API response must be JSON");
+    }
   };
 }
 
@@ -524,21 +547,13 @@ function createEnvEdgeUsageCollectors({
         && (allowedChannelRefs.size === 0 || allowedChannelRefs.has(channelRef))
         && (allowedMihomoUsageChannelRefs.size === 0 || allowedMihomoUsageChannelRefs.has(channelRef))
       );
-    const fetchJson = typeof fetchFn === "function"
-      ? async ({ url, headers }) => {
-        const response = await fetchFn(url, { headers });
-        if (!response?.ok) {
-          throw runtimeValidationError("Mihomo usage controller request failed");
-        }
-        return await response.json();
-      }
-      : undefined;
     const snapshotReader = createMihomoExternalControllerUsageSnapshotReader({
       controllerUrl: mihomoUsageSource.controllerUrl,
       metricsPath: mihomoUsageSource.metricsPath,
+      sourceRef: mihomoUsageSource.sourceRef || undefined,
       controllerSecret: mihomoUsageSource.controllerSecret,
       credentialRefByRuntimeUser: createMihomoUsageCredentialMap(env, mihomoUsageSource),
-      fetchJson,
+      fetchFn,
       nowFn
     });
 
@@ -546,6 +561,7 @@ function createEnvEdgeUsageCollectors({
       channelRef,
       ...createMihomoTuicUsageCollector({
         channelRef,
+        sourceRef: mihomoUsageSource.sourceRef || undefined,
         snapshotReader,
         nowFn
       })

@@ -14,6 +14,26 @@ test("Xray stats CLI usage reader rejects non-loopback stats servers", () => {
   }), /statsServer must be a host:port pair/);
 });
 
+test("Xray stats CLI usage reader emits a redacted query failure class", async () => {
+  const reader = createXrayStatsCliUsageSnapshotReader({
+    statsServer: "127.0.0.1:10085",
+    commandRunner: () => ({
+      exitCode: 1,
+      stdout: "private stats payload must not leak",
+      stderr: "private runtime path must not leak"
+    })
+  });
+
+  await assert.rejects(
+    () => reader(),
+    (error) => {
+      assert.equal(error.code, "xray_stats_query_failed");
+      assert.doesNotMatch(error.message, /private stats payload|private runtime path/i);
+      return true;
+    }
+  );
+});
+
 test("Xray stats CLI usage reader maps user traffic counters by edge credential ref", async () => {
   const calls = [];
   const reader = createXrayStatsCliUsageSnapshotReader({
