@@ -113,6 +113,41 @@ for source `4fbe022264e30acd9e487dd880b7d4ed544be259`. Its uploaded ZIP, checksu
 sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size,
 and UTC creation time, and the manifest contained no downloaded absolute path.
 
+## Runtime Config Identity v1
+
+Runtime Config Identity is an observation artifact, not an application build,
+deployment event, promotion record, or service-health report. The v1 contract is
+defined by `schemas/runtime-config-identity-v1.schema.json` and contains only:
+
+```json
+{
+  "schemaVersion": "1",
+  "releaseUnit": "japan-runtime-config",
+  "observedAt": "<explicit-utc-timestamp>",
+  "components": [
+    {
+      "name": "xray-config",
+      "sha256": "<sha256>"
+    }
+  ]
+}
+```
+
+`scripts/generate-runtime-identity.mjs` accepts only
+`japan-runtime-config` or `sgp-runtime-config`, requires an explicit
+`observedAt`, rejects duplicate or non-portable logical component names, hashes
+the exact local input bytes, and sorts components by name. The generated JSON
+does not contain input paths, raw config, environment values, logs, process or
+service state, secrets, or deployment state. CLI success and failure summaries
+also omit paths and input content.
+
+The generator is offline-only. It does not read environment variables, connect
+to a host or cloud API, deploy, restart services, or reconcile production.
+Synthetic fixtures are test inputs only. Generated `runtime-identities/` output
+is ignored and must not be committed as current production evidence. A real
+Japan or SGP observation remains a separate Risk A read-only action with its own
+approval and execution evidence.
+
 ## Current PR Mapping
 
 This is the compact release view of the detailed capability inventory in
