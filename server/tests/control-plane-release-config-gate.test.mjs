@@ -245,6 +245,28 @@ test("gate rejects unsafe release and relative-path boundaries", (t) => {
     assert.equal(JSON.parse(result.stderr).condition, condition, name);
     assert.equal(result.stderr.includes(paths.root), false, name);
   }
+
+  for (const [name, releaseKey] of [
+    ["manifest inside active release", "activeRelease"],
+    ["manifest inside candidate release", "candidateRelease"]
+  ]) {
+    const boundaryPaths = fixture(t);
+    boundaryPaths.manifestPath = join(
+      boundaryPaths[releaseKey],
+      "protected",
+      "release-assembly.json"
+    );
+    const candidateBefore = readFileSync(boundaryPaths.candidateConfig);
+
+    const result = applyOverlay(boundaryPaths);
+
+    assert.equal(result.status, 1, name);
+    assert.equal(result.stdout, "", name);
+    assert.equal(JSON.parse(result.stderr).condition, "manifest_boundary_invalid", name);
+    assert.deepEqual(readFileSync(boundaryPaths.candidateConfig), candidateBefore, name);
+    assert.equal(existsSync(boundaryPaths.manifestPath), false, name);
+    assert.equal(result.stderr.includes(boundaryPaths.root), false, name);
+  }
 });
 
 test("gate resolves the active current link and rejects a linked candidate release", (t) => {

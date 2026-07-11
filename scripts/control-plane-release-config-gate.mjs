@@ -202,6 +202,8 @@ function releaseContext({
   if (
     comparablePath(assemblyManifest) === comparablePath(activeConfig)
     || comparablePath(assemblyManifest) === comparablePath(candidateConfig)
+    || isWithin(activeRoot.path, assemblyManifest)
+    || isWithin(candidateRoot.path, assemblyManifest)
   ) {
     fail("manifest_boundary_invalid");
   }
