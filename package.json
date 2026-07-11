@@ -92,6 +92,8 @@
     "project:verify:admin": "node bin/gccgw.mjs project verify --with-admin",
     "project:architecture": "node bin/gccgw.mjs architecture",
     "project:docs": "node bin/gccgw.mjs docs list",
+    "release:config:prepare": "node scripts/control-plane-release-config-gate.mjs --mode prepare",
+    "release:config:verify": "node scripts/control-plane-release-config-gate.mjs --mode verify",
     "promotion:health-gate": "node scripts/control-plane-promotion-health-gate.mjs",
     "agent:brief": "node scripts/agent-brief.mjs",
     "precommit:check": "node scripts/precommit-check.mjs",
