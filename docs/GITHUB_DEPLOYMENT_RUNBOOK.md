@@ -1,6 +1,6 @@
 # GitHub Deployment Runbook
 
-Last updated: 2026-06-13, Asia/Shanghai.
+Last updated: 2026-07-11, America/Los_Angeles.
 
 This runbook defines the repository-owned GitHub deployment foundation for
 `proxy-gateway-minimal`. It is not a production approval. Production host,
@@ -84,6 +84,51 @@ Minimum future steps:
 8. Validate health, public boundaries, internal route rejection, no-session API
    rejection, and data-plane listener/readiness checks.
 9. Roll back automatically if validation fails.
+
+### Condition-Driven Promotion Health Window
+
+`npm run promotion:health-gate -- ...` provides a read-only acceptance window
+for the Japan control-plane service. It does not switch a release, restart a
+service, or perform rollback. Those mutations remain in the separately
+approved Risk A Change Record.
+
+The script is standalone and may be streamed through Node stdin by that exact
+Risk A execution without installing a file on the host. This transport does
+not authorize reuse of a previously rolled-back release. After this capability
+is merged, a production attempt must reference a new reviewed artifact built
+from the resulting `master` commit.
+
+The gate replaces a one-shot public health request with these conditions:
+
+1. `proxy-gateway-candidate.service` is active/running and its process working
+   directory resolves to the expected immutable release.
+2. `NRestarts` remains equal to the pre-switch baseline; any change rejects the
+   promotion attempt immediately.
+3. Loopback `/api/health` returns 200 for three consecutive probes.
+4. Only after loopback readiness, the public
+   `https://portal.gccwebos.com/api/health` route returns 200 for two
+   consecutive probes.
+5. The default deadline is 60 seconds with a two-second interval. Reaching the
+   deadline returns a non-zero exit code for the approved outer rollback path.
+   Every systemd and HTTP probe timeout is capped to the remaining deadline
+   budget, and a probe completing after the deadline cannot validate the
+   promotion.
+
+Example invocation inside an already approved production attempt:
+
+```bash
+npm run promotion:health-gate -- \
+  --expected-release "$EXPECTED_RELEASE" \
+  --restart-baseline "$PRE_SWITCH_NRESTARTS" \
+  --local-health-url "$PROTECTED_LOOPBACK_HEALTH_URL" \
+  --public-health-url https://portal.gccwebos.com/api/health
+```
+
+The JSON result contains only release identity, elapsed time, probe counts,
+HTTP status codes, readiness booleans, and restart-count delta. It never emits
+the supplied URLs, response bodies, command stderr, environment values, or
+raw service logs. A successful gate is acceptance evidence only; it does not
+itself declare or perform production promotion.
 
 ## Secret Boundary
 
