@@ -1,6 +1,6 @@
 # Environment Topology
 
-Last updated: 2026-07-07, America/Los_Angeles.
+Last updated: 2026-07-11, America/Los_Angeles.
 
 This document defines the operating map for the subscription management
 project. Use it to avoid mixing local Codex projects, historical repository
@@ -192,11 +192,12 @@ gh pr list --repo gaoyi1020-web/proxy-gateway-minimal --state open
 
 Vultr:
 
-```powershell
-$env:VULTR_API_KEY = [Environment]::GetEnvironmentVariable("VULTR_API_KEY", "User")
-vultr-cli instances list
-vultr-cli firewall group list
-```
+Interactive or Agent-assisted Vultr inventory must follow
+`docs/INFRASTRUCTURE_ACCESS_RULE.md`. Do not recover `VULTR_API_KEY` from a
+persistent CurrentUser or LocalMachine environment variable. Complete
+credential-free network and CLI prechecks first, then use only the exact
+ephemeral credential source, target, and read-only command allowlist approved
+by a fresh Risk A Gate.
 
 Cloudflare public-site validation:
 

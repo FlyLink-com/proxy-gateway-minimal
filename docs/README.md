@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-07-10, America/Los_Angeles.
+Last updated: 2026-07-11, America/Los_Angeles.
 
 Use this file as the first navigation point for project documentation. It
 classifies current source-of-truth docs, active runbooks, execution records,
@@ -186,6 +186,7 @@ Check structured state with `npm run project-state:check`.
 
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
+| `docs/INFRASTRUCTURE_ACCESS_RULE.md` | Provider credential, exact-command, ephemeral process injection, redacted output, cleanup, and stopped-Gate rules for interactive or Agent-assisted infrastructure access. | Active governance rule; no provider credential, inventory, mutation, production, or runtime authority by itself. | Read before any Agent-assisted Vultr, AWS, Cloudflare, Vercel, DNS-provider, or other infrastructure control-plane access. |
 | `docs/PRODUCTION_DR.md` | Single-node production disaster recovery, hard-stop rules, read-only inventory, backup/restore, validation, and incident template. | Active Risk A runbook; does not authorize mutation by itself. | Read before incident recovery, backup/restore, or production DR action. |
 | `docs/PRODUCTION_REPLACEMENT.md` | Blue-green replacement gate: keep blue serving, create and validate green, decide cutover, preserve rollback. | Active Risk A runbook; does not authorize green creation by itself. | Read before planning a production replacement candidate. |
 | `docs/PRODUCTION_EDGE_FLEET.md` | Provider-neutral production edge fleet plan for `prod-edge-a`, `prod-edge-b`, and future `prod-edge-c`, including the now-terminated AWS carrying instances and future clean-edge model. | Active Risk A planning document; no execution authority. | Read before preparing clean edge capacity, rebuilding a node slot, changing static subscription output, or preparing third-node standby materials. |
