@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "2026-07-10.3",
-  "lastUpdated": "2026-07-10",
+  "schemaVersion": "2026-07-11.1",
+  "lastUpdated": "2026-07-11",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current lane index for Phase 2. Historical lanes remain in Git history and indexed execution records, not in the active Agent queue.",
@@ -17,9 +17,9 @@
     {
       "id": "version-management",
       "name": "Version And Deployment Governance",
-      "status": "active-proof",
+      "status": "baseline-stable",
       "riskBoundary": "C for source-state records and artifact contracts; A for deployment, promotion, rollback, or production observation",
-      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Issue #457 closed the Vercel boundary; Issue #462 changed Cloudflare native master builds to version upload and awaits one active-deployment proof.",
+      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Issues #457 and #462 closed the Vercel and Cloudflare merge-versus-promotion proofs; PRs #467 and #468 add source-only promotion and release-preparation gates.",
       "primaryDocs": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -41,9 +41,9 @@
     {
       "id": "traffic-accounting",
       "name": "Traffic Accounting",
-      "status": "queued-behind-issue-462-proof",
+      "status": "active-controlled-remediation",
       "riskBoundary": "B for collector contracts, redacted provenance, tests, and protected read-only projection; A for runtime, service, config, quota, or traffic-supply mutation",
-      "purpose": "Complete Issue #437. PRs #441, #459, and #460 provide the canonical state, safe provenance, and protected read model; Japan TUIC map verification and SGP TUIC sidecar status producers remain.",
+      "purpose": "Complete Issue #437. Canonical state, safe provenance, protected projection, status producers, Evidence Runtime activation, read-only reconciliation, and the Identity Gate are complete. Japan TUIC identity sync remains degraded; additive repair is source-only and map apply has not started.",
       "primaryDocs": [
         "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
         "docs/CURRENT_RELEASE_STATE.md"

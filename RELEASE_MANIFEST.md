@@ -3,8 +3,8 @@
 > Status:
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
-> - Last updated: 2026-07-10, America/Los_Angeles
-> - Source inventory baseline: `master` at `20f8345d`
+> - Last updated: 2026-07-11, America/Los_Angeles
+> - Source inventory baseline: `master` at `e1beacc1`
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
@@ -30,14 +30,16 @@ Source -> Artifact -> Release -> Deployment -> Runtime State
 
 Closed Issue #457 records the proven company-site promotion boundary. The
 linked Vercel project keeps `master` as its Production Branch and has automatic
-custom production-domain assignment disabled. Real merges #458 through #461
-created production-target candidates without moving the public custom aliases.
+custom production-domain assignment disabled. Real merges through #468 created
+production-target candidates without moving the public custom aliases.
 
-The latest observed candidate is READY as Vercel deployment
-`dpl_Fy7at228XHgWE1p2T5ZpCoa97HS1`, GitHub deployment `5392379943`, for source
-`20f8345dd1e6d09dd1a816634aa8f29c5312fd0c`. It has
+The latest observed candidate is READY at
+`proxy-gateway-minimal-l4wfa6q0h-gccltd.vercel.app`, GitHub deployment
+`5403913679`, for source
+`e1beacc15fdc35661077cd3387f3ba17a3966e1a`. It has
 `production_environment=false` and did not receive `gccwebos.com` or
-`www.gccwebos.com`. Both public aliases remained on GitHub deployment
+`www.gccwebos.com`. Both public aliases remain on deployment
+`proxy-gateway-minimal-hqdudl13g-gccltd.vercel.app`, GitHub deployment
 `5389897330`, sourced from `7e9a8667657e5323e09ff7c262da85d26729e69b`.
 Promotion or rollback remains a separate exact Risk A gate.
 
@@ -50,9 +52,13 @@ with no custom domains.
 
 The approved Issue #462 gate changed only that trigger's deploy command from
 `npx wrangler deploy` to `npx wrangler versions upload`. The setting change
-created no build, version, or deployment and left the active identity unchanged.
-This establishes the intended build-and-version boundary, but the Issue remains
-open until a reviewed `master` merge proves that no active promotion occurs.
+created no build, version, or deployment, and the #463 merge then proved that a
+reviewed `master` merge saves a version without promoting it. Issue #462 is
+closed. The #468 merge created saved candidate version
+`407eb863-0e82-4e73-af54-3a44722b07c9` in build
+`f186b7d5-533c-4f5b-b056-27777243d93f`; the active deployment identity was not
+independently re-read during this C-tier reconciliation. Promotion remains a
+separate exact Risk A action.
 
 ## Release Units
 
@@ -175,8 +181,8 @@ sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size
 and UTC creation time, and the manifest contained no downloaded absolute path.
 
 The latest verified `master` proof at this inventory cutoff is Release Artifact
-run `29097381774` for source
-`20f8345dd1e6d09dd1a816634aa8f29c5312fd0c`. It completed the control-plane,
+run `29153679403` for source
+`e1beacc15fdc35661077cd3387f3ba17a3966e1a`. It completed the control-plane,
 Portal, and Admin artifact jobs. This is build evidence, not production
 promotion evidence.
 
@@ -218,27 +224,29 @@ approval and execution evidence.
 ## Current PR Mapping
 
 This is the current compact view of the ten most recently merged PRs at source
-baseline `20f8345d`. The detailed
+baseline `e1beacc1`. The detailed
 `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md` is a frozen historical snapshot
 and is not appended with later PRs.
 
 | PR | Capability | Source commit | Release unit | Release assignment | Production state |
 | --- | --- | --- | --- | --- | --- |
-| #446 | `version-management-baseline-v2@v1` | `b1bec5b0` | `none` | Governance baseline only | `not_applicable` |
-| #448 | `portal-static-artifact-generation@v1` | `4b5bc143` | `portal-static` | Artifact built; no promotion | `not_deployed` |
-| #450 | `artifact-upload-action-v7@v1` | `255a0822` | `none` | CI maintenance only | `not_applicable` |
-| #452 | `admin-static-artifact-generation@v1` | `18807285` | `admin-static` | Artifact built; no promotion | `not_deployed` |
-| #454 | `artifact-coverage-reconciliation@v1` | `65f8515e` | `none` | Governance reconciliation only | `not_applicable` |
-| #456 | `runtime-config-identity-generation@v1` | `7e9a8667` | `none` | Offline observation tooling only | `not_applicable` |
-| #458 | `phase-2-project-state-reconciliation@v1` | `3013e8f9` | `none` | Source reconciliation; Vercel candidate remained staged | `not_deployed` |
-| #459 | `collector-error-provenance@v1` | `72e98096` | `control-plane-app` | Unassigned | `not_deployed` |
-| #460 | `protected-admin-collector-projection@v1` | `9aa1561e` | `control-plane-app` | Unassigned | `not_deployed` |
+| #458 | `phase-2-project-state-reconciliation@v1` | `3013e8f9` | `none` | Source reconciliation; Vercel candidate remained staged | `not_applicable` |
+| #459 | `collector-error-provenance@v1` | `72e98096` | `control-plane-app` | Included in `phase2-control-plane-artifact-alignment-20260710-001` | `deployed` |
+| #460 | `protected-admin-collector-projection@v1` | `9aa1561e` | `control-plane-app` | Included in `phase2-control-plane-artifact-alignment-20260710-001` | `deployed` |
 | #461 | `release-ledger-reconciliation@v1` | `20f8345d` | `none` | Governance reconciliation only | `not_applicable` |
+| #463 | `cloudflare-promotion-boundary-reconciliation@v1` | `8c7ad033` | `none` | Provider boundary recorded; Issue #462 closed after proof | `not_applicable` |
+| #464 | `traffic-status-producers@v1` | `9bc03b41` | `control-plane-app` | Deployed in `phase2-control-plane-artifact-alignment-20260710-001`; Evidence Runtime activated separately | `deployed` |
+| #465 | `runtime-identity-sync-gate@v1` | `2a091d51` | `none` | Governance definition only | `not_applicable` |
+| #466 | `tuic-additive-map-repair@v1` | `8c769586` | `control-plane-app` | Promotion attempts rolled back; current production pointer unchanged | `not_deployed` |
+| #467 | `control-plane-promotion-health-gate@v1` | `4ae74602` | `control-plane-app` | Promotion attempt rolled back after identity gate rejection | `not_deployed` |
+| #468 | `control-plane-release-config-identity-gate@v1` | `e1beacc1` | `control-plane-app` | Clean validation and build proof only; no promotion | `not_deployed` |
 
 The Phase 2 traffic chain begins with #441
-`collector-state-contract@v1`; #459 preserves redacted adapter provenance and
-#460 exposes the protected read model. All three remain source-only until an
-exact `control-plane-app` deployment record proves otherwise.
+`collector-state-contract@v1`; #459 preserves redacted adapter provenance,
+#460 exposes the protected read model, and #464 adds protected status producers.
+Those capabilities are present in the documented production control-plane
+release at source `9bc03b41`. PRs #466 through #468 remain source-only; failed
+promotion attempts were rolled back and did not change the current pointer.
 
 No new release is declared `ready` or `deployed` by this manifest. A source-only
 PR may say that deployment is not applicable; that statement is not a Deploy

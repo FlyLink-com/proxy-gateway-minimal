@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "2026-07-10.3",
-  "lastUpdated": "2026-07-10",
+  "schemaVersion": "2026-07-11.1",
+  "lastUpdated": "2026-07-11",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current project state for Agent orientation. Verify drift-prone GitHub, deployment, and production facts live before any Risk A action.",
@@ -11,12 +11,10 @@
     "docs/GITHUB_ISSUE_PR_WORKFLOW.md",
     "docs/FOUNDATION_FREEZE_2026_07_09.md",
     "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
+    "docs/IDENTITY_LIFECYCLE.md",
     "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
     "docs/BILLING_RECHARGE_CONTRACT.md",
-    "docs/PROJECT_SIMPLIFICATION_MAP.md",
-    "docs/production-replacement-records/2026-07-09-traffic-usage-xray-idle-observable-backend-deploy-execution.md",
-    "docs/production-replacement-records/2026-07-09-japan-traffic-runtime-config-restore-execution.md",
-    "docs/production-replacement-records/2026-07-08-sgp-subscription-render-receipt-reconcile-execution.md"
+    "docs/PROJECT_SIMPLIFICATION_MAP.md"
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
@@ -27,37 +25,36 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "sourceSnapshotAtInventory": "20f8345dd1e6d09dd1a816634aa8f29c5312fd0c",
+    "sourceSnapshotAtInventory": "e1beacc15fdc35661077cd3387f3ba17a3966e1a",
     "observedOpenPrCount": 0,
-    "observedOpenIssueCount": 5,
+    "observedOpenIssueCount": 4,
     "activeIssues": [
       437,
       438,
       439,
-      440,
-      462
+      440
     ],
     "remoteBranches": [
       "master"
     ],
     "recentMergedPrs": [
-      446,
-      448,
-      450,
-      452,
-      454,
-      456,
       458,
       459,
       460,
-      461
+      461,
+      463,
+      464,
+      465,
+      466,
+      467,
+      468
     ],
     "mergePolicyObservation": {
       "allowSquashMerge": true,
       "allowMergeCommit": true,
       "allowRebaseMerge": true,
       "deleteBranchOnMerge": false,
-      "branchProtectionAvailability": "GitHub API returned HTTP 403 for this private-repository plan; do not claim an enforced branch rule."
+      "branchProtectionAvailability": "GitHub API previously returned HTTP 403 for this private-repository plan; do not claim an enforced branch rule."
     },
     "note": "This is a dated source snapshot. Re-run git status, git fetch, PR/Issue inventory, and required checks before making current claims."
   },
@@ -73,8 +70,8 @@
     "nonGoals": [
       "microservice split",
       "database replacement",
-      "enterprise plugin runtime",
       "automatic production promotion",
+      "automatic repair or trust decisions",
       "live payment or attribution activation"
     ]
   },
@@ -87,10 +84,10 @@
   ],
   "activeDirections": [
     "Phase 2 is Operational Reliability, not broad feature expansion.",
-    "Issue #437 Traffic Accounting is the only active implementation Epic; #438 and #439 are queued, and #440 is an opportunistic guardrail.",
-    "Issue #457 is closed after real master merges proved staged Vercel behavior without moving public custom aliases; promotion remains a separate exact Risk A gate.",
-    "Issue #462 changed the Cloudflare native production trigger to version upload; one reviewed master merge proof remains before the gate closes.",
-    "Source, artifact, deployment, and runtime evidence remain separate; a merge or build artifact never proves production state.",
+    "Issue #437 is the only active implementation Epic; #438 and #439 are queued, and #440 is an opportunistic guardrail.",
+    "Issues #457 and #462 are closed after Vercel and Cloudflare merge-versus-promotion boundaries were proved.",
+    "Traffic Evidence Runtime is active observation-only and reconciled; identity sync remains degraded and cannot influence accounting, quota, recovery, or trust decisions.",
+    "PRs #466 through #468 are reviewed source capabilities, not production state. The documented production control-plane pointer remains at source 9bc03b41.",
     "Billing and AppsFlyer remain disabled/non-live, and architecture stays a modular monolith."
   ],
   "activeGoal": {
@@ -102,14 +99,13 @@
       439,
       440
     ],
-    "governanceIssue": 462,
     "leadAgent": "Codex",
     "operatorRole": "The operator approves or rejects exact Risk A gates after the reviewer defines scope, validation, rollback, and stop conditions.",
     "riskBoundary": "Repository contracts and tests are B-tier; production, provider, auth, schema, deployment, promotion, rollback, and runtime mutation are separately approved A-tier work."
   },
   "productionSnapshot": {
     "requiresLiveVerification": true,
-    "evidenceCutoff": "2026-07-10T14:04:28Z",
+    "evidenceCutoff": "2026-07-11T13:03:40Z",
     "controlPlaneAuthority": "Vultr Japan",
     "dataPlaneCapacity": [
       "Vultr Japan",
@@ -119,12 +115,12 @@
       {
         "id": "control-plane-app",
         "state": "active_documented",
-        "identity": "traffic-usage-xray-idle-observable-20260709-001"
+        "identity": "phase2-control-plane-artifact-alignment-20260710-001; source 9bc03b413e58198a08617f2e587e0120eb4d6cb2; artifact proxy-gateway-9bc03b413e58.zip"
       },
       {
         "id": "company-site-static",
         "state": "deployed_unreconciled",
-        "identity": "Vercel public deployment 5389897330 from source 7e9a8667657e5323e09ff7c262da85d26729e69b; Cloudflare workers.dev deployment 540da82f-b04d-4d67-9c8d-c5542d55e8a5 with version e5a648c9-d3c4-47b7-afb9-4bbed8f1be70"
+        "identity": "Vercel public deployment 5389897330 from source 7e9a8667657e5323e09ff7c262da85d26729e69b; Cloudflare active identity remains dated Issue #462 evidence"
       },
       {
         "id": "portal-static",
@@ -139,7 +135,7 @@
       {
         "id": "japan-runtime-config",
         "state": "active_documented",
-        "identity": "2026-07-09 Japan traffic runtime restore record"
+        "identity": "Japan runtime restore plus traffic Evidence Runtime activation; observation-only reconciliation verified"
       },
       {
         "id": "sgp-runtime-config",
@@ -168,14 +164,14 @@
         "www.gccwebos.com"
       ],
       "latestStagedCandidate": {
-        "vercelDeployment": "dpl_Fy7at228XHgWE1p2T5ZpCoa97HS1",
-        "githubDeployment": "5392379943",
-        "sourceCommit": "20f8345dd1e6d09dd1a816634aa8f29c5312fd0c",
+        "vercelUrl": "proxy-gateway-minimal-l4wfa6q0h-gccltd.vercel.app",
+        "githubDeployment": "5403913679",
+        "sourceCommit": "e1beacc15fdc35661077cd3387f3ba17a3966e1a",
         "state": "READY",
         "productionEnvironment": false,
         "publicAliasesAssigned": false
       },
-      "operationalProof": "completed through real merges #458 through #461; public aliases remained on the pre-gate deployment",
+      "operationalProof": "completed through real merges #458 through #468; public aliases remained on the approved deployment",
       "promotionAuthority": "separate exact Risk A approval"
     },
     "cloudflareSiteBoundary": {
@@ -185,17 +181,40 @@
       "nativeGitProductionBranch": "master",
       "nativeDeployCommand": "npx wrangler versions upload",
       "providerSettingChangedAt": "2026-07-10T14:04:05Z",
-      "activeDeployment": "540da82f-b04d-4d67-9c8d-c5542d55e8a5",
-      "activeVersion": "e5a648c9-d3c4-47b7-afb9-4bbed8f1be70",
-      "activeVersionPercentage": 100,
-      "customDomainCount": 0,
-      "workersDevEnabled": true,
-      "proofState": "setting_changed_awaiting_master_merge",
-      "rollbackCommand": "npx wrangler deploy"
+      "lastProvenActiveDeployment": "540da82f-b04d-4d67-9c8d-c5542d55e8a5",
+      "lastProvenActiveVersion": "e5a648c9-d3c4-47b7-afb9-4bbed8f1be70",
+      "latestSavedCandidateVersion": "407eb863-0e82-4e73-af54-3a44722b07c9",
+      "latestBuildId": "f186b7d5-533c-4f5b-b056-27777243d93f",
+      "customDomainCountAtLastProof": 0,
+      "proofState": "closed-in-issue-462",
+      "activeDeploymentLiveReadAtThisCutoff": false
+    },
+    "trafficEvidence": {
+      "capabilitySource": "9bc03b413e58198a08617f2e587e0120eb4d6cb2",
+      "runtimeState": "active_observation_only",
+      "reconciliationState": "verified",
+      "identityGate": "defined",
+      "identitySync": "degraded",
+      "lastObservedCounts": {
+        "runtime": 62,
+        "mapped": 60,
+        "missing": 2,
+        "stale": 19,
+        "changed": 0,
+        "missingMaterial": 0
+      },
+      "identityImpactEvidence": "observed",
+      "accountingCompleteness": "risk_not_quantified",
+      "accountingBehavior": "unchanged",
+      "quotaBehavior": "unchanged",
+      "mapApply": "not_started",
+      "trustLoop": "not_started",
+      "automation": "disabled"
     },
     "notes": [
-      "Only the company-site deployment boundary was live-read during this snapshot; Japan and Singapore runtime services were not re-inventoried.",
-      "Do not infer production runtime identity from master, a GitHub artifact, or the offline Runtime Identity generator.",
+      "No production-host mutation or new host inventory was performed by this C-tier reconciliation.",
+      "Offline Runtime Config Identity and active traffic Evidence Runtime are separate evidence domains.",
+      "Do not infer production runtime identity from master, a GitHub artifact, a Vercel candidate, or a Cloudflare saved version.",
       "Do not output subscription material, credentials, raw config, raw logs, environment values, SQLite rows, or customer data."
     ]
   },
@@ -206,39 +225,39 @@
     "internalRuntime": "metering and control endpoints remain loopback/private according to documented execution records and require live verification before mutation"
   },
   "validationSnapshot": {
-    "masterAtInventory": "20f8345dd1e6d09dd1a816634aa8f29c5312fd0c",
-    "latestCiRun": "29097381907 success",
-    "latestReleaseArtifactRun": "29097381774 success",
+    "masterAtInventory": "e1beacc15fdc35661077cd3387f3ba17a3966e1a",
+    "latestCiRun": "29153679418 success",
+    "latestReleaseArtifactRun": "29153679403 success",
+    "latestCloudflareWorkflowRun": "29153679412 success",
     "projectStateCheck": "required whenever project-state files change",
     "cTierDiffCheck": "git diff --check origin/master...HEAD"
   },
   "activeBlockers": [
     {
-      "id": "cloudflare-native-version-upload-proof",
-      "summary": "Issue #462 changed the native master trigger from active deploy to version upload, but one reviewed master merge must still prove that the active Worker deployment remains unchanged.",
+      "id": "japan-tuic-identity-sync",
+      "summary": "Issue #437 observed two missing and nineteen stale Japan TUIC map bindings. At least one active missing binding was observed; accounting completeness is not quantified, additive repair is not deployed, and map apply has not started.",
       "sourceDoc": "docs/CURRENT_RELEASE_STATE.md"
     },
     {
-      "id": "traffic-collector-status-producers",
-      "summary": "Issue #437 has the canonical contract, safe adapter provenance, and protected read model from PRs #441, #459, and #460, but Japan TUIC map verification and SGP TUIC sidecar status still lack separately evidenced protected producers.",
-      "sourceDoc": "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md"
-    },
-    {
-      "id": "runtime-observation-not-performed",
-      "summary": "Runtime Config Identity v1 is offline-only; Japan and Singapore production identities have not been observed or reconciled.",
+      "id": "runtime-config-identity-observation-not-performed",
+      "summary": "Offline Runtime Config Identity v1 has not observed Japan or Singapore production. This is separate from the active traffic Evidence Runtime.",
       "sourceDoc": "RELEASE_MANIFEST.md"
     },
     {
       "id": "release-unit-production-reconciliation",
       "summary": "Company site, Portal, Admin, and subscription-rendering production identities remain incomplete or unknown even though build artifact identity exists for several units.",
       "sourceDoc": "docs/CURRENT_RELEASE_STATE.md"
+    },
+    {
+      "id": "commercial-providers-disabled",
+      "summary": "Billing and AppsFlyer remain intentionally non-live and fail-closed.",
+      "sourceDoc": "docs/BILLING_RECHARGE_CONTRACT.md"
     }
   ],
   "nextRecommendedQueue": [
-    "Review and merge the current C-tier Cloudflare boundary reconciliation without treating the saved version as an active deployment.",
-    "After merge, prove Workers Builds uploaded a version while active deployment 540da82f-b04d-4d67-9c8d-c5542d55e8a5 and active version e5a648c9-d3c4-47b7-afb9-4bbed8f1be70 remained unchanged; then close Issue #462.",
-    "Define the smallest source-only #437 slice for protected Japan TUIC map verification and SGP TUIC sidecar status producers.",
-    "Keep the Admin UI deferred until the remaining producer facts are stable and covered by boundary tests.",
+    "Keep Issue #437 in observation-only mode while identity-impact evidence accumulates; do not apply the protected map from this state update.",
+    "Any future control-plane artifact alignment or additive candidate generation requires a fresh exact Risk A gate bound to one artifact identity and the current production pointer.",
+    "Keep Admin UI, accounting influence, quota influence, trust decisions, and automatic repair deferred.",
     "Keep Issues #438 and #439 queued and use Issue #440 only for a measured boundary exposed by active work."
   ],
   "forbiddenInStateFiles": [
