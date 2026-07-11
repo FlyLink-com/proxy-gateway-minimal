@@ -123,8 +123,10 @@ conclusion:
 next_gate:
 ```
 
-Issue #437 Gate `4946866628` is frozen as
-`executed_partial_stopped` and must not be retried. It removed the persistent
-local Vultr credential copy, made no Vultr API call, and did not establish
-Japan instance, firewall, SSH, or runtime state. Its provider-side key status
-remains `unverified_assume_valid`.
+## Historical Execution References
+
+Dynamic Gate results belong in their approved Issue comments or execution
+records. This policy intentionally does not store current provider credential
+state, provider key lifecycle status, production access status, or runtime
+state. Historical evidence may explain why a rule exists, but it does not
+become a second current-state source here.
