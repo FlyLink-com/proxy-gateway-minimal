@@ -35,6 +35,18 @@ the issue's done criteria are fully satisfied.
 - Secrets or customer-data handling:
 - Approval status:
 
+## Identity Impact
+
+<!--
+Identity is an impact dimension, not a release unit. Set true only when the
+change can alter runtime principals or their mapping to stable accounting
+references. Do not include UUIDs, credential references, controller payloads,
+raw config, database rows, or customer data. See docs/IDENTITY_LIFECYCLE.md.
+-->
+
+- identity_impact: false / true
+- identity_gate: Not applicable / surface + pending state / aggregate result
+
 ## Execution
 
 <!-- List the actual code, docs, tests, or approved no-op/inventory performed. -->
@@ -51,6 +63,7 @@ the issue's done criteria are fully satisfied.
 - [ ] `npm run admin:build` (Admin UI changes)
 - [ ] Manual CI lane:
 - [ ] Risk A runbook-specific validation:
+- [ ] Identity Gate declaration/evidence reviewed (`identity_impact: true` only)
 
 Result:
 
@@ -66,6 +79,7 @@ replacement. Leave as "Not deployed" otherwise. -->
 - target:
 - backup:
 - validation:
+- identity_gate: Not applicable / aggregate before-after result
 
 ## Remaining Gates
 

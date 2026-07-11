@@ -73,6 +73,21 @@ Static frontend PRs also declare `frontend_surface` as `company-site`,
 `portal`, or `admin`. A release may include multiple units, but each unit must
 have its own artifact or explicit configuration identity and promotion result.
 
+### Identity Impact Is Not A Release Unit
+
+Runtime identity is an impact dimension across existing release units, not an
+independently deployable unit. Do not add `runtime-identity` to the fixed list.
+Changes that can alter Xray or Mihomo principals, protected usage maps,
+material-to-runtime bindings, or collector identity resolution declare
+`identity_impact: true` and use the Identity Gate in
+`docs/IDENTITY_LIFECYCLE.md`.
+
+The production gate belongs to the target runtime release unit, normally
+`japan-runtime-config` or `sgp-runtime-config`. A control-plane or rendering PR
+that can later change runtime principals declares the impact in source, while
+the actual aggregate before/after evidence is recorded by the separately
+approved runtime deployment or Change Record.
+
 ## Minimum Metadata
 
 A PR declares:
@@ -81,6 +96,16 @@ A PR declares:
 capability: <stable capability label>
 release_unit: <fixed value or none>
 production_state: not_deployed
+identity_impact: false
+```
+
+When `identity_impact` is true, the PR also declares a safe logical surface and
+keeps the gate pending until target-runtime evidence exists:
+
+```yaml
+identity_gate:
+  surface: <safe logical surface>
+  state: pending
 ```
 
 A release declaration adds:
@@ -100,6 +125,14 @@ No release becomes `ready` without exact source, artifact identity, SHA-256,
 target boundary, validation, and rollback information. Production completion is
 recorded in the related PR Deploy Note; merge status alone never changes
 `production_state`.
+
+An identity-impacting Deploy Note or runtime Change Record additionally records
+aggregate `before` and `after` values for `runtime_count`, `mapped_count`,
+`missing`, `stale`, `changed`, and `missing_material`, plus
+`retention_state` and the final gate `state`. It never records raw identifiers,
+credential references, controller payloads, config, environment values, or
+database rows. Identity health is `verified` only when all four difference
+counts are zero.
 
 ## Artifact Manifest v1
 
@@ -229,10 +262,14 @@ Note and must not be backfilled as production evidence.
 4. A PR cannot deploy a release unit outside its declared boundary.
 5. Deployment and runtime claims require current target validation; neither a
    PR merge nor a preview deployment is sufficient evidence.
+6. Identity-impacting runtime changes remain `pending`, `degraded`, or
+   `blocked` until the aggregate Identity Gate is complete; runtime health does
+   not imply identity synchronization or accounting completeness.
 
 ## References
 
 - `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md`
 - `docs/FOUNDATION_FREEZE_2026_07_09.md`
+- `docs/IDENTITY_LIFECYCLE.md`
 - `docs/MASTER_ARCHIVE_BOUNDARY.md`
 - `docs/production-replacement-records/`

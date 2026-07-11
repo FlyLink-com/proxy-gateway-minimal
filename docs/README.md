@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-07-09, America/Los_Angeles.
+Last updated: 2026-07-10, America/Los_Angeles.
 
 Use this file as the first navigation point for project documentation. It
 classifies current source-of-truth docs, active runbooks, execution records,
@@ -50,6 +50,7 @@ historical reference, and runtime material separated.
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
 | `AGENTS.md` | Default agent instructions, A/B/C risk tiers, PR completion gate, validation expectations, and safety boundaries. | Active workflow rules. | Read before repo, ops, CI, network, deployment, or production-adjacent work. |
+| `docs/IDENTITY_LIFECYCLE.md` | Runtime identity binding lifecycle and aggregate Identity Gate for identity-impacting source and runtime changes. | Active release-governance contract; no production, map, config, accounting, quota, or credential authority. | Read before changing Xray/Mihomo principals, protected usage maps, material bindings, or collector identity resolution, and before approving stale-binding retirement. |
 | `docs/AGENT_ONBOARDING.md` | First-pass AI agent entry guide covering reading order, metadata headers, risk tiers, workspace boundaries, common mistakes, and PR checklist. | Active onboarding guide; no execution authority. | Read when a new agent enters the repo or before turning a broad assessment into Linear/GitHub tasks. |
 | `docs/GITHUB_ISSUE_PR_WORKFLOW.md` | GitHub Issues as durable index cards and PRs as execution summaries/validation receipts, including when issues are required versus optional. | Active workflow rule; no production, deploy, runtime, secret, or customer-data authority. | Read before opening multi-PR, Risk A, source/production drift, archive, or main-lane work, and when deciding whether a small PR needs an issue. |
 | `docs/PROJECT_OPERATING_MODEL.md` | Project operating model for source-of-truth layers, work lanes, PR definition of done, risk tiers, production gates, and subscription stability. | Active operating model; no execution authority. | Read when deciding how to classify, sequence, or parallelize project work. |
