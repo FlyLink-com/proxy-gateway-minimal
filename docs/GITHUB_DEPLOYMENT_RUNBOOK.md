@@ -93,9 +93,10 @@ service, or perform rollback. Those mutations remain in the separately
 approved Risk A Change Record.
 
 The script is standalone and may be streamed through Node stdin by that exact
-Risk A execution. This allows an already prepared immutable release candidate
-to be checked without installing the gate into, or otherwise modifying, the
-candidate directory.
+Risk A execution without installing a file on the host. This transport does
+not authorize reuse of a previously rolled-back release. After this capability
+is merged, a production attempt must reference a new reviewed artifact built
+from the resulting `master` commit.
 
 The gate replaces a one-shot public health request with these conditions:
 
@@ -109,6 +110,9 @@ The gate replaces a one-shot public health request with these conditions:
    consecutive probes.
 5. The default deadline is 60 seconds with a two-second interval. Reaching the
    deadline returns a non-zero exit code for the approved outer rollback path.
+   Every systemd and HTTP probe timeout is capped to the remaining deadline
+   budget, and a probe completing after the deadline cannot validate the
+   promotion.
 
 Example invocation inside an already approved production attempt:
 

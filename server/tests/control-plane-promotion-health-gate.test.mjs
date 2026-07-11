@@ -202,6 +202,42 @@ test("promotion gate never accepts readiness completed after the deadline", asyn
   assert.equal(result.elapsedMs, 1_200);
 });
 
+test("promotion gate caps every runtime and HTTP probe to the remaining budget", async () => {
+  let nowMs = 0;
+  const runtimeBudgets = [];
+  const localBudgets = [];
+  const result = await runPromotionHealthGate({
+    expectedRelease: "release-002",
+    restartBaseline: 4,
+    timeoutMs: 1_000,
+    intervalMs: 900,
+    probeTimeoutMs: 500,
+    requiredLocalSuccesses: 3,
+    requiredPublicSuccesses: 2,
+    readRuntimeState: async ({ timeoutMs }) => {
+      runtimeBudgets.push(timeoutMs);
+      return READY_RUNTIME;
+    },
+    probeLocalHealth: async ({ timeoutMs }) => {
+      localBudgets.push(timeoutMs);
+      if (localBudgets.length === 2) nowMs += timeoutMs;
+      return 502;
+    },
+    probePublicHealth: async () => {
+      throw new Error("public probe must not run before loopback readiness");
+    },
+    sleep: async (milliseconds) => {
+      nowMs += milliseconds;
+    },
+    now: () => nowMs
+  });
+
+  assert.equal(result.state, "timeout");
+  assert.deepEqual(runtimeBudgets, [500, 100]);
+  assert.deepEqual(localBudgets, [500, 100]);
+  assert.equal(result.elapsedMs, 1_000);
+});
+
 test("promotion gate times out without exposing probe errors or URLs", async () => {
   const secretError = new Error("private upstream response body and token");
   const harness = createHarness({
@@ -377,4 +413,6 @@ test("package and deployment runbook expose the read-only promotion gate", () =>
   assert.match(runbook, /condition-driven promotion health window/i);
   assert.match(runbook, /does not switch a release,\s+restart a\s+service,\s+or perform rollback/i);
   assert.match(runbook, /streamed through Node stdin/i);
+  assert.match(runbook, /remaining deadline\s+budget/i);
+  assert.match(runbook, /new reviewed artifact/i);
 });

@@ -220,6 +220,7 @@ export async function runPromotionHealthGate({
   restartBaseline,
   timeoutMs = PROMOTION_HEALTH_GATE_DEFAULTS.timeoutMs,
   intervalMs = PROMOTION_HEALTH_GATE_DEFAULTS.intervalMs,
+  probeTimeoutMs = PROMOTION_HEALTH_GATE_DEFAULTS.probeTimeoutMs,
   requiredLocalSuccesses = PROMOTION_HEALTH_GATE_DEFAULTS.requiredLocalSuccesses,
   requiredPublicSuccesses = PROMOTION_HEALTH_GATE_DEFAULTS.requiredPublicSuccesses,
   readRuntimeState,
@@ -236,6 +237,8 @@ export async function runPromotionHealthGate({
     || timeoutMs < 1
     || !Number.isInteger(intervalMs)
     || intervalMs < 1
+    || !Number.isInteger(probeTimeoutMs)
+    || probeTimeoutMs < 1
     || typeof readRuntimeState !== "function"
     || typeof probeLocalHealth !== "function"
     || typeof probePublicHealth !== "function"
@@ -258,9 +261,26 @@ export async function runPromotionHealthGate({
   while (true) {
     attemptCount += 1;
     const elapsedMs = Math.max(0, Math.round(now() - startedAt));
+    const runtimeBudgetMs = Math.min(probeTimeoutMs, timeoutMs - elapsedMs);
+    if (runtimeBudgetMs <= 0) {
+      return resultShape({
+        state: "timeout",
+        condition: timeoutCondition(
+          runtimeEvidence,
+          localEvidence,
+          requiredLocalSuccesses
+        ),
+        expectedRelease,
+        attemptCount,
+        elapsedMs,
+        runtime: runtimeEvidence,
+        local: localEvidence,
+        publicEvidence
+      });
+    }
     let runtimeState = null;
     try {
-      runtimeState = await readRuntimeState();
+      runtimeState = await readRuntimeState({ timeoutMs: runtimeBudgetMs });
     } catch {
       runtimeState = null;
     }
@@ -305,9 +325,22 @@ export async function runPromotionHealthGate({
       && restartCount === restartBaseline;
 
     if (runtimeReady) {
+      const localBudgetMs = Math.min(probeTimeoutMs, timeoutMs - runtimeElapsedMs);
+      if (localBudgetMs <= 0) {
+        return resultShape({
+          state: "timeout",
+          condition: "local_health_not_ready",
+          expectedRelease,
+          attemptCount,
+          elapsedMs: runtimeElapsedMs,
+          runtime: runtimeEvidence,
+          local: localEvidence,
+          publicEvidence
+        });
+      }
       let localStatus = null;
       try {
-        localStatus = probeStatus(await probeLocalHealth());
+        localStatus = probeStatus(await probeLocalHealth({ timeoutMs: localBudgetMs }));
       } catch {
         localStatus = null;
       }
@@ -328,9 +361,22 @@ export async function runPromotionHealthGate({
       }
 
       if (localEvidence.consecutiveSuccesses >= requiredLocalSuccesses) {
+        const publicBudgetMs = Math.min(probeTimeoutMs, timeoutMs - localElapsedMs);
+        if (publicBudgetMs <= 0) {
+          return resultShape({
+            state: "timeout",
+            condition: "public_health_not_ready",
+            expectedRelease,
+            attemptCount,
+            elapsedMs: localElapsedMs,
+            runtime: runtimeEvidence,
+            local: localEvidence,
+            publicEvidence
+          });
+        }
         let publicStatus = null;
         try {
-          publicStatus = probeStatus(await probePublicHealth());
+          publicStatus = probeStatus(await probePublicHealth({ timeoutMs: publicBudgetMs }));
         } catch {
           publicStatus = null;
         }
@@ -401,7 +447,8 @@ function parseSystemdProperties(output) {
 
 export async function readControlPlaneRuntimeState({
   commandRunner = runCommand,
-  readProcessCwd = (pid) => readlinkSync(`/proc/${pid}/cwd`)
+  readProcessCwd = (pid) => readlinkSync(`/proc/${pid}/cwd`),
+  timeoutMs = PROMOTION_HEALTH_GATE_DEFAULTS.probeTimeoutMs
 } = {}) {
   const result = await commandRunner("systemctl", [
     "show",
@@ -411,7 +458,7 @@ export async function readControlPlaneRuntimeState({
     "--property=MainPID",
     "--property=NRestarts"
   ], {
-    timeoutMs: 5_000,
+    timeoutMs,
     maxOutput: 4_096
   });
   if (!result.ok) {
@@ -477,16 +524,17 @@ export async function runPromotionHealthGateCli({
   try {
     const result = await runPromotionHealthGate({
       ...options,
-      readRuntimeState: dependencies.readRuntimeState ?? readControlPlaneRuntimeState,
+      readRuntimeState: dependencies.readRuntimeState
+        ?? (({ timeoutMs }) => readControlPlaneRuntimeState({ timeoutMs })),
       probeLocalHealth: dependencies.probeLocalHealth
-        ?? (() => probeHealth(options.localHealthUrl, {
+        ?? (({ timeoutMs }) => probeHealth(options.localHealthUrl, {
           fetchImpl: dependencies.fetchImpl,
-          timeoutMs: options.probeTimeoutMs
+          timeoutMs
         })),
       probePublicHealth: dependencies.probePublicHealth
-        ?? (() => probeHealth(options.publicHealthUrl, {
+        ?? (({ timeoutMs }) => probeHealth(options.publicHealthUrl, {
           fetchImpl: dependencies.fetchImpl,
-          timeoutMs: options.probeTimeoutMs
+          timeoutMs
         })),
       sleep: dependencies.sleep,
       now: dependencies.now
