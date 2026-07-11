@@ -1,19 +1,22 @@
 {
-  "schemaVersion": "2026-07-10.3",
-  "lastUpdated": "2026-07-10",
+  "schemaVersion": "2026-07-11.1",
+  "lastUpdated": "2026-07-11",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-current-queue",
-  "purpose": "Current executable and gated Phase 2 queue. Superseded Admin OS, Aliyun, AWS canary, and completed historical tasks remain traceable in Git history and indexed records rather than the active Agent queue.",
+  "purpose": "Current Phase 2 queue and recently completed gates needed for safe Agent continuation. Older completed work remains traceable in Git history and indexed records.",
   "sourceDocs": [
     "docs/CURRENT_RELEASE_STATE.md",
+    "RELEASE_MANIFEST.md",
+    "docs/PROJECT_CONTEXT.md",
     "docs/GITHUB_ISSUE_PR_WORKFLOW.md",
     "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
+    "docs/IDENTITY_LIFECYCLE.md",
     "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
     "docs/BILLING_RECHARGE_CONTRACT.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md"
   ],
   "historicalBoundary": {
-    "sourceSnapshotAtReconciliation": "20f8345dd1e6d09dd1a816634aa8f29c5312fd0c",
+    "sourceSnapshotAtReconciliation": "e1beacc15fdc35661077cd3387f3ba17a3966e1a",
     "rule": "Use Git history and docs/archive indexes for completed or superseded tasks; do not re-add them to the current queue without a new Issue and fresh evidence."
   },
   "tasks": [
@@ -22,32 +25,30 @@
       "risk": "A",
       "status": "completed-in-issue-457",
       "lane": "version-management",
-      "title": "Prove the Vercel company-site deployment remains staged after a real master merge",
-      "goal": "Closed Issue #457 after real master merges created production-target candidates without moving gccwebos.com or www.gccwebos.com; promotion and rollback remain separate approvals.",
+      "title": "Prove Vercel company-site merges remain staged",
+      "goal": "Keep public aliases on the approved deployment while reviewed master merges create READY candidates.",
       "allowedFiles": [
         "docs/CURRENT_RELEASE_STATE.md",
         "project-state/*.json"
       ],
       "forbiddenActions": [
-        "create an artificial no-op commit only to trigger Vercel",
-        "promote or roll back a Vercel deployment without separate exact approval",
-        "change domains, DNS, environment values, build settings, source runtime, Portal, Admin, or control-plane services",
-        "output credentials, tokens, environment values, customer data, or private runtime material"
+        "promote or roll back Vercel without separate exact approval",
+        "change domains, DNS, environment values, build settings, or runtime",
+        "output credentials, environment values, customer data, or private runtime material"
       ],
       "validation": [
-        "autoAssignCustomDomains remained false before and after the approved merge",
-        "PR #460 merge created READY staged Vercel deployment dpl_33AwpEF5kp2fnxSSgP4C8AhR8TNd and GitHub deployment 5392032753",
-        "both public aliases remained on GitHub deployment 5389897330 and returned HTTP 200",
-        "redacted evidence was recorded and Issue #457 was closed"
+        "Issue #457 closed after real merges created READY candidates without moving public aliases",
+        "the #468 candidate is READY with production_environment=false",
+        "the public aliases remain on GitHub deployment 5389897330"
       ]
     },
     {
       "id": "A-version-management-cloudflare-provider-gate",
       "risk": "A",
-      "status": "completed-in-issue-462-provider-gate",
+      "status": "completed-in-issue-462",
       "lane": "version-management",
-      "title": "Change the Cloudflare native master trigger to version upload",
-      "goal": "Completed the approved Issue #462 provider gate without changing the active deployment, domains, bindings, Vercel, DNS, or source.",
+      "title": "Separate Cloudflare saved versions from active deployment",
+      "goal": "Use versions upload for native master builds while keeping active promotion separately approved.",
       "allowedFiles": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -55,134 +56,47 @@
         "project-state/*.json"
       ],
       "forbiddenActions": [
-        "change the Cloudflare trigger again without a separate exact approval",
+        "change the provider trigger without separate exact approval",
         "promote or roll back a Worker version",
-        "change Worker routes, custom domains, workers.dev, bindings, build token, environment variables, DNS, Vercel, runtime, Portal, Admin, or control-plane services",
-        "output credentials, tokens, environment values, raw logs, customer data, or private runtime material"
+        "change routes, domains, bindings, environment values, DNS, Vercel, or runtime"
       ],
       "validation": [
-        "production trigger readback is npx wrangler versions upload",
-        "setting mutation created no build, version, or deployment",
-        "branch, path, root, cache, repository connection, build token reference, and environment variable count remained unchanged",
-        "active deployment remained 540da82f-b04d-4d67-9c8d-c5542d55e8a5",
-        "active version remained e5a648c9-d3c4-47b7-afb9-4bbed8f1be70 at 100%",
-        "Vercel public aliases remained unchanged"
+        "native trigger readback uses npx wrangler versions upload",
+        "the #463 merge proved a saved version without active promotion and Issue #462 closed",
+        "the #468 merge created saved candidate version 407eb863-0e82-4e73-af54-3a44722b07c9"
       ]
     },
     {
-      "id": "C-version-management-cloudflare-version-upload-proof",
-      "risk": "C",
-      "status": "in-progress",
-      "lane": "version-management",
-      "title": "Prove Cloudflare master builds save versions without promotion",
-      "goal": "Close Issue #462 after this reviewed state-only merge uploads a saved Worker version without changing the active deployment or active version.",
-      "allowedFiles": [
-        "RELEASE_MANIFEST.md",
-        "docs/CURRENT_RELEASE_STATE.md",
-        "docs/PROJECT_CONTEXT.md",
-        "project-state/*.json"
-      ],
-      "forbiddenActions": [
-        "change any Cloudflare, Vercel, DNS, domain, route, Worker, runtime, Portal, Admin, or control-plane setting",
-        "promote or roll back a Worker or Vercel version",
-        "change source outside the current state records",
-        "output credentials, tokens, environment values, raw logs, customer data, or private runtime material"
-      ],
-      "validation": [
-        "merge one reviewed C-tier state correction PR",
-        "Cloudflare build succeeds and creates a saved version",
-        "active deployment remains 540da82f-b04d-4d67-9c8d-c5542d55e8a5",
-        "active version remains e5a648c9-d3c4-47b7-afb9-4bbed8f1be70 at 100%",
-        "GitHub CI dry-run and Release Artifact succeed",
-        "Vercel public aliases remain unchanged"
-      ]
-    },
-    {
-      "id": "B-phase2-collector-state-contract",
+      "id": "B-phase2-collector-foundation",
       "risk": "B",
-      "status": "completed-in-pr-441",
+      "status": "completed-and-deployed-2026-07-10",
       "lane": "traffic-accounting",
-      "title": "Establish the canonical collector-state contract",
-      "goal": "Provide the health-condition matrix and redacted backend/CLI projection that starts Issue #437.",
+      "title": "Establish canonical collector state, provenance, and protected projection",
+      "goal": "Provide one redacted operational read model without changing accounting, quota, runtime, or recovery behavior.",
       "allowedFiles": [
         "server/services/**/*.mjs",
+        "server/routes/**/*.mjs",
         "server/tests/**/*.test.mjs",
-        "docs/*.md"
+        "scripts/traffic-usage-collect-once.mjs"
       ],
       "forbiddenActions": [
-        "change production runtime",
-        "add Admin mutation controls",
         "change quota, billing, account, or subscription behavior",
-        "output sensitive collector payloads"
+        "add Admin mutation or recovery controls",
+        "emit raw logs, controller payloads, credentials, or customer data"
       ],
       "validation": [
-        "PR #441 merged as 9d48592c",
-        "npm test and focused collector-state tests passed before merge",
-        "production_state remains not_deployed"
-      ]
-    },
-    {
-      "id": "B-phase2-collector-error-provenance",
-      "risk": "B",
-      "status": "completed-in-pr-459",
-      "lane": "traffic-accounting",
-      "title": "Preserve safe collector error provenance through current adapters",
-      "goal": "Map real redacted adapter facts to canonical missing-stats, runtime, config, auth, mapping, idle, and sidecar conditions instead of collapsing them into a generic exception.",
-      "allowedFiles": [
-        "server/services/edge/**/*.mjs",
-        "server/services/platform/**/*.mjs",
-        "server/tests/**/*.test.mjs",
-        "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md"
-      ],
-      "forbiddenActions": [
-        "change runtime config or restart services",
-        "add Admin UI or recovery controls",
-        "change quota or traffic-supply behavior",
-        "emit raw logs, controller payloads, map contents, credentials, or customer data"
-      ],
-      "validation": [
-        "PR #459 merged as 72e98096",
-        "npm test passed 1007/1007 before merge",
-        "project-state and diff checks passed",
-        "production_state remains not_deployed"
-      ]
-    },
-    {
-      "id": "B-phase2-collector-admin-projection",
-      "risk": "B",
-      "status": "completed-in-pr-460",
-      "lane": "traffic-accounting",
-      "title": "Expose canonical collector state through protected read-only Admin surfaces",
-      "goal": "Let operators consume the same redacted collector semantics after adapter provenance is reliable, without repair, restart, config, or credential controls.",
-      "allowedFiles": [
-        "scripts/traffic-usage-collect-once.mjs",
-        "server/app.mjs",
-        "server/routes/admin-platform.mjs",
-        "server/state.mjs",
-        "server/services/platform/**/*.mjs",
-        "server/tests/**/*.test.mjs"
-      ],
-      "forbiddenActions": [
-        "add service restart, repair, runtime apply, or configuration controls",
-        "expose public Admin routes",
-        "return raw runtime or customer-private data",
-        "change production runtime"
-      ],
-      "validation": [
-        "PR #460 merged as 9aa1561e",
-        "focused projection, state, route, and snapshot tests passed",
-        "npm test passed 1016/1016 before merge",
-        "project-state, syntax, and diff checks passed",
-        "production_state remains not_deployed"
+        "PRs #441, #459, and #460 merged with focused and full backend tests",
+        "the capabilities are included in phase2-control-plane-artifact-alignment-20260710-001",
+        "Admin projection remains protected and read-only"
       ]
     },
     {
       "id": "B-phase2-collector-status-producers",
       "risk": "B",
-      "status": "requires-scope-review",
+      "status": "completed-and-deployed-in-pr-464",
       "lane": "traffic-accounting",
-      "title": "Add protected JP TUIC map and SGP TUIC sidecar status producers",
-      "goal": "Complete the remaining Issue #437 source facts without Admin UI, runtime mutation, or production activation.",
+      "title": "Add protected JP TUIC and SGP sidecar status producers",
+      "goal": "Generate redacted status fragments through existing runtime entrypoints without adding a second scheduler or changing accounting.",
       "allowedFiles": [
         "scripts/**/*.mjs",
         "server/services/platform/**/*.mjs",
@@ -190,15 +104,171 @@
         "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md"
       ],
       "forbiddenActions": [
-        "read or emit protected map contents, credentials, controller payloads, raw config, raw logs, SQLite rows, or customer data",
-        "change production environment, runtime config, services, timers, quota, subscription, or traffic-supply behavior",
+        "emit protected map contents, credentials, raw config, logs, database rows, or customer data",
+        "change accounting, quota, subscription, or traffic-supply behavior",
         "add Admin UI, restart, repair, or runtime-apply controls"
       ],
       "validation": [
-        "scope review identifies existing redacted producer facts before code changes",
-        "focused producer and projection boundary tests",
-        "npm test",
-        "git diff --check origin/master...HEAD"
+        "PR #464 merged as 9bc03b41",
+        "the exact artifact was deployed in phase2-control-plane-artifact-alignment-20260710-001",
+        "natural collector and sidecar timer executions succeeded"
+      ]
+    },
+    {
+      "id": "A-phase2-evidence-runtime-activation",
+      "risk": "A",
+      "status": "completed-observation-only",
+      "lane": "production-operations",
+      "title": "Activate Japan traffic Evidence Runtime without decision authority",
+      "goal": "Wire existing collector, sidecar, and JP dry-run evidence into protected fragments and the Admin read model.",
+      "allowedFiles": [
+        "docs/CURRENT_RELEASE_STATE.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "change accounting, quota, trust, recovery, or map contents",
+        "add services, timers, cron, or public Admin access",
+        "output raw environment, config, map, ledger, credentials, or customer data"
+      ],
+      "validation": [
+        "evidence_runtime is active_observation_only",
+        "protected fragments are schema-valid with minimum permissions",
+        "accounting and quota behavior remained unchanged"
+      ]
+    },
+    {
+      "id": "A-phase2-evidence-reconciliation",
+      "risk": "A",
+      "status": "completed-read-only",
+      "lane": "production-operations",
+      "title": "Reconcile traffic evidence and classify identity impact",
+      "goal": "Verify projection conservation, producer-specific freshness, and degraded semantics without mutation.",
+      "allowedFiles": [
+        "docs/CURRENT_RELEASE_STATE.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "write evidence, execute producers, trigger timers, restart services, or modify maps",
+        "change accounting, quota, trust, or runtime",
+        "output identifiers, raw maps, controller payloads, ledger rows, or customer data"
+      ],
+      "validation": [
+        "collector conservation verified as 5 = 5 + 0 omitted",
+        "producer conservation verified as 2 = 2 + 0 omitted",
+        "identity impact evidence is observed while accounting completeness remains risk_not_quantified"
+      ]
+    },
+    {
+      "id": "C-phase2-runtime-identity-sync-gate",
+      "risk": "C",
+      "status": "completed-in-pr-465",
+      "lane": "traffic-accounting",
+      "title": "Define runtime identity impact and retention governance",
+      "goal": "Treat identity as an impact dimension of existing runtime release units and keep map, ledger, and evidence semantics separate.",
+      "allowedFiles": [
+        "docs/IDENTITY_LIFECYCLE.md",
+        "RELEASE_MANIFEST.md",
+        ".github/pull_request_template.md"
+      ],
+      "forbiddenActions": [
+        "add a runtime-identity release unit",
+        "apply or delete map bindings",
+        "change production runtime, accounting, quota, or trust behavior"
+      ],
+      "validation": [
+        "PR #465 merged as 2a091d51",
+        "identity_gate is defined",
+        "identity_sync remains degraded until production evidence proves otherwise"
+      ]
+    },
+    {
+      "id": "B-phase2-additive-tuic-map-repair",
+      "risk": "B",
+      "status": "completed-source-only-in-pr-466",
+      "lane": "traffic-accounting",
+      "title": "Provide additive-only missing-binding repair capability",
+      "goal": "Generate an additive candidate that preserves stale bindings and defaults to no mutation.",
+      "allowedFiles": [
+        "scripts/mihomo-tuic-usage-map-rebuild.mjs",
+        "server/tests/mihomo-tuic-usage-map-rebuild.test.mjs"
+      ],
+      "forbiddenActions": [
+        "run map apply without separate exact Risk A approval",
+        "remove stale bindings through the additive strategy",
+        "change ledger, accounting, quota, runtime, or trust behavior"
+      ],
+      "validation": [
+        "PR #466 merged as 8c769586",
+        "additive_missing_only is isolated from canonical rebuild",
+        "production alignment attempts rolled back and the capability is not deployed"
+      ]
+    },
+    {
+      "id": "B-version-management-promotion-health-gate",
+      "risk": "B",
+      "status": "completed-source-only-in-pr-467",
+      "lane": "version-management",
+      "title": "Add a bounded condition-driven control-plane promotion health gate",
+      "goal": "Separate loopback runtime confidence from public edge confidence and reject restart drift within a bounded window.",
+      "allowedFiles": [
+        "scripts/control-plane-promotion-health-gate.mjs",
+        "server/tests/control-plane-promotion-health-gate.test.mjs"
+      ],
+      "forbiddenActions": [
+        "promote or roll back production without separate exact approval",
+        "change runtime config or provider settings",
+        "output endpoints, environment values, credentials, or raw logs"
+      ],
+      "validation": [
+        "PR #467 merged as 4ae74602",
+        "the gate uses bounded loopback and public observations plus restart rejection",
+        "the later promotion attempt rolled back after release identity validation failed"
+      ]
+    },
+    {
+      "id": "B-version-management-release-config-identity-gate",
+      "risk": "B",
+      "status": "completed-source-only-in-pr-468",
+      "lane": "version-management",
+      "title": "Gate protected control-plane config assembly outside release roots",
+      "goal": "Prepare and verify approved release-local config identity in a temporary artifact workspace without mutating active or candidate release roots.",
+      "allowedFiles": [
+        "scripts/control-plane-release-config-gate.mjs",
+        "server/tests/control-plane-release-config-gate.test.mjs",
+        "docs/CI_MANUAL_VALIDATION.md"
+      ],
+      "forbiddenActions": [
+        "write manifests into active or candidate release roots",
+        "deploy, promote, roll back, or mutate production",
+        "output protected config content, environment values, credentials, or customer data"
+      ],
+      "validation": [
+        "PR #468 merged as e1beacc1",
+        "local and Ubuntu tests passed 1057/1057",
+        "temporary Vultr clean validation passed and cleanup completed",
+        "latest master CI and Release Artifact runs succeeded with no production promotion"
+      ]
+    },
+    {
+      "id": "A-phase2-japan-tuic-limited-repair",
+      "risk": "A",
+      "status": "blocked-pending-fresh-approval",
+      "lane": "production-operations",
+      "title": "Prepare any future Japan TUIC limited repair through fresh evidence",
+      "goal": "Accumulate observation evidence, then bind any artifact alignment, additive candidate, or map apply to separate exact approvals.",
+      "allowedFiles": [
+        "docs/CURRENT_RELEASE_STATE.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "upload or promote an artifact without exact approval",
+        "apply a map, remove stale bindings, or mutate ledger data",
+        "change accounting, quota, trust, automation, or runtime outside the approved gate"
+      ],
+      "validation": [
+        "fresh production pointer and artifact identity are verified before any action",
+        "candidate generation remains read-only and additive-only",
+        "map apply requires a later independent approval and rollback plan"
       ]
     },
     {
@@ -207,7 +277,7 @@
       "status": "queued-after-traffic-accounting",
       "lane": "portal-lifecycle",
       "title": "Define the Portal user and resource lifecycle contract",
-      "goal": "Implement Issue #438 as one safe lifecycle read model over existing account, entitlement, delivery, usage, quota, and renewal facts without a first-slice schema migration.",
+      "goal": "Implement Issue #438 over existing account, entitlement, delivery, usage, quota, and renewal facts without a first-slice schema migration.",
       "allowedFiles": [
         "server/services/platform/**/*.mjs",
         "server/services/subscriptions/**/*.mjs",
@@ -217,8 +287,7 @@
       "forbiddenActions": [
         "treat payment as subscription state",
         "perform a schema migration in the first slice",
-        "retire legacy access or change production auth",
-        "redesign the Portal broadly"
+        "retire legacy access or redesign the Portal broadly"
       ],
       "validation": [
         "lifecycle boundary tests",
@@ -233,19 +302,16 @@
       "status": "queued-after-portal-lifecycle",
       "lane": "commercial-foundation",
       "title": "Harden provider-neutral commercial contracts with all live providers disabled",
-      "goal": "Implement Issue #439 with fail-closed payment capabilities, verified fact boundaries, and a redacted event catalog while billing and AppsFlyer remain non-live.",
+      "goal": "Implement Issue #439 with fail-closed payment capabilities, verified fact boundaries, and a redacted event catalog.",
       "allowedFiles": [
         "server/services/platform/**/*.mjs",
         "server/tests/**/*.test.mjs",
-        "docs/BILLING_RECHARGE_CONTRACT.md",
-        "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
-        "docs/PARTNER_ATTRIBUTION_SETTLEMENT_ARCHITECTURE.md"
+        "docs/BILLING_RECHARGE_CONTRACT.md"
       ],
       "forbiddenActions": [
         "activate a payment provider or AppsFlyer",
         "add provider credentials, live webhooks, settlement, or payout",
-        "let payment facts directly generate runtime or subscription material",
-        "perform a production schema migration"
+        "let payment facts directly generate runtime or subscription material"
       ],
       "validation": [
         "contract, redaction, idempotency, and disabled-mode tests",
@@ -258,26 +324,23 @@
       "risk": "B",
       "status": "guardrail-when-touched",
       "lane": "code-boundary",
-      "title": "Extract one measured ownership boundary only when Phase 2 work exposes it",
-      "goal": "Implement Issue #440 opportunistically with behavior-preserving tests instead of launching a repository-wide refactor.",
+      "title": "Extract only measured code boundaries exposed by active work",
+      "goal": "Use Issue #440 for one behavior-preserving extraction at a time while keeping the modular monolith intact.",
       "allowedFiles": [
-        "server/**/*.mjs",
+        "server/state.mjs",
+        "server/services/**/*.mjs",
         "server/tests/**/*.test.mjs",
-        "admin/src/**/*",
-        "docs/DOMAIN_UNIT_BOUNDARIES.md",
-        "docs/PROJECT_SIMPLIFICATION_MAP.md"
+        "admin/src/**/*"
       ],
       "forbiddenActions": [
-        "split services or databases for line-count reasons",
-        "introduce microservices, Redis, queues, PostgreSQL, or ClickHouse",
-        "hide behavior changes inside a refactor",
-        "create a duplicate domain directory tree"
+        "perform a broad state.mjs split",
+        "introduce microservices or replace SQLite",
+        "change auth, schema, runtime, or public behavior without a separate gate"
       ],
       "validation": [
-        "before-and-after dependency evidence",
-        "focused contract tests",
-        "npm test",
-        "Admin tests and build if frontend ownership changes",
+        "one measured ownership problem",
+        "behavior-preserving contract tests",
+        "npm test and applicable Admin checks",
         "git diff --check origin/master...HEAD"
       ]
     }

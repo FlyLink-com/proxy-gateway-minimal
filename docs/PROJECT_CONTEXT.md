@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-07-10, America/Los_Angeles.
+Last updated: 2026-07-11, America/Los_Angeles.
 
 > Status:
 > - Type: Active current-state handoff
@@ -84,15 +84,15 @@ Repository:
 gaoyi1020-web/proxy-gateway-minimal
 ```
 
-At the pre-reconciliation 2026-07-10 snapshot:
+At the pre-reconciliation 2026-07-11 snapshot:
 
-- `master`: `20f8345dd1e6d09dd1a816634aa8f29c5312fd0c`
+- `master`: `e1beacc15fdc35661077cd3387f3ba17a3966e1a`
 - local worktree: clean and synchronized before this reconciliation branch
 - remote branches: `master` only
 - open PRs: 0
-- open Issues: #437, #438, #439, #440, and #462
-- latest master CI: `29097381907`, success
-- latest Release Artifact run: `29097381774`, success
+- open Issues: #437, #438, #439, and #440
+- latest master CI: `29153679418`, success
+- latest Release Artifact run: `29153679403`, success
 
 These are dated facts. Re-run Git and GitHub inventory before making a current
 claim.
@@ -134,14 +134,14 @@ Keep one primary implementation lane active:
 
 | Order | Issue | Lane | Current state |
 | --- | --- | --- | --- |
-| Gate | #462 | Version/deployment governance | Cloudflare setting corrected; one master-merge proof remains |
-| 1 | #437 | Traffic Accounting | Active; PRs #441, #459, and #460 merged; producer gaps remain |
+| 1 | #437 | Traffic Accounting | Active controlled remediation preparation; observation and reconciliation are verified, identity sync remains degraded |
 | 2 | #438 | Portal Lifecycle | Queued after traffic semantics stabilize |
 | 3 | #439 | Commercial Foundation | Queued; billing and AppsFlyer remain non-live |
 | 4 | #440 | Code Boundary Cleanup | Opportunistic guardrail only |
 
-Issue #457 is closed. Real merges proved the Vercel staged-deployment boundary
-without moving the public custom aliases. Promotion remains separately gated.
+Issues #457 and #462 are closed. Real merges proved that Vercel candidates and
+Cloudflare saved versions do not become active production solely because source
+was merged. Promotion remains separately gated.
 
 Do not pre-create broad pipeline, Portal redesign, payment activation, or
 architecture-refactor PRs. Each source PR must answer:
@@ -170,6 +170,11 @@ Runtime Config Identity v1 provides an offline deterministic observation
 identity generator for Japan and Singapore runtime config. It has not observed
 production and does not contain deployment state.
 
+This offline identity capability is separate from the protected traffic
+Evidence Runtime on Japan. The latter is active in observation-only mode and
+its read-only projection is reconciled; it does not influence accounting,
+quota, recovery, or trust decisions.
+
 See `RELEASE_MANIFEST.md` for the contract and
 `docs/CURRENT_RELEASE_STATE.md` for current documented identities.
 
@@ -183,8 +188,8 @@ The company site uses Vercel Git integration:
   `proxy-gateway-minimal-hqdudl13g-gccltd.vercel.app`
 - current GitHub Production deployment: `5389897330`
 - latest staged candidate: Vercel deployment
-  `dpl_Fy7at228XHgWE1p2T5ZpCoa97HS1`, GitHub deployment `5392379943`, source
-  `20f8345dd1e6d09dd1a816634aa8f29c5312fd0c`
+  `proxy-gateway-minimal-l4wfa6q0h-gccltd.vercel.app`, GitHub deployment
+  `5403913679`, source `e1beacc15fdc35661077cd3387f3ba17a3966e1a`
 - staged proof: candidate READY, `production_environment=false`, and neither
   public custom alias moved
 
@@ -198,9 +203,10 @@ Cloudflare native Workers Builds is a separate provider path. The #461 merge
 auto-promoted Worker deployment `540da82f-b04d-4d67-9c8d-c5542d55e8a5`
 before that path was identified. Under Issue #462 approval, only the native
 production trigger command was changed to `npx wrangler versions upload`.
-Readback proved no setting-side build, version, or deployment, and no custom
-domains are attached. One reviewed master merge proof remains before #462 can
-close.
+The #463 merge proved version creation without active promotion, and Issue #462
+is closed. The #468 merge created saved version
+`407eb863-0e82-4e73-af54-3a44722b07c9`; the active deployment was not
+independently re-read during this C-tier reconciliation.
 
 GitHub `Production` and `cloudflare-production` environments had no protection
 rules at the latest read-only inventory. Branch protection/ruleset APIs were
@@ -213,31 +219,35 @@ The compact current snapshot is in `docs/CURRENT_RELEASE_STATE.md`.
 
 Important boundaries:
 
-- `control-plane-app`: `active_documented` from the July 9 deployment record.
+- `control-plane-app`: `active_documented` as
+  `phase2-control-plane-artifact-alignment-20260710-001`, source `9bc03b41`.
 - `company-site-static`: `deployed_unreconciled`; current Vercel public and
   Cloudflare workers.dev identities are known, but portable artifact lineage is
   incomplete.
 - `portal-static`: `deployed_unreconciled`.
 - `admin-static`: `unknown` production identity.
 - Japan and SGP runtime config: `active_documented`, not live-observed by
-  Runtime Identity v1.
+  offline Runtime Config Identity v1. Japan traffic Evidence Runtime is active
+  observation-only and reconciled; identity sync remains degraded.
 - `subscription-rendering`: `deployed_unreconciled`.
 - AppsFlyer: disabled/dry-run only.
 
-The documented control-plane source is an ancestor of current `master`, which
-is 29 commits ahead at the snapshot. Source-only capabilities must not be
-reported as deployed without a matching production record.
+The documented control-plane source is an ancestor of current `master`.
+PRs #466 through #468 are source-only: alignment/promotion attempts were rolled
+back or not performed, so the current production pointer remains unchanged.
 
 ## Active Blockers
 
-1. #462 still needs one reviewed master merge proving Cloudflare uploads a
-   version without changing its active deployment.
-2. #437 still lacks protected Japan TUIC map verification status and SGP TUIC
-   sidecar status producers; the Admin UI remains deferred.
-3. Runtime Identity has not observed Japan or Singapore production.
-4. Company site, Portal, Admin, and subscription-rendering lineage is not fully
+1. #437 has observed Japan TUIC identity drift (`missing=2`, `stale=19`) and at
+   least one active missing binding. Accounting completeness remains
+   `risk_not_quantified`; the additive repair capability is not deployed and
+   map apply has not started.
+2. Offline Runtime Config Identity has not observed Japan or Singapore
+   production; this must not be confused with the active traffic Evidence
+   Runtime.
+3. Company site, Portal, Admin, and subscription-rendering lineage is not fully
    reconciled.
-5. Billing and AppsFlyer are intentionally non-live.
+4. Billing and AppsFlyer are intentionally non-live.
 
 Historical Aliyun, AWS canary, old carrier PR, and Admin OS task queues are not
 current execution authority. Use Git history and the archive/index documents
