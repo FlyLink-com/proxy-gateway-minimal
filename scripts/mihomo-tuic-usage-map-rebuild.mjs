@@ -18,6 +18,8 @@ const SAFE_ERROR_CODES = new Set([
   "expected_count_mismatch",
   "validation_error"
 ]);
+const CANONICAL_REBUILD_STRATEGY = "canonical_rebuild";
+const ADDITIVE_MISSING_ONLY_STRATEGY = "additive_missing_only";
 
 function text(value) {
   return String(value ?? "").trim();
@@ -79,6 +81,82 @@ function countDiff(left, right) {
   return [...left].filter((key) => !right.has(key)).length;
 }
 
+function normalizeStrategy(value) {
+  const strategy = text(value) || CANONICAL_REBUILD_STRATEGY;
+  if (![CANONICAL_REBUILD_STRATEGY, ADDITIVE_MISSING_ONLY_STRATEGY].includes(strategy)) {
+    const error = new Error("unsupported strategy");
+    error.code = "validation_error";
+    throw error;
+  }
+  return strategy;
+}
+
+function buildAdditiveCandidate({
+  currentMap,
+  rebuiltMap,
+  missingMaterial,
+  applied = false
+}) {
+  const currentKeys = lowerKeySet(currentMap);
+  const rebuiltKeys = lowerKeySet(rebuiltMap);
+  const currentEntries = lowerEntryMap(currentMap);
+  const rebuiltEntries = lowerEntryMap(rebuiltMap);
+  const addCount = countDiff(rebuiltKeys, currentKeys);
+  const deferredRemoveCount = countDiff(currentKeys, rebuiltKeys);
+  const deferredChangedCount = [...rebuiltEntries].filter(([key, value]) => (
+    currentEntries.has(key) && currentEntries.get(key) !== value
+  )).length;
+
+  return {
+    strategy: ADDITIVE_MISSING_ONLY_STRATEGY,
+    ready: missingMaterial === 0 && deferredChangedCount === 0,
+    applied,
+    projectedMapCount: currentKeys.size + addCount,
+    addCount,
+    removeCount: 0,
+    deferredRemoveCount,
+    changedCount: 0,
+    deferredChangedCount,
+    missingMaterialCount: missingMaterial
+  };
+}
+
+function buildAdditiveMap({ currentMap, rebuiltMap }) {
+  const candidateMap = { ...currentMap };
+  const currentKeys = lowerKeySet(currentMap);
+  for (const [uuid, credentialRef] of Object.entries(rebuiltMap)) {
+    if (!currentKeys.has(uuid.toLowerCase())) {
+      candidateMap[uuid] = credentialRef;
+    }
+  }
+  return candidateMap;
+}
+
+function additiveNextAction(candidate, { applied = false } = {}) {
+  if (candidate.missingMaterialCount > 0) {
+    return "resolve_missing_material_before_usage_map_apply";
+  }
+  if (candidate.deferredChangedCount > 0) {
+    return "resolve_changed_binding_before_additive_apply";
+  }
+  if (applied) {
+    return "run_traffic_usage_collector_validation_then_continue_retention_review";
+  }
+  return candidate.addCount > 0
+    ? "apply_additive_candidate_after_operator_approval"
+    : "no_additive_repair_required";
+}
+
+function withAdditiveCandidate(report, candidate, { applied = false } = {}) {
+  return {
+    ...report,
+    ok: candidate.ready,
+    candidateReady: candidate.ready,
+    candidate,
+    nextAction: additiveNextAction(candidate, { applied })
+  };
+}
+
 function modeText(mode) {
   return (mode & 0o777).toString(8).padStart(3, "0");
 }
@@ -126,17 +204,25 @@ function baseReport({
 }
 
 export function buildMihomoTuicUsageCredentialMapReport({
+  strategy,
   mihomoConfigText,
   materialRecords = [],
   currentMap = {}
 } = {}) {
+  const safeStrategy = normalizeStrategy(strategy);
   const { rebuilt, missingMaterial } = rebuildMap({ mihomoConfigText, materialRecords });
-  return baseReport({
+  const report = baseReport({
     mode: "dry-run",
     currentMap,
     rebuiltMap: rebuilt,
     missingMaterial
   });
+  if (safeStrategy === CANONICAL_REBUILD_STRATEGY) return report;
+  return withAdditiveCandidate(report, buildAdditiveCandidate({
+    currentMap,
+    rebuiltMap: rebuilt,
+    missingMaterial
+  }));
 }
 
 function assertExpectedCounts(report, {
@@ -160,15 +246,82 @@ function assertExpectedCounts(report, {
   }
 }
 
+function assertRequiredAdditiveExpectedCounts({
+  expectedAddCount,
+  expectedRemoveCount,
+  expectedChangedCount,
+  expectedMissingMaterial,
+  expectedDeferredRemoveCount,
+  expectedProjectedMapCount
+} = {}) {
+  const required = [
+    expectedAddCount,
+    expectedRemoveCount,
+    expectedChangedCount,
+    expectedMissingMaterial,
+    expectedDeferredRemoveCount,
+    expectedProjectedMapCount
+  ];
+  if (required.some((value) => value === undefined)) {
+    const error = new Error("complete additive expected counts are required");
+    error.code = "validation_error";
+    throw error;
+  }
+}
+
+function assertAdditiveExpectedCounts(candidate, expected = {}) {
+  assertRequiredAdditiveExpectedCounts(expected);
+  assertExpectedCounts({
+    addCount: candidate.addCount,
+    removeCount: candidate.removeCount,
+    changedCount: candidate.changedCount,
+    missingMaterial: candidate.missingMaterialCount
+  }, expected);
+  if (Number(expected.expectedDeferredRemoveCount) !== Number(candidate.deferredRemoveCount)) {
+    const error = new Error("expectedDeferredRemoveCount mismatch");
+    error.code = "expected_count_mismatch";
+    throw error;
+  }
+  if (Number(expected.expectedProjectedMapCount) !== Number(candidate.projectedMapCount)) {
+    const error = new Error("expectedProjectedMapCount mismatch");
+    error.code = "expected_count_mismatch";
+    throw error;
+  }
+}
+
+function replaceProtectedMap({ mapPath, nextMap }) {
+  const before = statSync(mapPath);
+  const tmpPath = `${mapPath}.${process.pid}.tmp`;
+  writeFileSync(tmpPath, `${JSON.stringify(nextMap, null, 2)}\n`, { mode: 0o600 });
+  try {
+    chownSync(tmpPath, before.uid, before.gid);
+  } catch {
+    // Best effort for platforms without chown support.
+  }
+  chmodSync(tmpPath, 0o600);
+  renameSync(tmpPath, mapPath);
+  try {
+    chownSync(mapPath, before.uid, before.gid);
+  } catch {
+    // Best effort for platforms without chown support.
+  }
+  chmodSync(mapPath, 0o600);
+  return statSync(mapPath);
+}
+
 export function applyMihomoTuicUsageCredentialMap({
+  strategy,
   mapPath,
   mihomoConfigText,
   materialRecords = [],
   expectedAddCount,
   expectedRemoveCount,
   expectedChangedCount,
-  expectedMissingMaterial
+  expectedMissingMaterial,
+  expectedDeferredRemoveCount,
+  expectedProjectedMapCount
 } = {}) {
+  const safeStrategy = normalizeStrategy(strategy);
   const safeMapPath = text(mapPath);
   if (!safeMapPath) {
     const error = new Error("mapPath is required");
@@ -177,6 +330,42 @@ export function applyMihomoTuicUsageCredentialMap({
   }
   const currentMap = readJsonFile(safeMapPath);
   const { rebuilt, missingMaterial } = rebuildMap({ mihomoConfigText, materialRecords });
+  if (safeStrategy === ADDITIVE_MISSING_ONLY_STRATEGY) {
+    const candidate = buildAdditiveCandidate({
+      currentMap,
+      rebuiltMap: rebuilt,
+      missingMaterial
+    });
+    assertAdditiveExpectedCounts(candidate, {
+      expectedAddCount,
+      expectedRemoveCount,
+      expectedChangedCount,
+      expectedMissingMaterial,
+      expectedDeferredRemoveCount,
+      expectedProjectedMapCount
+    });
+    if (!candidate.ready) {
+      const error = new Error("candidate map is not ready");
+      error.code = "candidate_not_ready";
+      throw error;
+    }
+
+    const additiveMap = buildAdditiveMap({ currentMap, rebuiltMap: rebuilt });
+    const after = replaceProtectedMap({ mapPath: safeMapPath, nextMap: additiveMap });
+    const finalReport = baseReport({
+      mode: "apply",
+      currentMap: additiveMap,
+      rebuiltMap: rebuilt,
+      missingMaterial,
+      applied: true,
+      finalMode: modeText(after.mode)
+    });
+    return withAdditiveCandidate(finalReport, {
+      ...candidate,
+      applied: true
+    }, { applied: true });
+  }
+
   const dryReport = baseReport({
     mode: "dry-run",
     currentMap,
@@ -195,23 +384,7 @@ export function applyMihomoTuicUsageCredentialMap({
     throw error;
   }
 
-  const before = statSync(safeMapPath);
-  const tmpPath = `${safeMapPath}.${process.pid}.tmp`;
-  writeFileSync(tmpPath, `${JSON.stringify(rebuilt, null, 2)}\n`, { mode: 0o600 });
-  try {
-    chownSync(tmpPath, before.uid, before.gid);
-  } catch {
-    // Best effort for platforms without chown support.
-  }
-  chmodSync(tmpPath, 0o600);
-  renameSync(tmpPath, safeMapPath);
-  try {
-    chownSync(safeMapPath, before.uid, before.gid);
-  } catch {
-    // Best effort for platforms without chown support.
-  }
-  chmodSync(safeMapPath, 0o600);
-  const after = statSync(safeMapPath);
+  const after = replaceProtectedMap({ mapPath: safeMapPath, nextMap: rebuilt });
 
   return baseReport({
     mode: "apply",
@@ -246,6 +419,7 @@ export function runMihomoTuicUsageMapRebuildCli({
   const mihomoConfigPath = argValue(argv, "--mihomo-config");
   const materialStorePath = argValue(argv, "--material-store");
   const statusPath = argValue(argv, "--status-path");
+  const strategy = argValue(argv, "--strategy");
   const apply = argv.includes("--apply");
   function writeProducerStatus(report) {
     if (statusPath) {
@@ -275,17 +449,21 @@ export function runMihomoTuicUsageMapRebuildCli({
 
   try {
     const input = {
+      strategy,
       mapPath,
       mihomoConfigText: readFileSync(mihomoConfigPath, "utf8"),
       materialRecords: normalizeMaterialRecords(readJsonFile(materialStorePath)),
       expectedAddCount: numberArg(argv, "--expected-add"),
       expectedRemoveCount: numberArg(argv, "--expected-remove"),
       expectedChangedCount: numberArg(argv, "--expected-changed"),
-      expectedMissingMaterial: numberArg(argv, "--expected-missing-material")
+      expectedMissingMaterial: numberArg(argv, "--expected-missing-material"),
+      expectedDeferredRemoveCount: numberArg(argv, "--expected-deferred-remove"),
+      expectedProjectedMapCount: numberArg(argv, "--expected-projected-map-count")
     };
     const report = apply
       ? applyMihomoTuicUsageCredentialMap(input)
       : buildMihomoTuicUsageCredentialMapReport({
+        strategy: input.strategy,
         mihomoConfigText: input.mihomoConfigText,
         materialRecords: input.materialRecords,
         currentMap: readJsonFile(mapPath)

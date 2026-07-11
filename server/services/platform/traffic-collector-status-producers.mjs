@@ -289,8 +289,10 @@ export function buildMihomoTuicUsageCredentialMapProducerStatus({
   const changedCount = nonNegativeInteger(report.changedCount);
   const missingMaterialCount = nonNegativeInteger(report.missingMaterial);
   const verificationFailed = report.verificationFailed === true;
+  const additiveRepair = text(report?.candidate?.strategy) === "additive_missing_only";
   const inSync = !verificationFailed && missingMaterialCount === 0
-    && (report.applied === true || (addCount === 0 && removeCount === 0 && changedCount === 0));
+    && ((!additiveRepair && report.applied === true)
+      || (addCount === 0 && removeCount === 0 && changedCount === 0));
   const missingMaterial = missingMaterialCount > 0;
 
   return {
