@@ -85,6 +85,51 @@ Minimum future steps:
    rejection, and data-plane listener/readiness checks.
 9. Roll back automatically if validation fails.
 
+### Protected Release Config Identity Gate
+
+The GitHub artifact remains source-only. Production config must not be packaged in the GitHub source artifact
+or its public `artifact.json`. During an approved
+Risk A release preparation, the protected active config is overlaid onto the
+inactive candidate on the target host.
+
+The gate has three explicit steps:
+
+1. Run a read-only prepare dry-run to detect whether the inactive candidate
+   already matches the active protected config.
+2. Run prepare with `--apply` to atomically copy the protected config into the
+   inactive candidate and write a mode-0600 `release-assembly.json`. The
+   manifest contains only release names, relative path, SHA256, size, mode, and
+   creation time; it contains no config content or absolute path.
+3. Run read-only verify before the `current` pointer switch. A mismatch or
+   invalid manifest stops the promotion before any pointer or service mutation.
+
+Example inside an approved production release preparation:
+
+```bash
+npm run release:config:prepare -- \
+  --active-release "$ACTIVE_RELEASE_PATH" \
+  --candidate-release "$CANDIDATE_RELEASE_PATH" \
+  --relative-config config/proxy-servers.json \
+  --manifest "$PROTECTED_ASSEMBLY_MANIFEST"
+
+npm run release:config:prepare -- \
+  --active-release "$ACTIVE_RELEASE_PATH" \
+  --candidate-release "$CANDIDATE_RELEASE_PATH" \
+  --relative-config config/proxy-servers.json \
+  --manifest "$PROTECTED_ASSEMBLY_MANIFEST" \
+  --apply
+
+npm run release:config:verify -- \
+  --active-release "$ACTIVE_RELEASE_PATH" \
+  --candidate-release "$CANDIDATE_RELEASE_PATH" \
+  --relative-config config/proxy-servers.json \
+  --manifest "$PROTECTED_ASSEMBLY_MANIFEST"
+```
+
+This identity gate proves release assembly only. After the pointer switch, the
+separate promotion health gate remains responsible for bounded runtime and
+public-edge acceptance. Neither gate authorizes deployment by itself.
+
 ### Condition-Driven Promotion Health Window
 
 `npm run promotion:health-gate -- ...` provides a read-only acceptance window
