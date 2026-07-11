@@ -1,6 +1,6 @@
 # GitHub Issue And PR Workflow
 
-Last updated: 2026-07-08, America/Los_Angeles.
+Last updated: 2026-07-10, America/Los_Angeles.
 
 > Status:
 > - Type: Active workflow rule
@@ -75,11 +75,31 @@ A PR should summarize:
 - Actual validation commands and results.
 - Deploy note only when a deploy, rollback, or static replacement was actually
   performed.
+- `identity_impact` and the Identity Gate posture when runtime principals or
+  their accounting bindings can change.
 - Remaining gates for work outside the PR scope.
 
 Use `Refs #123` when the PR contributes to the issue but does not complete the
 done criteria. Use `Closes #123` only when the issue's done criteria are fully
 satisfied by the merged PR.
+
+## Identity-Impacting Work
+
+Identity is not a release unit. Keep the existing `release_unit` and set
+`identity_impact: true` when a source change or runtime Change Record can alter
+Xray or Mihomo principals, protected usage maps, material bindings, or
+collector identity resolution.
+
+At PR time, declare a safe logical `surface` and keep the gate `pending` unless
+an approved target-runtime action already produced evidence. After an actual
+identity-impacting deployment, the Deploy Note records aggregate before/after
+counts and the final `verified`, `degraded`, or `blocked` state. Runtime health
+alone is not evidence of identity synchronization.
+
+Stale map entries do not serve as historical accounting storage. They require
+a separate read-only retention review before removal because residual runtime
+observations may still exist. See `docs/IDENTITY_LIFECYCLE.md` for lifecycle,
+count semantics, retention states, and the no-sensitive-output boundary.
 
 ## Risk Mapping
 
