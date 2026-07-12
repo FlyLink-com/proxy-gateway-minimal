@@ -131,6 +131,29 @@
       ]
     },
     {
+      "id": "operations-foundation",
+      "name": "Operations Workbench Foundation",
+      "status": "source-only-local-validation",
+      "riskBoundary": "A for SQLite schema or production initialization; B for summary-only service and protected Admin consumers after the schema gate is approved",
+      "purpose": "Persist Lead review state, record idempotent lifecycle events, and expose privacy-bounded summary counts before any live attribution or automatic campaign scaling.",
+      "primaryDocs": [
+        "docs/OPERATIONS_FOUNDATION_SCHEMA_GATE.md",
+        "docs/COMMERCIAL_MODEL_V1.md"
+      ],
+      "primaryCodeAreas": [
+        "server/services/platform/lead-review-queue.mjs",
+        "server/services/platform/operations-foundation-summary.mjs",
+        "server/services/platform/subscription-control-db.mjs",
+        "server/routes/admin-platform.mjs"
+      ],
+      "nonGoals": [
+        "production database initialization",
+        "live AppsFlyer or payment provider activation",
+        "automatic campaign budget control",
+        "CRM, warehouse, Redis, queue, or microservice expansion"
+      ]
+    },
+    {
       "id": "production-operations",
       "name": "Production Operations",
       "status": "active-boundary",

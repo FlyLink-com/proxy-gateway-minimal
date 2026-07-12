@@ -320,6 +320,34 @@
       ]
     },
     {
+      "id": "A-operations-foundation-additive-schema",
+      "risk": "A",
+      "status": "completed-source-only-local-validation",
+      "lane": "operations-foundation",
+      "title": "Add the durable operations foundation behind a production gate",
+      "goal": "Implement Issue #475 by persisting Lead review state, recording linked idempotent lifecycle events, and exposing safe summary counts without provider activation or production schema execution.",
+      "allowedFiles": [
+        "server/services/platform/**/*.mjs",
+        "server/routes/admin-platform.mjs",
+        "server/state.mjs",
+        "server/tests/**/*.test.mjs",
+        "docs/OPERATIONS_FOUNDATION_SCHEMA_GATE.md",
+        "project-state/*.json"
+      ],
+      "forbiddenActions": [
+        "initialize or mutate a production database from this source task",
+        "activate AppsFlyer, payment, settlement, or automatic campaign control",
+        "alter, delete, rename, truncate, or backfill existing business tables",
+        "expose email, message, subscription URL, credentials, provider payloads, raw SQLite rows, or customer-private data in operations summaries"
+      ],
+      "validation": [
+        "legacy SQLite fixture preserves existing rows and gains only additive operations schema",
+        "Lead state survives restart and operations events remain idempotent",
+        "protected summary route reports counts and missing-link evidence only",
+        "npm test, npm run project-state:check, and git diff --check origin/master...HEAD"
+      ]
+    },
+    {
       "id": "B-phase2-code-boundary-cleanup",
       "risk": "B",
       "status": "guardrail-when-touched",

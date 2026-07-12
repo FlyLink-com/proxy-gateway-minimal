@@ -1,6 +1,6 @@
 {
   "schemaVersion": "2026-07-11.1",
-  "lastUpdated": "2026-07-11",
+  "lastUpdated": "2026-07-12",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current project state for Agent orientation. Verify drift-prone GitHub, deployment, and production facts live before any Risk A action.",
@@ -14,6 +14,7 @@
     "docs/IDENTITY_LIFECYCLE.md",
     "docs/ACCOUNT_RESOURCE_DELIVERY_LIFECYCLE.md",
     "docs/BILLING_RECHARGE_CONTRACT.md",
+    "docs/OPERATIONS_FOUNDATION_SCHEMA_GATE.md",
     "docs/PROJECT_SIMPLIFICATION_MAP.md"
   ],
   "repo": {
@@ -80,7 +81,8 @@
     "authoritative account, entitlement, delivery, usage, and quota lifecycle",
     "trustworthy traffic accounting and protected operator observability",
     "replaceable Japan/Singapore data-plane capacity behind stable delivery",
-    "provider-neutral commercial foundation with all live providers gated"
+    "provider-neutral commercial foundation with all live providers gated",
+    "durable privacy-bounded operations evidence for Lead review, delivery, first use, and future campaign decisions"
   ],
   "activeDirections": [
     "Phase 2 is Operational Reliability, not broad feature expansion.",
@@ -88,7 +90,8 @@
     "Issues #457 and #462 are closed after Vercel and Cloudflare merge-versus-promotion boundaries were proved.",
     "Traffic Evidence Runtime is active observation-only and reconciled; identity sync remains degraded and cannot influence accounting, quota, recovery, or trust decisions.",
     "PRs #466 through #468 are reviewed source capabilities, not production state. The documented production control-plane pointer remains at source 9bc03b41.",
-    "Billing and AppsFlyer remain disabled/non-live, and architecture stays a modular monolith."
+    "Billing and AppsFlyer remain disabled/non-live, and architecture stays a modular monolith.",
+    "The operations foundation adds source-only durable Lead and lifecycle-event boundaries; it does not authorize production schema initialization, provider activation, or automatic campaign-budget control."
   ],
   "activeGoal": {
     "id": "phase-2-operational-reliability",

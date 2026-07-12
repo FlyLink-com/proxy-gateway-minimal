@@ -16,6 +16,7 @@ import { createCleanStartControlPlanePackage } from "../services/platform/clean-
 import { createPlatformControlSummary } from "../services/platform/control-plane-contract.mjs";
 import { buildProvisioningFormPackage } from "../services/platform/provisioning-form.mjs";
 import { createPartnerAttributionAdminReport } from "../services/platform/partner-attribution-admin-report.mjs";
+import { createOperationsFoundationSummary } from "../services/platform/operations-foundation-summary.mjs";
 import { previewSubscriptionIssuance, planSubscriptionIssuance } from "../services/platform/subscription-issuance.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
 import {
@@ -786,6 +787,16 @@ export function adminPlatformRoutes(state) {
   router.get("/api/admin/platform/leads", (req, res) => {
     try {
       res.json({ items: leadQueue.listLeads({ status: req.query.status }) });
+    } catch (error) {
+      sendError(res, error);
+    }
+  });
+
+  router.get("/api/admin/platform/operations-summary", (_req, res) => {
+    try {
+      res.json({
+        summary: createOperationsFoundationSummary({ leadQueue, controlStore })
+      });
     } catch (error) {
       sendError(res, error);
     }

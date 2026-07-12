@@ -973,7 +973,9 @@ export function createRuntimeState(options = {}) {
       controlStore: platformControlStore
     })
   });
-  const platformLeadQueue = options.platformLeadQueue || createPlatformLeadReviewQueue();
+  const platformLeadQueue = options.platformLeadQueue || createPlatformLeadReviewQueue({
+    store: platformControlStore
+  });
   const platformAccountShell = options.platformAccountShell || createPlatformAccountEntitlementShell();
   const platformAccessShell = options.platformAccessShell || createPlatformSubscriptionAccessShell({
     accountShell: platformAccountShell

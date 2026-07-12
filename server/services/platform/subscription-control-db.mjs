@@ -16,6 +16,18 @@ const UNSAFE_FIELD_PARTS = [
   "sspassword"
 ];
 const SAFE_CONTROL_REF_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_:/-]{0,127}$/;
+const OPERATIONS_EVENT_TYPES = new Set([
+  "lead_created",
+  "lead_review_started",
+  "lead_converted",
+  "registration_completed",
+  "access_requested",
+  "access_approved",
+  "delivery_completed",
+  "first_usage_observed",
+  "entitlement_expired",
+  "renewal_completed"
+]);
 const UNSAFE_CONTROL_VALUE_PATTERN =
   /https?:|token=|secret|credential|password|private|customer|@|\/sub\/clash\.yaml|(?:\d{1,3}\.){3}\d{1,3}|[a-z0-9-]+\.[a-z]{2,}/i;
 
@@ -214,6 +226,41 @@ function mapAccount(row) {
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    metadata: parseJsonObject(row.metadata_json)
+  };
+}
+
+function mapLead(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    type: "platform_lead",
+    status: row.status,
+    organization: row.organization,
+    email: row.email,
+    direction: row.direction,
+    stage: row.stage,
+    message: row.message,
+    source: row.source,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function mapOperationsEvent(row) {
+  if (!row) return null;
+  return {
+    eventRef: row.event_ref,
+    eventType: row.event_type,
+    idempotencyKey: row.idempotency_key,
+    leadRef: row.lead_ref,
+    accountRef: row.account_ref,
+    requestRef: row.request_ref,
+    entitlementRef: row.entitlement_ref,
+    campaignRef: row.campaign_ref,
+    touchRef: row.touch_ref,
+    occurredAt: row.occurred_at,
+    recordedAt: row.recorded_at,
     metadata: parseJsonObject(row.metadata_json)
   };
 }
@@ -678,6 +725,44 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     create index if not exists platform_accounts_status_idx
       on platform_accounts(status);
 
+    create table if not exists platform_leads (
+      id text primary key,
+      status text not null check (status in ('new', 'reviewing', 'converted', 'rejected')),
+      organization text not null,
+      email text not null,
+      direction text not null,
+      stage text not null default '',
+      message text not null,
+      source text not null,
+      created_at text not null,
+      updated_at text not null
+    );
+
+    create index if not exists platform_leads_status_created_idx
+      on platform_leads(status, created_at, id);
+
+    create table if not exists platform_operations_events (
+      event_ref text primary key,
+      event_type text not null,
+      idempotency_key text not null unique,
+      lead_ref text,
+      account_ref text,
+      request_ref text,
+      entitlement_ref text,
+      campaign_ref text,
+      touch_ref text,
+      occurred_at text not null,
+      recorded_at text not null,
+      metadata_json text not null default '{}'
+    );
+
+    create index if not exists platform_operations_events_type_time_idx
+      on platform_operations_events(event_type, occurred_at, event_ref);
+    create index if not exists platform_operations_events_lead_idx
+      on platform_operations_events(lead_ref, occurred_at, event_ref);
+    create index if not exists platform_operations_events_account_idx
+      on platform_operations_events(account_ref, occurred_at, event_ref);
+
     create table if not exists platform_entitlements (
       id text primary key,
       account_id text not null references platform_accounts(id) on delete cascade,
@@ -1129,6 +1214,104 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       )
     `), record);
     return getAccount(record.id);
+  }
+
+  function upsertLead(input) {
+    const lead = {
+      id: requiredText(input.id, "id"),
+      status: requiredText(input.status, "status"),
+      organization: requiredText(input.organization, "organization"),
+      email: requiredText(input.email, "email"),
+      direction: requiredText(input.direction, "direction"),
+      stage: text(input.stage),
+      message: requiredText(input.message, "message"),
+      source: requiredText(input.source, "source"),
+      createdAt: isoText(input.createdAt, "createdAt"),
+      updatedAt: isoText(input.updatedAt, "updatedAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_leads (
+        id, status, organization, email, direction, stage, message, source,
+        created_at, updated_at
+      ) values (
+        @id, @status, @organization, @email, @direction, @stage, @message, @source,
+        @createdAt, @updatedAt
+      )
+      on conflict(id) do update set
+        status = excluded.status,
+        organization = excluded.organization,
+        email = excluded.email,
+        direction = excluded.direction,
+        stage = excluded.stage,
+        message = excluded.message,
+        source = excluded.source,
+        updated_at = excluded.updated_at
+    `), lead);
+    return getLead(lead.id);
+  }
+
+  function getLead(id) {
+    return mapLead(db.prepare("select * from platform_leads where id = ?").get(requiredText(id, "id")));
+  }
+
+  function listLeads(filters = {}) {
+    const status = optionalText(filters.status);
+    const rows = status
+      ? db.prepare("select * from platform_leads where status = ? order by created_at asc, id asc").all(status)
+      : db.prepare("select * from platform_leads order by created_at asc, id asc").all();
+    return rows.map(mapLead);
+  }
+
+  function recordOperationsEvent(input) {
+    assertNoUnsafeFields(input.metadata || {});
+    assertNoUnsafeControlValues(input.metadata || {});
+    const eventType = requiredText(input.eventType, "eventType");
+    if (!OPERATIONS_EVENT_TYPES.has(eventType)) {
+      throw platformError("validation_error", "eventType is invalid");
+    }
+    const recordedAt = isoText(input.recordedAt || input.occurredAt, "recordedAt");
+    const event = {
+      eventRef: safeControlRef(input.eventRef, "eventRef"),
+      eventType,
+      idempotencyKey: safeControlRef(input.idempotencyKey, "idempotencyKey"),
+      leadRef: input.leadRef ? safeControlRef(input.leadRef, "leadRef") : null,
+      accountRef: input.accountRef ? safeControlRef(input.accountRef, "accountRef") : null,
+      requestRef: input.requestRef ? safeControlRef(input.requestRef, "requestRef") : null,
+      entitlementRef: input.entitlementRef ? safeControlRef(input.entitlementRef, "entitlementRef") : null,
+      campaignRef: input.campaignRef ? safeControlRef(input.campaignRef, "campaignRef") : null,
+      touchRef: input.touchRef ? safeControlRef(input.touchRef, "touchRef") : null,
+      occurredAt: isoText(input.occurredAt, "occurredAt"),
+      recordedAt,
+      metadataJson: jsonObject(input.metadata, "metadata")
+    };
+    const existing = db.prepare(`
+      select * from platform_operations_events where idempotency_key = ?
+    `).get(event.idempotencyKey);
+    if (existing) {
+      return { ...mapOperationsEvent(existing), duplicate: true };
+    }
+    sqliteRun(db.prepare(`
+      insert into platform_operations_events (
+        event_ref, event_type, idempotency_key, lead_ref, account_ref,
+        request_ref, entitlement_ref, campaign_ref, touch_ref, occurred_at,
+        recorded_at, metadata_json
+      ) values (
+        @eventRef, @eventType, @idempotencyKey, @leadRef, @accountRef,
+        @requestRef, @entitlementRef, @campaignRef, @touchRef, @occurredAt,
+        @recordedAt, @metadataJson
+      )
+    `), event);
+    return { ...mapOperationsEvent(db.prepare(`
+      select * from platform_operations_events where event_ref = ?
+    `).get(event.eventRef)), duplicate: false };
+  }
+
+  function listOperationsEvents(filters = {}) {
+    const eventType = optionalText(filters.eventType);
+    const rows = eventType
+      ? db.prepare(`select * from platform_operations_events where event_type = ? order by occurred_at asc, event_ref asc`).all(eventType)
+      : db.prepare(`select * from platform_operations_events order by occurred_at asc, event_ref asc`).all();
+    return rows.map(mapOperationsEvent);
   }
 
   function getAccount(id) {
@@ -1680,7 +1863,22 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
 
   function recordUsageSample(input) {
     const record = usageSampleRecord(input);
-    const inserted = db.transaction(() => insertUsageSampleRecord(record))();
+    const inserted = db.transaction(() => {
+      const didInsert = insertUsageSampleRecord(record);
+      if (didInsert) {
+        recordOperationsEvent({
+          eventRef: `opsevt_first_usage_${record.requestId}`,
+          eventType: "first_usage_observed",
+          idempotencyKey: `first_usage_observed:${record.requestId}`,
+          accountRef: record.accountId,
+          requestRef: record.requestId,
+          entitlementRef: record.entitlementId,
+          occurredAt: record.observedAt,
+          recordedAt: record.createdAt
+        });
+      }
+      return didInsert;
+    })();
     return {
       inserted,
       sample: getUsageSampleByDigest(record.sampleDigest),
@@ -2387,6 +2585,38 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
           ordinal
         });
       });
+      recordOperationsEvent({
+        eventRef: `opsevt_access_requested_${record.id}`,
+        eventType: "access_requested",
+        idempotencyKey: `access_requested:${record.id}`,
+        accountRef: record.portalUserRef,
+        requestRef: record.id,
+        entitlementRef: record.entitlementRef,
+        occurredAt: record.submittedAt,
+        recordedAt: record.updatedAt
+      });
+      if (record.status === "approved_pending_delivery") {
+        recordOperationsEvent({
+          eventRef: `opsevt_access_approved_${record.id}`,
+          eventType: "access_approved",
+          idempotencyKey: `access_approved:${record.id}`,
+          accountRef: record.portalUserRef,
+          requestRef: record.id,
+          entitlementRef: record.entitlementRef,
+          occurredAt: record.reviewedAt || record.updatedAt
+        });
+      }
+      if (["delivered", "issued"].includes(record.status)) {
+        recordOperationsEvent({
+          eventRef: `opsevt_delivery_completed_${record.id}`,
+          eventType: "delivery_completed",
+          idempotencyKey: `delivery_completed:${record.id}`,
+          accountRef: record.portalUserRef,
+          requestRef: record.id,
+          entitlementRef: record.entitlementRef,
+          occurredAt: record.updatedAt
+        });
+      }
     })();
     return getPortalAccessRequest(record.id);
   }
@@ -2863,6 +3093,11 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
 
   return {
     runInTransaction,
+    upsertLead,
+    getLead,
+    listLeads,
+    recordOperationsEvent,
+    listOperationsEvents,
     createAccount,
     getAccount,
     listAccounts,

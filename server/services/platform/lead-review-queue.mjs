@@ -38,6 +38,7 @@ export function createPlatformLeadReviewSummary(lead) {
 export function createPlatformLeadReviewQueue(options = {}) {
   const nowFn = options.nowFn || (() => new Date());
   const idFactory = options.idFactory;
+  const store = options.store;
   const leads = new Map();
   let sequence = 0;
 
@@ -51,23 +52,45 @@ export function createPlatformLeadReviewQueue(options = {}) {
   }
 
   function getStoredLead(id) {
-    const lead = leads.get(String(id || "").trim());
+    const normalizedId = String(id || "").trim();
+    const lead = store?.getLead ? store.getLead(normalizedId) : leads.get(normalizedId);
     if (!lead) {
       throw platformError("not_found", "lead not found");
     }
     return lead;
   }
 
+  function saveLead(lead) {
+    if (store?.upsertLead) {
+      return store.upsertLead(lead);
+    }
+    leads.set(lead.id, lead);
+    return lead;
+  }
+
+  function recordLeadEvent(lead, eventType) {
+    if (!store?.recordOperationsEvent) return;
+    store.recordOperationsEvent({
+      eventRef: `opsevt_${eventType}_${lead.id}`,
+      eventType,
+      idempotencyKey: `${eventType}:${lead.id}`,
+      leadRef: lead.id,
+      occurredAt: lead.updatedAt
+    });
+  }
+
   return {
     enqueueLead(payload) {
       const lead = normalizeForInsert(payload);
-      leads.set(lead.id, lead);
+      saveLead(lead);
+      recordLeadEvent(lead, "lead_created");
       return createPlatformLeadReviewSummary(lead);
     },
 
     listLeads(filters = {}) {
       const status = String(filters.status || "").trim();
-      return [...leads.values()]
+      const storedLeads = store?.listLeads ? store.listLeads({ status }) : [...leads.values()];
+      return storedLeads
         .filter((lead) => !status || lead.status === status)
         .sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
         .map(createPlatformLeadReviewSummary);
@@ -88,7 +111,9 @@ export function createPlatformLeadReviewQueue(options = {}) {
         status: payload.status,
         updatedAt
       }, { now: existing.createdAt });
-      leads.set(updated.id, updated);
+      saveLead(updated);
+      if (updated.status === "reviewing") recordLeadEvent(updated, "lead_review_started");
+      if (updated.status === "converted") recordLeadEvent(updated, "lead_converted");
       return createPlatformLeadReviewSummary(updated);
     }
   };
