@@ -84,6 +84,7 @@ test("Mihomo external-controller usage reader converts aggregate traffic into sa
 
   assert.deepEqual(snapshot, {
     sourceRef: "mihomo_external_controller_traffic",
+    accountingMode: "cumulative",
     observedAt: "2026-06-06T12:00:00.000Z",
     intervalStartedAt: "2026-06-06T11:55:00.000Z",
     intervalEndedAt: "2026-06-06T12:00:00.000Z",
@@ -104,6 +105,7 @@ test("Mihomo external-controller usage reader maps per-credential entries and su
     metricsPath: "/usage",
     nowFn: () => "2026-06-06T12:00:00.000Z",
     fetchJson: async () => ({
+      accountingMode: "delta",
       observedAt: "2026-06-06T11:59:00.000Z",
       users: [
         {
@@ -125,6 +127,7 @@ test("Mihomo external-controller usage reader maps per-credential entries and su
 
   assert.deepEqual(snapshot, {
     sourceRef: "mihomo_external_controller_usage",
+    accountingMode: "delta",
     observedAt: "2026-06-06T11:59:00.000Z",
     intervalStartedAt: "2026-06-06T11:55:00.000Z",
     intervalEndedAt: "2026-06-06T11:59:00.000Z",
@@ -180,6 +183,7 @@ test("Mihomo external-controller usage reader maps connections through a runtime
 
   assert.deepEqual(snapshot, {
     sourceRef: "mihomo_external_controller_connections",
+    accountingMode: "cumulative",
     observedAt: "2026-06-06T11:59:00.000Z",
     intervalStartedAt: "2026-06-06T11:55:00.000Z",
     intervalEndedAt: "2026-06-06T11:59:00.000Z",

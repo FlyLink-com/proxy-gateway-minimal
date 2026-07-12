@@ -210,6 +210,107 @@ test("traffic accounting records usage by edge credential and returns quota deci
   });
 });
 
+test("traffic accounting converts cumulative counters into durable deltas without double counting", () => {
+  withStore((store) => {
+    const service = createTrafficAccountingService({
+      controlStore: store,
+      nowFn: () => "2026-06-06T00:20:00.000Z"
+    });
+    const base = {
+      accountingMode: "cumulative",
+      sourceRef: "xray_statsquery_user_traffic",
+      channelRef: "channel-aliyun-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_usage_service_1",
+      intervalStartedAt: "2026-06-06T00:00:00.000Z"
+    };
+
+    const initialized = service.recordUsageObservation({
+      ...base,
+      observedAt: "2026-06-06T00:05:00.000Z",
+      intervalEndedAt: "2026-06-06T00:05:00.000Z",
+      uploadBytes: 100,
+      downloadBytes: 200
+    });
+    assert.equal(initialized.accountingStatus, "cursor_initialized");
+    assert.equal(initialized.sampleInserted, false);
+    assert.equal(initialized.quota.usedBytes, 0);
+
+    const unchanged = service.recordUsageObservation({
+      ...base,
+      observedAt: "2026-06-06T00:10:00.000Z",
+      intervalEndedAt: "2026-06-06T00:10:00.000Z",
+      uploadBytes: 100,
+      downloadBytes: 200
+    });
+    assert.equal(unchanged.accountingStatus, "no_delta");
+    assert.equal(unchanged.sampleInserted, false);
+    assert.equal(unchanged.quota.usedBytes, 0);
+
+    const increased = service.recordUsageObservation({
+      ...base,
+      observedAt: "2026-06-06T00:15:00.000Z",
+      intervalEndedAt: "2026-06-06T00:15:00.000Z",
+      uploadBytes: 150,
+      downloadBytes: 260
+    });
+    assert.equal(increased.accountingStatus, "calculated");
+    assert.equal(increased.sampleInserted, true);
+    assert.equal(increased.quota.usedBytes, 110);
+
+    const stale = service.recordUsageObservation({
+      ...base,
+      observedAt: "2026-06-06T00:12:00.000Z",
+      intervalEndedAt: "2026-06-06T00:12:00.000Z",
+      uploadBytes: 999,
+      downloadBytes: 999
+    });
+    assert.equal(stale.accountingStatus, "stale_observation");
+    assert.equal(stale.sampleInserted, false);
+    assert.equal(stale.quota.usedBytes, 110);
+
+    const replayedCheckpoint = service.recordUsageObservation({
+      ...base,
+      observedAt: "2026-06-06T00:20:00.000Z",
+      intervalEndedAt: "2026-06-06T00:20:00.000Z",
+      uploadBytes: 150,
+      downloadBytes: 260
+    });
+    assert.equal(replayedCheckpoint.accountingStatus, "no_delta");
+    assert.equal(replayedCheckpoint.sampleInserted, false);
+    assert.equal(replayedCheckpoint.quota.usedBytes, 110);
+
+    const samples = store.listUsageSamples({
+      edgeCredentialRef: "edgecred_pareq_usage_service_1"
+    });
+    assert.equal(samples.length, 1);
+    assert.equal(samples[0].uploadBytes, 50);
+    assert.equal(samples[0].downloadBytes, 60);
+
+    const reset = service.recordUsageObservation({
+      ...base,
+      observedAt: "2026-06-06T00:25:00.000Z",
+      intervalEndedAt: "2026-06-06T00:25:00.000Z",
+      uploadBytes: 10,
+      downloadBytes: 20
+    });
+    assert.equal(reset.accountingStatus, "counter_reset_detected");
+    assert.equal(reset.sampleInserted, false);
+    assert.equal(reset.quota.usedBytes, 110);
+
+    const afterReset = service.recordUsageObservation({
+      ...base,
+      observedAt: "2026-06-06T00:30:00.000Z",
+      intervalEndedAt: "2026-06-06T00:30:00.000Z",
+      uploadBytes: 15,
+      downloadBytes: 30
+    });
+    assert.equal(afterReset.accountingStatus, "calculated");
+    assert.equal(afterReset.sampleInserted, true);
+    assert.equal(afterReset.quota.usedBytes, 125);
+    assert.equal(store.getUsageCounterCursor(base).epoch, 1);
+  });
+});
+
 test("traffic accounting maps derived multi-channel edge credentials to the issued order", () => {
   withStore((store) => {
     const service = createTrafficAccountingService({

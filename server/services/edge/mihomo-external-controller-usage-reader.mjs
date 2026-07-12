@@ -44,6 +44,17 @@ function isPlainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value);
 }
 
+function accountingMode(value) {
+  const normalized = text(value || "cumulative").toLowerCase().replace(/[\s_]+/g, "-");
+  if (normalized === "delta" || normalized === "read-clear" || normalized === "read-and-clear") {
+    return "delta";
+  }
+  if (normalized === "cumulative" || normalized === "counter" || normalized === "snapshot") {
+    return "cumulative";
+  }
+  throw readerError("validation_error", "accountingMode must be delta or cumulative");
+}
+
 function firstText(...values) {
   for (const value of values) {
     const normalized = text(value);
@@ -263,6 +274,7 @@ export function createMihomoExternalControllerUsageSnapshotReader({
 
     const snapshot = {
       sourceRef: safeSourceRef,
+      accountingMode: accountingMode(payload.accountingMode),
       observedAt,
       intervalStartedAt,
       intervalEndedAt

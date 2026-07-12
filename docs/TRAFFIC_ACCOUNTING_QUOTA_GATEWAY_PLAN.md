@@ -340,13 +340,18 @@ Historical status as of 2026-06-06:
   ledger-ready delta observations: direct delta/read-and-clear observations pass
   through, cumulative counters require a prior cursor before charging bytes, and
   counter resets fail closed without writing usage;
+- the cumulative accounting hardening slice now carries the source accounting
+  mode through Xray and Mihomo collectors and atomically stores each cumulative
+  cursor advance with its derived SQLite usage sample; the first observation
+  initializes a baseline, unchanged counters add no usage, and counter decreases
+  start a new cursor epoch without charging the reset value;
 - repo-only Hysteria2 usage collector adapter is implemented locally against
   the official `GET /traffic?clear=1` client-stat model: Hy2 client IDs must be
   issued as safe `edgeCredentialRef` anchors, and `tx`/`rx` are normalized into
   upload/download usage observations;
-- real runtime traffic collection, production migration, and quota-driven
-  runtime traffic-supply suspension remain gated until a runtime can expose real
-  per-credential usage observations and a schema-gated cursor store is approved.
+- production migration of the cursor schema, historical usage correction, real
+  runtime validation, and quota-driven traffic-supply suspension remain separate
+  Risk A gates; source merge or artifact creation does not authorize any of them.
 
 ### Phase 1: Repo-Only Schema and Service Tests
 
@@ -411,10 +416,10 @@ Scope:
 Current status:
 
 - repo-only pure calculator and targeted tests are implemented locally;
-- durable cursor storage is intentionally not implemented here because it is a
-  schema/migration gate;
-- live collector integration remains blocked by the runtime capability proof,
-  not by the ledger normalization model.
+- the cumulative accounting hardening slice adds durable SQLite cursor storage
+  and explicit Xray/Mihomo accounting-mode wiring in source;
+- production schema migration, runtime proof, and any historical usage
+  correction remain separate Risk A gates.
 
 Validation:
 
@@ -510,13 +515,7 @@ runtime-specific snapshot
   -> quota decision requests lifecycle/reconciliation action
 ```
 
-The next implementation gate is not another shared calculator. It is either:
-
-- a schema-gated durable cursor store for cumulative runtimes; or
-- a runtime-specific proof that Hy2, TUIC, VLESS/Xray, or another edge can emit
-  per-credential counters suitable for this model.
-
-Current recommendation: run the next AWS staging proof with Hysteria2 first.
-It is the smallest step from the current repo model because its clear-mode
-traffic stats can feed the delta accounting path without adding a durable cursor
-schema.
+The next gate is not another shared calculator. It is clean artifact validation
+followed by a separately approved production schema/runtime alignment. Any
+customer usage correction must preserve the pre-change ledger and remain a
+separate approved execution after the corrected collector path is active.
