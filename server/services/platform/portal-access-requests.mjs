@@ -1,12 +1,16 @@
 import { createHash } from "node:crypto";
 import { executeSubscriptionIssuance } from "./subscription-issuance.mjs";
 import {
+  TRIAL_DURATION_DAYS,
+  TRIAL_TRAFFIC_LIMIT_BYTES
+} from "./subscription-package-policy.mjs";
+import {
   summarizeUsageSamples,
   usageCycleFiltersForBinding
 } from "./usage-billing-cycle.mjs";
 
 const PLANS = {
-  trial: { durationDays: 7, label: "7-day trial" },
+  trial: { durationDays: TRIAL_DURATION_DAYS, label: "7-day trial" },
   monthly: { durationDays: 30, label: "monthly" },
   yearly: { durationDays: 365, label: "yearly" }
 };
@@ -943,7 +947,10 @@ export function createPortalAccessRequestService(options = {}) {
           requestId: record.id,
           requestedByRef: autoIssuance.reviewedByRef,
           purpose: "portal_auto_issuance",
-          plan: record.plan
+          plan: record.plan,
+          ...(record.plan === "trial"
+            ? { trafficLimitBytes: TRIAL_TRAFFIC_LIMIT_BYTES }
+            : {})
         }
       }
     });
@@ -1072,7 +1079,10 @@ export function createPortalAccessRequestService(options = {}) {
             requestId: request.id,
             requestedByRef: reviewedByRef,
             purpose: "portal_access_request",
-            plan: request.plan
+            plan: request.plan,
+            ...(request.plan === "trial"
+              ? { trafficLimitBytes: TRIAL_TRAFFIC_LIMIT_BYTES }
+              : {})
           }
         },
         approvalRef,

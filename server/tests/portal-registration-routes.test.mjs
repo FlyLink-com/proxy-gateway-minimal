@@ -246,6 +246,10 @@ test("portal registration creates an email-login account, seven-day trial, and p
       assert.equal(account.metadata.displayRef, "local-user@example.test");
       assert.equal(typeof account.metadata.registrationSourceIpDigest, "string");
       assert.equal(store.getEntitlement("ent_registration_trial_1").validUntil, TRIAL_UNTIL);
+      assert.equal(
+        store.getEntitlement("ent_registration_trial_1").trafficLimitBytes,
+        5 * 1024 ** 3
+      );
       assert.equal(store.getPortalAccessRequest("pareq_registration_1").portalUserRef, "acct_registration_1");
       assert.equal(store.getActivePortalPasswordCredential("acct_registration_1").status, "active");
 

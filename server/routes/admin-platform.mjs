@@ -16,6 +16,7 @@ import { createCleanStartControlPlanePackage } from "../services/platform/clean-
 import { createPlatformControlSummary } from "../services/platform/control-plane-contract.mjs";
 import { buildProvisioningFormPackage } from "../services/platform/provisioning-form.mjs";
 import { createPartnerAttributionAdminReport } from "../services/platform/partner-attribution-admin-report.mjs";
+import { trafficLimitBytesForPlan } from "../services/platform/subscription-package-policy.mjs";
 import { previewSubscriptionIssuance, planSubscriptionIssuance } from "../services/platform/subscription-issuance.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
 import {
@@ -135,17 +136,23 @@ function numericTrafficLimitBytes(payload = {}) {
   const quota = payload.quota && typeof payload.quota === "object" ? payload.quota : {};
   const explicitBytes = finiteNumber(payload.trafficLimitBytes ?? quota.trafficLimitBytes);
   if (explicitBytes !== null) {
-    return nonNegativeInteger(explicitBytes, "trafficLimitBytes");
+    return trafficLimitBytesForPlan(
+      payload.plan,
+      nonNegativeInteger(explicitBytes, "trafficLimitBytes")
+    );
   }
 
   const trafficGb = finiteNumber(quota.trafficGb ?? payload.trafficGb);
   if (trafficGb === null) {
-    return 0;
+    return trafficLimitBytesForPlan(payload.plan, 0);
   }
   if (trafficGb < 0) {
     throw adminPlatformError("validation_error", "quota.trafficGb must be >= 0");
   }
-  return Math.round(trafficGb * BYTES_PER_GB);
+  return trafficLimitBytesForPlan(
+    payload.plan,
+    Math.round(trafficGb * BYTES_PER_GB)
+  );
 }
 
 function controlStoreEntitlementStatus(value) {
