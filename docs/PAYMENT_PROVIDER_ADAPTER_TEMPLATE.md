@@ -5,6 +5,11 @@ Last updated: 2026-05-31, Asia/Shanghai.
 This document defines the repository-local adapter template for future payment
 provider integration.
 
+The commercial authority is `docs/COMMERCIAL_MODEL_V1.md`. Provider events may
+later activate or renew a time-bounded entitlement, or fund an explicitly
+approved top-up extension. They must not issue runtime credentials directly or
+silently switch the primary product to a prepaid wallet model.
+
 It does **not** activate payment, checkout, capture, webhook registration,
 webhook verification against a live provider, billing ledger storage,
 production database migration, subscription issuance, or runtime mutation.

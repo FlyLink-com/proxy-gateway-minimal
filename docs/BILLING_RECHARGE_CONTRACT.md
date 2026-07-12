@@ -3,7 +3,8 @@
 Last updated: 2026-05-31, Asia/Shanghai.
 
 This document defines the repository-local billing contract for the current
-subscription platform direction:
+subscription platform direction. It is a future optional top-up extension to
+`docs/COMMERCIAL_MODEL_V1.md`, not the primary v1 commercial model:
 
 ```text
 payment -> recharge credit -> traffic balance -> usage debit -> controlled subscription issuance
@@ -15,7 +16,10 @@ mutation.
 
 ## Model
 
-The billing layer sells prepaid traffic credit, not raw subscription links.
+Commercial Model v1 sells time-bounded packages with included traffic
+allowances. This contract describes how a later approved top-up could add
+traffic credit without selling raw subscription links or replacing entitlement
+validity.
 
 ```text
 Payment provider success
@@ -86,10 +90,10 @@ Not allowed from billing contract:
 - call Admin/public HTTP routes;
 - mutate Aliyun, Nginx, DNS, AWS, firewall, or production SQLite.
 
-## Why Recharge First
+## Relationship To Commercial Model v1
 
-Recharge/debit fits this product better than fixed subscription periods because
-network resources are consumable:
+Recharge/debit remains useful as an optional extension because network resources
+are consumable:
 
 - traffic can be metered;
 - abuse can be contained by balance;
@@ -97,14 +101,20 @@ network resources are consumable:
 - refunds/reversals can subtract credit through ledger entries;
 - future provider integrations can remain decoupled from subscription delivery.
 
+It must not become a second activation authority. A top-up cannot activate an
+expired, canceled, or suspended entitlement, reset measured usage, or issue a
+runtime credential directly from a payment event.
+
 ## Next Gates
 
 Recommended next implementation layers:
 
-1. Add durable billing ledger storage in a separate schema/migration-gated task.
-2. Connect traffic accounting to usage debit decisions.
-3. Connect insufficient-balance decisions to controlled disable/revoke gates.
-4. Add one payment provider adapter in sandbox mode.
+1. Keep this extension disabled while the fixed-package v1 path is validated.
+2. Define durable top-up and reversal ledger storage in a separate
+   schema/migration-gated task.
+3. Prove that top-up cannot reset usage or bypass entitlement validity.
+4. Add one payment provider adapter in sandbox mode only after the primary
+   commercial lifecycle is stable.
 
 Any real payment provider, public payment API, webhook endpoint, production DB
 migration, or automatic issuance remains separate Risk A work.

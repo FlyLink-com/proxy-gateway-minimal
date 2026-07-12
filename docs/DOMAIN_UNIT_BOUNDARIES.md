@@ -131,9 +131,11 @@ Clash/Mihomo config details
 Current repository state:
 
 ```text
-No full commercial system exists in this repo.
-Existing subscription expiry/status logic is a technical access model, not a
-complete billing or CRM system.
+Commercial Model v1 is defined in docs/COMMERCIAL_MODEL_V1.md.
+No full commercial system exists in this repo. Existing account, entitlement,
+package, expiry, quota, and subscription-access logic implements only parts of
+that model and is not a complete billing, payment, order, invoice, refund,
+renewal, or CRM system.
 ```
 
 ### 3. Subscription Access Control Unit
