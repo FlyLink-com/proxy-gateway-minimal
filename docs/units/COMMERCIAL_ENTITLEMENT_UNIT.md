@@ -1,6 +1,6 @@
 # Commercial / Entitlement Unit
 
-Last updated: 2026-05-26, Asia/Shanghai.
+Last updated: 2026-07-11, America/Los_Angeles.
 
 > Status:
 > - Type: Active unit design
@@ -28,6 +28,11 @@ operator-safe account summaries, entitlement summaries, plan/status validation,
 and fail-closed usable-entitlement decisions. It is not a complete billing,
 CRM, order, invoice, renewal, payment, production storage, or commercial
 entitlement system.
+
+`docs/COMMERCIAL_MODEL_V1.md` is the active policy baseline for the initial
+time-bounded package and included-traffic model. This unit owns the commercial
+decision boundary used to implement that policy; it does not duplicate or
+replace the policy document.
 
 ## Responsibilities
 
@@ -152,12 +157,16 @@ Docs-only validation:
 ## Next Tasks
 
 ```text
-wire repository-safe account / entitlement summaries into the customer portal
-decide later MVP commercial states versus billing integration states
-separate technical subscription expiry/status from commercial validity in UI
-define how access control consumes entitlement decisions without payment internals
-extend platform entitlement behavior only through repo-only tests until a later
-  production storage or billing integration gate is approved
+map Commercial Model v1 semantics to repository-safe account, order, and
+  entitlement summaries
+separate technical subscription delivery state from commercial entitlement
+  state in the Portal and Admin projections
+define idempotent operator-verified activation and renewal events for Controlled
+  Beta before selecting a payment provider
+keep top-up/recharge as an optional extension instead of a competing primary
+  commercial model
+extend commercial behavior through repository-only tests until later durable
+  storage, payment-provider, and production gates are approved
 ```
 
 ## Paused / Blocked Items
@@ -165,7 +174,7 @@ extend platform entitlement behavior only through repo-only tests until a later
 ```text
 full billing or CRM integration
 real payment/order status source of truth
-quota enforcement and traffic accounting
 customer commercial record storage
+automatic renewal, refund, chargeback, invoice, tax, or top-up behavior
 production deployment, tenant mutation, artifact issuance, and node selection
 ```
