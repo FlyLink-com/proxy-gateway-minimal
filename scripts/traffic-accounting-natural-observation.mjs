@@ -25,9 +25,10 @@ function records(value) {
 }
 
 function nonNegativeInteger(value) {
-  const normalized = Number(value);
-  if (!Number.isSafeInteger(normalized) || normalized < 0) throw inputError();
-  return normalized;
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw inputError();
+  }
+  return value;
 }
 
 function positiveInteger(value) {
@@ -37,7 +38,8 @@ function positiveInteger(value) {
 }
 
 function requiredText(value) {
-  const normalized = String(value ?? "").trim();
+  if (typeof value !== "string") throw inputError();
+  const normalized = value.trim();
   if (!normalized) throw inputError();
   return normalized;
 }
@@ -48,6 +50,7 @@ function requiredBoolean(value) {
 }
 
 function timestamp(value) {
+  if (typeof value !== "string") throw inputError();
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) throw inputError();
   return parsed.toISOString();
@@ -116,8 +119,12 @@ function projectionEvidence(value) {
   const collectors = records(projection.collectors);
   const producers = records(projection.producers);
   const unresolvedReasonCounts = reasonCounts(accounting.unresolvedReasonCounts ?? {});
+  let collectorCountsConserved = true;
   const collectorReasonCounts = collectors.reduce((aggregate, collector) => {
     const counts = reasonCounts(collector.unresolvedReasonCounts ?? {});
+    const collectorUnresolvedCount = nonNegativeInteger(collector.unresolvedCount ?? 0);
+    collectorCountsConserved &&= collectorUnresolvedCount
+      === counts.bindingMissing + counts.channelMismatch + counts.unknown;
     aggregate.bindingMissing += counts.bindingMissing;
     aggregate.channelMismatch += counts.channelMismatch;
     aggregate.unknown += counts.unknown;
@@ -129,23 +136,28 @@ function projectionEvidence(value) {
   const unresolvedTotal = nonNegativeInteger(accounting.unresolvedCount ?? 0);
   const runOk = run.runOk === true;
   const rawReportOk = run.rawReportOk === true;
+  const recordingOk = accounting.recordingOk === true;
+  const unresolvedStateValid = unresolvedTotal === 0
+    ? rawReportOk && recordingOk
+    : !rawReportOk && !recordingOk && unresolvedReasonCounts.unknown === 0;
   const provenanceConserved = projection.availability === "available"
     && runOk
-    && rawReportOk
     && collectorCount === collectors.length + omittedCollectors
     && omittedCollectors === 0
     && omittedProducers === 0
+    && collectorCountsConserved
     && unresolvedReasonCounts.bindingMissing === collectorReasonCounts.bindingMissing
     && unresolvedReasonCounts.channelMismatch === collectorReasonCounts.channelMismatch
     && unresolvedReasonCounts.unknown === collectorReasonCounts.unknown
     && unresolvedTotal === unresolvedReasonCounts.bindingMissing
       + unresolvedReasonCounts.channelMismatch
       + unresolvedReasonCounts.unknown
-    && (unresolvedTotal === 0 || unresolvedReasonCounts.unknown === 0);
+    && unresolvedStateValid;
 
   return {
     runOk,
     rawReportOk,
+    recordingOk,
     collectorCount,
     visibleCollectors: collectors.length,
     omittedCollectors,
@@ -198,6 +210,7 @@ function accountingEvidence({ cumulativeSourceRefs, previous, current }) {
   let cumulativeZeroByteSamples = 0;
   let cursorInitializations = 0;
   let cursorResets = 0;
+  let cursorEpochRegressions = 0;
   let cumulativeViolations = 0;
 
   for (const [key, currentCursor] of currentCursors.map) {
@@ -210,16 +223,31 @@ function accountingEvidence({ cumulativeSourceRefs, previous, current }) {
       continue;
     }
 
-    const before = previousCursor.uploadBytes + previousCursor.downloadBytes;
-    const after = currentCursor.uploadBytes + currentCursor.downloadBytes;
-    const reset = currentCursor.epoch > previousCursor.epoch || after < before;
-    if (reset) {
-      cursorResets += 1;
+    if (currentCursor.epoch < previousCursor.epoch) {
+      cursorEpochRegressions += 1;
       cumulativeViolations += cursorSamples.length;
       continue;
     }
 
-    const growth = after - before;
+    const uploadDecreased = currentCursor.uploadBytes < previousCursor.uploadBytes;
+    const downloadDecreased = currentCursor.downloadBytes < previousCursor.downloadBytes;
+    const componentReset = uploadDecreased || downloadDecreased;
+    const epochIncreased = currentCursor.epoch > previousCursor.epoch;
+    const reset = componentReset || epochIncreased;
+    if (reset) {
+      cursorResets += 1;
+      if (
+        componentReset !== epochIncreased
+        || currentCursor.epoch > previousCursor.epoch + 1
+      ) {
+        cumulativeViolations += 1;
+      }
+      cumulativeViolations += cursorSamples.length;
+      continue;
+    }
+
+    const growth = currentCursor.uploadBytes - previousCursor.uploadBytes
+      + currentCursor.downloadBytes - previousCursor.downloadBytes;
     if (growth > 0) {
       const bytes = cursorSamples.reduce((sum, sample) => sum + sample.totalBytes, 0);
       acceptedPositiveCursorGrowth += growth;
@@ -279,6 +307,7 @@ function accountingEvidence({ cumulativeSourceRefs, previous, current }) {
     cumulativeZeroByteSamples,
     cursorInitializations,
     cursorResets,
+    cursorEpochRegressions,
     cumulativeViolations,
     knownDeltaSourceCursorRows,
     unclassifiedCursorRows,
@@ -320,6 +349,7 @@ export function buildTrafficAccountingNaturalObservation(input = {}) {
     && accounting.removedCursorCount === 0
     && accounting.cumulativeViolations === 0
     && accounting.cumulativeZeroByteSamples === 0
+    && accounting.cursorEpochRegressions === 0
     && accounting.knownDeltaSourceCursorRows === 0
     && accounting.unclassifiedCursorRows === 0
     && accounting.unclassifiedSampleRows === 0

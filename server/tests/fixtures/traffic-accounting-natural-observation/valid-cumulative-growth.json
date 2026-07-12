@@ -10,10 +10,11 @@
     "availability": "available",
     "run": {
       "runOk": true,
-      "rawReportOk": true,
+      "rawReportOk": false,
       "collectorCount": 1
     },
     "accounting": {
+      "recordingOk": false,
       "unresolvedCount": 1,
       "unresolvedReasonCounts": {
         "bindingMissing": 0,
@@ -24,6 +25,7 @@
     "collectors": [
       {
         "collectorRef": "collector-synthetic-1",
+        "unresolvedCount": 1,
         "unresolvedReasonCounts": {
           "bindingMissing": 0,
           "channelMismatch": 1,

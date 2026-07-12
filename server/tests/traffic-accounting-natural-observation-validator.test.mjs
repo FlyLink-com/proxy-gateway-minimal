@@ -25,6 +25,8 @@ test("natural observation reports exact redacted cumulative accounting fields", 
   assert.equal(report.accounting.cumulativeSampleBytes, 50);
   assert.equal(report.accounting.knownDeltaSourceCursorRows, 0);
   assert.equal(report.accounting.unclassifiedCursorRows, 0);
+  assert.equal(report.projection.rawReportOk, false);
+  assert.equal(report.projection.recordingOk, false);
   assert.deepEqual(Object.keys(report.accounting), [
     "cursorCountBefore",
     "cursorCountAfter",
@@ -37,6 +39,7 @@ test("natural observation reports exact redacted cumulative accounting fields", 
     "cumulativeZeroByteSamples",
     "cursorInitializations",
     "cursorResets",
+    "cursorEpochRegressions",
     "cumulativeViolations",
     "knownDeltaSourceCursorRows",
     "unclassifiedCursorRows",
@@ -150,6 +153,66 @@ test("natural observation rejects samples emitted during a cumulative reset", ()
   assert.equal(report.passed, false);
 });
 
+test("natural observation permits cursor initialization without charging a sample", () => {
+  const input = fixture();
+  input.cumulativeSourceRefs.push("xray_stats_cli_secondary");
+  input.current.cursorRows.push({
+    source_ref: "xray_stats_cli_secondary",
+    channel_ref: "channel-synthetic-secondary",
+    edge_credential_ref: "credential-synthetic-secondary",
+    upload_bytes: 500,
+    download_bytes: 250,
+    epoch: 0
+  });
+
+  const report = buildTrafficAccountingNaturalObservation(input);
+
+  assert.equal(report.accounting.cursorInitializations, 1);
+  assert.equal(report.accounting.cumulativeViolations, 0);
+  assert.equal(report.passed, true);
+});
+
+test("natural observation permits a consistent counter reset without charging a sample", () => {
+  const input = fixture();
+  input.current.cursorRows[0].epoch = 2;
+  input.current.cursorRows[0].upload_bytes = 10;
+  input.current.cursorRows[0].download_bytes = 5;
+  input.current.newSamples = [];
+  input.current.sampleBoundary = { ...input.previous.sampleBoundary };
+  input.current.rollupBoundary = { ...input.previous.rollupBoundary };
+
+  const report = buildTrafficAccountingNaturalObservation(input);
+
+  assert.equal(report.accounting.cursorResets, 1);
+  assert.equal(report.accounting.cumulativeViolations, 0);
+  assert.equal(report.passed, true);
+});
+
+test("natural observation detects a one-direction counter reset hidden by total growth", () => {
+  const input = fixture();
+  input.current.cursorRows[0].upload_bytes = 90;
+  input.current.cursorRows[0].download_bytes = 80;
+  input.current.newSamples[0].total_bytes = 20;
+  input.current.sampleBoundary.totalBytes = 1020;
+  input.current.rollupBoundary.totalBytes = 5020;
+
+  const report = buildTrafficAccountingNaturalObservation(input);
+
+  assert.equal(report.accounting.cursorResets, 1);
+  assert.equal(report.accounting.cumulativeViolations, 2);
+  assert.equal(report.passed, false);
+});
+
+test("natural observation rejects cursor epoch regression", () => {
+  const input = fixture();
+  input.current.cursorRows[0].epoch = 0;
+
+  const report = buildTrafficAccountingNaturalObservation(input);
+
+  assert.equal(report.accounting.cursorEpochRegressions, 1);
+  assert.equal(report.passed, false);
+});
+
 test("natural observation rejects duplicate sample digests and rollup drift", () => {
   const input = fixture();
   input.current.newSamples.push({
@@ -177,6 +240,32 @@ test("natural observation rejects contradictory unresolved provenance", () => {
   assert.equal(report.passed, false);
 });
 
+test("natural observation enforces the tolerated unresolved projection matrix", () => {
+  const rawReportContradiction = fixture();
+  rawReportContradiction.projection.run.rawReportOk = true;
+  assert.equal(
+    buildTrafficAccountingNaturalObservation(rawReportContradiction)
+      .projection.provenanceConserved,
+    false
+  );
+
+  const recordingContradiction = fixture();
+  recordingContradiction.projection.accounting.recordingOk = true;
+  assert.equal(
+    buildTrafficAccountingNaturalObservation(recordingContradiction)
+      .projection.provenanceConserved,
+    false
+  );
+
+  const collectorContradiction = fixture();
+  collectorContradiction.projection.collectors[0].unresolvedCount = 0;
+  assert.equal(
+    buildTrafficAccountingNaturalObservation(collectorContradiction)
+      .projection.provenanceConserved,
+    false
+  );
+});
+
 test("natural observation input errors never echo protected fixture values", () => {
   const input = fixture();
   input.current.cursorRows[0].upload_bytes = "protected-marker-must-not-echo";
@@ -199,6 +288,21 @@ test("natural observation requires a positive observation round", () => {
     () => buildTrafficAccountingNaturalObservation(input),
     /traffic_accounting_observation_input_invalid/
   );
+});
+
+test("natural observation rejects coerced JSON scalar types", () => {
+  for (const mutate of [
+    (input) => { input.round = true; },
+    (input) => { input.current.cursorRows[0].upload_bytes = "130"; },
+    (input) => { input.current.cursorRows[0].source_ref = 123; }
+  ]) {
+    const input = fixture();
+    mutate(input);
+    assert.throws(
+      () => buildTrafficAccountingNaturalObservation(input),
+      /traffic_accounting_observation_input_invalid/
+    );
+  }
 });
 
 test("natural observation CLI emits only the redacted report", () => {
