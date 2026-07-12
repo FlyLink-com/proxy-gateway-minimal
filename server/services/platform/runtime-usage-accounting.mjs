@@ -1,4 +1,9 @@
 import { projectTrafficCollectorState } from "./traffic-collector-state.mjs";
+import {
+  normalizeUnresolvedReasonCounts,
+  safeUnresolvedReason,
+  unresolvedReasonCountsForRecords
+} from "./unresolved-binding-provenance.mjs";
 
 function usageError(code, message) {
   const error = new Error(message);
@@ -209,6 +214,7 @@ export function createRuntimeUsageAccountingService({
             trafficSupplyLifecycle = trafficSupplyLifecycleMissingResult();
           }
         }
+        const unresolvedReason = safeUnresolvedReason(result.unresolvedReason);
         recorded.push({
           ok: result.ok === true,
           status: result.status,
@@ -219,11 +225,16 @@ export function createRuntimeUsageAccountingService({
           edgeCredentialRef: result.edgeCredentialRef,
           sampleInserted: result.sampleInserted === true,
           blockers: blockerCodes(result),
+          ...(unresolvedReason ? { unresolvedReason } : {}),
           nextAction: result.nextAction
         });
       }
       const reportChannelRef = channelRef || text(collected?.channelRef);
       const reportUnresolvedCount = recorded.filter((item) => !item.ok).length;
+      const reportUnresolvedReasonCounts = unresolvedReasonCountsForRecords(
+        recorded,
+        reportUnresolvedCount
+      );
       reports.push({
         channelRef: reportChannelRef,
         collectorOk: collected?.ok === true,
@@ -235,6 +246,7 @@ export function createRuntimeUsageAccountingService({
           channelRef: reportChannelRef,
           observations,
           unresolvedCount: reportUnresolvedCount,
+          unresolvedReasonCounts: reportUnresolvedReasonCounts,
           blockers: collected?.blockers,
           recorded,
           idle: collectorIdle,
@@ -244,6 +256,9 @@ export function createRuntimeUsageAccountingService({
         observationCount: observations.length,
         recordedCount: recorded.filter((item) => item.ok).length,
         unresolvedCount: reportUnresolvedCount,
+        ...(reportUnresolvedCount > 0
+          ? { unresolvedReasonCounts: reportUnresolvedReasonCounts }
+          : {}),
         blockers: blockerCodes(collected),
         observability: safeCollectorObservability(collected),
         recorded,
@@ -254,6 +269,13 @@ export function createRuntimeUsageAccountingService({
     const ok = reports.every((report) => report.collectorOk && report.unresolvedCount === 0)
       && trafficSupplySuspendFailedCount === 0
       && trafficSupplySuspendPendingCount === 0;
+    const unresolvedReasonCounts = normalizeUnresolvedReasonCounts(
+      reports.reduce((counts, report) => ({
+        bindingMissing: counts.bindingMissing + Number(report.unresolvedReasonCounts?.bindingMissing || 0),
+        channelMismatch: counts.channelMismatch + Number(report.unresolvedReasonCounts?.channelMismatch || 0)
+      }), { bindingMissing: 0, channelMismatch: 0 }),
+      unresolvedCount
+    );
     return {
       type: "gccgw_runtime_usage_accounting_report",
       ok,
@@ -263,6 +285,7 @@ export function createRuntimeUsageAccountingService({
       recordedCount,
       insertedCount,
       unresolvedCount,
+      ...(unresolvedCount > 0 ? { unresolvedReasonCounts } : {}),
       quotaDisableRequiredCount,
       trafficSupplySuspendRequiredCount,
       trafficSupplySuspendAttemptedCount,

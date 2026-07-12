@@ -149,6 +149,11 @@ test("traffic usage collect summary tolerates only unresolved binding residue", 
     recordedCount: 1,
     insertedCount: 1,
     unresolvedCount: 1,
+    unresolvedReasonCounts: {
+      bindingMissing: 1,
+      channelMismatch: 0,
+      unknown: 0
+    },
     quotaDisableRequiredCount: 0,
     nextAction: "review_usage_collector_mapping",
     safety: {
@@ -164,6 +169,11 @@ test("traffic usage collect summary tolerates only unresolved binding residue", 
         observationCount: 2,
         recordedCount: 1,
         unresolvedCount: 1,
+        unresolvedReasonCounts: {
+          bindingMissing: 1,
+          channelMismatch: 0,
+          unknown: 0
+        },
         blockers: [],
         recorded: [
           {
@@ -191,9 +201,88 @@ test("traffic usage collect summary tolerates only unresolved binding residue", 
   assert.equal(summary.rawReportOk, false);
   assert.equal(summary.unresolvedBindingTolerated, true);
   assert.equal(summary.mappingReviewRequired, true);
+  assert.deepEqual(summary.unresolvedReasonCounts, {
+    bindingMissing: 1,
+    channelMismatch: 0,
+    unknown: 0
+  });
+  assert.deepEqual(summary.reports[0].unresolvedReasonCounts, summary.unresolvedReasonCounts);
   assert.equal(summary.nextAction, "continue_usage_monitoring_review_unresolved_mapping");
   assert.equal(JSON.stringify(summary).includes("edgecred_recorded_ref"), false);
   assert.equal(JSON.stringify(summary).includes("edgecred_unresolved_ref"), false);
+});
+
+test("traffic usage collect summary assigns legacy unresolved residue to unknown provenance", () => {
+  const summary = summarizeUsageAccountingReport({
+    ok: false,
+    collectorCount: 1,
+    observationCount: 1,
+    recordedCount: 0,
+    insertedCount: 0,
+    unresolvedCount: 1,
+    reports: [
+      {
+        channelRef: "channel-legacy",
+        collectorOk: true,
+        collectorStatus: "collected",
+        observationCount: 1,
+        recordedCount: 0,
+        unresolvedCount: 1,
+        recorded: [{ ok: false, status: "unresolved_binding" }]
+      }
+    ]
+  }, { unresolvedPolicy: "tolerate_unresolved_bindings" });
+
+  assert.deepEqual(summary.unresolvedReasonCounts, {
+    bindingMissing: 0,
+    channelMismatch: 0,
+    unknown: 1
+  });
+  assert.deepEqual(summary.reports[0].unresolvedReasonCounts, summary.unresolvedReasonCounts);
+});
+
+test("traffic usage collect summary derives global provenance from collector reports", () => {
+  const summary = summarizeUsageAccountingReport({
+    ok: false,
+    collectorCount: 1,
+    observationCount: 1,
+    recordedCount: 0,
+    insertedCount: 0,
+    unresolvedCount: 1,
+    unresolvedReasonCounts: {
+      bindingMissing: 1,
+      channelMismatch: 0,
+      unknown: 0
+    },
+    reports: [
+      {
+        channelRef: "channel-safe",
+        collectorOk: true,
+        collectorStatus: "collected",
+        observationCount: 1,
+        recordedCount: 0,
+        unresolvedCount: 1,
+        unresolvedReasonCounts: {
+          bindingMissing: 0,
+          channelMismatch: 1,
+          unknown: 0
+        },
+        recorded: [
+          {
+            ok: false,
+            status: "unresolved_binding",
+            unresolvedReason: "channel_mismatch"
+          }
+        ]
+      }
+    ]
+  }, { unresolvedPolicy: "tolerate_unresolved_bindings" });
+
+  assert.deepEqual(summary.unresolvedReasonCounts, {
+    bindingMissing: 0,
+    channelMismatch: 1,
+    unknown: 0
+  });
 });
 
 test("traffic usage collect summary does not tolerate non-mapping failures", () => {
