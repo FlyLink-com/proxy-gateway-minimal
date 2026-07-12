@@ -134,13 +134,14 @@ function projectionEvidence(value) {
   const omittedCollectors = nonNegativeInteger(projection.omittedCollectorCount ?? 0);
   const omittedProducers = nonNegativeInteger(projection.omittedProducerCount ?? 0);
   const unresolvedTotal = nonNegativeInteger(accounting.unresolvedCount ?? 0);
-  const runOk = run.runOk === true;
-  const rawReportOk = run.rawReportOk === true;
-  const recordingOk = accounting.recordingOk === true;
+  const availability = requiredText(projection.availability);
+  const runOk = requiredBoolean(run.runOk);
+  const rawReportOk = requiredBoolean(run.rawReportOk);
+  const recordingOk = requiredBoolean(accounting.recordingOk);
   const unresolvedStateValid = unresolvedTotal === 0
     ? rawReportOk && recordingOk
     : !rawReportOk && !recordingOk && unresolvedReasonCounts.unknown === 0;
-  const provenanceConserved = projection.availability === "available"
+  const provenanceConserved = availability === "available"
     && runOk
     && collectorCount === collectors.length + omittedCollectors
     && omittedCollectors === 0

@@ -305,6 +305,24 @@ test("natural observation rejects coerced JSON scalar types", () => {
   }
 });
 
+test("natural observation requires explicit projection scalar types", () => {
+  for (const mutate of [
+    (input) => { input.projection.availability = true; },
+    (input) => { input.projection.run.runOk = "true"; },
+    (input) => { input.projection.run.rawReportOk = "false"; },
+    (input) => { delete input.projection.run.rawReportOk; },
+    (input) => { input.projection.accounting.recordingOk = "false"; },
+    (input) => { delete input.projection.accounting.recordingOk; }
+  ]) {
+    const input = fixture();
+    mutate(input);
+    assert.throws(
+      () => buildTrafficAccountingNaturalObservation(input),
+      /traffic_accounting_observation_input_invalid/
+    );
+  }
+});
+
 test("natural observation CLI emits only the redacted report", () => {
   const result = spawnSync(process.execPath, [SCRIPT_PATH], {
     cwd: process.cwd(),
