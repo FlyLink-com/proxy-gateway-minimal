@@ -32,6 +32,7 @@ test("runtime usage accounting isolates collector failures and keeps later colle
         collect: async () => ({
           ok: true,
           status: "collected",
+          accountingMode: "cumulative",
           observations: [observation()],
           nextAction: "record_usage_observations_with_control_plane_accounting"
         })
@@ -61,6 +62,7 @@ test("runtime usage accounting isolates collector failures and keeps later colle
   assert.equal(report.insertedCount, 1);
   assert.equal(report.unresolvedCount, 0);
   assert.equal(recordedInputs.length, 1);
+  assert.equal(recordedInputs[0].accountingMode, "cumulative");
   assert.equal(report.reports[0].collectorOk, false);
   assert.equal(report.reports[0].collectorStatus, "collector_error");
   assert.deepEqual(report.reports[0].blockers, ["collector_exception"]);

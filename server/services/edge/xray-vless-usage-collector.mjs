@@ -53,12 +53,13 @@ function blocker(code, target) {
   return { code, target };
 }
 
-function idleNoUserTraffic({ sourceRef, channelRef }) {
+function idleNoUserTraffic({ sourceRef, channelRef, accountingMode }) {
   return {
     ok: true,
     status: "idle_no_user_traffic",
     sourceRef,
     channelRef,
+    accountingMode,
     observations: [],
     blockers: [],
     observability: {
@@ -94,9 +95,14 @@ function normalizeSnapshot(snapshot, { since }) {
     throw collectorError("validation_error", "usage snapshot must be an object");
   }
   const sourceRef = safeRef(snapshot.sourceRef || "xray_statsquery_user_traffic", "sourceRef");
+  const accountingMode = text(snapshot.accountingMode || "cumulative").toLowerCase();
+  if (accountingMode !== "cumulative" && accountingMode !== "snapshot" && accountingMode !== "counter") {
+    throw collectorError("validation_error", "Xray statsquery accountingMode must be cumulative");
+  }
   const observedAt = isoText(snapshot.observedAt, "observedAt");
   return {
     sourceRef,
+    accountingMode: "cumulative",
     observedAt,
     intervalStartedAt: isoText(snapshot.intervalStartedAt || since || observedAt, "intervalStartedAt"),
     intervalEndedAt: isoText(snapshot.intervalEndedAt || observedAt, "intervalEndedAt"),
@@ -109,6 +115,7 @@ function normalizeEntry(entry, index, snapshot) {
     throw collectorError("validation_error", `entries[${index}] must be an object`);
   }
   return {
+    accountingMode: snapshot.accountingMode,
     sourceRef: snapshot.sourceRef,
     channelRef: snapshot.channelRef,
     edgeCredentialRef: safeRef(entry.edgeCredentialRef || entry.credentialRef, `entries[${index}].edgeCredentialRef`),
@@ -162,7 +169,8 @@ export function createXrayVlessUsageCollector({
     if (!snapshot.entries.length) {
       return idleNoUserTraffic({
         sourceRef: snapshot.sourceRef,
-        channelRef: safeChannelRef
+        channelRef: safeChannelRef,
+        accountingMode: snapshot.accountingMode
       });
     }
 
@@ -176,6 +184,7 @@ export function createXrayVlessUsageCollector({
         status: "collected",
         sourceRef: snapshot.sourceRef,
         channelRef: safeChannelRef,
+        accountingMode: snapshot.accountingMode,
         observations: snapshot.entries.map((entry, index) =>
           normalizeEntry(entry, index, contextualSnapshot)
         ),

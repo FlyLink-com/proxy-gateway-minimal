@@ -72,6 +72,7 @@ test("Xray stats CLI usage reader maps user traffic counters by edge credential 
 
   assert.deepEqual(snapshot, {
     sourceRef: "xray_statsquery_user_traffic",
+    accountingMode: "cumulative",
     observedAt: "2026-07-07T12:00:00.000Z",
     intervalStartedAt: "2026-07-07T11:55:00.000Z",
     intervalEndedAt: "2026-07-07T12:00:00.000Z",

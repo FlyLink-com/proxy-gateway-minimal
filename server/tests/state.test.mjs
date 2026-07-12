@@ -2699,6 +2699,7 @@ test("createRuntimeState wires env-gated Mihomo TUIC usage collector into the co
   const controllerSecretPath = join(dir, "protected", "mihomo-controller.secret");
   const edgeCredentialRef = "edgecred_pareq_env_tuic_usage_001_channel-vultr-a-tuic";
   const fetchCalls = [];
+  let usageReadCount = 0;
   let state;
 
   try {
@@ -2744,13 +2745,16 @@ test("createRuntimeState wires env-gated Mihomo TUIC usage collector into the co
         return {
           ok: true,
           async json() {
+            usageReadCount += 1;
             return {
-              observedAt: "2026-06-08T00:05:00.000Z",
+              observedAt: usageReadCount === 1
+                ? "2026-06-08T00:05:00.000Z"
+                : "2026-06-08T00:10:00.000Z",
               users: [
                 {
                   edgeCredentialRef,
-                  upload: 123,
-                  download: 456,
+                  upload: usageReadCount === 1 ? 123 : 173,
+                  download: usageReadCount === 1 ? 456 : 516,
                   password: "must-not-return",
                   rawConfig: "must-not-return"
                 }
@@ -2831,10 +2835,14 @@ test("createRuntimeState wires env-gated Mihomo TUIC usage collector into the co
 
     assert.equal(state.platform.edgeUsageCollectors.length, 1);
     assert.ok(state.platform.edgeUsageAccounting);
-    const usage = await state.platform.edgeUsageAccounting.collectAndRecord({
+    const initialized = await state.platform.edgeUsageAccounting.collectAndRecord({
       since: "2026-06-08T00:00:00.000Z"
     });
+    const usage = await state.platform.edgeUsageAccounting.collectAndRecord({
+      since: "2026-06-08T00:05:00.000Z"
+    });
 
+    assert.equal(initialized.insertedCount, 0);
     assert.equal(usage.ok, true);
     assert.equal(usage.observationCount, 1);
     assert.equal(usage.recordedCount, 1);
@@ -2844,12 +2852,16 @@ test("createRuntimeState wires env-gated Mihomo TUIC usage collector into the co
       {
         url: "http://127.0.0.1:19090/usage",
         authorization: "Bearer synthetic-controller-secret"
+      },
+      {
+        url: "http://127.0.0.1:19090/usage",
+        authorization: "Bearer synthetic-controller-secret"
       }
     ]);
     const rollup = state.platform.controlStore.getUsageRollupByEdgeCredentialRef(edgeCredentialRef);
-    assert.equal(rollup.totalBytes, 579);
-    assert.equal(rollup.uploadBytes, 123);
-    assert.equal(rollup.downloadBytes, 456);
+    assert.equal(rollup.totalBytes, 110);
+    assert.equal(rollup.uploadBytes, 50);
+    assert.equal(rollup.downloadBytes, 60);
     assert.equal(rollup.requestId, "pareq_env_tuic_usage_001");
     assert.doesNotMatch(JSON.stringify(usage), /synthetic-controller-secret|must-not-return|password|token|rawConfig/i);
   } finally {
@@ -2950,6 +2962,7 @@ test("createRuntimeState wires Mihomo TUIC connections usage through a credentia
     assert.equal(collected.ok, true);
     assert.deepEqual(collected.observations, [
       {
+        accountingMode: "cumulative",
         sourceRef: "mihomo_external_controller_connections",
         channelRef: "channel-vultr-a-tuic",
         edgeCredentialRef,
@@ -2974,6 +2987,7 @@ test("createRuntimeState wires env-gated Xray VLESS usage collector into the con
   const proxyConfigPath = join(dir, "proxy-servers.json");
   const edgeCredentialRef = "edgecred_pareq_env_vless_usage_001_channel-vultr-a-vless-reality-tcp";
   const commandCalls = [];
+  let usageReadCount = 0;
   let state;
 
   try {
@@ -3008,18 +3022,21 @@ test("createRuntimeState wires env-gated Xray VLESS usage collector into the con
       controlDbPath: join(dir, "control.sqlite"),
       edgeUsageCommandRunner: (command, args) => {
         commandCalls.push({ command, args });
+        usageReadCount += 1;
         return {
           exitCode: 0,
           stdout: JSON.stringify({
-            observedAt: "2026-07-07T00:05:00.000Z",
+            observedAt: usageReadCount === 1
+              ? "2026-07-07T00:05:00.000Z"
+              : "2026-07-07T00:10:00.000Z",
             stat: [
               {
                 name: `${"user"}>>>${edgeCredentialRef}>>>traffic>>>uplink`,
-                value: 222
+                value: usageReadCount === 1 ? 222 : 272
               },
               {
                 name: `${"user"}>>>${edgeCredentialRef}>>>traffic>>>downlink`,
-                value: 333
+                value: usageReadCount === 1 ? 333 : 393
               }
             ],
             privateKey: "must-not-return"
@@ -3098,10 +3115,14 @@ test("createRuntimeState wires env-gated Xray VLESS usage collector into the con
 
     assert.equal(state.platform.edgeUsageCollectors.length, 1);
     assert.ok(state.platform.edgeUsageAccounting);
-    const usage = await state.platform.edgeUsageAccounting.collectAndRecord({
+    const initialized = await state.platform.edgeUsageAccounting.collectAndRecord({
       since: "2026-07-07T00:00:00.000Z"
     });
+    const usage = await state.platform.edgeUsageAccounting.collectAndRecord({
+      since: "2026-07-07T00:05:00.000Z"
+    });
 
+    assert.equal(initialized.insertedCount, 0);
     assert.equal(usage.ok, true);
     assert.equal(usage.observationCount, 1);
     assert.equal(usage.recordedCount, 1);
@@ -3111,12 +3132,16 @@ test("createRuntimeState wires env-gated Xray VLESS usage collector into the con
       {
         command: "xray",
         args: ["api", "statsquery", "--server=127.0.0.1:10085"]
+      },
+      {
+        command: "xray",
+        args: ["api", "statsquery", "--server=127.0.0.1:10085"]
       }
     ]);
     const rollup = state.platform.controlStore.getUsageRollupByEdgeCredentialRef(edgeCredentialRef);
-    assert.equal(rollup.totalBytes, 555);
-    assert.equal(rollup.uploadBytes, 222);
-    assert.equal(rollup.downloadBytes, 333);
+    assert.equal(rollup.totalBytes, 110);
+    assert.equal(rollup.uploadBytes, 50);
+    assert.equal(rollup.downloadBytes, 60);
     assert.equal(rollup.requestId, "pareq_env_vless_usage_001");
     assert.doesNotMatch(JSON.stringify(usage), /must-not-return|privateKey|password|token|rawConfig/i);
   } finally {

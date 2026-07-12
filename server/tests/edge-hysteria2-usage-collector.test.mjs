@@ -120,6 +120,7 @@ test("Hysteria2 usage collector converts clear-mode client stats into safe obser
   assert.equal(result.accountingMode, "delta");
   assert.deepEqual(result.observations, [
     {
+      accountingMode: "delta",
       sourceRef: "hysteria2_traffic_stats",
       channelRef: "channel-aws-staging-hy2",
       edgeCredentialRef: "edgecred_hy2_1",
@@ -130,6 +131,7 @@ test("Hysteria2 usage collector converts clear-mode client stats into safe obser
       downloadBytes: 4017
     },
     {
+      accountingMode: "delta",
       sourceRef: "hysteria2_traffic_stats",
       channelRef: "channel-aws-staging-hy2",
       edgeCredentialRef: "edgecred_hy2_2",
@@ -209,6 +211,7 @@ test("Hysteria2 clear-mode collector skips zero-byte client entries before ledge
   assert.equal(result.status, "collected");
   assert.deepEqual(result.observations, [
     {
+      accountingMode: "delta",
       sourceRef: "hysteria2_traffic_stats",
       channelRef: "channel-aws-staging-hy2",
       edgeCredentialRef: "edgecred_hy2_active",

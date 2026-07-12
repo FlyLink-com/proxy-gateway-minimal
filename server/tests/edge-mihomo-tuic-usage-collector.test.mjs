@@ -118,6 +118,7 @@ test("Mihomo TUIC usage collector converts per-credential snapshots into safe ob
   assert.equal(result.status, "collected");
   assert.deepEqual(result.observations, [
     {
+      accountingMode: "cumulative",
       sourceRef: "mihomo_usage_snapshot_001",
       channelRef: "channel-aliyun-a-tuic",
       edgeCredentialRef: "edgecred_order_001",
@@ -159,21 +160,29 @@ test("Mihomo TUIC usage collector fails closed for node aggregate snapshots", as
 
 test("Mihomo TUIC usage collector observations can be recorded by traffic accounting", async () => {
   await withStore(async (store) => {
+    let readCount = 0;
     const collector = createMihomoTuicUsageCollector({
       channelRef: "channel-aliyun-a-tuic",
-      snapshotReader: async () => ({
-        sourceRef: "mihomo_usage_snapshot_ledger_001",
-        observedAt: "2026-06-06T00:05:00.000Z",
-        intervalStartedAt: "2026-06-06T00:00:00.000Z",
-        intervalEndedAt: "2026-06-06T00:05:00.000Z",
-        entries: [
-          {
-            edgeCredentialRef: "edgecred_collector_1",
-            uploadBytes: 200,
-            downloadBytes: 300
-          }
-        ]
-      })
+      snapshotReader: async () => {
+        readCount += 1;
+        return {
+          sourceRef: "mihomo_usage_snapshot_ledger_001",
+          observedAt: readCount === 1
+            ? "2026-06-06T00:05:00.000Z"
+            : "2026-06-06T00:10:00.000Z",
+          intervalStartedAt: "2026-06-06T00:00:00.000Z",
+          intervalEndedAt: readCount === 1
+            ? "2026-06-06T00:05:00.000Z"
+            : "2026-06-06T00:10:00.000Z",
+          entries: [
+            {
+              edgeCredentialRef: "edgecred_collector_1",
+              uploadBytes: readCount === 1 ? 200 : 250,
+              downloadBytes: readCount === 1 ? 300 : 360
+            }
+          ]
+        };
+      }
     });
     const accounting = createTrafficAccountingService({
       controlStore: store,
@@ -181,13 +190,18 @@ test("Mihomo TUIC usage collector observations can be recorded by traffic accoun
       usageSampleRefFactory: () => "usage_sample_collector_1"
     });
 
+    const initialized = await collector.collect();
+    const initializedRecord = accounting.recordUsageObservation(initialized.observations[0]);
     const collected = await collector.collect();
     const recorded = accounting.recordUsageObservation(collected.observations[0]);
 
+    assert.equal(initializedRecord.sampleInserted, false);
+    assert.equal(initializedRecord.accountingStatus, "cursor_initialized");
     assert.equal(collected.ok, true);
+    assert.equal(collected.observations[0].accountingMode, "cumulative");
     assert.equal(recorded.ok, true);
     assert.equal(recorded.status, "within_quota");
-    assert.equal(recorded.rollup.totalBytes, 500);
+    assert.equal(recorded.rollup.totalBytes, 110);
     assert.equal(recorded.quota.trafficLimitBytes, 1000);
     assert.equal(recorded.execution.directRuntimeMutationAllowed, false);
   });

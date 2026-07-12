@@ -151,6 +151,7 @@ export function createRuntimeUsageAccountingService({
       const observations = Array.isArray(collected?.observations)
         ? collected.observations
         : [];
+      const collectorAccountingMode = text(collected?.accountingMode);
       const collectorIdle = collected?.ok === true
         && text(collected?.status) === "idle_no_user_traffic"
         && observations.length === 0;
@@ -162,7 +163,10 @@ export function createRuntimeUsageAccountingService({
         observationCount += 1;
         let result;
         try {
-          result = await accounting.recordUsageObservation(observation);
+          result = await accounting.recordUsageObservation({
+            ...observation,
+            ...(collectorAccountingMode ? { accountingMode: collectorAccountingMode } : {})
+          });
         } catch {
           result = accountingExceptionResult(observation);
         }

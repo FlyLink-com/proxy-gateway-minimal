@@ -379,6 +379,20 @@ function mapUsageRollup(row) {
   };
 }
 
+function mapUsageCounterCursor(row) {
+  if (!row) return null;
+  return {
+    sourceRef: row.source_ref,
+    channelRef: row.channel_ref,
+    edgeCredentialRef: row.edge_credential_ref,
+    uploadBytes: row.upload_bytes,
+    downloadBytes: row.download_bytes,
+    observedAt: row.observed_at,
+    epoch: row.epoch,
+    updatedAt: row.updated_at
+  };
+}
+
 function mapDeviceBinding(row) {
   if (!row) return null;
   return {
@@ -770,6 +784,18 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       on platform_usage_rollups(account_id, entitlement_id);
     create index if not exists platform_usage_rollups_channel_idx
       on platform_usage_rollups(channel_ref);
+
+    create table if not exists platform_usage_counter_cursors (
+      source_ref text not null,
+      channel_ref text not null,
+      edge_credential_ref text not null,
+      upload_bytes integer not null default 0 check (upload_bytes >= 0),
+      download_bytes integer not null default 0 check (download_bytes >= 0),
+      observed_at text not null,
+      epoch integer not null default 0 check (epoch >= 0),
+      updated_at text not null,
+      primary key (source_ref, channel_ref, edge_credential_ref)
+    );
 
     create table if not exists platform_device_bindings (
       id text primary key,
@@ -1533,6 +1559,17 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     `).get(requiredText(edgeCredentialRef, "edgeCredentialRef")));
   }
 
+  function getUsageCounterCursor({ sourceRef, channelRef, edgeCredentialRef } = {}) {
+    return mapUsageCounterCursor(db.prepare(`
+      select * from platform_usage_counter_cursors
+      where source_ref = ? and channel_ref = ? and edge_credential_ref = ?
+    `).get(
+      requiredText(sourceRef, "sourceRef"),
+      requiredText(channelRef, "channelRef"),
+      requiredText(edgeCredentialRef, "edgeCredentialRef")
+    ));
+  }
+
   function listUsageRollupsByRequestId(requestId) {
     return db.prepare(`
       select * from platform_usage_rollups
@@ -1582,11 +1619,11 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     `).all(...params).map(mapUsageSample);
   }
 
-  function recordUsageSample(input) {
+  function usageSampleRecord(input) {
     const uploadBytes = integer(input.uploadBytes ?? 0, "uploadBytes", { min: 0 });
     const downloadBytes = integer(input.downloadBytes ?? 0, "downloadBytes", { min: 0 });
     const totalBytes = integer(input.totalBytes ?? uploadBytes + downloadBytes, "totalBytes", { min: 0 });
-    const record = {
+    return {
       id: requiredText(input.id, "id"),
       sourceRef: requiredText(input.sourceRef, "sourceRef"),
       channelRef: requiredText(input.channelRef, "channelRef"),
@@ -1603,46 +1640,173 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       sampleDigest: requiredText(input.sampleDigest, "sampleDigest"),
       createdAt: isoText(input.createdAt, "createdAt")
     };
-    const inserted = db.transaction(() => {
-      const result = db.prepare(`
-        insert or ignore into platform_usage_samples (
-          id, source_ref, channel_ref, edge_credential_ref, account_id,
-          entitlement_id, request_id, observed_at, interval_started_at,
-          interval_ended_at, upload_bytes, download_bytes, total_bytes,
-          sample_digest, created_at
-        ) values (
-          @id, @sourceRef, @channelRef, @edgeCredentialRef, @accountId,
-          @entitlementId, @requestId, @observedAt, @intervalStartedAt,
-          @intervalEndedAt, @uploadBytes, @downloadBytes, @totalBytes,
-          @sampleDigest, @createdAt
-        )
-      `).run(record);
-      if (result.changes === 0) {
-        return false;
-      }
-      sqliteRun(db.prepare(`
-        insert into platform_usage_rollups (
-          edge_credential_ref, account_id, entitlement_id, request_id, channel_ref,
-          upload_bytes, download_bytes, total_bytes, last_observed_at, updated_at
-        ) values (
-          @edgeCredentialRef, @accountId, @entitlementId, @requestId, @channelRef,
-          @uploadBytes, @downloadBytes, @totalBytes, @observedAt, @createdAt
-        )
-        on conflict(edge_credential_ref)
-        do update set
-          upload_bytes = platform_usage_rollups.upload_bytes + excluded.upload_bytes,
-          download_bytes = platform_usage_rollups.download_bytes + excluded.download_bytes,
-          total_bytes = platform_usage_rollups.total_bytes + excluded.total_bytes,
-          last_observed_at = excluded.last_observed_at,
-          updated_at = excluded.updated_at
-      `), record);
-      return true;
-    })();
+  }
+
+  function insertUsageSampleRecord(record) {
+    const result = db.prepare(`
+      insert or ignore into platform_usage_samples (
+        id, source_ref, channel_ref, edge_credential_ref, account_id,
+        entitlement_id, request_id, observed_at, interval_started_at,
+        interval_ended_at, upload_bytes, download_bytes, total_bytes,
+        sample_digest, created_at
+      ) values (
+        @id, @sourceRef, @channelRef, @edgeCredentialRef, @accountId,
+        @entitlementId, @requestId, @observedAt, @intervalStartedAt,
+        @intervalEndedAt, @uploadBytes, @downloadBytes, @totalBytes,
+        @sampleDigest, @createdAt
+      )
+    `).run(record);
+    if (result.changes === 0) {
+      return false;
+    }
+    sqliteRun(db.prepare(`
+      insert into platform_usage_rollups (
+        edge_credential_ref, account_id, entitlement_id, request_id, channel_ref,
+        upload_bytes, download_bytes, total_bytes, last_observed_at, updated_at
+      ) values (
+        @edgeCredentialRef, @accountId, @entitlementId, @requestId, @channelRef,
+        @uploadBytes, @downloadBytes, @totalBytes, @observedAt, @createdAt
+      )
+      on conflict(edge_credential_ref)
+      do update set
+        upload_bytes = platform_usage_rollups.upload_bytes + excluded.upload_bytes,
+        download_bytes = platform_usage_rollups.download_bytes + excluded.download_bytes,
+        total_bytes = platform_usage_rollups.total_bytes + excluded.total_bytes,
+        last_observed_at = excluded.last_observed_at,
+        updated_at = excluded.updated_at
+    `), record);
+    return true;
+  }
+
+  function recordUsageSample(input) {
+    const record = usageSampleRecord(input);
+    const inserted = db.transaction(() => insertUsageSampleRecord(record))();
     return {
       inserted,
       sample: getUsageSampleByDigest(record.sampleDigest),
       rollup: getUsageRollupByEdgeCredentialRef(record.edgeCredentialRef)
     };
+  }
+
+  function upsertUsageCounterCursor(record) {
+    sqliteRun(db.prepare(`
+      insert into platform_usage_counter_cursors (
+        source_ref, channel_ref, edge_credential_ref, upload_bytes,
+        download_bytes, observed_at, epoch, updated_at
+      ) values (
+        @sourceRef, @channelRef, @edgeCredentialRef, @uploadBytes,
+        @downloadBytes, @observedAt, @epoch, @updatedAt
+      )
+      on conflict(source_ref, channel_ref, edge_credential_ref)
+      do update set
+        upload_bytes = excluded.upload_bytes,
+        download_bytes = excluded.download_bytes,
+        observed_at = excluded.observed_at,
+        epoch = excluded.epoch,
+        updated_at = excluded.updated_at
+    `), record);
+  }
+
+  function recordCumulativeUsageSample(input) {
+    const current = {
+      sourceRef: requiredText(input.sourceRef, "sourceRef"),
+      channelRef: requiredText(input.channelRef, "channelRef"),
+      edgeCredentialRef: requiredText(input.edgeCredentialRef, "edgeCredentialRef"),
+      accountId: requiredText(input.accountId, "accountId"),
+      entitlementId: requiredText(input.entitlementId, "entitlementId"),
+      requestId: requiredText(input.requestId, "requestId"),
+      observedAt: isoText(input.observedAt, "observedAt"),
+      intervalEndedAt: isoText(input.intervalEndedAt, "intervalEndedAt"),
+      uploadBytes: integer(input.uploadBytes ?? 0, "uploadBytes", { min: 0 }),
+      downloadBytes: integer(input.downloadBytes ?? 0, "downloadBytes", { min: 0 }),
+      createdAt: isoText(input.createdAt, "createdAt")
+    };
+
+    return db.transaction(() => {
+      const cursor = getUsageCounterCursor(current);
+      if (!cursor) {
+        upsertUsageCounterCursor({
+          ...current,
+          epoch: 0,
+          updatedAt: current.createdAt
+        });
+        return {
+          status: "cursor_initialized",
+          inserted: false,
+          sample: null,
+          rollup: getUsageRollupByEdgeCredentialRef(current.edgeCredentialRef)
+        };
+      }
+
+      if (Date.parse(current.observedAt) <= Date.parse(cursor.observedAt)) {
+        return {
+          status: "stale_observation",
+          inserted: false,
+          sample: null,
+          rollup: getUsageRollupByEdgeCredentialRef(current.edgeCredentialRef)
+        };
+      }
+
+      if (current.uploadBytes < cursor.uploadBytes || current.downloadBytes < cursor.downloadBytes) {
+        upsertUsageCounterCursor({
+          ...current,
+          epoch: cursor.epoch + 1,
+          updatedAt: current.createdAt
+        });
+        return {
+          status: "counter_reset_detected",
+          inserted: false,
+          sample: null,
+          rollup: getUsageRollupByEdgeCredentialRef(current.edgeCredentialRef)
+        };
+      }
+
+      const uploadBytes = current.uploadBytes - cursor.uploadBytes;
+      const downloadBytes = current.downloadBytes - cursor.downloadBytes;
+      if (uploadBytes === 0 && downloadBytes === 0) {
+        upsertUsageCounterCursor({
+          ...current,
+          epoch: cursor.epoch,
+          updatedAt: current.createdAt
+        });
+        return {
+          status: "no_delta",
+          inserted: false,
+          sample: null,
+          rollup: getUsageRollupByEdgeCredentialRef(current.edgeCredentialRef)
+        };
+      }
+
+      const sampleDigest = `sha256:${sha256([
+        current.sourceRef,
+        current.channelRef,
+        current.edgeCredentialRef,
+        current.requestId,
+        cursor.epoch,
+        current.uploadBytes,
+        current.downloadBytes
+      ].join("\0"))}`;
+      const record = usageSampleRecord({
+        ...current,
+        id: `usage_${sampleDigest.slice("sha256:".length, "sha256:".length + 24)}`,
+        intervalStartedAt: cursor.observedAt,
+        uploadBytes,
+        downloadBytes,
+        sampleDigest
+      });
+      const inserted = insertUsageSampleRecord(record);
+      upsertUsageCounterCursor({
+        ...current,
+        epoch: cursor.epoch,
+        updatedAt: current.createdAt
+      });
+      return {
+        status: inserted ? "calculated" : "already_recorded",
+        inserted,
+        sample: getUsageSampleByDigest(sampleDigest),
+        rollup: getUsageRollupByEdgeCredentialRef(current.edgeCredentialRef)
+      };
+    })();
   }
 
   function upsertQuotaCounter(input) {
@@ -2717,8 +2881,10 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     findIssuedSubscriptionBindingByEdgeCredentialRef,
     findUsageBindingByTenantRef,
     recordUsageSample,
+    recordCumulativeUsageSample,
     getUsageSampleByDigest,
     getUsageRollupByEdgeCredentialRef,
+    getUsageCounterCursor,
     listUsageRollupsByRequestId,
     listUsageSamples,
     upsertQuotaCounter,

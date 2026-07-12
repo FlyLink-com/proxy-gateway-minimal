@@ -44,6 +44,17 @@ function isoNow(nowFn) {
   return isoText(value instanceof Date ? value.toISOString() : value, "now");
 }
 
+function accountingMode(value) {
+  const normalized = text(value || "delta").toLowerCase().replace(/[\s_]+/g, "-");
+  if (normalized === "delta" || normalized === "read-clear" || normalized === "read-and-clear") {
+    return "delta";
+  }
+  if (normalized === "cumulative" || normalized === "counter" || normalized === "snapshot") {
+    return "cumulative";
+  }
+  throw trafficError("validation_error", "accountingMode must be delta or cumulative");
+}
+
 function defaultSampleDigest(record) {
   const digest = createHash("sha256")
     .update(record.sourceRef)
@@ -113,6 +124,7 @@ export function createTrafficAccountingService({
 
   function recordUsageObservation(input = {}) {
     const normalized = {
+      accountingMode: accountingMode(input.accountingMode),
       sourceRef: requiredText(input.sourceRef, "sourceRef"),
       channelRef: requiredText(input.channelRef, "channelRef"),
       edgeCredentialRef: requiredText(input.edgeCredentialRef, "edgeCredentialRef"),
@@ -146,21 +158,32 @@ export function createTrafficAccountingService({
       };
     }
 
-    const sampleDigest = requiredText(sampleDigestFactory(normalized), "sampleDigest");
-    const sampleId = requiredText(usageSampleRefFactory({
-      ...normalized,
-      binding,
-      sampleDigest
-    }), "usageSampleRef");
-    const usage = controlStore.recordUsageSample({
-      id: sampleId,
+    const record = {
       ...normalized,
       accountId: binding.accountId,
       entitlementId: binding.entitlementId,
       requestId: binding.requestId,
-      sampleDigest,
       createdAt: isoNow(nowFn)
-    });
+    };
+    let usage;
+    if (normalized.accountingMode === "cumulative") {
+      if (typeof controlStore.recordCumulativeUsageSample !== "function") {
+        throw trafficError("cumulative_cursor_store_required", "cumulative usage cursor store is required");
+      }
+      usage = controlStore.recordCumulativeUsageSample(record);
+    } else {
+      const sampleDigest = requiredText(sampleDigestFactory(normalized), "sampleDigest");
+      const sampleId = requiredText(usageSampleRefFactory({
+        ...normalized,
+        binding,
+        sampleDigest
+      }), "usageSampleRef");
+      usage = controlStore.recordUsageSample({
+        id: sampleId,
+        ...record,
+        sampleDigest
+      });
+    }
     const currentCycleUsage = currentCycleUsageFor({
       controlStore,
       binding,
@@ -175,6 +198,8 @@ export function createTrafficAccountingService({
     return {
       ok: true,
       status: decision.status,
+      accountingMode: normalized.accountingMode,
+      accountingStatus: usage.status || (usage.inserted ? "calculated" : "already_recorded"),
       sourceRef: normalized.sourceRef,
       channelRef: normalized.channelRef,
       edgeCredentialRef: normalized.edgeCredentialRef,

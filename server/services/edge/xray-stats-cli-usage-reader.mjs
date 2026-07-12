@@ -152,6 +152,7 @@ export function createXrayStatsCliUsageSnapshotReader({
     );
     return {
       sourceRef: "xray_statsquery_user_traffic",
+      accountingMode: "cumulative",
       observedAt,
       intervalStartedAt: isoText(payload.intervalStartedAt || since || observedAt, "intervalStartedAt"),
       intervalEndedAt: isoText(payload.intervalEndedAt || observedAt, "intervalEndedAt"),

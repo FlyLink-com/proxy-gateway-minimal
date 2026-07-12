@@ -58,6 +58,17 @@ function isPlainObject(value) {
   return value && typeof value === "object" && !Array.isArray(value);
 }
 
+function accountingMode(value) {
+  const normalized = text(value || "cumulative").toLowerCase().replace(/[\s_]+/g, "-");
+  if (normalized === "delta" || normalized === "read-clear" || normalized === "read-and-clear") {
+    return "delta";
+  }
+  if (normalized === "cumulative" || normalized === "counter" || normalized === "snapshot") {
+    return "cumulative";
+  }
+  throw collectorError("validation_error", "accountingMode must be delta or cumulative");
+}
+
 function blocker(code, target) {
   return { code, target };
 }
@@ -106,7 +117,7 @@ function normalizeSnapshot(snapshot, { channelRef, since, nowFn }) {
     throw collectorError("validation_error", "usage snapshot must be an object");
   }
   const sourceRef = safeRef(snapshot.sourceRef || "mihomo_usage_snapshot", "sourceRef");
-  const accountingMode = text(snapshot.accountingMode) || "snapshot";
+  const normalizedAccountingMode = accountingMode(snapshot.accountingMode);
   const observedAt = isoText(snapshot.observedAt || isoNow(nowFn), "observedAt");
   const intervalStartedAt = isoText(snapshot.intervalStartedAt || since || observedAt, "intervalStartedAt");
   const intervalEndedAt = isoText(snapshot.intervalEndedAt || observedAt, "intervalEndedAt");
@@ -114,7 +125,7 @@ function normalizeSnapshot(snapshot, { channelRef, since, nowFn }) {
 
   return {
     sourceRef,
-    accountingMode,
+    accountingMode: normalizedAccountingMode,
     stateWarmup: snapshot.stateWarmup === true,
     observedAt,
     intervalStartedAt,
@@ -129,6 +140,7 @@ function normalizeEntry(entry, index, snapshot) {
     throw collectorError("validation_error", `entries[${index}] must be an object`);
   }
   return {
+    accountingMode: snapshot.accountingMode,
     sourceRef: snapshot.sourceRef,
     channelRef: snapshot.channelRef,
     edgeCredentialRef: safeRef(entry.edgeCredentialRef || entry.credentialRef, `entries[${index}].edgeCredentialRef`),

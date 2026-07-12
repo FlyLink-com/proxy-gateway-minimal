@@ -7,6 +7,7 @@ test("Xray VLESS usage collector converts per-user stats into safe observations"
     channelRef: "channel-vultr-a-vless-reality-tcp",
     snapshotReader: async () => ({
       sourceRef: "xray_statsquery_user_traffic",
+      accountingMode: "cumulative",
       observedAt: "2026-07-07T12:00:00.000Z",
       intervalStartedAt: "2026-07-07T11:55:00.000Z",
       intervalEndedAt: "2026-07-07T12:00:00.000Z",
@@ -26,8 +27,10 @@ test("Xray VLESS usage collector converts per-user stats into safe observations"
 
   assert.equal(result.ok, true);
   assert.equal(result.status, "collected");
+  assert.equal(result.accountingMode, "cumulative");
   assert.deepEqual(result.observations, [
     {
+      accountingMode: "cumulative",
       sourceRef: "xray_statsquery_user_traffic",
       channelRef: "channel-vultr-a-vless-reality-tcp",
       edgeCredentialRef: "edgecred_vless_001",
