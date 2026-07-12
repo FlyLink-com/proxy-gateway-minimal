@@ -184,6 +184,7 @@ export function createOrderCredentialLifecycleFanoutService({
           summary: report?.summary,
           blockers: Array.isArray(report?.blockers) ? report.blockers : [],
           warnings: Array.isArray(report?.warnings) ? report.warnings : [],
+          runtimeStatus: report?.runtimeReceipt?.status,
           mutation: report?.mutation === true,
           nextAction: report?.nextAction
         })),

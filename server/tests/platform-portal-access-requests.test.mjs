@@ -1248,7 +1248,7 @@ test("deferred edge lifecycle returns delivered order before runtime reconciliat
   assert.doesNotMatch(JSON.stringify(reconciled), /uuid|password/i);
 });
 
-test("refresh reissues material for an already-delivered order while preserving the imported subscription URL", () => {
+test("refresh rejects false success when runtime credential rotation is unavailable", () => {
   const runtimeCore = lifecycleRuntimeCore();
   const requests = createPortalAccessRequestService({
     nowFn: () => NOW,
@@ -1266,35 +1266,31 @@ test("refresh reissues material for an already-delivered order while preserving 
     expiresAt: "2026-06-07T00:00:00.000Z"
   });
 
-  const refreshed = requests.refreshSubscription({
+  assert.throws(() => requests.refreshSubscription({
     portalUserRef: "user_safe_ref",
     requestRef: "pareq_lifecycle_1",
     clientTarget: "karing"
-  });
+  }), { code: "subscription_refresh_runtime_credential_unavailable" });
 
-  assert.equal(refreshed.status, "delivered");
-  assert.equal(refreshed.clientTarget, "karing");
-  assert.equal(refreshed.subscriptionUrl, "https://sub.example.test/import/original-visible-once");
-  assert.equal(refreshed.expiresAt, "2026-06-07T00:00:00.000Z");
-  assert.equal(refreshed.validUntil, "2026-06-07T00:00:00.000Z");
-  assert.equal(refreshed.event.type, "delivery_generation_reissued");
-  assert.equal(refreshed.delivery.model, "account_resource_delivery_generation");
-  assert.equal(refreshed.delivery.state, "current");
-  assert.equal(refreshed.delivery.artifactPresent, true);
-  assert.equal(refreshed.delivery.runtimeMaterialPresent, false);
-  assert.equal(refreshed.delivery.lastReissuedAt, NOW);
-  assert.equal(refreshed.artifactId, undefined);
+  const unchanged = requests.getRequest("pareq_lifecycle_1");
+  assert.equal(unchanged.clientTarget, "clash");
+  assert.equal(unchanged.event, null);
   assert.deepEqual(runtimeCore.calls, []);
-  assert.equal(JSON.stringify(refreshed).includes("tenant_runtime_1"), false);
-  assert.equal(JSON.stringify(refreshed).includes("artifact_runtime_1"), false);
 });
 
 test("refresh enforces a per-order cooldown before reissuing material again", () => {
   let now = "2026-06-01T00:00:00.000Z";
+  let credentialSequence = 0;
   const requests = createPortalAccessRequestService({
     nowFn: () => now,
     requestIdFactory: () => "pareq_refresh_cooldown_1",
-    refreshCooldownMs: 5 * 60 * 1000
+    refreshCooldownMs: 5 * 60 * 1000,
+    edgeCredentialIssuer: createOrderEdgeCredentialIssuer({
+      channelRef: "channel-aliyun-a-tuic",
+      materialStore: edgeMaterialStore(),
+      uuidFactory: () => `00000000-0000-4000-8000-${String(++credentialSequence).padStart(12, "0")}`,
+      passwordFactory: () => `password-${credentialSequence}`
+    })
   });
   requests.submitRequest(validTrialInput());
   requests.markDelivered("pareq_refresh_cooldown_1", {
@@ -1367,7 +1363,7 @@ test("refresh rotates per-order edge material so cached client credentials stop 
   });
   const [before] = requests.listEdgeCredentialOrders();
 
-  requests.refreshSubscription({
+  const refreshed = requests.refreshSubscription({
     portalUserRef: "user_safe_ref",
     requestRef: "pareq_refresh_edge_rotate_1"
   });
@@ -1375,6 +1371,8 @@ test("refresh rotates per-order edge material so cached client credentials stop 
 
   assert.equal(before.edgeCredentialRef, after.edgeCredentialRef);
   assert.notEqual(before.edgeMaterialDigest, after.edgeMaterialDigest);
+  assert.equal(refreshed.subscriptionUrl, "https://sub.example.test/import/original-visible-once");
+  assert.equal(refreshed.delivery.runtimeMaterialPresent, true);
   assert.deepEqual(runtimeCore.calls.map(([method]) => method), [
     "bindTenantCredentialMaterial",
     "bindTenantCredentialMaterial"
@@ -1492,11 +1490,18 @@ test("traffic supply suspension revokes access while preserving the order record
 test("refresh and disable notify the optional edge lifecycle service", () => {
   const runtimeCore = lifecycleRuntimeCore();
   const edgeLifecycle = edgeLifecycleService();
+  let credentialSequence = 0;
   const requests = createPortalAccessRequestService({
     nowFn: () => NOW,
     requestIdFactory: () => "pareq_edge_lifecycle_1",
     runtimeCore,
-    edgeLifecycleService: edgeLifecycle
+    edgeLifecycleService: edgeLifecycle,
+    edgeCredentialIssuer: createOrderEdgeCredentialIssuer({
+      channelRef: "channel-aliyun-a-tuic",
+      materialStore: edgeMaterialStore(),
+      uuidFactory: () => `00000000-0000-4000-8000-${String(++credentialSequence).padStart(12, "0")}`,
+      passwordFactory: () => `password-${credentialSequence}`
+    })
   });
   requests.submitRequest(validTrialInput());
   requests.markDelivered("pareq_edge_lifecycle_1", {
@@ -1519,10 +1524,12 @@ test("refresh and disable notify the optional edge lifecycle service", () => {
   });
 
   assert.deepEqual(edgeLifecycle.calls.map((call) => call.reason), [
+    "order_delivered",
     "order_refreshed",
     "order_disabled"
   ]);
   assert.deepEqual(edgeLifecycle.calls.map((call) => call.order.status), [
+    "delivered",
     "delivered",
     "disabled"
   ]);

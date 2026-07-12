@@ -33,9 +33,20 @@ function requestService() {
 
 function lifecycleRequestService() {
   const calls = [];
+  let credentialSequence = 0;
   const portalAccessRequests = createPortalAccessRequestService({
     nowFn: () => "2026-05-31T00:00:00.000Z",
     requestIdFactory: () => "pareq_route_lifecycle",
+    edgeCredentialIssuer: {
+      ensureCredentialForOrder(order) {
+        credentialSequence += 1;
+        return {
+          edgeChannelRef: "channel-aliyun-a-tuic",
+          edgeCredentialRef: `edgecred_${order.id}`,
+          edgeMaterialDigest: `sha256:digest_${credentialSequence}`
+        };
+      }
+    },
     runtimeCore: {
       rotateSubscriptionArtifact(id) {
         calls.push(["rotateSubscriptionArtifact", id]);

@@ -5,7 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   createDataPlaneAgentService,
-  hashDataPlaneAgentToken
+  hashDataPlaneAgentToken,
+  scopedDesiredStateFrom
 } from "../services/edge/data-plane-agent-service.mjs";
 import { createEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
@@ -54,6 +55,22 @@ function receipt(overrides = {}) {
     ...overrides
   };
 }
+
+test("credential-scoped agent filters preserve channel revocation tombstones", () => {
+  const tombstone = desired({
+    channelRefs: ["channel-sgp-a-hy2"],
+    edgeCredentialRefs: [],
+    materialDigests: []
+  });
+
+  const scoped = scopedDesiredStateFrom(tombstone, {
+    edgeCredentialRefs: ["edgecred_safe_hy2"]
+  });
+
+  assert.ok(scoped);
+  assert.deepEqual(scoped.edgeCredentialRefs, []);
+  assert.deepEqual(scoped.channelRefs, ["channel-sgp-a-hy2"]);
+});
 
 function fakeControlStore(latestByChannel = new Map()) {
   const receipts = [];

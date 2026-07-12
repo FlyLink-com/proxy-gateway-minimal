@@ -281,11 +281,15 @@ function buildHysteria2Config(users, listener = {}) {
     `  cert: ${yamlScalar(listener.certificate)}`,
     `  key: ${yamlScalar(listener.privateKey)}`,
     "auth:",
-    "  type: userpass",
-    "  userpass:"
+    "  type: userpass"
   ];
-  for (const user of users) {
-    lines.push(`    ${user.name}: ${yamlScalar(user.password)}`);
+  if (users.length === 0) {
+    lines.push("  userpass: {}");
+  } else {
+    lines.push("  userpass:");
+    for (const user of users) {
+      lines.push(`    ${user.name}: ${yamlScalar(user.password)}`);
+    }
   }
   if (text(listener.trafficStatsListen)) {
     lines.push("trafficStats:");

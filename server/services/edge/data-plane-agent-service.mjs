@@ -121,7 +121,7 @@ function channelRefsForScopedState(desiredState, materialDigests) {
 
 export function scopedDesiredStateFrom(desiredState, filter = {}) {
   const { edgeCredentialRefs } = normalizeDesiredStateFilter(filter);
-  if (edgeCredentialRefs.length === 0) {
+  if (edgeCredentialRefs.length === 0 || desiredState.edgeCredentialRefs.length === 0) {
     return desiredState;
   }
   const selectedRefs = desiredState.edgeCredentialRefs.filter((ref) => edgeCredentialRefs.includes(ref));

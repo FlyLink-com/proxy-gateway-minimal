@@ -355,8 +355,10 @@ export function createProductionEdgeAgentRunner(input = {}) {
       let materialCount = 0;
       const receipts = [];
       for (const state of desiredStates) {
-        const materialBatch = await fetchMaterialBatch(state);
-        materialCount += mergeMaterialBatchIntoStore(config.materialStore, materialBatch);
+        if (state.edgeCredentialRefs.length > 0) {
+          const materialBatch = await fetchMaterialBatch(state);
+          materialCount += mergeMaterialBatchIntoStore(config.materialStore, materialBatch);
+        }
         for (const channelRef of state.channelRefs) {
           const adapter = config.runtimeAdapters.get(channelRef);
           const applyResult = await applyWithAdapter({ adapter, state, channelRef });

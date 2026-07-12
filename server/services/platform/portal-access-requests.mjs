@@ -687,6 +687,40 @@ export function createPortalAccessRequestService(options = {}) {
     }
   }
 
+  function edgeRuntimeEnforcementState(lifecycleResult, desiredStateResult) {
+    const reports = Array.isArray(lifecycleResult?.reports) ? lifecycleResult.reports : [];
+    const explicitStatuses = reports
+      .map((report) => String(report?.runtimeStatus || "").trim())
+      .filter(Boolean);
+    const directStatus = String(lifecycleResult?.runtimeReceipt?.status || "").trim();
+    if (lifecycleResult?.ok === false || explicitStatuses.includes("failed") || directStatus === "failed") {
+      return "failed";
+    }
+    if (
+      lifecycleResult?.mutation === true
+      && (directStatus === "applied" || (explicitStatuses.length > 0 && explicitStatuses.every((status) => status === "applied")))
+    ) {
+      return "applied";
+    }
+    if (lifecycleResult?.mutation === true && !directStatus && explicitStatuses.length === 0) {
+      return "applied";
+    }
+    if (desiredStateResult?.notificationCount > 0 || lifecycleResult || desiredStateResult) {
+      return "pending";
+    }
+    return "unavailable";
+  }
+
+  function withRuntimeEnforcement(summary, lifecycleResult, desiredStateResult) {
+    return {
+      ...summary,
+      runtimeEnforcement: {
+        state: edgeRuntimeEnforcementState(lifecycleResult, desiredStateResult),
+        redacted: true
+      }
+    };
+  }
+
   function assertRefreshCooldown(request, now) {
     if (refreshCooldownMs <= 0) {
       return;
@@ -799,9 +833,14 @@ export function createPortalAccessRequestService(options = {}) {
     };
     request.updatedAt = now;
     saveRecord(request);
-    recordEdgeLifecycleResult(request, notifyEdgeLifecycle(edgeReason, request));
-    notifyEdgeDesiredState(edgeReason, request);
-    return summarize(saveRecord(request));
+    const lifecycleResult = notifyEdgeLifecycle(edgeReason, request);
+    recordEdgeLifecycleResult(request, lifecycleResult);
+    const desiredStateResult = notifyEdgeDesiredState(edgeReason, request);
+    return withRuntimeEnforcement(
+      summarize(saveRecord(request)),
+      lifecycleResult,
+      desiredStateResult
+    );
   }
 
   function hasPriorTrial(portalUserRef) {
@@ -1141,6 +1180,10 @@ export function createPortalAccessRequestService(options = {}) {
       }
       assertRefreshCooldown(request, now);
 
+      const previousDigests = new Map(
+        edgeCredentialOrderSummariesFor(request)
+          .map((credential) => [credential.edgeCredentialRef, credential.edgeMaterialDigest])
+      );
       request.clientTarget = normalizeClientTarget(input.clientTarget || request.clientTarget);
       request.event = {
         type: "delivery_generation_reissued",
@@ -1148,13 +1191,33 @@ export function createPortalAccessRequestService(options = {}) {
       };
       request.updatedAt = now;
       const credentials = attachEdgeCredentials(request, { forceRotateCredential: true });
+      if (credentials.length === 0) {
+        throw platformError(
+          "subscription_refresh_runtime_credential_unavailable",
+          "runtime credential rotation is unavailable"
+        );
+      }
+      const rotationApplied = credentials.every((credential) => (
+        previousDigests.get(credential.edgeCredentialRef) !== credential.edgeMaterialDigest
+      ));
+      if (!rotationApplied) {
+        throw platformError(
+          "subscription_refresh_runtime_credential_unchanged",
+          "runtime credential rotation did not change material"
+        );
+      }
       for (const credential of credentials) {
         bindTenantCredentialMaterial(request, credential);
       }
       saveRecord(request);
-      recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_refreshed", request));
-      notifyEdgeDesiredState("order_refreshed", request);
-      return summarizeVisibleOnce(saveRecord(request));
+      const lifecycleResult = notifyEdgeLifecycle("order_refreshed", request);
+      recordEdgeLifecycleResult(request, lifecycleResult);
+      const desiredStateResult = notifyEdgeDesiredState("order_refreshed", request);
+      return withRuntimeEnforcement(
+        summarizeVisibleOnce(saveRecord(request)),
+        lifecycleResult,
+        desiredStateResult
+      );
     },
 
     revealSubscription(input = {}) {

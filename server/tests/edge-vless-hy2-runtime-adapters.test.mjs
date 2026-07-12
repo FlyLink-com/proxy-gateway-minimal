@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import test from "node:test";
 import { buildCredentialReconciliationApplyPlan, buildCredentialReconciliationPlan } from "../services/edge/credential-reconciliation-gateway.mjs";
-import { createHysteria2HostRuntimeAdapter } from "../services/edge/hysteria2-runtime-adapter.mjs";
+import {
+  createHysteria2ExplicitRestartAdapter,
+  createHysteria2HostRuntimeAdapter
+} from "../services/edge/hysteria2-runtime-adapter.mjs";
 import { createXrayVlessRealityHostRuntimeAdapter } from "../services/edge/xray-vless-reality-runtime-adapter.mjs";
 
 function desiredState(runtime, channelRef) {
@@ -243,6 +246,51 @@ test("Hysteria2 host adapter writes userpass config, tests, backs up, restarts, 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("Hysteria2 adapter renders an explicit empty userpass map for channel revocation", () => {
+  let candidateConfig = "";
+  const adapter = createHysteria2ExplicitRestartAdapter({
+    serviceName: "hysteria2.service",
+    listener: {
+      listen: ":443",
+      certificate: "/etc/hysteria/server.crt",
+      privateKey: "/etc/hysteria/server.key"
+    },
+    resolveCredentialMaterial: () => {
+      throw new Error("revocation tombstone must not resolve credential material");
+    },
+    writeCandidateConfig(content) {
+      candidateConfig = content;
+    },
+    runConfigTest: () => ({ exitCode: 0 }),
+    backupActiveConfig: () => ({ backupRef: "backup_empty_001" }),
+    replaceActiveConfig: () => ({ ok: true }),
+    restartService: () => ({ ok: true }),
+    validateService: () => ({ active: true }),
+    validateListener: () => ({ udp443: true })
+  });
+  const state = desiredState("hysteria2", "channel-vultr-a-hy2");
+
+  const report = buildCredentialReconciliationApplyPlan({
+    desiredState: {
+      ...state,
+      desiredStateRef: "desired_state_hy2_empty",
+      desiredCredentials: [],
+      currentCredentials: [{
+        credentialRef: "edgecred_order_001",
+        materialDigest: "sha256:digest_001"
+      }]
+    },
+    inputPath: "runtime:revocation-tombstone",
+    executeProductionMutation: true,
+    runtimeAdapter: adapter
+  });
+
+  assert.equal(report.ok, true);
+  assert.equal(report.summary.desiredCount, 0);
+  assert.equal(report.summary.revokeCount, 1);
+  assert.match(candidateConfig, /^  userpass: \{\}$/m);
 });
 
 test("Hysteria2 host adapter persists production sniff and IPv4 outbound policy with traffic stats", () => {
