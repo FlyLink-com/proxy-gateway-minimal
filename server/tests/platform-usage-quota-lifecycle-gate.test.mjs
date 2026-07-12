@@ -141,7 +141,7 @@ test("usage quota lifecycle gate plans controlled traffic supply suspension with
   });
 });
 
-test("usage quota lifecycle gate can explicitly suspend over-quota portal traffic supply", () => {
+test("usage quota lifecycle gate keeps suspension pending until edge runtime enforcement is applied", () => {
   withStore((store) => {
     const runtimeCalls = [];
     const edgeLifecycleCalls = [];
@@ -181,9 +181,10 @@ test("usage quota lifecycle gate can explicitly suspend over-quota portal traffi
     });
 
     assert.equal(result.ok, true);
-    assert.equal(result.status, "controlled_traffic_supply_suspend_completed");
-    assert.equal(result.nextAction, "traffic_supply_suspended_review_edge_lifecycle");
-    assert.equal(result.mutation, true);
+    assert.equal(result.status, "controlled_traffic_supply_suspend_pending");
+    assert.equal(result.nextAction, "wait_for_edge_runtime_enforcement");
+    assert.equal(result.mutation, false);
+    assert.equal(result.execution.trafficSupplySuspendExecuted, false);
     assert.equal(result.execution.accountMutationRequired, false);
     assert.deepEqual(runtimeCalls, [
       ["revokeSubscriptionArtifact", "artifact_usage_gate_1"],
@@ -199,4 +200,113 @@ test("usage quota lifecycle gate can explicitly suspend over-quota portal traffi
     assert.equal(result.suspendedOrder.safety.noSubscriptionUrl, true);
     assert.doesNotMatch(JSON.stringify(result), /https?:\/\/|password|token|rawConfig/i);
   });
+});
+
+test("usage quota lifecycle gate keeps legacy mutation-only results pending without an applied receipt", () => {
+  const gate = createOrderUsageQuotaLifecycleGate({
+    orderLifecycleService: {
+      suspendTrafficSupply(input) {
+        return {
+          id: input.requestRef,
+          status: "disabled",
+          nextAction: "traffic_supply_suspended_quota",
+          safety: {
+            noSubscriptionUrl: true,
+            noRuntimeMutation: false,
+            noProductionMutation: false
+          }
+        };
+      }
+    }
+  });
+
+  const result = gate.handleUsageDecision({
+    ok: true,
+    status: "over_quota_disable_required",
+    lifecycleAction: "traffic_supply_suspend_required",
+    requestId: "pareq_applied_001",
+    portalUserRef: "portal_user_applied_001"
+  }, {
+    executeControlledTrafficSupplySuspend: true
+  });
+
+  assert.equal(result.status, "controlled_traffic_supply_suspend_pending");
+  assert.equal(result.mutation, false);
+  assert.equal(result.execution.trafficSupplySuspendExecuted, false);
+});
+
+test("usage quota lifecycle gate completes after an explicit applied runtime receipt", () => {
+  const gate = createOrderUsageQuotaLifecycleGate({
+    orderLifecycleService: {
+      suspendTrafficSupply(input) {
+        return {
+          id: input.requestRef,
+          status: "disabled",
+          nextAction: "traffic_supply_suspended_quota",
+          runtimeEnforcement: {
+            state: "applied",
+            receiptStatus: "applied",
+            redacted: true
+          },
+          safety: {
+            noSubscriptionUrl: true,
+            noRuntimeMutation: false,
+            noProductionMutation: false
+          }
+        };
+      }
+    }
+  });
+
+  const result = gate.handleUsageDecision({
+    ok: true,
+    status: "over_quota_disable_required",
+    lifecycleAction: "traffic_supply_suspend_required",
+    requestId: "pareq_receipt_applied_001",
+    portalUserRef: "portal_user_receipt_applied_001"
+  }, {
+    executeControlledTrafficSupplySuspend: true
+  });
+
+  assert.equal(result.status, "controlled_traffic_supply_suspend_completed");
+  assert.equal(result.mutation, true);
+  assert.equal(result.execution.trafficSupplySuspendExecuted, true);
+});
+
+test("usage quota lifecycle gate does not treat a partial failed runtime mutation as completed", () => {
+  const gate = createOrderUsageQuotaLifecycleGate({
+    orderLifecycleService: {
+      suspendTrafficSupply(input) {
+        return {
+          id: input.requestRef,
+          status: "disabled",
+          runtimeEnforcement: {
+            state: "failed",
+            redacted: true
+          },
+          safety: {
+            noSubscriptionUrl: true,
+            noRuntimeMutation: false,
+            noProductionMutation: false
+          }
+        };
+      }
+    }
+  });
+
+  const result = gate.handleUsageDecision({
+    ok: true,
+    status: "over_quota_disable_required",
+    lifecycleAction: "traffic_supply_suspend_required",
+    requestId: "pareq_failed_001",
+    portalUserRef: "portal_user_failed_001"
+  }, {
+    executeControlledTrafficSupplySuspend: true
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "controlled_traffic_supply_suspend_failed");
+  assert.equal(result.mutation, false);
+  assert.equal(result.execution.trafficSupplySuspendExecuted, false);
+  assert.deepEqual(result.blockers, [{ code: "edge_runtime_enforcement_failed" }]);
 });

@@ -155,6 +155,87 @@ test("production edge agent pulls desired-state, applies runtime, and posts reda
   assert.doesNotMatch(JSON.stringify(result), /node-agent-token|synthetic-agent-material|11111111|password|privateKey|subscriptionUrl|rawConfig/i);
 });
 
+test("production edge agent applies an empty desired-state without requesting credential material", async () => {
+  const calls = [];
+  const applied = [];
+  const emptyState = desiredState({
+    desiredStateRef: "desired_state_channel-sgp-a-hy2_empty",
+    generation: "gen_channel_sgp_hy2_empty",
+    edgeCredentialRefs: [],
+    materialDigests: []
+  });
+  const runner = createProductionEdgeAgentRunner({
+    baseUrl: "http://127.0.0.1:3456",
+    token: "node-agent-token",
+    nodeRef: "vultr-sgp-a",
+    channelRefs: ["channel-sgp-a-hy2"],
+    applyEnabled: true,
+    dryRun: false,
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url: String(url), options });
+      if (String(url).endsWith("/api/internal/data-plane-agent/desired-state")) {
+        assert.equal(options.headers["X-GCCGW-Agent-Version"], "1.1");
+        assert.deepEqual(
+          options.headers["X-GCCGW-Agent-Capabilities"].split(",").sort(),
+          ["empty_desired_state", "tombstone_reconcile"]
+        );
+        return responseJson(200, {
+          type: "gccgw_data_plane_agent_desired_state_response",
+          nodeRef: "vultr-sgp-a",
+          channelRefs: ["channel-sgp-a-hy2"],
+          desiredStates: [emptyState],
+          summaries: [],
+          redacted: true
+        });
+      }
+      if (String(url).endsWith("/api/internal/data-plane-agent/materials")) {
+        throw new Error("empty desired-state must not request credential material");
+      }
+      if (String(url).endsWith("/api/internal/data-plane-agent/receipts")) {
+        const body = JSON.parse(options.body);
+        assert.equal(body.desiredStateRef, "desired_state_channel-sgp-a-hy2_empty");
+        assert.equal(body.credentialCount, 0);
+        assert.deepEqual(body.materialDigests, []);
+        return responseJson(201, {
+          type: "gccgw_data_plane_receipt_response",
+          nodeRef: "vultr-sgp-a",
+          channelRef: "channel-sgp-a-hy2",
+          generation: "gen_channel_sgp_hy2_empty",
+          receiptId: "receipt_empty_001",
+          status: "applied",
+          redacted: true
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+    nowFn: () => new Date(NOW),
+    runtimeAdapters: {
+      "channel-sgp-a-hy2": {
+        async applyDesiredState(state) {
+          applied.push(state);
+          return {
+            status: "applied",
+            configTest: true,
+            serviceActive: true,
+            listenerPresent: true,
+            credentialCount: 0,
+            materialDigests: []
+          };
+        }
+      }
+    }
+  });
+
+  const result = await runner.runOnce();
+
+  assert.equal(result.ok, true);
+  assert.equal(result.appliedCount, 1);
+  assert.equal(result.materialCount, 0);
+  assert.equal(result.receiptCount, 1);
+  assert.equal(applied.length, 1);
+  assert.equal(calls.some((call) => String(call.url).endsWith("/materials")), false);
+});
+
 test("production edge agent dry-run pulls but does not apply or post receipts", async () => {
   const calls = [];
   const runner = createProductionEdgeAgentRunner({

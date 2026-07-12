@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { createEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 import { createOrderEdgeCredentialIssuer } from "../services/edge/order-credential-issuer.mjs";
 
 function materialStore() {
@@ -74,4 +75,40 @@ test("order credential issuer can force-rotate protected material for the same r
   assert.equal(first.edgeMaterialDigest, unchanged.edgeMaterialDigest);
   assert.notEqual(first.edgeMaterialDigest, rotated.edgeMaterialDigest);
   assert.deepEqual(store.resolveCredentialMaterial("edgecred_pareq_rotate_1"), rotated.edgeCredentialMaterial);
+});
+
+test("order credential issuer stages rotations until explicit commit and can roll them back", () => {
+  let sequence = 0;
+  const store = createEdgeCredentialMaterialStore();
+  const issuer = createOrderEdgeCredentialIssuer({
+    channelRef: "channel-primary",
+    materialStore: store,
+    uuidFactory: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`,
+    passwordFactory: () => `password-${sequence}`
+  });
+  const order = {
+    id: "pareq_staged_rotate_1",
+    channelRefs: ["channel-primary"]
+  };
+  const [initial] = issuer.ensureCredentialsForOrder(order);
+
+  const rolledBack = issuer.beginCredentialRotationForOrder(order);
+  assert.notEqual(rolledBack.credentials[0].edgeMaterialDigest, initial.edgeMaterialDigest);
+  assert.equal(
+    store.getCredentialMaterialSummary(initial.edgeCredentialRef).materialDigest,
+    rolledBack.credentials[0].edgeMaterialDigest
+  );
+  rolledBack.rollback();
+  assert.equal(store.getCredentialMaterialSummary(initial.edgeCredentialRef).materialDigest, initial.edgeMaterialDigest);
+
+  const committed = issuer.beginCredentialRotationForOrder(order);
+  assert.notEqual(committed.credentials[0].edgeMaterialDigest, initial.edgeMaterialDigest);
+  committed.commit();
+  assert.equal(
+    store.getCredentialMaterialSummary(initial.edgeCredentialRef).materialDigest,
+    committed.credentials[0].edgeMaterialDigest
+  );
+  assert.throws(() => committed.rollback(), { code: "credential_transaction_closed" });
+  committed.restore();
+  assert.equal(store.getCredentialMaterialSummary(initial.edgeCredentialRef).materialDigest, initial.edgeMaterialDigest);
 });

@@ -5,7 +5,8 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   createDataPlaneAgentService,
-  hashDataPlaneAgentToken
+  hashDataPlaneAgentToken,
+  scopedDesiredStateFrom
 } from "../services/edge/data-plane-agent-service.mjs";
 import { createEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
@@ -54,6 +55,22 @@ function receipt(overrides = {}) {
     ...overrides
   };
 }
+
+test("credential-scoped agent filters preserve channel revocation tombstones", () => {
+  const tombstone = desired({
+    channelRefs: ["channel-sgp-a-hy2"],
+    edgeCredentialRefs: [],
+    materialDigests: []
+  });
+
+  const scoped = scopedDesiredStateFrom(tombstone, {
+    edgeCredentialRefs: ["edgecred_safe_hy2"]
+  });
+
+  assert.ok(scoped);
+  assert.deepEqual(scoped.edgeCredentialRefs, []);
+  assert.deepEqual(scoped.channelRefs, ["channel-sgp-a-hy2"]);
+});
 
 function fakeControlStore(latestByChannel = new Map()) {
   const receipts = [];
@@ -241,6 +258,42 @@ test("pulls only node-scoped desired states and returns redacted summaries", () 
   assert.equal(response.summaries.length, 1);
   assert.equal(response.summaries[0].channelCount, 2);
   assert.doesNotMatch(JSON.stringify(response), /password|privateKey|subscriptionUrl/i);
+});
+
+test("withholds revocation tombstones until the authenticated agent advertises compatible capabilities", () => {
+  const tombstone = desired({
+    channelRefs: ["channel-sgp-a-hy2"],
+    edgeCredentialRefs: [],
+    materialDigests: []
+  });
+  const service = serviceFor(fakeControlStore(new Map([
+    ["channel-sgp-a-hy2", tombstone]
+  ])));
+  const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+
+  const legacy = service.getDesiredState(identity, {
+    agentVersion: "1.0",
+    capabilities: []
+  });
+  assert.deepEqual(legacy.desiredStates, []);
+  assert.equal(legacy.compatibility.tombstoneReconcile, false);
+  assert.equal(legacy.compatibility.blockedDesiredStateCount, 1);
+
+  const staleVersion = service.getDesiredState(identity, {
+    agentVersion: "1.0",
+    capabilities: ["empty_desired_state", "tombstone_reconcile"]
+  });
+  assert.deepEqual(staleVersion.desiredStates, []);
+  assert.equal(staleVersion.compatibility.tombstoneReconcile, false);
+
+  const compatible = service.getDesiredState(identity, {
+    agentVersion: "1.1",
+    capabilities: ["empty_desired_state", "tombstone_reconcile"]
+  });
+  assert.equal(compatible.desiredStates.length, 1);
+  assert.deepEqual(compatible.desiredStates[0].edgeCredentialRefs, []);
+  assert.equal(compatible.compatibility.tombstoneReconcile, true);
+  assert.equal(compatible.compatibility.blockedDesiredStateCount, 0);
 });
 
 test("records receipts against latest desired state and never trusts client desired refs", () => {
@@ -500,6 +553,40 @@ test("uses deterministic receipt id per node channel generation", () => {
   const second = service.recordReceipt(identity, receipt({ appliedAt: "2026-06-10T00:02:00.000Z" }));
 
   assert.equal(first.receiptId, second.receiptId);
+  assert.equal(store.receipts.length, 1);
+});
+
+test("repeated tombstone receipts remain idempotent and do not create a second mutation record", () => {
+  const tombstone = desired({
+    desiredStateRef: "desired_sgp_tombstone_001",
+    generation: "gen_sgp_tombstone_001",
+    edgeCredentialRefs: [],
+    materialDigests: []
+  });
+  const store = fakeControlStore(new Map([
+    ["channel-sgp-a-hy2", tombstone]
+  ]));
+  const service = serviceFor(store);
+  const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+  const appliedTombstone = receipt({
+    desiredStateRef: tombstone.desiredStateRef,
+    generation: tombstone.generation,
+    credentialCount: 0,
+    materialDigests: [],
+    actionCounts: { add: 0, revoke: 1, rotate: 0, unchanged: 0 },
+    status: "applied"
+  });
+
+  const first = service.recordReceipt(identity, appliedTombstone);
+  const second = service.recordReceipt(identity, {
+    ...appliedTombstone,
+    status: "unchanged",
+    actionCounts: { add: 0, revoke: 0, rotate: 0, unchanged: 0 },
+    appliedAt: "2026-06-10T00:02:00.000Z"
+  });
+
+  assert.equal(first.receiptId, second.receiptId);
+  assert.equal(second.status, "applied");
   assert.equal(store.receipts.length, 1);
 });
 

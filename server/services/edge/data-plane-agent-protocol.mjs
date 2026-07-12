@@ -48,9 +48,12 @@ function safeRef(value, field) {
   return normalized;
 }
 
-function safeRefs(values, field) {
-  if (!Array.isArray(values) || values.length === 0) {
-    throw protocolError("validation_error", `${field} must be a non-empty array`);
+function safeRefs(values, field, { allowEmpty = false } = {}) {
+  if (!Array.isArray(values) || (!allowEmpty && values.length === 0)) {
+    throw protocolError(
+      "validation_error",
+      `${field} must be ${allowEmpty ? "an array" : "a non-empty array"}`
+    );
   }
   const refs = values.map((value, index) => safeRef(value, `${field}[${index}]`));
   return [...new Set(refs)].sort((a, b) => a.localeCompare(b));
@@ -275,8 +278,11 @@ export function validateDataPlaneDesiredState(input = {}, {
   assertScope(nodeRef, expectedNodeRef, "node_scope_mismatch");
   const channelRefs = safeRefs(input.channelRefs, "channelRefs");
   assertAllowedChannels(channelRefs, allowedChannelRefs);
-  const edgeCredentialRefs = safeRefs(input.edgeCredentialRefs, "edgeCredentialRefs");
+  const edgeCredentialRefs = safeRefs(input.edgeCredentialRefs, "edgeCredentialRefs", { allowEmpty: true });
   const materialDigests = normalizeMaterialDigests(input.materialDigests);
+  if (edgeCredentialRefs.length === 0 && materialDigests.length > 0) {
+    throw protocolError("validation_error", "empty desired-state cannot include material digests");
+  }
 
   return {
     type: DESIRED_STATE_TYPE,

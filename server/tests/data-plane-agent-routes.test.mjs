@@ -15,7 +15,7 @@ import { listen } from "./helpers/listen.mjs";
 
 const VALID_UNTIL = "2026-07-10T00:00:00.000Z";
 
-function desired() {
+function desired(overrides = {}) {
   return {
     desiredStateRef: "desired_route_001",
     nodeRef: "node-sgp-a",
@@ -29,18 +29,19 @@ function desired() {
         digest: "sha256:aaaaaaaaaaaaaaaa"
       }
     ],
-    validUntil: VALID_UNTIL
+    validUntil: VALID_UNTIL,
+    ...overrides
   };
 }
 
-function fakeControlStore() {
+function fakeControlStore(desiredState = desired()) {
   const receipts = [];
   const leases = [];
   return {
     receipts,
     leases,
     getLatestEdgeDesiredStateForChannel(channelRef) {
-      return channelRef === "channel-sgp-a-hy2" ? desired() : null;
+      return channelRef === "channel-sgp-a-hy2" ? desiredState : null;
     },
     recordEdgeApplyReceipt(input) {
       const stored = {
@@ -62,8 +63,8 @@ function fakeControlStore() {
   };
 }
 
-function state({ routesEnabled = true } = {}) {
-  const controlStore = fakeControlStore();
+function state({ routesEnabled = true, desiredState = desired() } = {}) {
+  const controlStore = fakeControlStore(desiredState);
   const credentialMaterialStore = createEdgeCredentialMaterialStore({
     records: [{
       credentialRef: "edgecred_route_hy2",
@@ -111,6 +112,14 @@ function agentHeaders(token = "node-agent-token") {
   return {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json"
+  };
+}
+
+function tombstoneAgentHeaders(token = "node-agent-token") {
+  return {
+    ...agentHeaders(token),
+    "X-GCCGW-Agent-Version": "1.1",
+    "X-GCCGW-Agent-Capabilities": "empty_desired_state,tombstone_reconcile"
   };
 }
 
@@ -265,6 +274,38 @@ test("desired-state route returns node-scoped redacted payload", async () => {
     assert.equal(body.summaries.length, 1);
     assert.equal(body.redacted, true);
     assert.doesNotMatch(JSON.stringify(body), /password|privateKey|subscriptionUrl|rawConfig/i);
+  } finally {
+    server.close();
+  }
+});
+
+test("desired-state route negotiates revocation tombstones through agent headers", async () => {
+  const tombstone = desired({
+    desiredStateRef: "desired_route_tombstone_001",
+    generation: "gen_route_tombstone_001",
+    edgeCredentialRefs: [],
+    materialDigests: []
+  });
+  const appState = state({ desiredState: tombstone });
+  const { server, baseUrl } = await listen(createApp(appState));
+  try {
+    const legacyResponse = await fetch(`${baseUrl}/api/internal/data-plane-agent/desired-state`, {
+      headers: agentHeaders()
+    });
+    assert.equal(legacyResponse.status, 200);
+    const legacy = await legacyResponse.json();
+    assert.deepEqual(legacy.desiredStates, []);
+    assert.equal(legacy.compatibility.tombstoneReconcile, false);
+    assert.equal(legacy.compatibility.blockedDesiredStateCount, 1);
+
+    const compatibleResponse = await fetch(`${baseUrl}/api/internal/data-plane-agent/desired-state`, {
+      headers: tombstoneAgentHeaders()
+    });
+    assert.equal(compatibleResponse.status, 200);
+    const compatible = await compatibleResponse.json();
+    assert.equal(compatible.desiredStates.length, 1);
+    assert.deepEqual(compatible.desiredStates[0].edgeCredentialRefs, []);
+    assert.equal(compatible.compatibility.tombstoneReconcile, true);
   } finally {
     server.close();
   }

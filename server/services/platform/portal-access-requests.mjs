@@ -629,7 +629,8 @@ export function createPortalAccessRequestService(options = {}) {
     }
     const result = edgeLifecycleService.reconcileOrderLifecycle({
       reason,
-      order: edgeOrderSummaryFor(request)
+      order: edgeOrderSummaryFor(request),
+      orders: edgeCredentialOrderSummariesFor(request)
     });
     if (result?.ok === false) {
       throw platformError("edge_lifecycle_failed", "edge lifecycle reconciliation failed");
@@ -687,6 +688,47 @@ export function createPortalAccessRequestService(options = {}) {
     }
   }
 
+  function edgeRuntimeEnforcementState(lifecycleResult, desiredStateResult) {
+    const reports = Array.isArray(lifecycleResult?.reports) ? lifecycleResult.reports : [];
+    const explicitStatuses = reports
+      .map((report) => String(report?.runtimeStatus || "").trim())
+      .filter(Boolean);
+    const directStatus = String(lifecycleResult?.runtimeReceipt?.status || "").trim();
+    if (lifecycleResult?.ok === false || explicitStatuses.includes("failed") || directStatus === "failed") {
+      return "failed";
+    }
+    if (
+      lifecycleResult?.mutation === true
+      && (
+        directStatus === "applied"
+        || (
+          reports.length > 0
+          && explicitStatuses.length === reports.length
+          && explicitStatuses.every((status) => status === "applied")
+        )
+      )
+    ) {
+      return "applied";
+    }
+    if (desiredStateResult?.notificationCount > 0) {
+      return "pending";
+    }
+    if (lifecycleResult || desiredStateResult) {
+      return "pending";
+    }
+    return "unavailable";
+  }
+
+  function withRuntimeEnforcement(summary, lifecycleResult, desiredStateResult) {
+    return {
+      ...summary,
+      runtimeEnforcement: {
+        state: edgeRuntimeEnforcementState(lifecycleResult, desiredStateResult),
+        redacted: true
+      }
+    };
+  }
+
   function assertRefreshCooldown(request, now) {
     if (refreshCooldownMs <= 0) {
       return;
@@ -703,6 +745,27 @@ export function createPortalAccessRequestService(options = {}) {
     ) {
       throw platformError("subscription_refresh_rate_limited", "subscription refresh is rate limited");
     }
+  }
+
+  function normalizeAndAttachEdgeCredentials(request, credentials = []) {
+    const normalized = credentials.map((credential) => ({
+      edgeChannelRef: text(credential.edgeChannelRef, "edgeChannelRef"),
+      edgeCredentialRef: text(credential.edgeCredentialRef, "edgeCredentialRef"),
+      edgeMaterialDigest: text(credential.edgeMaterialDigest, "edgeMaterialDigest"),
+      edgeCredentialMaterial: credential.edgeCredentialMaterial
+    }));
+    const [primary] = normalized;
+    if (primary) {
+      request.edgeChannelRef = primary.edgeChannelRef;
+      request.edgeCredentialRef = primary.edgeCredentialRef;
+      request.edgeMaterialDigest = primary.edgeMaterialDigest;
+      request.edgeCredentials = normalized.map((credential) => ({
+        edgeChannelRef: credential.edgeChannelRef,
+        edgeCredentialRef: credential.edgeCredentialRef,
+        edgeMaterialDigest: credential.edgeMaterialDigest
+      }));
+    }
+    return normalized;
   }
 
   function attachEdgeCredentials(request, { forceRotateCredential = false } = {}) {
@@ -726,24 +789,33 @@ export function createPortalAccessRequestService(options = {}) {
         ...order,
         forceRotateCredential
       })];
-    const normalized = credentials.map((credential) => ({
-      edgeChannelRef: text(credential.edgeChannelRef, "edgeChannelRef"),
-      edgeCredentialRef: text(credential.edgeCredentialRef, "edgeCredentialRef"),
-      edgeMaterialDigest: text(credential.edgeMaterialDigest, "edgeMaterialDigest"),
-      edgeCredentialMaterial: credential.edgeCredentialMaterial
-    }));
-    const [primary] = normalized;
-    if (primary) {
-      request.edgeChannelRef = primary.edgeChannelRef;
-      request.edgeCredentialRef = primary.edgeCredentialRef;
-      request.edgeMaterialDigest = primary.edgeMaterialDigest;
-      request.edgeCredentials = normalized.map((credential) => ({
-        edgeChannelRef: credential.edgeChannelRef,
-        edgeCredentialRef: credential.edgeCredentialRef,
-        edgeMaterialDigest: credential.edgeMaterialDigest
-      }));
+    return normalizeAndAttachEdgeCredentials(request, credentials);
+  }
+
+  function beginEdgeCredentialRotation(request) {
+    if (!edgeCredentialIssuer || typeof edgeCredentialIssuer.beginCredentialRotationForOrder !== "function") {
+      throw platformError(
+        "subscription_refresh_runtime_credential_unavailable",
+        "transactional runtime credential rotation is unavailable"
+      );
     }
-    return normalized;
+    const rotation = edgeCredentialIssuer.beginCredentialRotationForOrder({
+      ...edgeOrderSummaryFor(request),
+      channelRefs: autoIssuance.channelRefs
+    });
+    if (
+      !rotation
+      || !Array.isArray(rotation.credentials)
+      || typeof rotation.commit !== "function"
+      || typeof rotation.rollback !== "function"
+      || typeof rotation.restore !== "function"
+    ) {
+      throw platformError("validation_error", "credential rotation transaction is invalid");
+    }
+    return {
+      ...rotation,
+      credentials: normalizeAndAttachEdgeCredentials(request, rotation.credentials)
+    };
   }
 
   function bindTenantCredentialMaterial(request, credential) {
@@ -799,9 +871,14 @@ export function createPortalAccessRequestService(options = {}) {
     };
     request.updatedAt = now;
     saveRecord(request);
-    recordEdgeLifecycleResult(request, notifyEdgeLifecycle(edgeReason, request));
-    notifyEdgeDesiredState(edgeReason, request);
-    return summarize(saveRecord(request));
+    const lifecycleResult = notifyEdgeLifecycle(edgeReason, request);
+    recordEdgeLifecycleResult(request, lifecycleResult);
+    const desiredStateResult = notifyEdgeDesiredState(edgeReason, request);
+    return withRuntimeEnforcement(
+      summarize(saveRecord(request)),
+      lifecycleResult,
+      desiredStateResult
+    );
   }
 
   function hasPriorTrial(portalUserRef) {
@@ -1136,25 +1213,104 @@ export function createPortalAccessRequestService(options = {}) {
     refreshSubscription(input = {}) {
       const now = isoNow(nowFn);
       const request = getOwnedDeliveredRecord(input);
+      const previousRequest = cloneRecord(request);
       if (!request.artifactId) {
         throw platformError("validation_error", "subscription artifact is not available");
       }
       assertRefreshCooldown(request, now);
 
+      const previousDigests = new Map(
+        edgeCredentialOrderSummariesFor(request)
+          .map((credential) => [credential.edgeCredentialRef, credential.edgeMaterialDigest])
+      );
       request.clientTarget = normalizeClientTarget(input.clientTarget || request.clientTarget);
       request.event = {
         type: "delivery_generation_reissued",
         occurredAt: now
       };
       request.updatedAt = now;
-      const credentials = attachEdgeCredentials(request, { forceRotateCredential: true });
-      for (const credential of credentials) {
-        bindTenantCredentialMaterial(request, credential);
+      const rotation = beginEdgeCredentialRotation(request);
+      let committed = false;
+      let runtimeMayHaveMutated = false;
+      let tenantBindingMayHaveChanged = false;
+      let orderMayHaveChanged = false;
+      let desiredStateMayHaveChanged = false;
+      try {
+        const { credentials } = rotation;
+        if (credentials.length === 0) {
+          throw platformError(
+            "subscription_refresh_runtime_credential_unavailable",
+            "runtime credential rotation is unavailable"
+          );
+        }
+        const rotationApplied = credentials.every((credential) => (
+          previousDigests.get(credential.edgeCredentialRef) !== credential.edgeMaterialDigest
+        ));
+        if (!rotationApplied) {
+          throw platformError(
+            "subscription_refresh_runtime_credential_unchanged",
+            "runtime credential rotation did not change material"
+          );
+        }
+
+        const lifecycleResult = runEdgeLifecycle("order_refreshed", request);
+        runtimeMayHaveMutated = lifecycleResult?.mutation === true;
+        const runtimeEnforcementState = edgeRuntimeEnforcementState(lifecycleResult, null);
+        if (runtimeEnforcementState === "failed") {
+          throw platformError("edge_lifecycle_failed", "edge lifecycle reconciliation failed");
+        }
+        if (runtimeEnforcementState !== "applied") {
+          throw platformError(
+            "subscription_refresh_runtime_enforcement_pending",
+            "runtime credential rotation is pending an applied receipt"
+          );
+        }
+
+        rotation.commit();
+        committed = true;
+        tenantBindingMayHaveChanged = true;
+        for (const credential of credentials) {
+          bindTenantCredentialMaterial(request, credential);
+        }
+        recordEdgeLifecycleResult(request, lifecycleResult);
+        orderMayHaveChanged = true;
+        saveRecord(request);
+        desiredStateMayHaveChanged = true;
+        const desiredStateResult = notifyEdgeDesiredState("order_refreshed", request);
+        return withRuntimeEnforcement(
+          summarizeVisibleOnce(saveRecord(request)),
+          lifecycleResult,
+          desiredStateResult
+        );
+      } catch (error) {
+        try {
+          if (committed) {
+            rotation.restore();
+          } else {
+            rotation.rollback();
+          }
+          if (tenantBindingMayHaveChanged) {
+            for (const credential of rotation.previousCredentials || []) {
+              bindTenantCredentialMaterial(previousRequest, credential);
+            }
+          }
+          if (orderMayHaveChanged) {
+            saveRecord(previousRequest);
+          }
+          if (runtimeMayHaveMutated) {
+            const rollbackResult = runEdgeLifecycle("order_refresh_rolled_back", previousRequest);
+            if (edgeRuntimeEnforcementState(rollbackResult, null) !== "applied") {
+              throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback was not applied");
+            }
+          }
+          if (desiredStateMayHaveChanged) {
+            notifyEdgeDesiredState("order_refresh_rolled_back", previousRequest);
+          }
+        } catch (rollbackError) {
+          throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback failed");
+        }
+        throw error;
       }
-      saveRecord(request);
-      recordEdgeLifecycleResult(request, notifyEdgeLifecycle("order_refreshed", request));
-      notifyEdgeDesiredState("order_refreshed", request);
-      return summarizeVisibleOnce(saveRecord(request));
     },
 
     revealSubscription(input = {}) {

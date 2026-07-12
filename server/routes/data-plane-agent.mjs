@@ -72,7 +72,9 @@ export function dataPlaneAgentRoutes(state, {
   router.get("/api/internal/data-plane-agent/desired-state", (req, res) => {
     try {
       res.json(service.getDesiredState(req.dataPlaneAgentIdentity, {
-        edgeCredentialRefs: queryRefs(req.query.edgeCredentialRefs)
+        edgeCredentialRefs: queryRefs(req.query.edgeCredentialRefs),
+        agentVersion: req.headers["x-gccgw-agent-version"],
+        capabilities: req.headers["x-gccgw-agent-capabilities"]
       }));
     } catch (error) {
       sendAgentError(res, service, error);

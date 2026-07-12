@@ -188,19 +188,33 @@ export function createOrderUsageQuotaLifecycleGate({
       portalUserRef,
       reviewedByRef: safeRef(options.reviewedByRef) || "usage_quota_gate"
     });
+    const runtimeEnforcementState = text(suspendedOrder?.runtimeEnforcement?.state);
+    const runtimeEnforcementApplied = runtimeEnforcementState === "applied";
+    const runtimeEnforcementFailed = runtimeEnforcementState === "failed";
 
     return {
       ...resultBase,
       portalUserRef,
-      ok: true,
-      status: "controlled_traffic_supply_suspend_completed",
-      nextAction: "traffic_supply_suspended_review_edge_lifecycle",
-      mutation: true,
+      ok: !runtimeEnforcementFailed,
+      status: runtimeEnforcementFailed
+        ? "controlled_traffic_supply_suspend_failed"
+        : runtimeEnforcementApplied
+          ? "controlled_traffic_supply_suspend_completed"
+          : "controlled_traffic_supply_suspend_pending",
+      nextAction: runtimeEnforcementApplied
+        ? "traffic_supply_suspended_review_edge_lifecycle"
+        : runtimeEnforcementFailed
+          ? "review_edge_runtime_enforcement_failure"
+          : "wait_for_edge_runtime_enforcement",
+      mutation: runtimeEnforcementApplied,
       execution: {
         trafficSupplySuspendRequired: true,
-        trafficSupplySuspendExecuted: true,
+        trafficSupplySuspendExecuted: runtimeEnforcementApplied,
         accountMutationRequired: false
       },
+      ...(runtimeEnforcementFailed ? {
+        blockers: [{ code: "edge_runtime_enforcement_failed" }]
+      } : {}),
       suspendedOrder: summarizeOrder(suspendedOrder)
     };
   }

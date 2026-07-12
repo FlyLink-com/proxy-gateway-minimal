@@ -136,6 +136,51 @@ test("Mihomo TUIC adapter writes candidate config and activates after validation
   assert.doesNotMatch(JSON.stringify(report), /order_ref_new_password|order_ref_rotate_password|order_ref_same_password/);
 });
 
+test("Mihomo TUIC adapter renders an explicit empty users map for channel revocation", () => {
+  let candidateConfig = "";
+  const adapter = createMihomoTuicExplicitRestartAdapter({
+    serviceName: "mihomo-tuic.service",
+    listenerName: "channel-aliyun-a-tuic",
+    listener: {
+      port: 443,
+      certificate: "/etc/mihomo/server.crt",
+      privateKey: "/etc/mihomo/server.key"
+    },
+    resolveCredentialMaterial: () => {
+      throw new Error("revocation tombstone must not resolve credential material");
+    },
+    writeCandidateConfig(content) {
+      candidateConfig = content;
+    },
+    runConfigTest: () => ({ exitCode: 0 }),
+    backupActiveConfig: () => ({ backupRef: "backup_empty_001" }),
+    replaceActiveConfig: () => ({ ok: true }),
+    restartService: () => ({ ok: true }),
+    validateService: () => ({ active: true }),
+    validateListener: () => ({ udp443: true })
+  });
+
+  const report = buildCredentialReconciliationApplyPlan({
+    desiredState: {
+      ...reconciliationState(),
+      desiredStateRef: "desired_state_aliyun_empty",
+      desiredCredentials: [],
+      currentCredentials: [{
+        credentialRef: "order_ref_expired",
+        materialDigest: "sha256:expired_digest"
+      }]
+    },
+    inputPath: "runtime:revocation-tombstone",
+    executeProductionMutation: true,
+    runtimeAdapter: adapter
+  });
+
+  assert.equal(report.ok, true);
+  assert.equal(report.summary.desiredCount, 0);
+  assert.equal(report.summary.revokeCount, 1);
+  assert.match(candidateConfig, /^    users: \{\}$/m);
+});
+
 test("Mihomo TUIC adapter stops before backup and restart when config test fails", () => {
   const calls = [];
   const adapter = createMihomoTuicExplicitRestartAdapter({

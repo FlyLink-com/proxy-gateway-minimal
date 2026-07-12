@@ -571,6 +571,58 @@ test("subscription control store persists portal access request lifecycle", () =
   });
 });
 
+test("subscription control store emits an empty desired-state after the last channel credential is disabled", () => {
+  withStore((store) => {
+    const delivered = store.upsertPortalAccessRequest({
+      id: "pareq_desired_tombstone_001",
+      portalUserRef: "portal_user_desired_tombstone",
+      plan: "monthly",
+      clientTarget: "clash",
+      durationDays: 30,
+      quantity: 1,
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      noteProvided: false,
+      priorTrialState: "not_applicable",
+      submittedAt: "2026-07-11T00:00:00.000Z",
+      updatedAt: "2026-07-11T00:01:00.000Z",
+      expiresAt: "2099-08-10T00:00:00.000Z",
+      validUntil: "2099-08-10T00:00:00.000Z",
+      edgeChannelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: "edgecred_desired_tombstone_001",
+      edgeMaterialDigest: "sha256:digest_desired_tombstone_001"
+    });
+    const active = store.getLatestEdgeDesiredStateForChannel("channel-sgp-a-hy2", {
+      nodeRef: "vultr-sgp-a"
+    });
+    assert.deepEqual(active.edgeCredentialRefs, ["edgecred_desired_tombstone_001"]);
+
+    store.upsertPortalAccessRequest({
+      ...delivered,
+      status: "disabled",
+      nextAction: "traffic_supply_suspended_quota",
+      subscriptionUrl: null,
+      updatedAt: "2026-07-11T00:02:00.000Z"
+    });
+    const tombstone = store.getLatestEdgeDesiredStateForChannel("channel-sgp-a-hy2", {
+      nodeRef: "vultr-sgp-a"
+    });
+
+    assert.ok(tombstone);
+    assert.deepEqual(tombstone.channelRefs, ["channel-sgp-a-hy2"]);
+    assert.deepEqual(tombstone.edgeCredentialRefs, []);
+    assert.deepEqual(tombstone.materialDigests, []);
+    assert.notEqual(tombstone.desiredStateRef, active.desiredStateRef);
+
+    const repeated = store.getLatestEdgeDesiredStateForChannel("channel-sgp-a-hy2", {
+      nodeRef: "vultr-sgp-a"
+    });
+    assert.equal(repeated.desiredStateRef, tombstone.desiredStateRef);
+    assert.equal(repeated.generation, tombstone.generation);
+    assert.deepEqual(repeated.edgeCredentialRefs, []);
+  });
+});
+
 test("subscription control store upgrades legacy portal access request schema", () => {
   const tempDir = mkdtempSync(join(tmpdir(), "platform-subscription-control-legacy-"));
   let db;

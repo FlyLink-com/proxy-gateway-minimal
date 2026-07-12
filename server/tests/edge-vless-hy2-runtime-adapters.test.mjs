@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import test from "node:test";
 import { buildCredentialReconciliationApplyPlan, buildCredentialReconciliationPlan } from "../services/edge/credential-reconciliation-gateway.mjs";
-import { createHysteria2HostRuntimeAdapter } from "../services/edge/hysteria2-runtime-adapter.mjs";
+import {
+  createHysteria2ExplicitRestartAdapter,
+  createHysteria2HostRuntimeAdapter
+} from "../services/edge/hysteria2-runtime-adapter.mjs";
 import { createXrayVlessRealityHostRuntimeAdapter } from "../services/edge/xray-vless-reality-runtime-adapter.mjs";
 
 function desiredState(runtime, channelRef) {
@@ -111,6 +114,77 @@ test("Xray VLESS Reality host adapter writes candidate, tests, backs up, restart
     assert.equal(existsSync(join(backupDir, report.runtimeReceipt.backupRef)), true);
     assert.equal(basename(report.runtimeReceipt.backupRef), report.runtimeReceipt.backupRef);
     assert.doesNotMatch(JSON.stringify(report), /synthetic-private-key|11111111-1111-4111-8111-111111111111|config\.candidate|backups/i);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("Xray VLESS Reality host adapter applies an explicit empty client set for channel revocation", () => {
+  const dir = mkdtempSync(join(tmpdir(), "xray-vless-host-adapter-empty-"));
+  const activeConfigPath = join(dir, "config.json");
+  const candidateConfigPath = join(dir, "config.candidate.json");
+  const backupDir = join(dir, "backups");
+  const calls = [];
+
+  try {
+    writeFileSync(activeConfigPath, "{}\n", { mode: 0o600 });
+    const adapter = createXrayVlessRealityHostRuntimeAdapter({
+      activeConfigPath,
+      candidateConfigPath,
+      backupDir,
+      serviceName: "xray-vless-reality.service",
+      xrayBinary: "xray",
+      listener: {
+        name: "channel-vultr-a-vless-reality-tcp",
+        listen: "0.0.0.0",
+        port: 443,
+        flow: "xtls-rprx-vision",
+        dest: "www.example.com:443",
+        serverNames: ["www.example.com"],
+        privateKey: "synthetic-private-key",
+        shortIds: ["abcd1234"]
+      },
+      resolveCredentialMaterial: () => {
+        throw new Error("revocation tombstone must not resolve credential material");
+      },
+      commandRunner(command, args) {
+        calls.push([command, ...args]);
+        if (command === "xray") return { exitCode: 0 };
+        if (command === "systemctl") return { exitCode: 0 };
+        if (command === "ss") return { exitCode: 0, stdout: "LISTEN 0 4096 0.0.0.0:443 0.0.0.0:*" };
+        return { exitCode: 1 };
+      },
+      now: () => new Date("2026-06-07T12:00:00.000Z")
+    });
+    const state = desiredState("xray-vless-reality", "channel-vultr-a-vless-reality-tcp");
+
+    const report = buildCredentialReconciliationApplyPlan({
+      desiredState: {
+        ...state,
+        desiredStateRef: "desired_state_vless_empty",
+        desiredCredentials: [],
+        currentCredentials: [{
+          credentialRef: "edgecred_order_001",
+          materialDigest: "sha256:digest_001"
+        }]
+      },
+      inputPath: "runtime:revocation-tombstone",
+      executeProductionMutation: true,
+      runtimeAdapter: adapter
+    });
+
+    assert.equal(report.ok, true);
+    assert.equal(report.runtimeReceipt.status, "applied");
+    assert.equal(report.summary.desiredCount, 0);
+    assert.equal(report.summary.revokeCount, 1);
+    const candidate = JSON.parse(readFileSync(candidateConfigPath, "utf8"));
+    assert.deepEqual(candidate.inbounds[0].settings.clients, []);
+    assert.deepEqual(calls.map(([command, ...args]) => [command, args[0]]), [
+      ["xray", "run"],
+      ["systemctl", "restart"],
+      ["systemctl", "is-active"],
+      ["ss", "-H"]
+    ]);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -243,6 +317,51 @@ test("Hysteria2 host adapter writes userpass config, tests, backs up, restarts, 
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("Hysteria2 adapter renders an explicit empty userpass map for channel revocation", () => {
+  let candidateConfig = "";
+  const adapter = createHysteria2ExplicitRestartAdapter({
+    serviceName: "hysteria2.service",
+    listener: {
+      listen: ":443",
+      certificate: "/etc/hysteria/server.crt",
+      privateKey: "/etc/hysteria/server.key"
+    },
+    resolveCredentialMaterial: () => {
+      throw new Error("revocation tombstone must not resolve credential material");
+    },
+    writeCandidateConfig(content) {
+      candidateConfig = content;
+    },
+    runConfigTest: () => ({ exitCode: 0 }),
+    backupActiveConfig: () => ({ backupRef: "backup_empty_001" }),
+    replaceActiveConfig: () => ({ ok: true }),
+    restartService: () => ({ ok: true }),
+    validateService: () => ({ active: true }),
+    validateListener: () => ({ udp443: true })
+  });
+  const state = desiredState("hysteria2", "channel-vultr-a-hy2");
+
+  const report = buildCredentialReconciliationApplyPlan({
+    desiredState: {
+      ...state,
+      desiredStateRef: "desired_state_hy2_empty",
+      desiredCredentials: [],
+      currentCredentials: [{
+        credentialRef: "edgecred_order_001",
+        materialDigest: "sha256:digest_001"
+      }]
+    },
+    inputPath: "runtime:revocation-tombstone",
+    executeProductionMutation: true,
+    runtimeAdapter: adapter
+  });
+
+  assert.equal(report.ok, true);
+  assert.equal(report.summary.desiredCount, 0);
+  assert.equal(report.summary.revokeCount, 1);
+  assert.match(candidateConfig, /^  userpass: \{\}$/m);
 });
 
 test("Hysteria2 host adapter persists production sniff and IPv4 outbound policy with traffic stats", () => {

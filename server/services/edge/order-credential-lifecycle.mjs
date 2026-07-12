@@ -47,6 +47,36 @@ function listenerReady(listener = {}) {
   );
 }
 
+function ordersWithTransientCandidates(listOrders, input = {}) {
+  let orders = listOrders().map((order) => ({ ...order }));
+  const candidates = Array.isArray(input.orders) && input.orders.length > 0
+    ? input.orders
+    : (input.order ? [input.order] : []);
+
+  for (const candidate of candidates) {
+    const candidateRef = text(candidate?.id || candidate?.requestRef);
+    const candidateChannelRef = text(candidate?.edgeChannelRef || candidate?.channelRef);
+    let matched = false;
+    orders = orders.map((order) => {
+      const orderRef = text(order?.id || order?.requestRef);
+      const orderChannelRef = text(order?.edgeChannelRef || order?.channelRef);
+      if (
+        candidateRef
+        && orderRef === candidateRef
+        && (!candidateChannelRef || !orderChannelRef || orderChannelRef === candidateChannelRef)
+      ) {
+        matched = true;
+        return { ...order, ...candidate };
+      }
+      return order;
+    });
+    if (!matched) {
+      orders.push({ ...candidate });
+    }
+  }
+  return orders;
+}
+
 function receiptFromReport({
   report,
   channelRef,
@@ -94,7 +124,7 @@ export function createOrderCredentialLifecycleService({
   }
 
   return {
-    reconcileOrderLifecycle() {
+    reconcileOrderLifecycle(input = {}) {
       const nowValue = nowFn();
       const now = nowValue instanceof Date ? nowValue : new Date(nowValue);
       if (Number.isNaN(now.getTime())) {
@@ -112,7 +142,7 @@ export function createOrderCredentialLifecycleService({
         desiredStateRef,
         runtime,
         now: nowIso,
-        orders: listOrders(),
+        orders: ordersWithTransientCandidates(listOrders, input),
         currentCredentials: listCurrentCredentials()
       });
 
@@ -184,6 +214,7 @@ export function createOrderCredentialLifecycleFanoutService({
           summary: report?.summary,
           blockers: Array.isArray(report?.blockers) ? report.blockers : [],
           warnings: Array.isArray(report?.warnings) ? report.warnings : [],
+          runtimeStatus: report?.runtimeReceipt?.status,
           mutation: report?.mutation === true,
           nextAction: report?.nextAction
         })),

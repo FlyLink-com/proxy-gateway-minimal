@@ -127,12 +127,15 @@ function buildManagedUsersConfig(payload, users, listener = {}) {
     `  - name: ${yamlScalar(listenerName)}`,
     "    type: tuic",
     `    port: ${port}`,
-    `    listen: ${yamlScalar(listen)}`,
-    "    users:"
+    `    listen: ${yamlScalar(listen)}`
   );
-
-  for (const user of users) {
-    lines.push(`      ${yamlScalar(user.uuid)}: ${yamlScalar(user.password)}`);
+  if (users.length === 0) {
+    lines.push("    users: {}");
+  } else {
+    lines.push("    users:");
+    for (const user of users) {
+      lines.push(`      ${yamlScalar(user.uuid)}: ${yamlScalar(user.password)}`);
+    }
   }
   if (certificate) {
     lines.push(`    certificate: ${yamlScalar(certificate)}`);

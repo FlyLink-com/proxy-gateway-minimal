@@ -88,3 +88,59 @@ test("file-backed edge credential material store persists protected material whi
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test("file-backed material transactions keep candidates out of the active file until commit", () => {
+  const dir = mkdtempSync(join(tmpdir(), "edge-material-transaction-"));
+  const filePath = join(dir, "protected", "edge-material.json");
+
+  try {
+    const store = createFileBackedEdgeCredentialMaterialStore({ filePath });
+    store.putCredentialMaterial({
+      credentialRef: "edgecred_transaction_001",
+      materialDigest: "digest_transaction_old",
+      material: {
+        uuid: "33333333-3333-4333-8333-333333333333",
+        password: "synthetic-old-password"
+      }
+    });
+    const activeBefore = readFileSync(filePath, "utf8");
+
+    const rolledBack = store.beginCredentialMaterialTransaction();
+    rolledBack.putCredentialMaterial({
+      credentialRef: "edgecred_transaction_001",
+      materialDigest: "digest_transaction_candidate",
+      material: {
+        uuid: "44444444-4444-4444-8444-444444444444",
+        password: "synthetic-candidate-password"
+      }
+    });
+    assert.equal(store.getCredentialMaterialSummary("edgecred_transaction_001").materialDigest, "digest_transaction_candidate");
+    assert.equal(readFileSync(filePath, "utf8"), activeBefore);
+    rolledBack.rollback();
+    assert.equal(store.getCredentialMaterialSummary("edgecred_transaction_001").materialDigest, "digest_transaction_old");
+    assert.equal(readFileSync(filePath, "utf8"), activeBefore);
+
+    const committed = store.beginCredentialMaterialTransaction();
+    committed.putCredentialMaterial({
+      credentialRef: "edgecred_transaction_001",
+      materialDigest: "digest_transaction_committed",
+      material: {
+        uuid: "55555555-5555-4555-8555-555555555555",
+        password: "synthetic-committed-password"
+      }
+    });
+    assert.equal(readFileSync(filePath, "utf8"), activeBefore);
+    committed.commit();
+
+    const reloaded = createFileBackedEdgeCredentialMaterialStore({ filePath });
+    assert.equal(reloaded.getCredentialMaterialSummary("edgecred_transaction_001").materialDigest, "digest_transaction_committed");
+    assert.doesNotMatch(JSON.stringify(reloaded.listCredentialMaterialSummaries()), /synthetic-committed-password|55555555/i);
+
+    committed.restore();
+    const restored = createFileBackedEdgeCredentialMaterialStore({ filePath });
+    assert.equal(restored.getCredentialMaterialSummary("edgecred_transaction_001").materialDigest, "digest_transaction_old");
+    assert.equal(readFileSync(filePath, "utf8"), activeBefore);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

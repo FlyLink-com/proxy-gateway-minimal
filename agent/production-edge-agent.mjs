@@ -148,6 +148,9 @@ function desiredStateUrl(baseUrl, edgeCredentialRefs = []) {
   return url.toString();
 }
 
+const AGENT_PROTOCOL_VERSION = "1.1";
+const AGENT_CAPABILITIES = ["empty_desired_state", "tombstone_reconcile"];
+
 function receiptUrl(baseUrl) {
   return `${baseUrl}/api/internal/data-plane-agent/receipts`;
 }
@@ -288,7 +291,9 @@ export function createProductionEdgeAgentRunner(input = {}) {
       method: "GET",
       headers: {
         Authorization: `Bearer ${config.token}`,
-        Accept: "application/json"
+        Accept: "application/json",
+        "X-GCCGW-Agent-Version": AGENT_PROTOCOL_VERSION,
+        "X-GCCGW-Agent-Capabilities": AGENT_CAPABILITIES.join(",")
       }
     });
     const body = await readJsonResponse(response, "desired-state");
@@ -355,8 +360,10 @@ export function createProductionEdgeAgentRunner(input = {}) {
       let materialCount = 0;
       const receipts = [];
       for (const state of desiredStates) {
-        const materialBatch = await fetchMaterialBatch(state);
-        materialCount += mergeMaterialBatchIntoStore(config.materialStore, materialBatch);
+        if (state.edgeCredentialRefs.length > 0) {
+          const materialBatch = await fetchMaterialBatch(state);
+          materialCount += mergeMaterialBatchIntoStore(config.materialStore, materialBatch);
+        }
         for (const channelRef of state.channelRefs) {
           const adapter = config.runtimeAdapters.get(channelRef);
           const applyResult = await applyWithAdapter({ adapter, state, channelRef });

@@ -70,6 +70,32 @@ test("desired-state payload validates node scope, refs, expiry, and digest field
   assert.equal(result.redacted, true);
 });
 
+test("desired-state accepts an empty credential set as an explicit revocation tombstone", () => {
+  const result = validateDataPlaneDesiredState(desiredState({
+    channelRefs: ["channel-sgp-a-hy2"],
+    edgeCredentialRefs: [],
+    materialDigests: []
+  }), {
+    expectedNodeRef: "node-sgp-a",
+    allowedChannelRefs: ["channel-sgp-a-hy2"]
+  });
+
+  assert.deepEqual(result.edgeCredentialRefs, []);
+  assert.deepEqual(result.materialDigests, []);
+  assert.equal(buildRedactedDesiredStateSummary(result).edgeCredentialCount, 0);
+});
+
+test("revocation tombstones reject orphaned material digests", () => {
+  assert.throws(
+    () => validateDataPlaneDesiredState(desiredState({
+      channelRefs: ["channel-sgp-a-hy2"],
+      edgeCredentialRefs: [],
+      materialDigests: ["sha256:aaaaaaaaaaaaaaaa"]
+    })),
+    (error) => error.code === "validation_error"
+  );
+});
+
 test("desired-state summary is redacted and count based", () => {
   const result = validateDataPlaneDesiredState(desiredState(), {
     expectedNodeRef: "node-sgp-a",
