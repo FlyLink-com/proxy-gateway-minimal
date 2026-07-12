@@ -308,7 +308,9 @@ test("natural observation rejects coerced JSON scalar types", () => {
 test("natural observation requires explicit projection scalar types", () => {
   for (const mutate of [
     (input) => { input.projection.availability = true; },
+    (input) => { delete input.projection.availability; },
     (input) => { input.projection.run.runOk = "true"; },
+    (input) => { delete input.projection.run.runOk; },
     (input) => { input.projection.run.rawReportOk = "false"; },
     (input) => { delete input.projection.run.rawReportOk; },
     (input) => { input.projection.accounting.recordingOk = "false"; },
