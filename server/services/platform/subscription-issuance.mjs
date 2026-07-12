@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { normalizeNote } from "../subscriptions/validation.mjs";
+import { trafficLimitBytesForPlan } from "./subscription-package-policy.mjs";
 
 function safeRef(prefix, value) {
   return `${prefix}ref_${createHash("sha256").update(String(value)).digest("hex").slice(0, 16)}`;
@@ -169,7 +170,10 @@ export function planSubscriptionIssuance({ controlStore, input, approvalRef, now
       validUntil: input.expiresAt,
       maxArtifacts: control.maxArtifacts ?? 1,
       maxDevices: control.maxDevices ?? 1,
-      trafficLimitBytes: control.trafficLimitBytes ?? 0,
+      trafficLimitBytes: trafficLimitBytesForPlan(
+        control.plan,
+        control.trafficLimitBytes ?? 0
+      ),
       createdAt: now,
       updatedAt: now
     });
@@ -260,7 +264,10 @@ export function executeSubscriptionIssuance({ controlStore, runtimeCore, input, 
       validUntil: input.expiresAt,
       maxArtifacts: control.maxArtifacts ?? 1,
       maxDevices: control.maxDevices ?? 1,
-      trafficLimitBytes: control.trafficLimitBytes ?? 0,
+      trafficLimitBytes: trafficLimitBytesForPlan(
+        control.plan,
+        control.trafficLimitBytes ?? 0
+      ),
       createdAt: now,
       updatedAt: now
     });

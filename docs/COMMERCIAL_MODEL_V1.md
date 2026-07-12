@@ -51,7 +51,10 @@ evaluates that allowance within a monthly usage cycle anchored to the
 entitlement start and clamped by the entitlement end. A trial ends before a
 full month; a yearly entitlement can contain multiple monthly usage cycles.
 
-Prices, currencies, taxes, discounts, and package-specific byte amounts are
+The 7-day trial has a fixed allowance of 5 GiB (`5 * 1024^3` bytes). It is a
+time-limited and traffic-limited evaluation package, not an unlimited plan.
+
+Prices, currencies, taxes, discounts, and paid-package byte amounts are
 business configuration outside this baseline. The repository must not invent
 or publish them until an operator-approved pricing decision exists.
 
