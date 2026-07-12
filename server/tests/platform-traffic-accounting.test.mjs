@@ -462,6 +462,7 @@ test("traffic accounting rejects derived channel credentials when explicit order
 
     assert.equal(result.ok, false);
     assert.equal(result.status, "unresolved_binding");
+    assert.equal(result.unresolvedReason, "binding_missing");
     assert.equal(result.sampleInserted, false);
     assert.equal(store.listUsageSamples({ edgeCredentialRef: "edgecred_pareq_usage_service_1_channel-sgp-a-hy2" }).length, 0);
     assert.equal(result.execution.directRuntimeMutationAllowed, false);
@@ -489,8 +490,39 @@ test("traffic accounting fails closed when an edge credential cannot be resolved
 
     assert.equal(result.ok, false);
     assert.equal(result.status, "unresolved_binding");
+    assert.equal(result.unresolvedReason, "binding_missing");
+    assert.deepEqual(result.blockers, [{ code: "credential_binding_missing" }]);
     assert.equal(result.sampleInserted, false);
     assert.equal(store.listUsageSamples({ edgeCredentialRef: "edgecred_missing" }).length, 0);
     assert.equal(result.execution.directRuntimeMutationAllowed, false);
+  });
+});
+
+test("traffic accounting distinguishes a channel mismatch without recording usage", () => {
+  withStore((store) => {
+    const service = createTrafficAccountingService({
+      controlStore: store,
+      nowFn: () => "2026-06-06T00:10:00.000Z",
+      usageSampleRefFactory: () => "usage_sample_channel_mismatch"
+    });
+
+    const result = service.recordUsageObservation({
+      sourceRef: "mihomo_snapshot_channel_mismatch",
+      channelRef: "channel-vultr-a-tuic",
+      edgeCredentialRef: "edgecred_pareq_usage_service_1",
+      observedAt: "2026-06-06T00:05:00.000Z",
+      intervalStartedAt: "2026-06-06T00:00:00.000Z",
+      intervalEndedAt: "2026-06-06T00:05:00.000Z",
+      uploadBytes: 1,
+      downloadBytes: 1
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "unresolved_binding");
+    assert.equal(result.unresolvedReason, "channel_mismatch");
+    assert.deepEqual(result.blockers, [{ code: "channel_binding_mismatch" }]);
+    assert.equal(result.sampleInserted, false);
+    assert.equal(store.listUsageSamples({ edgeCredentialRef: "edgecred_pareq_usage_service_1" }).length, 0);
+    assert.equal(store.getUsageRollupByEdgeCredentialRef("edgecred_pareq_usage_service_1"), null);
   });
 });

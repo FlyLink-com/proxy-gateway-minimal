@@ -61,6 +61,7 @@ test("runtime usage accounting isolates collector failures and keeps later colle
   assert.equal(report.recordedCount, 1);
   assert.equal(report.insertedCount, 1);
   assert.equal(report.unresolvedCount, 0);
+  assert.equal(Object.hasOwn(report, "unresolvedReasonCounts"), false);
   assert.equal(recordedInputs.length, 1);
   assert.equal(recordedInputs[0].accountingMode, "cumulative");
   assert.equal(report.reports[0].collectorOk, false);
@@ -81,6 +82,7 @@ test("runtime usage accounting isolates collector failures and keeps later colle
     }
   });
   assert.equal(report.reports[1].collectorOk, true);
+  assert.equal(Object.hasOwn(report.reports[1], "unresolvedReasonCounts"), false);
   assert.deepEqual(report.reports[1].collectorState, {
     type: "traffic_collector_state",
     health: "healthy",
@@ -313,6 +315,50 @@ test("runtime usage accounting projects unresolved bindings separately from coll
   assert.equal(report.reports[0].collectorState.health, "degraded");
   assert.equal(report.reports[0].collectorState.condition, "mapping_unresolved");
   assert.equal(report.reports[0].collectorState.errorType, "mapping_unresolved");
+});
+
+test("runtime usage accounting aggregates redacted unresolved binding provenance", async () => {
+  const reasons = ["binding_missing", "channel_mismatch"];
+  const service = createRuntimeUsageAccountingService({
+    collectors: [
+      {
+        channelRef: "channel-mapping",
+        collect: async () => ({
+          ok: true,
+          status: "collected",
+          sourceRef: "hysteria2_traffic_stats",
+          observations: reasons.map((unresolvedReason, index) => observation({
+            channelRef: "channel-mapping",
+            edgeCredentialRef: `edgecred_private_${index}`,
+            unresolvedReason
+          })),
+          blockers: []
+        })
+      }
+    ],
+    accounting: {
+      recordUsageObservation(input) {
+        return {
+          ok: false,
+          status: "unresolved_binding",
+          unresolvedReason: input.unresolvedReason,
+          channelRef: input.channelRef,
+          edgeCredentialRef: input.edgeCredentialRef,
+          sampleInserted: false
+        };
+      }
+    }
+  });
+
+  const report = await service.collectAndRecord();
+
+  assert.deepEqual(report.unresolvedReasonCounts, {
+    bindingMissing: 1,
+    channelMismatch: 1,
+    unknown: 0
+  });
+  assert.deepEqual(report.reports[0].unresolvedReasonCounts, report.unresolvedReasonCounts);
+  assert.deepEqual(report.reports[0].collectorState.unresolvedReasonCounts, report.unresolvedReasonCounts);
 });
 
 test("runtime usage accounting blocks over-quota traffic supply suspension when lifecycle gate is missing", async () => {

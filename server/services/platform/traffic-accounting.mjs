@@ -136,9 +136,11 @@ export function createTrafficAccountingService({
     };
     const binding = controlStore.findIssuedSubscriptionBindingByEdgeCredentialRef(normalized.edgeCredentialRef);
     if (!binding || binding.nodeId !== normalized.channelRef) {
+      const unresolvedReason = binding ? "channel_mismatch" : "binding_missing";
       return {
         ok: false,
         status: "unresolved_binding",
+        unresolvedReason,
         sourceRef: normalized.sourceRef,
         channelRef: normalized.channelRef,
         edgeCredentialRef: normalized.edgeCredentialRef,
@@ -146,6 +148,11 @@ export function createTrafficAccountingService({
         sample: null,
         rollup: null,
         quota: null,
+        blockers: [{
+          code: unresolvedReason === "channel_mismatch"
+            ? "channel_binding_mismatch"
+            : "credential_binding_missing"
+        }],
         nextAction: "review_collector_mapping_before_quota_decision",
         execution: {
           directRuntimeMutationAllowed: false,

@@ -4,6 +4,10 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRuntimeState } from "../server/state.mjs";
 import { sanitizeTrafficCollectorState } from "../server/services/platform/traffic-collector-state.mjs";
+import {
+  aggregateUnresolvedReasonCounts,
+  normalizeUnresolvedReasonCounts
+} from "../server/services/platform/unresolved-binding-provenance.mjs";
 
 function reportCodeList(value) {
   return Array.isArray(value)
@@ -105,6 +109,28 @@ export function summarizeUsageAccountingReport(report, {
   const reports = Array.isArray(report?.reports) ? report.reports : [];
   const unresolvedBindingTolerated = unresolvedPolicy === "tolerate_unresolved_bindings"
     && hasOnlyUnresolvedBindingFailures(report);
+  const unresolvedCount = Number(report?.unresolvedCount || 0);
+  const safeReports = reports.map((entry) => ({
+    channelRef: String(entry?.channelRef || "").trim(),
+    collectorOk: entry?.collectorOk === true,
+    collectorStatus: String(entry?.collectorStatus || "").trim(),
+    collectorState: sanitizeTrafficCollectorState(entry?.collectorState),
+    idle: entry?.idle === true,
+    observationCount: Number(entry?.observationCount || 0),
+    recordedCount: Number(entry?.recordedCount || 0),
+    unresolvedCount: Number(entry?.unresolvedCount || 0),
+    ...(Number(entry?.unresolvedCount || 0) > 0
+      ? {
+          unresolvedReasonCounts: normalizeUnresolvedReasonCounts(
+            entry?.unresolvedReasonCounts,
+            Number(entry?.unresolvedCount || 0)
+          )
+        }
+      : {}),
+    blockers: reportCodeList(entry?.blockers),
+    observability: safeObservability(entry?.observability),
+    nextAction: String(entry?.nextAction || "").trim()
+  }));
   return {
     type: "traffic_usage_collect_once",
     ok: report?.ok === true || unresolvedBindingTolerated,
@@ -114,7 +140,10 @@ export function summarizeUsageAccountingReport(report, {
     observationCount: Number(report?.observationCount || 0),
     recordedCount: Number(report?.recordedCount || 0),
     insertedCount: Number(report?.insertedCount || 0),
-    unresolvedCount: Number(report?.unresolvedCount || 0),
+    unresolvedCount,
+    ...(unresolvedCount > 0
+      ? { unresolvedReasonCounts: aggregateUnresolvedReasonCounts(safeReports, unresolvedCount) }
+      : {}),
     quotaDisableRequiredCount: Number(report?.quotaDisableRequiredCount || 0),
     trafficSupplySuspendRequiredCount: Number(report?.trafficSupplySuspendRequiredCount || 0),
     trafficSupplySuspendAttemptedCount: Number(report?.trafficSupplySuspendAttemptedCount || 0),
@@ -124,19 +153,7 @@ export function summarizeUsageAccountingReport(report, {
     unresolvedPolicy,
     unresolvedBindingTolerated,
     mappingReviewRequired: unresolvedBindingTolerated,
-    reports: reports.map((entry) => ({
-      channelRef: String(entry?.channelRef || "").trim(),
-      collectorOk: entry?.collectorOk === true,
-      collectorStatus: String(entry?.collectorStatus || "").trim(),
-      collectorState: sanitizeTrafficCollectorState(entry?.collectorState),
-      idle: entry?.idle === true,
-      observationCount: Number(entry?.observationCount || 0),
-      recordedCount: Number(entry?.recordedCount || 0),
-      unresolvedCount: Number(entry?.unresolvedCount || 0),
-      blockers: reportCodeList(entry?.blockers),
-      observability: safeObservability(entry?.observability),
-      nextAction: String(entry?.nextAction || "").trim()
-    })),
+    reports: safeReports,
     nextAction: unresolvedBindingTolerated
       ? "continue_usage_monitoring_review_unresolved_mapping"
       : String(report?.nextAction || "").trim(),

@@ -1,3 +1,5 @@
+import { normalizeUnresolvedReasonCounts } from "./unresolved-binding-provenance.mjs";
+
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
 
 export const TRAFFIC_COLLECTOR_HEALTH = Object.freeze({
@@ -128,8 +130,10 @@ function stateRecord({
   channelRef,
   lastCollectorSuccessAt,
   observationCount,
-  unresolvedCount
+  unresolvedCount,
+  unresolvedReasonCounts
 }) {
+  const safeUnresolvedCount = nonNegativeInteger(unresolvedCount);
   return {
     type: "traffic_collector_state",
     health,
@@ -138,7 +142,10 @@ function stateRecord({
     channelRef: safeRef(channelRef),
     lastCollectorSuccessAt: isoOrNull(lastCollectorSuccessAt),
     observationCount: nonNegativeInteger(observationCount),
-    unresolvedCount: nonNegativeInteger(unresolvedCount),
+    unresolvedCount: safeUnresolvedCount,
+    ...(safeUnresolvedCount > 0
+      ? { unresolvedReasonCounts: normalizeUnresolvedReasonCounts(unresolvedReasonCounts, safeUnresolvedCount) }
+      : {}),
     errorType: health === TRAFFIC_COLLECTOR_HEALTH.HEALTHY ? null : condition,
     safety: {
       redacted: true
@@ -155,6 +162,7 @@ export function projectTrafficCollectorState({
   observations = [],
   observationCount,
   unresolvedCount = 0,
+  unresolvedReasonCounts,
   blockers = [],
   recorded = [],
   idle = false,
@@ -181,7 +189,8 @@ export function projectTrafficCollectorState({
       observations: safeObservations
     }),
     observationCount: observationCount ?? safeObservations.length,
-    unresolvedCount
+    unresolvedCount,
+    unresolvedReasonCounts
   });
 }
 
@@ -201,6 +210,7 @@ export function sanitizeTrafficCollectorState(value) {
     channelRef: value.channelRef,
     lastCollectorSuccessAt: value.lastCollectorSuccessAt,
     observationCount: value.observationCount,
-    unresolvedCount: value.unresolvedCount
+    unresolvedCount: value.unresolvedCount,
+    unresolvedReasonCounts: value.unresolvedReasonCounts
   });
 }

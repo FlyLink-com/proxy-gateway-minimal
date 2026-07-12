@@ -17,6 +17,7 @@ import {
   createUnavailableTrafficCollectorProducerStatus,
   sanitizeTrafficCollectorProducerStatus
 } from "./traffic-collector-status-producers.mjs";
+import { aggregateUnresolvedReasonCounts } from "./unresolved-binding-provenance.mjs";
 
 const MAX_SNAPSHOT_BYTES = 256 * 1024;
 const PRODUCER_LOCK_TIMEOUT_MS = 2000;
@@ -218,7 +219,10 @@ export function buildTrafficCollectorAdminProjection({ summary, observedAt, prod
       observationCount: nonNegativeInteger(summary.observationCount),
       recordedCount: nonNegativeInteger(summary.recordedCount),
       insertedCount: nonNegativeInteger(summary.insertedCount),
-      unresolvedCount
+      unresolvedCount,
+      ...(unresolvedCount > 0
+        ? { unresolvedReasonCounts: aggregateUnresolvedReasonCounts(collectors, unresolvedCount) }
+        : {})
     },
     collectors,
     producers,
@@ -303,7 +307,12 @@ export function sanitizeTrafficCollectorAdminProjection(value) {
       observationCount: nonNegativeInteger(value.accounting.observationCount),
       recordedCount: nonNegativeInteger(value.accounting.recordedCount),
       insertedCount: nonNegativeInteger(value.accounting.insertedCount),
-      unresolvedCount
+      unresolvedCount,
+      ...(unresolvedCount > 0
+        ? {
+            unresolvedReasonCounts: aggregateUnresolvedReasonCounts(collectors, unresolvedCount)
+          }
+        : {})
     },
     collectors,
     producers,

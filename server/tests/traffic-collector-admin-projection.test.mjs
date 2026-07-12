@@ -116,7 +116,12 @@ test("collector Admin projection preserves canonical state and only allowlisted 
     observationCount: 1,
     recordedCount: 0,
     insertedCount: 0,
-    unresolvedCount: 1
+    unresolvedCount: 1,
+    unresolvedReasonCounts: {
+      bindingMissing: 0,
+      channelMismatch: 0,
+      unknown: 1
+    }
   });
   assert.equal(projection.collectors.length, 1);
   assert.deepEqual(projection.collectors[0], {
@@ -151,6 +156,141 @@ test("collector Admin projection preserves canonical state and only allowlisted 
   const serialized = JSON.stringify(projection);
   assert.doesNotMatch(serialized, /must-not-leak|private@example|https?:\/\/|token=|restart_runtime/i);
   assert.doesNotMatch(serialized, /retryable|recommendedAction|owner/i);
+});
+
+test("collector Admin projection preserves redacted unresolved provenance counts", () => {
+  const projection = buildTrafficCollectorAdminProjection({
+    summary: collectorSummary({
+      unresolvedCount: 2,
+      unresolvedReasonCounts: {
+        bindingMissing: 1,
+        channelMismatch: 1,
+        unknown: 0
+      },
+      reports: [
+        {
+          channelRef: "channel-vultr-a-tuic",
+          collectorState: {
+            type: "traffic_collector_state",
+            health: "degraded",
+            condition: "mapping_unresolved",
+            sourceRef: "mihomo_usage_primary",
+            channelRef: "channel-vultr-a-tuic",
+            lastCollectorSuccessAt: OBSERVED_AT,
+            observationCount: 2,
+            unresolvedCount: 2,
+            unresolvedReasonCounts: {
+              bindingMissing: 1,
+              channelMismatch: 1,
+              unknown: 0
+            },
+            errorType: "mapping_unresolved",
+            safety: { redacted: true }
+          },
+          blockers: []
+        }
+      ]
+    }),
+    observedAt: OBSERVED_AT
+  });
+
+  assert.deepEqual(projection.accounting.unresolvedReasonCounts, {
+    bindingMissing: 1,
+    channelMismatch: 1,
+    unknown: 0
+  });
+  assert.deepEqual(projection.collectors[0].unresolvedReasonCounts, projection.accounting.unresolvedReasonCounts);
+  assert.doesNotMatch(JSON.stringify(projection), /edgecred_|private@example|must-not-leak|token=/i);
+});
+
+test("collector Admin projection assigns legacy unresolved counts to unknown provenance", () => {
+  const projection = buildTrafficCollectorAdminProjection({
+    summary: collectorSummary({
+      unresolvedCount: 1,
+      reports: [
+        {
+          channelRef: "channel-vultr-a-tuic",
+          collectorState: {
+            type: "traffic_collector_state",
+            health: "degraded",
+            condition: "mapping_unresolved",
+            sourceRef: "mihomo_usage_primary",
+            channelRef: "channel-vultr-a-tuic",
+            lastCollectorSuccessAt: OBSERVED_AT,
+            observationCount: 1,
+            unresolvedCount: 1,
+            errorType: "mapping_unresolved",
+            safety: { redacted: true }
+          },
+          blockers: []
+        }
+      ]
+    }),
+    observedAt: OBSERVED_AT
+  });
+
+  assert.deepEqual(projection.accounting.unresolvedReasonCounts, {
+    bindingMissing: 0,
+    channelMismatch: 0,
+    unknown: 1
+  });
+  assert.deepEqual(projection.collectors[0].unresolvedReasonCounts, projection.accounting.unresolvedReasonCounts);
+});
+
+test("collector Admin projection derives global provenance from sanitized collectors", () => {
+  const projection = buildTrafficCollectorAdminProjection({
+    summary: collectorSummary({
+      unresolvedCount: 1,
+      unresolvedReasonCounts: {
+        bindingMissing: 1,
+        channelMismatch: 0,
+        unknown: 0
+      },
+      reports: [
+        {
+          channelRef: "channel-vultr-a-tuic",
+          collectorState: {
+            type: "traffic_collector_state",
+            health: "degraded",
+            condition: "mapping_unresolved",
+            sourceRef: "mihomo_usage_primary",
+            channelRef: "channel-vultr-a-tuic",
+            lastCollectorSuccessAt: OBSERVED_AT,
+            observationCount: 1,
+            unresolvedCount: 1,
+            unresolvedReasonCounts: {
+              bindingMissing: 0,
+              channelMismatch: 1,
+              unknown: 0
+            },
+            errorType: "mapping_unresolved",
+            safety: { redacted: true }
+          },
+          blockers: []
+        }
+      ]
+    }),
+    observedAt: OBSERVED_AT
+  });
+
+  assert.deepEqual(projection.accounting.unresolvedReasonCounts, {
+    bindingMissing: 0,
+    channelMismatch: 1,
+    unknown: 0
+  });
+
+  const sanitized = sanitizeTrafficCollectorAdminProjection({
+    ...projection,
+    accounting: {
+      ...projection.accounting,
+      unresolvedReasonCounts: {
+        bindingMissing: 1,
+        channelMismatch: 0,
+        unknown: 0
+      }
+    }
+  });
+  assert.deepEqual(sanitized.accounting.unresolvedReasonCounts, projection.accounting.unresolvedReasonCounts);
 });
 
 test("collector Admin projection keeps producer health separate and redacted", () => {
