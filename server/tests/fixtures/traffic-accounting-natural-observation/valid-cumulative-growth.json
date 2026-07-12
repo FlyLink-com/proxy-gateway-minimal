@@ -1,0 +1,102 @@
+{
+  "round": 1,
+  "capturedAt": "2026-07-12T17:30:00.000Z",
+  "collectorInvocationObserved": true,
+  "sidecarInvocationObserved": true,
+  "cumulativeSourceRefs": [
+    "xray_stats_cli"
+  ],
+  "projection": {
+    "availability": "available",
+    "run": {
+      "runOk": true,
+      "rawReportOk": true,
+      "collectorCount": 1
+    },
+    "accounting": {
+      "unresolvedCount": 1,
+      "unresolvedReasonCounts": {
+        "bindingMissing": 0,
+        "channelMismatch": 1,
+        "unknown": 0
+      }
+    },
+    "collectors": [
+      {
+        "collectorRef": "collector-synthetic-1",
+        "unresolvedReasonCounts": {
+          "bindingMissing": 0,
+          "channelMismatch": 1,
+          "unknown": 0
+        }
+      }
+    ],
+    "producers": [
+      {
+        "producerRef": "producer-synthetic-1"
+      },
+      {
+        "producerRef": "producer-synthetic-2"
+      }
+    ],
+    "omittedCollectorCount": 0,
+    "omittedProducerCount": 0
+  },
+  "previous": {
+    "cursorRows": [
+      {
+        "source_ref": "xray_stats_cli",
+        "channel_ref": "channel-synthetic-1",
+        "edge_credential_ref": "credential-synthetic-1",
+        "upload_bytes": 100,
+        "download_bytes": 50,
+        "epoch": 1
+      }
+    ],
+    "sampleBoundary": {
+      "count": 10,
+      "totalBytes": 1000
+    },
+    "rollupBoundary": {
+      "totalBytes": 5000
+    }
+  },
+  "current": {
+    "cursorRows": [
+      {
+        "source_ref": "xray_stats_cli",
+        "channel_ref": "channel-synthetic-1",
+        "edge_credential_ref": "credential-synthetic-1",
+        "upload_bytes": 130,
+        "download_bytes": 70,
+        "epoch": 1
+      }
+    ],
+    "newSamples": [
+      {
+        "source_ref": "xray_stats_cli",
+        "channel_ref": "channel-synthetic-1",
+        "edge_credential_ref": "credential-synthetic-1",
+        "account_id": "account-synthetic-1",
+        "entitlement_id": "entitlement-synthetic-1",
+        "request_id": "request-synthetic-1",
+        "total_bytes": 50,
+        "sample_digest": "digest-synthetic-1"
+      }
+    ],
+    "sampleBoundary": {
+      "count": 11,
+      "totalBytes": 1050
+    },
+    "rollupBoundary": {
+      "totalBytes": 5050
+    },
+    "attributionInvalid": 0,
+    "overQuota": 0,
+    "entitlementsRequestsLinksUnchanged": true,
+    "receiptRegression": false,
+    "notificationRegression": false,
+    "databasesValid": true,
+    "protectedIdentityUnchanged": true
+  }
+}
