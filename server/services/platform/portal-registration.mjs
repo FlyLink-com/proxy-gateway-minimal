@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
+import {
+  TRIAL_DURATION_DAYS,
+  TRIAL_TRAFFIC_LIMIT_BYTES
+} from "./subscription-package-policy.mjs";
 
-const TRIAL_DURATION_DAYS = 7;
 const VALID_PLANS = new Set(["trial", "monthly", "yearly"]);
 const DEFAULT_PRIMARY_REGION = "japan";
 const DEFAULT_DEVICE_COUNT = 1;
@@ -279,7 +282,7 @@ export function createPortalRegistrationService(options = {}) {
         validUntil,
         maxArtifacts: 1,
         maxDevices: deviceCount,
-        trafficLimitBytes: 0,
+        trafficLimitBytes: TRIAL_TRAFFIC_LIMIT_BYTES,
         createdAt: now,
         updatedAt: now
       });

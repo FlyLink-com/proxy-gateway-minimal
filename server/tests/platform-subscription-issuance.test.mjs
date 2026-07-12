@@ -117,6 +117,39 @@ test("executeSubscriptionIssuance - success writes runtime tenant/artifact and s
   assert.strictEqual(createMockRuntimeCore.lastCreateTenantArgs.note, "");
 });
 
+test("executeSubscriptionIssuance - trial uses the fixed five GiB allowance", () => {
+  const controlStore = createMockControlStore();
+  const runtimeCore = createMockRuntimeCore();
+  const now = new Date().toISOString();
+
+  executeSubscriptionIssuance({
+    controlStore,
+    runtimeCore,
+    approvalRef: "approval_trial_5g",
+    now,
+    input: {
+      nodeId: "primary_node",
+      artifact: { create: true },
+      expiresAt: "2026-12-31T23:59:59Z",
+      control: {
+        accountId: "acct_trial_5g",
+        ownerRef: "owner_trial_5g",
+        entitlementId: "ent_trial_5g",
+        requestId: "req_trial_5g",
+        requestedByRef: "op_trial_5g",
+        purpose: "trial",
+        plan: "trial",
+        trafficLimitBytes: 0
+      }
+    }
+  });
+
+  assert.strictEqual(
+    controlStore.entitlements.ent_trial_5g.trafficLimitBytes,
+    5 * 1024 ** 3
+  );
+});
+
 test("executeSubscriptionIssuance - safety: summary does not contain subscriptionUrl, token, or artifact secret", () => {
   const controlStore = createMockControlStore();
   const runtimeCore = createMockRuntimeCore();

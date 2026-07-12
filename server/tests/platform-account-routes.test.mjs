@@ -358,6 +358,55 @@ test("admin platform routes create control-store account entitlements", async ()
   }
 });
 
+test("admin platform routes apply the fixed five GiB trial allowance", async () => {
+  const leadQueue = createPlatformLeadReviewQueue();
+  const accountShell = createPlatformAccountEntitlementShell();
+  const { database, store: controlStore } = createControlStoreFixture();
+  const now = "2026-07-08T10:00:00.000Z";
+
+  try {
+    controlStore.createAccount({
+      id: "acct_trial_limit",
+      ownerRef: "acct_trial_limit",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {}
+    });
+
+    const { server, baseUrl } = await listen(createApp(fakeState({ leadQueue, accountShell, controlStore })));
+    try {
+      const created = await fetch(`${baseUrl}/api/admin/platform/accounts/acct_trial_limit/entitlements`, {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          plan: "trial",
+          status: "active",
+          durationDays: 7,
+          quota: { trafficGb: 0 }
+        })
+      });
+
+      assert.equal(created.status, 201);
+      const body = await created.json();
+      assert.equal(body.entitlement.plan, "trial");
+      assert.equal(body.entitlement.trafficLimitBytes, 5 * 1024 ** 3);
+      assert.equal(body.entitlement.quota.trafficGb, 5);
+      assert.equal(
+        controlStore.getEntitlement(body.entitlement.id).trafficLimitBytes,
+        5 * 1024 ** 3
+      );
+    } finally {
+      server.close();
+    }
+  } finally {
+    database.close();
+  }
+});
+
 test("admin platform account search resolves legacy digest-only portal accounts without listing digests", async () => {
   const leadQueue = createPlatformLeadReviewQueue();
   const accountShell = createPlatformAccountEntitlementShell();

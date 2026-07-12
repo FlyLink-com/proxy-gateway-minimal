@@ -474,6 +474,10 @@ test("portal access request service auto-delivers 7-day orders when auto issuanc
   assert.equal(request.subscriptionUrl, "https://sub.example.test/sub/a/auto-visible-once.yaml");
   assert.equal(request.safety.noSubscriptionUrl, false);
   assert.equal(request.safety.noEntitlementCreated, false);
+  assert.equal(
+    control.getEntitlement("ent_pareq_auto_7d_1").trafficLimitBytes,
+    5 * 1024 ** 3
+  );
   assert.equal(runtimeCore.calls[0][0], "createTenant");
   assert.equal(runtimeCore.calls[0][1].nodeId, "channel-aliyun-a-tuic");
   assert.equal(runtimeCore.calls[0][1].expiresAt, "2026-06-07T00:00:00.000Z");
@@ -880,6 +884,7 @@ test("admin review can reject or prepare approval preview without issuing", () =
   assert.equal(preview.issuanceInput.plan, "trial");
   assert.equal(preview.issuanceInput.nodeId, "channel-lab-b-tuic");
   assert.equal(preview.issuanceInput.expiresAt, "2026-06-07T00:00:00.000Z");
+  assert.equal(preview.issuanceInput.control.trafficLimitBytes, 5 * 1024 ** 3);
   assert.equal(preview.safety.noSubscriptionUrl, true);
   assert.equal(preview.safety.noRuntimeMutation, true);
 
