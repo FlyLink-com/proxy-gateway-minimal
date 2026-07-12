@@ -133,6 +133,42 @@ test("order credential lifecycle apply records a redacted edge receipt", () => {
   assert.doesNotMatch(JSON.stringify(report), /uuid|password|subscriptionUrl|rawConfig/i);
 });
 
+test("order credential lifecycle applies the transient candidate order without persisting it first", () => {
+  let observedApply = null;
+  const service = createOrderCredentialLifecycleService({
+    channelRef: "channel-aliyun-a-tuic",
+    nowFn: () => NOW,
+    executeProductionMutation: true,
+    listOrders: () => [activeOrder({ edgeMaterialDigest: "digest_active_old" })],
+    listCurrentCredentials: () => [{
+      credentialRef: "edgecred_pareq_active_001",
+      materialDigest: "digest_active_old"
+    }],
+    runtimeAdapter: {
+      applyCredentialReconciliation(input) {
+        observedApply = input;
+        return {
+          status: "applied",
+          mutation: true,
+          configTest: { ok: true },
+          service: { active: true },
+          listener: { udp443: true },
+          appliedAt: NOW
+        };
+      }
+    }
+  });
+
+  const report = service.reconcileOrderLifecycle({
+    reason: "order_refreshed",
+    order: activeOrder({ edgeMaterialDigest: "digest_active_candidate" })
+  });
+
+  assert.equal(report.summary.rotateCount, 1);
+  assert.equal(report.summary.unchangedCount, 0);
+  assert.equal(observedApply.summary.rotateCount, 1);
+});
+
 test("order credential lifecycle records remote handoff receipts as non-mutating pending work", () => {
   const receipts = [];
   const service = createOrderCredentialLifecycleService({

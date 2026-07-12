@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createApp } from "../app.mjs";
+import { createEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
+import { createOrderEdgeCredentialIssuer } from "../services/edge/order-credential-issuer.mjs";
 import { createPortalAccessRequestService } from "../services/platform/portal-access-requests.mjs";
 import { listen } from "./helpers/listen.mjs";
 
@@ -37,13 +39,19 @@ function lifecycleRequestService() {
   const portalAccessRequests = createPortalAccessRequestService({
     nowFn: () => "2026-05-31T00:00:00.000Z",
     requestIdFactory: () => "pareq_route_lifecycle",
-    edgeCredentialIssuer: {
-      ensureCredentialForOrder(order) {
-        credentialSequence += 1;
+    edgeCredentialIssuer: createOrderEdgeCredentialIssuer({
+      channelRef: "channel-aliyun-a-tuic",
+      materialStore: createEdgeCredentialMaterialStore(),
+      uuidFactory: () => `00000000-0000-4000-8000-${String(++credentialSequence).padStart(12, "0")}`,
+      passwordFactory: () => `route-password-${credentialSequence}`
+    }),
+    edgeLifecycleService: {
+      reconcileOrderLifecycle() {
         return {
-          edgeChannelRef: "channel-aliyun-a-tuic",
-          edgeCredentialRef: `edgecred_${order.id}`,
-          edgeMaterialDigest: `sha256:digest_${credentialSequence}`
+          ok: true,
+          mutation: true,
+          runtimeReceipt: { status: "applied" },
+          redacted: true
         };
       }
     },

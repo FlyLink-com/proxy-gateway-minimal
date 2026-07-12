@@ -10,6 +10,7 @@ import {
 
 const DEFAULT_LEASE_TTL_MS = 120000;
 const SAFE_NODE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,160}$/;
+const TOMBSTONE_CAPABILITIES = ["empty_desired_state", "tombstone_reconcile"];
 
 function agentServiceError(code, statusCode = 400) {
   const error = new Error(code);
@@ -51,7 +52,31 @@ function uniqueRefs(values = []) {
 
 function normalizeDesiredStateFilter(filter = {}) {
   return {
-    edgeCredentialRefs: uniqueRefs(filter.edgeCredentialRefs)
+    edgeCredentialRefs: uniqueRefs(filter.edgeCredentialRefs),
+    agentVersion: optionalRef(filter.agentVersion),
+    capabilities: uniqueRefs(filter.capabilities)
+  };
+}
+
+function supportsTombstoneProtocol(agentVersion) {
+  const match = /^(\d+)\.(\d+)(?:\.\d+)?$/.exec(agentVersion);
+  if (!match) {
+    return false;
+  }
+  const major = Number(match[1]);
+  const minor = Number(match[2]);
+  return major > 1 || (major === 1 && minor >= 1);
+}
+
+function tombstoneCompatibility(filter = {}) {
+  const normalized = normalizeDesiredStateFilter(filter);
+  const supported = supportsTombstoneProtocol(normalized.agentVersion)
+    && TOMBSTONE_CAPABILITIES.every((capability) => normalized.capabilities.includes(capability));
+  return {
+    agentVersion: normalized.agentVersion || null,
+    tombstoneReconcile: supported,
+    blockedDesiredStateCount: 0,
+    redacted: true
   };
 }
 
@@ -277,13 +302,19 @@ export function createDataPlaneAgentService({
     if (!node) {
       throw agentServiceError("node_scope_mismatch", 403);
     }
-    const desiredStates = latestDesiredStatesForNode({ controlStore, node, filter });
+    const compatibility = tombstoneCompatibility(filter);
+    const availableDesiredStates = latestDesiredStatesForNode({ controlStore, node, filter });
+    const desiredStates = availableDesiredStates.filter((state) => (
+      state.edgeCredentialRefs.length > 0 || compatibility.tombstoneReconcile
+    ));
+    compatibility.blockedDesiredStateCount = availableDesiredStates.length - desiredStates.length;
     return {
       type: "gccgw_data_plane_agent_desired_state_response",
       nodeRef: node.nodeRef,
       channelRefs: [...node.channelRefs],
       desiredStates,
       summaries: desiredStates.map((state) => state.summary),
+      compatibility,
       redacted: true
     };
   }

@@ -87,7 +87,8 @@ export function createOrderEdgeCredentialIssuer({
 
   function ensureCredentialForChannel(order = {}, channelRefForOrder, {
     singleChannelCredentialRef = safeChannelRefs.length === 1,
-    forceRotateCredential = forceRotateCredentialFor(order)
+    forceRotateCredential = forceRotateCredentialFor(order),
+    targetStore = materialStore
   } = {}) {
     const orderRef = requiredSafeRef(order.id || order.requestRef, "orderRef");
     const safeChannelRef = requiredSafeRef(channelRefForOrder, "channelRef");
@@ -100,12 +101,12 @@ export function createOrderEdgeCredentialIssuer({
       "credentialRef"
     );
 
-    const existing = typeof materialStore.getCredentialMaterialSummary === "function"
-      ? materialStore.getCredentialMaterialSummary(credentialRef)
+    const existing = typeof targetStore.getCredentialMaterialSummary === "function"
+      ? targetStore.getCredentialMaterialSummary(credentialRef)
       : null;
     if (existing && forceRotateCredential !== true) {
-      const existingMaterial = typeof materialStore.resolveCredentialMaterial === "function"
-        ? materialStore.resolveCredentialMaterial(existing.credentialRef)
+      const existingMaterial = typeof targetStore.resolveCredentialMaterial === "function"
+        ? targetStore.resolveCredentialMaterial(existing.credentialRef)
         : null;
       return {
         edgeChannelRef: safeChannelRef,
@@ -123,7 +124,7 @@ export function createOrderEdgeCredentialIssuer({
       throw issuerError("validation_error", "edge credential material is incomplete");
     }
     const materialDigest = materialDigestFor(material);
-    const summary = materialStore.putCredentialMaterial({
+    const summary = targetStore.putCredentialMaterial({
       credentialRef,
       materialDigest,
       material
@@ -136,6 +137,21 @@ export function createOrderEdgeCredentialIssuer({
     };
   }
 
+  function ensureCredentials(order = {}, {
+    targetStore = materialStore,
+    forceRotateCredential = forceRotateCredentialFor(order)
+  } = {}) {
+    const orderChannelRefs = Array.isArray(order.channelRefs) && order.channelRefs.length > 0
+      ? normalizeChannelRefs({ channelRefs: order.channelRefs })
+      : safeChannelRefs;
+    const singleChannelCredentialRef = orderChannelRefs.length === 1;
+    return orderChannelRefs.map((safeChannelRef) => ensureCredentialForChannel(order, safeChannelRef, {
+      singleChannelCredentialRef,
+      forceRotateCredential,
+      targetStore
+    }));
+  }
+
   return {
     ensureCredentialForOrder(order = {}) {
       return ensureCredentialForChannel(order, primaryChannelRef, {
@@ -144,15 +160,40 @@ export function createOrderEdgeCredentialIssuer({
     },
 
     ensureCredentialsForOrder(order = {}) {
-      const orderChannelRefs = Array.isArray(order.channelRefs) && order.channelRefs.length > 0
-        ? normalizeChannelRefs({ channelRefs: order.channelRefs })
-        : safeChannelRefs;
-      const singleChannelCredentialRef = orderChannelRefs.length === 1;
-      const forceRotateCredential = forceRotateCredentialFor(order);
-      return orderChannelRefs.map((safeChannelRef) => ensureCredentialForChannel(order, safeChannelRef, {
-        singleChannelCredentialRef,
-        forceRotateCredential
-      }));
+      return ensureCredentials(order);
+    },
+
+    beginCredentialRotationForOrder(order = {}) {
+      if (typeof materialStore.beginCredentialMaterialTransaction !== "function") {
+        throw issuerError("credential_transaction_unavailable", "credential material transaction is unavailable");
+      }
+      const transaction = materialStore.beginCredentialMaterialTransaction();
+      try {
+        const credentials = ensureCredentials(order, {
+          targetStore: transaction,
+          forceRotateCredential: true
+        });
+        const previousCredentials = credentials.map((credential) => {
+          const summary = transaction.getOriginalCredentialMaterialSummary(credential.edgeCredentialRef);
+          const material = transaction.resolveOriginalCredentialMaterial(credential.edgeCredentialRef);
+          return summary && material ? {
+            edgeChannelRef: credential.edgeChannelRef,
+            edgeCredentialRef: summary.credentialRef,
+            edgeMaterialDigest: summary.materialDigest,
+            edgeCredentialMaterial: material
+          } : null;
+        }).filter(Boolean);
+        return {
+          credentials,
+          previousCredentials,
+          commit: () => transaction.commit(),
+          rollback: () => transaction.rollback(),
+          restore: () => transaction.restore()
+        };
+      } catch (error) {
+        transaction.rollback();
+        throw error;
+      }
     }
   };
 }

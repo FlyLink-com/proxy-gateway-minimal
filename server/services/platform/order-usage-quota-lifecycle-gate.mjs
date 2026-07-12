@@ -189,9 +189,7 @@ export function createOrderUsageQuotaLifecycleGate({
       reviewedByRef: safeRef(options.reviewedByRef) || "usage_quota_gate"
     });
     const runtimeEnforcementState = text(suspendedOrder?.runtimeEnforcement?.state);
-    const runtimeEnforcementApplied = runtimeEnforcementState
-      ? runtimeEnforcementState === "applied"
-      : suspendedOrder?.safety?.noRuntimeMutation === false;
+    const runtimeEnforcementApplied = runtimeEnforcementState === "applied";
     const runtimeEnforcementFailed = runtimeEnforcementState === "failed";
 
     return {

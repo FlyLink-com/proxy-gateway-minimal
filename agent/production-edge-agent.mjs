@@ -148,6 +148,9 @@ function desiredStateUrl(baseUrl, edgeCredentialRefs = []) {
   return url.toString();
 }
 
+const AGENT_PROTOCOL_VERSION = "1.1";
+const AGENT_CAPABILITIES = ["empty_desired_state", "tombstone_reconcile"];
+
 function receiptUrl(baseUrl) {
   return `${baseUrl}/api/internal/data-plane-agent/receipts`;
 }
@@ -288,7 +291,9 @@ export function createProductionEdgeAgentRunner(input = {}) {
       method: "GET",
       headers: {
         Authorization: `Bearer ${config.token}`,
-        Accept: "application/json"
+        Accept: "application/json",
+        "X-GCCGW-Agent-Version": AGENT_PROTOCOL_VERSION,
+        "X-GCCGW-Agent-Capabilities": AGENT_CAPABILITIES.join(",")
       }
     });
     const body = await readJsonResponse(response, "desired-state");

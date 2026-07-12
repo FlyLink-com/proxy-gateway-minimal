@@ -119,6 +119,77 @@ test("Xray VLESS Reality host adapter writes candidate, tests, backs up, restart
   }
 });
 
+test("Xray VLESS Reality host adapter applies an explicit empty client set for channel revocation", () => {
+  const dir = mkdtempSync(join(tmpdir(), "xray-vless-host-adapter-empty-"));
+  const activeConfigPath = join(dir, "config.json");
+  const candidateConfigPath = join(dir, "config.candidate.json");
+  const backupDir = join(dir, "backups");
+  const calls = [];
+
+  try {
+    writeFileSync(activeConfigPath, "{}\n", { mode: 0o600 });
+    const adapter = createXrayVlessRealityHostRuntimeAdapter({
+      activeConfigPath,
+      candidateConfigPath,
+      backupDir,
+      serviceName: "xray-vless-reality.service",
+      xrayBinary: "xray",
+      listener: {
+        name: "channel-vultr-a-vless-reality-tcp",
+        listen: "0.0.0.0",
+        port: 443,
+        flow: "xtls-rprx-vision",
+        dest: "www.example.com:443",
+        serverNames: ["www.example.com"],
+        privateKey: "synthetic-private-key",
+        shortIds: ["abcd1234"]
+      },
+      resolveCredentialMaterial: () => {
+        throw new Error("revocation tombstone must not resolve credential material");
+      },
+      commandRunner(command, args) {
+        calls.push([command, ...args]);
+        if (command === "xray") return { exitCode: 0 };
+        if (command === "systemctl") return { exitCode: 0 };
+        if (command === "ss") return { exitCode: 0, stdout: "LISTEN 0 4096 0.0.0.0:443 0.0.0.0:*" };
+        return { exitCode: 1 };
+      },
+      now: () => new Date("2026-06-07T12:00:00.000Z")
+    });
+    const state = desiredState("xray-vless-reality", "channel-vultr-a-vless-reality-tcp");
+
+    const report = buildCredentialReconciliationApplyPlan({
+      desiredState: {
+        ...state,
+        desiredStateRef: "desired_state_vless_empty",
+        desiredCredentials: [],
+        currentCredentials: [{
+          credentialRef: "edgecred_order_001",
+          materialDigest: "sha256:digest_001"
+        }]
+      },
+      inputPath: "runtime:revocation-tombstone",
+      executeProductionMutation: true,
+      runtimeAdapter: adapter
+    });
+
+    assert.equal(report.ok, true);
+    assert.equal(report.runtimeReceipt.status, "applied");
+    assert.equal(report.summary.desiredCount, 0);
+    assert.equal(report.summary.revokeCount, 1);
+    const candidate = JSON.parse(readFileSync(candidateConfigPath, "utf8"));
+    assert.deepEqual(candidate.inbounds[0].settings.clients, []);
+    assert.deepEqual(calls.map(([command, ...args]) => [command, args[0]]), [
+      ["xray", "run"],
+      ["systemctl", "restart"],
+      ["systemctl", "is-active"],
+      ["ss", "-H"]
+    ]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("Xray VLESS Reality host adapter preserves loopback usage stats source", () => {
   const dir = mkdtempSync(join(tmpdir(), "xray-vless-host-adapter-usage-source-"));
   const activeConfigPath = join(dir, "config.json");

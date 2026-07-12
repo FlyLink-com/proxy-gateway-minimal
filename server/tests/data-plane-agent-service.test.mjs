@@ -260,6 +260,42 @@ test("pulls only node-scoped desired states and returns redacted summaries", () 
   assert.doesNotMatch(JSON.stringify(response), /password|privateKey|subscriptionUrl/i);
 });
 
+test("withholds revocation tombstones until the authenticated agent advertises compatible capabilities", () => {
+  const tombstone = desired({
+    channelRefs: ["channel-sgp-a-hy2"],
+    edgeCredentialRefs: [],
+    materialDigests: []
+  });
+  const service = serviceFor(fakeControlStore(new Map([
+    ["channel-sgp-a-hy2", tombstone]
+  ])));
+  const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+
+  const legacy = service.getDesiredState(identity, {
+    agentVersion: "1.0",
+    capabilities: []
+  });
+  assert.deepEqual(legacy.desiredStates, []);
+  assert.equal(legacy.compatibility.tombstoneReconcile, false);
+  assert.equal(legacy.compatibility.blockedDesiredStateCount, 1);
+
+  const staleVersion = service.getDesiredState(identity, {
+    agentVersion: "1.0",
+    capabilities: ["empty_desired_state", "tombstone_reconcile"]
+  });
+  assert.deepEqual(staleVersion.desiredStates, []);
+  assert.equal(staleVersion.compatibility.tombstoneReconcile, false);
+
+  const compatible = service.getDesiredState(identity, {
+    agentVersion: "1.1",
+    capabilities: ["empty_desired_state", "tombstone_reconcile"]
+  });
+  assert.equal(compatible.desiredStates.length, 1);
+  assert.deepEqual(compatible.desiredStates[0].edgeCredentialRefs, []);
+  assert.equal(compatible.compatibility.tombstoneReconcile, true);
+  assert.equal(compatible.compatibility.blockedDesiredStateCount, 0);
+});
+
 test("records receipts against latest desired state and never trusts client desired refs", () => {
   const store = fakeControlStore(new Map([
     ["channel-sgp-a-hy2", desired({ desiredStateRef: "desired_authoritative" })]
@@ -517,6 +553,40 @@ test("uses deterministic receipt id per node channel generation", () => {
   const second = service.recordReceipt(identity, receipt({ appliedAt: "2026-06-10T00:02:00.000Z" }));
 
   assert.equal(first.receiptId, second.receiptId);
+  assert.equal(store.receipts.length, 1);
+});
+
+test("repeated tombstone receipts remain idempotent and do not create a second mutation record", () => {
+  const tombstone = desired({
+    desiredStateRef: "desired_sgp_tombstone_001",
+    generation: "gen_sgp_tombstone_001",
+    edgeCredentialRefs: [],
+    materialDigests: []
+  });
+  const store = fakeControlStore(new Map([
+    ["channel-sgp-a-hy2", tombstone]
+  ]));
+  const service = serviceFor(store);
+  const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+  const appliedTombstone = receipt({
+    desiredStateRef: tombstone.desiredStateRef,
+    generation: tombstone.generation,
+    credentialCount: 0,
+    materialDigests: [],
+    actionCounts: { add: 0, revoke: 1, rotate: 0, unchanged: 0 },
+    status: "applied"
+  });
+
+  const first = service.recordReceipt(identity, appliedTombstone);
+  const second = service.recordReceipt(identity, {
+    ...appliedTombstone,
+    status: "unchanged",
+    actionCounts: { add: 0, revoke: 0, rotate: 0, unchanged: 0 },
+    appliedAt: "2026-06-10T00:02:00.000Z"
+  });
+
+  assert.equal(first.receiptId, second.receiptId);
+  assert.equal(second.status, "applied");
   assert.equal(store.receipts.length, 1);
 });
 

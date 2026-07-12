@@ -202,7 +202,7 @@ test("usage quota lifecycle gate keeps suspension pending until edge runtime enf
   });
 });
 
-test("usage quota lifecycle gate completes only after synchronous edge runtime mutation", () => {
+test("usage quota lifecycle gate keeps legacy mutation-only results pending without an applied receipt", () => {
   const gate = createOrderUsageQuotaLifecycleGate({
     orderLifecycleService: {
       suspendTrafficSupply(input) {
@@ -226,6 +226,44 @@ test("usage quota lifecycle gate completes only after synchronous edge runtime m
     lifecycleAction: "traffic_supply_suspend_required",
     requestId: "pareq_applied_001",
     portalUserRef: "portal_user_applied_001"
+  }, {
+    executeControlledTrafficSupplySuspend: true
+  });
+
+  assert.equal(result.status, "controlled_traffic_supply_suspend_pending");
+  assert.equal(result.mutation, false);
+  assert.equal(result.execution.trafficSupplySuspendExecuted, false);
+});
+
+test("usage quota lifecycle gate completes after an explicit applied runtime receipt", () => {
+  const gate = createOrderUsageQuotaLifecycleGate({
+    orderLifecycleService: {
+      suspendTrafficSupply(input) {
+        return {
+          id: input.requestRef,
+          status: "disabled",
+          nextAction: "traffic_supply_suspended_quota",
+          runtimeEnforcement: {
+            state: "applied",
+            receiptStatus: "applied",
+            redacted: true
+          },
+          safety: {
+            noSubscriptionUrl: true,
+            noRuntimeMutation: false,
+            noProductionMutation: false
+          }
+        };
+      }
+    }
+  });
+
+  const result = gate.handleUsageDecision({
+    ok: true,
+    status: "over_quota_disable_required",
+    lifecycleAction: "traffic_supply_suspend_required",
+    requestId: "pareq_receipt_applied_001",
+    portalUserRef: "portal_user_receipt_applied_001"
   }, {
     executeControlledTrafficSupplySuspend: true
   });

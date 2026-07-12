@@ -106,29 +106,41 @@ function writeProtectedRecords(filePath, records) {
 
 function createMutableEdgeCredentialMaterialStore({ records = [], onChange } = {}) {
   const byRef = new Map();
+  let activeTransaction = null;
 
-  function protectedRecords() {
-    return [...byRef.values()]
+  function protectedRecords(source = byRef) {
+    return [...source.values()]
       .sort((a, b) => a.credentialRef.localeCompare(b.credentialRef))
       .map(protectedRecordFor);
   }
 
-  function putRecord(input = {}, { persist = true } = {}) {
+  function putRecord(input = {}, { persist = true, target = byRef } = {}) {
     const record = materialRecordFor(input);
-    byRef.set(record.credentialRef, record);
+    target.set(record.credentialRef, record);
     if (persist && typeof onChange === "function") {
       onChange(protectedRecords());
     }
     return summaryFor(record);
   }
 
+  function visibleRecords() {
+    return activeTransaction?.records || byRef;
+  }
+
+  function assertNoActiveTransaction() {
+    if (activeTransaction) {
+      throw materialError("credential_transaction_active", "credential material transaction is active");
+    }
+  }
+
   const store = {
     putCredentialMaterial(input = {}) {
+      assertNoActiveTransaction();
       return putRecord(input);
     },
 
     resolveCredentialMaterial(credentialRef) {
-      const record = byRef.get(requiredSafeRef(credentialRef, "credentialRef"));
+      const record = visibleRecords().get(requiredSafeRef(credentialRef, "credentialRef"));
       if (!record) {
         return null;
       }
@@ -139,14 +151,89 @@ function createMutableEdgeCredentialMaterialStore({ records = [], onChange } = {
     },
 
     getCredentialMaterialSummary(credentialRef) {
-      const record = byRef.get(requiredSafeRef(credentialRef, "credentialRef"));
+      const record = visibleRecords().get(requiredSafeRef(credentialRef, "credentialRef"));
       return record ? summaryFor(record) : null;
     },
 
     listCredentialMaterialSummaries() {
-      return [...byRef.values()]
+      return [...visibleRecords().values()]
         .sort((a, b) => a.credentialRef.localeCompare(b.credentialRef))
         .map(summaryFor);
+    },
+
+    beginCredentialMaterialTransaction() {
+      assertNoActiveTransaction();
+      const transaction = {
+        originalRecords: new Map(byRef),
+        records: new Map(byRef),
+        state: "active"
+      };
+      activeTransaction = transaction;
+
+      function assertOpen() {
+        if (transaction.state !== "active" || activeTransaction !== transaction) {
+          throw materialError("credential_transaction_closed", "credential material transaction is closed");
+        }
+      }
+
+      return {
+        putCredentialMaterial(input = {}) {
+          assertOpen();
+          return putRecord(input, { persist: false, target: transaction.records });
+        },
+        resolveCredentialMaterial(credentialRef) {
+          assertOpen();
+          return store.resolveCredentialMaterial(credentialRef);
+        },
+        getCredentialMaterialSummary(credentialRef) {
+          assertOpen();
+          return store.getCredentialMaterialSummary(credentialRef);
+        },
+        listCredentialMaterialSummaries() {
+          assertOpen();
+          return store.listCredentialMaterialSummaries();
+        },
+        getOriginalCredentialMaterialSummary(credentialRef) {
+          assertOpen();
+          const record = transaction.originalRecords.get(requiredSafeRef(credentialRef, "credentialRef"));
+          return record ? summaryFor(record) : null;
+        },
+        resolveOriginalCredentialMaterial(credentialRef) {
+          assertOpen();
+          const record = transaction.originalRecords.get(requiredSafeRef(credentialRef, "credentialRef"));
+          return record ? { ...record.material } : null;
+        },
+        commit() {
+          assertOpen();
+          if (typeof onChange === "function") {
+            onChange(protectedRecords(transaction.records));
+          }
+          byRef.clear();
+          for (const [credentialRef, record] of transaction.records) {
+            byRef.set(credentialRef, record);
+          }
+          transaction.state = "committed";
+          activeTransaction = null;
+        },
+        rollback() {
+          assertOpen();
+          transaction.state = "rolled_back";
+          activeTransaction = null;
+        },
+        restore() {
+          if (transaction.state !== "committed" || activeTransaction) {
+            throw materialError("credential_transaction_closed", "credential material transaction cannot be restored");
+          }
+          if (typeof onChange === "function") {
+            onChange(protectedRecords(transaction.originalRecords));
+          }
+          byRef.clear();
+          for (const [credentialRef, record] of transaction.originalRecords) {
+            byRef.set(credentialRef, record);
+          }
+          transaction.state = "restored";
+        }
+      };
     }
   };
 

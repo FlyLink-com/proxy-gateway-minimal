@@ -613,6 +613,13 @@ test("subscription control store emits an empty desired-state after the last cha
     assert.deepEqual(tombstone.edgeCredentialRefs, []);
     assert.deepEqual(tombstone.materialDigests, []);
     assert.notEqual(tombstone.desiredStateRef, active.desiredStateRef);
+
+    const repeated = store.getLatestEdgeDesiredStateForChannel("channel-sgp-a-hy2", {
+      nodeRef: "vultr-sgp-a"
+    });
+    assert.equal(repeated.desiredStateRef, tombstone.desiredStateRef);
+    assert.equal(repeated.generation, tombstone.generation);
+    assert.deepEqual(repeated.edgeCredentialRefs, []);
   });
 });
 

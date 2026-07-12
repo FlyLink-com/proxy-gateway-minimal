@@ -174,6 +174,11 @@ test("production edge agent applies an empty desired-state without requesting cr
     fetchImpl: async (url, options = {}) => {
       calls.push({ url: String(url), options });
       if (String(url).endsWith("/api/internal/data-plane-agent/desired-state")) {
+        assert.equal(options.headers["X-GCCGW-Agent-Version"], "1.1");
+        assert.deepEqual(
+          options.headers["X-GCCGW-Agent-Capabilities"].split(",").sort(),
+          ["empty_desired_state", "tombstone_reconcile"]
+        );
         return responseJson(200, {
           type: "gccgw_data_plane_agent_desired_state_response",
           nodeRef: "vultr-sgp-a",
