@@ -93,6 +93,7 @@ function normalizeStatEntry(clientId, entry, snapshot) {
     throw collectorError("validation_error", "traffic stats entry must be an object");
   }
   return {
+    accountingMode: "delta",
     sourceRef: snapshot.sourceRef,
     channelRef: snapshot.channelRef,
     edgeCredentialRef: safeRef(clientId, "edgeCredentialRef"),

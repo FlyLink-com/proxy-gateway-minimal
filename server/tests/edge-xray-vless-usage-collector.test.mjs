@@ -30,6 +30,7 @@ test("Xray VLESS usage collector converts per-user stats into safe observations"
   assert.equal(result.accountingMode, "cumulative");
   assert.deepEqual(result.observations, [
     {
+      accountingMode: "cumulative",
       sourceRef: "xray_statsquery_user_traffic",
       channelRef: "channel-vultr-a-vless-reality-tcp",
       edgeCredentialRef: "edgecred_vless_001",

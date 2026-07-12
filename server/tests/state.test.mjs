@@ -2962,6 +2962,7 @@ test("createRuntimeState wires Mihomo TUIC connections usage through a credentia
     assert.equal(collected.ok, true);
     assert.deepEqual(collected.observations, [
       {
+        accountingMode: "cumulative",
         sourceRef: "mihomo_external_controller_connections",
         channelRef: "channel-vultr-a-tuic",
         edgeCredentialRef,

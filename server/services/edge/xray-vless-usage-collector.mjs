@@ -115,6 +115,7 @@ function normalizeEntry(entry, index, snapshot) {
     throw collectorError("validation_error", `entries[${index}] must be an object`);
   }
   return {
+    accountingMode: snapshot.accountingMode,
     sourceRef: snapshot.sourceRef,
     channelRef: snapshot.channelRef,
     edgeCredentialRef: safeRef(entry.edgeCredentialRef || entry.credentialRef, `entries[${index}].edgeCredentialRef`),

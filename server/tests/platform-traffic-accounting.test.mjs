@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import Database from "better-sqlite3";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -92,6 +93,21 @@ function seedIssuedOrder(store, overrides = {}) {
     edgeCredentialRef: "edgecred_pareq_usage_service_1",
     edgeMaterialDigest: "sha256:digest_usage_service_1"
   });
+}
+
+function cumulativeObservation(overrides = {}) {
+  return {
+    accountingMode: "cumulative",
+    sourceRef: "xray_statsquery_user_traffic",
+    channelRef: "channel-aliyun-a-tuic",
+    edgeCredentialRef: "edgecred_pareq_usage_service_1",
+    observedAt: "2026-06-06T00:05:00.000Z",
+    intervalStartedAt: "2026-06-06T00:00:00.000Z",
+    intervalEndedAt: "2026-06-06T00:05:00.000Z",
+    uploadBytes: 100,
+    downloadBytes: 200,
+    ...overrides
+  };
 }
 
 test("traffic accounting resets quota decisions at entitlement monthly cycle boundary", () => {
@@ -309,6 +325,80 @@ test("traffic accounting converts cumulative counters into durable deltas withou
     assert.equal(afterReset.quota.usedBytes, 125);
     assert.equal(store.getUsageCounterCursor(base).epoch, 1);
   });
+});
+
+test("traffic accounting preserves cumulative cursors across control-store restarts", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "platform-traffic-cursor-restart-"));
+  const dbPath = join(tempDir, "control.sqlite");
+  let store;
+  try {
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    seedIssuedOrder(store);
+    createTrafficAccountingService({ controlStore: store }).recordUsageObservation(
+      cumulativeObservation()
+    );
+    store.close();
+
+    store = createSqliteSubscriptionControlStore({ dbPath });
+    const recorded = createTrafficAccountingService({ controlStore: store }).recordUsageObservation(
+      cumulativeObservation({
+        observedAt: "2026-06-06T00:10:00.000Z",
+        intervalEndedAt: "2026-06-06T00:10:00.000Z",
+        uploadBytes: 150,
+        downloadBytes: 260
+      })
+    );
+
+    assert.equal(recorded.accountingStatus, "calculated");
+    assert.equal(recorded.quota.usedBytes, 110);
+  } finally {
+    store?.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("traffic accounting rolls back a cumulative sample when cursor advancement fails", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "platform-traffic-cursor-atomic-"));
+  const database = new Database(join(tempDir, "control.sqlite"));
+  const store = createSqliteSubscriptionControlStore({ database });
+  try {
+    seedIssuedOrder(store);
+    const service = createTrafficAccountingService({ controlStore: store });
+    service.recordUsageObservation(cumulativeObservation());
+    database.exec(`
+      create trigger fail_usage_cursor_update
+      before update on platform_usage_counter_cursors
+      begin
+        select raise(abort, 'forced_cursor_update_failure');
+      end;
+    `);
+
+    assert.throws(() => service.recordUsageObservation(cumulativeObservation({
+      observedAt: "2026-06-06T00:10:00.000Z",
+      intervalEndedAt: "2026-06-06T00:10:00.000Z",
+      uploadBytes: 150,
+      downloadBytes: 260
+    })), { code: "constraint_error" });
+    assert.equal(store.listUsageSamples({
+      edgeCredentialRef: "edgecred_pareq_usage_service_1"
+    }).length, 0);
+    assert.equal(store.getUsageRollupByEdgeCredentialRef("edgecred_pareq_usage_service_1"), null);
+    assert.equal(store.getUsageCounterCursor(cumulativeObservation()).uploadBytes, 100);
+
+    database.exec("drop trigger fail_usage_cursor_update");
+    const retried = service.recordUsageObservation(cumulativeObservation({
+      observedAt: "2026-06-06T00:10:00.000Z",
+      intervalEndedAt: "2026-06-06T00:10:00.000Z",
+      uploadBytes: 150,
+      downloadBytes: 260
+    }));
+    assert.equal(retried.accountingStatus, "calculated");
+    assert.equal(retried.quota.usedBytes, 110);
+  } finally {
+    store.close();
+    database.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
 });
 
 test("traffic accounting maps derived multi-channel edge credentials to the issued order", () => {
