@@ -2622,6 +2622,141 @@ test("refresh compensates direct remote pending handoffs across candidate persis
   }
 });
 
+test("refresh compensates pending fanout children when a sibling fails without mutation", () => {
+  const pendingChannelRef = "channel-aliyun-a-tuic";
+  const failedChannelRef = "channel-sgp-a-hy2";
+  const pendingReport = {
+    channelRef: pendingChannelRef,
+    ok: true,
+    runtimeStatus: "pending",
+    mutation: false,
+    nextAction: "complete_data_plane_handoff"
+  };
+  const failedReport = {
+    channelRef: failedChannelRef,
+    ok: false,
+    runtimeStatus: "failed",
+    mutation: false,
+    nextAction: "review_runtime_apply_receipt"
+  };
+  const rollbackPendingResult = {
+    ok: true,
+    channelRef: pendingChannelRef,
+    mutation: false,
+    runtimeReceipt: { status: "pending" },
+    nextAction: "complete_data_plane_handoff",
+    redacted: true
+  };
+  const exactRollbackNotification = {
+    ok: true,
+    notificationCount: 1,
+    notifications: [{ channelRef: pendingChannelRef, status: "pending" }],
+    redacted: true
+  };
+
+  function observe({ name, reports, rollbackLifecycleResult, rollbackNotificationResult }) {
+    const requestId = `pareq_refresh_failed_pending_${name}`;
+    const harness = refreshStateMachineHarness({
+      requestId,
+      refreshLifecycleResult: {
+        ok: false,
+        mutation: false,
+        reports,
+        redacted: true
+      },
+      rollbackLifecycleResult,
+      rollbackNotificationResult
+    });
+    const [before] = harness.requests.listEdgeCredentialOrders();
+    const beforeMaterial = harness.materialStore.getCredentialMaterialSummary(before.edgeCredentialRef);
+    const beforeRequest = harness.requests.getRequest(requestId);
+    let errorCode = "none";
+
+    try {
+      harness.requests.refreshSubscription({
+        portalUserRef: "user_safe_ref",
+        requestRef: requestId,
+        clientTarget: "karing"
+      });
+    } catch (error) {
+      errorCode = error?.code || "unknown";
+    }
+
+    const [after] = harness.requests.listEdgeCredentialOrders();
+    const restored = harness.requests.getRequest(requestId);
+    return {
+      errorCode,
+      lifecycleReasons: harness.lifecycleReasons,
+      notificationReasons: harness.notificationCalls.map(({ reason }) => reason),
+      stateRestored: (
+        after.edgeCredentialRef === before.edgeCredentialRef
+        && after.edgeMaterialDigest === before.edgeMaterialDigest
+        && harness.materialStore.getCredentialMaterialSummary(after.edgeCredentialRef).materialDigest
+          === beforeMaterial.materialDigest
+        && restored.clientTarget === beforeRequest.clientTarget
+        && JSON.stringify(restored.event) === JSON.stringify(beforeRequest.event)
+      )
+    };
+  }
+
+  const observations = [
+    { name: "pending-first", reports: [pendingReport, failedReport] },
+    { name: "failed-first", reports: [failedReport, pendingReport] }
+  ].map(({ name, reports }) => ({
+    name,
+    compensated: observe({
+      name: `${name}_compensated`,
+      reports,
+      rollbackLifecycleResult: rollbackPendingResult,
+      rollbackNotificationResult: exactRollbackNotification
+    }),
+    rollbackLifecycleFailed: observe({
+      name: `${name}_rollback_lifecycle_failed`,
+      reports,
+      rollbackLifecycleResult: {
+        ok: false,
+        mutation: false,
+        runtimeReceipt: { status: "failed" },
+        redacted: true
+      },
+      rollbackNotificationResult: exactRollbackNotification
+    }),
+    rollbackNotificationIncomplete: observe({
+      name: `${name}_rollback_notification_incomplete`,
+      reports,
+      rollbackLifecycleResult: rollbackPendingResult,
+      rollbackNotificationResult: {
+        ok: true,
+        notificationCount: 0,
+        notifications: [],
+        redacted: true
+      }
+    })
+  }));
+
+  assert.deepEqual(observations, ["pending-first", "failed-first"].map((name) => ({
+    name,
+    compensated: {
+      errorCode: "edge_lifecycle_failed",
+      lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
+      notificationReasons: ["order_refresh_rolled_back"],
+      stateRestored: true
+    },
+    rollbackLifecycleFailed: {
+      errorCode: "subscription_refresh_rollback_failed",
+      lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
+      notificationReasons: [],
+      stateRestored: true
+    },
+    rollbackNotificationIncomplete: {
+      errorCode: "subscription_refresh_rollback_failed",
+      lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
+      notificationReasons: ["order_refresh_rolled_back"],
+      stateRestored: true
+    }
+  })));
+});
+
 test("refresh enforces a per-order cooldown before reissuing material again", () => {
   let now = "2026-06-01T00:00:00.000Z";
   let credentialSequence = 0;
