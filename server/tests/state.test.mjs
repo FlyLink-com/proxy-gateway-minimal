@@ -2178,6 +2178,173 @@ test("createRuntimeState records remote data-plane desired-state notifications f
   }
 });
 
+test("createRuntimeState refreshes remote credentials through pending notification and exact agent receipt", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-remote-refresh-receipt-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  const materialPath = join(dir, "protected", "edge-material.json");
+  const handoffDir = join(dir, "handoff");
+  const subscriptionDbPath = join(dir, "subscriptions.sqlite");
+  const controlDbPath = join(dir, "control.sqlite");
+  const channelRef = "channel-sgp-a-hy2";
+  const nodeRef = "vultr-sgp-a";
+  let now = new Date("2026-07-13T12:00:00.000Z");
+  let state;
+
+  try {
+    mkdirSync(join(dir, "protected"), { recursive: true });
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [{
+        id: "channel_sgp_hy2",
+        name: channelRef,
+        physicalNodeRef: nodeRef,
+        protocol: "hysteria2",
+        type: "hysteria2",
+        host: "sgp.example.test",
+        port: 10443,
+        password: "${SGP_HY2_STATIC_PASSWORD}",
+        runtimeAdapter: "remote-data-plane-handoff",
+        credentialMode: "per-order",
+        status: "online",
+        subscriptionEligible: true
+      }]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "synthetic-console-token",
+        SS_PASSWORD: "synthetic-ss-password",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        SGP_HY2_STATIC_PASSWORD: "synthetic-hy2-template-password",
+        USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
+        USER_PORTAL_EDGE_CHANNEL_REF: channelRef,
+        USER_PORTAL_EDGE_CHANNEL_REFS: channelRef,
+        EDGE_CREDENTIAL_CHANNEL_REFS: channelRef,
+        EDGE_CREDENTIAL_MATERIAL_PATH: materialPath,
+        EDGE_CREDENTIAL_LIFECYCLE_EXECUTE_PRODUCTION_MUTATION: "true",
+        EDGE_DATA_PLANE_HANDOFF_DIR: handoffDir,
+        EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED: "true",
+        EDGE_DATA_PLANE_AGENT_NODES_JSON: JSON.stringify([{
+          nodeRef,
+          channelRefs: [channelRef],
+          tokenSha256: "0".repeat(64)
+        }]),
+        USER_PORTAL_AUTO_ISSUANCE_ENABLED: "true",
+        USER_PORTAL_AUTO_ISSUANCE_NODE_ID: channelRef,
+        USER_PORTAL_AUTO_ISSUANCE_CHANNEL_REFS: channelRef,
+        USER_PORTAL_AUTO_ISSUANCE_30D_MONTHLY_LIMIT: "1000",
+        USER_PORTAL_REFRESH_COOLDOWN_MS: "0"
+      },
+      subscriptionDbPath,
+      controlDbPath,
+      userPortalNowFn: () => new Date(now),
+      subscriptionNowFn: () => new Date(now),
+      autoStartHttpProxy: false
+    });
+
+    const request = state.platform.portalAccessRequests.submitRequest({
+      portalUserRef: "portal_user_remote_refresh_001",
+      plan: "monthly",
+      clientTarget: "clash",
+      quantity: 1
+    });
+    const artifactSecret = new URL(request.subscriptionUrl).pathname
+      .split("/")
+      .at(-1)
+      .replace(/\.yaml$/, "");
+    const identity = { nodeRef };
+    const [beforeCredential] = state.platform.portalAccessRequests.listEdgeCredentialOrders();
+    const initialDesired = state.platform.dataPlaneAgentService
+      .getDesiredState(identity)
+      .desiredStates[0];
+    const initialReceipt = state.platform.dataPlaneAgentService.recordReceipt(identity, {
+      type: "gccgw_data_plane_apply_receipt",
+      nodeRef,
+      channelRef,
+      desiredStateRef: initialDesired.desiredStateRef,
+      generation: initialDesired.generation,
+      status: "applied",
+      configTest: true,
+      serviceActive: true,
+      listenerPresent: true,
+      credentialCount: initialDesired.edgeCredentialRefs.length,
+      materialDigests: initialDesired.materialDigests.map((entry) => (
+        typeof entry === "object" ? entry.digest : entry
+      )),
+      appliedAt: now.toISOString(),
+      reasonCode: "runtime_applied"
+    });
+    assert.equal(initialReceipt.status, "applied");
+
+    const initiallyRendered = state.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+    assert.equal(initiallyRendered.ok, true);
+    assert.deepEqual(initiallyRendered.proxyConfig.servers.map((server) => server.name), [channelRef]);
+
+    now = new Date("2026-07-13T12:01:00.000Z");
+    const refreshed = state.platform.portalAccessRequests.refreshSubscription({
+      portalUserRef: "portal_user_remote_refresh_001",
+      requestRef: request.id,
+      clientTarget: "karing"
+    });
+    const [afterCredential] = state.platform.portalAccessRequests.listEdgeCredentialOrders();
+    const currentDesired = state.platform.controlStore.getLatestEdgeDesiredStateForChannel(channelRef, {
+      nodeRef,
+      channelRefs: [channelRef]
+    });
+    const refreshNotification = state.platform.controlStore
+      .listEdgeDesiredStateNotifications({ channelRef })
+      .find((notification) => notification.reason === "order_refreshed");
+
+    assert.equal(refreshed.runtimeEnforcement.state, "pending");
+    assert.notEqual(afterCredential.edgeMaterialDigest, beforeCredential.edgeMaterialDigest);
+    assert.notEqual(currentDesired.desiredStateRef, initialDesired.desiredStateRef);
+    assert.equal(refreshNotification?.desiredStateRef, currentDesired.desiredStateRef);
+    assert.equal(refreshNotification?.status, "pending");
+
+    const hiddenUntilReceipt = state.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+    assert.equal(hiddenUntilReceipt.ok, false);
+    assert.equal(hiddenUntilReceipt.status, 403);
+    assert.equal("proxyConfig" in hiddenUntilReceipt, false);
+
+    const pulledDesired = state.platform.dataPlaneAgentService
+      .getDesiredState(identity)
+      .desiredStates[0];
+    assert.equal(pulledDesired.desiredStateRef, currentDesired.desiredStateRef);
+    assert.equal(pulledDesired.generation, currentDesired.generation);
+    const appliedReceipt = state.platform.dataPlaneAgentService.recordReceipt(identity, {
+      type: "gccgw_data_plane_apply_receipt",
+      nodeRef,
+      channelRef,
+      desiredStateRef: pulledDesired.desiredStateRef,
+      generation: pulledDesired.generation,
+      status: "applied",
+      configTest: true,
+      serviceActive: true,
+      listenerPresent: true,
+      credentialCount: pulledDesired.edgeCredentialRefs.length,
+      materialDigests: pulledDesired.materialDigests.map((entry) => (
+        typeof entry === "object" ? entry.digest : entry
+      )),
+      appliedAt: now.toISOString(),
+      reasonCode: "runtime_applied"
+    });
+    const convergedNotification = state.platform.controlStore
+      .listEdgeDesiredStateNotifications({ channelRef })
+      .find((notification) => notification.reason === "order_refreshed");
+    const renderedAfterReceipt = state.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+
+    assert.equal(appliedReceipt.status, "applied");
+    assert.equal(convergedNotification?.status, "applied");
+    assert.equal(renderedAfterReceipt.ok, true);
+    assert.deepEqual(renderedAfterReceipt.proxyConfig.servers.map((server) => server.name), [channelRef]);
+    assert.equal(refreshed.safety.noRawHandoffMaterial, true);
+    assert.equal(pulledDesired.summary.redacted, true);
+  } finally {
+    state?.close();
+    removeTempDir(dir);
+  }
+});
+
 test("createRuntimeState records runtime usage observations into the control ledger", async () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-runtime-usage-ledger-"));
   const proxyConfigPath = join(dir, "proxy-servers.json");

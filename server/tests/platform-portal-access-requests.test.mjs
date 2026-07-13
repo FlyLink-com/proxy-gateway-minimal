@@ -164,6 +164,84 @@ function edgeMaterialStore() {
   return createEdgeCredentialMaterialStore();
 }
 
+function refreshStateMachineHarness({
+  requestId,
+  refreshLifecycleResult,
+  refreshNotificationResult = {
+    ok: true,
+    notificationCount: 1,
+    notifications: [{ status: "pending" }],
+    redacted: true
+  }
+}) {
+  const materialStore = edgeMaterialStore();
+  const lifecycleReasons = [];
+  const notificationCalls = [];
+  let credentialSequence = 0;
+  let requests;
+  const edgeDesiredStateNotifier = refreshNotificationResult === null ? null : {
+    notifyOrderLifecycle(input) {
+      notificationCalls.push(input);
+      if (input.reason !== "order_refreshed") {
+        return {
+          ok: true,
+          notificationCount: 1,
+          notifications: [{ status: "pending" }],
+          redacted: true
+        };
+      }
+      return typeof refreshNotificationResult === "function"
+        ? refreshNotificationResult({ input, requests })
+        : refreshNotificationResult;
+    }
+  };
+
+  requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => requestId,
+    edgeCredentialIssuer: createOrderEdgeCredentialIssuer({
+      channelRef: "channel-aliyun-a-tuic",
+      materialStore,
+      uuidFactory: () => `00000000-0000-4000-8000-${String(++credentialSequence).padStart(12, "0")}`,
+      passwordFactory: () => `synthetic-refresh-password-${credentialSequence}`
+    }),
+    edgeLifecycleService: {
+      reconcileOrderLifecycle({ reason }) {
+        lifecycleReasons.push(reason);
+        if (reason === "order_refreshed") {
+          return typeof refreshLifecycleResult === "function"
+            ? refreshLifecycleResult()
+            : refreshLifecycleResult;
+        }
+        return {
+          ok: true,
+          mutation: true,
+          runtimeReceipt: { status: "applied" },
+          redacted: true
+        };
+      }
+    },
+    ...(edgeDesiredStateNotifier ? { edgeDesiredStateNotifier } : {})
+  });
+  requests.submitRequest(validTrialInput());
+  requests.markDelivered(requestId, {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_safe_ref",
+    accessGrantRef: "grant_safe_ref",
+    artifactId: "artifact_runtime_1",
+    subscriptionUrl: "https://sub.example.test/import/original-visible-once",
+    expiresAt: "2026-06-07T00:00:00.000Z"
+  });
+  notificationCalls.length = 0;
+
+  return {
+    lifecycleReasons,
+    materialStore,
+    notificationCalls,
+    requests
+  };
+}
+
 function withControlStore(fn) {
   const tempDir = mkdtempSync(join(tmpdir(), "portal-access-requests-"));
   let store;
@@ -1399,6 +1477,200 @@ test("refresh compensates a failed lifecycle report that may have mutated runtim
     "order_refreshed",
     "order_refresh_rolled_back"
   ]);
+});
+
+test("refresh publishes an explicit remote pending result after persisting the rotated order", () => {
+  let notifiedDigest;
+  const harness = refreshStateMachineHarness({
+    requestId: "pareq_refresh_remote_pending_1",
+    refreshLifecycleResult: {
+      ok: true,
+      mutation: false,
+      runtimeReceipt: { status: "pending" },
+      nextAction: "complete_data_plane_handoff",
+      redacted: true
+    },
+    refreshNotificationResult({ input, requests }) {
+      const [persisted] = requests.listEdgeCredentialOrders();
+      notifiedDigest = persisted.edgeMaterialDigest;
+      assert.equal(input.order.edgeMaterialDigest, persisted.edgeMaterialDigest);
+      return {
+        ok: true,
+        notificationCount: 1,
+        notifications: [{ status: "pending" }],
+        redacted: true
+      };
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+
+  const refreshed = harness.requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_remote_pending_1",
+    clientTarget: "karing"
+  });
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  assert.equal(refreshed.runtimeEnforcement.state, "pending");
+  assert.equal(refreshed.event.type, "delivery_generation_reissued");
+  assert.equal(refreshed.clientTarget, "karing");
+  assert.notEqual(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.equal(notifiedDigest, after.edgeMaterialDigest);
+  assert.deepEqual(harness.notificationCalls.map((call) => call.reason), ["order_refreshed"]);
+  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed"]);
+  assert.doesNotMatch(
+    JSON.stringify(refreshed),
+    /synthetic-refresh-password|00000000-0000-4000-8000|edgeMaterialDigest|rawConfig/i
+  );
+});
+
+test("refresh rejects an unclassified lifecycle plan before notifying or saving", () => {
+  const harness = refreshStateMachineHarness({
+    requestId: "pareq_refresh_generic_plan_1",
+    refreshLifecycleResult: {
+      ok: true,
+      mutation: false,
+      nextAction: "review_apply_gate",
+      redacted: true
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+  const beforeMaterial = harness.materialStore.getCredentialMaterialSummary(before.edgeCredentialRef);
+
+  assert.throws(() => harness.requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_generic_plan_1",
+    clientTarget: "karing"
+  }), { code: "subscription_refresh_runtime_enforcement_pending" });
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  const restored = harness.requests.getRequest("pareq_refresh_generic_plan_1");
+  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.equal(
+    harness.materialStore.getCredentialMaterialSummary(after.edgeCredentialRef).materialDigest,
+    beforeMaterial.materialDigest
+  );
+  assert.equal(restored.clientTarget, "clash");
+  assert.equal(restored.event, null);
+  assert.equal(harness.notificationCalls.length, 0);
+});
+
+test("refresh restores remote pending rotation when no desired-state notification is recorded", () => {
+  const harness = refreshStateMachineHarness({
+    requestId: "pareq_refresh_remote_without_notification_1",
+    refreshLifecycleResult: {
+      ok: true,
+      mutation: false,
+      runtimeReceipt: { status: "pending" },
+      nextAction: "complete_data_plane_handoff",
+      redacted: true
+    },
+    refreshNotificationResult: {
+      ok: true,
+      notificationCount: 0,
+      notifications: [],
+      redacted: true
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+  const beforeMaterial = harness.materialStore.getCredentialMaterialSummary(before.edgeCredentialRef);
+
+  assert.throws(() => harness.requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_remote_without_notification_1",
+    clientTarget: "karing"
+  }), { code: "subscription_refresh_runtime_enforcement_pending" });
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  const restored = harness.requests.getRequest("pareq_refresh_remote_without_notification_1");
+  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.equal(
+    harness.materialStore.getCredentialMaterialSummary(after.edgeCredentialRef).materialDigest,
+    beforeMaterial.materialDigest
+  );
+  assert.equal(restored.clientTarget, "clash");
+  assert.equal(restored.event, null);
+  assert.deepEqual(harness.notificationCalls.map((call) => call.reason), [
+    "order_refreshed",
+    "order_refresh_rolled_back"
+  ]);
+});
+
+test("refresh accepts a fully classified fanout containing applied and remote pending reports", () => {
+  const harness = refreshStateMachineHarness({
+    requestId: "pareq_refresh_mixed_fanout_1",
+    refreshLifecycleResult: {
+      ok: true,
+      mutation: true,
+      reports: [
+        {
+          ok: true,
+          runtimeStatus: "applied",
+          mutation: true,
+          nextAction: "validate_runtime_state"
+        },
+        {
+          ok: true,
+          runtimeStatus: "pending",
+          mutation: false,
+          nextAction: "complete_data_plane_handoff"
+        }
+      ],
+      redacted: true
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+
+  const refreshed = harness.requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_mixed_fanout_1"
+  });
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  assert.equal(refreshed.runtimeEnforcement.state, "pending");
+  assert.notEqual(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed"]);
+  assert.deepEqual(harness.notificationCalls.map((call) => call.reason), ["order_refreshed"]);
+});
+
+test("refresh fails closed for fanout reports with ambiguous pending authority", () => {
+  const scenarios = [
+    {
+      requestId: "pareq_refresh_fanout_missing_status_1",
+      reports: [{ ok: true, mutation: false, nextAction: "complete_data_plane_handoff" }]
+    },
+    {
+      requestId: "pareq_refresh_fanout_wrong_action_1",
+      reports: [{
+        ok: true,
+        runtimeStatus: "pending",
+        mutation: false,
+        nextAction: "review_apply_gate"
+      }]
+    }
+  ];
+
+  for (const scenario of scenarios) {
+    const harness = refreshStateMachineHarness({
+      requestId: scenario.requestId,
+      refreshLifecycleResult: {
+        ok: true,
+        mutation: false,
+        reports: scenario.reports,
+        redacted: true
+      }
+    });
+    const [before] = harness.requests.listEdgeCredentialOrders();
+
+    assert.throws(() => harness.requests.refreshSubscription({
+      portalUserRef: "user_safe_ref",
+      requestRef: scenario.requestId
+    }), { code: "subscription_refresh_runtime_enforcement_pending" });
+
+    const [after] = harness.requests.listEdgeCredentialOrders();
+    assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+    assert.equal(harness.notificationCalls.length, 0);
+  }
 });
 
 test("refresh compensates runtime and restores active state when post-apply tenant binding fails", () => {

@@ -727,6 +727,46 @@ export function createPortalAccessRequestService(options = {}) {
     return "unavailable";
   }
 
+  function refreshLifecycleDisposition(lifecycleResult) {
+    const reports = Array.isArray(lifecycleResult?.reports) ? lifecycleResult.reports : [];
+    const directStatus = String(lifecycleResult?.runtimeReceipt?.status || "").trim();
+    if (
+      lifecycleResult?.ok === false
+      || directStatus === "failed"
+      || reports.some((report) => report?.ok === false || String(report?.runtimeStatus || "").trim() === "failed")
+    ) {
+      return "failed";
+    }
+    if (edgeRuntimeEnforcementState(lifecycleResult, null) === "applied") {
+      return "applied";
+    }
+    if (
+      reports.length === 0
+      && directStatus === "pending"
+      && lifecycleResult?.nextAction === "complete_data_plane_handoff"
+    ) {
+      return "remote_pending";
+    }
+    if (reports.length > 0) {
+      const classifiedReports = reports.map((report) => {
+        const status = String(report?.runtimeStatus || "").trim();
+        if (report?.ok === false) return "failed";
+        if (status === "applied" && report?.mutation === true) return "applied";
+        if (status === "pending" && report?.nextAction === "complete_data_plane_handoff") {
+          return "remote_pending";
+        }
+        return "unavailable";
+      });
+      if (
+        classifiedReports.includes("remote_pending")
+        && classifiedReports.every((disposition) => ["applied", "remote_pending"].includes(disposition))
+      ) {
+        return "remote_pending";
+      }
+    }
+    return "unavailable";
+  }
+
   function withRuntimeEnforcement(summary, lifecycleResult, desiredStateResult) {
     return {
       ...summary,
@@ -1269,11 +1309,11 @@ export function createPortalAccessRequestService(options = {}) {
 
         const lifecycleResult = reconcileEdgeLifecycle("order_refreshed", request);
         runtimeMayHaveMutated = lifecycleResult?.mutation === true;
-        const runtimeEnforcementState = edgeRuntimeEnforcementState(lifecycleResult, null);
-        if (runtimeEnforcementState === "failed") {
+        const lifecycleDisposition = refreshLifecycleDisposition(lifecycleResult);
+        if (lifecycleDisposition === "failed") {
           throw platformError("edge_lifecycle_failed", "edge lifecycle reconciliation failed");
         }
-        if (runtimeEnforcementState !== "applied") {
+        if (lifecycleDisposition === "unavailable") {
           throw platformError(
             "subscription_refresh_runtime_enforcement_pending",
             "runtime credential rotation is pending an applied receipt"
@@ -1291,6 +1331,12 @@ export function createPortalAccessRequestService(options = {}) {
         saveRecord(request);
         desiredStateMayHaveChanged = true;
         const desiredStateResult = notifyEdgeDesiredState("order_refreshed", request);
+        if (lifecycleDisposition === "remote_pending" && !(desiredStateResult?.notificationCount > 0)) {
+          throw platformError(
+            "subscription_refresh_runtime_enforcement_pending",
+            "runtime credential rotation is pending an applied receipt"
+          );
+        }
         return withRuntimeEnforcement(
           summarizeVisibleOnce(saveRecord(request)),
           lifecycleResult,
