@@ -264,6 +264,22 @@ function mapReceiptStatusToStore(receipt) {
   };
 }
 
+function assertScopedReceiptMatchesDesiredState(receipt, desiredState) {
+  const expectedDigests = (desiredState.materialDigests || [])
+    .map(digestValue)
+    .sort((a, b) => a.localeCompare(b));
+  const receiptDigests = (receipt.materialDigests || [])
+    .map(digestValue)
+    .sort((a, b) => a.localeCompare(b));
+  const exactDigestSet = expectedDigests.length === receiptDigests.length
+    && new Set(expectedDigests).size === expectedDigests.length
+    && new Set(receiptDigests).size === receiptDigests.length
+    && expectedDigests.every((digest, index) => digest === receiptDigests[index]);
+  if (receipt.credentialCount !== desiredState.edgeCredentialRefs.length || !exactDigestSet) {
+    throw agentServiceError("desired_state_receipt_mismatch", 409);
+  }
+}
+
 export function hashDataPlaneAgentToken(token) {
   return `sha256:${sha256(token)}`;
 }
@@ -427,6 +443,9 @@ export function createDataPlaneAgentService({
       expectedGeneration: receiptDesiredState.generation,
       allowedChannelRefs: node.channelRefs
     });
+    if (requestedDesiredStateRef.startsWith("desired_scoped_")) {
+      assertScopedReceiptMatchesDesiredState(receipt, receiptDesiredState);
+    }
     const now = nowFn();
     const receiptDigest = `sha256:${sha256(stableJson(receipt)).slice(0, 32)}`;
     const storeStatus = mapReceiptStatusToStore(receipt);

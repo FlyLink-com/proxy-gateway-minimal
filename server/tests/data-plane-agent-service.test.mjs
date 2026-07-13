@@ -368,6 +368,25 @@ test("round-trips deterministic scoped tombstones for revoked credential filters
   );
   assert.equal(store.receipts.length, 0);
 
+  assert.throws(
+    () => service.recordReceipt(identity, receipt({
+      desiredStateRef: scoped.desiredStateRef,
+      generation: scoped.generation,
+      credentialCount: 1,
+      materialDigests: []
+    })),
+    (error) => {
+      assert.equal(error.code, "desired_state_receipt_mismatch");
+      assert.deepEqual(service.safeErrorPayload(error), {
+        error: "desired_state_receipt_mismatch",
+        message: "desired_state_receipt_mismatch",
+        redacted: true
+      });
+      return true;
+    }
+  );
+  assert.equal(store.receipts.length, 0);
+
   const receiptResponse = service.recordReceipt(identity, receipt({
     desiredStateRef: scoped.desiredStateRef,
     generation: scoped.generation,
@@ -518,6 +537,21 @@ test("scopes desired-state, material, and receipts to selected edge credentials 
   assert.equal(material.desiredStateRef, scoped.desiredStateRef);
   assert.equal(material.records.length, 1);
   assert.equal(material.records[0].edgeCredentialRef, "edgecred_safe_hy2");
+
+  assert.throws(
+    () => service.recordReceipt(identity, receipt({
+      desiredStateRef: scoped.desiredStateRef,
+      generation: scoped.generation,
+      channelRef: "channel-sgp-a-hy2",
+      credentialCount: 1,
+      materialDigests: [
+        "sha256:aaaaaaaaaaaaaaaa",
+        "sha256:dddddddddddddddd"
+      ]
+    })),
+    (error) => error.code === "desired_state_receipt_mismatch"
+  );
+  assert.equal(store.receipts.length, 0);
 
   const receiptResponse = service.recordReceipt(identity, receipt({
     desiredStateRef: scoped.desiredStateRef,
