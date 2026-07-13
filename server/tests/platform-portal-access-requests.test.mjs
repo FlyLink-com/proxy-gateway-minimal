@@ -172,6 +172,18 @@ function refreshStateMachineHarness({
     notificationCount: 1,
     notifications: [{ channelRef: "channel-aliyun-a-tuic", status: "pending" }],
     redacted: true
+  },
+  rollbackLifecycleResult = {
+    ok: true,
+    mutation: true,
+    runtimeReceipt: { status: "applied" },
+    redacted: true
+  },
+  rollbackNotificationResult = {
+    ok: true,
+    notificationCount: 1,
+    notifications: [{ channelRef: "channel-aliyun-a-tuic", status: "pending" }],
+    redacted: true
   }
 }) {
   const materialStore = edgeMaterialStore();
@@ -182,6 +194,11 @@ function refreshStateMachineHarness({
   const edgeDesiredStateNotifier = refreshNotificationResult === null ? null : {
     notifyOrderLifecycle(input) {
       notificationCalls.push(input);
+      if (input.reason === "order_refresh_rolled_back") {
+        return typeof rollbackNotificationResult === "function"
+          ? rollbackNotificationResult({ input, requests })
+          : rollbackNotificationResult;
+      }
       if (input.reason !== "order_refreshed") {
         return {
           ok: true,
@@ -212,6 +229,11 @@ function refreshStateMachineHarness({
           return typeof refreshLifecycleResult === "function"
             ? refreshLifecycleResult()
             : refreshLifecycleResult;
+        }
+        if (reason === "order_refresh_rolled_back") {
+          return typeof rollbackLifecycleResult === "function"
+            ? rollbackLifecycleResult()
+            : rollbackLifecycleResult;
         }
         return {
           ok: true,
@@ -1801,6 +1823,184 @@ test("refresh requires notifications for every pending fanout channel and compen
     "order_refreshed",
     "order_refresh_rolled_back"
   ]);
+});
+
+test("refresh completes mixed fanout rollback only with exact pending notification coverage", () => {
+  const pendingChannelRefs = ["channel-aliyun-a-tuic", "channel-sgp-a-hy2"];
+  const mixedFanoutResult = () => ({
+    ok: true,
+    mutation: true,
+    reports: [
+      {
+        channelRef: "channel-vultr-a-vless-reality-tcp",
+        ok: true,
+        runtimeStatus: "applied",
+        mutation: true,
+        nextAction: "validate_runtime_state"
+      },
+      ...pendingChannelRefs.map((channelRef) => ({
+        channelRef,
+        ok: true,
+        runtimeStatus: "pending",
+        mutation: false,
+        nextAction: "complete_data_plane_handoff"
+      }))
+    ],
+    redacted: true
+  });
+  const incompleteRefreshNotification = {
+    ok: true,
+    notificationCount: 1,
+    notifications: [{ channelRef: pendingChannelRefs[0], status: "pending" }],
+    redacted: true
+  };
+  const exactRollbackNotification = {
+    ok: true,
+    notificationCount: pendingChannelRefs.length,
+    notifications: pendingChannelRefs.map((channelRef) => ({
+      channelRef,
+      status: "pending"
+    })),
+    redacted: true
+  };
+  let rollbackNotificationOrder;
+  const harness = refreshStateMachineHarness({
+    requestId: "pareq_refresh_mixed_rollback_1",
+    refreshLifecycleResult: mixedFanoutResult(),
+    refreshNotificationResult: incompleteRefreshNotification,
+    rollbackLifecycleResult: mixedFanoutResult(),
+    rollbackNotificationResult({ input, requests }) {
+      rollbackNotificationOrder = input.order;
+      const [restoredOrder] = requests.listEdgeCredentialOrders();
+      assert.equal(input.order.edgeMaterialDigest, restoredOrder.edgeMaterialDigest);
+      return exactRollbackNotification;
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+  const beforeMaterial = harness.materialStore.getCredentialMaterialSummary(before.edgeCredentialRef);
+
+  assert.throws(() => harness.requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_mixed_rollback_1",
+    clientTarget: "karing"
+  }), { code: "subscription_refresh_runtime_enforcement_pending" });
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  const restored = harness.requests.getRequest("pareq_refresh_mixed_rollback_1");
+  assert.equal(after.edgeCredentialRef, before.edgeCredentialRef);
+  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.equal(
+    harness.materialStore.getCredentialMaterialSummary(after.edgeCredentialRef).materialDigest,
+    beforeMaterial.materialDigest
+  );
+  assert.equal(restored.clientTarget, "clash");
+  assert.equal(restored.event, null);
+  assert.equal(rollbackNotificationOrder.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.deepEqual(harness.lifecycleReasons, [
+    "order_delivered",
+    "order_refreshed",
+    "order_refresh_rolled_back"
+  ]);
+  assert.deepEqual(harness.notificationCalls.map((call) => call.reason), [
+    "order_refreshed",
+    "order_refresh_rolled_back"
+  ]);
+  assert.equal(exactRollbackNotification.notificationCount, pendingChannelRefs.length);
+  assert.ok(exactRollbackNotification.notifications.every(({ status }) => status === "pending"));
+  assert.equal(
+    new Set(exactRollbackNotification.notifications.map(({ channelRef }) => channelRef)).size,
+    pendingChannelRefs.length
+  );
+  assert.deepEqual(
+    exactRollbackNotification.notifications.map(({ channelRef }) => channelRef).sort(),
+    [...pendingChannelRefs].sort()
+  );
+
+  const failClosedScenarios = [
+    {
+      name: "failed-lifecycle",
+      rollbackLifecycleResult: {
+        ok: false,
+        mutation: true,
+        runtimeReceipt: { status: "failed" },
+        redacted: true
+      }
+    },
+    {
+      name: "unavailable-lifecycle",
+      rollbackLifecycleResult: {
+        ok: true,
+        mutation: true,
+        nextAction: "review_apply_gate",
+        redacted: true
+      }
+    },
+    {
+      name: "failed-notification",
+      rollbackNotificationResult: {
+        ...exactRollbackNotification,
+        notifications: [
+          { channelRef: pendingChannelRefs[0], status: "pending" },
+          { channelRef: pendingChannelRefs[1], status: "failed" }
+        ]
+      }
+    },
+    {
+      name: "duplicate-notification",
+      rollbackNotificationResult: {
+        ...exactRollbackNotification,
+        notifications: pendingChannelRefs.map(() => ({
+          channelRef: pendingChannelRefs[0],
+          status: "pending"
+        }))
+      }
+    },
+    {
+      name: "wrong-channel-notification",
+      rollbackNotificationResult: {
+        ...exactRollbackNotification,
+        notifications: [
+          { channelRef: pendingChannelRefs[0], status: "pending" },
+          { channelRef: "channel-unrelated-a-hy2", status: "pending" }
+        ]
+      }
+    },
+    {
+      name: "partial-notification",
+      rollbackNotificationResult: {
+        ok: true,
+        notificationCount: 1,
+        notifications: [{ channelRef: pendingChannelRefs[0], status: "pending" }],
+        redacted: true
+      }
+    }
+  ];
+  for (const scenario of failClosedScenarios) {
+    const requestId = `pareq_refresh_mixed_rollback_${scenario.name}`;
+    const failClosedHarness = refreshStateMachineHarness({
+      requestId,
+      refreshLifecycleResult: mixedFanoutResult(),
+      refreshNotificationResult: incompleteRefreshNotification,
+      rollbackLifecycleResult: scenario.rollbackLifecycleResult || mixedFanoutResult(),
+      rollbackNotificationResult: scenario.rollbackNotificationResult || exactRollbackNotification
+    });
+    const [beforeFailure] = failClosedHarness.requests.listEdgeCredentialOrders();
+    const beforeFailureMaterial = failClosedHarness.materialStore
+      .getCredentialMaterialSummary(beforeFailure.edgeCredentialRef);
+
+    assert.throws(() => failClosedHarness.requests.refreshSubscription({
+      portalUserRef: "user_safe_ref",
+      requestRef: requestId
+    }), { code: "subscription_refresh_rollback_failed" });
+
+    const [afterFailure] = failClosedHarness.requests.listEdgeCredentialOrders();
+    assert.equal(afterFailure.edgeMaterialDigest, beforeFailure.edgeMaterialDigest);
+    assert.equal(
+      failClosedHarness.materialStore
+        .getCredentialMaterialSummary(afterFailure.edgeCredentialRef).materialDigest,
+      beforeFailureMaterial.materialDigest
+    );
+  }
 });
 
 test("refresh rejects a matching remote notification whose recorded status is failed", () => {

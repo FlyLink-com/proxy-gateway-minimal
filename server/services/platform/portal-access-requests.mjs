@@ -1429,14 +1429,25 @@ export function createPortalAccessRequestService(options = {}) {
           if (orderMayHaveChanged) {
             saveRecord(previousRequest);
           }
+          let rollbackLifecycleEvidence = null;
           if (runtimeMayHaveMutated) {
             const rollbackResult = runEdgeLifecycle("order_refresh_rolled_back", previousRequest);
-            if (edgeRuntimeEnforcementState(rollbackResult, null) !== "applied") {
+            rollbackLifecycleEvidence = refreshLifecycleDisposition(rollbackResult);
+            if (!["applied", "remote_pending"].includes(rollbackLifecycleEvidence.disposition)) {
               throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback was not applied");
             }
           }
-          if (desiredStateMayHaveChanged) {
-            notifyEdgeDesiredState("order_refresh_rolled_back", previousRequest);
+          const rollbackDesiredStateResult = desiredStateMayHaveChanged
+            ? notifyEdgeDesiredState("order_refresh_rolled_back", previousRequest)
+            : null;
+          if (
+            rollbackLifecycleEvidence?.disposition === "remote_pending"
+            && !hasRemotePendingNotificationCoverage(
+              rollbackDesiredStateResult,
+              rollbackLifecycleEvidence.pendingChannelRefs
+            )
+          ) {
+            throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback notification is incomplete");
           }
         } catch (rollbackError) {
           throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback failed");
