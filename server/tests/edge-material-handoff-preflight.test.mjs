@@ -9,7 +9,7 @@ import { createReadOnlyMaterialHandoffControlStore } from "../services/edge/mate
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 
 const NOW = "2026-06-13T12:00:00.000Z";
-const VALID_UNTIL = "2026-07-13T12:00:00.000Z";
+const VALID_UNTIL = "2099-07-13T12:00:00.000Z";
 
 function withStore(fn) {
   const tempDir = mkdtempSync(join(tmpdir(), "edge-material-handoff-"));
@@ -67,7 +67,7 @@ function seedDeliveredOrder(store) {
     createdAt: NOW,
     updatedAt: NOW
   });
-  store.upsertPortalAccessRequest({
+  return store.upsertPortalAccessRequest({
     id: "pareq_material_handoff_1",
     portalUserRef: "portal_user_material_handoff_1",
     plan: "monthly",
@@ -201,6 +201,154 @@ test("material handoff preflight can read an existing control DB without opening
       JSON.stringify(preflight),
       /synthetic-|11111111-1111-4111-8111-111111111111|22222222-2222-4222-8222-222222222222/
     );
+  } finally {
+    readOnlyStore?.close();
+    mutableStore?.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("read-only material handoff mirrors deterministic tombstones after final credentials are disabled", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "edge-material-handoff-readonly-tombstone-"));
+  const dbPath = join(tempDir, "control.sqlite");
+  let mutableStore;
+  let readOnlyStore;
+  try {
+    mutableStore = createSqliteSubscriptionControlStore({ dbPath });
+    seedRegisteredNode(mutableStore);
+    const delivered = seedDeliveredOrder(mutableStore);
+    const channelRefs = [
+      "channel-sgp-a-hy2",
+      "channel-sgp-a-tuic"
+    ];
+    const activeStates = channelRefs.map((channelRef) => (
+      mutableStore.getLatestEdgeDesiredStateForChannel(channelRef, {
+        nodeRef: "edge-node-sgp-a"
+      })
+    ));
+    assert.deepEqual(
+      activeStates.map((desiredState) => desiredState.edgeCredentialRefs),
+      [
+        ["edgecred_material_handoff_hy2"],
+        ["edgecred_material_handoff_tuic"]
+      ]
+    );
+
+    mutableStore.upsertPortalAccessRequest({
+      ...delivered,
+      status: "disabled",
+      nextAction: "traffic_supply_suspended_quota",
+      subscriptionUrl: null,
+      updatedAt: "2026-06-13T12:01:00.000Z"
+    });
+    const mutableTombstones = channelRefs.map((channelRef) => (
+      mutableStore.getLatestEdgeDesiredStateForChannel(channelRef, {
+        nodeRef: "edge-node-sgp-a"
+      })
+    ));
+    for (const [index, tombstone] of mutableTombstones.entries()) {
+      assert.ok(tombstone);
+      assert.deepEqual(tombstone.edgeCredentialRefs, []);
+      assert.deepEqual(tombstone.materialDigests, []);
+      assert.notEqual(tombstone.desiredStateRef, activeStates[index].desiredStateRef);
+    }
+    mutableStore.close();
+    mutableStore = null;
+
+    readOnlyStore = createReadOnlyMaterialHandoffControlStore({ dbPath });
+    const readOnlyTombstones = channelRefs.map((channelRef) => (
+      readOnlyStore.getLatestEdgeDesiredStateForChannel(channelRef, {
+        nodeRef: "edge-node-sgp-a"
+      })
+    ));
+    assert.deepEqual(readOnlyTombstones, mutableTombstones);
+    for (const [index, tombstone] of readOnlyTombstones.entries()) {
+      const repeated = readOnlyStore.getLatestEdgeDesiredStateForChannel(channelRefs[index], {
+        nodeRef: "edge-node-sgp-a"
+      });
+      assert.equal(repeated.desiredStateRef, tombstone.desiredStateRef);
+      assert.equal(repeated.generation, tombstone.generation);
+    }
+    assert.equal(
+      readOnlyStore.getLatestEdgeDesiredStateForChannel("channel-never-seen", {
+        nodeRef: "edge-node-sgp-a"
+      }),
+      null
+    );
+
+    const preflight = buildProtectedMaterialHandoffPreflight({
+      controlStore: readOnlyStore,
+      credentialMaterialStore: materialStore(),
+      nodeRef: "edge-node-sgp-a"
+    });
+    assert.equal(preflight.ready, true);
+    assert.equal(preflight.status, "ready");
+    assert.equal(preflight.totals.desiredStateCount, 2);
+    assert.equal(preflight.totals.edgeCredentialCount, 0);
+    assert.equal(preflight.totals.materialReadyCount, 0);
+    assert.equal(preflight.totals.missingMaterialCount, 0);
+    assert.equal(preflight.totals.digestMismatchCount, 0);
+    assert.deepEqual(preflight.blockers, []);
+  } finally {
+    readOnlyStore?.close();
+    mutableStore?.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("read-only material handoff keeps an active credential beside disabled channel history", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "edge-material-handoff-readonly-active-history-"));
+  const dbPath = join(tempDir, "control.sqlite");
+  let mutableStore;
+  let readOnlyStore;
+  try {
+    mutableStore = createSqliteSubscriptionControlStore({ dbPath });
+    const delivered = seedDeliveredOrder(mutableStore);
+    mutableStore.upsertPortalAccessRequest({
+      ...delivered,
+      status: "disabled",
+      nextAction: "traffic_supply_suspended_quota",
+      subscriptionUrl: null,
+      updatedAt: "2026-06-13T12:01:00.000Z"
+    });
+    mutableStore.upsertPortalAccessRequest({
+      ...delivered,
+      id: "pareq_material_handoff_active_2",
+      status: "delivered",
+      nextAction: "user_can_use_access",
+      accessGrantRef: "grant_material_handoff_active_2",
+      artifactId: "artifact_material_handoff_active_2",
+      edgeChannelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: "edgecred_material_handoff_hy2_active",
+      edgeMaterialDigest: "sha256:cccccccccccccccc",
+      edgeCredentials: [
+        {
+          edgeChannelRef: "channel-sgp-a-hy2",
+          edgeCredentialRef: "edgecred_material_handoff_hy2_active",
+          edgeMaterialDigest: "sha256:cccccccccccccccc"
+        }
+      ],
+      updatedAt: "2026-06-13T12:02:00.000Z"
+    });
+    const mutableProjection = mutableStore.getLatestEdgeDesiredStateForChannel("channel-sgp-a-hy2", {
+      nodeRef: "edge-node-sgp-a"
+    });
+    mutableStore.close();
+    mutableStore = null;
+
+    readOnlyStore = createReadOnlyMaterialHandoffControlStore({ dbPath });
+    const readOnlyProjection = readOnlyStore.getLatestEdgeDesiredStateForChannel("channel-sgp-a-hy2", {
+      nodeRef: "edge-node-sgp-a"
+    });
+    assert.deepEqual(readOnlyProjection, mutableProjection);
+    assert.deepEqual(readOnlyProjection.edgeCredentialRefs, ["edgecred_material_handoff_hy2_active"]);
+    assert.deepEqual(readOnlyProjection.materialDigests, [
+      {
+        channelRef: "channel-sgp-a-hy2",
+        edgeCredentialRef: "edgecred_material_handoff_hy2_active",
+        digest: "sha256:cccccccccccccccc"
+      }
+    ]);
   } finally {
     readOnlyStore?.close();
     mutableStore?.close();
