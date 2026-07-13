@@ -730,41 +730,88 @@ export function createPortalAccessRequestService(options = {}) {
   function refreshLifecycleDisposition(lifecycleResult) {
     const reports = Array.isArray(lifecycleResult?.reports) ? lifecycleResult.reports : [];
     const directStatus = String(lifecycleResult?.runtimeReceipt?.status || "").trim();
+    const runtimeMayHaveMutated = lifecycleResult?.mutation === true
+      || reports.some((report) => report?.mutation === true);
+    const evidence = (disposition, pendingChannelRefs = []) => ({
+      disposition,
+      pendingChannelRefs: [...new Set(pendingChannelRefs)],
+      runtimeMayHaveMutated
+    });
     if (
       lifecycleResult?.ok === false
       || directStatus === "failed"
       || reports.some((report) => report?.ok === false || String(report?.runtimeStatus || "").trim() === "failed")
     ) {
-      return "failed";
-    }
-    if (edgeRuntimeEnforcementState(lifecycleResult, null) === "applied") {
-      return "applied";
+      return evidence("failed");
     }
     if (
       reports.length === 0
+      && lifecycleResult?.mutation === true
+      && directStatus === "applied"
+    ) {
+      return evidence("applied");
+    }
+    const directChannelRef = String(lifecycleResult?.channelRef || "").trim();
+    if (
+      reports.length === 0
       && directStatus === "pending"
+      && lifecycleResult?.mutation === false
+      && directChannelRef
       && lifecycleResult?.nextAction === "complete_data_plane_handoff"
     ) {
-      return "remote_pending";
+      return evidence("remote_pending", [directChannelRef]);
     }
     if (reports.length > 0) {
+      const childMutation = reports.some((report) => report?.mutation === true);
+      if (typeof lifecycleResult?.mutation !== "boolean" || lifecycleResult.mutation !== childMutation) {
+        return evidence("unavailable");
+      }
       const classifiedReports = reports.map((report) => {
         const status = String(report?.runtimeStatus || "").trim();
+        const channelRef = String(report?.channelRef || "").trim();
         if (report?.ok === false) return "failed";
-        if (status === "applied" && report?.mutation === true) return "applied";
-        if (status === "pending" && report?.nextAction === "complete_data_plane_handoff") {
+        if (report?.ok === true && channelRef && status === "applied" && report?.mutation === true) {
+          return "applied";
+        }
+        if (
+          report?.ok === true
+          && channelRef
+          && status === "pending"
+          && report?.mutation === false
+          && report?.nextAction === "complete_data_plane_handoff"
+        ) {
           return "remote_pending";
         }
         return "unavailable";
       });
+      if (classifiedReports.every((disposition) => disposition === "applied")) {
+        return evidence("applied");
+      }
       if (
         classifiedReports.includes("remote_pending")
         && classifiedReports.every((disposition) => ["applied", "remote_pending"].includes(disposition))
       ) {
-        return "remote_pending";
+        return evidence("remote_pending", reports
+          .filter((_, index) => classifiedReports[index] === "remote_pending")
+          .map((report) => String(report.channelRef).trim()));
       }
     }
-    return "unavailable";
+    return evidence("unavailable");
+  }
+
+  function hasRemotePendingNotificationCoverage(desiredStateResult, pendingChannelRefs) {
+    const expectedChannelRefs = [...new Set(pendingChannelRefs)];
+    const notifications = Array.isArray(desiredStateResult?.notifications)
+      ? desiredStateResult.notifications
+      : [];
+    const notifiedChannelRefs = new Set(
+      notifications.map((notification) => String(notification?.channelRef || "").trim()).filter(Boolean)
+    );
+    return (
+      Number.isInteger(desiredStateResult?.notificationCount)
+      && desiredStateResult.notificationCount >= expectedChannelRefs.length
+      && expectedChannelRefs.every((channelRef) => notifiedChannelRefs.has(channelRef))
+    );
   }
 
   function withRuntimeEnforcement(summary, lifecycleResult, desiredStateResult) {
@@ -1308,8 +1355,9 @@ export function createPortalAccessRequestService(options = {}) {
         }
 
         const lifecycleResult = reconcileEdgeLifecycle("order_refreshed", request);
-        runtimeMayHaveMutated = lifecycleResult?.mutation === true;
-        const lifecycleDisposition = refreshLifecycleDisposition(lifecycleResult);
+        const lifecycleEvidence = refreshLifecycleDisposition(lifecycleResult);
+        runtimeMayHaveMutated = lifecycleEvidence.runtimeMayHaveMutated;
+        const lifecycleDisposition = lifecycleEvidence.disposition;
         if (lifecycleDisposition === "failed") {
           throw platformError("edge_lifecycle_failed", "edge lifecycle reconciliation failed");
         }
@@ -1331,7 +1379,13 @@ export function createPortalAccessRequestService(options = {}) {
         saveRecord(request);
         desiredStateMayHaveChanged = true;
         const desiredStateResult = notifyEdgeDesiredState("order_refreshed", request);
-        if (lifecycleDisposition === "remote_pending" && !(desiredStateResult?.notificationCount > 0)) {
+        if (
+          lifecycleDisposition === "remote_pending"
+          && !hasRemotePendingNotificationCoverage(
+            desiredStateResult,
+            lifecycleEvidence.pendingChannelRefs
+          )
+        ) {
           throw platformError(
             "subscription_refresh_runtime_enforcement_pending",
             "runtime credential rotation is pending an applied receipt"

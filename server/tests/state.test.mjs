@@ -2339,6 +2339,16 @@ test("createRuntimeState refreshes remote credentials through pending notificati
     assert.deepEqual(renderedAfterReceipt.proxyConfig.servers.map((server) => server.name), [channelRef]);
     assert.equal(refreshed.safety.noRawHandoffMaterial, true);
     assert.equal(pulledDesired.summary.redacted, true);
+    const safeReceiptEvidence = JSON.stringify({
+      initialReceipt,
+      appliedReceipt,
+      notifications: state.platform.controlStore.listEdgeDesiredStateNotifications({ channelRef }),
+      desiredSummary: pulledDesired.summary
+    });
+    assert.doesNotMatch(
+      safeReceiptEvidence,
+      /synthetic-(?:console-token|ss-password|hy2-template-password)|https?:\/\/|[0-9a-f]{8}-[0-9a-f-]{27}|password|token|uuid|rawConfig/i
+    );
   } finally {
     state?.close();
     removeTempDir(dir);
