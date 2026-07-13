@@ -1951,6 +1951,114 @@ test("refresh rejects duplicate pending reports for the same fanout channel", ()
   assert.equal(harness.notificationCalls.length, 0);
 });
 
+test("refresh rejects direct remote pending evidence without explicit top-level success", () => {
+  const harness = refreshStateMachineHarness({
+    requestId: "pareq_refresh_pending_without_top_ok_1",
+    refreshLifecycleResult: {
+      channelRef: "channel-aliyun-a-tuic",
+      mutation: false,
+      runtimeReceipt: { status: "pending" },
+      nextAction: "complete_data_plane_handoff",
+      redacted: true
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+
+  assert.throws(() => harness.requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_pending_without_top_ok_1"
+  }), { code: "subscription_refresh_runtime_enforcement_pending" });
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.equal(harness.notificationCalls.length, 0);
+  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed"]);
+});
+
+test("refresh rejects fanout evidence without explicit top-level success and compensates child mutation", () => {
+  const harness = refreshStateMachineHarness({
+    requestId: "pareq_refresh_fanout_without_top_ok_1",
+    refreshLifecycleResult: {
+      mutation: true,
+      reports: [
+        {
+          channelRef: "channel-vultr-a-vless-reality-tcp",
+          ok: true,
+          runtimeStatus: "applied",
+          mutation: true,
+          nextAction: "validate_runtime_state"
+        },
+        {
+          channelRef: "channel-aliyun-a-tuic",
+          ok: true,
+          runtimeStatus: "pending",
+          mutation: false,
+          nextAction: "complete_data_plane_handoff"
+        }
+      ],
+      redacted: true
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+
+  assert.throws(() => harness.requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_fanout_without_top_ok_1"
+  }), { code: "subscription_refresh_runtime_enforcement_pending" });
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.equal(harness.notificationCalls.length, 0);
+  assert.deepEqual(harness.lifecycleReasons, [
+    "order_delivered",
+    "order_refreshed",
+    "order_refresh_rolled_back"
+  ]);
+});
+
+test("refresh rejects conflicting direct receipt and fanout evidence before commit", () => {
+  const harness = refreshStateMachineHarness({
+    requestId: "pareq_refresh_direct_and_fanout_conflict_1",
+    refreshLifecycleResult: {
+      ok: true,
+      mutation: true,
+      runtimeReceipt: { status: "applied" },
+      reports: [
+        {
+          channelRef: "channel-vultr-a-vless-reality-tcp",
+          ok: true,
+          runtimeStatus: "applied",
+          mutation: true,
+          nextAction: "validate_runtime_state"
+        },
+        {
+          channelRef: "channel-aliyun-a-tuic",
+          ok: true,
+          runtimeStatus: "pending",
+          mutation: false,
+          nextAction: "complete_data_plane_handoff"
+        }
+      ],
+      redacted: true
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+
+  assert.throws(() => harness.requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_direct_and_fanout_conflict_1"
+  }), { code: "subscription_refresh_runtime_enforcement_pending" });
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.equal(harness.notificationCalls.length, 0);
+  assert.deepEqual(harness.lifecycleReasons, [
+    "order_delivered",
+    "order_refreshed",
+    "order_refresh_rolled_back"
+  ]);
+});
+
 test("refresh fails closed for fanout reports with ambiguous pending authority", () => {
   const scenarios = [
     {

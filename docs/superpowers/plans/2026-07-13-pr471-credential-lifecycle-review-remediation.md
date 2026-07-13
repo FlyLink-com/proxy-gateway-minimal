@@ -13,7 +13,7 @@
 - **Risk:** A — these source changes affect runtime credential identity and revocation semantics.
 - **Process:** live read-only inventory -> isolated worktree -> exact source-only approval -> serial TDD -> per-task independent review -> full local validation -> Draft PR.
 - **Expected PR count:** 1.
-- **Validation:** three focused `node --test` suites, full `npm test`, and `git diff --check origin/master...HEAD`.
+- **Validation:** four focused `node --test` suites, full `npm test`, and `git diff --check origin/master...HEAD`.
 - **Production/AWS impact:** none in this plan. Do not access providers, inject credentials, SSH, mutate a runtime, deploy, or promote.
 - **Authorized scope:** source, tests, and this plan only. A later production promotion requires a separate exact Risk A gate, backup, identity-gate before/after evidence, validation, and rollback approval.
 

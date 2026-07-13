@@ -745,6 +745,12 @@ export function createPortalAccessRequestService(options = {}) {
       return evidence("failed");
     }
     if (
+      lifecycleResult?.ok !== true
+      || (reports.length > 0 && directStatus)
+    ) {
+      return evidence("unavailable");
+    }
+    if (
       reports.length === 0
       && lifecycleResult?.mutation === true
       && directStatus === "applied"
