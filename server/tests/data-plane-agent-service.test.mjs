@@ -296,6 +296,92 @@ test("withholds revocation tombstones until the authenticated agent advertises c
   assert.equal(compatible.compatibility.blockedDesiredStateCount, 0);
 });
 
+test("round-trips deterministic scoped tombstones for revoked credential filters", () => {
+  const authoritative = desired({
+    desiredStateRef: "desired_sgp_other_hy2_001",
+    generation: "gen_sgp_other_hy2_001",
+    channelRefs: ["channel-sgp-a-hy2"],
+    edgeCredentialRefs: ["edgecred_other_hy2"],
+    materialDigests: [{
+      channelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: "edgecred_other_hy2",
+      digest: "sha256:cccccccccccccccc"
+    }]
+  });
+  const store = fakeControlStore(new Map([
+    ["channel-sgp-a-hy2", authoritative]
+  ]));
+  const service = serviceFor(store);
+  const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+  const credentialFilter = {
+    edgeCredentialRefs: ["edgecred_revoked_hy2"]
+  };
+
+  const legacy = service.getDesiredState(identity, {
+    ...credentialFilter,
+    agentVersion: "1.0",
+    capabilities: []
+  });
+  assert.deepEqual(legacy.desiredStates, []);
+  assert.equal(legacy.compatibility.tombstoneReconcile, false);
+  assert.equal(legacy.compatibility.blockedDesiredStateCount, 1);
+
+  const compatibleFilter = {
+    ...credentialFilter,
+    agentVersion: "1.1",
+    capabilities: ["empty_desired_state", "tombstone_reconcile"]
+  };
+  const first = service.getDesiredState(identity, compatibleFilter);
+  const second = service.getDesiredState(identity, compatibleFilter);
+
+  assert.equal(first.desiredStates.length, 1);
+  const [scoped] = first.desiredStates;
+  assert.match(scoped.desiredStateRef, /^desired_scoped_/);
+  assert.match(scoped.generation, /^gen_scoped_/);
+  assert.deepEqual(scoped.channelRefs, ["channel-sgp-a-hy2"]);
+  assert.deepEqual(scoped.edgeCredentialRefs, []);
+  assert.deepEqual(scoped.materialDigests, []);
+  assert.equal(first.compatibility.tombstoneReconcile, true);
+  assert.equal(first.compatibility.blockedDesiredStateCount, 0);
+  assert.equal(second.desiredStates[0].desiredStateRef, scoped.desiredStateRef);
+  assert.equal(second.desiredStates[0].generation, scoped.generation);
+  assert.doesNotMatch(JSON.stringify(first), /edgecred_(?:other|revoked)_hy2/);
+
+  assert.throws(
+    () => service.recordReceipt(identity, receipt({
+      desiredStateRef: "desired_scoped_client_supplied",
+      generation: scoped.generation,
+      credentialCount: 0,
+      materialDigests: []
+    })),
+    (error) => {
+      assert.equal(error.code, "desired_state_not_found");
+      const safeError = service.safeErrorPayload(error);
+      assert.deepEqual(safeError, {
+        error: "desired_state_not_found",
+        message: "desired_state_not_found",
+        redacted: true
+      });
+      assert.doesNotMatch(JSON.stringify(safeError), /edgecred_(?:other|revoked)_hy2|client_supplied/);
+      return true;
+    }
+  );
+  assert.equal(store.receipts.length, 0);
+
+  const receiptResponse = service.recordReceipt(identity, receipt({
+    desiredStateRef: scoped.desiredStateRef,
+    generation: scoped.generation,
+    credentialCount: 0,
+    materialDigests: []
+  }));
+
+  assert.equal(receiptResponse.generation, scoped.generation);
+  assert.equal(store.receipts.length, 1);
+  assert.equal(store.receipts[0].desiredStateRef, scoped.desiredStateRef);
+  assert.equal(store.receipts[0].generation, scoped.generation);
+  assert.equal(store.receipts[0].actionCounts.add, 0);
+});
+
 test("records receipts against latest desired state and never trusts client desired refs", () => {
   const store = fakeControlStore(new Map([
     ["channel-sgp-a-hy2", desired({ desiredStateRef: "desired_authoritative" })]

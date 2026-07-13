@@ -144,15 +144,7 @@ function channelRefsForScopedState(desiredState, materialDigests) {
   return channels.length > 0 ? channels : [...desiredState.channelRefs];
 }
 
-export function scopedDesiredStateFrom(desiredState, filter = {}) {
-  const { edgeCredentialRefs } = normalizeDesiredStateFilter(filter);
-  if (edgeCredentialRefs.length === 0 || desiredState.edgeCredentialRefs.length === 0) {
-    return desiredState;
-  }
-  const selectedRefs = desiredState.edgeCredentialRefs.filter((ref) => edgeCredentialRefs.includes(ref));
-  if (selectedRefs.length === 0) {
-    return null;
-  }
+function buildScopedDesiredState(desiredState, selectedRefs) {
   const materialDigests = materialDigestsForCredentials(desiredState, selectedRefs);
   const seed = stableJson({
     sourceDesiredStateRef: desiredState.desiredStateRef,
@@ -173,6 +165,15 @@ export function scopedDesiredStateFrom(desiredState, filter = {}) {
     ...scoped,
     summary: buildRedactedDesiredStateSummary(scoped)
   };
+}
+
+export function scopedDesiredStateFrom(desiredState, filter = {}) {
+  const { edgeCredentialRefs } = normalizeDesiredStateFilter(filter);
+  if (edgeCredentialRefs.length === 0 || desiredState.edgeCredentialRefs.length === 0) {
+    return desiredState;
+  }
+  const selectedRefs = desiredState.edgeCredentialRefs.filter((ref) => edgeCredentialRefs.includes(ref));
+  return buildScopedDesiredState(desiredState, selectedRefs);
 }
 
 function latestDesiredStatesForNode({ controlStore, node, filter = {} }) {
@@ -406,8 +407,13 @@ export function createDataPlaneAgentService({
     const requestedDesiredStateRef = optionalRef(input.desiredStateRef);
     let receiptDesiredState = latest;
     if (requestedDesiredStateRef.startsWith("desired_scoped_")) {
-      const selectedRefs = edgeCredentialRefsFromReceiptMaterialDigests(latest, input.materialDigests);
-      const scoped = scopedDesiredStateFrom(latest, { edgeCredentialRefs: selectedRefs });
+      const hasNoMaterialDigests = Array.isArray(input.materialDigests)
+        && input.materialDigests.length === 0;
+      const scoped = hasNoMaterialDigests && latest.edgeCredentialRefs.length > 0
+        ? buildScopedDesiredState(latest, [])
+        : scopedDesiredStateFrom(latest, {
+          edgeCredentialRefs: edgeCredentialRefsFromReceiptMaterialDigests(latest, input.materialDigests)
+        });
       if (!scoped || scoped.desiredStateRef !== requestedDesiredStateRef) {
         throw agentServiceError("desired_state_not_found", 404);
       }
