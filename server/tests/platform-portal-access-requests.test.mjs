@@ -1334,6 +1334,73 @@ test("refresh restores the active credential when edge reconciliation fails", ()
   assert.equal(request.subscriptionUrl, undefined);
 });
 
+test("refresh compensates a failed lifecycle report that may have mutated runtime", () => {
+  const materialStore = edgeMaterialStore();
+  let sequence = 0;
+  const lifecycleReasons = [];
+  const issuer = createOrderEdgeCredentialIssuer({
+    channelRef: "channel-aliyun-a-tuic",
+    materialStore,
+    uuidFactory: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`,
+    passwordFactory: () => `password-${sequence}`
+  });
+  const requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_refresh_failed_mutation_1",
+    edgeCredentialIssuer: issuer,
+    edgeLifecycleService: {
+      reconcileOrderLifecycle({ reason }) {
+        lifecycleReasons.push(reason);
+        if (reason === "order_refreshed") {
+          return {
+            ok: false,
+            mutation: true,
+            runtimeReceipt: { status: "failed" },
+            redacted: true
+          };
+        }
+        return {
+          ok: true,
+          mutation: true,
+          runtimeReceipt: { status: "applied" },
+          redacted: true
+        };
+      }
+    }
+  });
+  requests.submitRequest(validTrialInput());
+  requests.markDelivered("pareq_refresh_failed_mutation_1", {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_safe_ref",
+    accessGrantRef: "grant_safe_ref",
+    artifactId: "artifact_runtime_1",
+    subscriptionUrl: "https://sub.example.test/import/original-visible-once",
+    expiresAt: "2026-06-07T00:00:00.000Z"
+  });
+  const [before] = requests.listEdgeCredentialOrders();
+  const beforeMaterial = materialStore.getCredentialMaterialSummary(before.edgeCredentialRef);
+
+  assert.throws(() => requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_failed_mutation_1",
+    clientTarget: "karing"
+  }), { code: "edge_lifecycle_failed" });
+
+  const [after] = requests.listEdgeCredentialOrders();
+  const afterMaterial = materialStore.getCredentialMaterialSummary(before.edgeCredentialRef);
+  const request = requests.getRequest("pareq_refresh_failed_mutation_1");
+  assert.equal(after.edgeCredentialRef, before.edgeCredentialRef);
+  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.equal(afterMaterial.materialDigest, beforeMaterial.materialDigest);
+  assert.equal(request.clientTarget, "clash");
+  assert.equal(request.event, null);
+  assert.deepEqual(lifecycleReasons, [
+    "order_delivered",
+    "order_refreshed",
+    "order_refresh_rolled_back"
+  ]);
+});
+
 test("refresh compensates runtime and restores active state when post-apply tenant binding fails", () => {
   const materialStore = edgeMaterialStore();
   let sequence = 0;

@@ -624,18 +624,22 @@ export function createPortalAccessRequestService(options = {}) {
     return runtimeCore[method].bind(runtimeCore);
   }
 
-  function runEdgeLifecycle(reason, request) {
+  function reconcileEdgeLifecycle(reason, request) {
     if (!edgeLifecycleService) {
       return null;
     }
     if (typeof edgeLifecycleService.reconcileOrderLifecycle !== "function") {
       throw platformError("validation_error", "edge lifecycle service is not configured");
     }
-    const result = edgeLifecycleService.reconcileOrderLifecycle({
+    return edgeLifecycleService.reconcileOrderLifecycle({
       reason,
       order: edgeOrderSummaryFor(request),
       orders: edgeCredentialOrderSummariesFor(request)
     });
+  }
+
+  function runEdgeLifecycle(reason, request) {
+    const result = reconcileEdgeLifecycle(reason, request);
     if (result?.ok === false) {
       throw platformError("edge_lifecycle_failed", "edge lifecycle reconciliation failed");
     }
@@ -1263,7 +1267,7 @@ export function createPortalAccessRequestService(options = {}) {
           );
         }
 
-        const lifecycleResult = runEdgeLifecycle("order_refreshed", request);
+        const lifecycleResult = reconcileEdgeLifecycle("order_refreshed", request);
         runtimeMayHaveMutated = lifecycleResult?.mutation === true;
         const runtimeEnforcementState = edgeRuntimeEnforcementState(lifecycleResult, null);
         if (runtimeEnforcementState === "failed") {
