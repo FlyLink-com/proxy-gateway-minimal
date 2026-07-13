@@ -1437,7 +1437,10 @@ export function createPortalAccessRequestService(options = {}) {
               throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback was not applied");
             }
           }
-          const rollbackDesiredStateResult = desiredStateMayHaveChanged
+          const rollbackDesiredStateResult = (
+            desiredStateMayHaveChanged
+            || rollbackLifecycleEvidence?.disposition === "remote_pending"
+          )
             ? notifyEdgeDesiredState("order_refresh_rolled_back", previousRequest)
             : null;
           if (
