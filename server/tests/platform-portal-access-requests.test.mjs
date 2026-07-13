@@ -1803,6 +1803,154 @@ test("refresh requires notifications for every pending fanout channel and compen
   ]);
 });
 
+test("refresh rejects a matching remote notification whose recorded status is failed", () => {
+  const harness = refreshStateMachineHarness({
+    requestId: "pareq_refresh_failed_notification_status_1",
+    refreshLifecycleResult: {
+      ok: true,
+      channelRef: "channel-aliyun-a-tuic",
+      mutation: false,
+      runtimeReceipt: { status: "pending" },
+      nextAction: "complete_data_plane_handoff",
+      redacted: true
+    },
+    refreshNotificationResult: {
+      ok: true,
+      notificationCount: 1,
+      notifications: [{ channelRef: "channel-aliyun-a-tuic", status: "failed" }],
+      redacted: true
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+
+  assert.throws(() => harness.requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_failed_notification_status_1"
+  }), { code: "subscription_refresh_runtime_enforcement_pending" });
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed"]);
+  assert.deepEqual(harness.notificationCalls.map((call) => call.reason), [
+    "order_refreshed",
+    "order_refresh_rolled_back"
+  ]);
+});
+
+test("refresh rejects remote notification counts that disagree with the notification array", () => {
+  const harness = refreshStateMachineHarness({
+    requestId: "pareq_refresh_notification_count_mismatch_1",
+    refreshLifecycleResult: {
+      ok: true,
+      channelRef: "channel-aliyun-a-tuic",
+      mutation: false,
+      runtimeReceipt: { status: "pending" },
+      nextAction: "complete_data_plane_handoff",
+      redacted: true
+    },
+    refreshNotificationResult: {
+      ok: true,
+      notificationCount: 2,
+      notifications: [{ channelRef: "channel-aliyun-a-tuic", status: "pending" }],
+      redacted: true
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+
+  assert.throws(() => harness.requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_notification_count_mismatch_1"
+  }), { code: "subscription_refresh_runtime_enforcement_pending" });
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed"]);
+  assert.deepEqual(harness.notificationCalls.map((call) => call.reason), [
+    "order_refreshed",
+    "order_refresh_rolled_back"
+  ]);
+});
+
+test("refresh rejects duplicate fanout channels with conflicting applied and pending evidence", () => {
+  const harness = refreshStateMachineHarness({
+    requestId: "pareq_refresh_duplicate_conflicting_channel_1",
+    refreshLifecycleResult: {
+      ok: true,
+      mutation: true,
+      reports: [
+        {
+          channelRef: "channel-aliyun-a-tuic",
+          ok: true,
+          runtimeStatus: "applied",
+          mutation: true,
+          nextAction: "validate_runtime_state"
+        },
+        {
+          channelRef: "channel-aliyun-a-tuic",
+          ok: true,
+          runtimeStatus: "pending",
+          mutation: false,
+          nextAction: "complete_data_plane_handoff"
+        }
+      ],
+      redacted: true
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+
+  assert.throws(() => harness.requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_duplicate_conflicting_channel_1"
+  }), { code: "subscription_refresh_runtime_enforcement_pending" });
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.deepEqual(harness.lifecycleReasons, [
+    "order_delivered",
+    "order_refreshed",
+    "order_refresh_rolled_back"
+  ]);
+  assert.equal(harness.notificationCalls.length, 0);
+});
+
+test("refresh rejects duplicate pending reports for the same fanout channel", () => {
+  const harness = refreshStateMachineHarness({
+    requestId: "pareq_refresh_duplicate_pending_channel_1",
+    refreshLifecycleResult: {
+      ok: true,
+      mutation: false,
+      reports: [
+        {
+          channelRef: "channel-aliyun-a-tuic",
+          ok: true,
+          runtimeStatus: "pending",
+          mutation: false,
+          nextAction: "complete_data_plane_handoff"
+        },
+        {
+          channelRef: "channel-aliyun-a-tuic",
+          ok: true,
+          runtimeStatus: "pending",
+          mutation: false,
+          nextAction: "complete_data_plane_handoff"
+        }
+      ],
+      redacted: true
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+
+  assert.throws(() => harness.requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_duplicate_pending_channel_1"
+  }), { code: "subscription_refresh_runtime_enforcement_pending" });
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed"]);
+  assert.equal(harness.notificationCalls.length, 0);
+});
+
 test("refresh fails closed for fanout reports with ambiguous pending authority", () => {
   const scenarios = [
     {

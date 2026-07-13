@@ -762,6 +762,13 @@ export function createPortalAccessRequestService(options = {}) {
       return evidence("remote_pending", [directChannelRef]);
     }
     if (reports.length > 0) {
+      const reportChannelRefs = reports.map((report) => String(report?.channelRef || "").trim());
+      if (
+        reportChannelRefs.some((channelRef) => !channelRef)
+        || new Set(reportChannelRefs).size !== reportChannelRefs.length
+      ) {
+        return evidence("unavailable");
+      }
       const childMutation = reports.some((report) => report?.mutation === true);
       if (typeof lifecycleResult?.mutation !== "boolean" || lifecycleResult.mutation !== childMutation) {
         return evidence("unavailable");
@@ -804,13 +811,18 @@ export function createPortalAccessRequestService(options = {}) {
     const notifications = Array.isArray(desiredStateResult?.notifications)
       ? desiredStateResult.notifications
       : [];
-    const notifiedChannelRefs = new Set(
-      notifications.map((notification) => String(notification?.channelRef || "").trim()).filter(Boolean)
-    );
+    const notifiedChannelRefs = notifications
+      .map((notification) => String(notification?.channelRef || "").trim());
     return (
-      Number.isInteger(desiredStateResult?.notificationCount)
-      && desiredStateResult.notificationCount >= expectedChannelRefs.length
-      && expectedChannelRefs.every((channelRef) => notifiedChannelRefs.has(channelRef))
+      desiredStateResult?.ok === true
+      && expectedChannelRefs.length > 0
+      && Number.isInteger(desiredStateResult?.notificationCount)
+      && desiredStateResult.notificationCount === notifications.length
+      && notifications.length === expectedChannelRefs.length
+      && notifiedChannelRefs.every(Boolean)
+      && new Set(notifiedChannelRefs).size === notifiedChannelRefs.length
+      && notifications.every((notification) => notification?.status === "pending")
+      && expectedChannelRefs.every((channelRef) => notifiedChannelRefs.includes(channelRef))
     );
   }
 
