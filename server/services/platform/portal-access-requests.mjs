@@ -1351,6 +1351,7 @@ export function createPortalAccessRequestService(options = {}) {
       const rotation = beginEdgeCredentialRotation(request);
       let committed = false;
       let runtimeMayHaveMutated = false;
+      let runtimeCompensationRequired = false;
       let tenantBindingMayHaveChanged = false;
       let orderMayHaveChanged = false;
       let desiredStateMayHaveChanged = false;
@@ -1376,6 +1377,7 @@ export function createPortalAccessRequestService(options = {}) {
         const lifecycleEvidence = refreshLifecycleDisposition(lifecycleResult);
         runtimeMayHaveMutated = lifecycleEvidence.runtimeMayHaveMutated;
         const lifecycleDisposition = lifecycleEvidence.disposition;
+        runtimeCompensationRequired = runtimeMayHaveMutated || lifecycleDisposition === "remote_pending";
         if (lifecycleDisposition === "failed") {
           throw platformError("edge_lifecycle_failed", "edge lifecycle reconciliation failed");
         }
@@ -1430,7 +1432,7 @@ export function createPortalAccessRequestService(options = {}) {
             saveRecord(previousRequest);
           }
           let rollbackLifecycleEvidence = null;
-          if (runtimeMayHaveMutated) {
+          if (runtimeCompensationRequired) {
             const rollbackResult = runEdgeLifecycle("order_refresh_rolled_back", previousRequest);
             rollbackLifecycleEvidence = refreshLifecycleDisposition(rollbackResult);
             if (!["applied", "remote_pending"].includes(rollbackLifecycleEvidence.disposition)) {

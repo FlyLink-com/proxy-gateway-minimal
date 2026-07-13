@@ -1761,7 +1761,7 @@ test("refresh rejects a direct pending notification for the wrong channel and re
 
   const [after] = harness.requests.listEdgeCredentialOrders();
   assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
-  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed"]);
+  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed", "order_refresh_rolled_back"]);
   assert.deepEqual(harness.notificationCalls.map((call) => call.reason), [
     "order_refreshed",
     "order_refresh_rolled_back"
@@ -2144,7 +2144,7 @@ test("refresh rejects a matching remote notification whose recorded status is fa
 
   const [after] = harness.requests.listEdgeCredentialOrders();
   assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
-  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed"]);
+  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed", "order_refresh_rolled_back"]);
   assert.deepEqual(harness.notificationCalls.map((call) => call.reason), [
     "order_refreshed",
     "order_refresh_rolled_back"
@@ -2178,7 +2178,7 @@ test("refresh rejects remote notification counts that disagree with the notifica
 
   const [after] = harness.requests.listEdgeCredentialOrders();
   assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
-  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed"]);
+  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed", "order_refresh_rolled_back"]);
   assert.deepEqual(harness.notificationCalls.map((call) => call.reason), [
     "order_refreshed",
     "order_refresh_rolled_back"
@@ -2482,6 +2482,144 @@ test("refresh compensates runtime and restores active state when post-apply tena
     "order_refreshed",
     "order_refresh_rolled_back"
   ]);
+});
+
+test("refresh compensates direct remote pending handoffs across candidate persistence failures", () => {
+  const channelRef = "channel-aliyun-a-tuic";
+  const scenarios = [
+    {
+      name: "pre-save-binding-failure",
+      expectedError: "binding_failed",
+      failCandidateBinding: true,
+      expectedNotificationReasons: ["order_refresh_rolled_back"]
+    },
+    {
+      name: "post-save-notification-failure",
+      expectedError: "subscription_refresh_runtime_enforcement_pending",
+      failCandidateBinding: false,
+      expectedNotificationReasons: ["order_refreshed", "order_refresh_rolled_back"]
+    }
+  ];
+
+  for (const scenario of scenarios) {
+    const requestId = `pareq_refresh_direct_pending_${scenario.name}`;
+    const materialStore = edgeMaterialStore();
+    const lifecycleReasons = [];
+    const notificationCalls = [];
+    let sequence = 0;
+    const rollbackNotificationResult = {
+      ok: true,
+      notificationCount: 1,
+      notifications: [{ channelRef, status: "pending" }],
+      redacted: true
+    };
+    const runtimeCore = scenario.failCandidateBinding ? {
+      bindTenantCredentialMaterial({ material }) {
+        if (material.uuid.endsWith("000000000002")) {
+          throw Object.assign(new Error("synthetic binding failure"), { code: "binding_failed" });
+        }
+        return { ok: true };
+      }
+    } : null;
+    const requests = createPortalAccessRequestService({
+      nowFn: () => NOW,
+      requestIdFactory: () => requestId,
+      edgeCredentialIssuer: createOrderEdgeCredentialIssuer({
+        channelRef,
+        materialStore,
+        uuidFactory: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`,
+        passwordFactory: () => `password-${sequence}`
+      }),
+      edgeLifecycleService: {
+        reconcileOrderLifecycle({ reason }) {
+          lifecycleReasons.push(reason);
+          if (reason === "order_delivered") {
+            return {
+              ok: true,
+              mutation: true,
+              runtimeReceipt: { status: "applied" },
+              redacted: true
+            };
+          }
+          return {
+            ok: true,
+            channelRef,
+            mutation: false,
+            runtimeReceipt: { status: "pending" },
+            nextAction: "complete_data_plane_handoff",
+            redacted: true
+          };
+        }
+      },
+      edgeDesiredStateNotifier: {
+        notifyOrderLifecycle(input) {
+          notificationCalls.push(input);
+          if (input.reason === "order_refreshed") {
+            return {
+              ok: true,
+              notificationCount: 0,
+              notifications: [],
+              redacted: true
+            };
+          }
+          return rollbackNotificationResult;
+        }
+      },
+      ...(runtimeCore ? { runtimeCore } : {})
+    });
+    requests.submitRequest(validTrialInput());
+    requests.markDelivered(requestId, {
+      reviewedByRef: "operator_safe_ref",
+      entitlementRef: "ent_safe_ref",
+      accessGrantRef: "grant_safe_ref",
+      tenantId: `tenant_${scenario.name}`,
+      artifactId: "artifact_runtime_1",
+      subscriptionUrl: "https://sub.example.test/import/original-visible-once",
+      expiresAt: "2026-06-07T00:00:00.000Z"
+    });
+    notificationCalls.length = 0;
+
+    const [before] = requests.listEdgeCredentialOrders();
+    const beforeMaterial = materialStore.getCredentialMaterialSummary(before.edgeCredentialRef);
+    const beforeRequest = requests.getRequest(requestId);
+    let thrownError;
+    try {
+      requests.refreshSubscription({
+        portalUserRef: "user_safe_ref",
+        requestRef: requestId,
+        clientTarget: "karing"
+      });
+      assert.fail("refresh should preserve the original failure after compensation");
+    } catch (error) {
+      thrownError = error;
+    }
+
+    assert.deepEqual(lifecycleReasons, [
+      "order_delivered",
+      "order_refreshed",
+      "order_refresh_rolled_back"
+    ]);
+    assert.deepEqual(
+      notificationCalls.map((call) => call.reason),
+      scenario.expectedNotificationReasons
+    );
+    assert.equal(thrownError?.code, scenario.expectedError);
+    assert.equal(rollbackNotificationResult.notificationCount, 1);
+    assert.deepEqual(rollbackNotificationResult.notifications, [
+      { channelRef, status: "pending" }
+    ]);
+
+    const [after] = requests.listEdgeCredentialOrders();
+    const restored = requests.getRequest(requestId);
+    assert.equal(after.edgeCredentialRef, before.edgeCredentialRef);
+    assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+    assert.equal(
+      materialStore.getCredentialMaterialSummary(after.edgeCredentialRef).materialDigest,
+      beforeMaterial.materialDigest
+    );
+    assert.equal(restored.clientTarget, beforeRequest.clientTarget);
+    assert.deepEqual(restored.event, beforeRequest.event);
+  }
 });
 
 test("refresh enforces a per-order cooldown before reissuing material again", () => {
