@@ -9,7 +9,7 @@ import { createReadOnlyMaterialHandoffControlStore } from "../services/edge/mate
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 
 const NOW = "2026-06-13T12:00:00.000Z";
-const VALID_UNTIL = "2026-07-13T12:00:00.000Z";
+const VALID_UNTIL = "2099-07-13T12:00:00.000Z";
 
 function withStore(fn) {
   const tempDir = mkdtempSync(join(tmpdir(), "edge-material-handoff-"));
