@@ -102,7 +102,7 @@ Issue #484 and its documentation PR:
 | --- | --- |
 | Feature | Project Knowledge Graph / AI Engineering Orchestration Layer. |
 | Issue | #484, independent Engineering Infrastructure index card. |
-| PR | Branch `docs/project-intelligence-layer`; Draft PR identity is recorded after creation. |
+| PR | Draft PR #485 from `docs/project-intelligence-layer` to `master`. |
 | Artifact | `none`; docs/governance only. |
 | Runtime | `not_applicable`; no production or runtime change. |
 

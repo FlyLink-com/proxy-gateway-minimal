@@ -36,9 +36,9 @@ existing JSON/checker mechanism through a separately reviewed change.
 | `current_milestone` | Source documentation classifies the project as Platform Foundation plus Phase 2 Operational Reliability. | `docs/PROJECT_CONTEXT.md` and `project-state/current.json`; this is source orientation, not live runtime proof. |
 | `mainline_issue/status` | GitHub Issue #437, Traffic Accounting, is open. Engineering Enablement Issue #484 is open and independent. | Live GitHub inventory on 2026-07-14. Issue #484 does not execute, block, reprioritize, or modify Issue #437. |
 | `production_release/mutation` | No production or provider inventory was performed and no mutation was authorized or executed by Issue #484. | Task boundary. The last documented release snapshot is dated 2026-07-11 and must not be restated as fresh live state. |
-| `validation_state` | Pre-edit `npm run agent:brief`, `npm run precommit:check -- --dry-run`, and `npm run project-state:check` passed. Final branch diff validation is pending until the complete diff exists. | Local command evidence from branch `docs/project-intelligence-layer`. |
+| `validation_state` | Draft PR #485 is open. `git diff --check origin/master...HEAD`, the authorized name-status check, and `npm run project-state:check` passed for the final documentation head. | Local command evidence and GitHub PR readback on 2026-07-14; rerun after any later head change. |
 | `blockers` | The checked-in current-state snapshots predate the current `origin/master` and current GitHub queue. Live production/runtime state is an information gap for this C-tier task. | `project-state/*.json` uses a 2026-07-11 cutoff and source `e1beacc1`; `origin/master` was `ab8b0ec2` at branch creation. |
-| `next_actions` | Finish the Issue #484 documentation scope, verify the exact diff, open one Draft PR, and leave Ready/merge/release decisions to later review. | Issue #484 done criteria. |
+| `next_actions` | Review Draft PR #485 and leave Ready/merge/release decisions to a later review gate. | Issue #484 done criteria and current PR readback. |
 
 ## Known Facts
 
