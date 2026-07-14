@@ -264,7 +264,7 @@ function mapReceiptStatusToStore(receipt) {
   };
 }
 
-function assertScopedReceiptMatchesDesiredState(receipt, desiredState) {
+function assertReceiptMatchesDesiredState(receipt, desiredState) {
   const expectedDigests = (desiredState.materialDigests || [])
     .map(digestValue)
     .sort((a, b) => a.localeCompare(b));
@@ -443,9 +443,7 @@ export function createDataPlaneAgentService({
       expectedGeneration: receiptDesiredState.generation,
       allowedChannelRefs: node.channelRefs
     });
-    if (requestedDesiredStateRef.startsWith("desired_scoped_")) {
-      assertScopedReceiptMatchesDesiredState(receipt, receiptDesiredState);
-    }
+    assertReceiptMatchesDesiredState(receipt, receiptDesiredState);
     const now = nowFn();
     const receiptDigest = `sha256:${sha256(stableJson(receipt)).slice(0, 32)}`;
     const storeStatus = mapReceiptStatusToStore(receipt);

@@ -1,9 +1,20 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createRuntimeState } from "../state.mjs";
+import { createDataPlaneHandoffRuntimeAdapter } from "../services/edge/data-plane-handoff-runtime-adapter.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
 import { createPortalTotpSecretProtector } from "../services/platform/portal-totp-verifier.mjs";
 
@@ -2011,6 +2022,99 @@ test("createRuntimeState rejects production auto issuance channel refs that are 
   } finally {
     state?.close();
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("remote data-plane handoff publishes only after protected temporary material is ready", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-atomic-remote-handoff-"));
+  const payload = {
+    channelRef: "channel-sgp-a-hy2",
+    desiredStateRef: "desired_state_atomic_handoff_001",
+    runtime: "hysteria2",
+    actions: [{
+      action: "add",
+      credentialRef: "edgecred_atomic_handoff_001",
+      materialFingerprint: "sha256:aaaaaaaaaaaaaaaa"
+    }]
+  };
+
+  try {
+    const successDir = join(dir, "success");
+    const successOrder = [];
+    const successAdapter = createDataPlaneHandoffRuntimeAdapter({
+      handoffDir: successDir,
+      physicalNodeRef: "vultr-sgp-a",
+      now: () => new Date("2026-07-13T00:00:00.000Z"),
+      fileOps: {
+        mkdirSync(...args) {
+          successOrder.push("mkdir");
+          return mkdirSync(...args);
+        },
+        writeFileSync(...args) {
+          successOrder.push("write");
+          return writeFileSync(...args);
+        },
+        chmodSync(...args) {
+          successOrder.push("chmod");
+          return chmodSync(...args);
+        },
+        renameSync(...args) {
+          successOrder.push("rename");
+          return renameSync(...args);
+        },
+        rmSync(...args) {
+          successOrder.push("cleanup");
+          return rmSync(...args);
+        }
+      }
+    });
+
+    const success = successAdapter.applyCredentialReconciliation(payload);
+    assert.equal(success.status, "pending");
+    assert.deepEqual(successOrder, ["mkdir", "write", "chmod", "rename"]);
+    assert.equal(successOrder.at(-1), "rename");
+    assert.equal(readdirSync(successDir).filter((file) => file.endsWith(".json")).length, 1);
+    assert.equal(readdirSync(successDir).filter((file) => file.endsWith(".tmp")).length, 0);
+
+    const failureDir = join(dir, "failure");
+    const failureOrder = [];
+    const failureAdapter = createDataPlaneHandoffRuntimeAdapter({
+      handoffDir: failureDir,
+      physicalNodeRef: "vultr-sgp-a",
+      now: () => new Date("2026-07-13T00:01:00.000Z"),
+      fileOps: {
+        mkdirSync(...args) {
+          failureOrder.push("mkdir");
+          return mkdirSync(...args);
+        },
+        writeFileSync(...args) {
+          failureOrder.push("write");
+          return writeFileSync(...args);
+        },
+        chmodSync() {
+          failureOrder.push("chmod");
+          throw Object.assign(new Error("synthetic pre-publication permission failure"), {
+            code: "EACCES"
+          });
+        },
+        renameSync(...args) {
+          failureOrder.push("rename");
+          return renameSync(...args);
+        },
+        rmSync(...args) {
+          failureOrder.push("cleanup");
+          return rmSync(...args);
+        }
+      }
+    });
+
+    const failed = failureAdapter.applyCredentialReconciliation(payload);
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.mutation, false);
+    assert.deepEqual(failureOrder, ["mkdir", "write", "chmod", "cleanup"]);
+    assert.equal(readdirSync(failureDir).length, 0);
+  } finally {
+    removeTempDir(dir);
   }
 });
 

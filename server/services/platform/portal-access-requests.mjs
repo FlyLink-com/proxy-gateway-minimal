@@ -1437,15 +1437,21 @@ export function createPortalAccessRequestService(options = {}) {
             saveRecord(previousRequest);
           }
           let rollbackLifecycleEvidence = null;
+          let rollbackLifecycleError = null;
           let rollbackPendingChannelRefs = [];
           if (runtimeCompensationRequired) {
-            const rollbackResult = reconcileEdgeLifecycle("order_refresh_rolled_back", previousRequest);
-            rollbackLifecycleEvidence = refreshLifecycleDisposition(rollbackResult);
-            rollbackPendingChannelRefs = rollbackLifecycleEvidence.pendingChannelRefs;
+            try {
+              const rollbackResult = reconcileEdgeLifecycle("order_refresh_rolled_back", previousRequest);
+              rollbackLifecycleEvidence = refreshLifecycleDisposition(rollbackResult);
+              rollbackPendingChannelRefs = rollbackLifecycleEvidence.pendingChannelRefs;
+            } catch (lifecycleError) {
+              rollbackLifecycleError = lifecycleError;
+            }
           }
           const rollbackDesiredStateResult = (
             desiredStateMayHaveChanged
             || rollbackPendingChannelRefs.length > 0
+            || rollbackLifecycleError
           )
             ? notifyEdgeDesiredState("order_refresh_rolled_back", previousRequest)
             : null;
@@ -1457,6 +1463,9 @@ export function createPortalAccessRequestService(options = {}) {
             )
           ) {
             throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback notification is incomplete");
+          }
+          if (rollbackLifecycleError) {
+            throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback was not confirmed");
           }
           if (
             rollbackLifecycleEvidence

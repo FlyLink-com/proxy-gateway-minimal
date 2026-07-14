@@ -51,7 +51,10 @@ function receipt(overrides = {}) {
     credentialCount: 2,
     appliedAt: "2026-06-10T00:01:00.000Z",
     reasonCode: "runtime_applied",
-    materialDigests: ["sha256:aaaaaaaaaaaaaaaa"],
+    materialDigests: [
+      "sha256:aaaaaaaaaaaaaaaa",
+      "sha256:bbbbbbbbbbbbbbbb"
+    ],
     ...overrides
   };
 }
@@ -725,6 +728,99 @@ test("rejects out-of-scope channels and unsafe receipt material", () => {
     () => service.recordReceipt(identity, receipt({ diagnostics: { token: "unsafe" } })),
     (error) => error.code === "unsafe_agent_payload"
   );
+});
+
+test("requires exact authoritative material completeness for ordinary applied and unchanged receipts", () => {
+  withSqliteStore((store) => {
+    seedIssuedPortalOrder(store);
+    const service = createDataPlaneAgentService({
+      controlStore: store,
+      nodes: [
+        {
+          nodeRef: "node-sgp-a",
+          channelRefs: ["channel-sgp-a-hy2"],
+          tokenSha256: hashDataPlaneAgentToken("node-agent-token")
+        }
+      ],
+      nowFn: () => NOW
+    });
+    const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+    const [desiredState] = service.getDesiredState(identity).desiredStates;
+    store.recordEdgeDesiredStateNotification({
+      id: "edge_state_notify_agent_unscoped_completeness",
+      nodeRef: "node-sgp-a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: desiredState.desiredStateRef,
+      generation: desiredState.generation,
+      reason: "order_refreshed",
+      status: "pending",
+      createdAt: NOW.toISOString(),
+      updatedAt: NOW.toISOString()
+    });
+
+    const invalidVariants = [
+      { name: "wrong_count", credentialCount: 0, materialDigests: ["sha256:aaaaaaaaaaaaaaaa"] },
+      { name: "missing_digest", credentialCount: 1, materialDigests: [] },
+      {
+        name: "extra_digest",
+        credentialCount: 1,
+        materialDigests: ["sha256:aaaaaaaaaaaaaaaa", "sha256:bbbbbbbbbbbbbbbb"]
+      },
+      {
+        name: "duplicate_digest",
+        credentialCount: 1,
+        materialDigests: ["sha256:aaaaaaaaaaaaaaaa", "sha256:aaaaaaaaaaaaaaaa"]
+      }
+    ];
+    for (const status of ["applied", "unchanged"]) {
+      for (const variant of invalidVariants) {
+        assert.throws(
+          () => service.recordReceipt(identity, {
+            type: "gccgw_data_plane_apply_receipt",
+            nodeRef: "node-sgp-a",
+            desiredStateRef: `client_supplied_${variant.name}`,
+            generation: desiredState.generation,
+            channelRef: "channel-sgp-a-hy2",
+            status,
+            configTest: true,
+            serviceActive: true,
+            listenerPresent: true,
+            credentialCount: variant.credentialCount,
+            materialDigests: variant.materialDigests,
+            appliedAt: "2026-06-10T00:01:00.000Z"
+          }),
+          (error) => error.code === "desired_state_receipt_mismatch"
+        );
+      }
+    }
+
+    assert.equal(store.listEdgeApplyReceipts({ channelRef: "channel-sgp-a-hy2" }).length, 0);
+    assert.equal(
+      store.listEdgeDesiredStateNotifications({ channelRef: "channel-sgp-a-hy2" })[0].status,
+      "pending"
+    );
+
+    const applied = service.recordReceipt(identity, {
+      type: "gccgw_data_plane_apply_receipt",
+      nodeRef: "node-sgp-a",
+      desiredStateRef: "client_supplied_wrong_ref",
+      generation: desiredState.generation,
+      channelRef: "channel-sgp-a-hy2",
+      status: "applied",
+      configTest: true,
+      serviceActive: true,
+      listenerPresent: true,
+      credentialCount: 1,
+      materialDigests: ["sha256:aaaaaaaaaaaaaaaa"],
+      appliedAt: "2026-06-10T00:02:00.000Z"
+    });
+    assert.equal(applied.status, "applied");
+    assert.equal(store.listEdgeApplyReceipts({ channelRef: "channel-sgp-a-hy2" }).length, 1);
+    assert.equal(
+      store.listEdgeDesiredStateNotifications({ channelRef: "channel-sgp-a-hy2" })[0].status,
+      "applied"
+    );
+  });
 });
 
 test("records per-channel lease heartbeat with latest desired state ref", () => {
