@@ -111,18 +111,18 @@ database rows, or customer data in a decision record.
 - `supersedes`: `none`.
 - `last_verified`: 2026-07-14, America/Los_Angeles.
 
-## Issue #484 Scope Decision
+## Derived Project-Intelligence Layer Decision
 
 ### DEC-issue-484-derived-layer
 
-- `status`: `proposed`
+- `status`: `accepted`
 - `decision`: Add a derived documentation/index layer, preserve the existing
   JSON mechanism, avoid automation, and remain independent from Issue #437.
-- `context`: Issue #484 authorizes one Draft docs-only PR but does not authorize
-  a second source of truth, runtime work, or a long-term policy change before
-  review and merge.
-- `consequences`: The new documents defer to the authority matrix and become an
-  accepted project decision only if PR #485 is reviewed and merged.
-- `evidence`: GitHub Issue #484 and Draft PR #485.
+- `context`: Issue #484 authorized one docs-only PR without authorizing a
+  second source of truth or runtime work. PR #485 was reviewed and merged at
+  `master@20bb8257513153de7d5f75d45de7b748ceea6438`.
+- `consequences`: The derived documents defer to the authority matrix and the
+  existing JSON mechanism; they remain indexes without execution authority.
+- `evidence`: Closed GitHub Issue #484 and merged PR #485.
 - `supersedes`: `none`.
 - `last_verified`: 2026-07-14, America/Los_Angeles.
