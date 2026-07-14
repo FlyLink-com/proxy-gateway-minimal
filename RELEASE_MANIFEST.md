@@ -3,7 +3,7 @@
 > Status:
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
-> - Last updated: 2026-07-11, America/Los_Angeles
+> - Last updated: 2026-07-14, America/Los_Angeles
 > - Source inventory baseline: `master` at `e1beacc1`
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
@@ -25,6 +25,49 @@ Source -> Artifact -> Release -> Deployment -> Runtime State
 | Runtime State | What is actually serving now? | Read-only live inventory and runtime validation |
 
 `master` is the trusted source baseline. It is not a production-version claim.
+
+## Four Release Gates
+
+The source-to-runtime model is orchestrated through four separate gates:
+
+| Gate | Required evidence | Risk and authority boundary |
+| --- | --- | --- |
+| Source Gate | Source intent, allowed files, focused/full validation, and diff checks for the exact source head. | Normally Risk B for server/shared source; Risk C remains available for docs-only changes. |
+| Merge Gate | Exact reviewed head, reviews, required checks, Ready transition, and merge. | Integrates reviewed source only; it does not publish a release or authorize production. |
+| Artifact Gate | Exact `master` commit, immutable artifact identity, SHA-256, manifest, and verified retrievability. | Establishes build/release evidence only. |
+| Production Gate | Fresh live inventory, exact operator approval, exact target and mutation boundary, backup, validation, aggregate identity evidence when applicable, and rollback-ready evidence. | Always Risk A. |
+
+This is an `A envelope / B source core` model. A server/shared source-only PR
+normally remains Risk B even when the eventual release path includes a Risk A
+Production Gate. `identity_impact: true` records downstream impact and the need
+for Identity Gate evidence; it does not by itself elevate that source-only PR
+to Risk A. Runtime or provider mutation, deployment, promotion, and rollback
+remain separately gated Risk A actions.
+
+Each gate closes independently. Passing a Source, Merge, or Artifact Gate does
+not authorize the next gate or establish current runtime state. These rules are
+prospective: historical approvals, execution receipts, failures, rollbacks,
+and outcomes remain as originally recorded and are never rewritten or
+retroactively reclassified.
+
+## Gate Approval And Ownership
+
+Before requesting execution approval, the controller verifies transport and
+tool availability plus repository and exact-head readability. A transport
+failure before approval is a setup failure, not a business remediation result.
+Durable approval is bound to the stated head, scope, target, and mutation
+boundary; once execution begins, that approval is consumed and never reused.
+
+Any head, scope, test, identity, or mutation-boundary failure stops the active
+gate. A corrected attempt requires a new gate and, when execution approval is
+required, a new approval. One controller owns final validation and GitHub
+integration. Implementers run scoped implementation validation only, and
+semantic reviewers are read-only unless separately authorized.
+
+Issue comments and approval text are durable evidence, not platform
+enforcement. Branch/ruleset or deployment-environment protection may be
+claimed only after live readback. Any workflow capable of real production
+deployment must remain disabled or require independently enforced approval.
 
 ## Deployment Promotion Boundary
 
@@ -106,7 +149,9 @@ identity_impact: false
 ```
 
 When `identity_impact` is true, the PR also declares a safe logical surface and
-keeps the gate pending until target-runtime evidence exists:
+keeps the downstream runtime Identity Gate pending until target-runtime
+evidence exists. That pending downstream gate does not by itself change a
+source-only PR's risk:
 
 ```yaml
 identity_gate:
@@ -128,9 +173,11 @@ deploy_notes: []
 ```
 
 No release becomes `ready` without exact source, artifact identity, SHA-256,
-target boundary, validation, and rollback information. Production completion is
-recorded in the related PR Deploy Note; merge status alone never changes
-`production_state`.
+target boundary, validation, rollback information, and proof that the exact
+artifact remains retrievable throughout the deployment and rollback window.
+Retrievability must come from a durable store or an explicitly verified target
+backup. Production completion is recorded in the related PR Deploy Note; merge
+status alone never changes `production_state`.
 
 An identity-impacting Deploy Note or runtime Change Record additionally records
 aggregate `before` and `after` values for `runtime_count`, `mapped_count`,
@@ -174,6 +221,13 @@ file does not change runtime state.
 does not assert physical source isolation. That entrypoint still bundles shared
 Portal and company-site routes until a separate boundary-cleanup task removes
 them.
+
+Short-lived GitHub Actions artifacts are build evidence only. They do not by
+themselves satisfy the Artifact Gate's deployment-and-rollback-window
+retrievability requirement and cannot make a release `ready`. This manifest
+does not claim that any currently listed build artifact has durable retention;
+that must be verified for the exact release through a durable store or an
+explicitly verified target backup.
 
 The first verified `master` proof is GitHub Release Artifact run `29074645989`
 for source `4fbe022264e30acd9e487dd880b7d4ed544be259`. Its uploaded ZIP, checksum
