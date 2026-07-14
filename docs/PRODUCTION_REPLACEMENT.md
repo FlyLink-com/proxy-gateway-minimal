@@ -1,11 +1,19 @@
 # Production Replacement Runbook
 
 > Status:
-> - Type: Active runbook
-> - Risk: A
-> - Execution authority: Does not authorize green creation, production secret copying, or cutover by itself
-> - Production impact: None unless separately approved
-> - Source of truth for: Blue-green production replacement gates
+> - Type: Historical AWS runbook (superseded)
+> - Risk: A for any future provider action
+> - Execution authority: None
+> - Production impact: None
+> - Source of truth for: Historical AWS blue-green replacement evidence only
+>
+> **Historical AWS evidence only.** This document preserves historical AWS
+> identifiers, commands, and dates. It must not be used as current
+> production-target authority or as current provider instructions.
+>
+> Select the current runtime target through `docs/RUNTIME_LANE_AUTHORITY.md`.
+> Before any provider action, complete fresh live read-only inventory and obtain
+> approval for a new exact Risk A gate.
 
 Last updated: 2026-06-01, Asia/Shanghai.
 
