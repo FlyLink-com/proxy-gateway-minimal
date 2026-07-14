@@ -1436,27 +1436,38 @@ export function createPortalAccessRequestService(options = {}) {
             saveRecord(previousRequest);
           }
           let rollbackLifecycleEvidence = null;
+          let rollbackPendingChannelRefs = [];
           if (runtimeCompensationRequired) {
-            const rollbackResult = runEdgeLifecycle("order_refresh_rolled_back", previousRequest);
+            const rollbackResult = reconcileEdgeLifecycle("order_refresh_rolled_back", previousRequest);
             rollbackLifecycleEvidence = refreshLifecycleDisposition(rollbackResult);
-            if (!["applied", "remote_pending"].includes(rollbackLifecycleEvidence.disposition)) {
+            rollbackPendingChannelRefs = rollbackLifecycleEvidence.pendingChannelRefs;
+            if (
+              !["applied", "remote_pending"].includes(rollbackLifecycleEvidence.disposition)
+              && rollbackPendingChannelRefs.length === 0
+            ) {
               throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback was not applied");
             }
           }
           const rollbackDesiredStateResult = (
             desiredStateMayHaveChanged
-            || rollbackLifecycleEvidence?.disposition === "remote_pending"
+            || rollbackPendingChannelRefs.length > 0
           )
             ? notifyEdgeDesiredState("order_refresh_rolled_back", previousRequest)
             : null;
           if (
-            rollbackLifecycleEvidence?.disposition === "remote_pending"
+            rollbackPendingChannelRefs.length > 0
             && !hasRemotePendingNotificationCoverage(
               rollbackDesiredStateResult,
-              rollbackLifecycleEvidence.pendingChannelRefs
+              rollbackPendingChannelRefs
             )
           ) {
             throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback notification is incomplete");
+          }
+          if (
+            rollbackLifecycleEvidence
+            && !["applied", "remote_pending"].includes(rollbackLifecycleEvidence.disposition)
+          ) {
+            throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback was not applied");
           }
         } catch (rollbackError) {
           throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback failed");
