@@ -1,5 +1,20 @@
 # Deployment Flow
 
+> Status:
+> - Type: Historical AWS deployment flow (superseded)
+> - Risk: A for any future provider action
+> - Execution authority: None
+> - Production impact: None
+> - Source of truth for: Historical AWS deployment evidence only
+>
+> **Historical AWS evidence only.** This document preserves historical AWS
+> identifiers, commands, and dates. It must not be used as current
+> production-target authority or as current provider instructions.
+>
+> Select the current runtime target through `docs/RUNTIME_LANE_AUTHORITY.md`.
+> Before any provider action, complete fresh live read-only inventory and obtain
+> approval for a new exact Risk A gate.
+
 Last updated: 2026-05-23, Asia/Shanghai.
 
 This document defines how code moves from local development to a staging or pre-release check and then to the production AWS node. It keeps GitHub, Codex, and AWS responsibilities separate.

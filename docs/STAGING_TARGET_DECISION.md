@@ -1,18 +1,36 @@
 # Staging Target Decision
 
-Last updated: 2026-05-23, Asia/Shanghai.
+Last updated: 2026-07-14, America/Los_Angeles.
 
-This document records the staging target decision for `proxy-gateway-minimal`. It is based on read-only AWS checks and does not represent a live infrastructure change.
+> Status:
+> - Type: Active conditional guard with historical AWS inventory
+> - Risk: A for any future provider action
+> - Execution authority: None
+> - Production impact: None
+> - Source of truth for: Why the stopped historical AWS node must not be
+>   reused as staging without a new target-selection gate
+>
+> **Historical AWS evidence only.** Provider identifiers, network values, and
+> recommended settings below preserve the 2026-05-23 inventory. They are not
+> current target selection or reusable provider instructions.
+
+Select the current lane through `docs/RUNTIME_LANE_AUTHORITY.md`, then complete
+fresh live read-only inventory under the applicable access rules. Any create,
+start, rebuild, networking, or other provider mutation requires a new exact
+Risk A gate that binds the current target and allowed commands.
 
 ## Decision
 
-Use a clean, explicitly assigned staging instance for pre-release validation.
+If a future exact Risk A gate selects AWS staging, use a clean, explicitly
+assigned staging instance for pre-release validation.
 
 Do not start the historical stopped instance `i-0589aac321172dd74` and call it staging as-is.
 
-## Recommended Path
+## Historical Recommended Path
 
-Create a new staging instance when staging is needed, using:
+The 2026-05-23 recommendation was to create a new staging instance using the
+following values. Fresh inventory must replace this dated table before any
+future gate selects an AWS target:
 
 | Field | Recommended value |
 | --- | --- |
@@ -58,7 +76,9 @@ The stopped instance may be repurposed only through an explicit rebuild path:
 3. Rebuild or reprovision the instance from the current repository and staging-only secrets.
 4. Retag the instance and volume with `Environment=staging` and `Role=pre-release`.
 5. Record its public IP, private IP, security group, runtime path, and deployed commit in `docs/ENVIRONMENT_TOPOLOGY.md`.
-6. Run the staging verification checklist in `docs/DEPLOYMENT_FLOW.md`.
+6. After current lane selection, fresh read-only inventory, and exact Risk A
+   approval, run the applicable clean-staging checklist in
+   `docs/STAGING_PROVISIONING.md` for the approved target.
 
 This alternative is useful only if keeping the same instance ID matters. Otherwise, a new clean instance is simpler and lower risk.
 
@@ -78,7 +98,14 @@ Do not expose `3456/tcp` publicly. The console/API must remain bound to loopback
 
 ## Creation Gate
 
-Before creating or starting a staging instance, require a separate operator approval that names the chosen path:
+Before creating or starting a staging instance, first select the lane through
+`docs/RUNTIME_LANE_AUTHORITY.md`, complete fresh live read-only inventory, and
+obtain a new exact Risk A gate. The gate must bind the current target, allowed
+commands, sensitive-output boundary, validation, rollback, stop conditions,
+and forbidden actions.
+
+The following labels may describe the selected path inside that complete gate,
+but they are not sufficient approval text by themselves:
 
 ```text
 Create a new clean staging instance
@@ -90,7 +117,8 @@ or:
 Rebuild the stopped historical instance as staging
 ```
 
-Without that explicit approval, Codex should stop at documentation, read-only checks, and PR preparation.
+Without that complete exact approval, Codex must stop at documentation and the
+separately authorized read-only inventory boundary.
 
 ## Verification Gate
 
@@ -130,7 +158,10 @@ Expected public results:
 
 ## Follow-Up
 
-The next infrastructure PR should either:
+Only after a fresh gate selects an AWS staging target may a follow-up
+infrastructure PR either:
 
-- create a tracked staging provisioning runbook for the recommended clean instance path, or
-- record the explicit approval and exact rebuild steps for repurposing `i-0589aac321172dd74`.
+- update and validate `docs/STAGING_PROVISIONING.md` for the exact approved
+  clean target, or
+- record the exact gate and rebuild plan for a freshly inventoried historical
+  slot without reusing dated identifiers as current target evidence.
