@@ -1,6 +1,6 @@
 # Project Context
 
-Last updated: 2026-07-11, America/Los_Angeles.
+Last updated: 2026-07-14, America/Los_Angeles.
 
 > Status:
 > - Type: Active current-state handoff
@@ -84,15 +84,26 @@ Repository:
 gaoyi1020-web/proxy-gateway-minimal
 ```
 
-At the pre-reconciliation 2026-07-11 snapshot:
+At the 2026-07-14 read-only source snapshot:
 
-- `master`: `e1beacc15fdc35661077cd3387f3ba17a3966e1a`
-- local worktree: clean and synchronized before this reconciliation branch
-- remote branches: `master` only
-- open PRs: 0
-- open Issues: #437, #438, #439, and #440
-- latest master CI: `29153679418`, success
-- latest Release Artifact run: `29153679403`, success
+- `master`: `ab8b0ec2034cc92a84bcea738c0a254afbd60213`
+- reconciliation branch baseline: exact `master@ab8b0ec2034cc92a84bcea738c0a254afbd60213`
+- observed remote branches (12): `origin/master`,
+  `origin/codex/commercial-model-v1`,
+  `origin/codex/fix-cumulative-usage-accounting`,
+  `origin/codex/fix-pr471-credential-lifecycle-review`,
+  `origin/codex/fix-trial-traffic-limit`,
+  `origin/codex/test-edge-material-valid-until`,
+  `origin/codex/traffic-accounting-observation-validator`,
+  `origin/codex/traffic-accounting-unresolved-provenance`,
+  `origin/codex/traffic-lifecycle-enforcement`,
+  `origin/docs/infrastructure-access-rule`,
+  `origin/docs/release-governance-calibration`, and `origin/pr-471`
+- open PRs: Draft #476 and Draft #479
+- open Issues: #437, #438, #439, #440, and #475
+- latest master CI: `29328012647`, success
+- latest Release Artifact run: `29328012651`, success
+- last observed Deploy Cloudflare Site run: `29153679412`, success
 
 These are dated facts. Re-run Git and GitHub inventory before making a current
 claim.
@@ -134,14 +145,21 @@ Keep one primary implementation lane active:
 
 | Order | Issue | Lane | Current state |
 | --- | --- | --- | --- |
-| 1 | #437 | Traffic Accounting | Active controlled remediation preparation; observation and reconciliation are verified, identity sync remains degraded |
+| 1 | #437 | Traffic Accounting | Primary lane; merged source progress reaches #478, while identity sync remains degraded and Draft #479 is blocked pending a new exact successor gate |
+| separate | #475 | Operations Foundation | Open source/schema lane; Draft #476 is not deployed and carries no schema or runtime mutation authority |
 | 2 | #438 | Portal Lifecycle | Queued after traffic semantics stabilize |
-| 3 | #439 | Commercial Foundation | Queued; billing and AppsFlyer remain non-live |
+| 3 | #439 | Commercial Foundation | Queued; #472/#474 add source foundations while billing and AppsFlyer remain non-live |
 | 4 | #440 | Code Boundary Cleanup | Opportunistic guardrail only |
 
 Issues #457 and #462 are closed. Real merges proved that Vercel candidates and
 Cloudflare saved versions do not become active production solely because source
 was merged. Promotion remains separately gated.
+
+The two open PRs are Draft source work only. #476 belongs to the separate #475
+operations-foundation source/schema lane. #479 belongs to #437, is not deployed,
+and remains blocked with identity gate pending after terminal receipt
+`issuecomment-4966594034`; the prior approval is consumed, so any successor
+execution needs a new exact gate.
 
 Do not pre-create broad pipeline, Portal redesign, payment activation, or
 architecture-refactor PRs. Each source PR must answer:
@@ -165,6 +183,10 @@ Artifact Manifest v1 currently covers:
 - `control-plane-app`
 - `portal-static`
 - `admin-static`
+
+The latest source build proof is Release Artifact run `29328012651` for
+`master@ab8b0ec2034cc92a84bcea738c0a254afbd60213`. It is artifact evidence only
+and does not update any deployment or runtime identity.
 
 Runtime Config Identity v1 provides an offline deterministic observation
 identity generator for Japan and Singapore runtime config. It has not observed
@@ -233,8 +255,10 @@ Important boundaries:
 - AppsFlyer: disabled/dry-run only.
 
 The documented control-plane source is an ancestor of current `master`.
-PRs #466 through #468 are source-only: alignment/promotion attempts were rolled
-back or not performed, so the current production pointer remains unchanged.
+PRs #466 through #468, #471, #473, #474, and #477 are source-only; #478 is an
+offline validator and #481 is test-only. Draft PRs #476/#479 are not merged or
+deployed. No later source, CI, or artifact evidence changes the dated production
+pointer.
 
 ## Active Blockers
 

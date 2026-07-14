@@ -4,7 +4,7 @@
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
 > - Last updated: 2026-07-14, America/Los_Angeles
-> - Source inventory baseline: `master` at `e1beacc1`
+> - Source inventory baseline: `master` at `ab8b0ec2`
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
@@ -235,8 +235,8 @@ sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size
 and UTC creation time, and the manifest contained no downloaded absolute path.
 
 The latest verified `master` proof at this inventory cutoff is Release Artifact
-run `29153679403` for source
-`e1beacc15fdc35661077cd3387f3ba17a3966e1a`. It completed the control-plane,
+run `29328012651` for source
+`ab8b0ec2034cc92a84bcea738c0a254afbd60213`. It completed the control-plane,
 Portal, and Admin artifact jobs. This is build evidence, not production
 promotion evidence.
 
@@ -278,29 +278,37 @@ approval and execution evidence.
 ## Current PR Mapping
 
 This is the current compact view of the ten most recently merged PRs at source
-baseline `e1beacc1`. The detailed
+baseline `ab8b0ec2`. The detailed
 `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md` is a frozen historical snapshot
 and is not appended with later PRs.
 
 | PR | Capability | Source commit | Release unit | Release assignment | Production state |
 | --- | --- | --- | --- | --- | --- |
-| #458 | `phase-2-project-state-reconciliation@v1` | `3013e8f9` | `none` | Source reconciliation; Vercel candidate remained staged | `not_applicable` |
-| #459 | `collector-error-provenance@v1` | `72e98096` | `control-plane-app` | Included in `phase2-control-plane-artifact-alignment-20260710-001` | `deployed` |
-| #460 | `protected-admin-collector-projection@v1` | `9aa1561e` | `control-plane-app` | Included in `phase2-control-plane-artifact-alignment-20260710-001` | `deployed` |
-| #461 | `release-ledger-reconciliation@v1` | `20f8345d` | `none` | Governance reconciliation only | `not_applicable` |
-| #463 | `cloudflare-promotion-boundary-reconciliation@v1` | `8c7ad033` | `none` | Provider boundary recorded; Issue #462 closed after proof | `not_applicable` |
-| #464 | `traffic-status-producers@v1` | `9bc03b41` | `control-plane-app` | Deployed in `phase2-control-plane-artifact-alignment-20260710-001`; Evidence Runtime activated separately | `deployed` |
-| #465 | `runtime-identity-sync-gate@v1` | `2a091d51` | `none` | Governance definition only | `not_applicable` |
-| #466 | `tuic-additive-map-repair@v1` | `8c769586` | `control-plane-app` | Promotion attempts rolled back; current production pointer unchanged | `not_deployed` |
-| #467 | `control-plane-promotion-health-gate@v1` | `4ae74602` | `control-plane-app` | Promotion attempt rolled back after identity gate rejection | `not_deployed` |
-| #468 | `control-plane-release-config-identity-gate@v1` | `e1beacc1` | `control-plane-app` | Clean validation and build proof only; no promotion | `not_deployed` |
+| #469 | `phase-2-release-state-reconciliation@v2` | `73eb6cea` | `none` | Source-state reconciliation only | `not_applicable` |
+| #470 | `infrastructure-access-rule@v1` | `b4abd6ee` | `none` | Governance boundary only | `not_applicable` |
+| #472 | `commercial-package-model@v1` | `b801ec1a` | `none` | Provider-neutral source contract only | `not_applicable` |
+| #471 | `credential-lifecycle-enforcement@v1` | `23e86358` | `control-plane-app` | Reviewed source only; no production promotion | `not_deployed` |
+| #473 | `cumulative-usage-accounting-guard@v1` | `f3d62754` | `control-plane-app` | Reviewed source only; no production promotion | `not_deployed` |
+| #474 | `trial-five-gib-limit@v1` | `52741c3f` | `control-plane-app` | Reviewed source only; no production promotion | `not_deployed` |
+| #477 | `unresolved-binding-provenance@v1` | `d6775077` | `control-plane-app` | Reviewed source only; production remains unchanged | `not_deployed` |
+| #478 | `natural-observation-validator@v1` | `70ec822c` | `none` | Offline validation tooling only | `not_applicable` |
+| #481 | `material-handoff-preflight-fixture@v1` | `2df971a4` | `none` | Test-only fixture stabilization | `not_applicable` |
+| #480 | `release-governance-calibration@v1` | `ab8b0ec2` | `none` | Governance calibration only | `not_applicable` |
 
 The Phase 2 traffic chain begins with #441
 `collector-state-contract@v1`; #459 preserves redacted adapter provenance,
 #460 exposes the protected read model, and #464 adds protected status producers.
 Those capabilities are present in the documented production control-plane
-release at source `9bc03b41`. PRs #466 through #468 remain source-only; failed
-promotion attempts were rolled back and did not change the current pointer.
+release at source `9bc03b41`. Later control-plane changes in #466 through #468,
+#471, #473, #474, and #477 remain source-only; #478 is offline validation and
+#481 is test-only. None changes the dated production pointer.
+
+Open source candidates are outside this merged mapping. Draft PR #476 is the
+Issue #475 operations-foundation source/schema candidate and is not deployed.
+Draft PR #479 is not deployed, its identity gate is pending, and terminal
+receipt `issuecomment-4966594034` is blocked with the prior approval consumed.
+Any successor execution requires a new exact gate. Neither Draft is `ready`,
+merged, artifact-approved, or production-approved.
 
 No new release is declared `ready` or `deployed` by this manifest. A source-only
 PR may say that deployment is not applicable; that statement is not a Deploy

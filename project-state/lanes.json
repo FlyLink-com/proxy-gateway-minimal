@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "2026-07-11.1",
-  "lastUpdated": "2026-07-11",
+  "schemaVersion": "2026-07-14.1",
+  "lastUpdated": "2026-07-14",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current lane index for Phase 2. Historical lanes remain in Git history and indexed execution records, not in the active Agent queue.",
@@ -19,7 +19,7 @@
       "name": "Version And Deployment Governance",
       "status": "baseline-stable",
       "riskBoundary": "C for source-state records and artifact contracts; A for deployment, promotion, rollback, or production observation",
-      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Issues #457 and #462 closed the Vercel and Cloudflare merge-versus-promotion proofs; PRs #467 and #468 add source-only promotion and release-preparation gates.",
+      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Issues #457 and #462 closed the Vercel and Cloudflare merge-versus-promotion proofs; source governance is current through PR #480 and Release Artifact run 29328012651, while no new release is Ready or deployed.",
       "primaryDocs": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -43,7 +43,7 @@
       "name": "Traffic Accounting",
       "status": "active-controlled-remediation",
       "riskBoundary": "B for collector contracts, redacted provenance, tests, and protected read-only projection; A for runtime, service, config, quota, or traffic-supply mutation",
-      "purpose": "Complete Issue #437. Canonical state, safe provenance, protected projection, status producers, Evidence Runtime activation, read-only reconciliation, and the Identity Gate are complete. Japan TUIC identity sync remains degraded; additive repair is source-only and map apply has not started.",
+      "purpose": "Complete Issue #437. Merged source progress through #471/#473/#477/#478 strengthens lifecycle enforcement, cumulative accounting, provenance, and offline observation validation. Japan TUIC identity sync remains degraded, map apply has not started, and Draft PR #479 is blocked pending a new exact successor gate.",
       "primaryDocs": [
         "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
         "docs/CURRENT_RELEASE_STATE.md"
@@ -87,9 +87,9 @@
     {
       "id": "commercial-foundation",
       "name": "Commercial Foundation",
-      "status": "planned",
+      "status": "planned-with-source-foundation",
       "riskBoundary": "B for provider-neutral contracts, event catalogs, disabled adapters, and tests; A for live payment, credentials, webhooks, settlement, or AppsFlyer dispatch",
-      "purpose": "Execute Issue #439 only after operational lifecycle contracts are stable while keeping all providers disabled and fail-closed.",
+      "purpose": "Execute Issue #439 only after operational lifecycle contracts are stable. PR #472 records the v1 package model and PR #474 adds a source-only trial-limit guard; all providers remain disabled and fail-closed.",
       "primaryDocs": [
         "docs/BILLING_RECHARGE_CONTRACT.md",
         "docs/PAYMENT_PROVIDER_ADAPTER_TEMPLATE.md",
@@ -105,6 +105,29 @@
         "provider credentials",
         "payment-driven subscription issuance",
         "live AppsFlyer activation"
+      ]
+    },
+    {
+      "id": "operations-foundation",
+      "name": "Operations Foundation",
+      "status": "open-source-schema-draft",
+      "riskBoundary": "C/B for reviewed source contracts and tests; A for schema migration, provider access, deployment, or runtime mutation",
+      "purpose": "Track open Issue #475 and Draft PR #476 as a separate source/schema-only lane. The Draft is not deployed and carries no schema, provider, or runtime mutation authority.",
+      "primaryDocs": [
+        "docs/PROJECT_CONTEXT.md",
+        "docs/CURRENT_RELEASE_STATE.md",
+        "docs/GITHUB_ISSUE_PR_WORKFLOW.md"
+      ],
+      "primaryCodeAreas": [
+        "schemas/",
+        "server/services/",
+        "project-state/"
+      ],
+      "nonGoals": [
+        "treating Draft PR #476 as merged or Ready",
+        "schema migration without an exact Risk A gate",
+        "provider or production access",
+        "runtime mutation or deployment"
       ]
     },
     {
