@@ -9,8 +9,46 @@ Last verified: 2026-07-14, America/Los_Angeles.
 >   deployment, promotion, rollback, schema, auth, credential, or
 >   customer-data actions
 > - Production impact: None
-> - Source of truth for: Control Plane, Data Plane, and Release Plane
->   responsibilities and evidence boundaries at the stated cutoff
+> - Authority: Derived architecture index only; the authority matrix below
+>   governs conflicts
+> - Index scope: Control Plane, Data Plane, and Release Plane responsibilities
+>   and evidence boundaries at the stated cutoff
+
+## Authority And Derivation Matrix
+
+This layer indexes relationships; it does not become an additional authority.
+When statements conflict, use the narrowest current authority for the question:
+
+| Question | Governing evidence | Role of this layer |
+| --- | --- | --- |
+| What is live in production now? | Fresh Risk A read-only inventory and target validation. | May point to the required gate; must record `not_verified` without live evidence. |
+| What is the latest documented release identity? | `docs/CURRENT_RELEASE_STATE.md`, subject to its cutoff and newer validated evidence. | Summarizes links only. |
+| What is the source/artifact/release/deployment model? | `RELEASE_MANIFEST.md`. | Cross-references planes and dependencies. |
+| What is the current repo orientation and Phase 2 queue? | `docs/PROJECT_CONTEXT.md` plus current Git/GitHub inventory. | Provides derived state and milestone views. |
+| What is the machine-readable coordination state? | `project-state/current.json`, `lanes.json`, and `tasks.json`, with drift checks. | Must not create a competing YAML or machine state. |
+| What topology concepts and historical transitions exist? | `docs/PROJECT_TOPOLOGY.md` and other cited architecture docs, reconciled against current context. | Provides a current-first crosswalk and flags conflicts. |
+| How are agent ownership and delegation governed? | `AGENTS.md` and `docs/MULTI_AGENT_OPERATING_MODEL.md`. | Maps Planner/Architect/Engineer/Reviewer labels onto existing roles. |
+| How should the new knowledge documents be read? | This matrix and the precedence rules in each derived document. | Index/derived view only. |
+
+### Known Authority Conflict
+
+`docs/PROJECT_TOPOLOGY.md` is dated 2026-06-03 and still labels an Aliyun
+subscription boundary as current, while the newer `docs/PROJECT_CONTEXT.md`
+documents Vultr Japan as the control plane and Japan/Singapore data-plane
+capacity. Until the older topology is separately reconciled, do not use its
+`Current Production Topology` section as current production authority. Use it
+only for conceptual/historical topology, then verify current context and live
+state at the required risk gate.
+
+The precedence order is:
+
+```text
+fresh approved live evidence
+  -> current authority document for the exact scope
+  -> dated project-state coordination snapshot
+  -> this derived project-intelligence layer
+  -> historical or conflicting architecture material
+```
 
 ## System View
 

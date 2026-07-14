@@ -9,8 +9,10 @@ Last verified: 2026-07-14, America/Los_Angeles.
 >   production, runtime, provider, deployment, promotion, rollback, or
 >   customer-data actions
 > - Production impact: None
-> - Source of truth for: Mapping the requested Foundation, Governance,
->   Runtime, and Commercial phases to current repository evidence
+> - Authority: Derived portfolio crosswalk only; does not rename GitHub phases,
+>   Issues, or queue order
+> - Index scope: Map the requested Foundation, Governance, Runtime, and
+>   Commercial portfolio labels to current repository evidence
 
 ## Interpretation Rule
 
@@ -18,6 +20,30 @@ These phase names are a portfolio view. They do not create release units,
 runtime states, or approval gates. A status is recorded only when the current
 checkout or current GitHub inventory supports it. `Information gap` means the
 repository has no explicit completion decision at this evidence cutoff.
+
+## Portfolio To GitHub Crosswalk
+
+The phase labels in this file are portfolio groupings requested by Issue #484.
+They do not rename the repository's official GitHub Issues or create a new
+execution sequence.
+
+| Portfolio label in this file | Current official repository/GitHub mapping | Queue effect |
+| --- | --- | --- |
+| Phase 0 Foundation | Source-level foundation freeze in `docs/FOUNDATION_FREEZE_2026_07_09.md`; not a GitHub Phase label. | None. |
+| Phase 1 Governance | Cross-cutting repository/release governance contracts; no explicit GitHub milestone named `Phase 1 Governance` was verified. | None. |
+| Phase 2 Runtime | Portfolio view over the active operational-reliability/runtime domain. GitHub Issue #437 remains `[Phase 2][Epic 1]`. | Issue #437 stays first. |
+| Phase 3 Commercial | Portfolio view for future commercial maturity. GitHub Issue #439 remains `[Phase 2][Epic 3]`; this label does not rename it to GitHub Phase 3. | Issue #439 stays after #438. |
+
+The authoritative serial queue remains:
+
+```text
+#437 Traffic Accounting
+  -> #438 Portal Lifecycle
+  -> #439 Commercial Foundation
+```
+
+Issue #440 remains the opportunistic code-boundary guardrail described by
+`docs/PROJECT_CONTEXT.md`; this portfolio crosswalk does not change that rule.
 
 ## Phase 0 Foundation
 

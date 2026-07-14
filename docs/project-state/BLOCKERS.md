@@ -8,8 +8,10 @@ Last verified: 2026-07-14, America/Los_Angeles.
 > - Execution authority: Does not authorize production, provider, runtime,
 >   deployment, rollback, schema, auth, credential, or customer-data actions
 > - Production impact: None
-> - Source of truth for: The blocker record format and currently verified
->   Engineering Enablement information gaps at the stated cutoff
+> - Authority: Derived/index view only; current blockers require the evidence
+>   source named by each record
+> - Index scope: Blocker record format and currently verified Engineering
+>   Enablement information gaps at the stated cutoff
 
 ## Blocker Template
 

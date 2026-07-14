@@ -112,7 +112,9 @@ historical reference, and runtime material separated.
 
 These documents provide a human-readable knowledge and orchestration layer.
 They reference the existing `project-state/*.json` mechanism and do not create
-a second machine-readable source of truth or any production authority.
+a second machine-readable source of truth or any production authority. The
+authority/derivation matrix in `docs/project-map/ARCHITECTURE_MAP.md` governs
+conflicts; every document in this layer is an index or derived view.
 
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
@@ -143,7 +145,7 @@ Check structured state with `npm run project-state:check`.
 | --- | --- | --- | --- |
 | `docs/NETWORK_FORWARDING.md` | Local forwarding, PAC, Clash/Mihomo subscription forwarding, Admin tunnel, production runtime paths, and network test matrix. | Active architecture source of truth. | Read before network, proxy, node, or subscription-path changes. |
 | `docs/ENVIRONMENT_TOPOLOGY.md` | Local checkout, GitHub, branch roles, Vultr production roles, Cloudflare public-site boundary, AWS staging/DR role, and current topology. | Active topology reference. | Read before interpreting environment roles, provider boundaries, Vultr production authority, Cloudflare static-site scope, or AWS staging/DR identity. |
-| `docs/PROJECT_TOPOLOGY.md` | Current and target topology diagrams for production delivery, Local Edge Agent, private operator lab / HP Relay, server edge mesh, control/delivery/data planes, and work lanes. | Active architecture topology; no execution authority. | Read before aligning product direction, drawing architecture diagrams, or deciding whether work belongs to local agent, operator lab relay, server mesh, subscription delivery, or production ops. |
+| `docs/PROJECT_TOPOLOGY.md` | Mixed-age current/target topology diagrams for production delivery, Local Edge Agent, private operator lab / HP Relay, server edge mesh, control/delivery/data planes, and work lanes. | Active conceptual topology with stale 2026-06-03 Aliyun current-production wording; not current production authority. | Use for conceptual/history context only, then reconcile with `docs/PROJECT_CONTEXT.md`, `docs/CURRENT_RELEASE_STATE.md`, and fresh live evidence before current-state or production claims. |
 | `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md` | Historical Aliyun user-management / subscription-distribution runbook retained for execution traceability and rollback archaeology. | Superseded historical Risk A runbook; no current control-plane authority. | Read only when auditing old Aliyun decisions, Aegis/promotion history, or compatibility with historical execution records. |
 | `docs/HP_PORTAL_VALIDATION_RUNBOOK.md` | HP private validation runbook for testing the user portal and subscription-control service seams in an Aliyun-like lab without production authority. | Active private-validation runbook; HP mutation remains Risk A and requires exact approval. | Read before copying builds to HP, creating test SQLite data, starting private portal validation services, or recording HP portal validation evidence. |
 | `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` | Historical plan for the former Aliyun control / local CI / node-retirement direction. | Superseded planning document; no current execution authority. | Read only when tracing why the Aliyun-first control-plane path was replaced. |

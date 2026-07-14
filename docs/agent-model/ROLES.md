@@ -9,8 +9,10 @@ Last verified: 2026-07-14, America/Los_Angeles.
 >   provider, deployment, promotion, rollback, schema, auth, credential, or
 >   customer-data actions
 > - Production impact: None
-> - Source of truth for: Planner, Architect, Engineer, and Reviewer role
->   boundaries within the existing lead-agent operating model
+> - Authority: Derived role crosswalk only; `AGENTS.md` and
+>   `docs/MULTI_AGENT_OPERATING_MODEL.md` govern conflicts
+> - Index scope: Planner, Architect, Engineer, and Reviewer boundaries within
+>   the existing lead-agent operating model
 
 ## Compatibility With Existing Roles
 
@@ -42,6 +44,8 @@ claims. A role never lowers Risk A/B/C or bypasses approval.
 
 **Forbidden**
 
+- Modifying code, tests, implementation files, or runtime state while acting as
+  Planner.
 - Treating a plan, Issue, or runbook as execution approval.
 - Inventing current status, owners, dependencies, or runtime facts.
 - Expanding a C/B task into production, provider, auth, schema, or runtime work.
@@ -51,7 +55,9 @@ claims. A role never lowers Risk A/B/C or bypasses approval.
 
 Hands an evidence-backed task packet to the Architect when boundaries need
 design clarification, or directly to the Engineer when the current design is
-already explicit and approved.
+already explicit and approved. The Planner role ends at that handoff; the same
+session may not begin implementation until an explicit Engineer assignment
+accepts the packet and rechecks its scope.
 
 ## Architect
 
@@ -71,14 +77,17 @@ already explicit and approved.
 - Creating a new source of truth, service, database, queue, dashboard, or
   external dependency without explicit scope.
 - Designing around secrets or copying protected material into a task packet.
-- Implementing or approving its own design unless separately assigned that
-  role and validation remains independent.
+- Implementing or approving its own design while acting as Architect.
+- Continuing directly into implementation without ending the Architect role
+  and transferring an independently readable Engineer task packet.
 
 **Handoff boundary**
 
 Hands the Engineer a bounded design with allowed files, contracts,
 acceptance criteria, risk, and required checks. Unresolved decisions return to
-the Planner/controller instead of becoming implementation guesses.
+the Planner/controller instead of becoming implementation guesses. If the same
+person or AI later acts as Engineer, that is a new role assignment after this
+handoff, not an Architect exception.
 
 ## Engineer
 
@@ -143,7 +152,16 @@ controller. Only the controller performs final GitHub integration.
 
 ## Single-Agent Use
 
-One person or AI session may perform multiple roles for a small C/B task, but
-must keep the handoff evidence distinct. Self-review does not remove the need
-for fresh final validation, and a single session cannot self-authorize Risk A
-mutation.
+One person or AI session may perform multiple roles for a small C/B task only
+sequentially. Roles must not be blended.
+
+Every role transition requires:
+
+1. explicit closure of the current role's deliverable;
+2. an independently readable handoff packet;
+3. an explicit next-role assignment and acceptance; and
+4. a fresh check of risk, allowed files, and validation ownership.
+
+Self-review does not remove the need for fresh final validation, a Reviewer
+role cannot be simultaneous with the Engineer role being reviewed, and a
+single session cannot self-authorize Risk A mutation.

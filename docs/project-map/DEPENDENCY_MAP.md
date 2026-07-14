@@ -9,8 +9,10 @@ Last verified: 2026-07-14, America/Los_Angeles.
 >   production, runtime, provider, deployment, promotion, rollback, or
 >   customer-data actions
 > - Production impact: None
-> - Source of truth for: How to express and verify Feature -> Issue -> PR ->
->   Artifact -> Runtime relationships without collapsing evidence domains
+> - Authority: Derived relationship convention only; every edge defers to its
+>   cited Issue, PR, artifact, release, or runtime evidence
+> - Index scope: Express Feature -> Issue -> PR -> Artifact -> Runtime
+>   relationships without collapsing evidence domains
 
 ## Core Chain
 

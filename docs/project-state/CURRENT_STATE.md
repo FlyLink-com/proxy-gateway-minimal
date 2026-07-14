@@ -9,8 +9,10 @@ Last verified: 2026-07-14, America/Los_Angeles.
 >   systemd, firewall, auth, schema, deployment, promotion, rollback,
 >   credential, subscription-material, or customer-data actions
 > - Production impact: None
-> - Source of truth for: The evidence and information gaps collected for
->   Engineering Enablement Issue #484 at the stated cutoff
+> - Authority: Derived/index view only; defers to live evidence and the
+>   authoritative documents listed below
+> - Index scope: Evidence and information gaps collected for Engineering
+>   Enablement Issue #484 at the stated cutoff
 
 ## Precedence And Compatibility
 

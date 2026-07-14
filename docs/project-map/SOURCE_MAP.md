@@ -9,7 +9,9 @@ Last verified: 2026-07-14, America/Los_Angeles.
 >   provider, deployment, promotion, rollback, schema, auth, credential, or
 >   customer-data actions
 > - Production impact: None
-> - Source of truth for: High-level responsibility, dependency, risk, and
+> - Authority: Derived source index only; code and cited active contracts govern
+>   behavior
+> - Index scope: High-level responsibility, dependency, risk, and
 >   evidence-backed ownership gaps for the requested source surfaces
 
 ## Inventory Boundary

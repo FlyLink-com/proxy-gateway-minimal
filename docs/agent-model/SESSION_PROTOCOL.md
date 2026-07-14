@@ -9,8 +9,10 @@ Last verified: 2026-07-14, America/Los_Angeles.
 >   provider, deployment, promotion, rollback, schema, auth, credential, or
 >   customer-data actions
 > - Production impact: None
-> - Source of truth for: How AI engineering sessions recover context, verify
->   facts, avoid conflicts, hand off work, and declare completion
+> - Authority: Derived session checklist only; `AGENTS.md`, current project
+>   context, and risk-specific runbooks govern conflicts
+> - Index scope: How AI engineering sessions recover context, verify facts,
+>   avoid conflicts, hand off work, and declare completion
 
 ## 1. Session Header
 

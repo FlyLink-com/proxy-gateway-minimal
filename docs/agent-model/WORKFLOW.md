@@ -9,8 +9,10 @@ Last verified: 2026-07-14, America/Los_Angeles.
 >   provider, deployment, promotion, rollback, schema, auth, credential, or
 >   customer-data actions
 > - Production impact: None
-> - Source of truth for: How Issue -> Planning -> Design -> Implementation ->
->   Review -> Merge -> Release aligns with repository gates
+> - Authority: Derived workflow index only; `AGENTS.md`, release governance,
+>   and Issue/PR workflow rules govern conflicts
+> - Index scope: Align Issue -> Planning -> Design -> Implementation -> Review
+>   -> Merge -> Release with repository gates
 
 ## Workflow
 
