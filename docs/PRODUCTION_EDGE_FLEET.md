@@ -93,15 +93,17 @@ production `.env`, copy secrets, copy SQLite data, or move traffic.
 - `docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md`: fallback clean
   new-server gates for a future `sub-control-a` candidate. It is not an edge
   slot and does not create `prod-edge-c`.
-- `docs/PRODUCTION_DR.md`: production incident recovery and standby promotion
-  gates.
-- `docs/PRODUCTION_REPLACEMENT.md`: blue/green replacement gates.
-- `docs/PRODUCTION_CUTOVER_STRATEGY.md`: EIP, DNS, and node-config cutover
-  strategy decision.
+- `docs/PRODUCTION_DR.md`, `docs/PRODUCTION_REPLACEMENT.md`, and
+  `docs/PRODUCTION_CUTOVER_STRATEGY.md`: historical AWS recovery, replacement,
+  and cutover evidence only. They do not select a current target or authorize
+  current operations. Start current lane selection at
+  `docs/RUNTIME_LANE_AUTHORITY.md`, then use the applicable current
+  lane-specific runbook and a new exact Risk A gate.
 - `docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md`: DNS/domain implementation gates and
   rollback commands.
 - `docs/production-replacement-records/2026-05-24-green-candidate-creation.md`:
-  current validated replacement candidate record.
+  historical validated AWS candidate record; not current capacity or
+  production authority.
 
 If this plan conflicts with a later execution record, the latest explicitly
 approved execution record wins for the work it performed.
