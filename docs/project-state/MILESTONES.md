@@ -23,9 +23,9 @@ repository has no explicit completion decision at this evidence cutoff.
 
 ## Portfolio To GitHub Crosswalk
 
-The phase labels in this file are portfolio groupings requested by Issue #484.
-They do not rename the repository's official GitHub Issues or create a new
-execution sequence.
+The phase labels in this file are portfolio groupings accepted through closed
+Issue #484 and merged PR #485. They do not rename the repository's official
+GitHub Issues or create a new execution sequence.
 
 | Portfolio label in this file | Current official repository/GitHub mapping | Queue effect |
 | --- | --- | --- |
@@ -88,9 +88,11 @@ production gates as one auditable governance model.
 
 `partially_established_completion_not_declared`
 
-The governance components exist, and PR #480 is merged in the current source
-baseline. No checked-in record reviewed by this task declares a portfolio
-milestone named `Phase 1 Governance` complete.
+The governance components exist, and PRs #480 and #485 are merged in the
+current source baseline at
+`master@20bb8257513153de7d5f75d45de7b748ceea6438`. No checked-in record
+reviewed by this task declares a portfolio milestone named `Phase 1
+Governance` complete.
 
 **Dependencies**
 
@@ -106,7 +108,7 @@ milestone named `Phase 1 Governance` complete.
 | --- | --- |
 | Source, Merge, Artifact, and Production gates are defined independently. | Met in current source docs. |
 | Machine-readable coordination has one repository-local mechanism. | Met: `project-state/*.json`; this work adds no competing YAML. |
-| Drift-prone GitHub/source snapshots are reconciled after queue changes. | Information gap: open PR #482 is changing the existing snapshots and is outside this task. |
+| Drift-prone GitHub/source snapshots are reconciled after queue changes. | In progress: Draft PR #482 contains the bounded reconciliation candidate; it remains non-authoritative until formal review and merge. |
 | A formal milestone completion decision exists. | Information gap. |
 
 ## Phase 2 Runtime

@@ -10,8 +10,8 @@ Last verified: 2026-07-14, America/Los_Angeles.
 > - Production impact: None
 > - Authority: Derived/index view only; current blockers require the evidence
 >   source named by each record
-> - Index scope: Blocker record format and currently verified Engineering
->   Enablement information gaps at the stated cutoff
+> - Index scope: Blocker record format and current source-governance and
+>   production-information gaps at the stated cutoff
 
 ## Blocker Template
 
@@ -41,18 +41,19 @@ Rules:
 
 ### BLOCKER-state-snapshot-drift
 
-- `status`: `open`
-- `description`: The checked-in `project-state/*.json` snapshots use a
-  2026-07-11 cutoff and source `e1beacc1`, while this branch started from
-  `origin/master` at `ab8b0ec2`; current GitHub also has more open Issues and
-  PRs than those snapshots record.
-- `impact`: Agents cannot use the JSON counts, branch list, recent-PR list, or
-  detailed queue as confirmed-current facts without live Git/GitHub checks.
-- `owner`: `unassigned`; PR #482 is an independently open reconciliation PR,
-  but this task does not assign ownership or modify that PR.
-- `resolution`: Merge or supersede a reviewed reconciliation that updates the
-  existing JSON mechanism, then run `npm run project-state:check` and refresh
-  current Git/GitHub evidence.
+- `status`: `monitoring`
+- `description`: Draft PR #482 now reconciles `project-state/*.json`, the
+  authoritative entry documents, and these derived views to the source cutoff
+  at `master@20bb8257513153de7d5f75d45de7b748ceea6438`. The correction is not
+  authoritative on `master` until the Draft PR is separately reviewed and
+  merged.
+- `impact`: Agents reading `master` must continue to verify drift-prone GitHub
+  facts live until the reconciliation is merged; PR #482 can be reviewed as
+  the bounded remediation candidate.
+- `owner`: `unassigned`; remediation evidence is carried by Draft PR #482.
+- `resolution`: Complete PR #482 local and exact-head validation, formal
+  review, separate Ready approval, and separate merge; then refresh live
+  GitHub evidence before marking this record resolved.
 - `evidence`: `project-state/current.json`, `project-state/lanes.json`,
   `project-state/tasks.json`, local Git inventory, and current GitHub PR #482.
 - `last_verified`: 2026-07-14, America/Los_Angeles.
@@ -67,7 +68,7 @@ Rules:
 - `owner`: `unassigned`.
 - `resolution`: A future task with the required Risk A boundary must perform
   fresh read-only inventory before any related claim or mutation.
-- `evidence`: Issue #484 scope and the execution-authority headers in
+- `evidence`: PR #482 scope and the execution-authority headers in
   `docs/CURRENT_RELEASE_STATE.md` and `docs/PROJECT_CONTEXT.md`.
 - `last_verified`: 2026-07-14, America/Los_Angeles.
 
@@ -79,5 +80,5 @@ did not perform live runtime inventory. Those dated details remain evidence in
 their source documents; they are not copied here as confirmed-current
 production blockers.
 
-Issue #437 being open is a current fact. An open Issue is not automatically a
-blocker for Issue #484, and Issue #484 does not execute or block it.
+Issue #437 being open is a current fact. Closed Issue #484 and merged PR #485
+do not execute, resolve, reprioritize, or block it.

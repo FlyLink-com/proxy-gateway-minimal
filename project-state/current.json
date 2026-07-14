@@ -1,6 +1,6 @@
 {
-  "schemaVersion": "2026-07-11.1",
-  "lastUpdated": "2026-07-11",
+  "schemaVersion": "2026-07-14.2",
+  "lastUpdated": "2026-07-14",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current project state for Agent orientation. Verify drift-prone GitHub, deployment, and production facts live before any Risk A action.",
@@ -18,43 +18,128 @@
   ],
   "repo": {
     "name": "proxy-gateway-minimal",
-    "github": "gaoyi1020-web/proxy-gateway-minimal",
+    "github": "gccwebos-com/proxy-gateway-minimal",
     "localPath": "D:\\Projects\\proxy-gateway-minimal",
     "defaultBranch": "master",
     "legacyCheckoutRule": "Use the D drive checkout only; historical checkouts are archive/reference surfaces."
   },
   "branchContext": {
     "stableBaseline": "master",
-    "sourceSnapshotAtInventory": "e1beacc15fdc35661077cd3387f3ba17a3966e1a",
-    "observedOpenPrCount": 0,
-    "observedOpenIssueCount": 4,
+    "sourceSnapshotAtInventory": "20bb8257513153de7d5f75d45de7b748ceea6438",
+    "sourceInventoryDate": "2026-07-14",
+    "observedOpenPrCount": 7,
+    "observedOpenIssueCount": 5,
+    "observedRemoteBranchCount": 18,
     "activeIssues": [
       437,
       438,
       439,
-      440
+      440,
+      475
     ],
     "remoteBranches": [
+      "codex/ci-lane-split",
+      "codex/commercial-model-v1",
+      "codex/fix-cumulative-usage-accounting",
+      "codex/fix-pr471-credential-lifecycle-review",
+      "codex/fix-trial-traffic-limit",
+      "codex/operations-foundation",
+      "codex/test-edge-material-valid-until",
+      "codex/traffic-accounting-observation-validator",
+      "codex/traffic-accounting-unresolved-provenance",
+      "codex/traffic-lifecycle-enforcement",
+      "dependabot/npm_and_yarn/admin/babel/core-7.29.7",
+      "dependabot/npm_and_yarn/admin/form-data-4.0.6",
+      "dependabot/npm_and_yarn/admin/ws-8.21.0",
+      "docs/current-source-state-reconciliation",
+      "docs/infrastructure-access-rule",
+      "docs/project-intelligence-layer",
+      "docs/release-governance-calibration",
       "master"
     ],
     "recentMergedPrs": [
-      458,
-      459,
-      460,
-      461,
-      463,
-      464,
-      465,
-      466,
-      467,
-      468
+      470,
+      472,
+      471,
+      473,
+      474,
+      477,
+      478,
+      481,
+      480,
+      485
+    ],
+    "openDraftPrs": [
+      {
+        "pr": 476,
+        "issue": 475,
+        "lane": "operations-foundation",
+        "sourceState": "source_schema_only",
+        "productionState": "not_deployed"
+      },
+      {
+        "pr": 479,
+        "issue": 437,
+        "lane": "traffic-accounting",
+        "sourceState": "blocked_no_durable_successor_gate",
+        "productionState": "not_deployed",
+        "identityGate": "pending",
+        "terminalReceipt": "issuecomment-4966594034",
+        "predecessorApprovalState": "consumed",
+        "durableSuccessorGate": "absent"
+      },
+      {
+        "pr": 482,
+        "issue": null,
+        "lane": "version-management",
+        "sourceState": "current_source_state_reconciliation_draft",
+        "productionState": "not_applicable"
+      },
+      {
+        "pr": 483,
+        "issue": null,
+        "lane": "version-management",
+        "sourceState": "ci_lane_split_draft",
+        "productionState": "not_applicable"
+      }
+    ],
+    "openNonDraftPrs": [
+      {
+        "pr": 486,
+        "lane": "dependency-maintenance",
+        "sourceState": "open_non_draft_behind",
+        "productionState": "not_applicable"
+      },
+      {
+        "pr": 487,
+        "lane": "dependency-maintenance",
+        "sourceState": "open_non_draft_behind",
+        "productionState": "not_applicable"
+      },
+      {
+        "pr": 488,
+        "lane": "dependency-maintenance",
+        "sourceState": "open_non_draft_behind",
+        "productionState": "not_applicable"
+      }
     ],
     "mergePolicyObservation": {
       "allowSquashMerge": true,
       "allowMergeCommit": true,
       "allowRebaseMerge": true,
       "deleteBranchOnMerge": false,
-      "branchProtectionAvailability": "GitHub API previously returned HTTP 403 for this private-repository plan; do not claim an enforced branch rule."
+      "branchProtectionAvailability": "master is protected by the active master-governance-single-owner repository ruleset.",
+      "ruleset": {
+        "requiredPullRequest": true,
+        "requiredCheck": "Validate",
+        "strictRequiredChecks": true,
+        "requiredApprovals": 0,
+        "requiredReviewThreadResolution": false,
+        "bypassActorCount": 0,
+        "deletionBlocked": true,
+        "nonFastForwardBlocked": true
+      },
+      "environmentProtection": "Six environments exist. artifact-publication is limited to master by branch policy; no environment has reviewer or wait-timer enforcement."
     },
     "note": "This is a dated source snapshot. Re-run git status, git fetch, PR/Issue inventory, and required checks before making current claims."
   },
@@ -84,16 +169,19 @@
   ],
   "activeDirections": [
     "Phase 2 is Operational Reliability, not broad feature expansion.",
-    "Issue #437 is the only active implementation Epic; #438 and #439 are queued, and #440 is an opportunistic guardrail.",
+    "Issue #437 remains the primary implementation Epic; #475 is a separate operations-foundation source/schema lane, #438 and #439 are queued, and #440 is an opportunistic guardrail.",
     "Issues #457 and #462 are closed after Vercel and Cloudflare merge-versus-promotion boundaries were proved.",
     "Traffic Evidence Runtime is active observation-only and reconciled; identity sync remains degraded and cannot influence accounting, quota, recovery, or trust decisions.",
-    "PRs #466 through #468 are reviewed source capabilities, not production state. The documented production control-plane pointer remains at source 9bc03b41.",
-    "Billing and AppsFlyer remain disabled/non-live, and architecture stays a modular monolith."
+    "Merged source progress through #485 does not change production state. Control-plane changes after source 9bc03b41 remain not deployed, while #478 is offline validation, #481 is test-only, and #480/#485 are governance-only.",
+    "Draft PR #476 is operations-foundation source/schema work only. Draft PR #479 is blocked with identity gate pending; no durable successor Gate exists.",
+    "Draft PRs #482/#483 are source-governance candidates. Non-Draft PRs #486/#487/#488 are dependency updates and require fresh merge-baseline evidence.",
+    "PR #472 records the commercial package model and #474 records a source-only trial limit; billing and AppsFlyer remain disabled/non-live, and architecture stays a modular monolith."
   ],
   "activeGoal": {
     "id": "phase-2-operational-reliability",
     "name": "GCC WebOS Phase 2 Operational Reliability",
     "primaryIssue": 437,
+    "separateOperationsFoundationIssue": 475,
     "queuedIssues": [
       438,
       439,
@@ -225,12 +313,28 @@
     "internalRuntime": "metering and control endpoints remain loopback/private according to documented execution records and require live verification before mutation"
   },
   "validationSnapshot": {
-    "masterAtInventory": "e1beacc15fdc35661077cd3387f3ba17a3966e1a",
-    "latestCiRun": "29153679418 success",
-    "latestReleaseArtifactRun": "29153679403 success",
-    "latestCloudflareWorkflowRun": "29153679412 success",
+    "masterAtInventory": "20bb8257513153de7d5f75d45de7b748ceea6438",
+    "latestCiRun": "29346424433 success",
+    "latestReleaseArtifactRun": "29346424645 success",
+    "latestCodeqlRun": "29346423889 success",
+    "latestCloudflareWorkflowRun": "29153679412 success at e1beacc15fdc35661077cd3387f3ba17a3966e1a; not current-master evidence",
     "projectStateCheck": "required whenever project-state files change",
     "cTierDiffCheck": "git diff --check origin/master...HEAD"
+  },
+  "sourceSecuritySnapshot": {
+    "codeScanningOpen": 39,
+    "codeScanningSeverity": {
+      "critical": 2,
+      "high": 36,
+      "medium": 1
+    },
+    "dependabotOpen": 3,
+    "dependabotSeverity": {
+      "high": 2,
+      "low": 1
+    },
+    "secretScanningOpen": 0,
+    "boundary": "Successful scan execution does not resolve alerts or prove exploitability. Triage, remediation, dismissal, required-check policy, and production decisions remain separate reviewed actions."
   },
   "activeBlockers": [
     {
@@ -252,11 +356,30 @@
       "id": "commercial-providers-disabled",
       "summary": "Billing and AppsFlyer remain intentionally non-live and fail-closed.",
       "sourceDoc": "docs/BILLING_RECHARGE_CONTRACT.md"
+    },
+    {
+      "id": "github-machine-enforcement-incomplete",
+      "summary": "master has an active PR and strict-Validate ruleset with no bypass actors, but it requires zero approvals and no review-thread resolution; deployment environments have no reviewer enforcement.",
+      "sourceDoc": "docs/PROJECT_CONTEXT.md"
+    },
+    {
+      "id": "source-security-alerts-open",
+      "summary": "GitHub reports 39 open code-scanning alerts and three open Dependabot alerts at this cutoff. Counts require scoped triage and do not by themselves classify exploitability or block unrelated docs-only work.",
+      "sourceDoc": "docs/PROJECT_CONTEXT.md"
+    },
+    {
+      "id": "derived-project-intelligence-snapshot-stale",
+      "summary": "The derived docs/project-state snapshot merged by PR #485 retains pre-merge repository and PR/Issue facts. It is outside this six-file reconciliation and does not override the authoritative entry documents or project-state JSON.",
+      "sourceDoc": "docs/PROJECT_CONTEXT.md"
     }
   ],
   "nextRecommendedQueue": [
-    "Keep Issue #437 in observation-only mode while identity-impact evidence accumulates; do not apply the protected map from this state update.",
+    "Keep Issue #437 in observation-only mode while identity-impact evidence accumulates; Draft PR #479 remains blocked with no durable successor Gate, and this state update does not authorize protected map apply.",
+    "Complete the separately reviewed #482 source reconciliation and #483 CI-lane work before treating repository governance as current or machine-enforced.",
+    "Triage CodeQL findings and the three dependency-update PRs independently; do not convert raw alert counts into a blanket merge or production decision.",
+    "Correct the derived PR #485 project-intelligence snapshot through a separately approved C-tier file scope; do not expand this six-file reconciliation implicitly.",
     "Any future control-plane artifact alignment or additive candidate generation requires a fresh exact Risk A gate bound to one artifact identity and the current production pointer.",
+    "Keep Issue #475 and Draft PR #476 limited to the separate operations-foundation source/schema lane; no schema migration or runtime mutation is approved.",
     "Keep Admin UI, accounting influence, quota influence, trust decisions, and automatic repair deferred.",
     "Keep Issues #438 and #439 queued and use Issue #440 only for a measured boundary exposed by active work."
   ],
