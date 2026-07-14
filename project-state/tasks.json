@@ -77,7 +77,7 @@
         "sourceCommit": "70ec822c72aff0c77fad0a071023beb25339018a",
         "lane": "traffic-accounting",
         "receipt": "offline natural observation validator",
-        "productionState": "not_applicable"
+        "productionState": "not_deployed"
       },
       {
         "pr": 481,

@@ -282,17 +282,17 @@ baseline `ab8b0ec2`. The detailed
 `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md` is a frozen historical snapshot
 and is not appended with later PRs.
 
-| PR | Capability | Source commit | Release unit | Release assignment | Production state |
+| PR | Declared capability | Source commit | Release unit | Release assignment | Production state |
 | --- | --- | --- | --- | --- | --- |
-| #469 | `phase-2-release-state-reconciliation@v2` | `73eb6cea` | `none` | Source-state reconciliation only | `not_applicable` |
-| #470 | `infrastructure-access-rule@v1` | `b4abd6ee` | `none` | Governance boundary only | `not_applicable` |
-| #472 | `commercial-package-model@v1` | `b801ec1a` | `none` | Provider-neutral source contract only | `not_applicable` |
-| #471 | `credential-lifecycle-enforcement@v1` | `23e86358` | `control-plane-app` | Reviewed source only; no production promotion | `not_deployed` |
-| #473 | `cumulative-usage-accounting-guard@v1` | `f3d62754` | `control-plane-app` | Reviewed source only; no production promotion | `not_deployed` |
-| #474 | `trial-five-gib-limit@v1` | `52741c3f` | `control-plane-app` | Reviewed source only; no production promotion | `not_deployed` |
-| #477 | `unresolved-binding-provenance@v1` | `d6775077` | `control-plane-app` | Reviewed source only; production remains unchanged | `not_deployed` |
-| #478 | `natural-observation-validator@v1` | `70ec822c` | `none` | Offline validation tooling only | `not_applicable` |
-| #481 | `material-handoff-preflight-fixture@v1` | `2df971a4` | `none` | Test-only fixture stabilization | `not_applicable` |
+| #469 | `phase-2-release-state-reconciliation@v1` | `73eb6cea` | `none` | Source-state reconciliation only | `not_applicable` |
+| #470 | `infrastructure-access-rule-v1` | `b4abd6ee` | `none` | Governance boundary only | `not_applicable` |
+| #472 | `not_declared` | `b801ec1a` | `none` | Provider-neutral Commercial Model v1 docs only | `not_applicable` |
+| #471 | `not_declared` | `23e86358` | `control-plane-app` | Credential lifecycle source only; no production promotion | `not_deployed` |
+| #473 | `not_declared` | `f3d62754` | `control-plane-app` | Cumulative accounting source only; no production promotion | `not_deployed` |
+| #474 | `trial-traffic-limit@v1` | `52741c3f` | `control-plane-app` | Reviewed source only; no production promotion | `not_deployed` |
+| #477 | `traffic-accounting-unresolved-provenance` | `d6775077` | `control-plane-app` | Reviewed source only; production remains unchanged | `not_deployed` |
+| #478 | `traffic-accounting-natural-observation-validator@v1` | `70ec822c` | `control-plane-app` | Offline validator source only; no production promotion | `not_deployed` |
+| #481 | `not_declared` | `2df971a4` | `none` | Test-only fixture stabilization | `not_applicable` |
 | #480 | `release-governance-calibration@v1` | `ab8b0ec2` | `none` | Governance calibration only | `not_applicable` |
 
 The Phase 2 traffic chain begins with #441

@@ -111,8 +111,8 @@
       "id": "operations-foundation",
       "name": "Operations Foundation",
       "status": "open-source-schema-draft",
-      "riskBoundary": "C/B for reviewed source contracts and tests; A for schema migration, provider access, deployment, or runtime mutation",
-      "purpose": "Track open Issue #475 and Draft PR #476 as a separate source/schema-only lane. The Draft is not deployed and carries no schema, provider, or runtime mutation authority.",
+      "riskBoundary": "A for schema or migration source changes, provider access, deployment, or runtime mutation; C only for factual docs and index updates",
+      "purpose": "Track open Issue #475 and Draft PR #476 as a separate source/schema-only lane. The Draft is not deployed and carries no production schema initialization, provider, or runtime mutation authority.",
       "primaryDocs": [
         "docs/PROJECT_CONTEXT.md",
         "docs/CURRENT_RELEASE_STATE.md",

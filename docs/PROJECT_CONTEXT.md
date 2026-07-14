@@ -93,12 +93,13 @@ At the 2026-07-14 read-only source snapshot:
   `origin/codex/fix-cumulative-usage-accounting`,
   `origin/codex/fix-pr471-credential-lifecycle-review`,
   `origin/codex/fix-trial-traffic-limit`,
+  `origin/codex/operations-foundation`,
   `origin/codex/test-edge-material-valid-until`,
   `origin/codex/traffic-accounting-observation-validator`,
   `origin/codex/traffic-accounting-unresolved-provenance`,
   `origin/codex/traffic-lifecycle-enforcement`,
-  `origin/docs/infrastructure-access-rule`,
-  `origin/docs/release-governance-calibration`, and `origin/pr-471`
+  `origin/docs/infrastructure-access-rule`, and
+  `origin/docs/release-governance-calibration`
 - open PRs: Draft #476 and Draft #479
 - open Issues: #437, #438, #439, #440, and #475
 - latest master CI: `29328012647`, success
@@ -146,7 +147,7 @@ Keep one primary implementation lane active:
 | Order | Issue | Lane | Current state |
 | --- | --- | --- | --- |
 | 1 | #437 | Traffic Accounting | Primary lane; merged source progress reaches #478, while identity sync remains degraded and Draft #479 is blocked pending a new exact successor gate |
-| separate | #475 | Operations Foundation | Open source/schema lane; Draft #476 is not deployed and carries no schema or runtime mutation authority |
+| separate | #475 | Operations Foundation | Open source/schema lane; Draft #476 is not deployed and carries no production schema initialization or runtime mutation authority |
 | 2 | #438 | Portal Lifecycle | Queued after traffic semantics stabilize |
 | 3 | #439 | Commercial Foundation | Queued; #472/#474 add source foundations while billing and AppsFlyer remain non-live |
 | 4 | #440 | Code Boundary Cleanup | Opportunistic guardrail only |

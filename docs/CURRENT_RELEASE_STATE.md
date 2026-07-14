@@ -129,7 +129,7 @@ current `master` at `ab8b0ec2`. Production and source state differ intentionally
 | #468 | Protected release-config assembly and identity gate | `control-plane-app` | `not_deployed`; clean validation and build evidence only |
 | #469, #470, #472, #480 | Release-state, infrastructure-access, commercial-model, and release-governance records | `none` | `not_applicable`; source governance only |
 | #471, #473, #474, #477 | Credential lifecycle, cumulative accounting, trial-limit, and unresolved-provenance changes | `control-plane-app` | `not_deployed`; reviewed source only |
-| #478 | Offline natural-observation validator | `none` | `not_applicable`; offline source validation only |
+| #478 | Offline natural-observation validator | `control-plane-app` | `not_deployed`; offline validator source only |
 | #481 | Material-handoff preflight fixture stabilization | `none` | `not_applicable`; test-only change |
 
 Source merge, clean validation, and successful artifact workflows do not change
@@ -158,8 +158,8 @@ consumed. Any successor execution requires a new exact gate.
 - #440 Code Boundary Cleanup is an opportunistic guardrail, not a broad
   refactor.
 - #475 Operations Foundation is a separate open source/schema lane. Draft PR
-  #476 is not deployed and does not authorize schema, provider, or runtime
-  mutation.
+  #476 is not deployed and does not authorize production schema initialization,
+  provider access, or runtime mutation.
 - #457 is closed after real master merges proved staged Vercel deployment
   behavior without moving the public custom aliases.
 - #462 is closed after a reviewed merge proved version upload without active

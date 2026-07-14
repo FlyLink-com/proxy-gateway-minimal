@@ -42,14 +42,14 @@
       "codex/fix-cumulative-usage-accounting",
       "codex/fix-pr471-credential-lifecycle-review",
       "codex/fix-trial-traffic-limit",
+      "codex/operations-foundation",
       "codex/test-edge-material-valid-until",
       "codex/traffic-accounting-observation-validator",
       "codex/traffic-accounting-unresolved-provenance",
       "codex/traffic-lifecycle-enforcement",
       "docs/infrastructure-access-rule",
       "docs/release-governance-calibration",
-      "master",
-      "pr-471"
+      "master"
     ],
     "recentMergedPrs": [
       469,
