@@ -1377,6 +1377,7 @@ export function createPortalAccessRequestService(options = {}) {
           );
         }
 
+        runtimeCompensationRequired = true;
         const lifecycleResult = reconcileEdgeLifecycle("order_refreshed", request);
         const lifecycleEvidence = refreshLifecycleDisposition(lifecycleResult);
         runtimeMayHaveMutated = lifecycleEvidence.runtimeMayHaveMutated;

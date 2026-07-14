@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 import { createOrderEdgeCredentialIssuer } from "../services/edge/order-credential-issuer.mjs";
+import { createOrderCredentialLifecycleService } from "../services/edge/order-credential-lifecycle.mjs";
 import { createPortalAccessRequestService } from "../services/platform/portal-access-requests.mjs";
 import { createSqliteSubscriptionControlStore } from "../services/platform/subscription-control-db.mjs";
 
@@ -2964,6 +2965,146 @@ test("refresh attempts restored desired-state notification before rejecting a fa
       reason: "order_refresh_rolled_back",
       channelRef
     })),
+    rollbackNotificationUsesRestoredOrder: true,
+    stateRestored: true
+  });
+});
+
+test("refresh compensates a real lifecycle receipt failure after the remote handoff", () => {
+  const channelRef = "channel-sgp-a-hy2";
+  const materialStore = edgeMaterialStore();
+  const notificationCalls = [];
+  const refreshAdapterAttempts = [];
+  let credentialSequence = 0;
+  let adapterSequence = 0;
+  let receiptSequence = 0;
+  let receiptWriteCount = 0;
+  let captureRefreshAttempts = false;
+  let rollbackNotificationOrder;
+  let requests;
+  const lifecycleService = createOrderCredentialLifecycleService({
+    channelRef,
+    runtime: "hysteria2",
+    nowFn: () => NOW,
+    executeProductionMutation: true,
+    listOrders: () => requests?.listEdgeCredentialOrders() || [],
+    listCurrentCredentials: () => [],
+    runtimeAdapter: {
+      applyCredentialReconciliation() {
+        adapterSequence += 1;
+        if (captureRefreshAttempts) {
+          refreshAdapterAttempts.push(adapterSequence);
+        }
+        return {
+          status: "pending",
+          mutation: false,
+          handoffRef: `handoff_channel-sgp-a-hy2_${adapterSequence}`,
+          service: {
+            name: "remote-data-plane-handoff",
+            active: false,
+            restarted: false
+          },
+          listener: {
+            udp443: false
+          },
+          appliedAt: NOW
+        };
+      }
+    },
+    receiptStore: {
+      recordEdgeApplyReceipt(receipt) {
+        receiptWriteCount += 1;
+        if (receiptWriteCount === 2) {
+          throw Object.assign(new Error("synthetic apply receipt persistence failure"), {
+            code: "receipt_write_failed"
+          });
+        }
+        return receipt;
+      }
+    },
+    receiptIdFactory: () => `edge_receipt_post_adapter_${++receiptSequence}`,
+    desiredStateRefFactory: () => `desired_state_post_adapter_${receiptSequence + 1}`
+  });
+
+  requests = createPortalAccessRequestService({
+    nowFn: () => NOW,
+    requestIdFactory: () => "pareq_refresh_post_adapter_receipt_failure",
+    edgeCredentialIssuer: createOrderEdgeCredentialIssuer({
+      channelRef,
+      materialStore,
+      uuidFactory: () => `00000000-0000-4000-8000-${String(++credentialSequence).padStart(12, "0")}`,
+      passwordFactory: () => `synthetic-receipt-failure-password-${credentialSequence}`
+    }),
+    edgeLifecycleService: lifecycleService,
+    edgeDesiredStateNotifier: {
+      notifyOrderLifecycle(input) {
+        notificationCalls.push(input);
+        if (input.reason === "order_refresh_rolled_back") {
+          rollbackNotificationOrder = input.order;
+        }
+        return {
+          ok: true,
+          notificationCount: 1,
+          notifications: [{ channelRef, status: "pending" }],
+          redacted: true
+        };
+      }
+    }
+  });
+  requests.submitRequest(validTrialInput());
+  requests.markDelivered("pareq_refresh_post_adapter_receipt_failure", {
+    reviewedByRef: "operator_safe_ref",
+    entitlementRef: "ent_safe_ref",
+    accessGrantRef: "grant_safe_ref",
+    artifactId: "artifact_runtime_1",
+    subscriptionUrl: "https://sub.example.test/import/original-visible-once",
+    expiresAt: "2026-06-07T00:00:00.000Z"
+  });
+  notificationCalls.length = 0;
+  captureRefreshAttempts = true;
+
+  const [before] = requests.listEdgeCredentialOrders();
+  const beforeMaterial = materialStore.getCredentialMaterialSummary(before.edgeCredentialRef);
+  const beforeRequest = requests.getRequest("pareq_refresh_post_adapter_receipt_failure");
+  let errorCode = "none";
+
+  try {
+    requests.refreshSubscription({
+      portalUserRef: "user_safe_ref",
+      requestRef: "pareq_refresh_post_adapter_receipt_failure",
+      clientTarget: "karing"
+    });
+  } catch (error) {
+    errorCode = error?.code || "unknown";
+  }
+
+  const [after] = requests.listEdgeCredentialOrders();
+  const restored = requests.getRequest("pareq_refresh_post_adapter_receipt_failure");
+  assert.deepEqual({
+    errorCode,
+    refreshAdapterAttempts,
+    receiptWriteCount,
+    notificationReasons: notificationCalls.map(({ reason }) => reason),
+    rollbackNotificationCount: notificationCalls.filter(
+      ({ reason }) => reason === "order_refresh_rolled_back"
+    ).length,
+    rollbackNotificationUsesRestoredOrder: (
+      rollbackNotificationOrder?.edgeMaterialDigest === before.edgeMaterialDigest
+    ),
+    stateRestored: (
+      after.edgeCredentialRef === before.edgeCredentialRef
+      && after.edgeMaterialDigest === before.edgeMaterialDigest
+      && materialStore.getCredentialMaterialSummary(after.edgeCredentialRef).materialDigest
+        === beforeMaterial.materialDigest
+      && restored.clientTarget === beforeRequest.clientTarget
+      && JSON.stringify(restored.event) === JSON.stringify(beforeRequest.event)
+    )
+  }, {
+    errorCode: "receipt_write_failed",
+    refreshAdapterAttempts: [2, 3],
+    receiptWriteCount: 3,
+    notificationReasons: ["order_refresh_rolled_back"],
+    rollbackNotificationCount: 1,
     rollbackNotificationUsesRestoredOrder: true,
     stateRestored: true
   });
