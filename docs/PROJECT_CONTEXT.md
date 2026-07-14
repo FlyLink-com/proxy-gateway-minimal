@@ -81,14 +81,15 @@ D:\Projects\proxy-gateway-minimal
 Repository:
 
 ```text
-gaoyi1020-web/proxy-gateway-minimal
+gccwebos-com/proxy-gateway-minimal
 ```
 
 At the 2026-07-14 read-only source snapshot:
 
-- `master`: `ab8b0ec2034cc92a84bcea738c0a254afbd60213`
-- reconciliation branch baseline: exact `master@ab8b0ec2034cc92a84bcea738c0a254afbd60213`
-- observed remote branches (12): `origin/master`,
+- `master`: `20bb8257513153de7d5f75d45de7b748ceea6438`
+- reconciliation inventory baseline: exact `master@20bb8257513153de7d5f75d45de7b748ceea6438`
+- observed remote branches (18): `origin/master`,
+  `origin/codex/ci-lane-split`,
   `origin/codex/commercial-model-v1`,
   `origin/codex/fix-cumulative-usage-accounting`,
   `origin/codex/fix-pr471-credential-lifecycle-review`,
@@ -98,12 +99,19 @@ At the 2026-07-14 read-only source snapshot:
   `origin/codex/traffic-accounting-observation-validator`,
   `origin/codex/traffic-accounting-unresolved-provenance`,
   `origin/codex/traffic-lifecycle-enforcement`,
-  `origin/docs/infrastructure-access-rule`, and
+  `origin/dependabot/npm_and_yarn/admin/babel/core-7.29.7`,
+  `origin/dependabot/npm_and_yarn/admin/form-data-4.0.6`,
+  `origin/dependabot/npm_and_yarn/admin/ws-8.21.0`,
+  `origin/docs/current-source-state-reconciliation`,
+  `origin/docs/infrastructure-access-rule`,
+  `origin/docs/project-intelligence-layer`, and
   `origin/docs/release-governance-calibration`
-- open PRs: Draft #476 and Draft #479
+- open PRs: Draft #476, #479, #482, and #483; non-Draft #486, #487, and #488
 - open Issues: #437, #438, #439, #440, and #475
-- latest master CI: `29328012647`, success
-- latest Release Artifact run: `29328012651`, success
+- Issue #484 is closed by merged PR #485
+- latest master CI: `29346424433`, success
+- latest Release Artifact run: `29346424645`, success
+- latest master CodeQL run: `29346423889`, success
 - last observed Deploy Cloudflare Site run: `29153679412`, success
 
 These are dated facts. Re-run Git and GitHub inventory before making a current
@@ -146,7 +154,7 @@ Keep one primary implementation lane active:
 
 | Order | Issue | Lane | Current state |
 | --- | --- | --- | --- |
-| 1 | #437 | Traffic Accounting | Primary lane; merged source progress reaches #478, while identity sync remains degraded and Draft #479 is blocked pending a new exact successor gate |
+| 1 | #437 | Traffic Accounting | Primary lane; merged source progress reaches #478, while identity sync remains degraded and Draft #479 is blocked at receipt `issuecomment-4966594034` with no durable successor Gate |
 | separate | #475 | Operations Foundation | Open source/schema lane; Draft #476 is not deployed and carries no production schema initialization or runtime mutation authority |
 | 2 | #438 | Portal Lifecycle | Queued after traffic semantics stabilize |
 | 3 | #439 | Commercial Foundation | Queued; #472/#474 add source foundations while billing and AppsFlyer remain non-live |
@@ -156,11 +164,14 @@ Issues #457 and #462 are closed. Real merges proved that Vercel candidates and
 Cloudflare saved versions do not become active production solely because source
 was merged. Promotion remains separately gated.
 
-The two open PRs are Draft source work only. #476 belongs to the separate #475
-operations-foundation source/schema lane. #479 belongs to #437, is not deployed,
-and remains blocked with identity gate pending after terminal receipt
-`issuecomment-4966594034`; the prior approval is consumed, so any successor
-execution needs a new exact gate.
+At this inventory cutoff, seven PRs are open. #476 belongs to the separate #475
+operations-foundation source/schema lane. #479 belongs to #437, is not
+deployed, and remains blocked with identity gate pending after terminal receipt
+`issuecomment-4966594034`; the prior approval is consumed and no durable
+successor Gate exists. Draft #482/#483 are source-governance candidates, and
+non-Draft #486/#487/#488 are dependency-update candidates. Open or non-Draft
+state does not make any of them merged, deployed, artifact-approved, or
+production-ready.
 
 Do not pre-create broad pipeline, Portal redesign, payment activation, or
 architecture-refactor PRs. Each source PR must answer:
@@ -185,8 +196,8 @@ Artifact Manifest v1 currently covers:
 - `portal-static`
 - `admin-static`
 
-The latest source build proof is Release Artifact run `29328012651` for
-`master@ab8b0ec2034cc92a84bcea738c0a254afbd60213`. It is artifact evidence only
+The latest source build proof is Release Artifact run `29346424645` for
+`master@20bb8257513153de7d5f75d45de7b748ceea6438`. It is artifact evidence only
 and does not update any deployment or runtime identity.
 
 Runtime Config Identity v1 provides an offline deterministic observation
@@ -231,10 +242,27 @@ is closed. The #468 merge created saved version
 `407eb863-0e82-4e73-af54-3a44722b07c9`; the active deployment was not
 independently re-read during this C-tier reconciliation.
 
-GitHub `Production` and `cloudflare-production` environments had no protection
-rules at the latest read-only inventory. Branch protection/ruleset APIs were
-unavailable under the current private-repository plan, so process discipline is
-not equivalent to an enforced GitHub approval rule.
+At the latest read-only GitHub governance inventory, the private organization
+uses the Team plan and `master` is protected by the active
+`master-governance-single-owner` repository ruleset. The ruleset blocks deletion
+and non-fast-forward updates, requires pull requests, has no bypass actors, and
+strictly requires the `Validate` check. It requires zero approving reviews and
+does not require review-thread resolution. The `artifact-publication`
+environment is limited to `master` by branch policy but has no reviewer or wait
+timer; `Production`, `cloudflare-production`, `Preview`, and the two Vultr
+production environments have no protection rules. Process evidence therefore
+does not yet equal independently enforced merge or deployment approval.
+
+## Source Governance And Security Snapshot
+
+CodeQL run `29346423889` completed successfully for exact
+`master@20bb8257513153de7d5f75d45de7b748ceea6438`. Successful execution means
+the scan completed; it does not mean its findings are resolved. At this cutoff,
+GitHub reports 39 open code-scanning alerts (2 critical, 36 high, and 1 medium),
+3 open Dependabot alerts (2 high and 1 low), and 0 open secret-scanning alerts.
+Alert severity is provider output, not an exploitability conclusion. Triage,
+source remediation, dismissal, required-check policy, and any production
+decision remain separate reviewed actions.
 
 ## Documented Production Snapshot
 
@@ -257,9 +285,9 @@ Important boundaries:
 
 The documented control-plane source is an ancestor of current `master`.
 PRs #466 through #468, #471, #473, #474, and #477 are source-only; #478 is an
-offline validator and #481 is test-only. Draft PRs #476/#479 are not merged or
-deployed. No later source, CI, or artifact evidence changes the dated production
-pointer.
+offline validator, #481 is test-only, and #480/#485 are governance-only.
+Current open PRs are not merged or deployed. No later source, CI, CodeQL, or
+artifact evidence changes the dated production pointer.
 
 ## Active Blockers
 
@@ -273,6 +301,15 @@ pointer.
 3. Company site, Portal, Admin, and subscription-rendering lineage is not fully
    reconciled.
 4. Billing and AppsFlyer are intentionally non-live.
+5. The active `master` ruleset does not require an approving review or thread
+   resolution, and deployment environments do not have reviewer enforcement.
+6. Code scanning and dependency scanning have unresolved alerts. Their counts
+   require scoped triage; they are not evidence that all findings are exploitable
+   or that unrelated docs/CI changes must stop.
+7. The derived `docs/project-state/` snapshot merged by #485 retains its
+   pre-merge repository and PR/Issue cutoff. It is outside this six-file
+   reconciliation and does not override these entry documents or
+   `project-state/*.json`.
 
 Historical Aliyun, AWS canary, old carrier PR, and Admin OS task queues are not
 current execution authority. Use Git history and the archive/index documents
@@ -298,6 +335,8 @@ GitHub Actions success is build evidence, not production evidence.
 Use these entrypoints:
 
 - `docs/README.md`: full documentation index
+- `docs/project-state/`: derived project-intelligence views; verify their dated
+  cutoff and defer to the authoritative entry documents and JSON state
 - `docs/CURRENT_RELEASE_STATE.md`: current documented release identities
 - `RELEASE_MANIFEST.md`: source/artifact/release/deployment/runtime model
 - `docs/GITHUB_ISSUE_PR_WORKFLOW.md`: Issue and PR ownership

@@ -4,7 +4,7 @@
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
 > - Last updated: 2026-07-14, America/Los_Angeles
-> - Source inventory baseline: `master` at `ab8b0ec2`
+> - Source inventory baseline: `master` at `20bb8257`
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
@@ -235,8 +235,8 @@ sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size
 and UTC creation time, and the manifest contained no downloaded absolute path.
 
 The latest verified `master` proof at this inventory cutoff is Release Artifact
-run `29328012651` for source
-`ab8b0ec2034cc92a84bcea738c0a254afbd60213`. It completed the control-plane,
+run `29346424645` for source
+`20bb8257513153de7d5f75d45de7b748ceea6438`. It completed the control-plane,
 Portal, and Admin artifact jobs. This is build evidence, not production
 promotion evidence.
 
@@ -278,13 +278,12 @@ approval and execution evidence.
 ## Current PR Mapping
 
 This is the current compact view of the ten most recently merged PRs at source
-baseline `ab8b0ec2`. The detailed
+baseline `20bb8257`. The detailed
 `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md` is a frozen historical snapshot
 and is not appended with later PRs.
 
 | PR | Declared capability | Source commit | Release unit | Release assignment | Production state |
 | --- | --- | --- | --- | --- | --- |
-| #469 | `phase-2-release-state-reconciliation@v1` | `73eb6cea` | `none` | Source-state reconciliation only | `not_applicable` |
 | #470 | `infrastructure-access-rule-v1` | `b4abd6ee` | `none` | Governance boundary only | `not_applicable` |
 | #472 | `not_declared` | `b801ec1a` | `none` | Provider-neutral Commercial Model v1 docs only | `not_applicable` |
 | #471 | `not_declared` | `23e86358` | `control-plane-app` | Credential lifecycle source only; no production promotion | `not_deployed` |
@@ -294,6 +293,7 @@ and is not appended with later PRs.
 | #478 | `traffic-accounting-natural-observation-validator@v1` | `70ec822c` | `control-plane-app` | Offline validator source only; no production promotion | `not_deployed` |
 | #481 | `not_declared` | `2df971a4` | `none` | Test-only fixture stabilization | `not_applicable` |
 | #480 | `release-governance-calibration@v1` | `ab8b0ec2` | `none` | Governance calibration only | `not_applicable` |
+| #485 | `project-intelligence-layer@v1` | `20bb8257` | `none` | Derived project-intelligence documentation only | `not_applicable` |
 
 The Phase 2 traffic chain begins with #441
 `collector-state-contract@v1`; #459 preserves redacted adapter provenance,
@@ -303,12 +303,14 @@ release at source `9bc03b41`. Later control-plane changes in #466 through #468,
 #471, #473, #474, and #477 remain source-only; #478 is offline validation and
 #481 is test-only. None changes the dated production pointer.
 
-Open source candidates are outside this merged mapping. Draft PR #476 is the
-Issue #475 operations-foundation source/schema candidate and is not deployed.
-Draft PR #479 is not deployed, its identity gate is pending, and terminal
-receipt `issuecomment-4966594034` is blocked with the prior approval consumed.
-Any successor execution requires a new exact gate. Neither Draft is `ready`,
-merged, artifact-approved, or production-approved.
+Open source candidates are outside this merged mapping. At this inventory
+cutoff, Draft PR #476 is the Issue #475 operations-foundation source/schema
+candidate. Draft PR #479 is not deployed, its identity gate is pending, and
+terminal receipt `issuecomment-4966594034` is blocked with the prior approval
+consumed; no durable successor Gate exists. Draft PRs #482/#483 cover source
+reconciliation and CI-lane governance, while non-Draft PRs #486/#487/#488 are
+dependency-update candidates. None is merged, artifact-approved, deployed, or
+production-approved.
 
 No new release is declared `ready` or `deployed` by this manifest. A source-only
 PR may say that deployment is not applicable; that statement is not a Deploy

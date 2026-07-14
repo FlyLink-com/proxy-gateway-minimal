@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2026-07-14.1",
+  "schemaVersion": "2026-07-14.2",
   "lastUpdated": "2026-07-14",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
@@ -17,9 +17,9 @@
     {
       "id": "version-management",
       "name": "Version And Deployment Governance",
-      "status": "baseline-stable",
+      "status": "active-source-governance-hardening",
       "riskBoundary": "C for source-state records and artifact contracts; A for deployment, promotion, rollback, or production observation",
-      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Issues #457 and #462 closed the Vercel and Cloudflare merge-versus-promotion proofs; source governance is current through PR #480 and Release Artifact run 29328012651, while no new release is Ready or deployed.",
+      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Issues #457 and #462 closed the Vercel and Cloudflare merge-versus-promotion proofs; merged source reaches PR #485 and Release Artifact run 29346424645, while Draft PRs #482/#483 continue source-governance hardening, no new release is Ready or deployed, and machine enforcement remains incomplete.",
       "primaryDocs": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -43,7 +43,7 @@
       "name": "Traffic Accounting",
       "status": "active-controlled-remediation",
       "riskBoundary": "B for collector contracts, redacted provenance, tests, and protected read-only projection; A for runtime, service, config, quota, or traffic-supply mutation",
-      "purpose": "Complete Issue #437. Merged source progress through #471/#473/#477/#478 strengthens lifecycle enforcement, cumulative accounting, provenance, and offline observation validation. Japan TUIC identity sync remains degraded, map apply has not started, and Draft PR #479 is blocked pending a new exact successor gate.",
+      "purpose": "Complete Issue #437. Merged source progress through #471/#473/#477/#478 strengthens lifecycle enforcement, cumulative accounting, provenance, and offline observation validation. Japan TUIC identity sync remains degraded, map apply has not started, and Draft PR #479 is blocked at terminal receipt issuecomment-4966594034 with no durable successor Gate.",
       "primaryDocs": [
         "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
         "docs/CURRENT_RELEASE_STATE.md"

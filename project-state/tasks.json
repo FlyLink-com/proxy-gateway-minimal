@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2026-07-14.1",
+  "schemaVersion": "2026-07-14.2",
   "lastUpdated": "2026-07-14",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-current-queue",
@@ -16,20 +16,13 @@
     "docs/PROJECT_SIMPLIFICATION_MAP.md"
   ],
   "historicalBoundary": {
-    "sourceSnapshotAtReconciliation": "ab8b0ec2034cc92a84bcea738c0a254afbd60213",
+    "sourceSnapshotAtReconciliation": "20bb8257513153de7d5f75d45de7b748ceea6438",
     "rule": "Use Git history and docs/archive indexes for completed or superseded tasks; do not re-add them to the current queue without a new Issue and fresh evidence."
   },
   "sourceReceipts": {
     "inventoryDate": "2026-07-14",
-    "master": "ab8b0ec2034cc92a84bcea738c0a254afbd60213",
+    "master": "20bb8257513153de7d5f75d45de7b748ceea6438",
     "merged": [
-      {
-        "pr": 469,
-        "sourceCommit": "73eb6cea3a9086f715e0a076f8d2d95579abd59e",
-        "lane": "version-management",
-        "receipt": "release-state reconciliation",
-        "productionState": "not_applicable"
-      },
       {
         "pr": 470,
         "sourceCommit": "b4abd6eea1f98438d7c49a9297ead025a1e0a073",
@@ -92,6 +85,13 @@
         "lane": "version-management",
         "receipt": "release governance calibration",
         "productionState": "not_applicable"
+      },
+      {
+        "pr": 485,
+        "sourceCommit": "20bb8257513153de7d5f75d45de7b748ceea6438",
+        "lane": "version-management",
+        "receipt": "project intelligence and orchestration documentation",
+        "productionState": "not_applicable"
       }
     ],
     "openDrafts": [
@@ -107,12 +107,49 @@
         "pr": 479,
         "issue": 437,
         "lane": "traffic-accounting",
-        "sourceState": "blocked_pending_successor_gate",
+        "sourceState": "blocked_no_durable_successor_gate",
         "productionState": "not_deployed",
         "identityGate": "pending",
         "terminalReceipt": "issuecomment-4966594034",
-        "approvalState": "consumed",
-        "requiredNextGate": "new exact successor gate"
+        "predecessorApprovalState": "consumed",
+        "durableSuccessorGate": "absent",
+        "requiredNextGate": "new exact successor gate; none currently exists"
+      },
+      {
+        "pr": 482,
+        "issue": null,
+        "lane": "version-management",
+        "sourceState": "current_source_state_reconciliation_draft",
+        "productionState": "not_applicable",
+        "authority": "none"
+      },
+      {
+        "pr": 483,
+        "issue": null,
+        "lane": "version-management",
+        "sourceState": "ci_lane_split_draft",
+        "productionState": "not_applicable",
+        "authority": "none"
+      }
+    ],
+    "openNonDraftPrs": [
+      {
+        "pr": 486,
+        "lane": "dependency-maintenance",
+        "sourceState": "open_non_draft_behind",
+        "productionState": "not_applicable"
+      },
+      {
+        "pr": 487,
+        "lane": "dependency-maintenance",
+        "sourceState": "open_non_draft_behind",
+        "productionState": "not_applicable"
+      },
+      {
+        "pr": 488,
+        "lane": "dependency-maintenance",
+        "sourceState": "open_non_draft_behind",
+        "productionState": "not_applicable"
       }
     ]
   },
