@@ -2870,6 +2870,105 @@ test("refresh notifies pending rollback children before rejecting a failed rollb
   })));
 });
 
+test("refresh attempts restored desired-state notification before rejecting a failed rollback", () => {
+  const channelRefs = ["channel-aliyun-a-tuic", "channel-sgp-a-hy2"];
+  const candidateNotificationWrites = [];
+  const rollbackNotificationWrites = [];
+  let rollbackNotificationOrder;
+  const requestId = "pareq_refresh_partial_notification_failed_rollback";
+  const harness = refreshStateMachineHarness({
+    requestId,
+    refreshLifecycleResult: {
+      ok: true,
+      mutation: true,
+      runtimeReceipt: { status: "applied" },
+      redacted: true
+    },
+    refreshNotificationResult({ input }) {
+      for (const channelRef of channelRefs) {
+        if (candidateNotificationWrites.length > 0) {
+          throw Object.assign(new Error("synthetic later-channel notification failure"), {
+            code: "edge_desired_state_notification_failed"
+          });
+        }
+        candidateNotificationWrites.push({ reason: input.reason, channelRef });
+      }
+      return null;
+    },
+    rollbackLifecycleResult: {
+      ok: false,
+      mutation: false,
+      runtimeReceipt: { status: "failed" },
+      redacted: true
+    },
+    rollbackNotificationResult({ input }) {
+      rollbackNotificationOrder = input.order;
+      rollbackNotificationWrites.push(...channelRefs.map((channelRef) => ({
+        reason: input.reason,
+        channelRef
+      })));
+      return {
+        ok: true,
+        notificationCount: channelRefs.length,
+        notifications: channelRefs.map((channelRef) => ({ channelRef, status: "pending" })),
+        redacted: true
+      };
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+  const beforeMaterial = harness.materialStore.getCredentialMaterialSummary(before.edgeCredentialRef);
+  const beforeRequest = harness.requests.getRequest(requestId);
+  let errorCode = "none";
+
+  try {
+    harness.requests.refreshSubscription({
+      portalUserRef: "user_safe_ref",
+      requestRef: requestId,
+      clientTarget: "karing"
+    });
+  } catch (error) {
+    errorCode = error?.code || "unknown";
+  }
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  const restored = harness.requests.getRequest(requestId);
+  assert.deepEqual({
+    errorCode,
+    lifecycleReasons: harness.lifecycleReasons,
+    notificationReasons: harness.notificationCalls.map(({ reason }) => reason),
+    rollbackNotificationCount: harness.notificationCalls.filter(
+      ({ reason }) => reason === "order_refresh_rolled_back"
+    ).length,
+    candidateNotificationWrites,
+    rollbackNotificationWrites,
+    rollbackNotificationUsesRestoredOrder: (
+      rollbackNotificationOrder?.edgeMaterialDigest === before.edgeMaterialDigest
+    ),
+    stateRestored: (
+      after.edgeCredentialRef === before.edgeCredentialRef
+      && after.edgeMaterialDigest === before.edgeMaterialDigest
+      && harness.materialStore.getCredentialMaterialSummary(after.edgeCredentialRef).materialDigest
+        === beforeMaterial.materialDigest
+      && restored.clientTarget === beforeRequest.clientTarget
+      && JSON.stringify(restored.event) === JSON.stringify(beforeRequest.event)
+    )
+  }, {
+    errorCode: "subscription_refresh_rollback_failed",
+    lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
+    notificationReasons: ["order_refreshed", "order_refresh_rolled_back"],
+    rollbackNotificationCount: 1,
+    candidateNotificationWrites: [
+      { reason: "order_refreshed", channelRef: "channel-aliyun-a-tuic" }
+    ],
+    rollbackNotificationWrites: channelRefs.map((channelRef) => ({
+      reason: "order_refresh_rolled_back",
+      channelRef
+    })),
+    rollbackNotificationUsesRestoredOrder: true,
+    stateRestored: true
+  });
+});
+
 test("refresh enforces a per-order cooldown before reissuing material again", () => {
   let now = "2026-06-01T00:00:00.000Z";
   let credentialSequence = 0;
