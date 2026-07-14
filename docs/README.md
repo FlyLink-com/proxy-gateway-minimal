@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-07-11, America/Los_Angeles.
+Last updated: 2026-07-14, America/Los_Angeles.
 
 Use this file as the first navigation point for project documentation. It
 classifies current source-of-truth docs, active runbooks, execution records,
@@ -107,6 +107,25 @@ historical reference, and runtime material separated.
 | `docs/VALIDATION_BASELINE.md` | Current validation command matrix and PR completion gate by risk tier and touched surface. | Active validation entrypoint; not historical pass-count archive and not deploy approval. | Read before choosing which checks to run for a PR. |
 | `docs/CI_MANUAL_VALIDATION.md` | Manual CI validation host workflow; target direction is local Linux manual CI, with historical Aliyun manual CI facts retained until the transition is validated. | Active runbook, not staging or deploy approval. | Read before using a manual validation host for repo-level CI evidence. |
 | `docs/CLOUDFLARE_PUBLIC_SITE_CI.md` | Repository-only Cloudflare public static site CI boundary, pinned Wrangler dry-run command, and non-goals for keeping backend/control-plane/API/runtime work off Cloudflare. | Active CI boundary; no deploy, DNS, Cloudflare account, secret, or production authority. | Read before changing `wrangler.public-site.jsonc`, `admin/dist-site` public-site builds, GitHub public-site CI, or Cloudflare static-site deploy preparation. |
+
+## Project Intelligence Layer
+
+These documents provide a human-readable knowledge and orchestration layer.
+They reference the existing `project-state/*.json` mechanism and do not create
+a second machine-readable source of truth or any production authority.
+
+| Document | Purpose | Status | When to read |
+| --- | --- | --- | --- |
+| `docs/project-state/CURRENT_STATE.md` | Evidence-backed current view for project, milestone, mainline Issue, production/mutation boundary, validation, blockers, and next actions. | Active Engineering Enablement snapshot; drift-prone facts require current checks. | Read after the three required release/context documents when resuming Issue #484 or a related mapping task. |
+| `docs/project-state/MILESTONES.md` | Foundation, Governance, Runtime, and Commercial milestone map with goals, statuses, dependencies, acceptance criteria, and information gaps. | Active portfolio map; no release or execution authority. | Read before claiming a phase is active, complete, blocked, or ready for promotion. |
+| `docs/project-state/BLOCKERS.md` | Blocker template and evidence-backed coordination/information-gap records. | Active blocker format; no mutation authority. | Read before recording or closing a blocker. |
+| `docs/project-state/DECISIONS.md` | Decision template and confirmed long-term repository decisions with evidence paths. | Active decision register; Issue #484 additions remain subject to PR review. | Read before changing project-state, architecture, gate, or workflow direction. |
+| `docs/project-map/DEPENDENCY_MAP.md` | Feature -> Issue -> PR -> Artifact -> Runtime relationship standard and verified partial examples. | Active mapping contract; not an execution graph. | Read when tracing task reason, blockers, dependencies, consumers, artifacts, or runtime evidence. |
+| `docs/project-map/ARCHITECTURE_MAP.md` | Control Plane, Data Plane, and Release Plane responsibilities and boundaries. | Active logical map; live runtime facts require separate verification. | Read before assigning a change to a plane or inferring deployment/runtime state. |
+| `docs/project-map/SOURCE_MAP.md` | Source responsibility, dependency, risk, and ownership-gap map for services, routes, frontend, runtime, and scripts. | Active source inventory at its stated head. | Read before selecting files or assigning module ownership. |
+| `docs/agent-model/ROLES.md` | Planner, Architect, Engineer, Reviewer, controller, and handoff boundaries aligned with the existing multi-agent model. | Active role contract; roles do not lower risk or grant authority. | Read before assigning or combining engineering roles. |
+| `docs/agent-model/WORKFLOW.md` | Issue-to-release workflow aligned with Risk A/B/C, Draft/Ready, validation, Deploy Note, and four release gates. | Active workflow contract; no Ready/merge/release authority. | Read before moving a task between workflow stages. |
+| `docs/agent-model/SESSION_PROTOCOL.md` | Context recovery, fact ledger, scope, sensitive-data, concurrency, handoff, and completion protocol. | Active AI session protocol; no automation or external integration. | Read at session start, resume, handoff, and completion. |
 
 ## Structured Project State
 
