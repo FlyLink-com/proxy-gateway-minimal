@@ -24,6 +24,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -34,26 +36,64 @@ jobs:
             package-lock.json
             admin/package-lock.json
 
+      - name: Determine validation lane
+        id: changes
+        env:
+          CI_DIFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          CI_DIFF_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: >-
+          node scripts/ci-change-classifier.mjs
+          --event-name "$GITHUB_EVENT_NAME"
+          --base "$CI_DIFF_BASE"
+          --head "$CI_DIFF_HEAD"
+          --github-output "$GITHUB_OUTPUT"
+
+      - name: Check diff
+        shell: bash
+        env:
+          CI_DIFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+          CI_DIFF_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            range="HEAD^...HEAD"
+          else
+            [[ "$CI_DIFF_BASE" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$CI_DIFF_HEAD" =~ ^[0-9a-f]{40}$ ]]
+            git cat-file -e "$CI_DIFF_BASE^{commit}"
+            git cat-file -e "$CI_DIFF_HEAD^{commit}"
+            range="$CI_DIFF_BASE...$CI_DIFF_HEAD"
+          fi
+          git diff --check "$range"
+
       - name: Install root dependencies
+        if: steps.changes.outputs.lane == 'code'
         run: npm ci
 
       - name: Install admin dependencies
+        if: steps.changes.outputs.lane == 'code'
         run: npm ci --prefix admin
 
       - name: Run server tests
+        if: steps.changes.outputs.lane == 'code'
         run: npm test
 
       - name: Run admin tests
+        if: steps.changes.outputs.lane == 'code'
         run: npm run admin:test
 
       - name: Build admin app
+        if: steps.changes.outputs.lane == 'code'
         run: npm run admin:build
 
       - name: Build public site
+        if: steps.changes.outputs.lane == 'code'
         run: npm run cloudflare:site:build
 
       - name: Verify public site boundary
+        if: steps.changes.outputs.lane == 'code'
         run: npm run cloudflare:site:verify
 
       - name: Cloudflare public site dry run
+        if: steps.changes.outputs.lane == 'code'
         run: npm run cloudflare:site:dry-run
