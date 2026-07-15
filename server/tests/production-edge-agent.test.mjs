@@ -374,13 +374,26 @@ test("production edge agent scopes desired-state pull and posts scoped receipts"
 
   const tombstoneCalls = [];
   const revokedCredentialRef = "edgecred_revoked_hy2_001";
-  const activeCredentialRef = "edgecred_active_hy2_001";
+  const activeACredentialRef = "edgecred_active_a_hy2_001";
+  const activeBCredentialRef = "edgecred_active_b_hy2_001";
   const revokedScopeDigest = scopeCredentialDigest(revokedCredentialRef);
+  const activeMaterialDigests = [
+    {
+      channelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: activeACredentialRef,
+      digest: "sha256:dddddddddddddddd"
+    },
+    {
+      channelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: activeBCredentialRef,
+      digest: "sha256:eeeeeeeeeeeeeeee"
+    }
+  ];
   const scopedTombstone = desiredState({
     desiredStateRef: "desired_scoped_tombstone_agent_001",
     generation: "gen_scoped_tombstone_agent_001",
-    edgeCredentialRefs: [],
-    materialDigests: [],
+    edgeCredentialRefs: [activeACredentialRef, activeBCredentialRef],
+    materialDigests: activeMaterialDigests,
     scopedTombstone: {
       sourceDesiredStateRef: "desired_state_hy2_authoritative_001",
       sourceGeneration: "gen_hy2_authoritative_001",
@@ -390,19 +403,16 @@ test("production edge agent scopes desired-state pull and posts scoped receipts"
   const authoritative = desiredState({
     desiredStateRef: "desired_state_hy2_authoritative_001",
     generation: "gen_hy2_authoritative_001",
-    edgeCredentialRefs: [activeCredentialRef],
-    materialDigests: [{
-      channelRef: "channel-sgp-a-hy2",
-      edgeCredentialRef: activeCredentialRef,
-      digest: "sha256:dddddddddddddddd"
-    }]
+    edgeCredentialRefs: [activeACredentialRef, activeBCredentialRef],
+    materialDigests: activeMaterialDigests
   });
+  let reconciliationCallCount = 0;
   const tombstoneRunner = createProductionEdgeAgentRunner({
     baseUrl: "http://127.0.0.1:3456",
     token: "node-agent-token",
     nodeRef: "vultr-sgp-a",
     channelRefs: ["channel-sgp-a-hy2"],
-    edgeCredentialRefs: [revokedCredentialRef],
+    edgeCredentialRefs: [activeACredentialRef, revokedCredentialRef],
     applyEnabled: true,
     dryRun: false,
     fetchImpl: async (url, options = {}) => {
@@ -415,7 +425,7 @@ test("production edge agent scopes desired-state pull and posts scoped receipts"
           ["empty_desired_state", "scoped_tombstone_lineage", "tombstone_reconcile"]
         );
         const filter = parsed.searchParams.get("edgeCredentialRefs");
-        if (filter === revokedCredentialRef) {
+        if (filter === `${activeACredentialRef},${revokedCredentialRef}`) {
           return responseJson(200, {
             type: "gccgw_data_plane_agent_desired_state_response",
             nodeRef: "vultr-sgp-a",
@@ -438,20 +448,30 @@ test("production edge agent scopes desired-state pull and posts scoped receipts"
       if (parsed.pathname.endsWith("/materials")) {
         const body = JSON.parse(options.body);
         assert.equal(body.desiredStateRef, authoritative.desiredStateRef);
-        assert.deepEqual(body.edgeCredentialRefs, [activeCredentialRef]);
+        assert.deepEqual(body.edgeCredentialRefs, [activeACredentialRef, activeBCredentialRef]);
         return responseJson(200, {
           type: "gccgw_data_plane_material_response",
           nodeRef: "vultr-sgp-a",
           desiredStateRef: authoritative.desiredStateRef,
           mode: "material",
-          records: [{
-            edgeCredentialRef: activeCredentialRef,
-            materialDigest: "sha256:dddddddddddddddd",
-            material: {
-              uuid: "22222222-2222-4222-8222-222222222222",
-              password: "synthetic-active-peer-material"
+          records: [
+            {
+              edgeCredentialRef: activeACredentialRef,
+              materialDigest: "sha256:dddddddddddddddd",
+              material: {
+                uuid: "22222222-2222-4222-8222-222222222222",
+                password: "synthetic-active-a-material"
+              }
+            },
+            {
+              edgeCredentialRef: activeBCredentialRef,
+              materialDigest: "sha256:eeeeeeeeeeeeeeee",
+              material: {
+                uuid: "33333333-3333-4333-8333-333333333333",
+                password: "synthetic-active-b-material"
+              }
             }
-          }],
+          ],
           sensitive: true
         });
       }
@@ -459,8 +479,8 @@ test("production edge agent scopes desired-state pull and posts scoped receipts"
         const body = JSON.parse(options.body);
         assert.equal(body.desiredStateRef, scopedTombstone.desiredStateRef);
         assert.equal(body.generation, scopedTombstone.generation);
-        assert.equal(body.credentialCount, 0);
-        assert.deepEqual(body.materialDigests, []);
+        assert.equal(body.credentialCount, 2);
+        assert.deepEqual(body.materialDigests, activeMaterialDigests.map((entry) => entry.digest));
         assert.deepEqual(body.scopedTombstone, scopedTombstone.scopedTombstone);
         assert.doesNotMatch(JSON.stringify(body), new RegExp(revokedCredentialRef));
         return responseJson(201, {
@@ -483,14 +503,16 @@ test("production edge agent scopes desired-state pull and posts scoped receipts"
           assert.fail("scoped tombstones must use exact credential reconciliation");
         },
         async applyCredentialReconciliation(payload) {
+          reconciliationCallCount += 1;
           assert.deepEqual(payload.summary, {
-            addCount: 1,
+            addCount: 2,
             revokeCount: 1,
             rotateCount: 0,
             unchangedCount: 0
           });
           assert.deepEqual(payload.actions, [
-            { action: "add", credentialRef: activeCredentialRef },
+            { action: "add", credentialRef: activeACredentialRef },
+            { action: "add", credentialRef: activeBCredentialRef },
             { action: "revoke", credentialRef: revokedCredentialRef }
           ]);
           return {
@@ -508,8 +530,149 @@ test("production edge agent scopes desired-state pull and posts scoped receipts"
   const tombstoneResult = await tombstoneRunner.runOnce();
   assert.equal(tombstoneResult.ok, true);
   assert.equal(tombstoneResult.receiptCount, 1);
-  assert.equal(tombstoneResult.materialCount, 1);
+  assert.equal(tombstoneResult.materialCount, 2);
   assert.equal(tombstoneCalls.length, 4);
+  assert.equal(reconciliationCallCount, 1);
+
+  const invalidMixedStates = [
+    {
+      name: "missing authoritative active B",
+      state: {
+        ...scopedTombstone,
+        edgeCredentialRefs: [activeACredentialRef],
+        materialDigests: [activeMaterialDigests[0]]
+      },
+      code: "scoped_tombstone_state_mismatch"
+    },
+    {
+      name: "mismatched authoritative material",
+      state: {
+        ...scopedTombstone,
+        materialDigests: [
+          activeMaterialDigests[0],
+          {
+            ...activeMaterialDigests[1],
+            digest: "sha256:ffffffffffffffff"
+          }
+        ]
+      },
+      code: "scoped_tombstone_state_mismatch"
+    },
+    {
+      name: "stale authoritative source identity",
+      state: {
+        ...scopedTombstone,
+        scopedTombstone: {
+          ...scopedTombstone.scopedTombstone,
+          sourceGeneration: "gen_stale_authoritative"
+        }
+      },
+      code: "scoped_tombstone_authority_mismatch"
+    },
+    {
+      name: "unselected revoked lineage",
+      state: {
+        ...scopedTombstone,
+        scopedTombstone: {
+          ...scopedTombstone.scopedTombstone,
+          credentialDigests: [
+            revokedScopeDigest,
+            scopeCredentialDigest("edgecred_unselected_revoked_hy2_001")
+          ].sort((a, b) => a.localeCompare(b))
+        }
+      },
+      code: "scoped_tombstone_scope_mismatch"
+    }
+  ];
+
+  for (const invalid of invalidMixedStates) {
+    let mutationCount = 0;
+    let receiptPostCount = 0;
+    const invalidRunner = createProductionEdgeAgentRunner({
+      baseUrl: "http://127.0.0.1:3456",
+      token: "node-agent-token",
+      nodeRef: "vultr-sgp-a",
+      channelRefs: ["channel-sgp-a-hy2"],
+      edgeCredentialRefs: [activeACredentialRef, revokedCredentialRef],
+      applyEnabled: true,
+      dryRun: false,
+      fetchImpl: async (url, options = {}) => {
+        const parsed = new URL(String(url));
+        if (parsed.pathname.endsWith("/desired-state")) {
+          const filtered = parsed.searchParams.has("edgeCredentialRefs");
+          return responseJson(200, {
+            type: "gccgw_data_plane_agent_desired_state_response",
+            nodeRef: "vultr-sgp-a",
+            channelRefs: ["channel-sgp-a-hy2"],
+            desiredStates: [filtered ? invalid.state : authoritative],
+            summaries: [],
+            redacted: true
+          });
+        }
+        if (parsed.pathname.endsWith("/materials")) {
+          return responseJson(200, {
+            type: "gccgw_data_plane_material_response",
+            nodeRef: "vultr-sgp-a",
+            desiredStateRef: authoritative.desiredStateRef,
+            mode: "material",
+            records: [
+              {
+                edgeCredentialRef: activeACredentialRef,
+                materialDigest: activeMaterialDigests[0].digest,
+                material: { password: "synthetic-invalid-a-material" }
+              },
+              {
+                edgeCredentialRef: activeBCredentialRef,
+                materialDigest: activeMaterialDigests[1].digest,
+                material: { password: "synthetic-invalid-b-material" }
+              }
+            ],
+            sensitive: true
+          });
+        }
+        if (parsed.pathname.endsWith("/receipts")) {
+          receiptPostCount += 1;
+          return responseJson(201, {
+            type: "gccgw_data_plane_receipt_response",
+            nodeRef: "vultr-sgp-a",
+            channelRef: "channel-sgp-a-hy2",
+            generation: invalid.state.generation,
+            receiptId: "receipt_invalid_scoped_state",
+            status: "applied",
+            redacted: true
+          });
+        }
+        throw new Error(`unexpected fetch ${url}`);
+      },
+      nowFn: () => new Date(NOW),
+      runtimeAdapters: {
+        "channel-sgp-a-hy2": {
+          runtime: "hysteria2",
+          async applyDesiredState() {
+            assert.fail("invalid scoped lineage must not use desired-state apply");
+          },
+          async applyCredentialReconciliation() {
+            mutationCount += 1;
+            return {
+              status: "applied",
+              configTest: true,
+              serviceActive: true,
+              listenerPresent: true
+            };
+          }
+        }
+      },
+      materialStore: createEdgeCredentialMaterialStore()
+    });
+
+    await assert.rejects(
+      () => invalidRunner.runOnce(),
+      (error) => error.code === invalid.code,
+      invalid.name
+    );
+    assert.equal(mutationCount, 0, invalid.name);
+    assert.equal(receiptPostCount, 0, invalid.name);
+  }
 });
 
 test("production edge agent rejects non-loopback base URL by default", () => {

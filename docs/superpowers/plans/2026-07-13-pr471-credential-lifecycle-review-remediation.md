@@ -23,12 +23,24 @@
 2. Do not touch the user-owned untracked `.codex/config.toml` in the main checkout. Work only in `D:\Projects\proxy-gateway-minimal\.worktrees\fix-pr471-credential-lifecycle-review` on `codex/fix-pr471-credential-lifecycle-review`.
 3. The base is `origin/master` at `70ec822c72aff0c77fad0a071023beb25339018a`. Do not rebase onto unrelated work during implementation.
 4. Preserve legacy tombstone capability gating: protocol `< 1.1` or missing either `empty_desired_state` / `tombstone_reconcile` must not receive an empty desired state.
-5. A scoped empty desired state must be deterministic for the authoritative source desired state, must not expose the revoked filter ref, and must be accepted by the existing authenticated receipt path with `credentialCount: 0` and no material digests.
+5. **Superseded historical constraint:** the original protocol 1.1 plan modeled scoped revocation only as an empty desired state with a zero-count receipt. The current protocol 1.2 contract below replaces that rule while retaining the empty-active-set special case.
 6. Mutable and read-only desired-state projections must have the same active-row rules and tombstone behavior. Historical rows establish that an explicit empty desired state exists; an entirely unknown channel still returns `null`.
 7. `ok: false, mutation: true` from refresh reconciliation is a failed apply that may have changed runtime. It must trigger `order_refresh_rolled_back` against the previous request before the original failure is returned.
 8. A pending refresh is accepted only when the lifecycle result explicitly identifies remote handoff (`runtimeReceipt.status === "pending"` with `nextAction === "complete_data_plane_handoff"`, or an equivalent fully classified fanout) and a real remote desired-state notification was recorded (`notificationCount > 0`). A generic plan/dry-run, an unclassified report, or a pending result without such notification must restore the prior material/order and return the existing pending error.
 9. Matching remote receipt remains the authority for runtime applied state. Do not weaken `createReceiptBackedSubscriptionChannelGate`, synthesize an applied receipt, or claim pending as applied.
 10. Keep the implementation minimal: no schema/migration, Redis, queue, cluster, new external dependency, provider action, deploy script, or unrelated refactor.
+
+## Current scoped-lineage contract (protocol 1.2)
+
+This section supersedes the protocol 1.1 empty-only scoped-lineage statements in historical Task 1. The negotiated capability is `scoped_tombstone_lineage`; no additional capability, fallback, dual mode, or credential-level authorization is introduced.
+
+- Authority remains the authenticated node/channel token and adapter contract. `edgeCredentialRefs` is a lineage selector, not an authority boundary.
+- For a single authoritative channel with active credentials A and B and selected revoked lineage R, the scoped desired state is one atomic channel-authoritative target: complete active set A+B plus the exact tombstone for R.
+- The active refs and material digests must exactly equal the freshly refetched authoritative channel state. The tombstone contains only sorted, unique, non-overlapping digests for selected revoked lineage on that same channel.
+- `sourceDesiredStateRef` and `sourceGeneration` bind the current authoritative channel state. The scoped fingerprint also binds the channel, complete active refs/material evidence, and exact tombstone digests.
+- The production Agent refetches and validates the authoritative single-channel state before material fetch or runtime mutation, fetches material for all active refs, and invokes `applyCredentialReconciliation` once with add A+B and revoke R actions. It must not route mixed lineage through `applyDesiredState`.
+- The receipt proves both preservation and revocation: exact active credential count, exact active material digests, and exact scoped tombstone identity. Missing, extra, duplicate, stale, wrong-channel, or active/tombstone-overlapping evidence fails closed.
+- When the authoritative active set is empty, the same v1.2 contract permits the tombstone-only zero-count special case.
 
 ## Baseline Evidence
 
@@ -37,7 +49,7 @@
 - GitHub PR #471: four current unresolved threads (3 P1, 1 P2), none outdated.
 - Existing source already supports global empty tombstones, compatible-agent gating, agent receipt recording, and receipt-backed subscription channel gating. The missing cases are scoped empty projection/receipt parity, read-only historical projection, and refresh ordering/error evidence.
 
-### Task 1: Make credential-scoped revocation tombstones round-trip through agent receipts
+### Task 1: Make credential-scoped revocation tombstones round-trip through agent receipts (historical; superseded in part)
 
 **Files:**
 
@@ -51,7 +63,7 @@ Extend the existing tombstone tests with an authoritative channel state that sti
 The test must verify:
 
 - a legacy/incompatible filtered poll receives no desired state and increments `blockedDesiredStateCount`;
-- a protocol 1.1 agent with both tombstone capabilities receives exactly one desired state;
+- **Superseded protocol 1.1 expectation:** an agent with only the two legacy tombstone capabilities receives the scoped state. The current scoped-lineage path instead requires protocol 1.2 plus `scoped_tombstone_lineage`.
 - the state keeps the channel, has empty credential refs/material digests, and does not contain either synthetic credential ref in its serialized response;
 - repeated compatible polls return the same scoped `desiredStateRef` and generation;
 - an applied receipt with the scoped ref/generation, zero credentials, and zero digests is accepted and stored against that same scoped ref.

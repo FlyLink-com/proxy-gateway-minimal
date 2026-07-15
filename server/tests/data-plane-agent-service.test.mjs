@@ -356,17 +356,27 @@ test("does not synthesize empty tombstones for unmatched active credentials acro
   }]);
 });
 
-test("rejects historical and forged empty scoped receipts for unmatched active credential filters", () => {
-  const authoritative = desired({
-    desiredStateRef: "desired_sgp_other_hy2_001",
-    generation: "gen_sgp_other_hy2_001",
-    channelRefs: ["channel-sgp-a-hy2"],
-    edgeCredentialRefs: ["edgecred_other_hy2"],
-    materialDigests: [{
+test("preserves channel-authoritative mixed scoped lineage and rejects forged receipts", () => {
+  const activeARef = "edgecred_active_a_hy2";
+  const activeBRef = "edgecred_active_b_hy2";
+  const activeMaterialDigests = [
+    {
       channelRef: "channel-sgp-a-hy2",
-      edgeCredentialRef: "edgecred_other_hy2",
+      edgeCredentialRef: activeARef,
+      digest: "sha256:aaaaaaaaaaaaaaaa"
+    },
+    {
+      channelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: activeBRef,
       digest: "sha256:cccccccccccccccc"
-    }]
+    }
+  ];
+  const authoritative = desired({
+    desiredStateRef: "desired_sgp_mixed_hy2_001",
+    generation: "gen_sgp_mixed_hy2_001",
+    channelRefs: ["channel-sgp-a-hy2"],
+    edgeCredentialRefs: [activeARef, activeBRef],
+    materialDigests: activeMaterialDigests
   });
   const unrelatedTuic = desired({
     desiredStateRef: "desired_sgp_unrelated_tuic_001",
@@ -384,21 +394,28 @@ test("rejects historical and forged empty scoped receipts for unmatched active c
     ["channel-sgp-a-tuic", unrelatedTuic]
   ]));
   const revokedCredentialRef = "edgecred_revoked_hy2";
+  const extraRevokedCredentialRef = "edgecred_extra_revoked_hy2";
   const revokedScopeDigest = scopeCredentialDigest(revokedCredentialRef);
+  const extraRevokedScopeDigest = scopeCredentialDigest(extraRevokedCredentialRef);
+  const activeScopeDigest = scopeCredentialDigest(activeARef);
   store.getPortalEdgeCredentialChannelRef = (edgeCredentialRef) => (
-    edgeCredentialRef === revokedCredentialRef ? "channel-sgp-a-hy2" : null
+    [revokedCredentialRef, extraRevokedCredentialRef].includes(edgeCredentialRef)
+      ? "channel-sgp-a-hy2"
+      : null
   );
   store.getPortalEdgeCredentialChannelRefByScopeDigest = (credentialDigest) => (
-    credentialDigest === revokedScopeDigest ? "channel-sgp-a-hy2" : null
+    [revokedScopeDigest, extraRevokedScopeDigest, activeScopeDigest].includes(credentialDigest)
+      ? "channel-sgp-a-hy2"
+      : null
   );
   const service = serviceFor(store);
   const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
-  const credentialFilter = {
+  const revokedOnlyFilter = {
     edgeCredentialRefs: [revokedCredentialRef]
   };
 
   const legacy = service.getDesiredState(identity, {
-    ...credentialFilter,
+    ...revokedOnlyFilter,
     agentVersion: "1.0",
     capabilities: []
   });
@@ -408,7 +425,7 @@ test("rejects historical and forged empty scoped receipts for unmatched active c
   assert.equal(legacy.compatibility.blockedDesiredStateCount, 1);
 
   const compatibleFilter = {
-    ...credentialFilter,
+    ...revokedOnlyFilter,
     agentVersion: "1.1",
     capabilities: ["empty_desired_state", "tombstone_reconcile"]
   };
@@ -420,40 +437,47 @@ test("rejects historical and forged empty scoped receipts for unmatched active c
   assert.equal(first.compatibility.tombstoneReconcile, true);
   assert.equal(first.compatibility.scopedTombstoneLineage, false);
   assert.equal(first.compatibility.blockedDesiredStateCount, 1);
-  assert.doesNotMatch(JSON.stringify(first), /edgecred_(?:other|revoked)_hy2/);
+  assert.doesNotMatch(JSON.stringify(first), /edgecred_(?:revoked|unrelated)_/);
 
-  const lineageCompatible = service.getDesiredState(identity, {
-    ...credentialFilter,
+  const lineageFilter = {
+    edgeCredentialRefs: [activeARef, revokedCredentialRef],
     agentVersion: "1.2",
     capabilities: ["empty_desired_state", "scoped_tombstone_lineage", "tombstone_reconcile"]
-  });
+  };
+  const lineageCompatible = service.getDesiredState(identity, lineageFilter);
+  const repeatedLineage = service.getDesiredState(identity, lineageFilter);
+  assert.deepEqual(repeatedLineage, lineageCompatible);
   assert.equal(lineageCompatible.compatibility.scopedTombstoneLineage, true);
   assert.equal(lineageCompatible.compatibility.blockedDesiredStateCount, 0);
   assert.equal(lineageCompatible.desiredStates.length, 1);
-  const [scopedTombstone] = lineageCompatible.desiredStates;
-  assert.deepEqual(scopedTombstone.channelRefs, ["channel-sgp-a-hy2"]);
+  const [mixedState] = lineageCompatible.desiredStates;
+  assert.deepEqual(mixedState.channelRefs, ["channel-sgp-a-hy2"]);
   assert.equal(
     lineageCompatible.desiredStates.some((state) => state.channelRefs.includes("channel-sgp-a-tuic")),
     false
   );
-  assert.deepEqual(scopedTombstone.edgeCredentialRefs, []);
-  assert.deepEqual(scopedTombstone.materialDigests, []);
-  assert.deepEqual(scopedTombstone.scopedTombstone, {
+  assert.deepEqual(mixedState.edgeCredentialRefs, [activeARef, activeBRef]);
+  assert.deepEqual(mixedState.materialDigests, activeMaterialDigests);
+  assert.deepEqual(mixedState.scopedTombstone, {
     sourceDesiredStateRef: authoritative.desiredStateRef,
     sourceGeneration: authoritative.generation,
     credentialDigests: [revokedScopeDigest]
   });
-  assert.doesNotMatch(JSON.stringify(lineageCompatible), /edgecred_(?:other|revoked)_hy2/);
+  assert.match(mixedState.desiredStateRef, /^desired_scoped_[a-f0-9]{32}$/);
+  assert.match(mixedState.generation, /^gen_scoped_[a-f0-9]{32}$/);
+  assert.doesNotMatch(JSON.stringify(lineageCompatible), /edgecred_(?:revoked|unrelated)_/);
 
-  const accepted = service.recordReceipt(identity, receipt({
-    desiredStateRef: scopedTombstone.desiredStateRef,
-    generation: scopedTombstone.generation,
-    credentialCount: 0,
-    materialDigests: [],
-    scopedTombstone: scopedTombstone.scopedTombstone
-  }));
+  const validReceipt = {
+    desiredStateRef: mixedState.desiredStateRef,
+    generation: mixedState.generation,
+    credentialCount: 2,
+    materialDigests: activeMaterialDigests.map((entry) => entry.digest),
+    scopedTombstone: mixedState.scopedTombstone
+  };
+  const accepted = service.recordReceipt(identity, receipt(validReceipt));
   assert.equal(accepted.status, "applied");
   assert.equal(store.receipts.length, 1);
+  assert.equal(store.receipts[0].actionCounts.add, 2);
   assert.equal(store.receipts[0].actionCounts.revoke, 1);
 
   const emptyScopedReceipts = [
@@ -482,29 +506,105 @@ test("rejects historical and forged empty scoped receipts for unmatched active c
           message: "desired_state_not_found",
           redacted: true
         });
-        assert.doesNotMatch(JSON.stringify(safeError), /edgecred_(?:other|revoked)_hy2|client_supplied/);
+        assert.doesNotMatch(JSON.stringify(safeError), /edgecred_(?:revoked|unrelated)_|client_supplied/);
         return true;
       }
     );
     assert.equal(store.receipts.length, 1);
   }
 
-  assert.throws(
-    () => service.recordReceipt(identity, receipt({
-      desiredStateRef: scopedTombstone.desiredStateRef,
-      generation: scopedTombstone.generation,
-      credentialCount: 0,
-      materialDigests: [],
-      scopedTombstone: {
-        ...scopedTombstone.scopedTombstone,
-        credentialDigests: [
-          "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  const invalidMixedReceipts = [
+    {
+      name: "missing active B",
+      overrides: {
+        credentialCount: 1,
+        materialDigests: [activeMaterialDigests[0].digest]
+      },
+      code: "desired_state_receipt_mismatch",
+      statusCode: 409
+    },
+    {
+      name: "zero-count active evidence",
+      overrides: { credentialCount: 0, materialDigests: [] },
+      code: "desired_state_receipt_mismatch",
+      statusCode: 409
+    },
+    {
+      name: "extra active evidence",
+      overrides: {
+        credentialCount: 3,
+        materialDigests: [
+          ...validReceipt.materialDigests,
+          "sha256:eeeeeeeeeeeeeeee"
         ]
-      }
-    })),
-    (error) => error.code === "desired_state_not_found" && error.statusCode === 404
-  );
-  assert.equal(store.receipts.length, 1);
+      },
+      code: "desired_state_receipt_mismatch",
+      statusCode: 409
+    },
+    {
+      name: "overlapping active and revoked lineage",
+      overrides: {
+        scopedTombstone: {
+          ...mixedState.scopedTombstone,
+          credentialDigests: [activeScopeDigest]
+        }
+      },
+      code: "desired_state_not_found",
+      statusCode: 404
+    },
+    {
+      name: "extra revoked lineage",
+      overrides: {
+        scopedTombstone: {
+          ...mixedState.scopedTombstone,
+          credentialDigests: [revokedScopeDigest, extraRevokedScopeDigest]
+        }
+      },
+      code: "desired_state_not_found",
+      statusCode: 404
+    },
+    {
+      name: "stale source identity",
+      overrides: {
+        scopedTombstone: {
+          ...mixedState.scopedTombstone,
+          sourceGeneration: "gen_stale_source"
+        }
+      },
+      code: "desired_state_not_found",
+      statusCode: 404
+    },
+    {
+      name: "wrong channel",
+      overrides: { channelRef: "channel-sgp-a-tuic" },
+      code: "desired_state_not_found",
+      statusCode: 404
+    },
+    {
+      name: "duplicate scope",
+      overrides: {
+        scopedTombstone: {
+          ...mixedState.scopedTombstone,
+          credentialDigests: [revokedScopeDigest, revokedScopeDigest]
+        }
+      },
+      code: "validation_error"
+    }
+  ];
+  for (const invalid of invalidMixedReceipts) {
+    assert.throws(
+      () => service.recordReceipt(identity, receipt({
+        ...validReceipt,
+        ...invalid.overrides
+      })),
+      (error) => (
+        error.code === invalid.code
+        && (invalid.statusCode == null || error.statusCode === invalid.statusCode)
+      ),
+      invalid.name
+    );
+    assert.equal(store.receipts.length, 1, invalid.name);
+  }
 });
 
 test("records receipts against latest desired state and never trusts client desired refs", () => {

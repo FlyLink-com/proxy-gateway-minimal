@@ -180,6 +180,32 @@ function materialDigestStrings(state, channelRef) {
     .filter(Boolean);
 }
 
+function exactUniqueSet(left = [], right = []) {
+  const leftSorted = [...left].sort((a, b) => a.localeCompare(b));
+  const rightSorted = [...right].sort((a, b) => a.localeCompare(b));
+  return leftSorted.length === rightSorted.length
+    && new Set(leftSorted).size === leftSorted.length
+    && new Set(rightSorted).size === rightSorted.length
+    && leftSorted.every((value, index) => value === rightSorted[index]);
+}
+
+function scopedActiveMaterialEvidence(state = {}) {
+  return (state.materialDigests || []).map((item) => (
+    typeof item === "string"
+      ? JSON.stringify(["string", item])
+      : JSON.stringify(["object", item?.channelRef, item?.edgeCredentialRef, item?.digest])
+  ));
+}
+
+function exactScopedActiveState(state, authoritative) {
+  return exactUniqueSet(state.channelRefs, authoritative.channelRefs)
+    && exactUniqueSet(state.edgeCredentialRefs, authoritative.edgeCredentialRefs)
+    && exactUniqueSet(
+      scopedActiveMaterialEvidence(state),
+      scopedActiveMaterialEvidence(authoritative)
+    );
+}
+
 function runtimeFromChannel(channelRef) {
   const ref = text(channelRef).toLowerCase();
   if (ref.includes("vless") || ref.includes("xray")) {
@@ -255,13 +281,13 @@ function receiptFromApplyResult({ state, channelRef, applyResult = {}, now }) {
       || applyResult.listener?.udp443 === true
       || applyResult.listener?.tcp === true,
     credentialCount: scopedTombstone
-      ? 0
+      ? (Array.isArray(state.edgeCredentialRefs) ? state.edgeCredentialRefs.length : 0)
       : (Number.isInteger(applyResult.credentialCount)
           ? applyResult.credentialCount
           : (Array.isArray(state.edgeCredentialRefs) ? state.edgeCredentialRefs.length : 0)),
     appliedAt: text(applyResult.appliedAt) || now.toISOString(),
     materialDigests: scopedTombstone
-      ? []
+      ? materialDigestStrings(state, channelRef)
       : (Array.isArray(applyResult.materialDigests) && applyResult.materialDigests.length > 0
           ? applyResult.materialDigests
           : materialDigestStrings(state, channelRef)),
@@ -416,6 +442,9 @@ export function createProductionEdgeAgentRunner(input = {}) {
       throw agentError("scoped_tombstone_authority_mismatch");
     }
     const authoritative = matching[0];
+    if (!exactScopedActiveState(state, authoritative)) {
+      throw agentError("scoped_tombstone_state_mismatch");
+    }
     const expectedDigests = state.scopedTombstone.credentialDigests;
     const revokeCredentialRefs = config.edgeCredentialRefs.filter((edgeCredentialRef) => (
       expectedDigests.includes(buildDataPlaneCredentialScopeDigest(edgeCredentialRef))

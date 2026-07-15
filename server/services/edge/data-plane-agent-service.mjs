@@ -192,14 +192,14 @@ function buildScopedTombstoneDesiredState(desiredState, credentialDigests) {
     sourceDesiredStateRef: desiredState.desiredStateRef,
     sourceGeneration: desiredState.generation,
     channelRefs: desiredState.channelRefs,
+    edgeCredentialRefs: desiredState.edgeCredentialRefs,
+    materialDigests: desiredState.materialDigests,
     scopedTombstone
   })).slice(0, 32);
   const scoped = {
     ...desiredState,
     desiredStateRef: `desired_scoped_${fingerprint}`,
     generation: `gen_scoped_${fingerprint}`,
-    edgeCredentialRefs: [],
-    materialDigests: [],
     scopedTombstone
   };
   return {
@@ -216,25 +216,30 @@ export function scopedDesiredStateFrom(desiredState, filter = {}, {
     return desiredState;
   }
   const selectedRefs = desiredState.edgeCredentialRefs.filter((ref) => edgeCredentialRefs.includes(ref));
-  if (selectedRefs.length > 0) {
-    return buildScopedDesiredState(desiredState, selectedRefs);
-  }
   if (typeof resolveCredentialChannelRef !== "function") {
+    if (selectedRefs.length > 0) {
+      return buildScopedDesiredState(desiredState, selectedRefs);
+    }
     return desiredState.edgeCredentialRefs.length === 0 ? desiredState : null;
   }
   if (desiredState.channelRefs.length !== 1) {
-    return null;
+    return selectedRefs.length > 0 ? buildScopedDesiredState(desiredState, selectedRefs) : null;
   }
   const channelRef = desiredState.channelRefs[0];
+  const activeRefSet = new Set(desiredState.edgeCredentialRefs);
   const scopedRefs = edgeCredentialRefs
-    .filter((edgeCredentialRef) => resolveCredentialChannelRef(edgeCredentialRef) === channelRef)
+    .filter((edgeCredentialRef) => (
+      !activeRefSet.has(edgeCredentialRef)
+      && resolveCredentialChannelRef(edgeCredentialRef) === channelRef
+    ))
     .sort((a, b) => a.localeCompare(b));
-  return scopedRefs.length > 0
-    ? buildScopedTombstoneDesiredState(
-        desiredState,
-        scopedRefs.map(buildDataPlaneCredentialScopeDigest)
-      )
-    : null;
+  if (scopedRefs.length > 0) {
+    return buildScopedTombstoneDesiredState(
+      desiredState,
+      scopedRefs.map(buildDataPlaneCredentialScopeDigest)
+    );
+  }
+  return selectedRefs.length > 0 ? buildScopedDesiredState(desiredState, selectedRefs) : null;
 }
 
 function latestDesiredStatesForNode({ controlStore, node, filter = {} }) {
@@ -389,12 +394,13 @@ export function createDataPlaneAgentService({
     const compatibility = tombstoneCompatibility(filter);
     const availableDesiredStates = latestDesiredStatesForNode({ controlStore, node, filter });
     const desiredStates = availableDesiredStates.filter((state) => {
+      if (state.scopedTombstone) {
+        return compatibility.scopedTombstoneLineage;
+      }
       if (state.edgeCredentialRefs.length > 0) {
         return true;
       }
-      return state.scopedTombstone
-        ? compatibility.scopedTombstoneLineage
-        : compatibility.tombstoneReconcile;
+      return compatibility.tombstoneReconcile;
     });
     compatibility.blockedDesiredStateCount = availableDesiredStates.length - desiredStates.length;
     return {
@@ -504,10 +510,15 @@ export function createDataPlaneAgentService({
         const scopedIdentity = candidateReceipt.scopedTombstone;
         const exactSourceIdentity = scopedIdentity.sourceDesiredStateRef === latest.desiredStateRef
           && scopedIdentity.sourceGeneration === latest.generation;
+        const activeScopeDigests = new Set(
+          latest.edgeCredentialRefs.map(buildDataPlaneCredentialScopeDigest)
+        );
         const exactLineage = scopedIdentity.credentialDigests.every((credentialDigest) => (
           controlStore.getPortalEdgeCredentialChannelRefByScopeDigest?.(credentialDigest) === channelRef
+          && !activeScopeDigests.has(credentialDigest)
         ));
-        if (!exactSourceIdentity || !exactLineage) {
+        const exactChannel = latest.channelRefs.length === 1 && latest.channelRefs[0] === channelRef;
+        if (!exactSourceIdentity || !exactLineage || !exactChannel) {
           throw agentServiceError("desired_state_not_found", 404);
         }
         scoped = buildScopedTombstoneDesiredState(latest, scopedIdentity.credentialDigests);

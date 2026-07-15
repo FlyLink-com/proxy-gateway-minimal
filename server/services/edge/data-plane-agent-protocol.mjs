@@ -328,8 +328,8 @@ export function validateDataPlaneDesiredState(input = {}, {
   if (edgeCredentialRefs.length === 0 && materialDigests.length > 0) {
     throw protocolError("validation_error", "empty desired-state cannot include material digests");
   }
-  if (scopedTombstone && (edgeCredentialRefs.length > 0 || materialDigests.length > 0 || channelRefs.length !== 1)) {
-    throw protocolError("validation_error", "scoped tombstone must be empty and single-channel");
+  if (scopedTombstone && channelRefs.length !== 1) {
+    throw protocolError("validation_error", "scoped tombstone must be single-channel");
   }
 
   return {
@@ -392,10 +392,6 @@ export function validateDataPlaneApplyReceipt(input = {}, {
   const credentialCount = normalizeNonNegativeInteger(input.credentialCount, "credentialCount");
   const materialDigests = normalizeMaterialDigests(input.materialDigests);
   const scopedTombstone = normalizeScopedTombstone(input.scopedTombstone);
-  if (scopedTombstone && (credentialCount !== 0 || materialDigests.length > 0)) {
-    throw protocolError("validation_error", "scoped tombstone receipt must be zero-count");
-  }
-
   return {
     type: APPLY_RECEIPT_TYPE,
     nodeRef,

@@ -70,7 +70,7 @@ test("desired-state payload validates node scope, refs, expiry, and digest field
   assert.equal(result.redacted, true);
 });
 
-test("desired-state accepts an empty credential set as an explicit revocation tombstone", () => {
+test("desired-state accepts channel-authoritative scoped revocation tombstones", () => {
   const scopedTombstone = {
     sourceDesiredStateRef: "desired_state_channel-sgp-a-hy2_source_001",
     sourceGeneration: "gen_channel_sgp_hy2_source_001",
@@ -78,45 +78,78 @@ test("desired-state accepts an empty credential set as an explicit revocation to
       "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
     ]
   };
-  const result = validateDataPlaneDesiredState(desiredState({
-    channelRefs: ["channel-sgp-a-hy2"],
-    edgeCredentialRefs: [],
-    materialDigests: [],
-    scopedTombstone
-  }), {
-    expectedNodeRef: "node-sgp-a",
-    allowedChannelRefs: ["channel-sgp-a-hy2"]
-  });
+  const activeMaterialDigests = [
+    {
+      channelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: "edgecred_active_a",
+      digest: "sha256:aaaaaaaaaaaaaaaa"
+    },
+    {
+      channelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: "edgecred_active_b",
+      digest: "sha256:bbbbbbbbbbbbbbbb"
+    }
+  ];
+  const scenarios = [
+    {
+      name: "tombstone-only",
+      edgeCredentialRefs: [],
+      materialDigests: [],
+      receiptMaterialDigests: []
+    },
+    {
+      name: "mixed-active-and-revoked",
+      edgeCredentialRefs: ["edgecred_active_a", "edgecred_active_b"],
+      materialDigests: activeMaterialDigests,
+      receiptMaterialDigests: activeMaterialDigests.map((entry) => entry.digest)
+    }
+  ];
 
-  assert.deepEqual(result.edgeCredentialRefs, []);
-  assert.deepEqual(result.materialDigests, []);
-  assert.deepEqual(result.scopedTombstone, scopedTombstone);
-  assert.deepEqual(buildRedactedDesiredStateSummary(result), {
-    type: "gccgw_data_plane_desired_state_summary",
-    nodeRef: "node-sgp-a",
-    generation: "gen_20260610_001",
-    channelCount: 1,
-    edgeCredentialCount: 0,
-    digestCount: 0,
-    validUntil: VALID_UNTIL,
-    scopedTombstone: true,
-    scopeCount: 1,
-    redacted: true
-  });
+  for (const scenario of scenarios) {
+    const result = validateDataPlaneDesiredState(desiredState({
+      channelRefs: ["channel-sgp-a-hy2"],
+      edgeCredentialRefs: scenario.edgeCredentialRefs,
+      materialDigests: scenario.materialDigests,
+      scopedTombstone
+    }), {
+      expectedNodeRef: "node-sgp-a",
+      allowedChannelRefs: ["channel-sgp-a-hy2"]
+    });
 
-  const scopedReceipt = validateDataPlaneApplyReceipt(receipt({
-    desiredStateRef: "desired_scoped_protocol_001",
-    generation: "gen_scoped_protocol_001",
-    credentialCount: 0,
-    materialDigests: [],
-    scopedTombstone
-  }), {
-    expectedNodeRef: "node-sgp-a",
-    expectedDesiredStateRef: "desired_scoped_protocol_001",
-    expectedGeneration: "gen_scoped_protocol_001",
-    allowedChannelRefs: ["channel-sgp-a-hy2"]
-  });
-  assert.deepEqual(scopedReceipt.scopedTombstone, scopedTombstone);
+    assert.deepEqual(result.edgeCredentialRefs, scenario.edgeCredentialRefs, scenario.name);
+    assert.deepEqual(result.materialDigests, scenario.materialDigests, scenario.name);
+    assert.deepEqual(result.scopedTombstone, scopedTombstone, scenario.name);
+    assert.deepEqual(buildRedactedDesiredStateSummary(result), {
+      type: "gccgw_data_plane_desired_state_summary",
+      nodeRef: "node-sgp-a",
+      generation: "gen_20260610_001",
+      channelCount: 1,
+      edgeCredentialCount: scenario.edgeCredentialRefs.length,
+      digestCount: scenario.materialDigests.length,
+      validUntil: VALID_UNTIL,
+      scopedTombstone: true,
+      scopeCount: 1,
+      redacted: true
+    }, scenario.name);
+
+    const desiredStateRef = `desired_scoped_protocol_${scenario.name}`;
+    const generation = `gen_scoped_protocol_${scenario.name}`;
+    const scopedReceipt = validateDataPlaneApplyReceipt(receipt({
+      desiredStateRef,
+      generation,
+      credentialCount: scenario.edgeCredentialRefs.length,
+      materialDigests: scenario.receiptMaterialDigests,
+      scopedTombstone
+    }), {
+      expectedNodeRef: "node-sgp-a",
+      expectedDesiredStateRef: desiredStateRef,
+      expectedGeneration: generation,
+      allowedChannelRefs: ["channel-sgp-a-hy2"]
+    });
+    assert.equal(scopedReceipt.credentialCount, scenario.edgeCredentialRefs.length, scenario.name);
+    assert.deepEqual(scopedReceipt.materialDigests, scenario.receiptMaterialDigests, scenario.name);
+    assert.deepEqual(scopedReceipt.scopedTombstone, scopedTombstone, scenario.name);
+  }
 
   assert.throws(
     () => validateDataPlaneDesiredState(desiredState({
@@ -140,6 +173,15 @@ test("desired-state accepts an empty credential set as an explicit revocation to
         ...scopedTombstone,
         credentialDigests: scopedTombstone.credentialDigests.map((digest) => digest.toUpperCase())
       }
+    })),
+    (error) => error.code === "validation_error"
+  );
+
+  assert.throws(
+    () => validateDataPlaneDesiredState(desiredState({
+      edgeCredentialRefs: ["edgecred_active_a", "edgecred_active_b"],
+      materialDigests: activeMaterialDigests,
+      scopedTombstone
     })),
     (error) => error.code === "validation_error"
   );
