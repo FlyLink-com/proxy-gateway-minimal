@@ -1639,6 +1639,10 @@ test("refresh rejects stale remote pending notification identity against authori
     channelRef,
     nodeRef,
     channelRefs: [channelRef]
+  }, {
+    channelRef,
+    nodeRef,
+    channelRefs: [channelRef]
   }]);
   assert.equal(after.edgeCredentialRef, before.edgeCredentialRef);
   assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
@@ -1908,6 +1912,15 @@ test("refresh requires notifications for every pending fanout channel and compen
       notifications: [
         pendingDesiredStateNotification("channel-aliyun-a-tuic"),
         pendingDesiredStateNotification("channel-unrelated-a-hy2")
+      ],
+      redacted: true
+    },
+    rollbackNotificationResult: {
+      ok: true,
+      notificationCount: 2,
+      notifications: [
+        pendingDesiredStateNotification("channel-aliyun-a-tuic"),
+        pendingDesiredStateNotification("channel-sgp-a-hy2")
       ],
       redacted: true
     }
@@ -2826,8 +2839,15 @@ test("refresh compensates pending fanout children when a sibling fails without m
     notifications: [pendingDesiredStateNotification(pendingChannelRef)],
     redacted: true
   };
+  const expectedPendingIdentity = authoritativeDesiredStateIdentity(pendingChannelRef);
 
-  function observe({ name, reports, rollbackLifecycleResult, rollbackNotificationResult }) {
+  function observe({
+    name,
+    reports,
+    rollbackLifecycleResult,
+    rollbackNotificationResult,
+    verifyForwardPendingCoverage = false
+  }) {
     const requestId = `pareq_refresh_failed_pending_${name}`;
     const harness = refreshStateMachineHarness({
       requestId,
@@ -2857,7 +2877,7 @@ test("refresh compensates pending fanout children when a sibling fails without m
 
     const [after] = harness.requests.listEdgeCredentialOrders();
     const restored = harness.requests.getRequest(requestId);
-    return {
+    const observation = {
       errorCode,
       lifecycleReasons: harness.lifecycleReasons,
       notificationReasons: harness.notificationCalls.map(({ reason }) => reason),
@@ -2869,6 +2889,30 @@ test("refresh compensates pending fanout children when a sibling fails without m
         && restored.clientTarget === beforeRequest.clientTarget
         && JSON.stringify(restored.event) === JSON.stringify(beforeRequest.event)
       )
+    };
+    if (!verifyForwardPendingCoverage) return observation;
+
+    const rollbackNotifications = Array.isArray(rollbackNotificationResult?.notifications)
+      ? rollbackNotificationResult.notifications
+      : [];
+    return {
+      ...observation,
+      rollbackNotificationCoverage: {
+        callCount: harness.notificationCalls.filter(
+          ({ reason }) => reason === "order_refresh_rolled_back"
+        ).length,
+        notificationCount: rollbackNotificationResult?.notificationCount,
+        notificationArrayCount: rollbackNotifications.length,
+        channelRefs: rollbackNotifications.map(({ channelRef }) => channelRef),
+        uniqueChannelCount: new Set(
+          rollbackNotifications.map(({ channelRef }) => channelRef)
+        ).size,
+        statuses: rollbackNotifications.map(({ status }) => status),
+        nodeRefs: rollbackNotifications.map(({ nodeRef }) => nodeRef),
+        desiredStateRefs: rollbackNotifications.map(({ desiredStateRef }) => desiredStateRef),
+        generations: rollbackNotifications.map(({ generation }) => generation),
+        authorityReads: harness.desiredStateStore.reads
+      }
     };
   }
 
@@ -2892,7 +2936,17 @@ test("refresh compensates pending fanout children when a sibling fails without m
         runtimeReceipt: { status: "failed" },
         redacted: true
       },
-      rollbackNotificationResult: exactRollbackNotification
+      rollbackNotificationResult: exactRollbackNotification,
+      verifyForwardPendingCoverage: true
+    }),
+    rollbackLifecycleThrows: observe({
+      name: `${name}_rollback_lifecycle_throws`,
+      reports,
+      rollbackLifecycleResult() {
+        throw new Error("synthetic rollback lifecycle failure");
+      },
+      rollbackNotificationResult: exactRollbackNotification,
+      verifyForwardPendingCoverage: true
     }),
     rollbackNotificationIncomplete: observe({
       name: `${name}_rollback_notification_incomplete`,
@@ -2964,8 +3018,46 @@ test("refresh compensates pending fanout children when a sibling fails without m
     rollbackLifecycleFailed: {
       errorCode: "subscription_refresh_rollback_failed",
       lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
-      notificationReasons: [],
-      stateRestored: true
+      notificationReasons: ["order_refresh_rolled_back"],
+      stateRestored: true,
+      rollbackNotificationCoverage: {
+        callCount: 1,
+        notificationCount: 1,
+        notificationArrayCount: 1,
+        channelRefs: [pendingChannelRef],
+        uniqueChannelCount: 1,
+        statuses: ["pending"],
+        nodeRefs: [expectedPendingIdentity.nodeRef],
+        desiredStateRefs: [expectedPendingIdentity.desiredStateRef],
+        generations: [expectedPendingIdentity.generation],
+        authorityReads: [{
+          channelRef: pendingChannelRef,
+          nodeRef: expectedPendingIdentity.nodeRef,
+          channelRefs: [pendingChannelRef]
+        }]
+      }
+    },
+    rollbackLifecycleThrows: {
+      errorCode: "subscription_refresh_rollback_failed",
+      lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
+      notificationReasons: ["order_refresh_rolled_back"],
+      stateRestored: true,
+      rollbackNotificationCoverage: {
+        callCount: 1,
+        notificationCount: 1,
+        notificationArrayCount: 1,
+        channelRefs: [pendingChannelRef],
+        uniqueChannelCount: 1,
+        statuses: ["pending"],
+        nodeRefs: [expectedPendingIdentity.nodeRef],
+        desiredStateRefs: [expectedPendingIdentity.desiredStateRef],
+        generations: [expectedPendingIdentity.generation],
+        authorityReads: [{
+          channelRef: pendingChannelRef,
+          nodeRef: expectedPendingIdentity.nodeRef,
+          channelRefs: [pendingChannelRef]
+        }]
+      }
     },
     rollbackNotificationIncomplete: {
       errorCode: "subscription_refresh_rollback_failed",

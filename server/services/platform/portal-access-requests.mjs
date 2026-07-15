@@ -1401,6 +1401,7 @@ export function createPortalAccessRequestService(options = {}) {
       let tenantBindingMayHaveChanged = false;
       let orderMayHaveChanged = false;
       let desiredStateMayHaveChanged = false;
+      let forwardPendingChannelRefs = [];
       try {
         const { credentials } = rotation;
         if (credentials.length === 0) {
@@ -1422,6 +1423,7 @@ export function createPortalAccessRequestService(options = {}) {
         runtimeCompensationRequired = true;
         const lifecycleResult = reconcileEdgeLifecycle("order_refreshed", request);
         const lifecycleEvidence = refreshLifecycleDisposition(lifecycleResult);
+        forwardPendingChannelRefs = lifecycleEvidence.pendingChannelRefs;
         runtimeMayHaveMutated = lifecycleEvidence.runtimeMayHaveMutated;
         const lifecycleDisposition = lifecycleEvidence.disposition;
         runtimeCompensationRequired = lifecycleEvidence.compensationRequired;
@@ -1490,18 +1492,26 @@ export function createPortalAccessRequestService(options = {}) {
               rollbackLifecycleError = lifecycleError;
             }
           }
+          const unresolvedForwardPendingChannelRefs = (
+            rollbackLifecycleEvidence?.disposition === "applied"
+            && desiredStateMayHaveChanged === false
+          ) ? [] : forwardPendingChannelRefs;
+          const rollbackNotificationChannelRefs = [...new Set([
+            ...unresolvedForwardPendingChannelRefs,
+            ...rollbackPendingChannelRefs
+          ])].sort((left, right) => left.localeCompare(right));
           const rollbackDesiredStateResult = (
             desiredStateMayHaveChanged
-            || rollbackPendingChannelRefs.length > 0
+            || rollbackNotificationChannelRefs.length > 0
             || rollbackLifecycleError
           )
             ? notifyEdgeDesiredState("order_refresh_rolled_back", previousRequest)
             : null;
           if (
-            rollbackPendingChannelRefs.length > 0
+            rollbackNotificationChannelRefs.length > 0
             && !hasRemotePendingNotificationCoverage(
               rollbackDesiredStateResult,
-              rollbackPendingChannelRefs
+              rollbackNotificationChannelRefs
             )
           ) {
             throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback notification is incomplete");
