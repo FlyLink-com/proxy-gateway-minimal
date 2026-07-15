@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import {
+  buildDataPlaneCredentialScopeDigest,
   buildRedactedDesiredStateSummary,
   buildSafeAgentErrorPayload,
   validateDataPlaneApplyReceipt,
@@ -11,6 +12,7 @@ import {
 const DEFAULT_LEASE_TTL_MS = 120000;
 const SAFE_NODE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,160}$/;
 const TOMBSTONE_CAPABILITIES = ["empty_desired_state", "tombstone_reconcile"];
+const SCOPED_TOMBSTONE_CAPABILITY = "scoped_tombstone_lineage";
 
 function agentServiceError(code, statusCode = 400) {
   const error = new Error(code);
@@ -58,23 +60,35 @@ function normalizeDesiredStateFilter(filter = {}) {
   };
 }
 
-function supportsTombstoneProtocol(agentVersion) {
+function supportsProtocolVersion(agentVersion, minimumMinor) {
   const match = /^(\d+)\.(\d+)(?:\.\d+)?$/.exec(agentVersion);
   if (!match) {
     return false;
   }
   const major = Number(match[1]);
   const minor = Number(match[2]);
-  return major > 1 || (major === 1 && minor >= 1);
+  return major > 1 || (major === 1 && minor >= minimumMinor);
+}
+
+function supportsTombstoneProtocol(agentVersion) {
+  return supportsProtocolVersion(agentVersion, 1);
+}
+
+function supportsScopedTombstoneProtocol(agentVersion) {
+  return supportsProtocolVersion(agentVersion, 2);
 }
 
 function tombstoneCompatibility(filter = {}) {
   const normalized = normalizeDesiredStateFilter(filter);
   const supported = supportsTombstoneProtocol(normalized.agentVersion)
     && TOMBSTONE_CAPABILITIES.every((capability) => normalized.capabilities.includes(capability));
+  const scopedTombstoneLineage = supported
+    && supportsScopedTombstoneProtocol(normalized.agentVersion)
+    && normalized.capabilities.includes(SCOPED_TOMBSTONE_CAPABILITY);
   return {
     agentVersion: normalized.agentVersion || null,
     tombstoneReconcile: supported,
+    scopedTombstoneLineage,
     blockedDesiredStateCount: 0,
     redacted: true
   };
@@ -167,16 +181,60 @@ function buildScopedDesiredState(desiredState, selectedRefs) {
   };
 }
 
-export function scopedDesiredStateFrom(desiredState, filter = {}) {
+function buildScopedTombstoneDesiredState(desiredState, credentialDigests) {
+  const sortedDigests = [...new Set(credentialDigests)].sort((a, b) => a.localeCompare(b));
+  const scopedTombstone = {
+    sourceDesiredStateRef: desiredState.desiredStateRef,
+    sourceGeneration: desiredState.generation,
+    credentialDigests: sortedDigests
+  };
+  const fingerprint = sha256(stableJson({
+    sourceDesiredStateRef: desiredState.desiredStateRef,
+    sourceGeneration: desiredState.generation,
+    channelRefs: desiredState.channelRefs,
+    scopedTombstone
+  })).slice(0, 32);
+  const scoped = {
+    ...desiredState,
+    desiredStateRef: `desired_scoped_${fingerprint}`,
+    generation: `gen_scoped_${fingerprint}`,
+    edgeCredentialRefs: [],
+    materialDigests: [],
+    scopedTombstone
+  };
+  return {
+    ...scoped,
+    summary: buildRedactedDesiredStateSummary(scoped)
+  };
+}
+
+export function scopedDesiredStateFrom(desiredState, filter = {}, {
+  resolveCredentialChannelRef
+} = {}) {
   const { edgeCredentialRefs } = normalizeDesiredStateFilter(filter);
-  if (edgeCredentialRefs.length === 0 || desiredState.edgeCredentialRefs.length === 0) {
+  if (edgeCredentialRefs.length === 0) {
     return desiredState;
   }
   const selectedRefs = desiredState.edgeCredentialRefs.filter((ref) => edgeCredentialRefs.includes(ref));
-  if (selectedRefs.length === 0) {
+  if (selectedRefs.length > 0) {
+    return buildScopedDesiredState(desiredState, selectedRefs);
+  }
+  if (typeof resolveCredentialChannelRef !== "function") {
+    return desiredState.edgeCredentialRefs.length === 0 ? desiredState : null;
+  }
+  if (desiredState.channelRefs.length !== 1) {
     return null;
   }
-  return buildScopedDesiredState(desiredState, selectedRefs);
+  const channelRef = desiredState.channelRefs[0];
+  const scopedRefs = edgeCredentialRefs
+    .filter((edgeCredentialRef) => resolveCredentialChannelRef(edgeCredentialRef) === channelRef)
+    .sort((a, b) => a.localeCompare(b));
+  return scopedRefs.length > 0
+    ? buildScopedTombstoneDesiredState(
+        desiredState,
+        scopedRefs.map(buildDataPlaneCredentialScopeDigest)
+      )
+    : null;
 }
 
 function latestDesiredStatesForNode({ controlStore, node, filter = {} }) {
@@ -206,7 +264,11 @@ function latestDesiredStatesForNode({ controlStore, node, filter = {} }) {
       desiredStateRef: latest.desiredStateRef,
       summary: buildRedactedDesiredStateSummary(normalized)
     };
-    const scoped = scopedDesiredStateFrom(desiredState, filter);
+    const scoped = scopedDesiredStateFrom(desiredState, filter, {
+      resolveCredentialChannelRef: (edgeCredentialRef) => (
+        controlStore.getPortalEdgeCredentialChannelRef?.(edgeCredentialRef) || null
+      )
+    });
     if (!scoped) {
       continue;
     }
@@ -278,7 +340,9 @@ function assertReceiptMatchesDesiredState(receipt, desiredState) {
     && new Set(expectedDigests).size === expectedDigests.length
     && new Set(receiptDigests).size === receiptDigests.length
     && expectedDigests.every((digest, index) => digest === receiptDigests[index]);
-  if (receipt.credentialCount !== desiredState.edgeCredentialRefs.length || !exactDigestSet) {
+  const exactScopedTombstone = stableJson(receipt.scopedTombstone || null)
+    === stableJson(desiredState.scopedTombstone || null);
+  if (receipt.credentialCount !== desiredState.edgeCredentialRefs.length || !exactDigestSet || !exactScopedTombstone) {
     throw agentServiceError("desired_state_receipt_mismatch", 409);
   }
 }
@@ -324,9 +388,14 @@ export function createDataPlaneAgentService({
     }
     const compatibility = tombstoneCompatibility(filter);
     const availableDesiredStates = latestDesiredStatesForNode({ controlStore, node, filter });
-    const desiredStates = availableDesiredStates.filter((state) => (
-      state.edgeCredentialRefs.length > 0 || compatibility.tombstoneReconcile
-    ));
+    const desiredStates = availableDesiredStates.filter((state) => {
+      if (state.edgeCredentialRefs.length > 0) {
+        return true;
+      }
+      return state.scopedTombstone
+        ? compatibility.scopedTombstoneLineage
+        : compatibility.tombstoneReconcile;
+    });
     compatibility.blockedDesiredStateCount = availableDesiredStates.length - desiredStates.length;
     return {
       type: "gccgw_data_plane_agent_desired_state_response",
@@ -423,18 +492,39 @@ export function createDataPlaneAgentService({
     if (!latest) {
       throw agentServiceError("desired_state_not_found", 404);
     }
-    const requestedDesiredStateRef = optionalRef(input.desiredStateRef);
+    const candidateReceipt = validateDataPlaneApplyReceipt(input, {
+      expectedNodeRef: node.nodeRef,
+      allowedChannelRefs: node.channelRefs
+    });
+    const requestedDesiredStateRef = optionalRef(candidateReceipt.desiredStateRef);
     let receiptDesiredState = latest;
     if (requestedDesiredStateRef.startsWith("desired_scoped_")) {
-      const scoped = scopedDesiredStateFrom(latest, {
-        edgeCredentialRefs: edgeCredentialRefsFromReceiptMaterialDigests(latest, input.materialDigests)
-      });
+      let scoped;
+      if (candidateReceipt.scopedTombstone) {
+        const scopedIdentity = candidateReceipt.scopedTombstone;
+        const exactSourceIdentity = scopedIdentity.sourceDesiredStateRef === latest.desiredStateRef
+          && scopedIdentity.sourceGeneration === latest.generation;
+        const exactLineage = scopedIdentity.credentialDigests.every((credentialDigest) => (
+          controlStore.getPortalEdgeCredentialChannelRefByScopeDigest?.(credentialDigest) === channelRef
+        ));
+        if (!exactSourceIdentity || !exactLineage) {
+          throw agentServiceError("desired_state_not_found", 404);
+        }
+        scoped = buildScopedTombstoneDesiredState(latest, scopedIdentity.credentialDigests);
+      } else {
+        scoped = scopedDesiredStateFrom(latest, {
+          edgeCredentialRefs: edgeCredentialRefsFromReceiptMaterialDigests(
+            latest,
+            candidateReceipt.materialDigests
+          )
+        });
+      }
       if (!scoped || scoped.desiredStateRef !== requestedDesiredStateRef) {
         throw agentServiceError("desired_state_not_found", 404);
       }
       receiptDesiredState = scoped;
     }
-    const receipt = validateDataPlaneApplyReceipt(input, {
+    const receipt = validateDataPlaneApplyReceipt(candidateReceipt, {
       expectedNodeRef: node.nodeRef,
       expectedDesiredStateRef: requestedDesiredStateRef.startsWith("desired_scoped_")
         ? receiptDesiredState.desiredStateRef
@@ -458,7 +548,9 @@ export function createDataPlaneAgentService({
       status: storeStatus.status,
       actionCounts: {
         add: receipt.status === "applied" ? receipt.credentialCount : 0,
-        revoke: 0,
+        revoke: receipt.status === "applied"
+          ? (receipt.scopedTombstone?.credentialDigests.length || 0)
+          : 0,
         rotate: 0,
         unchanged: receipt.status === "unchanged" ? receipt.credentialCount : 0
       },

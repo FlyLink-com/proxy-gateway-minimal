@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +14,12 @@ import { createSqliteSubscriptionControlStore } from "../services/platform/subsc
 
 const VALID_UNTIL = "2099-07-10T00:00:00.000Z";
 const NOW = new Date("2026-06-10T00:00:00.000Z");
+
+function scopeCredentialDigest(edgeCredentialRef) {
+  return `sha256:${createHash("sha256")
+    .update(`gccgw:scoped-tombstone-lineage:v1:${edgeCredentialRef}`)
+    .digest("hex")}`;
+}
 
 function desired(overrides = {}) {
   return {
@@ -361,13 +368,33 @@ test("rejects historical and forged empty scoped receipts for unmatched active c
       digest: "sha256:cccccccccccccccc"
     }]
   });
+  const unrelatedTuic = desired({
+    desiredStateRef: "desired_sgp_unrelated_tuic_001",
+    generation: "gen_sgp_unrelated_tuic_001",
+    channelRefs: ["channel-sgp-a-tuic"],
+    edgeCredentialRefs: ["edgecred_unrelated_tuic"],
+    materialDigests: [{
+      channelRef: "channel-sgp-a-tuic",
+      edgeCredentialRef: "edgecred_unrelated_tuic",
+      digest: "sha256:dddddddddddddddd"
+    }]
+  });
   const store = fakeControlStore(new Map([
-    ["channel-sgp-a-hy2", authoritative]
+    ["channel-sgp-a-hy2", authoritative],
+    ["channel-sgp-a-tuic", unrelatedTuic]
   ]));
+  const revokedCredentialRef = "edgecred_revoked_hy2";
+  const revokedScopeDigest = scopeCredentialDigest(revokedCredentialRef);
+  store.getPortalEdgeCredentialChannelRef = (edgeCredentialRef) => (
+    edgeCredentialRef === revokedCredentialRef ? "channel-sgp-a-hy2" : null
+  );
+  store.getPortalEdgeCredentialChannelRefByScopeDigest = (credentialDigest) => (
+    credentialDigest === revokedScopeDigest ? "channel-sgp-a-hy2" : null
+  );
   const service = serviceFor(store);
   const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
   const credentialFilter = {
-    edgeCredentialRefs: ["edgecred_revoked_hy2"]
+    edgeCredentialRefs: [revokedCredentialRef]
   };
 
   const legacy = service.getDesiredState(identity, {
@@ -377,7 +404,8 @@ test("rejects historical and forged empty scoped receipts for unmatched active c
   });
   assert.deepEqual(legacy.desiredStates, []);
   assert.equal(legacy.compatibility.tombstoneReconcile, false);
-  assert.equal(legacy.compatibility.blockedDesiredStateCount, 0);
+  assert.equal(legacy.compatibility.scopedTombstoneLineage, false);
+  assert.equal(legacy.compatibility.blockedDesiredStateCount, 1);
 
   const compatibleFilter = {
     ...credentialFilter,
@@ -390,8 +418,43 @@ test("rejects historical and forged empty scoped receipts for unmatched active c
   assert.deepEqual(first.desiredStates, []);
   assert.deepEqual(second.desiredStates, []);
   assert.equal(first.compatibility.tombstoneReconcile, true);
-  assert.equal(first.compatibility.blockedDesiredStateCount, 0);
+  assert.equal(first.compatibility.scopedTombstoneLineage, false);
+  assert.equal(first.compatibility.blockedDesiredStateCount, 1);
   assert.doesNotMatch(JSON.stringify(first), /edgecred_(?:other|revoked)_hy2/);
+
+  const lineageCompatible = service.getDesiredState(identity, {
+    ...credentialFilter,
+    agentVersion: "1.2",
+    capabilities: ["empty_desired_state", "scoped_tombstone_lineage", "tombstone_reconcile"]
+  });
+  assert.equal(lineageCompatible.compatibility.scopedTombstoneLineage, true);
+  assert.equal(lineageCompatible.compatibility.blockedDesiredStateCount, 0);
+  assert.equal(lineageCompatible.desiredStates.length, 1);
+  const [scopedTombstone] = lineageCompatible.desiredStates;
+  assert.deepEqual(scopedTombstone.channelRefs, ["channel-sgp-a-hy2"]);
+  assert.equal(
+    lineageCompatible.desiredStates.some((state) => state.channelRefs.includes("channel-sgp-a-tuic")),
+    false
+  );
+  assert.deepEqual(scopedTombstone.edgeCredentialRefs, []);
+  assert.deepEqual(scopedTombstone.materialDigests, []);
+  assert.deepEqual(scopedTombstone.scopedTombstone, {
+    sourceDesiredStateRef: authoritative.desiredStateRef,
+    sourceGeneration: authoritative.generation,
+    credentialDigests: [revokedScopeDigest]
+  });
+  assert.doesNotMatch(JSON.stringify(lineageCompatible), /edgecred_(?:other|revoked)_hy2/);
+
+  const accepted = service.recordReceipt(identity, receipt({
+    desiredStateRef: scopedTombstone.desiredStateRef,
+    generation: scopedTombstone.generation,
+    credentialCount: 0,
+    materialDigests: [],
+    scopedTombstone: scopedTombstone.scopedTombstone
+  }));
+  assert.equal(accepted.status, "applied");
+  assert.equal(store.receipts.length, 1);
+  assert.equal(store.receipts[0].actionCounts.revoke, 1);
 
   const emptyScopedReceipts = [
     {
@@ -423,8 +486,25 @@ test("rejects historical and forged empty scoped receipts for unmatched active c
         return true;
       }
     );
-    assert.equal(store.receipts.length, 0);
+    assert.equal(store.receipts.length, 1);
   }
+
+  assert.throws(
+    () => service.recordReceipt(identity, receipt({
+      desiredStateRef: scopedTombstone.desiredStateRef,
+      generation: scopedTombstone.generation,
+      credentialCount: 0,
+      materialDigests: [],
+      scopedTombstone: {
+        ...scopedTombstone.scopedTombstone,
+        credentialDigests: [
+          "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        ]
+      }
+    })),
+    (error) => error.code === "desired_state_not_found" && error.statusCode === 404
+  );
+  assert.equal(store.receipts.length, 1);
 });
 
 test("records receipts against latest desired state and never trusts client desired refs", () => {

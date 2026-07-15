@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import {
   createProductionEdgeAgentRunner,
@@ -7,6 +8,12 @@ import {
 import { createEdgeCredentialMaterialStore } from "../services/edge/credential-material-store.mjs";
 
 const NOW = "2026-06-11T12:00:00.000Z";
+
+function scopeCredentialDigest(edgeCredentialRef) {
+  return `sha256:${createHash("sha256")
+    .update(`gccgw:scoped-tombstone-lineage:v1:${edgeCredentialRef}`)
+    .digest("hex")}`;
+}
 
 function desiredState(overrides = {}) {
   return {
@@ -364,6 +371,145 @@ test("production edge agent scopes desired-state pull and posts scoped receipts"
   assert.equal(result.ok, true);
   assert.equal(result.receiptCount, 1);
   assert.equal(calls.length, 3);
+
+  const tombstoneCalls = [];
+  const revokedCredentialRef = "edgecred_revoked_hy2_001";
+  const activeCredentialRef = "edgecred_active_hy2_001";
+  const revokedScopeDigest = scopeCredentialDigest(revokedCredentialRef);
+  const scopedTombstone = desiredState({
+    desiredStateRef: "desired_scoped_tombstone_agent_001",
+    generation: "gen_scoped_tombstone_agent_001",
+    edgeCredentialRefs: [],
+    materialDigests: [],
+    scopedTombstone: {
+      sourceDesiredStateRef: "desired_state_hy2_authoritative_001",
+      sourceGeneration: "gen_hy2_authoritative_001",
+      credentialDigests: [revokedScopeDigest]
+    }
+  });
+  const authoritative = desiredState({
+    desiredStateRef: "desired_state_hy2_authoritative_001",
+    generation: "gen_hy2_authoritative_001",
+    edgeCredentialRefs: [activeCredentialRef],
+    materialDigests: [{
+      channelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: activeCredentialRef,
+      digest: "sha256:dddddddddddddddd"
+    }]
+  });
+  const tombstoneRunner = createProductionEdgeAgentRunner({
+    baseUrl: "http://127.0.0.1:3456",
+    token: "node-agent-token",
+    nodeRef: "vultr-sgp-a",
+    channelRefs: ["channel-sgp-a-hy2"],
+    edgeCredentialRefs: [revokedCredentialRef],
+    applyEnabled: true,
+    dryRun: false,
+    fetchImpl: async (url, options = {}) => {
+      tombstoneCalls.push({ url: String(url), options });
+      const parsed = new URL(String(url));
+      if (parsed.pathname.endsWith("/desired-state")) {
+        assert.equal(options.headers["X-GCCGW-Agent-Version"], "1.2");
+        assert.deepEqual(
+          options.headers["X-GCCGW-Agent-Capabilities"].split(",").sort(),
+          ["empty_desired_state", "scoped_tombstone_lineage", "tombstone_reconcile"]
+        );
+        const filter = parsed.searchParams.get("edgeCredentialRefs");
+        if (filter === revokedCredentialRef) {
+          return responseJson(200, {
+            type: "gccgw_data_plane_agent_desired_state_response",
+            nodeRef: "vultr-sgp-a",
+            channelRefs: ["channel-sgp-a-hy2"],
+            desiredStates: [scopedTombstone],
+            summaries: [],
+            redacted: true
+          });
+        }
+        assert.equal(filter, null);
+        return responseJson(200, {
+          type: "gccgw_data_plane_agent_desired_state_response",
+          nodeRef: "vultr-sgp-a",
+          channelRefs: ["channel-sgp-a-hy2"],
+          desiredStates: [authoritative],
+          summaries: [],
+          redacted: true
+        });
+      }
+      if (parsed.pathname.endsWith("/materials")) {
+        const body = JSON.parse(options.body);
+        assert.equal(body.desiredStateRef, authoritative.desiredStateRef);
+        assert.deepEqual(body.edgeCredentialRefs, [activeCredentialRef]);
+        return responseJson(200, {
+          type: "gccgw_data_plane_material_response",
+          nodeRef: "vultr-sgp-a",
+          desiredStateRef: authoritative.desiredStateRef,
+          mode: "material",
+          records: [{
+            edgeCredentialRef: activeCredentialRef,
+            materialDigest: "sha256:dddddddddddddddd",
+            material: {
+              uuid: "22222222-2222-4222-8222-222222222222",
+              password: "synthetic-active-peer-material"
+            }
+          }],
+          sensitive: true
+        });
+      }
+      if (parsed.pathname.endsWith("/receipts")) {
+        const body = JSON.parse(options.body);
+        assert.equal(body.desiredStateRef, scopedTombstone.desiredStateRef);
+        assert.equal(body.generation, scopedTombstone.generation);
+        assert.equal(body.credentialCount, 0);
+        assert.deepEqual(body.materialDigests, []);
+        assert.deepEqual(body.scopedTombstone, scopedTombstone.scopedTombstone);
+        assert.doesNotMatch(JSON.stringify(body), new RegExp(revokedCredentialRef));
+        return responseJson(201, {
+          type: "gccgw_data_plane_receipt_response",
+          nodeRef: "vultr-sgp-a",
+          channelRef: "channel-sgp-a-hy2",
+          generation: scopedTombstone.generation,
+          receiptId: "receipt_scoped_tombstone_001",
+          status: "applied",
+          redacted: true
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    },
+    nowFn: () => new Date(NOW),
+    runtimeAdapters: {
+      "channel-sgp-a-hy2": {
+        runtime: "hysteria2",
+        async applyDesiredState() {
+          assert.fail("scoped tombstones must use exact credential reconciliation");
+        },
+        async applyCredentialReconciliation(payload) {
+          assert.deepEqual(payload.summary, {
+            addCount: 1,
+            revokeCount: 1,
+            rotateCount: 0,
+            unchangedCount: 0
+          });
+          assert.deepEqual(payload.actions, [
+            { action: "add", credentialRef: activeCredentialRef },
+            { action: "revoke", credentialRef: revokedCredentialRef }
+          ]);
+          return {
+            status: "applied",
+            configTest: true,
+            serviceActive: true,
+            listenerPresent: true
+          };
+        }
+      }
+    },
+    materialStore: createEdgeCredentialMaterialStore()
+  });
+
+  const tombstoneResult = await tombstoneRunner.runOnce();
+  assert.equal(tombstoneResult.ok, true);
+  assert.equal(tombstoneResult.receiptCount, 1);
+  assert.equal(tombstoneResult.materialCount, 1);
+  assert.equal(tombstoneCalls.length, 4);
 });
 
 test("production edge agent rejects non-loopback base URL by default", () => {

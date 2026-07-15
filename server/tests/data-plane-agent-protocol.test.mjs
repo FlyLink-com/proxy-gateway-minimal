@@ -71,10 +71,18 @@ test("desired-state payload validates node scope, refs, expiry, and digest field
 });
 
 test("desired-state accepts an empty credential set as an explicit revocation tombstone", () => {
+  const scopedTombstone = {
+    sourceDesiredStateRef: "desired_state_channel-sgp-a-hy2_source_001",
+    sourceGeneration: "gen_channel_sgp_hy2_source_001",
+    credentialDigests: [
+      "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    ]
+  };
   const result = validateDataPlaneDesiredState(desiredState({
     channelRefs: ["channel-sgp-a-hy2"],
     edgeCredentialRefs: [],
-    materialDigests: []
+    materialDigests: [],
+    scopedTombstone
   }), {
     expectedNodeRef: "node-sgp-a",
     allowedChannelRefs: ["channel-sgp-a-hy2"]
@@ -82,7 +90,59 @@ test("desired-state accepts an empty credential set as an explicit revocation to
 
   assert.deepEqual(result.edgeCredentialRefs, []);
   assert.deepEqual(result.materialDigests, []);
-  assert.equal(buildRedactedDesiredStateSummary(result).edgeCredentialCount, 0);
+  assert.deepEqual(result.scopedTombstone, scopedTombstone);
+  assert.deepEqual(buildRedactedDesiredStateSummary(result), {
+    type: "gccgw_data_plane_desired_state_summary",
+    nodeRef: "node-sgp-a",
+    generation: "gen_20260610_001",
+    channelCount: 1,
+    edgeCredentialCount: 0,
+    digestCount: 0,
+    validUntil: VALID_UNTIL,
+    scopedTombstone: true,
+    scopeCount: 1,
+    redacted: true
+  });
+
+  const scopedReceipt = validateDataPlaneApplyReceipt(receipt({
+    desiredStateRef: "desired_scoped_protocol_001",
+    generation: "gen_scoped_protocol_001",
+    credentialCount: 0,
+    materialDigests: [],
+    scopedTombstone
+  }), {
+    expectedNodeRef: "node-sgp-a",
+    expectedDesiredStateRef: "desired_scoped_protocol_001",
+    expectedGeneration: "gen_scoped_protocol_001",
+    allowedChannelRefs: ["channel-sgp-a-hy2"]
+  });
+  assert.deepEqual(scopedReceipt.scopedTombstone, scopedTombstone);
+
+  assert.throws(
+    () => validateDataPlaneDesiredState(desiredState({
+      channelRefs: ["channel-sgp-a-hy2"],
+      edgeCredentialRefs: [],
+      materialDigests: [],
+      scopedTombstone: {
+        sourceDesiredStateRef: scopedTombstone.sourceDesiredStateRef,
+        credentialDigests: scopedTombstone.credentialDigests
+      }
+    })),
+    (error) => error.code === "validation_error"
+  );
+
+  assert.throws(
+    () => validateDataPlaneDesiredState(desiredState({
+      channelRefs: ["channel-sgp-a-hy2"],
+      edgeCredentialRefs: [],
+      materialDigests: [],
+      scopedTombstone: {
+        ...scopedTombstone,
+        credentialDigests: scopedTombstone.credentialDigests.map((digest) => digest.toUpperCase())
+      }
+    })),
+    (error) => error.code === "validation_error"
+  );
 });
 
 test("revocation tombstones reject orphaned material digests", () => {

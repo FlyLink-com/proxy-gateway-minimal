@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { normalizeCredentialMaterialRecord } from "./credential-material-store.mjs";
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,160}$/;
@@ -8,6 +9,7 @@ const MATERIAL_REQUEST_TYPE = "gccgw_data_plane_material_request";
 const MATERIAL_RESPONSE_TYPE = "gccgw_data_plane_material_response";
 const RECEIPT_STATUSES = new Set(["applied", "failed", "unchanged", "stale", "rejected"]);
 const MATERIAL_MODES = new Set(["summary", "material"]);
+const SCOPED_TOMBSTONE_DIGEST_CONTEXT = "gccgw:scoped-tombstone-lineage:v1:";
 const FORBIDDEN_KEY_NORMALIZED = new Set([
   "authorization",
   "cookie",
@@ -65,6 +67,21 @@ function safeDigest(value, field) {
     throw protocolError("validation_error", `${field} is invalid`);
   }
   return normalized;
+}
+
+function safeScopedTombstoneDigest(value, field) {
+  const normalized = text(value);
+  if (!/^sha256:[a-f0-9]{64}$/.test(normalized)) {
+    throw protocolError("validation_error", `${field} is invalid`);
+  }
+  return normalized;
+}
+
+export function buildDataPlaneCredentialScopeDigest(edgeCredentialRef) {
+  const safeCredentialRef = safeRef(edgeCredentialRef, "edgeCredentialRef");
+  return `sha256:${createHash("sha256")
+    .update(`${SCOPED_TOMBSTONE_DIGEST_CONTEXT}${safeCredentialRef}`)
+    .digest("hex")}`;
 }
 
 function normalizeIso(value, field) {
@@ -159,6 +176,33 @@ function normalizeMaterialDigests(value = []) {
       digest: safeDigest(item.digest, `materialDigests[${index}].digest`)
     };
   });
+}
+
+function normalizeScopedTombstone(value) {
+  if (value == null) {
+    return null;
+  }
+  const scoped = assertObject(value, "scopedTombstone");
+  assertAllowedKeys(
+    scoped,
+    ["sourceDesiredStateRef", "sourceGeneration", "credentialDigests"],
+    "scopedTombstone"
+  );
+  if (!Array.isArray(scoped.credentialDigests) || scoped.credentialDigests.length === 0) {
+    throw protocolError("validation_error", "scopedTombstone.credentialDigests must be non-empty");
+  }
+  const credentialDigests = scoped.credentialDigests
+    .map((digest, index) => (
+      safeScopedTombstoneDigest(digest, `scopedTombstone.credentialDigests[${index}]`)
+    ));
+  if (new Set(credentialDigests).size !== credentialDigests.length) {
+    throw protocolError("validation_error", "scopedTombstone.credentialDigests must be unique");
+  }
+  return {
+    sourceDesiredStateRef: safeRef(scoped.sourceDesiredStateRef, "scopedTombstone.sourceDesiredStateRef"),
+    sourceGeneration: safeRef(scoped.sourceGeneration, "scopedTombstone.sourceGeneration"),
+    credentialDigests: credentialDigests.sort((a, b) => a.localeCompare(b))
+  };
 }
 
 function normalizeMaterialMode(value, field) {
@@ -280,8 +324,12 @@ export function validateDataPlaneDesiredState(input = {}, {
   assertAllowedChannels(channelRefs, allowedChannelRefs);
   const edgeCredentialRefs = safeRefs(input.edgeCredentialRefs, "edgeCredentialRefs", { allowEmpty: true });
   const materialDigests = normalizeMaterialDigests(input.materialDigests);
+  const scopedTombstone = normalizeScopedTombstone(input.scopedTombstone);
   if (edgeCredentialRefs.length === 0 && materialDigests.length > 0) {
     throw protocolError("validation_error", "empty desired-state cannot include material digests");
+  }
+  if (scopedTombstone && (edgeCredentialRefs.length > 0 || materialDigests.length > 0 || channelRefs.length !== 1)) {
+    throw protocolError("validation_error", "scoped tombstone must be empty and single-channel");
   }
 
   return {
@@ -291,6 +339,7 @@ export function validateDataPlaneDesiredState(input = {}, {
     channelRefs,
     edgeCredentialRefs,
     materialDigests,
+    ...(scopedTombstone ? { scopedTombstone } : {}),
     validUntil: normalizeIso(input.validUntil, "validUntil"),
     redacted: true
   };
@@ -306,6 +355,10 @@ export function buildRedactedDesiredStateSummary(desiredState = {}) {
     edgeCredentialCount: normalized.edgeCredentialRefs.length,
     digestCount: normalized.materialDigests.length,
     validUntil: normalized.validUntil,
+    ...(normalized.scopedTombstone ? {
+      scopedTombstone: true,
+      scopeCount: normalized.scopedTombstone.credentialDigests.length
+    } : {}),
     redacted: true
   };
 }
@@ -336,6 +389,13 @@ export function validateDataPlaneApplyReceipt(input = {}, {
     throw protocolError("validation_error", "receipt status is invalid");
   }
 
+  const credentialCount = normalizeNonNegativeInteger(input.credentialCount, "credentialCount");
+  const materialDigests = normalizeMaterialDigests(input.materialDigests);
+  const scopedTombstone = normalizeScopedTombstone(input.scopedTombstone);
+  if (scopedTombstone && (credentialCount !== 0 || materialDigests.length > 0)) {
+    throw protocolError("validation_error", "scoped tombstone receipt must be zero-count");
+  }
+
   return {
     type: APPLY_RECEIPT_TYPE,
     nodeRef,
@@ -346,10 +406,11 @@ export function validateDataPlaneApplyReceipt(input = {}, {
     configTest: normalizeBoolean(input.configTest, "configTest"),
     serviceActive: normalizeBoolean(input.serviceActive, "serviceActive"),
     listenerPresent: normalizeBoolean(input.listenerPresent, "listenerPresent"),
-    credentialCount: normalizeNonNegativeInteger(input.credentialCount, "credentialCount"),
+    credentialCount,
     appliedAt: normalizeIso(input.appliedAt, "appliedAt"),
     ...(text(input.reasonCode) ? { reasonCode: safeRef(input.reasonCode, "reasonCode") } : {}),
-    materialDigests: normalizeMaterialDigests(input.materialDigests),
+    materialDigests,
+    ...(scopedTombstone ? { scopedTombstone } : {}),
     redacted: true
   };
 }

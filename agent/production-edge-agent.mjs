@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { createFileBackedEdgeCredentialMaterialStore } from "../server/services/edge/credential-material-store.mjs";
 import {
+  buildDataPlaneCredentialScopeDigest,
   validateDataPlaneApplyReceipt,
   validateDataPlaneDesiredState,
   validateDataPlaneMaterialResponse
@@ -150,6 +151,11 @@ function desiredStateUrl(baseUrl, edgeCredentialRefs = []) {
 
 const AGENT_PROTOCOL_VERSION = "1.1";
 const AGENT_CAPABILITIES = ["empty_desired_state", "tombstone_reconcile"];
+const SCOPED_AGENT_PROTOCOL_VERSION = "1.2";
+const SCOPED_AGENT_CAPABILITIES = [
+  ...AGENT_CAPABILITIES,
+  "scoped_tombstone_lineage"
+];
 
 function receiptUrl(baseUrl) {
   return `${baseUrl}/api/internal/data-plane-agent/receipts`;
@@ -185,7 +191,7 @@ function runtimeFromChannel(channelRef) {
   return "mihomo-tuic";
 }
 
-function payloadForAdapter(state, channelRef, runtime) {
+function payloadForAdapter(state, channelRef, runtime, revokeCredentialRefs = []) {
   const refs = Array.isArray(state.edgeCredentialRefs) ? state.edgeCredentialRefs : [];
   return {
     channelRef,
@@ -194,30 +200,48 @@ function payloadForAdapter(state, channelRef, runtime) {
     activationSurface: "explicit-restart",
     summary: {
       addCount: refs.length,
-      revokeCount: 0,
+      revokeCount: revokeCredentialRefs.length,
       rotateCount: 0,
       unchangedCount: 0
     },
-    actions: refs.map((credentialRef) => ({
-      action: "add",
-      credentialRef
-    }))
+    actions: [
+      ...refs.map((credentialRef) => ({
+        action: "add",
+        credentialRef
+      })),
+      ...revokeCredentialRefs.map((credentialRef) => ({
+        action: "revoke",
+        credentialRef
+      }))
+    ]
   };
 }
 
-async function applyWithAdapter({ adapter, state, channelRef }) {
+async function applyWithAdapter({ adapter, state, channelRef, revokeCredentialRefs = [] }) {
+  if (revokeCredentialRefs.length > 0) {
+    if (adapter && typeof adapter.applyCredentialReconciliation === "function") {
+      const runtime = text(adapter.runtime) || runtimeFromChannel(channelRef);
+      return adapter.applyCredentialReconciliation(
+        payloadForAdapter(state, channelRef, runtime, revokeCredentialRefs)
+      );
+    }
+    throw agentError("runtime_adapter_missing", "runtime reconciliation adapter is missing");
+  }
   if (adapter && typeof adapter.applyDesiredState === "function") {
     return adapter.applyDesiredState(state, { channelRef });
   }
   if (adapter && typeof adapter.applyCredentialReconciliation === "function") {
     const runtime = text(adapter.runtime) || runtimeFromChannel(channelRef);
-    return adapter.applyCredentialReconciliation(payloadForAdapter(state, channelRef, runtime));
+    return adapter.applyCredentialReconciliation(
+      payloadForAdapter(state, channelRef, runtime, revokeCredentialRefs)
+    );
   }
   throw agentError("runtime_adapter_missing", "runtime adapter is missing");
 }
 
 function receiptFromApplyResult({ state, channelRef, applyResult = {}, now }) {
   const status = text(applyResult.status) || "failed";
+  const scopedTombstone = state.scopedTombstone || null;
   const receipt = {
     type: "gccgw_data_plane_apply_receipt",
     nodeRef: state.nodeRef,
@@ -230,13 +254,18 @@ function receiptFromApplyResult({ state, channelRef, applyResult = {}, now }) {
     listenerPresent: applyResult.listenerPresent === true
       || applyResult.listener?.udp443 === true
       || applyResult.listener?.tcp === true,
-    credentialCount: Number.isInteger(applyResult.credentialCount)
-      ? applyResult.credentialCount
-      : (Array.isArray(state.edgeCredentialRefs) ? state.edgeCredentialRefs.length : 0),
+    credentialCount: scopedTombstone
+      ? 0
+      : (Number.isInteger(applyResult.credentialCount)
+          ? applyResult.credentialCount
+          : (Array.isArray(state.edgeCredentialRefs) ? state.edgeCredentialRefs.length : 0)),
     appliedAt: text(applyResult.appliedAt) || now.toISOString(),
-    materialDigests: Array.isArray(applyResult.materialDigests) && applyResult.materialDigests.length > 0
-      ? applyResult.materialDigests
-      : materialDigestStrings(state, channelRef)
+    materialDigests: scopedTombstone
+      ? []
+      : (Array.isArray(applyResult.materialDigests) && applyResult.materialDigests.length > 0
+          ? applyResult.materialDigests
+          : materialDigestStrings(state, channelRef)),
+    ...(scopedTombstone ? { scopedTombstone } : {})
   };
   if (text(applyResult.reasonCode)) {
     receipt.reasonCode = text(applyResult.reasonCode);
@@ -286,14 +315,22 @@ export function createProductionEdgeAgentRunner(input = {}) {
     throw agentError("validation_error", "fetchImpl is required");
   }
 
-  async function fetchDesiredState() {
-    const response = await config.fetchImpl(desiredStateUrl(config.baseUrl, config.edgeCredentialRefs), {
+  const scopedLineageEnabled = config.edgeCredentialRefs.length > 0;
+  const agentProtocolVersion = scopedLineageEnabled
+    ? SCOPED_AGENT_PROTOCOL_VERSION
+    : AGENT_PROTOCOL_VERSION;
+  const agentCapabilities = scopedLineageEnabled
+    ? SCOPED_AGENT_CAPABILITIES
+    : AGENT_CAPABILITIES;
+
+  async function fetchDesiredState(edgeCredentialRefs = config.edgeCredentialRefs) {
+    const response = await config.fetchImpl(desiredStateUrl(config.baseUrl, edgeCredentialRefs), {
       method: "GET",
       headers: {
         Authorization: `Bearer ${config.token}`,
         Accept: "application/json",
-        "X-GCCGW-Agent-Version": AGENT_PROTOCOL_VERSION,
-        "X-GCCGW-Agent-Capabilities": AGENT_CAPABILITIES.join(",")
+        "X-GCCGW-Agent-Version": agentProtocolVersion,
+        "X-GCCGW-Agent-Capabilities": agentCapabilities.join(",")
       }
     });
     const body = await readJsonResponse(response, "desired-state");
@@ -340,6 +377,75 @@ export function createProductionEdgeAgentRunner(input = {}) {
     return readJsonResponse(response, "receipt");
   }
 
+  function assertScopedMaterialBatch(state, batch) {
+    const expectedByRef = new Map();
+    for (const digest of state.materialDigests || []) {
+      if (digest && typeof digest === "object") {
+        expectedByRef.set(digest.edgeCredentialRef, digest.digest);
+      } else if (state.edgeCredentialRefs.length === 1) {
+        expectedByRef.set(state.edgeCredentialRefs[0], digest);
+      }
+    }
+    const actualByRef = new Map();
+    for (const record of batch.records || []) {
+      if (actualByRef.has(record.edgeCredentialRef)) {
+        throw agentError("scoped_tombstone_material_mismatch");
+      }
+      actualByRef.set(record.edgeCredentialRef, record.materialDigest);
+    }
+    const exact = actualByRef.size === state.edgeCredentialRefs.length
+      && state.edgeCredentialRefs.every((edgeCredentialRef) => (
+        expectedByRef.get(edgeCredentialRef) === actualByRef.get(edgeCredentialRef)
+      ));
+    if (!exact) {
+      throw agentError("scoped_tombstone_material_mismatch");
+    }
+  }
+
+  async function prepareScopedTombstone(state) {
+    const authoritativeStates = await fetchDesiredState([]);
+    const matching = authoritativeStates.filter((candidate) => (
+      !candidate.scopedTombstone
+      && candidate.desiredStateRef === state.scopedTombstone.sourceDesiredStateRef
+      && candidate.generation === state.scopedTombstone.sourceGeneration
+      && candidate.channelRefs.length === 1
+      && state.channelRefs.length === 1
+      && candidate.channelRefs[0] === state.channelRefs[0]
+    ));
+    if (matching.length !== 1) {
+      throw agentError("scoped_tombstone_authority_mismatch");
+    }
+    const authoritative = matching[0];
+    const expectedDigests = state.scopedTombstone.credentialDigests;
+    const revokeCredentialRefs = config.edgeCredentialRefs.filter((edgeCredentialRef) => (
+      expectedDigests.includes(buildDataPlaneCredentialScopeDigest(edgeCredentialRef))
+    ));
+    const actualDigests = revokeCredentialRefs
+      .map(buildDataPlaneCredentialScopeDigest)
+      .sort((a, b) => a.localeCompare(b));
+    if (actualDigests.length !== expectedDigests.length
+      || actualDigests.some((digest, index) => digest !== expectedDigests[index])
+      || revokeCredentialRefs.some((edgeCredentialRef) => authoritative.edgeCredentialRefs.includes(edgeCredentialRef))) {
+      throw agentError("scoped_tombstone_scope_mismatch");
+    }
+    let materialCount = 0;
+    if (authoritative.edgeCredentialRefs.length > 0) {
+      const materialBatch = await fetchMaterialBatch(authoritative);
+      assertScopedMaterialBatch(authoritative, materialBatch);
+      materialCount = mergeMaterialBatchIntoStore(config.materialStore, materialBatch);
+    }
+    return {
+      runtimeState: {
+        ...authoritative,
+        desiredStateRef: state.desiredStateRef,
+        generation: state.generation,
+        scopedTombstone: state.scopedTombstone
+      },
+      revokeCredentialRefs,
+      materialCount
+    };
+  }
+
   return {
     async runOnce() {
       const desiredStates = await fetchDesiredState();
@@ -360,13 +466,25 @@ export function createProductionEdgeAgentRunner(input = {}) {
       let materialCount = 0;
       const receipts = [];
       for (const state of desiredStates) {
-        if (state.edgeCredentialRefs.length > 0) {
+        let runtimeState = state;
+        let revokeCredentialRefs = [];
+        if (state.scopedTombstone) {
+          const prepared = await prepareScopedTombstone(state);
+          runtimeState = prepared.runtimeState;
+          revokeCredentialRefs = prepared.revokeCredentialRefs;
+          materialCount += prepared.materialCount;
+        } else if (state.edgeCredentialRefs.length > 0) {
           const materialBatch = await fetchMaterialBatch(state);
           materialCount += mergeMaterialBatchIntoStore(config.materialStore, materialBatch);
         }
         for (const channelRef of state.channelRefs) {
           const adapter = config.runtimeAdapters.get(channelRef);
-          const applyResult = await applyWithAdapter({ adapter, state, channelRef });
+          const applyResult = await applyWithAdapter({
+            adapter,
+            state: runtimeState,
+            channelRef,
+            revokeCredentialRefs
+          });
           appliedCount += 1;
           const receipt = receiptFromApplyResult({
             state,
