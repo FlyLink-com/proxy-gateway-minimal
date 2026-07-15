@@ -1,4 +1,4 @@
-import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 
 const BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
 const DEFAULT_ISSUER = "GlobalCircle Admin";
@@ -30,11 +30,10 @@ function safeCompare(left, right) {
 }
 
 function randomBase32Secret(length = 20) {
-  let secret = "";
-  for (let index = 0; index < length; index += 1) {
-    secret += BASE32_ALPHABET[Math.floor(Math.random() * BASE32_ALPHABET.length)];
-  }
-  return secret;
+  return Array.from(
+    randomBytes(length),
+    (byte) => BASE32_ALPHABET[byte & 31]
+  ).join("");
 }
 
 function createTotpUri({ issuer, operatorRef, secret }) {
