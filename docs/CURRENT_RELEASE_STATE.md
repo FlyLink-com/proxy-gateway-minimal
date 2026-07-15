@@ -3,11 +3,11 @@
 > Status:
 > - Type: Current documented release snapshot
 > - Version management baseline: `v3` artifact and runtime-identity foundation
-> - Source evidence baseline: `20bb8257513153de7d5f75d45de7b748ceea6438` (PR #485)
+> - Source evidence baseline: `2413c101724df45579ebf4b9e0f306d32d9bb1af` (PR #483)
 > - Static artifact baseline: `18807285` (PR #452)
 > - Historical v2 baseline: `4fbe0222` (PR #445)
 > - Updated: 2026-07-14, America/Los_Angeles
-> - Source evidence cutoff: GitHub read-only inventory through `master@20bb8257513153de7d5f75d45de7b748ceea6438` on 2026-07-14
+> - Source evidence cutoff: GitHub read-only inventory through `master@2413c101724df45579ebf4b9e0f306d32d9bb1af` on 2026-07-14
 > - Production/runtime evidence cutoff: `2026-07-11T13:03:40Z`; the existing validated Issue #437 execution records remain dated evidence
 > - Live verification: no fresh live production or provider inventory was performed by this C-tier reconciliation
 > - Execution authority: None
@@ -42,8 +42,8 @@ Artifact Manifest v1 has build-time coverage for three release units:
 | `admin-static` | Tracked | The Admin job builds and verifies `admin/dist`, then emits a ZIP, checksum, and `artifact.json`. |
 
 The latest successful `master` build proof is Release Artifact run
-`29346424645` for source
-`20bb8257513153de7d5f75d45de7b748ceea6438`. It completed the current
+`29381367545` for source
+`2413c101724df45579ebf4b9e0f306d32d9bb1af`. It completed the current
 control-plane, Portal, and Admin artifact jobs. This is build evidence only; it
 does not establish approval, deployment, or production reconciliation.
 
@@ -118,7 +118,7 @@ identity remains dated Issue #462 evidence, not a fresh live claim.
 ## Source And Production Drift
 
 The documented production control-plane source `9bc03b41` is an ancestor of
-current `master` at `20bb8257`. Production and source state differ intentionally:
+current `master` at `2413c101`. Production and source state differ intentionally:
 
 | PR | Capability | Release unit | State |
 | --- | --- | --- | --- |
@@ -127,7 +127,7 @@ current `master` at `20bb8257`. Production and source state differ intentionally
 | #466 | Additive-only TUIC map repair capability | `control-plane-app` | `not_deployed`; alignment attempts rolled back |
 | #467 | Condition-driven promotion health gate | `control-plane-app` | `not_deployed`; promotion attempt rolled back after identity rejection |
 | #468 | Protected release-config assembly and identity gate | `control-plane-app` | `not_deployed`; clean validation and build evidence only |
-| #469, #470, #472, #480, #485 | Release-state, infrastructure-access, commercial-model, release-governance, and project-intelligence records | `none` | `not_applicable`; source governance only |
+| #469, #470, #472, #480, #485, #482, #483 | Release-state, infrastructure-access, commercial-model, release-governance, project-intelligence, source-reconciliation, and CI-lane records | `none` | `not_applicable`; source governance only |
 | #471, #473, #474, #477 | Credential lifecycle, cumulative accounting, trial-limit, and unresolved-provenance changes | `control-plane-app` | `not_deployed`; reviewed source only |
 | #478 | Offline natural-observation validator | `control-plane-app` | `not_deployed`; offline validator source only |
 | #481 | Material-handoff preflight fixture stabilization | `none` | `not_applicable`; test-only change |
@@ -136,14 +136,59 @@ Source merge, clean validation, and successful artifact workflows do not change
 the production pointer. Failed promotion attempts are preserved as execution
 evidence and are not reclassified as deployment success.
 
-At this source inventory cutoff, seven PRs remain open and are not part of
+At this source inventory cutoff, five PRs remain open and are not part of
 `master`. Draft PR #476 is the Issue #475 operations-foundation source/schema
-candidate. Draft PR #479 is not deployed, its identity gate remains pending,
-and terminal receipt `issuecomment-4966594034` is blocked with the prior
-approval consumed; no durable successor Gate exists. Draft PRs #482 and #483
-are source-governance reconciliation and CI-lane candidates. Non-Draft PRs #486,
-#487, and #488 are dependency-update candidates. None of these open PRs is
-merged, artifact-approved, deployed, or production-approved.
+candidate. Draft PR #479 is at
+`03d744556be6785ac8c97dae2bc4fb79ae9e246f`, is behind `master`, has three
+unresolved non-outdated threads, and is not deployed. Its predecessor terminal
+receipt `issuecomment-4966594034` remains blocked, the predecessor approval is
+consumed, and no durable successor Gate exists. Non-Draft PRs #486, #487, and
+#488 are dependency-update candidates. None of these open PRs is merged,
+artifact-approved, deployed, or production-approved.
+
+Issue #437 was reopened by the Risk C reconciliation receipt
+`issuecomment-4976074286`: PR #482 had been recorded as its closer even though
+the PR body explicitly denied resolving the Issue. The blocked predecessor is
+not reclassified as successful, and PR #479's four checks from its old head are
+not current-`master` integration evidence.
+
+## Source Governance Snapshot
+
+PR #482 merged as `06d69b2da07a50322a260bd08f160febaf7b6a7d` and PR
+#483 merged as `2413c101724df45579ebf4b9e0f306d32d9bb1af`. PR #483 added
+docs-only/code lane routing and an always-run diff check while retaining one
+stable required `Validate` context. The observed repository has 18 remote
+branches, five open PRs (Draft #476/#479 and non-Draft #486/#487/#488), and
+five open Issues (#437/#438/#439/#440/#475). Current exact-`master`
+source/build proof is:
+
+- CI `29381367549`: success.
+- Release Artifact `29381367545`: success.
+- CodeQL `29381507931`: success.
+- Deploy Cloudflare Site `29381367553`: build, verification, and dry-run
+  succeeded; deploy was skipped.
+
+Ruleset `18935716` strictly requires `Validate`, requires zero approvals, and
+does not require review-thread resolution. Six environments exist; only
+`artifact-publication` has a branch policy, and none has reviewer enforcement.
+This is the observed machine-enforcement boundary, not independent approval.
+
+GitHub reports 39 open code-scanning alerts (2 critical, 36 high, and 1
+medium), 3 open Dependabot alerts (2 high and 1 low), and 0 open
+secret-scanning alerts. Successful CodeQL execution neither resolves these
+alerts nor proves exploitability.
+
+The ordered next-action queue is:
+
+1. establish a durable successor Gate on #437 for PR #479;
+2. complete PR #479 source remediation, current-`master` integration,
+   exact-head checks, formal review, Ready, and merge through independent
+   approvals;
+3. finish the Gate ledger/validator, stable CI contexts plus settings Gate,
+   durable artifact retention/binding, and the minimal
+   organization/runtime-evidence model through separate PRs; and
+4. only then establish independent Artifact and Risk A production-alignment
+   Gates.
 
 ## Phase 2 Source State
 
@@ -153,8 +198,9 @@ merged, artifact-approved, deployed, or production-approved.
   The dated production observation remains unchanged: identity sync is degraded
   (`missing=2`, `stale=19`), and `map_apply` has not started. Draft PR #479 is
   blocked at terminal receipt `issuecomment-4966594034`; no durable successor
-  Gate exists. Admin UI, accounting influence, quota influence, and automation
-  remain deferred.
+  Gate exists. Issue #437 was reopened by receipt `issuecomment-4976074286`
+  after PR #482 was incorrectly recorded as its closer. Admin UI, accounting
+  influence, quota influence, and automation remain deferred.
 - #438 Portal Lifecycle is queued after traffic-state semantics stabilize.
 - #439 Commercial Foundation remains queued. PR #472 records the v1 package
   model and PR #474 adds a source-only trial-limit guard; billing and AppsFlyer
@@ -172,10 +218,10 @@ merged, artifact-approved, deployed, or production-approved.
 ## Evidence
 
 - `RELEASE_MANIFEST.md`
-- GitHub CI run `29346424433`
-- GitHub Release Artifact run `29346424645`
-- GitHub CodeQL run `29346423889`
-- GitHub Deploy Cloudflare Site run `29153679412` (last observed workflow run)
+- GitHub CI run `29381367549`
+- GitHub Release Artifact run `29381367545`
+- GitHub CodeQL run `29381507931`
+- GitHub Deploy Cloudflare Site run `29381367553`
 - GitHub deployments `5389897330` and `5403913679`
 - Closed GitHub Issue #457 inventory and execution comments
 - Closed GitHub Issue #462 inventory, provider-gate, and merge-proof comments
@@ -183,7 +229,7 @@ merged, artifact-approved, deployed, or production-approved.
   rollback, and source-only follow-up evidence through PR #479
 - Open GitHub Issue #475 and Draft PR #476 operations-foundation source/schema
   evidence
-- Merged GitHub PR #485 project-intelligence documentation evidence
+- Merged GitHub PRs #482 and #483 source-reconciliation and CI-lane evidence
 - `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md`
 - `docs/production-replacement-records/2026-07-09-traffic-usage-xray-idle-observable-backend-deploy-execution.md`
 - `docs/production-replacement-records/2026-07-09-japan-traffic-runtime-config-restore-execution.md`

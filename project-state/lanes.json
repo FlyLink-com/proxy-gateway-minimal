@@ -1,9 +1,38 @@
 {
-  "schemaVersion": "2026-07-14.2",
+  "schemaVersion": "2026-07-14.3",
   "lastUpdated": "2026-07-14",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current lane index for Phase 2. Historical lanes remain in Git history and indexed execution records, not in the active Agent queue.",
+  "sourceInventory": {
+    "snapshot": "2413c101724df45579ebf4b9e0f306d32d9bb1af",
+    "date": "2026-07-14",
+    "remoteBranchCount": 18,
+    "openPrCount": 5,
+    "openIssueCount": 5,
+    "mergedPrs": {
+      "482": "06d69b2da07a50322a260bd08f160febaf7b6a7d",
+      "483": "2413c101724df45579ebf4b9e0f306d32d9bb1af"
+    },
+    "openDraftPrs": [476, 479],
+    "openNonDraftPrs": [486, 487, 488],
+    "openIssues": [437, 438, 439, 440, 475]
+  },
+  "governanceBoundary": {
+    "ci": "29381367549 success",
+    "releaseArtifact": "29381367545 success",
+    "codeql": "29381507931 success",
+    "cloudflareWorkflow": "29381367553 success_build_verify_dry_run_deploy_skipped",
+    "ruleset": "18935716 strict Validate; zero approvals; no review-thread resolution",
+    "environments": "Six exist; only artifact-publication has a branch policy; none has reviewer enforcement.",
+    "sourceSecurity": "39 code-scanning alerts (2 critical, 36 high, 1 medium); 3 Dependabot alerts (2 high, 1 low); 0 secret-scanning alerts. Successful CodeQL execution does not resolve alerts or prove exploitability."
+  },
+  "nextActionQueue": [
+    "Establish a durable successor Gate on #437 for PR #479.",
+    "Complete PR #479 source remediation, current-master integration, exact-head checks, formal review, Ready, and merge through independent approvals.",
+    "Finish the Gate ledger and validator, stable CI contexts plus settings Gate, durable artifact retention and binding, and the minimal organization and runtime-evidence model through separate PRs.",
+    "Only then establish independent Artifact and Risk A production-alignment Gates."
+  ],
   "sourceDocs": [
     "docs/CURRENT_RELEASE_STATE.md",
     "docs/FOUNDATION_FREEZE_2026_07_09.md",
@@ -19,7 +48,7 @@
       "name": "Version And Deployment Governance",
       "status": "active-source-governance-hardening",
       "riskBoundary": "C for source-state records and artifact contracts; A for deployment, promotion, rollback, or production observation",
-      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Issues #457 and #462 closed the Vercel and Cloudflare merge-versus-promotion proofs; merged source reaches PR #485 and Release Artifact run 29346424645, while Draft PRs #482/#483 continue source-governance hardening, no new release is Ready or deployed, and machine enforcement remains incomplete.",
+      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. PRs #482/#483 are merged at current master 2413c101724df45579ebf4b9e0f306d32d9bb1af; PR #483 routes docs-only/code changes and always runs diff checking while retaining one stable required Validate context. Release Artifact run 29381367545 succeeded, but ruleset 18935716 still requires zero approvals and no review-thread resolution, only artifact-publication has a branch policy across six environments, and none has reviewer enforcement.",
       "primaryDocs": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -43,7 +72,7 @@
       "name": "Traffic Accounting",
       "status": "active-controlled-remediation",
       "riskBoundary": "B for collector contracts, redacted provenance, tests, and protected read-only projection; A for runtime, service, config, quota, or traffic-supply mutation",
-      "purpose": "Complete Issue #437. Merged source progress through #471/#473/#477/#478 strengthens lifecycle enforcement, cumulative accounting, provenance, and offline observation validation. Japan TUIC identity sync remains degraded, map apply has not started, and Draft PR #479 is blocked at terminal receipt issuecomment-4966594034 with no durable successor Gate.",
+      "purpose": "Complete Issue #437, reopened by Risk C receipt issuecomment-4976074286 after PR #482 was recorded as its closer despite explicitly denying resolution. Draft PR #479 remains at 03d744556be6785ac8c97dae2bc4fb79ae9e246f, behind master, with three unresolved non-outdated threads; its predecessor receipt issuecomment-4966594034 is blocked, approval is consumed, no durable successor Gate exists, and it is not deployed.",
       "primaryDocs": [
         "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
         "docs/CURRENT_RELEASE_STATE.md"
@@ -158,7 +187,7 @@
       "name": "Production Operations",
       "status": "active-boundary",
       "riskBoundary": "A for every production, provider, DNS, Nginx, systemd, firewall, schema, deployment, promotion, rollback, or live customer-data action",
-      "purpose": "Provide serialized read-only inventory, exact approval, validation, rollback, and redacted evidence for production actions without becoming an implementation backlog.",
+      "purpose": "Provide serialized read-only inventory, exact approval, validation, rollback, and redacted evidence for production actions without becoming an implementation backlog. The current production/runtime evidence cutoff remains dated at 2026-07-11T13:03:40Z; this C-tier reconciliation performed no fresh inventory or mutation.",
       "primaryDocs": [
         "docs/CURRENT_RELEASE_STATE.md",
         "docs/DEPLOYMENT_FLOW.md",

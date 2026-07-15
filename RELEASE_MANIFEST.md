@@ -4,7 +4,8 @@
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
 > - Last updated: 2026-07-14, America/Los_Angeles
-> - Source inventory baseline: `master` at `20bb8257`
+> - Source inventory baseline: `master` at `2413c101`
+> - Production/runtime evidence cutoff: `2026-07-11T13:03:40Z`; dated evidence only
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
@@ -235,8 +236,8 @@ sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size
 and UTC creation time, and the manifest contained no downloaded absolute path.
 
 The latest verified `master` proof at this inventory cutoff is Release Artifact
-run `29346424645` for source
-`20bb8257513153de7d5f75d45de7b748ceea6438`. It completed the control-plane,
+run `29381367545` for source
+`2413c101724df45579ebf4b9e0f306d32d9bb1af`. It completed the control-plane,
 Portal, and Admin artifact jobs. This is build evidence, not production
 promotion evidence.
 
@@ -278,14 +279,12 @@ approval and execution evidence.
 ## Current PR Mapping
 
 This is the current compact view of the ten most recently merged PRs at source
-baseline `20bb8257`. The detailed
+baseline `2413c101`. The detailed
 `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md` is a frozen historical snapshot
 and is not appended with later PRs.
 
 | PR | Declared capability | Source commit | Release unit | Release assignment | Production state |
 | --- | --- | --- | --- | --- | --- |
-| #470 | `infrastructure-access-rule-v1` | `b4abd6ee` | `none` | Governance boundary only | `not_applicable` |
-| #472 | `not_declared` | `b801ec1a` | `none` | Provider-neutral Commercial Model v1 docs only | `not_applicable` |
 | #471 | `not_declared` | `23e86358` | `control-plane-app` | Credential lifecycle source only; no production promotion | `not_deployed` |
 | #473 | `not_declared` | `f3d62754` | `control-plane-app` | Cumulative accounting source only; no production promotion | `not_deployed` |
 | #474 | `trial-traffic-limit@v1` | `52741c3f` | `control-plane-app` | Reviewed source only; no production promotion | `not_deployed` |
@@ -294,6 +293,8 @@ and is not appended with later PRs.
 | #481 | `not_declared` | `2df971a4` | `none` | Test-only fixture stabilization | `not_applicable` |
 | #480 | `release-governance-calibration@v1` | `ab8b0ec2` | `none` | Governance calibration only | `not_applicable` |
 | #485 | `project-intelligence-layer@v1` | `20bb8257` | `none` | Derived project-intelligence documentation only | `not_applicable` |
+| #482 | `not_declared` | `06d69b2d` | `none` | Current source-governance reconciliation only | `not_applicable` |
+| #483 | `not_declared` | `2413c101` | `none` | CI lane routing and always-run diff checking only | `not_applicable` |
 
 The Phase 2 traffic chain begins with #441
 `collector-state-contract@v1`; #459 preserves redacted adapter provenance,
@@ -305,12 +306,47 @@ release at source `9bc03b41`. Later control-plane changes in #466 through #468,
 
 Open source candidates are outside this merged mapping. At this inventory
 cutoff, Draft PR #476 is the Issue #475 operations-foundation source/schema
-candidate. Draft PR #479 is not deployed, its identity gate is pending, and
-terminal receipt `issuecomment-4966594034` is blocked with the prior approval
-consumed; no durable successor Gate exists. Draft PRs #482/#483 cover source
-reconciliation and CI-lane governance, while non-Draft PRs #486/#487/#488 are
-dependency-update candidates. None is merged, artifact-approved, deployed, or
-production-approved.
+candidate. Draft PR #479 is at
+`03d744556be6785ac8c97dae2bc4fb79ae9e246f`, is behind `master`, has three
+unresolved non-outdated threads, and is not deployed. Its predecessor terminal
+receipt `issuecomment-4966594034` is blocked, the predecessor approval is
+consumed, and no durable successor Gate exists. Non-Draft PRs #486/#487/#488
+are dependency-update candidates. None is merged, artifact-approved, deployed,
+or production-approved.
+
+Issue #437 was reopened through the Risk C receipt
+`issuecomment-4976074286` because PR #482 had been recorded as its closer even
+though the PR body explicitly denied resolution. The blocked predecessor is
+not rewritten as successful, and the four checks from PR #479's old head are
+not current-`master` integration evidence.
+
+## Current Source Governance Boundary
+
+PR #482 merged as `06d69b2da07a50322a260bd08f160febaf7b6a7d`; PR #483
+merged as `2413c101724df45579ebf4b9e0f306d32d9bb1af`. PR #483 routes
+docs-only and code changes separately and always runs diff checking while
+retaining one stable required `Validate` context. The observed repository has
+18 remote branches, five open PRs (Draft #476/#479 and non-Draft
+#486/#487/#488), and five open Issues (#437/#438/#439/#440/#475).
+Exact-`master` runs are CI
+`29381367549` success, Release Artifact `29381367545` success, CodeQL
+`29381507931` success, and Cloudflare workflow `29381367553` success for
+build/verification/dry-run with deploy skipped.
+
+Ruleset `18935716` strictly requires `Validate`, requires zero approvals, and
+does not require review-thread resolution. Six environments exist; only
+`artifact-publication` has a branch policy, and none has reviewer enforcement.
+GitHub reports 39 open code-scanning alerts (2 critical, 36 high, 1 medium), 3
+open Dependabot alerts (2 high, 1 low), and 0 open secret-scanning alerts.
+Successful CodeQL execution does not resolve alerts or prove exploitability.
+
+The next sequence is: establish a durable successor Gate on #437 for PR #479;
+complete PR #479 remediation, current-`master` integration, exact-head checks,
+formal review, Ready, and merge through independent approvals; implement the
+Gate ledger/validator, stable CI contexts plus settings Gate, durable artifact
+retention/binding, and minimal organization/runtime-evidence model through
+separate PRs; only then establish independent Artifact and Risk A
+production-alignment Gates.
 
 No new release is declared `ready` or `deployed` by this manifest. A source-only
 PR may say that deployment is not applicable; that statement is not a Deploy

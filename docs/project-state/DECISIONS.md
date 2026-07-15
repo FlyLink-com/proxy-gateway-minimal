@@ -32,6 +32,24 @@ last_verified: <date and timezone>
 Do not put secrets, credentials, protected material, private runtime data,
 database rows, or customer data in a decision record.
 
+## Current Evidence Cutoff
+
+These decisions are reconciled to
+`master@2413c101724df45579ebf4b9e0f306d32d9bb1af` on 2026-07-14, after
+PR #482 (`06d69b2da07a50322a260bd08f160febaf7b6a7d`) and PR #483 merged.
+The observed repository has 18 remote branches, five open PRs (Draft #476/#479
+and non-Draft #486/#487/#488), and five open Issues
+(#437/#438/#439/#440/#475).
+
+Issue #437 was reopened by receipt `issuecomment-4976074286`; PR #482 had been
+recorded as its closer despite explicitly denying resolution. PR #479 remains
+at `03d744556be6785ac8c97dae2bc4fb79ae9e246f`, behind `master`, with three
+unresolved non-outdated threads. Its predecessor receipt
+`issuecomment-4966594034` remains blocked, its predecessor approval is
+consumed, no durable successor Gate exists, and it is not deployed.
+This reconciliation performs no production inventory or change; the retained
+production/runtime evidence cutoff remains dated at `2026-07-11T13:03:40Z`.
+
 ## Accepted Decisions
 
 ### DEC-modular-monolith
@@ -97,6 +115,25 @@ database rows, or customer data in a decision record.
 - `supersedes`: `none`.
 - `last_verified`: 2026-07-14, America/Los_Angeles.
 
+### DEC-stable-validate-ci-routing
+
+- `status`: `accepted`
+- `decision`: Route docs-only and code changes within CI, always run diff
+  checking, and retain one stable required `Validate` context until separately
+  reviewed stable contexts and settings enforcement exist.
+- `context`: PR #483 merged at
+  `2413c101724df45579ebf4b9e0f306d32d9bb1af`. Exact-master CI
+  `29381367549`, Release Artifact `29381367545`, and CodeQL `29381507931`
+  succeeded; Cloudflare workflow `29381367553` completed build, verification,
+  and dry-run with deploy skipped. These runs are source/build evidence only.
+- `consequences`: Ruleset `18935716` still strictly requires only `Validate`,
+  with zero approvals and no review-thread resolution. Six environments exist;
+  only `artifact-publication` has a branch policy, and none has reviewer
+  enforcement. Machine governance remains incomplete.
+- `evidence`: Merged PR #483 and the exact-master workflow runs above.
+- `supersedes`: `none`.
+- `last_verified`: 2026-07-14, America/Los_Angeles.
+
 ### DEC-issue-pr-ownership
 
 - `status`: `accepted`
@@ -120,9 +157,24 @@ database rows, or customer data in a decision record.
   JSON mechanism, avoid automation, and remain independent from Issue #437.
 - `context`: Issue #484 authorized one docs-only PR without authorizing a
   second source of truth or runtime work. PR #485 was reviewed and merged at
-  `master@20bb8257513153de7d5f75d45de7b748ceea6438`.
+  `master@20bb8257513153de7d5f75d45de7b748ceea6438`; later PRs #482 and #483
+  reconciled the current state and CI routing without changing that decision.
 - `consequences`: The derived documents defer to the authority matrix and the
   existing JSON mechanism; they remain indexes without execution authority.
 - `evidence`: Closed GitHub Issue #484 and merged PR #485.
 - `supersedes`: `none`.
 - `last_verified`: 2026-07-14, America/Los_Angeles.
+
+## Security And Next-Gate Boundary
+
+GitHub reports 39 open code-scanning alerts (2 critical, 36 high, 1 medium), 3
+Dependabot alerts (2 high, 1 low), and 0 secret-scanning alerts. Successful
+CodeQL execution does not resolve alerts or prove exploitability.
+
+The ordered path is: establish the durable #437 successor Gate for PR #479;
+complete PR #479 remediation, current-master integration, exact-head checks,
+formal review, Ready, and merge through independent approvals; finish the Gate
+ledger/validator, stable CI contexts plus settings Gate, durable artifact
+retention/binding, and minimal organization/runtime-evidence model in separate
+PRs; only then establish independent Artifact and Risk A production-alignment
+Gates.
