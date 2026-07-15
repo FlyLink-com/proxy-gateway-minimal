@@ -64,6 +64,62 @@ test("CI keeps one stable Validate job, always checks the exact diff, and skips 
   assert.match(workflow, /permissions:\r?\n  contents: read/);
 });
 
+test("CI separates read-only governance evidence from manual snapshot validation", () => {
+  const workflow = readRepositoryFile(".github/workflows/ci.yml");
+  const governance = jobBlock(workflow, "governance-evidence", "governance-snapshot");
+  const snapshot = jobBlock(workflow, "governance-snapshot", "validate");
+
+  assert.equal((workflow.match(/^    name: Governance evidence$/gm) ?? []).length, 1);
+  assert.equal((workflow.match(/^    name: Governance snapshot$/gm) ?? []).length, 1);
+  assert.match(governance, /if: github\.event_name != 'workflow_dispatch'/);
+  assert.match(governance, /uses: actions\/checkout@v6/);
+  assert.match(governance, /fetch-depth: 0/);
+  assert.match(governance, /persist-credentials: false/);
+  assert.match(governance, /uses: actions\/setup-node@v6/);
+  assert.match(governance, /node-version: 22/);
+  assert.match(governance, /git show "\$CI_DIFF_BASE:project-state\/gates\.json"/);
+  assert.match(governance, /git show "\$CI_DIFF_BASE:project-state\/repair-policy\.json"/);
+  assert.match(governance, /--base-gates-file "\$RUNNER_TEMP\/base-gates\.json"/);
+  assert.match(governance, /--base-policy-file "\$RUNNER_TEMP\/base-policy\.json"/);
+  assert.match(governance, /--base-state-missing/);
+  assert.doesNotMatch(governance, /--snapshot/);
+  assert.match(snapshot, /if: github\.event_name == 'workflow_dispatch'/);
+  assert.match(snapshot, /--snapshot/);
+  assert.doesNotMatch(snapshot, /--base-gates-file|--base-state-missing/);
+  assert.match(workflow, /permissions:\r?\n  contents: read/);
+  assert.doesNotMatch(governance, /npm ci|contents: write|deploy|provider|ssh|scp|rsync|environment:/i);
+});
+
+test("trusted governance advisory uses only the base validator and immutable trust root", () => {
+  const workflow = readRepositoryFile(".github/workflows/governance-validate.yml");
+  const governance = jobBlock(workflow, "governance-validate");
+
+  assert.match(workflow, /pull_request_target:/);
+  assert.equal((workflow.match(/^    name: Governance trusted advisory$/gm) ?? []).length, 1);
+  assert.match(workflow, /permissions:\r?\n  contents: read\r?\n  pull-requests: read/);
+  assert.equal((governance.match(/actions\/checkout@[a-f0-9]{40} # v6/g) ?? []).length, 2);
+  assert.equal((governance.match(/actions\/setup-node@[a-f0-9]{40} # v6/g) ?? []).length, 1);
+  assert.equal((governance.match(/persist-credentials: false/g) ?? []).length, 2);
+  assert.match(governance, /ref: \$\{\{ github\.event\.pull_request\.base\.sha \}\}/);
+  assert.match(governance, /ref: \$\{\{ github\.event\.pull_request\.head\.sha \}\}/);
+  assert.match(governance, /path: candidate/);
+  assert.match(governance, /sparse-checkout:\s*\|\s*project-state\/gates\.json\s*project-state\/repair-policy\.json/s);
+  assert.match(governance, /sparse-checkout-cone-mode: false/);
+  assert.match(governance, /assert_trust_root_unchanged/);
+  assert.match(governance, /\[\[ "\$base_mode" == "100644" && "\$candidate_mode" == "100644" \]\]/);
+  assert.match(governance, /server\/services\/governance\/gate-governance\.mjs/);
+  assert.match(governance, /schemas\/gate-ledger-v1\.schema\.json/);
+  assert.match(governance, /project-state\/repair-policy\.json/);
+  assert.match(governance, /git -C candidate ls-tree "\$CANDIDATE_HEAD"/);
+  assert.match(governance, /\[\[ "\$mode" == "100644" \]\]/);
+  assert.match(governance, /git -C candidate cat-file blob "\$object"/);
+  assert.match(governance, /node scripts\/check-gate-governance\.mjs/);
+  assert.match(governance, /--head-gates-file \$\{\{ runner\.temp \}\}\/head-gates\.json/);
+  assert.match(governance, /--head-policy-file \$\{\{ runner\.temp \}\}\/head-policy\.json/);
+  assert.doesNotMatch(governance, /--head-(?:gates|policy)-file candidate\//);
+  assert.doesNotMatch(governance, /node candidate\/|npm ci|contents: write|secrets\.|deploy|provider|ssh|scp|rsync|environment:/i);
+});
+
 test("Release Artifact skips package jobs only for an exact docs-only result and dispatch stays full", () => {
   const workflow = readRepositoryFile(".github/workflows/release-artifact.yml");
   const classify = jobBlock(workflow, "classify", "package");

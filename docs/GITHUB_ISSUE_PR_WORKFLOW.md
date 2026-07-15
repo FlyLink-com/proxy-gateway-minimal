@@ -1,6 +1,6 @@
 # GitHub Issue And PR Workflow
 
-Last updated: 2026-07-14, America/Los_Angeles.
+Last updated: 2026-07-15, America/Los_Angeles.
 
 > Status:
 > - Type: Active workflow rule
@@ -66,6 +66,95 @@ An unexpected head, scope, test, identity, or mutation-boundary result stops
 the active gate. Do not widen scope, cross into the next gate, or continue under
 the consumed approval. Preserve the receipt as recorded and open a corrected
 gate prospectively instead of editing historical evidence.
+
+## Machine-Readable Failure Attribution And Repair Routing
+
+`project-state/gates.json` is a prospective-only, machine-readable evidence
+index. It does not backfill historical Issue comments and does not replace the
+durable proposal, approval, or terminal receipt. Each ledger entry binds the
+Gate scope and evidence digests, and a blocked Gate may only advance through:
+
+```text
+terminal_blocked
+  -> failure_attributed
+  -> repair_routed
+  -> successor_proposed
+```
+
+The v1 validator proves structure, identity consistency, append-only history,
+and deterministic routing. It does not prove that a referenced GitHub comment
+exists, who authored it, or that its body matches the digest. Any future repair
+executor must first perform connector-backed provenance readback and bind the
+category-specific repair delta plus the actual changed-file diff; the ledger
+alone is never mutation authority.
+
+`project-state/repair-policy.json` controls routing. A failure is eligible for
+the `codex_auto_repair` lane only when its effective risk is B or C, attribution
+has high confidence, its category is explicitly allowlisted, no escalation
+invariant is affected, and its immutable successor-lineage retry budget remains
+available. The route is eligibility evidence for a bounded Codex-owned
+successor; it does not reopen or continue a consumed Gate and does not itself
+authorize a source, GitHub, provider, runtime, or production mutation.
+
+The ledger binds the exact repair-policy SHA-256. Within schema version 1 the
+policy is immutable across a normal ledger transition, and its hard safety
+floor cannot be removed: Risk A has no automatic retry, B/C retry budgets are
+at most one, automatic categories remain allowlisted, and every security,
+credential, production, scope, sensitive-output, and contract invariant remains
+an escalation condition.
+
+The default escalation invariants include scope drift, security or credential
+boundary changes, production-boundary changes, sensitive output, and contract
+changes. Any such invariant routes to operator review. An unsupported category,
+insufficient attribution confidence, or exhausted retry budget also routes to
+operator review. Risk A in either the Gate or the attributed failure always
+requires a new operator approval; Codex may prepare the successor evidence but
+cannot consume that approval on the operator's behalf.
+
+Repository trust-root files, all Actions workflows/actions, non-documentation
+`ops/` files, and `deployments/` state always route to operator review even if
+an attribution labels the transport failure B or C. Attribution cannot lower a
+scope-derived protection boundary.
+
+Retry attempts are derived from the immutable predecessor relationship rather
+than trusted from a new event in isolation. A successor cannot reset the retry
+budget to zero. Automatic successors inherit the exact lineage, subject, risk,
+source head, and scope; operator-authorized successors may change the approved
+scope but cannot lower risk or change the issue/PR/purpose identity. Approval
+events bind the exact Gate, lineage, authority, source head, and scope digest.
+A policy-routed successor records `repair_policy` authorization rather than
+pretending an operator approval occurred. Successor timestamps must follow the
+predecessor's final event. An expired Gate may later append only an exact
+`successor_proposed` link; it cannot resume execution under the expired
+authorization.
+
+A blocked receipt can occur before approval, after approval was recorded but
+before consumption, or after consumption. Its state claims separately record
+source-file changes, commit creation, push delivery, and any retained local
+state digest. This permits an honest fail-closed receipt without treating a
+dirty worktree as production mutation. The validator also rejects historical
+event rewrites, Gate deletion or reordering, evidence identity or role reuse,
+non-deterministic route claims, unsafe repository paths, and a successor not
+named by its exact predecessor.
+
+Actions separates three contexts:
+
+- `Governance evidence` runs candidate code for ordinary CI evidence and never
+  shares a name with the trusted advisory context.
+- `Governance snapshot` is manual and validates only the current snapshot.
+- `Governance trusted advisory` uses `pull_request_target`, trusted base-branch
+  validator code, and read-only checkout of only the candidate state files. It
+  compares exact base/head ledgers and policies from regular Git blobs without
+  following candidate symlinks, and rejects candidate changes to its trust-root
+  workflow, validator, schemas, or repair policy. It does not execute candidate
+  code or retain checkout credentials.
+
+These workflows neither create a successor nor change GitHub settings.
+`pull_request_target` runs against the base branch identity, so this advisory
+context must not be mapped directly as a latest-head required check. A separate
+settings/Actions design Gate must choose a protected pull-request trust root or
+an exact-head status publication mechanism before machine enforcement is
+claimed. Trust-root upgrades also require that independent lane.
 
 ## Command Ownership And Enforcement Evidence
 

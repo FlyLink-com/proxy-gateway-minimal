@@ -1,0 +1,107 @@
+name: Governance Trusted Advisory
+
+on:
+  pull_request_target:
+    branches:
+      - master
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: governance-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+
+jobs:
+  governance-validate:
+    name: Governance trusted advisory
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout trusted base validator
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout untrusted candidate state
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: candidate
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: |
+            project-state/gates.json
+            project-state/repair-policy.json
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22
+
+      - name: Verify trust root and export exact candidate state blobs
+        shell: bash
+        env:
+          BASE_HEAD: ${{ github.event.pull_request.base.sha }}
+          CANDIDATE_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$BASE_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$CANDIDATE_HEAD" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$(git rev-parse HEAD)" == "$BASE_HEAD" ]]
+          [[ "$(git -C candidate rev-parse HEAD)" == "$CANDIDATE_HEAD" ]]
+          assert_trust_root_unchanged() {
+            local trust_path="$1"
+            local base_entry candidate_entry
+            local base_mode base_type base_object base_path base_extra
+            local candidate_mode candidate_type candidate_object candidate_path candidate_extra
+            base_entry="$(git ls-tree "$BASE_HEAD" -- "$trust_path")"
+            candidate_entry="$(git -C candidate ls-tree "$CANDIDATE_HEAD" -- "$trust_path")"
+            read -r base_mode base_type base_object base_path base_extra <<< "$base_entry"
+            read -r candidate_mode candidate_type candidate_object candidate_path candidate_extra <<< "$candidate_entry"
+            [[ "$base_mode" == "100644" && "$candidate_mode" == "100644" ]]
+            [[ "$base_type" == "blob" && "$candidate_type" == "blob" ]]
+            [[ "$base_object" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$candidate_object" == "$base_object" ]]
+            [[ "$base_path" == "$trust_path" && "$candidate_path" == "$trust_path" ]]
+            [[ -z "${base_extra:-}" && -z "${candidate_extra:-}" ]]
+          }
+          for trust_path in \
+            .github/workflows/governance-validate.yml \
+            scripts/check-gate-governance.mjs \
+            server/services/governance/gate-governance.mjs \
+            schemas/failure-attribution-v1.schema.json \
+            schemas/gate-ledger-v1.schema.json \
+            schemas/repair-policy-v1.schema.json \
+            project-state/repair-policy.json
+          do
+            assert_trust_root_unchanged "$trust_path"
+          done
+          export_blob() {
+            local state_path="$1"
+            local output_path="$2"
+            local entry mode type object path extra
+            entry="$(git -C candidate ls-tree "$CANDIDATE_HEAD" -- "$state_path")"
+            read -r mode type object path extra <<< "$entry"
+            [[ "$mode" == "100644" ]]
+            [[ "$type" == "blob" ]]
+            [[ "$object" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$path" == "$state_path" ]]
+            [[ -z "${extra:-}" ]]
+            git -C candidate cat-file blob "$object" > "$output_path"
+          }
+          export_blob project-state/gates.json "$RUNNER_TEMP/head-gates.json"
+          export_blob project-state/repair-policy.json "$RUNNER_TEMP/head-policy.json"
+
+      - name: Validate candidate with trusted base code
+        run: >-
+          node scripts/check-gate-governance.mjs
+          --head-gates-file ${{ runner.temp }}/head-gates.json
+          --head-policy-file ${{ runner.temp }}/head-policy.json
+          --base-gates-file project-state/gates.json
+          --base-policy-file project-state/repair-policy.json

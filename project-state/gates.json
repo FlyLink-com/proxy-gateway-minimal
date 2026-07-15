@@ -1,0 +1,8 @@
+{
+  "schemaVersion": "1",
+  "authority": "evidence-index-only",
+  "description": "Prospective machine-readable Gate evidence. Historical issue comments are not backfilled.",
+  "repairPolicyVersion": "1",
+  "repairPolicyDigest": "8ca4737109a75afb81e8e68df4824a41c48aa9bd717811a4c3ddc79481a6c27d",
+  "gates": []
+}

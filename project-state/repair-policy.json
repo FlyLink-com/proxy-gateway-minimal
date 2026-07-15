@@ -1,0 +1,23 @@
+{
+  "schemaVersion": "1",
+  "retryBudget": {
+    "A": 0,
+    "B": 1,
+    "C": 1
+  },
+  "autoRepairCategories": [
+    "ci_configuration",
+    "docs_metadata",
+    "execution_transport",
+    "test_fixture",
+    "transport_format"
+  ],
+  "escalationInvariants": [
+    "contract_change",
+    "credential_boundary",
+    "production_boundary",
+    "scope_drift",
+    "security_boundary",
+    "sensitive_output"
+  ]
+}

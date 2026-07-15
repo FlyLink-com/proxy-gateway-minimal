@@ -10,6 +10,10 @@ const REQUIRED_STATE_FILES = [
   "project-state/current.json",
   "project-state/tasks.json"
 ];
+const GOVERNANCE_STATE_FILES = [
+  "project-state/gates.json",
+  "project-state/repair-policy.json"
+];
 const GUARDED_METADATA_DOCS = new Set([
   "docs/PROJECT_CONTEXT.md",
   "docs/VALIDATION_BASELINE.md",
@@ -292,7 +296,12 @@ export function checkProjectState(options = {}) {
     ...(Array.isArray(tasksState?.sourceDocs) ? tasksState.sourceDocs : [])
   ];
   checkPathReferences(rootDir, "project-state sourceDocs", sourceDocs, errors);
-  const checkedPaths = [...new Set([...REQUIRED_STATE_FILES, ...sourceDocs, ...GUARDED_METADATA_DOCS])];
+  const checkedPaths = [...new Set([
+    ...REQUIRED_STATE_FILES,
+    ...GOVERNANCE_STATE_FILES,
+    ...sourceDocs,
+    ...GUARDED_METADATA_DOCS
+  ])];
   checkSensitivePatterns(rootDir, checkedPaths, errors);
   checkActiveDocGuards(rootDir, checkedPaths, errors);
 
