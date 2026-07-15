@@ -165,15 +165,55 @@ function edgeMaterialStore() {
   return createEdgeCredentialMaterialStore();
 }
 
+const TEST_REMOTE_NODE_REF = "node-synthetic-remote";
+
+function authoritativeDesiredStateIdentity(channelRef, nodeRef = TEST_REMOTE_NODE_REF) {
+  return {
+    nodeRef,
+    channelRefs: [channelRef],
+    desiredStateRef: `desired_state_authoritative_${channelRef}`,
+    generation: `gen_authoritative_${channelRef}`
+  };
+}
+
+function pendingDesiredStateNotification(channelRef, overrides = {}) {
+  const nodeRef = overrides.nodeRef || TEST_REMOTE_NODE_REF;
+  const authoritative = authoritativeDesiredStateIdentity(channelRef, nodeRef);
+  return {
+    channelRef,
+    nodeRef,
+    desiredStateRef: authoritative.desiredStateRef,
+    generation: authoritative.generation,
+    status: "pending",
+    ...overrides
+  };
+}
+
+function desiredStateAuthorityStore() {
+  const reads = [];
+  return {
+    reads,
+    getLatestEdgeDesiredStateForChannel(channelRef, filters = {}) {
+      reads.push({
+        channelRef,
+        nodeRef: filters.nodeRef,
+        channelRefs: filters.channelRefs
+      });
+      return authoritativeDesiredStateIdentity(channelRef, filters.nodeRef);
+    }
+  };
+}
+
 function refreshStateMachineHarness({
   requestId,
   refreshLifecycleResult,
   runtimeCore = null,
   tenantId = null,
+  desiredStateStore = desiredStateAuthorityStore(),
   refreshNotificationResult = {
     ok: true,
     notificationCount: 1,
-    notifications: [{ channelRef: "channel-aliyun-a-tuic", status: "pending" }],
+    notifications: [pendingDesiredStateNotification("channel-aliyun-a-tuic")],
     redacted: true
   },
   rollbackLifecycleResult = {
@@ -185,7 +225,7 @@ function refreshStateMachineHarness({
   rollbackNotificationResult = {
     ok: true,
     notificationCount: 1,
-    notifications: [{ channelRef: "channel-aliyun-a-tuic", status: "pending" }],
+    notifications: [pendingDesiredStateNotification("channel-aliyun-a-tuic")],
     redacted: true
   }
 }) {
@@ -206,7 +246,7 @@ function refreshStateMachineHarness({
         return {
           ok: true,
           notificationCount: 1,
-          notifications: [{ channelRef: "channel-aliyun-a-tuic", status: "pending" }],
+          notifications: [pendingDesiredStateNotification("channel-aliyun-a-tuic")],
           redacted: true
         };
       }
@@ -225,6 +265,7 @@ function refreshStateMachineHarness({
       uuidFactory: () => `00000000-0000-4000-8000-${String(++credentialSequence).padStart(12, "0")}`,
       passwordFactory: () => `synthetic-refresh-password-${credentialSequence}`
     }),
+    controlStore: desiredStateStore,
     edgeLifecycleService: {
       reconcileOrderLifecycle({ reason }) {
         lifecycleReasons.push(reason);
@@ -262,6 +303,7 @@ function refreshStateMachineHarness({
   notificationCalls.length = 0;
 
   return {
+    desiredStateStore,
     lifecycleReasons,
     materialStore,
     notificationCalls,
@@ -1525,7 +1567,7 @@ test("refresh publishes an explicit remote pending result after persisting the r
       return {
         ok: true,
         notificationCount: 1,
-        notifications: [{ channelRef: "channel-aliyun-a-tuic", status: "pending" }],
+        notifications: [pendingDesiredStateNotification("channel-aliyun-a-tuic")],
         redacted: true
       };
     }
@@ -1550,6 +1592,66 @@ test("refresh publishes an explicit remote pending result after persisting the r
     JSON.stringify(refreshed),
     /synthetic-refresh-password|00000000-0000-4000-8000|edgeMaterialDigest|rawConfig/i
   );
+});
+
+test("refresh rejects stale remote pending notification identity against authoritative desired state", () => {
+  const channelRef = "channel-aliyun-a-tuic";
+  const nodeRef = TEST_REMOTE_NODE_REF;
+  const staleNotification = pendingDesiredStateNotification(channelRef, {
+    nodeRef,
+    desiredStateRef: "desired_state_stale_notification",
+    generation: "gen_stale_notification"
+  });
+  const harness = refreshStateMachineHarness({
+    requestId: "pareq_refresh_stale_notification_identity_1",
+    refreshLifecycleResult: {
+      ok: true,
+      channelRef,
+      mutation: false,
+      runtimeReceipt: { status: "pending" },
+      nextAction: "complete_data_plane_handoff",
+      redacted: true
+    },
+    refreshNotificationResult: {
+      ok: true,
+      notificationCount: 1,
+      notifications: [staleNotification],
+      redacted: true
+    }
+  });
+  const [before] = harness.requests.listEdgeCredentialOrders();
+  const beforeMaterial = harness.materialStore.getCredentialMaterialSummary(before.edgeCredentialRef);
+  const beforeRequest = harness.requests.getRequest("pareq_refresh_stale_notification_identity_1");
+
+  assert.equal(staleNotification.channelRef, channelRef);
+  assert.equal(staleNotification.nodeRef, nodeRef);
+  assert.equal(staleNotification.status, "pending");
+  assert.equal(new Set([staleNotification.channelRef]).size, 1);
+  assert.throws(() => harness.requests.refreshSubscription({
+    portalUserRef: "user_safe_ref",
+    requestRef: "pareq_refresh_stale_notification_identity_1",
+    clientTarget: "karing"
+  }), { code: "subscription_refresh_runtime_enforcement_pending" }, "stale_notification_identity_accepted");
+
+  const [after] = harness.requests.listEdgeCredentialOrders();
+  const restored = harness.requests.getRequest("pareq_refresh_stale_notification_identity_1");
+  assert.deepEqual(harness.desiredStateStore.reads, [{
+    channelRef,
+    nodeRef,
+    channelRefs: [channelRef]
+  }]);
+  assert.equal(after.edgeCredentialRef, before.edgeCredentialRef);
+  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
+  assert.equal(
+    harness.materialStore.getCredentialMaterialSummary(after.edgeCredentialRef).materialDigest,
+    beforeMaterial.materialDigest
+  );
+  assert.equal(restored.clientTarget, beforeRequest.clientTarget);
+  assert.deepEqual(restored.event, beforeRequest.event);
+  assert.deepEqual(harness.notificationCalls.map(({ reason }) => reason), [
+    "order_refreshed",
+    "order_refresh_rolled_back"
+  ]);
 });
 
 test("refresh rejects an unclassified lifecycle plan before notifying or saving", () => {
@@ -1749,7 +1851,7 @@ test("refresh rejects a direct pending notification for the wrong channel and re
     refreshNotificationResult: {
       ok: true,
       notificationCount: 1,
-      notifications: [{ channelRef: "channel-unrelated-a-hy2", status: "pending" }],
+      notifications: [pendingDesiredStateNotification("channel-unrelated-a-hy2")],
       redacted: true
     }
   });
@@ -1804,8 +1906,8 @@ test("refresh requires notifications for every pending fanout channel and compen
       ok: true,
       notificationCount: 2,
       notifications: [
-        { channelRef: "channel-aliyun-a-tuic", status: "pending" },
-        { channelRef: "channel-unrelated-a-hy2", status: "pending" }
+        pendingDesiredStateNotification("channel-aliyun-a-tuic"),
+        pendingDesiredStateNotification("channel-unrelated-a-hy2")
       ],
       redacted: true
     }
@@ -1856,16 +1958,15 @@ test("refresh completes mixed fanout rollback only with exact pending notificati
   const incompleteRefreshNotification = {
     ok: true,
     notificationCount: 1,
-    notifications: [{ channelRef: pendingChannelRefs[0], status: "pending" }],
+    notifications: [pendingDesiredStateNotification(pendingChannelRefs[0])],
     redacted: true
   };
   const exactRollbackNotification = {
     ok: true,
     notificationCount: pendingChannelRefs.length,
-    notifications: pendingChannelRefs.map((channelRef) => ({
-      channelRef,
-      status: "pending"
-    })),
+    notifications: pendingChannelRefs.map((channelRef) => (
+      pendingDesiredStateNotification(channelRef)
+    )),
     redacted: true
   };
   let rollbackNotificationOrder;
@@ -1945,8 +2046,8 @@ test("refresh completes mixed fanout rollback only with exact pending notificati
       rollbackNotificationResult: {
         ...exactRollbackNotification,
         notifications: [
-          { channelRef: pendingChannelRefs[0], status: "pending" },
-          { channelRef: pendingChannelRefs[1], status: "failed" }
+          pendingDesiredStateNotification(pendingChannelRefs[0]),
+          pendingDesiredStateNotification(pendingChannelRefs[1], { status: "failed" })
         ]
       }
     },
@@ -1954,10 +2055,9 @@ test("refresh completes mixed fanout rollback only with exact pending notificati
       name: "duplicate-notification",
       rollbackNotificationResult: {
         ...exactRollbackNotification,
-        notifications: pendingChannelRefs.map(() => ({
-          channelRef: pendingChannelRefs[0],
-          status: "pending"
-        }))
+        notifications: pendingChannelRefs.map(() => (
+          pendingDesiredStateNotification(pendingChannelRefs[0])
+        ))
       }
     },
     {
@@ -1965,8 +2065,8 @@ test("refresh completes mixed fanout rollback only with exact pending notificati
       rollbackNotificationResult: {
         ...exactRollbackNotification,
         notifications: [
-          { channelRef: pendingChannelRefs[0], status: "pending" },
-          { channelRef: "channel-unrelated-a-hy2", status: "pending" }
+          pendingDesiredStateNotification(pendingChannelRefs[0]),
+          pendingDesiredStateNotification("channel-unrelated-a-hy2")
         ]
       }
     },
@@ -1975,7 +2075,7 @@ test("refresh completes mixed fanout rollback only with exact pending notificati
       rollbackNotificationResult: {
         ok: true,
         notificationCount: 1,
-        notifications: [{ channelRef: pendingChannelRefs[0], status: "pending" }],
+        notifications: [pendingDesiredStateNotification(pendingChannelRefs[0])],
         redacted: true
       }
     }
@@ -2034,10 +2134,9 @@ test("refresh notifies exact pending rollback fanout before candidate save and p
   const exactRollbackNotification = {
     ok: true,
     notificationCount: pendingChannelRefs.length,
-    notifications: pendingChannelRefs.map((channelRef) => ({
-      channelRef,
-      status: "pending"
-    })),
+    notifications: pendingChannelRefs.map((channelRef) => (
+      pendingDesiredStateNotification(channelRef)
+    )),
     redacted: true
   };
   let rollbackNotificationOrder;
@@ -2132,7 +2231,7 @@ test("refresh rejects a matching remote notification whose recorded status is fa
     refreshNotificationResult: {
       ok: true,
       notificationCount: 1,
-      notifications: [{ channelRef: "channel-aliyun-a-tuic", status: "failed" }],
+      notifications: [pendingDesiredStateNotification("channel-aliyun-a-tuic", { status: "failed" })],
       redacted: true
     }
   });
@@ -2166,7 +2265,7 @@ test("refresh rejects remote notification counts that disagree with the notifica
     refreshNotificationResult: {
       ok: true,
       notificationCount: 2,
-      notifications: [{ channelRef: "channel-aliyun-a-tuic", status: "pending" }],
+      notifications: [pendingDesiredStateNotification("channel-aliyun-a-tuic")],
       redacted: true
     }
   });
@@ -2511,7 +2610,7 @@ test("refresh compensates direct remote pending handoffs across candidate persis
     const rollbackNotificationResult = {
       ok: true,
       notificationCount: 1,
-      notifications: [{ channelRef, status: "pending" }],
+      notifications: [pendingDesiredStateNotification(channelRef)],
       redacted: true
     };
     const runtimeCore = scenario.failCandidateBinding ? {
@@ -2531,6 +2630,7 @@ test("refresh compensates direct remote pending handoffs across candidate persis
         uuidFactory: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`,
         passwordFactory: () => `password-${sequence}`
       }),
+      controlStore: desiredStateAuthorityStore(),
       edgeLifecycleService: {
         reconcileOrderLifecycle({ reason }) {
           lifecycleReasons.push(reason);
@@ -2607,7 +2707,7 @@ test("refresh compensates direct remote pending handoffs across candidate persis
     assert.equal(thrownError?.code, scenario.expectedError);
     assert.equal(rollbackNotificationResult.notificationCount, 1);
     assert.deepEqual(rollbackNotificationResult.notifications, [
-      { channelRef, status: "pending" }
+      pendingDesiredStateNotification(channelRef)
     ]);
 
     const [after] = requests.listEdgeCredentialOrders();
@@ -2651,7 +2751,7 @@ test("refresh compensates pending fanout children when a sibling fails without m
   const exactRollbackNotification = {
     ok: true,
     notificationCount: 1,
-    notifications: [{ channelRef: pendingChannelRef, status: "pending" }],
+    notifications: [pendingDesiredStateNotification(pendingChannelRef)],
     redacted: true
   };
 
@@ -2777,7 +2877,7 @@ test("refresh notifies pending rollback children before rejecting a failed rollb
   const exactRollbackNotification = {
     ok: true,
     notificationCount: 1,
-    notifications: [{ channelRef: pendingChannelRef, status: "pending" }],
+    notifications: [pendingDesiredStateNotification(pendingChannelRef)],
     redacted: true
   };
 
@@ -2911,7 +3011,7 @@ test("refresh attempts restored desired-state notification before rejecting a fa
       return {
         ok: true,
         notificationCount: channelRefs.length,
-        notifications: channelRefs.map((channelRef) => ({ channelRef, status: "pending" })),
+        notifications: channelRefs.map((channelRef) => pendingDesiredStateNotification(channelRef)),
         redacted: true
       };
     }
@@ -3035,6 +3135,7 @@ test("refresh compensates a real lifecycle receipt failure after the remote hand
       uuidFactory: () => `00000000-0000-4000-8000-${String(++credentialSequence).padStart(12, "0")}`,
       passwordFactory: () => `synthetic-receipt-failure-password-${credentialSequence}`
     }),
+    controlStore: desiredStateAuthorityStore(),
     edgeLifecycleService: lifecycleService,
     edgeDesiredStateNotifier: {
       notifyOrderLifecycle(input) {
@@ -3045,7 +3146,7 @@ test("refresh compensates a real lifecycle receipt failure after the remote hand
         return {
           ok: true,
           notificationCount: 1,
-          notifications: [{ channelRef, status: "pending" }],
+          notifications: [pendingDesiredStateNotification(channelRef)],
           redacted: true
         };
       }
@@ -3175,6 +3276,7 @@ test("refresh attempts restored-state notification when rollback receipt persist
       uuidFactory: () => `00000000-0000-4000-8000-${String(++credentialSequence).padStart(12, "0")}`,
       passwordFactory: () => `synthetic-rollback-receipt-password-${credentialSequence}`
     }),
+    controlStore: desiredStateAuthorityStore(),
     runtimeCore: {
       bindTenantCredentialMaterial({ material }) {
         if (material.uuid.endsWith("000000000002")) {
@@ -3193,7 +3295,7 @@ test("refresh attempts restored-state notification when rollback receipt persist
         return {
           ok: true,
           notificationCount: 1,
-          notifications: [{ channelRef, status: "pending" }],
+          notifications: [pendingDesiredStateNotification(channelRef)],
           redacted: true
         };
       }

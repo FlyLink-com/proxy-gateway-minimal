@@ -823,7 +823,7 @@ export function createPortalAccessRequestService(options = {}) {
       : [];
     const notifiedChannelRefs = notifications
       .map((notification) => String(notification?.channelRef || "").trim());
-    return (
+    const coverageMatches = (
       desiredStateResult?.ok === true
       && expectedChannelRefs.length > 0
       && Number.isInteger(desiredStateResult?.notificationCount)
@@ -834,6 +834,40 @@ export function createPortalAccessRequestService(options = {}) {
       && notifications.every((notification) => notification?.status === "pending")
       && expectedChannelRefs.every((channelRef) => notifiedChannelRefs.includes(channelRef))
     );
+    if (
+      !coverageMatches
+      || !controlStore
+      || typeof controlStore.getLatestEdgeDesiredStateForChannel !== "function"
+    ) {
+      return false;
+    }
+    try {
+      return notifications.every((notification) => {
+        const channelRef = notification?.channelRef;
+        const nodeRef = notification?.nodeRef;
+        const desiredStateRef = notification?.desiredStateRef;
+        const generation = notification?.generation;
+        if ([channelRef, nodeRef, desiredStateRef, generation].some((value) => (
+          typeof value !== "string" || !value || value.trim() !== value
+        ))) {
+          return false;
+        }
+        const authoritative = controlStore.getLatestEdgeDesiredStateForChannel(channelRef, {
+          nodeRef,
+          channelRefs: [channelRef]
+        });
+        return (
+          authoritative?.nodeRef === nodeRef
+          && Array.isArray(authoritative?.channelRefs)
+          && authoritative.channelRefs.length === 1
+          && authoritative.channelRefs[0] === channelRef
+          && authoritative.desiredStateRef === desiredStateRef
+          && authoritative.generation === generation
+        );
+      });
+    } catch {
+      return false;
+    }
   }
 
   function withRuntimeEnforcement(summary, lifecycleResult, desiredStateResult) {
