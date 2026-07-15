@@ -40,10 +40,12 @@ block with these fields:
 | `last_verified_at` | `YYYY-MM-DD` | Date this metadata assignment was verified; it does not refresh source, deployment, runtime, or production evidence cutoffs in the document body. |
 | `production_authority` | Boolean; default `false` | Whether the document can establish production state. Documentation Lane documents remain `false`; production authority belongs to Release Flow evidence. |
 
-For this first normalization slice, the block is required only on the canonical
-entrypoints named by the authority inventory. Absence on other documents is not
-a lifecycle or validity decision. An active canonical `authority_scope` should
-be unique, but this PR adds no validator, CI gate, approval state, file move, or
+The block is currently required only on the canonical entrypoints named by the
+authority inventory. Absence on other documents is not a lifecycle or validity
+decision. Run `npm run docs:authority:check` to validate declared blocks and
+reject missing or invalid fields, invalid replacement paths, and duplicate
+active canonical `authority_scope` values. The check reuses the existing
+`Validate` context; it creates no new gate, approval state, file move, or
 directory restructure.
 
 ## Project Landing Pages

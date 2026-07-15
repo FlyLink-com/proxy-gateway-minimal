@@ -67,6 +67,10 @@ jobs:
           fi
           git diff --check "$range"
 
+      - name: Check document authority
+        if: always()
+        run: npm run docs:authority:check
+
       - name: Install root dependencies
         if: steps.changes.outputs.run_full != '0'
         run: npm ci
