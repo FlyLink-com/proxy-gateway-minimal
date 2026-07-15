@@ -1,23 +1,27 @@
 # Project Topology
 
-Last updated: 2026-06-03, Asia/Shanghai.
+Last updated: 2026-07-15, America/Los_Angeles.
 
 > Status:
 > - Type: Active architecture topology
 > - Risk: C
-> - Execution authority: Does not authorize code, production, AWS, DNS, Nginx,
+> - Execution authority: Does not authorize code, production, provider, DNS, Nginx,
 >   HTTPS, systemd, node, artifact, credential, mesh, service, or cutover changes
 > - Production impact: None
-> - Source of truth for: Current and target topology relationships across local
->   agent, subscription control plane, operator lab relay, subscription
->   delivery, production edges, and server mesh planning
+> - Source of truth for: Current documented and target topology relationships
+>   across local agent, subscription control plane, operator lab relay,
+>   subscription delivery, production edges, and server mesh planning. This is
+>   not fresh live production inventory.
 
-## Current Production Topology
+## Current Documented Production Topology
 
-Current production subscription delivery is the Aliyun public subscription
-boundary. The former AWS `prod-edge-a` / `prod-edge-b` carrying instances were
-terminated on 2026-05-29, so there is no active AWS edge data-plane baseline.
-Local Edge Agent work is repository prototype only and is not production active.
+At the current repository evidence cutoff, the documented production lane uses
+Vultr Japan as the subscription control plane and Vultr Japan plus Vultr
+Singapore as data-plane capacity. This is a documented topology relationship,
+not fresh live proof; any Risk A operation still requires current target
+inventory and validation. Aliyun control-center records and the former AWS
+`prod-edge-a` / `prod-edge-b` lanes are historical evidence only. Local Edge
+Agent work remains a repository prototype and is not production active.
 
 ```mermaid
 flowchart LR
@@ -25,37 +29,45 @@ flowchart LR
     C["Clash / Mihomo"]
   end
 
-  subgraph "Public Subscription Gateway"
-    D["sub.globalcirclecat.com"]
+  subgraph "Vultr Japan Control Plane"
+    D["gccwebos.com\nsubscription boundary"]
     N["Nginx public boundary"]
-    A["proxy-gateway app"]
-    DB["SQLite subscription / artifact state"]
+    A["proxy-gateway control plane"]
+    DB["SQLite accounts / orders / artifacts / usage"]
+    R["Subscription V2 renderer"]
   end
 
-  subgraph "Production Edge Fleet"
-    E1["prod-edge-a\nterminated AWS slot"]
-    E2["prod-edge-b\nterminated AWS slot"]
-    E3["prod-edge-c\nfuture clean edge slot"]
+  subgraph "Documented Data-Plane Capacity"
+    JP["Vultr Japan\nVLESS Reality / Hysteria2 / TUIC"]
+    SGP["Vultr Singapore\nVLESS Reality / Hysteria2 / TUIC"]
   end
 
-  C -->|"refreshes subscription\n/sub/a/* or compatible /sub/clash.yaml"| D
+  H["Historical Aliyun / AWS records\narchaeology only"]
+
+  C -->|"refreshes subscription"| D
   D --> N --> A --> DB
-  A -->|"renders Subscription V2 YAML"| C
-  C -.->|"static config still references\nretired nodes until rebuilt"| E1
-  C -.->|"static config still references\nretired nodes until rebuilt"| E2
-  E3 -.->|"not active standby yet"| E1
+  A --> R -->|"renders entitled channels"| C
+  A -->|"desired state / applied receipts"| JP
+  A -->|"remote handoff / applied receipts"| SGP
+  C -->|"selected channel traffic"| JP
+  C -->|"selected channel traffic"| SGP
+  H -.->|"does not define current authority"| A
 ```
 
-Current production facts:
+Current documented boundaries:
 
 ```text
-prod-edge-a: historical AWS production edge slot; carrying instance terminated
-prod-edge-b: historical AWS iteration/canary slot; carrying instance terminated
-prod-edge-c: future recovery / standby slot, build materials only
-legacy blue: stopped, controlled retirement review only
+Vultr Japan control plane: accounts, orders, artifacts, credential lifecycle,
+  subscription rendering, protected Admin/operator API, and usage-ledger authority
+Vultr Japan data plane: protocol runtime capacity only
+Vultr Singapore data plane: optional protocol runtime capacity through Japan
+  control-plane handoff and matching applied receipts
+AWS: staging/DR evidence only, not current main production authority
+Aliyun and retired AWS slots: historical evidence and archaeology only
+live health or deployment identity: requires fresh Risk A read-only verification
 ```
 
-## Target Subscription Control / Edge Split
+## Subscription Control / Edge Split
 
 The current documented production direction uses Vultr Japan as the
 subscription control plane and Vultr Japan/Singapore as data-plane capacity.
@@ -71,10 +83,10 @@ flowchart LR
     Render["Subscription V2 renderer"]
   end
 
-  subgraph "Retired Non-Aliyun Node Slots"
-    A["prod-edge-a\nterminated AWS slot"]
-    B["prod-edge-b\nterminated AWS slot"]
-    C["historical / future nodes\nno default keep path"]
+  subgraph "Data-Plane Capacity"
+    JP["Vultr Japan\nprotocol runtime only"]
+    SGP["Vultr Singapore\nremote handoff / receipt gated"]
+    C["future node\nrequires a new gate"]
   end
 
   subgraph "Private Operations Plane"
@@ -85,11 +97,13 @@ flowchart LR
   Clients["Clash / Mihomo\nor future Local Edge Agent"] -->|"refresh / bootstrap"| SC
   SC --> State --> Render
   Render -->|"approved policy"| Clients
-  Clients -.->|"historical config reference\nnot live edge authority"| A
-  Clients -.->|"historical config reference\nnot live edge authority"| B
+  SC -->|"desired state / receipts"| JP
+  SC -->|"remote handoff / receipts"| SGP
+  Clients -->|"entitled channel traffic"| JP
+  Clients -->|"entitled channel traffic"| SGP
   SC -.->|"backup / restore path"| SB
-  A -.-> Mesh
-  B -.-> Mesh
+  JP -.-> Mesh
+  SGP -.-> Mesh
   C -.-> Mesh
   Mesh -.-> Health -.-> SC
 ```
@@ -97,14 +111,16 @@ flowchart LR
 Target split boundaries:
 
 ```text
-sub-control-a on Aliyun produces subscriptions, owns artifacts, and keeps access state after separate approval
+sub-control-a on Vultr Japan produces subscriptions, owns artifacts, and keeps access state
 local Linux owns manual CI after separate validation
-prod-edge-a/b AWS carrying instances were stopped and then terminated under explicit gates
-non-Aliyun / non-HP nodes should only re-enter service through explicit new gates
+Vultr Japan/Singapore data-plane nodes provide protocol capacity but do not own customer truth
+Singapore output remains handoff- and receipt-gated by the Japan control plane
+Aliyun and former AWS carrying lanes remain historical evidence only
+future nodes should only enter service through explicit new gates
 future edge rebuilds are deferred unless a technical MVP integration gate approves them
 edge nodes should not own subscription state or expose Admin
 private mesh is health / validation / recovery infrastructure first
-physical split is future Risk A work, not implied by this topology
+any new physical split, node addition, or runtime mutation remains separate Risk A work
 ```
 
 ## Target Product Topology
@@ -130,8 +146,8 @@ flowchart LR
   end
 
   subgraph "Remote Channel Targets"
-    A["historical prod-edge-a\nterminated slot"]
-    B["historical prod-edge-b\nterminated slot"]
+    A["Vultr Japan\ndocumented data-plane lane"]
+    B["Vultr Singapore\ndocumented data-plane lane"]
     C3["future target\nrequires new approval"]
     Mesh["private edge mesh\nfuture management / recovery plane"]
   end
@@ -172,7 +188,7 @@ Adjacent boundary matrix:
 | Clash/Mihomo | User-facing routing, rules, UI, and imported subscription handling. | Platform channel selection, server mesh, production edge lifecycle, or subscription authority. |
 | Opaque artifacts | Access/bootstrap material and server-side credential containment. | Data-plane routing, local proxying, server mesh membership, or traffic accounting by themselves. |
 | Local Edge Agent | Loopback-only client-side adapter and future platform-controlled channel selection. | Clash/Mihomo UI/rules, TUN/driver/system proxy mutation in V1, HP Relay, or Server Edge Mesh. |
-| HP Relay | Operator lab diagnostics and upstream/channel behavior research. | Production, staging, CI, prod-edge-c, official Local Edge Agent runtime, or Server Edge Mesh. |
+| HP Relay | Operator lab diagnostics and upstream/channel behavior research. | Production, staging, CI, data-plane capacity, future recovery nodes, official Local Edge Agent runtime, or Server Edge Mesh. |
 | sub-control-a | Vultr Japan control-plane authority, subject to live verification before each Risk A operation. | Edge data-plane traffic, HP Relay, CI, or approval-free runtime mutation. |
 | local-ci-a | Local Linux manual CI host for repository validation evidence. | Staging, production, deploy approval, production secrets, SQLite, or subscription URL storage. |
 | Historical node retirement | Controlled drain, stop, termination, and security-group cleanup records for superseded Aliyun/AWS lanes. | Approval-free rollback, shutdown, DNS change, or deletion while a live dependency remains. |
@@ -199,9 +215,9 @@ flowchart LR
     Relays["local relay adapters\nper-upstream listeners"]
   end
 
-  subgraph "Production Edge Fleet"
-    A["prod-edge-a"]
-    B["prod-edge-b"]
+  subgraph "Documented Data-Plane Lanes"
+    A["Vultr Japan"]
+    B["Vultr Singapore"]
   end
 
   W -->|"imports private lab subscription"| Sub
@@ -216,7 +232,7 @@ HP Relay boundaries:
 
 ```text
 operator lab / development network node only
-not a production edge, not prod-edge-c, and not a public subscription gateway
+not a production edge, not a data-plane host, and not a public subscription gateway
 not staging, not a CI validation host, and not deploy approval
 not Server Edge Mesh and not the official Local Edge Agent runtime
 private operator access only; no public listener assumption
@@ -256,7 +272,7 @@ flowchart TB
   subgraph "Data Plane"
     Clash["Clash / Mihomo"]
     Agent["Local Edge Agent adapter"]
-    Edges["future clean edge target\nrequires approval"]
+    Edges["Vultr Japan + Singapore\ndocumented runtime capacity"]
     Outbound["remote outbound traffic"]
   end
 
@@ -289,14 +305,14 @@ V1.
 ```mermaid
 flowchart LR
   subgraph "Public User Delivery"
-    DNS["sub.globalcirclecat.com\nss-sg.globalcirclecat.com"]
+    DNS["gccwebos.com\ndocumented subscription lane"]
     Users["Clash / Mihomo or future Local Agent"]
   end
 
-  subgraph "Edge Fleet"
-    A["prod-edge-a\nprimary"]
-    B["prod-edge-b\niteration / canary"]
-    C["prod-edge-c\nfuture recovery"]
+  subgraph "Data-Plane Candidates"
+    A["Vultr Japan\ndocumented current lane"]
+    B["Vultr Singapore\ndocumented current lane"]
+    C["future recovery node\nrequires approval"]
   end
 
   subgraph "Private Mesh Candidate"
@@ -304,7 +320,7 @@ flowchart LR
   end
 
   Users --> DNS --> A
-  Users -.->|"emitted secondary or future agent policy"| B
+  Users -.->|"entitled / receipt-gated channel policy"| B
   A -.->|"private health / management / recovery"| WG
   B -.->|"private health / management / recovery"| WG
   C -.->|"future standby membership"| WG
@@ -329,8 +345,8 @@ flowchart LR
   PR --> Validation["local tests / local Linux manual CI"]
   Validation --> Merge["merge to master"]
   Merge -.->|"does not activate production"| ProdGate["Risk A production gate"]
-  ProdGate -->|"explicit approval + execution record"| AWS["AWS / DNS / Nginx / systemd"]
-  AWS --> Users["user delivery"]
+  ProdGate -->|"explicit approval + execution record"| Runtime["Vultr / DNS / Nginx / systemd"]
+  Runtime --> Users["user delivery"]
 ```
 
 Use this topology to decide where a change belongs:
@@ -339,7 +355,7 @@ Use this topology to decide where a change belongs:
 docs/code only -> C or B repository PR
 validation only -> local tests or local Linux manual CI after validation
 operator lab relay -> diagnostics and design evidence only
-AWS/DNS/Nginx/systemd/runtime -> Risk A execution gate
+provider/DNS/Nginx/systemd/runtime -> Risk A execution gate
 user-facing import or generated subscription output -> treat as production-sensitive
 local agent protocol prototype -> B repository PR until production activation
 ```
