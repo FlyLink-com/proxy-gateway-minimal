@@ -95,11 +95,11 @@ Repository:
 gccwebos-com/proxy-gateway-minimal
 ```
 
-At the 2026-07-14 read-only source snapshot:
+At the 2026-07-15 read-only source snapshot:
 
-- `master`: `2413c101724df45579ebf4b9e0f306d32d9bb1af`
-- reconciliation inventory baseline: exact `master@2413c101724df45579ebf4b9e0f306d32d9bb1af`
-- observed remote branches (18): `origin/master`,
+- `master`: `5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`
+- reconciliation inventory baseline: exact `master@5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`
+- observed remote branches (16): `origin/master`,
   `origin/codex/ci-lane-split`,
   `origin/codex/commercial-model-v1`,
   `origin/codex/fix-cumulative-usage-accounting`,
@@ -110,24 +110,21 @@ At the 2026-07-14 read-only source snapshot:
   `origin/codex/traffic-accounting-observation-validator`,
   `origin/codex/traffic-accounting-unresolved-provenance`,
   `origin/codex/traffic-lifecycle-enforcement`,
-  `origin/dependabot/npm_and_yarn/admin/babel/core-7.29.7`,
-  `origin/dependabot/npm_and_yarn/admin/form-data-4.0.6`,
-  `origin/dependabot/npm_and_yarn/admin/ws-8.21.0`,
   `origin/docs/current-source-state-reconciliation`,
+  `origin/docs/governance-state-reconciliation-20260714`,
   `origin/docs/infrastructure-access-rule`,
   `origin/docs/project-intelligence-layer`, and
   `origin/docs/release-governance-calibration`
-- merged PRs #482 and #483: `06d69b2da07a50322a260bd08f160febaf7b6a7d`
-  and `2413c101724df45579ebf4b9e0f306d32d9bb1af`
-- open PRs (5): Draft #476 and #479; non-Draft #486, #487, and #488
+- current head is merged PR #494: `5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`
+- open PRs (2): Draft #476 and #479; no open non-Draft PRs
 - open Issues: #437, #438, #439, #440, and #475
 - Issue #437 was reopened by Risk C receipt `issuecomment-4976074286` because
   PR #482 had been recorded as its closer despite explicitly denying resolution
-- latest master CI: `29381367549`, success
-- latest Release Artifact run: `29381367545`, success
-- latest master CodeQL run: `29381507931`, success
-- latest Deploy Cloudflare Site run: `29381367553`, build, verification, and
-  dry-run succeeded; deploy skipped
+- latest master CI: `29418796398`, success
+- latest Release Artifact run: `29418796724`, success
+- latest master CodeQL runs: `29418794902` and `29418794903`, success
+- latest Deploy Cloudflare Site run: `29391680029`, build and verification
+  succeeded for `329eb282ef88e7ab41bee1252f22fe3570f7d3c8`; deploy skipped
 
 These are dated facts. Re-run Git and GitHub inventory before making a current
 claim.
@@ -169,8 +166,8 @@ Keep one primary implementation lane active:
 
 | Order | Issue | Lane | Current state |
 | --- | --- | --- | --- |
-| 1 | #437 | Traffic Accounting | Primary lane; reopened by Risk C receipt `issuecomment-4976074286`; Draft #479 remains blocked behind `master` with three unresolved non-outdated threads and no durable successor Gate |
-| separate | #475 | Operations Foundation | Open source/schema lane; Draft #476 is not deployed and carries no production schema initialization or runtime mutation authority |
+| 1 | #437 | Traffic Accounting | Primary lane; reopened by Risk C receipt `issuecomment-4976074286`; Draft #479 remains behind `master`; Gate `pr479-forward-pending-rollback-obligation-remediation-20260715-003` terminated blocked and its approval is consumed |
+| separate | #475 | Operations Foundation | Open source/schema lane; Draft #476 has merge conflicts, is not deployed, and carries no production schema initialization or runtime mutation authority |
 | 2 | #438 | Portal Lifecycle | Queued after traffic semantics stabilize |
 | 3 | #439 | Commercial Foundation | Queued; #472/#474 add source foundations while billing and AppsFlyer remain non-live |
 | 4 | #440 | Code Boundary Cleanup | Opportunistic guardrail only |
@@ -179,15 +176,17 @@ Issues #457 and #462 are closed. Real merges proved that Vercel candidates and
 Cloudflare saved versions do not become active production solely because source
 was merged. Promotion remains separately gated.
 
-At this inventory cutoff, five PRs are open. #476 belongs to the separate #475
-operations-foundation source/schema lane. #479 belongs to #437, is not
-deployed, and remains at `03d744556be6785ac8c97dae2bc4fb79ae9e246f`,
-behind `master`, with three unresolved non-outdated threads. Its predecessor
-terminal receipt `issuecomment-4966594034` is blocked, the predecessor approval
-is consumed, and no durable successor Gate exists. Its four checks from the old
-head are not current-`master` integration evidence. Non-Draft #486/#487/#488
-are dependency-update candidates. Open or non-Draft state does not make any of
-them merged, deployed, artifact-approved, or production-ready.
+At this inventory cutoff, two Draft PRs are open. #476 belongs to the separate
+#475 operations-foundation source/schema lane and currently has merge
+conflicts. #479 belongs to #437, is not deployed, and remains at
+`58ccdccc6af5ed120541f03d2713857e4a9a8a65`, behind `master`, with zero
+unresolved non-outdated review threads. Gate
+`pr479-forward-pending-rollback-obligation-remediation-20260715-003` was
+approved by `issuecomment-4979572712` and terminated blocked at `fresh_binding`
+by `issuecomment-4979585832` because of
+`worktree_submodule_guard_null_wrapper_failure`. The approval is consumed and
+nonreusable, no later durable Gate exists, and successful checks on that head
+are not current-`master` integration evidence.
 
 Do not pre-create broad pipeline, Portal redesign, payment activation, or
 architecture-refactor PRs. Each source PR must answer:
@@ -212,8 +211,8 @@ Artifact Manifest v1 currently covers:
 - `portal-static`
 - `admin-static`
 
-The latest source build proof is Release Artifact run `29381367545` for
-`master@2413c101724df45579ebf4b9e0f306d32d9bb1af`. It is artifact evidence only
+The latest source build proof is Release Artifact run `29418796724` for
+`master@5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`. It is artifact evidence only
 and does not update any deployment or runtime identity.
 
 Runtime Config Identity v1 provides an offline deterministic observation
@@ -277,14 +276,12 @@ independent lane contexts or change the ruleset/settings boundary above.
 
 ## Source Governance And Security Snapshot
 
-CodeQL run `29381507931` completed successfully for exact
-`master@2413c101724df45579ebf4b9e0f306d32d9bb1af`. Successful execution means
-the scan completed; it does not mean its findings are resolved. At this cutoff,
-GitHub reports 39 open code-scanning alerts (2 critical, 36 high, and 1 medium),
-3 open Dependabot alerts (2 high and 1 low), and 0 open secret-scanning alerts.
-Alert severity is provider output, not an exploitability conclusion. Triage,
-source remediation, dismissal, required-check policy, and any production
-decision remain separate reviewed actions.
+CodeQL runs `29418794902` and `29418794903` completed successfully for exact
+`master@5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`. At this cutoff, GitHub reports
+0 open code-scanning alerts, 0 open Dependabot alerts, and 0 open
+secret-scanning alerts. Successful execution remains source-analysis evidence;
+required-check policy and any production decision remain separate reviewed
+actions.
 
 ## Documented Production Snapshot
 
@@ -306,11 +303,12 @@ Important boundaries:
 - AppsFlyer: disabled/dry-run only.
 
 The documented control-plane source is an ancestor of current `master`.
-PRs #466 through #468, #471, #473, #474, and #477 are source-only; #478 is an
-offline validator, #481 is test-only, and #480/#485/#482/#483 are governance or
-CI-only.
-Current open PRs are not merged or deployed. No later source, CI, CodeQL, or
-artifact evidence changes the dated production pointer.
+PRs #466 through #468, #471, #473, #474, #477, #490, and #491 are source-only;
+#478 is an offline validator; #481 is test-only; #486-#488 are Admin dependency
+remediations without a recorded production promotion; and
+#480/#485/#482/#483/#489/#492/#494 are governance, CI, or docs-only. Current
+open PRs are not merged or deployed. No later source, CI, CodeQL, or artifact
+evidence changes the dated production pointer.
 
 ## Active Blockers
 
@@ -326,17 +324,18 @@ artifact evidence changes the dated production pointer.
 4. Billing and AppsFlyer are intentionally non-live.
 5. The active `master` ruleset does not require an approving review or thread
    resolution, and deployment environments do not have reviewer enforcement.
-6. Code scanning and dependency scanning have unresolved alerts. Their counts
-   require scoped triage; they are not evidence that all findings are exploitable
-   or that unrelated docs/CI changes must stop.
-7. Draft PR #479 has no durable successor Gate, is behind current `master`, and
-   has three unresolved non-outdated review threads; its predecessor approval
-   is consumed and cannot be reused.
+6. GitHub currently reports zero open code-scanning, Dependabot, and
+   secret-scanning alerts; this source snapshot is not production proof.
+7. Draft PR #479 is behind current `master`; Gate
+   `pr479-forward-pending-rollback-obligation-remediation-20260715-003`
+   terminated blocked, and its approval is consumed and cannot be reused.
 
 ## Next Actions
 
-1. Establish a durable successor Gate on #437 for PR #479.
-2. Complete PR #479 source remediation, current-`master` integration,
+1. Establish a new durable successor proposal on #437 after the blocked,
+   consumed Gate `pr479-forward-pending-rollback-obligation-remediation-20260715-003`.
+2. Complete any newly authorized PR #479 source remediation,
+   current-`master` integration,
    exact-head checks, formal review, Ready, and merge through independent
    approvals.
 3. Finish the Gate ledger/validator, stable CI contexts plus settings Gate,

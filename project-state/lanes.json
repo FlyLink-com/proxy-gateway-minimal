@@ -1,35 +1,43 @@
 {
-  "schemaVersion": "2026-07-14.3",
-  "lastUpdated": "2026-07-14",
+  "schemaVersion": "2026-07-15.1",
+  "lastUpdated": "2026-07-15",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
   "purpose": "Compact current lane index for Phase 2. Historical lanes remain in Git history and indexed execution records, not in the active Agent queue.",
   "sourceInventory": {
-    "snapshot": "2413c101724df45579ebf4b9e0f306d32d9bb1af",
-    "date": "2026-07-14",
-    "remoteBranchCount": 18,
-    "openPrCount": 5,
+    "snapshot": "5b61d9d787e2f98e9f834fe05de6dcbb6805cea7",
+    "date": "2026-07-15",
+    "remoteBranchCount": 16,
+    "openPrCount": 2,
     "openIssueCount": 5,
     "mergedPrs": {
       "482": "06d69b2da07a50322a260bd08f160febaf7b6a7d",
-      "483": "2413c101724df45579ebf4b9e0f306d32d9bb1af"
+      "483": "2413c101724df45579ebf4b9e0f306d32d9bb1af",
+      "486": "fdf5eedee7b34b934ad79d6472ecc33a86db67fa",
+      "487": "20954248a7f2df4511d2d412c56ae4e887f91f9a",
+      "488": "1d02b0ad5482c3b5d61c9e8aff051f9833c8430a",
+      "489": "f054ac443b576db068b379293cc73b1c459f5e0b",
+      "490": "a764f48f006722951393f1a5e251b567476c28dc",
+      "491": "329eb282ef88e7ab41bee1252f22fe3570f7d3c8",
+      "492": "0601e79e965ead2d8ec1af81d1db87a1c23372a2",
+      "494": "5b61d9d787e2f98e9f834fe05de6dcbb6805cea7"
     },
     "openDraftPrs": [476, 479],
-    "openNonDraftPrs": [486, 487, 488],
+    "openNonDraftPrs": [],
     "openIssues": [437, 438, 439, 440, 475]
   },
   "governanceBoundary": {
-    "ci": "29381367549 success",
-    "releaseArtifact": "29381367545 success",
-    "codeql": "29381507931 success",
-    "cloudflareWorkflow": "29381367553 success_build_verify_dry_run_deploy_skipped",
+    "ci": "29418796398 success",
+    "releaseArtifact": "29418796724 success",
+    "codeql": "29418794902 and 29418794903 success",
+    "cloudflareWorkflow": "29391680029 success_build_verify_deploy_skipped",
     "ruleset": "18935716 strict Validate; zero approvals; no review-thread resolution",
     "environments": "Six exist; only artifact-publication has a branch policy; none has reviewer enforcement.",
-    "sourceSecurity": "39 code-scanning alerts (2 critical, 36 high, 1 medium); 3 Dependabot alerts (2 high, 1 low); 0 secret-scanning alerts. Successful CodeQL execution does not resolve alerts or prove exploitability."
+    "sourceSecurity": "0 open code-scanning alerts; 0 open Dependabot alerts; 0 open secret-scanning alerts at the 2026-07-15 read-only API cutoff. Future scans remain independent evidence."
   },
   "nextActionQueue": [
-    "Establish a durable successor Gate on #437 for PR #479.",
-    "Complete PR #479 source remediation, current-master integration, exact-head checks, formal review, Ready, and merge through independent approvals.",
+    "Establish a new durable successor Gate on #437 after the blocked and consumed PR #479 Gate -003.",
+    "Complete any newly authorized PR #479 source remediation, current-master integration, exact-head checks, formal review, Ready, and merge through independent approvals.",
     "Finish the Gate ledger and validator, stable CI contexts plus settings Gate, durable artifact retention and binding, and the minimal organization and runtime-evidence model through separate PRs.",
     "Only then establish independent Artifact and Risk A production-alignment Gates."
   ],
@@ -48,7 +56,7 @@
       "name": "Version And Deployment Governance",
       "status": "active-source-governance-hardening",
       "riskBoundary": "C for source-state records and artifact contracts; A for deployment, promotion, rollback, or production observation",
-      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. PRs #482/#483 are merged at current master 2413c101724df45579ebf4b9e0f306d32d9bb1af; PR #483 routes docs-only/code changes and always runs diff checking while retaining one stable required Validate context. Release Artifact run 29381367545 succeeded, but ruleset 18935716 still requires zero approvals and no review-thread resolution, only artifact-publication has a branch policy across six environments, and none has reviewer enforcement.",
+      "purpose": "Keep source, artifact, deployment, and runtime evidence separate. Current master 5b61d9d787e2f98e9f834fe05de6dcbb6805cea7 includes source, dependency, security, governance, topology, and authority-metadata merges through PR #494. PR #483 routes docs-only/code changes and always runs diff checking while retaining one stable required Validate context. Release Artifact run 29418796724 succeeded, but ruleset 18935716 still requires zero approvals and no review-thread resolution, only artifact-publication has a branch policy across six environments, and none has reviewer enforcement.",
       "primaryDocs": [
         "RELEASE_MANIFEST.md",
         "docs/CURRENT_RELEASE_STATE.md",
@@ -72,7 +80,7 @@
       "name": "Traffic Accounting",
       "status": "active-controlled-remediation",
       "riskBoundary": "B for collector contracts, redacted provenance, tests, and protected read-only projection; A for runtime, service, config, quota, or traffic-supply mutation",
-      "purpose": "Complete Issue #437, reopened by Risk C receipt issuecomment-4976074286 after PR #482 was recorded as its closer despite explicitly denying resolution. Draft PR #479 remains at 03d744556be6785ac8c97dae2bc4fb79ae9e246f, behind master, with three unresolved non-outdated threads; its predecessor receipt issuecomment-4966594034 is blocked, approval is consumed, no durable successor Gate exists, and it is not deployed.",
+      "purpose": "Complete Issue #437, reopened by Risk C receipt issuecomment-4976074286 after PR #482 was recorded as its closer despite explicitly denying resolution. Draft PR #479 remains at 58ccdccc6af5ed120541f03d2713857e4a9a8a65, behind master, with zero unresolved non-outdated threads. Gate -003 ended blocked at fresh_binding with approval consumed; no later successor Gate exists, and PR #479 is not deployed.",
       "primaryDocs": [
         "docs/TRAFFIC_ACCOUNTING_QUOTA_GATEWAY_PLAN.md",
         "docs/CURRENT_RELEASE_STATE.md"

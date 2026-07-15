@@ -1,6 +1,6 @@
 # Project Blockers
 
-Last verified: 2026-07-14, America/Los_Angeles.
+Last verified: 2026-07-15, America/Los_Angeles.
 
 > Status:
 > - Type: Blocker registry and template
@@ -12,7 +12,7 @@ Last verified: 2026-07-14, America/Los_Angeles.
 >   source named by each record
 > - Index scope: Blocker record format and current source-governance and
 >   production-information gaps at
->   `master@2413c101724df45579ebf4b9e0f306d32d9bb1af`
+>   `master@5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`
 
 ## Blocker Template
 
@@ -45,41 +45,45 @@ Rules:
 - `status`: `resolved`
 - `description`: The prior repository snapshot drift was reconciled by merged
   PR #482 at `06d69b2da07a50322a260bd08f160febaf7b6a7d`.
-- `impact`: No current source-snapshot blocker remains at the 2026-07-14
+- `impact`: No current source-snapshot blocker remains at the 2026-07-15
   cutoff; drift-prone facts still require live verification after this cutoff.
 - `owner`: `unassigned`.
 - `resolution`: Merged PR #482 supplied the bounded source reconciliation;
   this record does not claim production reconciliation.
-- `evidence`: PR #482 and
-  `master@2413c101724df45579ebf4b9e0f306d32d9bb1af`.
-- `last_verified`: 2026-07-14, America/Los_Angeles.
+- `evidence`: PR #482 and the refreshed source inventory at
+  `master@5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`.
+- `last_verified`: 2026-07-15, America/Los_Angeles.
 
-### BLOCKER-pr-479-durable-successor-gate
+### BLOCKER-pr-479-successor-gate-003
 
 - `status`: `open`
 - `description`: Issue #437 was reopened by Risk C receipt
   `issuecomment-4976074286` because PR #482 was recorded as its closer despite
   explicitly denying resolution. Draft PR #479 remains at
-  `03d744556be6785ac8c97dae2bc4fb79ae9e246f`, behind `master`, with three
-  unresolved non-outdated threads. Its predecessor receipt
-  `issuecomment-4966594034` is blocked, the predecessor approval is consumed,
-  no durable successor Gate exists, and production state is `not_deployed`.
+  `58ccdccc6af5ed120541f03d2713857e4a9a8a65`, behind `master`, with zero
+  unresolved non-outdated threads. Durable Gate `-003` ended `blocked` at
+  `fresh_binding`; approval `issuecomment-4979572712` is consumed, terminal
+  receipt `issuecomment-4979585832` authorizes no retry, no later successor
+  Gate exists, and production state is `not_deployed`.
 - `impact`: PR #479 cannot establish current-`master` integration, become
-  Ready, merge, or proceed to Artifact/Production gates. Its old four green
+  Ready, merge, or proceed to Artifact/Production gates. Its successful head
   checks are not current-`master` integration evidence.
 - `owner`: `unassigned`.
-- `resolution`: Establish a durable successor Gate on #437, then complete
-  source remediation, current-`master` integration, exact-head checks, formal
+- `resolution`: Establish a new durable successor Gate on #437 after the
+  blocked and consumed `-003` Gate, then complete any newly authorized source
+  remediation, current-`master` integration, exact-head checks, formal
   review, Ready, and merge through independent approvals.
-- `evidence`: Issue receipt `issuecomment-4976074286`, predecessor receipt
-  `issuecomment-4966594034`, and current PR #479 read-only inventory.
-- `last_verified`: 2026-07-14, America/Los_Angeles.
+- `evidence`: Issue receipt `issuecomment-4976074286`, Gate `-003` approval
+  `issuecomment-4979572712`, terminal receipt `issuecomment-4979585832`, and
+  current PR #479 read-only inventory.
+- `last_verified`: 2026-07-15, America/Los_Angeles.
 
 ### BLOCKER-machine-governance-enforcement
 
 - `status`: `open`
 - `description`: PR #483 merged docs-only/code lane routing and always-run diff
-  checking at `2413c101724df45579ebf4b9e0f306d32d9bb1af`, but ruleset
+  checking, and current source inventory is at
+  `5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`, but ruleset
   `18935716` still has one strict required `Validate` context, zero approvals,
   and no review-thread-resolution requirement. Six environments exist; only
   `artifact-publication` has a branch policy, and none has reviewer enforcement.
@@ -88,9 +92,10 @@ Rules:
 - `owner`: `unassigned`.
 - `resolution`: Implement the Gate ledger/validator and stable CI contexts in
   separate PRs, then use a separately approved settings Gate.
-- `evidence`: PR #483 and exact-`master` CI `29381367549`, Release Artifact
-  `29381367545`, CodeQL `29381507931`, and Cloudflare workflow `29381367553`.
-- `last_verified`: 2026-07-14, America/Los_Angeles.
+- `evidence`: PR #483 and exact-`master` CI `29418796398`, Release Artifact
+  `29418796724`, CodeQL `29418794902`/`29418794903`, and Cloudflare workflow
+  `29391680029` with deploy skipped.
+- `last_verified`: 2026-07-15, America/Los_Angeles.
 
 ### BLOCKER-live-runtime-state-unverified
 
@@ -105,7 +110,7 @@ Rules:
   fresh read-only inventory before any related claim or mutation.
 - `evidence`: This reconciliation scope and the execution-authority headers in
   `docs/CURRENT_RELEASE_STATE.md` and `docs/PROJECT_CONTEXT.md`.
-- `last_verified`: 2026-07-14, America/Los_Angeles.
+- `last_verified`: 2026-07-15, America/Los_Angeles.
 
 ## Facts Not Promoted To Current Blockers
 
@@ -115,19 +120,18 @@ did not perform live runtime inventory. Those dated details remain evidence in
 their source documents; they are not copied here as confirmed-current
 production blockers.
 
-Issue #437 being open is a current fact restored by
-`issuecomment-4976074286`. PR #482 and PR #483 are merged as
-`06d69b2da07a50322a260bd08f160febaf7b6a7d` and
-`2413c101724df45579ebf4b9e0f306d32d9bb1af`. Five PRs and five Issues are
-open across 18 observed remote branches. GitHub reports 39 open code-scanning
-alerts (2 critical, 36 high, 1 medium), 3 Dependabot alerts (2 high, 1 low),
-and 0 secret-scanning alerts; successful CodeQL execution does not resolve
-alerts or prove exploitability.
+Issue #437 remains open. Current `master` is
+`5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`. Two Draft PRs (#476/#479) and
+five Issues are open across 16 observed remote branches. GitHub reports 0 open
+code-scanning, 0 open Dependabot, and 0 open secret-scanning alerts at this
+cutoff; that is a dated API observation, not a guarantee about future scans or
+deployment state.
 
 ## Ordered Resolution Queue
 
-1. Establish a durable successor Gate on #437 for PR #479.
-2. Complete PR #479 source remediation, current-`master` integration,
+1. Establish a new durable successor Gate on #437 after the blocked and
+   consumed PR #479 Gate `-003`.
+2. Complete any newly authorized PR #479 source remediation, current-`master` integration,
    exact-head checks, formal review, Ready, and merge through independent
    approvals.
 3. Finish the Gate ledger/validator, stable CI contexts plus settings Gate,

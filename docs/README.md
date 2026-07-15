@@ -71,31 +71,32 @@ directory restructure.
 
 ### Current Governance Cutoff
 
-The 2026-07-14 source snapshot is
-`master@2413c101724df45579ebf4b9e0f306d32d9bb1af`, after PR #482
-(`06d69b2da07a50322a260bd08f160febaf7b6a7d`) and PR #483 merged. It has
-18 observed remote branches, five open PRs (Draft #476/#479 and non-Draft
-#486/#487/#488), and five open Issues (#437/#438/#439/#440/#475).
+The 2026-07-15 source snapshot is
+`master@5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`, after PRs #486-#492 and #494
+merged. It has 16 observed remote branches, two open Draft PRs (#476/#479), no
+open non-Draft PRs, and five open Issues (#437/#438/#439/#440/#475).
 
 Issue #437 was reopened by Risk C receipt `issuecomment-4976074286` because PR
 #482 had been recorded as its closer despite explicitly denying resolution.
-Draft PR #479 remains at `03d744556be6785ac8c97dae2bc4fb79ae9e246f`,
-behind `master`, with three unresolved non-outdated threads. Its predecessor
-receipt `issuecomment-4966594034` is blocked, its predecessor approval is
-consumed, no durable successor Gate exists, and it is not deployed. Old green
-checks are not current-`master` integration evidence.
+Draft PR #479 remains at `58ccdccc6af5ed120541f03d2713857e4a9a8a65`,
+behind `master`, with zero unresolved non-outdated review threads. Gate
+`pr479-forward-pending-rollback-obligation-remediation-20260715-003` was
+approved by `issuecomment-4979572712` and terminated blocked at `fresh_binding`
+by `issuecomment-4979585832`; that approval is consumed and nonreusable, no
+later durable Gate exists, and PR #479 is not deployed. Successful checks on
+that head are not current-`master` integration evidence.
 
 PR #483 added docs-only/code routing and always-run diff checking while keeping
 one stable required `Validate` context. Exact-`master` runs are CI
-`29381367549`, Release Artifact `29381367545`, and CodeQL `29381507931`, all
-successful; Cloudflare workflow `29381367553` completed build, verification,
-and dry-run successfully with deploy skipped. Ruleset `18935716` strictly
+`29418796398`, Release Artifact `29418796724`, and CodeQL
+`29418794902`/`29418794903`, all successful; Cloudflare workflow `29391680029`
+completed build and verification for `329eb282ef88e7ab41bee1252f22fe3570f7d3c8`
+with deploy skipped. Ruleset `18935716` strictly
 requires `Validate`, zero approvals, and no review-thread resolution. Six
 environments exist; only `artifact-publication` has a branch policy, and none
-has reviewer enforcement. The source-security snapshot remains 39 code-scanning
-alerts (2 critical, 36 high, 1 medium), 3 Dependabot alerts (2 high, 1 low), and
-0 secret-scanning alerts; successful CodeQL execution does not resolve alerts
-or prove exploitability.
+has reviewer enforcement. The source-security snapshot is 0 open code-scanning
+alerts, 0 open Dependabot alerts, and 0 open secret-scanning alerts; successful
+CodeQL execution remains source-analysis evidence rather than production proof.
 
 This source-only reconciliation performs no production change or fresh live
 production inventory. The production/runtime evidence cutoff remains dated at
