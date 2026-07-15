@@ -198,7 +198,7 @@
       "purpose": "Provide serialized read-only inventory, exact approval, validation, rollback, and redacted evidence for production actions without becoming an implementation backlog. The current production/runtime evidence cutoff remains dated at 2026-07-11T13:03:40Z; this C-tier reconciliation performed no fresh inventory or mutation.",
       "primaryDocs": [
         "docs/CURRENT_RELEASE_STATE.md",
-        "docs/DEPLOYMENT_FLOW.md",
+        "docs/RUNTIME_LANE_AUTHORITY.md",
         "docs/README.md"
       ],
       "primaryCodeAreas": [

@@ -155,8 +155,8 @@ Purpose:
 
 Primary docs:
 
+- `docs/PROJECT_CONTEXT.md`
 - `docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md`
-- `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`
 - `docs/SUBSCRIPTION_V2_REPLACEMENT.md`
 - `docs/SUBSCRIPTION_DEVICE_SCOPED_OPAQUE_URLS.md`
 - `docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md`
@@ -182,11 +182,16 @@ Purpose:
 
 Primary docs:
 
+- `docs/RUNTIME_LANE_AUTHORITY.md`
 - `docs/PRODUCTION_EDGE_FLEET.md`
 - `docs/NODE_NAMING.md`
-- `docs/PRODUCTION_REPLACEMENT.md`
-- `docs/PRODUCTION_DR.md`
 - relevant execution records under `docs/production-replacement-records/`
+
+Historical compatibility evidence remains available in
+`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`,
+`docs/PRODUCTION_REPLACEMENT.md`, and `docs/PRODUCTION_DR.md`. Those documents
+are not primary lane authority and must not select a current target or
+authorize current operations.
 
 Primary code/config areas:
 

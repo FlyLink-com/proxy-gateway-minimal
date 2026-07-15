@@ -79,13 +79,14 @@ production `.env`, copy secrets, copy SQLite data, or move traffic.
   plan for turning node-image readiness into control-plane registration,
   protected material handoff, desired-state generation, and receipt-gated
   rendering. Execution remains Risk A.
-- `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: current target split where
-  Aliyun became the subscription control-plane candidate, local Linux became
-  manual CI, and non-Aliyun / non-HP nodes drained through controlled
-  retirement. This is historical unless a fresh Risk A gate reopens Aliyun.
-- `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`: latest business
-  split and node drain / stop / termination gates for the historical Aliyun
-  promotion lane.
+- `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: historical former target
+  split where Aliyun became the subscription control-plane candidate, local
+  Linux became manual CI, and non-Aliyun / non-HP nodes drained through
+  controlled retirement. It has no current lane authority; a fresh Risk A gate
+  would be required to reopen Aliyun.
+- `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md`: historical business
+  split and node drain / stop / termination gates for the former Aliyun
+  promotion lane; no current control-plane authority.
 - `docs/JAPAN_TUIC_PER_ORDER_CREDENTIAL_UPGRADE_RUNBOOK.md`: current
   production gate for upgrading the Japan TUIC data-plane node to support
   per-order credential add, disable, rotate, and activation before forced order

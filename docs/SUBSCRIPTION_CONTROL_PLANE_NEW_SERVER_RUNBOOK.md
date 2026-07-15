@@ -12,20 +12,18 @@ Last updated: 2026-06-01, Asia/Shanghai.
 > - Production impact: None unless a later execution record is separately
 >   approved
 > - Source of truth for: using a clean new server as the fallback candidate
->   environment for the future subscription control plane if the Aliyun
->   control-plane path is rejected
+>   environment for a future subscription control-plane replacement or standby
 
 ## Purpose
 
-The current preferred physical split path is documented in
-`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`: move CI to local Linux, then
-evaluate the current Aliyun server as the future production subscription
-control-plane candidate.
+Current control-plane direction and runtime-lane selection are documented in
+`docs/PROJECT_CONTEXT.md` and `docs/RUNTIME_LANE_AUTHORITY.md`.
+`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` is historical evidence for a
+former Aliyun-first path and does not select a current target.
 
-This clean new-server runbook remains active as the fallback path if the
-Aliyun candidate is rejected by inventory, cleanup, security, operational
-ownership, or capacity gates. It is still not the operator lab / HP relay and
-not an edge data-plane server.
+This clean new-server runbook remains active as a provider-neutral fallback for
+a future replacement or standby candidate. It is not the operator lab / HP
+relay and not an edge data-plane server.
 
 The narrow goal is:
 
@@ -426,12 +424,12 @@ docs/PRODUCTION_EDGE_FLEET.md:
   edge data-plane slots; the new control-plane candidate is not prod-edge-c
 
 docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md:
-  preferred target split for current Aliyun subscription control, local Linux
-  manual CI, and controlled non-Aliyun node drain / retirement
+  historical former split for Aliyun subscription control, local Linux manual
+  CI, and controlled non-Aliyun node drain / retirement
 
 docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md:
-  latest business split for Aliyun user management / subscription distribution,
-  HP validation/lab, and non-Aliyun node retirement gates
+  historical former business split for Aliyun user management / subscription
+  distribution, HP validation/lab, and non-Aliyun node retirement gates
 
 docs/SUBSCRIPTION_OPAQUE_ACCESS_MODEL_GAP.md:
   opaque artifact rollout gaps; this runbook does not expand issuance
@@ -464,8 +462,8 @@ self-hosted CI runner setup
 
 ## Recommended Next Step
 
-Use `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` first. Return to this
-runbook only if the Aliyun candidate path is rejected or explicitly paused.
-The first fallback execution should be Phase 1 read-only inventory plus a
-candidate provisioning approval request, not DNS, traffic, tenant, or
-edge-node mutation.
+Start with `docs/PROJECT_CONTEXT.md` and `docs/RUNTIME_LANE_AUTHORITY.md` to
+confirm the current control-plane role. Return to this runbook only when a
+future replacement or standby candidate is explicitly proposed. The first
+fallback execution should be Phase 1 read-only inventory plus a candidate
+provisioning approval request, not DNS, traffic, tenant, or edge-node mutation.

@@ -168,7 +168,11 @@ secrets, or customer data.
 
 ## Relationship To Other Docs
 
+- `docs/RUNTIME_LANE_AUTHORITY.md`: selects current, staging, and historical
+  runtime lanes; this build-material README does not select a target.
 - `docs/PRODUCTION_EDGE_FLEET.md`: defines the `prod-edge-a/b/c` slot model.
-- `docs/PRODUCTION_DR.md`: production incident recovery gates.
-- `docs/PRODUCTION_REPLACEMENT.md`: blue/green replacement gates.
+- `docs/PRODUCTION_DR.md`: historical AWS incident-recovery evidence only; not
+  a current recovery gate.
+- `docs/PRODUCTION_REPLACEMENT.md`: historical AWS blue/green replacement
+  evidence only; not a current replacement gate.
 - `docs/NODE_NAMING.md`: provider-neutral node naming policy.
