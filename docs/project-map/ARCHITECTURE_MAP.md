@@ -1,6 +1,6 @@
 # Architecture Map
 
-Last verified: 2026-07-14, America/Los_Angeles.
+Last verified: 2026-07-15, America/Los_Angeles.
 
 > Status:
 > - Type: Source-aligned logical architecture map
@@ -26,19 +26,18 @@ When statements conflict, use the narrowest current authority for the question:
 | What is the source/artifact/release/deployment model? | `RELEASE_MANIFEST.md`. | Cross-references planes and dependencies. |
 | What is the current repo orientation and Phase 2 queue? | `docs/PROJECT_CONTEXT.md` plus current Git/GitHub inventory. | Provides derived state and milestone views. |
 | What is the machine-readable coordination state? | `project-state/current.json`, `lanes.json`, and `tasks.json`, with drift checks. | Must not create a competing YAML or machine state. |
-| What topology concepts and historical transitions exist? | `docs/PROJECT_TOPOLOGY.md` and other cited architecture docs, reconciled against current context. | Provides a current-first crosswalk and flags conflicts. |
+| What topology concepts and historical transitions exist? | `docs/PROJECT_TOPOLOGY.md` and other cited architecture docs, reconciled against current context. | Provides a current-first crosswalk and records reconciliation boundaries. |
 | How are agent ownership and delegation governed? | `AGENTS.md` and `docs/MULTI_AGENT_OPERATING_MODEL.md`. | Maps Planner/Architect/Engineer/Reviewer labels onto existing roles. |
 | How should the new knowledge documents be read? | This matrix and the precedence rules in each derived document. | Index/derived view only. |
 
-### Known Authority Conflict
+### Topology Reconciliation Boundary
 
-`docs/PROJECT_TOPOLOGY.md` is dated 2026-06-03 and still labels an Aliyun
-subscription boundary as current, while the newer `docs/PROJECT_CONTEXT.md`
-documents Vultr Japan as the control plane and Japan/Singapore data-plane
-capacity. Until the older topology is separately reconciled, do not use its
-`Current Production Topology` section as current production authority. Use it
-only for conceptual/historical topology, then verify current context and live
-state at the required risk gate.
+`docs/PROJECT_TOPOLOGY.md` was reconciled on 2026-07-15 to the documented
+Vultr Japan control-plane and Japan/Singapore data-plane direction. It remains
+a conceptual topology rather than fresh live production proof. Use
+`docs/PROJECT_CONTEXT.md` and `docs/CURRENT_RELEASE_STATE.md` for the current
+documented handoff and release identity, then verify drift-prone runtime state
+through the required Risk A read-only gate.
 
 The precedence order is:
 
