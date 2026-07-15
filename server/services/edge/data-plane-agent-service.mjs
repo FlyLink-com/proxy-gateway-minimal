@@ -173,6 +173,9 @@ export function scopedDesiredStateFrom(desiredState, filter = {}) {
     return desiredState;
   }
   const selectedRefs = desiredState.edgeCredentialRefs.filter((ref) => edgeCredentialRefs.includes(ref));
+  if (selectedRefs.length === 0) {
+    return null;
+  }
   return buildScopedDesiredState(desiredState, selectedRefs);
 }
 
@@ -423,13 +426,9 @@ export function createDataPlaneAgentService({
     const requestedDesiredStateRef = optionalRef(input.desiredStateRef);
     let receiptDesiredState = latest;
     if (requestedDesiredStateRef.startsWith("desired_scoped_")) {
-      const hasNoMaterialDigests = Array.isArray(input.materialDigests)
-        && input.materialDigests.length === 0;
-      const scoped = hasNoMaterialDigests && latest.edgeCredentialRefs.length > 0
-        ? buildScopedDesiredState(latest, [])
-        : scopedDesiredStateFrom(latest, {
-          edgeCredentialRefs: edgeCredentialRefsFromReceiptMaterialDigests(latest, input.materialDigests)
-        });
+      const scoped = scopedDesiredStateFrom(latest, {
+        edgeCredentialRefs: edgeCredentialRefsFromReceiptMaterialDigests(latest, input.materialDigests)
+      });
       if (!scoped || scoped.desiredStateRef !== requestedDesiredStateRef) {
         throw agentServiceError("desired_state_not_found", 404);
       }
