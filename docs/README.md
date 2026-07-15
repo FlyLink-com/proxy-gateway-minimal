@@ -39,6 +39,38 @@ historical reference, and runtime material separated.
 | `docs/PR_CLOSEOUT_QUEUE_2026_07_08.md` | July 8 PR closeout queue after #394-#397 merged and #364/#381 were closed as superseded carrier branches. | Historical repo-only PR sequencing record superseded by `docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md`; no production, runtime, deploy, provider, credential, payment, or file-move authority by itself. | Read when tracing why #364/#381 were closed, not before starting new work from current `master`. |
 | `docs/RUNTIME_LANE_AUTHORITY.md` | Current versus staging versus historical runtime-lane authority boundary for Vultr Japan, Vultr Singapore, AWS staging, Aliyun records, canary records, retired nodes, and generated runtime packages. | Active runtime-lane authority index; no production, provider, runtime, deploy, secret, channel, or subscription authority by itself. | Read before importing old runtime notes, comparing node records, drafting a node/channel approval packet, or deciding whether a runtime lane is current authority. |
 
+### Current Governance Cutoff
+
+The 2026-07-14 source snapshot is
+`master@2413c101724df45579ebf4b9e0f306d32d9bb1af`, after PR #482
+(`06d69b2da07a50322a260bd08f160febaf7b6a7d`) and PR #483 merged. It has
+18 observed remote branches, five open PRs (Draft #476/#479 and non-Draft
+#486/#487/#488), and five open Issues (#437/#438/#439/#440/#475).
+
+Issue #437 was reopened by Risk C receipt `issuecomment-4976074286` because PR
+#482 had been recorded as its closer despite explicitly denying resolution.
+Draft PR #479 remains at `03d744556be6785ac8c97dae2bc4fb79ae9e246f`,
+behind `master`, with three unresolved non-outdated threads. Its predecessor
+receipt `issuecomment-4966594034` is blocked, its predecessor approval is
+consumed, no durable successor Gate exists, and it is not deployed. Old green
+checks are not current-`master` integration evidence.
+
+PR #483 added docs-only/code routing and always-run diff checking while keeping
+one stable required `Validate` context. Exact-`master` runs are CI
+`29381367549`, Release Artifact `29381367545`, and CodeQL `29381507931`, all
+successful; Cloudflare workflow `29381367553` completed build, verification,
+and dry-run successfully with deploy skipped. Ruleset `18935716` strictly
+requires `Validate`, zero approvals, and no review-thread resolution. Six
+environments exist; only `artifact-publication` has a branch policy, and none
+has reviewer enforcement. The source-security snapshot remains 39 code-scanning
+alerts (2 critical, 36 high, 1 medium), 3 Dependabot alerts (2 high, 1 low), and
+0 secret-scanning alerts; successful CodeQL execution does not resolve alerts
+or prove exploitability.
+
+This source-only reconciliation performs no production change or fresh live
+production inventory. The production/runtime evidence cutoff remains dated at
+`2026-07-11T13:03:40Z`.
+
 ## Goal Documents
 
 | Document | Purpose | Status | When to read |

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2026-07-14.2",
+  "schemaVersion": "2026-07-14.3",
   "lastUpdated": "2026-07-14",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-current-queue",
@@ -16,12 +16,17 @@
     "docs/PROJECT_SIMPLIFICATION_MAP.md"
   ],
   "historicalBoundary": {
-    "sourceSnapshotAtReconciliation": "20bb8257513153de7d5f75d45de7b748ceea6438",
+    "sourceSnapshotAtReconciliation": "2413c101724df45579ebf4b9e0f306d32d9bb1af",
+    "productionRuntimeEvidenceCutoff": "2026-07-11T13:03:40Z",
     "rule": "Use Git history and docs/archive indexes for completed or superseded tasks; do not re-add them to the current queue without a new Issue and fresh evidence."
   },
   "sourceReceipts": {
     "inventoryDate": "2026-07-14",
-    "master": "20bb8257513153de7d5f75d45de7b748ceea6438",
+    "master": "2413c101724df45579ebf4b9e0f306d32d9bb1af",
+    "remoteBranchCount": 18,
+    "openPrCount": 5,
+    "openIssueCount": 5,
+    "openIssues": [437, 438, 439, 440, 475],
     "merged": [
       {
         "pr": 470,
@@ -92,6 +97,20 @@
         "lane": "version-management",
         "receipt": "project intelligence and orchestration documentation",
         "productionState": "not_applicable"
+      },
+      {
+        "pr": 482,
+        "sourceCommit": "06d69b2da07a50322a260bd08f160febaf7b6a7d",
+        "lane": "version-management",
+        "receipt": "current source governance reconciliation",
+        "productionState": "not_applicable"
+      },
+      {
+        "pr": 483,
+        "sourceCommit": "2413c101724df45579ebf4b9e0f306d32d9bb1af",
+        "lane": "version-management",
+        "receipt": "docs-only and code CI lane routing with always-run diff checking",
+        "productionState": "not_applicable"
       }
     ],
     "openDrafts": [
@@ -107,29 +126,18 @@
         "pr": 479,
         "issue": 437,
         "lane": "traffic-accounting",
+        "state": "open_draft",
+        "head": "03d744556be6785ac8c97dae2bc4fb79ae9e246f",
+        "mergeState": "behind",
+        "unresolvedNonOutdatedThreads": 3,
         "sourceState": "blocked_no_durable_successor_gate",
         "productionState": "not_deployed",
         "identityGate": "pending",
-        "terminalReceipt": "issuecomment-4966594034",
+        "predecessorTerminalReceipt": "issuecomment-4966594034",
+        "predecessorResult": "blocked",
         "predecessorApprovalState": "consumed",
         "durableSuccessorGate": "absent",
         "requiredNextGate": "new exact successor gate; none currently exists"
-      },
-      {
-        "pr": 482,
-        "issue": null,
-        "lane": "version-management",
-        "sourceState": "current_source_state_reconciliation_draft",
-        "productionState": "not_applicable",
-        "authority": "none"
-      },
-      {
-        "pr": 483,
-        "issue": null,
-        "lane": "version-management",
-        "sourceState": "ci_lane_split_draft",
-        "productionState": "not_applicable",
-        "authority": "none"
       }
     ],
     "openNonDraftPrs": [
@@ -153,6 +161,32 @@
       }
     ]
   },
+  "issue437Reconciliation": {
+    "state": "open",
+    "receipt": "issuecomment-4976074286",
+    "reason": "PR #482 was recorded as the closer despite its PR body explicitly denying resolution."
+  },
+  "ciGovernance": {
+    "routing": "PR #483 introduced docs-only and code lanes with always-run diff checking while retaining one stable required Validate context.",
+    "ci": "29381367549 success",
+    "releaseArtifact": "29381367545 success",
+    "codeql": "29381507931 success",
+    "cloudflareWorkflow": "29381367553 success_build_verify_dry_run_deploy_skipped",
+    "ruleset": "18935716 strict Validate; zero approvals; no review-thread resolution",
+    "environments": "Six exist; only artifact-publication has a branch policy; none has reviewer enforcement."
+  },
+  "sourceSecurity": {
+    "codeScanning": "39 open: 2 critical, 36 high, 1 medium",
+    "dependabot": "3 open: 2 high, 1 low",
+    "secretScanning": "0 open",
+    "boundary": "Successful CodeQL execution does not resolve alerts or prove exploitability."
+  },
+  "nextActionQueue": [
+    "Establish a durable successor Gate on #437 for PR #479.",
+    "Complete PR #479 source remediation, current-master integration, exact-head checks, formal review, Ready, and merge through independent approvals.",
+    "Finish the Gate ledger and validator, stable CI contexts plus settings Gate, durable artifact retention and binding, and the minimal organization and runtime-evidence model through separate PRs.",
+    "Only then establish independent Artifact and Risk A production-alignment Gates."
+  ],
   "tasks": [
     {
       "id": "A-version-management-vercel-staged-proof",

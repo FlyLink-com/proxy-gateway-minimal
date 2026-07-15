@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "2026-07-14.2",
+  "schemaVersion": "2026-07-14.3",
   "lastUpdated": "2026-07-14",
   "timezone": "America/Los_Angeles",
   "status": "phase-2-operational-reliability",
@@ -25,9 +25,9 @@
   },
   "branchContext": {
     "stableBaseline": "master",
-    "sourceSnapshotAtInventory": "20bb8257513153de7d5f75d45de7b748ceea6438",
+    "sourceSnapshotAtInventory": "2413c101724df45579ebf4b9e0f306d32d9bb1af",
     "sourceInventoryDate": "2026-07-14",
-    "observedOpenPrCount": 7,
+    "observedOpenPrCount": 5,
     "observedOpenIssueCount": 5,
     "observedRemoteBranchCount": 18,
     "activeIssues": [
@@ -58,8 +58,6 @@
       "master"
     ],
     "recentMergedPrs": [
-      470,
-      472,
       471,
       473,
       474,
@@ -67,7 +65,9 @@
       478,
       481,
       480,
-      485
+      485,
+      482,
+      483
     ],
     "openDraftPrs": [
       {
@@ -81,26 +81,17 @@
         "pr": 479,
         "issue": 437,
         "lane": "traffic-accounting",
+        "state": "open_draft",
+        "head": "03d744556be6785ac8c97dae2bc4fb79ae9e246f",
+        "mergeState": "behind",
+        "unresolvedNonOutdatedThreads": 3,
         "sourceState": "blocked_no_durable_successor_gate",
         "productionState": "not_deployed",
         "identityGate": "pending",
-        "terminalReceipt": "issuecomment-4966594034",
+        "predecessorTerminalReceipt": "issuecomment-4966594034",
+        "predecessorResult": "blocked",
         "predecessorApprovalState": "consumed",
         "durableSuccessorGate": "absent"
-      },
-      {
-        "pr": 482,
-        "issue": null,
-        "lane": "version-management",
-        "sourceState": "current_source_state_reconciliation_draft",
-        "productionState": "not_applicable"
-      },
-      {
-        "pr": 483,
-        "issue": null,
-        "lane": "version-management",
-        "sourceState": "ci_lane_split_draft",
-        "productionState": "not_applicable"
       }
     ],
     "openNonDraftPrs": [
@@ -130,6 +121,7 @@
       "deleteBranchOnMerge": false,
       "branchProtectionAvailability": "master is protected by the active master-governance-single-owner repository ruleset.",
       "ruleset": {
+        "id": 18935716,
         "requiredPullRequest": true,
         "requiredCheck": "Validate",
         "strictRequiredChecks": true,
@@ -139,7 +131,12 @@
         "deletionBlocked": true,
         "nonFastForwardBlocked": true
       },
-      "environmentProtection": "Six environments exist. artifact-publication is limited to master by branch policy; no environment has reviewer or wait-timer enforcement."
+      "environmentProtection": "Six environments exist. Only artifact-publication has a branch policy; no environment has reviewer enforcement."
+    },
+    "issue437Reconciliation": {
+      "state": "open",
+      "receipt": "issuecomment-4976074286",
+      "reason": "PR #482 was recorded as the closer even though its PR body explicitly denied resolving Issue #437."
     },
     "note": "This is a dated source snapshot. Re-run git status, git fetch, PR/Issue inventory, and required checks before making current claims."
   },
@@ -172,9 +169,10 @@
     "Issue #437 remains the primary implementation Epic; #475 is a separate operations-foundation source/schema lane, #438 and #439 are queued, and #440 is an opportunistic guardrail.",
     "Issues #457 and #462 are closed after Vercel and Cloudflare merge-versus-promotion boundaries were proved.",
     "Traffic Evidence Runtime is active observation-only and reconciled; identity sync remains degraded and cannot influence accounting, quota, recovery, or trust decisions.",
-    "Merged source progress through #485 does not change production state. Control-plane changes after source 9bc03b41 remain not deployed, while #478 is offline validation, #481 is test-only, and #480/#485 are governance-only.",
-    "Draft PR #476 is operations-foundation source/schema work only. Draft PR #479 is blocked with identity gate pending; no durable successor Gate exists.",
-    "Draft PRs #482/#483 are source-governance candidates. Non-Draft PRs #486/#487/#488 are dependency updates and require fresh merge-baseline evidence.",
+    "Merged source progress through #483 does not change production state. Control-plane changes after source 9bc03b41 remain not deployed, while #478 is offline validation, #481 is test-only, and #480/#485/#482/#483 are governance or CI-only.",
+    "Issue #437 was reopened by Risk C receipt issuecomment-4976074286 because PR #482 was recorded as its closer despite explicitly denying resolution.",
+    "Draft PR #476 is operations-foundation source/schema work only. Draft PR #479 is at 03d744556be6785ac8c97dae2bc4fb79ae9e246f, behind master, with three unresolved non-outdated threads; its predecessor is blocked with approval consumed, no durable successor Gate exists, and it is not deployed.",
+    "PR #483 introduced docs-only/code routing and always-run diff checking while retaining one stable required Validate context. Non-Draft PRs #486/#487/#488 are dependency updates and require fresh merge-baseline evidence.",
     "PR #472 records the commercial package model and #474 records a source-only trial limit; billing and AppsFlyer remain disabled/non-live, and architecture stays a modular monolith."
   ],
   "activeGoal": {
@@ -313,11 +311,12 @@
     "internalRuntime": "metering and control endpoints remain loopback/private according to documented execution records and require live verification before mutation"
   },
   "validationSnapshot": {
-    "masterAtInventory": "20bb8257513153de7d5f75d45de7b748ceea6438",
-    "latestCiRun": "29346424433 success",
-    "latestReleaseArtifactRun": "29346424645 success",
-    "latestCodeqlRun": "29346423889 success",
-    "latestCloudflareWorkflowRun": "29153679412 success at e1beacc15fdc35661077cd3387f3ba17a3966e1a; not current-master evidence",
+    "masterAtInventory": "2413c101724df45579ebf4b9e0f306d32d9bb1af",
+    "latestCiRun": "29381367549 success",
+    "latestReleaseArtifactRun": "29381367545 success",
+    "latestCodeqlRun": "29381507931 success",
+    "latestCloudflareWorkflowRun": "29381367553 success: build, verification, and dry-run succeeded; deploy skipped",
+    "ciRouting": "PR #483 routes docs-only and code changes and always runs diff checking while retaining one stable required Validate context.",
     "projectStateCheck": "required whenever project-state files change",
     "cTierDiffCheck": "git diff --check origin/master...HEAD"
   },
@@ -368,20 +367,16 @@
       "sourceDoc": "docs/PROJECT_CONTEXT.md"
     },
     {
-      "id": "derived-project-intelligence-snapshot-stale",
-      "summary": "The derived docs/project-state snapshot merged by PR #485 retains pre-merge repository and PR/Issue facts. It is outside this six-file reconciliation and does not override the authoritative entry documents or project-state JSON.",
-      "sourceDoc": "docs/PROJECT_CONTEXT.md"
+      "id": "pr-479-durable-successor-gate-absent",
+      "summary": "PR #479 is behind current master with three unresolved non-outdated threads. Its predecessor terminal receipt is blocked, the predecessor approval is consumed, no durable successor Gate exists, and old green checks are not current-master integration evidence.",
+      "sourceDoc": "docs/project-state/BLOCKERS.md"
     }
   ],
   "nextRecommendedQueue": [
-    "Keep Issue #437 in observation-only mode while identity-impact evidence accumulates; Draft PR #479 remains blocked with no durable successor Gate, and this state update does not authorize protected map apply.",
-    "Complete the separately reviewed #482 source reconciliation and #483 CI-lane work before treating repository governance as current or machine-enforced.",
-    "Triage CodeQL findings and the three dependency-update PRs independently; do not convert raw alert counts into a blanket merge or production decision.",
-    "Correct the derived PR #485 project-intelligence snapshot through a separately approved C-tier file scope; do not expand this six-file reconciliation implicitly.",
-    "Any future control-plane artifact alignment or additive candidate generation requires a fresh exact Risk A gate bound to one artifact identity and the current production pointer.",
-    "Keep Issue #475 and Draft PR #476 limited to the separate operations-foundation source/schema lane; no schema migration or runtime mutation is approved.",
-    "Keep Admin UI, accounting influence, quota influence, trust decisions, and automatic repair deferred.",
-    "Keep Issues #438 and #439 queued and use Issue #440 only for a measured boundary exposed by active work."
+    "Establish a durable successor Gate on Issue #437 for PR #479.",
+    "Complete PR #479 source remediation, current-master integration, exact-head checks, formal review, Ready, and merge through independent approvals.",
+    "Finish the Gate ledger and validator, stable CI contexts plus settings Gate, durable artifact retention and binding, and the minimal organization and runtime-evidence model through separate PRs.",
+    "Only then establish independent Artifact and Risk A production-alignment Gates."
   ],
   "forbiddenInStateFiles": [
     "raw subscription URLs",
