@@ -49,6 +49,7 @@ jobs:
           --github-output "$GITHUB_OUTPUT"
 
       - name: Check diff
+        if: always()
         shell: bash
         env:
           CI_DIFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
@@ -67,33 +68,33 @@ jobs:
           git diff --check "$range"
 
       - name: Install root dependencies
-        if: steps.changes.outputs.lane == 'code'
+        if: steps.changes.outputs.run_full != '0'
         run: npm ci
 
       - name: Install admin dependencies
-        if: steps.changes.outputs.lane == 'code'
+        if: steps.changes.outputs.run_full != '0'
         run: npm ci --prefix admin
 
       - name: Run server tests
-        if: steps.changes.outputs.lane == 'code'
+        if: steps.changes.outputs.run_full != '0'
         run: npm test
 
       - name: Run admin tests
-        if: steps.changes.outputs.lane == 'code'
+        if: steps.changes.outputs.run_full != '0'
         run: npm run admin:test
 
       - name: Build admin app
-        if: steps.changes.outputs.lane == 'code'
+        if: steps.changes.outputs.run_full != '0'
         run: npm run admin:build
 
       - name: Build public site
-        if: steps.changes.outputs.lane == 'code'
+        if: steps.changes.outputs.run_full != '0'
         run: npm run cloudflare:site:build
 
       - name: Verify public site boundary
-        if: steps.changes.outputs.lane == 'code'
+        if: steps.changes.outputs.run_full != '0'
         run: npm run cloudflare:site:verify
 
       - name: Cloudflare public site dry run
-        if: steps.changes.outputs.lane == 'code'
+        if: steps.changes.outputs.run_full != '0'
         run: npm run cloudflare:site:dry-run

@@ -7,6 +7,10 @@ const DOCS_ONLY_LANE = "docs-only";
 const CODE_LANE = "code";
 const COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 
+export function fullValidationOutputFor(lane) {
+  return lane === DOCS_ONLY_LANE ? "0" : "1";
+}
+
 function codeLane(reason) {
   return { lane: CODE_LANE, reason };
 }
@@ -145,7 +149,7 @@ export function runChangeClassifierCli({
     try {
       appendFileSync(
         options.githubOutput,
-        `lane=${result.lane}\nreason=${result.reason}\n`,
+        `lane=${result.lane}\nrun_full=${fullValidationOutputFor(result.lane)}\nreason=${result.reason}\n`,
         "utf8"
       );
     } catch {

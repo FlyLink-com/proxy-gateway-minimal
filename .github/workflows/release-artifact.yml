@@ -24,6 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       lane: ${{ steps.changes.outputs.lane }}
+      run_full: ${{ steps.changes.outputs.run_full }}
 
     steps:
       - name: Checkout
@@ -51,7 +52,7 @@ jobs:
     name: Package source artifact
     runs-on: ubuntu-latest
     needs: classify
-    if: needs.classify.outputs.lane == 'code'
+    if: needs.classify.outputs.run_full != '0'
 
     steps:
       - name: Checkout
@@ -117,7 +118,7 @@ jobs:
     name: Package Portal static artifact
     runs-on: ubuntu-latest
     needs: classify
-    if: needs.classify.outputs.lane == 'code'
+    if: needs.classify.outputs.run_full != '0'
 
     steps:
       - name: Checkout
@@ -197,7 +198,7 @@ jobs:
     name: Package Admin static artifact
     runs-on: ubuntu-latest
     needs: classify
-    if: needs.classify.outputs.lane == 'code'
+    if: needs.classify.outputs.run_full != '0'
 
     steps:
       - name: Checkout

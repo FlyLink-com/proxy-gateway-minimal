@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   classifyChangedPaths,
   classifyGitChangeSet,
+  fullValidationOutputFor,
   runChangeClassifierCli
 } from "../../scripts/ci-change-classifier.mjs";
 
@@ -43,6 +44,14 @@ test("fails closed to the code lane for state, workflow, non-Markdown, mixed, em
   for (const paths of codeLaneCases) {
     assert.equal(classifyChangedPaths(paths).lane, "code", JSON.stringify(paths));
   }
+});
+
+test("full-validation output skips only the exact lowercase docs-only lane", () => {
+  assert.equal(fullValidationOutputFor("docs-only"), "0");
+  assert.equal(fullValidationOutputFor("DOCS-ONLY"), "1");
+  assert.equal(fullValidationOutputFor("Docs-Only"), "1");
+  assert.equal(fullValidationOutputFor("code"), "1");
+  assert.equal(fullValidationOutputFor(undefined), "1");
 });
 
 test("reads changed paths with an argument-only NUL-delimited git diff", () => {
@@ -140,7 +149,7 @@ test("CLI writes fail-closed workflow outputs without printing changed paths", (
     assert.equal(stderr, "");
     assert.equal(
       readFileSync(githubOutput, "utf8"),
-      "lane=code\nreason=workflow_dispatch_requires_full_validation\n"
+      "lane=code\nrun_full=1\nreason=workflow_dispatch_requires_full_validation\n"
     );
     assert.deepEqual(JSON.parse(stdout), {
       ok: true,

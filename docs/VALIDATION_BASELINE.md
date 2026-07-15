@@ -118,16 +118,21 @@ updates command contracts, generated examples, or validation tooling.
 
 The stable `Validate` check uses the docs-only lane only when every changed
 path is a root `*.md`, `docs/**/*.md`, `ops/**/*.md`, or
-`.github/**/*.md` file. It always runs `git diff --check`; the docs-only lane
-then skips dependency installation, tests, and builds.
+`.github/**/*.md` file. Its diff-check step uses `always()` and runs
+`git diff --check`; the docs-only lane then skips dependency installation,
+tests, and builds.
 
 All other inputs use the full code lane. This includes `project-state` JSON,
 workflow YAML, non-Markdown files below `docs/`, `ops/`, or `.github/`, mixed
 changes, an empty or invalid path list, and an unreadable Git diff.
 Project-state JSON therefore uses the code lane in hosted CI even when its
 local risk-tier command set remains narrower.
+The classifier converts only the exact lowercase docs-only lane to the numeric
+`run_full` output `0`. Every other lane value produces `1`; a missing or
+unexpected `run_full` value also defaults to full validation and packaging
+rather than a silent skip.
 If the exact non-dispatch diff range cannot be read, classification remains
-fail-closed and the unconditional diff-check step fails instead of checking a
+fail-closed and the always-run diff-check step fails instead of checking a
 smaller substitute range.
 `workflow_dispatch` always selects full validation. On a docs-only push to
 `master`, the Release Artifact workflow skips its three packaging jobs; a
