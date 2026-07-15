@@ -1,323 +1,539 @@
-# Proxy Gateway Console
+# proxy-gateway-minimal / gccgw
 
-[中文](README.md) | [Documentation index](docs/README.md)
+[中文](README.md) | [Documentation Index](docs/README.md)
 
-Lightweight subscription control and delivery gateway for the `gccgw`
-control plane, customer portal, protected operator surfaces, Clash/Mihomo
-subscription output, and local / SSH-tunneled operations.
+`proxy-gateway-minimal` is a subscription control and delivery project. Its
+mainline is not "another proxy panel." It brings subscription production,
+issuance, audit, revocation, installation configuration, and node packages into
+a verifiable engineering foundation.
 
-> Current network fact: Windows local forwarding and Clash/Mihomo subscription forwarding are different paths. `docs/NETWORK_FORWARDING.md` is the source of truth for network forwarding boundaries.
+## Authoritative Reading Order
 
-## Project Purpose
+When entering the repository for the first time or resuming work, establish the
+current facts in this order:
 
-`proxy-gateway-minimal` is a small Node.js gateway that combines:
+1. [`docs/CURRENT_RELEASE_STATE.md`](docs/CURRENT_RELEASE_STATE.md): the currently documented release and production reconciliation state.
+2. [`RELEASE_MANIFEST.md`](RELEASE_MANIFEST.md): the identity boundary between source, artifacts, releases, deployments, and runtime state.
+3. [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md): project positioning, current phase, work queue, and risk boundaries.
+4. `git status --short --branch`: the path, branch, and worktree state of the current checkout.
+5. [`docs/README.md`](docs/README.md): the complete documentation index, authority scopes, and lifecycle navigation.
+6. The subsystem README relevant to the task: read its responsibility and validation boundary before working in that module.
 
-- SQLite-backed subscription control-plane state for accounts, orders,
-  subscription artifacts, per-order edge credentials, and usage accounting.
-- Clash/Mihomo subscription YAML generation and multi-channel data-plane
-  output across replaceable edge channels.
-- A local or SSH-tunneled Admin Console Shell for operators.
-- Local Windows HTTP-to-SOCKS forwarding through `ss-local` as a legacy
-  compatibility and validation path.
-- Production runbooks for systemd, Nginx, SQLite backup/restore, staging, and manual CI validation.
+`AGENTS.md` defines repository task rules and always applies, but it does not
+replace the current-state reading order above.
 
-It is intentionally not a Kubernetes, Docker Compose, Terraform, or automatic CD system.
+The current control plane is `gccgw`:
 
-## Current Source And Archive Boundary
+```bash
+node bin/gccgw.mjs capabilities
+node bin/gccgw.mjs commands
+node bin/gccgw.mjs docs list
+node bin/gccgw.mjs project check
+```
 
-The active local checkout is:
+It organizes project capabilities into these workflows:
+
+```text
+project / install / node / package / subscription / channel / config / site-admin / operations
+```
+
+## Current Project Status
+
+The project is in **Phase 2 Operational Reliability**. It is completing runtime
+reliability and release reconciliation on top of a controlled platform
+foundation; it is not a finished project in a final acceptance phase.
+
+```yaml
+project_status:
+  phase: Phase 2 Operational Reliability
+  maturity: controlled platform foundation
+  source_model: release-managed monorepo
+  production: partially operational; reconciliation incomplete
+```
+
+Current boundaries:
+
+- The core architecture is a monolithic Node/Express service, SQLite business
+  state, and the `gccgw` operator CLI.
+- The current production design uses one subscription control plane to manage
+  accounts, orders, subscription artifacts, credential lifecycles, and usage
+  ledgers. Vultr Japan, Singapore, and other nodes are replaceable data-plane
+  channel capacity.
+- `.env` is the configuration closure point on a target host.
+- `deployments/production-template/` is a non-sensitive production input
+  package template.
+- `deployments/production-template/OPERATOR_NOTEPAD.md` is a human checklist,
+  not a machine-import file.
+- Admin/Web is a protected review or local operator surface, not a public Admin
+  product.
+- User Portal, payment, node expansion, production deployment, DNS, Nginx, and
+  systemd remain gated.
+- The historical Shadowsocks local proxy path remains for compatibility. New
+  user delivery uses the VLESS Reality, Hysteria2, and TUIC multi-channel
+  strategy in Clash/Mihomo subscriptions.
+
+Do not interpret a local test or HP manual-CI success as production readiness.
+Production, cloud, node, Nginx, systemd, DNS, SQLite, real-user, or subscription
+material changes remain Risk A and require a runbook, dry run, explicit
+approval, validation, and rollback.
+
+## Current Engineering Controls
+
+This README provides navigation only. Protocol details and state conclusions
+belong to the linked authority documents.
+
+| Control | Authority entrypoint | Current boundary |
+| --- | --- | --- |
+| Execution Contract v1 | [`docs/EXECUTION_CONTRACT_V1.md`](docs/EXECUTION_CONTRACT_V1.md) | Source-level execution contract; not connected to a production executor or real Gate. |
+| Authority Metadata Validation | [`docs/README.md`](docs/README.md#document-metadata-contract) | Validates declared canonical authority and lifecycle metadata. |
+| Documentation Lane Governance | [`docs/PROJECT_OPERATING_MODEL.md`](docs/PROJECT_OPERATING_MODEL.md) | Non-blocking documentation lane; does not create a new approval state machine. |
+| Release Artifact Identity | [`RELEASE_MANIFEST.md`](RELEASE_MANIFEST.md#artifact-manifest-v1) | Links source to immutable artifact identity; does not establish deployment or production state. |
+| Runtime Evidence Collection | [`docs/CURRENT_RELEASE_STATE.md`](docs/CURRENT_RELEASE_STATE.md) and [`docs/RUNTIME_LANE_AUTHORITY.md`](docs/RUNTIME_LANE_AUTHORITY.md) | Records controlled runtime evidence; production decisions still require live Release Flow evidence. |
+
+## Current Source and Archive Boundary
+
+The fixed local source checkout is:
 
 ```text
 D:\Projects\proxy-gateway-minimal
 ```
 
-Before continuing repository work, read:
+After completing the authoritative reading order above, read
+[`docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md`](docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md)
+before using an old checkout, archive, or generated material.
 
-```text
-AGENTS.md
-docs/PROJECT_CONTEXT.md
-docs/README.md
-docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md
-```
+Do not treat these locations as the current project:
 
-Legacy checkouts, old OneDrive folders, `.worktrees/`, `docs/archive/`,
-release packages, and generated local outputs such as `.codex-runtime/`,
-`.codex-artifacts/`, `.playwright-cli/`, `.tmp-node/`, `test-results/`,
-`admin/dist*`, `coverage/`, and `output/` are not active source material. Use
-them only for explicit
-archaeology or diff comparison. Re-importing code, docs, runtime config, or
-execution assumptions from those locations requires the boundary checks in
-`docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md`; production-adjacent re-imports
-remain Risk A.
+- `C:\Users\g\OneDrive\文档\订阅管理`
+- `C:\Users\g\Projects\订阅管理\proxy-gateway-minimal`
+- `C:\Users\g\WorkBuddy\2026-05-20-18-07-31\proxy-gateway-minimal`
+- old temporary worktrees under `.worktrees/`
+- historical material under `docs/archive/`
+- generated output such as `.codex-runtime/`, `.codex-artifacts/`,
+  `.playwright-cli/`, `.tmp-node/`, `test-results/`, and `admin/dist*`
 
-## Legacy Local Forwarding
+Old checkouts, historical worktrees, archived documents, and generated output
+are comparison or archaeology surfaces only. Before reusing code or templates,
+diff them against current source and run the relevant validation. Production,
+node, account, subscription, payment, DNS, Nginx, systemd, SQLite, or cloud
+changes require a fresh Risk A gate.
 
-Windows local forwarding:
+## Runtime Requirements
 
-```text
-Windows app / WinINet / PAC / HTTP_PROXY / HTTPS_PROXY
-        ↓
-127.0.0.1:18180 Node HTTP-to-SOCKS bridge
-        ↓
-127.0.0.1:1080 ss-local SOCKS5
-        ↓
-Legacy remote Shadowsocks server
-```
+| Item | Requirement |
+| --- | --- |
+| Node.js | Follow `package.json` `engines.node`; the current range includes `20.x` and the listed `22.x` through `26.x` versions. |
+| Package manager | Use `npm` and the repository `package-lock.json`; prefer `npm ci` for a clean install. |
+| Admin dependencies | Install the Admin workspace separately with `npm ci --prefix admin`. |
+| Operating system | Windows supports local development, preview, and diagnostics. A real Linux target must run its own target-host preflight. |
 
-ALL_PROXY-aware local apps:
-
-```text
-Application
-        ↓
-127.0.0.1:1080 ss-local SOCKS5
-        ↓
-Legacy remote Shadowsocks server
-```
-
-Clash/Mihomo subscription forwarding:
-
-```text
-Clash / Mihomo
-        ↓
-GET /sub/clash.yaml?token=...
-        ↓
-Receives a rendered Clash/Mihomo YAML bundle
-        ↓
-Connects directly to the approved VLESS Reality, Hysteria2, and TUIC channels
-```
-
-In subscription mode, `proxy-gateway-minimal` is a subscription generator and
-access controller. After the client receives the YAML, Clash/Mihomo connects
-directly to the rendered data-plane channels; it does not use local
-`127.0.0.1:18180` or `127.0.0.1:1080`.
-
-## Ports
-
-| Port | Service | Purpose |
-|------|---------|---------|
-| 3456 | Console API | Web console, REST API, PAC file, subscription endpoint |
-| 1080 | SOCKS5 | Local `ss-local` listener |
-| 18180 | HTTP Proxy | Local HTTP-to-SOCKS bridge |
-
-`CONSOLE_PORT` affects only the Node runtime. The Windows proxy scripts currently assume the default local ports `3456` / `1080` / `18180`; changing `CONSOLE_PORT` does not automatically reconfigure `scripts/proxy.ps1`, `scripts/network-doctor.ps1`, or the PAC URL.
-
-## Quick Start
-
-Install dependencies:
+## Quick Validation
 
 ```bash
-npm install
+npm ci
+npm ci --prefix admin
+
+node bin/gccgw.mjs self check
+node bin/gccgw.mjs project check
+npm test
+npm run admin:test
+npm run admin:build
 ```
 
-Create local configuration:
+Common scripts:
+
+```bash
+npm run cli              # gccgw
+npm run server           # local service
+npm run daemon           # local daemon start
+npm run project-state:check
+npm run project:verify -- --with-admin
+```
+
+## Configuration Closure
+
+Runtime configuration is closed through `.env` on the target host. Start from
+the template:
 
 ```bash
 cp .env.example .env
 ```
 
-Minimum `.env`:
+Core keys:
 
 ```text
-SS_PASSWORD=your_shadowsocks_password_here
+NODE_ENV
+CONSOLE_PORT
+CONSOLE_TOKEN
+SS_PASSWORD
+SUBSCRIPTION_DB_PATH
+SUBSCRIPTION_CONTROL_DB_PATH
+HANDOFF_DIR
+PUBLIC_SUBSCRIPTION_BASE_URL
+ADMIN_ALLOWED_CIDRS
+TRUSTED_PROXY_CIDRS
+EDGE_DATA_PLANE_AGENT_ALLOWED_CIDRS
+USER_PORTAL_TOTP_SECRET_KEY
+SUB_RATE_LIMIT_WINDOW_MS
+SUB_RATE_LIMIT_MAX
+SUBSCRIPTION_TEMP_LINK_TTL_MINUTES
 ```
 
-Optional values:
+Rules:
 
-```text
-CONSOLE_PORT=3456
-CONSOLE_TOKEN=your-fixed-console-token
-```
+- `.env.example` contains placeholders and safe default shapes only.
+- Admin and data-plane agent allowlists default to loopback. Production private
+  networks or fixed operator sources must be written explicitly on the target
+  host.
+- `USER_PORTAL_TOTP_SECRET_KEY` is target-host only. It must encode a 32-byte
+  key as hex, base64, or base64url and protects new TOTP credentials at rest.
+- Real tokens, passwords, node credentials, subscription URLs, SQLite files,
+  and customer data stay only in the target `.env`, protected runtime files, or
+  operator-only handoff.
+- Never write a real `.env`, subscription URL, customer record, private key,
+  cloud access key, or SQLite content into Git, a README, PR, chat, or log.
+- JSON packages describe only non-sensitive structure and required environment
+  variable names; they do not carry real runtime values.
 
-Start the service:
+## Database and Storage Boundary
 
-```bash
-npm run daemon
-```
+The project uses SQLite files, not SQL Server, RDS, or another directly
+connectable cloud database service.
 
-Alternative local starts:
-
-```bash
-npm run server
-npm run cli
-```
-
-Open the local console at:
-
-```text
-http://127.0.0.1:3456/
-```
-
-The first start creates `.proxy-gateway/console-token` and reuses it on later starts unless `CONSOLE_TOKEN` is provided.
-
-User portal routes are not mounted by default. They become public app-level
-routes only when `state.platform.userPortalRoutesEnabled === true` and the app
-is injected with `userPortalAuth` or `portalAccessRequests` services. The
-user-facing `/api/portal/entry/enroll`, `/api/portal/session`,
-`/api/portal/access-requests`, and `/api/portal/access-requests/current` paths
-are intentionally gated this way. See `docs/USER_PORTAL_FLOW.md` and
-`docs/USER_PORTAL_AUTH_BOUNDARY.md` for the portal flow and safety boundary.
-
-## Admin Console Shell
-
-The operator Admin Console Shell lives in `admin/` and is a Vite React app on top of the real `/api/admin/*` backend APIs.
-
-```bash
-npm install --prefix admin
-npm run admin:dev
-npm run admin:build
-npm run admin:test
-```
-
-In Vite dev mode, leave the API base URL blank and expose a local backend or SSH tunnel at `127.0.0.1:3456`; the Vite dev server proxies same-origin `/api` requests to that backend.
-
-The Admin Console Shell includes:
-
-- Connection health diagnostics.
-- Confirmation dialogs for sensitive subscription actions.
-- Visible-once generated subscription URLs after create, reset-token, or temporary-link operations.
-
-Do not expose the Admin Console Shell through the public Nginx gateway. Production public access should continue to allow only `/api/health` and `/sub/clash.yaml`.
-
-## Orchestration Model
-
-The project uses lightweight human-gated orchestration:
-
-- The Windows local checkout is used for development, testing, Admin UI operation, and SSH tunnel workflows.
-- GitHub `master` is the stable integration baseline.
-- Work enters through short-lived `codex/*`, `feat/*`, `fix/*`, `test/*`, `refactor/*`, `ops/*`, or `docs/*` branches.
-- GitHub Actions provides repository-level validation when hosted runners are available.
-- While GitHub-hosted Actions is blocked by billing or spending limits, use `docs/CI_MANUAL_VALIDATION.md` for temporary clean-server CI-equivalent validation.
-- Staging is not created automatically.
-- Production is not deployed automatically.
-
-Manual CI validation is not staging, not production approval, not a self-hosted runner, and not deploy approval.
-
-## User Portal / Package Requests
-
-The user portal is a customer-side adapter for package requests and subscription
-status review. It is not public Admin and is not an automatic issuance
-authority. The current local implementation can submit trial, monthly, and
-yearly request summaries; all business-changing actions still terminate in the
-administrator review path, where the protected portal-request operations panel
-can review status and generate safe delivery previews. Production portal route
-activation, real `userPortalAuth` integration, entitlement creation, and
-subscription material delivery require separate gates.
-
-## Subscription Admin Core
-
-The Subscription Admin Core stores tenants in SQLite and generates tenant-scoped Clash/Mihomo subscription URLs.
-
-Default database path:
+Default local paths:
 
 ```text
 .proxy-gateway/subscriptions.sqlite
+.proxy-gateway/control.sqlite
 ```
 
-Key environment variables:
+Target servers normally override them through `.env`:
 
-| Variable | Purpose |
-|----------|---------|
-| `SUBSCRIPTION_DB_PATH` | Custom SQLite database path |
-| `PUBLIC_SUBSCRIPTION_BASE_URL` | Public base URL used in generated subscription URLs |
-| `SUBSCRIPTION_EXPIRING_DAYS` | Expiring-window size, default `7` days |
-| `SUBSCRIPTION_TEMP_LINK_TTL_MINUTES` | Temporary subscription-link lifetime, default `1440` minutes |
-| `SUB_RATE_LIMIT_WINDOW_MS` | `/sub` rate-limit window, default `60000` ms |
-| `SUB_RATE_LIMIT_MAX` | `/sub` requests per client IP per window, default `30` |
-| `ADMIN_ALLOWED_CIDRS` | Admin source-IP allowlist, default loopback and RFC1918 private ranges |
+```text
+SUBSCRIPTION_DB_PATH
+SUBSCRIPTION_CONTROL_DB_PATH
+```
 
-Admin API calls use `Authorization: Bearer <console-token>`. Protected `/api/*` routes do not accept console tokens in query strings.
+Rules:
 
-`/sub/clash.yaml` keeps query-token support for Clash/Mihomo subscription clients. Primary subscription tokens use `pgsub_`; temporary subscription tokens use `pgtmp_`. Raw subscription tokens are visible once and stored as hashes.
+- Project processes or `gccgw` access SQLite files; SQL Server tools such as
+  SSMS cannot connect to them directly.
+- EBS, cloud disks, or server data disks are storage layers that may hold a
+  SQLite file; they are not database services.
+- Production SQLite does not enter Git, README files, chats, or ordinary
+  desktop-file transfer flows.
+- Moving to PostgreSQL, SQL Server, RDS, or another cloud database is a Risk A
+  architecture change requiring schema mapping, an adapter, migration, backup,
+  staging validation, and rollback.
 
-Subscription expiry is enforced when a token is resolved: expired tenants receive `403` on `/sub/clash.yaml` even if their stored status remains `active`. The stored `disabled` status is reserved for operator-driven disable actions.
+## gccgw Control Plane
 
-## Proxy Modes
+Common entrypoints:
 
-| Mode | Command | Purpose |
-|------|---------|---------|
-| Global | `npm run proxy:on` | Route traffic through `127.0.0.1:18180` |
-| PAC | `npm run proxy:pac` | Use PAC rules for direct/proxy split |
-| Off | `npm run proxy:off` | Disable the Windows system proxy |
-| Status | `npm run proxy:status` | Show current Windows proxy settings |
+```bash
+node bin/gccgw.mjs capabilities
+node bin/gccgw.mjs commands
+node bin/gccgw.mjs architecture
+node bin/gccgw.mjs docs command "platform issue-subscription"
+node bin/gccgw.mjs docs domain package
+```
 
-## Windows Network Diagnostics
+Configuration profiles:
+
+```bash
+node bin/gccgw.mjs config list
+node bin/gccgw.mjs config show local
+node bin/gccgw.mjs config validate --profile vultr-japan-prod
+```
+
+Project validation:
+
+```bash
+node bin/gccgw.mjs env check
+node bin/gccgw.mjs self check
+node bin/gccgw.mjs project check
+node bin/gccgw.mjs project verify --with-admin
+```
+
+## Installation and New Server Flow
+
+The installation flow in this README covers read-only, dry-run, and gated
+shapes only. It does not authorize production.
+
+### 1. Place the Project and Install the CLI
+
+```bash
+git clone <repo-url> /opt/proxy-gateway-minimal
+cd /opt/proxy-gateway-minimal
+npm ci
+npm link
+gccgw self check
+```
+
+A Windows checkout can preview and dry-run. A real Linux target must rerun
+preflight on that target.
+
+### 2. Read-only Installation Plan
+
+```bash
+gccgw install plan
+gccgw install preflight --json
+```
+
+`install plan` does not install, deploy, copy `.env`, restore SQLite, start a
+service, modify Nginx/DNS/firewall, or issue subscriptions.
+
+### 3. Generate an Installation Configuration Plan
+
+```bash
+gccgw install configure --dry-run \
+  --domain https://control.example.invalid \
+  --install-dir /opt/proxy-gateway-minimal \
+  --management-source 203.0.113.10/32 \
+  --json > reviewed-install-configure-plan.json
+```
+
+The output must be a redacted plan. Real `CONSOLE_TOKEN`, `SS_PASSWORD`, node
+credentials, and customer data do not enter the plan file.
+
+### 4. Inspect the Production Input Package
+
+Human notepad:
+
+```text
+deployments/production-template/OPERATOR_NOTEPAD.md
+```
+
+Machine-import files:
+
+```text
+deployments/production-template/package-manifest.json
+deployments/production-template/topology.json
+deployments/production-template/public-boundary.json
+deployments/production-template/plans.json
+deployments/production-template/nodes.json
+deployments/production-template/env.required.json
+deployments/production-template/runbook.md
+```
+
+Inspection and dry-run:
+
+```bash
+gccgw package inspect deployments/production-template --json
+gccgw package import deployments/production-template --dry-run --json \
+  > reviewed-package-import-plan.json
+```
+
+### 5. Risk A Execution Gate
+
+Only after the runbook, dry-run evidence, target-host preflight, explicit
+operator approval, and rollback plan are complete may an operator run:
+
+```bash
+gccgw install bootstrap \
+  --config-plan reviewed-install-configure-plan.json \
+  --execute-production-mutation \
+  --apply
+
+gccgw package apply deployments/production-template \
+  --import-plan reviewed-package-import-plan.json \
+  --config-plan reviewed-install-configure-plan.json \
+  --execute-production-mutation \
+  --apply
+```
+
+These are not quick-start commands.
+
+## Node Package
+
+Node-side material lives under:
+
+```text
+ops/edge-node/
+```
+
+It provides provider-neutral edge-host bootstrap, systemd, Nginx, and template
+material. It contains no real secrets, SQLite, customer data, subscription
+material, or production authorization.
+
+Common checks:
+
+```bash
+gccgw node inspect --json
+gccgw node validate --package deployments/production-template --json
+gccgw node register --dry-run safe-node-facts.json --json
+gccgw node disable --dry-run prod-edge-a --reason maintenance --json
+```
+
+Real node creation, bootstrap, systemd/Nginx, DNS, firewall, traffic cutover,
+or subscription-output changes are Risk A.
+
+## Subscription Factory
+
+The current mainline is controlled issuance:
+
+```text
+operator input
+-> provisioning form
+-> resource package / dry-run
+-> explicit approval
+-> issue subscription or portal entry
+-> operator-only handoff
+-> audit / revoke
+```
+
+Common commands:
+
+```bash
+gccgw platform provisioning-form <input.json>
+gccgw platform resource-package <input.json>
+gccgw platform issue-subscription --dry-run <input.json>
+gccgw platform issue-portal-entry --dry-run <input.json>
+gccgw platform revoke-access <tenant-ref> --dry-run
+```
+
+Real issuance, entry signing, revocation, or handoff writes without `--dry-run`
+must follow the relevant gate. Never expose raw subscription material in a
+README, PR, or chat.
+
+## Admin, User Portal, and Public Site
+
+The Admin app lives under `admin/`. It supports protected operator review,
+local validation, and public-site builds; it is not a public Admin product.
+
+```bash
+npm ci --prefix admin
+npm run admin:dev
+npm run admin:test
+npm run admin:build
+npm run admin:site:build
+npm run admin:site:verify
+```
+
+Admin fixture preview supports frontend implementation and Vercel preview. It
+does not connect to a production Admin API or enable orders, receipt apply,
+collector activation, DNS/Nginx/provider firewall, or real runtime mutation.
+The default Admin entry still requires local connection configuration. For a
+local read-only preview, run:
+
+```bash
+npm run admin:dev
+```
+
+Then open `http://127.0.0.1:5173/#/fixture-preview`. Root `vercel.json` builds
+Vercel Preview into `admin/dist` and sets `VITE_ADMIN_FIXTURE_PREVIEW=true` at
+build time, so the preview displays the safe fixture Admin shell. It is for UI
+acceptance and implementation handoff only; it is not a public Admin product.
+
+User Portal routes are not mounted by default. They enter the public allowlist
+only when runtime state explicitly enables
+`state.platform.userPortalRoutesEnabled === true` and injects the corresponding
+auth and service capabilities. Production Portal, payment, automatic
+entitlement, and real subscription issuance remain separately gated.
+
+The repository contains a default-off seven-day customer self-service
+subscription capability. When `state.platform.portalSelfServiceSubscriptions`
+is injected, a signed-in durable account may use the `trial` policy to activate
+seven days, refresh visible-once subscription material, or disable the current
+subscription. User Portal does not delete order or subscription records.
+Monthly and annual plans remain request flows. Payment, public production
+Portal, and production auto-issuance are not enabled.
+
+## Legacy Clash/Mihomo Compatibility
+
+`/sub/clash.yaml` remains as a historical compatibility and test-coverage
+entrypoint:
+
+```text
+GET /sub/clash.yaml?token=<legacy-or-visible-once-token>
+```
+
+It is not the current new-user onboarding mainline. Current onboarding uses
+plan requests, operator review, opaque artifacts, the operator CLI, and
+protected handoff.
+
+Never paste real tokens, subscription URLs, YAML, node passwords, or customer
+information into a README, PR, log, or chat.
+
+## Windows Local Proxy Capability
+
+The legacy Windows local proxy chain remains for local adaptation and
+diagnostics:
+
+```text
+Windows app
+-> 127.0.0.1:18180 HTTP bridge
+-> 127.0.0.1:1080 ss-local
+-> remote Shadowsocks server
+```
+
+Scripts:
 
 ```powershell
+npm run proxy:on
+npm run proxy:pac
+npm run proxy:off
+npm run proxy:status
 npm run network:status
 npm run network:repair
 npm run network:reset
 ```
 
-`network-doctor.ps1` reads `CONSOLE_TOKEN` only from the process environment or `.proxy-gateway/console-token`. It does not read `.env` by default.
+`CONSOLE_PORT` affects only the Node runtime. Windows proxy scripts still use
+local ports `3456 / 1080 / 18180` by default. Changing `.env` does not
+automatically change PAC or Windows proxy scripts.
 
-## API Endpoint Summary
+## Documentation Entry Points
 
-Public and subscription endpoints:
+Use the authoritative reading order at the top when restoring project context.
+The following table is additional navigation only.
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/api/health` | Public health check |
-| GET | `/sub/clash.yaml` | Clash/Mihomo subscription YAML |
+Important current documents:
 
-Local/protected control endpoints:
+| Document | Purpose |
+| --- | --- |
+| `docs/CURRENT_RELEASE_STATE.md` | Currently documented release and production reconciliation state |
+| `RELEASE_MANIFEST.md` | Source, artifact, release, deployment, and runtime-state identity model |
+| `docs/PROJECT_CONTEXT.md` | Project positioning, phase, queue, and continuation entrypoint |
+| `docs/VALIDATION_BASELINE.md` | Validation command matrix |
+| `docs/CONFIGURATION_OWNERSHIP_MATRIX.md` | Configuration ownership |
+| `docs/PRODUCTION_INPUT_PACKAGE_FORMAT.md` | Production input package format |
+| `deployments/production-template/README.md` | Production package template |
+| `docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md` | CLI-first operating boundary |
+| `docs/NETWORK_FORWARDING.md` | Network-path boundary |
+| `docs/CI_MANUAL_VALIDATION.md` | HP and local-Linux manual-CI boundary |
+| `docs/HP_PORTAL_VALIDATION_RUNBOOK.md` | HP private-validation boundary |
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/api/subscription/status` | Subscription URL and node count |
-| POST | `/api/ss/start` | Start local `ss-local` |
-| POST | `/api/ss/stop` | Stop local `ss-local` |
-| POST | `/api/proxy/start` | Start the local proxy stack |
-| POST | `/api/proxy/stop` | Stop the local proxy stack |
-| GET | `/api/status` | Aggregate status |
-| GET | `/api/network/status` | Windows proxy-stack diagnostics |
-| POST | `/api/network/repair` | Start and repair local proxy ownership |
-| POST | `/api/network/reset` | Clear proxy settings written by this project |
+## Code Structure
 
-Admin subscription endpoints:
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/api/admin/subscriptions` | List tenants |
-| POST | `/api/admin/subscriptions` | Create a tenant and visible-once subscription URL |
-| GET | `/api/admin/subscriptions/:id` | Read one tenant |
-| PATCH | `/api/admin/subscriptions/:id` | Update tenant expiry |
-| POST | `/api/admin/subscriptions/:id/renew` | Renew a tenant |
-| POST | `/api/admin/subscriptions/:id/disable` | Disable a tenant |
-| POST | `/api/admin/subscriptions/:id/enable` | Enable a tenant |
-| POST | `/api/admin/subscriptions/:id/reset-token` | Reset a tenant token and return a new visible-once URL |
-| POST | `/api/admin/subscriptions/:id/temp-link` | Create a temporary subscription URL |
-| POST | `/api/admin/subscriptions/:id/node` | Reassign a tenant to a configured node |
-| GET | `/api/admin/nodes` | List assignable nodes |
-| GET | `/api/admin/overview` | Tenant and node overview |
-
-Tenant node assignment is an operator-only maintenance and canary mechanism. It does not change tenant tokens or subscription URLs. Tenant creation may include `nodeId`; when omitted, the backend keeps using the first configured named node, and default-primary tenants receive the V2 multi-node subscription output. `POST /api/admin/subscriptions/:id/node` accepts either a node `id` or `name` and can scope that tenant's future `/sub/clash.yaml` output to the selected non-default node for canary use. Adding a second production node to `config/proxy-servers.json`, migrating production tenant assignments, or making production subscriptions emit a new production node remains Risk A production node-config work with a separate gate.
-
-## Validation And CI
-
-Standard repository validation:
-
-```bash
-npm test
-npm run admin:test
-npm run admin:build
+```text
+.
+├── bin/
+│   ├── gccgw.mjs              # current operator CLI
+│   └── proxy-gateway.mjs      # compatibility CLI
+├── server/                    # Express app, routes, services, tests
+├── admin/                     # Vite React Admin, Portal, and public-site surfaces
+├── agent/                     # local edge and channel prototypes
+├── config/                    # redacted local configuration templates
+├── deployments/
+│   └── production-template/   # non-secret production input package template
+├── docs/                      # current docs, runbooks, records, archive index
+├── ops/
+│   └── edge-node/             # provider-neutral edge-node package material
+├── scripts/                   # Windows helpers, backup/restore, diagnostics
+├── public/                    # local console and static assets
+├── project-state/             # machine-checkable project state
+├── .env.example               # runtime environment template
+└── .gitattributes             # keeps shell scripts LF for Linux archive runs
 ```
 
-While GitHub-hosted Actions is blocked by billing or spending-limit issues, `docs/CI_MANUAL_VALIDATION.md` defines the temporary clean-server CI-equivalent path:
+## Risk Tiers
 
-```bash
-npm ci
-npm ci --prefix admin
-npm test
-npm run admin:test
-npm run admin:build
-```
+| Risk | Scope | Default validation |
+| --- | --- | --- |
+| C | Docs, README, indexes, and read-only checks | `git diff --check` |
+| B | Local code, tests, Admin UI, and dry-run CLI | Focused tests plus `npm test` or Admin checks |
+| A | Production, cloud, nodes, Nginx, systemd, DNS, auth, schema, deploy, rollback, and real subscriptions | Inventory, dry run, approval, validation, and rollback |
 
-For docs-only changes, `git diff --check origin/master...HEAD` is usually enough.
-
-## Source-Of-Truth Docs
-
-Start with `docs/README.md` for the documentation index. It classifies current state docs, active runbooks, execution records, paused docs, and historical specs/plans.
-
-Use `docs/PROJECT_CONTEXT.md` for the current handoff state. Use the relevant active runbook before production, AWS, DNS, Nginx, HTTPS, staging, deployment, rollback, or node work.
-
-Do not commit secrets, console tokens, subscription URLs with real tokens, SQLite data, AWS credentials, or customer data.
+This README grants no production authority. Every Risk A action must read the
+relevant runbook and receive explicit operator approval.
