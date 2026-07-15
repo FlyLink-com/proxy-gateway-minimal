@@ -474,3 +474,40 @@ test("admin platform account search resolves legacy digest-only portal accounts 
     database.close();
   }
 });
+
+test("admin platform account search rejects overlong email-shaped digest lookups", async () => {
+  const leadQueue = createPlatformLeadReviewQueue();
+  const accountShell = createPlatformAccountEntitlementShell();
+  const { database, store: controlStore } = createControlStoreFixture();
+  const now = "2026-07-15T00:00:00.000Z";
+  const overlongEmail = `${"a".repeat(300)}@example.test`;
+
+  try {
+    controlStore.createAccount({
+      id: "acct_overlong_digest_1",
+      ownerRef: "acct_overlong_digest_1",
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+      metadata: {
+        loginDigest: sha256Hex(overlongEmail),
+        contactDigest: sha256Hex(overlongEmail)
+      }
+    });
+
+    const { server, baseUrl } = await listen(createApp(fakeState({ leadQueue, accountShell, controlStore })));
+    try {
+      const response = await fetch(
+        `${baseUrl}/api/admin/platform/accounts?search=${encodeURIComponent(overlongEmail)}`,
+        { headers: authHeaders() }
+      );
+
+      assert.equal(response.status, 200);
+      assert.deepEqual((await response.json()).items, []);
+    } finally {
+      server.close();
+    }
+  } finally {
+    database.close();
+  }
+});
