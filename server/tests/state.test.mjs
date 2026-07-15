@@ -1400,7 +1400,7 @@ test("createRuntimeState wires env-gated Mihomo TUIC host adapter for edge lifec
   }
 });
 
-test("createRuntimeState rejects JP protocol runtime TLS identity drift", () => {
+test("createRuntimeState rejects deceptive JP runtime TLS material path prefixes", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-jp-tls-drift-"));
   const materialPath = join(dir, "protected", "edge-material.json");
   const hy2ActiveConfigPath = join(dir, "hysteria", "config.yaml");
@@ -1423,7 +1423,7 @@ test("createRuntimeState rejects JP protocol runtime TLS identity drift", () => 
           CONSOLE_TOKEN: "secret",
           USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
           USER_PORTAL_EDGE_CHANNEL_REF: "channel-vultr-a-tuic",
-          USER_PORTAL_EDGE_CHANNEL_REFS: "channel-vultr-a-hy2,channel-vultr-a-tuic",
+          USER_PORTAL_EDGE_CHANNEL_REFS: "channel-vultr-a-tuic",
           EDGE_CREDENTIAL_MATERIAL_PATH: materialPath,
           EDGE_CREDENTIAL_LIFECYCLE_EXECUTE_PRODUCTION_MUTATION: "true",
           VULTR_TUIC_HOST: "jp.gccwebos.com",
@@ -1433,8 +1433,8 @@ test("createRuntimeState rejects JP protocol runtime TLS identity drift", () => 
           EDGE_HYSTERIA2_ACTIVE_CONFIG_PATH: hy2ActiveConfigPath,
           EDGE_HYSTERIA2_CANDIDATE_CONFIG_PATH: hy2CandidateConfigPath,
           EDGE_HYSTERIA2_BACKUP_DIR: hy2BackupDir,
-          EDGE_MIHOMO_TUIC_CERTIFICATE_PATH: "/etc/mihomo/tls/globalcirclecat.cloud/fullchain.pem",
-          EDGE_MIHOMO_TUIC_PRIVATE_KEY_PATH: "/etc/mihomo/tls/globalcirclecat.cloud/privkey.pem",
+          EDGE_MIHOMO_TUIC_CERTIFICATE_PATH: "/etc/mihomo/tls/not-jp.gccwebos.com/fullchain.pem",
+          EDGE_MIHOMO_TUIC_PRIVATE_KEY_PATH: "/etc/mihomo/tls/not-jp.gccwebos.com/privkey.pem",
           EDGE_MIHOMO_ACTIVE_CONFIG_PATH: tuicActiveConfigPath,
           EDGE_MIHOMO_CANDIDATE_CONFIG_PATH: tuicCandidateConfigPath,
           EDGE_MIHOMO_BACKUP_DIR: tuicBackupDir,
@@ -1447,7 +1447,7 @@ test("createRuntimeState rejects JP protocol runtime TLS identity drift", () => 
       });
     }, {
       code: "validation_error",
-      message: /channel-vultr-a-(hy2|tuic).*jp\.gccwebos\.com.*TLS certificate path/
+      message: /channel-vultr-a-tuic.*jp\.gccwebos\.com.*TLS certificate path/
     });
   } finally {
     state?.close();

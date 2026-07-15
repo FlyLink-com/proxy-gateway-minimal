@@ -39,6 +39,21 @@ function baseState(overrides = {}) {
   };
 }
 
+function rejectingAdminAuth() {
+  return {
+    login() {
+      const error = new Error("invalid admin login");
+      error.code = "invalid_admin_login";
+      throw error;
+    },
+    verifyTotp() {
+      const error = new Error("invalid TOTP");
+      error.code = "invalid_totp";
+      throw error;
+    }
+  };
+}
+
 test("admin-auth session exposes the configured portal admin and gates admin APIs by session cookie", async () => {
   const state = baseState({
     platform: {
@@ -84,6 +99,68 @@ test("admin-auth session exposes the configured portal admin and gates admin API
     });
     assert.equal(protectedApi.status, 200);
     assert.deepEqual(await protectedApi.json(), { items: [{ id: "tenant_1" }] });
+  } finally {
+    server.close();
+  }
+});
+
+test("admin-auth login limits repeated attempts by source IP", async () => {
+  const state = baseState({
+    platform: {
+      adminAuthRoutesEnabled: true,
+      adminAuth: rejectingAdminAuth()
+    }
+  });
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const response = await fetch(`${baseUrl}/api/admin-auth/login`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operatorRef: "synthetic-operator", bootstrapToken: "invalid" })
+      });
+      assert.equal(response.status, 401);
+    }
+
+    const limited = await fetch(`${baseUrl}/api/admin-auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ operatorRef: "synthetic-operator", bootstrapToken: "invalid" })
+    });
+    assert.equal(limited.status, 429);
+    assert.equal(limited.headers.get("retry-after"), "60");
+    assert.deepEqual(await limited.json(), { error: "Too Many Requests" });
+  } finally {
+    server.close();
+  }
+});
+
+test("admin-auth TOTP verification limits repeated attempts by source IP", async () => {
+  const state = baseState({
+    platform: {
+      adminAuthRoutesEnabled: true,
+      adminAuth: rejectingAdminAuth()
+    }
+  });
+  const { server, baseUrl } = await listen(createApp(state));
+  try {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const response = await fetch(`${baseUrl}/api/admin-auth/totp/verify`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ challengeRef: "synthetic-challenge", code: "000000" })
+      });
+      assert.equal(response.status, 401);
+    }
+
+    const limited = await fetch(`${baseUrl}/api/admin-auth/totp/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challengeRef: "synthetic-challenge", code: "000000" })
+    });
+    assert.equal(limited.status, 429);
+    assert.equal(limited.headers.get("retry-after"), "60");
+    assert.deepEqual(await limited.json(), { error: "Too Many Requests" });
   } finally {
     server.close();
   }

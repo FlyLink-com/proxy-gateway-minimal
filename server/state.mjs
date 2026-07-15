@@ -735,6 +735,13 @@ function remoteDataPlaneAdapterName(server = {}) {
   return optionalEnvText(server.runtimeAdapter || server.edgeRuntimeAdapter || server.dataPlaneRuntimeAdapter);
 }
 
+function runtimePathHasIdentitySegment(value, identity) {
+  return normalizeRuntimeIdentity(value)
+    .replaceAll("\\", "/")
+    .split("/")
+    .some((segment) => segment === identity);
+}
+
 function assertJpRuntimeTlsIdentity({ channelRef, serverConfig = {}, certificatePath, privateKeyPath } = {}) {
   const host = normalizeRuntimeIdentity(serverConfig.host || serverConfig.server);
   const sni = normalizeRuntimeIdentity(serverConfig.sni || serverConfig.serverName || serverConfig.server_name);
@@ -743,13 +750,11 @@ function assertJpRuntimeTlsIdentity({ channelRef, serverConfig = {}, certificate
     return;
   }
 
-  const certificate = normalizeRuntimeIdentity(certificatePath);
-  const privateKey = normalizeRuntimeIdentity(privateKeyPath);
   const safeChannelRef = optionalEnvText(channelRef || serverConfig.name || serverConfig.id || "runtime channel");
-  if (!certificate.includes("jp.gccwebos.com")) {
+  if (!runtimePathHasIdentitySegment(certificatePath, identity)) {
     throw runtimeValidationError(`${safeChannelRef} uses jp.gccwebos.com but TLS certificate path must reference jp.gccwebos.com material`);
   }
-  if (!privateKey.includes("jp.gccwebos.com")) {
+  if (!runtimePathHasIdentitySegment(privateKeyPath, identity)) {
     throw runtimeValidationError(`${safeChannelRef} uses jp.gccwebos.com but TLS private key path must reference jp.gccwebos.com material`);
   }
 }

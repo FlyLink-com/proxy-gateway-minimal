@@ -39,7 +39,7 @@ function sendError(res, error) {
 }
 
 const BYTES_PER_GB = 1024 ** 3;
-const PUBLIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const MAX_PUBLIC_EMAIL_LENGTH = 254;
 const CONTROL_STORE_ENTITLEMENT_STATUSES = new Set(["active", "expired", "revoked", "suspended"]);
 
 function optionalAdminText(value) {
@@ -56,9 +56,25 @@ function normalizeAdminSearch(value) {
   return optionalAdminText(value).toLowerCase();
 }
 
+function isPublicEmail(value) {
+  if (!value || value.length > MAX_PUBLIC_EMAIL_LENGTH) {
+    return false;
+  }
+  if (Array.from(value).some((character) => character.trim() === "")) {
+    return false;
+  }
+  const atIndex = value.indexOf("@");
+  if (atIndex <= 0 || atIndex !== value.lastIndexOf("@") || atIndex === value.length - 1) {
+    return false;
+  }
+  const domain = value.slice(atIndex + 1);
+  const dotIndex = domain.lastIndexOf(".");
+  return dotIndex > 0 && dotIndex < domain.length - 1;
+}
+
 function normalizeAdminEmailSearch(value) {
   const normalized = normalizeAdminSearch(value);
-  return normalized && PUBLIC_EMAIL_PATTERN.test(normalized) ? normalized : "";
+  return isPublicEmail(normalized) ? normalized : "";
 }
 
 function sha256Hex(value) {
