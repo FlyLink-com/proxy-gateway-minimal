@@ -55,6 +55,22 @@ directory restructure.
 | `README.md` | Chinese project landing page for the current `gccgw` control plane, validation flow, `.env` closure, install/package gates, compatibility boundaries, and docs navigation. | Active entrypoint. | Read when onboarding Chinese-speaking operators or checking the current project entry surface. |
 | `README_EN.md` | English project landing page, quick start, topology summary, APIs, and source-of-truth pointer. | Active entrypoint. | Read when onboarding English-speaking collaborators. |
 
+## Subsystem Entry Points
+
+These README files describe local responsibility, entrypoints, development,
+validation, and forbidden boundaries. They are navigation aids only: they do
+not add canonical `authority_scope` values and do not establish global,
+release, deployment, runtime, or production authority.
+
+| Document | Responsibility | Boundary |
+| --- | --- | --- |
+| `admin/README.md` | Admin, User Portal, and company-site frontend source and build entrypoints. | Frontend workspace only; no control-plane, provider, deployment, or production authority. |
+| `server/README.md` | Node control-plane application, routes, services, persistence adapters, and runtime composition. | Source ownership only; runtime and production actions retain their existing gates. |
+| `bin/README.md` | `gccgw` CLI routing and compatibility entrypoints. | Command availability is not operator approval or production authority. |
+| `agent/README.md` | Local edge-agent surface and data-plane agent runners and adapters. | Real runtime access or apply remains a separately approved Risk A action. |
+| `schemas/README.md` | Portable, versioned shared data-shape contracts. | A schema is not deployment, runtime observation, migration approval, or production state. |
+| `project-state/README.md` | Machine-readable repository coordination snapshots, lanes, and task states. | Coordination state can drift and does not override canonical or live evidence. |
+
 ## Current State
 
 | Document | Purpose | Status | When to read |
