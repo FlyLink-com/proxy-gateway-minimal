@@ -6,6 +6,19 @@
 “再写一个代理面板”，而是把订阅生产、发放、审计、撤回、安装配置和节点包
 收口到一个可验证的工程骨架里。
 
+## 权威阅读顺序
+
+第一次进入仓库或恢复工作时，按以下顺序建立当前事实：
+
+1. [`docs/CURRENT_RELEASE_STATE.md`](docs/CURRENT_RELEASE_STATE.md)：当前已记录的发布与生产对账状态。
+2. [`RELEASE_MANIFEST.md`](RELEASE_MANIFEST.md)：源码、制品、发布、部署和运行状态之间的身份边界。
+3. [`docs/PROJECT_CONTEXT.md`](docs/PROJECT_CONTEXT.md)：项目定位、当前阶段、工作队列和风险边界。
+4. `git status --short --branch`：当前 checkout 的路径、分支和工作树状态。
+5. [`docs/README.md`](docs/README.md)：完整文档索引、权威范围和生命周期导航。
+6. 当前任务涉及的 subsystem README：进入具体模块后再读取其职责与验证边界。
+
+`AGENTS.md` 定义仓库任务规则并始终适用，但不替代上述当前状态读取顺序。
+
 当前控制面是 `gccgw`：
 
 ```bash
@@ -21,9 +34,20 @@ node bin/gccgw.mjs project check
 project / install / node / package / subscription / channel / config / site-admin / operations
 ```
 
-## 当前判断
+## 当前项目状态
 
-项目已经进入收尾和验收阶段：
+项目当前处于 **Phase 2 Operational Reliability**，是在受控平台基础上继续完成
+运行可靠性和发布对账，而不是已经结束演进的“收尾项目”。
+
+```yaml
+project_status:
+  phase: Phase 2 Operational Reliability
+  maturity: controlled platform foundation
+  source_model: release-managed monorepo
+  production: partially operational; reconciliation incomplete
+```
+
+当前边界：
 
 - 核心架构是单体 Node/Express 服务 + SQLite 业务状态 + `gccgw` operator CLI。
 - 当前生产设计是一个订阅控制面管理账号、订单、订阅 artifact、凭据生命周期和
@@ -40,6 +64,18 @@ project / install / node / package / subscription / channel / config / site-admi
 Nginx、systemd、DNS、SQLite、真实用户或订阅材料变更仍属于 Risk A，必须走
 runbook、dry-run、明确 approval、验证和 rollback。
 
+## 当前工程治理能力
+
+README 只提供导航；协议细节和状态结论以链接文档为准。
+
+| 能力 | 权威入口 | 当前边界 |
+| --- | --- | --- |
+| Execution Contract v1 | [`docs/EXECUTION_CONTRACT_V1.md`](docs/EXECUTION_CONTRACT_V1.md) | 源码级执行契约；不接入生产执行器或真实 Gate。 |
+| Authority Metadata Validation | [`docs/README.md`](docs/README.md#document-metadata-contract) | 校验已声明的 canonical authority 和生命周期元数据。 |
+| Documentation Lane Governance | [`docs/PROJECT_OPERATING_MODEL.md`](docs/PROJECT_OPERATING_MODEL.md) | 非阻塞文档治理轨道；不创建新的审批状态机。 |
+| Release Artifact Identity | [`RELEASE_MANIFEST.md`](RELEASE_MANIFEST.md#artifact-manifest-v1) | 建立源码与不可变制品身份；不等于部署或生产状态。 |
+| Runtime Evidence Collection | [`docs/CURRENT_RELEASE_STATE.md`](docs/CURRENT_RELEASE_STATE.md) 与 [`docs/RUNTIME_LANE_AUTHORITY.md`](docs/RUNTIME_LANE_AUTHORITY.md) | 记录受控运行证据；生产判断仍需 Release Flow 实时证据。 |
+
 ## 当前源码与归档边界
 
 当前本地源码入口固定为：
@@ -48,14 +84,8 @@ runbook、dry-run、明确 approval、验证和 rollback。
 D:\Projects\proxy-gateway-minimal
 ```
 
-继续工作前先读：
-
-```text
-AGENTS.md
-docs/PROJECT_CONTEXT.md
-docs/README.md
-docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md
-```
+完成顶部权威阅读顺序后，涉及旧 checkout、归档或生成物时再补读
+[`docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md`](docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md)。
 
 不要把以下位置当作当前项目：
 
@@ -70,6 +100,15 @@ docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md
 旧 checkout、历史工作树、归档文档和生成输出只能用于对比和考古。要重新采用其中
 的代码或模板，必须先和当前源码 diff，再跑对应验证；涉及生产、节点、账号、订阅、
 支付、DNS、Nginx、systemd、SQLite 或云资源时重新按 Risk A 门禁处理。
+
+## 运行环境要求
+
+| 项目 | 要求 |
+| --- | --- |
+| Node.js | 以 `package.json` 的 `engines.node` 为准；当前支持 `20.x`、`22.x` 至 `26.x` 中列明的版本。 |
+| 包管理器 | 使用 `npm` 和仓库 `package-lock.json`；干净安装优先执行 `npm ci`。 |
+| Admin 依赖 | Admin workspace 独立安装，执行 `npm ci --prefix admin`。 |
+| 操作系统 | Windows 用于本地开发、预览和诊断；真实 Linux 目标必须重新执行目标机 preflight。 |
 
 ## 快速验证
 
@@ -409,19 +448,15 @@ npm run network:reset
 
 ## 文档入口
 
-优先阅读顺序：
-
-```text
-AGENTS.md
-docs/PROJECT_CONTEXT.md
-docs/README.md
-```
+恢复项目上下文时必须使用顶部的权威阅读顺序；下表只提供进一步导航。
 
 重要当前文档：
 
 | 文档 | 用途 |
 | --- | --- |
-| `docs/PROJECT_CONTEXT.md` | 当前状态和继续工作入口 |
+| `docs/CURRENT_RELEASE_STATE.md` | 当前已记录的发布与生产对账状态 |
+| `RELEASE_MANIFEST.md` | 源码、制品、发布、部署和运行状态身份模型 |
+| `docs/PROJECT_CONTEXT.md` | 项目定位、阶段、队列和继续工作入口 |
 | `docs/VALIDATION_BASELINE.md` | 验证命令矩阵 |
 | `docs/CONFIGURATION_OWNERSHIP_MATRIX.md` | 配置归属 |
 | `docs/PRODUCTION_INPUT_PACKAGE_FORMAT.md` | 生产输入包格式 |
