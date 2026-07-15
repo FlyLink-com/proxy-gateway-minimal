@@ -4,7 +4,8 @@
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
 > - Last updated: 2026-07-14, America/Los_Angeles
-> - Source inventory baseline: `master` at `e1beacc1`
+> - Source inventory baseline: `master` at `2413c101`
+> - Production/runtime evidence cutoff: `2026-07-11T13:03:40Z`; dated evidence only
 > - Production authority: None. This file does not deploy, promote, roll back,
 >   mutate runtime state, or replace live inventory and validation.
 
@@ -235,8 +236,8 @@ sidecar, and `artifact.json` agreed on source, release, file name, SHA-256, size
 and UTC creation time, and the manifest contained no downloaded absolute path.
 
 The latest verified `master` proof at this inventory cutoff is Release Artifact
-run `29153679403` for source
-`e1beacc15fdc35661077cd3387f3ba17a3966e1a`. It completed the control-plane,
+run `29381367545` for source
+`2413c101724df45579ebf4b9e0f306d32d9bb1af`. It completed the control-plane,
 Portal, and Admin artifact jobs. This is build evidence, not production
 promotion evidence.
 
@@ -278,29 +279,74 @@ approval and execution evidence.
 ## Current PR Mapping
 
 This is the current compact view of the ten most recently merged PRs at source
-baseline `e1beacc1`. The detailed
+baseline `2413c101`. The detailed
 `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md` is a frozen historical snapshot
 and is not appended with later PRs.
 
-| PR | Capability | Source commit | Release unit | Release assignment | Production state |
+| PR | Declared capability | Source commit | Release unit | Release assignment | Production state |
 | --- | --- | --- | --- | --- | --- |
-| #458 | `phase-2-project-state-reconciliation@v1` | `3013e8f9` | `none` | Source reconciliation; Vercel candidate remained staged | `not_applicable` |
-| #459 | `collector-error-provenance@v1` | `72e98096` | `control-plane-app` | Included in `phase2-control-plane-artifact-alignment-20260710-001` | `deployed` |
-| #460 | `protected-admin-collector-projection@v1` | `9aa1561e` | `control-plane-app` | Included in `phase2-control-plane-artifact-alignment-20260710-001` | `deployed` |
-| #461 | `release-ledger-reconciliation@v1` | `20f8345d` | `none` | Governance reconciliation only | `not_applicable` |
-| #463 | `cloudflare-promotion-boundary-reconciliation@v1` | `8c7ad033` | `none` | Provider boundary recorded; Issue #462 closed after proof | `not_applicable` |
-| #464 | `traffic-status-producers@v1` | `9bc03b41` | `control-plane-app` | Deployed in `phase2-control-plane-artifact-alignment-20260710-001`; Evidence Runtime activated separately | `deployed` |
-| #465 | `runtime-identity-sync-gate@v1` | `2a091d51` | `none` | Governance definition only | `not_applicable` |
-| #466 | `tuic-additive-map-repair@v1` | `8c769586` | `control-plane-app` | Promotion attempts rolled back; current production pointer unchanged | `not_deployed` |
-| #467 | `control-plane-promotion-health-gate@v1` | `4ae74602` | `control-plane-app` | Promotion attempt rolled back after identity gate rejection | `not_deployed` |
-| #468 | `control-plane-release-config-identity-gate@v1` | `e1beacc1` | `control-plane-app` | Clean validation and build proof only; no promotion | `not_deployed` |
+| #471 | `not_declared` | `23e86358` | `control-plane-app` | Credential lifecycle source only; no production promotion | `not_deployed` |
+| #473 | `not_declared` | `f3d62754` | `control-plane-app` | Cumulative accounting source only; no production promotion | `not_deployed` |
+| #474 | `trial-traffic-limit@v1` | `52741c3f` | `control-plane-app` | Reviewed source only; no production promotion | `not_deployed` |
+| #477 | `traffic-accounting-unresolved-provenance` | `d6775077` | `control-plane-app` | Reviewed source only; production remains unchanged | `not_deployed` |
+| #478 | `traffic-accounting-natural-observation-validator@v1` | `70ec822c` | `control-plane-app` | Offline validator source only; no production promotion | `not_deployed` |
+| #481 | `not_declared` | `2df971a4` | `none` | Test-only fixture stabilization | `not_applicable` |
+| #480 | `release-governance-calibration@v1` | `ab8b0ec2` | `none` | Governance calibration only | `not_applicable` |
+| #485 | `project-intelligence-layer@v1` | `20bb8257` | `none` | Derived project-intelligence documentation only | `not_applicable` |
+| #482 | `not_declared` | `06d69b2d` | `none` | Current source-governance reconciliation only | `not_applicable` |
+| #483 | `not_declared` | `2413c101` | `none` | CI lane routing and always-run diff checking only | `not_applicable` |
 
 The Phase 2 traffic chain begins with #441
 `collector-state-contract@v1`; #459 preserves redacted adapter provenance,
 #460 exposes the protected read model, and #464 adds protected status producers.
 Those capabilities are present in the documented production control-plane
-release at source `9bc03b41`. PRs #466 through #468 remain source-only; failed
-promotion attempts were rolled back and did not change the current pointer.
+release at source `9bc03b41`. Later control-plane changes in #466 through #468,
+#471, #473, #474, and #477 remain source-only; #478 is offline validation and
+#481 is test-only. None changes the dated production pointer.
+
+Open source candidates are outside this merged mapping. At this inventory
+cutoff, Draft PR #476 is the Issue #475 operations-foundation source/schema
+candidate. Draft PR #479 is at
+`03d744556be6785ac8c97dae2bc4fb79ae9e246f`, is behind `master`, has three
+unresolved non-outdated threads, and is not deployed. Its predecessor terminal
+receipt `issuecomment-4966594034` is blocked, the predecessor approval is
+consumed, and no durable successor Gate exists. Non-Draft PRs #486/#487/#488
+are dependency-update candidates. None is merged, artifact-approved, deployed,
+or production-approved.
+
+Issue #437 was reopened through the Risk C receipt
+`issuecomment-4976074286` because PR #482 had been recorded as its closer even
+though the PR body explicitly denied resolution. The blocked predecessor is
+not rewritten as successful, and the four checks from PR #479's old head are
+not current-`master` integration evidence.
+
+## Current Source Governance Boundary
+
+PR #482 merged as `06d69b2da07a50322a260bd08f160febaf7b6a7d`; PR #483
+merged as `2413c101724df45579ebf4b9e0f306d32d9bb1af`. PR #483 routes
+docs-only and code changes separately and always runs diff checking while
+retaining one stable required `Validate` context. The observed repository has
+18 remote branches, five open PRs (Draft #476/#479 and non-Draft
+#486/#487/#488), and five open Issues (#437/#438/#439/#440/#475).
+Exact-`master` runs are CI
+`29381367549` success, Release Artifact `29381367545` success, CodeQL
+`29381507931` success, and Cloudflare workflow `29381367553` success for
+build/verification/dry-run with deploy skipped.
+
+Ruleset `18935716` strictly requires `Validate`, requires zero approvals, and
+does not require review-thread resolution. Six environments exist; only
+`artifact-publication` has a branch policy, and none has reviewer enforcement.
+GitHub reports 39 open code-scanning alerts (2 critical, 36 high, 1 medium), 3
+open Dependabot alerts (2 high, 1 low), and 0 open secret-scanning alerts.
+Successful CodeQL execution does not resolve alerts or prove exploitability.
+
+The next sequence is: establish a durable successor Gate on #437 for PR #479;
+complete PR #479 remediation, current-`master` integration, exact-head checks,
+formal review, Ready, and merge through independent approvals; implement the
+Gate ledger/validator, stable CI contexts plus settings Gate, durable artifact
+retention/binding, and minimal organization/runtime-evidence model through
+separate PRs; only then establish independent Artifact and Risk A
+production-alignment Gates.
 
 No new release is declared `ready` or `deployed` by this manifest. A source-only
 PR may say that deployment is not applicable; that statement is not a Deploy
