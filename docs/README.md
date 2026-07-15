@@ -2,6 +2,16 @@
 
 Last updated: 2026-07-14, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: documentation_navigation
+  superseded_by: null
+  last_verified_at: 2026-07-15
+  production_authority: false
+```
+
 Use this file as the first navigation point for project documentation. It
 classifies current source-of-truth docs, active runbooks, execution records,
 and compact archive pointers. It does not authorize production, AWS, DNS, Nginx,
@@ -15,6 +25,26 @@ Before importing anything from old local checkouts, worktrees, archive
 directories, generated artifacts, or release packages, read
 `docs/CURRENT_SOURCE_AND_ARCHIVE_BOUNDARY.md` and keep current source,
 historical reference, and runtime material separated.
+
+## Document Metadata Contract
+
+Canonical document entrypoints use one top-level `document_metadata` YAML
+block with these fields:
+
+| Field | Allowed value or format | Meaning |
+| --- | --- | --- |
+| `doc_type` | `canonical`, `operational`, or `evidence` | The document's governance role, independent of its directory. |
+| `lifecycle` | `active`, `deprecated`, or `historical` | The document's current lifecycle state. |
+| `authority_scope` | Stable snake-case domain identifier | The domain for which an active canonical document is authoritative. |
+| `superseded_by` | Repository path or `null` | Compatibility navigation to the replacement document. |
+| `last_verified_at` | `YYYY-MM-DD` | Date this metadata assignment was verified; it does not refresh source, deployment, runtime, or production evidence cutoffs in the document body. |
+| `production_authority` | Boolean; default `false` | Whether the document can establish production state. Documentation Lane documents remain `false`; production authority belongs to Release Flow evidence. |
+
+For this first normalization slice, the block is required only on the canonical
+entrypoints named by the authority inventory. Absence on other documents is not
+a lifecycle or validity decision. An active canonical `authority_scope` should
+be unique, but this PR adds no validator, CI gate, approval state, file move, or
+directory restructure.
 
 ## Project Landing Pages
 

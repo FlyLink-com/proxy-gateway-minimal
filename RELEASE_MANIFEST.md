@@ -1,5 +1,15 @@
 # Release Manifest
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: release_traceability
+  superseded_by: null
+  last_verified_at: 2026-07-15
+  production_authority: false
+```
+
 > Status:
 > - Type: Active source-to-production traceability baseline
 > - Risk: C
