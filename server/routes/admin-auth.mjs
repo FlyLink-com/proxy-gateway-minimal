@@ -1,4 +1,8 @@
 import { Router } from "express";
+import { rateLimit } from "express-rate-limit";
+
+const ADMIN_AUTH_ATTEMPT_WINDOW_MS = 60_000;
+const ADMIN_AUTH_ATTEMPT_MAX = 10;
 
 function sendAdminAuthError(res, error) {
   if (error.code === "invalid_admin_login") {
@@ -36,6 +40,20 @@ export const ADMIN_AUTH_PUBLIC_PATHS = [
 export function adminAuthRoutes(state, options = {}) {
   const router = Router();
   const auth = options.adminAuth || state.platform?.adminAuth;
+  const loginAttemptRateLimit = rateLimit({
+    windowMs: ADMIN_AUTH_ATTEMPT_WINDOW_MS,
+    limit: ADMIN_AUTH_ATTEMPT_MAX,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "Too Many Requests" }
+  });
+  const totpAttemptRateLimit = rateLimit({
+    windowMs: ADMIN_AUTH_ATTEMPT_WINDOW_MS,
+    limit: ADMIN_AUTH_ATTEMPT_MAX,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    message: { error: "Too Many Requests" }
+  });
 
   router.get("/api/admin-auth/session", (req, res) => {
     try {
@@ -69,7 +87,7 @@ export function adminAuthRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/admin-auth/login", (req, res) => {
+  router.post("/api/admin-auth/login", loginAttemptRateLimit, (req, res) => {
     try {
       const result = auth.login({
         operatorRef: req.body?.operatorRef,
@@ -81,7 +99,7 @@ export function adminAuthRoutes(state, options = {}) {
     }
   });
 
-  router.post("/api/admin-auth/totp/verify", (req, res) => {
+  router.post("/api/admin-auth/totp/verify", totpAttemptRateLimit, (req, res) => {
     try {
       const result = auth.verifyTotp({
         challengeRef: req.body?.challengeRef,
