@@ -3,12 +3,13 @@
 > Status:
 > - Type: Current documented release snapshot
 > - Version management baseline: `v3` artifact and runtime-identity foundation
-> - Source evidence baseline: `e1beacc15fdc35661077cd3387f3ba17a3966e1a` (PR #468), before this reconciliation change
+> - Source evidence baseline: `20bb8257513153de7d5f75d45de7b748ceea6438` (PR #485)
 > - Static artifact baseline: `18807285` (PR #452)
 > - Historical v2 baseline: `4fbe0222` (PR #445)
-> - Updated: 2026-07-11, America/Los_Angeles
-> - Evidence cutoff: GitHub and Vercel read-only inventory through the #468 merge, plus validated Issue #437 production execution records
-> - Live verification: no new production-host inventory was performed by this C-tier reconciliation
+> - Updated: 2026-07-14, America/Los_Angeles
+> - Source evidence cutoff: GitHub read-only inventory through `master@20bb8257513153de7d5f75d45de7b748ceea6438` on 2026-07-14
+> - Production/runtime evidence cutoff: `2026-07-11T13:03:40Z`; the existing validated Issue #437 execution records remain dated evidence
+> - Live verification: no fresh live production or provider inventory was performed by this C-tier reconciliation
 > - Execution authority: None
 
 Read this file for the latest repository-backed release identity before reading
@@ -41,8 +42,8 @@ Artifact Manifest v1 has build-time coverage for three release units:
 | `admin-static` | Tracked | The Admin job builds and verifies `admin/dist`, then emits a ZIP, checksum, and `artifact.json`. |
 
 The latest successful `master` build proof is Release Artifact run
-`29153679403` for source
-`e1beacc15fdc35661077cd3387f3ba17a3966e1a`. It completed the current
+`29346424645` for source
+`20bb8257513153de7d5f75d45de7b748ceea6438`. It completed the current
 control-plane, Portal, and Admin artifact jobs. This is build evidence only; it
 does not establish approval, deployment, or production reconciliation.
 
@@ -117,7 +118,7 @@ identity remains dated Issue #462 evidence, not a fresh live claim.
 ## Source And Production Drift
 
 The documented production control-plane source `9bc03b41` is an ancestor of
-current `master` at `e1beacc1`. Production and source state differ intentionally:
+current `master` at `20bb8257`. Production and source state differ intentionally:
 
 | PR | Capability | Release unit | State |
 | --- | --- | --- | --- |
@@ -126,25 +127,43 @@ current `master` at `e1beacc1`. Production and source state differ intentionally
 | #466 | Additive-only TUIC map repair capability | `control-plane-app` | `not_deployed`; alignment attempts rolled back |
 | #467 | Condition-driven promotion health gate | `control-plane-app` | `not_deployed`; promotion attempt rolled back after identity rejection |
 | #468 | Protected release-config assembly and identity gate | `control-plane-app` | `not_deployed`; clean validation and build evidence only |
+| #469, #470, #472, #480, #485 | Release-state, infrastructure-access, commercial-model, release-governance, and project-intelligence records | `none` | `not_applicable`; source governance only |
+| #471, #473, #474, #477 | Credential lifecycle, cumulative accounting, trial-limit, and unresolved-provenance changes | `control-plane-app` | `not_deployed`; reviewed source only |
+| #478 | Offline natural-observation validator | `control-plane-app` | `not_deployed`; offline validator source only |
+| #481 | Material-handoff preflight fixture stabilization | `none` | `not_applicable`; test-only change |
 
 Source merge, clean validation, and successful artifact workflows do not change
 the production pointer. Failed promotion attempts are preserved as execution
 evidence and are not reclassified as deployment success.
 
+At this source inventory cutoff, seven PRs remain open and are not part of
+`master`. Draft PR #476 is the Issue #475 operations-foundation source/schema
+candidate. Draft PR #479 is not deployed, its identity gate remains pending,
+and terminal receipt `issuecomment-4966594034` is blocked with the prior
+approval consumed; no durable successor Gate exists. Draft PRs #482 and #483
+are source-governance reconciliation and CI-lane candidates. Non-Draft PRs #486,
+#487, and #488 are dependency-update candidates. None of these open PRs is
+merged, artifact-approved, deployed, or production-approved.
+
 ## Phase 2 Source State
 
-- #437 Traffic Accounting is the only active implementation Epic. Collector
-  state/provenance/projection, protected producers, Evidence Runtime activation,
-  read-only reconciliation, and the Identity Gate are complete. Identity sync
-  remains degraded (`missing=2`, `stale=19` at the approved observation), the
-  additive repair capability is source-only, and `map_apply` has not started.
-  Admin UI, accounting influence, quota influence, and automation remain
-  deferred.
+- #437 Traffic Accounting remains the primary implementation Epic. Source now
+  includes the reviewed credential-lifecycle, cumulative-accounting,
+  unresolved-provenance, and offline natural-observation work through #478.
+  The dated production observation remains unchanged: identity sync is degraded
+  (`missing=2`, `stale=19`), and `map_apply` has not started. Draft PR #479 is
+  blocked at terminal receipt `issuecomment-4966594034`; no durable successor
+  Gate exists. Admin UI, accounting influence, quota influence, and automation
+  remain deferred.
 - #438 Portal Lifecycle is queued after traffic-state semantics stabilize.
-- #439 Commercial Foundation is queued and must keep billing and AppsFlyer live
-  activation disabled.
+- #439 Commercial Foundation remains queued. PR #472 records the v1 package
+  model and PR #474 adds a source-only trial-limit guard; billing and AppsFlyer
+  live activation remain disabled.
 - #440 Code Boundary Cleanup is an opportunistic guardrail, not a broad
   refactor.
+- #475 Operations Foundation is a separate open source/schema lane. Draft PR
+  #476 is not deployed and does not authorize production schema initialization,
+  provider access, or runtime mutation.
 - #457 is closed after real master merges proved staged Vercel deployment
   behavior without moving the public custom aliases.
 - #462 is closed after a reviewed merge proved version upload without active
@@ -153,13 +172,18 @@ evidence and are not reclassified as deployment success.
 ## Evidence
 
 - `RELEASE_MANIFEST.md`
-- GitHub CI run `29153679418`
-- GitHub Release Artifact run `29153679403`
+- GitHub CI run `29346424433`
+- GitHub Release Artifact run `29346424645`
+- GitHub CodeQL run `29346423889`
+- GitHub Deploy Cloudflare Site run `29153679412` (last observed workflow run)
 - GitHub deployments `5389897330` and `5403913679`
 - Closed GitHub Issue #457 inventory and execution comments
 - Closed GitHub Issue #462 inventory, provider-gate, and merge-proof comments
-- GitHub Issue #437 deployment, Evidence Runtime, reconciliation, retention
-  inventory, and rollback evidence through PR #468
+- GitHub Issue #437 deployment, Evidence Runtime, reconciliation, retention,
+  rollback, and source-only follow-up evidence through PR #479
+- Open GitHub Issue #475 and Draft PR #476 operations-foundation source/schema
+  evidence
+- Merged GitHub PR #485 project-intelligence documentation evidence
 - `docs/RECENT_PR_CAPABILITY_MAP_2026_07_09.md`
 - `docs/production-replacement-records/2026-07-09-traffic-usage-xray-idle-observable-backend-deploy-execution.md`
 - `docs/production-replacement-records/2026-07-09-japan-traffic-runtime-config-restore-execution.md`
