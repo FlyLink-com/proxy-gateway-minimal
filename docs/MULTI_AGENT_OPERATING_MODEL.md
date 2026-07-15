@@ -150,8 +150,11 @@ The lead agent must verify both heavyweight lanes before claiming completion:
 
 ```text
 Subscription Control Platform Agent output:
-  check against docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md
+  check against docs/SUBSCRIPTION_CONTROL_EDGE_ARCHITECTURE.md
   check against docs/PROJECT_CONTEXT.md and project-state/current.json
+  check current lane selection against docs/RUNTIME_LANE_AUTHORITY.md
+  use docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md only for historical
+    compatibility or decision archaeology
   confirm no runtime authority was implied by repo-only work
 
 Channel Technical MVP Agent output:

@@ -83,15 +83,18 @@ secrets copied: none
 cleanup: required after every run
 ```
 
-The target bootstrap and validation sequence lives in
-`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`.
+The former Aliyun/local-CI bootstrap sequence is preserved in
+`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` as historical evidence. Current
+manual-validation boundaries are defined by this document and
+`docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md`; the historical plan does not
+select a current CI, staging, or production target.
 
-Current target read-only inventory:
+Historical target read-only inventory from 2026-05-26:
 
 - `docs/production-replacement-records/2026-05-26-local-linux-ci-readonly-inventory.md`
 - `docs/production-replacement-records/2026-05-26-local-linux-ci-bootstrap-validation.md`
 
-Current target status:
+Historical target status recorded on 2026-05-26:
 
 ```text
 Host: hp-server
@@ -103,7 +106,7 @@ Node.js 22: v22.22.3, user-local under ~/.local/ci-node/
 npm: 10.9.8
 Current host reality: operator-lab HP server, not a sterile CI appliance
 Latest validation: archive-based manual CI passed for commit 4dacd1edf0b179cea38654de4cda2fd845c6d922
-Next gate: Aliyun subscription-control candidate preparation approval; Aliyun CI cleanup is completed and HP is the manual CI lane
+Next gate recorded at that time: Aliyun subscription-control candidate preparation approval; Aliyun CI cleanup was completed and HP was the manual CI lane
 ```
 
 Historical bootstrap approval phrase used on 2026-05-26:

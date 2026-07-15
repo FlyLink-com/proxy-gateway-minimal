@@ -155,18 +155,23 @@ Operator Lab:
 ```text
 docs/DOMAIN_UNIT_BOUNDARIES.md
 docs/PROJECT_CONTEXT.md
+docs/CURRENT_RELEASE_STATE.md
 docs/PROJECT_OPERATING_MODEL.md
-docs/DEPLOYMENT_FLOW.md
-docs/PRODUCTION_DR.md
-docs/PRODUCTION_REPLACEMENT.md
+docs/RUNTIME_LANE_AUTHORITY.md
 docs/PRODUCTION_EDGE_FLEET.md
-docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md
 docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md
 docs/production-replacement-records/*
 docs/production-incident-records/*
 docs/domain-implementation-records/*
 docs/server-edge-mesh-records/*
 ```
+
+Historical compatibility evidence remains available in
+`docs/DEPLOYMENT_FLOW.md`, `docs/PRODUCTION_DR.md`,
+`docs/PRODUCTION_REPLACEMENT.md`, and
+`docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md`. Those documents are not current
+repository anchors, do not select a production target, and carry no execution
+authority.
 
 ## Risk And Validation
 

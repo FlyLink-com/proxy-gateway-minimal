@@ -168,8 +168,8 @@ Production Operations:
 docs/DOMAIN_UNIT_BOUNDARIES.md
 docs/VALIDATION_BASELINE.md
 docs/CI_MANUAL_VALIDATION.md
-docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md
-docs/DEPLOYMENT_FLOW.md
+docs/LIGHTWEIGHT_OPERATING_DEV_ENVIRONMENT.md
+docs/GITHUB_DEPLOYMENT_RUNBOOK.md
 .github/workflows/ci.yml
 package.json
 admin/package.json

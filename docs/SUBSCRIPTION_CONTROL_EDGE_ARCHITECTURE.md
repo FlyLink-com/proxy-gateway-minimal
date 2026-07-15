@@ -410,6 +410,9 @@ docs/PROJECT_TOPOLOGY.md:
 docs/PROJECT_OPERATING_MODEL.md:
   source-of-truth, risk, and lane rules
 
+docs/PROJECT_CONTEXT.md and docs/RUNTIME_LANE_AUTHORITY.md:
+  current control-plane direction and current/staging/historical lane selection
+
 docs/PRODUCTION_EDGE_FLEET.md:
   provider-neutral edge slot planning
 
@@ -417,11 +420,12 @@ docs/SUBSCRIPTION_CONTROL_PLANE_NEW_SERVER_RUNBOOK.md:
   fallback clean new-server candidate gates for `sub-control-a`
 
 docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md:
-  current target split for Aliyun control, local Linux CI, and clean edge nodes
+  historical former split for Aliyun control, local Linux CI, and clean edge
+  nodes; no current lane authority
 
 docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md:
-  latest business split: Aliyun user management / subscription distribution,
-  HP validation/lab, and controlled retirement of other nodes
+  historical former business split for Aliyun user management / subscription
+  distribution, HP validation/lab, and controlled retirement of other nodes
 
 docs/SERVER_EDGE_MESH_DESIGN.md:
   private edge management / recovery plane
