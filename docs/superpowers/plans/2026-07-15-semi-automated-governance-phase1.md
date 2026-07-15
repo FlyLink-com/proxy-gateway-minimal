@@ -1,5 +1,13 @@
 # Semi-Automated Governance Phase 1 Implementation Plan
 
+> **Successor status (effective after independent review and merge):** This
+> merged PR #500 roadmap is superseded for execution by
+> `docs/superpowers/plans/2026-07-15-governed-repair-framework-implementation.md`.
+> Its completed publication history remains valid, but Tasks 2-9 below must
+> not be executed as current authority. The successor plan reconciles this
+> roadmap with the frozen Governed Repair Framework design, PR #499's actual
+> candidate surfaces, and the no-write Phase 1 boundary.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Reduce Operator interruptions by turning evidence-complete Risk B/C failures into attributable, policy-routed, provenance-bound repair proposals and, only after a successful shadow period, permit one narrowly bounded Risk C read-only transport recovery.
