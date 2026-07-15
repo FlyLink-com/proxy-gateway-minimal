@@ -131,6 +131,7 @@
     "better-sqlite3": "^12.10.0",
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
+    "express-rate-limit": "8.5.2",
     "node-fetch": "^3.3.2",
     "socks": "^2.8.9",
     "socks-proxy-agent": "^10.0.0"
