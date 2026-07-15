@@ -2327,66 +2327,131 @@ test("refresh rejects duplicate fanout channels with conflicting applied and pen
   assert.equal(harness.notificationCalls.length, 0);
 });
 
-test("refresh rejects duplicate pending reports for the same fanout channel", () => {
-  const harness = refreshStateMachineHarness({
-    requestId: "pareq_refresh_duplicate_pending_channel_1",
-    refreshLifecycleResult: {
-      ok: true,
-      mutation: false,
-      reports: [
-        {
-          channelRef: "channel-aliyun-a-tuic",
-          ok: true,
-          runtimeStatus: "pending",
-          mutation: false,
-          nextAction: "complete_data_plane_handoff"
-        },
-        {
-          channelRef: "channel-aliyun-a-tuic",
-          ok: true,
-          runtimeStatus: "pending",
-          mutation: false,
-          nextAction: "complete_data_plane_handoff"
-        }
-      ],
-      redacted: true
+test("refresh compensates identified pending fanout despite duplicate or ambiguous siblings", () => {
+  const pendingReport = {
+    channelRef: "channel-aliyun-a-tuic",
+    ok: true,
+    runtimeStatus: "pending",
+    mutation: false,
+    nextAction: "complete_data_plane_handoff"
+  };
+  const ambiguousReport = {
+    channelRef: "channel-sgp-a-hy2",
+    ok: true,
+    runtimeStatus: "pending",
+    mutation: false,
+    nextAction: "review_apply_gate"
+  };
+  const scenarios = [
+    { name: "duplicate", reports: [pendingReport, pendingReport] },
+    { name: "pending-first", reports: [pendingReport, ambiguousReport] },
+    { name: "ambiguous-first", reports: [ambiguousReport, pendingReport] }
+  ];
+
+  const observations = scenarios.map(({ name, reports }) => {
+    const requestId = `pareq_refresh_pending_fanout_${name}`;
+    const harness = refreshStateMachineHarness({
+      requestId,
+      refreshLifecycleResult: {
+        ok: true,
+        mutation: false,
+        reports,
+        redacted: true
+      }
+    });
+    const [before] = harness.requests.listEdgeCredentialOrders();
+    const beforeRequest = harness.requests.getRequest(requestId);
+    let errorCode = "none";
+
+    try {
+      harness.requests.refreshSubscription({
+        portalUserRef: "user_safe_ref",
+        requestRef: requestId,
+        clientTarget: "karing"
+      });
+    } catch (error) {
+      errorCode = error?.code || "unknown";
     }
+
+    const [after] = harness.requests.listEdgeCredentialOrders();
+    const restored = harness.requests.getRequest(requestId);
+    return {
+      name,
+      errorCode,
+      lifecycleReasons: harness.lifecycleReasons,
+      notificationReasons: harness.notificationCalls.map(({ reason }) => reason),
+      stateRestored: (
+        after.edgeMaterialDigest === before.edgeMaterialDigest
+        && restored.clientTarget === beforeRequest.clientTarget
+        && JSON.stringify(restored.event) === JSON.stringify(beforeRequest.event)
+      )
+    };
   });
-  const [before] = harness.requests.listEdgeCredentialOrders();
 
-  assert.throws(() => harness.requests.refreshSubscription({
-    portalUserRef: "user_safe_ref",
-    requestRef: "pareq_refresh_duplicate_pending_channel_1"
-  }), { code: "subscription_refresh_runtime_enforcement_pending" });
-
-  const [after] = harness.requests.listEdgeCredentialOrders();
-  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
-  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed"]);
-  assert.equal(harness.notificationCalls.length, 0);
+  assert.deepEqual(observations, scenarios.map(({ name }) => ({
+    name,
+    errorCode: "subscription_refresh_runtime_enforcement_pending",
+    lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
+    notificationReasons: [],
+    stateRestored: true
+  })));
 });
 
-test("refresh rejects direct remote pending evidence without explicit top-level success", () => {
-  const harness = refreshStateMachineHarness({
-    requestId: "pareq_refresh_pending_without_top_ok_1",
-    refreshLifecycleResult: {
-      channelRef: "channel-aliyun-a-tuic",
-      mutation: false,
-      runtimeReceipt: { status: "pending" },
-      nextAction: "complete_data_plane_handoff",
-      redacted: true
+test("refresh compensates direct remote pending evidence despite incomplete top-level success", () => {
+  const scenarios = [
+    { name: "missing-ok", topLevel: {}, expectedError: "subscription_refresh_runtime_enforcement_pending" },
+    { name: "false-ok", topLevel: { ok: false }, expectedError: "edge_lifecycle_failed" }
+  ];
+
+  const observations = scenarios.map(({ name, topLevel }) => {
+    const requestId = `pareq_refresh_pending_${name}`;
+    const harness = refreshStateMachineHarness({
+      requestId,
+      refreshLifecycleResult: {
+        ...topLevel,
+        channelRef: "channel-aliyun-a-tuic",
+        mutation: false,
+        runtimeReceipt: { status: "pending" },
+        nextAction: "complete_data_plane_handoff",
+        redacted: true
+      }
+    });
+    const [before] = harness.requests.listEdgeCredentialOrders();
+    const beforeRequest = harness.requests.getRequest(requestId);
+    let errorCode = "none";
+
+    try {
+      harness.requests.refreshSubscription({
+        portalUserRef: "user_safe_ref",
+        requestRef: requestId,
+        clientTarget: "karing"
+      });
+    } catch (error) {
+      errorCode = error?.code || "unknown";
     }
+
+    const [after] = harness.requests.listEdgeCredentialOrders();
+    const restored = harness.requests.getRequest(requestId);
+    return {
+      name,
+      errorCode,
+      lifecycleReasons: harness.lifecycleReasons,
+      notificationReasons: harness.notificationCalls.map(({ reason }) => reason),
+      stateRestored: (
+        after.edgeMaterialDigest === before.edgeMaterialDigest
+        && restored.clientTarget === beforeRequest.clientTarget
+        && JSON.stringify(restored.event) === JSON.stringify(beforeRequest.event)
+      )
+    };
   });
-  const [before] = harness.requests.listEdgeCredentialOrders();
 
-  assert.throws(() => harness.requests.refreshSubscription({
-    portalUserRef: "user_safe_ref",
-    requestRef: "pareq_refresh_pending_without_top_ok_1"
-  }), { code: "subscription_refresh_runtime_enforcement_pending" });
-
-  const [after] = harness.requests.listEdgeCredentialOrders();
-  assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
-  assert.equal(harness.notificationCalls.length, 0);
-  assert.deepEqual(harness.lifecycleReasons, ["order_delivered", "order_refreshed"]);
+  assert.deepEqual(observations, scenarios.map(({ name, expectedError }) => ({
+    name,
+    errorCode: expectedError,
+    lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
+    notificationReasons: [],
+    stateRestored: true
+  })));
 });
 
 test("refresh rejects fanout evidence without explicit top-level success and compensates child mutation", () => {
@@ -2740,6 +2805,13 @@ test("refresh compensates pending fanout children when a sibling fails without m
     mutation: false,
     nextAction: "review_runtime_apply_receipt"
   };
+  const ambiguousReport = {
+    channelRef: failedChannelRef,
+    ok: true,
+    runtimeStatus: "pending",
+    mutation: false,
+    nextAction: "review_apply_gate"
+  };
   const rollbackPendingResult = {
     ok: true,
     channelRef: pendingChannelRef,
@@ -2832,7 +2904,53 @@ test("refresh compensates pending fanout children when a sibling fails without m
         notifications: [],
         redacted: true
       }
-    })
+    }),
+    malformedRollbackEvidence: [
+      {
+        name: "failed-pending-first",
+        result: {
+          ok: false,
+          mutation: false,
+          reports: [pendingReport, failedReport],
+          redacted: true
+        }
+      },
+      {
+        name: "failed-failed-first",
+        result: {
+          ok: false,
+          mutation: false,
+          reports: [failedReport, pendingReport],
+          redacted: true
+        }
+      },
+      {
+        name: "unavailable-pending-first",
+        result: {
+          ok: true,
+          mutation: false,
+          reports: [pendingReport, ambiguousReport],
+          redacted: true
+        }
+      },
+      {
+        name: "unavailable-ambiguous-first",
+        result: {
+          ok: true,
+          mutation: false,
+          reports: [ambiguousReport, pendingReport],
+          redacted: true
+        }
+      }
+    ].map((scenario) => ({
+      name: scenario.name,
+      observation: observe({
+        name: `${name}_${scenario.name}`,
+        reports,
+        rollbackLifecycleResult: scenario.result,
+        rollbackNotificationResult: exactRollbackNotification
+      })
+    }))
   }));
 
   assert.deepEqual(observations, ["pending-first", "failed-first"].map((name) => ({
@@ -2854,7 +2972,21 @@ test("refresh compensates pending fanout children when a sibling fails without m
       lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
       notificationReasons: ["order_refresh_rolled_back"],
       stateRestored: true
-    }
+    },
+    malformedRollbackEvidence: [
+      "failed-pending-first",
+      "failed-failed-first",
+      "unavailable-pending-first",
+      "unavailable-ambiguous-first"
+    ].map((scenarioName) => ({
+      name: scenarioName,
+      observation: {
+        errorCode: "subscription_refresh_rollback_failed",
+        lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
+        notificationReasons: ["order_refresh_rolled_back"],
+        stateRestored: true
+      }
+    }))
   })));
 });
 

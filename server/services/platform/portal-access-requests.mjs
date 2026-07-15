@@ -730,6 +730,7 @@ export function createPortalAccessRequestService(options = {}) {
   function refreshLifecycleDisposition(lifecycleResult) {
     const reports = Array.isArray(lifecycleResult?.reports) ? lifecycleResult.reports : [];
     const directStatus = String(lifecycleResult?.runtimeReceipt?.status || "").trim();
+    const directChannelRef = String(lifecycleResult?.channelRef || "").trim();
     const runtimeMayHaveMutated = lifecycleResult?.mutation === true
       || reports.some((report) => report?.mutation === true);
     const classifiedReports = reports.map((report) => {
@@ -750,21 +751,31 @@ export function createPortalAccessRequestService(options = {}) {
       }
       return "unavailable";
     });
-    const classifiedPendingChannelRefs = reports
+    const directPendingChannelRefs = (
+      directStatus === "pending"
+      && lifecycleResult?.mutation === false
+      && directChannelRef
+      && lifecycleResult?.nextAction === "complete_data_plane_handoff"
+    ) ? [directChannelRef] : [];
+    const childPendingChannelRefs = reports
       .filter((_, index) => classifiedReports[index] === "remote_pending")
       .map((report) => String(report.channelRef).trim());
-    const evidence = (disposition, pendingChannelRefs = []) => ({
+    const identifiedPendingChannelRefs = [...new Set([
+      ...directPendingChannelRefs,
+      ...childPendingChannelRefs
+    ])].sort((left, right) => left.localeCompare(right));
+    const evidence = (disposition) => ({
       disposition,
-      pendingChannelRefs: [...new Set(pendingChannelRefs)],
+      pendingChannelRefs: identifiedPendingChannelRefs,
       runtimeMayHaveMutated,
-      compensationRequired: runtimeMayHaveMutated || pendingChannelRefs.length > 0
+      compensationRequired: runtimeMayHaveMutated || identifiedPendingChannelRefs.length > 0
     });
     if (
       lifecycleResult?.ok === false
       || directStatus === "failed"
       || classifiedReports.includes("failed")
     ) {
-      return evidence("failed", classifiedPendingChannelRefs);
+      return evidence("failed");
     }
     if (
       lifecycleResult?.ok !== true
@@ -779,7 +790,6 @@ export function createPortalAccessRequestService(options = {}) {
     ) {
       return evidence("applied");
     }
-    const directChannelRef = String(lifecycleResult?.channelRef || "").trim();
     if (
       reports.length === 0
       && directStatus === "pending"
@@ -787,7 +797,7 @@ export function createPortalAccessRequestService(options = {}) {
       && directChannelRef
       && lifecycleResult?.nextAction === "complete_data_plane_handoff"
     ) {
-      return evidence("remote_pending", [directChannelRef]);
+      return evidence("remote_pending");
     }
     if (reports.length > 0) {
       const reportChannelRefs = reports.map((report) => String(report?.channelRef || "").trim());
@@ -808,9 +818,7 @@ export function createPortalAccessRequestService(options = {}) {
         classifiedReports.includes("remote_pending")
         && classifiedReports.every((disposition) => ["applied", "remote_pending"].includes(disposition))
       ) {
-        return evidence("remote_pending", reports
-          .filter((_, index) => classifiedReports[index] === "remote_pending")
-          .map((report) => String(report.channelRef).trim()));
+        return evidence("remote_pending");
       }
     }
     return evidence("unavailable");
