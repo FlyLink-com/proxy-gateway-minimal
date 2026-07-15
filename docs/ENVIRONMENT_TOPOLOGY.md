@@ -134,10 +134,13 @@ Use these terms consistently:
 | --- | --- |
 | Development | Local task branch or Codex worktree. Not deployed. |
 | Candidate / 待上线 | A reviewed commit or branch selected for staging verification. |
-| Staging | Candidate deployed to a non-production target, currently usually AWS, for endpoint and service checks. |
+| Staging | Candidate deployed to a separately approved non-production target for endpoint and service checks. Historical AWS records do not assign a current staging target. |
 | Production | Verified code/config deployed to the active Vultr control-plane or data-plane runtime through a Risk A gate. |
 
-Detailed promotion and rollback rules live in `docs/DEPLOYMENT_FLOW.md`.
+Select the current lane through `docs/RUNTIME_LANE_AUTHORITY.md`, then use the
+applicable current lane-specific runbook and a new exact Risk A gate.
+`docs/DEPLOYMENT_FLOW.md` is historical AWS evidence only; it is not the
+current promotion or rollback authority.
 
 Minimum production boundary checks must use the current approved domains and
 host inventory. Do not use historical AWS IP checks as current production

@@ -1,6 +1,6 @@
 # Documentation Index
 
-Last updated: 2026-07-11, America/Los_Angeles.
+Last updated: 2026-07-14, America/Los_Angeles.
 
 Use this file as the first navigation point for project documentation. It
 classifies current source-of-truth docs, active runbooks, execution records,
@@ -38,6 +38,38 @@ historical reference, and runtime material separated.
 | `docs/SOURCE_PRODUCTION_RECONCILIATION_2026_07_08.md` | Source-versus-production reconciliation for the July 8 frontend recovery, traffic-usage closeout carrier, stale PR closures, and archive queue. | Historical C-tier reconciliation evidence superseded as the current Git queue by `docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md`. | Read for the original July 8 carrier analysis and production/source mismatch background, not as the current PR queue. |
 | `docs/PR_CLOSEOUT_QUEUE_2026_07_08.md` | July 8 PR closeout queue after #394-#397 merged and #364/#381 were closed as superseded carrier branches. | Historical repo-only PR sequencing record superseded by `docs/GIT_DOCS_ARCHIVE_CLOSEOUT_2026_07_09.md`; no production, runtime, deploy, provider, credential, payment, or file-move authority by itself. | Read when tracing why #364/#381 were closed, not before starting new work from current `master`. |
 | `docs/RUNTIME_LANE_AUTHORITY.md` | Current versus staging versus historical runtime-lane authority boundary for Vultr Japan, Vultr Singapore, AWS staging, Aliyun records, canary records, retired nodes, and generated runtime packages. | Active runtime-lane authority index; no production, provider, runtime, deploy, secret, channel, or subscription authority by itself. | Read before importing old runtime notes, comparing node records, drafting a node/channel approval packet, or deciding whether a runtime lane is current authority. |
+
+### Current Governance Cutoff
+
+The 2026-07-14 source snapshot is
+`master@2413c101724df45579ebf4b9e0f306d32d9bb1af`, after PR #482
+(`06d69b2da07a50322a260bd08f160febaf7b6a7d`) and PR #483 merged. It has
+18 observed remote branches, five open PRs (Draft #476/#479 and non-Draft
+#486/#487/#488), and five open Issues (#437/#438/#439/#440/#475).
+
+Issue #437 was reopened by Risk C receipt `issuecomment-4976074286` because PR
+#482 had been recorded as its closer despite explicitly denying resolution.
+Draft PR #479 remains at `03d744556be6785ac8c97dae2bc4fb79ae9e246f`,
+behind `master`, with three unresolved non-outdated threads. Its predecessor
+receipt `issuecomment-4966594034` is blocked, its predecessor approval is
+consumed, no durable successor Gate exists, and it is not deployed. Old green
+checks are not current-`master` integration evidence.
+
+PR #483 added docs-only/code routing and always-run diff checking while keeping
+one stable required `Validate` context. Exact-`master` runs are CI
+`29381367549`, Release Artifact `29381367545`, and CodeQL `29381507931`, all
+successful; Cloudflare workflow `29381367553` completed build, verification,
+and dry-run successfully with deploy skipped. Ruleset `18935716` strictly
+requires `Validate`, zero approvals, and no review-thread resolution. Six
+environments exist; only `artifact-publication` has a branch policy, and none
+has reviewer enforcement. The source-security snapshot remains 39 code-scanning
+alerts (2 critical, 36 high, 1 medium), 3 Dependabot alerts (2 high, 1 low), and
+0 secret-scanning alerts; successful CodeQL execution does not resolve alerts
+or prove exploitability.
+
+This source-only reconciliation performs no production change or fresh live
+production inventory. The production/runtime evidence cutoff remains dated at
+`2026-07-11T13:03:40Z`.
 
 ## Goal Documents
 
@@ -108,6 +140,27 @@ historical reference, and runtime material separated.
 | `docs/CI_MANUAL_VALIDATION.md` | Manual CI validation host workflow; target direction is local Linux manual CI, with historical Aliyun manual CI facts retained until the transition is validated. | Active runbook, not staging or deploy approval. | Read before using a manual validation host for repo-level CI evidence. |
 | `docs/CLOUDFLARE_PUBLIC_SITE_CI.md` | Repository-only Cloudflare public static site CI boundary, pinned Wrangler dry-run command, and non-goals for keeping backend/control-plane/API/runtime work off Cloudflare. | Active CI boundary; no deploy, DNS, Cloudflare account, secret, or production authority. | Read before changing `wrangler.public-site.jsonc`, `admin/dist-site` public-site builds, GitHub public-site CI, or Cloudflare static-site deploy preparation. |
 
+## Project Intelligence Layer
+
+These documents provide a human-readable knowledge and orchestration layer.
+They reference the existing `project-state/*.json` mechanism and do not create
+a second machine-readable source of truth or any production authority. The
+authority/derivation matrix in `docs/project-map/ARCHITECTURE_MAP.md` governs
+conflicts; every document in this layer is an index or derived view.
+
+| Document | Purpose | Status | When to read |
+| --- | --- | --- | --- |
+| `docs/project-state/CURRENT_STATE.md` | Evidence-backed current view for project, milestone, mainline Issue, production/mutation boundary, validation, blockers, and next actions. | Active derived snapshot; drift-prone facts require current checks. | Read after the three required release/context documents when resuming the project or reconciling a derived view. |
+| `docs/project-state/MILESTONES.md` | Foundation, Governance, Runtime, and Commercial milestone map with goals, statuses, dependencies, acceptance criteria, and information gaps. | Active portfolio map; no release or execution authority. | Read before claiming a phase is active, complete, blocked, or ready for promotion. |
+| `docs/project-state/BLOCKERS.md` | Blocker template and evidence-backed coordination/information-gap records. | Active blocker format; no mutation authority. | Read before recording or closing a blocker. |
+| `docs/project-state/DECISIONS.md` | Decision template and confirmed long-term repository decisions with evidence paths. | Active decision register; the derived-layer decision was accepted through merged PR #485. | Read before changing project-state, architecture, gate, or workflow direction. |
+| `docs/project-map/DEPENDENCY_MAP.md` | Feature -> Issue -> PR -> Artifact -> Runtime relationship standard and verified partial examples. | Active mapping contract; not an execution graph. | Read when tracing task reason, blockers, dependencies, consumers, artifacts, or runtime evidence. |
+| `docs/project-map/ARCHITECTURE_MAP.md` | Control Plane, Data Plane, and Release Plane responsibilities and boundaries. | Active logical map; live runtime facts require separate verification. | Read before assigning a change to a plane or inferring deployment/runtime state. |
+| `docs/project-map/SOURCE_MAP.md` | Source responsibility, dependency, risk, and ownership-gap map for services, routes, frontend, runtime, and scripts. | Active source inventory at its stated head. | Read before selecting files or assigning module ownership. |
+| `docs/agent-model/ROLES.md` | Planner, Architect, Engineer, Reviewer, controller, and handoff boundaries aligned with the existing multi-agent model. | Active role contract; roles do not lower risk or grant authority. | Read before assigning or combining engineering roles. |
+| `docs/agent-model/WORKFLOW.md` | Issue-to-release workflow aligned with Risk A/B/C, Draft/Ready, validation, Deploy Note, and four release gates. | Active workflow contract; no Ready/merge/release authority. | Read before moving a task between workflow stages. |
+| `docs/agent-model/SESSION_PROTOCOL.md` | Context recovery, fact ledger, scope, sensitive-data, concurrency, handoff, and completion protocol. | Active AI session protocol; no automation or external integration. | Read at session start, resume, handoff, and completion. |
+
 ## Structured Project State
 
 | File | Purpose | Status | When to read |
@@ -124,7 +177,7 @@ Check structured state with `npm run project-state:check`.
 | --- | --- | --- | --- |
 | `docs/NETWORK_FORWARDING.md` | Local forwarding, PAC, Clash/Mihomo subscription forwarding, Admin tunnel, production runtime paths, and network test matrix. | Active architecture source of truth. | Read before network, proxy, node, or subscription-path changes. |
 | `docs/ENVIRONMENT_TOPOLOGY.md` | Local checkout, GitHub, branch roles, Vultr production roles, Cloudflare public-site boundary, AWS staging/DR role, and current topology. | Active topology reference. | Read before interpreting environment roles, provider boundaries, Vultr production authority, Cloudflare static-site scope, or AWS staging/DR identity. |
-| `docs/PROJECT_TOPOLOGY.md` | Current and target topology diagrams for production delivery, Local Edge Agent, private operator lab / HP Relay, server edge mesh, control/delivery/data planes, and work lanes. | Active architecture topology; no execution authority. | Read before aligning product direction, drawing architecture diagrams, or deciding whether work belongs to local agent, operator lab relay, server mesh, subscription delivery, or production ops. |
+| `docs/PROJECT_TOPOLOGY.md` | Mixed-age current/target topology diagrams for production delivery, Local Edge Agent, private operator lab / HP Relay, server edge mesh, control/delivery/data planes, and work lanes. | Active conceptual topology with stale 2026-06-03 Aliyun current-production wording; not current production authority. | Use for conceptual/history context only, then reconcile with `docs/PROJECT_CONTEXT.md`, `docs/CURRENT_RELEASE_STATE.md`, and fresh live evidence before current-state or production claims. |
 | `docs/ALIYUN_USER_SUBSCRIPTION_DISTRIBUTION_RUNBOOK.md` | Historical Aliyun user-management / subscription-distribution runbook retained for execution traceability and rollback archaeology. | Superseded historical Risk A runbook; no current control-plane authority. | Read only when auditing old Aliyun decisions, Aegis/promotion history, or compatibility with historical execution records. |
 | `docs/HP_PORTAL_VALIDATION_RUNBOOK.md` | HP private validation runbook for testing the user portal and subscription-control service seams in an Aliyun-like lab without production authority. | Active private-validation runbook; HP mutation remains Risk A and requires exact approval. | Read before copying builds to HP, creating test SQLite data, starting private portal validation services, or recording HP portal validation evidence. |
 | `docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md` | Historical plan for the former Aliyun control / local CI / node-retirement direction. | Superseded planning document; no current execution authority. | Read only when tracing why the Aliyun-first control-plane path was replaced. |
@@ -166,7 +219,7 @@ Check structured state with `npm run project-state:check`.
 
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
-| `docs/DEPLOYMENT_FLOW.md` | Development, PR, candidate, staging, production promotion, and rollback flow. | Active deployment flow. | Read before deployment, promotion, rollback, or candidate selection work. |
+| `docs/DEPLOYMENT_FLOW.md` | Historical AWS development, staging, promotion, and rollback evidence. | Historical AWS evidence (superseded); no current production-target authority. | Read only for AWS archaeology; use `docs/RUNTIME_LANE_AUTHORITY.md` for current target selection. Any provider action requires fresh live read-only inventory and a new exact Risk A gate. |
 | `docs/GITHUB_DEPLOYMENT_RUNBOOK.md` | GitHub-owned release artifact, Cloudflare static-site deploy, and production deploy dry-run boundaries. | Active CI/CD runbook; production host mutation remains separately gated. | Read before adding GitHub Actions deployment, Cloudflare publish, or production deploy dry-run/promotion workflows. |
 | `docs/NODE_IMAGE_PROVISIONING_RUNBOOK.md` | Provider-neutral no-secret machine image / snapshot / AMI runbook plus repo-only readiness summary and first-boot packet helpers for preparing repeatable data-plane nodes that activate through first-boot registration and receipt-gated rendering. | Active Risk A runbook with C-tier gate-preview helpers; no image creation, provider mutation, protected material injection, or traffic activation authority by itself. | Read before building reusable production node images, cloning data-plane software baselines, or creating a new image-based Vultr/AWS/Aliyun node. |
 | `docs/production-replacement-records/2026-06-13-aws-staging-node-image-readiness-validation.md` | AWS staging execution record for validating the no-secret node-image readiness and first-boot packet helper path with synthetic safe input. | Execution record; staging proof only, not production activation and not control-plane registration completion. | Read before claiming node-image readiness, preparing the control-plane node-registration closeout gate, or cloning a production-capable data-plane image. |
@@ -188,11 +241,11 @@ Check structured state with `npm run project-state:check`.
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
 | `docs/INFRASTRUCTURE_ACCESS_RULE.md` | Provider credential, exact-command, ephemeral process injection, redacted output, cleanup, and stopped-Gate rules for interactive or Agent-assisted infrastructure access. | Active governance rule; no provider credential, inventory, mutation, production, or runtime authority by itself. | Read before any Agent-assisted Vultr, AWS, Cloudflare, Vercel, DNS-provider, or other infrastructure control-plane access. |
-| `docs/PRODUCTION_DR.md` | Single-node production disaster recovery, hard-stop rules, read-only inventory, backup/restore, validation, and incident template. | Active Risk A runbook; does not authorize mutation by itself. | Read before incident recovery, backup/restore, or production DR action. |
-| `docs/PRODUCTION_REPLACEMENT.md` | Blue-green replacement gate: keep blue serving, create and validate green, decide cutover, preserve rollback. | Active Risk A runbook; does not authorize green creation by itself. | Read before planning a production replacement candidate. |
+| `docs/PRODUCTION_DR.md` | Historical single-node AWS disaster-recovery evidence, including hard stops, inventory, backup/restore, validation, and incident templates. | Historical AWS evidence (superseded); no current production-target authority. | Read only for AWS archaeology; use `docs/RUNTIME_LANE_AUTHORITY.md` for current target selection. Any provider action requires fresh live read-only inventory and a new exact Risk A gate. |
+| `docs/PRODUCTION_REPLACEMENT.md` | Historical AWS blue-green replacement evidence, including validation, cutover, and rollback gates. | Historical AWS evidence (superseded); no current production-target authority. | Read only for AWS archaeology; use `docs/RUNTIME_LANE_AUTHORITY.md` for current target selection. Any provider action requires fresh live read-only inventory and a new exact Risk A gate. |
 | `docs/PRODUCTION_EDGE_FLEET.md` | Provider-neutral production edge fleet plan for `prod-edge-a`, `prod-edge-b`, and future `prod-edge-c`, including the now-terminated AWS carrying instances and future clean-edge model. | Active Risk A planning document; no execution authority. | Read before preparing clean edge capacity, rebuilding a node slot, changing static subscription output, or preparing third-node standby materials. |
 | `ops/edge-node/README.md` | Provider-neutral repo-only build materials for the future `prod-edge-c` recovery slot. | Build-material reference; no execution authority and no secrets/data. | Read before preparing or reviewing third-node recovery build materials. |
-| `docs/PRODUCTION_CUTOVER_STRATEGY.md` | EIP, DNS/domain, and subscription/node-config cutover strategy decision. | Active decision record. | Read before choosing a traffic-cutover mechanism. |
+| `docs/PRODUCTION_CUTOVER_STRATEGY.md` | Historical AWS EIP, DNS/domain, and subscription/node-config cutover-strategy evidence. | Historical AWS evidence (superseded); no current production-target authority. | Read only for AWS archaeology; use `docs/RUNTIME_LANE_AUTHORITY.md` for current target selection. Any provider action requires fresh live read-only inventory and a new exact Risk A gate. |
 | `docs/DOMAIN_ROUTING_MATRIX.md` | Future unified-domain routing matrix for the Vercel-purchased brand domain, including hostnames, platform ownership, migration phases, and DNS/Admin hard stops. | Active planning document; no Vercel, DNS, production, runtime, deploy, secret, or Admin exposure authority. | Read before assigning the new root domain to public site, portal, subscription gateway, Admin console, API, preview, or status surfaces. |
 | `docs/DOMAIN_ABSTRACTION_PLAN.md` | Domain/DNS abstraction plan for subscription base URL and Shadowsocks node host. | Active planning document; no execution authority. | Read before DNS/domain implementation planning. |
 | `docs/DOMAIN_IMPLEMENTATION_RUNBOOK.md` | DNS/domain execution gates, AliDNS commands, HTTP/HTTPS validation, runtime config migration gates, client window, and rollback. | Active Risk A runbook; explicit approval still required before mutation. | Read before any DNS, Nginx, HTTPS, production config, or domain migration step. |

@@ -104,6 +104,7 @@
     "service:status": "node bin/gccgw.mjs service status",
     "test": "npm run test:server",
     "test:server": "node --test server/tests/*.test.mjs",
+    "test:ci-lanes": "node --test server/tests/ci-change-classifier.test.mjs server/tests/ci-workflow-contract.test.mjs server/tests/artifact-manifest.test.mjs",
     "agent:local": "node agent/local-edge-agent.mjs",
     "agent:production:once": "node agent/production-edge-agent.mjs",
     "pack:dry-run": "npm pack --dry-run",

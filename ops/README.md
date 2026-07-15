@@ -129,23 +129,20 @@ route when the operator explicitly passes `-AllowDirectRoute`.
 
 ## Environment Roles
 
-The current production MVP target is provider-neutral `prod-edge-a`
-(`13.215.156.159`, `i-0b7791340d3fedff5`). It is not a staging target.
-Legacy blue `47.129.247.102` (`i-004ab1c6c71d06bca`) is under retirement
-review only and should not be used as the current production reference.
+Current runtime-lane authority and target selection live in
+`docs/RUNTIME_LANE_AUTHORITY.md`. This README does not select a current
+production or staging target.
 
-Use `docs/DEPLOYMENT_FLOW.md` before promoting a candidate:
+The former AWS `prod-edge-a`, legacy-blue, stopped-instance, and candidate
+workflow references are historical provider context only. Do not use their
+identifiers or `docs/DEPLOYMENT_FLOW.md` as current target or promotion
+instructions. That deployment flow is preserved as historical AWS evidence.
 
-- Development happens on local `codex/<task>` or `feat/<feature>` branches.
-- Candidate / 待上线 means a reviewed commit selected for AWS validation.
-- Staging requires an explicitly assigned non-production AWS instance.
-- Production changes require a fresh SQLite backup, service checks, and public endpoint checks.
-
-The stopped `i-0589aac321172dd74` instance is historical until a separate ops change explicitly reassigns and verifies it as staging.
-
-Current staging target decision: create a clean staging instance when staging is needed. Do not start the stopped historical instance and call it staging as-is. See `docs/STAGING_TARGET_DECISION.md`.
-
-Clean staging provisioning steps, staging-only secret/data boundaries, validation, promotion gates, and cleanup rules live in `docs/STAGING_PROVISIONING.md`.
+If a future validation task proposes AWS staging, first complete fresh live
+read-only inventory and obtain a new exact Risk A gate that selects the target.
+Only then may `docs/STAGING_TARGET_DECISION.md` and
+`docs/STAGING_PROVISIONING.md` be used for the approved clean-staging scope;
+neither document makes an AWS target current by itself.
 
 ## Backup And Restore
 

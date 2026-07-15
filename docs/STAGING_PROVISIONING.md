@@ -1,14 +1,28 @@
 # Staging Provisioning Runbook
 
-Last updated: 2026-06-01, Asia/Shanghai.
+Last updated: 2026-07-14, America/Los_Angeles.
 
-This runbook turns the staging target decision into an operator checklist. It
-documents how to create, deploy, verify, stop, and destroy a clean staging AWS
-instance for `proxy-gateway-minimal`.
+> Status:
+> - Type: Active conditional runbook with historical AWS resource examples
+> - Risk: A
+> - Execution authority: None
+> - Production impact: None unless separately approved and executed
+> - Source of truth for: Ordered clean-staging steps after current target
+>   selection and complete exact Risk A approval
+>
+> **No current target or reusable resource identity is declared here.** The
+> AWS identifiers and values below are dated planning evidence. Fresh inventory
+> and the approved gate must replace them before any provider mutation.
 
-This document is not an approval to mutate AWS. Codex should stop at
-documentation, read-only checks, and PR preparation unless the operator gives
-one of the explicit approvals listed in `docs/STAGING_TARGET_DECISION.md`.
+This runbook turns an already approved staging target into an operator
+checklist for creating, deploying, verifying, stopping, and destroying a clean
+staging AWS instance for `proxy-gateway-minimal`.
+
+Before using any mutating step, select the current lane through
+`docs/RUNTIME_LANE_AUTHORITY.md`, complete fresh live read-only inventory under
+the applicable access rules, and obtain a complete exact Risk A gate. The path
+labels in `docs/STAGING_TARGET_DECISION.md` describe alternatives only; they do
+not constitute approval by themselves.
 
 ## Scope
 
@@ -61,15 +75,20 @@ aws ec2 describe-security-groups --region ap-southeast-1 --filters Name=vpc-id,V
 
 ### Mutating Operations
 
-The commands below create or change AWS resources. Do not run them unless the
-operator explicitly says:
+The commands below create or change AWS resources. Do not run them unless a
+complete exact Risk A gate has been durably approved and read back. That gate
+must bind the current target, exact allowed commands, candidate identity,
+sensitive-output boundary, validation, rollback, stop conditions, and forbidden
+actions.
+
+The following text is a path label only, not approval text:
 
 ```text
 Create a new clean staging instance
 ```
 
-The alternative approval for rebuilding the stopped historical node is recorded
-in `docs/STAGING_TARGET_DECISION.md`; it is not covered by this clean-instance
+Rebuilding the stopped historical node is a different path and requires its
+own complete exact Risk A gate. It is not covered by this clean-instance
 runbook.
 
 ## Preflight Check
@@ -80,23 +99,28 @@ service start, validation traffic, cleanup, stop, or destroy action. The
 preflight record is required to state:
 
 ```text
-Risk: A / read-only until explicit staging approval
+Risk: A / mutation forbidden until complete exact gate approval
 Mutation: none
 Candidate SHA and validation evidence: recorded
 Read-only AWS inventory and production-exclusion checks: verified
+Exact gate target and allowed commands: match fresh inventory
 Staging-only secret/data plan: recorded
 Secrets/customer data: not printed or copied into Git
 Cleanup/teardown owner: named
 ```
 
 If any preflight fact is stale, missing, or inconsistent with the staging
-approval phrase, stop before mutation and refresh the dry-run evidence.
+target or mutation boundary in the exact gate, stop before mutation and refresh
+the dry-run evidence.
 
 ## Resource Plan
 
-Use these values for the clean staging path:
+The following values are the dated 2026 planning snapshot. Do not use them as a
+current resource plan. Fresh read-only inventory and the complete exact Risk A
+gate must supply and bind every provider-specific value before execution; if
+any required value is absent or differs, stop before mutation.
 
-| Field | Value |
+| Field | Historical planning value |
 | --- | --- |
 | Region | `ap-southeast-1` |
 | AMI | `ami-08bf93219e21cea7a` |
@@ -112,7 +136,9 @@ Use these values for the clean staging path:
 | Security group name | `proxy-gateway-staging-sg-<YYYYMMDD>` |
 | Tags | `Project=proxy-gateway-minimal`, `Environment=staging`, `Role=pre-release`, `Owner=codex` |
 
-Required inbound rules:
+The following inbound rules are also a historical proposal. The exact gate
+must bind the current source ranges and allowed ports before any security-group
+mutation:
 
 | Port | Protocol | Source | Purpose |
 | --- | --- | --- | --- |
@@ -127,9 +153,9 @@ Never expose `3456/tcp` publicly. The console/API must remain bound to
 ## Dry-Run Checklist
 
 Complete this checklist before running any mutating AWS command. The dry-run
-stage is limited to local Git/GitHub checks, read-only AWS inventory, operator
-approval capture, and notes. It must not create, start, stop, terminate, tag, or
-modify AWS resources.
+stage is limited to local Git/GitHub checks, separately authorized read-only
+AWS inventory, complete exact gate capture, and notes. It must not create,
+start, stop, terminate, tag, or modify AWS resources.
 
 ### Candidate And Validation
 
@@ -223,8 +249,9 @@ Confirm:
 
 ### Operator Approval Gate
 
-Without explicit operator approval, stop after this dry-run checklist and PR
-preparation. Do not run commands such as:
+Without a complete exact Risk A gate whose target and commands match the fresh
+inventory, stop after this dry-run checklist and PR preparation. Do not run
+commands such as:
 
 ```text
 aws ec2 create-security-group
@@ -236,15 +263,15 @@ aws ec2 terminate-instances
 aws ec2 delete-security-group
 ```
 
-The approval phrase for this clean-instance path is:
+The path label for this clean-instance alternative is:
 
 ```text
 Create a new clean staging instance
 ```
 
-The historical stopped node is not covered by this approval phrase. Any reuse or
-rebuild of that node requires the separate approval described in
-`docs/STAGING_TARGET_DECISION.md`.
+This label is not an approval. The historical stopped node is not covered by
+this path, and any reuse or rebuild requires a separate complete exact Risk A
+gate under `docs/STAGING_TARGET_DECISION.md`.
 
 ### Secret And Data Boundary
 
@@ -268,12 +295,12 @@ Abort before any mutating command if any of these are true:
 - The local checkout has unrelated changes or the candidate SHA is unclear.
 - The PR head SHA and recorded candidate SHA do not match.
 - Required local validation or accepted CI-equivalent validation is missing.
-- A staging target already exists and no update/reuse path was approved.
+- A staging target already exists and no exact update/reuse gate was approved.
 - The command plan references the production instance, production security
   group, production `.env`, production SQLite database, or production node
   config.
-- The plan references the stopped historical instance without the separate
-  historical-node approval.
+- The plan references the stopped historical instance without a separate exact
+  historical-node gate.
 - Operator CIDR, VPC, subnet, AMI, key pair, or tags are unknown.
 - Any secret, token, subscription URL, or customer data would be copied from
   production into staging.
@@ -299,7 +326,11 @@ Production instance excluded:
 Historical stopped node excluded:
 Operator CIDR:
 Planned VPC / subnet / AMI / key pair:
-Approval phrase received:
+Exact Risk A gate ID:
+Durable approval and readback verified:
+Approved current target:
+Approved command boundary:
+Validation / rollback / stop / forbidden boundaries recorded:
 Secret boundary confirmed:
 SQLite boundary confirmed:
 Node config boundary confirmed:
