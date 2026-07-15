@@ -53,7 +53,7 @@ directory restructure.
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
 | `README.md` | Chinese project landing page for the current `gccgw` control plane, validation flow, `.env` closure, install/package gates, compatibility boundaries, and docs navigation. | Active entrypoint. | Read when onboarding Chinese-speaking operators or checking the current project entry surface. |
-| `README_EN.md` | English project landing page, quick start, topology summary, APIs, and source-of-truth pointer. | Active entrypoint. | Read when onboarding English-speaking collaborators. |
+| `README_EN.md` | English semantic mirror of `README.md`, with the same project position, status, reading order, commands, links, and governance boundaries. | Active mirrored entrypoint; semantic changes must remain aligned with `README.md`. | Read when onboarding English-speaking collaborators or verifying language-entry parity. |
 
 ## Subsystem Entry Points
 
@@ -350,18 +350,27 @@ For full chronological logs and raw execution facts, refer to the specific area 
 
 ## Reading Order
 
-For routine development:
+Complete the authoritative repository entry sequence before following
+task-specific navigation:
 
-1. `AGENTS.md`
-2. `docs/PROJECT_CONTEXT.md`
-3. The subsystem document listed above
+1. `docs/CURRENT_RELEASE_STATE.md`
+2. `RELEASE_MANIFEST.md`
+3. `docs/PROJECT_CONTEXT.md`
+4. `git status --short --branch`
+5. `docs/README.md`
+6. The subsystem README relevant to the task
 
-For production, AWS, DNS, Nginx, HTTPS, deploy, rollback, or node work:
+`AGENTS.md` defines repository task rules and always applies, but it does not
+replace the current-state reading order above.
 
-1. `AGENTS.md`
-2. `docs/PROJECT_CONTEXT.md`
-3. The relevant active Risk A runbook
-4. The latest relevant execution record, if one exists
+After completing these six steps:
+
+- routine development follows the development and validation guidance in the
+  task-relevant subsystem README; and
+- production, AWS, DNS, Nginx, HTTPS, deploy, rollback, or node work also
+  requires the relevant active Risk A runbook, the latest relevant execution
+  record when one exists, and the fresh live inventory required by the task
+  risk.
 
 Runbooks describe gates and commands, but they do not grant approval. Real
 production, AWS, DNS, Nginx, HTTPS, or cutover execution still requires a

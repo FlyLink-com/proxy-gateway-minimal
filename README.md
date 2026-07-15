@@ -475,7 +475,8 @@ npm run network:reset
 │   └── proxy-gateway.mjs      # 兼容 CLI
 ├── server/                    # Express app, routes, services, tests
 ├── admin/                     # Vite React Admin / portal / public site surfaces
-├── agent/                     # local edge / channel prototypes
+├── agent/                     # local edge / data-plane agent surfaces
+├── schemas/                   # portable versioned data contracts
 ├── config/                    # redacted local config templates
 ├── deployments/
 │   └── production-template/   # non-secret production input package template

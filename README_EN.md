@@ -513,7 +513,8 @@ Important current documents:
 │   └── proxy-gateway.mjs      # compatibility CLI
 ├── server/                    # Express app, routes, services, tests
 ├── admin/                     # Vite React Admin, Portal, and public-site surfaces
-├── agent/                     # local edge and channel prototypes
+├── agent/                     # local edge / data-plane agent surfaces
+├── schemas/                   # portable versioned data contracts
 ├── config/                    # redacted local configuration templates
 ├── deployments/
 │   └── production-template/   # non-secret production input package template
