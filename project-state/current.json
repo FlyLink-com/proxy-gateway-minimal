@@ -69,6 +69,10 @@
       482,
       483
     ],
+    "mergedPrs": {
+      "482": "06d69b2da07a50322a260bd08f160febaf7b6a7d",
+      "483": "2413c101724df45579ebf4b9e0f306d32d9bb1af"
+    },
     "openDraftPrs": [
       {
         "pr": 476,
