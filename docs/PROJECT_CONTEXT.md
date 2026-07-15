@@ -35,7 +35,9 @@ Use this order before any work:
 2. `RELEASE_MANIFEST.md`
 3. `docs/PROJECT_CONTEXT.md`
 4. `git status --short --branch`
-5. Live GitHub, deployment, or production inventory required by the task risk
+5. `docs/README.md`
+6. The subsystem README relevant to the task
+7. Live GitHub, deployment, or production inventory required by the task risk
 
 `project-state/*.json` is a compact coordination layer. It does not override
 live production evidence or authorize external mutation.

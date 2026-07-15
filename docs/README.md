@@ -53,7 +53,7 @@ directory restructure.
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
 | `README.md` | Chinese project landing page for the current `gccgw` control plane, validation flow, `.env` closure, install/package gates, compatibility boundaries, and docs navigation. | Active entrypoint. | Read when onboarding Chinese-speaking operators or checking the current project entry surface. |
-| `README_EN.md` | English project landing page, quick start, topology summary, APIs, and source-of-truth pointer. | Active entrypoint. | Read when onboarding English-speaking collaborators. |
+| `README_EN.md` | English semantic mirror of `README.md`, with the same project position, status, reading order, commands, links, and governance boundaries. | Active mirrored entrypoint; semantic changes must remain aligned with `README.md`. | Read when onboarding English-speaking collaborators or verifying language-entry parity. |
 
 ## Subsystem Entry Points
 
