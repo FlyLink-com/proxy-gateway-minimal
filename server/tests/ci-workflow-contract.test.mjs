@@ -52,6 +52,15 @@ test("CI keeps one stable Validate job, always checks the exact diff, and skips 
   assert.match(diffStep, /git cat-file -e "\$CI_DIFF_BASE\^\{commit\}"/);
   assert.match(diffStep, /git cat-file -e "\$CI_DIFF_HEAD\^\{commit\}"/);
   assert.match(diffStep, /git diff --check "\$range"/);
+
+  const authorityStepStart = validate.indexOf("- name: Check document authority");
+  assert.ok(authorityStepStart >= 0, "missing document authority check");
+  const authorityStep = validate.slice(
+    authorityStepStart,
+    validate.indexOf("\n      - name:", authorityStepStart + 1)
+  );
+  assert.match(authorityStep, /^\s*if: always\(\)/m);
+  assert.match(authorityStep, /npm run docs:authority:check/);
   assert.match(workflow, /permissions:\r?\n  contents: read/);
 });
 
@@ -101,4 +110,6 @@ test("validation baseline documents the fail-closed docs-only lane contract", ()
     /exact lowercase docs-only lane to the numeric\s+`run_full` output `0`/i
   );
   assert.match(baseline, /always\(\)/);
+  assert.match(baseline, /npm run docs:authority:check/);
+  assert.match(baseline, /duplicate active canonical `authority_scope`/i);
 });

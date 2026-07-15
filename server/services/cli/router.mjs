@@ -20,7 +20,7 @@ import { inspectProductionArtifactBoundary } from "../platform/production-artifa
 
 const DOMAIN_SOURCE_DOCS = {
   admin: ["docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"],
-  backup: ["docs/PRODUCTION_DR.md", "docs/DEPLOYMENT_FLOW.md"],
+  backup: ["ops/README.md", "docs/RUNTIME_LANE_AUTHORITY.md"],
   channel: ["docs/CHANNEL_RUNTIME_CANARY_RUNBOOK.md", "docs/LOCAL_EDGE_CHANNEL_TECHNICAL_MVP.md"],
   config: ["config/gccgw.config.example.json", "docs/OPERATOR_CLI_PLATFORM_BOUNDARY.md"],
   edge: ["docs/EDGE_CREDENTIAL_RECONCILIATION_GATEWAY_DESIGN.md", "docs/JAPAN_TUIC_PER_ORDER_CREDENTIAL_UPGRADE_RUNBOOK.md", "docs/CHANNEL_MULTI_CHANNEL_NODE_DESIGN.md", "ops/edge-node/README.md"],

@@ -623,6 +623,9 @@ test("gccgw backup and release reports stay redacted and non-mutating", () => {
   assert.equal(backupPlan.mutationAllowed, false);
   assert.ok(backupPlan.commands.some((entry) => entry.command === "scripts/backup-subscriptions.sh"));
   assert.ok(backupPlan.commands.some((entry) => entry.command.includes("restore-subscriptions.sh")));
+  assert.deepEqual(backupPlan.sourceDocs, ["ops/README.md", "docs/RUNTIME_LANE_AUTHORITY.md"]);
+  assert.ok(!backupPlan.sourceDocs.includes("docs/PRODUCTION_DR.md"));
+  assert.ok(!backupPlan.sourceDocs.includes("docs/DEPLOYMENT_FLOW.md"));
   assert.doesNotMatch(JSON.stringify(backupPlan), /TOKEN|SECRET|PASSWORD|subscriptionUrl|C:\\\\/i);
 
   const backupPreflight = buildBackupPreflightReport({
