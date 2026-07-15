@@ -350,18 +350,27 @@ For full chronological logs and raw execution facts, refer to the specific area 
 
 ## Reading Order
 
-For routine development:
+Complete the authoritative repository entry sequence before following
+task-specific navigation:
 
-1. `AGENTS.md`
-2. `docs/PROJECT_CONTEXT.md`
-3. The subsystem document listed above
+1. `docs/CURRENT_RELEASE_STATE.md`
+2. `RELEASE_MANIFEST.md`
+3. `docs/PROJECT_CONTEXT.md`
+4. `git status --short --branch`
+5. `docs/README.md`
+6. The subsystem README relevant to the task
 
-For production, AWS, DNS, Nginx, HTTPS, deploy, rollback, or node work:
+`AGENTS.md` defines repository task rules and always applies, but it does not
+replace the current-state reading order above.
 
-1. `AGENTS.md`
-2. `docs/PROJECT_CONTEXT.md`
-3. The relevant active Risk A runbook
-4. The latest relevant execution record, if one exists
+After completing these six steps:
+
+- routine development follows the development and validation guidance in the
+  task-relevant subsystem README; and
+- production, AWS, DNS, Nginx, HTTPS, deploy, rollback, or node work also
+  requires the relevant active Risk A runbook, the latest relevant execution
+  record when one exists, and the fresh live inventory required by the task
+  risk.
 
 Runbooks describe gates and commands, but they do not grant approval. Real
 production, AWS, DNS, Nginx, HTTPS, or cutover execution still requires a
