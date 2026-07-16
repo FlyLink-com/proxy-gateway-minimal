@@ -1,9 +1,20 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { createRuntimeState } from "../state.mjs";
+import { createDataPlaneHandoffRuntimeAdapter } from "../services/edge/data-plane-handoff-runtime-adapter.mjs";
 import { buildSubscriptionUsageMonitor } from "../services/platform/subscription-usage-monitor.mjs";
 import { createPortalTotpSecretProtector } from "../services/platform/portal-totp-verifier.mjs";
 
@@ -2014,6 +2025,99 @@ test("createRuntimeState rejects production auto issuance channel refs that are 
   }
 });
 
+test("remote data-plane handoff publishes only after protected temporary material is ready", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-atomic-remote-handoff-"));
+  const payload = {
+    channelRef: "channel-sgp-a-hy2",
+    desiredStateRef: "desired_state_atomic_handoff_001",
+    runtime: "hysteria2",
+    actions: [{
+      action: "add",
+      credentialRef: "edgecred_atomic_handoff_001",
+      materialFingerprint: "sha256:aaaaaaaaaaaaaaaa"
+    }]
+  };
+
+  try {
+    const successDir = join(dir, "success");
+    const successOrder = [];
+    const successAdapter = createDataPlaneHandoffRuntimeAdapter({
+      handoffDir: successDir,
+      physicalNodeRef: "vultr-sgp-a",
+      now: () => new Date("2026-07-13T00:00:00.000Z"),
+      fileOps: {
+        mkdirSync(...args) {
+          successOrder.push("mkdir");
+          return mkdirSync(...args);
+        },
+        writeFileSync(...args) {
+          successOrder.push("write");
+          return writeFileSync(...args);
+        },
+        chmodSync(...args) {
+          successOrder.push("chmod");
+          return chmodSync(...args);
+        },
+        renameSync(...args) {
+          successOrder.push("rename");
+          return renameSync(...args);
+        },
+        rmSync(...args) {
+          successOrder.push("cleanup");
+          return rmSync(...args);
+        }
+      }
+    });
+
+    const success = successAdapter.applyCredentialReconciliation(payload);
+    assert.equal(success.status, "pending");
+    assert.deepEqual(successOrder, ["mkdir", "write", "chmod", "rename"]);
+    assert.equal(successOrder.at(-1), "rename");
+    assert.equal(readdirSync(successDir).filter((file) => file.endsWith(".json")).length, 1);
+    assert.equal(readdirSync(successDir).filter((file) => file.endsWith(".tmp")).length, 0);
+
+    const failureDir = join(dir, "failure");
+    const failureOrder = [];
+    const failureAdapter = createDataPlaneHandoffRuntimeAdapter({
+      handoffDir: failureDir,
+      physicalNodeRef: "vultr-sgp-a",
+      now: () => new Date("2026-07-13T00:01:00.000Z"),
+      fileOps: {
+        mkdirSync(...args) {
+          failureOrder.push("mkdir");
+          return mkdirSync(...args);
+        },
+        writeFileSync(...args) {
+          failureOrder.push("write");
+          return writeFileSync(...args);
+        },
+        chmodSync() {
+          failureOrder.push("chmod");
+          throw Object.assign(new Error("synthetic pre-publication permission failure"), {
+            code: "EACCES"
+          });
+        },
+        renameSync(...args) {
+          failureOrder.push("rename");
+          return renameSync(...args);
+        },
+        rmSync(...args) {
+          failureOrder.push("cleanup");
+          return rmSync(...args);
+        }
+      }
+    });
+
+    const failed = failureAdapter.applyCredentialReconciliation(payload);
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.mutation, false);
+    assert.deepEqual(failureOrder, ["mkdir", "write", "chmod", "cleanup"]);
+    assert.equal(readdirSync(failureDir).length, 0);
+  } finally {
+    removeTempDir(dir);
+  }
+});
+
 test("createRuntimeState writes remote data-plane lifecycle handoff instead of mutating local host runtime", () => {
   const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-remote-data-plane-handoff-"));
   const proxyConfigPath = join(dir, "proxy-servers.json");
@@ -2175,6 +2279,183 @@ test("createRuntimeState records remote data-plane desired-state notifications f
   } finally {
     state?.close();
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("createRuntimeState refreshes remote credentials through pending notification and exact agent receipt", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-remote-refresh-receipt-"));
+  const proxyConfigPath = join(dir, "proxy-servers.json");
+  const materialPath = join(dir, "protected", "edge-material.json");
+  const handoffDir = join(dir, "handoff");
+  const subscriptionDbPath = join(dir, "subscriptions.sqlite");
+  const controlDbPath = join(dir, "control.sqlite");
+  const channelRef = "channel-sgp-a-hy2";
+  const nodeRef = "vultr-sgp-a";
+  let now = new Date("2026-07-13T12:00:00.000Z");
+  let state;
+
+  try {
+    mkdirSync(join(dir, "protected"), { recursive: true });
+    writeFileSync(proxyConfigPath, JSON.stringify({
+      servers: [{
+        id: "channel_sgp_hy2",
+        name: channelRef,
+        physicalNodeRef: nodeRef,
+        protocol: "hysteria2",
+        type: "hysteria2",
+        host: "sgp.example.test",
+        port: 10443,
+        password: "${SGP_HY2_STATIC_PASSWORD}",
+        runtimeAdapter: "remote-data-plane-handoff",
+        credentialMode: "per-order",
+        status: "online",
+        subscriptionEligible: true
+      }]
+    }), { mode: 0o600 });
+
+    state = createRuntimeState({
+      rootDir: new URL("../../", import.meta.url),
+      env: {
+        CONSOLE_TOKEN: "synthetic-console-token",
+        SS_PASSWORD: "synthetic-ss-password",
+        SUBSCRIPTION_PROXY_CONFIG_PATH: proxyConfigPath,
+        SGP_HY2_STATIC_PASSWORD: "synthetic-hy2-template-password",
+        USER_PORTAL_EDGE_LIFECYCLE_ENABLED: "true",
+        USER_PORTAL_EDGE_CHANNEL_REF: channelRef,
+        USER_PORTAL_EDGE_CHANNEL_REFS: channelRef,
+        EDGE_CREDENTIAL_CHANNEL_REFS: channelRef,
+        EDGE_CREDENTIAL_MATERIAL_PATH: materialPath,
+        EDGE_CREDENTIAL_LIFECYCLE_EXECUTE_PRODUCTION_MUTATION: "true",
+        EDGE_DATA_PLANE_HANDOFF_DIR: handoffDir,
+        EDGE_DATA_PLANE_AGENT_ROUTES_ENABLED: "true",
+        EDGE_DATA_PLANE_AGENT_NODES_JSON: JSON.stringify([{
+          nodeRef,
+          channelRefs: [channelRef],
+          tokenSha256: "0".repeat(64)
+        }]),
+        USER_PORTAL_AUTO_ISSUANCE_ENABLED: "true",
+        USER_PORTAL_AUTO_ISSUANCE_NODE_ID: channelRef,
+        USER_PORTAL_AUTO_ISSUANCE_CHANNEL_REFS: channelRef,
+        USER_PORTAL_AUTO_ISSUANCE_30D_MONTHLY_LIMIT: "1000",
+        USER_PORTAL_REFRESH_COOLDOWN_MS: "0"
+      },
+      subscriptionDbPath,
+      controlDbPath,
+      userPortalNowFn: () => new Date(now),
+      subscriptionNowFn: () => new Date(now),
+      autoStartHttpProxy: false
+    });
+
+    const request = state.platform.portalAccessRequests.submitRequest({
+      portalUserRef: "portal_user_remote_refresh_001",
+      plan: "monthly",
+      clientTarget: "clash",
+      quantity: 1
+    });
+    const artifactSecret = new URL(request.subscriptionUrl).pathname
+      .split("/")
+      .at(-1)
+      .replace(/\.yaml$/, "");
+    const identity = { nodeRef };
+    const [beforeCredential] = state.platform.portalAccessRequests.listEdgeCredentialOrders();
+    const initialDesired = state.platform.dataPlaneAgentService
+      .getDesiredState(identity)
+      .desiredStates[0];
+    const initialReceipt = state.platform.dataPlaneAgentService.recordReceipt(identity, {
+      type: "gccgw_data_plane_apply_receipt",
+      nodeRef,
+      channelRef,
+      desiredStateRef: initialDesired.desiredStateRef,
+      generation: initialDesired.generation,
+      status: "applied",
+      configTest: true,
+      serviceActive: true,
+      listenerPresent: true,
+      credentialCount: initialDesired.edgeCredentialRefs.length,
+      materialDigests: initialDesired.materialDigests.map((entry) => (
+        typeof entry === "object" ? entry.digest : entry
+      )),
+      appliedAt: now.toISOString(),
+      reasonCode: "runtime_applied"
+    });
+    assert.equal(initialReceipt.status, "applied");
+
+    const initiallyRendered = state.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+    assert.equal(initiallyRendered.ok, true);
+    assert.deepEqual(initiallyRendered.proxyConfig.servers.map((server) => server.name), [channelRef]);
+
+    now = new Date("2026-07-13T12:01:00.000Z");
+    const refreshed = state.platform.portalAccessRequests.refreshSubscription({
+      portalUserRef: "portal_user_remote_refresh_001",
+      requestRef: request.id,
+      clientTarget: "karing"
+    });
+    const [afterCredential] = state.platform.portalAccessRequests.listEdgeCredentialOrders();
+    const currentDesired = state.platform.controlStore.getLatestEdgeDesiredStateForChannel(channelRef, {
+      nodeRef,
+      channelRefs: [channelRef]
+    });
+    const refreshNotification = state.platform.controlStore
+      .listEdgeDesiredStateNotifications({ channelRef })
+      .find((notification) => notification.reason === "order_refreshed");
+
+    assert.equal(refreshed.runtimeEnforcement.state, "pending");
+    assert.notEqual(afterCredential.edgeMaterialDigest, beforeCredential.edgeMaterialDigest);
+    assert.notEqual(currentDesired.desiredStateRef, initialDesired.desiredStateRef);
+    assert.equal(refreshNotification?.desiredStateRef, currentDesired.desiredStateRef);
+    assert.equal(refreshNotification?.status, "pending");
+
+    const hiddenUntilReceipt = state.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+    assert.equal(hiddenUntilReceipt.ok, false);
+    assert.equal(hiddenUntilReceipt.status, 403);
+    assert.equal("proxyConfig" in hiddenUntilReceipt, false);
+
+    const pulledDesired = state.platform.dataPlaneAgentService
+      .getDesiredState(identity)
+      .desiredStates[0];
+    assert.equal(pulledDesired.desiredStateRef, currentDesired.desiredStateRef);
+    assert.equal(pulledDesired.generation, currentDesired.generation);
+    const appliedReceipt = state.platform.dataPlaneAgentService.recordReceipt(identity, {
+      type: "gccgw_data_plane_apply_receipt",
+      nodeRef,
+      channelRef,
+      desiredStateRef: pulledDesired.desiredStateRef,
+      generation: pulledDesired.generation,
+      status: "applied",
+      configTest: true,
+      serviceActive: true,
+      listenerPresent: true,
+      credentialCount: pulledDesired.edgeCredentialRefs.length,
+      materialDigests: pulledDesired.materialDigests.map((entry) => (
+        typeof entry === "object" ? entry.digest : entry
+      )),
+      appliedAt: now.toISOString(),
+      reasonCode: "runtime_applied"
+    });
+    const convergedNotification = state.platform.controlStore
+      .listEdgeDesiredStateNotifications({ channelRef })
+      .find((notification) => notification.reason === "order_refreshed");
+    const renderedAfterReceipt = state.subscriptions.core.resolveSubscriptionArtifact(artifactSecret);
+
+    assert.equal(appliedReceipt.status, "applied");
+    assert.equal(convergedNotification?.status, "applied");
+    assert.equal(renderedAfterReceipt.ok, true);
+    assert.deepEqual(renderedAfterReceipt.proxyConfig.servers.map((server) => server.name), [channelRef]);
+    assert.equal(refreshed.safety.noRawHandoffMaterial, true);
+    assert.equal(pulledDesired.summary.redacted, true);
+    const safeReceiptEvidence = JSON.stringify({
+      initialReceipt,
+      appliedReceipt,
+      notifications: state.platform.controlStore.listEdgeDesiredStateNotifications({ channelRef }),
+      desiredSummary: pulledDesired.summary
+    });
+    assert.doesNotMatch(
+      safeReceiptEvidence,
+      /synthetic-(?:console-token|ss-password|hy2-template-password)|https?:\/\/|[0-9a-f]{8}-[0-9a-f-]{27}|password|token|uuid|rawConfig/i
+    );
+  } finally {
+    state?.close();
+    removeTempDir(dir);
   }
 });
 

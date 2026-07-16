@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +8,12 @@ import Database from "better-sqlite3";
 import {
   createSqliteSubscriptionControlStore
 } from "../services/platform/subscription-control-db.mjs";
+
+function scopeCredentialDigest(edgeCredentialRef) {
+  return `sha256:${createHash("sha256")
+    .update(`gccgw:scoped-tombstone-lineage:v1:${edgeCredentialRef}`)
+    .digest("hex")}`;
+}
 
 function withStore(fn) {
   const tempDir = mkdtempSync(join(tmpdir(), "platform-subscription-control-"));
@@ -620,6 +627,21 @@ test("subscription control store emits an empty desired-state after the last cha
     assert.equal(repeated.desiredStateRef, tombstone.desiredStateRef);
     assert.equal(repeated.generation, tombstone.generation);
     assert.deepEqual(repeated.edgeCredentialRefs, []);
+    assert.equal(
+      store.getPortalEdgeCredentialChannelRef("edgecred_desired_tombstone_001"),
+      "channel-sgp-a-hy2"
+    );
+    assert.equal(store.getPortalEdgeCredentialChannelRef("edgecred_unknown_001"), null);
+    assert.equal(
+      store.getPortalEdgeCredentialChannelRefByScopeDigest(
+        scopeCredentialDigest("edgecred_desired_tombstone_001")
+      ),
+      "channel-sgp-a-hy2"
+    );
+    assert.equal(
+      store.getPortalEdgeCredentialChannelRefByScopeDigest("sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"),
+      null
+    );
   });
 });
 

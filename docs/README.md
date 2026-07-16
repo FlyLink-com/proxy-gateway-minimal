@@ -53,7 +53,23 @@ directory restructure.
 | Document | Purpose | Status | When to read |
 | --- | --- | --- | --- |
 | `README.md` | Chinese project landing page for the current `gccgw` control plane, validation flow, `.env` closure, install/package gates, compatibility boundaries, and docs navigation. | Active entrypoint. | Read when onboarding Chinese-speaking operators or checking the current project entry surface. |
-| `README_EN.md` | English project landing page, quick start, topology summary, APIs, and source-of-truth pointer. | Active entrypoint. | Read when onboarding English-speaking collaborators. |
+| `README_EN.md` | English semantic mirror of `README.md`, with the same project position, status, reading order, commands, links, and governance boundaries. | Active mirrored entrypoint; semantic changes must remain aligned with `README.md`. | Read when onboarding English-speaking collaborators or verifying language-entry parity. |
+
+## Subsystem Entry Points
+
+These README files describe local responsibility, entrypoints, development,
+validation, and forbidden boundaries. They are navigation aids only: they do
+not add canonical `authority_scope` values and do not establish global,
+release, deployment, runtime, or production authority.
+
+| Document | Responsibility | Boundary |
+| --- | --- | --- |
+| `admin/README.md` | Admin, User Portal, and company-site frontend source and build entrypoints. | Frontend workspace only; no control-plane, provider, deployment, or production authority. |
+| `server/README.md` | Node control-plane application, routes, services, persistence adapters, and runtime composition. | Source ownership only; runtime and production actions retain their existing gates. |
+| `bin/README.md` | `gccgw` CLI routing and compatibility entrypoints. | Command availability is not operator approval or production authority. |
+| `agent/README.md` | Local edge-agent surface and data-plane agent runners and adapters. | Real runtime access or apply remains a separately approved Risk A action. |
+| `schemas/README.md` | Portable, versioned shared data-shape contracts. | A schema is not deployment, runtime observation, migration approval, or production state. |
+| `project-state/README.md` | Machine-readable repository coordination snapshots, lanes, and task states. | Coordination state can drift and does not override canonical or live evidence. |
 
 ## Current State
 
@@ -120,6 +136,9 @@ production inventory. The production/runtime evidence cutoff remains dated at
 | `docs/GITHUB_ISSUE_PR_WORKFLOW.md` | GitHub Issues as durable index cards and PRs as execution summaries/validation receipts, including when issues are required versus optional. | Active workflow rule; no production, deploy, runtime, secret, or customer-data authority. | Read before opening multi-PR, Risk A, source/production drift, archive, or main-lane work, and when deciding whether a small PR needs an issue. |
 | `docs/PROJECT_OPERATING_MODEL.md` | Project operating model for source-of-truth layers, work lanes, PR definition of done, risk tiers, production gates, and subscription stability. | Active operating model; no execution authority. | Read when deciding how to classify, sequence, or parallelize project work. |
 | `docs/EXECUTION_CONTRACT_V1.md` | Source-only Execution Contract v1 for strict intent binding, exact executable resolution, bounded shell-free process evidence, aggregate readback, and redacted receipts. | Active B-tier source contract; no approval, production, provider, SSH, systemd, runtime, file-mutation, or Gate execution authority. | Read before using or extending the execution contract; any real production or provider integration remains a separate Risk A change. |
+| `docs/superpowers/specs/2026-07-15-governed-repair-framework-design.md` | Frozen design for immutable failure observation, deterministic attribution, shared policy routing, digest-bound Repair Plans, short Operator approval, durable admission, a closed native GitHub evidence transport, bounded workflow repair, trusted validation, append-only receipts, and failure injection. | Active Risk C design authority; implementation and all source, GitHub-write, settings, artifact, provider, runtime, or production actions require separate Gates. | Read before the Phase 1 implementation roadmap when implementing or reviewing AI-assisted governance repair. |
+| `docs/superpowers/plans/2026-07-15-governed-repair-framework-implementation.md` | Successor foundation plan for canonical governance contracts, immutable observation, Attribution/Router V2, exact-file Repair Plans, provenance, a closed native GitHub REST transport, a frozen trusted launcher, synthetic Admission, a disabled executor, trusted source-run facts, a fixed-false Actions shadow contract, complete collector/evaluator contracts, exact project-state selector verification/application, and foundation threat coverage. | Proposed Risk C implementation sequencing authority; active only after independent review and merge. Seven future B-tier source PRs, one C-tier byte-preserving Markdown-marker bootstrap PR, one read-only selector-inventory Gate, and one independent C-tier state-sync PR remain separate. Live shadow evaluation, governance-evidence publication, its atomic claim/Admission, automatic repair, write execution, and production authority remain absent. | Read after the frozen Governed Repair Framework design; close PR #499 compatibly before starting Task 1. |
+| `docs/superpowers/plans/2026-07-15-semi-automated-governance-phase1.md` | Historical PR #500 roadmap for attribution, provenance-bound repair planning, a disabled bounded executor, Actions shadow routing, and conditional read-only recovery. | Historical and superseded for governed-repair foundation execution; retained as merged evidence, not current implementation authority. | Use only for historical context; follow the governed-repair successor plan for current sequencing. |
 | `docs/BRANCH_AND_SERVICE_OPERATING_MODEL.md` | Branch and service operating model for interpreting current branches, PR lanes, service ownership, completion labels, and the difference between `master`, local worktree state, and deployed runtime state. | Active operating model; no code, production, deploy, secret, or runtime authority. | Read when deciding whether a branch is current, merged, deployed, archived, or service-owned by the control plane, data plane, portal, Admin, renderer, runtime adapter, usage collector, or docs lane. |
 | `docs/CURRENT_WORKTREE_SERVICE_LANE_CLOSEOUT.md` | Current service-lane closeout plan for finishing `feat/install-config-wizard`, PR #299, generated-noise cleanup, docs/project-state, Admin UI, User Portal, control-plane ledger, edge runtime adapters, and CLI/helper units. | Active closeout plan; no code, production, deploy, secret, or runtime authority. | Read before staging, splitting, merging, archiving, or validating the current closeout branch. |
 | `docs/DOMAIN_UNIT_BOUNDARIES.md` | Domain-unit boundary model separating product business, commercial entitlement, subscription access, edge nodes, local client, validation, operator lab, and production operations. | Active architecture boundary; no execution authority. | Read before mixing business, commercial, node, CI, HP Relay, Local Edge Agent, or production-ops responsibilities in one task. |
@@ -333,18 +352,27 @@ For full chronological logs and raw execution facts, refer to the specific area 
 
 ## Reading Order
 
-For routine development:
+Complete the authoritative repository entry sequence before following
+task-specific navigation:
 
-1. `AGENTS.md`
-2. `docs/PROJECT_CONTEXT.md`
-3. The subsystem document listed above
+1. `docs/CURRENT_RELEASE_STATE.md`
+2. `RELEASE_MANIFEST.md`
+3. `docs/PROJECT_CONTEXT.md`
+4. `git status --short --branch`
+5. `docs/README.md`
+6. The subsystem README relevant to the task
 
-For production, AWS, DNS, Nginx, HTTPS, deploy, rollback, or node work:
+`AGENTS.md` defines repository task rules and always applies, but it does not
+replace the current-state reading order above.
 
-1. `AGENTS.md`
-2. `docs/PROJECT_CONTEXT.md`
-3. The relevant active Risk A runbook
-4. The latest relevant execution record, if one exists
+After completing these six steps:
+
+- routine development follows the development and validation guidance in the
+  task-relevant subsystem README; and
+- production, AWS, DNS, Nginx, HTTPS, deploy, rollback, or node work also
+  requires the relevant active Risk A runbook, the latest relevant execution
+  record when one exists, and the fresh live inventory required by the task
+  risk.
 
 Runbooks describe gates and commands, but they do not grant approval. Real
 production, AWS, DNS, Nginx, HTTPS, or cutover execution still requires a

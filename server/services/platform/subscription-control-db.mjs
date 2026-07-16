@@ -509,6 +509,10 @@ function sha256(value) {
   return createHash("sha256").update(String(value)).digest("hex");
 }
 
+function portalEdgeCredentialScopeDigest(edgeCredentialRef) {
+  return `sha256:${sha256(`gccgw:scoped-tombstone-lineage:v1:${edgeCredentialRef}`)}`;
+}
+
 function mapPortalAccessRequest(row) {
   if (!row) return null;
   const event = parseJsonObject(row.event_json);
@@ -2261,6 +2265,29 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     `).all(requiredText(requestId, "requestId")).map(mapPortalEdgeCredential);
   }
 
+  function getPortalEdgeCredentialChannelRef(edgeCredentialRef) {
+    const rows = db.prepare(`
+      select distinct edge_channel_ref
+      from platform_portal_edge_credentials
+      where edge_credential_ref = ?
+      order by edge_channel_ref asc
+    `).all(requiredText(edgeCredentialRef, "edgeCredentialRef"));
+    return rows.length === 1 ? rows[0].edge_channel_ref : null;
+  }
+
+  function getPortalEdgeCredentialChannelRefByScopeDigest(scopeCredentialDigest) {
+    const safeDigest = requiredText(scopeCredentialDigest, "scopeCredentialDigest");
+    if (!/^sha256:[a-f0-9]{64}$/.test(safeDigest)) {
+      return null;
+    }
+    const matches = db.prepare(`
+      select edge_channel_ref, edge_credential_ref
+      from platform_portal_edge_credentials
+      order by edge_credential_ref asc
+    `).all().filter((row) => portalEdgeCredentialScopeDigest(row.edge_credential_ref) === safeDigest);
+    return matches.length === 1 ? matches[0].edge_channel_ref : null;
+  }
+
   function attachPortalEdgeCredentials(record) {
     if (!record) {
       return null;
@@ -2905,6 +2932,8 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     getEdgeDesiredStateNotification,
     listEdgeDesiredStateNotifications,
     acquireEdgeAgentLease,
+    getPortalEdgeCredentialChannelRef,
+    getPortalEdgeCredentialChannelRefByScopeDigest,
     upsertPortalAccessRequest,
     getPortalAccessRequest,
     listPortalAccessRequests,
