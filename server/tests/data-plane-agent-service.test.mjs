@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +14,12 @@ import { createSqliteSubscriptionControlStore } from "../services/platform/subsc
 
 const VALID_UNTIL = "2099-07-10T00:00:00.000Z";
 const NOW = new Date("2026-06-10T00:00:00.000Z");
+
+function scopeCredentialDigest(edgeCredentialRef) {
+  return `sha256:${createHash("sha256")
+    .update(`gccgw:scoped-tombstone-lineage:v1:${edgeCredentialRef}`)
+    .digest("hex")}`;
+}
 
 function desired(overrides = {}) {
   return {
@@ -51,7 +58,10 @@ function receipt(overrides = {}) {
     credentialCount: 2,
     appliedAt: "2026-06-10T00:01:00.000Z",
     reasonCode: "runtime_applied",
-    materialDigests: ["sha256:aaaaaaaaaaaaaaaa"],
+    materialDigests: [
+      "sha256:aaaaaaaaaaaaaaaa",
+      "sha256:bbbbbbbbbbbbbbbb"
+    ],
     ...overrides
   };
 }
@@ -296,6 +306,307 @@ test("withholds revocation tombstones until the authenticated agent advertises c
   assert.equal(compatible.compatibility.blockedDesiredStateCount, 0);
 });
 
+test("does not synthesize empty tombstones for unmatched active credentials across channels", () => {
+  const hy2 = desired({
+    desiredStateRef: "desired_sgp_hy2_active_001",
+    generation: "gen_sgp_hy2_active_001",
+    channelRefs: ["channel-sgp-a-hy2"],
+    edgeCredentialRefs: ["edgecred_safe_hy2"],
+    materialDigests: [{
+      channelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: "edgecred_safe_hy2",
+      digest: "sha256:aaaaaaaaaaaaaaaa"
+    }]
+  });
+  const tuic = desired({
+    desiredStateRef: "desired_sgp_tuic_active_001",
+    generation: "gen_sgp_tuic_active_001",
+    channelRefs: ["channel-sgp-a-tuic"],
+    edgeCredentialRefs: ["edgecred_safe_tuic"],
+    materialDigests: [{
+      channelRef: "channel-sgp-a-tuic",
+      edgeCredentialRef: "edgecred_safe_tuic",
+      digest: "sha256:bbbbbbbbbbbbbbbb"
+    }]
+  });
+  const service = serviceFor(fakeControlStore(new Map([
+    ["channel-sgp-a-hy2", hy2],
+    ["channel-sgp-a-tuic", tuic]
+  ])));
+  const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+
+  const response = service.getDesiredState(identity, {
+    edgeCredentialRefs: ["edgecred_safe_hy2"],
+    agentVersion: "1.1",
+    capabilities: ["empty_desired_state", "tombstone_reconcile"]
+  });
+
+  assert.deepEqual(response.desiredStates.map((state) => ({
+    channelRefs: state.channelRefs,
+    edgeCredentialRefs: state.edgeCredentialRefs,
+    materialDigests: state.materialDigests
+  })), [{
+    channelRefs: ["channel-sgp-a-hy2"],
+    edgeCredentialRefs: ["edgecred_safe_hy2"],
+    materialDigests: [{
+      channelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: "edgecred_safe_hy2",
+      digest: "sha256:aaaaaaaaaaaaaaaa"
+    }]
+  }]);
+});
+
+test("preserves channel-authoritative mixed scoped lineage and rejects forged receipts", () => {
+  const activeARef = "edgecred_active_a_hy2";
+  const activeBRef = "edgecred_active_b_hy2";
+  const activeMaterialDigests = [
+    {
+      channelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: activeARef,
+      digest: "sha256:aaaaaaaaaaaaaaaa"
+    },
+    {
+      channelRef: "channel-sgp-a-hy2",
+      edgeCredentialRef: activeBRef,
+      digest: "sha256:cccccccccccccccc"
+    }
+  ];
+  const authoritative = desired({
+    desiredStateRef: "desired_sgp_mixed_hy2_001",
+    generation: "gen_sgp_mixed_hy2_001",
+    channelRefs: ["channel-sgp-a-hy2"],
+    edgeCredentialRefs: [activeARef, activeBRef],
+    materialDigests: activeMaterialDigests
+  });
+  const unrelatedTuic = desired({
+    desiredStateRef: "desired_sgp_unrelated_tuic_001",
+    generation: "gen_sgp_unrelated_tuic_001",
+    channelRefs: ["channel-sgp-a-tuic"],
+    edgeCredentialRefs: ["edgecred_unrelated_tuic"],
+    materialDigests: [{
+      channelRef: "channel-sgp-a-tuic",
+      edgeCredentialRef: "edgecred_unrelated_tuic",
+      digest: "sha256:dddddddddddddddd"
+    }]
+  });
+  const store = fakeControlStore(new Map([
+    ["channel-sgp-a-hy2", authoritative],
+    ["channel-sgp-a-tuic", unrelatedTuic]
+  ]));
+  const revokedCredentialRef = "edgecred_revoked_hy2";
+  const extraRevokedCredentialRef = "edgecred_extra_revoked_hy2";
+  const revokedScopeDigest = scopeCredentialDigest(revokedCredentialRef);
+  const extraRevokedScopeDigest = scopeCredentialDigest(extraRevokedCredentialRef);
+  const activeScopeDigest = scopeCredentialDigest(activeARef);
+  store.getPortalEdgeCredentialChannelRef = (edgeCredentialRef) => (
+    [revokedCredentialRef, extraRevokedCredentialRef].includes(edgeCredentialRef)
+      ? "channel-sgp-a-hy2"
+      : null
+  );
+  store.getPortalEdgeCredentialChannelRefByScopeDigest = (credentialDigest) => (
+    [revokedScopeDigest, extraRevokedScopeDigest, activeScopeDigest].includes(credentialDigest)
+      ? "channel-sgp-a-hy2"
+      : null
+  );
+  const service = serviceFor(store);
+  const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+  const revokedOnlyFilter = {
+    edgeCredentialRefs: [revokedCredentialRef]
+  };
+
+  const legacy = service.getDesiredState(identity, {
+    ...revokedOnlyFilter,
+    agentVersion: "1.0",
+    capabilities: []
+  });
+  assert.deepEqual(legacy.desiredStates, []);
+  assert.equal(legacy.compatibility.tombstoneReconcile, false);
+  assert.equal(legacy.compatibility.scopedTombstoneLineage, false);
+  assert.equal(legacy.compatibility.blockedDesiredStateCount, 1);
+
+  const compatibleFilter = {
+    ...revokedOnlyFilter,
+    agentVersion: "1.1",
+    capabilities: ["empty_desired_state", "tombstone_reconcile"]
+  };
+  const first = service.getDesiredState(identity, compatibleFilter);
+  const second = service.getDesiredState(identity, compatibleFilter);
+
+  assert.deepEqual(first.desiredStates, []);
+  assert.deepEqual(second.desiredStates, []);
+  assert.equal(first.compatibility.tombstoneReconcile, true);
+  assert.equal(first.compatibility.scopedTombstoneLineage, false);
+  assert.equal(first.compatibility.blockedDesiredStateCount, 1);
+  assert.doesNotMatch(JSON.stringify(first), /edgecred_(?:revoked|unrelated)_/);
+
+  const lineageFilter = {
+    edgeCredentialRefs: [activeARef, revokedCredentialRef],
+    agentVersion: "1.2",
+    capabilities: ["empty_desired_state", "scoped_tombstone_lineage", "tombstone_reconcile"]
+  };
+  const lineageCompatible = service.getDesiredState(identity, lineageFilter);
+  const repeatedLineage = service.getDesiredState(identity, lineageFilter);
+  assert.deepEqual(repeatedLineage, lineageCompatible);
+  assert.equal(lineageCompatible.compatibility.scopedTombstoneLineage, true);
+  assert.equal(lineageCompatible.compatibility.blockedDesiredStateCount, 0);
+  assert.equal(lineageCompatible.desiredStates.length, 1);
+  const [mixedState] = lineageCompatible.desiredStates;
+  assert.deepEqual(mixedState.channelRefs, ["channel-sgp-a-hy2"]);
+  assert.equal(
+    lineageCompatible.desiredStates.some((state) => state.channelRefs.includes("channel-sgp-a-tuic")),
+    false
+  );
+  assert.deepEqual(mixedState.edgeCredentialRefs, [activeARef, activeBRef]);
+  assert.deepEqual(mixedState.materialDigests, activeMaterialDigests);
+  assert.deepEqual(mixedState.scopedTombstone, {
+    sourceDesiredStateRef: authoritative.desiredStateRef,
+    sourceGeneration: authoritative.generation,
+    credentialDigests: [revokedScopeDigest]
+  });
+  assert.match(mixedState.desiredStateRef, /^desired_scoped_[a-f0-9]{32}$/);
+  assert.match(mixedState.generation, /^gen_scoped_[a-f0-9]{32}$/);
+  assert.doesNotMatch(JSON.stringify(lineageCompatible), /edgecred_(?:revoked|unrelated)_/);
+
+  const validReceipt = {
+    desiredStateRef: mixedState.desiredStateRef,
+    generation: mixedState.generation,
+    credentialCount: 2,
+    materialDigests: activeMaterialDigests.map((entry) => entry.digest),
+    scopedTombstone: mixedState.scopedTombstone
+  };
+  const accepted = service.recordReceipt(identity, receipt(validReceipt));
+  assert.equal(accepted.status, "applied");
+  assert.equal(store.receipts.length, 1);
+  assert.equal(store.receipts[0].actionCounts.add, 2);
+  assert.equal(store.receipts[0].actionCounts.revoke, 1);
+
+  const emptyScopedReceipts = [
+    {
+      desiredStateRef: "desired_scoped_88084f56a9f80b61ccc754d874cbec47",
+      generation: "gen_scoped_88084f56a9f80b61ccc754d874cbec47"
+    },
+    {
+      desiredStateRef: "desired_scoped_client_supplied",
+      generation: "gen_scoped_client_supplied"
+    }
+  ];
+  for (const emptyScopedReceipt of emptyScopedReceipts) {
+    assert.throws(
+      () => service.recordReceipt(identity, receipt({
+        ...emptyScopedReceipt,
+        credentialCount: 0,
+        materialDigests: []
+      })),
+      (error) => {
+        assert.equal(error.code, "desired_state_not_found");
+        assert.equal(error.statusCode, 404);
+        const safeError = service.safeErrorPayload(error);
+        assert.deepEqual(safeError, {
+          error: "desired_state_not_found",
+          message: "desired_state_not_found",
+          redacted: true
+        });
+        assert.doesNotMatch(JSON.stringify(safeError), /edgecred_(?:revoked|unrelated)_|client_supplied/);
+        return true;
+      }
+    );
+    assert.equal(store.receipts.length, 1);
+  }
+
+  const invalidMixedReceipts = [
+    {
+      name: "missing active B",
+      overrides: {
+        credentialCount: 1,
+        materialDigests: [activeMaterialDigests[0].digest]
+      },
+      code: "desired_state_receipt_mismatch",
+      statusCode: 409
+    },
+    {
+      name: "zero-count active evidence",
+      overrides: { credentialCount: 0, materialDigests: [] },
+      code: "desired_state_receipt_mismatch",
+      statusCode: 409
+    },
+    {
+      name: "extra active evidence",
+      overrides: {
+        credentialCount: 3,
+        materialDigests: [
+          ...validReceipt.materialDigests,
+          "sha256:eeeeeeeeeeeeeeee"
+        ]
+      },
+      code: "desired_state_receipt_mismatch",
+      statusCode: 409
+    },
+    {
+      name: "overlapping active and revoked lineage",
+      overrides: {
+        scopedTombstone: {
+          ...mixedState.scopedTombstone,
+          credentialDigests: [activeScopeDigest]
+        }
+      },
+      code: "desired_state_not_found",
+      statusCode: 404
+    },
+    {
+      name: "extra revoked lineage",
+      overrides: {
+        scopedTombstone: {
+          ...mixedState.scopedTombstone,
+          credentialDigests: [revokedScopeDigest, extraRevokedScopeDigest]
+        }
+      },
+      code: "desired_state_not_found",
+      statusCode: 404
+    },
+    {
+      name: "stale source identity",
+      overrides: {
+        scopedTombstone: {
+          ...mixedState.scopedTombstone,
+          sourceGeneration: "gen_stale_source"
+        }
+      },
+      code: "desired_state_not_found",
+      statusCode: 404
+    },
+    {
+      name: "wrong channel",
+      overrides: { channelRef: "channel-sgp-a-tuic" },
+      code: "desired_state_not_found",
+      statusCode: 404
+    },
+    {
+      name: "duplicate scope",
+      overrides: {
+        scopedTombstone: {
+          ...mixedState.scopedTombstone,
+          credentialDigests: [revokedScopeDigest, revokedScopeDigest]
+        }
+      },
+      code: "validation_error"
+    }
+  ];
+  for (const invalid of invalidMixedReceipts) {
+    assert.throws(
+      () => service.recordReceipt(identity, receipt({
+        ...validReceipt,
+        ...invalid.overrides
+      })),
+      (error) => (
+        error.code === invalid.code
+        && (invalid.statusCode == null || error.statusCode === invalid.statusCode)
+      ),
+      invalid.name
+    );
+    assert.equal(store.receipts.length, 1, invalid.name);
+  }
+});
+
 test("records receipts against latest desired state and never trusts client desired refs", () => {
   const store = fakeControlStore(new Map([
     ["channel-sgp-a-hy2", desired({ desiredStateRef: "desired_authoritative" })]
@@ -432,6 +743,21 @@ test("scopes desired-state, material, and receipts to selected edge credentials 
   assert.equal(material.desiredStateRef, scoped.desiredStateRef);
   assert.equal(material.records.length, 1);
   assert.equal(material.records[0].edgeCredentialRef, "edgecred_safe_hy2");
+
+  assert.throws(
+    () => service.recordReceipt(identity, receipt({
+      desiredStateRef: scoped.desiredStateRef,
+      generation: scoped.generation,
+      channelRef: "channel-sgp-a-hy2",
+      credentialCount: 1,
+      materialDigests: [
+        "sha256:aaaaaaaaaaaaaaaa",
+        "sha256:dddddddddddddddd"
+      ]
+    })),
+    (error) => error.code === "desired_state_receipt_mismatch"
+  );
+  assert.equal(store.receipts.length, 0);
 
   const receiptResponse = service.recordReceipt(identity, receipt({
     desiredStateRef: scoped.desiredStateRef,
@@ -605,6 +931,99 @@ test("rejects out-of-scope channels and unsafe receipt material", () => {
     () => service.recordReceipt(identity, receipt({ diagnostics: { token: "unsafe" } })),
     (error) => error.code === "unsafe_agent_payload"
   );
+});
+
+test("requires exact authoritative material completeness for ordinary applied and unchanged receipts", () => {
+  withSqliteStore((store) => {
+    seedIssuedPortalOrder(store);
+    const service = createDataPlaneAgentService({
+      controlStore: store,
+      nodes: [
+        {
+          nodeRef: "node-sgp-a",
+          channelRefs: ["channel-sgp-a-hy2"],
+          tokenSha256: hashDataPlaneAgentToken("node-agent-token")
+        }
+      ],
+      nowFn: () => NOW
+    });
+    const identity = service.authenticate({ authorization: "Bearer node-agent-token" });
+    const [desiredState] = service.getDesiredState(identity).desiredStates;
+    store.recordEdgeDesiredStateNotification({
+      id: "edge_state_notify_agent_unscoped_completeness",
+      nodeRef: "node-sgp-a",
+      channelRef: "channel-sgp-a-hy2",
+      desiredStateRef: desiredState.desiredStateRef,
+      generation: desiredState.generation,
+      reason: "order_refreshed",
+      status: "pending",
+      createdAt: NOW.toISOString(),
+      updatedAt: NOW.toISOString()
+    });
+
+    const invalidVariants = [
+      { name: "wrong_count", credentialCount: 0, materialDigests: ["sha256:aaaaaaaaaaaaaaaa"] },
+      { name: "missing_digest", credentialCount: 1, materialDigests: [] },
+      {
+        name: "extra_digest",
+        credentialCount: 1,
+        materialDigests: ["sha256:aaaaaaaaaaaaaaaa", "sha256:bbbbbbbbbbbbbbbb"]
+      },
+      {
+        name: "duplicate_digest",
+        credentialCount: 1,
+        materialDigests: ["sha256:aaaaaaaaaaaaaaaa", "sha256:aaaaaaaaaaaaaaaa"]
+      }
+    ];
+    for (const status of ["applied", "unchanged"]) {
+      for (const variant of invalidVariants) {
+        assert.throws(
+          () => service.recordReceipt(identity, {
+            type: "gccgw_data_plane_apply_receipt",
+            nodeRef: "node-sgp-a",
+            desiredStateRef: `client_supplied_${variant.name}`,
+            generation: desiredState.generation,
+            channelRef: "channel-sgp-a-hy2",
+            status,
+            configTest: true,
+            serviceActive: true,
+            listenerPresent: true,
+            credentialCount: variant.credentialCount,
+            materialDigests: variant.materialDigests,
+            appliedAt: "2026-06-10T00:01:00.000Z"
+          }),
+          (error) => error.code === "desired_state_receipt_mismatch"
+        );
+      }
+    }
+
+    assert.equal(store.listEdgeApplyReceipts({ channelRef: "channel-sgp-a-hy2" }).length, 0);
+    assert.equal(
+      store.listEdgeDesiredStateNotifications({ channelRef: "channel-sgp-a-hy2" })[0].status,
+      "pending"
+    );
+
+    const applied = service.recordReceipt(identity, {
+      type: "gccgw_data_plane_apply_receipt",
+      nodeRef: "node-sgp-a",
+      desiredStateRef: "client_supplied_wrong_ref",
+      generation: desiredState.generation,
+      channelRef: "channel-sgp-a-hy2",
+      status: "applied",
+      configTest: true,
+      serviceActive: true,
+      listenerPresent: true,
+      credentialCount: 1,
+      materialDigests: ["sha256:aaaaaaaaaaaaaaaa"],
+      appliedAt: "2026-06-10T00:02:00.000Z"
+    });
+    assert.equal(applied.status, "applied");
+    assert.equal(store.listEdgeApplyReceipts({ channelRef: "channel-sgp-a-hy2" }).length, 1);
+    assert.equal(
+      store.listEdgeDesiredStateNotifications({ channelRef: "channel-sgp-a-hy2" })[0].status,
+      "applied"
+    );
+  });
 });
 
 test("records per-channel lease heartbeat with latest desired state ref", () => {

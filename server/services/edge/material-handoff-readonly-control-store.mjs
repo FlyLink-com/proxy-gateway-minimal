@@ -78,6 +78,7 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
       const rows = db.prepare(`
         select
           r.id as request_id,
+          r.status as request_status,
           coalesce(r.valid_until, r.expires_at) as valid_until,
           r.updated_at,
           c.edge_channel_ref,
@@ -86,9 +87,11 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
         from platform_portal_access_requests r
         join platform_portal_edge_credentials c on c.request_id = r.id
         where c.edge_channel_ref = ?
-          and r.status in ('delivered', 'issued')
         order by c.edge_credential_ref asc, r.updated_at asc, r.id asc
       `).all(safeChannelRef);
+      if (rows.length === 0) {
+        return null;
+      }
 
       const nowMs = Date.now();
       const activeRows = rows
@@ -96,12 +99,9 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
           ...row,
           validUntilMs: Date.parse(row.valid_until)
         }))
+        .filter((row) => ["delivered", "issued"].includes(row.request_status))
         .filter((row) => row.edge_credential_ref && row.edge_material_digest)
         .filter((row) => row.valid_until && !Number.isNaN(row.validUntilMs) && row.validUntilMs > nowMs);
-
-      if (activeRows.length === 0) {
-        return null;
-      }
 
       const edgeCredentialRefs = [...new Set(activeRows.map((row) => row.edge_credential_ref))]
         .sort((a, b) => a.localeCompare(b));
@@ -112,7 +112,12 @@ export function createReadOnlyMaterialHandoffControlStore({ dbPath } = {}) {
           digest: row.edge_material_digest
         }))
         .sort((a, b) => a.edgeCredentialRef.localeCompare(b.edgeCredentialRef));
-      const validUntil = new Date(Math.min(...activeRows.map((row) => row.validUntilMs))).toISOString();
+      const lifecycleTimes = rows
+        .flatMap((row) => [Date.parse(row.valid_until), Date.parse(row.updated_at)])
+        .filter((value) => !Number.isNaN(value));
+      const validUntil = activeRows.length > 0
+        ? new Date(Math.min(...activeRows.map((row) => row.validUntilMs))).toISOString()
+        : new Date(Math.max(...lifecycleTimes)).toISOString();
       const fingerprint = sha256(JSON.stringify({
         nodeRef,
         channelRef: safeChannelRef,

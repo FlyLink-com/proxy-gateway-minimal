@@ -1,4 +1,4 @@
-import { chmodSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 const SAFE_REF_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -63,21 +63,37 @@ function sanitizeAction(action = {}) {
   };
 }
 
-function writeProtectedJson(filePath, payload) {
+function writeProtectedJson(filePath, payload, fileOps) {
   const tmpPath = `${filePath}.${process.pid}.tmp`;
-  writeFileSync(tmpPath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
-  renameSync(tmpPath, filePath);
-  chmodSync(filePath, 0o600);
+  let published = false;
+  try {
+    fileOps.writeFileSync(tmpPath, `${JSON.stringify(payload, null, 2)}\n`, { mode: 0o600 });
+    fileOps.chmodSync(tmpPath, 0o600);
+    fileOps.renameSync(tmpPath, filePath);
+    published = true;
+  } finally {
+    if (!published) {
+      fileOps.rmSync(tmpPath, { force: true });
+    }
+  }
 }
 
 export function createDataPlaneHandoffRuntimeAdapter({
   handoffDir,
   physicalNodeRef = "",
   nodeRef = "",
-  now = () => new Date()
+  now = () => new Date(),
+  fileOps: suppliedFileOps = {}
 } = {}) {
   const safePhysicalNodeRef = safeRef(physicalNodeRef);
   const safeNodeRef = safeRef(nodeRef || physicalNodeRef);
+  const fileOps = {
+    chmodSync: typeof suppliedFileOps.chmodSync === "function" ? suppliedFileOps.chmodSync : chmodSync,
+    mkdirSync: typeof suppliedFileOps.mkdirSync === "function" ? suppliedFileOps.mkdirSync : mkdirSync,
+    renameSync: typeof suppliedFileOps.renameSync === "function" ? suppliedFileOps.renameSync : renameSync,
+    rmSync: typeof suppliedFileOps.rmSync === "function" ? suppliedFileOps.rmSync : rmSync,
+    writeFileSync: typeof suppliedFileOps.writeFileSync === "function" ? suppliedFileOps.writeFileSync : writeFileSync
+  };
 
   return {
     applyCredentialReconciliation(payload = {}) {
@@ -125,8 +141,8 @@ export function createDataPlaneHandoffRuntimeAdapter({
       };
 
       try {
-        mkdirSync(normalizedHandoffDir, { recursive: true, mode: 0o700 });
-        writeProtectedJson(join(normalizedHandoffDir, `${handoffRef}.json`), handoffPayload);
+        fileOps.mkdirSync(normalizedHandoffDir, { recursive: true, mode: 0o700 });
+        writeProtectedJson(join(normalizedHandoffDir, `${handoffRef}.json`), handoffPayload, fileOps);
       } catch {
         return failedReceipt(generatedAt);
       }
