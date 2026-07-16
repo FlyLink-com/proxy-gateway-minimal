@@ -206,6 +206,23 @@ function ensureTableColumns(db, tableName, columns) {
   }
 }
 
+function mapLead(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    type: "platform_lead",
+    status: row.status,
+    organization: row.organization,
+    email: row.email,
+    direction: row.direction,
+    stage: row.stage,
+    message: row.message,
+    source: row.source,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 function mapAccount(row) {
   if (!row) return null;
   return {
@@ -670,6 +687,25 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
   db.pragma("busy_timeout = 2000");
   db.pragma("foreign_keys = ON");
   db.exec(`
+    create table if not exists platform_leads (
+      id text primary key,
+      status text not null check (status in ('new', 'reviewing', 'converted', 'rejected')),
+      organization text not null,
+      email text not null,
+      direction text not null,
+      stage text not null default '',
+      message text not null,
+      source text not null,
+      created_at text not null,
+      updated_at text not null,
+      expires_at text not null
+    );
+
+    create index if not exists platform_leads_status_created_idx
+      on platform_leads(status, created_at);
+    create index if not exists platform_leads_expires_at_idx
+      on platform_leads(expires_at);
+
     create table if not exists platform_accounts (
       id text primary key,
       owner_ref text not null,
@@ -1114,6 +1150,66 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
     { name: "edge_lifecycle_mutation", definition: "edge_lifecycle_mutation integer not null default 0" },
     { name: "event_json", definition: "event_json text not null default '{}'" }
   ]);
+
+  function upsertLead(input, { expiresAt } = {}) {
+    const record = {
+      id: requiredText(input.id, "id"),
+      status: requiredText(input.status || "new", "status"),
+      organization: requiredText(input.organization, "organization"),
+      email: requiredText(input.email, "email"),
+      direction: requiredText(input.direction, "direction"),
+      stage: text(input.stage),
+      message: requiredText(input.message, "message"),
+      source: requiredText(input.source || "company-site", "source"),
+      createdAt: isoText(input.createdAt, "createdAt"),
+      updatedAt: isoText(input.updatedAt, "updatedAt"),
+      expiresAt: isoText(expiresAt, "expiresAt")
+    };
+    sqliteRun(db.prepare(`
+      insert into platform_leads (
+        id, status, organization, email, direction, stage, message, source,
+        created_at, updated_at, expires_at
+      ) values (
+        @id, @status, @organization, @email, @direction, @stage, @message, @source,
+        @createdAt, @updatedAt, @expiresAt
+      )
+      on conflict(id) do update set
+        status = excluded.status,
+        organization = excluded.organization,
+        email = excluded.email,
+        direction = excluded.direction,
+        stage = excluded.stage,
+        message = excluded.message,
+        source = excluded.source,
+        updated_at = excluded.updated_at,
+        expires_at = excluded.expires_at
+    `), record);
+    return getLead(record.id);
+  }
+
+  function getLead(id) {
+    return mapLead(db.prepare("select * from platform_leads where id = ?").get(requiredText(id, "id")));
+  }
+
+  function listLeads(filters = {}) {
+    const status = optionalText(filters.status);
+    const rows = status
+      ? db.prepare(`
+          select * from platform_leads
+          where status = ?
+          order by created_at asc, id asc
+        `).all(status)
+      : db.prepare(`
+          select * from platform_leads
+          order by created_at asc, id asc
+        `).all();
+    return rows.map(mapLead);
+  }
+
+  function purgeExpiredLeads({ now } = {}) {
+    return db.prepare("delete from platform_leads where expires_at <= ?")
+      .run(isoText(now, "now")).changes;
+  }
 
   function createAccount(input) {
     assertNoUnsafeFields(input);
@@ -2890,6 +2986,10 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
 
   return {
     runInTransaction,
+    upsertLead,
+    getLead,
+    listLeads,
+    purgeExpiredLeads,
     createAccount,
     getAccount,
     listAccounts,
