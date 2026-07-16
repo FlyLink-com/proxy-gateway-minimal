@@ -503,22 +503,6 @@ function currentCycleUsageRowsFor({ record, controlStore, binding, at, rollups }
   };
 }
 
-function objectMetadata(value) {
-  if (!value) return {};
-  if (typeof value === "object" && !Array.isArray(value)) {
-    return value;
-  }
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
-      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-    } catch {
-      return {};
-    }
-  }
-  return {};
-}
-
 function createMemoryPortalAccessRequestStore() {
   const records = [];
   return {
@@ -1423,7 +1407,6 @@ export function createPortalAccessRequestService(options = {}) {
       request.updatedAt = now;
       const rotation = beginEdgeCredentialRotation(request);
       let committed = false;
-      let runtimeMayHaveMutated = false;
       let runtimeCompensationRequired = false;
       let tenantBindingMayHaveChanged = false;
       let orderMayHaveChanged = false;
@@ -1451,7 +1434,6 @@ export function createPortalAccessRequestService(options = {}) {
         const lifecycleResult = reconcileEdgeLifecycle("order_refreshed", request);
         const lifecycleEvidence = refreshLifecycleDisposition(lifecycleResult);
         forwardPendingChannelRefs = lifecycleEvidence.pendingChannelRefs;
-        runtimeMayHaveMutated = lifecycleEvidence.runtimeMayHaveMutated;
         const lifecycleDisposition = lifecycleEvidence.disposition;
         runtimeCompensationRequired = lifecycleEvidence.compensationRequired;
         if (lifecycleDisposition === "failed") {

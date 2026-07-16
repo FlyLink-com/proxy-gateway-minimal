@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { realpathSync, readFileSync, renameSync, statSync, writeFileSync, chmodSync, chownSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createFileTrafficCollectorStatusStore } from "../server/services/platform/traffic-collector-admin-projection.mjs";
 import { buildMihomoTuicUsageCredentialMapProducerStatus } from "../server/services/platform/traffic-collector-status-producers.mjs";

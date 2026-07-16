@@ -13,21 +13,17 @@ import {
   ExternalLink,
   Headphones,
   History,
-  KeyRound,
   LayoutGrid,
   LineChart,
   LifeBuoy,
   LogOut,
   Mail,
-  Monitor,
   Plus,
   QrCode,
   ReceiptText,
   RefreshCw,
   Search,
   ShieldCheck,
-  Smartphone,
-  Terminal,
   UserCog,
   Wifi,
   type LucideIcon
@@ -169,63 +165,6 @@ const navItems: Array<{ id: PortalView; label: string; description: string; icon
   { id: "usage", label: "用量", description: "查看流量消耗、套餐额度和用量更新状态。", icon: LineChart },
   { id: "profile", label: "个人与安全", description: "管理账户信息、身份验证器和通行密钥。", icon: UserCog },
   { id: "support", label: "支持", description: "提交订阅、客户端或账户问题并追踪处理编号。", icon: Headphones }
-];
-
-const usageSteps = [
-  {
-    title: "下载客户端",
-    detail: <>电脑端优先使用 <code className="notranslate" translate="no">Clash Verge Rev</code>，手机和平板优先使用 <code className="notranslate" translate="no">Karing</code>，无法安装时可用 <code className="notranslate" translate="no">Hiddify</code>。</>
-  },
-  {
-    title: "复制连接链接",
-    detail: <>付款完成后，在订阅页面点击 <code>复制链接</code>。刷新后请重新复制新链接。</>
-  },
-  {
-    title: "导入配置",
-    detail: <>在客户端中选择 <code>从 URL 导入</code> 或 <code>订阅导入</code>，粘贴链接后保存。</>
-  },
-  {
-    title: "开始使用",
-    detail: <>更新后选择可用线路，再打开 <code>系统代理</code> 开关。</>
-  }
-];
-
-const supportedClientApps: Array<{
-  name: string;
-  badge: string;
-  platforms: string;
-  description: string;
-  href: string;
-  cta: string;
-  icon: LucideIcon;
-}> = [
-  {
-    name: "Clash Verge Rev",
-    badge: "桌面首选",
-    platforms: "Windows / macOS / Linux",
-    description: "适合电脑端长期使用。安装后选择从 URL 导入，粘贴复制好的链接。",
-    href: "https://www.clashverge.dev/install.html",
-    cta: "下载桌面版",
-    icon: Monitor
-  },
-  {
-    name: "Karing",
-    badge: "移动首选",
-    platforms: "iOS / Android / Windows / macOS / Linux",
-    description: "适合手机和平板，也可用于桌面。新增配置时选择从链接导入。",
-    href: "https://karing.app/en/download",
-    cta: "打开下载页",
-    icon: Smartphone
-  },
-  {
-    name: "Hiddify",
-    badge: "备用选择",
-    platforms: "iOS / Android / Windows / macOS / Linux",
-    description: "当前设备无法安装前两项时使用。选择与你设备对应的版本并用链接导入。",
-    href: "https://github.com/hiddify/hiddify-app/releases",
-    cta: "查看发布版",
-    icon: Download
-  }
 ];
 
 const supportCategories: Array<{ id: PortalSupportCategory; label: string }> = [
@@ -857,26 +796,6 @@ function trafficUsageDetail(order: PortalOrderRow, locale: PortalAuthLocale = "z
     : `上传 ${formatTrafficBytes(usage.uploadBytes)} / 下载 ${formatTrafficBytes(usage.downloadBytes)}`;
 }
 
-function trafficUsageChannelLabel(order: PortalOrderRow, locale: PortalAuthLocale = "zh") {
-  const usage = order.request.usage;
-  if (!usage) return "";
-  if (usage.channelCount > 0) {
-    return locale === "en"
-      ? `${usage.measuredChannelCount}/${usage.channelCount} routes updated`
-      : `${usage.measuredChannelCount}/${usage.channelCount} 条线路已更新`;
-  }
-  switch (usage.collectionStatus) {
-    case "collector_disabled":
-      return uiText(locale, "暂未更新", "Not updated");
-    case "not_collected":
-      return uiText(locale, "暂无用量", "No usage yet");
-    case "stale":
-      return uiText(locale, "更新延迟", "Update delayed");
-    default:
-      return usage.usedBytes > 0 ? uiText(locale, "已更新", "Updated") : uiText(locale, "等待使用数据", "Waiting for usage data");
-  }
-}
-
 function trafficUsageCollectedAt(order: PortalOrderRow, locale: PortalAuthLocale = "zh") {
   const updatedAt = order.request.usage?.updatedAt;
   return updatedAt
@@ -1164,10 +1083,6 @@ export function UserPortalPage({
       : lifecycle;
   const trafficSummary = useMemo(() => aggregateTrafficUsage(orderRows, accountEntitlements), [orderRows, accountEntitlements]);
   const trafficPercent = aggregateTrafficPercent(trafficSummary);
-  const hasUsableTrafficPlan = orderRows.some((row) => {
-    if (row.status !== "active") return false;
-    return (selectedPlan(row.planId, locale).monthlyTrafficGb ?? 0) > 0 || (row.request.usage?.totalBytes ?? 0) > 0;
-  }) || accountEntitlements.some((entitlement) => usableTrafficEntitlement(entitlement));
   const hasSetupAccess = orderRows.some((row) => row.status === "active")
     || accountEntitlements.some((entitlement) => usableTrafficEntitlement(entitlement));
   const filteredOrderRows = useMemo(() => {
@@ -1922,8 +1837,7 @@ export function UserPortalPage({
   }
 
   const shouldShowSecuritySetup = Boolean(
-    portalSession
-    && securitySetupRequired
+    securitySetupRequired
     && (!authenticatorBound || !passkeyExported)
     && !authenticatorEnrollment
   );
@@ -3894,7 +3808,6 @@ function UseGuide({
   };
   const ActiveGuideStepIcon = activeGuideStep ? guideStepIcon(activeGuideStep.action) : CheckCircle2;
   const SelectedGuideClientIcon = selectedGuide?.icon ?? AppWindow;
-  const visualLinkPreview = visibleSubscriptionUrl || "https://.../subscription-link";
 
   return (
     <section className="portal-use-card portal-start-guide" aria-label={uiText(locale, "开始使用", "Start guide")}>

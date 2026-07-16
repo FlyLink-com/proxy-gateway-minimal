@@ -22,14 +22,6 @@ function requiredText(value, field) {
   return normalized;
 }
 
-function safeRef(value, field) {
-  const normalized = requiredText(value, field);
-  if (!SAFE_REF_PATTERN.test(normalized)) {
-    throw readerError("validation_error", `${field} must be a safe reference`);
-  }
-  return normalized;
-}
-
 function isoText(value, field) {
   const raw = requiredText(value, field);
   const date = new Date(raw);

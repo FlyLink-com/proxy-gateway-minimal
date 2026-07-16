@@ -534,10 +534,6 @@ function continueFromCashier(paymentMethod = "支付宝") {
   fireEvent.click(within(cashierDialog).getByRole("button", { name: "继续支付" }));
 }
 
-function openPortalOrders() {
-  openPortalProfile();
-}
-
 function openPortalSubscriptions() {
   openPortalStartGuide();
   const startSetup = screen.queryByRole("button", { name: "开始配置" });

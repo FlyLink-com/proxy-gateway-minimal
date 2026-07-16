@@ -53,7 +53,7 @@ export function App() {
   const [route, setRoute] = useState<AppRoute>(() => routeFromLocation());
   const [activePage, setActivePage] = useState<AdminPage>(initialAdminRoute?.page ?? "dashboard");
   const [search, setSearch] = useState("");
-  const [riskNotificationCount, setRiskNotificationCount] = useState(0);
+  const [, setRiskNotificationCount] = useState(0);
   const [adminSession, setAdminSession] = useState(() => loadAdminSession());
   const fixturePreviewEnabled = isAdminFixturePreviewEnabled();
   const adminApiConfigured = fixturePreviewEnabled || adminSession.consoleToken.trim().length > 0;

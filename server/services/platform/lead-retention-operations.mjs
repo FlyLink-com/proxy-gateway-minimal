@@ -15,7 +15,7 @@ import {
   unlinkSync,
   writeFileSync
 } from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, resolve } from "node:path";
 import Database from "better-sqlite3";
 import {
   createSqliteSubscriptionControlStore
@@ -750,7 +750,6 @@ export async function runLeadBackup({
     if (tempBackupOwned && tempBackupPath && existsSync(tempBackupPath)) {
       try {
         unlinkFn(tempBackupPath);
-        tempBackupOwned = false;
       } catch {
         cleanupFailed = true;
       }
@@ -758,7 +757,6 @@ export async function runLeadBackup({
     if (tempManifestOwned && tempManifestPath && existsSync(tempManifestPath)) {
       try {
         unlinkFn(tempManifestPath);
-        tempManifestOwned = false;
       } catch {
         cleanupFailed = true;
       }

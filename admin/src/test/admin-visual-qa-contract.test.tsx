@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { App } from "../App";
 import { getAdminPageCompositionContract } from "../app/admin-ui-contract";
-import { pageSubNavigation, pageTitles, type AdminPage } from "../app/navigation";
+import { pageSubNavigation, pageTitles } from "../app/navigation";
 import { ADMIN_VISUAL_QA_AXES } from "../design/figma-mirror";
 import { DashboardPage } from "../pages/dashboard-page";
 import { accountsResourcesBlueprint, PortalRequestsPage } from "../pages/portal-requests-page";

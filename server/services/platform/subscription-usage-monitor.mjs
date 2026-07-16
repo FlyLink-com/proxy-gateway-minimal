@@ -2,17 +2,6 @@ import {
   usageCycleFiltersForBinding
 } from "./usage-billing-cycle.mjs";
 
-const EMPTY_FILTERS = {
-  accountId: "",
-  plan: "",
-  nodeId: "",
-  status: "",
-  warning: "",
-  from: "",
-  to: "",
-  bucket: "hour"
-};
-
 const ACTIVITY_LEVELS = new Set([
   "never_seen",
   "seen",
@@ -455,90 +444,6 @@ function currentCycleUsageRowsForRequest({ controlStore, requestId, edgeCredenti
 
 function latestIso(left, right) {
   return dateMs(right) > dateMs(left) ? safeIso(right) : safeIso(left);
-}
-
-function userCollectionStatus({ measuredOrders, zeroUsageOrders, unmeasuredOrders }) {
-  if (unmeasuredOrders > 0) {
-    return "not_collected";
-  }
-  if (measuredOrders > 0) {
-    return "measured";
-  }
-  if (zeroUsageOrders > 0) {
-    return "measured_zero";
-  }
-  return "not_collected";
-}
-
-function buildUserAggregates(items) {
-  const byUser = new Map();
-  for (const item of items) {
-    const portalUserRef = safeText(item.portalUserRef || item.accountId);
-    const key = portalUserRef || safeText(item.accountId) || "unknown";
-    const aggregate = byUser.get(key) || {
-      accountId: safeText(item.accountId),
-      portalUserRef: key,
-      orderCount: 0,
-      measuredOrders: 0,
-      unmeasuredOrders: 0,
-      zeroUsageOrders: 0,
-      plans: [],
-      issuedChannels: [],
-      trafficLimitBytes: 0,
-      usedBytes: 0,
-      uploadBytes: 0,
-      downloadBytes: 0,
-      collectionStatus: "not_collected",
-      usageMeasured: false,
-      lastUsageObservedAt: null,
-      channelUsages: [],
-      warnings: []
-    };
-    aggregate.accountId = aggregate.accountId || safeText(item.accountId);
-    aggregate.orderCount += 1;
-    aggregate.trafficLimitBytes += safeNumber(item.trafficLimitBytes);
-    aggregate.usedBytes += safeNumber(item.usedBytes);
-    aggregate.uploadBytes += safeNumber(item.uploadBytes);
-    aggregate.downloadBytes += safeNumber(item.downloadBytes);
-    aggregate.lastUsageObservedAt = latestIso(aggregate.lastUsageObservedAt, item.lastUsageObservedAt);
-    if (item.usageStatus === "measured") {
-      aggregate.measuredOrders += 1;
-    } else if (item.usageStatus === "measured_zero") {
-      aggregate.zeroUsageOrders += 1;
-    } else {
-      aggregate.unmeasuredOrders += 1;
-    }
-    aggregate.usageMeasured = aggregate.usageMeasured || item.usageMeasured === true;
-    aggregate.plans = uniqueSafeTexts([...aggregate.plans, item.plan]);
-    aggregate.issuedChannels = uniqueSafeTexts([...aggregate.issuedChannels, ...item.issuedChannels]);
-    aggregate.warnings = uniqueSafeTexts([...aggregate.warnings, ...item.warnings]).sort();
-
-    const channelUsageByRef = new Map(aggregate.channelUsages.map((usage) => [usage.channelRef, usage]));
-    for (const channelUsage of item.channelUsages) {
-      const channelRef = safeText(channelUsage.channelRef);
-      if (!channelRef) {
-        continue;
-      }
-      const current = channelUsageByRef.get(channelRef) || {
-        channelRef,
-        usedBytes: 0,
-        uploadBytes: 0,
-        downloadBytes: 0,
-        lastObservedAt: null
-      };
-      current.usedBytes += safeNumber(channelUsage.usedBytes);
-      current.uploadBytes += safeNumber(channelUsage.uploadBytes);
-      current.downloadBytes += safeNumber(channelUsage.downloadBytes);
-      current.lastObservedAt = latestIso(current.lastObservedAt, channelUsage.lastObservedAt);
-      channelUsageByRef.set(channelRef, current);
-    }
-    aggregate.channelUsages = [...channelUsageByRef.values()]
-      .sort((left, right) => left.channelRef.localeCompare(right.channelRef));
-    aggregate.collectionStatus = userCollectionStatus(aggregate);
-    byUser.set(key, aggregate);
-  }
-  return [...byUser.values()]
-    .sort((left, right) => left.portalUserRef.localeCompare(right.portalUserRef));
 }
 
 function buildUsageTimeseries({ controlStore, items, filters }) {

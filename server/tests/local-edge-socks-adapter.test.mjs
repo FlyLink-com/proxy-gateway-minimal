@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import net from "node:net";
 import test from "node:test";
 import {
-  createSocks5Adapter,
   normalizeSocksAdapterConfig,
   startLocalSocksAdapter
 } from "../../agent/socks5-adapter.mjs";
