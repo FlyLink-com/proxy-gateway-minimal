@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
+import Database from "better-sqlite3";
 import {
   buildLeadRetentionCommandResult,
   calculateLeadBackupRetention,
   createLeadBackupManifest,
+  runLeadPurge,
   serializeLeadRetentionCommandResult,
   validateLeadBackupManifest
 } from "../services/platform/lead-retention-operations.mjs";
@@ -26,6 +31,63 @@ function manifestInput(overrides = {}) {
     leadRowCount: 0,
     ...overrides
   };
+}
+
+function withTempDir(prefix, callback) {
+  const directory = mkdtempSync(join(tmpdir(), prefix));
+  try {
+    return callback(directory);
+  } finally {
+    rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+}
+
+function createPurgeFixture(dbPath) {
+  const database = new Database(dbPath);
+  database.exec(`
+    create table platform_leads (
+      id text primary key,
+      status text not null check (status in ('new', 'reviewing', 'converted', 'rejected')),
+      organization text not null,
+      email text not null,
+      direction text not null,
+      stage text not null default '',
+      message text not null,
+      source text not null,
+      created_at text not null,
+      updated_at text not null,
+      expires_at text not null
+    );
+    create table retention_sentinel (
+      id text primary key,
+      value text not null
+    );
+    insert into retention_sentinel (id, value) values ('sentinel_1', 'preserve-me');
+  `);
+  const insert = database.prepare(`
+    insert into platform_leads (
+      id, status, organization, email, direction, stage, message, source,
+      created_at, updated_at, expires_at
+    ) values (
+      @id, 'new', 'Synthetic Research', @email, 'API Sandbox', 'review',
+      @message, 'company-site', @createdAt, @createdAt, @expiresAt
+    )
+  `);
+  insert.run({
+    id: "lead_due",
+    email: "private-due@example.test",
+    message: "private due message",
+    createdAt: CREATED_AT,
+    expiresAt: "2026-07-20T00:00:00.000Z"
+  });
+  insert.run({
+    id: "lead_future",
+    email: "private-future@example.test",
+    message: "private future message",
+    createdAt: CREATED_AT,
+    expiresAt: "2026-07-21T00:00:00.000Z"
+  });
+  database.close();
 }
 
 test("backup retention uses exactly 90 days and the two-hour safety window without Leads", () => {
@@ -158,4 +220,165 @@ test("command result allows only closed aggregate evidence and sorted reason cod
     }),
     (error) => error?.reasonCode === "invalid_command_result"
   );
+});
+
+test("purge dry-run reports eligibility without deleting rows or initializing schema", () => {
+  withTempDir("platform-lead-purge-dry-", (directory) => {
+    const dbPath = join(directory, "private-control.sqlite");
+    createPurgeFixture(dbPath);
+
+    const result = runLeadPurge({
+      dbPath,
+      apply: false,
+      nowFn: () => new Date("2026-07-20T00:00:00.000Z")
+    });
+    assert.deepEqual(result, {
+      schemaVersion: "1",
+      command: "purge",
+      mode: "dry-run",
+      status: "planned",
+      mutationState: "none",
+      counts: {
+        deletedLeadCount: 0,
+        eligibleLeadCount: 1
+      },
+      reasonCodes: []
+    });
+
+    const database = new Database(dbPath, { readonly: true });
+    assert.equal(database.prepare("select count(*) as count from platform_leads").get().count, 2);
+    assert.deepEqual(database.prepare("select * from retention_sentinel").all(), [
+      { id: "sentinel_1", value: "preserve-me" }
+    ]);
+    database.close();
+
+    const serialized = serializeLeadRetentionCommandResult(result);
+    assert.doesNotMatch(serialized, /private-control|private-due|private-future|private due|private future|example\.test/i);
+  });
+});
+
+test("purge apply deletes only Leads at the exact expiry boundary", () => {
+  withTempDir("platform-lead-purge-apply-", (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    createPurgeFixture(dbPath);
+
+    const before = runLeadPurge({
+      dbPath,
+      apply: true,
+      nowFn: () => new Date("2026-07-19T23:59:59.999Z")
+    });
+    assert.equal(before.counts.deletedLeadCount, 0);
+
+    const atBoundary = runLeadPurge({
+      dbPath,
+      apply: true,
+      nowFn: () => new Date("2026-07-20T00:00:00.000Z")
+    });
+    assert.deepEqual(atBoundary.counts, {
+      deletedLeadCount: 1,
+      eligibleLeadCount: 1
+    });
+    assert.equal(atBoundary.status, "completed");
+    assert.equal(atBoundary.mutationState, "completed");
+
+    const database = new Database(dbPath, { readonly: true });
+    assert.deepEqual(
+      database.prepare("select id from platform_leads order by id").all(),
+      [{ id: "lead_future" }]
+    );
+    assert.deepEqual(database.prepare("select * from retention_sentinel").all(), [
+      { id: "sentinel_1", value: "preserve-me" }
+    ]);
+    database.close();
+  });
+});
+
+test("purge treats an absent Lead table as a no-op and never creates it", () => {
+  withTempDir("platform-lead-purge-absent-", (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    const database = new Database(dbPath);
+    database.exec("create table sentinel (id text primary key)");
+    database.close();
+
+    const result = runLeadPurge({
+      dbPath,
+      apply: true,
+      nowFn: () => new Date("2026-07-20T00:00:00.000Z")
+    });
+    assert.deepEqual(result.counts, {
+      deletedLeadCount: 0,
+      eligibleLeadCount: 0
+    });
+    assert.deepEqual(result.reasonCodes, []);
+
+    const readback = new Database(dbPath, { readonly: true });
+    assert.equal(
+      readback.prepare("select count(*) as count from sqlite_master where name = 'platform_leads'").get().count,
+      0
+    );
+    readback.close();
+  });
+});
+
+test("purge blocks missing, invalid, and incompatible databases without leaking details", () => {
+  withTempDir("platform-lead-purge-blocked-", (directory) => {
+    const missingPath = join(directory, "missing-private.sqlite");
+    const missing = runLeadPurge({
+      dbPath: missingPath,
+      apply: false,
+      nowFn: () => new Date("2026-07-20T00:00:00.000Z")
+    });
+    assert.equal(missing.status, "blocked");
+    assert.deepEqual(missing.reasonCodes, ["database_missing"]);
+
+    const invalidPath = join(directory, "invalid-private.sqlite");
+    writeFileSync(invalidPath, "not a sqlite database", "utf8");
+    const invalid = runLeadPurge({
+      dbPath: invalidPath,
+      apply: false,
+      nowFn: () => new Date("2026-07-20T00:00:00.000Z")
+    });
+    assert.equal(invalid.status, "blocked");
+    assert.deepEqual(invalid.reasonCodes, ["database_invalid"]);
+
+    const incompatiblePath = join(directory, "incompatible-private.sqlite");
+    const database = new Database(incompatiblePath);
+    database.exec("create table platform_leads (id text primary key, expires_at text not null)");
+    database.close();
+    const incompatible = runLeadPurge({
+      dbPath: incompatiblePath,
+      apply: true,
+      nowFn: () => new Date("2026-07-20T00:00:00.000Z")
+    });
+    assert.equal(incompatible.status, "blocked");
+    assert.deepEqual(incompatible.reasonCodes, ["lead_schema_incompatible"]);
+
+    const serialized = JSON.stringify([missing, invalid, incompatible]);
+    assert.doesNotMatch(serialized, /missing-private|invalid-private|incompatible-private|not a sqlite/i);
+  });
+});
+
+test("purge blocks a busy database without deleting eligible Leads", () => {
+  withTempDir("platform-lead-purge-busy-", (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    createPurgeFixture(dbPath);
+    const lock = new Database(dbPath);
+    lock.exec("begin exclusive");
+    try {
+      const result = runLeadPurge({
+        dbPath,
+        apply: true,
+        nowFn: () => new Date("2026-07-20T00:00:00.000Z")
+      });
+      assert.equal(result.status, "blocked");
+      assert.deepEqual(result.reasonCodes, ["database_busy"]);
+    } finally {
+      lock.exec("rollback");
+      lock.close();
+    }
+
+    const database = new Database(dbPath, { readonly: true });
+    assert.equal(database.prepare("select count(*) as count from platform_leads").get().count, 2);
+    database.close();
+  });
 });

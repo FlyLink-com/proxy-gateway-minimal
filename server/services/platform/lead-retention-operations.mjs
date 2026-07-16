@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
-import { basename } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, isAbsolute } from "node:path";
+import Database from "better-sqlite3";
+import {
+  createSqliteSubscriptionControlStore
+} from "./subscription-control-db.mjs";
 
 export const PLATFORM_LEAD_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
 export const PLATFORM_LEAD_BACKUP_PRUNE_SAFETY_MS = 2 * 60 * 60 * 1000;
@@ -49,6 +54,19 @@ const ALLOWED_COUNT_KEYS = new Set([
 ]);
 const SAFE_BACKUP_BASENAME = /^control-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8,64}\.sqlite$/;
 const SAFE_REASON_CODE = /^[a-z][a-z0-9_]{0,63}$/;
+const LEAD_SCHEMA_COLUMNS = [
+  ["id", "text", 0, 1],
+  ["status", "text", 1, 0],
+  ["organization", "text", 1, 0],
+  ["email", "text", 1, 0],
+  ["direction", "text", 1, 0],
+  ["stage", "text", 1, 0],
+  ["message", "text", 1, 0],
+  ["source", "text", 1, 0],
+  ["created_at", "text", 1, 0],
+  ["updated_at", "text", 1, 0],
+  ["expires_at", "text", 1, 0]
+];
 
 function retentionError(reasonCode) {
   const error = new Error(reasonCode);
@@ -290,4 +308,153 @@ export function serializeLeadRetentionCommandResult(result) {
     throw retentionError("invalid_command_result");
   }
   return `${JSON.stringify(result)}\n`;
+}
+
+function commandMode(apply) {
+  return apply ? "apply" : "dry-run";
+}
+
+function blockedCommandResult(command, apply, reasonCode) {
+  return buildLeadRetentionCommandResult({
+    command,
+    mode: commandMode(apply),
+    status: "blocked",
+    mutationState: "none",
+    counts: {},
+    reasonCodes: [reasonCode]
+  });
+}
+
+function normalizedNow(nowFn) {
+  if (typeof nowFn !== "function") throw retentionError("invalid_timestamp");
+  const value = nowFn();
+  const timestamp = value instanceof Date ? value.toISOString() : value;
+  return canonicalTimestamp(timestamp);
+}
+
+function quickCheckOk(database) {
+  const rows = database.pragma("quick_check");
+  return Array.isArray(rows)
+    && rows.length === 1
+    && rows[0]?.quick_check === "ok";
+}
+
+function inspectLeadTable(database) {
+  const table = database.prepare(`
+    select name from sqlite_master
+    where type = 'table' and name = 'platform_leads'
+  `).get();
+  if (!table) return { present: false };
+  const columns = database.pragma("table_info(platform_leads)");
+  const compatible = columns.length === LEAD_SCHEMA_COLUMNS.length
+    && columns.every((column, index) => {
+      const [name, type, notnull, pk] = LEAD_SCHEMA_COLUMNS[index];
+      return column.name === name
+        && String(column.type).toLowerCase() === type
+        && column.notnull === notnull
+        && column.pk === pk;
+    });
+  return { present: true, compatible };
+}
+
+function databaseFailureReason(error) {
+  const code = String(error?.code || "");
+  if (code === "SQLITE_BUSY" || code === "SQLITE_LOCKED") return "database_busy";
+  if (code === "SQLITE_CANTOPEN") return "database_missing";
+  if (code.startsWith("SQLITE_NOTADB") || /not a database/i.test(String(error?.message || ""))) {
+    return "database_invalid";
+  }
+  return "database_unavailable";
+}
+
+export function runLeadPurge({
+  dbPath,
+  apply = false,
+  nowFn = () => new Date()
+} = {}) {
+  if (typeof apply !== "boolean") {
+    return blockedCommandResult("purge", false, "invalid_command_contract");
+  }
+  if (typeof dbPath !== "string" || !isAbsolute(dbPath)) {
+    return blockedCommandResult("purge", apply, "invalid_database_path");
+  }
+  if (!existsSync(dbPath)) {
+    return blockedCommandResult("purge", apply, "database_missing");
+  }
+
+  let now;
+  try {
+    now = normalizedNow(nowFn);
+  } catch {
+    return blockedCommandResult("purge", apply, "invalid_timestamp");
+  }
+
+  let database;
+  try {
+    database = new Database(dbPath, {
+      readonly: !apply,
+      fileMustExist: true
+    });
+    database.pragma("busy_timeout = 2000");
+    if (!quickCheckOk(database)) {
+      return blockedCommandResult("purge", apply, "database_integrity_failed");
+    }
+    const schema = inspectLeadTable(database);
+    if (!schema.present) {
+      return buildLeadRetentionCommandResult({
+        command: "purge",
+        mode: commandMode(apply),
+        status: apply ? "completed" : "planned",
+        mutationState: apply ? "completed" : "none",
+        counts: {
+          deletedLeadCount: 0,
+          eligibleLeadCount: 0
+        },
+        reasonCodes: []
+      });
+    }
+    if (!schema.compatible) {
+      return blockedCommandResult("purge", apply, "lead_schema_incompatible");
+    }
+
+    const countEligible = () => database.prepare(`
+      select count(*) as count from platform_leads where expires_at <= ?
+    `).get(now).count;
+    if (!apply) {
+      return buildLeadRetentionCommandResult({
+        command: "purge",
+        mode: "dry-run",
+        status: "planned",
+        mutationState: "none",
+        counts: {
+          deletedLeadCount: 0,
+          eligibleLeadCount: countEligible()
+        },
+        reasonCodes: []
+      });
+    }
+
+    const store = createSqliteSubscriptionControlStore({
+      database,
+      initializeSchema: false
+    });
+    const outcome = database.transaction(() => {
+      const eligibleLeadCount = countEligible();
+      const deletedLeadCount = store.purgeExpiredLeads({ now });
+      return { deletedLeadCount, eligibleLeadCount };
+    })();
+    store.close();
+    return buildLeadRetentionCommandResult({
+      command: "purge",
+      mode: "apply",
+      status: "completed",
+      mutationState: "completed",
+      counts: outcome,
+      reasonCodes: []
+    });
+  } catch (error) {
+    return blockedCommandResult("purge", apply, databaseFailureReason(error));
+  } finally {
+    database?.close();
+  }
 }
