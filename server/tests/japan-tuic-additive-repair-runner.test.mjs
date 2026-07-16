@@ -1,10 +1,25 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Readable } from "node:stream";
 import test from "node:test";
 
 import { JAPAN_TUIC_REPAIR_GATE } from "../../scripts/japan-tuic-additive-repair-contract.mjs";
 import {
+  createHostOperations,
   deriveWaitBudget,
   executeJapanTuicAdditiveRepair,
+  runJapanTuicAdditiveRepairCli,
   validateArchiveEntries,
   validateRunnerBinding
 } from "../../scripts/japan-tuic-additive-repair-runner.mjs";
@@ -428,4 +443,306 @@ test("marks closeout incomplete when host cleanup is not fully verified", async 
   assert.equal(receipt.hostCredentialCleanup, "failed");
   assert.equal(receipt.closeout, "incomplete");
   assert.deepEqual(calls.slice(-2), ["removeTemporaryMaterial", "revokeOwnAuthorization"]);
+});
+
+test("host adapter receives a bounded artifact with mode 0600 and exact digest", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "gccgw-japan-host-artifact-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const bytes = Buffer.from("approved-small-artifact");
+  const digest = createHash("sha256").update(bytes).digest("hex");
+  const binding = validBinding({
+    paths: { ...validBinding().paths, temporaryRoot: directory }
+  });
+  const operations = createHostOperations({
+    binding,
+    expectedArtifact: { sizeBytes: bytes.length, sha256: digest },
+    execFileFn: async () => ({ stdout: "", stderr: "" })
+  });
+  const received = await operations.receiveArtifact(Readable.from([bytes]));
+  assert.equal(received.sizeBytes, bytes.length);
+  assert.equal(received.sha256, digest);
+  if (process.platform !== "win32") {
+    assert.equal(statSync(received.path).mode & 0o777, 0o600);
+  }
+  await assert.rejects(
+    () => createHostOperations({
+      binding,
+      expectedArtifact: { sizeBytes: bytes.length - 1, sha256: digest },
+      execFileFn: async () => ({ stdout: "", stderr: "" })
+    }).receiveArtifact(Readable.from([bytes])),
+    (error) => error.code === "artifact_identity_mismatch"
+  );
+});
+
+test("host adapter inspects ZIP names and types before fixed extraction", async () => {
+  const calls = [];
+  const requiredEntries = [
+    "scripts/mihomo-tuic-usage-map-rebuild.mjs",
+    "scripts/traffic-accounting-natural-observation.mjs",
+    "server/services/platform/traffic-collector-admin-projection.mjs",
+    "server/services/platform/traffic-collector-status-producers.mjs"
+  ];
+  const operations = createHostOperations({
+    binding: validBinding(),
+    execFileFn: async (file, args) => {
+      calls.push([file, args]);
+      if (args[0] === "-Z1") return { stdout: `${requiredEntries.join("\n")}\n`, stderr: "" };
+      if (args[0] === "-ZTs") {
+        return { stdout: requiredEntries.map((entry) => `-rw-r--r--  3.0 unx 1 tx ${entry}`).join("\n"), stderr: "" };
+      }
+      return { stdout: "", stderr: "" };
+    },
+    makeTemporaryDirectoryFn: () => "/gate/temporary/source"
+  });
+  assert.deepEqual(await operations.listArchiveEntries("/gate/artifact.zip"), requiredEntries);
+  assert.deepEqual(await operations.extractArtifact("/gate/artifact.zip"), { root: "/gate/temporary/source" });
+  assert.deepEqual(calls, [
+    ["/usr/bin/unzip", ["-Z1", "/gate/artifact.zip"]],
+    ["/usr/bin/unzip", ["-ZTs", "/gate/artifact.zip"]],
+    ["/usr/bin/unzip", ["-qq", "/gate/artifact.zip", "-d", "/gate/temporary/source"]]
+  ]);
+});
+
+test("host adapter rejects a ZIP symlink before extraction", async () => {
+  const operations = createHostOperations({
+    binding: validBinding(),
+    execFileFn: async (_file, args) => {
+      if (args[0] === "-Z1") {
+        return { stdout: "scripts/mihomo-tuic-usage-map-rebuild.mjs\nscripts/traffic-accounting-natural-observation.mjs\nserver/services/platform/traffic-collector-admin-projection.mjs\nserver/services/platform/traffic-collector-status-producers.mjs\n", stderr: "" };
+      }
+      return { stdout: "lrwxrwxrwx  3.0 unx 1 tx scripts/mihomo-tuic-usage-map-rebuild.mjs", stderr: "" };
+    }
+  });
+  await assert.rejects(
+    () => operations.listArchiveEntries("/gate/artifact.zip"),
+    (error) => error.code === "artifact_identity_mismatch"
+  );
+});
+
+test("host adapter invokes only the fixed additive helper arguments and derives identity", async () => {
+  const calls = [];
+  const report = {
+    ...candidateReport(),
+    currentMapCount: 79,
+    rebuiltMapCount: 55
+  };
+  const operations = createHostOperations({
+    binding: validBinding(),
+    execFileFn: async (file, args, options) => {
+      calls.push([file, args, options]);
+      return { stdout: `${JSON.stringify(report)}\n`, stderr: "/protected/stderr" };
+    }
+  });
+  assert.deepEqual(await operations.runMapHelper({
+    root: "/gate/source",
+    binding: validBinding(),
+    apply: false
+  }), report);
+  assert.deepEqual(await operations.readIdentityGate({ phase: "before" }), identityBefore());
+  assert.equal(calls[0][0], "/usr/bin/node");
+  assert.deepEqual(calls[0][1].slice(-14), [
+    "--strategy", "additive_missing_only",
+    "--expected-add", "3",
+    "--expected-remove", "0",
+    "--expected-deferred-remove", "27",
+    "--expected-changed", "0",
+    "--expected-missing-material", "0",
+    "--expected-projected-map-count", "82"
+  ]);
+  assert.equal(calls[0][1].includes("--apply"), false);
+  assert.equal(calls[0][2].shell, false);
+});
+
+test("host adapter queries fixed read-only systemd properties and derives interval", async () => {
+  const calls = [];
+  const operations = createHostOperations({
+    binding: validBinding(),
+    execFileFn: async (file, args) => {
+      calls.push([file, args]);
+      if (args.includes("gccgw-traffic-usage-collect.timer")) {
+        return {
+          stdout: [
+            "ActiveState=active",
+            "UnitFileState=enabled",
+            "NRestarts=0",
+            "LastTriggerUSec=2026-07-16T20:00:00.000Z",
+            "NextElapseUSecRealtime=2026-07-16T20:05:00.000Z"
+          ].join("\n"),
+          stderr: ""
+        };
+      }
+      return { stdout: "NRestarts=0\n", stderr: "" };
+    }
+  });
+  assert.deepEqual(await operations.readTimerState(validBinding()), timerState());
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every(([file, args]) => file === "/usr/bin/systemctl" && args[0] === "show"));
+  assert.ok(calls.every(([, args]) => !args.some((arg) => new Set(["start", "restart", "enable", "disable"]).has(arg))));
+});
+
+test("host adapter backs up, restores, and removes only its marked authorization", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "gccgw-japan-host-files-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const backupDirectory = join(directory, "backups");
+  const temporaryRoot = join(directory, "temporary");
+  mkdirSync(backupDirectory);
+  mkdirSync(temporaryRoot);
+  const currentMap = join(directory, "map.json");
+  const authorizedKeys = join(directory, "authorized_keys");
+  writeFileSync(currentMap, "before-map", { mode: 0o600 });
+  chmodSync(currentMap, 0o600);
+  const marker = validBinding().authorizationMarker;
+  writeFileSync(authorizedKeys, `ssh-ed25519 AAAA first-key\nssh-ed25519 BBBB ${marker}\n`, { mode: 0o600 });
+  const binding = validBinding({
+    paths: {
+      ...validBinding().paths,
+      currentMap,
+      backupDirectory,
+      temporaryRoot,
+      authorizedKeys
+    }
+  });
+  const operations = createHostOperations({
+    binding,
+    execFileFn: async () => ({ stdout: "", stderr: "" })
+  });
+  const backup = await operations.createBackup(binding);
+  writeFileSync(currentMap, "changed-map");
+  await operations.restoreBackup(binding, backup);
+  assert.equal(readFileSync(currentMap, "utf8"), "before-map");
+  assert.equal(await operations.revokeOwnAuthorization(binding), true);
+  assert.equal(readFileSync(authorizedKeys, "utf8"), "ssh-ed25519 AAAA first-key\n");
+});
+
+test("host adapter validates a protected natural observation and returns aggregates only", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "gccgw-japan-natural-observation-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const observationPath = join(directory, "natural-observation.json");
+  writeFileSync(observationPath, JSON.stringify({
+    protectedFixture: "/must/not/return",
+    projection: {
+      collectors: [
+        { channelRef: "channel-vultr-a-tuic", unresolvedCount: 0 },
+        { channelRef: "channel-unrelated", unresolvedCount: 1 }
+      ]
+    }
+  }));
+  const binding = validBinding({
+    paths: { ...validBinding().paths, naturalObservation: observationPath }
+  });
+  const operations = createHostOperations({
+    binding,
+    execFileFn: async () => ({ stdout: "", stderr: "" }),
+    naturalObservationBuilder: () => ({
+      capturedAt: "2026-07-16T20:05:00.000Z",
+      collectorInvocationObserved: true,
+      projection: {
+        collectorCount: 5,
+        unresolvedTotal: 1,
+        omittedCollectors: 0,
+        omittedProducers: 0,
+        provenanceConserved: true
+      },
+      passed: true
+    })
+  });
+  const summary = await operations.readNaturalObservation({ root: "/gate/source", binding });
+  assert.deepEqual(summary, observationCurrent());
+  assert.equal(JSON.stringify(summary).includes("must/not/return"), false);
+});
+
+test("host adapter rejects natural evidence without the fixed Japan TUIC channel", async (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "gccgw-japan-natural-missing-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const observationPath = join(directory, "natural-observation.json");
+  writeFileSync(observationPath, JSON.stringify({
+    projection: { collectors: [{ channelRef: "channel-unrelated", unresolvedCount: 0 }] }
+  }));
+  const binding = validBinding({
+    paths: { ...validBinding().paths, naturalObservation: observationPath }
+  });
+  const operations = createHostOperations({
+    binding,
+    execFileFn: async () => ({ stdout: "", stderr: "" }),
+    naturalObservationBuilder: () => ({
+      capturedAt: "2026-07-16T20:05:00.000Z",
+      collectorInvocationObserved: true,
+      projection: {
+        collectorCount: 1,
+        unresolvedTotal: 0,
+        omittedCollectors: 0,
+        omittedProducers: 0,
+        provenanceConserved: true
+      },
+      passed: true
+    })
+  });
+  await assert.rejects(
+    () => operations.readNaturalObservation({ root: "/gate/source", binding }),
+    (error) => error.code === "natural_observation_failed"
+  );
+});
+
+test("forced-command CLI rejects extra arguments without echoing input", async () => {
+  let stdout = "";
+  let stderr = "";
+  const exitCode = await runJapanTuicAdditiveRepairCli({
+    argv: ["--binding", "/protected/binding.json", "--command", "/protected/unsafe"],
+    stdout: { write: (value) => { stdout += value; } },
+    stderr: { write: (value) => { stderr += value; } },
+    env: { SSH_ORIGINAL_COMMAND: "/protected/do-not-run" }
+  });
+  assert.equal(exitCode, 1);
+  assert.equal(stdout, "");
+  assert.deepEqual(JSON.parse(stderr), {
+    schemaVersion: "1",
+    type: "japan_tuic_additive_repair_execution",
+    productionResult: "indeterminate",
+    hostCredentialCleanup: "failed",
+    closeout: "incomplete",
+    error: "restricted_identity_rejected"
+  });
+  assert.doesNotMatch(stderr, /protected|unsafe|do-not-run/);
+});
+
+test("forced-command CLI ignores SSH_ORIGINAL_COMMAND and emits one aggregate receipt", async () => {
+  let stdout = "";
+  let stderr = "";
+  let executeCalls = 0;
+  const exitCode = await runJapanTuicAdditiveRepairCli({
+    argv: ["--binding", "/protected/binding.json"],
+    stdin: Readable.from([Buffer.from("artifact")]),
+    stdout: { write: (value) => { stdout += value; } },
+    stderr: { write: (value) => { stderr += value; } },
+    env: { SSH_ORIGINAL_COMMAND: "rm -rf /protected/must-not-run" },
+    platform: "linux",
+    loadBindingFn: () => validBinding(),
+    operationsFactory: () => ({ bounded: true }),
+    executeFn: async ({ operations }) => {
+      executeCalls += 1;
+      assert.deepEqual(operations, { bounded: true });
+      return {
+        schemaVersion: "1",
+        type: "japan_tuic_additive_repair_execution",
+        productionResult: "applied_validated",
+        hostCredentialCleanup: "verified",
+        closeout: "github_cleanup_pending",
+        candidate: JAPAN_TUIC_REPAIR_GATE.candidate,
+        identityAfter: JAPAN_TUIC_REPAIR_GATE.after,
+        naturalObservation: {
+          accepted: true,
+          capturedAt: "2026-07-16T20:05:00.000Z",
+          collectorCount: 5,
+          unresolvedTotal: 1,
+          japanTuicUnresolved: 0
+        }
+      };
+    }
+  });
+  assert.equal(exitCode, 0);
+  assert.equal(executeCalls, 1);
+  assert.equal(stderr, "");
+  assert.equal(stdout.trim().split("\n").length, 1);
+  assert.equal(JSON.parse(stdout).productionResult, "applied_validated");
+  assert.doesNotMatch(stdout, /rm -rf|protected|must-not-run/);
 });
