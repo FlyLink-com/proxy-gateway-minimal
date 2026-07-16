@@ -576,6 +576,34 @@ test("backup apply publishes a complete verified SQLite pair without leaking its
   });
 });
 
+test("backup pre-creates its owned temporary snapshot with restrictive mode", async () => {
+  await withTempDirAsync("platform-lead-backup-temp-mode-", async (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    const backupDir = join(directory, "lead-aware-backups");
+    createBackupFixture(dbPath);
+    mkdirSync(backupDir, { mode: 0o700 });
+    let observedPrecreated = false;
+
+    const result = await runLeadBackup({
+      dbPath,
+      backupDir,
+      apply: true,
+      nowFn: () => new Date(CREATED_AT),
+      randomBytesFn: () => Buffer.from("0011223344556677", "hex"),
+      async backupFn(source, temporaryPath) {
+        observedPrecreated = existsSync(temporaryPath)
+          && statSync(temporaryPath).size === 0;
+        if (process.platform !== "win32") {
+          assert.equal(statSync(temporaryPath).mode & 0o777, 0o600);
+        }
+        return source.backup(temporaryPath);
+      }
+    });
+    assert.equal(result.status, "completed");
+    assert.equal(observedPrecreated, true);
+  });
+});
+
 test("backup normalizes filename milliseconds while preserving exact manifest creation time", async () => {
   await withTempDirAsync("platform-lead-backup-milliseconds-", async (directory) => {
     const dbPath = join(directory, "control.sqlite");

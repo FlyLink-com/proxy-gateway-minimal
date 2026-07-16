@@ -602,10 +602,12 @@ export async function runLeadBackup({
   apply = false,
   nowFn = () => new Date(),
   randomBytesFn = randomBytes,
+  backupFn = (source, destination) => source.backup(destination),
   linkFn = linkSync,
   unlinkFn = unlinkSync
 } = {}) {
   if (typeof apply !== "boolean"
+    || typeof backupFn !== "function"
     || typeof linkFn !== "function"
     || typeof unlinkFn !== "function") {
     return backupResult({
@@ -677,8 +679,14 @@ export async function runLeadBackup({
       throw retentionError("backup_collision");
     }
 
+    writeFileSync(tempBackupPath, "", {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600
+    });
     tempBackupOwned = true;
-    await source.backup(tempBackupPath);
+    chmodSync(tempBackupPath, 0o600);
+    await backupFn(source, tempBackupPath);
     source.close();
     source = null;
 
