@@ -47,11 +47,16 @@ test("public lead intake feeds the protected platform review queue", async () =>
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        id: "lead_caller_supplied",
+        status: "converted",
         organization: "Acme Research",
         email: "ops@example.com",
         direction: "预约自动化诊断",
         stage: "试点预算已确定",
-        message: "需要把投放线索接入 AI 复盘流程。"
+        message: "需要把投放线索接入 AI 复盘流程。",
+        source: "caller-supplied",
+        createdAt: "2099-01-01T00:00:00.000Z",
+        updatedAt: "2099-01-01T00:00:00.000Z"
       })
     });
     assert.equal(submitted.status, 202);
@@ -78,6 +83,33 @@ test("public lead intake feeds the protected platform review queue", async () =>
       updatedAt: "2026-05-26T10:00:00.000Z"
     }]);
     assert.equal(JSON.stringify(body).includes("投放线索"), false);
+  } finally {
+    server.close();
+  }
+});
+
+test("public lead intake reports durable queue failures as unavailable", async () => {
+  const leadQueue = {
+    enqueueLead() {
+      throw new Error("synthetic local database failure");
+    }
+  };
+  const { server, baseUrl } = await listen(createApp(fakeState(leadQueue)));
+
+  try {
+    const response = await fetch(`${baseUrl}/api/public/leads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        organization: "Synthetic Research",
+        email: "synthetic@example.test",
+        direction: "API Sandbox",
+        message: "Synthetic local fixture only."
+      })
+    });
+
+    assert.equal(response.status, 503);
+    assert.deepEqual(await response.json(), { error: "lead_sink_unavailable" });
   } finally {
     server.close();
   }

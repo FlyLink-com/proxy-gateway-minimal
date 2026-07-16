@@ -29,6 +29,23 @@ function withStore(fn) {
   }
 }
 
+function durableLead(overrides = {}) {
+  return {
+    id: "lead_durable_1",
+    type: "platform_lead",
+    status: "new",
+    organization: "Synthetic Research",
+    email: "synthetic@example.test",
+    direction: "API Sandbox",
+    stage: "review",
+    message: "Synthetic local fixture only.",
+    source: "company-site",
+    createdAt: "2026-07-16T00:00:00.000Z",
+    updatedAt: "2026-07-16T00:00:00.000Z",
+    ...overrides
+  };
+}
+
 test("subscription control store persists the business issuance lifecycle", () => {
   withStore((store) => {
     const now = "2026-05-29T00:00:00.000Z";
@@ -1210,4 +1227,92 @@ test("subscription control store rolls back grouped portal credential writes", (
 
     assert.equal(store.getActivePortalPasswordCredential("acct_auth_tx"), null);
   });
+});
+
+test("subscription control store persists retained Leads across restart and preserves createdAt", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "platform-lead-durable-"));
+  const dbPath = join(tempDir, "control.sqlite");
+  let first;
+  let second;
+
+  try {
+    first = createSqliteSubscriptionControlStore({ dbPath });
+    const created = first.upsertLead(durableLead(), {
+      expiresAt: "2026-10-14T00:00:00.000Z"
+    });
+    assert.deepEqual(created, durableLead());
+    first.close();
+    first = null;
+
+    second = createSqliteSubscriptionControlStore({ dbPath });
+    assert.deepEqual(second.getLead("lead_durable_1"), durableLead());
+
+    const updated = second.upsertLead(durableLead({
+      status: "reviewing",
+      createdAt: "2026-07-17T00:00:00.000Z",
+      updatedAt: "2026-07-18T00:00:00.000Z"
+    }), {
+      expiresAt: "2026-10-16T00:00:00.000Z"
+    });
+    assert.equal(updated.status, "reviewing");
+    assert.equal(updated.createdAt, "2026-07-16T00:00:00.000Z");
+    assert.equal(updated.updatedAt, "2026-07-18T00:00:00.000Z");
+    assert.deepEqual(second.listLeads({ status: "reviewing" }), [updated]);
+  } finally {
+    first?.close();
+    second?.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("subscription control store purges Leads at the approved expiry boundary", () => {
+  withStore((store) => {
+    store.upsertLead(durableLead(), {
+      expiresAt: "2026-10-14T00:00:00.000Z"
+    });
+
+    assert.equal(store.purgeExpiredLeads({ now: "2026-10-13T23:59:59.999Z" }), 0);
+    assert.equal(store.getLead("lead_durable_1")?.id, "lead_durable_1");
+    assert.equal(store.purgeExpiredLeads({ now: "2026-10-14T00:00:00.000Z" }), 1);
+    assert.equal(store.getLead("lead_durable_1"), null);
+  });
+});
+
+test("subscription control store adds only the approved Lead objects to a legacy fixture", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "platform-lead-schema-"));
+  const dbPath = join(tempDir, "control.sqlite");
+  const database = new Database(dbPath);
+
+  try {
+    database.exec(`
+      create table legacy_sentinel (
+        id text primary key,
+        value text not null
+      );
+      insert into legacy_sentinel (id, value) values ('sentinel_1', 'preserve-me');
+    `);
+
+    createSqliteSubscriptionControlStore({ database }).close();
+    createSqliteSubscriptionControlStore({ database }).close();
+
+    assert.deepEqual(
+      database.prepare("select id, value from legacy_sentinel").all(),
+      [{ id: "sentinel_1", value: "preserve-me" }]
+    );
+    assert.deepEqual(
+      database.prepare(`
+        select type, name from sqlite_master
+        where name like 'platform_leads%'
+        order by type desc, name asc
+      `).all(),
+      [
+        { type: "table", name: "platform_leads" },
+        { type: "index", name: "platform_leads_expires_at_idx" },
+        { type: "index", name: "platform_leads_status_created_idx" }
+      ]
+    );
+  } finally {
+    database.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
 });

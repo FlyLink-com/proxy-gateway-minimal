@@ -291,6 +291,50 @@ test("createRuntimeState uses SUBSCRIPTION_CONTROL_DB_PATH for the business cont
   }
 });
 
+test("createRuntimeState restores the durable Lead review queue across restart", () => {
+  const dir = mkdtempSync(join(tmpdir(), "proxy-gateway-lead-restart-"));
+  const controlDbPath = join(dir, "control.sqlite");
+  const subscriptionDbPath = join(dir, "subscriptions.sqlite");
+  let first;
+  let second;
+
+  try {
+    const options = {
+      rootDir: new URL("../../", import.meta.url),
+      env: runtimeEnv({ CONSOLE_TOKEN: "secret" }),
+      controlDbPath,
+      subscriptionDbPath,
+      autoStartHttpProxy: false
+    };
+
+    first = createRuntimeState(options);
+    const accepted = first.platform.leadQueue.enqueueLead({
+      organization: "Synthetic Research",
+      email: "synthetic@example.test",
+      direction: "API Sandbox",
+      stage: "review",
+      message: "Synthetic local fixture only."
+    });
+    first.platform.leadQueue.updateLeadStatus(accepted.id, { status: "reviewing" });
+    first.close();
+    first = null;
+
+    second = createRuntimeState(options);
+    assert.deepEqual(second.platform.leadQueue.listLeads().map((lead) => ({
+      id: lead.id,
+      status: lead.status
+    })), [{
+      id: accepted.id,
+      status: "reviewing"
+    }]);
+    assert.equal(second.platform.leadQueue.getLead(accepted.id).message, "Synthetic local fixture only.");
+  } finally {
+    first?.close();
+    second?.close();
+    removeTempDir(dir);
+  }
+});
+
 test("createRuntimeState closes only owned subscription repositories", () => {
   let closeCount = 0;
   const repository = fakeSubscriptionStore({
