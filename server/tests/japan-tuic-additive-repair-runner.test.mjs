@@ -136,6 +136,7 @@ function createOperations({
   metadataAfter = { mode: 0o600, uid: 1000, gid: 1000 },
   timerBefore = timerState(),
   timerAfter = timerState(),
+  timerCurrent = timerAfter,
   baseline = observationBaseline(),
   current = observationCurrent(),
   currentSequence = null,
@@ -210,8 +211,11 @@ function createOperations({
     },
     async readTimerState() {
       timerCount += 1;
-      calls.push(`readTimerState:${timerCount === 1 ? "before" : "after"}`);
-      return timerCount === 1 ? timerBefore : timerAfter;
+      const phase = timerCount === 1 ? "before" : timerCount === 2 ? "after" : "current";
+      calls.push(`readTimerState:${phase}`);
+      if (timerCount === 1) return timerBefore;
+      if (timerCount === 2) return timerAfter;
+      return timerCurrent;
     },
     async readNaturalObservation() {
       observationCount += 1;
@@ -330,6 +334,7 @@ test("executes the exact successful state-machine order and returns an aggregate
     "readFileMetadata:after",
     "readTimerState:after",
     "readNaturalObservation:current",
+    "readTimerState:current",
     "removeTemporaryMaterial",
     "revokeOwnAuthorization"
   ]);
@@ -377,6 +382,23 @@ test("restores and verifies the backup after a post-apply observation failure", 
     "readIdentityGate:rollback",
     "readFileMetadata:rollback"
   ]);
+});
+
+test("rolls back when timer or service state changes during the natural observation window", async () => {
+  const { calls, operations } = createOperations({
+    timerCurrent: timerState({ timerRestarts: 1 })
+  });
+  const receipt = await executeJapanTuicAdditiveRepair({
+    binding: validBinding(),
+    artifactStream: {},
+    operations,
+    now: () => new Date("2026-07-16T20:00:00.000Z")
+  });
+  assert.equal(receipt.productionResult, "rolled_back_validated");
+  assert.equal(receipt.error, "natural_observation_failed");
+  assert.equal(receipt.rollbackVerified, true);
+  assert.ok(calls.indexOf("readTimerState:current") > calls.indexOf("readNaturalObservation:current"));
+  assert.ok(calls.indexOf("restoreBackup") > calls.indexOf("readTimerState:current"));
 });
 
 test("waits for a genuinely post-apply natural observation", async () => {
@@ -538,6 +560,11 @@ test("host adapter invokes only the fixed additive helper arguments and derives 
     binding: validBinding(),
     apply: false
   }), report);
+  assert.deepEqual(await operations.runMapHelper({
+    root: "/gate/source",
+    binding: validBinding(),
+    apply: true
+  }), report);
   assert.deepEqual(await operations.readIdentityGate({ phase: "before" }), identityBefore());
   assert.equal(calls[0][0], "/usr/bin/node");
   assert.deepEqual(calls[0][1].slice(-14), [
@@ -550,6 +577,11 @@ test("host adapter invokes only the fixed additive helper arguments and derives 
     "--expected-projected-map-count", "82"
   ]);
   assert.equal(calls[0][1].includes("--apply"), false);
+  assert.equal(calls[1][1].includes("--apply"), true);
+  for (const [, args] of calls) {
+    assert.equal(args.includes("--status-path"), false);
+    assert.equal(args.includes(validBinding().paths.producerStatus), false);
+  }
   assert.equal(calls[0][2].shell, false);
 });
 

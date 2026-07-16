@@ -221,8 +221,9 @@ an approval authority distinct from the dispatcher creates
 `JAPAN_CI_APPROVAL_BUNDLE` as the sixth temporary Environment secret. Its
 closed JSON object contains exactly `schemaVersion`, `gateId`, `repository`,
 `workflowRef`, `workflowCommit`, `runId`, `runAttempt`, `artifactSha256`,
-`target`, and `expiresAt`. The expiry may be no more than 30 minutes after
-creation.
+`target`, `issuedAt`, and `expiresAt`. Both timestamps must be canonical ISO
+values, `issuedAt <= now < expiresAt`, and the issuance-to-expiry lifetime may
+be no more than 30 minutes.
 
 The required reviewer approves only that pending Environment deployment. The
 execute job validates the bundle before reading any connection secret. Exact
@@ -328,6 +329,9 @@ stops before backup or apply and the old Gate is not retried.
 
 ### Apply Invariants
 
+- the fixed helper invocation omits `--status-path` during dry-run, apply,
+  post-apply verification, and rollback verification, so producer status is not
+  a second mutation surface outside the protected-map backup boundary;
 - exactly one protected map file is replaced atomically;
 - `add=3`, `remove=0`, `changed=0`, `deferred_remove=27`;
 - final projected map count is `82`;
@@ -363,6 +367,8 @@ complete.
 The workflow must not invoke the collector service or restart its timer. It
 records a pre-apply aggregate baseline and waits for a timer-originated
 observation whose timestamp is later than the accepted apply boundary.
+Immediately before accepting that observation it reads a fresh timer/service
+state; the earlier post-apply snapshot cannot satisfy final acceptance.
 
 Acceptance requires:
 

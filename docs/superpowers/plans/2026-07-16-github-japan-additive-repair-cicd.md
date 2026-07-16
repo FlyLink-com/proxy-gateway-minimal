@@ -48,7 +48,9 @@ manifest-only artifact validation:
   distinct from the dispatcher, and prevent self-review.
 - The execute job accepts only `JAPAN_CI_APPROVAL_BUNDLE`, a closed, unexpired
   JSON object bound to the exact repository, workflow ref/commit, run ID,
-  run attempt, artifact SHA-256, and target. Its maximum lifetime is 30 minutes.
+  run attempt, artifact SHA-256, target, canonical `issuedAt`, and canonical
+  `expiresAt`. It requires `issuedAt <= now < expiresAt` and an
+  issuance-to-expiry lifetime no longer than 30 minutes.
 - The approval bundle is the sixth temporary Environment secret and is deleted
   with the five connection secrets during separately authorized closeout.
 - `scripts/artifact-git-tree-verifier.mjs` and
@@ -523,6 +525,7 @@ assert.deepEqual(calls, [
   "readFileMetadata:after",
   "readTimerState:after",
   "readNaturalObservation:current",
+  "readTimerState:current",
   "removeTemporaryMaterial",
   "revokeOwnAuthorization"
 ]);
@@ -567,9 +570,9 @@ try {
   validatePostApplyCandidate(await operations.runMapHelper({ root: extracted.root, binding, apply: false }));
   validatePostApplyIdentity(await operations.readIdentityGate({ root: extracted.root, binding, phase: "after" }));
   assertMetadataPreserved(metadataBefore, await operations.readFileMetadata(binding.paths.currentMap));
-  const timerAfter = await operations.readTimerState(binding);
+  validateTimerState(await operations.readTimerState(binding));
   const observation = await waitForNaturalObservation({ operations, extracted, binding,
-    baseline: observationBefore, applyBoundary, timerBefore, timerAfter });
+    observationBefore, applyBoundary, timerBefore });
   phase.productionResult = "applied_validated";
   return buildReceipt({ phase, observation });
 } catch (error) {
@@ -687,7 +690,6 @@ const args = [
   "--current-map", binding.paths.currentMap,
   "--mihomo-config", binding.paths.mihomoConfig,
   "--material-store", binding.paths.materialStore,
-  "--status-path", binding.paths.producerStatus,
   "--strategy", "additive_missing_only",
   "--expected-add", "3",
   "--expected-remove", "0",
@@ -698,6 +700,12 @@ const args = [
 ];
 if (apply) args.push("--apply");
 ```
+
+Do not pass `--status-path` in dry-run, apply, post-apply, or rollback helper
+invocations. The helper's only permitted mutation in this lane is the protected
+map covered by backup, metadata validation, and rollback. Before accepting a
+post-boundary natural observation, read timer/service state again and compare
+that fresh snapshot with the pre-apply restart counters.
 
 Capture stdout with a strict byte limit, parse one JSON object, and discard
 stderr. For systemd, parse only `ActiveState`, `UnitFileState`, `NRestarts`,

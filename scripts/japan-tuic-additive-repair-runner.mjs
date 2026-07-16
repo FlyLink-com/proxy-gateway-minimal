@@ -267,8 +267,7 @@ async function waitForNaturalObservation({
   binding,
   applyBoundary,
   observationBefore,
-  timerBefore,
-  timerAfter
+  timerBefore
 }) {
   const waitBudget = deriveWaitBudget(timerBefore);
   const pollMilliseconds = Math.min(
@@ -287,6 +286,10 @@ async function waitForNaturalObservation({
       : Number.NaN;
     if (!Number.isFinite(captured)) throw safeError("natural_observation_failed");
     if (captured > Date.parse(applyBoundary)) {
+      const timerCurrent = validateTimerState(
+        await operations.readTimerState(binding),
+        "natural_observation_failed"
+      );
       return validateNaturalObservation({
         applyBoundary,
         baseline: {
@@ -296,10 +299,10 @@ async function waitForNaturalObservation({
         },
         current: {
           ...currentObservation,
-          timerActive: timerAfter.active,
-          timerEnabled: timerAfter.enabled,
-          timerRestarts: timerAfter.timerRestarts,
-          serviceRestarts: timerAfter.serviceRestarts
+          timerActive: timerCurrent.active,
+          timerEnabled: timerCurrent.enabled,
+          timerRestarts: timerCurrent.timerRestarts,
+          serviceRestarts: timerCurrent.serviceRestarts
         }
       });
     }
@@ -357,10 +360,7 @@ export async function executeJapanTuicAdditiveRepair({
 } = {}) {
   const binding = validateRunnerBinding(rawBinding);
   if (!operations || typeof operations !== "object") throw safeError("restricted_identity_rejected");
-  let receipt = baseReceipt({
-    productionResult: "stopped_pre_apply",
-    error: "stable_snapshot_unavailable"
-  });
+  let receipt;
   let extracted = null;
   let backup = null;
   let metadataBefore = null;
@@ -431,8 +431,7 @@ export async function executeJapanTuicAdditiveRepair({
       binding,
       applyBoundary,
       observationBefore,
-      timerBefore,
-      timerAfter
+      timerBefore
     });
     receipt = {
       ...baseReceipt({ productionResult: "applied_validated" }),
@@ -656,7 +655,6 @@ export function createHostOperations({
         "--current-map", activeBinding.paths.currentMap,
         "--mihomo-config", activeBinding.paths.mihomoConfig,
         "--material-store", activeBinding.paths.materialStore,
-        "--status-path", activeBinding.paths.producerStatus,
         "--strategy", "additive_missing_only",
         "--expected-add", "3",
         "--expected-remove", "0",

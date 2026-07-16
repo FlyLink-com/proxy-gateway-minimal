@@ -185,6 +185,7 @@ test("deployment runbook closes the restricted Japan repair lifecycle", () => {
     "prevent self-review",
     "runId",
     "runAttempt",
+    "issuedAt",
     "artifact Git tree",
     "host authorization revocation",
     "GitHub secret deletion",
@@ -203,6 +204,7 @@ test("approved design records independent approval and source-tree binding", () 
     "prevent self-review",
     "runId",
     "runAttempt",
+    "issuedAt",
     "artifact Git tree",
     "30 minutes",
     "six temporary Environment secrets"

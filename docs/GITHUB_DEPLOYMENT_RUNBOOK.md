@@ -138,7 +138,8 @@ from the dispatcher creates the sixth temporary Environment secret,
 - `schemaVersion`, `gateId`, `repository`, `workflowRef`, and `workflowCommit`;
 - the exact `runId` and `runAttempt`;
 - the frozen `artifactSha256` and target `vultr-japan-production`;
-- `expiresAt`, no more than 30 minutes after creation.
+- canonical `issuedAt` and `expiresAt`, with `issuedAt <= now < expiresAt` and
+  an issuance-to-expiry lifetime no longer than 30 minutes.
 
 The required reviewer then approves that exact pending Environment deployment.
 The execute job rejects missing, expired, replayed, extra-field, wrong-run,
@@ -166,8 +167,12 @@ state: degraded
 The runner creates a protected local backup, replaces only the approved map,
 waits for a bounded natural timer-driven observation, and restores the backup
 on any post-apply or observation failure. It never manually invokes or restarts
-the collector. `stale=27` remains unresolved; success must not be reported as
-identity healthy or retention complete.
+the collector. The fixed helper invocation never receives `--status-path`, so
+dry-run, apply, rollback validation, and failure handling cannot write producer
+status outside the protected-map backup boundary. The acceptance read uses a
+fresh timer/service snapshot after the candidate observation. `stale=27`
+remains unresolved; success must not be reported as identity healthy or
+retention complete.
 
 Closeout is mandatory after either apply or rollback. The forced command must
 perform and verify **host authorization revocation** for only its marked key and

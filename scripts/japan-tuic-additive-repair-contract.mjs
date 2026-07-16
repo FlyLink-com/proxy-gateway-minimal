@@ -142,6 +142,7 @@ export function validateExecutionApproval({ bundle, current, now = new Date().to
     "artifactSha256",
     "expiresAt",
     "gateId",
+    "issuedAt",
     "repository",
     "runAttempt",
     "runId",
@@ -156,6 +157,7 @@ export function validateExecutionApproval({ bundle, current, now = new Date().to
   }
   const active = record(current);
   const nowMs = Date.parse(now);
+  const issuedAtMs = Date.parse(approval.issuedAt);
   const expiresAtMs = Date.parse(approval.expiresAt);
   const validCurrentIdentity = typeof active.repository === "string"
     && typeof active.workflowRef === "string"
@@ -163,10 +165,14 @@ export function validateExecutionApproval({ bundle, current, now = new Date().to
     && /^[1-9][0-9]*$/.test(active.runId)
     && /^[1-9][0-9]*$/.test(active.runAttempt);
   const validExpiry = Number.isFinite(nowMs)
+    && Number.isFinite(issuedAtMs)
     && Number.isFinite(expiresAtMs)
+    && approval.issuedAt === new Date(issuedAtMs).toISOString()
     && approval.expiresAt === new Date(expiresAtMs).toISOString()
+    && issuedAtMs <= nowMs
     && expiresAtMs > nowMs
-    && expiresAtMs - nowMs <= APPROVAL_MAX_TTL_MS;
+    && expiresAtMs > issuedAtMs
+    && expiresAtMs - issuedAtMs <= APPROVAL_MAX_TTL_MS;
   if (!validCurrentIdentity
     || approval.schemaVersion !== "1"
     || approval.gateId !== JAPAN_TUIC_REPAIR_GATE.executionGateId

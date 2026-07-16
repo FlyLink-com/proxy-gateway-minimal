@@ -28,6 +28,7 @@ const approvalBundle = (overrides = {}) => JSON.stringify({
   runAttempt: "1",
   artifactSha256: "d6c0663c9a7c82c6e8ffb7d354e2a4c23d26f3339586533df5c268b887b839fd",
   target: "vultr-japan-production",
+  issuedAt: "2026-07-16T20:00:00.000Z",
   expiresAt: "2026-07-16T20:15:00.000Z",
   ...overrides
 });
@@ -133,6 +134,11 @@ test("accepts only an exact unexpired Environment-issued approval for this run a
     [{ runAttempt: "2" }, {}, "2026-07-16T20:00:00.000Z"],
     [{ artifactSha256: "f".repeat(64) }, {}, "2026-07-16T20:00:00.000Z"],
     [{ target: "control-plane-app" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ issuedAt: "2026-07-16T20:00:00Z" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ issuedAt: "2026-07-16T20:00:00.001Z" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ issuedAt: "2026-07-15T20:15:00.000Z" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ issuedAt: "2026-07-16T19:44:59.999Z" }, {}, "2026-07-16T20:00:00.000Z"],
+    [{ issuedAt: "2026-07-16T20:10:00.000Z", expiresAt: "2026-07-16T20:05:00.000Z" }, {}, "2026-07-16T20:00:00.000Z"],
     [{ expiresAt: "2026-07-16T19:59:59.000Z" }, {}, "2026-07-16T20:00:00.000Z"],
     [{ expiresAt: "2026-07-16T20:30:00.001Z" }, {}, "2026-07-16T20:00:00.000Z"],
     [{}, { runAttempt: "2" }, "2026-07-16T20:00:00.000Z"]
@@ -146,6 +152,17 @@ test("accepts only an exact unexpired Environment-issued approval for this run a
       (error) => error.code === "approval_identity_mismatch"
     );
   }
+
+  const missingIssuedAt = JSON.parse(approvalBundle());
+  delete missingIssuedAt.issuedAt;
+  assert.throws(
+    () => repairContract.validateExecutionApproval({
+      bundle: JSON.stringify(missingIssuedAt),
+      current: currentApprovalRun(),
+      now: "2026-07-16T20:00:00.000Z"
+    }),
+    (error) => error.code === "approval_identity_mismatch"
+  );
 
   for (const bundle of [undefined, "", "not-json", "[]", "null"]) {
     assert.throws(
