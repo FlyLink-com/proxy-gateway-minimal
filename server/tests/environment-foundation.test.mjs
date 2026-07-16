@@ -159,3 +159,32 @@ test("ops README documents the recoverable runtime boundary", () => {
     assert.match(readme, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
 });
+
+test("operations docs close Lead retention source without claiming production activation", () => {
+  const readme = readText("ops/README.md");
+  const schemaGate = readText("docs/LEAD_DURABILITY_SCHEMA_GATE.md");
+  const design = readText("docs/superpowers/specs/2026-07-16-lead-retention-operations-design.md");
+
+  for (const phrase of [
+    "scripts/platform-lead-retention.mjs purge",
+    "scripts/platform-lead-retention.mjs backup",
+    "scripts/platform-lead-retention.mjs prune",
+    "/opt/proxy-gateway-minimal-candidate/state/lead-aware-control-backups",
+    "two-hour safety window",
+    "65 minutes",
+    "source-only",
+    "not installed or enabled"
+  ]) {
+    assert.match(readme, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  }
+  const restoreStart = readme.indexOf("Stop the application service");
+  const restorePurge = readme.indexOf("purge --apply", restoreStart);
+  const restoreResume = readme.indexOf("Start the application service", restorePurge);
+  assert.ok(restoreStart >= 0 && restorePurge > restoreStart && restoreResume > restorePurge);
+
+  assert.match(schemaGate, /source-only retention operations/i);
+  assert.match(schemaGate, /not installed or enabled/i);
+  assert.match(schemaGate, /two independent exact\s+Risk A Gates/i);
+  assert.match(design, /Design state: Reviewed by the Operator/i);
+  assert.doesNotMatch(`${readme}\n${schemaGate}\n${design}`, /production timer installed: true/i);
+});

@@ -169,6 +169,72 @@ a different service name or needs an explicit owner, set
 `SUBSCRIPTION_SERVICE_NAME`, `SUBSCRIPTION_SERVICE_USER`, or
 `SUBSCRIPTION_SERVICE_GROUP` for the restore command.
 
+## Lead Retention Operations (Source-Only)
+
+The repository contains a source-only Lead retention CLI and inert systemd
+templates. They are not installed or enabled in production. Their presence in
+an artifact grants no database, service, deployment, or production authority.
+Activation requires a later exact Risk A Gate.
+
+The approved dedicated backup root is:
+
+```text
+/opt/proxy-gateway-minimal-candidate/state/lead-aware-control-backups
+```
+
+The production Gate must create that directory as `proxy-gateway` with mode
+`0700` before any command uses it. The commands below default to dry-run and
+emit only one aggregate JSON result. `--apply` is required for deletion or
+backup creation.
+
+```bash
+cd /opt/proxy-gateway-minimal-candidate/current
+
+node scripts/platform-lead-retention.mjs purge
+node scripts/platform-lead-retention.mjs backup \
+  --backup-dir /opt/proxy-gateway-minimal-candidate/state/lead-aware-control-backups
+node scripts/platform-lead-retention.mjs prune \
+  --backup-dir /opt/proxy-gateway-minimal-candidate/state/lead-aware-control-backups
+```
+
+`purge` reads the exact `SUBSCRIPTION_CONTROL_DB_PATH` from the protected
+environment and never initializes missing schema. `backup` creates a complete
+SQLite online snapshot and a mode-`0600` closed manifest. `prune` deletes only
+a due SQLite-and-manifest pair that passes containment, file-type, size, hash,
+digest, and timestamp validation. Any unknown, orphaned, nested, symlinked, or
+integrity-drifted entry blocks the whole apply operation.
+
+A backup's privacy cutoff is the earlier of 90 days after backup creation and
+the earliest Lead expiry contained in the snapshot. The pruning deadline uses
+a two-hour safety window before that cutoff. A complete backup is refused when
+an expired Lead exists or less than that safety window remains.
+
+`gccgw-platform-lead-retention.timer` is source-only. Its template is hourly,
+persistent, and has at most five minutes of randomized delay. Under a healthy
+timer, expired Leads are hidden by the application at the exact expiry boundary
+and physically purged within 65 minutes. The two-hour backup margin lets the
+same healthy timer delete a due backup at least 55 minutes before its privacy
+cutoff. A missed/disabled timer, host outage, read-only state path, or failed
+unit is a retention incident and blocks restore or promotion until reconciled.
+
+Control-database restore remains a separate exact Risk A operation. It must
+preserve this order:
+
+1. Stop the application service and prove it is stopped.
+2. Verify the selected manifest, containment, size, hash, SQLite integrity,
+   owner, and mode.
+3. Preserve the current control database under its independently approved
+   retention policy, then install the verified backup.
+4. Run `scripts/platform-lead-retention.mjs purge --apply` against the restored
+   database.
+5. Verify zero expired Leads and SQLite `quick_check=ok`.
+6. Start the application service and perform protected, aggregate-only health
+   validation.
+
+The existing `restore-subscriptions.sh` remains the subscription-database
+helper. It is not a control-database restore command and is not silently
+repointed by this source closure.
+
 ## Verification
 
 After deployment or restore:

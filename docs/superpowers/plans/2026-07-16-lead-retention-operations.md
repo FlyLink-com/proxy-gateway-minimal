@@ -54,14 +54,14 @@ systemd unit templates, Markdown operations documentation.
   construct closed command results.
 - No filesystem mutation is introduced in this task.
 
-- [ ] **Step 1: Write failing tests for the non-initializing store mode**
+- [x] **Step 1: Write failing tests for the non-initializing store mode**
 
 Create a temporary legacy SQLite database without `platform_leads`, open it
 through the store with `initializeSchema: false`, close it, and prove no Lead
 table or index was created. Add a second fixture with the exact Lead schema and
 prove the existing purge method still deletes only `expires_at <= now`.
 
-- [ ] **Step 2: Run the focused store tests and verify RED**
+- [x] **Step 2: Run the focused store tests and verify RED**
 
 ```powershell
 node --test --test-name-pattern="non-initializing|purge method" server/tests/platform-subscription-control-db.test.mjs
@@ -69,19 +69,19 @@ node --test --test-name-pattern="non-initializing|purge method" server/tests/pla
 
 Expected: FAIL because `initializeSchema` is not supported.
 
-- [ ] **Step 3: Implement the minimal factory option**
+- [x] **Step 3: Implement the minimal factory option**
 
 Default `initializeSchema` to `true` so every current caller is unchanged.
 When false, skip schema DDL and WAL-mode mutation while preserving safe busy
 timeout and foreign-key settings. Do not weaken normal initialization.
 
-- [ ] **Step 4: Write failing pure-contract tests**
+- [x] **Step 4: Write failing pure-contract tests**
 
 Cover canonical UTC, invalid time, exact 90-day calculation, earliest Lead
 cutoff, two-hour safety window, manifest canonicalization and digest vectors,
 closed result fields, sorted reason codes, and private-output rejection.
 
-- [ ] **Step 5: Run the new operations test and verify RED**
+- [x] **Step 5: Run the new operations test and verify RED**
 
 ```powershell
 node --test server/tests/platform-lead-retention-operations.test.mjs
@@ -89,7 +89,7 @@ node --test server/tests/platform-lead-retention-operations.test.mjs
 
 Expected: FAIL because the operations module does not exist.
 
-- [ ] **Step 6: Implement the smallest pure core and verify GREEN**
+- [x] **Step 6: Implement the smallest pure core and verify GREEN**
 
 Create constants and pure helpers only. The manifest domain is
 `PLATFORM_LEAD_BACKUP_MANIFEST:v1\0`; `manifestDigest` is excluded from its own
@@ -100,7 +100,7 @@ counts, and private output.
 node --test server/tests/platform-lead-retention-operations.test.mjs server/tests/platform-subscription-control-db.test.mjs
 ```
 
-- [ ] **Step 7: Commit the contract slice**
+- [x] **Step 7: Commit the contract slice**
 
 ```powershell
 git add server/services/platform/lead-retention-operations.mjs server/services/platform/subscription-control-db.mjs server/tests/platform-lead-retention-operations.test.mjs server/tests/platform-subscription-control-db.test.mjs
@@ -118,7 +118,7 @@ git commit -m "feat(platform): define Lead retention operations contract"
 - Reads the exact path supplied by the required environment at the CLI boundary.
 - Produces only aggregate `eligibleLeadCount` and `deletedLeadCount`.
 
-- [ ] **Step 1: Write failing purge integration tests**
+- [x] **Step 1: Write failing purge integration tests**
 
 Use synthetic databases for: dry-run no deletion; exact-boundary apply;
 unexpired/non-Lead preservation; missing Lead table no-op; missing database;
@@ -126,7 +126,7 @@ invalid database; incompatible Lead schema; and locked/busy failure. Assert the
 serialized result never contains the fixture path, basename, organization,
 email, message, or raw exception.
 
-- [ ] **Step 2: Run the purge tests and verify RED**
+- [x] **Step 2: Run the purge tests and verify RED**
 
 ```powershell
 node --test --test-name-pattern="purge" server/tests/platform-lead-retention-operations.test.mjs
@@ -134,7 +134,7 @@ node --test --test-name-pattern="purge" server/tests/platform-lead-retention-ope
 
 Expected: FAIL because the purge operation is absent.
 
-- [ ] **Step 3: Implement read-only inspection and apply**
+- [x] **Step 3: Implement read-only inspection and apply**
 
 Dry-run opens with `readonly: true` and `fileMustExist: true`, verifies
 `quick_check`, exact compatible Lead columns, and eligible count. Apply opens an
@@ -142,13 +142,13 @@ existing database without schema initialization and delegates physical deletion
 to `purgeExpiredLeads({ now })`. Missing `platform_leads` is a valid zero result;
 all other schema/integrity/path failures are closed blockers.
 
-- [ ] **Step 4: Run focused tests and verify GREEN**
+- [x] **Step 4: Run focused tests and verify GREEN**
 
 ```powershell
 node --test --test-name-pattern="purge" server/tests/platform-lead-retention-operations.test.mjs
 ```
 
-- [ ] **Step 5: Commit the purge slice**
+- [x] **Step 5: Commit the purge slice**
 
 ```powershell
 git add server/services/platform/lead-retention-operations.mjs server/tests/platform-lead-retention-operations.test.mjs
@@ -168,14 +168,14 @@ git commit -m "feat(platform): add fail-closed Lead purge"
   snapshot inspection, atomic no-overwrite finalization, and a manifest commit
   marker.
 
-- [ ] **Step 1: Write failing backup tests**
+- [x] **Step 1: Write failing backup tests**
 
 Cover dry-run no filesystem entry, no-Lead 90-day cutoff, earliest Lead cutoff,
 expired Lead refusal, two-hour-window refusal, complete snapshot content,
 `quick_check`, exact size/hash, canonical manifest/digest, mode `0600` on POSIX,
 existing-file collision, no-overwrite behavior, and cleanup before publication.
 
-- [ ] **Step 2: Run backup tests and verify RED**
+- [x] **Step 2: Run backup tests and verify RED**
 
 ```powershell
 node --test --test-name-pattern="backup" server/tests/platform-lead-retention-operations.test.mjs
@@ -183,7 +183,7 @@ node --test --test-name-pattern="backup" server/tests/platform-lead-retention-op
 
 Expected: FAIL because backup execution is absent.
 
-- [ ] **Step 3: Implement backup with publication boundary**
+- [x] **Step 3: Implement backup with publication boundary**
 
 Open the source database read-only with `fileMustExist`. Create the temporary
 snapshot only under the canonical backup root through `Database#backup()`. Open
@@ -191,14 +191,14 @@ and inspect that closed snapshot, calculate `privacyCutoff` and `pruneAt`, then
 publish the mode-`0600` SQLite file first and mode-`0600` manifest last without
 overwriting existing paths. Never print either basename.
 
-- [ ] **Step 4: Write failing prune tests**
+- [x] **Step 4: Write failing prune tests**
 
 Cover due/future aggregates, dry-run no deletion, exact due-pair apply,
 SQLite-first/manifest-last partial failure, traversal, separators, symlinks,
 nested directories, orphan files, unsupported schema, altered digest/size/hash,
 invalid timestamp order, and unknown file preservation.
 
-- [ ] **Step 5: Run prune tests and verify RED**
+- [x] **Step 5: Run prune tests and verify RED**
 
 ```powershell
 node --test --test-name-pattern="prune" server/tests/platform-lead-retention-operations.test.mjs
@@ -206,7 +206,7 @@ node --test --test-name-pattern="prune" server/tests/platform-lead-retention-ope
 
 Expected: FAIL because prune execution is absent.
 
-- [ ] **Step 6: Implement exact-pair pruning and verify GREEN**
+- [x] **Step 6: Implement exact-pair pruning and verify GREEN**
 
 Enumerate only direct directory entries. A manifest is a commit marker; validate
 its closed schema, projection digest, canonical basename, containment, regular
@@ -219,7 +219,7 @@ SQLite file first and its manifest last; normalize partial failure to
 node --test server/tests/platform-lead-retention-operations.test.mjs
 ```
 
-- [ ] **Step 7: Commit backup and prune**
+- [x] **Step 7: Commit backup and prune**
 
 ```powershell
 git add server/services/platform/lead-retention-operations.mjs server/tests/platform-lead-retention-operations.test.mjs
@@ -242,27 +242,27 @@ git commit -m "feat(platform): retain Lead-aware control backups"
 - systemd oneshot executes purge then prune; timer is hourly, persistent, and
   has a five-minute randomized delay.
 
-- [ ] **Step 1: Write failing CLI process tests**
+- [x] **Step 1: Write failing CLI process tests**
 
 Spawn Node against synthetic paths and assert dry-run default, `--apply`
 requirement, missing environment/path errors, duplicate/unknown argument
 rejection, one-line closed JSON, exit-code mapping, empty progress output, and
 private/path redaction.
 
-- [ ] **Step 2: Write failing source-template tests**
+- [x] **Step 2: Write failing source-template tests**
 
 Require both tracked units, exact candidate `WorkingDirectory` and environment
 file, `proxy-gateway` identity, two sequential `--apply` commands, dedicated
 backup directory, hardening, narrow writable paths, `OnCalendar=hourly`,
 `Persistent=true`, `RandomizedDelaySec=5m`, and no application restart/start.
 
-- [ ] **Step 3: Run focused tests and verify RED**
+- [x] **Step 3: Run focused tests and verify RED**
 
 ```powershell
 node --test server/tests/platform-lead-retention-operations.test.mjs server/tests/environment-foundation.test.mjs
 ```
 
-- [ ] **Step 4: Implement the CLI and units**
+- [x] **Step 4: Implement the CLI and units**
 
 The entry point owns argument parsing and result serialization only; execution
 stays in the tested operations module. Add an npm convenience script without
@@ -270,13 +270,13 @@ changing normal server startup. The systemd service is inert repository source
 and does not include `[Install]` activation for the service itself; the timer is
 the only enablement unit.
 
-- [ ] **Step 5: Run focused tests and verify GREEN**
+- [x] **Step 5: Run focused tests and verify GREEN**
 
 ```powershell
 node --test server/tests/platform-lead-retention-operations.test.mjs server/tests/environment-foundation.test.mjs
 ```
 
-- [ ] **Step 6: Commit CLI and source templates**
+- [x] **Step 6: Commit CLI and source templates**
 
 ```powershell
 git add scripts/platform-lead-retention.mjs ops/systemd/gccgw-platform-lead-retention.service ops/systemd/gccgw-platform-lead-retention.timer package.json server/tests/platform-lead-retention-operations.test.mjs server/tests/environment-foundation.test.mjs
@@ -297,27 +297,27 @@ git commit -m "ops(platform): schedule Lead retention maintenance"
 - Restore sequence proves service stopped, manifest/integrity verified, purge
   completed, zero expired rows, then service start.
 
-- [ ] **Step 1: Add failing documentation assertions**
+- [x] **Step 1: Add failing documentation assertions**
 
 Require the dedicated backup root, privacy cutoff, two-hour safety window,
 hourly/65-minute cadence, dry-run/apply split, restore-before-start ordering,
 retention incident stop condition, source-only status, and two later exact Risk
 A Gates.
 
-- [ ] **Step 2: Run documentation tests and verify RED**
+- [x] **Step 2: Run documentation tests and verify RED**
 
 ```powershell
 node --test server/tests/environment-foundation.test.mjs
 ```
 
-- [ ] **Step 3: Update operations and schema-gate documentation**
+- [x] **Step 3: Update operations and schema-gate documentation**
 
 Document only repository-supported commands and inert units. Do not claim the
 timer is installed, backups exist, production schema is initialized, or any
 production validation has run. Mark implementation-plan checkboxes from actual
 evidence only.
 
-- [ ] **Step 4: Run documentation validation and verify GREEN**
+- [x] **Step 4: Run documentation validation and verify GREEN**
 
 ```powershell
 node --test server/tests/environment-foundation.test.mjs

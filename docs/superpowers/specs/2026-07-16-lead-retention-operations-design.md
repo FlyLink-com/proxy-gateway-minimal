@@ -3,7 +3,7 @@
 Last updated: 2026-07-16, America/Los_Angeles.
 
 > Status:
-> - Design state: Proposed for Operator review
+> - Design state: Reviewed by the Operator; source implementation in progress
 > - Risk: A because the source defines future production SQLite deletion,
 >   backup retention, restore, and systemd behavior
 > - Process: one source-only PR with design, implementation, tests, and
