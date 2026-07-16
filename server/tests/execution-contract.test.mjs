@@ -51,7 +51,11 @@ test("execution contract v1 creates a strict frozen intent", async () => {
   assert.equal(intent.type, "change_execution_intent");
   assert.equal(intent.executionId, "execution-contract-test-001");
   assert.equal(intent.command.id, "node-safe-smoke");
+  assert.equal(intent.command.executable, process.execPath);
   assert.deepEqual(intent.command.args, ["-e", "process.exit(0)"]);
+  assert.equal(intent.cwd, process.cwd());
+  assert.equal(intent.timeoutMs, 2_000);
+  assert.equal(intent.maxOutputBytes, 4_096);
   assert.match(intent.intentDigest, /^[a-f0-9]{64}$/);
   assert.equal(Object.isFrozen(intent), true);
 
