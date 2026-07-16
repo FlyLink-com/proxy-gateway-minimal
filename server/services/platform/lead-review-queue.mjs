@@ -53,7 +53,17 @@ export function createPlatformLeadReviewQueue(options = {}) {
   function normalizeForInsert(payload) {
     const now = isoNow(nowFn);
     sequence += 1;
-    return normalizePlatformLead(payload, {
+    return normalizePlatformLead({
+      organization: payload?.organization,
+      email: payload?.email,
+      direction: payload?.direction,
+      stage: payload?.stage,
+      message: payload?.message,
+      source: payload?.source,
+      status: "new",
+      createdAt: now,
+      updatedAt: now
+    }, {
       now,
       idFactory: () => idFactory?.() || nextLeadId(now, sequence)
     });

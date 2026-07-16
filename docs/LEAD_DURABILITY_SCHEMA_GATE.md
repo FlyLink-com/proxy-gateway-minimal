@@ -54,6 +54,11 @@ control-plane data. The approved retention period is exactly 90 days from the
 normalized `updatedAt` value. Each insert or status update stores
 `expires_at = updatedAt + 90 days`.
 
+Public callers cannot choose the persisted Lead ID, status, source,
+`createdAt`, or `updatedAt`; the server owns those integrity fields. Durable
+queue failures return `lead_sink_unavailable` and are not misclassified as
+invalid customer input.
+
 The queue purges `expires_at <= now` before enqueue, list, protected read, and
 status update. An expired Lead is not returned and uses the existing safe
 `not_found` response. The queue also exposes an explicit purge operation for a

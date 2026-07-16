@@ -77,6 +77,25 @@ test("platform lead review queue reports missing leads as not_found", () => {
   );
 });
 
+test("platform lead review queue owns new Lead identity, status, and timestamps", () => {
+  const queue = createPlatformLeadReviewQueue({
+    nowFn: () => NOW,
+    idFactory: () => "lead_server_owned"
+  });
+
+  const accepted = queue.enqueueLead(sampleLead({
+    id: "lead_caller_supplied",
+    status: "converted",
+    createdAt: "2099-01-01T00:00:00.000Z",
+    updatedAt: "2099-01-01T00:00:00.000Z"
+  }));
+
+  assert.equal(accepted.id, "lead_server_owned");
+  assert.equal(accepted.status, "new");
+  assert.equal(accepted.createdAt, NOW);
+  assert.equal(accepted.updatedAt, NOW);
+});
+
 test("platform lead review queue restores unexpired Leads and status after SQLite restart", () => {
   const tempDir = mkdtempSync(join(tmpdir(), "platform-lead-queue-restart-"));
   const dbPath = join(tempDir, "control.sqlite");

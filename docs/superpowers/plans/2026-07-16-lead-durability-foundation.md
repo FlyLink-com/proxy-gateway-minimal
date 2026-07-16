@@ -17,6 +17,7 @@
 - Add only `platform_leads`, `platform_leads_status_created_idx`, and `platform_leads_expires_at_idx`.
 - Do not add `platform_operations_events`, lifecycle inference, generic summaries, Admin UI, external dependencies, or background services.
 - Preserve the public and protected Lead HTTP response shapes.
+- Public callers cannot choose persisted Lead identity, status, source, or timestamps; non-validation store failures map to `lead_sink_unavailable`.
 
 ---
 
@@ -152,7 +153,9 @@ function retentionUntil(updatedAt, retentionDays) {
 }
 ```
 
-When a store is present, purge before every queue operation, call
+The queue generates ID/status/timestamps for every new Lead and the public route
+passes only organization, email, direction, stage, and message. When a store is
+present, purge before every queue operation, call
 `store.upsertLead(lead, { expiresAt })` for insert/update, and read/list through
 the store. Keep the existing `Map` implementation as the fallback when no store
 is injected. `purgeExpiredLeads()` returns the deleted row count for the store
@@ -160,8 +163,9 @@ path and `0` for the in-memory path.
 
 - [ ] **Step 4: Run focused queue and route tests and verify GREEN**
 
-Run the same focused test command. Expected: all tests PASS and route response
-fixtures remain unchanged.
+Run the same focused test command. Expected: all tests PASS,
+caller-controlled persistence fields are ignored, store failures return 503,
+and success response fixtures remain unchanged.
 
 - [ ] **Step 5: Commit the queue slice**
 

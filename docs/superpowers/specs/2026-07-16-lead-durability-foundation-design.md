@@ -27,6 +27,7 @@ already-owned control store.
 The protected and public HTTP contracts remain unchanged:
 
 - public submission returns only acceptance status;
+- public callers cannot choose Lead ID, status, source, or timestamps;
 - protected list returns the existing summary shape without `message`;
 - protected detail remains the existing private Lead shape;
 - status updates retain the original `createdAt` and refresh `updatedAt`.
@@ -84,6 +85,8 @@ initialization is idempotent.
 ## Failure behavior
 
 - Invalid Lead data remains `validation_error` without echoing private input.
+- Durable queue failures return the existing `lead_sink_unavailable` response
+  instead of being misclassified as invalid customer input.
 - Missing or expired Leads remain `not_found` with the existing safe message.
 - SQLite constraint failures remain sanitized through the existing store error
   mapping.
