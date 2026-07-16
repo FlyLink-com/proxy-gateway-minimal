@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -1313,6 +1313,66 @@ test("subscription control store adds only the approved Lead objects to a legacy
     );
   } finally {
     database.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("subscription control store non-initializing maintenance mode preserves an absent Lead schema", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "platform-lead-maintenance-"));
+  const dbPath = join(tempDir, "control.sqlite");
+  const database = new Database(dbPath);
+
+  try {
+    database.exec(`
+      create table legacy_sentinel (
+        id text primary key,
+        value text not null
+      );
+      insert into legacy_sentinel (id, value) values ('sentinel_1', 'preserve-me');
+    `);
+
+    createSqliteSubscriptionControlStore({
+      database,
+      initializeSchema: false
+    }).close();
+
+    assert.deepEqual(
+      database.prepare("select id, value from legacy_sentinel").all(),
+      [{ id: "sentinel_1", value: "preserve-me" }]
+    );
+    assert.deepEqual(
+      database.prepare(`
+        select type, name from sqlite_master
+        where name like 'platform_leads%'
+        order by type desc, name asc
+      `).all(),
+      []
+    );
+  } finally {
+    database.close();
+    rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+});
+
+test("subscription control store non-initializing maintenance mode refuses a missing database path", () => {
+  const tempDir = mkdtempSync(join(tmpdir(), "platform-lead-maintenance-missing-"));
+  const dbPath = join(tempDir, "missing", "control.sqlite");
+  let store;
+  try {
+    let failure;
+    try {
+      store = createSqliteSubscriptionControlStore({
+        dbPath,
+        initializeSchema: false
+      });
+    } catch (error) {
+      failure = error;
+    }
+    assert.ok(failure, "maintenance mode should refuse a missing database");
+    assert.equal(existsSync(dbPath), false);
+    assert.equal(existsSync(join(tempDir, "missing")), false);
+  } finally {
+    store?.close();
     rmSync(tempDir, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
 });

@@ -1,0 +1,24 @@
+[Unit]
+Description=GCCGW platform Lead retention maintenance
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=proxy-gateway
+Group=proxy-gateway
+UMask=0077
+WorkingDirectory=/opt/proxy-gateway-minimal-candidate/current
+EnvironmentFile=/opt/proxy-gateway-minimal-candidate/.env
+ExecStart=/usr/bin/node scripts/platform-lead-retention.mjs purge --apply
+ExecStart=/usr/bin/node scripts/platform-lead-retention.mjs prune --backup-dir /opt/proxy-gateway-minimal-candidate/state/lead-aware-control-backups --apply
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictSUIDSGID=true
+ReadWritePaths=/opt/proxy-gateway-minimal-candidate/state

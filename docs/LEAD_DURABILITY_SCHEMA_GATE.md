@@ -61,8 +61,10 @@ invalid customer input.
 
 The queue purges `expires_at <= now` before enqueue, list, protected read, and
 status update. An expired Lead is not returned and uses the existing safe
-`not_found` response. The queue also exposes an explicit purge operation for a
-future operator-controlled maintenance cadence.
+`not_found` response. The queue also exposes an explicit purge operation. The
+source-only retention operations closure invokes it through an
+operator-controlled maintenance command, but no production cadence is
+installed or enabled by source alone.
 
 Deletion removes the whole Lead row. This slice creates no tombstone, archive,
 event copy, analytics copy, or automatic backfill. Public submission responses
@@ -74,6 +76,45 @@ future production gate must establish a purge cadence that meets the approved
 deadline. A backup containing Lead rows must not outlive the same 90-day
 boundary. After any restore, expired Lead rows must be purged before service
 traffic resumes.
+
+## Source-only retention operations closure
+
+The repository now provides these source contracts:
+
+- `scripts/platform-lead-retention.mjs` with `purge`, `backup`, and `prune`
+  modes, dry-run by default and explicit `--apply` for mutation;
+- `ops/systemd/gccgw-platform-lead-retention.service`, a hardened oneshot that
+  runs live purge followed by bounded backup pruning; and
+- `ops/systemd/gccgw-platform-lead-retention.timer`, an hourly persistent timer
+  with a five-minute randomized delay.
+
+They are not installed or enabled in production. Source availability does not
+initialize the Lead schema, create a production backup, delete a row or file,
+install a unit, restart a service, or grant deployment authority.
+
+Backups are complete immutable SQLite snapshots stored only under the dedicated
+Lead-aware backup root. Each published mode-`0600` SQLite file has a mode-`0600`
+closed manifest containing safe aggregate metadata, SHA-256, exact size,
+creation time, privacy cutoff, and prune deadline. It contains no path, row,
+Lead identifier, private field, credential, or raw configuration.
+
+The privacy cutoff is the earlier of backup creation plus 90 days and the
+earliest Lead expiry inside the snapshot. `pruneAt` is two hours before that
+cutoff. Backup creation refuses an already-expired Lead or an unavailable
+two-hour safety window. Prune acts only on an exact verified pair; an unknown,
+orphaned, nested, symlinked, malformed, or integrity-drifted entry blocks the
+whole operation without broad deletion.
+
+Under the healthy source timer contract, application reads hide a Lead at its
+exact expiry and physical purge occurs within 65 minutes. Backup pruning has at
+least 55 minutes of normal scheduling margin before the privacy cutoff. Timer
+or host downtime is not evidence that retention succeeded; missed execution is
+a retention incident requiring readback and reconciliation.
+
+Restore remains a manual exact Risk A operation. The application service must
+be proved stopped, the backup pair and SQLite integrity verified, the restored
+database purged with `--apply`, and zero expired Leads plus `quick_check=ok`
+verified before service traffic starts.
 
 ## Local synthetic dry-run
 
@@ -106,10 +147,16 @@ Stop without publication or promotion if any of the following occurs:
   lifecycle inference, backfill, destructive SQL, or external dependency;
 - focused or full validation regresses.
 
-## Future production gate
+## Future production gates
 
-This source gate grants no production authority. A future production proposal
-must include all of the following for the exact release artifact:
+This source gate grants no production authority. Completion and merge of the
+source-only retention operations PR must be followed by two independent exact
+Risk A Gates: first the separately bounded additive-only Japan identity repair,
+then the cumulative control-plane deployment and retention activation. Neither
+Gate inherits approval from this document or from the source PR.
+
+The cumulative deployment proposal must include all of the following for the
+exact release artifact:
 
 1. fresh read-only inventory of the database path, owner, service, free space,
    current schema, and existing backup mechanism;

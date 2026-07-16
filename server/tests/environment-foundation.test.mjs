@@ -11,9 +11,12 @@ test("environment foundation files are tracked in the repository", () => {
     "ops/README.md",
     "ops/systemd/proxy-gateway-console.service",
     "ops/systemd/proxy-gateway-ss.service",
+    "ops/systemd/gccgw-platform-lead-retention.service",
+    "ops/systemd/gccgw-platform-lead-retention.timer",
     "ops/nginx/proxy-gateway-public.conf",
     "scripts/backup-subscriptions.sh",
-    "scripts/restore-subscriptions.sh"
+    "scripts/restore-subscriptions.sh",
+    "scripts/platform-lead-retention.mjs"
   ]) {
     assert.equal(existsSync(new URL(`../../${path}`, import.meta.url)), true, `${path} should exist`);
   }
@@ -87,6 +90,34 @@ test("systemd unit templates pin the app to loopback and restart on failure", ()
   assert.match(ssUnit, /Restart=on-failure/);
 });
 
+test("Lead retention systemd templates are inert, hardened, and hourly", () => {
+  const service = readText("ops/systemd/gccgw-platform-lead-retention.service");
+  const timer = readText("ops/systemd/gccgw-platform-lead-retention.timer");
+
+  assert.match(service, /Type=oneshot/);
+  assert.match(service, /User=proxy-gateway/);
+  assert.match(service, /Group=proxy-gateway/);
+  assert.match(service, /WorkingDirectory=\/opt\/proxy-gateway-minimal-candidate\/current/);
+  assert.match(service, /EnvironmentFile=\/opt\/proxy-gateway-minimal-candidate\/\.env/);
+  assert.match(service, /ExecStart=\/usr\/bin\/node scripts\/platform-lead-retention\.mjs purge --apply/);
+  assert.match(service, /ExecStart=\/usr\/bin\/node scripts\/platform-lead-retention\.mjs prune --backup-dir \/opt\/proxy-gateway-minimal-candidate\/state\/lead-aware-control-backups --apply/);
+  assert.match(service, /NoNewPrivileges=true/);
+  assert.match(service, /PrivateTmp=true/);
+  assert.match(service, /ProtectSystem=strict/);
+  assert.match(service, /ProtectHome=true/);
+  assert.match(service, /ReadWritePaths=\/opt\/proxy-gateway-minimal-candidate\/state/);
+  assert.match(service, /UMask=0077/);
+  assert.doesNotMatch(service, /systemctl|proxy-gateway-candidate\.service|\[Install\]/);
+  assert.doesNotMatch(service, /ConditionPathIsDirectory/);
+
+  assert.match(timer, /OnCalendar=hourly/);
+  assert.match(timer, /Persistent=true/);
+  assert.match(timer, /RandomizedDelaySec=5m/);
+  assert.match(timer, /AccuracySec=1us/);
+  assert.match(timer, /Unit=gccgw-platform-lead-retention\.service/);
+  assert.match(timer, /WantedBy=timers\.target/);
+});
+
 test("public Nginx template exposes only health and subscription paths", () => {
   const nginx = readText("ops/nginx/proxy-gateway-public.conf");
   assert.match(nginx, /location = \/api\/health/);
@@ -128,4 +159,33 @@ test("ops README documents the recoverable runtime boundary", () => {
   ]) {
     assert.match(readme, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+});
+
+test("operations docs close Lead retention source without claiming production activation", () => {
+  const readme = readText("ops/README.md");
+  const schemaGate = readText("docs/LEAD_DURABILITY_SCHEMA_GATE.md");
+  const design = readText("docs/superpowers/specs/2026-07-16-lead-retention-operations-design.md");
+
+  for (const phrase of [
+    "scripts/platform-lead-retention.mjs purge",
+    "scripts/platform-lead-retention.mjs backup",
+    "scripts/platform-lead-retention.mjs prune",
+    "/opt/proxy-gateway-minimal-candidate/state/lead-aware-control-backups",
+    "two-hour safety window",
+    "65 minutes",
+    "source-only",
+    "not installed or enabled"
+  ]) {
+    assert.match(readme, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"));
+  }
+  const restoreStart = readme.indexOf("Stop the application service");
+  const restorePurge = readme.indexOf("purge --apply", restoreStart);
+  const restoreResume = readme.indexOf("Start the application service", restorePurge);
+  assert.ok(restoreStart >= 0 && restorePurge > restoreStart && restoreResume > restorePurge);
+
+  assert.match(schemaGate, /source-only retention operations/i);
+  assert.match(schemaGate, /not installed or enabled/i);
+  assert.match(schemaGate, /two independent exact\s+Risk A Gates/i);
+  assert.match(design, /Design state: Reviewed by the Operator/i);
+  assert.doesNotMatch(`${readme}\n${schemaGate}\n${design}`, /production timer installed: true/i);
 });
