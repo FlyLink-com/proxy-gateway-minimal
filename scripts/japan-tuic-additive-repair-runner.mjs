@@ -421,7 +421,7 @@ export async function executeJapanTuicAdditiveRepair({
       metadataBefore,
       await operations.readFileMetadata(binding.paths.currentMap)
     );
-    const timerAfter = validateTimerState(
+    validateTimerState(
       await operations.readTimerState(binding),
       "natural_observation_failed"
     );
