@@ -760,13 +760,40 @@ export function createPortalAccessRequestService(options = {}) {
     const childPendingChannelRefs = reports
       .filter((_, index) => classifiedReports[index] === "remote_pending")
       .map((report) => String(report.channelRef).trim());
+    const reportChannelRefs = reports.map((report) => String(report?.channelRef || "").trim());
+    const reportMutation = reports.some((report) => report?.mutation === true);
+    const reportEvidenceIsExact = (
+      reports.length > 0
+      && !directStatus
+      && reportChannelRefs.every(Boolean)
+      && new Set(reportChannelRefs).size === reportChannelRefs.length
+      && typeof lifecycleResult?.mutation === "boolean"
+      && lifecycleResult.mutation === reportMutation
+    );
+    const directAppliedChannelRefs = (
+      reports.length === 0
+      && lifecycleResult?.ok === true
+      && lifecycleResult?.mutation === true
+      && directStatus === "applied"
+      && directChannelRef
+    ) ? [directChannelRef] : [];
+    const childAppliedChannelRefs = reportEvidenceIsExact
+      ? reports
+        .filter((_, index) => classifiedReports[index] === "applied")
+        .map((report) => String(report.channelRef).trim())
+      : [];
     const identifiedPendingChannelRefs = [...new Set([
       ...directPendingChannelRefs,
       ...childPendingChannelRefs
     ])].sort((left, right) => left.localeCompare(right));
+    const identifiedAppliedChannelRefs = [...new Set([
+      ...directAppliedChannelRefs,
+      ...childAppliedChannelRefs
+    ])].sort((left, right) => left.localeCompare(right));
     const evidence = (disposition) => ({
       disposition,
       pendingChannelRefs: identifiedPendingChannelRefs,
+      appliedChannelRefs: identifiedAppliedChannelRefs,
       runtimeMayHaveMutated,
       compensationRequired: runtimeMayHaveMutated || identifiedPendingChannelRefs.length > 0
     });
@@ -1472,9 +1499,14 @@ export function createPortalAccessRequestService(options = {}) {
           } else {
             rotation.rollback();
           }
+          let tenantBindingRestoreError = null;
           if (tenantBindingMayHaveChanged) {
-            for (const credential of rotation.previousCredentials || []) {
-              bindTenantCredentialMaterial(previousRequest, credential);
+            try {
+              for (const credential of rotation.previousCredentials || []) {
+                bindTenantCredentialMaterial(previousRequest, credential);
+              }
+            } catch (bindingError) {
+              tenantBindingRestoreError = bindingError;
             }
           }
           if (orderMayHaveChanged) {
@@ -1492,10 +1524,12 @@ export function createPortalAccessRequestService(options = {}) {
               rollbackLifecycleError = lifecycleError;
             }
           }
-          const unresolvedForwardPendingChannelRefs = (
-            rollbackLifecycleEvidence?.disposition === "applied"
-            && desiredStateMayHaveChanged === false
-          ) ? [] : forwardPendingChannelRefs;
+          const rollbackAppliedChannelRefs = new Set(
+            rollbackLifecycleEvidence?.appliedChannelRefs || []
+          );
+          const unresolvedForwardPendingChannelRefs = forwardPendingChannelRefs.filter(
+            (channelRef) => !rollbackAppliedChannelRefs.has(channelRef)
+          );
           const rollbackNotificationChannelRefs = [...new Set([
             ...unresolvedForwardPendingChannelRefs,
             ...rollbackPendingChannelRefs
@@ -1524,6 +1558,9 @@ export function createPortalAccessRequestService(options = {}) {
             && !["applied", "remote_pending"].includes(rollbackLifecycleEvidence.disposition)
           ) {
             throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback was not applied");
+          }
+          if (tenantBindingRestoreError) {
+            throw platformError("subscription_refresh_rollback_failed", "tenant credential binding restore failed");
           }
         } catch (rollbackError) {
           throw platformError("subscription_refresh_rollback_failed", "runtime credential rollback failed");

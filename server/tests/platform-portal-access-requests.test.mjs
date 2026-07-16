@@ -1838,7 +1838,10 @@ test("refresh rejects inconsistent fanout mutation evidence and compensates from
     "order_refreshed",
     "order_refresh_rolled_back"
   ]);
-  assert.equal(harness.notificationCalls.length, 0);
+  assert.deepEqual(
+    harness.notificationCalls.map(({ reason }) => reason),
+    ["order_refresh_rolled_back"]
+  );
 });
 
 test("refresh rejects a direct pending notification for the wrong channel and restores state", () => {
@@ -2337,7 +2340,10 @@ test("refresh rejects duplicate fanout channels with conflicting applied and pen
     "order_refreshed",
     "order_refresh_rolled_back"
   ]);
-  assert.equal(harness.notificationCalls.length, 0);
+  assert.deepEqual(
+    harness.notificationCalls.map(({ reason }) => reason),
+    ["order_refresh_rolled_back"]
+  );
 });
 
 test("refresh compensates identified pending fanout despite duplicate or ambiguous siblings", () => {
@@ -2405,7 +2411,7 @@ test("refresh compensates identified pending fanout despite duplicate or ambiguo
     name,
     errorCode: "subscription_refresh_runtime_enforcement_pending",
     lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
-    notificationReasons: [],
+    notificationReasons: ["order_refresh_rolled_back"],
     stateRestored: true
   })));
 });
@@ -2462,7 +2468,7 @@ test("refresh compensates direct remote pending evidence despite incomplete top-
     name,
     errorCode: expectedError,
     lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
-    notificationReasons: [],
+    notificationReasons: ["order_refresh_rolled_back"],
     stateRestored: true
   })));
 });
@@ -2500,7 +2506,10 @@ test("refresh rejects fanout evidence without explicit top-level success and com
 
   const [after] = harness.requests.listEdgeCredentialOrders();
   assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
-  assert.equal(harness.notificationCalls.length, 0);
+  assert.deepEqual(
+    harness.notificationCalls.map(({ reason }) => reason),
+    ["order_refresh_rolled_back"]
+  );
   assert.deepEqual(harness.lifecycleReasons, [
     "order_delivered",
     "order_refreshed",
@@ -2543,7 +2552,10 @@ test("refresh rejects conflicting direct receipt and fanout evidence before comm
 
   const [after] = harness.requests.listEdgeCredentialOrders();
   assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
-  assert.equal(harness.notificationCalls.length, 0);
+  assert.deepEqual(
+    harness.notificationCalls.map(({ reason }) => reason),
+    ["order_refresh_rolled_back"]
+  );
   assert.deepEqual(harness.lifecycleReasons, [
     "order_delivered",
     "order_refreshed",
@@ -2598,11 +2610,15 @@ test("refresh fails closed for fanout reports with ambiguous pending authority",
 });
 
 test("refresh compensates runtime and restores active state when post-apply tenant binding fails", () => {
+  const channelRef = "channel-aliyun-a-tuic";
   const materialStore = edgeMaterialStore();
+  const desiredStateStore = desiredStateAuthorityStore();
   let sequence = 0;
+  let previousBindingAttempts = 0;
   const lifecycleReasons = [];
+  const notificationCalls = [];
   const issuer = createOrderEdgeCredentialIssuer({
-    channelRef: "channel-aliyun-a-tuic",
+    channelRef,
     materialStore,
     uuidFactory: () => `00000000-0000-4000-8000-${String(++sequence).padStart(12, "0")}`,
     passwordFactory: () => `password-${sequence}`
@@ -2611,10 +2627,17 @@ test("refresh compensates runtime and restores active state when post-apply tena
     nowFn: () => NOW,
     requestIdFactory: () => "pareq_refresh_compensate_1",
     edgeCredentialIssuer: issuer,
+    controlStore: desiredStateStore,
     runtimeCore: {
       bindTenantCredentialMaterial({ material }) {
         if (material.uuid.endsWith("000000000002")) {
           throw Object.assign(new Error("synthetic binding failure"), { code: "binding_failed" });
+        }
+        if (material.uuid.endsWith("000000000001")) {
+          previousBindingAttempts += 1;
+          if (previousBindingAttempts > 1) {
+            throw Object.assign(new Error("synthetic tenant restore failure"), { code: "tenant_restore_failed" });
+          }
         }
         return { ok: true };
       }
@@ -2622,10 +2645,31 @@ test("refresh compensates runtime and restores active state when post-apply tena
     edgeLifecycleService: {
       reconcileOrderLifecycle({ reason }) {
         lifecycleReasons.push(reason);
+        if (reason === "order_refresh_rolled_back") {
+          return {
+            ok: true,
+            channelRef,
+            mutation: false,
+            runtimeReceipt: { status: "pending" },
+            nextAction: "complete_data_plane_handoff",
+            redacted: true
+          };
+        }
         return {
           ok: true,
           mutation: true,
           runtimeReceipt: { status: "applied" },
+          redacted: true
+        };
+      }
+    },
+    edgeDesiredStateNotifier: {
+      notifyOrderLifecycle(input) {
+        notificationCalls.push(input);
+        return {
+          ok: true,
+          notificationCount: 1,
+          notifications: [pendingDesiredStateNotification(channelRef)],
           redacted: true
         };
       }
@@ -2641,12 +2685,14 @@ test("refresh compensates runtime and restores active state when post-apply tena
     subscriptionUrl: "https://sub.example.test/import/original-visible-once",
     expiresAt: "2026-06-07T00:00:00.000Z"
   });
+  notificationCalls.length = 0;
+  desiredStateStore.reads.length = 0;
   const [before] = requests.listEdgeCredentialOrders();
 
   assert.throws(() => requests.refreshSubscription({
     portalUserRef: "user_safe_ref",
     requestRef: "pareq_refresh_compensate_1"
-  }), { code: "binding_failed" });
+  }), { code: "subscription_refresh_rollback_failed" });
 
   const [after] = requests.listEdgeCredentialOrders();
   assert.equal(after.edgeMaterialDigest, before.edgeMaterialDigest);
@@ -2660,6 +2706,16 @@ test("refresh compensates runtime and restores active state when post-apply tena
     "order_refreshed",
     "order_refresh_rolled_back"
   ]);
+  assert.equal(previousBindingAttempts, 2);
+  assert.deepEqual(notificationCalls.map(({ reason }) => reason), [
+    "order_refresh_rolled_back"
+  ]);
+  const expectedPendingIdentity = authoritativeDesiredStateIdentity(channelRef);
+  assert.deepEqual(desiredStateStore.reads, [{
+    channelRef,
+    nodeRef: expectedPendingIdentity.nodeRef,
+    channelRefs: [channelRef]
+  }]);
 });
 
 test("refresh compensates direct remote pending handoffs across candidate persistence failures", () => {
@@ -2833,6 +2889,13 @@ test("refresh compensates pending fanout children when a sibling fails without m
     nextAction: "complete_data_plane_handoff",
     redacted: true
   };
+  const rollbackAppliedSiblingResult = {
+    ok: true,
+    channelRef: failedChannelRef,
+    mutation: true,
+    runtimeReceipt: { status: "applied" },
+    redacted: true
+  };
   const exactRollbackNotification = {
     ok: true,
     notificationCount: 1,
@@ -2927,6 +2990,13 @@ test("refresh compensates pending fanout children when a sibling fails without m
       rollbackLifecycleResult: rollbackPendingResult,
       rollbackNotificationResult: exactRollbackNotification
     }),
+    rollbackAppliedOnlyToSibling: observe({
+      name: `${name}_rollback_applied_only_to_sibling`,
+      reports,
+      rollbackLifecycleResult: rollbackAppliedSiblingResult,
+      rollbackNotificationResult: exactRollbackNotification,
+      verifyForwardPendingCoverage: true
+    }),
     rollbackLifecycleFailed: observe({
       name: `${name}_rollback_lifecycle_failed`,
       reports,
@@ -3014,6 +3084,28 @@ test("refresh compensates pending fanout children when a sibling fails without m
       lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
       notificationReasons: ["order_refresh_rolled_back"],
       stateRestored: true
+    },
+    rollbackAppliedOnlyToSibling: {
+      errorCode: "edge_lifecycle_failed",
+      lifecycleReasons: ["order_delivered", "order_refreshed", "order_refresh_rolled_back"],
+      notificationReasons: ["order_refresh_rolled_back"],
+      stateRestored: true,
+      rollbackNotificationCoverage: {
+        callCount: 1,
+        notificationCount: 1,
+        notificationArrayCount: 1,
+        channelRefs: [pendingChannelRef],
+        uniqueChannelCount: 1,
+        statuses: ["pending"],
+        nodeRefs: [expectedPendingIdentity.nodeRef],
+        desiredStateRefs: [expectedPendingIdentity.desiredStateRef],
+        generations: [expectedPendingIdentity.generation],
+        authorityReads: [{
+          channelRef: pendingChannelRef,
+          nodeRef: expectedPendingIdentity.nodeRef,
+          channelRefs: [pendingChannelRef]
+        }]
+      }
     },
     rollbackLifecycleFailed: {
       errorCode: "subscription_refresh_rollback_failed",
