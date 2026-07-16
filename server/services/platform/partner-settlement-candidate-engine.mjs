@@ -172,7 +172,6 @@ function parseJsonObject(value) {
 }
 
 function jsonArray(value, field) {
-  if (value == null) return "[]";
   if (!Array.isArray(value)) {
     throw settlementError("validation_error", `${field} must be an array`);
   }

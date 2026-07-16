@@ -12,10 +12,6 @@ function text(value) {
   return String(value ?? "").trim();
 }
 
-function bool(value) {
-  return value === true;
-}
-
 function list(value) {
   return Array.isArray(value) ? value : [];
 }

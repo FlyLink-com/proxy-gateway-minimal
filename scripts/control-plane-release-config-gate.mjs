@@ -384,7 +384,6 @@ export function prepareReleaseConfigOverlay({
     }
 
     rmSync(candidateBackup, { force: true });
-    originalMoved = false;
   } catch (error) {
     let rollbackComplete = true;
     if (overlayPublished && existsSync(context.candidateConfig)) {

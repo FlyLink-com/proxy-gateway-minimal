@@ -109,7 +109,7 @@ function serveLocked(res) {
 }
 
 function safeStaticPath(urlPath) {
-  let normalizedPath = "/";
+  let normalizedPath;
   try {
     normalizedPath = decodeURIComponent(urlPath.split("?")[0] || "/");
   } catch {

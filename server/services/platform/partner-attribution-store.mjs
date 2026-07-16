@@ -155,7 +155,6 @@ function parseJsonObject(value) {
 }
 
 function jsonArray(value, field) {
-  if (value == null) return "[]";
   if (!Array.isArray(value)) {
     throw attributionError("validation_error", `${field} must be an array`);
   }

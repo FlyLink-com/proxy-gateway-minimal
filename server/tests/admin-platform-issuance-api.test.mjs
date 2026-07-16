@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { createApp } from "../app.mjs";
 import { createRuntimeState } from "../state.mjs";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";

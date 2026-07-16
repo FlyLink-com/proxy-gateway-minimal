@@ -13,10 +13,6 @@ function safeRef(value, fallback = "") {
   return SAFE_REF_PATTERN.test(normalized) ? normalized : fallback;
 }
 
-function bool(value) {
-  return value === true;
-}
-
 function nowIsoFrom(now) {
   const value = typeof now === "function" ? now() : new Date();
   const date = value instanceof Date ? value : new Date(value);

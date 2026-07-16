@@ -578,19 +578,6 @@ function mapBackendHumanChallenge(raw: Record<string, unknown>, now: () => Date)
   };
 }
 
-function normalizeDeviceCount(value: number) {
-  if (!Number.isFinite(value)) return 1;
-  return Math.max(1, Math.min(20, Math.trunc(value)));
-}
-
-function normalizeRegion(value: string) {
-  const region = requiredText(value, "请选择主要区域。").trim().toLowerCase();
-  if (!/^[a-z][a-z0-9_-]{1,31}$/.test(region)) {
-    throw portalError("主要区域无效。");
-  }
-  return region;
-}
-
 function mapRegistrationResult(body: Record<string, unknown>): PortalRegistrationResult {
   const registration = (body.registration ?? {}) as Record<string, unknown>;
   const trial = (registration.trial ?? {}) as Record<string, unknown>;

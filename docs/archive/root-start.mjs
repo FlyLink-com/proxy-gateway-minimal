@@ -6,8 +6,6 @@ import { appendFileSync, mkdirSync } from "node:fs";
 
 const rootDir = resolve(dirname(fileURLToPath(import.meta.url)));
 const logDir = resolve(rootDir, ".proxy-gateway");
-const outLog = resolve(logDir, "server-stdout.log");
-const errLog = resolve(logDir, "server-stderr.log");
 const consolePort = Number.parseInt(process.env.CONSOLE_PORT, 10) || 3456;
 
 mkdirSync(logDir, { recursive: true });
