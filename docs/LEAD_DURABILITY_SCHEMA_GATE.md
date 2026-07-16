@@ -2,7 +2,7 @@
 
 ```yaml
 document_metadata:
-  doc_type: runbook
+  doc_type: operational
   lifecycle: active
   authority_scope: source_only_lead_schema_gate
   superseded_by: null
