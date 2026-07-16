@@ -108,6 +108,7 @@ test("Lead retention systemd templates are inert, hardened, and hourly", () => {
   assert.match(service, /ReadWritePaths=\/opt\/proxy-gateway-minimal-candidate\/state/);
   assert.match(service, /UMask=0077/);
   assert.doesNotMatch(service, /systemctl|proxy-gateway-candidate\.service|\[Install\]/);
+  assert.doesNotMatch(service, /ConditionPathIsDirectory/);
 
   assert.match(timer, /OnCalendar=hourly/);
   assert.match(timer, /Persistent=true/);

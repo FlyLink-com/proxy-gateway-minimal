@@ -264,6 +264,22 @@ test("backup manifest is closed, canonical, and digest-bound", () => {
     () => validateLeadBackupManifest({ ...manifest, size: manifest.size + 1 }),
     (error) => error?.reasonCode === "manifest_digest_mismatch"
   );
+  assert.throws(
+    () => createLeadBackupManifest(manifestInput({
+      pruneAt: "2026-10-13T23:00:00.000Z"
+    })),
+    (error) => error?.reasonCode === "invalid_manifest"
+  );
+  assert.throws(
+    () => createLeadBackupManifest(manifestInput({
+      privacyCutoff: "2026-11-01T00:00:00.000Z",
+      pruneAt: "2026-10-31T22:00:00.000Z",
+      retentionBasis: "earliest_lead_expiry",
+      leadTablePresent: true,
+      leadRowCount: 1
+    })),
+    (error) => error?.reasonCode === "invalid_manifest"
+  );
 });
 
 test("command result allows only closed aggregate evidence and sorted reason codes", () => {
@@ -560,6 +576,28 @@ test("backup apply publishes a complete verified SQLite pair without leaking its
   });
 });
 
+test("backup normalizes filename milliseconds while preserving exact manifest creation time", async () => {
+  await withTempDirAsync("platform-lead-backup-milliseconds-", async (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    const backupDir = join(directory, "lead-aware-backups");
+    createBackupFixture(dbPath);
+    mkdirSync(backupDir, { mode: 0o700 });
+    const createdAt = "2026-07-16T12:34:56.789Z";
+
+    const result = await runLeadBackup({
+      dbPath,
+      backupDir,
+      apply: true,
+      nowFn: () => new Date(createdAt),
+      randomBytesFn: () => Buffer.from("0011223344556677", "hex")
+    });
+    assert.equal(result.status, "completed");
+    const { manifest } = readBackupPair(backupDir);
+    assert.equal(manifest.file, "control-20260716T123456Z-0011223344556677.sqlite");
+    assert.equal(manifest.createdAt, createdAt);
+  });
+});
+
 test("backup binds retention to the earliest Lead expiry in the snapshot", async () => {
   await withTempDirAsync("platform-lead-backup-expiry-", async (directory) => {
     const dbPath = join(directory, "control.sqlite");
@@ -640,6 +678,59 @@ test("backup refuses expired Leads, unavailable safety margin, and collisions", 
     assert.equal(collision.status, "blocked");
     assert.deepEqual(collision.reasonCodes, ["backup_collision"]);
     assert.deepEqual(readdirSync(validDir).sort(), before);
+  });
+});
+
+test("backup collision preserves a pre-existing temporary file not owned by the invocation", async () => {
+  await withTempDirAsync("platform-lead-backup-temp-collision-", async (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    const backupDir = join(directory, "lead-aware-backups");
+    createBackupFixture(dbPath);
+    mkdirSync(backupDir, { mode: 0o700 });
+    const temporaryName = ".control-20260716T000000Z-0011223344556677.sqlite.tmp";
+    const temporaryPath = join(backupDir, temporaryName);
+    writeFileSync(temporaryPath, "pre-existing operator file", "utf8");
+
+    const result = await runLeadBackup({
+      dbPath,
+      backupDir,
+      apply: true,
+      nowFn: () => new Date(CREATED_AT),
+      randomBytesFn: () => Buffer.from("0011223344556677", "hex")
+    });
+    assert.equal(result.status, "blocked");
+    assert.deepEqual(result.reasonCodes, ["backup_collision"]);
+    assert.equal(readFileSync(temporaryPath, "utf8"), "pre-existing operator file");
+  });
+});
+
+test("backup requires reconciliation when an owned temporary file cannot be cleaned", async () => {
+  await withTempDirAsync("platform-lead-backup-cleanup-", async (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    const backupDir = join(directory, "lead-aware-backups");
+    createBackupFixture(dbPath);
+    mkdirSync(backupDir, { mode: 0o700 });
+
+    const result = await runLeadBackup({
+      dbPath,
+      backupDir,
+      apply: true,
+      nowFn: () => new Date(CREATED_AT),
+      randomBytesFn: () => Buffer.from("0011223344556677", "hex"),
+      linkFn() {
+        const error = new Error("synthetic publication failure");
+        error.code = "EACCES";
+        throw error;
+      },
+      unlinkFn() {
+        throw new Error("synthetic cleanup failure");
+      }
+    });
+    assert.equal(result.status, "reconciliation_required");
+    assert.equal(result.mutationState, "unknown");
+    assert.deepEqual(result.reasonCodes, ["partial_backup_cleanup"]);
+    assert.equal(readdirSync(backupDir).length, 1);
+    assert.doesNotMatch(JSON.stringify(result), /synthetic|control-2026|lead-aware-backups/i);
   });
 });
 
@@ -829,6 +920,25 @@ test("prune rejects traversal manifests, nested entries, and symlinked artifacts
     assert.ok(symlinked.reasonCodes.includes("unsafe_entry"));
     assert.equal(readFileSync(outside, "utf8"), "outside private fixture");
     assert.equal(lstatSync(pair.backupPath).isSymbolicLink(), true);
+  });
+});
+
+test("prune returns a closed blocker when direct directory inventory is unavailable", () => {
+  withTempDir("platform-lead-prune-inventory-", (directory) => {
+    const backupDir = join(directory, "lead-aware-backups");
+    mkdirSync(backupDir, { mode: 0o700 });
+    const result = runLeadPrune({
+      backupDir,
+      apply: true,
+      nowFn: () => new Date(CREATED_AT),
+      readdirFn() {
+        throw new Error("synthetic private inventory failure");
+      }
+    });
+    assert.equal(result.status, "blocked");
+    assert.equal(result.mutationState, "none");
+    assert.deepEqual(result.reasonCodes, ["backup_directory_unavailable"]);
+    assert.doesNotMatch(JSON.stringify(result), /synthetic private|lead-aware-backups/i);
   });
 });
 

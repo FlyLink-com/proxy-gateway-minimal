@@ -1,7 +1,6 @@
 [Unit]
 Description=GCCGW platform Lead retention maintenance
 After=local-fs.target
-ConditionPathIsDirectory=/opt/proxy-gateway-minimal-candidate/state/lead-aware-control-backups
 
 [Service]
 Type=oneshot

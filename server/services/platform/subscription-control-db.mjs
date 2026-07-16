@@ -683,10 +683,15 @@ export function createSqliteSubscriptionControlStore({
   if (!database && !dbPath) {
     throw new Error("dbPath or database is required");
   }
+  if (typeof initializeSchema !== "boolean") {
+    throw new Error("initializeSchema must be boolean");
+  }
 
-  ensureParentDirectory(dbPath);
+  if (initializeSchema) ensureParentDirectory(dbPath);
   const ownsDatabase = !database;
-  const db = database ?? new Database(dbPath);
+  const db = database ?? (initializeSchema
+    ? new Database(dbPath)
+    : new Database(dbPath, { fileMustExist: true }));
   db.pragma("busy_timeout = 2000");
   db.pragma("foreign_keys = ON");
   if (initializeSchema) db.pragma("journal_mode = WAL");
