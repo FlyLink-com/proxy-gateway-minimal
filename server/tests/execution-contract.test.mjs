@@ -31,7 +31,7 @@ function bindingFor(intent, overrides = {}) {
 }
 
 test("execution contract v1 creates a strict frozen intent", async () => {
-  const contract = await contractPromise.catch(() => ({}));
+  const contract = await contractPromise;
 
   assert.equal(typeof contract.createExecutionIntent, "function");
 
