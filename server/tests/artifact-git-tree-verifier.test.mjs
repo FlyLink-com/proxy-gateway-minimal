@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -45,6 +46,7 @@ function createRepository(t) {
   mkdirSync(join(directory, "nested"));
   writeFileSync(join(directory, "alpha.txt"), "alpha\n");
   writeFileSync(join(directory, "nested", "script.sh"), "#!/bin/sh\necho safe\n");
+  chmodSync(join(directory, "nested", "script.sh"), 0o755);
   git(directory, ["add", "."]);
   git(directory, ["update-index", "--chmod=+x", "nested/script.sh"]);
   git(directory, ["commit", "-qm", "base tree"]);
@@ -143,7 +145,7 @@ test("rejects content, file-set, mode, link, duplicate, and traversal drift", (t
   variants.push(["extra.zip", git(fixture.directory, ["rev-parse", "HEAD"])]);
 
   unlinkSync(join(fixture.directory, "alpha.txt"));
-  git(fixture.directory, ["add", "-u"]);
+  git(fixture.directory, ["add", "-u", "--", "alpha.txt"]);
   git(fixture.directory, ["commit", "-qm", "missing file"]);
   variants.push(["missing.zip", git(fixture.directory, ["rev-parse", "HEAD"])]);
 
