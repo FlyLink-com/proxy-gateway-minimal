@@ -1,6 +1,6 @@
 # GitHub Deployment Runbook
 
-Last updated: 2026-07-11, America/Los_Angeles.
+Last updated: 2026-07-16, America/Los_Angeles.
 
 This runbook defines the repository-owned GitHub deployment foundation for
 `proxy-gateway-minimal`. It is not a production approval. Production host,
@@ -63,6 +63,94 @@ It does not:
 - restart services;
 - mutate Nginx, DNS, firewall, systemd, runtime configs, or SQLite;
 - read or print protected runtime material.
+
+### Japan Runtime-Config Additive Repair
+
+`.github/workflows/japan-runtime-config-additive-repair.yml` defines a manual,
+source-only production capability for release unit `japan-runtime-config` and
+strategy `additive_missing_only`. Its protected Environment is
+`vultr-japan-production`. Merging this workflow does not approve or perform a
+production operation; the execution Gate remains separate and one-time.
+
+This lane consumes only the frozen dry-run artifact from run `29495150692`:
+
+- source commit: `47a2a9583fb44cb905e91aade02ae5aa3d635d94`;
+- artifact file: `proxy-gateway-control-plane-cumulative-20260716-003.zip`;
+- artifact size: `4744340` bytes;
+- artifact SHA-256:
+  `d6c0663c9a7c82c6e8ffb7d354e2a4c23d26f3339586533df5c268b887b839fd`;
+- candidate: `add=3`, `remove=0`, `deferred_remove=27`, `changed=0`,
+  `missing_material=0`, `projected_map=82`.
+
+The artifact manifest uses `control-plane-app` because the ZIP carries the
+reviewed helper source. The archive is only an immutable tool carrier in this
+lane: **control-plane-app is not authorized**. Application installation,
+release switching, service or timer restart, stale deletion, schema/database
+changes, and adjacent infrastructure mutation remain prohibited.
+
+The preflight job has no production secrets. It validates the exact artifact,
+the workflow commit selected from `master`, confirmation text, and the exact
+one-time Gate ID before the execute job may enter the protected Environment.
+The execute job streams the verified archive to a host-side forced command;
+it does not receive an interactive shell, PTY, forwarding, SCP, rsync, or an
+operator SSH identity. Logs and summaries contain aggregate receipts only.
+
+#### CI Identity Bootstrap Gate
+
+This independent exact Risk A Gate must be approved and completed before any
+workflow dispatch. It creates a new temporary, dedicated CI SSH identity,
+installs only the reviewed forced-command runner and one marked restricted
+authorization, pins the target host key, and writes only these temporary
+Environment secrets:
+
+- `JAPAN_CI_HOST`
+- `JAPAN_CI_PORT`
+- `JAPAN_CI_USER`
+- `JAPAN_CI_PRIVATE_KEY`
+- `JAPAN_CI_KNOWN_HOSTS`
+
+The Gate must bind the merged workflow commit, runner SHA-256, CI public-key
+fingerprint, redacted endpoint/host-key identities, exact host and GitHub
+mutations, and cleanup readback. It must stop if the principal would gain a
+general shell or broader sudo authority. It must not create a production user,
+daemon, provider resource, network rule, reusable deploy key, or generic
+deployment access.
+
+#### Quantitative Production Execution Gate
+
+After bootstrap readback, a second independent exact Risk A Gate authorizes one
+manual workflow run and no automatic retry. The earlier
+`japan-tuic-identity-additive-repair-20260716-002` review is evidence for the
+source, artifact, and candidate counts; it is not CI execution authority.
+
+The run must reproduce two stable pre-apply snapshots with the exact candidate
+above before backup or mutation. A successful apply must produce this
+aggregate Identity Gate:
+
+```yaml
+runtime_count: 55
+mapped_count: 55
+missing: 0
+stale: 27
+changed: 0
+missing_material: 0
+retention_state: pending
+state: degraded
+```
+
+The runner creates a protected local backup, replaces only the approved map,
+waits for a bounded natural timer-driven observation, and restores the backup
+on any post-apply or observation failure. It never manually invokes or restarts
+the collector. `stale=27` remains unresolved; success must not be reported as
+identity healthy or retention complete.
+
+Closeout is mandatory after either apply or rollback. The forced command must
+perform and verify **host authorization revocation** for only its marked key and
+remove its Gate-owned temporary material. A separately authorized GitHub
+mutation must then perform **GitHub secret deletion** for all five temporary
+Environment secrets and read back name absence. Until both readbacks succeed,
+the operation is incomplete and no later `control-plane-app` canary Gate may be
+submitted.
 
 ## Future Production Promotion Gate
 

@@ -9,6 +9,7 @@ const WORKFLOW_PATH = resolve(
   REPOSITORY_ROOT,
   ".github/workflows/japan-runtime-config-additive-repair.yml"
 );
+const RUNBOOK_PATH = resolve(REPOSITORY_ROOT, "docs/GITHUB_DEPLOYMENT_RUNBOOK.md");
 
 function workflowText() {
   return readFileSync(WORKFLOW_PATH, "utf8");
@@ -135,4 +136,21 @@ test("workflow cannot deploy an application or mutate adjacent production surfac
   );
   assert.doesNotMatch(workflow, /actions\/upload-artifact|include-hidden-files|repository_dispatch/);
   assert.doesNotMatch(workflow, /BEGIN (?:RSA|OPENSSH|EC) PRIVATE KEY/);
+});
+
+test("deployment runbook closes the restricted Japan repair lifecycle", () => {
+  const runbook = readFileSync(RUNBOOK_PATH, "utf8");
+  for (const requiredBoundary of [
+    "japan-runtime-config",
+    "vultr-japan-production",
+    "additive_missing_only",
+    "CI Identity Bootstrap Gate",
+    "Quantitative Production Execution Gate",
+    "JAPAN_CI_PRIVATE_KEY",
+    "host authorization revocation",
+    "GitHub secret deletion",
+    "control-plane-app is not authorized"
+  ]) {
+    assert.match(runbook, new RegExp(requiredBoundary));
+  }
 });
