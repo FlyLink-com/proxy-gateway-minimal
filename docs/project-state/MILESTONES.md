@@ -1,6 +1,6 @@
 # Project Milestones
 
-Last verified: 2026-07-14, America/Los_Angeles.
+Last verified: 2026-07-15, America/Los_Angeles.
 
 > Status:
 > - Type: Evidence-backed milestone map
@@ -46,10 +46,9 @@ Issue #440 remains the opportunistic code-boundary guardrail described by
 `docs/PROJECT_CONTEXT.md`; this portfolio crosswalk does not change that rule.
 
 The current source cutoff is
-`master@2413c101724df45579ebf4b9e0f306d32d9bb1af`: PR #482 merged as
-`06d69b2da07a50322a260bd08f160febaf7b6a7d` and PR #483 merged as the
-current head. The observed repository has 18 remote branches, five open PRs
-(Draft #476/#479 and non-Draft #486/#487/#488), and five open Issues
+`master@5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`, after PRs #486-#492 and
+#494 merged. The observed repository has 16 remote branches, two open Draft
+PRs (#476/#479), no open non-Draft PRs, and five open Issues
 (#437/#438/#439/#440/#475).
 
 ## Phase 0 Foundation
@@ -95,13 +94,14 @@ production gates as one auditable governance model.
 
 `partially_established_completion_not_declared`
 
-The governance components exist, and PRs #480, #485, #482, and #483 are merged
-in the current source baseline at
-`master@2413c101724df45579ebf4b9e0f306d32d9bb1af`. PR #483 introduced
+The governance components exist, and PRs #480, #485, #482, #483, #489, #492,
+and #494 are merged in the current source baseline at
+`master@5b61d9d787e2f98e9f834fe05de6dcbb6805cea7`. PR #483 introduced
 docs-only/code routing and always-run diff checking while retaining one stable
-required `Validate` context. Exact-master CI `29381367549`, Release Artifact
-`29381367545`, and CodeQL `29381507931` succeeded; Cloudflare workflow
-`29381367553` completed build, verification, and dry-run with deploy skipped.
+required `Validate` context. Exact-master CI `29418796398`, Release Artifact
+`29418796724`, and CodeQL `29418794902`/`29418794903` succeeded. Cloudflare
+workflow `29391680029` completed build and verification for
+`329eb282ef88e7ab41bee1252f22fe3570f7d3c8`, with deploy skipped.
 No checked-in record
 reviewed by this task declares a portfolio milestone named `Phase 1
 Governance` complete.
@@ -139,10 +139,13 @@ required gates.
 Current GitHub inventory confirms that Issue #437 is open after Risk C receipt
 `issuecomment-4976074286` reopened it because PR #482 had been recorded as its
 closer despite explicitly denying resolution. Draft PR #479 remains at
-`03d744556be6785ac8c97dae2bc4fb79ae9e246f`, behind `master`, with three
-unresolved non-outdated threads. Its predecessor receipt
-`issuecomment-4966594034` remains blocked, its predecessor approval is
-consumed, no durable successor Gate exists, and it is not deployed. Repository
+`58ccdccc6af5ed120541f03d2713857e4a9a8a65`, behind `master`, with zero
+unresolved non-outdated review threads. Gate
+`pr479-forward-pending-rollback-obligation-remediation-20260715-003` was
+approved by `issuecomment-4979572712` and terminated blocked at `fresh_binding`
+by `issuecomment-4979585832` because of
+`worktree_submodule_guard_null_wrapper_failure`. That approval is consumed and
+nonreusable, no later durable Gate exists, and PR #479 is not deployed. Repository
 handoff documents classify Phase 2 Operational Reliability as current, but
 their detailed runtime snapshot remains dated at `2026-07-11T13:03:40Z` and
 this task performed no live inventory. Old PR #479 checks are not
@@ -207,8 +210,9 @@ snapshot alone.
 
 ## Ordered Next Gates
 
-1. Establish a durable successor Gate on #437 for PR #479.
-2. Complete PR #479 source remediation, current-`master` integration,
+1. Establish a new durable successor proposal on #437 after the blocked,
+   consumed Gate `pr479-forward-pending-rollback-obligation-remediation-20260715-003`.
+2. Complete any newly authorized PR #479 source remediation, current-`master` integration,
    exact-head checks, formal review, Ready, and merge through independent
    approvals.
 3. Finish the Gate ledger/validator, stable CI contexts plus settings Gate,
@@ -217,7 +221,6 @@ snapshot alone.
 4. Only then establish independent Artifact and Risk A production-alignment
    Gates.
 
-The source-security snapshot is 39 open code-scanning alerts (2 critical, 36
-high, 1 medium), 3 Dependabot alerts (2 high, 1 low), and 0 secret-scanning
-alerts. Successful CodeQL execution does not resolve alerts or prove
-exploitability.
+The source-security snapshot is 0 open code-scanning alerts, 0 open Dependabot
+alerts, and 0 open secret-scanning alerts. Successful CodeQL execution remains
+source-analysis evidence rather than production proof.

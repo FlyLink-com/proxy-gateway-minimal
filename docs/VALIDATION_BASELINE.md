@@ -2,6 +2,16 @@
 
 Last updated: 2026-07-14, America/Los_Angeles.
 
+```yaml
+document_metadata:
+  doc_type: canonical
+  lifecycle: active
+  authority_scope: validation_baseline
+  superseded_by: null
+  last_verified_at: 2026-07-15
+  production_authority: false
+```
+
 > Status:
 > - Type: Active validation entrypoint
 > - Risk: C
@@ -101,6 +111,7 @@ is required, a new approval.
 Run:
 
 ```powershell
+npm run docs:authority:check
 git diff --check origin/master...HEAD
 ```
 
@@ -118,9 +129,12 @@ updates command contracts, generated examples, or validation tooling.
 
 The stable `Validate` check uses the docs-only lane only when every changed
 path is a root `*.md`, `docs/**/*.md`, `ops/**/*.md`, or
-`.github/**/*.md` file. Its diff-check step uses `always()` and runs
-`git diff --check`; the docs-only lane then skips dependency installation,
-tests, and builds.
+`.github/**/*.md` file. Its diff-check and document-authority steps use
+`always()` and run `git diff --check` plus
+`npm run docs:authority:check`; the docs-only lane then skips dependency
+installation, tests, and builds. The authority check validates declared
+metadata fields and rejects duplicate active canonical `authority_scope`
+values without creating a new required context or approval gate.
 
 All other inputs use the full code lane. This includes `project-state` JSON,
 workflow YAML, non-Markdown files below `docs/`, `ops/`, or `.github/`, mixed

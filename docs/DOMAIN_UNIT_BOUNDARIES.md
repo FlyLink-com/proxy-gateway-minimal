@@ -486,9 +486,12 @@ docs/SERVER_EDGE_MESH_DESIGN.md:
 docs/CI_MANUAL_VALIDATION.md:
   manual CI fallback workflow
 
+docs/RUNTIME_LANE_AUTHORITY.md:
+  current, staging, and historical runtime-lane classification
+
 docs/ALIYUN_CONTROL_LOCAL_CI_REBUILD_PLAN.md:
-  current target split for Aliyun subscription control, local Linux CI, and
-  clean edge nodes
+  historical former split for Aliyun subscription control, local Linux CI, and
+  clean edge nodes; no current lane or execution authority
 ```
 
 If a future design conflicts with this document, update the boundary first or
