@@ -675,7 +675,11 @@ function mapPortalSession(row) {
   };
 }
 
-export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) {
+export function createSqliteSubscriptionControlStore({
+  dbPath,
+  database,
+  initializeSchema = true
+} = {}) {
   if (!database && !dbPath) {
     throw new Error("dbPath or database is required");
   }
@@ -683,10 +687,10 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
   ensureParentDirectory(dbPath);
   const ownsDatabase = !database;
   const db = database ?? new Database(dbPath);
-  db.pragma("journal_mode = WAL");
   db.pragma("busy_timeout = 2000");
   db.pragma("foreign_keys = ON");
-  db.exec(`
+  if (initializeSchema) db.pragma("journal_mode = WAL");
+  if (initializeSchema) db.exec(`
     create table if not exists platform_leads (
       id text primary key,
       status text not null check (status in ('new', 'reviewing', 'converted', 'rejected')),
@@ -1134,7 +1138,7 @@ export function createSqliteSubscriptionControlStore({ dbPath, database } = {}) 
       on platform_portal_sessions(status);
   `);
 
-  ensureTableColumns(db, "platform_portal_access_requests", [
+  if (initializeSchema) ensureTableColumns(db, "platform_portal_access_requests", [
     { name: "client_target", definition: "client_target text not null default 'clash'" },
     { name: "duration_days", definition: "duration_days integer not null default 30" },
     { name: "quantity", definition: "quantity integer not null default 1" },
