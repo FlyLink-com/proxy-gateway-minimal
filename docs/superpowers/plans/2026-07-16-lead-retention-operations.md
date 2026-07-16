@@ -325,7 +325,7 @@ npm run docs:authority:check
 npm run project-state:check
 ```
 
-- [ ] **Step 5: Commit the documentation closure**
+- [x] **Step 5: Commit the documentation closure**
 
 ```powershell
 git add ops/README.md docs/LEAD_DURABILITY_SCHEMA_GATE.md docs/superpowers/specs/2026-07-16-lead-retention-operations-design.md docs/superpowers/plans/2026-07-16-lead-retention-operations.md server/tests/environment-foundation.test.mjs
