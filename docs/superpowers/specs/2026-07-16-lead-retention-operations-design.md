@@ -4,7 +4,8 @@ Last updated: 2026-07-16, America/Los_Angeles.
 
 > Status:
 > - Design state: Reviewed by the Operator; source implementation and local
->   review complete; merged through PR #507; not activated
+>   review complete; merged through PR #507; two later exact Risk A approval
+>   packets prepared; neither approved nor activated
 > - Risk: A because the source defines future production SQLite deletion,
 >   backup retention, restore, and systemd behavior
 > - Process: one source-only PR with design, implementation, tests, and

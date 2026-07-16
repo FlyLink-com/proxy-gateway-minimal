@@ -382,7 +382,7 @@ Mark Ready, merge through the repository's allowed method, verify merged commit
 and PR state, and clean only the isolated worktree/branch when safe. Do not
 perform production writes.
 
-- [ ] **Step 6: Regenerate later Gate inputs without executing them**
+- [x] **Step 6: Regenerate later Gate inputs without executing them**
 
 After merge, bind the new exact master/artifact identity and prepare two
 separate approval packets:
@@ -393,3 +393,13 @@ separate approval packets:
    backup/restore proof, validation, rollback, and Deploy Note.
 
 Neither packet is approved or executed by completion of this plan.
+
+Prepared approval evidence:
+
+- additive-only Japan identity repair Gate:
+  `https://github.com/gccwebos-com/proxy-gateway-minimal/pull/507#issuecomment-4991026388`;
+- cumulative control-plane deployment plus retention activation Gate:
+  `https://github.com/gccwebos-com/proxy-gateway-minimal/pull/507#issuecomment-4991031115`.
+
+Both packets retain `production_write_authority=false` until their own exact
+operator approvals. They cannot be bundled or treated as deployment evidence.
