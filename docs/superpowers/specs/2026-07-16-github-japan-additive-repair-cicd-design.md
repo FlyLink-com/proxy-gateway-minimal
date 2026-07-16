@@ -87,6 +87,8 @@ The production execution Gate must bind all of the following values:
 
 ```yaml
 gate_basis: japan-tuic-identity-additive-repair-20260716-002
+planned_execution_gate_id: github-actions-japan-tuic-additive-repair-20260716-001
+planned_execution_gate_state: not_approved
 release_unit: japan-runtime-config
 surface: japan-tuic
 strategy: additive_missing_only
@@ -121,6 +123,11 @@ The final execution Gate must separately name:
 
 A changed workflow commit, runner digest, artifact identity, target identity,
 credential identity, or command set invalidates the Gate.
+
+`gate_basis` preserves the earlier review of source, artifact, and aggregate
+counts. It is not CI execution authority. The planned execution Gate ID is a
+one-time workflow binding and remains `not_approved` until the later exact Gate
+is presented and explicitly approved after CI identity bootstrap.
 
 ## Architecture
 

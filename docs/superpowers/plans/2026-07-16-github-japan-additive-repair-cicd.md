@@ -19,6 +19,11 @@
 - Tool artifact file is exactly `proxy-gateway-control-plane-cumulative-20260716-003.zip`.
 - Tool artifact size is exactly `4744340` bytes.
 - Tool artifact SHA-256 is exactly `d6c0663c9a7c82c6e8ffb7d354e2a4c23d26f3339586533df5c268b887b839fd`.
+- Earlier review basis is `japan-tuic-identity-additive-repair-20260716-002`;
+  it is not CI execution authority.
+- Planned one-time CI execution Gate ID is exactly
+  `github-actions-japan-tuic-additive-repair-20260716-001` and remains
+  unapproved during source implementation.
 - Frozen mutation is `add=3`, `remove=0`, `deferred_remove=27`, `changed=0`, `missing_material=0`, `projected_map=82`.
 - Expected before Identity Gate is `55/52/3/27/0/0`; expected after is `55/55/0/27/0/0`, `retention_state=pending`, `state=degraded`.
 - No application deployment, release-pointer change, dependency install on target, service/timer restart, manual collector invocation, stale deletion, schema/database mutation, or infrastructure expansion.
@@ -155,7 +160,8 @@ this public shape:
 ```js
 export const JAPAN_TUIC_REPAIR_GATE = Object.freeze({
   schemaVersion: "1",
-  gateId: "japan-tuic-identity-additive-repair-20260716-002",
+  gateBasis: "japan-tuic-identity-additive-repair-20260716-002",
+  executionGateId: "github-actions-japan-tuic-additive-repair-20260716-001",
   releaseUnit: "japan-runtime-config",
   surface: "japan-tuic",
   strategy: "additive_missing_only",
@@ -406,7 +412,7 @@ Create tests that use synthetic paths in a temporary directory and assert:
 ```js
 test("binding accepts only the exact gate and fixed production unit names", () => {
   const binding = validBinding();
-  assert.equal(validateRunnerBinding(binding).gateId, JAPAN_TUIC_REPAIR_GATE.gateId);
+  assert.equal(validateRunnerBinding(binding).gateId, JAPAN_TUIC_REPAIR_GATE.executionGateId);
   assert.throws(
     () => validateRunnerBinding({ ...binding, gateId: "another-gate" }),
     (error) => error.code === "target_identity_mismatch"
@@ -812,7 +818,7 @@ jobs:
   preflight:
     if: >-
       github.ref == 'refs/heads/master' &&
-      inputs.gate_id == 'japan-tuic-identity-additive-repair-20260716-002' &&
+      inputs.gate_id == 'github-actions-japan-tuic-additive-repair-20260716-001' &&
       inputs.confirmation == 'execute japan additive repair' &&
       inputs.expected_workflow_commit == github.sha
     runs-on: ubuntu-latest
