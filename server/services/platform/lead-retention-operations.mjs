@@ -1,6 +1,21 @@
-import { createHash } from "node:crypto";
-import { existsSync } from "node:fs";
-import { basename, isAbsolute } from "node:path";
+import { createHash, randomBytes } from "node:crypto";
+import {
+  chmodSync,
+  closeSync,
+  existsSync,
+  fsyncSync,
+  linkSync,
+  lstatSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  realpathSync,
+  statSync,
+  unlinkSync,
+  writeFileSync
+} from "node:fs";
+import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import Database from "better-sqlite3";
 import {
   createSqliteSubscriptionControlStore
@@ -53,7 +68,9 @@ const ALLOWED_COUNT_KEYS = new Set([
   "unknownEntryCount"
 ]);
 const SAFE_BACKUP_BASENAME = /^control-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8,64}\.sqlite$/;
+const SAFE_MANIFEST_BASENAME = /^control-[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8,64}\.sqlite\.manifest\.json$/;
 const SAFE_REASON_CODE = /^[a-z][a-z0-9_]{0,63}$/;
+const MAX_MANIFEST_BYTES = 16 * 1024;
 const LEAD_SCHEMA_COLUMNS = [
   ["id", "text", 0, 1],
   ["status", "text", 1, 0],
@@ -456,5 +473,422 @@ export function runLeadPurge({
     return blockedCommandResult("purge", apply, databaseFailureReason(error));
   } finally {
     database?.close();
+  }
+}
+
+function validateBackupDirectory(backupDir) {
+  if (typeof backupDir !== "string" || !isAbsolute(backupDir) || !existsSync(backupDir)) {
+    throw retentionError("backup_directory_invalid");
+  }
+  const status = lstatSync(backupDir);
+  if (!status.isDirectory() || status.isSymbolicLink()) {
+    throw retentionError("backup_directory_invalid");
+  }
+  return realpathSync(backupDir);
+}
+
+function containedPath(root, name) {
+  if (typeof name !== "string" || basename(name) !== name) {
+    throw retentionError("backup_path_escape");
+  }
+  const path = resolve(root, name);
+  if (dirname(path) !== root) {
+    throw retentionError("backup_path_escape");
+  }
+  return path;
+}
+
+function inspectBackupSnapshot(database, createdAt) {
+  if (!quickCheckOk(database)) {
+    throw retentionError("database_integrity_failed");
+  }
+  const schema = inspectLeadTable(database);
+  if (!schema.present) {
+    return {
+      leadTablePresent: false,
+      leadRowCount: 0,
+      retention: calculateLeadBackupRetention({ createdAt, leadExpiresAt: [] })
+    };
+  }
+  if (!schema.compatible) {
+    throw retentionError("lead_schema_incompatible");
+  }
+  const expiryRows = database.prepare(`
+    select expires_at from platform_leads order by expires_at asc
+  `).all();
+  const leadExpiresAt = expiryRows.map((row) => canonicalTimestamp(row.expires_at));
+  if (leadExpiresAt.some((expiresAt) => Date.parse(expiresAt) <= Date.parse(createdAt))) {
+    throw retentionError("expired_lead_present");
+  }
+  return {
+    leadTablePresent: true,
+    leadRowCount: leadExpiresAt.length,
+    retention: calculateLeadBackupRetention({ createdAt, leadExpiresAt })
+  };
+}
+
+function syncFile(path) {
+  const descriptor = openSync(path, "r+");
+  try {
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+}
+
+function sha256File(path) {
+  const hash = createHash("sha256");
+  const descriptor = openSync(path, "r");
+  const buffer = Buffer.allocUnsafe(64 * 1024);
+  try {
+    let bytesRead;
+    do {
+      bytesRead = readSync(descriptor, buffer, 0, buffer.length, null);
+      if (bytesRead > 0) hash.update(buffer.subarray(0, bytesRead));
+    } while (bytesRead > 0);
+  } finally {
+    closeSync(descriptor);
+  }
+  return hash.digest("hex");
+}
+
+function generatedBackupBasename(createdAt, randomBytesFn) {
+  const timestamp = createdAt.replace(/[-:]/g, "").replace(".000", "");
+  const suffixBytes = randomBytesFn(8);
+  if (!Buffer.isBuffer(suffixBytes) || suffixBytes.length !== 8) {
+    throw retentionError("invalid_random_source");
+  }
+  return validateBackupBasename(`control-${timestamp}-${suffixBytes.toString("hex")}.sqlite`);
+}
+
+function backupResult({ apply, status, mutationState, counts, reasonCodes = [] }) {
+  return buildLeadRetentionCommandResult({
+    command: "backup",
+    mode: commandMode(apply),
+    status,
+    mutationState,
+    counts,
+    reasonCodes
+  });
+}
+
+function backupFailureReason(error) {
+  if (error?.reasonCode) return error.reasonCode;
+  if (error?.code === "EEXIST") return "backup_collision";
+  if (error?.code === "ENOENT") return "backup_directory_invalid";
+  return databaseFailureReason(error);
+}
+
+export async function runLeadBackup({
+  dbPath,
+  backupDir,
+  apply = false,
+  nowFn = () => new Date(),
+  randomBytesFn = randomBytes
+} = {}) {
+  if (typeof apply !== "boolean") {
+    return backupResult({
+      apply: false,
+      status: "blocked",
+      mutationState: "none",
+      counts: {},
+      reasonCodes: ["invalid_command_contract"]
+    });
+  }
+  if (typeof dbPath !== "string" || !isAbsolute(dbPath) || !existsSync(dbPath)) {
+    return backupResult({
+      apply,
+      status: "blocked",
+      mutationState: "none",
+      counts: {},
+      reasonCodes: [typeof dbPath === "string" && isAbsolute(dbPath)
+        ? "database_missing"
+        : "invalid_database_path"]
+    });
+  }
+
+  let createdAt;
+  let root;
+  try {
+    createdAt = normalizedNow(nowFn);
+    root = validateBackupDirectory(backupDir);
+  } catch (error) {
+    return backupResult({
+      apply,
+      status: "blocked",
+      mutationState: "none",
+      counts: {},
+      reasonCodes: [error?.reasonCode || "backup_directory_invalid"]
+    });
+  }
+
+  let source;
+  let tempBackupPath;
+  let tempManifestPath;
+  let sqlitePublished = false;
+  let manifestPublished = false;
+  try {
+    source = new Database(dbPath, { readonly: true, fileMustExist: true });
+    source.pragma("busy_timeout = 2000");
+    const sourceInspection = inspectBackupSnapshot(source, createdAt);
+    if (!apply) {
+      return backupResult({
+        apply: false,
+        status: "planned",
+        mutationState: "none",
+        counts: {
+          backupEligibleCount: 1,
+          createdBackupCount: 0,
+          leadRowCount: sourceInspection.leadRowCount
+        }
+      });
+    }
+
+    const file = generatedBackupBasename(createdAt, randomBytesFn);
+    const manifestFile = `${file}.manifest.json`;
+    const backupPath = containedPath(root, file);
+    const manifestPath = containedPath(root, manifestFile);
+    tempBackupPath = containedPath(root, `.${file}.tmp`);
+    tempManifestPath = containedPath(root, `.${manifestFile}.tmp`);
+    if ([backupPath, manifestPath, tempBackupPath, tempManifestPath].some(existsSync)) {
+      throw retentionError("backup_collision");
+    }
+
+    await source.backup(tempBackupPath);
+    source.close();
+    source = null;
+
+    const snapshotStatus = lstatSync(tempBackupPath);
+    if (!snapshotStatus.isFile() || snapshotStatus.isSymbolicLink()) {
+      throw retentionError("unsafe_backup_file");
+    }
+    const snapshot = new Database(tempBackupPath, { readonly: true, fileMustExist: true });
+    let inspection;
+    try {
+      inspection = inspectBackupSnapshot(snapshot, createdAt);
+    } finally {
+      snapshot.close();
+    }
+    chmodSync(tempBackupPath, 0o600);
+    syncFile(tempBackupPath);
+    const backupStatus = statSync(tempBackupPath);
+    const manifest = createLeadBackupManifest({
+      file,
+      ...inspection.retention,
+      size: backupStatus.size,
+      sha256: sha256File(tempBackupPath),
+      quickCheck: "ok",
+      leadTablePresent: inspection.leadTablePresent,
+      leadRowCount: inspection.leadRowCount
+    });
+
+    linkSync(tempBackupPath, backupPath);
+    sqlitePublished = true;
+    unlinkSync(tempBackupPath);
+    chmodSync(backupPath, 0o600);
+
+    writeFileSync(tempManifestPath, `${JSON.stringify(manifest)}\n`, {
+      encoding: "utf8",
+      flag: "wx",
+      mode: 0o600
+    });
+    chmodSync(tempManifestPath, 0o600);
+    syncFile(tempManifestPath);
+    linkSync(tempManifestPath, manifestPath);
+    manifestPublished = true;
+    unlinkSync(tempManifestPath);
+    chmodSync(manifestPath, 0o600);
+
+    return backupResult({
+      apply: true,
+      status: "completed",
+      mutationState: "completed",
+      counts: {
+        backupEligibleCount: 1,
+        createdBackupCount: 1,
+        leadRowCount: inspection.leadRowCount
+      }
+    });
+  } catch (error) {
+    const reasonCode = backupFailureReason(error);
+    if (sqlitePublished || manifestPublished) {
+      return backupResult({
+        apply: true,
+        status: "reconciliation_required",
+        mutationState: "unknown",
+        counts: {},
+        reasonCodes: ["partial_backup_publication"]
+      });
+    }
+    return backupResult({
+      apply,
+      status: "blocked",
+      mutationState: "none",
+      counts: {},
+      reasonCodes: [reasonCode]
+    });
+  } finally {
+    source?.close();
+    if (!sqlitePublished && tempBackupPath && existsSync(tempBackupPath)) {
+      try { unlinkSync(tempBackupPath); } catch {}
+    }
+    if (!manifestPublished && tempManifestPath && existsSync(tempManifestPath)) {
+      try { unlinkSync(tempManifestPath); } catch {}
+    }
+  }
+}
+
+function pruneResult({ apply, status, mutationState, counts, reasonCodes = [] }) {
+  return buildLeadRetentionCommandResult({
+    command: "prune",
+    mode: commandMode(apply),
+    status,
+    mutationState,
+    counts,
+    reasonCodes
+  });
+}
+
+function safeEntryStatus(path) {
+  const status = lstatSync(path);
+  return status.isFile() && !status.isSymbolicLink() ? status : null;
+}
+
+export function runLeadPrune({
+  backupDir,
+  apply = false,
+  nowFn = () => new Date(),
+  unlinkFn = unlinkSync
+} = {}) {
+  if (typeof apply !== "boolean" || typeof unlinkFn !== "function") {
+    return pruneResult({
+      apply: false,
+      status: "blocked",
+      mutationState: "none",
+      counts: {},
+      reasonCodes: ["invalid_command_contract"]
+    });
+  }
+  let root;
+  let now;
+  try {
+    root = validateBackupDirectory(backupDir);
+    now = normalizedNow(nowFn);
+  } catch (error) {
+    return pruneResult({
+      apply,
+      status: "blocked",
+      mutationState: "none",
+      counts: {},
+      reasonCodes: [error?.reasonCode || "backup_directory_invalid"]
+    });
+  }
+
+  const names = readdirSync(root).sort();
+  const nameSet = new Set(names);
+  const recognized = new Set();
+  const blockedEntries = new Set();
+  const reasonCodes = new Set();
+  const pairs = [];
+
+  for (const manifestName of names.filter((name) => SAFE_MANIFEST_BASENAME.test(name))) {
+    recognized.add(manifestName);
+    const manifestPath = containedPath(root, manifestName);
+    try {
+      const manifestStatus = safeEntryStatus(manifestPath);
+      if (!manifestStatus || manifestStatus.size <= 0 || manifestStatus.size > MAX_MANIFEST_BYTES) {
+        throw retentionError("unsafe_entry");
+      }
+      const manifest = validateLeadBackupManifest(
+        JSON.parse(readFileSync(manifestPath, "utf8"))
+      );
+      if (`${manifest.file}.manifest.json` !== manifestName) {
+        throw retentionError("invalid_manifest");
+      }
+      const backupPath = containedPath(root, manifest.file);
+      if (!nameSet.has(manifest.file)) {
+        throw retentionError("orphan_entry");
+      }
+      recognized.add(manifest.file);
+      const backupStatus = safeEntryStatus(backupPath);
+      if (!backupStatus) throw retentionError("unsafe_entry");
+      if (backupStatus.size !== manifest.size || sha256File(backupPath) !== manifest.sha256) {
+        throw retentionError("backup_integrity_mismatch");
+      }
+      pairs.push({
+        backupPath,
+        manifestPath,
+        due: Date.parse(manifest.pruneAt) <= Date.parse(now)
+      });
+    } catch (error) {
+      blockedEntries.add(manifestName);
+      reasonCodes.add(error?.reasonCode || "invalid_manifest");
+    }
+  }
+
+  for (const name of names) {
+    if (!recognized.has(name)) {
+      blockedEntries.add(name);
+      reasonCodes.add(SAFE_BACKUP_BASENAME.test(name) ? "orphan_entry" : "unsafe_entry");
+    }
+  }
+
+  const duePairs = pairs.filter((pair) => pair.due);
+  const counts = {
+    blockedEntryCount: blockedEntries.size,
+    candidatePairCount: pairs.length,
+    deletedPairCount: 0,
+    duePairCount: duePairs.length,
+    futurePairCount: pairs.length - duePairs.length
+  };
+  if (blockedEntries.size > 0) {
+    return pruneResult({
+      apply,
+      status: "blocked",
+      mutationState: "none",
+      counts,
+      reasonCodes: [...reasonCodes]
+    });
+  }
+  if (!apply) {
+    return pruneResult({
+      apply: false,
+      status: "planned",
+      mutationState: "none",
+      counts
+    });
+  }
+
+  let deletionStarted = false;
+  try {
+    for (const pair of duePairs) {
+      unlinkFn(pair.backupPath);
+      deletionStarted = true;
+      unlinkFn(pair.manifestPath);
+      counts.deletedPairCount += 1;
+    }
+    return pruneResult({
+      apply: true,
+      status: "completed",
+      mutationState: "completed",
+      counts
+    });
+  } catch {
+    if (deletionStarted) {
+      return pruneResult({
+        apply: true,
+        status: "reconciliation_required",
+        mutationState: "unknown",
+        counts,
+        reasonCodes: ["partial_pair_deletion"]
+      });
+    }
+    return pruneResult({
+      apply: true,
+      status: "blocked",
+      mutationState: "none",
+      counts,
+      reasonCodes: ["backup_delete_failed"]
+    });
   }
 }

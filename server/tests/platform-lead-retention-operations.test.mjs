@@ -1,5 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -8,7 +20,9 @@ import {
   buildLeadRetentionCommandResult,
   calculateLeadBackupRetention,
   createLeadBackupManifest,
+  runLeadBackup,
   runLeadPurge,
+  runLeadPrune,
   serializeLeadRetentionCommandResult,
   validateLeadBackupManifest
 } from "../services/platform/lead-retention-operations.mjs";
@@ -40,6 +54,69 @@ function withTempDir(prefix, callback) {
   } finally {
     rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
   }
+}
+
+async function withTempDirAsync(prefix, callback) {
+  const directory = mkdtempSync(join(tmpdir(), prefix));
+  try {
+    return await callback(directory);
+  } finally {
+    rmSync(directory, { recursive: true, force: true, maxRetries: 3, retryDelay: 50 });
+  }
+}
+
+function createBackupFixture(dbPath, { leadExpiresAt = [] } = {}) {
+  const database = new Database(dbPath);
+  database.exec(`
+    create table retention_sentinel (
+      id text primary key,
+      value text not null
+    );
+    insert into retention_sentinel (id, value) values ('sentinel_1', 'preserve-me');
+    create table platform_leads (
+      id text primary key,
+      status text not null check (status in ('new', 'reviewing', 'converted', 'rejected')),
+      organization text not null,
+      email text not null,
+      direction text not null,
+      stage text not null default '',
+      message text not null,
+      source text not null,
+      created_at text not null,
+      updated_at text not null,
+      expires_at text not null
+    );
+  `);
+  const insert = database.prepare(`
+    insert into platform_leads (
+      id, status, organization, email, direction, stage, message, source,
+      created_at, updated_at, expires_at
+    ) values (
+      @id, 'new', 'Private Organization', @email, 'Private Direction', 'review',
+      @message, 'company-site', @createdAt, @createdAt, @expiresAt
+    )
+  `);
+  leadExpiresAt.forEach((expiresAt, index) => insert.run({
+    id: `lead_private_${index + 1}`,
+    email: `private-${index + 1}@example.test`,
+    message: `private message ${index + 1}`,
+    createdAt: CREATED_AT,
+    expiresAt
+  }));
+  database.close();
+}
+
+function readBackupPair(backupDir) {
+  const names = readdirSync(backupDir).sort();
+  const manifestName = names.find((name) => name.endsWith(".manifest.json"));
+  assert.ok(manifestName, "manifest should exist");
+  const manifest = JSON.parse(readFileSync(join(backupDir, manifestName), "utf8"));
+  return {
+    names,
+    manifest,
+    manifestPath: join(backupDir, manifestName),
+    backupPath: join(backupDir, manifest.file)
+  };
 }
 
 function createPurgeFixture(dbPath) {
@@ -380,5 +457,359 @@ test("purge blocks a busy database without deleting eligible Leads", () => {
     const database = new Database(dbPath, { readonly: true });
     assert.equal(database.prepare("select count(*) as count from platform_leads").get().count, 2);
     database.close();
+  });
+});
+
+test("backup dry-run validates eligibility without creating filesystem entries", async () => {
+  await withTempDirAsync("platform-lead-backup-dry-", async (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    const backupDir = join(directory, "lead-aware-backups");
+    createBackupFixture(dbPath);
+    mkdirSync(backupDir, { mode: 0o700 });
+
+    const result = await runLeadBackup({
+      dbPath,
+      backupDir,
+      apply: false,
+      nowFn: () => new Date(CREATED_AT),
+      randomBytesFn: () => Buffer.from("0011223344556677", "hex")
+    });
+    assert.deepEqual(result, {
+      schemaVersion: "1",
+      command: "backup",
+      mode: "dry-run",
+      status: "planned",
+      mutationState: "none",
+      counts: {
+        backupEligibleCount: 1,
+        createdBackupCount: 0,
+        leadRowCount: 0
+      },
+      reasonCodes: []
+    });
+    assert.deepEqual(readdirSync(backupDir), []);
+  });
+});
+
+test("backup apply publishes a complete verified SQLite pair without leaking its name", async () => {
+  await withTempDirAsync("platform-lead-backup-apply-", async (directory) => {
+    const dbPath = join(directory, "private-control.sqlite");
+    const backupDir = join(directory, "lead-aware-backups");
+    createBackupFixture(dbPath);
+    mkdirSync(backupDir, { mode: 0o700 });
+
+    const result = await runLeadBackup({
+      dbPath,
+      backupDir,
+      apply: true,
+      nowFn: () => new Date(CREATED_AT),
+      randomBytesFn: () => Buffer.from("0011223344556677", "hex")
+    });
+    assert.deepEqual(result.counts, {
+      backupEligibleCount: 1,
+      createdBackupCount: 1,
+      leadRowCount: 0
+    });
+    assert.equal(result.status, "completed");
+    assert.doesNotMatch(JSON.stringify(result), /private-control|control-2026|lead-aware-backups/i);
+
+    const pair = readBackupPair(backupDir);
+    assert.equal(pair.names.length, 2);
+    assert.deepEqual(validateLeadBackupManifest(pair.manifest), pair.manifest);
+    assert.equal(pair.manifest.createdAt, CREATED_AT);
+    assert.equal(pair.manifest.privacyCutoff, EMPTY_PRIVACY_CUTOFF);
+    assert.equal(pair.manifest.pruneAt, EMPTY_PRUNE_AT);
+    assert.equal(pair.manifest.retentionBasis, "created_at_plus_90d");
+    assert.equal(pair.manifest.leadRowCount, 0);
+    assert.equal(pair.manifest.size, statSync(pair.backupPath).size);
+    assert.equal(
+      pair.manifest.sha256,
+      createHash("sha256").update(readFileSync(pair.backupPath)).digest("hex")
+    );
+    assert.equal(lstatSync(pair.backupPath).isSymbolicLink(), false);
+    assert.equal(lstatSync(pair.manifestPath).isSymbolicLink(), false);
+    if (process.platform !== "win32") {
+      assert.equal(statSync(pair.backupPath).mode & 0o777, 0o600);
+      assert.equal(statSync(pair.manifestPath).mode & 0o777, 0o600);
+    }
+
+    const snapshot = new Database(pair.backupPath, { readonly: true });
+    assert.deepEqual(snapshot.pragma("quick_check"), [{ quick_check: "ok" }]);
+    assert.deepEqual(snapshot.prepare("select * from retention_sentinel").all(), [
+      { id: "sentinel_1", value: "preserve-me" }
+    ]);
+    snapshot.close();
+  });
+});
+
+test("backup binds retention to the earliest Lead expiry in the snapshot", async () => {
+  await withTempDirAsync("platform-lead-backup-expiry-", async (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    const backupDir = join(directory, "lead-aware-backups");
+    createBackupFixture(dbPath, {
+      leadExpiresAt: [
+        "2026-08-01T00:00:00.000Z",
+        "2026-07-20T00:00:00.000Z"
+      ]
+    });
+    mkdirSync(backupDir, { mode: 0o700 });
+
+    const result = await runLeadBackup({
+      dbPath,
+      backupDir,
+      apply: true,
+      nowFn: () => new Date(CREATED_AT),
+      randomBytesFn: () => Buffer.from("8899aabbccddeeff", "hex")
+    });
+    assert.equal(result.counts.leadRowCount, 2);
+    const { manifest } = readBackupPair(backupDir);
+    assert.equal(manifest.privacyCutoff, "2026-07-20T00:00:00.000Z");
+    assert.equal(manifest.pruneAt, "2026-07-19T22:00:00.000Z");
+    assert.equal(manifest.retentionBasis, "earliest_lead_expiry");
+    assert.equal(manifest.leadTablePresent, true);
+    assert.equal(manifest.leadRowCount, 2);
+    assert.doesNotMatch(JSON.stringify(manifest), /private organization|private direction|private message|example\.test|lead_private/i);
+  });
+});
+
+test("backup refuses expired Leads, unavailable safety margin, and collisions", async () => {
+  await withTempDirAsync("platform-lead-backup-blocked-", async (directory) => {
+    const expiredPath = join(directory, "expired.sqlite");
+    const safetyPath = join(directory, "safety.sqlite");
+    const validPath = join(directory, "valid.sqlite");
+    const expiredDir = join(directory, "expired-backups");
+    const safetyDir = join(directory, "safety-backups");
+    const validDir = join(directory, "valid-backups");
+    createBackupFixture(expiredPath, {
+      leadExpiresAt: ["2026-07-16T00:00:00.000Z"]
+    });
+    createBackupFixture(safetyPath, {
+      leadExpiresAt: ["2026-07-16T01:59:59.999Z"]
+    });
+    createBackupFixture(validPath);
+    [expiredDir, safetyDir, validDir].forEach((path) => mkdirSync(path, { mode: 0o700 }));
+
+    const expired = await runLeadBackup({
+      dbPath: expiredPath,
+      backupDir: expiredDir,
+      apply: true,
+      nowFn: () => new Date(CREATED_AT)
+    });
+    assert.equal(expired.status, "blocked");
+    assert.deepEqual(expired.reasonCodes, ["expired_lead_present"]);
+    assert.deepEqual(readdirSync(expiredDir), []);
+
+    const safety = await runLeadBackup({
+      dbPath: safetyPath,
+      backupDir: safetyDir,
+      apply: true,
+      nowFn: () => new Date(CREATED_AT)
+    });
+    assert.equal(safety.status, "blocked");
+    assert.deepEqual(safety.reasonCodes, ["backup_safety_window_unavailable"]);
+    assert.deepEqual(readdirSync(safetyDir), []);
+
+    const options = {
+      dbPath: validPath,
+      backupDir: validDir,
+      apply: true,
+      nowFn: () => new Date(CREATED_AT),
+      randomBytesFn: () => Buffer.from("0011223344556677", "hex")
+    };
+    assert.equal((await runLeadBackup(options)).status, "completed");
+    const before = readdirSync(validDir).sort();
+    const collision = await runLeadBackup(options);
+    assert.equal(collision.status, "blocked");
+    assert.deepEqual(collision.reasonCodes, ["backup_collision"]);
+    assert.deepEqual(readdirSync(validDir).sort(), before);
+  });
+});
+
+test("prune dry-run plans due pairs and apply deletes only due verified pairs", async () => {
+  await withTempDirAsync("platform-lead-prune-", async (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    const backupDir = join(directory, "lead-aware-backups");
+    createBackupFixture(dbPath);
+    mkdirSync(backupDir, { mode: 0o700 });
+    await runLeadBackup({
+      dbPath,
+      backupDir,
+      apply: true,
+      nowFn: () => new Date("2026-01-01T00:00:00.000Z"),
+      randomBytesFn: () => Buffer.from("0011223344556677", "hex")
+    });
+    await runLeadBackup({
+      dbPath,
+      backupDir,
+      apply: true,
+      nowFn: () => new Date("2026-07-01T00:00:00.000Z"),
+      randomBytesFn: () => Buffer.from("8899aabbccddeeff", "hex")
+    });
+    const before = readdirSync(backupDir).sort();
+
+    const dryRun = runLeadPrune({
+      backupDir,
+      apply: false,
+      nowFn: () => new Date("2026-04-01T00:00:00.000Z")
+    });
+    assert.deepEqual(dryRun.counts, {
+      blockedEntryCount: 0,
+      candidatePairCount: 2,
+      deletedPairCount: 0,
+      duePairCount: 1,
+      futurePairCount: 1
+    });
+    assert.deepEqual(readdirSync(backupDir).sort(), before);
+
+    const applied = runLeadPrune({
+      backupDir,
+      apply: true,
+      nowFn: () => new Date("2026-04-01T00:00:00.000Z")
+    });
+    assert.deepEqual(applied.counts, {
+      blockedEntryCount: 0,
+      candidatePairCount: 2,
+      deletedPairCount: 1,
+      duePairCount: 1,
+      futurePairCount: 1
+    });
+    const after = readdirSync(backupDir).sort();
+    assert.equal(after.length, 2);
+    assert.ok(after.every((name) => name.includes("20260701T000000Z")));
+  });
+});
+
+test("prune blocks the whole batch on unknown, orphaned, or integrity-drifted entries", async () => {
+  await withTempDirAsync("platform-lead-prune-blocked-", async (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    const backupDir = join(directory, "lead-aware-backups");
+    createBackupFixture(dbPath);
+    mkdirSync(backupDir, { mode: 0o700 });
+    await runLeadBackup({
+      dbPath,
+      backupDir,
+      apply: true,
+      nowFn: () => new Date("2026-01-01T00:00:00.000Z"),
+      randomBytesFn: () => Buffer.from("0011223344556677", "hex")
+    });
+    const pair = readBackupPair(backupDir);
+    const originalNames = [...pair.names];
+
+    writeFileSync(join(backupDir, "unknown-private.txt"), "do not delete", "utf8");
+    const unknown = runLeadPrune({
+      backupDir,
+      apply: true,
+      nowFn: () => new Date("2026-04-01T00:00:00.000Z")
+    });
+    assert.equal(unknown.status, "blocked");
+    assert.ok(unknown.counts.blockedEntryCount >= 1);
+    assert.ok(existsSync(pair.backupPath));
+    assert.ok(existsSync(pair.manifestPath));
+    rmSync(join(backupDir, "unknown-private.txt"));
+
+    writeFileSync(pair.backupPath, "integrity drift", { flag: "a" });
+    const drifted = runLeadPrune({
+      backupDir,
+      apply: true,
+      nowFn: () => new Date("2026-04-01T00:00:00.000Z")
+    });
+    assert.equal(drifted.status, "blocked");
+    assert.ok(drifted.reasonCodes.includes("backup_integrity_mismatch"));
+    assert.ok(existsSync(pair.backupPath));
+    assert.ok(existsSync(pair.manifestPath));
+    assert.deepEqual(readdirSync(backupDir).sort(), originalNames);
+  });
+});
+
+test("prune reports reconciliation required after a partial pair deletion", async () => {
+  await withTempDirAsync("platform-lead-prune-partial-", async (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    const backupDir = join(directory, "lead-aware-backups");
+    createBackupFixture(dbPath);
+    mkdirSync(backupDir, { mode: 0o700 });
+    await runLeadBackup({
+      dbPath,
+      backupDir,
+      apply: true,
+      nowFn: () => new Date("2026-01-01T00:00:00.000Z"),
+      randomBytesFn: () => Buffer.from("0011223344556677", "hex")
+    });
+    const pair = readBackupPair(backupDir);
+
+    const result = runLeadPrune({
+      backupDir,
+      apply: true,
+      nowFn: () => new Date("2026-04-01T00:00:00.000Z"),
+      unlinkFn(path) {
+        if (path.endsWith(".manifest.json")) throw new Error("synthetic unlink failure");
+        rmSync(path);
+      }
+    });
+    assert.equal(result.status, "reconciliation_required");
+    assert.equal(result.mutationState, "unknown");
+    assert.deepEqual(result.reasonCodes, ["partial_pair_deletion"]);
+    assert.equal(existsSync(pair.backupPath), false);
+    assert.equal(existsSync(pair.manifestPath), true);
+    assert.doesNotMatch(JSON.stringify(result), /synthetic unlink|control-2026|manifest\.json/i);
+  });
+});
+
+test("prune rejects traversal manifests, nested entries, and symlinked artifacts", async (context) => {
+  await withTempDirAsync("platform-lead-prune-unsafe-", async (directory) => {
+    const backupDir = join(directory, "lead-aware-backups");
+    mkdirSync(backupDir, { mode: 0o700 });
+    const unsafeManifestName = "control-20260101T000000Z-0011223344556677.sqlite.manifest.json";
+    writeFileSync(join(backupDir, unsafeManifestName), JSON.stringify({
+      ...createLeadBackupManifest(manifestInput({
+        file: "control-20260101T000000Z-0011223344556677.sqlite"
+      })),
+      file: "../escape.sqlite"
+    }), "utf8");
+    mkdirSync(join(backupDir, "nested-private"));
+
+    const traversal = runLeadPrune({
+      backupDir,
+      apply: true,
+      nowFn: () => new Date("2026-04-01T00:00:00.000Z")
+    });
+    assert.equal(traversal.status, "blocked");
+    assert.ok(traversal.reasonCodes.includes("invalid_backup_basename"));
+    assert.ok(traversal.reasonCodes.includes("unsafe_entry"));
+    assert.ok(existsSync(join(backupDir, unsafeManifestName)));
+
+    rmSync(join(backupDir, unsafeManifestName));
+    rmSync(join(backupDir, "nested-private"), { recursive: true });
+    const dbPath = join(directory, "control.sqlite");
+    createBackupFixture(dbPath);
+    await runLeadBackup({
+      dbPath,
+      backupDir,
+      apply: true,
+      nowFn: () => new Date("2026-01-01T00:00:00.000Z"),
+      randomBytesFn: () => Buffer.from("8899aabbccddeeff", "hex")
+    });
+    const pair = readBackupPair(backupDir);
+    const outside = join(directory, "outside.sqlite");
+    writeFileSync(outside, "outside private fixture", "utf8");
+    rmSync(pair.backupPath);
+    try {
+      symlinkSync(outside, pair.backupPath, "file");
+    } catch (error) {
+      if (error?.code === "EPERM" || error?.code === "EACCES") {
+        context.skip("file symlink creation is unavailable on this Windows host");
+        return;
+      }
+      throw error;
+    }
+
+    const symlinked = runLeadPrune({
+      backupDir,
+      apply: true,
+      nowFn: () => new Date("2026-04-01T00:00:00.000Z")
+    });
+    assert.equal(symlinked.status, "blocked");
+    assert.ok(symlinked.reasonCodes.includes("unsafe_entry"));
+    assert.equal(readFileSync(outside, "utf8"), "outside private fixture");
+    assert.equal(lstatSync(pair.backupPath).isSymbolicLink(), true);
   });
 });
