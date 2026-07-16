@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.gccwebos.com/governance/repair-policy-v2.schema.json",
+  "title": "Repair Policy v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "retryBudget",
+    "categoryRiskFloor",
+    "pathRiskFloors",
+    "capabilityRiskFloors",
+    "protectedCapabilities",
+    "autoProposalCategories",
+    "escalationInvariants"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "2" },
+    "retryBudget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["A", "B", "C"],
+      "properties": {
+        "A": { "const": 0 },
+        "B": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "C": { "type": "integer", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "categoryRiskFloor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "baseline_identity_drift",
+        "business_contract",
+        "ci_configuration",
+        "docs_metadata",
+        "execution_transport",
+        "test_fixture",
+        "transport_format",
+        "unknown"
+      ],
+      "properties": {
+        "baseline_identity_drift": { "const": "A" },
+        "business_contract": { "const": "A" },
+        "ci_configuration": { "const": "B" },
+        "docs_metadata": { "const": "C" },
+        "execution_transport": { "const": "C" },
+        "test_fixture": { "const": "B" },
+        "transport_format": { "const": "C" },
+        "unknown": { "const": "A" }
+      }
+    },
+    "pathRiskFloors": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "prefixItems": [
+        { "$ref": "#/$defs/actionsPathFloor" },
+        { "$ref": "#/$defs/workflowsPathFloor" },
+        { "$ref": "#/$defs/governancePathFloor" }
+      ],
+      "items": false
+    },
+    "capabilityRiskFloors": {
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/safeId" },
+      "additionalProperties": { "$ref": "#/$defs/risk" }
+    },
+    "protectedCapabilities": {
+      "type": "array",
+      "minItems": 9,
+      "uniqueItems": true,
+      "allOf": [
+        { "contains": { "const": "deployment" } },
+        { "contains": { "const": "executor_self_change" } },
+        { "contains": { "const": "oidc" } },
+        { "contains": { "const": "permission_expansion" } },
+        { "contains": { "const": "production" } },
+        { "contains": { "const": "provider" } },
+        { "contains": { "const": "runtime" } },
+        { "contains": { "const": "secret_access" } },
+        { "contains": { "const": "validator_self_change" } }
+      ],
+      "items": { "$ref": "#/$defs/safeId" }
+    },
+    "autoProposalCategories": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "ci_configuration",
+          "docs_metadata",
+          "execution_transport",
+          "test_fixture",
+          "transport_format"
+        ]
+      }
+    },
+    "escalationInvariants": {
+      "type": "array",
+      "minItems": 6,
+      "uniqueItems": true,
+      "allOf": [
+        { "contains": { "const": "contract_change" } },
+        { "contains": { "const": "credential_boundary" } },
+        { "contains": { "const": "production_boundary" } },
+        { "contains": { "const": "scope_drift" } },
+        { "contains": { "const": "security_boundary" } },
+        { "contains": { "const": "sensitive_output" } }
+      ],
+      "items": { "$ref": "#/$defs/safeId" }
+    }
+  },
+  "$defs": {
+    "risk": { "enum": ["A", "B", "C"] },
+    "safeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "pathFloor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["prefix", "risk"],
+      "properties": {
+        "prefix": { "type": "string", "minLength": 1 },
+        "risk": { "$ref": "#/$defs/risk" }
+      }
+    },
+    "actionsPathFloor": {
+      "allOf": [
+        { "$ref": "#/$defs/pathFloor" },
+        { "properties": { "prefix": { "const": ".github/actions/" }, "risk": { "const": "B" } } }
+      ]
+    },
+    "workflowsPathFloor": {
+      "allOf": [
+        { "$ref": "#/$defs/pathFloor" },
+        { "properties": { "prefix": { "const": ".github/workflows/" }, "risk": { "const": "B" } } }
+      ]
+    },
+    "governancePathFloor": {
+      "allOf": [
+        { "$ref": "#/$defs/pathFloor" },
+        { "properties": { "prefix": { "const": "server/services/governance/" }, "risk": { "const": "B" } } }
+      ]
+    }
+  }
+}

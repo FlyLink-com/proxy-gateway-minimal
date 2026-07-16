@@ -1,6 +1,6 @@
 # Validation Baseline
 
-Last updated: 2026-07-14, America/Los_Angeles.
+Last updated: 2026-07-15, America/Los_Angeles.
 
 ```yaml
 document_metadata:
@@ -170,6 +170,46 @@ Use for:
 - `docs/PROJECT_CONTROL_PLANE.md`
 - `scripts/check-project-state.mjs`
 - `server/tests/project-state-check.test.mjs`
+
+### B: Gate Ledger, Attribution, Or Repair Routing
+
+Run:
+
+```powershell
+npm run governance:check
+node --test server/tests/gate-governance.test.mjs server/tests/ci-workflow-contract.test.mjs
+npm test
+git diff --check origin/master...HEAD
+```
+
+Use for:
+
+- `project-state/gates.json` and `project-state/repair-policy.json`
+- failure-attribution, Gate ledger, and repair-policy schemas
+- Gate/receipt transition validation or retry/escalation routing
+- the read-only governance Actions jobs
+
+Hosted pull-request and `master` validation reads the exact base ledger when it
+exists and validates the append-only transition to the checked-out ledger. A
+missing base ledger is accepted only for an empty prospective bootstrap. Manual
+dispatch validates the current snapshot. This check records routing eligibility
+only: it does not reopen a consumed Gate, execute a repair, create an approval,
+change repository settings, or authorize artifact or production work.
+
+The state validator does not authenticate remote comment actors or bodies and
+does not bind a future repair commit's actual diff. Those are separate
+provenance-verifier and executor responsibilities required before any automatic
+mutation lane can be enabled.
+
+`Governance evidence` runs on the candidate checkout and is diagnostic.
+`Governance snapshot` is the separately named manual-dispatch context.
+`Governance trusted advisory` runs trusted base-branch validator code through
+`pull_request_target`, reads exact regular-file blobs for candidate ledger and
+policy state without executing candidate code, verifies the immutable trust
+root, and checks the exact base transition. Because its check suite is bound to
+the base identity rather than the latest PR head, it is not eligible for direct
+required-check mapping. The later settings/Actions Gate must first establish an
+exact-head publication or protected pull-request trust model.
 
 ### B: Server Or Shared Runtime Code
 

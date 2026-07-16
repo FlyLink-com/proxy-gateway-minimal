@@ -1,0 +1,385 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.gccwebos.com/governance/gate-ledger-v1.schema.json",
+  "title": "Gate Ledger v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "authority", "description", "repairPolicyVersion", "repairPolicyDigest", "gates"],
+  "properties": {
+    "schemaVersion": { "const": "1" },
+    "authority": { "const": "evidence-index-only" },
+    "description": { "type": "string", "minLength": 1 },
+    "repairPolicyVersion": { "enum": ["1", "2"] },
+    "repairPolicyDigest": { "$ref": "#/$defs/sha256" },
+    "gates": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/gate" }
+    }
+  },
+  "$defs": {
+    "safeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "gateId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,127}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "canonicalTimestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reference", "sha256"],
+      "properties": {
+        "reference": { "$ref": "#/$defs/safeId" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "stateClaims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceFilesChanged",
+        "commitCreated",
+        "pushPerformed",
+        "retainedLocalState",
+        "retainedStateDigest",
+        "productionMutation"
+      ],
+      "properties": {
+        "sourceFilesChanged": { "type": "boolean" },
+        "commitCreated": { "type": "boolean" },
+        "pushPerformed": { "type": "boolean" },
+        "retainedLocalState": { "type": "boolean" },
+        "retainedStateDigest": {
+          "anyOf": [
+            { "$ref": "#/$defs/sha256" },
+            { "type": "null" }
+          ]
+        },
+        "productionMutation": { "const": false }
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gateId", "lineageId", "authority", "scopeDigest", "sourceHead", "policyVersion"],
+      "properties": {
+        "gateId": { "$ref": "#/$defs/gateId" },
+        "lineageId": { "$ref": "#/$defs/gateId" },
+        "authority": { "enum": ["operator", "repair_policy"] },
+        "scopeDigest": { "$ref": "#/$defs/sha256" },
+        "sourceHead": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "policyVersion": {
+          "anyOf": [
+            { "enum": ["1", "2"] },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "lineageId", "predecessorGateId", "risk", "subject", "scope", "scopeDigest", "events"],
+      "properties": {
+        "id": { "$ref": "#/$defs/gateId" },
+        "lineageId": { "$ref": "#/$defs/gateId" },
+        "predecessorGateId": {
+          "anyOf": [
+            { "$ref": "#/$defs/gateId" },
+            { "type": "null" }
+          ]
+        },
+        "risk": { "enum": ["A", "B", "C"] },
+        "subject": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["issue", "pullRequest", "purpose", "sourceHead"],
+          "properties": {
+            "issue": { "type": "integer", "minimum": 1 },
+            "pullRequest": {
+              "anyOf": [
+                { "type": "integer", "minimum": 1 },
+                { "type": "null" }
+              ]
+            },
+            "purpose": { "$ref": "#/$defs/safeId" },
+            "sourceHead": { "type": "string", "pattern": "^[a-f0-9]{40}$" }
+          }
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["allowedFiles", "forbiddenActions", "validation"],
+          "properties": {
+            "allowedFiles": { "$ref": "#/$defs/nonEmptyUniquePaths" },
+            "forbiddenActions": { "$ref": "#/$defs/nonEmptyUniqueSafeIds" },
+            "validation": { "$ref": "#/$defs/nonEmptyUniqueSafeIds" }
+          }
+        },
+        "scopeDigest": { "$ref": "#/$defs/sha256" },
+        "events": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/event" }
+        }
+      }
+    },
+    "nonEmptyUniqueStrings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "nonEmptyUniquePaths": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256,
+        "allOf": [
+          { "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))(?!.*\\\\)(?![A-Za-z]:)[^\\u0000-\\u001F:]+$" },
+          { "not": { "pattern": "(?:^|/)\\.(?:/|$)" } },
+          { "not": { "pattern": "//|/$" } },
+          { "not": { "pattern": "^\\s|\\s$" } },
+          { "not": { "pattern": "(?:^|/)\\.[Gg][Ii][Tt](?:/|$)" } },
+          { "not": { "pattern": "[\\*?\\[\\]{}!<>|\"]" } }
+        ]
+      }
+    },
+    "nonEmptyUniqueSafeIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/safeId" }
+    },
+    "baseEvent": {
+      "type": "object",
+      "required": ["type", "at", "evidence"],
+      "properties": {
+        "type": { "type": "string" },
+        "at": { "$ref": "#/$defs/canonicalTimestamp" },
+        "evidence": { "$ref": "#/$defs/evidence" }
+      }
+    },
+    "event": {
+      "oneOf": [
+        {
+          "allOf": [{ "$ref": "#/$defs/baseEvent" }],
+          "additionalProperties": false,
+          "required": ["type", "at", "evidence"],
+          "properties": {
+            "type": { "const": "proposed" },
+            "at": { "$ref": "#/$defs/canonicalTimestamp" },
+            "evidence": { "$ref": "#/$defs/evidence" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "at", "evidence", "authorization"],
+          "properties": {
+            "type": { "enum": ["approval_recorded", "approval_consumed"] },
+            "at": { "$ref": "#/$defs/canonicalTimestamp" },
+            "evidence": { "$ref": "#/$defs/evidence" },
+            "authorization": { "$ref": "#/$defs/authorization" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "at", "evidence", "checks", "stateClaims"],
+          "properties": {
+            "type": { "const": "terminal_passed" },
+            "at": { "$ref": "#/$defs/canonicalTimestamp" },
+            "evidence": { "$ref": "#/$defs/evidence" },
+            "checks": { "$ref": "#/$defs/checks" },
+            "stateClaims": { "$ref": "#/$defs/stateClaims" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "at", "evidence", "reasonCode", "approvalState", "stateClaims"],
+          "properties": {
+            "type": { "const": "terminal_blocked" },
+            "at": { "$ref": "#/$defs/canonicalTimestamp" },
+            "evidence": { "$ref": "#/$defs/evidence" },
+            "reasonCode": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" },
+            "approvalState": { "enum": ["absent", "recorded_unconsumed", "consumed"] },
+            "stateClaims": { "$ref": "#/$defs/stateClaims" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "at", "evidence", "attribution"],
+          "properties": {
+            "type": { "const": "failure_attributed" },
+            "at": { "$ref": "#/$defs/canonicalTimestamp" },
+            "evidence": { "$ref": "#/$defs/evidence" },
+            "attribution": { "$ref": "failure-attribution-v2.schema.json" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schemaVersion",
+            "type",
+            "at",
+            "parentReceiptDigest",
+            "observationDigest",
+            "attributionDigest",
+            "routerResult",
+            "routerResultDigest",
+            "retry",
+            "policyVersion",
+            "policyDigest"
+          ],
+          "properties": {
+            "schemaVersion": { "const": "2" },
+            "type": { "const": "repair_routed" },
+            "at": { "$ref": "#/$defs/canonicalTimestamp" },
+            "parentReceiptDigest": { "$ref": "#/$defs/sha256" },
+            "observationDigest": { "$ref": "#/$defs/sha256" },
+            "attributionDigest": { "$ref": "#/$defs/sha256" },
+            "routerResult": { "$ref": "#/$defs/routerResult" },
+            "routerResultDigest": { "$ref": "#/$defs/sha256" },
+            "retry": { "$ref": "#/$defs/routerRetryWithLineage" },
+            "policyVersion": { "const": "2" },
+            "policyDigest": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "at", "evidence", "successorGateId"],
+          "properties": {
+            "type": { "const": "successor_proposed" },
+            "at": { "$ref": "#/$defs/canonicalTimestamp" },
+            "evidence": { "$ref": "#/$defs/evidence" },
+            "successorGateId": { "$ref": "#/$defs/gateId" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "at", "evidence", "reasonCode"],
+          "properties": {
+            "type": { "const": "expired" },
+            "at": { "$ref": "#/$defs/canonicalTimestamp" },
+            "evidence": { "$ref": "#/$defs/evidence" },
+            "reasonCode": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["type", "at", "evidence", "reasonCode", "successorGateId"],
+          "properties": {
+            "type": { "const": "superseded" },
+            "at": { "$ref": "#/$defs/canonicalTimestamp" },
+            "evidence": { "$ref": "#/$defs/evidence" },
+            "reasonCode": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" },
+            "successorGateId": { "$ref": "#/$defs/gateId" }
+          }
+        }
+      ]
+    },
+    "checks": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "result"],
+        "properties": {
+          "name": { "$ref": "#/$defs/safeId" },
+          "result": { "const": "passed" }
+        }
+      }
+    },
+    "routerRetry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt", "budget", "remaining"],
+      "properties": {
+        "attempt": { "type": "integer", "minimum": 0 },
+        "budget": { "type": "integer", "minimum": 0 },
+        "remaining": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "routerRetryWithLineage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["attempt", "budget", "remaining", "lineageDigest"],
+      "properties": {
+        "attempt": { "type": "integer", "minimum": 0 },
+        "budget": { "type": "integer", "minimum": 0 },
+        "remaining": { "type": "integer", "minimum": 0 },
+        "lineageDigest": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "routerResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "routerVersion",
+        "repository",
+        "attributionDigest",
+        "gateRisk",
+        "scopeDigest",
+        "governanceRisk",
+        "lane",
+        "proposalEligible",
+        "shadowEligible",
+        "executionAuthority",
+        "operatorApprovalRequiredForMutation",
+        "newGateRequired",
+        "retry",
+        "reasonCodes",
+        "policyVersion",
+        "policyDigest",
+        "lineageDigest"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "2" },
+        "routerVersion": { "const": "repair-router/v2" },
+        "repository": { "const": "gccwebos-com/proxy-gateway-minimal" },
+        "attributionDigest": { "$ref": "#/$defs/sha256" },
+        "gateRisk": { "enum": ["A", "B", "C"] },
+        "scopeDigest": { "$ref": "#/$defs/sha256" },
+        "governanceRisk": { "enum": ["A", "B", "C"] },
+        "lane": { "enum": ["codex_auto_repair", "codex_successor_preparation", "operator_review"] },
+        "proposalEligible": { "type": "boolean" },
+        "shadowEligible": { "type": "boolean" },
+        "executionAuthority": { "const": false },
+        "operatorApprovalRequiredForMutation": { "const": true },
+        "newGateRequired": { "const": true },
+        "retry": { "$ref": "#/$defs/routerRetry" },
+        "reasonCodes": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$" }
+        },
+        "policyVersion": { "const": "2" },
+        "policyDigest": { "$ref": "#/$defs/sha256" },
+        "lineageDigest": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  }
+}

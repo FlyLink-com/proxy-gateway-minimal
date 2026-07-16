@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.gccwebos.com/governance/failure-attribution-v2.schema.json",
+  "title": "Failure Attribution v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "observationDigest",
+    "classifierVersion",
+    "classifierRulesDigest",
+    "classifierMode",
+    "category",
+    "reasonCode",
+    "technicalImpact",
+    "confidence",
+    "affectedInvariants",
+    "evidenceRefs",
+    "decisionReason"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "2" },
+    "observationDigest": { "$ref": "#/$defs/sha256" },
+    "classifierVersion": { "$ref": "#/$defs/version" },
+    "classifierRulesDigest": { "$ref": "#/$defs/sha256" },
+    "classifierMode": { "enum": ["deterministic", "assisted", "unknown"] },
+    "category": {
+      "enum": [
+        "baseline_identity_drift",
+        "business_contract",
+        "ci_configuration",
+        "docs_metadata",
+        "execution_transport",
+        "test_fixture",
+        "transport_format",
+        "unknown"
+      ]
+    },
+    "reasonCode": { "$ref": "#/$defs/reasonCode" },
+    "technicalImpact": { "$ref": "#/$defs/uniqueSafeIds" },
+    "confidence": { "enum": ["high", "medium", "low"] },
+    "affectedInvariants": { "$ref": "#/$defs/uniqueSafeIds" },
+    "evidenceRefs": { "$ref": "#/$defs/uniqueSafeIds" },
+    "decisionReason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["category", "blockers", "missingEvidence"],
+      "properties": {
+        "category": { "$ref": "#/$defs/reasonCode" },
+        "blockers": { "$ref": "#/$defs/uniqueSafeIds" },
+        "missingEvidence": { "$ref": "#/$defs/uniqueSafeIds" }
+      }
+    }
+  },
+  "$defs": {
+    "safeId": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$"
+    },
+    "reasonCode": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "uniqueSafeIds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/safeId" }
+    }
+  }
+}

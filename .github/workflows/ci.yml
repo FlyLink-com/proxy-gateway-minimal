@@ -17,6 +17,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  governance-evidence:
+    name: Governance evidence
+    if: github.event_name != 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Validate Gate ledger and repair routing
+        shell: bash
+        env:
+          CI_DIFF_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '' }}
+        run: |
+          set -euo pipefail
+          [[ "$CI_DIFF_BASE" =~ ^[0-9a-f]{40}$ ]]
+          git cat-file -e "$CI_DIFF_BASE^{commit}"
+          base_gates=0
+          base_policy=0
+          if git cat-file -e "$CI_DIFF_BASE:project-state/gates.json" 2>/dev/null; then
+            base_gates=1
+          fi
+          if git cat-file -e "$CI_DIFF_BASE:project-state/repair-policy.json" 2>/dev/null; then
+            base_policy=1
+          fi
+          if [[ "$base_gates" == "1" && "$base_policy" == "1" ]]; then
+            git show "$CI_DIFF_BASE:project-state/gates.json" > "$RUNNER_TEMP/base-gates.json"
+            git show "$CI_DIFF_BASE:project-state/repair-policy.json" > "$RUNNER_TEMP/base-policy.json"
+            node scripts/check-gate-governance.mjs \
+              --base-gates-file "$RUNNER_TEMP/base-gates.json" \
+              --base-policy-file "$RUNNER_TEMP/base-policy.json"
+          elif [[ "$base_gates" == "0" && "$base_policy" == "0" ]]; then
+            node scripts/check-gate-governance.mjs --base-state-missing
+          else
+            echo "partial governance base state is forbidden" >&2
+            exit 1
+          fi
+
+  governance-snapshot:
+    name: Governance snapshot
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Validate current governance snapshot
+        run: node scripts/check-gate-governance.mjs --snapshot
+
   validate:
     name: Validate
     runs-on: ubuntu-latest

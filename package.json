@@ -87,6 +87,7 @@
     "platform:access-inventory-summary": "node bin/gccgw.mjs platform access-inventory-summary",
     "platform:clean-edge-readiness-summary": "node bin/gccgw.mjs platform clean-edge-readiness-summary",
     "docs:authority:check": "node scripts/check-document-authority.mjs",
+    "governance:check": "node scripts/check-gate-governance.mjs --snapshot",
     "project-state:check": "node bin/gccgw.mjs project check",
     "project:handoff-brief": "node bin/gccgw.mjs project handoff-brief",
     "project:verify": "node bin/gccgw.mjs project verify",
