@@ -13,11 +13,14 @@ const ATTRIBUTION_CATEGORIES = new Set([
   "unknown"
 ]);
 const CONFIDENCE_LEVELS = new Set(["high", "medium", "low"]);
+const CLASSIFIER_MODES = new Set(["deterministic", "assisted", "unknown"]);
 const SAFE_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const SAFE_VERSION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}$/;
 const SAFE_GATE_ID_PATTERN = /^[a-z0-9][a-z0-9._-]{0,127}$/;
 const SAFE_REASON_CODE_PATTERN = /^[a-z0-9][a-z0-9_-]{0,63}$/;
 const SHA256_PATTERN = /^[a-f0-9]{64}$/;
 const SOURCE_HEAD_PATTERN = /^[a-f0-9]{40}$/;
+const LEGACY_EMPTY_LEDGER_POLICY_DIGEST = "8ca4737109a75afb81e8e68df4824a41c48aa9bd717811a4c3ddc79481a6c27d";
 const CANONICAL_TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 const EVENT_TYPES = new Set([
   "proposed",
@@ -53,6 +56,27 @@ const AUTO_REPAIR_CATEGORIES = new Set([
   "test_fixture",
   "transport_format"
 ]);
+const CATEGORY_RISK_FLOOR = Object.freeze({
+  baseline_identity_drift: "A",
+  business_contract: "A",
+  ci_configuration: "B",
+  docs_metadata: "C",
+  execution_transport: "C",
+  test_fixture: "B",
+  transport_format: "C",
+  unknown: "A"
+});
+const PROTECTED_CAPABILITIES = new Set([
+  "deployment",
+  "executor_self_change",
+  "oidc",
+  "permission_expansion",
+  "production",
+  "provider",
+  "runtime",
+  "secret_access",
+  "validator_self_change"
+]);
 const ESCALATION_INVARIANTS = new Set([
   "contract_change",
   "credential_boundary",
@@ -64,22 +88,43 @@ const ESCALATION_INVARIANTS = new Set([
 const GOVERNANCE_TRUST_ROOT_PATHS = new Set([
   ".github/workflows/governance-validate.yml",
   "project-state/repair-policy.json",
-  "schemas/failure-attribution-v1.schema.json",
+  "schemas/failure-attribution-v2.schema.json",
   "schemas/gate-ledger-v1.schema.json",
-  "schemas/repair-policy-v1.schema.json",
+  "schemas/repair-policy-v2.schema.json",
   "scripts/check-gate-governance.mjs",
   "server/services/governance/gate-governance.mjs"
 ]);
 
 export const DEFAULT_REPAIR_POLICY = Object.freeze({
-  schemaVersion: "1",
+  schemaVersion: "2",
   retryBudget: Object.freeze({ A: 0, B: 1, C: 1 }),
-  autoRepairCategories: Object.freeze([...AUTO_REPAIR_CATEGORIES].sort()),
+  categoryRiskFloor: Object.freeze({ ...CATEGORY_RISK_FLOOR }),
+  pathRiskFloors: Object.freeze([
+    Object.freeze({ prefix: ".github/actions/", risk: "B" }),
+    Object.freeze({ prefix: ".github/workflows/", risk: "B" }),
+    Object.freeze({ prefix: "server/services/governance/", risk: "B" })
+  ]),
+  capabilityRiskFloors: Object.freeze({}),
+  protectedCapabilities: Object.freeze([...PROTECTED_CAPABILITIES].sort()),
+  autoProposalCategories: Object.freeze([...AUTO_REPAIR_CATEGORIES].sort()),
   escalationInvariants: Object.freeze([...ESCALATION_INVARIANTS].sort())
 });
 
 function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function compareUnicodeCodePoints(left, right) {
+  const leftPoints = Array.from(left, (character) => character.codePointAt(0));
+  const rightPoints = Array.from(right, (character) => character.codePointAt(0));
+  const sharedLength = Math.min(leftPoints.length, rightPoints.length);
+  for (let index = 0; index < sharedLength; index += 1) {
+    if (leftPoints[index] < rightPoints[index]) return -1;
+    if (leftPoints[index] > rightPoints[index]) return 1;
+  }
+  if (leftPoints.length < rightPoints.length) return -1;
+  if (leftPoints.length > rightPoints.length) return 1;
+  return 0;
 }
 
 function hasExactKeys(value, expected) {
@@ -100,6 +145,13 @@ function canonicalizeJson(value) {
   return JSON.stringify(value);
 }
 
+function computeDomainSeparatedDigest(domain, value) {
+  return createHash("sha256")
+    .update(`${domain}\0`, "utf8")
+    .update(canonicalizeJson(value), "utf8")
+    .digest("hex");
+}
+
 function sameCanonicalJson(left, right) {
   return canonicalizeJson(left) === canonicalizeJson(right);
 }
@@ -110,6 +162,23 @@ export function computeGateScopeDigest(scope) {
 
 export function computeRepairPolicyDigest(policy) {
   return createHash("sha256").update(canonicalizeJson(policy), "utf8").digest("hex");
+}
+
+export function computeFailureAttributionDigest(attribution) {
+  return computeDomainSeparatedDigest("ATTRIBUTION:v2", attribution);
+}
+
+export function computeRouterResultDigest(routerResult) {
+  return computeDomainSeparatedDigest("ROUTER_RESULT:v2", routerResult);
+}
+
+export function isLegacyEmptyGateLedger(state) {
+  return isPlainObject(state)
+    && state.schemaVersion === "1"
+    && state.repairPolicyVersion === "1"
+    && state.repairPolicyDigest === LEGACY_EMPTY_LEDGER_POLICY_DIGEST
+    && Array.isArray(state.gates)
+    && state.gates.length === 0;
 }
 
 function validIsoTimestamp(value) {
@@ -125,15 +194,32 @@ function validUniqueSafeIds(value) {
     && new Set(value).size === value.length;
 }
 
+function validSortedSafeIds(value, { allowEmpty = true } = {}) {
+  return Array.isArray(value)
+    && (allowEmpty || value.length > 0)
+    && value.every((entry) => typeof entry === "string" && SAFE_ID_PATTERN.test(entry))
+    && new Set(value).size === value.length
+    && value.every((entry, index) => index === 0 || compareUnicodeCodePoints(value[index - 1], entry) < 0);
+}
+
 export function validateRepairPolicy(policy) {
   const errors = [];
   if (!hasExactKeys(
     policy,
-    ["schemaVersion", "retryBudget", "autoRepairCategories", "escalationInvariants"]
+    [
+      "schemaVersion",
+      "retryBudget",
+      "categoryRiskFloor",
+      "pathRiskFloors",
+      "capabilityRiskFloors",
+      "protectedCapabilities",
+      "autoProposalCategories",
+      "escalationInvariants"
+    ]
   )) {
     return { ok: false, errors: ["repair policy must contain exact fields"] };
   }
-  if (policy.schemaVersion !== "1") errors.push("repair policy schemaVersion must be 1");
+  if (policy.schemaVersion !== "2") errors.push("repair policy schemaVersion must be 2");
   if (!hasExactKeys(policy.retryBudget, ["A", "B", "C"])) {
     errors.push("repair policy retryBudget must contain exact risk fields");
   } else {
@@ -146,22 +232,78 @@ export function validateRepairPolicy(policy) {
       errors.push("repair policy retryBudget exceeds the hard safety ceiling");
     }
   }
-  if (
-    !validUniqueSafeIds(policy.autoRepairCategories)
-    || policy.autoRepairCategories.some((category) => !ATTRIBUTION_CATEGORIES.has(category))
-  ) {
-    errors.push("repair policy autoRepairCategories must be supported unique categories");
+  if (!hasExactKeys(policy.categoryRiskFloor, ATTRIBUTION_CATEGORIES)) {
+    errors.push("repair policy categoryRiskFloor must contain every closed category");
+  } else {
+    for (const [category, risk] of Object.entries(policy.categoryRiskFloor)) {
+      if (!RISKS.has(risk)) {
+        errors.push(`repair policy categoryRiskFloor.${category} is unsupported`);
+      } else if (RISK_RANK[risk] < RISK_RANK[CATEGORY_RISK_FLOOR[category]]) {
+        errors.push(`repair policy categoryRiskFloor.${category} weakens the hard safety floor`);
+      }
+    }
   }
-  if (!validUniqueSafeIds(policy.escalationInvariants)) {
-    errors.push("repair policy escalationInvariants must be non-empty unique safe ids");
+  if (!Array.isArray(policy.pathRiskFloors) || policy.pathRiskFloors.length === 0) {
+    errors.push("repair policy pathRiskFloors must be a non-empty array");
+  } else {
+    const prefixes = [];
+    for (const [index, floor] of policy.pathRiskFloors.entries()) {
+      if (!hasExactKeys(floor, ["prefix", "risk"])) {
+        errors.push(`repair policy pathRiskFloors[${index}] must contain exact fields`);
+        continue;
+      }
+      const normalized = typeof floor.prefix === "string" && floor.prefix.endsWith("/")
+        ? floor.prefix.slice(0, -1)
+        : floor.prefix;
+      if (!validRepoRelativePath(normalized)) {
+        errors.push(`repair policy pathRiskFloors[${index}].prefix is invalid`);
+      }
+      if (!RISKS.has(floor.risk)) errors.push(`repair policy pathRiskFloors[${index}].risk is unsupported`);
+      prefixes.push(floor.prefix);
+    }
+    if (
+      new Set(prefixes).size !== prefixes.length
+      || prefixes.some((prefix, index) => index > 0 && compareUnicodeCodePoints(prefixes[index - 1], prefix) >= 0)
+    ) {
+      errors.push("repair policy pathRiskFloors must use sorted unique prefixes");
+    }
+    for (const required of DEFAULT_REPAIR_POLICY.pathRiskFloors) {
+      const actual = policy.pathRiskFloors.find((floor) => floor?.prefix === required.prefix);
+      if (actual === undefined || !RISKS.has(actual.risk) || RISK_RANK[actual.risk] < RISK_RANK[required.risk]) {
+        errors.push(`repair policy pathRiskFloors must preserve ${required.prefix} at ${required.risk} or higher`);
+      }
+    }
+  }
+  if (!isPlainObject(policy.capabilityRiskFloors)) {
+    errors.push("repair policy capabilityRiskFloors must be an object");
+  } else {
+    for (const [capability, risk] of Object.entries(policy.capabilityRiskFloors)) {
+      if (!SAFE_ID_PATTERN.test(capability) || !RISKS.has(risk)) {
+        errors.push(`repair policy capabilityRiskFloors.${capability} is invalid`);
+      }
+    }
+  }
+  if (!validSortedSafeIds(policy.protectedCapabilities, { allowEmpty: false })) {
+    errors.push("repair policy protectedCapabilities must contain sorted unique safe ids");
+  } else if ([...PROTECTED_CAPABILITIES].some((value) => !policy.protectedCapabilities.includes(value))) {
+    errors.push("repair policy protectedCapabilities must include the hard safety floor");
+  }
+  if (
+    !validSortedSafeIds(policy.autoProposalCategories, { allowEmpty: false })
+    || policy.autoProposalCategories.some((category) => !ATTRIBUTION_CATEGORIES.has(category))
+  ) {
+    errors.push("repair policy autoProposalCategories must be supported sorted unique categories");
+  }
+  if (!validSortedSafeIds(policy.escalationInvariants, { allowEmpty: false })) {
+    errors.push("repair policy escalationInvariants must be sorted unique safe ids");
   } else if ([...ESCALATION_INVARIANTS].some((value) => !policy.escalationInvariants.includes(value))) {
     errors.push("repair policy escalationInvariants must include the hard safety floor");
   }
   if (
-    Array.isArray(policy.autoRepairCategories)
-    && policy.autoRepairCategories.some((category) => !AUTO_REPAIR_CATEGORIES.has(category))
+    Array.isArray(policy.autoProposalCategories)
+    && policy.autoProposalCategories.some((category) => !AUTO_REPAIR_CATEGORIES.has(category))
   ) {
-    errors.push("repair policy autoRepairCategories exceed the hard safety allowlist");
+    errors.push("repair policy autoProposalCategories exceed the hard safety allowlist");
   }
   return { ok: errors.length === 0, errors };
 }
@@ -179,7 +321,7 @@ export function validateRepairPolicyTransition(basePolicy, headPolicy) {
   const baseResult = validateRepairPolicy(basePolicy);
   errors.push(...baseResult.errors.map((error) => `base: ${error}`));
   if (!sameCanonicalJson(basePolicy, headPolicy)) {
-    errors.push("repair policy rewrite is forbidden within schema version 1");
+    errors.push("repair policy rewrite is forbidden within schema version 2");
   }
   return { ok: errors.length === 0, errors };
 }
@@ -188,38 +330,65 @@ export function validateFailureAttribution(attribution) {
   const errors = [];
   const fields = [
     "schemaVersion",
-    "failureId",
-    "gateId",
-    "stage",
+    "observationDigest",
+    "classifierVersion",
+    "classifierRulesDigest",
+    "classifierMode",
     "category",
-    "failureRisk",
+    "reasonCode",
+    "technicalImpact",
     "confidence",
     "affectedInvariants",
     "evidenceRefs",
-    "observedAt"
+    "decisionReason"
   ];
   if (!hasExactKeys(attribution, fields)) {
     return { ok: false, errors: ["failure attribution must contain exact fields"] };
   }
-  if (attribution.schemaVersion !== "1") errors.push("failure attribution schemaVersion must be 1");
-  for (const field of ["failureId", "gateId", "stage"]) {
-    if (typeof attribution[field] !== "string" || !SAFE_ID_PATTERN.test(attribution[field])) {
-      errors.push(`failure attribution ${field} must be a safe id`);
-    }
+  if (attribution.schemaVersion !== "2") errors.push("failure attribution schemaVersion must be 2");
+  if (typeof attribution.observationDigest !== "string" || !SHA256_PATTERN.test(attribution.observationDigest)) {
+    errors.push("failure attribution observationDigest must be a lowercase SHA-256 digest");
+  }
+  if (typeof attribution.classifierVersion !== "string" || !SAFE_VERSION_PATTERN.test(attribution.classifierVersion)) {
+    errors.push("failure attribution classifierVersion must be a safe version");
+  }
+  if (typeof attribution.classifierRulesDigest !== "string" || !SHA256_PATTERN.test(attribution.classifierRulesDigest)) {
+    errors.push("failure attribution classifierRulesDigest must be a lowercase SHA-256 digest");
+  }
+  if (!CLASSIFIER_MODES.has(attribution.classifierMode)) {
+    errors.push("failure attribution classifierMode is unsupported");
   }
   if (!ATTRIBUTION_CATEGORIES.has(attribution.category)) {
     errors.push("failure attribution category is unsupported");
   }
-  if (!RISKS.has(attribution.failureRisk)) errors.push("failure attribution failureRisk is unsupported");
+  if (typeof attribution.reasonCode !== "string" || !SAFE_REASON_CODE_PATTERN.test(attribution.reasonCode)) {
+    errors.push("failure attribution reasonCode must be a safe reason code");
+  }
   if (!CONFIDENCE_LEVELS.has(attribution.confidence)) errors.push("failure attribution confidence is unsupported");
-  if (!validUniqueSafeIds(attribution.affectedInvariants)) {
-    errors.push("failure attribution affectedInvariants must be non-empty unique safe ids");
+  if (!validSortedSafeIds(attribution.technicalImpact)) {
+    errors.push("failure attribution technicalImpact must contain sorted unique safe ids");
   }
-  if (!validUniqueSafeIds(attribution.evidenceRefs)) {
-    errors.push("failure attribution evidenceRefs must be non-empty unique safe ids");
+  if (!validSortedSafeIds(attribution.affectedInvariants)) {
+    errors.push("failure attribution affectedInvariants must contain sorted unique safe ids");
   }
-  if (!validIsoTimestamp(attribution.observedAt)) {
-    errors.push("failure attribution observedAt must be an exact ISO timestamp");
+  if (!validSortedSafeIds(attribution.evidenceRefs)) {
+    errors.push("failure attribution evidenceRefs must contain sorted unique safe ids");
+  }
+  if (!hasExactKeys(attribution.decisionReason, ["category", "blockers", "missingEvidence"])) {
+    errors.push("failure attribution decisionReason must contain exact fields");
+  } else {
+    if (
+      typeof attribution.decisionReason.category !== "string"
+      || !SAFE_REASON_CODE_PATTERN.test(attribution.decisionReason.category)
+    ) {
+      errors.push("failure attribution decisionReason.category must be a safe reason code");
+    }
+    if (!validSortedSafeIds(attribution.decisionReason.blockers)) {
+      errors.push("failure attribution decisionReason.blockers must contain sorted unique safe ids");
+    }
+    if (!validSortedSafeIds(attribution.decisionReason.missingEvidence)) {
+      errors.push("failure attribution decisionReason.missingEvidence must contain sorted unique safe ids");
+    }
   }
   return { ok: errors.length === 0, errors };
 }
@@ -252,21 +421,48 @@ function validRepoRelativePath(value) {
 
 function validateRouteScope(scope) {
   return isPlainObject(scope)
-    && Array.isArray(scope.allowedFiles)
-    && scope.allowedFiles.length > 0
-    && new Set(scope.allowedFiles).size === scope.allowedFiles.length
-    && scope.allowedFiles.every(validRepoRelativePath);
+    && hasExactKeys(scope, ["targetPaths", "capabilityIds", "protectedScope"])
+    && Array.isArray(scope.targetPaths)
+    && scope.targetPaths.length > 0
+    && new Set(scope.targetPaths).size === scope.targetPaths.length
+    && scope.targetPaths.every(validRepoRelativePath)
+    && scope.targetPaths.every((path, index) => index === 0 || compareUnicodeCodePoints(scope.targetPaths[index - 1], path) < 0)
+    && validSortedSafeIds(scope.capabilityIds)
+    && typeof scope.protectedScope === "boolean";
 }
 
-function routeScopeRequiresOperator(scope) {
-  return scope.allowedFiles.some((path) => (
-    GOVERNANCE_TRUST_ROOT_PATHS.has(path)
-    || path.startsWith("deployments/")
-    || (path.startsWith("ops/") && !path.endsWith(".md"))
-    || path.startsWith(".github/workflows/")
-    || path.startsWith(".github/actions/")
-    || path === ".github/CODEOWNERS"
-  ));
+function pathMatchesPrefix(path, prefix) {
+  if (prefix.endsWith("/")) return path.startsWith(prefix);
+  return path === prefix || path.startsWith(`${prefix}/`);
+}
+
+function routeScopeRequiresOperator(scope, policy) {
+  return scope.protectedScope
+    || scope.capabilityIds.some((capability) => policy.protectedCapabilities.includes(capability))
+    || scope.targetPaths.some((path) => (
+      GOVERNANCE_TRUST_ROOT_PATHS.has(path)
+      || path.startsWith("deployments/")
+      || (path.startsWith("ops/") && !path.endsWith(".md"))
+      || path === ".github/CODEOWNERS"
+    ));
+}
+
+function raiseRisk(current, candidate) {
+  return RISK_RANK[candidate] > RISK_RANK[current] ? candidate : current;
+}
+
+function computeGovernanceRisk(gateRisk, attribution, scope, policy) {
+  let risk = raiseRisk(gateRisk, policy.categoryRiskFloor[attribution.category]);
+  for (const targetPath of scope.targetPaths) {
+    for (const floor of policy.pathRiskFloors) {
+      if (pathMatchesPrefix(targetPath, floor.prefix)) risk = raiseRisk(risk, floor.risk);
+    }
+  }
+  for (const capability of scope.capabilityIds) {
+    const floor = policy.capabilityRiskFloors[capability];
+    if (floor !== undefined) risk = raiseRisk(risk, floor);
+  }
+  return risk;
 }
 
 function eventExpectedFields(type) {
@@ -277,7 +473,21 @@ function eventExpectedFields(type) {
   if (type === "terminal_passed") return [...common, "checks", "stateClaims"];
   if (type === "terminal_blocked") return [...common, "reasonCode", "approvalState", "stateClaims"];
   if (type === "failure_attributed") return [...common, "attribution"];
-  if (type === "repair_routed") return [...common, "repairAttempts", "route"];
+  if (type === "repair_routed") {
+    return [
+      "schemaVersion",
+      "type",
+      "at",
+      "parentReceiptDigest",
+      "observationDigest",
+      "attributionDigest",
+      "routerResult",
+      "routerResultDigest",
+      "retry",
+      "policyVersion",
+      "policyDigest"
+    ];
+  }
   if (type === "successor_proposed") return [...common, "successorGateId"];
   if (type === "expired") return [...common, "reasonCode"];
   if (type === "superseded") return [...common, "reasonCode", "successorGateId"];
@@ -352,7 +562,7 @@ function checkAuthorization(authorization, gate, expectedAuthority, label, error
     errors.push(`${label}.sourceHead: must match Gate source head`);
   }
   if (authorization.authority === "repair_policy") {
-    if (authorization.policyVersion !== "1") errors.push(`${label}.policyVersion: expected repair policy version 1`);
+    if (authorization.policyVersion !== "2") errors.push(`${label}.policyVersion: expected repair policy version 2`);
   } else if (authorization.policyVersion !== null) {
     errors.push(`${label}.policyVersion: operator authorization must use null`);
   }
@@ -384,12 +594,115 @@ function checkTerminalPassed(event, validation, label, errors) {
   checkStateClaims(event.stateClaims, `${label}.stateClaims`, errors);
 }
 
-function checkRoute(route, gateRisk, attribution, repairAttempts, policy, scope, label, errors) {
+function routerScopeFromGateScope(scope) {
+  return {
+    targetPaths: Array.isArray(scope?.allowedFiles)
+      ? [...scope.allowedFiles].sort(compareUnicodeCodePoints)
+      : [],
+    capabilityIds: [],
+    protectedScope: false
+  };
+}
+
+function checkRouteEvent(
+  event,
+  gateRisk,
+  attribution,
+  attributionEvidenceDigest,
+  expectedRetryState,
+  policy,
+  gateScope,
+  label,
+  errors
+) {
+  if (event.schemaVersion !== "2") errors.push(`${label}.schemaVersion: expected 2`);
+  for (const field of [
+    "parentReceiptDigest",
+    "observationDigest",
+    "attributionDigest",
+    "routerResultDigest",
+    "policyDigest"
+  ]) {
+    if (typeof event[field] !== "string" || !SHA256_PATTERN.test(event[field])) {
+      errors.push(`${label}.${field}: expected a lowercase SHA-256 digest`);
+    }
+  }
+  const expectedAttributionDigest = computeFailureAttributionDigest(attribution);
+  if (event.parentReceiptDigest !== attributionEvidenceDigest) {
+    errors.push(`${label}.parentReceiptDigest: must bind the preceding attribution receipt`);
+  }
+  if (event.observationDigest !== attribution.observationDigest) {
+    errors.push(`${label}.observationDigest: must match Attribution V2`);
+  }
+  if (event.attributionDigest !== expectedAttributionDigest) {
+    errors.push(`${label}.attributionDigest: must match Attribution V2`);
+  }
+  if (event.policyVersion !== policy.schemaVersion) {
+    errors.push(`${label}.policyVersion: must match the exact repair policy`);
+  }
+  if (event.policyDigest !== computeRepairPolicyDigest(policy)) {
+    errors.push(`${label}.policyDigest: must match the exact repair policy`);
+  }
+  if (!addExactKeyError(event.retry, ["attempt", "budget", "remaining", "lineageDigest"], `${label}.retry`, errors)) {
+    return;
+  }
+  for (const field of ["attempt", "budget", "remaining"]) {
+    if (!Number.isInteger(event.retry[field]) || event.retry[field] < 0) {
+      errors.push(`${label}.retry.${field}: expected a non-negative integer`);
+    }
+  }
+  if (typeof event.retry.lineageDigest !== "string" || !SHA256_PATTERN.test(event.retry.lineageDigest)) {
+    errors.push(`${label}.retry.lineageDigest: expected a lowercase SHA-256 digest`);
+  }
+  if (event.retry.attempt !== expectedRetryState.attempt) {
+    errors.push(`${label}.retry.attempt: must match immutable successor lineage (${expectedRetryState.attempt})`);
+  }
+  if (
+    expectedRetryState.lineageDigest !== null
+    && event.retry.lineageDigest !== expectedRetryState.lineageDigest
+  ) {
+    errors.push(`${label}.retry.lineageDigest: must match immutable successor lineage`);
+  }
   try {
-    const expected = routeGateFailure({ gateRisk, attribution, repairAttempts, policy, scope });
-    if (!sameCanonicalJson(route, expected)) errors.push(`${label}: route does not match policy`);
+    const expected = routeGateFailure({
+      gateRisk,
+      attributionRecord: attribution,
+      attributionDigest: expectedAttributionDigest,
+      policy,
+      policyVersion: policy.schemaVersion,
+      policyDigest: computeRepairPolicyDigest(policy),
+      scope: routerScopeFromGateScope(gateScope),
+      retryLineage: {
+        lineageDigest: event.retry.lineageDigest,
+        parentReceipt: "ledger-parent-receipt",
+        attempt: event.retry.attempt,
+        budget: event.retry.budget
+      }
+    });
+    if (!sameCanonicalJson(event.routerResult, expected.value.record)) {
+      errors.push(`${label}.routerResult: does not match the exact Router V2 decision`);
+    }
+    if (event.routerResultDigest !== computeRouterResultDigest(event.routerResult)) {
+      errors.push(`${label}.routerResultDigest: does not match the embedded Router result`);
+    }
+    if (event.routerResultDigest !== expected.value.routerResultDigest) {
+      errors.push(`${label}.routerResultDigest: does not match the exact Router V2 decision`);
+    }
+    const duplicatedRetry = {
+      ...event.routerResult?.retry,
+      lineageDigest: event.routerResult?.lineageDigest
+    };
+    if (!sameCanonicalJson(event.retry, duplicatedRetry)) {
+      errors.push(`${label}.retry: must equal the embedded Router result`);
+    }
+    if (
+      event.policyVersion !== event.routerResult?.policyVersion
+      || event.policyDigest !== event.routerResult?.policyDigest
+    ) {
+      errors.push(`${label}.policy: must equal the embedded Router result`);
+    }
   } catch (error) {
-    errors.push(`${label}: route cannot be evaluated (${error.message})`);
+    errors.push(`${label}.routerResult: cannot be evaluated (${error.message})`);
   }
 }
 
@@ -422,7 +735,7 @@ function checkGateEvents(
   label,
   evidenceRegistry,
   policy,
-  expectedRepairAttempts,
+  expectedRetryState,
   expectedAuthorizationAuthority,
   errors
 ) {
@@ -434,6 +747,7 @@ function checkGateEvents(
   let previousTime = null;
   let terminalSeen = false;
   let currentAttribution = null;
+  let currentAttributionEvidenceDigest = null;
   let recordedAuthorization = null;
   let recordedApprovalEvidence = null;
   for (const [index, event] of gate.events.entries()) {
@@ -462,8 +776,10 @@ function checkGateEvents(
       }
       previousTime = time;
     }
-    checkEvidence(event.evidence, `${eventLabel}.evidence`, errors);
-    registerEvidence(event.evidence, type, gate.id, `${eventLabel}.evidence`, evidenceRegistry, errors);
+    if (type !== "repair_routed") {
+      checkEvidence(event.evidence, `${eventLabel}.evidence`, errors);
+      registerEvidence(event.evidence, type, gate.id, `${eventLabel}.evidence`, evidenceRegistry, errors);
+    }
 
     if (type === "approval_recorded") {
       checkAuthorization(
@@ -507,34 +823,26 @@ function checkGateEvents(
     } else if (type === "failure_attributed") {
       const result = validateFailureAttribution(event.attribution);
       errors.push(...result.errors.map((error) => `${eventLabel}.attribution: ${error}`));
-      if (event.attribution?.gateId !== gate.id) {
-        errors.push(`${eventLabel}.attribution.gateId: must match gate id`);
-      }
-      if (event.attribution?.observedAt !== event.at) {
-        errors.push(`${eventLabel}.attribution.observedAt: must match event time`);
-      }
       if (!event.attribution?.evidenceRefs?.includes(event.evidence?.reference)) {
         errors.push(`${eventLabel}.attribution.evidenceRefs: must include event evidence`);
       }
       currentAttribution = result.ok ? event.attribution : null;
+      currentAttributionEvidenceDigest = result.ok ? event.evidence?.sha256 : null;
     } else if (type === "repair_routed") {
-      if (!Number.isInteger(event.repairAttempts) || event.repairAttempts < 0) {
-        errors.push(`${eventLabel}.repairAttempts: expected a non-negative integer`);
-      } else if (event.repairAttempts !== expectedRepairAttempts) {
-        errors.push(`${eventLabel}.repairAttempts: must match immutable successor lineage (${expectedRepairAttempts})`);
-      } else if (currentAttribution !== null) {
-        checkRoute(
-          event.route,
+      if (currentAttribution !== null && currentAttributionEvidenceDigest !== null) {
+        checkRouteEvent(
+          event,
           gate.risk,
           currentAttribution,
-          event.repairAttempts,
+          currentAttributionEvidenceDigest,
+          expectedRetryState,
           policy,
           gate.scope,
-          `${eventLabel}.route`,
+          eventLabel,
           errors
         );
       } else {
-        errors.push(`${eventLabel}.route: requires a valid preceding attribution`);
+        errors.push(`${eventLabel}.routerResult: requires a valid preceding Attribution V2 record`);
       }
     } else if (type === "successor_proposed") {
       if (typeof event.successorGateId !== "string" || !SAFE_GATE_ID_PATTERN.test(event.successorGateId)) {
@@ -577,17 +885,21 @@ export function validateGateLedger(state, { policy = DEFAULT_REPAIR_POLICY } = {
   if (typeof state.description !== "string" || state.description.trim() === "") {
     errors.push("gate ledger description must be non-empty");
   }
-  if (state.repairPolicyVersion !== "1") errors.push("gate ledger repairPolicyVersion must be 1");
-  if (state.repairPolicyDigest !== computeRepairPolicyDigest(policy)) {
-    errors.push("gate ledger repairPolicyDigest must match the exact repair policy");
-  }
   if (!Array.isArray(state.gates)) {
     errors.push("gate ledger gates must be an array");
     return { ok: false, errors };
   }
+  if (!isLegacyEmptyGateLedger(state)) {
+    if (state.repairPolicyVersion !== policy.schemaVersion) {
+      errors.push("gate ledger repairPolicyVersion must match the exact repair policy");
+    }
+    if (state.repairPolicyDigest !== computeRepairPolicyDigest(policy)) {
+      errors.push("gate ledger repairPolicyDigest must match the exact repair policy");
+    }
+  }
   const gateIds = new Set();
   const priorGates = new Map();
-  const lineageRepairAttempts = new Map();
+  const lineageRetryStates = new Map();
   const rootSubjectOwners = new Map();
   const evidenceRegistry = new Map();
   for (const [index, gate] of state.gates.entries()) {
@@ -609,7 +921,7 @@ export function validateGateLedger(state, { policy = DEFAULT_REPAIR_POLICY } = {
     if (typeof gate.lineageId !== "string" || !SAFE_GATE_ID_PATTERN.test(gate.lineageId)) {
       errors.push(`${label}.lineageId: expected a safe Gate lineage id`);
     }
-    let expectedRepairAttempts = 0;
+    let expectedRetryState = { attempt: 0, lineageDigest: null };
     let predecessor = null;
     let expectedAuthorizationAuthority = "operator";
     if (gate.predecessorGateId !== null) {
@@ -629,11 +941,11 @@ export function validateGateLedger(state, { policy = DEFAULT_REPAIR_POLICY } = {
           ) {
             errors.push(`${label}.predecessorGateId: predecessor must name this exact successor`);
           }
-          expectedRepairAttempts = lineageRepairAttempts.get(gate.predecessorGateId) ?? 0;
+          expectedRetryState = lineageRetryStates.get(gate.predecessorGateId) ?? expectedRetryState;
           const routeEvent = Array.isArray(predecessor.events)
             ? predecessor.events.find((event) => event?.type === "repair_routed")
             : undefined;
-          if (routeEvent?.route?.lane === "codex_auto_repair") {
+          if (routeEvent?.routerResult?.lane === "codex_auto_repair") {
             expectedAuthorizationAuthority = "repair_policy";
           }
           const predecessorFinalTime = Date.parse(finalEvent?.at);
@@ -715,7 +1027,7 @@ export function validateGateLedger(state, { policy = DEFAULT_REPAIR_POLICY } = {
       const routeEvent = Array.isArray(predecessor.events)
         ? predecessor.events.find((event) => event?.type === "repair_routed")
         : undefined;
-      if (routeEvent?.route?.lane === "codex_auto_repair") {
+      if (routeEvent?.routerResult?.lane === "codex_auto_repair") {
         if (
           gate.risk !== predecessor.risk
           || gate.subject?.sourceHead !== predecessor.subject?.sourceHead
@@ -731,15 +1043,23 @@ export function validateGateLedger(state, { policy = DEFAULT_REPAIR_POLICY } = {
       label,
       evidenceRegistry,
       policy,
-      expectedRepairAttempts,
+      expectedRetryState,
       expectedAuthorizationAuthority,
       errors
     );
-    const routedFailureCount = Array.isArray(gate.events)
-      && gate.events.some((event) => event?.type === "repair_routed")
-      ? 1
-      : 0;
-    lineageRepairAttempts.set(gate.id, expectedRepairAttempts + routedFailureCount);
+    const routeEvent = Array.isArray(gate.events)
+      ? gate.events.find((event) => event?.type === "repair_routed")
+      : undefined;
+    lineageRetryStates.set(gate.id, routeEvent
+      ? {
+          attempt: Number.isInteger(routeEvent.retry?.attempt)
+            ? routeEvent.retry.attempt + 1
+            : expectedRetryState.attempt,
+          lineageDigest: typeof routeEvent.retry?.lineageDigest === "string"
+            ? routeEvent.retry.lineageDigest
+            : expectedRetryState.lineageDigest
+        }
+      : expectedRetryState);
     priorGates.set(gate.id, gate);
   }
   for (const [index, gate] of state.gates.entries()) {
@@ -803,73 +1123,113 @@ export function validateGateLedgerTransition(baseState, headState, options = {})
   return { ok: errors.length === 0, errors };
 }
 
-function operatorRoute(retryBudget, reasonCode) {
-  return {
-    lane: "operator_review",
-    approvalRequired: true,
-    newGateRequired: true,
-    retryBudget,
-    retryRemaining: 0,
-    reasonCode
-  };
-}
-
 export function routeGateFailure({
   gateRisk,
-  attribution,
-  repairAttempts = 0,
+  attributionRecord,
+  attributionDigest,
   policy = DEFAULT_REPAIR_POLICY,
-  scope
+  policyVersion,
+  policyDigest,
+  scope,
+  retryLineage
 } = {}) {
-  if (!RISKS.has(gateRisk)) throw new Error("gate_repair_route_invalid");
-  if (!Number.isInteger(repairAttempts) || repairAttempts < 0) {
-    throw new Error("gate_repair_route_invalid");
+  if (!RISKS.has(gateRisk)) throw new Error("gate_governance_contract_invalid");
+  if (!validateRepairPolicy(policy).ok) throw new Error("gate_governance_contract_invalid");
+  if (!validateFailureAttribution(attributionRecord).ok) {
+    throw new Error("gate_governance_contract_invalid");
   }
-  if (!validateRepairPolicy(policy).ok) throw new Error("gate_repair_policy_invalid");
-  if (!validateFailureAttribution(attribution).ok) {
-    throw new Error("gate_failure_attribution_invalid");
+  if (
+    typeof attributionDigest !== "string"
+    || !SHA256_PATTERN.test(attributionDigest)
+    || attributionDigest !== computeFailureAttributionDigest(attributionRecord)
+  ) {
+    throw new Error("gate_governance_contract_invalid");
   }
-  if (!validateRouteScope(scope)) throw new Error("gate_repair_scope_invalid");
-  const effectiveRisk = RISK_RANK[attribution.failureRisk] > RISK_RANK[gateRisk]
-    ? attribution.failureRisk
-    : gateRisk;
-  const retryBudget = policy.retryBudget[effectiveRisk];
+  if (
+    policyVersion !== policy.schemaVersion
+    || typeof policyDigest !== "string"
+    || !SHA256_PATTERN.test(policyDigest)
+    || policyDigest !== computeRepairPolicyDigest(policy)
+  ) {
+    throw new Error("gate_governance_contract_invalid");
+  }
+  if (!validateRouteScope(scope)) throw new Error("gate_governance_contract_invalid");
+  if (
+    !hasExactKeys(retryLineage, ["lineageDigest", "parentReceipt", "attempt", "budget"])
+    || typeof retryLineage.lineageDigest !== "string"
+    || !SHA256_PATTERN.test(retryLineage.lineageDigest)
+    || typeof retryLineage.parentReceipt !== "string"
+    || !SAFE_ID_PATTERN.test(retryLineage.parentReceipt)
+    || !Number.isInteger(retryLineage.attempt)
+    || retryLineage.attempt < 0
+    || !Number.isInteger(retryLineage.budget)
+    || retryLineage.budget < 0
+  ) {
+    throw new Error("gate_governance_contract_invalid");
+  }
+  const governanceRisk = computeGovernanceRisk(gateRisk, attributionRecord, scope, policy);
+  if (retryLineage.budget !== policy.retryBudget[governanceRisk]) {
+    throw new Error("gate_governance_contract_invalid");
+  }
   const escalationInvariants = new Set(policy.escalationInvariants);
-  const autoRepairCategories = new Set(policy.autoRepairCategories);
-  const affectedInvariants = Array.isArray(attribution?.affectedInvariants)
-    ? attribution.affectedInvariants
-    : [];
-  if (affectedInvariants.some((value) => escalationInvariants.has(value))) {
-    return operatorRoute(retryBudget, "escalation_invariant");
+  const autoProposalCategories = new Set(policy.autoProposalCategories);
+  let lane = "codex_auto_repair";
+  let reasonCode = "bounded_auto_repair";
+  if (routeScopeRequiresOperator(scope, policy)) {
+    lane = "operator_review";
+    reasonCode = "protected_scope";
+  } else if (attributionRecord.affectedInvariants.some((value) => escalationInvariants.has(value))) {
+    lane = "operator_review";
+    reasonCode = "escalation_invariant";
+  } else if (attributionRecord.category === "unknown" || attributionRecord.classifierMode === "unknown") {
+    lane = "operator_review";
+    reasonCode = "attribution_unknown";
+  } else if (governanceRisk === "A") {
+    lane = "operator_review";
+    reasonCode = "risk_a_operator_required";
+  } else if (attributionRecord.confidence !== "high") {
+    lane = "operator_review";
+    reasonCode = "attribution_confidence_insufficient";
+  } else if (!autoProposalCategories.has(attributionRecord.category)) {
+    lane = "operator_review";
+    reasonCode = "category_not_auto_repairable";
+  } else if (retryLineage.attempt >= retryLineage.budget) {
+    lane = "operator_review";
+    reasonCode = "retry_budget_exhausted";
   }
-  if (effectiveRisk === "A") {
-    return {
-      lane: "codex_successor_preparation",
-      approvalRequired: true,
-      newGateRequired: true,
-      retryBudget,
-      retryRemaining: 0,
-      reasonCode: "risk_a_new_approval_required"
-    };
-  }
-  if (routeScopeRequiresOperator(scope)) {
-    return operatorRoute(retryBudget, "protected_scope");
-  }
-  if (repairAttempts >= retryBudget) {
-    return operatorRoute(retryBudget, "retry_budget_exhausted");
-  }
-  if (attribution.confidence !== "high") {
-    return operatorRoute(retryBudget, "attribution_confidence_insufficient");
-  }
-  if (!autoRepairCategories.has(attribution.category)) {
-    return operatorRoute(retryBudget, "category_not_auto_repairable");
-  }
-  return {
-    lane: "codex_auto_repair",
-    approvalRequired: false,
+  const proposalEligible = lane === "codex_auto_repair";
+  const record = {
+    schemaVersion: "2",
+    routerVersion: "repair-router/v2",
+    repository: "gccwebos-com/proxy-gateway-minimal",
+    attributionDigest,
+    gateRisk,
+    scopeDigest: computeGateScopeDigest(scope),
+    governanceRisk,
+    lane,
+    proposalEligible,
+    shadowEligible: attributionRecord.classifierMode !== "unknown",
+    executionAuthority: false,
+    operatorApprovalRequiredForMutation: true,
     newGateRequired: true,
-    retryBudget,
-    retryRemaining: retryBudget - repairAttempts - 1,
-    reasonCode: "bounded_auto_repair"
+    retry: {
+      attempt: retryLineage.attempt,
+      budget: retryLineage.budget,
+      remaining: proposalEligible
+        ? retryLineage.budget - retryLineage.attempt - 1
+        : Math.max(retryLineage.budget - retryLineage.attempt, 0)
+    },
+    reasonCodes: [reasonCode],
+    policyVersion,
+    policyDigest,
+    lineageDigest: retryLineage.lineageDigest
+  };
+  return {
+    ok: true,
+    code: "accepted",
+    value: {
+      record,
+      routerResultDigest: computeRouterResultDigest(record)
+    }
   };
 }

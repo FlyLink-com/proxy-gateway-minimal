@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  isLegacyEmptyGateLedger,
   validateGateLedger,
   validateGateLedgerTransition,
   validateRepairPolicy,
@@ -87,7 +88,7 @@ function main() {
     errors.push(...result.errors.map((error) => `repair policy: ${error}`));
   }
   if (ledger !== null && policy !== null) {
-    if (ledger.repairPolicyVersion !== policy.schemaVersion) {
+    if (ledger.repairPolicyVersion !== policy.schemaVersion && !isLegacyEmptyGateLedger(ledger)) {
       errors.push("gate ledger: repairPolicyVersion must match repair policy schemaVersion");
     }
     const result = validateGateLedger(ledger, { policy });

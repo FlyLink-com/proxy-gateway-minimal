@@ -12,1037 +12,556 @@ import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+import {
+  DEFAULT_REPAIR_POLICY,
+  computeFailureAttributionDigest,
+  computeGateScopeDigest,
+  computeRepairPolicyDigest,
+  computeRouterResultDigest,
+  isLegacyEmptyGateLedger,
+  routeGateFailure,
+  validateFailureAttribution,
+  validateGateLedger,
+  validateGateLedgerTransition,
+  validateRepairPolicy,
+  validateRepairPolicyTransition
+} from "../services/governance/gate-governance.mjs";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+const POLICY_DIGEST = computeRepairPolicyDigest(DEFAULT_REPAIR_POLICY);
 
-function evaluateGovernanceModule(source) {
-  return spawnSync(process.execPath, ["--input-type=module", "--eval", source], {
-    cwd: REPOSITORY_ROOT,
-    encoding: "utf8"
+function clone(value) {
+  return structuredClone(value);
+}
+
+function evidence(reference, digit) {
+  return { reference, sha256: digit.repeat(64) };
+}
+
+function stateClaims(overrides = {}) {
+  return {
+    sourceFilesChanged: false,
+    commitCreated: false,
+    pushPerformed: false,
+    retainedLocalState: false,
+    retainedStateDigest: null,
+    productionMutation: false,
+    ...overrides
+  };
+}
+
+function gateScope(allowedFiles = ["docs/README.md"]) {
+  return {
+    allowedFiles,
+    forbiddenActions: ["production_mutation"],
+    validation: ["diff_check"]
+  };
+}
+
+function routerScope(scope, overrides = {}) {
+  return {
+    targetPaths: [...scope.allowedFiles].sort(),
+    capabilityIds: [],
+    protectedScope: false,
+    ...overrides
+  };
+}
+
+function attribution(overrides = {}) {
+  return {
+    schemaVersion: "2",
+    observationDigest: "a".repeat(64),
+    classifierVersion: "classifier/v2",
+    classifierRulesDigest: "b".repeat(64),
+    classifierMode: "deterministic",
+    category: "docs_metadata",
+    reasonCode: "obsolete_expectation",
+    technicalImpact: ["validation_failed"],
+    confidence: "high",
+    affectedInvariants: ["documentation_contract"],
+    evidenceRefs: ["issuecomment-attribution"],
+    decisionReason: {
+      category: "deterministic_rule",
+      blockers: [],
+      missingEvidence: []
+    },
+    ...overrides
+  };
+}
+
+function routeDecision({
+  gateRisk = "C",
+  attributionRecord = attribution(),
+  scope = routerScope(gateScope()),
+  attempt = 0,
+  budget = 1,
+  lineageDigest = "c".repeat(64),
+  parentReceipt = "issuecomment-attribution",
+  policy = DEFAULT_REPAIR_POLICY
+} = {}) {
+  return routeGateFailure({
+    gateRisk,
+    attributionRecord,
+    attributionDigest: computeFailureAttributionDigest(attributionRecord),
+    scope,
+    policy,
+    policyVersion: policy.schemaVersion,
+    policyDigest: computeRepairPolicyDigest(policy),
+    retryLineage: { lineageDigest, parentReceipt, attempt, budget }
   });
 }
 
-test("risk-aware router keeps C and bounded B repair with Codex while A requires a new approval", () => {
-  const result = evaluateGovernanceModule(`
-    import {
-      DEFAULT_REPAIR_POLICY,
-      routeGateFailure
-    } from "./server/services/governance/gate-governance.mjs";
-
-    const attribution = (category, failureRisk = "C", affectedInvariants = ["execution_transport"]) => ({
-      schemaVersion: "1",
-      failureId: "failure-001",
-      gateId: "gate-001",
-      stage: "execution_transport",
-      category,
-      failureRisk,
-      confidence: "high",
-      affectedInvariants,
-      evidenceRefs: ["issuecomment-1"],
-      observedAt: "2026-07-15T12:00:00.000Z"
-    });
-    const scope = { allowedFiles: ["server/tests/example.test.mjs"] };
-
-    const output = {
-      c: routeGateFailure({
-        scope,
-        gateRisk: "C",
-        attribution: attribution("transport_format"),
-        repairAttempts: 0,
-        policy: DEFAULT_REPAIR_POLICY
-      }),
-      b: routeGateFailure({
-        scope,
-        gateRisk: "B",
-        attribution: attribution("test_fixture", "B", ["test_contract"]),
-        repairAttempts: 0,
-        policy: DEFAULT_REPAIR_POLICY
-      }),
-      a: routeGateFailure({
-        scope,
-        gateRisk: "A",
-        attribution: attribution("transport_format", "C"),
-        repairAttempts: 0,
-        policy: DEFAULT_REPAIR_POLICY
-      })
-    };
-    process.stdout.write(JSON.stringify(output));
-  `);
-
-  assert.equal(result.status, 0, result.stderr);
-  const output = JSON.parse(result.stdout);
-  assert.deepEqual(output.c, {
-    lane: "codex_auto_repair",
-    approvalRequired: false,
-    newGateRequired: true,
-    retryBudget: 1,
-    retryRemaining: 0,
-    reasonCode: "bounded_auto_repair"
+function routeEvent({
+  gateRisk = "C",
+  attributionRecord,
+  attributionEvidence,
+  scope,
+  at,
+  attempt = 0,
+  budget = 1,
+  lineageDigest = "c".repeat(64)
+}) {
+  const routed = routeDecision({
+    gateRisk,
+    attributionRecord,
+    scope: routerScope(scope),
+    attempt,
+    budget,
+    lineageDigest,
+    parentReceipt: attributionEvidence.reference
   });
-  assert.deepEqual(output.b, {
-    lane: "codex_auto_repair",
-    approvalRequired: false,
-    newGateRequired: true,
-    retryBudget: 1,
-    retryRemaining: 0,
-    reasonCode: "bounded_auto_repair"
-  });
-  assert.deepEqual(output.a, {
-    lane: "codex_successor_preparation",
-    approvalRequired: true,
-    newGateRequired: true,
-    retryBudget: 0,
-    retryRemaining: 0,
-    reasonCode: "risk_a_new_approval_required"
-  });
-});
+  return {
+    schemaVersion: "2",
+    type: "repair_routed",
+    at,
+    parentReceiptDigest: attributionEvidence.sha256,
+    observationDigest: attributionRecord.observationDigest,
+    attributionDigest: computeFailureAttributionDigest(attributionRecord),
+    routerResult: routed.value.record,
+    routerResultDigest: routed.value.routerResultDigest,
+    retry: { ...routed.value.record.retry, lineageDigest },
+    policyVersion: DEFAULT_REPAIR_POLICY.schemaVersion,
+    policyDigest: POLICY_DIGEST
+  };
+}
 
-test("router escalates scope drift, unsupported B failures, and exhausted retry budgets", () => {
-  const result = evaluateGovernanceModule(`
-    import {
-      DEFAULT_REPAIR_POLICY,
-      routeGateFailure
-    } from "./server/services/governance/gate-governance.mjs";
+function ledger(gates) {
+  return {
+    schemaVersion: "1",
+    authority: "evidence-index-only",
+    description: "prospective Gate evidence fixture",
+    repairPolicyVersion: DEFAULT_REPAIR_POLICY.schemaVersion,
+    repairPolicyDigest: POLICY_DIGEST,
+    gates
+  };
+}
 
-    const attribution = (category, affectedInvariants = ["execution_transport"]) => ({
-      schemaVersion: "1",
-      failureId: "failure-002",
-      gateId: "gate-002",
-      stage: "execution_transport",
-      category,
-      failureRisk: "B",
-      confidence: "high",
-      affectedInvariants,
-      evidenceRefs: ["issuecomment-2"],
-      observedAt: "2026-07-15T12:01:00.000Z"
-    });
-    const scope = { allowedFiles: ["server/tests/example.test.mjs"] };
-
-    process.stdout.write(JSON.stringify({
-      scopeDrift: routeGateFailure({
-        scope,
-        gateRisk: "B",
-        attribution: attribution("transport_format", ["scope_drift"]),
-        repairAttempts: 0,
-        policy: DEFAULT_REPAIR_POLICY
-      }),
-      unsupported: routeGateFailure({
-        scope,
-        gateRisk: "B",
-        attribution: attribution("business_contract"),
-        repairAttempts: 0,
-        policy: DEFAULT_REPAIR_POLICY
-      }),
-      exhausted: routeGateFailure({
-        scope,
-        gateRisk: "C",
-        attribution: attribution("docs_metadata"),
-        repairAttempts: 1,
-        policy: DEFAULT_REPAIR_POLICY
-      }),
-      protectedScope: routeGateFailure({
-        scope: { allowedFiles: [".github/workflows/deploy-cloudflare-site.yml"] },
-        gateRisk: "B",
-        attribution: attribution("execution_transport"),
-        repairAttempts: 0,
-        policy: DEFAULT_REPAIR_POLICY
-      })
-    }));
-  `);
-
-  assert.equal(result.status, 0, result.stderr);
-  const output = JSON.parse(result.stdout);
-  assert.equal(output.scopeDrift.lane, "operator_review");
-  assert.equal(output.scopeDrift.reasonCode, "escalation_invariant");
-  assert.equal(output.unsupported.lane, "operator_review");
-  assert.equal(output.unsupported.reasonCode, "category_not_auto_repairable");
-  assert.equal(output.exhausted.lane, "operator_review");
-  assert.equal(output.exhausted.reasonCode, "retry_budget_exhausted");
-  assert.equal(output.protectedScope.lane, "operator_review");
-  assert.equal(output.protectedScope.reasonCode, "protected_scope");
-});
-
-test("router validates and applies the supplied machine repair policy", () => {
-  const result = evaluateGovernanceModule(`
-    import {
-      DEFAULT_REPAIR_POLICY,
-      routeGateFailure,
-      validateRepairPolicy
-    } from "./server/services/governance/gate-governance.mjs";
-
-    const attribution = {
-      schemaVersion: "1",
-      failureId: "failure-policy",
-      gateId: "gate-policy",
-      stage: "governance_validation",
-      category: "execution_transport",
-      failureRisk: "B",
-      confidence: "high",
-      affectedInvariants: ["test_contract"],
-      evidenceRefs: ["issuecomment-policy"],
-      observedAt: "2026-07-15T12:01:30.000Z"
-    };
-    const scope = { allowedFiles: ["server/tests/example.test.mjs"] };
-    const customPolicy = {
-      ...DEFAULT_REPAIR_POLICY,
-      retryBudget: { ...DEFAULT_REPAIR_POLICY.retryBudget },
-      autoRepairCategories: [...DEFAULT_REPAIR_POLICY.autoRepairCategories],
-      escalationInvariants: [...DEFAULT_REPAIR_POLICY.escalationInvariants, "test_contract"]
-    };
-    const autoPolicy = {
-      ...customPolicy,
-      escalationInvariants: customPolicy.escalationInvariants.filter((value) => value !== "test_contract")
-    };
-
-    process.stdout.write(JSON.stringify({
-      valid: validateRepairPolicy(customPolicy),
-      invalidExtra: validateRepairPolicy({ ...customPolicy, fallback: "retry" }),
-      escalated: routeGateFailure({
-        scope,
-        gateRisk: "B",
-        attribution,
-        repairAttempts: 0,
-        policy: customPolicy
-      }),
-      auto: routeGateFailure({
-        scope,
-        gateRisk: "B",
-        attribution,
-        repairAttempts: 0,
-        policy: autoPolicy
-      })
-    }));
-  `);
-
-  assert.equal(result.status, 0, result.stderr);
-  const output = JSON.parse(result.stdout);
-  assert.deepEqual(output.valid, { ok: true, errors: [] });
-  assert.equal(output.invalidExtra.ok, false);
-  assert.equal(output.escalated.lane, "operator_review");
-  assert.equal(output.escalated.reasonCode, "escalation_invariant");
-  assert.deepEqual(output.auto, {
-    lane: "codex_auto_repair",
-    approvalRequired: false,
-    newGateRequired: true,
-    retryBudget: 1,
-    retryRemaining: 0,
-    reasonCode: "bounded_auto_repair"
-  });
-});
-
-test("repair policy transition prevents self-authorized weakening", () => {
-  const result = evaluateGovernanceModule(`
-    import {
-      DEFAULT_REPAIR_POLICY,
-      validateRepairPolicyTransition
-    } from "./server/services/governance/gate-governance.mjs";
-
-    const base = structuredClone(DEFAULT_REPAIR_POLICY);
-    const weakened = structuredClone(base);
-    weakened.retryBudget.B = 9;
-    weakened.autoRepairCategories.push("business_contract");
-    weakened.escalationInvariants = weakened.escalationInvariants.filter(
-      (value) => value !== "security_boundary"
-    );
-    process.stdout.write(JSON.stringify({
-      unchanged: validateRepairPolicyTransition(base, structuredClone(base)),
-      weakened: validateRepairPolicyTransition(base, weakened),
-      bootstrapDefault: validateRepairPolicyTransition(null, structuredClone(base)),
-      bootstrapCustom: validateRepairPolicyTransition(null, weakened)
-    }));
-  `);
-
-  assert.equal(result.status, 0, result.stderr);
-  const output = JSON.parse(result.stdout);
-  assert.deepEqual(output.unchanged, { ok: true, errors: [] });
-  assert.equal(output.weakened.ok, false);
-  assert.match(output.weakened.errors.join("\n"), /repair policy rewrite is forbidden/);
-  assert.deepEqual(output.bootstrapDefault, { ok: true, errors: [] });
-  assert.equal(output.bootstrapCustom.ok, false);
-  assert.match(output.bootstrapCustom.errors.join("\n"), /bootstrap must use the default repair policy/);
-});
-
-test("router uses effective risk, confidence, category, and strict attribution before automation", () => {
-  const result = evaluateGovernanceModule(`
-    import {
-      DEFAULT_REPAIR_POLICY,
-      routeGateFailure
-    } from "./server/services/governance/gate-governance.mjs";
-
-    const attribution = (overrides = {}) => ({
-      schemaVersion: "1",
-      failureId: "failure-routing",
-      gateId: "gate-routing",
-      stage: "execution_transport",
-      category: "execution_transport",
-      failureRisk: "B",
-      confidence: "high",
-      affectedInvariants: ["execution_transport"],
-      evidenceRefs: ["issuecomment-routing"],
-      observedAt: "2026-07-15T12:01:45.000Z",
-      ...overrides
-    });
-    const scope = { allowedFiles: ["server/tests/example.test.mjs"] };
-    let invalidError = null;
-    try {
-      routeGateFailure({
-        scope,
-        gateRisk: "B",
-        attribution: attribution({ evidenceRefs: ["https://unsafe.invalid/raw"] }),
-        policy: DEFAULT_REPAIR_POLICY
-      });
-    } catch (error) {
-      invalidError = error.message;
-    }
-
-    process.stdout.write(JSON.stringify({
-      executionTransport: routeGateFailure({
-        scope,
-        gateRisk: "B",
-        attribution: attribution(),
-        policy: DEFAULT_REPAIR_POLICY
-      }),
-      effectiveA: routeGateFailure({
-        scope,
-        gateRisk: "C",
-        attribution: attribution({ failureRisk: "A" }),
-        policy: DEFAULT_REPAIR_POLICY
-      }),
-      lowConfidence: routeGateFailure({
-        scope,
-        gateRisk: "B",
-        attribution: attribution({ confidence: "medium" }),
-        policy: DEFAULT_REPAIR_POLICY
-      }),
-      unsupportedC: routeGateFailure({
-        scope,
-        gateRisk: "C",
-        attribution: attribution({ category: "business_contract", failureRisk: "C" }),
-        policy: DEFAULT_REPAIR_POLICY
-      }),
-      invalidError
-    }));
-  `);
-
-  assert.equal(result.status, 0, result.stderr);
-  const output = JSON.parse(result.stdout);
-  assert.equal(output.executionTransport.lane, "codex_auto_repair");
-  assert.equal(output.effectiveA.lane, "codex_successor_preparation");
-  assert.equal(output.effectiveA.approvalRequired, true);
-  assert.equal(output.lowConfidence.lane, "operator_review");
-  assert.equal(output.lowConfidence.reasonCode, "attribution_confidence_insufficient");
-  assert.equal(output.unsupportedC.lane, "operator_review");
-  assert.equal(output.unsupportedC.reasonCode, "category_not_auto_repairable");
-  assert.equal(output.invalidError, "gate_failure_attribution_invalid");
-});
-
-test("failure attribution accepts only the strict redacted machine schema", () => {
-  const result = evaluateGovernanceModule(`
-    import {
-      validateFailureAttribution
-    } from "./server/services/governance/gate-governance.mjs";
-
-    const valid = {
-      schemaVersion: "1",
-      failureId: "failure-003",
-      gateId: "gate-003",
-      stage: "fresh_binding",
-      category: "baseline_identity_drift",
-      failureRisk: "A",
-      confidence: "high",
-      affectedInvariants: ["frozen_identity"],
-      evidenceRefs: ["issuecomment-3"],
-      observedAt: "2026-07-15T12:02:00.000Z"
-    };
-
-    process.stdout.write(JSON.stringify({
-      valid: validateFailureAttribution(valid),
-      extraField: validateFailureAttribution({ ...valid, rawOutput: "forbidden" }),
-      unsafeEvidence: validateFailureAttribution({ ...valid, evidenceRefs: ["https://unsafe.invalid/raw"] }),
-      badTimestamp: validateFailureAttribution({ ...valid, observedAt: "today" })
-    }));
-  `);
-
-  assert.equal(result.status, 0, result.stderr);
-  const output = JSON.parse(result.stdout);
-  assert.deepEqual(output.valid, { ok: true, errors: [] });
-  assert.equal(output.extraField.ok, false);
-  assert.match(output.extraField.errors.join("\n"), /exact fields/);
-  assert.equal(output.unsafeEvidence.ok, false);
-  assert.match(output.unsafeEvidence.errors.join("\n"), /evidenceRefs/);
-  assert.equal(output.badTimestamp.ok, false);
-  assert.match(output.badTimestamp.errors.join("\n"), /observedAt/);
-});
-
-test("gate ledger validates blocked attribution and deterministic repair routing", () => {
-  const result = evaluateGovernanceModule(`
-    import {
-      DEFAULT_REPAIR_POLICY,
-      computeGateScopeDigest,
-      computeRepairPolicyDigest,
-      routeGateFailure,
-      validateGateLedger
-    } from "./server/services/governance/gate-governance.mjs";
-
-    const evidence = (reference, digit) => ({ reference, sha256: digit.repeat(64) });
-    const scope = {
-      allowedFiles: ["server/tests/example.test.mjs"],
-      forbiddenActions: ["production_mutation"],
-      validation: ["targeted", "full", "diff_check"]
-    };
-    const scopeDigest = computeGateScopeDigest(scope);
-    const authorization = {
-      gateId: "gate-004",
-      lineageId: "gate-004",
-      authority: "operator",
-      scopeDigest,
-      sourceHead: "a".repeat(40),
-      policyVersion: null
-    };
-    const attribution = {
-      schemaVersion: "1",
-      failureId: "failure-004",
-      gateId: "gate-004",
-      stage: "targeted_green",
-      category: "test_fixture",
-      failureRisk: "B",
-      confidence: "high",
-      affectedInvariants: ["test_contract"],
-      evidenceRefs: ["issuecomment-4"],
-      observedAt: "2026-07-15T12:04:00.000Z"
-    };
-    const route = routeGateFailure({
+function rootRoutedGate({ successorGateId = null } = {}) {
+  const scope = gateScope();
+  const attributionEvidence = evidence("issuecomment-attribution", "3");
+  const attributionRecord = attribution({ evidenceRefs: [attributionEvidence.reference] });
+  const events = [
+    { type: "proposed", at: "2026-07-15T12:00:00.000Z", evidence: evidence("issuecomment-proposal", "1") },
+    {
+      type: "terminal_blocked",
+      at: "2026-07-15T12:01:00.000Z",
+      evidence: evidence("issuecomment-blocked", "2"),
+      reasonCode: "diff_check_failed",
+      approvalState: "absent",
+      stateClaims: stateClaims()
+    },
+    {
+      type: "failure_attributed",
+      at: "2026-07-15T12:02:00.000Z",
+      evidence: attributionEvidence,
+      attribution: attributionRecord
+    },
+    routeEvent({
+      attributionRecord,
+      attributionEvidence,
       scope,
-      gateRisk: "B",
-      attribution,
-      repairAttempts: 0,
-      policy: DEFAULT_REPAIR_POLICY
+      at: "2026-07-15T12:03:00.000Z"
+    })
+  ];
+  if (successorGateId !== null) {
+    events.push({
+      type: "successor_proposed",
+      at: "2026-07-15T12:04:00.000Z",
+      evidence: evidence("issuecomment-successor", "4"),
+      successorGateId
     });
-    const commonEvents = [
-      { type: "proposed", at: "2026-07-15T12:00:00.000Z", evidence: evidence("issuecomment-1", "1") },
-      { type: "approval_recorded", at: "2026-07-15T12:01:00.000Z", evidence: evidence("issuecomment-2", "2"), authorization },
-      { type: "approval_consumed", at: "2026-07-15T12:02:00.000Z", evidence: evidence("issuecomment-2", "2"), authorization },
+  }
+  return {
+    id: "gate-root",
+    lineageId: "gate-root",
+    predecessorGateId: null,
+    risk: "C",
+    subject: {
+      issue: 437,
+      pullRequest: 499,
+      purpose: "route_validation",
+      sourceHead: "1".repeat(40)
+    },
+    scope,
+    scopeDigest: computeGateScopeDigest(scope),
+    events
+  };
+}
+
+function successorGate() {
+  const scope = gateScope();
+  const authorization = {
+    gateId: "gate-successor",
+    lineageId: "gate-root",
+    authority: "repair_policy",
+    scopeDigest: computeGateScopeDigest(scope),
+    sourceHead: "1".repeat(40),
+    policyVersion: "2"
+  };
+  const approvalEvidence = evidence("issuecomment-approval", "5");
+  const attributionEvidence = evidence("issuecomment-attribution-2", "7");
+  const attributionRecord = attribution({
+    observationDigest: "d".repeat(64),
+    evidenceRefs: [attributionEvidence.reference]
+  });
+  return {
+    id: "gate-successor",
+    lineageId: "gate-root",
+    predecessorGateId: "gate-root",
+    risk: "C",
+    subject: {
+      issue: 437,
+      pullRequest: 499,
+      purpose: "route_validation",
+      sourceHead: "1".repeat(40)
+    },
+    scope,
+    scopeDigest: computeGateScopeDigest(scope),
+    events: [
+      { type: "proposed", at: "2026-07-15T12:05:00.000Z", evidence: evidence("issuecomment-proposal-2", "6") },
+      { type: "approval_recorded", at: "2026-07-15T12:06:00.000Z", evidence: approvalEvidence, authorization },
+      { type: "approval_consumed", at: "2026-07-15T12:07:00.000Z", evidence: approvalEvidence, authorization },
       {
         type: "terminal_blocked",
-        at: "2026-07-15T12:03:00.000Z",
-        evidence: evidence("issuecomment-3", "3"),
-        reasonCode: "targeted_green_failed",
-        approvalState: "consumed",
-        stateClaims: {
-          sourceFilesChanged: false,
-          commitCreated: false,
-          pushPerformed: false,
-          retainedLocalState: false,
-          retainedStateDigest: null,
-          productionMutation: false
-        }
-      }
-    ];
-    const gate = {
-      id: "gate-004",
-      lineageId: "gate-004",
-      predecessorGateId: null,
-      risk: "B",
-      subject: {
-        issue: 437,
-        pullRequest: 499,
-        purpose: "targeted_repair",
-        sourceHead: "a".repeat(40)
-      },
-      scope,
-      scopeDigest,
-      events: [
-        ...commonEvents,
-        {
-          type: "failure_attributed",
-          at: "2026-07-15T12:04:00.000Z",
-          evidence: evidence("issuecomment-4", "4"),
-          attribution
-        },
-        {
-          type: "repair_routed",
-          at: "2026-07-15T12:05:00.000Z",
-          evidence: evidence("issuecomment-5", "5"),
-          repairAttempts: 0,
-          route
-        }
-      ]
-    };
-    const ledger = {
-      schemaVersion: "1",
-      authority: "evidence-index-only",
-      description: "Prospective machine-readable Gate evidence.",
-      repairPolicyVersion: "1",
-      repairPolicyDigest: computeRepairPolicyDigest(DEFAULT_REPAIR_POLICY),
-      gates: [gate]
-    };
-    const skippedAttribution = structuredClone(ledger);
-    skippedAttribution.gates[0].events.splice(4, 1);
-    const routeMismatch = structuredClone(ledger);
-    routeMismatch.gates[0].events[5].route = {
-      ...routeMismatch.gates[0].events[5].route,
-      lane: "operator_review",
-      approvalRequired: true,
-      newGateRequired: true,
-      reasonCode: "forged_route"
-    };
-
-    process.stdout.write(JSON.stringify({
-      valid: validateGateLedger(ledger, { policy: DEFAULT_REPAIR_POLICY }),
-      skippedAttribution: validateGateLedger(skippedAttribution, { policy: DEFAULT_REPAIR_POLICY }),
-      routeMismatch: validateGateLedger(routeMismatch, { policy: DEFAULT_REPAIR_POLICY })
-    }));
-  `);
-
-  assert.equal(result.status, 0, result.stderr);
-  const output = JSON.parse(result.stdout);
-  assert.deepEqual(output.valid, { ok: true, errors: [] });
-  assert.equal(output.skippedAttribution.ok, false);
-  assert.match(output.skippedAttribution.errors.join("\n"), /invalid event transition/);
-  assert.equal(output.routeMismatch.ok, false);
-  assert.match(output.routeMismatch.errors.join("\n"), /route does not match policy/);
-});
-
-test("blocked receipts preserve approval phase, retained local state, and evidence identity", () => {
-  const result = evaluateGovernanceModule(`
-    import {
-      DEFAULT_REPAIR_POLICY,
-      computeGateScopeDigest,
-      computeRepairPolicyDigest,
-      routeGateFailure,
-      validateGateLedger
-    } from "./server/services/governance/gate-governance.mjs";
-
-    const evidence = (reference, digit) => ({ reference, sha256: digit.repeat(64) });
-    const scope = {
-      allowedFiles: ["server/tests/example.test.mjs"],
-      forbiddenActions: ["production_mutation"],
-      validation: ["targeted"]
-    };
-    const attribution = {
-      schemaVersion: "1",
-      failureId: "failure-preconsumption",
-      gateId: "gate-preconsumption",
-      stage: "approval_writer",
-      category: "execution_transport",
-      failureRisk: "B",
-      confidence: "high",
-      affectedInvariants: ["execution_transport"],
-      evidenceRefs: ["issuecomment-preconsumption-attribution"],
-      observedAt: "2026-07-15T14:02:00.000Z"
-    };
-    const retainedClaims = {
-      sourceFilesChanged: true,
-      commitCreated: false,
-      pushPerformed: false,
-      retainedLocalState: true,
-      retainedStateDigest: "f".repeat(64),
-      productionMutation: false
-    };
-    const preconsumptionGate = {
-      id: "gate-preconsumption",
-      lineageId: "gate-preconsumption",
-      predecessorGateId: null,
-      risk: "B",
-      subject: {
-        issue: 437,
-        pullRequest: 499,
-        purpose: "transport_repair",
-        sourceHead: "a".repeat(40)
-      },
-      scope,
-      scopeDigest: computeGateScopeDigest(scope),
-      events: [
-        { type: "proposed", at: "2026-07-15T14:00:00.000Z", evidence: evidence("issuecomment-preconsumption-proposal", "1") },
-        {
-          type: "terminal_blocked",
-          at: "2026-07-15T14:01:00.000Z",
-          evidence: evidence("issuecomment-preconsumption-terminal", "2"),
-          reasonCode: "approval_writer_failed",
-          approvalState: "absent",
-          stateClaims: retainedClaims
-        },
-        {
-          type: "failure_attributed",
-          at: attribution.observedAt,
-          evidence: evidence("issuecomment-preconsumption-attribution", "3"),
-          attribution
-        },
-        {
-          type: "repair_routed",
-          at: "2026-07-15T14:03:00.000Z",
-          evidence: evidence("issuecomment-preconsumption-route", "4"),
-          repairAttempts: 0,
-          route: routeGateFailure({
-            scope,
-            gateRisk: "B",
-            attribution,
-            repairAttempts: 0,
-            policy: DEFAULT_REPAIR_POLICY
-          })
-        }
-      ]
-    };
-    const approvalConflict = structuredClone(preconsumptionGate);
-    approvalConflict.id = "gate-approval-conflict";
-    approvalConflict.lineageId = "gate-approval-conflict";
-    approvalConflict.subject.purpose = "approval_conflict_check";
-    const conflictAuthorization = {
-      gateId: approvalConflict.id,
-      lineageId: approvalConflict.lineageId,
-      authority: "operator",
-      scopeDigest: approvalConflict.scopeDigest,
-      sourceHead: approvalConflict.subject.sourceHead,
-      policyVersion: null
-    };
-    approvalConflict.events = [
-      { type: "proposed", at: "2026-07-15T15:00:00.000Z", evidence: evidence("issuecomment-conflict-proposal", "5") },
-      { type: "approval_recorded", at: "2026-07-15T15:01:00.000Z", evidence: evidence("issuecomment-conflict-approval", "6"), authorization: conflictAuthorization },
-      { type: "approval_consumed", at: "2026-07-15T15:02:00.000Z", evidence: evidence("issuecomment-conflict-approval", "7"), authorization: conflictAuthorization },
-      {
-        type: "terminal_blocked",
-        at: "2026-07-15T15:03:00.000Z",
-        evidence: evidence("issuecomment-conflict-terminal", "8"),
+        at: "2026-07-15T12:08:00.000Z",
+        evidence: evidence("issuecomment-blocked-2", "8"),
         reasonCode: "targeted_failed",
         approvalState: "consumed",
-        stateClaims: {
-          sourceFilesChanged: false,
-          commitCreated: false,
-          pushPerformed: false,
-          retainedLocalState: false,
-          retainedStateDigest: null,
-          productionMutation: false
-        }
-      }
-    ];
-    const wrongGateAuthorization = structuredClone(approvalConflict);
-    for (const event of wrongGateAuthorization.events) {
-      if (event.authorization) event.authorization.gateId = "different-gate";
-    }
-    const malformedEvents = structuredClone(preconsumptionGate);
-    malformedEvents.events = {};
-    const invalidRisk = structuredClone(preconsumptionGate);
-    invalidRisk.risk = "D";
-    const ledger = (gate) => ({
-      schemaVersion: "1",
-      authority: "evidence-index-only",
-      description: "Prospective machine-readable Gate evidence.",
-      repairPolicyVersion: "1",
-      repairPolicyDigest: computeRepairPolicyDigest(DEFAULT_REPAIR_POLICY),
-      gates: [gate]
-    });
+        stateClaims: stateClaims()
+      },
+      {
+        type: "failure_attributed",
+        at: "2026-07-15T12:09:00.000Z",
+        evidence: attributionEvidence,
+        attribution: attributionRecord
+      },
+      routeEvent({
+        attributionRecord,
+        attributionEvidence,
+        scope,
+        at: "2026-07-15T12:10:00.000Z",
+        attempt: 1,
+        budget: 1,
+        lineageDigest: "c".repeat(64)
+      })
+    ]
+  };
+}
 
-    process.stdout.write(JSON.stringify({
-      preconsumption: validateGateLedger(ledger(preconsumptionGate), { policy: DEFAULT_REPAIR_POLICY }),
-      approvalConflict: validateGateLedger(ledger(approvalConflict), { policy: DEFAULT_REPAIR_POLICY }),
-      wrongGateAuthorization: validateGateLedger(ledger(wrongGateAuthorization), { policy: DEFAULT_REPAIR_POLICY }),
-      malformedEvents: validateGateLedger(ledger(malformedEvents), { policy: DEFAULT_REPAIR_POLICY }),
-      invalidRisk: validateGateLedger(ledger(invalidRisk), { policy: DEFAULT_REPAIR_POLICY })
-    }));
-  `);
-
-  assert.equal(result.status, 0, result.stderr);
-  const output = JSON.parse(result.stdout);
-  assert.deepEqual(output.preconsumption, { ok: true, errors: [] });
-  assert.equal(output.approvalConflict.ok, false);
-  assert.match(output.approvalConflict.errors.join("\n"), /evidence reference content identity mismatch/);
-  assert.equal(output.wrongGateAuthorization.ok, false);
-  assert.match(output.wrongGateAuthorization.errors.join("\n"), /authorization\.gateId: must match Gate id/);
-  assert.equal(output.malformedEvents.ok, false);
-  assert.match(output.malformedEvents.errors.join("\n"), /events: expected a non-empty array/);
-  assert.equal(output.invalidRisk.ok, false);
-  assert.match(output.invalidRisk.errors.join("\n"), /risk: expected A, B, or C/);
+test("failure attribution v2 is facts-only, strict, and domain separated", () => {
+  const valid = attribution();
+  assert.deepEqual(validateFailureAttribution(valid), { ok: true, errors: [] });
+  assert.equal(validateFailureAttribution({ ...valid, failureRisk: "C" }).ok, false);
+  assert.equal(validateFailureAttribution({ ...valid, approvalRequired: false }).ok, false);
+  assert.equal(validateFailureAttribution({ ...valid, schemaVersion: "1" }).ok, false);
+  assert.equal(validateFailureAttribution({
+    ...valid,
+    affectedInvariants: ["z_invariant", "a_invariant"]
+  }).ok, false);
+  assert.equal(validateFailureAttribution({
+    ...valid,
+    affectedInvariants: ["A", "a"]
+  }).ok, true);
+  assert.equal(validateFailureAttribution({
+    ...valid,
+    affectedInvariants: ["a", "A"]
+  }).ok, false);
+  assert.match(computeFailureAttributionDigest(valid), /^[a-f0-9]{64}$/);
+  assert.notEqual(computeFailureAttributionDigest(valid), computeRouterResultDigest(valid));
 });
 
-test("gate ledger transition accepts append-only attribution and rejects historical rewrites", () => {
-  const result = evaluateGovernanceModule(`
-    import {
-      DEFAULT_REPAIR_POLICY,
-      computeGateScopeDigest,
-      computeRepairPolicyDigest,
-      routeGateFailure,
-      validateGateLedgerTransition
-    } from "./server/services/governance/gate-governance.mjs";
+test("router v2 applies risk floors and never grants mutation authority", () => {
+  const workflowScope = {
+    targetPaths: [".github/workflows/ci.yml"],
+    capabilityIds: ["workflow_repair"],
+    protectedScope: false
+  };
+  const workflow = routeDecision({
+    attributionRecord: attribution({ category: "ci_configuration", reasonCode: "timeout_contract" }),
+    scope: workflowScope
+  });
+  assert.equal(workflow.ok, true);
+  assert.equal(workflow.value.record.governanceRisk, "B");
+  assert.equal(workflow.value.record.lane, "codex_auto_repair");
+  assert.equal(workflow.value.record.proposalEligible, true);
+  assert.equal(workflow.value.record.executionAuthority, false);
+  assert.equal(workflow.value.record.operatorApprovalRequiredForMutation, true);
+  assert.equal(workflow.value.routerResultDigest, computeRouterResultDigest(workflow.value.record));
 
-    const evidence = (reference, digit) => ({ reference, sha256: digit.repeat(64) });
-    const scope = {
-      allowedFiles: ["docs/example.md"],
-      forbiddenActions: ["production_mutation"],
-      validation: ["diff_check"]
-    };
-    const scopeDigest = computeGateScopeDigest(scope);
-    const authorization = {
-      gateId: "gate-005",
-      lineageId: "gate-005",
-      authority: "operator",
-      scopeDigest,
-      sourceHead: "b".repeat(40),
-      policyVersion: null
-    };
-    const attribution = {
-      schemaVersion: "1",
-      failureId: "failure-005",
-      gateId: "gate-005",
-      stage: "diff_check",
-      category: "docs_metadata",
-      failureRisk: "C",
-      confidence: "high",
-      affectedInvariants: ["documentation_contract"],
-      evidenceRefs: ["issuecomment-5"],
-      observedAt: "2026-07-15T13:04:00.000Z"
-    };
-    const baseEvents = [
-      { type: "proposed", at: "2026-07-15T13:00:00.000Z", evidence: evidence("issuecomment-1", "1") },
-      { type: "approval_recorded", at: "2026-07-15T13:01:00.000Z", evidence: evidence("issuecomment-2", "2"), authorization },
-      { type: "approval_consumed", at: "2026-07-15T13:02:00.000Z", evidence: evidence("issuecomment-2", "2"), authorization },
+  const protectedPath = routeDecision({
+    gateRisk: "B",
+    attributionRecord: attribution({ category: "execution_transport" }),
+    scope: {
+      targetPaths: ["server/services/governance/gate-governance.mjs"],
+      capabilityIds: [],
+      protectedScope: false
+    }
+  });
+  assert.equal(protectedPath.value.record.lane, "operator_review");
+  assert.deepEqual(protectedPath.value.record.reasonCodes, ["protected_scope"]);
+
+  const protectedCapability = routeDecision({
+    gateRisk: "B",
+    attributionRecord: attribution({ category: "execution_transport" }),
+    scope: {
+      targetPaths: ["server/tests/example.test.mjs"],
+      capabilityIds: ["validator_self_change"],
+      protectedScope: false
+    }
+  });
+  assert.equal(protectedCapability.value.record.lane, "operator_review");
+
+  const riskA = routeDecision({
+    gateRisk: "A",
+    attributionRecord: attribution({ category: "execution_transport" }),
+    budget: 0
+  });
+  assert.equal(riskA.value.record.lane, "operator_review");
+  assert.equal(riskA.value.record.governanceRisk, "A");
+
+  const lowConfidence = routeDecision({
+    attributionRecord: attribution({ confidence: "medium" })
+  });
+  assert.equal(lowConfidence.value.record.lane, "operator_review");
+  assert.deepEqual(lowConfidence.value.record.reasonCodes, ["attribution_confidence_insufficient"]);
+
+  const exhausted = routeDecision({ attempt: 1 });
+  assert.equal(exhausted.value.record.lane, "operator_review");
+  assert.deepEqual(exhausted.value.record.reasonCodes, ["retry_budget_exhausted"]);
+
+  const segmentBoundary = routeDecision({
+    scope: {
+      targetPaths: [".github/workflows-archive/example.yml"],
+      capabilityIds: [],
+      protectedScope: false
+    }
+  });
+  assert.equal(segmentBoundary.value.record.governanceRisk, "C");
+
+  assert.doesNotThrow(() => routeDecision({
+    scope: {
+      targetPaths: ["A/example.yml", "a/example.yml"],
+      capabilityIds: [],
+      protectedScope: false
+    }
+  }));
+
+  assert.throws(() => routeGateFailure({
+    gateRisk: "C",
+    attributionRecord: attribution(),
+    attributionDigest: "f".repeat(64),
+    scope: routerScope(gateScope()),
+    policy: DEFAULT_REPAIR_POLICY,
+    policyVersion: "2",
+    policyDigest: POLICY_DIGEST,
+    retryLineage: {
+      lineageDigest: "c".repeat(64),
+      parentReceipt: "issuecomment-attribution",
+      attempt: 0,
+      budget: 1
+    }
+  }), /gate_governance_contract_invalid/);
+});
+
+test("repair policy v2 is closed and cannot self-authorize weakening", () => {
+  assert.deepEqual(validateRepairPolicy(DEFAULT_REPAIR_POLICY), { ok: true, errors: [] });
+  const loweredCategory = clone(DEFAULT_REPAIR_POLICY);
+  loweredCategory.categoryRiskFloor.business_contract = "C";
+  const removedProtection = clone(DEFAULT_REPAIR_POLICY);
+  removedProtection.protectedCapabilities = removedProtection.protectedCapabilities.filter(
+    (value) => value !== "secret_access"
+  );
+  const expandedAuto = clone(DEFAULT_REPAIR_POLICY);
+  expandedAuto.autoProposalCategories.push("business_contract");
+  expandedAuto.autoProposalCategories.sort();
+  assert.equal(validateRepairPolicy(loweredCategory).ok, false);
+  assert.equal(validateRepairPolicy(removedProtection).ok, false);
+  assert.equal(validateRepairPolicy(expandedAuto).ok, false);
+  assert.deepEqual(
+    validateRepairPolicyTransition(DEFAULT_REPAIR_POLICY, clone(DEFAULT_REPAIR_POLICY)),
+    { ok: true, errors: [] }
+  );
+  const changedV2Policy = clone(DEFAULT_REPAIR_POLICY);
+  changedV2Policy.retryBudget.C = 0;
+  assert.match(
+    validateRepairPolicyTransition(DEFAULT_REPAIR_POLICY, changedV2Policy).errors.join("\n"),
+    /schema version 2/
+  );
+  assert.equal(validateRepairPolicyTransition(DEFAULT_REPAIR_POLICY, loweredCategory).ok, false);
+  assert.deepEqual(validateRepairPolicyTransition(null, clone(DEFAULT_REPAIR_POLICY)), { ok: true, errors: [] });
+  assert.equal(validateRepairPolicyTransition(null, loweredCategory).ok, false);
+});
+
+test("gate ledger v1 binds the exact v2 route event and rejects v1 mixtures", () => {
+  const valid = ledger([rootRoutedGate()]);
+  assert.deepEqual(validateGateLedger(valid), { ok: true, errors: [] });
+
+  const v1Mixture = clone(valid);
+  v1Mixture.gates[0].events[3].repairAttempts = 0;
+  assert.match(validateGateLedger(v1Mixture).errors.join("\n"), /exact fields/);
+
+  const tamperedDigest = clone(valid);
+  tamperedDigest.gates[0].events[3].routerResultDigest = "f".repeat(64);
+  assert.match(validateGateLedger(tamperedDigest).errors.join("\n"), /routerResultDigest/);
+
+  const retryMismatch = clone(valid);
+  retryMismatch.gates[0].events[3].retry.remaining = 1;
+  assert.match(validateGateLedger(retryMismatch).errors.join("\n"), /retry.*embedded Router result/);
+
+  const policyMismatch = clone(valid);
+  policyMismatch.gates[0].events[3].policyDigest = "e".repeat(64);
+  assert.match(validateGateLedger(policyMismatch).errors.join("\n"), /policyDigest/);
+});
+
+test("successor retry lineage cannot reset attempt, budget, or lineage identity", () => {
+  const valid = ledger([rootRoutedGate({ successorGateId: "gate-successor" }), successorGate()]);
+  assert.deepEqual(validateGateLedger(valid), { ok: true, errors: [] });
+
+  const resetAttempt = clone(valid);
+  const attemptGate = resetAttempt.gates[1];
+  const attemptAttributionEvent = attemptGate.events[4];
+  attemptGate.events[5] = routeEvent({
+    attributionRecord: attemptAttributionEvent.attribution,
+    attributionEvidence: attemptAttributionEvent.evidence,
+    scope: attemptGate.scope,
+    at: "2026-07-15T12:10:00.000Z",
+    attempt: 0,
+    budget: 1,
+    lineageDigest: "c".repeat(64)
+  });
+  assert.match(validateGateLedger(resetAttempt).errors.join("\n"), /retry\.attempt.*immutable successor lineage/);
+
+  const resetLineage = clone(valid);
+  const lineageGate = resetLineage.gates[1];
+  const lineageAttributionEvent = lineageGate.events[4];
+  lineageGate.events[5] = routeEvent({
+    attributionRecord: lineageAttributionEvent.attribution,
+    attributionEvidence: lineageAttributionEvent.evidence,
+    scope: lineageGate.scope,
+    at: "2026-07-15T12:10:00.000Z",
+    attempt: 1,
+    budget: 1,
+    lineageDigest: "d".repeat(64)
+  });
+  assert.match(validateGateLedger(resetLineage).errors.join("\n"), /retry\.lineageDigest.*immutable successor lineage/);
+
+  const scopeDrift = clone(valid);
+  scopeDrift.gates[1].scope.allowedFiles = ["docs/PROJECT_CONTEXT.md"];
+  scopeDrift.gates[1].scopeDigest = computeGateScopeDigest(scopeDrift.gates[1].scope);
+  assert.match(validateGateLedger(scopeDrift).errors.join("\n"), /automatic successor must inherit exact/);
+
+  const chronologyDrift = clone(valid);
+  chronologyDrift.gates[1].events[0].at = "2026-07-15T12:03:30.000Z";
+  assert.match(validateGateLedger(chronologyDrift).errors.join("\n"), /successor chronology/);
+});
+
+test("approval consumption preserves evidence identity and blocked state claims", () => {
+  const scope = gateScope(["server/tests/example.test.mjs"]);
+  const authorization = {
+    gateId: "gate-approval",
+    lineageId: "gate-approval",
+    authority: "operator",
+    scopeDigest: computeGateScopeDigest(scope),
+    sourceHead: "2".repeat(40),
+    policyVersion: null
+  };
+  const approvalEvidence = evidence("issuecomment-approval", "2");
+  const valid = ledger([{
+    id: "gate-approval",
+    lineageId: "gate-approval",
+    predecessorGateId: null,
+    risk: "B",
+    subject: {
+      issue: 437,
+      pullRequest: 499,
+      purpose: "approval_validation",
+      sourceHead: "2".repeat(40)
+    },
+    scope,
+    scopeDigest: computeGateScopeDigest(scope),
+    events: [
+      { type: "proposed", at: "2026-07-15T13:00:00.000Z", evidence: evidence("issuecomment-proposal", "1") },
+      { type: "approval_recorded", at: "2026-07-15T13:01:00.000Z", evidence: approvalEvidence, authorization },
+      { type: "approval_consumed", at: "2026-07-15T13:02:00.000Z", evidence: approvalEvidence, authorization },
       {
         type: "terminal_blocked",
         at: "2026-07-15T13:03:00.000Z",
-        evidence: evidence("issuecomment-3", "3"),
-        reasonCode: "diff_check_failed",
+        evidence: evidence("issuecomment-blocked", "3"),
+        reasonCode: "output_failed",
         approvalState: "consumed",
-        stateClaims: {
-          sourceFilesChanged: false,
-          commitCreated: false,
-          pushPerformed: false,
-          retainedLocalState: false,
-          retainedStateDigest: null,
-          productionMutation: false
-        }
-      }
-    ];
-    const gate = {
-      id: "gate-005",
-      lineageId: "gate-005",
-      predecessorGateId: null,
-      risk: "C",
-      subject: {
-        issue: 437,
-        pullRequest: null,
-        purpose: "diff_repair",
-        sourceHead: "b".repeat(40)
-      },
-      scope,
-      scopeDigest,
-      events: baseEvents
-    };
-    const base = {
-      schemaVersion: "1",
-      authority: "evidence-index-only",
-      description: "Prospective machine-readable Gate evidence.",
-      repairPolicyVersion: "1",
-      repairPolicyDigest: computeRepairPolicyDigest(DEFAULT_REPAIR_POLICY),
-      gates: [gate]
-    };
-    const head = structuredClone(base);
-    head.gates[0].events.push(
-      {
-        type: "failure_attributed",
-        at: "2026-07-15T13:04:00.000Z",
-        evidence: evidence("issuecomment-5", "5"),
-        attribution
-      },
-      {
-        type: "repair_routed",
-        at: "2026-07-15T13:05:00.000Z",
-        evidence: evidence("issuecomment-6", "6"),
-        repairAttempts: 0,
-        route: routeGateFailure({
-          scope,
-          gateRisk: "C",
-          attribution,
-          repairAttempts: 0,
-          policy: DEFAULT_REPAIR_POLICY
+        stateClaims: stateClaims({
+          sourceFilesChanged: true,
+          retainedLocalState: true,
+          retainedStateDigest: "4".repeat(64)
         })
       }
-    );
-    const rewritten = structuredClone(head);
-    rewritten.gates[0].events[0].at = "2026-07-15T12:59:00.000Z";
+    ]
+  }]);
+  assert.deepEqual(validateGateLedger(valid), { ok: true, errors: [] });
 
-    process.stdout.write(JSON.stringify({
-      appendOnly: validateGateLedgerTransition(base, head, { policy: DEFAULT_REPAIR_POLICY }),
-      rewritten: validateGateLedgerTransition(base, rewritten, { policy: DEFAULT_REPAIR_POLICY })
-    }));
-  `);
+  const mismatchedApproval = clone(valid);
+  mismatchedApproval.gates[0].events[2].evidence = {
+    ...mismatchedApproval.gates[0].events[2].evidence,
+    sha256: "9".repeat(64)
+  };
+  assert.match(validateGateLedger(mismatchedApproval).errors.join("\n"), /approval evidence identity|content identity mismatch/);
 
-  assert.equal(result.status, 0, result.stderr);
-  const output = JSON.parse(result.stdout);
-  assert.deepEqual(output.appendOnly, { ok: true, errors: [] });
-  assert.equal(output.rewritten.ok, false);
-  assert.match(output.rewritten.errors.join("\n"), /event rewrite is forbidden/);
+  const lostRetainedDigest = clone(valid);
+  lostRetainedDigest.gates[0].events[3].stateClaims.retainedStateDigest = null;
+  assert.match(validateGateLedger(lostRetainedDigest).errors.join("\n"), /retained local state requires/);
 });
 
-test("gate ledger derives retry attempts from immutable successor lineage", () => {
-  const result = evaluateGovernanceModule(`
-    import {
-      DEFAULT_REPAIR_POLICY,
-      computeGateScopeDigest,
-      computeRepairPolicyDigest,
-      routeGateFailure,
-      validateGateLedger
-    } from "./server/services/governance/gate-governance.mjs";
+test("gate ledger transition is append-only and rejects historical rewrites", () => {
+  const headGate = rootRoutedGate();
+  const baseGate = clone(headGate);
+  baseGate.events = baseGate.events.slice(0, 2);
+  const base = ledger([baseGate]);
+  const head = ledger([headGate]);
+  assert.deepEqual(validateGateLedger(base), { ok: true, errors: [] });
+  assert.deepEqual(validateGateLedger(head), { ok: true, errors: [] });
+  assert.deepEqual(validateGateLedgerTransition(base, head, {
+    basePolicy: DEFAULT_REPAIR_POLICY,
+    headPolicy: DEFAULT_REPAIR_POLICY
+  }), { ok: true, errors: [] });
 
-    const evidence = (reference, digit) => ({ reference, sha256: digit.repeat(64) });
-    const scope = {
-      allowedFiles: ["docs/example.md"],
-      forbiddenActions: ["production_mutation"],
-      validation: ["diff_check"]
-    };
-    const events = ({ gateId, lineageId, hour, attempts, digits, authority, successorGateId = null }) => {
-      const attribution = {
-        schemaVersion: "1",
-        failureId: "failure-" + gateId,
-        gateId,
-        stage: "diff_check",
-        category: "docs_metadata",
-        failureRisk: "B",
-        confidence: "high",
-        affectedInvariants: ["documentation_contract"],
-        evidenceRefs: ["issuecomment-" + digits[4]],
-        observedAt: "2026-07-15T" + hour + ":04:00.000Z"
-      };
-      const authorization = {
-        gateId,
-        lineageId,
-        authority,
-        scopeDigest: computeGateScopeDigest(scope),
-        sourceHead: "a".repeat(40),
-        policyVersion: authority === "repair_policy" ? "1" : null
-      };
-      const values = [
-        { type: "proposed", at: "2026-07-15T" + hour + ":00:00.000Z", evidence: evidence("issuecomment-" + digits[0], digits[0]) },
-        { type: "approval_recorded", at: "2026-07-15T" + hour + ":01:00.000Z", evidence: evidence("issuecomment-" + digits[1], digits[1]), authorization },
-        { type: "approval_consumed", at: "2026-07-15T" + hour + ":02:00.000Z", evidence: evidence("issuecomment-" + digits[1], digits[1]), authorization },
-        {
-          type: "terminal_blocked",
-          at: "2026-07-15T" + hour + ":03:00.000Z",
-          evidence: evidence("issuecomment-" + digits[3], digits[3]),
-          reasonCode: "diff_check_failed",
-          approvalState: "consumed",
-          stateClaims: {
-            sourceFilesChanged: false,
-            commitCreated: false,
-            pushPerformed: false,
-            retainedLocalState: false,
-            retainedStateDigest: null,
-            productionMutation: false
-          }
-        },
-        {
-          type: "failure_attributed",
-          at: attribution.observedAt,
-          evidence: evidence("issuecomment-" + digits[4], digits[4]),
-          attribution
-        },
-        {
-          type: "repair_routed",
-          at: "2026-07-15T" + hour + ":05:00.000Z",
-          evidence: evidence("issuecomment-" + digits[5], digits[5]),
-          repairAttempts: attempts,
-          route: routeGateFailure({
-            scope,
-            gateRisk: "B",
-            attribution,
-            repairAttempts: attempts,
-            policy: DEFAULT_REPAIR_POLICY
-          })
-        }
-      ];
-      if (successorGateId !== null) values.push({
-        type: "successor_proposed",
-        at: "2026-07-15T" + hour + ":06:00.000Z",
-        evidence: evidence("issuecomment-" + digits[6], digits[6]),
-        successorGateId
-      });
-      return values;
-    };
-    const rootGate = {
-      id: "gate-root",
-      lineageId: "gate-root",
-      predecessorGateId: null,
-      risk: "B",
-      subject: {
-        issue: 437,
-        pullRequest: 499,
-        purpose: "docs_repair",
-        sourceHead: "a".repeat(40)
-      },
-      scope,
-      scopeDigest: computeGateScopeDigest(scope),
-      events: events({
-        gateId: "gate-root",
-        lineageId: "gate-root",
-        hour: "10",
-        attempts: 0,
-        digits: ["1", "2", "2", "3", "4", "5", "6"],
-        authority: "operator",
-        successorGateId: "gate-successor"
-      })
-    };
-    const successorGate = {
-      id: "gate-successor",
-      lineageId: "gate-root",
-      predecessorGateId: "gate-root",
-      risk: "B",
-      subject: {
-        issue: 437,
-        pullRequest: 499,
-        purpose: "docs_repair",
-        sourceHead: "a".repeat(40)
-      },
-      scope,
-      scopeDigest: computeGateScopeDigest(scope),
-      events: events({
-        gateId: "gate-successor",
-        lineageId: "gate-root",
-        hour: "11",
-        attempts: 1,
-        digits: ["7", "8", "8", "9", "a", "b", "c"],
-        authority: "repair_policy"
-      })
-    };
-    const valid = {
-      schemaVersion: "1",
-      authority: "evidence-index-only",
-      description: "Prospective machine-readable Gate evidence.",
-      repairPolicyVersion: "1",
-      repairPolicyDigest: computeRepairPolicyDigest(DEFAULT_REPAIR_POLICY),
-      gates: [rootGate, successorGate]
-    };
-    const expiredRecovery = structuredClone(valid);
-    expiredRecovery.gates[0].events = [
-      { type: "proposed", at: "2026-07-15T09:00:00.000Z", evidence: evidence("expired-root-proposal", "1") },
-      {
-        type: "expired",
-        at: "2026-07-15T09:01:00.000Z",
-        evidence: evidence("expired-root-receipt", "2"),
-        reasonCode: "approval_window_expired"
-      },
-      {
-        type: "successor_proposed",
-        at: "2026-07-15T09:02:00.000Z",
-        evidence: evidence("expired-successor-link", "3"),
-        successorGateId: "gate-successor"
-      }
-    ];
-    const expiredSuccessorAuthorization = {
-      gateId: "gate-successor",
-      lineageId: "gate-root",
-      authority: "operator",
-      scopeDigest: computeGateScopeDigest(scope),
-      sourceHead: "a".repeat(40),
-      policyVersion: null
-    };
-    expiredRecovery.gates[1].events = [
-      { type: "proposed", at: "2026-07-15T09:03:00.000Z", evidence: evidence("expired-successor-proposal", "4") },
-      { type: "approval_recorded", at: "2026-07-15T09:04:00.000Z", evidence: evidence("expired-successor-approval", "5"), authorization: expiredSuccessorAuthorization },
-      { type: "approval_consumed", at: "2026-07-15T09:05:00.000Z", evidence: evidence("expired-successor-approval", "5"), authorization: expiredSuccessorAuthorization },
-      {
-        type: "terminal_passed",
-        at: "2026-07-15T09:06:00.000Z",
-        evidence: evidence("expired-successor-terminal", "6"),
-        checks: [{ name: "diff_check", result: "passed" }],
-        stateClaims: {
-          sourceFilesChanged: false,
-          commitCreated: false,
-          pushPerformed: false,
-          retainedLocalState: false,
-          retainedStateDigest: null,
-          productionMutation: false
-        }
-      }
-    ];
-    const resetBudget = structuredClone(valid);
-    const routeEvent = resetBudget.gates[1].events.find((event) => event.type === "repair_routed");
-    routeEvent.repairAttempts = 0;
-    const attributionEvent = resetBudget.gates[1].events.find((event) => event.type === "failure_attributed");
-    routeEvent.route = routeGateFailure({
-      scope,
-      gateRisk: "B",
-      attribution: attributionEvent.attribution,
-      repairAttempts: 0,
-      policy: DEFAULT_REPAIR_POLICY
-    });
-
-    const riskDowngrade = structuredClone(valid);
-    riskDowngrade.gates[1].risk = "C";
-    const chronologyDrift = structuredClone(valid);
-    chronologyDrift.gates[1].events[0].at = "2026-07-15T10:05:30.000Z";
-    const traversal = structuredClone(valid);
-    traversal.gates[1].scope.allowedFiles = ["../../production/**"];
-    traversal.gates[1].scopeDigest = computeGateScopeDigest(traversal.gates[1].scope);
-    const wildcard = structuredClone(valid);
-    wildcard.gates[1].scope.allowedFiles = ["server/**"];
-    wildcard.gates[1].scopeDigest = computeGateScopeDigest(wildcard.gates[1].scope);
-    const gitControlPath = structuredClone(valid);
-    gitControlPath.gates[1].scope.allowedFiles = [".git/config"];
-    gitControlPath.gates[1].scopeDigest = computeGateScopeDigest(gitControlPath.gates[1].scope);
-    const purposeDrift = structuredClone(valid);
-    purposeDrift.gates[1].subject.purpose = "different_repair";
-    const rootReset = structuredClone(valid);
-    rootReset.gates.push({
-      id: "gate-reset",
-      lineageId: "gate-reset",
-      predecessorGateId: null,
-      risk: "B",
-      subject: {
-        issue: 437,
-        pullRequest: 499,
-        purpose: "docs_repair",
-        sourceHead: "c".repeat(40)
-      },
-      scope,
-      scopeDigest: computeGateScopeDigest(scope),
-      events: [
-        {
-          type: "proposed",
-          at: "2026-07-15T12:00:00.000Z",
-          evidence: evidence("issuecomment-root-reset", "d")
-        }
-      ]
-    });
-
-    process.stdout.write(JSON.stringify({
-      valid: validateGateLedger(valid, { policy: DEFAULT_REPAIR_POLICY }),
-      expiredRecovery: validateGateLedger(expiredRecovery, { policy: DEFAULT_REPAIR_POLICY }),
-      resetBudget: validateGateLedger(resetBudget, { policy: DEFAULT_REPAIR_POLICY }),
-      riskDowngrade: validateGateLedger(riskDowngrade, { policy: DEFAULT_REPAIR_POLICY }),
-      chronologyDrift: validateGateLedger(chronologyDrift, { policy: DEFAULT_REPAIR_POLICY }),
-      traversal: validateGateLedger(traversal, { policy: DEFAULT_REPAIR_POLICY }),
-      wildcard: validateGateLedger(wildcard, { policy: DEFAULT_REPAIR_POLICY }),
-      gitControlPath: validateGateLedger(gitControlPath, { policy: DEFAULT_REPAIR_POLICY }),
-      purposeDrift: validateGateLedger(purposeDrift, { policy: DEFAULT_REPAIR_POLICY }),
-      rootReset: validateGateLedger(rootReset, { policy: DEFAULT_REPAIR_POLICY })
-    }));
-  `);
-
-  assert.equal(result.status, 0, result.stderr);
-  const output = JSON.parse(result.stdout);
-  assert.deepEqual(output.valid, { ok: true, errors: [] });
-  assert.deepEqual(output.expiredRecovery, { ok: true, errors: [] });
-  assert.equal(output.resetBudget.ok, false);
-  assert.match(output.resetBudget.errors.join("\n"), /repairAttempts.*successor lineage/);
-  assert.match(output.riskDowngrade.errors.join("\n"), /successor risk downgrade is forbidden/);
-  assert.match(output.chronologyDrift.errors.join("\n"), /successor chronology/);
-  assert.match(output.traversal.errors.join("\n"), /allowedFiles.*repo-relative/);
-  assert.match(output.wildcard.errors.join("\n"), /allowedFiles.*repo-relative/);
-  assert.match(output.gitControlPath.errors.join("\n"), /allowedFiles.*repo-relative/);
-  assert.match(output.purposeDrift.errors.join("\n"), /successor subject continuity/);
-  assert.match(output.rootReset.errors.join("\n"), /root subject already has a Gate lineage/);
+  const rewritten = clone(head);
+  rewritten.gates[0].events[0].evidence.sha256 = "9".repeat(64);
+  assert.match(validateGateLedgerTransition(base, rewritten, {
+    basePolicy: DEFAULT_REPAIR_POLICY,
+    headPolicy: DEFAULT_REPAIR_POLICY
+  }).errors.join("\n"), /event rewrite is forbidden/);
 });
 
-test("repository publishes strict governance schemas, policy, and a prospective-only ledger", () => {
+test("repository publishes v2 governance contracts while retaining the empty legacy ledger root", () => {
   const paths = [
-    "schemas/failure-attribution-v1.schema.json",
+    "schemas/failure-attribution-v2.schema.json",
     "schemas/gate-ledger-v1.schema.json",
-    "schemas/repair-policy-v1.schema.json",
+    "schemas/repair-policy-v2.schema.json",
     "project-state/repair-policy.json",
     "project-state/gates.json",
     "scripts/check-gate-governance.mjs"
   ];
-  for (const path of paths) {
-    assert.equal(existsSync(resolve(REPOSITORY_ROOT, path)), true, `missing ${path}`);
-  }
+  for (const path of paths) assert.equal(existsSync(resolve(REPOSITORY_ROOT, path)), true, `missing ${path}`);
 
   const schemas = paths.slice(0, 3).map((path) => JSON.parse(readFileSync(resolve(REPOSITORY_ROOT, path), "utf8")));
   for (const schema of schemas) {
@@ -1050,35 +569,17 @@ test("repository publishes strict governance schemas, policy, and a prospective-
     assert.equal(schema.type, "object");
     assert.equal(schema.additionalProperties, false);
   }
+  assert.equal(schemas[0].properties.schemaVersion.const, "2");
+  assert.equal(schemas[2].properties.schemaVersion.const, "2");
+  assert.match(JSON.stringify(schemas[1]), /failure-attribution-v2\.schema\.json/);
+  assert.doesNotMatch(JSON.stringify(schemas[1]), /failure-attribution-v1\.schema\.json|repairAttempts/);
 
-  const result = evaluateGovernanceModule(`
-    import { readFileSync } from "node:fs";
-    import {
-      computeRepairPolicyDigest,
-      validateGateLedger,
-      validateRepairPolicy
-    } from "./server/services/governance/gate-governance.mjs";
-
-    const policy = JSON.parse(readFileSync("project-state/repair-policy.json", "utf8"));
-    const ledger = JSON.parse(readFileSync("project-state/gates.json", "utf8"));
-    process.stdout.write(JSON.stringify({
-      policy: validateRepairPolicy(policy),
-      ledger: validateGateLedger(ledger, { policy }),
-      gateCount: ledger.gates.length,
-      authority: ledger.authority,
-      versionsMatch: ledger.repairPolicyVersion === policy.schemaVersion,
-      digestMatches: ledger.repairPolicyDigest === computeRepairPolicyDigest(policy)
-    }));
-  `);
-
-  assert.equal(result.status, 0, result.stderr);
-  const output = JSON.parse(result.stdout);
-  assert.deepEqual(output.policy, { ok: true, errors: [] });
-  assert.deepEqual(output.ledger, { ok: true, errors: [] });
-  assert.equal(output.gateCount, 0);
-  assert.equal(output.authority, "evidence-index-only");
-  assert.equal(output.versionsMatch, true);
-  assert.equal(output.digestMatches, true);
+  const policy = JSON.parse(readFileSync(resolve(REPOSITORY_ROOT, "project-state/repair-policy.json"), "utf8"));
+  const storedLedger = JSON.parse(readFileSync(resolve(REPOSITORY_ROOT, "project-state/gates.json"), "utf8"));
+  assert.deepEqual(validateRepairPolicy(policy), { ok: true, errors: [] });
+  assert.equal(isLegacyEmptyGateLedger(storedLedger), true);
+  assert.deepEqual(validateGateLedger(storedLedger, { policy }), { ok: true, errors: [] });
+  assert.equal(storedLedger.gates.length, 0);
 });
 
 test("governance CLI validates snapshots and fails closed on incomplete invocation", () => {
@@ -1087,34 +588,20 @@ test("governance CLI validates snapshots and fails closed on incomplete invocati
     ["scripts/check-gate-governance.mjs", ...args],
     { cwd: REPOSITORY_ROOT, encoding: "utf8" }
   );
-
-  const snapshot = run("--snapshot");
-  assert.equal(snapshot.status, 0, snapshot.stderr);
-  assert.match(snapshot.stdout, /Gate governance validation passed/);
-
-  const bootstrap = run("--base-state-missing");
-  assert.equal(bootstrap.status, 0, bootstrap.stderr);
-
-  const exactBase = run(
-    "--base-gates-file",
-    "project-state/gates.json",
-    "--base-policy-file",
-    "project-state/repair-policy.json"
-  );
-  assert.equal(exactBase.status, 0, exactBase.stderr);
-
-  const trustedCandidate = run(
-    "--head-gates-file",
-    "project-state/gates.json",
-    "--head-policy-file",
-    "project-state/repair-policy.json",
-    "--base-gates-file",
-    "project-state/gates.json",
-    "--base-policy-file",
-    "project-state/repair-policy.json"
-  );
-  assert.equal(trustedCandidate.status, 0, trustedCandidate.stderr);
-
+  for (const args of [
+    ["--snapshot"],
+    ["--base-state-missing"],
+    ["--base-gates-file", "project-state/gates.json", "--base-policy-file", "project-state/repair-policy.json"],
+    [
+      "--head-gates-file", "project-state/gates.json",
+      "--head-policy-file", "project-state/repair-policy.json",
+      "--base-gates-file", "project-state/gates.json",
+      "--base-policy-file", "project-state/repair-policy.json"
+    ]
+  ]) {
+    const result = run(...args);
+    assert.equal(result.status, 0, result.stderr);
+  }
   const incomplete = run("--base-gates-file");
   assert.notEqual(incomplete.status, 0);
   assert.match(incomplete.stderr, /gate_governance_arguments_invalid/);
@@ -1124,11 +611,7 @@ test("repository documents the bounded repair and escalation contract", () => {
   const packageJson = JSON.parse(readFileSync(resolve(REPOSITORY_ROOT, "package.json"), "utf8"));
   const workflow = readFileSync(resolve(REPOSITORY_ROOT, "docs/GITHUB_ISSUE_PR_WORKFLOW.md"), "utf8");
   const baseline = readFileSync(resolve(REPOSITORY_ROOT, "docs/VALIDATION_BASELINE.md"), "utf8");
-
-  assert.equal(
-    packageJson.scripts["governance:check"],
-    "node scripts/check-gate-governance.mjs --snapshot"
-  );
+  assert.equal(packageJson.scripts["governance:check"], "node scripts/check-gate-governance.mjs --snapshot");
   assert.match(workflow, /prospective-only/i);
   assert.match(workflow, /does not reopen or continue a consumed Gate/i);
   assert.match(workflow, /high confidence/i);
@@ -1150,21 +633,14 @@ test("project-state sensitive scanning includes governance state files", async (
         readFileSync(resolve(REPOSITORY_ROOT, "project-state", name), "utf8")
       );
     }
-    writeFileSync(
-      resolve(rootDir, "project-state/gates.json"),
-      JSON.stringify({ note: "token=unit-test-secret" })
-    );
+    writeFileSync(resolve(rootDir, "project-state/gates.json"), JSON.stringify({ note: "token=unit-test-secret" }));
     writeFileSync(
       resolve(rootDir, "project-state/repair-policy.json"),
       readFileSync(resolve(REPOSITORY_ROOT, "project-state/repair-policy.json"), "utf8")
     );
-
     const { checkProjectState } = await import("../../scripts/check-project-state.mjs");
     const result = checkProjectState({ rootDir });
-    assert.match(
-      result.errors.join("\n"),
-      /project-state\/gates\.json:1: raw secret pattern matched \(token\)/
-    );
+    assert.match(result.errors.join("\n"), /project-state\/gates\.json:1: raw secret pattern matched \(token\)/);
   } finally {
     rmSync(rootDir, { recursive: true, force: true });
   }

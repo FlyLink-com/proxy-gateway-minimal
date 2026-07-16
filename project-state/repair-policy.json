@@ -1,11 +1,47 @@
 {
-  "schemaVersion": "1",
+  "schemaVersion": "2",
   "retryBudget": {
     "A": 0,
     "B": 1,
     "C": 1
   },
-  "autoRepairCategories": [
+  "categoryRiskFloor": {
+    "baseline_identity_drift": "A",
+    "business_contract": "A",
+    "ci_configuration": "B",
+    "docs_metadata": "C",
+    "execution_transport": "C",
+    "test_fixture": "B",
+    "transport_format": "C",
+    "unknown": "A"
+  },
+  "pathRiskFloors": [
+    {
+      "prefix": ".github/actions/",
+      "risk": "B"
+    },
+    {
+      "prefix": ".github/workflows/",
+      "risk": "B"
+    },
+    {
+      "prefix": "server/services/governance/",
+      "risk": "B"
+    }
+  ],
+  "capabilityRiskFloors": {},
+  "protectedCapabilities": [
+    "deployment",
+    "executor_self_change",
+    "oidc",
+    "permission_expansion",
+    "production",
+    "provider",
+    "runtime",
+    "secret_access",
+    "validator_self_change"
+  ],
+  "autoProposalCategories": [
     "ci_configuration",
     "docs_metadata",
     "execution_transport",

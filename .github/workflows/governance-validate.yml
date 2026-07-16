@@ -75,9 +75,9 @@ jobs:
             .github/workflows/governance-validate.yml \
             scripts/check-gate-governance.mjs \
             server/services/governance/gate-governance.mjs \
-            schemas/failure-attribution-v1.schema.json \
+            schemas/failure-attribution-v2.schema.json \
             schemas/gate-ledger-v1.schema.json \
-            schemas/repair-policy-v1.schema.json \
+            schemas/repair-policy-v2.schema.json \
             project-state/repair-policy.json
           do
             assert_trust_root_unchanged "$trust_path"

@@ -109,6 +109,9 @@ test("trusted governance advisory uses only the base validator and immutable tru
   assert.match(governance, /\[\[ "\$base_mode" == "100644" && "\$candidate_mode" == "100644" \]\]/);
   assert.match(governance, /server\/services\/governance\/gate-governance\.mjs/);
   assert.match(governance, /schemas\/gate-ledger-v1\.schema\.json/);
+  assert.match(governance, /schemas\/failure-attribution-v2\.schema\.json/);
+  assert.match(governance, /schemas\/repair-policy-v2\.schema\.json/);
+  assert.doesNotMatch(governance, /schemas\/(?:failure-attribution|repair-policy)-v1\.schema\.json/);
   assert.match(governance, /project-state\/repair-policy\.json/);
   assert.match(governance, /git -C candidate ls-tree "\$CANDIDATE_HEAD"/);
   assert.match(governance, /\[\[ "\$mode" == "100644" \]\]/);
