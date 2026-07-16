@@ -1,0 +1,12 @@
+[Unit]
+Description=Run GCCGW platform Lead retention maintenance hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=5m
+AccuracySec=1us
+Unit=gccgw-platform-lead-retention.service
+
+[Install]
+WantedBy=timers.target

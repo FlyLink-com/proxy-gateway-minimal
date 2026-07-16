@@ -11,9 +11,12 @@ test("environment foundation files are tracked in the repository", () => {
     "ops/README.md",
     "ops/systemd/proxy-gateway-console.service",
     "ops/systemd/proxy-gateway-ss.service",
+    "ops/systemd/gccgw-platform-lead-retention.service",
+    "ops/systemd/gccgw-platform-lead-retention.timer",
     "ops/nginx/proxy-gateway-public.conf",
     "scripts/backup-subscriptions.sh",
-    "scripts/restore-subscriptions.sh"
+    "scripts/restore-subscriptions.sh",
+    "scripts/platform-lead-retention.mjs"
   ]) {
     assert.equal(existsSync(new URL(`../../${path}`, import.meta.url)), true, `${path} should exist`);
   }
@@ -85,6 +88,33 @@ test("systemd unit templates pin the app to loopback and restart on failure", ()
   assert.match(ssUnit, /EnvironmentFile=\/opt\/proxy-gateway-minimal\/\.env/);
   assert.match(ssUnit, /ExecStart=\/usr\/bin\/ss-server/);
   assert.match(ssUnit, /Restart=on-failure/);
+});
+
+test("Lead retention systemd templates are inert, hardened, and hourly", () => {
+  const service = readText("ops/systemd/gccgw-platform-lead-retention.service");
+  const timer = readText("ops/systemd/gccgw-platform-lead-retention.timer");
+
+  assert.match(service, /Type=oneshot/);
+  assert.match(service, /User=proxy-gateway/);
+  assert.match(service, /Group=proxy-gateway/);
+  assert.match(service, /WorkingDirectory=\/opt\/proxy-gateway-minimal-candidate\/current/);
+  assert.match(service, /EnvironmentFile=\/opt\/proxy-gateway-minimal-candidate\/\.env/);
+  assert.match(service, /ExecStart=\/usr\/bin\/node scripts\/platform-lead-retention\.mjs purge --apply/);
+  assert.match(service, /ExecStart=\/usr\/bin\/node scripts\/platform-lead-retention\.mjs prune --backup-dir \/opt\/proxy-gateway-minimal-candidate\/state\/lead-aware-control-backups --apply/);
+  assert.match(service, /NoNewPrivileges=true/);
+  assert.match(service, /PrivateTmp=true/);
+  assert.match(service, /ProtectSystem=strict/);
+  assert.match(service, /ProtectHome=true/);
+  assert.match(service, /ReadWritePaths=\/opt\/proxy-gateway-minimal-candidate\/state/);
+  assert.match(service, /UMask=0077/);
+  assert.doesNotMatch(service, /systemctl|proxy-gateway-candidate\.service|\[Install\]/);
+
+  assert.match(timer, /OnCalendar=hourly/);
+  assert.match(timer, /Persistent=true/);
+  assert.match(timer, /RandomizedDelaySec=5m/);
+  assert.match(timer, /AccuracySec=1us/);
+  assert.match(timer, /Unit=gccgw-platform-lead-retention\.service/);
+  assert.match(timer, /WantedBy=timers\.target/);
 });
 
 test("public Nginx template exposes only health and subscription paths", () => {

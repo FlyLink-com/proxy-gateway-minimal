@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   lstatSync,
@@ -14,6 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import Database from "better-sqlite3";
 import {
@@ -30,6 +32,10 @@ import {
 const CREATED_AT = "2026-07-16T00:00:00.000Z";
 const EMPTY_PRIVACY_CUTOFF = "2026-10-14T00:00:00.000Z";
 const EMPTY_PRUNE_AT = "2026-10-13T22:00:00.000Z";
+const REPOSITORY_ROOT = fileURLToPath(new URL("../../", import.meta.url));
+const RETENTION_CLI = fileURLToPath(
+  new URL("../../scripts/platform-lead-retention.mjs", import.meta.url)
+);
 
 function manifestInput(overrides = {}) {
   return {
@@ -117,6 +123,18 @@ function readBackupPair(backupDir) {
     manifestPath: join(backupDir, manifestName),
     backupPath: join(backupDir, manifest.file)
   };
+}
+
+function runRetentionCli(args, { env = {} } = {}) {
+  return spawnSync(process.execPath, [RETENTION_CLI, ...args], {
+    cwd: REPOSITORY_ROOT,
+    env: {
+      ...process.env,
+      SUBSCRIPTION_CONTROL_DB_PATH: "",
+      ...env
+    },
+    encoding: "utf8"
+  });
 }
 
 function createPurgeFixture(dbPath) {
@@ -812,4 +830,90 @@ test("prune rejects traversal manifests, nested entries, and symlinked artifacts
     assert.equal(readFileSync(outside, "utf8"), "outside private fixture");
     assert.equal(lstatSync(pair.backupPath).isSymbolicLink(), true);
   });
+});
+
+test("retention CLI defaults purge to dry-run and emits one closed JSON line", () => {
+  withTempDir("platform-lead-cli-purge-", (directory) => {
+    const dbPath = join(directory, "private-control.sqlite");
+    createPurgeFixture(dbPath);
+    const processResult = runRetentionCli(["purge"], {
+      env: { SUBSCRIPTION_CONTROL_DB_PATH: dbPath }
+    });
+    assert.equal(processResult.status, 0);
+    assert.equal(processResult.stderr, "");
+    assert.equal(processResult.stdout.trim().split(/\r?\n/).length, 1);
+    const result = JSON.parse(processResult.stdout);
+    assert.equal(result.command, "purge");
+    assert.equal(result.mode, "dry-run");
+    assert.equal(result.status, "planned");
+    assert.equal(result.counts.deletedLeadCount, 0);
+    assert.doesNotMatch(processResult.stdout, /private-control|private-due|private-future|example\.test/i);
+
+    const database = new Database(dbPath, { readonly: true });
+    assert.equal(database.prepare("select count(*) as count from platform_leads").get().count, 2);
+    database.close();
+  });
+});
+
+test("retention CLI applies purge only with explicit apply and maps completion to zero", () => {
+  withTempDir("platform-lead-cli-apply-", (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    createPurgeFixture(dbPath);
+    const expired = new Database(dbPath);
+    expired.prepare("update platform_leads set expires_at = ?")
+      .run("2020-01-01T00:00:00.000Z");
+    expired.close();
+    const processResult = runRetentionCli(["purge", "--apply"], {
+      env: { SUBSCRIPTION_CONTROL_DB_PATH: dbPath }
+    });
+    assert.equal(processResult.status, 0);
+    const result = JSON.parse(processResult.stdout);
+    assert.equal(result.mode, "apply");
+    assert.equal(result.status, "completed");
+    assert.equal(result.counts.deletedLeadCount, 2);
+
+    const database = new Database(dbPath, { readonly: true });
+    assert.equal(database.prepare("select count(*) as count from platform_leads").get().count, 0);
+    database.close();
+  });
+});
+
+test("retention CLI validates backup and prune grammar without creating artifacts", () => {
+  withTempDir("platform-lead-cli-backup-", (directory) => {
+    const dbPath = join(directory, "control.sqlite");
+    const backupDir = join(directory, "lead-aware-backups");
+    createBackupFixture(dbPath);
+    mkdirSync(backupDir, { mode: 0o700 });
+
+    const backup = runRetentionCli(["backup", "--backup-dir", backupDir], {
+      env: { SUBSCRIPTION_CONTROL_DB_PATH: dbPath }
+    });
+    assert.equal(backup.status, 0);
+    assert.equal(JSON.parse(backup.stdout).mode, "dry-run");
+    assert.deepEqual(readdirSync(backupDir), []);
+
+    const prune = runRetentionCli(["prune", "--backup-dir", backupDir]);
+    assert.equal(prune.status, 0);
+    assert.equal(JSON.parse(prune.stdout).mode, "dry-run");
+    assert.deepEqual(readdirSync(backupDir), []);
+    assert.doesNotMatch(`${backup.stdout}${prune.stdout}`, /lead-aware-backups|control\.sqlite/i);
+  });
+});
+
+test("retention CLI rejects missing configuration and unknown or duplicate arguments", () => {
+  const cases = [
+    runRetentionCli(["purge"]),
+    runRetentionCli(["backup"]),
+    runRetentionCli(["prune", "--backup-dir", "x"]),
+    runRetentionCli(["purge", "--unknown"]),
+    runRetentionCli(["purge", "--apply", "--apply"])
+  ];
+  for (const processResult of cases) {
+    assert.equal(processResult.status, 64);
+    assert.equal(processResult.stderr, "");
+    const result = JSON.parse(processResult.stdout);
+    assert.equal(result.status, "blocked");
+    assert.deepEqual(result.reasonCodes, ["invalid_command_contract"]);
+    assert.equal(processResult.stdout.trim().split(/\r?\n/).length, 1);
+  }
 });
